@@ -439,6 +439,56 @@ def help_fits_laptop(page) -> None:
         page.wait_for_function("document.getElementById('help').hidden")
 
 
+RULINGS_JS = """() => {
+    const catalog = state.catalog.house_rulings || [];
+    const groups = [...document.querySelectorAll('#help-body details.help-rulings')];
+    const terms = [...document.querySelectorAll('#help-body .help-rulings dt')];
+    const text = groups.map((group) => group.textContent).join(' ');
+    return {
+        catalog: catalog.length,
+        groups: groups.map((group) => group.dataset.group),
+        closed: groups.every((group) => !group.open),
+        shown: terms.length,
+        ordered: terms.map((term) => term.dataset.oq).join('|')
+            === catalog.map((entry) => entry.oq).join('|'),
+        oqLeak: /\\bOQ-?\\d/.test(text),
+        hangul: /[가-힣]/.test(text),
+        firstTitle: terms.length ? terms[0].textContent : null,
+    };
+}"""
+
+
+def rulings_notice(page) -> None:
+    print("[5] the rulings notice, both languages")
+    for language in ("ko", "en"):
+        if page.evaluate("TERM_LANGUAGE") != language:
+            page.click("#language-toggle")
+            page.wait_for_function(f"TERM_LANGUAGE === '{language}'")
+        page.click("#open-help")
+        page.wait_for_selector("#help:not([hidden])")
+        r = page.evaluate(RULINGS_JS)
+        check.ok(
+            r["catalog"] > 0 and r["shown"] == r["catalog"] and r["ordered"],
+            f"{language}: every catalog ruling is listed, in its order",
+            r,
+        )
+        check.ok(
+            r["groups"] == ["sources_differ", "app_differs", "project"],
+            f"{language}: the three groups appear apart, in order",
+            r["groups"],
+        )
+        check.ok(r["closed"], f"{language}: the groups open folded", r)
+        # User decision 2026-10-14: no question number on a player's screen.
+        check.ok(not r["oqLeak"], f"{language}: no OQ number is shown", r)
+        check.ok(
+            r["hangul"] == (language == "ko"),
+            f"{language}: the entries are in the page's language",
+            r["firstTitle"],
+        )
+        page.keyboard.press("Escape")
+        page.wait_for_function("document.getElementById('help').hidden")
+
+
 def run(base: str, browser) -> None:
     context, page, rec = open_context(browser, "help")
     create_game(page, base, humans=(0, 1))
@@ -446,6 +496,7 @@ def run(base: str, browser) -> None:
     names(page)
     help_panel(page)
     help_fits_laptop(page)
+    rulings_notice(page)
     bad = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
     check.ok(not bad, "no failed requests", bad[:3])
     check.ok(not rec.js_errors, "no JS errors", rec.js_errors[:3])

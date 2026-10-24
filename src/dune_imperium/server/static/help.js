@@ -122,6 +122,17 @@ const HELP_TURN = [
   "help.turn_reveal",
 ];
 
+/* The project's rulings in the three groups the user asked for
+   (2026-10-24): where sources disagree and one was chosen, where only the
+   app plays it differently, and every other ruling of a gap. The list is
+   the catalog's (display.house_rulings), the same one
+   docs/rules/house-rulings-ko.md is written from. */
+const HELP_RULING_GROUPS = [
+  ["sources_differ", "help.rulings_sources_differ"],
+  ["app_differs", "help.rulings_app_differs"],
+  ["project", "help.rulings_project"],
+];
+
 let helpOpener = null;
 
 function helpSection(parent, title) {
@@ -141,6 +152,60 @@ function helpRow(grid, mark, text) {
   const what = document.createElement("span");
   what.append(text);
   grid.append(key, what);
+}
+
+/* One folded list per group, closed at first so the panel still opens on
+   the turn walkthrough; inside, Uprising first and then the base game and
+   Rise of Ix, which are not playable yet. */
+function helpRulings(parent) {
+  const rulings = (state.catalog && state.catalog.house_rulings) || [];
+  if (!rulings.length) return;
+  const heading = document.createElement("h3");
+  heading.textContent = t("help.rulings_heading");
+  const intro = document.createElement("p");
+  intro.className = "help-rulings-intro muted";
+  intro.textContent = t("help.rulings_intro");
+  parent.append(heading, intro);
+  const korean = TERM_LANGUAGE === "ko";
+  for (const [group, textKey] of HELP_RULING_GROUPS) {
+    const entries = rulings.filter((entry) => entry.group === group);
+    if (!entries.length) continue;
+    const details = document.createElement("details");
+    details.className = "help-rulings";
+    details.dataset.group = group;
+    const summary = document.createElement("summary");
+    summary.textContent = t(textKey, { count: entries.length });
+    const list = document.createElement("dl");
+    for (const entry of entries) {
+      /* The question's number stays off the page (user decision
+         2026-10-14: "플레이하는 사람 입장에서는 OQ가 뭔지 상관 없으니까");
+         the attribute only lets a check find an entry. */
+      const term = document.createElement("dt");
+      term.dataset.oq = entry.oq;
+      term.textContent = korean ? entry.title_ko : entry.title;
+      const tags = [];
+      if (entry.game === "base_ix") tags.push(t("help.rulings_base_ix"));
+      if (entry.engine_pending) tags.push(t("help.rulings_engine_pending"));
+      for (const text of tags) {
+        const tag = document.createElement("span");
+        tag.className = "help-ruling-tag";
+        tag.textContent = text;
+        term.append(" ", tag);
+      }
+      const what = document.createElement("dd");
+      what.textContent = korean ? entry.ruling_ko : entry.ruling;
+      const sources = korean ? entry.sources_ko : entry.sources;
+      if (sources) {
+        const line = document.createElement("span");
+        line.className = "help-ruling-sources muted";
+        line.textContent = t("help.rulings_sources", { sources });
+        what.append(line);
+      }
+      list.append(term, what);
+    }
+    details.append(summary, list);
+    parent.appendChild(details);
+  }
 }
 
 function openHelp() {
@@ -217,6 +282,8 @@ function openHelp() {
     kbd.textContent = key;
     helpRow(keys, kbd, t(textKey));
   }
+
+  helpRulings(body);
 
   panel.hidden = false;
   close.focus();

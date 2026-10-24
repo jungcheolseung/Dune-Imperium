@@ -205,8 +205,8 @@ Duke Leto의 Landsraad 할인은 Dreadnought 칸에도 든다(3 → 2). Kwisatz 
 | Full-Scale Assault의 sword는 Reveal 때 고정, 나중에 dreadnought가 빠져도 유지(BGG Forum) | 채택 — sword는 공개한 카드가 준 값 `[DI p. 11]` |
 | Desert Ambush: retreat시킬 유닛은 낸 사람이 고른다(BGG Forum); sandworm은 못 밀어냄 | 채택(sandworm은 P7) |
 | Esmar Tuek를 Cull로 trash해 얻은 spice로 그 Agent box를 못 낸다 | 채택(OQ-022) |
-| Machine Culture는 Tech를 얻어야 낸다; Cull은 trash해야 낸다; Strongarm·Quid Pro Quo는 Faction 칸에 Agent가 없으면 비용을 못 냄(Message from designer) | 채택(FAQ p. 2와 2026-10-06 원칙과 같은 방향) |
-| Advanced Weaponry는 dreadnought 둘이 있어도 3 Solari를 내고 낼 수 있다(출처 없음, 추정) | 2026-10-06 원칙과 부딪친다 — OQ-113 |
+| Machine Culture는 Tech를 얻어야 낸다; Cull은 trash해야 낸다; Strongarm·Quid Pro Quo는 Faction 칸에 Agent가 없으면 비용을 못 냄(Message from designer) | 채택(FAQ p. 2와 같은 방향). OQ-113 (C)와도 같다 — Cull은 1 Solari 비용 줄, Machine Culture의 Tech 획득은 타일 값을 내는 비용 줄로 본다(2026-10-24 사용자 (나): 살 수 있는 타일이 없으면 Plot면을 내지 않는다) |
+| Advanced Weaponry는 dreadnought 둘이 있어도 3 Solari를 내고 낼 수 있다(출처 없음, 추정) | **채택하지 않음**(OQ-113 확정 2026-10-24): 3 Solari의 비용 줄이라 dreadnought를 얻을 수 없으면 Plot면을 내지 않는다(앱도 같다, `HasUnitsInSupply<WormDreadnought>`). Combat면은 그대로. 공지 대상 |
 | Ilesa가 따로 둔 카드는 trash·discard 대상이 아니다(BGG Forum) | 채택, 10절 |
 | Ilesa의 두 번째 Agent에 Dispatch an Envoy를 쓰면 아이콘이 넷 더해져 1 Solari(Agent를 보내기 전에 쓴 경우)(Message from designer) | 채택 |
 | Spaceport의 획득 효과는 바로(Armand의 Signet으로 덱 위에 놓은 뒤 뽑기 불가, Direwolf Discord) | 채택(획득 효과는 획득하는 순간 `[DI p. 16]`) |
@@ -292,7 +292,9 @@ for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판
 - "your turn"은 자기 Agent·Reveal turn(OQ-042·OQ-063) — Yuna Moritani, 뒤집기 Tech.
 - "deploy four or more units in a single turn"(Diversion)은 Distraction과 같은 판정(2026-10-03 OQ-016: 카드를 내는 조건, turn의 최고치; OQ-029 셈).
 - Desert Ambush의 "for each troop you deploy this turn"은 OQ-029의 셈(같은 큐브를 retreat했다 다시 배치해도 두 번 세지 않음).
-- 효과 없는 Intrigue는 낼 수 없다(2026-10-06 원칙; Advanced Weaponry는 OQ-113).
+- 책략을 낼 수 있는지는 OQ-113의 통일 기준 (C)다(2026-10-24 사용자): 비용이 있는 줄은 보상이 살아 있어야 내고, 비용 없는 효과는 불발해도 낸다 —
+  Advanced Weaponry의 Plot면(3 Solari → dreadnought)은 dreadnought 둘을 이미 가졌으면, Machine Culture의 Plot면(타일 값을 내는 Tech 획득)은 살 수
+  있는 타일이 없으면 내지 않는다.
 - trash된 카드의 남은 효과는 없다(OQ-022) — Unload는 trash되는 중의 trigger라 예외가 아니다(디자이너 판정).
 - 비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다(OQ-071의 사용자 원칙 일반화) — 버릴 카드에 Unload가 있어도 같다(Ix-Guild Compact에서 dreadnought가
   둘 다 나가 있을 때, Invasion Ships를 Agent를 보낸 뒤에; 앱도 같다).

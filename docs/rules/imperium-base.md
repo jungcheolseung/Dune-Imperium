@@ -306,10 +306,10 @@ The Voice의 표시는 Control marker 수량과 무관한 별도 마커/UI로 �
 | The Voice와 Bindu Suspension·Weirding Way | 채택, 13.1 |
 | CHOAM Shares는 7 Solari를 내야 낸다; Allied Armada는 Alliance와 spice 2가 있어야 낸다 | 채택(FAQ p. 2 "pay its costs"와 같다) |
 | Recruitment Mission은 소급하지 않는다 | 채택 |
-| Urgent Mission은 Agent가 남지 않아도 낸다(Reveal turn을 선언하기 전) | 채택. 단 되돌릴 Agent가 보드에 없으면 아래 원칙으로 막힌다 |
+| Urgent Mission은 Agent가 남지 않아도 낸다(Reveal turn을 선언하기 전) | 채택. 비용이 없으므로 되돌릴 Agent가 보드에 없어도 낸다(불발; OQ-113 (C)를 그대로 적용, 앱은 `HasDeployedAgents`로 막음) |
 | Charisma는 Persuasion을 쓰지 않아도 낸다 | 채택(Persuasion을 얻는 것이 효과) |
-| Rapid Mobilization은 0개를 배치하며 낼 수 있다 | 채택하되 garrison에 troop이 없으면 막힘(아래) |
-| Know Their Ways는 Fremen track 맨 위에서도 낸다(불발); Water of Life는 뽑을 카드가 없어도 낸다; Dispatch an Envoy는 Reveal turn이나 Agent를 보낸 뒤에도 낸다(아이콘 없음); Infiltrate는 Agent를 놓은 뒤에도 낸다 | **2026-10-06 사용자 원칙과 부딪친다**("책략 선택지는 … 효과 중 하나라도 지금 무언가를 바꿀 수 있을 때만 낸다", worklog 2026-10-06, 효과 없는 책략 play 금지). 원칙대로 막기를 추천 — OQ-113 |
+| Rapid Mobilization은 0개를 배치하며 낼 수 있다 | 채택. garrison에 troop이 없어도 낸다(0개 배치; OQ-113 (2) 1) |
+| Know Their Ways는 Fremen track 맨 위에서도 낸다(불발); Water of Life는 뽑을 카드가 없어도 낸다; Dispatch an Envoy는 Reveal turn이나 Agent를 보낸 뒤에도 낸다(아이콘 없음); Infiltrate는 Agent를 놓은 뒤에도 낸다 | **OQ-113 확정(2026-10-24, 통일 기준 (C) "비용을 낸 것만 보장")**: 비용 없는 Know Their Ways·Dispatch an Envoy·Infiltrate는 채택(불발로 낸다). Water of Life는 "1 water + 1 spice → draw 3"의 비용 줄이라 덱과 버린 더미가 모두 비면 **막는다** — 디자이너 판정과 다르다(공지 대상) |
 | Staged Incident로 잃은 troop으로 Harvest Cells를 낼 수 없다(비공식 설명) | P7(Immortality 조합) 몫 |
 | Test of Humanity·Mohiam으로 Ilesa가 따로 둔 카드를 버리게 할 수 없다 | Ix 몫([rise-of-ix.md](rise-of-ix.md)) |
 
@@ -362,7 +362,11 @@ P2·P3에서 효과마다 "그 카드가 있든 없든 상대에게 똑같이 �
 - trash된 카드의 남은 효과는 없다(OQ-022 — 디자이너가 번복 판정의 예로 Esmar Tuek를 들었다). Imperial Spy·Power Play·Foldspace의 순서도 이것으로 정해진다.
 - 조건은 해결할 때 판정한다(OQ-028·OQ-057 (1)) — Gene Manipulation·Missionaria Protectiva·Mohiam·Jessica of Arrakis의 "another Bene Gesserit card in play".
 - Intrigue의 인쇄 줄은 따로, 적어도 한 줄; 쓸 때 낸다(OQ-058) — Bypass Protocol·Master Tactician·Demand Respect·Plans Within Plans·Tiebreaker.
-- 효과 없는 Intrigue는 낼 수 없다(2026-10-06 사용자 원칙) — 디자이너 판정과 다른 다섯 건은 OQ-113으로 확인받는다.
+- 책략을 낼 수 있는지는 OQ-113의 통일 기준 (C)다(2026-10-24 사용자; 2026-10-06 원칙 "효과 없는 Intrigue는 낼 수 없다"를 바꿈): 비용이 있는 줄은
+  보상 중 하나라도 지금 무언가를 바꿀 수 있어야 내고(OQ-071), 비용 없는 효과는 불발해도 낸다. 공식 문서가 조건으로 정한 것(원로회 자리, Double
+  Cross의 상대 troop `[FAQ p. 2]`)은 그대로 조건이다. 원판 카드: Double Cross는 상대가 Conflict에 troop이 있어야 하고 내 supply는 비어도 된다;
+  Know Their Ways·Dispatch an Envoy·Infiltrate·Rapid Mobilization(빈 garrison)·Urgent Mission(보드에 Agent 없음)은 낸다(불발); Water of Life와
+  Calculated Hire 같은 비용 줄은 보상이 살아 있어야 낸다.
 - 6칸 진영은 Influence를 내지 않는다(OQ-060) — Missionaria Protectiva, Demand Respect, Earl Memnon의 Connections, Duke Leto의 Prudent Diplomacy.
 - "each opponent"는 다음 좌석부터 시계 방향(OQ-036; 원판 룰북도 Test of Humanity에서 같다 `[DI p. 13]`).
 - 공급 부족은 같은 turn 안에 채울 수 있다(OQ-030).
@@ -375,8 +379,8 @@ P2·P3에서 효과마다 "그 카드가 있든 없든 상대에게 똑같이 �
 - 비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다(OQ-071의 2026-09-29 사용자 원칙 일반화) — 버린 카드에 Rise of Ix의 Unload가 있어도 같다.
 - Finesse(Ix)·Shifting Allegiances로 같은 진영을 잃고 다시 얻을 수 있다(`[FAQ p. 4]`의 Shifting Allegiances 판정; Uprising의 Change Allegiances도 엔진이
   6→5→6을 허용한다). 4칸에서 3으로 내려갔다 다시 4가 되면 4칸 보너스를 또 받는다(`[DI p. 7]`).
-- Calculated Hire·Urgent Mission은 자기 Reveal turn에도 낼 수 있다 — Mentat이 자리를 떠나거나 Agent가 칸을 비워 보드가 바뀐다(2026-10-06 원칙의 "무언가를
-  바꿀 수 있을 때", 내 해석).
+- Calculated Hire·Urgent Mission은 자기 Reveal turn에도 낼 수 있다 — Urgent Mission은 비용이 없어 OQ-113 (C)로 늘 낼 수 있고, Calculated Hire의 "1 spice →
+  Mentat"은 Mentat이 자리를 떠나 보드가 바뀌므로 비용 줄의 보상이 살아 있다(OQ-071의 "무언가를 바꿀 수 있을 때", 내 해석).
 - Kwisatz Haderach는 내 다른 Agent가 있는 칸에도 보낼 수 있다("ANY board space (even if occupied)" `[Kwisatz Haderach card]`; 앱도 같다).
 - Countess Ariana의 −1은 Carryall·Thumper로 두 배를 한 뒤 harvest 전체에서 한 번 뺀다(덧셈이라 순서가 결과를 바꾸지 않는다; 앱도 같다).
 
@@ -384,7 +388,8 @@ P2·P3에서 효과마다 "그 카드가 있든 없든 상대에게 똑같이 �
 
 [open-questions.md](open-questions.md)에 공식 원문·앱 처리·기존 원칙·추천과 함께 적었다. P0에서 사용자 판정을 받은 뒤 P1에 들어간다(계획 10.4절 2).
 
-- OQ-113 — **미확정, 앱 조사 필요**: 다섯 사례 모두 막는 쪽에 잠정 동의만. 앱 구현을 확인한 뒤 사용자 재판정
+- OQ-113 — **확정(2026-10-24)**: 통일 기준 (C) "비용을 낸 것만 보장" — Know Their Ways·Dispatch an Envoy·Infiltrate 낸다(불발), Water of Life(두 더미가 빔)
+  막음; Ix의 Advanced Weaponry Plot면(dreadnought 둘) 막음. Uprising 엔진의 10-06 막기 가운데 비용 없는 경우를 푸는 구현은 별도(AI 세션·사용자 확인 뒤)
 - OQ-114 — **확정(2026-10-22)**: 기존 Choose Two처럼 서로 다른 두 항목을 먼저 정하고 해결(Machinations, Battle for Arrakeen, Ix의 Shuttle Fleet)
 - OQ-115 — **확정(2026-10-22)**: Baron 첫 조건 달성 시 의무 공개; 기존 이번 turn 배치 조건의 문턱 4, Commander 포함·dreadnought 제외
 - OQ-116 — **확정(2026-10-22)**: 상대별 이번 라운드 다음 Agent 배치 한 번까지; Agent 없는 pass는 소비하지 않음, 별도 마커/UI로 표시. 앱도 같다(2026-10-23 재검증)

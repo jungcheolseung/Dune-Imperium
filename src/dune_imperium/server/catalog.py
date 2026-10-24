@@ -128,6 +128,7 @@ from dune_imperium.display.board_layout import (
     marker_layout,
 )
 from dune_imperium.display.card_backs import available_card_backs
+from dune_imperium.display.house_rulings import ordered_house_rulings
 from dune_imperium.display.images import (
     IXIAN_EMBASSY_IMAGE_ID,
     RESEARCH_STATION_OVERLAY_IMAGE_ID,
@@ -151,6 +152,27 @@ from dune_imperium.display.token_images import (
 )
 from dune_imperium.rules.scouts import item_kind
 from dune_imperium.server.sessions import JsonObject, JsonValue
+
+
+def _house_rulings() -> list[JsonValue]:
+    """The rulings notice for the help panel, in its order, both languages."""
+
+    rulings: list[JsonValue] = []
+    for entry in ordered_house_rulings():
+        row: JsonObject = {
+            "oq": entry.oq,
+            "group": entry.group.value,
+            "game": entry.game.value,
+            "title": entry.title,
+            "title_ko": entry.title_ko,
+            "ruling": entry.ruling,
+            "ruling_ko": entry.ruling_ko,
+            "sources": entry.sources,
+            "sources_ko": entry.sources_ko,
+            "engine_pending": entry.engine_pending,
+        }
+        rulings.append(row)
+    return rulings
 
 
 @cache
@@ -483,6 +505,9 @@ def build_catalog(
             for name, filename in available_log_icons(icon_files).items()
         },
         "board_image": versioned("/board-image") if board_image else None,
+        # The project's rulings for the help panel's notice, both languages
+        # (display.house_rulings, user request 2026-10-24).
+        "house_rulings": _house_rulings(),
         # Each seat's pictured Combat marker (sword face and "+20" face), or
         # null where the local token directory lacks either face: the client
         # then draws its own seat token.
