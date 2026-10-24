@@ -187,6 +187,10 @@ Uprising과 같은 틀이다([setup-and-game-flow.md](setup-and-game-flow.md), [
 - **strength.** troop 2, 이번 Reveal turn에 공개한 sword 1. Conflict에 troop이 하나도 없으면 0이고 어떤 수단으로도 올릴 수 없다. `[DI p. 11]`
 - **Combat Intrigue.** 시작 플레이어부터 시계 방향으로, Conflict에 troop이 있는 플레이어가 Combat Intrigue를 내거나 pass한다. 참가자 전원이 연속으로
   pass하면 해결. "When you win a Conflict" 카드는 이긴 뒤 낸다. `[DI p. 12]` Uprising과 같다([combat-and-round-end.md](combat-and-round-end.md)).
+  승리 책략은 **승자의 창**(1위 보상과 같은 창)에서만, 보상 아이콘과 원하는 순서로 낸다. 보상 spice로 Demand Respect를 내는 것 `[DI p. 13]`, 보상으로 받은 승리 책략을
+  곧바로 내는 것 `[FAQ p. 4]`이 여기서 된다(2026-10-25 사용자, OQ-121 판정 3·6).
+- **Combat 순서.** 세 판 공통(OQ-121, 2026-10-24~25): 순위마다 "보상 + 그 좌석의 창" → 정리(troop은 supply로) → 좌석별 Conflict 끝 창(원판 +
+  Immortality의 Harvest Cells, P7) → marker 0. 원판에는 battle icon이 없다. 룰북 예 `[DI p. 12]`(Abby → John → Ned)를 좌석별로 테스트한다.
 - **보상·동률.** Uprising과 같다. `[DI p. 12]` 보상 순서는 OQ-102(순위대로)를 그대로 쓴다.
 - **정리.** 보상을 다 준 뒤 troop은 supply로, Combat marker는 0으로. `[DI p. 12]` Conflict 카드는 공개한 자리에 남고 다음 라운드의 카드가 그 위에
   쌓인다 `[DI p. 8]`(승자가 가져가지 않는다 — Uprising과 다름).

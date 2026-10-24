@@ -121,6 +121,9 @@ Restricted Ordnance의 앱 loc 키는 철자가 다르다(`card.techtile.restric
   - 앱(2026-10-23 재검증, 코드만): dreadnought가 있는 칸은 고르지 못하고, 놓은 dreadnought는 다음 라운드 Combat까지 남았다가 그 라운드
     Recall에 garrison으로 간다 — 룰북과 같은 라운드지만 Combat 끝이 아니라 Makers 뒤다(P0의 "그 라운드 Recall"은 틀렸다). 지금 원판·Ix
     카드로는 그 사이에 지배·위치를 읽는 것이 없어 결과가 같지만, 엔진은 공식 문장을 따른다(OQ-121).
+  - 지배 고르기의 자리(2026-10-25 사용자, OQ-121 판정 6 (1)): **승자의 창**(1위 보상과 같은 창)의 의무 줄이고, Detonation Devices는 그 줄 안의
+    선택이다. 승자는 이 줄과 보상 아이콘, Windtraps 등 다른 줄의 순서를 고른다. 2위 보상보다 앞이며, 아래 룰북 예의 순서(Frida의 지배 → Ned의 2위 보상)와 같다.
+    Conflict에 남은 dreadnought(진 쪽, 승자의 둘째)는 정리 때 troop과 함께 garrison으로 간다(OQ-121 판정 5 (2)).
   - 룰북 예: 지난 라운드의 dreadnought가 아직 Arrakeen에 있어 새 승자는 Imperial Basin을 골랐고, 그 뒤 "as the Combat phase ends" 지난 dreadnought가
     garrison으로 갔다 `[Rise of Ix p. 6]`. P4에서 좌석별로 문자 그대로 테스트한다(OQ-121).
   - 한 번에 locations 위에 있는 dreadnought는 둘을 넘지 않는다(놓이는 것 하나 + 다음 Combat 끝에 떠나는 것 하나) — 세 칸이 다 막히는 일은 없다.
@@ -277,7 +280,8 @@ for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판
 | Tech Negotiation 아이콘 하나 | 받은 좌석 | troop 하나를 Negotiator로 -OR- 하지 않음 | "you may take a troop" `[Rise of Ix p. 4]` |
 | Tech Negotiation 칸 | 보낸 좌석 | Acquire Tech(−1) -OR- Negotiator | "Choose one" `[Rise of Ix p. 12]` |
 | Dreadnought 아이콘 하나 | 받은 좌석 | commission -OR- 하지 않음; Combat 칸 turn이면 배치 여부 | "you may commission" `[Rise of Ix p. 6]` |
-| dreadnought 지배 | 승자 | dreadnought가 없는 Control 칸 하나(의무); Detonation Devices면 지배 대신 VP | "you must choose" `[Rise of Ix p. 6]`; "you may return" `[Detonation Devices tile]` |
+| dreadnought 지배 | 승자 | dreadnought가 없는 Control 칸 하나(의무); Detonation Devices면 지배 대신 VP. 승자의 창의 줄(OQ-121) | "you must choose" `[Rise of Ix p. 6]`; "you may return" `[Detonation Devices tile]` |
+| 승자의 창 | 승자 | 보상 아이콘·지배·Windtraps·Strategic Push의 승리 몫·승리 책략 줄의 순서; 승리 책략은 이 창에서만 | OQ-121 판정 3·6 |
 | Unload | 그 카드의 주인 | Reveal box 그대로(그 안의 선택·비용만) | `[Rise of Ix p. 7]` |
 | Discard 비용 | 낸 좌석 | 손의 카드 하나(Intrigue 아님) -OR- 내지 않음 | `[Rise of Ix p. 7]` |
 | 잠입 | 보낸 좌석 | 상대 Agent가 있는 같은 아이콘 칸에도 보낼 수 있음 | `[Rise of Ix p. 7]` `[FAQ p. 2]` |
@@ -313,8 +317,10 @@ for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판
 
 - OQ-119 — **확정:** Ilesa Ecaz의 "둘째 turn"은 Agent 없는 pass와 Weirding Way 추가 turn 모두 센다.
 - OQ-120 — **확정:** 공개한 Unload 카드를 같은 Reveal turn에 trash하면 Reveal box를 또 얻는다.
-- OQ-121 — **부분 확정(2026-10-24):** 복귀 시점 — 지난 지배 dreadnought는 Combat 단계 끝(룰북대로, 앱의 Recall이 아님), Conflict에 남은
-  dreadnought는 troop 정리 때, Detonation Devices는 Conflict의 것만(6절). dreadnought 지배 선택·승리 효과의 순서는 재판정 대기(앱 재검증 끝, 2026-10-23).
+- OQ-121 — **확정(2026-10-24~25):** 세 판 공통으로 순위마다 "보상 + 그 좌석의 창"이다. 승자의 창에는 보상과 함께 지배·Detonation·
+  Windtraps·Strategic Push의 승리 몫·승리 책략이 들고, 승자가 순서를 고른다. 승리 책략은 이 창에서만 낸다. Conflict에 남은 dreadnought(진 쪽,
+  승자의 둘째)는 troop 정리 때, 지난 지배 dreadnought는 Combat 단계 끝(룰북대로, 앱의 Recall이 아님)에 garrison으로 간다. Detonation Devices는
+  지배하러 갈 Conflict의 dreadnought만 supply로 보낸다(6절).
 - OQ-122 — **확정(2026-10-23):** Round Start는 공개 → 방어 → 5장·Tech 되돌리기 → Holtzman Engine·Shuttle Fleet → Ilesa의 따로 두기(4절 "쓰기" 아래).
 - OQ-126 — **확정(2026-10-23):** Disposal Facility는 그 Reveal turn에 얻은 Persuasion 합계(쓴 것 포함)로 판정한다.
 - OQ-127 — **확정(2026-10-23):** Combat 보상 중 열린 Treachery의 Unload는 Conflict에 배치하고 곧 supply로 돌아간다.
