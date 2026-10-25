@@ -1,5 +1,6 @@
 """Teacher data and student training (docs/entity-network-plan.md stage P2)."""
 
+import dataclasses
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,7 @@ torch = pytest.importorskip("torch")
 
 from dune_imperium import RulesetConfig  # noqa: E402
 from dune_imperium.adapters.action_codec import ActionCodec  # noqa: E402
+from dune_imperium.training.checkpoint import save_checkpoint  # noqa: E402
 from dune_imperium.training.collect import (  # noqa: E402
     LEARNER,
     CollectionResult,
@@ -27,9 +29,11 @@ from dune_imperium.training.teacher import (  # noqa: E402
     concatenate,
     gather_rows,
     load_teacher_data,
+    pack_teacher_data,
     save_teacher_data,
     score_student,
     split_rows,
+    start_from,
     student_choices,
     teacher_choices,
     train_student,
@@ -141,6 +145,89 @@ def test_concatenated_parts_read_like_the_parts(
     train, heldout = split_rows(joined, 2)
     assert set(joined.games[heldout].tolist()) == {0, 2}
     assert set(joined.games[train].tolist()) == {1, 3}
+
+
+def _shards(
+    collected: list[tuple[CollectionResult, TeacherData]], folder: Path
+) -> list[Path]:
+    paths = []
+    for index, (_, data) in enumerate(collected):
+        path = folder / f"shard_{index:04d}.npz"
+        save_teacher_data(data, path)
+        paths.append(path)
+    return paths
+
+
+def test_a_pack_holds_the_concatenation_on_disk_and_is_reused(
+    collected: list[tuple[CollectionResult, TeacherData]], tmp_path: Path
+) -> None:
+    shards = _shards(collected, tmp_path)
+    joined = concatenate([load_teacher_data(path) for path in shards])
+    packed = pack_teacher_data(shards, tmp_path / "packed")
+    assert (packed.ruleset, packed.action_size) == (joined.ruleset, joined.action_size)
+    for field in dataclasses.fields(TeacherData):
+        left, right = getattr(packed, field.name), getattr(joined, field.name)
+        if isinstance(right, np.ndarray):
+            assert isinstance(left, np.memmap), field.name
+            assert left.dtype == right.dtype, field.name
+            assert np.array_equal(left, right, equal_nan=True), field.name
+
+    # The same shards reuse the pack; another set, or a pack left without
+    # its manifest (interrupted), is built again.
+    written = (tmp_path / "packed" / "obs_values.npy").stat().st_mtime_ns
+    again = pack_teacher_data(shards, tmp_path / "packed")
+    assert (tmp_path / "packed" / "obs_values.npy").stat().st_mtime_ns == written
+    assert again.rows == joined.rows
+    first = pack_teacher_data(shards[:1], tmp_path / "packed")
+    assert first.rows == collected[0][1].rows
+    (tmp_path / "packed" / "manifest.json").unlink()
+    assert pack_teacher_data(shards, tmp_path / "packed").rows == joined.rows
+
+
+def test_a_pack_refuses_shards_of_different_catalogs(
+    collected: list[tuple[CollectionResult, TeacherData]], tmp_path: Path
+) -> None:
+    first, second = (data for _, data in collected)
+    save_teacher_data(first, tmp_path / "shard_0000.npz")
+    other = dataclasses.replace(second, action_size=second.action_size + 1)
+    save_teacher_data(other, tmp_path / "shard_0001.npz")
+    with pytest.raises(ValueError, match="different catalogs"):
+        pack_teacher_data(
+            [tmp_path / "shard_0000.npz", tmp_path / "shard_0001.npz"],
+            tmp_path / "packed",
+        )
+
+
+def test_a_student_trains_the_same_on_a_pack(
+    collected: list[tuple[CollectionResult, TeacherData]], tmp_path: Path
+) -> None:
+    shards = _shards(collected, tmp_path)
+    datasets = (
+        concatenate([load_teacher_data(path) for path in shards]),
+        pack_teacher_data(shards, tmp_path / "packed"),
+    )
+    config = StudentConfig(
+        learning_rate=3e-3,
+        warmup_steps=5,
+        minibatch_size=64,
+        epochs=2,
+        heldout_modulus=2,
+        value_target="teacher",
+        threads=1,
+    )
+    results = []
+    for data in datasets:
+        torch.manual_seed(1)
+        student = PolicyValueNetwork(data.action_size, hidden=(32,))
+        history = train_student(student, data, config)
+        results.append((history, student.state_dict()))
+    (history, weights), (packed_history, packed_weights) = results
+    assert [record.policy_loss for record in packed_history] == [
+        record.policy_loss for record in history
+    ]
+    assert weights.keys() == packed_weights.keys()
+    for name, tensor in weights.items():
+        assert torch.equal(tensor, packed_weights[name]), name
 
 
 @pytest.mark.parametrize("arch", ["entity", "mlp"])
@@ -316,3 +403,28 @@ def test_a_cosine_schedule_trains_and_an_unknown_one_is_refused(
     assert after.cross_entropy < before.cross_entropy
     with pytest.raises(ValueError, match="schedule"):
         StudentConfig(schedule="linear")
+
+
+def test_a_student_starts_from_a_saved_student_of_its_architecture(
+    tmp_path: Path,
+) -> None:
+    size = ActionCodec(_RULES).size
+    torch.manual_seed(2)
+    saved = PolicyValueNetwork(size, hidden=(16,))
+    save_checkpoint(
+        tmp_path / "student.pt",
+        saved,
+        ruleset=_RULES.identifier,
+        iteration=0,
+        codec=ActionCodec(_RULES),
+    )
+    torch.manual_seed(3)
+    student = PolicyValueNetwork(size, hidden=(16,))
+    start_from(student, tmp_path / "student.pt", _RULES)
+    for name, tensor in saved.state_dict().items():
+        assert torch.equal(student.state_dict()[name], tensor), name
+
+    with pytest.raises(ValueError, match="network, not"):
+        start_from(
+            PolicyValueNetwork(size, hidden=(32,)), tmp_path / "student.pt", _RULES
+        )

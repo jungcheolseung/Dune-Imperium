@@ -20,9 +20,24 @@ the current rows by itself (the stage B retrain, 2026-10-21): it plays and
 answers through the whole actions each decision stands for
 (``training.older_teacher``, ``training.older_distill``).
 
+``--older --student <checkpoint>`` keeps the older teacher as the labeller
+but lets a current-codec student (``entity`` or ``mlp``, e.g. a ``train``
+output) play the learner seats, sampling its policy at temperature 1 as
+the training collector's learner does (student-position distillation,
+DAgger: experiment E5 of the stage B retrain). The shards are the same
+format, so ``train`` reads a folder mixing them with teacher-played ones;
+``data.json`` and each shard's log line say who played the learner seats.
+
+    uv run python scripts/train/distill_entity.py data --older \
+        --teacher <older-codec file> --student <student.pt> \
+        --out <folder> --iterations 20 --start 100
+
 ``train`` fits one student to every shard in the folder and writes its
 best held-out epoch as ``student.pt`` with an ``epochs.jsonl`` log
-(docs/entity-network-plan.md section 5, P2).
+(docs/entity-network-plan.md section 5, P2). With ``--pack`` the shards are
+joined on disk in ``<folder>/packed`` (``pack_teacher_data``) instead of in
+memory, for data larger than the machine's memory; the student trains the
+same.
 """
 
 from __future__ import annotations
@@ -49,7 +64,11 @@ from dune_imperium.training.entity_network import (
 )
 from dune_imperium.training.loop import TrainConfig, _iteration_specs
 from dune_imperium.training.network import PolicyValueNetwork
-from dune_imperium.training.older_distill import older_shard, worker_pool
+from dune_imperium.training.older_distill import (
+    load_student,
+    older_shard,
+    worker_pool,
+)
 from dune_imperium.training.older_teacher import load_older_network
 from dune_imperium.training.teacher import (
     StudentConfig,
@@ -59,8 +78,10 @@ from dune_imperium.training.teacher import (
     choice_frequency,
     concatenate,
     load_teacher_data,
+    pack_teacher_data,
     save_teacher_data,
     split_rows,
+    start_from,
     student_choices,
     teacher_choices,
     train_student,
@@ -93,6 +114,9 @@ def _digest(path: Path) -> str:
 
 
 def make_data(arguments: argparse.Namespace) -> int:
+    if arguments.student is not None and not arguments.older:
+        print("--student needs --older", file=sys.stderr)
+        return 2
     out: Path = arguments.out
     out.mkdir(parents=True, exist_ok=True)
     config = _play_rules(out, arguments.seed)
@@ -156,21 +180,44 @@ def _make_older_data(arguments: argparse.Namespace, config: TrainConfig) -> int:
     older = load_older_network(arguments.teacher)
     torch.set_num_threads(arguments.threads)
     assert config.opponent is not None
-    (out / "data.json").write_text(
-        json.dumps(
-            {
-                "teacher": str(arguments.teacher),
-                "teacher_sha256_16": _digest(arguments.teacher),
-                "teacher_codec": older.codec_version,
-                "older": True,
-                "ruleset": config.ruleset.identifier,
-                "seed": arguments.seed,
-                "iterations": [arguments.start, arguments.start + arguments.iterations],
-                "games_per_iteration": config.games_per_iteration,
-            },
-            indent=1,
+    learner: dict[str, object] = {"learner": "teacher"}
+    if arguments.student is not None:
+        # Loaded here once as well, so a file that cannot answer the game
+        # stops the run before any worker starts.
+        _, info = load_student(arguments.student, config.ruleset)
+        learner = {
+            "learner": "student",
+            "student": str(arguments.student),
+            "student_sha256_16": _digest(arguments.student),
+            "student_arch": info.arch,
+            "student_codec": info.action_codec_version,
+            "student_iteration": info.iteration,
+            "student_untrained_rows": (
+                0 if info.migration is None else info.migration.actions_new
+            ),
+        }
+        print(
+            f"learner seats: student {arguments.student} ({info.arch}, codec "
+            f"v{info.action_codec_version}, {learner['student_untrained_rows']} "
+            "untrained rows)",
+            flush=True,
         )
-    )
+    record = {
+        "teacher": str(arguments.teacher),
+        "teacher_sha256_16": _digest(arguments.teacher),
+        "teacher_codec": older.codec_version,
+        "older": True,
+        **learner,
+        "ruleset": config.ruleset.identifier,
+        "seed": arguments.seed,
+        "iterations": [arguments.start, arguments.start + arguments.iterations],
+        "games_per_iteration": config.games_per_iteration,
+    }
+    (out / "data.json").write_text(json.dumps(record, indent=1))
+    # A folder may mix teacher-played and student-played shards (E5): every
+    # run is kept here, data.json holding only the latest.
+    with (out / "data-runs.jsonl").open("a", encoding="utf-8") as runs:
+        runs.write(json.dumps(record) + "\n")
     pool = worker_pool(arguments.workers)
     try:
         for iteration in range(arguments.start, arguments.start + arguments.iterations):
@@ -188,10 +235,12 @@ def _make_older_data(arguments: argparse.Namespace, config: TrainConfig) -> int:
                 opponent=config.opponent,
                 seed=config.seed + 1 + iteration * 1_000,
                 max_steps=config.max_steps,
+                student=arguments.student,
             )
             save_teacher_data(data, shard)
             print(
                 f"{time.strftime('%H:%M:%S')} shard {iteration}: {data.rows} rows, "
+                f"learner seats played by the {learner['learner']}, "
                 f"{time.perf_counter() - started:.1f}s",
                 flush=True,
             )
@@ -227,7 +276,10 @@ def train(arguments: argparse.Namespace) -> int:
     if not shards:
         print(f"no shards in {arguments.data}", file=sys.stderr)
         return 1
-    data = concatenate([load_teacher_data(path) for path in shards])
+    if arguments.pack:
+        data = pack_teacher_data(shards, arguments.data / "packed")
+    else:
+        data = concatenate([load_teacher_data(path) for path in shards])
     ruleset = RulesetConfig.from_identifier(data.ruleset)
     torch.manual_seed(arguments.seed)
     student: PolicyValueNetwork
@@ -244,10 +296,13 @@ def train(arguments: argparse.Namespace) -> int:
             print("--aux-vp and --own-actions are entity options", file=sys.stderr)
             return 2
         student = PolicyValueNetwork(data.action_size)
+    if arguments.init is not None:
+        start_from(student, arguments.init, ruleset)
     config = StudentConfig(
         learning_rate=arguments.learning_rate,
         minibatch_size=arguments.minibatch,
         epochs=arguments.epochs,
+        value_coefficient=arguments.value_coefficient,
         value_target=arguments.value_target,
         seed=arguments.seed,
         threads=arguments.threads,
@@ -262,6 +317,7 @@ def train(arguments: argparse.Namespace) -> int:
             {
                 "arch": student.arch_spec(),
                 "data": str(arguments.data),
+                "init": None if arguments.init is None else str(arguments.init),
                 "shards": len(shards),
                 "rows": data.rows,
                 "config": asdict(config),
@@ -384,15 +440,37 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="the teacher is an older codec's file (training.older_teacher)",
     )
+    data.add_argument(
+        "--student",
+        type=Path,
+        help="with --older: this current-codec checkpoint plays the learner "
+        "seats (sampled at temperature 1) and the teacher only labels them",
+    )
     data.set_defaults(run=make_data)
     student = commands.add_parser("train", help="fit one student to the shards")
     student.add_argument("--data", type=Path, required=True)
+    student.add_argument(
+        "--pack",
+        action="store_true",
+        help="join the shards on disk in <data>/packed and read rows from there",
+    )
     student.add_argument("--out", type=Path, required=True)
     student.add_argument("--arch", choices=("entity", "mlp"), required=True)
     student.add_argument("--aux-vp", action="store_true")
     student.add_argument("--own-actions", action="store_true")
     student.add_argument(
         "--value-target", choices=("outcome", "teacher"), default="outcome"
+    )
+    student.add_argument(
+        "--value-coefficient",
+        type=float,
+        default=StudentConfig().value_coefficient,
+        help="the value loss's weight against the policy cross-entropy",
+    )
+    student.add_argument(
+        "--init",
+        type=Path,
+        help="start from this student checkpoint's weights (same architecture)",
     )
     student.add_argument("--entity-width", type=int, default=DEFAULT_ENTITY_WIDTH)
     student.add_argument("--seat-width", type=int, default=DEFAULT_SEAT_WIDTH)
