@@ -3685,9 +3685,11 @@ def shortfall_warning(
     goes for the shortfalls where nothing can be chosen (user ruling
     2026-10-02, L2-Q4: "로그 + 클릭 전 경고"): an Intrigue draw the
     Intrigue deck and discard cannot cover together (both empty, or the
-    discard too small to shuffle in), Suspensor Suits troops that cannot
-    deploy (OQ-042, after such a reshuffle too, ``shortfall_outcome``),
-    and held Contract icons that fizzle as the turn-end press ends the turn
+    discard too small to shuffle in), Suspensor Suits troops kept in the
+    garrison because the seat may not deploy (OQ-042; a troop the supply
+    lacks is a recruit shortfall since the 2026-10-25 re-ruling, warned
+    after such a reshuffle too, ``shortfall_outcome``), and held Contract
+    icons that fizzle as the turn-end press ends the turn
     (OQ-059; the press itself is the confirmation, this is only the
     warning). With ``player`` only that seat's shortfalls count -- the
     step's own seat, as the play server passes it.
