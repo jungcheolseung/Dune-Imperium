@@ -1380,6 +1380,10 @@ const UI_TEXT = {
     "ko": "하나 적게",
     "en": "One fewer"
   },
+  "render.scouts_called_amounts": {
+    "ko": "이미 나온 액수: {{amounts}} (부를 수 없음)",
+    "en": "Already called: {{amounts}} (cannot be called again)"
+  },
   "render.count_step_up": {
     "ko": "하나 더",
     "en": "One more"

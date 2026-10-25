@@ -434,9 +434,13 @@ def scouts_item_lines(item_id: str) -> tuple[list[str], list[str]]:
 def auction_rule_text(item_id: str) -> str:
     auction = AUCTIONS_BY_ID[item_id]
     if auction.revealed_cards:
+        # "이미 나온 액수와 같은 액수는 부를 수 없다" (docs/rules/arrakeen-scouts.md
+        # 8.3; the app's Korean text leaves it out, OQ-086): said where the
+        # auction is shown (play feedback 2026-10-26).
         return (
             f"{auction.revealed_cards} Imperium deck cards revealed; open calls "
-            "in spice, the highest buys one"
+            "in spice (an amount already called cannot be called again), "
+            "the highest buys one"
             + (", the second may buy another." if auction.places > 1 else ".")
         )
     return (
@@ -449,8 +453,8 @@ def auction_rule_text_ko(item_id: str) -> str:
     auction = AUCTIONS_BY_ID[item_id]
     if auction.revealed_cards:
         return (
-            f"임페리움 덱 위 {auction.revealed_cards}장 공개. {{spice}}로 공개 호가, "
-            "1위가 한 장을 산다"
+            f"임페리움 덱 위 {auction.revealed_cards}장 공개. {{spice}}로 공개 호가"
+            "(이미 나온 액수는 부를 수 없다), 1위가 한 장을 산다"
             + (", 2위도 한 장을 살 수 있다." if auction.places > 1 else ".")
         )
     return (

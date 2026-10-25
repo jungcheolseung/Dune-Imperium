@@ -1382,6 +1382,21 @@ function countFamilies(actions) {
   return families;
 }
 
+/* Critical Moment: an amount already called cannot be called again
+   (docs/rules/arrakeen-scouts.md 8.3, OQ-086). The engine leaves those
+   amounts out of the seat's calls, so the stepper skips them; this says
+   why, beside it (play feedback 2026-10-26). Null before any amount. */
+function calledAmountsNote() {
+  const calls = (state.view && state.view.scouts_calls) || [];
+  const amounts = [...new Set(calls.map(([, amount]) => amount).filter((amount) => amount > 0))]
+    .sort((a, b) => a - b);
+  if (!amounts.length) return null;
+  const note = document.createElement("span");
+  note.className = "muted scouts-called-note";
+  note.textContent = t("render.scouts_called_amounts", { amounts: amounts.join(", ") });
+  return note;
+}
+
 /* The family's action for the chosen count. Sending units defaults to all
    of them, taking them back to one. */
 function chosenOf(id, family) {
@@ -1450,6 +1465,10 @@ function countRow(id, family, compact) {
   if (AUCTION_AMOUNT_IDS.has(id)) {
     /* The amount goes in with the banner's turn-end press. */
     row.append(label, stepper);
+    if (id === "scouts_call") {
+      const note = calledAmountsNote();
+      if (note) row.appendChild(note);
+    }
     return row;
   }
   const confirm = document.createElement("button");

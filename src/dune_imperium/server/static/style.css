@@ -1748,6 +1748,8 @@ body.hand-dragging, body.hand-dragging * {
   flex-wrap: wrap;
 }
 .count-label { font-weight: 600; }
+/* Critical Moment's amounts already called (render.js calledAmountsNote). */
+.scouts-called-note { flex-basis: 100%; font-size: 0.85em; }
 .stepper {
   display: inline-flex;
   align-items: center;

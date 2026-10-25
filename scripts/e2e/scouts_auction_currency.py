@@ -72,6 +72,22 @@ for auction in AUCTIONS:
                 DomainAction("scouts_bid", 0, (("count", count),))).state
             record["selected"] = snapshot(chosen)
         fixtures.append(record)
+
+# Critical Moment after seat 3 has called 2: "이미 나온 액수와 같은 액수는 부를
+# 수 없다" (docs/rules/arrakeen-scouts.md 8.3), so seat 0's calls skip 2.
+auction = next(a for a in AUCTIONS if a.auction_id == "critical_moment_mid")
+state = replace(base, round_number=auction.rounds[0], first_player=3,
+    players=tuple(replace(p, resources=Resources(solari=3, spice=3))
+                  for p in base.players), decision_stack=(),
+    scouts_item=auction.auction_id,
+    scouts_revealed=((auction.rounds[0], auction.auction_id),), scouts_tasks=(),
+    scouts_bids=(), scouts_calls=(),
+)
+# The market opens with no calls; seat 3's call of 2 comes before seat 0's.
+state = replace(reveal_market(state).state, scouts_calls=((3, 2),))
+state = offer_call(state, 0, source="test").state
+fixtures.append({"id": auction.auction_id, "currency": "spice", "cap": 3,
+                 "open": True, "called": [2], "initial": snapshot(state)})
 print(json.dumps(fixtures))
 """
 
@@ -104,6 +120,8 @@ def main() -> None:
         for language in ("ko", "en"):
             page.set_viewport_size({"width": 1366, "height": 900})
             for row in fixtures:
+                if row.get("called"):
+                    continue
                 currency = row["currency"]
                 resource = {
                     "ko": {"solari": "솔라리", "spice": "스파이스"},
@@ -237,6 +255,41 @@ def main() -> None:
                 f"{language}: text remains when resource art is absent",
             )
             page.evaluate("state.catalog.icons = window.auctionIcons; render();")
+            for row in (r for r in fixtures if r.get("called")):
+                page.evaluate(RENDER, {"fixture": row["initial"], "language": language})
+                stepper = page.locator("#actions .count-row")
+                note = stepper.locator(".scouts-called-note")
+                words = {"ko": "부를 수 없음", "en": "cannot be called again"}[language]
+                check.ok(
+                    note.count() == 1
+                    and "2" in note.inner_text()
+                    and words in note.inner_text(),
+                    f"{language}: the call stepper says which amounts are taken",
+                    note.all_inner_texts(),
+                )
+                seen = [stepper.locator(".stepper-value").inner_text().split()[0]]
+                for _ in range(2):
+                    stepper.locator(".stepper button").nth(1).click()
+                    seen.append(stepper.locator(".stepper-value").inner_text().split()[0])
+                check.ok(
+                    seen == ["0", "1", "3"]
+                    and stepper.locator(".stepper button").nth(1).is_disabled(),
+                    f"{language}: the stepper skips the amount already called",
+                    seen,
+                )
+                rule = page.locator('#scouts-panel [data-item="critical_moment_mid"]')
+                rule_words = {
+                    "ko": "이미 나온 액수는 부를 수 없다",
+                    "en": "already called cannot be called again",
+                }[language]
+                check.ok(
+                    rule_words in rule.inner_text(),
+                    f"{language}: the auction's line states the rule",
+                    rule.inner_text(),
+                )
+                page.locator("#actions").screenshot(
+                    path=str(SHOTS / f"auction_{language}_already_called.png")
+                )
         check.ok(not recorder.js_errors, "no JavaScript errors", recorder.js_errors)
         context.close()
     print(f"Screenshots: {SHOTS}")
