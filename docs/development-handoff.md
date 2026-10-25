@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-25 (엔진 감사 수정 병합으로 codec v152; 그 전 B단계 병합 codec v150 뒤 Reveal 상태 이름 정리로 codec v151; 합계 정리(Reveal·Conflict·계약) 끝 — 효과 조각 엔진 전환 끝; 탐색 좌석이 옛 codec 플레이 망을 어댑터로 두어 v149 실력)
+기준일: 2026-10-26 (플레이 피드백 병합 — 원격 대기실·첫 플레이어 옵션 OQ-132·앱 좌석 색, codec 그대로; 2026-10-25 엔진 감사 수정 병합으로 codec v152; 그 전 B단계 병합 codec v150 뒤 Reveal 상태 이름 정리로 codec v151; 합계 정리(Reveal·Conflict·계약) 끝 — 효과 조각 엔진 전환 끝; 탐색 좌석이 옛 codec 플레이 망을 어댑터로 두어 v149 실력)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,10 +28,10 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`)·2026-10-22 `search-adapter` 병합 `bc466f23`(탐색 좌석이 옛 codec 파일을 어댑터로)·2026-10-23 `search-parts` 병합 `79bdcb5b`(탐색 좌석 옵션, 서버 탐색 AI에 E1 뒤집기 문턱)·같은 날 `restore-lost-problems` 병합(문제집의 없어진 거절 정리, 사람 판 281곳 모두 풀림)·2026-10-25 `claude/base-ix-p0-57d7eb` 병합(원판·Ix P0 문서와 판정, 판정 공지 도움말 창; codec 그대로)·같은 날 `claude/engine-audit-fixes-16a6cc` 병합(엔진 감사 2026-10-22 수정, OQ-128~131, codec v152) |
-| pytest | 8,343개 통과(2026-10-25 엔진 감사 수정 병합 뒤)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
-| Ruff · mypy | `src tests` 통과, mypy 557파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 68종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-21 `engine-checks` 브랜치(68종 모두 통과, 392초) |
+| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`)·2026-10-22 `search-adapter` 병합 `bc466f23`(탐색 좌석이 옛 codec 파일을 어댑터로)·2026-10-23 `search-parts` 병합 `79bdcb5b`(탐색 좌석 옵션, 서버 탐색 AI에 E1 뒤집기 문턱)·같은 날 `restore-lost-problems` 병합(문제집의 없어진 거절 정리, 사람 판 281곳 모두 풀림)·2026-10-25 `claude/base-ix-p0-57d7eb` 병합(원판·Ix P0 문서와 판정, 판정 공지 도움말 창; codec 그대로)·같은 날 `claude/engine-audit-fixes-16a6cc` 병합(엔진 감사 2026-10-22 수정, OQ-128~131, codec v152)·2026-10-26 `claude/play-feedback-2026-10-25-808f13` 병합 `f1de07c4`(플레이 피드백: 원격 대기실, OQ-132 첫 플레이어 옵션, 앱 좌석 색 순서 등; codec 그대로) |
+| pytest | 8,365개 통과(2026-10-26 플레이 피드백 병합 전 관문, master v152와 합친 트리)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
+| Ruff · mypy | `src tests` 통과, mypy 562파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
+| 브라우저 E2E | `scripts/e2e/` 69종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-25 플레이 피드백 병합 관문(master v152와 합친 트리, 69종 모두 통과, 사용자 판 중이라 `-j 2`로 702초) |
 | action codec | **v152** (다음 번호 v153; 2026-10-25 엔진 감사 수정 병합). v152는 Interstellar Conspiracy의 spice 줄 둘과 Political Equilibrium의 확인 하나를 더하고 몇 결정을 나눴다(옛 기보는 다리로, [`human-records.md`](human-records.md)). v151 저장은 서버가 열지 않는다 |
 | 관측 | v33, 5,732 int (B단계: 고른 카드·효과·대상 칸 추가) |
 | action catalog | 기본 1,434 · CHOAM 1,555 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,314(v152) |
@@ -311,7 +311,14 @@
   `dune-imperium-records`가 지금 엔진의 기보로 옮긴다. 엔진이 묻는 결정을 바꾸면 그 codec 문턱의 다리를
   `records/`에 더하고 `uv run dune-imperium-records check`로 확인한다([`human-records.md`](human-records.md)).
 - **상태 해시.** 이벤트를 상태의 `event_log`에 새로 넣으면 그 뒤 모든 상태 해시가 바뀌어 옛 저장이 열리지 않는다.
-  화면에만 필요한 이벤트는 `report_only_event_kinds`(`rules/engine.py`)로 보고만 한다.
+  화면에만 필요한 이벤트는 `report_only_event_kinds`(`rules/engine.py`)로 보고만 한다. `RulesetConfig`에 옵션을 더할 때도
+  같다(상태가 config를 품는다): 기본값일 때 해시에서 빼도록 `RulesetConfig.HASH_OMITTED_AT_DEFAULT`에 이름을 넣고, 카드나
+  행동 카탈로그를 바꾸지 않는 옵션은 `identifier`에서도 뺀다(체크포인트가 identifier로 규칙 묶음을 맞춘다; OQ-132).
+- **같음 확인 도구의 기준.** `scripts/ab/engine_equivalence.py`는 보고용 사건까지 기록한다. 2026-10-26 병합 `f1de07c4`부터
+  `cards_revealed`에 `swords`가 있으므로 그 전에 만든 기준과 비교하면 Reveal마다 차이가 난다. 기준을 다시 만든다.
+- **원격 방의 좌석.** "자리 무작위 배치"를 켠 원격 방은 대기실이다(`sessions.start_game`): 시작 전에는 좌석 읽기·행동·저장이
+  409이고, 시작 때 사람들(토큰·이름)을 사람 자리에 무작위로 나눈다. 좌석 쿠키 이름은 그 뒤 스냅숏마다 지금 자리로 옮긴다
+  (`app._home_seat_cookies`); 신원은 쿠키 이름이 아니라 토큰 값으로만 정한다.
 - **측정 비교.** 엔진이나 수집 코드가 바뀌면 같은 시드라도 다른 판이 나온다. 수집은 `85a51097`(2026-10-12) 전후,
   heuristic은 v143(접합 turn) 전후가 그렇다. 비교는 같은 코드에서 대조군을 registry에 고정해 번갈아 잰다.
 - **학습·측정과 체크아웃.** 몇 시간짜리 학습·측정은 고정 worktree(`measure-vNNN`)에서 돌린다. 학습이 도는
