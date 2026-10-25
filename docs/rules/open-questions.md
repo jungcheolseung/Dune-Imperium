@@ -158,6 +158,12 @@
 | [OQ-130](#oq-130--배치-금지-turn의-arrakeen-scouts-임무-troop) | 배치 금지 turn의 Arrakeen Scouts 임무 troop | `DECIDED` |
 | [OQ-131](#oq-131--참가할-수-없는-임무-좌석과-결정-창) | 참가할 수 없는 임무 좌석과 결정 창 | `DECIDED` |
 | [OQ-132](#oq-132--1라운드-첫-플레이어를-플레이어1로-선택-규칙) | 1라운드 첫 플레이어를 플레이어1로 (선택 규칙) | `DECIDED` |
+| [OQ-133](#oq-133--spy-아이콘으로-닿은-칸에서-그-spy로-infiltrate) | Spy 아이콘으로 닿은 칸에서 그 Spy로 Infiltrate | `DECIDED` |
+| [OQ-134](#oq-134--corrinth-city로-원로회-자리를-얻은-뒤의-첫-high-council-방문) | Corrinth City로 원로회 자리를 얻은 뒤의 첫 High Council 방문 | `DECIDED` |
+| [OQ-135](#oq-135--control-방어-배치와-supply의-sardaukar-commander) | Control 방어 배치와 supply의 Sardaukar Commander | `DECIDED` |
+| [OQ-136](#oq-136--tleilaxu-덱-고갈) | Tleilaxu 덱 고갈 | `DECIDED` |
+| [OQ-137](#oq-137--공동-1위로-남은-conflict-카드) | 공동 1위로 남은 Conflict 카드 | `DECIDED` |
+| [OQ-138](#oq-138--covert-operation에서-손이-빈-상대와-결정-창) | Covert Operation에서 손이 빈 상대와 결정 창 | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -2726,3 +2732,99 @@
   섞는다). 엔진·명령줄·학습의 기본은 꺼짐(공식 배분)이다. 브라우저 새 게임 화면의 "플레이어1이 시작 플레이어" 칸은 기본으로 켜져 있고,
   플레이 서버 `--first-player deal`이면 꺼진 채 열린다. 옵션이 꺼져 있으면 상태 해시에 넣지 않아(`RulesetConfig.HASH_OMITTED_AT_DEFAULT`)
   옛 저장본·기보의 해시는 그대로다. 테스트: `tests/unit/rules/test_setup.py`, `tests/server/test_first_player_option.py`.
+
+## OQ-133 — Spy 아이콘으로 닿은 칸에서 그 Spy로 Infiltrate
+
+- 상태: `DECIDED` (2026-10-26 사용자 판정 "규칙 공백 1~6은 모두 추천대로" — (가); project convention. 엔진은 판정 전부터 이대로다)
+- 계기: 2026-10-25 일반 규칙 감사의 규칙 공백 1(D03).
+- 질문: Spy Agent 아이콘으로만 닿는 칸, 곧 연결된 관측소에 자기 Spy가 있는 칸에 상대 Agent가 있을 때, 접근을 준 바로 그 Spy를 회수해
+  Infiltrate할 수 있는가.
+- 공식 문장: "The Spy Agent icon allows you to send an Agent to a board space connected to an observation post where you currently have
+  a Spy. You do not recall the Spy for this purpose." "Infiltrate: If you wish to send an Agent to a board space occupied by another player,
+  you may recall your own Spy from a connected observation post to ignore the other player's Agent and send your Agent to that same board
+  space." `[Main p. 11]`. 같은 Spy를 Infiltrate와 Gather Intelligence에 함께 쓸 수는 없다 `[Main p. 11]` `[FAQ p. 4]`
+  ([player-turns.md](player-turns.md) "Agent 아이콘과 Spy"). 아이콘의 접근을 언제 판정하는지, 그 Spy를 Infiltrate에 쓸 수 있는지는 말하지
+  않는다.
+- 선택지: (가) 접근은 카드와 칸을 고를 때 판정하고 Infiltrate의 회수는 그 뒤의 별개 효과다 — 같은 Spy로 된다. (나) 회수하면 "currently have
+  a Spy"가 깨지므로, 접근을 준 Spy와 다른 Spy가 하나 더 있어야 Infiltrate할 수 있다.
+- 보조 증거(공식 규칙 아님): Steam 앱도 Agent 아이콘 일치를 Infiltrate 회수 전에 판정해 (가)처럼 동작한다(2026-10-07 일반 규칙 대조).
+- 판정(2026-10-26 사용자, 추천대로): **(가)**. "You do not recall the Spy for this purpose"는 아이콘을 쓰는 데 회수가 필요 없다는 말이고,
+  다른 목적의 회수를 막지 않는다. 그 Spy로 Gather Intelligence를 함께 할 수는 없다(위 FAQ). 엔진: 배치 열거(`rules/agent_turn.py`)와 graft
+  배치(`rules/graft.py`)가 Spy 접근을 Infiltrate 회수 전에 판정한다. 테스트: `tests/unit/rules/test_graft.py`의 Gaius Helen Mohiam Spy 아이콘
+  graft가 점유된 Secrets에 들어가는 시험("the placement spends the Spy that granted the icon").
+
+## OQ-134 — Corrinth City로 원로회 자리를 얻은 뒤의 첫 High Council 방문
+
+- 상태: `DECIDED` (2026-10-26 사용자 판정 "규칙 공백 1~6은 모두 추천대로" — (가); project convention. 엔진은 판정 전부터 이대로다)
+- 계기: 2026-10-25 일반 규칙 감사의 규칙 공백 2(D09).
+- 질문: Corrinth City의 Reveal 효과("Choose one: Gain 5 Solari / Pay 5 Solari → Take the High Council seat" `[Corrinth City card]`)로
+  Councilor를 먼저 놓은 좌석이, 나중에 High Council 칸에 처음 Agent를 보내면 무엇을 받는가.
+- 공식 문장: "The first time you send an Agent here: Place your Councilor token on an unoccupied Council seat ... Each subsequent time you
+  send an Agent here: Gain 2 spice, draw an Intrigue card, and recruit three troops." `[Board Guide p. 2]`
+  ([board-spaces.md](board-spaces.md) Landsraad 표의 High Council 줄). 둘 다 방문 횟수로 적었고, Councilor가 이미 놓여 있는 첫 방문은 말하지 않는다.
+- 선택지: (가) 자리가 이미 있으면 "다시 방문"으로 본다 — spice 2, Intrigue 1장, troop 3. (나) 문구대로 첫 방문으로 보되, 놓을 Councilor가
+  없으므로 아무것도 받지 않는다.
+- 보조 증거(공식 규칙 아님): Steam 앱도 자리를 가졌는지로 다시 방문을 판정해 (가)처럼 동작한다(2026-10-07 일반 규칙 대조).
+- 판정(2026-10-26 사용자, 추천대로): **(가)**. 첫 방문의 효과는 Councilor를 놓는 것 하나뿐이고 그 일은 이미 일어났다. 엔진:
+  `rules/board_effects.py`가 자리 보유로 첫 방문과 다시 방문을 가른다. 테스트: `tests/unit/rules/test_board_effects.py::
+  test_high_council_revisit_grants_spice_intrigue_and_troops`(자리를 가진 좌석의 방문).
+
+## OQ-135 — Control 방어 배치와 supply의 Sardaukar Commander
+
+- 상태: `DECIDED` (2026-10-26 사용자 판정 "규칙 공백 1~6은 모두 추천대로" — (가); project convention. 엔진은 판정 전부터 이대로다)
+- 계기: 2026-10-25 일반 규칙 감사의 규칙 공백 3(D12).
+- 질문: Bloodlines에서 자신이 지배하는 위치의 Conflict 카드가 공개될 때, supply의 Sardaukar Commander를 방어 유닛으로 보낼 수 있는가.
+  supply에 Commander만 있으면 방어 창이 열리는가.
+- 공식 문장: "When a Conflict card is revealed for a space that you already control, you receive a defensive bonus: you may deploy one
+  troop from your supply to the Conflict." `[Main p. 10]` `[Main p. 20]`
+  ([combat-and-round-end.md](combat-and-round-end.md) 5절). Commander는 Conflict에서 strength 2인 "troop"으로 취급하지만,
+  supply의 Commander는 일반 수단으로 recruit할 수 없고 turn마다 한 번 2 Solari를 내야 garrison(또는 Conflict)으로 온다 `[Bloodlines p. 4]`
+  ([bloodlines.md](bloodlines.md) 3절). 방어 배치는 recruit가 아니라 deploy라서 이 문장들로 정해지지 않는다.
+- 선택지: (가) troop만 방어한다 — supply에 troop이 없으면 Commander가 있어도 방어 창을 열지 않는다. (나) Commander도 고를 수 있다.
+- 판정(2026-10-26 사용자, 추천대로): **(가)**. supply의 Commander를 공짜로 Conflict에 보내면 2 Solari recruit 규칙을 우회한다. Steam 앱에는
+  Bloodlines가 없어 보조 증거가 없다. 엔진: `rules/phases.py`의 방어 판정이 `troops_supply`만 본다. 테스트:
+  `tests/unit/rules/test_phases.py::test_a_supply_sardaukar_commander_is_no_control_defense_unit`.
+
+## OQ-136 — Tleilaxu 덱 고갈
+
+- 상태: `DECIDED` (2026-10-26 사용자 판정 "규칙 공백 1~6은 모두 추천대로" — (가); project convention. 엔진은 판정 전부터 이대로다)
+- 계기: 2026-10-25 일반 규칙 감사의 규칙 공백 4(D19).
+- 질문: Tleilaxu 덱이 비었을 때 Tleilaxu Row의 빈자리를 어떻게 하는가.
+- 공식 문장: Tleilaxu Row는 카드 2장과 Reclaimed Forces를 갖추고, 모자라면 "replace missing cards from the top of the Tleilaxu deck"
+  `[Immortality p. 9]`([immortality.md](immortality.md) 4절). 덱이 빈 경우는 말하지 않고, Tleilaxu 카드에는 공용 버림 더미도 다시 섞기 규칙도
+  없다.
+- 판정(2026-10-26 사용자, 추천대로): **(가) [OQ-004](#oq-004--imperium-deck-완전-고갈)와 같은 convention.** 보충하지 않고 Row는 남은 카드로
+  계속하며, 어떤 카드도 덱으로 돌아가지 않는다. Reclaimed Forces는 Row에서 빠지지 않으므로 늘 남는다. 물리적으로 가능한 유일한 진행이다.
+  엔진: `rules/tleilaxu_row.py`의 보충. 테스트: `tests/unit/rules/test_tleilaxu_row.py::test_an_empty_tleilaxu_deck_leaves_the_row_short`.
+
+## OQ-137 — 공동 1위로 남은 Conflict 카드
+
+- 상태: `DECIDED` (2026-10-26 사용자 판정 "규칙 공백 1~6은 모두 추천대로" — (가); project convention. 엔진은 판정 전부터 이대로다)
+- 계기: 2026-10-25 일반 규칙 감사의 규칙 공백 5(A5).
+- 질문: 1위 동률로 아무도 가져가지 않아 보드에 남은 Conflict 카드는 나중에 누가 가져가는가.
+- 공식 문장: "No one wins the Conflict or takes the Conflict card into their supply." `[Main p. 14]`. 새 카드는 "on top of any Conflict cards
+  that might remain from previous rounds" `[Main p. 8]`. "Finally, the winner takes the Conflict card, places it in their supply face up,
+  then checks for a battle icon match" `[Main p. 13]`([combat-and-round-end.md](combat-and-round-end.md) 5절). 남은 카드가
+  나중에 어떻게 되는지는 말하지 않는다.
+- 선택지: (가) 승자는 그 라운드의 맨 위 카드만 가져가고, 남은 카드는 게임 끝까지 보드에 남는다(그 battle icon은 쓰이지 않는다). (나) 다음
+  승자가 남은 카드까지 모두 가져간다(battle icon 짝이 생겨 Victory Point가 날 수 있다).
+- 판정(2026-10-26 사용자, 추천대로): **(가)**. "the Conflict card"는 단수이고, 남은 카드는 "remain"한다고만 한다. Steam 앱이 남은 카드를
+  어떻게 다루는지는 확인하지 않았다. 엔진: `rules/combat.py`가 `current_conflict_ids`의 맨 위 카드만 준다. 테스트:
+  `tests/unit/rules/test_combat.py::test_combat_winner_takes_conflict_matches_icon_and_units_are_cleaned_up`(`older_tied_conflict`가 남는다).
+
+## OQ-138 — Covert Operation에서 손이 빈 상대와 결정 창
+
+- 상태: `DECIDED` (2026-10-26 사용자 판정 "규칙 공백 1~6은 모두 추천대로" — (가); project convention; **엔진 반영 전**. 구현 묶음과 codec
+  번호는 아직 정하지 않았다)
+- 계기: 2026-10-25 일반 규칙 감사의 규칙 공백 6(B9).
+- 질문: Covert Operation의 Agent box "Each opponent discards a card." `[Covert Operation card]`에서 손이 빈 상대에게도 창을 여는가.
+- 판정 전 엔진: 카드를 쥔 상대에게만 버리기 창을 열고, 손이 빈 상대는 창·확인·사건 없이 건너뛴다(`rules/agent_box_abilities.py`의
+  `EachOpponentDiscardsCard`). 이런 모양의 효과는 이 카드 하나뿐이다.
+- 부딪치는 결정: 2026-09-30 사용자 원칙 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"
+  ([unavailable-options-plan.md](../unavailable-options-plan.md) 3절). 선례: Holy War의 유닛 없는 좌석은 확인 창을 받고
+  ([OQ-036](#oq-036--lose-a-troop의-출처와-강제-spy-이동의-목적지) 보강), 참가할 수 없는 임무 좌석과 Political Equilibrium도 창을 받는다
+  ([OQ-131](#oq-131--참가할-수-없는-임무-좌석과-결정-창)).
+- 선택지: (가) 손이 빈 상대에게도 창을 열어 "버릴 카드 없음"을 회색으로 보이고 확인만 누르게 한다. (나) 건너뛰되 공개 사건을 남긴다.
+  (다) 지금대로 둔다.
+- 판정(2026-10-26 사용자, 추천대로): **(가)**, OQ-131과 Holy War에 맞춘다. 창의 순서는 지금 카드를 쥔 상대에게 묻는 순서(다음 좌석부터)와
+  같다. 버리는 것은 없으므로 게임 결과는 그대로다.

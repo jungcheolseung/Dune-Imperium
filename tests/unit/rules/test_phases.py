@@ -242,6 +242,36 @@ def test_control_defense_can_be_declined_and_skips_when_supply_is_empty() -> Non
     assert no_supply_decision.owner == 0
 
 
+def test_a_supply_sardaukar_commander_is_no_control_defense_unit() -> None:
+    # "you may deploy one troop from your supply to the Conflict" [Main p. 10];
+    # a supply Commander cannot be recruited by normal means and costs 2
+    # Solari once per turn [Bloodlines p. 4]. OQ-135 (user decision
+    # 2026-10-26): only a troop defends, so a supply holding nothing but a
+    # Commander opens no defense, and with both the deploy sends the troop.
+    def with_commander(troops_supply: int) -> GameState:
+        state = _controlled_round_start(
+            troops_supply=troops_supply, config=RulesetConfig(bloodlines=True)
+        )
+        players = list(state.players)
+        players[2] = replace(players[2], commanders_supply=1)
+        return begin_round(replace(state, players=tuple(players))).state
+
+    only_commander = with_commander(0)
+    decision = only_commander.decision_stack[-1].decision
+    assert isinstance(decision, PlayerDecision)
+    assert decision.owner == 0
+
+    both = with_commander(1)
+    actions = legal_control_defense_actions(both, 2)
+    assert tuple(action.action_id for action in actions) == (
+        "decline_control_defense",
+        "deploy_control_defense",
+    )
+    owner = _defend(both, actions[1]).state.players[2]
+    assert owner.troops_conflict == 1
+    assert owner.commanders_supply == 1 and owner.commanders_conflict == 0
+
+
 # Round Start order. "Each round begins by revealing a new Conflict card ...
 # Next, each player draws five cards from their own deck, forming their hand
 # for the round." [Main p. 8]. "When a Conflict card is revealed for a space
