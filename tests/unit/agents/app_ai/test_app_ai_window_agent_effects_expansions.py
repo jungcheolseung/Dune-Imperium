@@ -692,6 +692,10 @@ def test_interstellar_conspiracy_influence_with_an_emperor_partner() -> None:
     t = _turn(state, seat)
     value, action = _evaluate(_source(t, "interstellar_conspiracy influence"))
     assert action is not None and action.action_id == "choose_agent_card_influence"
+    # Its spice is its own icon now (engine audit 2026-10-22, P4): the
+    # generic AgentSpice box, not an unmapped choice.
+    assert _source(t, "interstellar_conspiracy spice").stage is Stage.AGENT_BOX
+    assert not t.unmapped
 
 
 def test_tleilaxu_master_acquires_the_best_card_by_acquire_value() -> None:
