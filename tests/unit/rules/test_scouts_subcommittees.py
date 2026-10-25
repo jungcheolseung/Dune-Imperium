@@ -594,12 +594,64 @@ def test_specimen_top_up_is_skipped_with_enough_supply() -> None:
 
 
 def test_influence_choice_skips_tracks_at_the_top() -> None:
-    # OQ-060: an Influence gain at the top of a track is lost; with only one
-    # track below the top there is no choice to make.
+    # OQ-060: an Influence gain at the top of a track is lost, so only the
+    # track below the top is offered -- still as the seat's own pick: "대상이
+    # 하나뿐이어도 둘째 단계를 연다" (OQ-111 (2); user decision 2026-10-26,
+    # general rules audit 2026-10-25).
     owner = _owner(influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6))
     state = _choose(_visit_high_council(_state(owner)))
     state = _act(state, "join_subcommittee", subcommittee_id="relations")
+    assert state.players[0].influence.fremen == 0
+    assert _options(state) == {("scouts_choose_faction", "fremen")}
+    state = _act(state, "scouts_choose_faction", faction="fremen")
     assert state.players[0].influence.fremen == 1
+    assert _scouts_frames_done(state)
+
+
+def test_leverage_asks_for_a_lone_faction_and_draws_after() -> None:
+    """OQ-111 (2) "대상이 하나뿐이어도 둘째 단계를 연다" (user decision
+    2026-10-26: Leverage follows it; general rules audit 2026-10-25): with
+    one track below the top the Faction step still opens, and the Intrigue
+    then comes as its own step (OQ-106, arrakeen-scouts.md 11)."""
+    owner = _owner(
+        spies_supply=1,
+        spy_post_ids=("arrakis-deep-desert", "arrakis-hagga-basin"),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6),
+    )
+    state = _choose(_visit_high_council(_state(owner)))
+    state = _act(state, "join_subcommittee", subcommittee_id="leverage")
+    state = _act(state, "scouts_recall_spy", post_id="arrakis-hagga-basin")
+    state = _act(state, "scouts_recall_spy", post_id="arrakis-deep-desert")
+    intrigue = len(state.players[0].intrigue_cards)
+    assert state.players[0].influence.fremen == 0
+    assert _options(state) == {
+        ("scouts_choose_faction", "fremen"),
+        ("scouts_rewards_first", ""),
+    }
+    state = _act(state, "scouts_choose_faction", faction="fremen")
+    assert state.players[0].influence.fremen == 1
+    assert len(state.players[0].intrigue_cards) == intrigue
+    assert _options(state) == {("scouts_rewards_first", "")}
+    state = _act(state, "scouts_rewards_first")
+    assert len(state.players[0].intrigue_cards) == intrigue + 1
+    assert _scouts_frames_done(state)
+
+
+def test_leverage_with_every_track_at_the_top_has_no_faction_step() -> None:
+    # No target, nothing to ask (OQ-111 (2) "대상이 없는 효과는 한 번에
+    # 처리한다"): the gain is lost at the top (OQ-060) and the Intrigue comes
+    # with the last recall.
+    owner = _owner(
+        spies_supply=1,
+        spy_post_ids=("arrakis-deep-desert", "arrakis-hagga-basin"),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    state = _choose(_visit_high_council(_state(owner)))
+    state = _act(state, "join_subcommittee", subcommittee_id="leverage")
+    state = _act(state, "scouts_recall_spy", post_id="arrakis-hagga-basin")
+    intrigue = len(state.players[0].intrigue_cards)
+    state = _act(state, "scouts_recall_spy", post_id="arrakis-deep-desert")
+    assert len(state.players[0].intrigue_cards) == intrigue + 1
     assert _scouts_frames_done(state)
 
 
