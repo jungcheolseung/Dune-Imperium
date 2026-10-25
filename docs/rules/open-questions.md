@@ -154,7 +154,7 @@
 | [OQ-126](#oq-126--disposal-facility의-persuasion-6-이상) | Disposal Facility의 "Persuasion 6 이상" | `DECIDED` |
 | [OQ-127](#oq-127--combat-단계에-열린-treachery의-unload) | Combat 단계에 열린 Treachery의 Unload | `DECIDED` |
 | [OQ-128](#oq-128--instead-of-one-influence-효과를-ghola가-복사할-때) | "instead of one" Influence 효과를 Ghola가 복사할 때 | `DECIDED` |
-| [OQ-129](#oq-129--sardaukar-coordination이-trash된-emperor-카드를-세는가) | Sardaukar Coordination이 trash된 Emperor 카드를 세는가 | `OPEN` |
+| [OQ-129](#oq-129--sardaukar-coordination이-trash된-emperor-카드를-세는가) | Sardaukar Coordination이 trash된 Emperor 카드를 세는가 | `DECIDED` |
 | [OQ-130](#oq-130--배치-금지-turn의-arrakeen-scouts-임무-troop) | 배치 금지 turn의 Arrakeen Scouts 임무 troop | `DECIDED` |
 | [OQ-131](#oq-131--참가할-수-없는-임무-좌석과-결정-창) | 참가할 수 없는 임무 좌석과 결정 창 | `DECIDED` |
 
@@ -2616,7 +2616,7 @@
 
 ## OQ-129 — Sardaukar Coordination이 trash된 Emperor 카드를 세는가
 
-- 상태: `OPEN`
+- 상태: `DECIDED` (2026-10-25 사용자 판정 — 아래 (가)와 앞 사본의 증분; 같은 날 엔진 반영, codec v152. 앞 사본의 증분은 앱과 다르다)
 - 인쇄: "+[sword] for each Emperor card you revealed (including this one)" `[Sardaukar Coordination card]`([player-turns.md](player-turns.md)).
 - 지금 엔진: Reveal frame의 공개 카드 목록(`revealed_card_*`)을 센다. 이 목록은 Reveal 중 카드가 trash돼도 줄지 않는다. 그래서 Reveal 중 Emperor 카드를
   trash한 뒤(Cunning의 trash, Calculus of Power 등) 늦게 들어온 Sardaukar Coordination 사본(Reveal 중 draw, `[FAQ p. 3]`)이 이미 trash된 카드까지 센다.
@@ -2632,6 +2632,21 @@
   세어 3(A, Public Spectacle, B)을 받고, (가)면 B가 들어온 순간 in play인 A, B만 세어 2다(A가 B 몫으로 받는 +1은 어느 쪽이든 같다). 사용자 의견("이미
   trash한건 당연히 sword 포함되면 안 되겠지. 근데 이미 공개해서 sword를 받은 다음 그 다음 폐기하는건 세야하는거 아니야?")은 ②와 (가)의 ③에 맞는다 —
   판정 확인 대기.
+
+- 확인한 출처(2026-10-25, 사용자 "룰북, faq, 앱 구현 확인해보자"): ① 공식 룰북(Uprising 본 룰북·보충 규칙)과 FAQ(2025-01-13)에는 이 경우를 다룬
+  문장이 없다 — FAQ는 "If you draw a card during your Reveal turn ..., you must immediately reveal that card and use it this turn." `[FAQ p. 3]`까지만
+  말한다. ② 채택한 디자이너 판정 "Leadership은 한 순간에 세고 trash된 카드는 못 센다"(In person, OQ-057)가 (가)와 같은 방향이다. ③ 앱(Steam 디지털판,
+  보조 증거; 판독은 에셋 로컬 폴더에만): 늦게 들어온 사본은 그 순간 플레이 구역에 있는 Emperor 카드만 센다 — trash된 카드는 구역에서 빠지므로 B는 A, B로
+  2(= (가)). A는 X가 trash돼도 받은 검을 그대로 둔다. 다만 앱의 A는 늦게 들어온 **같은 카드의 사본**으로는 검을 받지 않고(다른 Emperor 카드면 받는다),
+  그래서 앱의 이 장면 합계는 A 2 + B 2 = 4다.
+- 판정(2026-10-25 사용자): **(가)** — "1. (가)로 구현하고". 늦게 들어온 사본은 그 순간 앞에 남아 있는 Emperor 카드만 센다. 이미 받은 것은 그대로다.
+  **앞 사본의 증분은 카드 문구대로** — "2. 앞의 사본도 추가로 받는게 맞겠지? 앱이 잘못되지 않았나 싶어. 이거 앱과 다른 판정이니까 관련 문서에 잘
+  기록해줘": 늦게 들어온 Emperor 카드가 같은 카드의 사본이어도 앞 사본은 검 1을 더 받는다("for each Emperor card you revealed (including this one)"
+  — B도 공개한 Emperor 카드다). 이 장면의 합계는 A 3 + B 2 = 5다(판정 전 엔진은 A 3 + B 3 = 6, 앱은 4). **앱과 다른 판정**이며 판정 공지의 "(나) 앱과
+  다르게 정한 곳"에 있다.
+- 구현(2026-10-25, codec v152): `rules/reveal_turn._late_reveal_one_card`가 늦게 들어온 카드의 셈에 쓰는 공개 카드를 그 순간 in play인 것만으로
+  거른다(앞 사본의 증분은 원래부터 in play인 카드만 받는다 — OQ-022). 이 셈을 쓰는 카드는 Sardaukar Coordination 하나다(`RevealCountKind.REVEALED_FACTION_CARD`).
+  테스트: `tests/unit/rules/test_reveal_turn.py::test_a_late_sardaukar_coordination_counts_no_trashed_emperor_card`.
 
 ## OQ-130 — 배치 금지 turn의 Arrakeen Scouts 임무 troop
 

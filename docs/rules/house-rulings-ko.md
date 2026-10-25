@@ -60,7 +60,7 @@
 - **스파이스는 흘러야 한다는 가진 사본을 모두 센다** ([OQ-123](open-questions.md#oq-123--the-spice-must-flow를-세는-곳)) — Corner the Market, Grand Conspiracy, Holtzman Engine과 봉기의 Secure Spice Trade의 "스파이스는 흘러야 한다가 몇 장" 조건은 카드덱·핸드·버림 더미·플레이 영역의 사본을 모두 센다(폐기한 것은 뺀다).
   - 출처: 앱과 사용자 판정(따름) — 공식 FAQ의 Corner the Market 문장은 "덱과 버림 더미"만 든다.
 
-## (나) 공식은 말이 없고, 앱과 다르게 정한 곳 — 12건
+## (나) 공식은 말이 없고, 앱과 다르게 정한 곳 — 13건
 
 공식 문서와 디자이너는 말하지 않는데, 공식 디지털판 앱은 이 게임과 다르게 처리한다. 앱으로 해 본 사람이 "앱이랑 다르네" 할 곳이다.
 
@@ -84,6 +84,8 @@
   - 출처: 공식 문서는 말하지 않음. 앱은 기본으로 끈다.
 - **Special Mission의 도시 스파이** ([OQ-101 (b)](open-questions.md#oq-101--if-you-recalled-a-spy-this-turn이-세는-recall과-special-mission의-city-spy)) *(엔진 반영 전)* — 개인 공급처가 비고 도시 관측소가 모두 찼어도, 그중 하나를 내 스파이만 차지하고 있으면 Special Mission의 도시 스파이 줄을 낸다(소환해 같은 자리에 다시 놓는다). 이번 차례에 이미 소환했어도 비용이 없으므로 낸다.
   - 출처: 공식 문서는 말하지 않음. 앱은 빈 도시 관측소가 있어야만 내놓는다.
+- **늦게 공개한 Sardaukar Coordination이 세는 카드** ([OQ-129](open-questions.md#oq-129--sardaukar-coordination이-trash된-emperor-카드를-세는가)) — 공개 차례 도중 뽑아 바로 공개한 Sardaukar Coordination은 그때 내 앞에 남아 있는 황제 카드만 센다. 그 전에 폐기된 황제 카드는 세지 않지만, 먼저 공개한 카드가 그 카드로 이미 받은 검은 그대로다. 먼저 공개한 Sardaukar Coordination도 늦게 들어온 황제 카드(같은 카드의 다른 사본 포함)마다 검 1을 더 받는다.
+  - 출처: 공식 문서는 말하지 않음. 폐기된 카드를 세지 않는 것은 채택한 디자이너 판정("폐기된 카드는 세지 못한다")·앱과 같다. 앱은 먼저 공개한 사본이 같은 카드의 늦은 사본으로는 검을 받지 않게 한다 — 카드 문구("공개한 황제 카드마다, 이 카드 포함")대로 따르지 않았다.
 
 ### 원판 Dune: Imperium·Rise of Ix (아직 구현 전)
 
