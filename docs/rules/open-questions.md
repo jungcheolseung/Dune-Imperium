@@ -2650,9 +2650,11 @@
 
 ## OQ-131 — 참가할 수 없는 임무 좌석과 결정 창
 
-- 상태: `DECIDED` (임무: 2026-10-25 사용자 "임무에도 적용하자" — 아래 (가); 2026-10-25 엔진 반영, codec v152. Political Equilibrium은 확인 대기)
+- 상태: `DECIDED` (임무: 2026-10-25 사용자 "임무에도 적용하자"; Political Equilibrium: 같은 날 사용자 "모든 좌석에 창을 열어" — 아래 (가)와
+  보강; 둘 다 2026-10-25 엔진 반영, codec v152)
 - 판정 전 엔진: OQ-088대로 비용을 낼 수 없거나 세울 troop이 없는 좌석에는 임무 참가를 묻지 않는다 — 창도 사건도 없이 넘어간다
-  (`rules/scouts_missions.offer_mission_join`). 모든 진영이 0일 때의 Political Equilibrium도 사건 없이 넘어간다(`rules/scouts.py`).
+  (`rules/scouts_missions.offer_mission_join`). Political Equilibrium은 가장 높은 진영이 하나면 창 없이 그 진영에서 1을 잃고(사건은 남는다),
+  동률일 때만 고르는 창을 열며, 모든 진영이 0이면 창도 사건도 없이 넘어간다(`rules/scouts.py`, `rules/scouts_effects.py`).
 - 부딪치는 결정: 2026-09-30 사용자 결정 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"("플레이어가 직접 체크하는게 플레이하는데에는
   도움이 될 것 같아", [unavailable-options-plan.md](../unavailable-options-plan.md) 1절). 2026-10-17 판단 6(OQ-071 보강)은 고르기 이벤트·판매·비밀
   선택만 다뤘고, 리뷰가 이 둘을 "사용자 결정 필요"로 남겼다([composed-effects-plan.md](../composed-effects-plan.md) 정리-2b 관문).
@@ -2664,3 +2666,9 @@
   따로 확인한다.
 - 구현(감사 묶음 C, 2026-10-25, codec v152): `rules/scouts_missions.offer_mission_join`이 참가 방식이 있는 임무마다 창을 연다. 옛 기보는
   묻지 않은 좌석을 다리 `mission_pass_alone`이 pass로 답한다([human-records.md](../human-records.md)).
+- 보강 판정(2026-10-25 사용자, Political Equilibrium): "Political Equilibrium은 모든 좌석에 창을 열어: 가장 높은 진영이 하나면 그 한 줄만 있는
+  창, 모두 0이면 확인 창." 처음 질문은 모든 진영이 0인 좌석만 물었는데, 가장 높은 진영이 하나인 좌석도 창 없이 자동으로 잃는다는 것을 바로잡아
+  다시 여쭌 답이다. 동률은 지금처럼 고르는 창이다. 확인 창의 한 줄은 `resolve_scouts_loss_without_influence`("잃을 영향력 없음 — 확인")이고,
+  그 좌석의 차례를 끝내며 `scouts_choice_skipped` 사건을 남긴다. 구현: `rules/scouts_effects.py`(LoseHighestInfluence는 늘 창), `rules/scouts.py`
+  (모든 좌석에 묻기), 앱 AI(`agents/app_ai/windows/scouts.py`, 앱은 그런 좌석을 건너뛴다), 화면 문구. 옛 기보는 다리 `equilibrium_alone`이 한 줄짜리
+  창을 기록의 다음 수 앞에서 답한다(옛 엔진은 묻지 않았다; 동률 창은 그때도 물었다).

@@ -1697,6 +1697,15 @@ title = "A seat that cannot join a mission still gets the window"
 ruling_ko = "비용을 못 내거나 세울 병력이 없는 좌석에도 임무 참여 창을 열어, 참여를 이유와 함께 회색으로 보이고 패스만 누를 수 있게 한다. 자동으로 넘어가는 곳도 결정 창을 열어 직접 확인하게 한다는 원칙을 임무에도 적용했다."
 ruling = "A seat that cannot pay or has no troops to stand still gets the mission's window, with joining greyed out and its reason shown, and passes: the rule that a step which used to pass by itself opens a window to check applies to missions too."
 
+[[ruling]]
+oq = "OQ-131 (b)"
+group = "project"
+game = "uprising"
+title_ko = "정치적 균형은 모든 좌석에 창을 연다"
+title = "Political Equilibrium asks every seat"
+ruling_ko = "정치적 균형은 모든 좌석에 창을 연다. 가장 높은 진영이 하나면 그 한 줄만 있는 창에서 직접 누르고, 동률이면 어느 진영에서 잃을지 고르고, 네 진영이 모두 0이면 \"잃을 영향력 없음\"을 확인한다."
+ruling = "Political Equilibrium asks every seat: a lone highest track is the window's one line to press, a tie is a choice of the track to lose from, and a seat with every track at 0 confirms it has no Influence to lose."
+
 # ------------------------------------------- base game and Rise of Ix
 
 [[ruling]]
