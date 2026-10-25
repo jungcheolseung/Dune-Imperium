@@ -4425,6 +4425,15 @@ def test_overthrow_lands_its_two_where_an_older_engine_reached_even() -> None:
         migration.OVERTHROW_FOR_SPACE
     )
     assert plan(odd, (_OVERTHROW_STEP, _SPACE_STEP, _FINISH), 0, 0) is None
+    # After a deferred first part the second takes the two, whichever it is
+    # (its pair is behind it, so no lookahead finds it).
+    assert plan(even, (_OVERTHROW_STEP, _SPACE_STEP, _FINISH), 1, 0) is None
+    assert plan(even, (_OVERTHROW_STEP, _SPACE_STEP, _FINISH), 1, 0, deferred=True) == (
+        migration.OVERTHROW_FOR_SPACE
+    )
+    assert plan(even, (_SPACE_STEP, _OVERTHROW_STEP, _FINISH), 1, 0, deferred=True) == (
+        migration._OVERTHROW_SECOND
+    )
     row = migration._overthrow_space_row(ENGINE, odd, 0)
     assert row == _OVERTHROW_STEP
     gained = ENGINE.apply(odd, row).state

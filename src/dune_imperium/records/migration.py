@@ -425,6 +425,9 @@ def migrate_record(
     # Seats whose CHOAM Transports card ``TRANSPORTS_CARD_FIRST`` took before
     # the record drew it; that recorded draw is dropped when it comes.
     transports_taken: Counter[int] = Counter()
+    # Whether Overthrow's first part was dropped and its second is to come
+    # (``_overthrow_plan``).
+    overthrow_waits = False
 
     def harvest_rewards_due(index: int, recorded: ReplayStep, at: GameState) -> bool:
         """Drop the recorded Harvest Cells rewards step a recording engine
@@ -517,16 +520,23 @@ def migrate_record(
             # Before any bridge: a pause bridge would otherwise answer the
             # Round Start pause this step stood in front of in the record.
             continue
-        overthrow = (
-            _overthrow_plan(
-                state, replay.steps, index, 0 if graft is None else graft.box
+        overthrow = None
+        if replay.action_codec_version < OVERTHROW_CODEC:
+            overthrow = _overthrow_plan(
+                state,
+                replay.steps,
+                index,
+                0 if graft is None else graft.box,
+                deferred=overthrow_waits,
             )
-            if replay.action_codec_version < OVERTHROW_CODEC
-            else None
-        )
+            if overthrow is None and _pending_box_of(state, _OVERTHROW) is None:
+                overthrow_waits = False
         if overthrow == OVERTHROW_DEFERRED:
+            overthrow_waits = True
             dropped.append((index, OVERTHROW_DEFERRED))
             continue
+        if overthrow in (OVERTHROW_FOR_SPACE, _OVERTHROW_SECOND):
+            overthrow_waits = False
         if reveal is not None:
             reveal.sync(state)
             refused = reveal.refuses_optional_recall(engine, state, recorded)
@@ -1255,6 +1265,8 @@ OVERTHROW_CODEC: Final = 152
 OVERTHROW_PART_DROPPED: Final = "overthrow_with_the_space"
 OVERTHROW_DEFERRED: Final = "overthrow_deferred"
 OVERTHROW_FOR_SPACE: Final = "overthrow_for_space"
+# The second part after a deferred first: taken as recorded, the box's two.
+_OVERTHROW_SECOND: Final = "overthrow_second"
 _OVERTHROW: Final = PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE
 
 
@@ -1309,7 +1321,12 @@ def _names_instance(step: ReplayStep, card_id: ActionValue | None) -> bool:
 
 
 def _overthrow_plan(
-    state: GameState, steps: tuple[ReplayStep, ...], index: int, slot: int
+    state: GameState,
+    steps: tuple[ReplayStep, ...],
+    index: int,
+    slot: int,
+    *,
+    deferred: bool = False,
 ) -> str | None:
     """How recorded step ``index`` meets Overthrow's two instead of one.
 
@@ -1325,7 +1342,9 @@ def _overthrow_plan(
     two that names the card (a trash, Dissecting Kit's or Beguiling
     Pheromones') lands the two on the first part: deferred, the box could
     lapse before its two. ``slot`` is the grafted box a record before codec
-    v143 had active (``_GraftSlot``), 0 for a later one.
+    v143 had active (``_GraftSlot``), 0 for a later one. With ``deferred``
+    the first part was dropped, so this part takes the two: the space's step
+    as the box, the box's own step as recorded (``_OVERTHROW_SECOND``).
     """
 
     recorded = _slot_tagged(steps[index], slot)
@@ -1338,6 +1357,8 @@ def _overthrow_plan(
     space_part = _space_influence_step(untagged(recorded))
     if not space_part and not _overthrow_box_step(state, recorded, box):
         return None
+    if deferred:
+        return OVERTHROW_FOR_SPACE if space_part else _OVERTHROW_SECOND
     _, context = current_agent_effect_context(state)
     space_id = context.get("space_id")
     if not isinstance(space_id, str):
