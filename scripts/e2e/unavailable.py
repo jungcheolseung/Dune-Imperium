@@ -713,8 +713,40 @@ CONFLICT_END_RENDER_JS = """({fixture, language}) => {
 }"""
 
 # The actions panel, the turn-end row and the hand card, icons read as
-# their names; each play row's words and its warning badge apart.
+# their names.
 CONFLICT_END_READ_JS = """(card) => {
+  const walk = (n) => n.nodeType === 3 ? n.textContent
+    : n.tagName === 'IMG' ? n.alt : [...n.childNodes].map(walk).join('');
+  const words = (n) => n ? walk(n).replace(/\\s+/g, ' ').trim() : null;
+  const box = document.getElementById('actions');
+  const hand = document.querySelector(
+    `#private-zone .vcard[data-instance="${card}"]`);
+  return {
+    rows: [...box.querySelectorAll('.unavailable-item')].map((r) => ({
+      key: r.dataset.key,
+      surface: r.dataset.surface,
+      body: words(r.querySelector('.unavailable-body')),
+      badge: words(r.querySelector('.unavailable-badge')),
+      disabled: r.getAttribute('aria-disabled') === 'true'
+        && r.getAttribute('role') === 'button' && !r.closest('.action-item'),
+    })),
+    heading: words(box.querySelector('.unavailable-heading')),
+    items: [...box.querySelectorAll('.action-item')].map(words),
+    turnEnd: [...document.querySelectorAll(
+      '#decision-info .turn-end-row button')].map(words),
+    hand: hand && {
+      blocked: hand.classList.contains('blocked'),
+      legal: hand.classList.contains('legal'),
+      title: hand.title,
+    },
+    english: box.innerText,
+  };
+}"""
+
+
+# The same for the Conflict-end window's play rows (OQ-113 (C)): each play
+# row's words and its warning badge apart.
+CONFLICT_END_PLAY_READ_JS = """(card) => {
   const walk = (n) => n.nodeType === 3 ? n.textContent
     : n.tagName === 'IMG' ? n.alt : [...n.childNodes].map(walk).join('');
   const words = (n) => n ? walk(n).replace(/\\s+/g, ' ').trim() : null;
@@ -793,7 +825,7 @@ def conflict_end_case(browser, base: str) -> bool:
             page.evaluate(
                 CONFLICT_END_RENDER_JS, {"fixture": fixture, "language": language}
             )
-            shown = page.evaluate(CONFLICT_END_READ_JS, card)
+            shown = page.evaluate(CONFLICT_END_PLAY_READ_JS, card)
             turn_end = expected["turn_end_second" if name == "second" else "turn_end"]
             ok &= check.ok(
                 shown["rows"] == []
@@ -803,11 +835,18 @@ def conflict_end_case(browser, base: str) -> bool:
                 f"{label}: the copy is one ordinary play row, beside the turn-end row",
                 [shown["rows"], shown["items"], shown["turnEnd"]],
             )
+            # The specimen shortfall (OQ-030) shows beside it when the supply
+            # cannot make both specimens.
             badge = shown["items"][0]["badge"] if shown["items"] else None
+            warns = (badge or "").startswith(expected["warning"])
             ok &= check.ok(
-                badge == (expected["warning"] if warned else None),
+                warns is warned,
                 f"{label}: "
-                + ("it warns that it changes nothing" if warned else "no warning"),
+                + (
+                    "it warns that it changes nothing"
+                    if warned
+                    else "no warning that it changes nothing"
+                ),
                 badge,
             )
             hand = shown["hand"] or {}
