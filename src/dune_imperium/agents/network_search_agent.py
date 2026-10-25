@@ -43,7 +43,13 @@ Like a checkpoint seat, a search seat enters by file: ``search:<path>``.
 playouts from another file's value head and keeps everything else -- the
 shortlist, every playout move, the greedy answers -- on the first file; it
 splits a network's policy from its value when two files search differently
-(the 2026-10-07 reversal, docs/evaluation/m10-2026-10-07.md section 4).
+(the 2026-10-07 reversal, docs/evaluation/m10-2026-10-07.md section 4). The
+value file may be of an older codec (``older_teacher.reads_older_rows``): its
+value head reads the view through the adapter. On 2026-10-24 the v151 entity
+student searched resolved worse than the v147 file it was distilled from;
+its value head differs from the teacher's by about 0.046 (root mean square)
+while ``flip_margin`` separates candidates at 0.01, so the student's moves
+with the teacher's leaves tell whether the leaves are why.
 
 A decision whose legal actions are all templates the checkpoint was never
 trained on (``NetworkAgent.untrained``: an Arrakeen Scouts bid, pick or
@@ -182,6 +188,13 @@ DEFAULT_HOLD_COMBAT_LEAD = True
 DEFAULT_FLIP_MARGIN = 0.0
 DEFAULT_PRIOR_WEIGHT = 0.0
 DEFAULT_HALVING = 0
+# With ``network_draft`` the network picks the seat's Leader in the draft
+# instead of the search: playouts end with the round, too soon to judge a
+# Leader, and on 2026-10-23 a search seat overturned the network's Gurney
+# Halleck (probability about 1.0) for Liet Kynes in a game against people.
+# Off by default; a measurement option (handoff "학습·AI", 2026-10-24).
+DEFAULT_NETWORK_DRAFT = False
+LEADER_PICK = "choose_leader"
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,6 +304,7 @@ class NetworkSearchAgent:
         flip_margin: float = DEFAULT_FLIP_MARGIN,
         prior_weight: float = DEFAULT_PRIOR_WEIGHT,
         halving: int = DEFAULT_HALVING,
+        network_draft: bool = DEFAULT_NETWORK_DRAFT,
     ) -> None:
         if seed < 0:
             raise ValueError("agent seed must not be negative")
@@ -317,6 +331,8 @@ class NetworkSearchAgent:
 
         self._network_agent: NetworkAgent | None = None
         self._older: OlderTeacher | None = None
+        # An older codec's value file under a current policy file.
+        self._older_value: OlderTeacher | None = None
         self.value_network: PolicyValueNetwork
         if reads_older_rows(path):
             # An older codec's file plays through its own rows (module
@@ -337,12 +353,18 @@ class NetworkSearchAgent:
             self._answerer = self._network_agent
             # The leaves' value head: the same network unless ``value_path``
             # names another file (observation encodings migrate on load, so
-            # any file of this observation version reads the same views).
-            self.value_network = (
-                self._network_agent.network
-                if value_path is None
-                else load_network_agent(value_path, config, seed=seed).network
-            )
+            # any file of this observation version reads the same views; an
+            # older codec's file reads them through the adapter).
+            if value_path is None:
+                self.value_network = self._network_agent.network
+            elif reads_older_rows(value_path):
+                older_value = cached_older_network(value_path)
+                self._older_value = OlderTeacher(older_value, seed=seed)
+                self.value_network = older_value.network
+            else:
+                self.value_network = load_network_agent(
+                    value_path, config, seed=seed
+                ).network
         self.rollouts = rollouts
         self.candidates = candidates
         self.horizon_rounds = horizon_rounds
@@ -353,6 +375,7 @@ class NetworkSearchAgent:
         self.flip_margin = flip_margin
         self.prior_weight = prior_weight
         self.halving = halving
+        self.network_draft = network_draft
         self._rng = random.Random(seed)
         self._engine = UprisingRulesEngine()
         self._taken = _Taken()
@@ -471,8 +494,9 @@ class NetworkSearchAgent:
         return engine_order_answer(state, seat, offered)
 
     def _leaf_value(self, view: PlayerView) -> float:
-        if self._older is not None:
-            return self._older.value(self._encode(view))
+        older = self._older if self._older is not None else self._older_value
+        if older is not None:
+            return older.value(self._encode(view))
         network = self.value_network
         encoded = torch.from_numpy(self._encode(view)).unsqueeze(0)
         with torch.no_grad():
@@ -668,6 +692,12 @@ class NetworkSearchAgent:
                 state, observation, legal_actions
             )
         offered = without_undo_actions(legal_actions)
+        if self.network_draft and all(
+            action.action_id == LEADER_PICK for action in offered
+        ):
+            return self._answerer.choose_action_with_state(
+                state, observation, legal_actions
+            )
         if len(offered) == 1:
             return offered[0]
         if self._untrained(state, observation.player, offered):
