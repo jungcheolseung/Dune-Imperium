@@ -299,6 +299,11 @@ const PROVENANCE_KINDS = {
   intrigue: "intrigue",
   skill: "skills",
   tech: "tech",
+  /* A Tech tile's Endgame line ("round:9:player:0:endgame_tech:
+     choam_transports", rules/tech.py apply_endgame_tech_effects): it pays
+     on the step that ends the last Combat, so without its name the point
+     reads as part of the Conflict's result (play feedback 2026-10-25). */
+  endgame_tech: "tech",
 };
 
 /* A provenance string ("imperium:high_priority_travel:1",
