@@ -2430,6 +2430,18 @@ def _agent_icon_reason(block: AgentIconBlock) -> Reason:
                 "{graft}한 카드일 때만 — 차례가 끝날 때 사라짐",
                 "condition",
             )
+        case AgentIconCondition.GRAFTED_WITH if block.factions == (
+            Faction.EMPEROR,
+            Faction.SPACING_GUILD,
+        ):
+            # Interstellar Conspiracy's words [card face], tokens_ko.py's for KO.
+            return (
+                "Only when grafted with an Emperor or Spacing Guild card;"
+                " it lapses when the turn ends",
+                "황제 또는 우주 항행 길드 카드와 {graft}했을 때만"
+                " — 차례가 끝날 때 사라짐",
+                "condition",
+            )
         case AgentIconCondition.NOT_PRINTED:
             return ("Not printed on this card", "이 카드에 없는 아이콘", "condition")
     return NOT_NOW

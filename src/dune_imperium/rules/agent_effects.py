@@ -612,8 +612,8 @@ def legal_agent_card_influence_actions(
     # A gain on a cube at the top of its track is lost (OQ-060), so no
     # picker below offers such a Faction. With none left the box's plain
     # resolution pays the rest (Southern Faith's draw, Possible Futures'
-    # troops, Interstellar Conspiracy's spice), or else the box waits for
-    # the turn's end (``resolve_agent_card_effect``, OQ-057 (1)).
+    # troops), or else the box waits for the turn's end
+    # (``resolve_agent_card_effect``, OQ-057 (1)).
     recorded = box_ability(effect)
     if isinstance(target_piece(recorded), GainInfluence):
         # A chosen Faction's Influence, from its record (composed A3c).
@@ -624,7 +624,7 @@ def legal_agent_card_influence_actions(
         and either_box(recorded)
         and isinstance(either_choice(recorded), GainInfluence)
     ):
-        # Southern Faith, Interstellar Conspiracy (composed A3f).
+        # Southern Faith (composed A3f).
         return either_rows(state, player, recorded)
     rising = tuple(
         faction

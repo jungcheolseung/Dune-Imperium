@@ -193,6 +193,11 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: ("influence", "intrigue"),
         _BOX.DRAW_ONE_AND_COMBAT_ICON: ("cards", "combat"),
         _BOX.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: ("cards", "spy"),
+        # Split per icon (engine audit 2026-10-22, P4; the same decision).
+        _BOX.GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD: (
+            "spice",
+            "influence",
+        ),
     }
     for effect, ability in AGENT_BOX_ABILITIES.items():
         if not ability.icons:
@@ -1103,11 +1108,13 @@ def test_control_the_spice_is_a_payment_box() -> None:
     assert payment_box(spice) and not trash_box(spice)
 
 
-def test_three_boxes_put_a_plain_line_beside_a_choice() -> None:
-    """Composed A3f: Southern Faith and High Priority Travel ("Choose one")
-    and Interstellar Conspiracy (a plain line, then a conditioned choice that
-    pays both). The plain line resolves as one action; Possible Futures,
-    whose Bond turns its choice into both, is a hook."""
+def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
+    """Composed A3f: Southern Faith and High Priority Travel ("Choose one").
+    The plain line resolves as one action; Possible Futures, whose Bond
+    turns its choice into both, is a hook. Interstellar Conspiracy, a plain
+    line then a conditioned choice that once paid both, resolves icon by
+    icon since the engine audit 2026-10-22 (P4; OQ-027 extension 3, user
+    decision 2026-10-18 "원칙대로 아이콘마다 나누자")."""
 
     either = {
         effect: ability.structure
@@ -1120,8 +1127,8 @@ def test_three_boxes_put_a_plain_line_beside_a_choice() -> None:
         _BOX.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO: (
             AbilityStructure.ONE_OF
         ),
-        conspiracy: AbilityStructure.SEQUENCE,
     }
+    assert AGENT_BOX_ABILITIES[conspiracy].icons == ("spice", "influence")
     futures = AGENT_BOX_ABILITIES[_BOX.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND]
     assert futures.hook == "possible_futures"
     partner = GraftedWithFaction((Faction.EMPEROR, Faction.SPACING_GUILD))

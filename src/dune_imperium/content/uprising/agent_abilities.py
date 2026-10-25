@@ -498,11 +498,14 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             # Interstellar Conspiracy: "Gain 1 spice, If grafted with an Emperor
             # or Spacing Guild card: Gain 1 Influence with a chosen Faction" --
-            # with the partner the choice pays both.
-            _INTERSTELLAR_CONSPIRACY: Ability(
-                timing=AbilityTiming.AGENT_BOX,
-                sections=(
-                    _line(GainResources(spice=1)),
+            # each icon resolves on its own, in the owner's order (OQ-027, user
+            # decision 2026-10-18 "원칙대로 아이콘마다 나누자"; engine audit
+            # 2026-10-22, P4): the spice may come first, to pay for another
+            # effect before the Faction is chosen.
+            _INTERSTELLAR_CONSPIRACY: _icons(
+                ("spice", _line(GainResources(spice=1))),
+                (
+                    "influence",
                     _line(
                         GainInfluence(),
                         condition=GraftedWithFaction(

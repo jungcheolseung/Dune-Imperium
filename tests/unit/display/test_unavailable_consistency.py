@@ -1633,6 +1633,22 @@ def _old_icon_condition_holds(
             return True
         if key == "spice":
             return bool(owner.alliance_faction_ids)
+    # 2026-10-25 (engine audit 2026-10-22, P4; OQ-027 extension 3, user
+    # decision 2026-10-18 "원칙대로 아이콘마다 나누자"): Interstellar
+    # Conspiracy's two lines became two icons, the spice always and the
+    # Influence when grafted with an Emperor or Spacing Guild card.
+    conspiracy = (
+        PersonalCardAgentEffect.GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD  # noqa: E501
+    )
+    if effect is conspiracy:
+        if key == "spice":
+            return True
+        if key == "influence":
+            partner = context.get("graft_card_id")
+            return bool(partner) and bool(
+                {Faction.EMPEROR, Faction.SPACING_GUILD}
+                & set(personal_card_for_instance(str(partner)).factions)
+            )
     # Industrial Espionage's grafted Research line became its own icon.
     # 2026-10-10: Piter, Genius Advisor's reward Research too, armed after
     # its troop cost with no condition (OQ-106).
@@ -1751,8 +1767,12 @@ def test_the_agent_icon_condition_is_what_it_was() -> None:
                             research_space=research,
                         )
                         for grafted in (False, True):
+                            # A Spacing Guild partner (Keys to Power): only
+                            # Interstellar Conspiracy reads its Factions.
                             context: dict[str, Any] = (
-                                {"graft_card_id": "x"} if grafted else {}
+                                {"graft_card_id": "imperium:keys_to_power:0"}
+                                if grafted
+                                else {}
                             )
                             assert agent_icon_condition_holds(
                                 owner, context, effect, key
