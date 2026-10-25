@@ -568,6 +568,9 @@ _ARMED_REWARD_CARDS = (
     "elite_forces",
     # Its "draw two cards and Research" after the lost troop (OQ-106).
     "piter_genius_advisor",
+    # Its two cards after the mandatory discard (OQ-106; engine audit
+    # 2026-10-22, P6): the app's GuildEnvoyAbility answers the discard.
+    "guild_envoy",
 )
 #: Urgent Shigawire's added draw comes after the boosted card's own
 #: abilities in the card row (``_boost_draw``).

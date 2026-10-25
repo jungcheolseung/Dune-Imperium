@@ -360,10 +360,18 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 _line(DrawIntrigueCards(1), condition=_GUILD_DISCARD),
                 armed=("cards", "intrigue"),
             ),
-            # Guild Envoy: the discard is not optional.
+            # Guild Envoy: "[discard]" then, printed below it, "If you
+            # discarded a Spacing Guild card: [card][card]" [card face] -- no
+            # arrow, so the discard is no cost but the box's own mandatory
+            # effect ("Agent turn에 play하면 반드시 card를 discard한다."
+            # [FAQ p. 2]). The draw, a hidden draw printed apart, is armed
+            # as its own step (OQ-106, user decision 2026-10-25 "Guild Envoy는
+            # (가) discard와 draw를 별개 단계로 나눠"; engine audit
+            # 2026-10-22, P6), as Guild Spy's is.
             _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: _discard(
                 _line(DrawPersonalCards(2), condition=_GUILD_DISCARD),
                 mark=AbilityMark.MANDATORY,
+                armed=("cards",),
             ),
             # --- Intrigue arrows (composed effects, A3d) --------------------------
             # Branching Path: "If Bene Gesserit Alliance: You may trash an

@@ -225,9 +225,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "카드 1장 {discard} 가능 {arrow_right} {draw:1} "
         "(버린 카드가 우주 항행 길드 카드이면 2장)"
     ),
+    # No arrow on the card face (engine audit 2026-10-22, P6).
     PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: (
-        "카드 1장 {discard} {arrow_right} "
-        "버린 카드가 우주 항행 길드 카드이면 {draw:2}"
+        "카드 1장 {discard}, 버린 카드가 우주 항행 길드 카드이면 {draw:2}"
     ),
     PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: (
         "카드 1장 {discard} 가능 {arrow_right} {intrigue:1}, {draw:1}"

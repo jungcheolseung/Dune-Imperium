@@ -21,6 +21,7 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.effect_dsl import (
     CompleteContract,
+    DrawPersonalCards,
     ForceEnemyRetreat,
     GainInfluence,
     GainResources,
@@ -2636,6 +2637,18 @@ def agent_icon_block(
     return None
 
 
+def _armed_draw_count(ability: Ability | None, key: str) -> int:
+    """The cards an armed draw icon's line prints (Piter, Genius Advisor and
+    Guild Envoy draw two), or one."""
+
+    if ability is not None and key in ability.armed_icons:
+        line = ability.sections[ability.armed_icons.index(key)]
+        for reward in line.rewards:
+            if isinstance(reward, DrawPersonalCards):
+                return reward.count
+    return 1
+
+
 def agent_icon_condition_holds(
     owner: PlayerState,
     context: Mapping[str, ActionValue],
@@ -2733,8 +2746,9 @@ def resolve_agent_card_icon(
     match key:
         case "cards":
             if available:
-                # Piter, Genius Advisor's reward draws two cards.
-                personal_draw_count = 2 if effect is _LOSE_TROOP_FOR_CARDS else 1
+                # An armed line prints its count (Piter, Genius Advisor's and
+                # Guild Envoy's two cards); one otherwise.
+                personal_draw_count = _armed_draw_count(recorded, key)
         case "intrigue":
             if available:
                 intrigue_draw_count = 1

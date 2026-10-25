@@ -857,6 +857,10 @@ def test_eight_discard_arrows_read_the_discarded_card() -> None:
             AGENT_ICON_CARDS,
             AGENT_ICON_INTRIGUE,
         ),
+        # Guild Envoy prints no arrow: its mandatory discard and the hidden
+        # draw printed below it are separate steps (OQ-106; user decision
+        # 2026-10-25; engine audit 2026-10-22, P6).
+        _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: (AGENT_ICON_CARDS,),
     }
     for effect, mark in discards.items():
         ability = AGENT_BOX_ABILITIES[effect]
@@ -1004,9 +1008,12 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     gambit = _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
     elite = _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
     piter = _BOX.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
+    # Guild Envoy's two cards: the icon path reads an armed line's count
+    # (engine audit 2026-10-22, P6).
+    envoy = _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD
     assert users == {
         AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite},
-        AGENT_ICON_CARDS: {mentat, guild_spy, piter},
+        AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy},
         AGENT_ICON_SPICE: {branching},
         AGENT_ICON_TROOPS: {gambit, elite},
         AGENT_ICON_PLEDGE: {gambit},

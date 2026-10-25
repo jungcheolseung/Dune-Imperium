@@ -167,9 +167,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "You may discard a card → Draw 1 card "
             "(2 if the discarded card has Spacing Guild affiliation)"
         ),
+        # No arrow on the card face: the discard is no cost (engine audit
+        # 2026-10-22, P6).
         PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: (
-            "Discard a card → Draw 2 cards if the discarded card has "
-            "Spacing Guild affiliation"
+            "Discard a card. If you discarded a Spacing Guild card: Draw 2 cards"
         ),
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: (
             "You may discard a card → Draw 1 Intrigue card, Draw 1 card"
