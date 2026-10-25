@@ -601,8 +601,13 @@ from dune_imperium.rules.tech import optional_trash_tech_ids
 # and the round's first turn, Reveal-turn draws, Signet grafts and Overthrow
 # follow the audit's other fixes. Older records take the split parts where an
 # older engine did them (``conspiracy_icon``, ``conspiracy_spice``,
-# ``breakthrough_research``, ``guild_envoy_draw``) and pass the new mission
-# windows (``mission_pass_alone``).
+# ``breakthrough_research``, ``guild_envoy_draw``), land Overthrow's two
+# instead of one on one of its two recorded parts (``overthrow_for_space``,
+# ``overthrow_deferred``, ``overthrow_with_the_space``), rename the
+# Navigation reshuffle it moves (``navigation_reshuffle_renamed``), take a
+# recorded Scouts pass as the confirm where every line is withheld
+# (``scouts_pass_without_option``) and pass the new mission windows
+# (``mission_pass_alone``); docs/human-records.md.
 ACTION_CODEC_VERSION = 152
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4

@@ -97,7 +97,7 @@ from dune_imperium.rules.effect_steps import (
 )
 from dune_imperium.rules.effects import board_icon_is_pending
 from dune_imperium.rules.frames import FrameKind
-from dune_imperium.rules.graft_boxes import active_box
+from dune_imperium.rules.graft_boxes import active_box, tagged
 from dune_imperium.rules.immortality import (
     OWED_ORIGIN_RESEARCH,
     advance_research,
@@ -435,10 +435,21 @@ def _v152_split_steps(replay: GameReplay) -> dict[int, str]:
     return split
 
 
+def _pass_alone_steps(replay: GameReplay) -> set[int]:
+    """This engine's passes of a Scouts mission window that offered a seat
+    the pass alone (OQ-131); an engine before v152 skipped the seat."""
+
+    return _only_choice_in(replay, FrameKind.SCOUTS_MISSION, "scouts_decline_mission")
+
+
 def _v152_counts(replay: GameReplay) -> Counter[str]:
     """The bridge counts of those steps in a record before v152."""
 
-    return Counter(_v152_split_steps(replay).values())
+    counts = Counter(_v152_split_steps(replay).values())
+    passes = len(_pass_alone_steps(replay))
+    if passes:
+        counts[migration.MISSION_PASS_ALONE] = passes
+    return counts
 
 
 def _dropped(replay: GameReplay, codec: int, drop: set[int] | None = None) -> set[int]:
@@ -454,6 +465,7 @@ def _dropped(replay: GameReplay, codec: int, drop: set[int] | None = None) -> se
     return (
         set(drop or ())
         | (set(_v152_split_steps(replay)) if codec < 152 else set())
+        | (_pass_alone_steps(replay) if codec < 152 else set())
         | (set(_held_steps(replay)) if codec < 142 else set())
         | (_no_option_steps(replay) if codec < 149 else set())
         | (_reward_icon_steps(replay) if codec < 150 else set())
@@ -498,7 +510,7 @@ def _effect_counts(replay: GameReplay, codec: int) -> dict[str, int]:
 
     held = set(_held_steps(replay)) if codec < 142 else set()
     if codec < 152:
-        held |= set(_v152_split_steps(replay))
+        held |= set(_v152_split_steps(replay)) | _pass_alone_steps(replay)
     # A Contract's in-turn icon row is the reward bridges' (stage B3b).
     rewards = _reward_icon_steps(replay) if codec < 150 else frozenset()
     skipped = _no_option_steps(replay) if codec < 149 else set()
@@ -519,8 +531,9 @@ def _reward_icon_counts(
     """``record``'s bridge counts less those of the reward bridges, which
     between them must have added every icon row back, those of the effect
     bridges (stage B3), which must have expanded every whole action, and
-    those of the v152 ``follows`` bridges, which must have added every part
-    an older engine did inside the step before it."""
+    those of the v152 bridges, which must have added every part an older
+    engine did inside the step before it and every mission pass it never
+    asked for."""
 
     counts = Counter(record.bridge_counts())
     added = sum(counts.pop(name, 0) for name in REWARD_ICON_BRIDGES)
@@ -532,8 +545,9 @@ def _reward_icon_counts(
         if record.replay.action_codec_version < 152
         else Counter[str]()
     )
-    assert {name: counts.pop(name, 0) for name, _ in _V152_FOLLOWS} == {
-        name: split[name] for name, _ in _V152_FOLLOWS
+    v152 = [name for name, _ in _V152_FOLLOWS] + [migration.MISSION_PASS_ALONE]
+    assert {name: counts.pop(name, 0) for name in v152} == {
+        name: split[name] for name in v152
     }
     return counts
 
@@ -4342,7 +4356,9 @@ def test_a_recorded_guild_envoy_discard_draws_after_a_guild_card(
     assert migration._guild_envoy_draw(ENGINE, drawn, _decided(drawn), follow) is None
 
 
-def test_overthrow_takes_the_space_influence_step_and_drops_the_second() -> None:
+def _overthrow_on_secrets(bene_gesserit: int = 0) -> tuple[GameState, str]:
+    """Seat 0 sends Overthrow to Secrets (a Bene Gesserit space)."""
+
     from tests.unit.rules.test_agent_effects import _action_to, _imperium_instance
 
     from dune_imperium.rules.agent_turn import apply_agent_action
@@ -4354,7 +4370,11 @@ def test_overthrow_takes_the_space_influence_step_and_drops_the_second() -> None
         phase=GamePhase.PLAYER_TURNS,
         round_number=1,
         players=(
-            PlayerState(player_id=0, hand=(overthrow,)),
+            PlayerState(
+                player_id=0,
+                hand=(overthrow,),
+                influence=Influence(bene_gesserit=bene_gesserit),
+            ),
             *(PlayerState(player_id=seat) for seat in range(1, 4)),
         ),
         decision_stack=(
@@ -4365,30 +4385,199 @@ def test_overthrow_takes_the_space_influence_step_and_drops_the_second() -> None
             ),
         ),
     )
-    placed = apply_agent_action(state, _action_to(state, "secrets")).state
-    space = DomainAction(
-        action_id="gain_influence",
-        actor=0,
-        arguments=(
-            ("icon", "faction"),
-            ("printed", "secrets"),
-            ("source", "board_space"),
-        ),
-    )
-    box = DomainAction(
-        action_id="resolve",
-        actor=0,
-        arguments=(("printed", "overthrow"), ("source", "agent_card")),
-    )
-    assert space not in ENGINE.legal_actions(placed, 0)
-    assert not migration._overthrow_part_done(placed, space)
+    return apply_agent_action(state, _action_to(state, "secrets")).state, overthrow
 
-    # The space's step first: it is the box (two instead of one), and the
-    # recorded box after it is the part already gained.
-    row = migration._overthrow_for_space(ENGINE, placed, _decided(placed), space)
-    assert row == box
-    gained = ENGINE.apply(placed, row).state
-    assert gained.players[0].influence.bene_gesserit == 2
-    assert migration._overthrow_part_done(gained, box)
-    # The box first: the recorded space step after it is that part.
-    assert migration._overthrow_part_done(ENGINE.apply(placed, box).state, space)
+
+_SPACE_STEP = DomainAction(
+    action_id="gain_influence",
+    actor=0,
+    arguments=(
+        ("icon", "faction"),
+        ("printed", "secrets"),
+        ("source", "board_space"),
+    ),
+)
+_OVERTHROW_STEP = DomainAction(
+    action_id="resolve",
+    actor=0,
+    arguments=(("printed", "overthrow"), ("source", "agent_card")),
+)
+_FINISH = DomainAction(action_id="finish_agent_turn", actor=0)
+
+
+def test_overthrow_lands_its_two_where_an_older_engine_reached_even() -> None:
+    # OQ-128: "Gain two Influence instead of one." replaces the space's one;
+    # a recording engine gave the space's 1 and the card's +1 as two steps.
+    # The two land on the part where its +1 reached an even Influence (the
+    # track's 2 and 4), the other part is dropped.
+    even, _ = _overthrow_on_secrets(0)
+    odd, _ = _overthrow_on_secrets(1)
+    plan = migration._overthrow_plan
+    for first, second in (
+        (_SPACE_STEP, _OVERTHROW_STEP),
+        (_OVERTHROW_STEP, _SPACE_STEP),
+    ):
+        steps = (first, second, _FINISH)
+        assert plan(even, steps, 0, 0) == migration.OVERTHROW_DEFERRED
+    # Odd: the first part takes the two -- the space's step as the box, the
+    # box's own step as recorded.
+    assert plan(odd, (_SPACE_STEP, _OVERTHROW_STEP, _FINISH), 0, 0) == (
+        migration.OVERTHROW_FOR_SPACE
+    )
+    assert plan(odd, (_OVERTHROW_STEP, _SPACE_STEP, _FINISH), 0, 0) is None
+    row = migration._overthrow_space_row(ENGINE, odd, 0)
+    assert row == _OVERTHROW_STEP
+    gained = ENGINE.apply(odd, row).state
+    assert gained.players[0].influence.bene_gesserit == 3
+    assert migration._overthrow_part_done(gained, _OVERTHROW_STEP)
+    boxed = ENGINE.apply(odd, _OVERTHROW_STEP).state
+    assert migration._overthrow_part_done(boxed, _SPACE_STEP)
+
+
+def test_overthrow_is_planned_only_when_both_parts_are_recorded() -> None:
+    # The recording engine lapsed the box when another effect trashed the
+    # card first (OQ-022): the space's step is left as recorded, so the
+    # record stops where this engine holds it behind the box, rather than
+    # gain two it never gained (review of codec v152).
+    even, overthrow = _overthrow_on_secrets(0)
+    plan = migration._overthrow_plan
+    trash = DomainAction(
+        action_id="choose_personal_card", actor=0, arguments=(("card_id", overthrow),)
+    )
+    assert plan(even, (_SPACE_STEP, trash, _FINISH), 0, 0) is None
+    assert _SPACE_STEP not in ENGINE.legal_actions(even, 0)
+    # A step between that names the card lands the two on the first part:
+    # deferred, the box could lapse before them.
+    assert plan(even, (_OVERTHROW_STEP, trash, _SPACE_STEP, _FINISH), 0, 0) is None
+    assert plan(even, (_SPACE_STEP, trash, _OVERTHROW_STEP, _FINISH), 0, 0) == (
+        migration.OVERTHROW_FOR_SPACE
+    )
+    # Another seat's steps and chance between do not count.
+    other = DomainAction(action_id="pass_combat_intrigue", actor=1)
+    assert plan(even, (_OVERTHROW_STEP, other, _SPACE_STEP, _FINISH), 0, 0) == (
+        migration.OVERTHROW_DEFERRED
+    )
+
+
+def test_a_graft_slot_reads_an_untagged_box_1_step_as_box_1s() -> None:
+    # Before codec v143 a grafted turn's box 1 steps carried no tag while
+    # that engine had box 1 active (_GraftSlot): the partner's plain
+    # resolution is not Overthrow's box 0 part (review of codec v152).
+    from tests.unit.rules.test_immortality_imperium_choices import (
+        _card,
+        _graft,
+        _owner,
+        _state,
+    )
+
+    overthrow = _card("overthrow")
+    partner = _card("interstellar_conspiracy")
+    grafted = _graft(
+        _state(_owner((overthrow, partner))), overthrow, "secrets", partner
+    )
+    plain = DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    space = DomainAction(action_id="resolve_faction_influence", actor=0)
+    steps = (plain, space, _FINISH)
+    assert migration._overthrow_plan(grafted, steps, 0, 1) is None
+    assert migration._overthrow_plan(grafted, steps, 0, 0) == (
+        migration.OVERTHROW_DEFERRED
+    )
+    assert migration._slot_tagged(plain, 1) == tagged(plain, 1)
+    assert migration._slot_tagged(_FINISH, 1) == _FINISH
+
+
+def test_another_cards_two_instead_of_one_is_no_overthrow_part() -> None:
+    # Subversive Advisor's box replaces the space's one too: a refused
+    # space step there is not Overthrow's to drop (review of codec v152).
+    from tests.unit.rules.test_immortality_tleilaxu_cards import (
+        FACE_DANCER,
+        SUBVERSIVE,
+        _graft,
+        _owner,
+        _state,
+    )
+
+    grafted = _graft(
+        _state(_owner((FACE_DANCER, SUBVERSIVE))),
+        FACE_DANCER,
+        "dutiful_service",
+        SUBVERSIVE,
+    )
+    resolved = apply_whole(
+        ENGINE,
+        grafted,
+        tagged(DomainAction(action_id="resolve_agent_card_effect", actor=0), 1),
+    ).state
+    space = DomainAction(action_id="resolve_faction_influence", actor=0)
+    assert not migration._overthrow_part_done(resolved, space)
+
+
+def test_a_mission_window_with_the_pass_alone_is_passed_before_the_record() -> None:
+    # OQ-131: a seat that cannot join a Scouts mission is asked, with the
+    # pass alone; an older engine skipped it unasked, so the window is never
+    # the record's to answer -- a recorded pass of that seat belongs to a
+    # later mission (review of codec v152).
+    from tests.unit.rules import test_scouts_missions as missions
+
+    base = missions._base()
+    empty = replace(base.players[1], troops_supply=0, troops_garrison=12)
+    state = missions._reveal(
+        replace(base, players=(base.players[0], empty, *base.players[2:])),
+        "security_detail",
+    )
+    taken = migration._Taken()
+    # Seat 0 can join: its window is the record's.
+    assert missions._owner(state) == 0
+    assert migration._pass_missions_alone(ENGINE, state, taken) is state
+    state = missions._act(state, "scouts_decline_mission")
+    assert missions._owner(state) == 1
+    passed = migration._pass_missions_alone(ENGINE, state, taken)
+    assert missions._owner(passed) == 2
+    assert [step.bridge for step in taken.steps] == [migration.MISSION_PASS_ALONE]
+
+
+def test_a_recorded_scouts_pass_is_the_confirm_where_every_line_is_withheld() -> None:
+    # P2 (OQ-071) withholds a Scouts cost line whose rewards buy nothing; a
+    # pass recorded where every line an older engine offered is withheld is
+    # the confirm of taking nothing.
+    from tests.unit.rules import test_scouts_choices as choices
+
+    poor = {"resources": Resources(solari=1, spice=0, water=1)}
+    state = choices._reveal(choices._base(**{"0": poor}), "royal_delegation")
+    decision = _decided(state)
+    recorded = DomainAction(action_id="scouts_pass", actor=0)
+    confirm = migration._scouts_pass_without_option(
+        ENGINE, state, decision, recorded
+    )
+    assert confirm is not None and confirm in ENGINE.legal_actions(state, 0)
+    # Not where a line is offered.
+    rich = choices._reveal(choices._base(), "royal_delegation")
+    assert (
+        migration._scouts_pass_without_option(ENGINE, rich, _decided(rich), recorded)
+        is None
+    )
+
+
+def test_a_navigation_reshuffle_is_renamed_only_for_overthrows_gain() -> None:
+    # A Navigation card's draw is named after the gain that triggered it;
+    # Overthrow's two (OQ-128) move that gain to the card's box.
+    state, _, pile = _planetary_array_reshuffle()
+    old = "round:1:player:0:influence:bene_gesserit:navigation:0:discard_shuffle"
+    new = (
+        "round:1:player:0:agent_card:imperium:overthrow:0:influence:bene_gesserit"
+        ":navigation:1:discard_shuffle"
+    )
+    renamed = migration._navigation_reshuffle_renamed
+
+    def asking(decision_id: str) -> ChanceDecision:
+        return ChanceDecision(
+            decision_id=decision_id, prompt="Shuffle", options=pile, count=len(pile)
+        )
+
+    recorded = ChanceOutcome(old, pile)
+    assert renamed(ENGINE, state, asking(new), recorded) == ChanceOutcome(new, pile)
+    # Not another Faction's, not a draw outside a card's box.
+    other = ChanceOutcome(old.replace("bene_gesserit", "fremen"), pile)
+    assert renamed(ENGINE, state, asking(new), other) is None
+    space = "round:1:player:0:influence:bene_gesserit:navigation:1:discard_shuffle"
+    assert renamed(ENGINE, state, asking(space), recorded) is None
