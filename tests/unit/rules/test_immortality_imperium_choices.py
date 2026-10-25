@@ -855,8 +855,12 @@ def test_shadout_mapes_deploys_a_garrison_commander() -> None:
     context = dict(result.state.decision_stack[-1].context)
     # Commander 2 + Mapes' sword; the Skills switch on with the Commander:
     # Loyal's 2 strength and Charismatic's late Persuasion (OQ-028 (c)).
-    assert context["strength"] == 2 + 1
     assert owner.combat_strength == 2 + 1 + 2
+    # The Reveal's running total moves with the Skill share as combat_strength
+    # does (it held 2 + 1 until the engine audit 2026-10-22, R3: units leaving
+    # and coming back then brought a stale share back) [Main p. 12]
+    # [Bloodlines p. 4].
+    assert context["strength"] == owner.combat_strength
     assert context["persuasion"] == 1 + 1
     assert "commanders_deployed" in {event.kind for event in result.events}
 
