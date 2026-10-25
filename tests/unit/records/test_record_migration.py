@@ -394,16 +394,66 @@ def _held_steps(replay: GameReplay) -> dict[int, str]:
     return held
 
 
+# The ``follows`` bridges of codec v152 (engine audit 2026-10-22, P4-P6).
+_V152_FOLLOWS = (
+    ("conspiracy_spice", migration._conspiracy_spice),
+    ("breakthrough_research", migration._breakthrough_research),
+    ("guild_envoy_draw", migration._guild_envoy_draw),
+)
+
+
+@functools.cache
+def _v152_split_steps(replay: GameReplay) -> dict[int, str]:
+    """This engine's steps an engine before v152 made inside the step before
+    them: Interstellar Conspiracy's spice after its Faction choice,
+    Scientific Breakthrough's Research after its trash, Guild Envoy's draw
+    after its discard. Each is the whole action the ``follows`` bridge named
+    here adds after the previous one; one this engine's seat took later
+    stays recorded (no older engine recorded that order)."""
+
+    runs = _effect_runs(replay)
+    picks = _effect_pick_steps(replay)
+    states = _states(replay)
+    split: dict[int, str] = {}
+    previous: DomainAction | None = None
+    for index, recorded in enumerate(replay.steps):
+        if index in picks:
+            continue
+        if not isinstance(recorded, DomainAction):
+            previous = None
+            continue
+        whole = runs[index][0] if index in runs else recorded
+        if previous is not None:
+            state = without_pick(states[index])
+            decision = ENGINE.current_decision(state)
+            assert decision is not None
+            for name, follow in _V152_FOLLOWS:
+                if follow(ENGINE, state, decision, previous) == whole:
+                    split[index] = name
+                    break
+        previous = whole
+    return split
+
+
+def _v152_counts(replay: GameReplay) -> Counter[str]:
+    """The bridge counts of those steps in a record before v152."""
+
+    return Counter(_v152_split_steps(replay).values())
+
+
 def _dropped(replay: GameReplay, codec: int, drop: set[int] | None = None) -> set[int]:
     """The steps of ``replay`` an engine of ``codec`` would not have recorded:
     before v142 the steps it made inside another (``_held_steps``), before
     v149 the confirms of a Scouts choice with nothing to take, which it
     skipped unasked (``_no_option_steps``), and before v150 the icon rows
     of a reward it paid in one step (``_reward_icon_steps``) and the steps
-    that only pick toward a whole action (``_effect_pick_steps``)."""
+    that only pick toward a whole action (``_effect_pick_steps``), and
+    before v152 the parts of an Agent box it did inside the step before
+    them (``_v152_split_steps``)."""
 
     return (
         set(drop or ())
+        | (set(_v152_split_steps(replay)) if codec < 152 else set())
         | (set(_held_steps(replay)) if codec < 142 else set())
         | (_no_option_steps(replay) if codec < 149 else set())
         | (_reward_icon_steps(replay) if codec < 150 else set())
@@ -442,9 +492,13 @@ def _effect_counts(replay: GameReplay, codec: int) -> dict[str, int]:
     bridge takes back (``_held_steps``) is that bridge's step, not these, and
     neither is the confirm of a Scouts choice with nothing to take, which an
     engine before v149 skipped unasked (``_no_option_steps``; since stage
-    B3d-3 it is a ``confirm_empty`` row, so it is a run of its own)."""
+    B3d-3 it is a ``confirm_empty`` row, so it is a run of its own), nor a
+    part an engine before v152 did inside the step before it
+    (``_v152_split_steps``)."""
 
     held = set(_held_steps(replay)) if codec < 142 else set()
+    if codec < 152:
+        held |= set(_v152_split_steps(replay))
     # A Contract's in-turn icon row is the reward bridges' (stage B3b).
     rewards = _reward_icon_steps(replay) if codec < 150 else frozenset()
     skipped = _no_option_steps(replay) if codec < 149 else set()
@@ -463,14 +517,24 @@ def _reward_icon_counts(
     record: migration.MigratedRecord, replay: GameReplay
 ) -> Counter[str]:
     """``record``'s bridge counts less those of the reward bridges, which
-    between them must have added every icon row back, and those of the effect
-    bridges (stage B3), which must have expanded every whole action."""
+    between them must have added every icon row back, those of the effect
+    bridges (stage B3), which must have expanded every whole action, and
+    those of the v152 ``follows`` bridges, which must have added every part
+    an older engine did inside the step before it."""
 
     counts = Counter(record.bridge_counts())
     added = sum(counts.pop(name, 0) for name in REWARD_ICON_BRIDGES)
     assert added == len(_reward_icon_steps(replay))
     expected = _effect_counts(replay, record.replay.action_codec_version)
     assert {name: counts.pop(name, 0) for name in EFFECT_BRIDGES} == expected
+    split = (
+        _v152_counts(replay)
+        if record.replay.action_codec_version < 152
+        else Counter[str]()
+    )
+    assert {name: counts.pop(name, 0) for name, _ in _V152_FOLLOWS} == {
+        name: split[name] for name, _ in _V152_FOLLOWS
+    }
     return counts
 
 
@@ -3073,13 +3137,15 @@ def test_the_rewards_step_asked_at_a_harvest_cells_cleanup_is_dropped() -> None:
 def test_a_decline_recorded_after_a_play_is_rewritten_to_the_finish() -> None:
     # An older engine offered the window's decline again after a card was
     # played in it (the window stays open while the seat holds Intrigue,
-    # OQ-103); this engine's press there reads "finish". Seed 4: seat 1
-    # plays a Harvest Cells (776), acquires Ghola with it (777), and ends the
-    # window with ``finish_conflict_end_intrigue`` (778). No
-    # fixture of ``data/`` has a window that stayed open after a play, so the
-    # record is this engine's own game, with that press recorded as the
-    # decline.
-    game = _this_engine_game(4)
+    # OQ-103); this engine's press there reads "finish". Seed 28: seat 2
+    # plays a Harvest Cells (1039), declines its Tleilaxu card (1040), and
+    # ends the window with ``finish_conflict_end_intrigue`` (1041). (Seed 4
+    # until codec v152 asked a seat that cannot join a Scouts mission, OQ-131,
+    # which moved its game; 28 is the first of 1-120 that meets this test
+    # and the next.) No fixture of ``data/`` has a window that stayed open
+    # after a play, so the record is this engine's own game, with that press
+    # recorded as the decline.
+    game = _this_engine_game(28)
     finishes = [
         index
         for index, step in enumerate(game.steps)
@@ -3119,7 +3185,7 @@ def test_a_decline_recorded_after_a_play_is_rewritten_to_the_finish() -> None:
 def test_a_decline_is_rewritten_only_where_the_window_stays_open_after_a_play() -> (
     None
 ):
-    game = _this_engine_game(4)
+    game = _this_engine_game(28)
     states = _states(game)
     declines = finishes = 0
     for index, step in enumerate(game.steps):
@@ -3157,10 +3223,13 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # A record's Harvest Cells owes its "resolve the rewards" step until the
     # next recorded Round Start pause; a record of an engine before v140 has no
     # pauses, so the count stays. Another Intrigue card's own rewards step by
-    # that seat -- its choice frame on top -- must still apply. Seed 175: seat
-    # 3 plays Harvest Cells in round 1 (95, finished at 97) and Insider
-    # Information in round 9 (rewards at 891); the pauses of the game are
-    # left out of its record as an older engine left them out. Seed 65 until
+    # that seat -- its choice frame on top -- must still apply. Seed 131:
+    # seat 2 plays Harvest Cells in round 1 (117) and Insider Information in
+    # round 9 (rewards at 1185); the pauses of the game are left out of its
+    # record as an older engine left them out. (Seed 175 until codec v152
+    # asked a seat that cannot join a Scouts mission, OQ-131, which moved
+    # its game; 131 is the first of 1-500 that meets this test again, the
+    # notes below are 175's history.) Seed 65 until
     # cleanup-2d split three Agent boxes per icon (2026-10-18) moved its game
     # (its step 575 is now seat 1's Agent turn); 175 is the first seed of
     # 1-500 meeting every precondition below, the v148 record of its game
@@ -3177,8 +3246,8 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # from 1108 and 375, 495, 649, 807, 955, 1075 (the rewards step is now
     # the card's effect row, ``resolve``);
     # ``play`` is the step that ends the Harvest Cells play, its card.)
-    game = _this_engine_game(175)
-    play, rewards = 120, 1109
+    game = _this_engine_game(131)
+    play, rewards = 117, 1185
     assert _whole(game, play).action_id == "play_conflict_end_intrigue"
     assert _whole(game, rewards).action_id == "resolve_intrigue_rewards"
     assert _actor(game, rewards) == _actor(game, play)
@@ -3191,7 +3260,7 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
         if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
     }
     # round starts between the two
-    assert {123, 245, 376, 496, 650, 808, 956, 1076} <= starts
+    assert {119, 226, 346, 478, 627, 749, 898, 1064} <= starts
     older = _older(game, 148, starts)
 
     record = migrate_record(older)
@@ -3216,8 +3285,8 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
     # on top removed: the due count would drop Insider Information's rewards
     # step as if it were a Harvest Cells', and the record would stop there.
     # That is what the check keeps from happening.
-    game = _this_engine_game(175)
-    rewards = 1109
+    game = _this_engine_game(131)
+    rewards = 1185
     starts = {
         index
         for index, step in enumerate(game.steps)
@@ -4123,3 +4192,203 @@ def test_a_reshuffle_is_renamed_only_between_transports_and_a_reward_draw() -> N
         )
         is None
     )
+
+
+# --- Codec v152: the engine audit's split boxes and asked windows ---------------
+# An older engine paid Interstellar Conspiracy's spice with its Faction choice
+# (or as its plain resolution), did Scientific Breakthrough's owed Research in
+# its trash and drew Guild Envoy's two cards in its Spacing Guild discard
+# (engine audit 2026-10-22, P4-P6); it gave Overthrow's +1 beside the space's
+# 1 (OQ-128) and skipped a seat that could not join a Scouts mission (OQ-131).
+
+
+def test_a_recorded_conspiracy_resolution_is_its_spice_then_its_influence() -> None:
+    from tests.unit.rules.test_immortality_imperium_choices import (
+        DAGGER,
+        _card,
+        _graft,
+        _owner,
+        _state,
+    )
+
+    conspiracy = _card("interstellar_conspiracy")
+    spice = DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", "spice"),)
+    )
+    # Without an Emperor or Spacing Guild partner the plain resolution was
+    # the spice: it is the spice icon's row, in either recorded form.
+    alone = _graft(_state(_owner((conspiracy, DAGGER))), conspiracy, "arrakeen", DAGGER)
+    named = DomainAction(
+        action_id="resolve",
+        actor=0,
+        arguments=(("printed", "interstellar_conspiracy"), ("source", "agent_card")),
+    )
+    plain = DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    for recorded in (plain, named):
+        row = migration._conspiracy_icon(ENGINE, alone, _decided(alone), recorded)
+        assert isinstance(row, DomainAction) and row in ENGINE.legal_actions(alone, 0)
+        paid = ENGINE.apply(alone, row).state
+        assert paid.players[0].resources.spice == alone.players[0].resources.spice + 1
+        assert migration._conspiracy_spice(ENGINE, paid, _decided(paid), row) is None
+
+    # With one, the Faction choice paid the spice too: it follows at once.
+    keys = _card("keys_to_power")
+    partnered = _graft(_state(_owner((conspiracy, keys))), conspiracy, "arrakeen", keys)
+    choice = DomainAction(
+        action_id="choose_agent_card_influence",
+        actor=0,
+        arguments=(("faction", "fremen"),),
+    )
+    chosen = apply_whole(ENGINE, partnered, choice).state
+    follow = migration._conspiracy_spice(ENGINE, chosen, _decided(chosen), choice)
+    assert follow == spice
+    done = apply_whole(ENGINE, chosen, follow).state
+    assert done.players[0].resources.spice == partnered.players[0].resources.spice + 1
+    assert done.players[0].influence.fremen == 1
+    assert migration._conspiracy_spice(ENGINE, done, _decided(done), follow) is None
+
+
+def test_a_recorded_breakthrough_trash_takes_its_research_after() -> None:
+    from tests.unit.rules.test_immortality_tleilaxu_cards import (
+        _owner,
+        _place,
+        _state,
+        _tleilaxu,
+    )
+
+    breakthrough = _tleilaxu("scientific_breakthrough")
+    placed = _place(
+        _state(_owner((breakthrough,), research_space="c8r4")), breakthrough, "arrakeen"
+    )
+    research = DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    named = DomainAction(
+        action_id="trash",
+        actor=0,
+        arguments=(("printed", "scientific_breakthrough"), ("source", "agent_card")),
+    )
+    whole = DomainAction(action_id="trash_agent_card_self_for_vp", actor=0)
+    trashed = apply_whole(ENGINE, placed, whole).state
+    for recorded in (whole, named):
+        assert (
+            migration._breakthrough_research(
+                ENGINE, trashed, _decided(trashed), recorded
+            )
+            == research
+        )
+    researched = apply_whole(ENGINE, trashed, research).state
+    assert len(researched.players[0].hand) == 1  # past the second marker
+    assert (
+        migration._breakthrough_research(
+            ENGINE, researched, _decided(researched), whole
+        )
+        is None
+    )
+    # Not after another step of the box.
+    assert (
+        migration._breakthrough_research(ENGINE, placed, _decided(placed), research)
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("discarded", "draws"),
+    [("reserve:the_spice_must_flow:9", True), ("player:0:starter:dagger:0", False)],
+)
+def test_a_recorded_guild_envoy_discard_draws_after_a_guild_card(
+    discarded: str, draws: bool
+) -> None:
+    from tests.unit.rules.test_agent_effects import (
+        _action_to,
+        _imperium_instance,
+        _instance,
+    )
+
+    from dune_imperium.rules.agent_turn import apply_agent_action
+
+    envoy = _imperium_instance("guild_envoy")
+    owner = PlayerState(
+        player_id=0,
+        hand=(envoy, discarded),
+        deck=(_instance("convincing_argument"), _instance("reconnaissance")),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(owner, *(PlayerState(player_id=seat) for seat in range(1, 4))),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "deliver_supplies")).state
+    discard = DomainAction(
+        action_id="discard_agent_card", actor=0, arguments=(("card_id", discarded),)
+    )
+    after = apply_whole(ENGINE, placed, discard).state
+    follow = migration._guild_envoy_draw(ENGINE, after, _decided(after), discard)
+    if not draws:
+        assert follow is None
+        return
+    assert follow == DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", "cards"),)
+    )
+    drawn = apply_whole(ENGINE, after, follow).state
+    assert len(drawn.players[0].hand) == 2
+    assert migration._guild_envoy_draw(ENGINE, drawn, _decided(drawn), follow) is None
+
+
+def test_overthrow_takes_the_space_influence_step_and_drops_the_second() -> None:
+    from tests.unit.rules.test_agent_effects import _action_to, _imperium_instance
+
+    from dune_imperium.rules.agent_turn import apply_agent_action
+
+    overthrow = _imperium_instance("overthrow")
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        players=(
+            PlayerState(player_id=0, hand=(overthrow,)),
+            *(PlayerState(player_id=seat) for seat in range(1, 4)),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    placed = apply_agent_action(state, _action_to(state, "secrets")).state
+    space = DomainAction(
+        action_id="gain_influence",
+        actor=0,
+        arguments=(
+            ("icon", "faction"),
+            ("printed", "secrets"),
+            ("source", "board_space"),
+        ),
+    )
+    box = DomainAction(
+        action_id="resolve",
+        actor=0,
+        arguments=(("printed", "overthrow"), ("source", "agent_card")),
+    )
+    assert space not in ENGINE.legal_actions(placed, 0)
+    assert not migration._overthrow_part_done(placed, space)
+
+    # The space's step first: it is the box (two instead of one), and the
+    # recorded box after it is the part already gained.
+    row = migration._overthrow_for_space(ENGINE, placed, _decided(placed), space)
+    assert row == box
+    gained = ENGINE.apply(placed, row).state
+    assert gained.players[0].influence.bene_gesserit == 2
+    assert migration._overthrow_part_done(gained, box)
+    # The box first: the recorded space step after it is that part.
+    assert migration._overthrow_part_done(ENGINE.apply(placed, box).state, space)

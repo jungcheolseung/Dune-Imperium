@@ -65,7 +65,7 @@ from typing import Final
 
 from dune_imperium.agents.agent_turn_steps import apply_whole, steps_after
 from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
-from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.personal_cards import (
     card_is_ghola,
     personal_card_for_instance,
@@ -85,6 +85,7 @@ from dune_imperium.core.engine import IllegalActionError
 from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.core.state import GamePhase, GameState, canonical_state_hash
 from dune_imperium.rules import UprisingRulesEngine, turn_rows
+from dune_imperium.rules.agent_box_abilities import SPACE_INFLUENCE_REPLACED
 from dune_imperium.rules.agent_effect_frame import (
     agent_box_can_resolve_by_choice,
     box_actions,
@@ -133,7 +134,7 @@ from dune_imperium.rules.immortality import (
     RESEARCH_ICON_ORDER,
     legacy_research_icon_whole,
 )
-from dune_imperium.rules.influence import influence_can_rise
+from dune_imperium.rules.influence import influence_amount, influence_can_rise
 from dune_imperium.rules.intrigue import current_intrigue_choice_slot
 from dune_imperium.rules.leader_abilities import legal_leader_signet_actions
 from dune_imperium.rules.optional_trash import (
@@ -514,6 +515,11 @@ def migrate_record(
             # Before any bridge: a pause bridge would otherwise answer the
             # Round Start pause this step stood in front of in the record.
             continue
+        if replay.action_codec_version < OVERTHROW_CODEC and _overthrow_deferred(
+            state, replay.steps, index
+        ):
+            dropped.append((index, OVERTHROW_DEFERRED))
+            continue
         if reveal is not None:
             reveal.sync(state)
             refused = reveal.refuses_optional_recall(engine, state, recorded)
@@ -582,6 +588,13 @@ def migrate_record(
                     and _influence_at_the_top(state, recorded)
                 ):
                     dropped.append((index, INFLUENCE_AT_TOP_DROPPED))
+                    break
+                if (
+                    bridged is None
+                    and replay.action_codec_version < OVERTHROW_CODEC
+                    and _overthrow_part_done(state, recorded)
+                ):
+                    dropped.append((index, OVERTHROW_PART_DROPPED))
                     break
                 if bridged is None and (drops_turn_row_refusals or contract_rows_wait):
                     earlier = _asked_earlier(
@@ -1209,6 +1222,110 @@ def _influence_at_the_top(state: GameState, step: ReplayStep) -> bool:
     return isinstance(faction, str) and not influence_can_rise(
         state.players[step.actor], Faction(faction)
     )
+# Codec v152 (OQ-128, user ruling 2026-10-25): Overthrow's "Gain two
+# Influence instead of one." replaces the visited Faction space's own 1, as
+# Subversive Advisor's does; a recording engine gave the space's 1 and the
+# card's +1 as two steps. This engine's two land on the recorded step where
+# the older engine's +1 reached an even Influence -- the track's rewards sit
+# at 2 and 4 -- so they come where they came: the first of the two parts
+# when the Faction's Influence was odd, else the second, and the first is
+# then dropped (``OVERTHROW_DEFERRED``). The part the two land on is this
+# engine's Overthrow box (``overthrow_for_space`` names the box for the
+# space's step); the other part has no counterpart and is dropped.
+OVERTHROW_CODEC: Final = 152
+OVERTHROW_PART_DROPPED: Final = "overthrow_with_the_space"
+OVERTHROW_DEFERRED: Final = "overthrow_deferred"
+_OVERTHROW: Final = PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE
+
+
+def _space_influence_step(step: DomainAction) -> bool:
+    """Whether ``step`` takes the visited space's own Faction Influence."""
+
+    arguments = dict(step.arguments)
+    return step.action_id == "resolve_faction_influence" or (
+        step.action_id == "gain_influence"
+        and arguments.get("icon") == "faction"
+        and arguments.get("source") == "board_space"
+    )
+
+
+def _overthrow_box_step(state: GameState, step: DomainAction, box: int) -> bool:
+    """Whether ``step`` resolves box ``box``, an Overthrow box."""
+
+    plain = untagged(step)
+    return row_box(step) == box and (
+        (plain.action_id == "resolve_agent_card_effect" and not plain.arguments)
+        or _names_card(plain, "resolve", "overthrow", "ghola")
+    )
+
+
+def _overthrow_deferred(
+    state: GameState, steps: tuple[ReplayStep, ...], index: int
+) -> bool:
+    """Whether recorded step ``index`` is the first of Overthrow's two parts
+    while the visited Faction's Influence is even and the other part comes
+    later in this Agent turn (``OVERTHROW_DEFERRED``)."""
+
+    recorded = steps[index]
+    if not isinstance(recorded, DomainAction):
+        return False
+    found = _pending_box_of(state, _OVERTHROW)
+    if found is None:
+        return False
+    box = found[0]
+    space_part = _space_influence_step(untagged(recorded))
+    if not space_part and not _overthrow_box_step(state, recorded, box):
+        return False
+    _, context = current_agent_effect_context(state)
+    space_id = context.get("space_id")
+    if not isinstance(space_id, str):
+        return False
+    faction = BOARD_SPACES_BY_ID[space_id].faction
+    if faction is None:
+        return False
+    owner = state.players[recorded.actor]
+    if influence_amount(owner.influence, faction) % 2 == 1:
+        return False
+    for later in steps[index + 1 :]:
+        if not isinstance(later, DomainAction) or later.actor != recorded.actor:
+            continue
+        if later.action_id == "finish_agent_turn":
+            return False
+        if (
+            _overthrow_box_step(state, later, box)
+            if space_part
+            else _space_influence_step(untagged(later))
+        ):
+            return True
+    return False
+
+
+def _overthrow_part_done(state: GameState, step: ReplayStep) -> bool:
+    """Whether ``step`` is the space's Influence or Overthrow's box after
+    Overthrow already gained two instead of one."""
+
+    if not isinstance(step, DomainAction):
+        return False
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if context.get(SPACE_INFLUENCE_REPLACED) is not True:
+        return False
+    plain = untagged(step)
+    if _space_influence_step(plain):
+        return True
+    box = row_box(step)
+    if box == 1 and not is_grafted_turn(context):
+        return False
+    _, active = current_agent_effect_context(state_with_active_box(state, box))
+    return (
+        active_agent_card(active).agent_effect is _OVERTHROW
+        and not box_is_pending(context, box)
+        and _overthrow_box_step(state, step, box)
+    )
+
+
 # Also from v146 (user ruling 2026-10-14, OQ-019): Reverend Mother's repeat
 # no longer queues the Arrakeen Scouts mission collection again, an effect
 # of the visit not printed on the space. The pieces were all collected
@@ -3555,6 +3672,316 @@ def _transports_reshuffle_renamed(
     return ChanceOutcome(decision.decision_id, step.values)
 
 
+
+# Codec v152 (engine audit 2026-10-22): three Agent boxes resolve as a step of
+# its own what an older engine did inside another step.
+# - Interstellar Conspiracy's spice and Influence are two icons (P4, OQ-027
+#   extension 3); its Faction choice paid the spice too, and without an
+#   Emperor or Spacing Guild partner its plain resolution was the spice.
+# - Scientific Breakthrough's Research, still owed when the card trashed
+#   itself first, is the owner's next step (P5, OQ-106); the trash did it.
+# - Guild Envoy's two cards after a Spacing Guild discard are an armed icon
+#   (P6, OQ-106); the discard drew them.
+_CONSPIRACY: Final = (
+    PersonalCardAgentEffect.GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD
+)
+_BREAKTHROUGH: Final = (
+    PersonalCardAgentEffect.RESEARCH_AND_MAY_TRASH_SELF_FOR_VP_IF_TWO_MARKERS
+)
+_GUILD_ENVOY: Final = PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD
+
+
+def _box_icons(
+    state: GameState, box: int, effect: PersonalCardAgentEffect
+) -> tuple[str, ...] | None:
+    """The pending icons of box ``box`` of the Agent-effect frame on top when
+    its card (or a Ghola's copy of it) has ``effect`` and the box is
+    pending; None otherwise."""
+
+    try:
+        _, context = current_agent_effect_context(state)
+    except ValueError:
+        return None
+    if box == 1 and not is_grafted_turn(context):
+        return None
+    if not box_is_pending(context, box):
+        return None
+    _, active = current_agent_effect_context(state_with_active_box(state, box))
+    if active_agent_card(active).agent_effect is not effect:
+        return None
+    return pending_agent_icons(active)
+
+
+def _pending_box_of(
+    state: GameState, effect: PersonalCardAgentEffect
+) -> tuple[int, tuple[str, ...]] | None:
+    """The first pending box of the Agent-effect frame on top whose card has
+    ``effect``, with its pending icons; None otherwise."""
+
+    for box in (0, 1):
+        icons = _box_icons(state, box, effect)
+        if icons is not None:
+            return box, icons
+    return None
+
+
+def _names_card(step: DomainAction, action_id: str, *cards: str) -> bool:
+    """Whether ``step`` is the effect step ``action_id`` that one of
+    ``cards``' Agent box printed (stage B3: ``printed``, ``source``, no
+    icon; a Ghola's copy is printed by ``ghola``)."""
+
+    arguments = dict(step.arguments)
+    return (
+        step.action_id == action_id
+        and arguments.get("printed") in cards
+        and arguments.get("source") == "agent_card"
+        and "icon" not in arguments
+    )
+
+
+def _conspiracy_icon(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded plain resolution of Interstellar Conspiracy's box (the
+    spice, offered without an Emperor or Spacing Guild partner) as its spice
+    icon. The Faction choice keeps its rows; its spice follows
+    (``_conspiracy_spice``)."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+    ):
+        return None
+    box = row_box(step)
+    if _box_icons(state, box, _CONSPIRACY) is None:
+        return None
+    plain = untagged(step)
+    legal = engine.legal_actions(state, step.actor)
+    if (
+        plain.action_id == "resolve_agent_card_effect" and not plain.arguments
+    ) or _names_card(plain, "resolve", "interstellar_conspiracy", "ghola"):
+        spice = tagged(
+            DomainAction(
+                action_id="resolve_agent_card_effect",
+                actor=step.actor,
+                arguments=(("effect", "spice"),),
+            ),
+            box,
+        )
+        if spice in legal:
+            return spice
+        if spice in engine.whole_actions(state, step.actor):
+            return first_step(state, spice)
+    return None
+
+
+def _conspiracy_spice(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Interstellar Conspiracy's spice right after its Influence, which an
+    older engine's Faction choice paid in the same step."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+    ):
+        return None
+    for box in (0, 1):
+        if _box_icons(state, box, _CONSPIRACY) != ("spice",):
+            continue
+        spice = tagged(
+            DomainAction(
+                action_id="resolve_agent_card_effect",
+                actor=step.actor,
+                arguments=(("effect", "spice"),),
+            ),
+            box,
+        )
+        if spice in engine.whole_actions(state, step.actor):
+            return spice
+    return None
+
+
+def _breakthrough_research(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Scientific Breakthrough's still-owed Research right after the card
+    trashed itself, which an older engine's trash did in the same step."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+    ):
+        return None
+    plain = untagged(step)
+    if not (
+        plain.action_id == "trash_agent_card_self_for_vp"
+        or _names_card(plain, "trash", "scientific_breakthrough", "ghola")
+    ):
+        return None
+    box = row_box(step)
+    if _box_icons(state, box, _BREAKTHROUGH) is None:
+        return None
+    research = tagged(
+        DomainAction(action_id="resolve_agent_card_effect", actor=step.actor), box
+    )
+    return research if research in engine.whole_actions(state, step.actor) else None
+
+
+def _guild_envoy_draw(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Guild Envoy's two cards right after it discarded a Spacing Guild
+    card, which an older engine's discard drew in the same step."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+    ):
+        return None
+    for box in (0, 1):
+        if _box_icons(state, box, _GUILD_ENVOY) != ("cards",):
+            continue
+        draw = tagged(
+            DomainAction(
+                action_id="resolve_agent_card_effect",
+                actor=step.actor,
+                arguments=(("effect", "cards"),),
+            ),
+            box,
+        )
+        if draw in engine.whole_actions(state, step.actor):
+            return draw
+    return None
+
+
+def _overthrow_for_space(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded step that took the visited space's Influence while
+    Overthrow's box holds it, as that box's resolution (two instead of
+    one, OQ-128)."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+        and _space_influence_step(untagged(step))
+    ):
+        return None
+    found = _pending_box_of(state, _OVERTHROW)
+    if found is None:
+        return None
+    box = tagged(
+        DomainAction(action_id="resolve_agent_card_effect", actor=step.actor),
+        found[0],
+    )
+    if box in engine.legal_actions(state, step.actor):
+        return box
+    if box in engine.whole_actions(state, step.actor):
+        return first_step(state, box)
+    return None
+
+
+
+def _scouts_pass_without_option(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded Scouts pass where this engine offers only the confirm of
+    taking nothing: every line the older engine offered bought nothing, so
+    codec v152 withholds them (engine audit 2026-10-22, P2; OQ-071)."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and step.action_id == "scouts_pass"
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+    ):
+        return None
+    confirm = DomainAction(action_id=SCOUTS_NO_OPTION, actor=step.actor)
+    if engine.whole_actions(state, step.actor) != (confirm,):
+        return None
+    return first_step(state, confirm)
+
+
+
+_MISSION_ANSWERS: Final = frozenset(
+    {"scouts_decline_mission", "scouts_join_mission", "scouts_return_specimens"}
+)
+
+
+def _mission_pass_alone(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Pass a Scouts mission for a seat that cannot take part (OQ-131): its
+    window offers the pass alone, where an older engine skipped the seat
+    unasked (OQ-088). A seat that could take part was asked then, and its
+    recorded answer is its own."""
+
+    if (
+        not isinstance(decision, PlayerDecision)
+        or state.decision_stack[-1].kind != FrameKind.SCOUTS_MISSION
+        or _made_for(engine, state, decision, step, _MISSION_ANSWERS)
+    ):
+        return None
+    decline = DomainAction(action_id="scouts_decline_mission", actor=decision.owner)
+    if engine.whole_actions(state, decision.owner) != (decline,):
+        return None
+    return decline
+
+
+# A Navigation card's draw (OQ-099) is named after the Influence gain that
+# triggered it; Overthrow's two instead of the space's one (codec v152,
+# OQ-128) moves that gain from the space to the card's box.
+_NAVIGATION_DRAW = re.compile(r":influence:([a-z_]+):navigation:\d+:discard_shuffle$")
+
+
+def _navigation_reshuffle_renamed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Give a recorded Navigation-draw reshuffle the id this engine asks
+    when the triggering Influence gain moved to Overthrow's box: the same
+    seat's same pile and Faction, the recorded order kept."""
+
+    renamed = _reshuffle_renamed(engine, state, decision, step)
+    if renamed is None:
+        return None
+    assert isinstance(step, ChanceOutcome) and isinstance(renamed, ChanceOutcome)
+    old = _NAVIGATION_DRAW.search(step.decision_id)
+    new = _NAVIGATION_DRAW.search(renamed.decision_id)
+    if old is None or new is None or old.group(1) != new.group(1):
+        return None
+    return renamed if ":agent_card:" in renamed.decision_id else None
+
+
 BRIDGES: tuple[Bridge, ...] = (
     Bridge("pause", _pause),
     # Right after the recorded step that opened the window (the recording
@@ -3779,4 +4206,42 @@ BRIDGES: tuple[Bridge, ...] = (
         ),
         before_codec=149,
     ),
+    # Codec v152 (engine audit 2026-10-22, P4-P6): the parts these Agent
+    # boxes now resolve as steps of their own, at the moment an older engine
+    # did them.
+    Bridge(
+        "conspiracy_icon", _conspiracy_icon, before_codec=152, rewrites=True
+    ),
+    Bridge("conspiracy_spice", _conspiracy_spice, before_codec=152, follows=True),
+    Bridge(
+        "breakthrough_research",
+        _breakthrough_research,
+        before_codec=152,
+        follows=True,
+    ),
+    Bridge("guild_envoy_draw", _guild_envoy_draw, before_codec=152, follows=True),
+    Bridge(
+        "overthrow_for_space",
+        _overthrow_for_space,
+        before_codec=OVERTHROW_CODEC,
+        rewrites=True,
+    ),
+    # A Navigation card's draw triggered by Overthrow's two instead of the
+    # space's one asks for its reshuffle under the card's box.
+    Bridge(
+        "navigation_reshuffle_renamed",
+        _navigation_reshuffle_renamed,
+        before_codec=OVERTHROW_CODEC,
+        rewrites=True,
+    ),
+    Bridge(
+        "scouts_pass_without_option",
+        _scouts_pass_without_option,
+        before_codec=152,
+        rewrites=True,
+    ),
+    # Codec v152 (OQ-131, engine audit 2026-10-22, G4) asks a seat that
+    # cannot take part in a Scouts mission, with the pass alone; an older
+    # engine skipped it (OQ-088).
+    Bridge("mission_pass_alone", _mission_pass_alone, before_codec=152),
 )

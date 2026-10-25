@@ -69,7 +69,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 151
+    # v152 (engine audit 2026-10-22, P4): Interstellar Conspiracy's spice icon
+    # rows (box 0 and box 1) join the Immortality catalogs, 4,311 to 4,313
+    # with every option on; the base catalog keeps its 1,434.
+    assert ACTION_CODEC_VERSION == 152
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
