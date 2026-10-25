@@ -165,10 +165,19 @@ GAMES = (
     # Stage B3c-2b (an optional trash on the turn is its icon's row, then the
     # card) moves seed 283 off its steal and its unused Reveal choice; the
     # same scan over random seeds 1-400 finds seed 185 first with all of it.
+    # Codec v154 (random seats now play a cost-free Intrigue line even when it
+    # fizzles, OQ-113 (C); the Planetary Array card is a row of the Conflict
+    # winner's reward window, OQ-121; Suspensor Suits' missing troop is made
+    # up later, OQ-042) moves seed 185 off its steal. A scan of the same games
+    # through GameSessionManager over random seeds 1-399 (2026-10-26) finds 25
+    # seeds with a Secrets steal, and seed 50 first with all of the above
+    # (Family Atomics, the Feyd track, research, the three v146 events and
+    # v147's unused Reveal choice and Reveal choice rows naming their card;
+    # seeds 254, 274 and 370 do too).
     {
         "seats": ["random"] * 4,
-        "game_seed": 185,
-        "policy_seed": 185,
+        "game_seed": 50,
+        "policy_seed": 50,
         **EVERY_EXPANSION,
     },
     {

@@ -11,8 +11,9 @@ with the plays still in it. The window is a view of the owner's page alone:
 no request, no log line, nothing another seat sees.
 
 The position is real: ``fixtures/turn_start_window_saves.py`` saves seat 0's
-turn start in round 8 of a seeded four-human game (seed 28), holding Litany
-Against Fear and Withdrawn with a Plot it may play instead, and records the
+turn start in round 8 of a seeded four-human game (seed 45 since codec v154;
+seed 28 before), holding Litany Against Fear and Withdrawn with a Plot it
+may play instead, and records the
 steps to seat 0's next turn start, where Withdrawn is legal again.
 
 - [A] Korean, one page holding every seat (open server): the window shows
