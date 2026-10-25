@@ -529,7 +529,13 @@ def migrate_record(
                 0 if graft is None else graft.box,
                 deferred=overthrow_waits,
             )
-            if overthrow is None and _pending_box_of(state, _OVERTHROW) is None:
+            if (
+                isinstance(recorded, DomainAction)
+                and recorded.action_id == "finish_agent_turn"
+            ):
+                # The turn is over: a part still waited for never came. (Not
+                # on another frame on top -- a reshuffle, a Contract or an
+                # Intrigue choice -- where the effect frame is not read.)
                 overthrow_waits = False
         if overthrow == OVERTHROW_DEFERRED:
             overthrow_waits = True
