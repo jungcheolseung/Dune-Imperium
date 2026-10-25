@@ -434,7 +434,9 @@ function renderBoardStage(board, view) {
     hotspot.style.width = `${width}%`;
     hotspot.style.height = `${height}%`;
     /* The Commander standing on the space is drawn outside the hotspot and
-       takes no pointer, so the space says it has one. */
+       takes no pointer, so the space says it has one. Not its price: that
+       is each seat's own (Sardaukar High Command, Honor Guard), and the
+       seat's row shows it (sessions.py COMMANDER_PAYMENTS). */
     const label = commanders.has(spaceId)
       ? t("board.space_with_commander", { space: entry.name })
       : entry.name;

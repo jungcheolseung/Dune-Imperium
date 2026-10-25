@@ -197,8 +197,8 @@ const UI_TEXT = {
     "en": "No {commander} left on the board"
   },
   "board.space_with_commander": {
-    "ko": "{{space}} · {commander} (2 {solari})",
-    "en": "{{space}} · {commander} (2 {solari})"
+    "ko": "{{space}} · {commander}",
+    "en": "{{space}} · {commander}"
   },
   "board.no_human_seats": {
     "ko": "사람 플레이어가 없는 게임입니다. 최종 순위의 \"AI 대국 다시 보기\"로 처음부터 볼 수 있습니다.",
