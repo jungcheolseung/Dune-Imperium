@@ -4607,9 +4607,20 @@ def _late_reveal_one_card(
     )
     cards_in_play = counted_in_play(next_owner)
     completed_contracts = len(next_owner.completed_contract_ids)
+    # "for each Emperor card you revealed (including this one)" [Sardaukar
+    # Coordination card], counted by a card arriving late, sees the revealed
+    # cards still in front of the owner: one trashed earlier in the Reveal
+    # is no longer counted, while what a card already gained from it stays
+    # (OQ-129 (가), user ruling 2026-10-25 "이미 trash한건 당연히 sword
+    # 포함되면 안 되겠지"; the designer's Leadership ruling "trash된 카드는 못
+    # 센다", OQ-057; the official documents say nothing). The digital app
+    # counts so too, but gives an earlier copy nothing for a later copy of
+    # the same card; here the earlier copy gains its +1 as the card prints
+    # (below), a ruling apart from the app's.
     revealed_cards = tuple(
         personal_card_for_instance(instance_id)
         for instance_id in (*previously_revealed_ids, card_id)
+        if instance_id in next_owner.in_play
     )
 
     frame_persuasion = _frame_generated_persuasion(state.decision_stack)

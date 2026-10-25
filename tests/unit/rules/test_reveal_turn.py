@@ -2527,6 +2527,45 @@ def test_sardaukar_coordination_counts_each_revealed_emperor_card() -> None:
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 5
 
 
+def test_a_late_sardaukar_coordination_counts_no_trashed_emperor_card() -> None:
+    # OQ-129 (가) (user ruling 2026-10-25, "이미 trash한건 당연히 sword 포함되면
+    # 안 되겠지. 근데 이미 공개해서 sword를 받은 다음 그 다음 폐기하는건
+    # 세야하는거 아니야?"): copy A revealed with another Emperor card X gains
+    # 2 swords and keeps them when X is trashed later in the Reveal; copy B,
+    # drawn and revealed after that [FAQ p. 3], counts only the Emperor cards
+    # still in front of the owner -- A and itself -- and A gains 1 for B, as
+    # the card prints ("for each Emperor card you revealed"). The digital app
+    # gives A nothing for a copy of the same card; that is not followed.
+    first = _imperium_instance("sardaukar_coordination", 0)
+    second = _imperium_instance("sardaukar_coordination", 1)
+    soldier = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(
+        player_id=0,
+        hand=(first, soldier),
+        troops_supply=8,
+        troops_conflict=1,
+    )
+    revealed = begin_reveal_turn(
+        _state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    # A counts A and the Soldier: 2; the Soldier's own sword 1; a troop 2.
+    assert revealed.players[0].combat_strength == 5
+    # The Soldier is trashed (as Calculus of Power or Cunning would) and B
+    # is drawn into the hand.
+    player = revealed.players[0]
+    trashed = replace(
+        player,
+        in_play=tuple(card for card in player.in_play if card != soldier),
+        trashed=(*player.trashed, soldier),
+        hand=(second,),
+    )
+    state = replace(revealed, players=(trashed, *revealed.players[1:]))
+    arrived = reveal_late_arrivals(state, 0, (second,)).state
+    # B counts A and B (2), A gains 1 for B: 5 + 2 + 1 = 8 -- not 9, which
+    # counted the trashed Soldier for B.
+    assert arrived.players[0].combat_strength == 8
+
+
 def test_sardaukar_coordination_ignores_emperor_agent_cards_in_play() -> None:
     coordination = _imperium_instance("sardaukar_coordination")
     played_soldier = _imperium_instance("sardaukar_soldier")
