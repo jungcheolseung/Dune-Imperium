@@ -1670,6 +1670,15 @@ names = ["Adaptive Tactics", "Mercenaries", "Unexpected Allies", "Sadistic", "Un
 sources_ko = "디자이너 판정 \"비용만 내고 화살표 오른쪽에서 아무것도 안 할 수는 없다\"(따름) — 앱은 Mercenaries·아라키스를 향해·Unexpected Allies를 비용만 보고 허용한다."
 sources = "The designer's \"you can't pay the cost and do nothing on the right side of the arrow\" (followed); the app allows Mercenaries, Depart for Arrakis and Unexpected Allies on their cost alone."
 
+[[ruling]]
+oq = "OQ-132"
+group = "project"
+game = "uprising"
+title_ko = "플레이어1이 1라운드 시작 플레이어(선택 규칙)"
+title = "Player 1 starts round 1 (an option)"
+ruling_ko = "이 선택 규칙을 켜면 플레이어1이 시작 플레이어 마커가 그려진 사막쥐 목적 카드를 받아 1라운드를 먼저 하고, 나머지 목적 카드는 다른 세 사람에게 무작위로 나눈다. 룰북은 넷 모두에게 무작위로 나눠 마커가 그려진 카드를 받은 사람이 먼저 하게 한다. 자리를 무작위로 정하면 확률은 같다. 새 게임 화면에서 기본으로 켜져 있다."
+ruling = "With this option Player 1 takes the Desert Mouse Objective with the First Player marker and starts round 1; the other Objectives are dealt at random to the other three. The rulebook deals all four at random and whoever gets the marker starts; with the seats themselves drawn at random the odds are the same. The new-game screen ticks it by default."
+
 # ------------------------------------------- base game and Rise of Ix
 
 [[ruling]]

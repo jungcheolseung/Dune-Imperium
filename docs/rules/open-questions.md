@@ -153,6 +153,7 @@
 | [OQ-125](#oq-125--비용-n-이하-카드를-얻는다에-reserve-카드가-드는가) | "비용 N 이하 카드를 얻는다"에 Reserve 카드가 드는가 | `DECIDED` |
 | [OQ-126](#oq-126--disposal-facility의-persuasion-6-이상) | Disposal Facility의 "Persuasion 6 이상" | `DECIDED` |
 | [OQ-127](#oq-127--combat-단계에-열린-treachery의-unload) | Combat 단계에 열린 Treachery의 Unload | `DECIDED` |
+| [OQ-132](#oq-132--1라운드-첫-플레이어를-플레이어1로-선택-규칙) | 1라운드 첫 플레이어를 플레이어1로 (선택 규칙) | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -2577,3 +2578,20 @@
   6절 엔진 순서의 "모든 보상"). 그때 열린 Treachery의 Unload는 troop 둘을 Conflict에 배치하고, 그 troop은 바로 다음 단계(troop·Commander 반환)에서
   다른 병력과 함께 supply로 돌아간다 — 보상을 다 준 뒤 troop은 supply로 `[DI p. 12]`. 카드 문장(의무)·엔진 순서·앱이 모두 이쪽이다. Troop
   Transports("may deploy")에 대한 디자이너 판정은 그 카드가 garrison을 고를 수 있다는 뜻으로 읽는다.
+
+## OQ-132 — 1라운드 첫 플레이어를 플레이어1로 (선택 규칙)
+
+- 상태: `DECIDED` (2026-10-25 사용자 판정; project convention, 공식 규칙 아님)
+- 공식 절차: "Objective 중 4인 게임과 맞지 않는 인원수 표시 카드를 제외하고 나머지를 섞는다", "각 플레이어는 Objective를 무작위로 한 장 받아
+  자기 supply에 앞면으로 공개한다", "Objective에 First Player marker가 표시된 플레이어가 그 marker를 가져간다" `[Main p. 5]`
+  ([setup-and-game-flow.md](setup-and-game-flow.md) 2절 "Objective와 첫 플레이어"). 자리 배치는 룰북이 정하지 않는다(같은 절).
+- 계기(플레이 피드백 2026-10-25): 자리를 무작위로 정하는데 1라운드 첫 플레이어까지 판마다 다른 자리에서 나오면 헷갈린다. 자리를 무작위로 정한
+  뒤 플레이어1이 늘 첫 플레이어이고, 플레이어1이 First Player marker가 그려진 목적 카드(사막쥐)를, 나머지는 무작위로 받으면 좋겠다.
+- 검토: 공식 절차(넷 모두 무작위)와 다르다. 다만 자리가 무작위로 정해지면 결과의 확률은 같다 — 누가 첫 플레이어가 되는지(각자 1/4)와 나머지
+  세 목적 카드가 나머지 세 사람에게 무작위로 가는 것이 공식 배분과 같다(내 계산). 자리를 고정한 채 이 옵션을 쓰면 플레이어1 자리에 앉은 사람이
+  늘 먼저 한다. 지도자 드래프트(OQ-007)는 1라운드 차례의 역순이므로 플레이어4부터 고른다.
+- 판정(2026-10-25 사용자, "엔진 옵션으로"): 선택 규칙 `RulesetConfig.first_player_seat_zero`. 켜면 좌석 0(플레이어1)이 사막쥐(First Player
+  marker) 목적 카드를 받아 1라운드 첫 플레이어가 되고, 나머지 세 장은 좌석 1~3에 무작위로 나눈다(우연 결정 `setup:objectives`가 세 장만
+  섞는다). 엔진·명령줄·학습의 기본은 꺼짐(공식 배분)이다. 브라우저 새 게임 화면의 "플레이어1이 시작 플레이어" 칸은 기본으로 켜져 있고,
+  플레이 서버 `--first-player deal`이면 꺼진 채 열린다. 옵션이 꺼져 있으면 상태 해시에 넣지 않아(`RulesetConfig.HASH_OMITTED_AT_DEFAULT`)
+  옛 저장본·기보의 해시는 그대로다. 테스트: `tests/unit/rules/test_setup.py`, `tests/server/test_first_player_option.py`.
