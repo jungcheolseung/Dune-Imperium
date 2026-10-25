@@ -1252,6 +1252,14 @@ const UI_TEXT = {
     "ko": "{supply}의 {commander}",
     "en": "{commander} in {supply}"
   },
+  "panels.memories": {
+    "ko": "기억",
+    "en": "Memories"
+  },
+  "panels.memories_title": {
+    "ko": "기억: 스파이스의 고통으로 게임판의 베네 게세리트 영역에 옮긴 병력",
+    "en": "Memories: troops Spice Agony moved to the Bene Gesserit board area"
+  },
   "panels.tactics_space": {
     "ko": "전술 트랙 {{space}}칸",
     "en": "Tactics space {{space}}"

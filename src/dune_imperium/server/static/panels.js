@@ -18,6 +18,15 @@ function statNode(name, label, value) {
   return stat;
 }
 
+/* Lady Jessica's memories: a troop piece and the card's word ("기억",
+   [KO card: Lady Jessica]), so they do not read as troops in the supply. */
+function memoryStat(count) {
+  const stat = statNode("troop", t("panels.memories_title"), count);
+  stat.dataset.stat = "memory";
+  stat.lastChild.before(`${t("panels.memories")} `);
+  return stat;
+}
+
 /* A stat that opens a card list: a button for the mouse and the keyboard
    (Enter or Space), its title and accessible name saying what it opens.
    Escape closes the list (app.js). */
@@ -291,6 +300,13 @@ function renderSeats() {
       pieces.appendChild(
         statNode("commander", t("panels.supply_commander"), player.commanders_supply || 0),
       );
+    }
+    /* Lady Jessica's memories: the troops Spice Agony moved to the Bene
+       Gesserit board area [Lady Jessica card]. Nothing on the board draws
+       them, and the count is public. Shown on her Lady Jessica face, 0
+       included, and on any seat that still holds one. */
+    if (player.leader_face_id === "lady_jessica" || player.memories > 0) {
+      pieces.appendChild(memoryStat(player.memories || 0));
     }
     /* The seat's time holding control, ticking on its own (clock.js). */
     if (clocksShown()) pieces.appendChild(seatClockNode(seat));
