@@ -1291,9 +1291,9 @@ def test_a_triggered_draw_an_older_engine_drew_at_once_follows_its_trigger() -> 
     # the trigger, so its record has no such step. Dropped from this
     # engine's record (whose heuristic takes each at once), each is taken
     # right after its trigger again, so the game comes back step for step.
-    # Seed 21's game (one owed draw, the Intrigue card of a research space);
-    # its other split steps are dropped with the draw and taken back by
-    # their own bridges. (Seed 10 until codec v149, whose game
+    # Seed 22's game (one owed draw, the Intrigue card of the Bene Gesserit
+    # track); its other split steps are dropped with the draw and taken back
+    # by their own bridges. (Seed 10 until codec v149, whose game
     # split nothing but its three owed draws, one of three such seeds of
     # 1-200; cleanup-2a's Scouts confirms moved every game, none of 1-200
     # splits only owed draws now, and seed 10's heuristic takes one owed
@@ -1302,9 +1302,13 @@ def test_a_triggered_draw_an_older_engine_drew_at_once_follows_its_trigger() -> 
     # and of 1-60 seeds 4, 12, 21, 22, 26, 43, 48 and 53 did; the
     # Conflict-end change (2026-10-18: troops back before the windows,
     # Harvest Cells resolving as it is played) moved them again, and of
-    # 1-60 seeds 21, 22 and 48 do. The fixture's
-    # seed 1 drew one a step late until codec v146, OQ-095 (2).)
-    game = _this_engine_game(21)
+    # 1-60 seeds 21, 22 and 48 did; codec v153's offers (general rules audit
+    # 2026-10-25: Infiltrate stays open to other graft pairs with Tleilaxu
+    # Infiltrator in hand, a lone Scouts Faction is asked) moved seed 21,
+    # whose research icons now come back in another order, and of 1-60
+    # seeds 10, 18 and 22 do. The fixture's seed 1 drew one a step late
+    # until codec v146, OQ-095 (2).)
+    game = _this_engine_game(22)
     # Since stage B3d-4 (D-3) an owed draw is a ``draw`` row naming what
     # earned it; the whole action it stands for is still ``draw_owed_*``.
     owed = {
@@ -4578,10 +4582,11 @@ def test_a_mission_window_with_the_pass_alone_is_passed_before_the_record() -> N
     taken = migration._Taken()
     # Seat 0 can join: its window is the record's.
     assert missions._owner(state) == 0
-    assert migration._answer_windows_never_asked(ENGINE, state, taken) is state
+    unasked = migration._answer_windows_never_asked(ENGINE, state, taken, codec=151)
+    assert unasked is state
     state = missions._act(state, "scouts_decline_mission")
     assert missions._owner(state) == 1
-    passed = migration._answer_windows_never_asked(ENGINE, state, taken)
+    passed = migration._answer_windows_never_asked(ENGINE, state, taken, codec=151)
     assert missions._owner(passed) == 2
     assert [step.bridge for step in taken.steps] == [migration.MISSION_PASS_ALONE]
 
@@ -4603,14 +4608,58 @@ def test_political_equilibrium_windows_an_older_engine_never_opened() -> None:
     )
     state = choices._reveal(state, "political_equilibrium")
     taken = migration._Taken()
-    tied = migration._answer_windows_never_asked(ENGINE, state, taken)
+    tied = migration._answer_windows_never_asked(ENGINE, state, taken, codec=151)
     assert choices._owner(tied) == 1
     assert tied.players[0].influence == Influence(fremen=2, emperor=1)
     state = choices._act(tied, "scouts_lose_influence", faction="bene_gesserit")
-    done = migration._answer_windows_never_asked(ENGINE, state, taken)
+    done = migration._answer_windows_never_asked(ENGINE, state, taken, codec=151)
     assert choices._on_turn(done)
     assert done.players[3].influence == Influence()
     assert [step.bridge for step in taken.steps] == [migration.EQUILIBRIUM_ALONE] * 3
+
+
+def test_a_lone_scouts_faction_and_leverage_s_draw_are_answered_unrecorded() -> None:
+    # Codec v153 opens a Scouts line's Faction step with one track below the
+    # top too (OQ-111 (2), user decision 2026-10-26). An older engine took
+    # that Faction itself and drew Leverage's Intrigue in the same step, so
+    # both are answered before the record's next step; a window with two
+    # Factions was asked then too and stays the record's.
+    from tests.unit.rules import test_scouts_subcommittees as subcommittees
+
+    def recalled(influence: Influence) -> GameState:
+        owner = subcommittees._owner(
+            spies_supply=1,
+            spy_post_ids=("arrakis-deep-desert", "arrakis-hagga-basin"),
+            influence=influence,
+        )
+        state = subcommittees._choose(
+            subcommittees._visit_high_council(subcommittees._state(owner))
+        )
+        state = subcommittees._act(
+            state, "join_subcommittee", subcommittee_id="leverage"
+        )
+        state = subcommittees._act(
+            state, "scouts_recall_spy", post_id="arrakis-hagga-basin"
+        )
+        return subcommittees._act(
+            state, "scouts_recall_spy", post_id="arrakis-deep-desert"
+        )
+
+    lone = recalled(Influence(emperor=6, spacing_guild=6, bene_gesserit=6))
+    taken = migration._Taken()
+    assert migration._answer_windows_never_asked(ENGINE, lone, taken, codec=153) is lone
+    answered = migration._answer_windows_never_asked(ENGINE, lone, taken, codec=152)
+    assert answered.players[0].influence.fremen == 1
+    assert len(answered.players[0].intrigue_cards) == (
+        len(lone.players[0].intrigue_cards) + 1
+    )
+    assert subcommittees._scouts_frames_done(answered)
+    assert [step.bridge for step in taken.steps] == [
+        migration.FACTION_ALONE,
+        migration.FACTION_ALONE_DRAW,
+    ]
+    two = recalled(Influence(emperor=6, spacing_guild=6))
+    assert migration._answer_windows_never_asked(ENGINE, two, taken, codec=152) is two
 
 
 def test_a_recorded_scouts_pass_is_the_confirm_where_every_line_is_withheld() -> None:

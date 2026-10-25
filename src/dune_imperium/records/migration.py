@@ -511,8 +511,10 @@ def migrate_record(
                     state,
                 )
             state = settled
-        if replay.action_codec_version < MISSION_WINDOW_CODEC:
-            state = _answer_windows_never_asked(engine, state, migrated)
+        if replay.action_codec_version < FACTION_WINDOW_CODEC:
+            state = _answer_windows_never_asked(
+                engine, state, migrated, codec=replay.action_codec_version
+            )
         if graft is not None and graft.drops(recorded):
             dropped.append((index, GRAFT_SWITCH_DROPPED))
             continue
@@ -4026,20 +4028,46 @@ def _scouts_pass_without_option(
 MISSION_WINDOW_CODEC: Final = 152
 MISSION_PASS_ALONE: Final = "mission_pass_alone"
 EQUILIBRIUM_ALONE: Final = "equilibrium_alone"
+# Codec v153 opens an Arrakeen Scouts line's Faction step with one track
+# below the top too ("대상이 하나뿐이어도 둘째 단계를 연다", OQ-111 (2); user
+# decision 2026-10-26: Leverage, and with it Relations, Share Intelligence
+# and Ingratiate). An older engine took that Faction itself, and Leverage's
+# Intrigue printed after it in the same step: a draw waits only after one of
+# the line's choices (OQ-106), and the lone Faction was none.
+FACTION_WINDOW_CODEC: Final = 153
+FACTION_ALONE: Final = "scouts_faction_alone"
+FACTION_ALONE_DRAW: Final = "scouts_faction_alone_draw"
 
 
 def _window_never_asked(
-    engine: UprisingRulesEngine, state: GameState
+    engine: UprisingRulesEngine,
+    state: GameState,
+    codec: int,
+    *,
+    after_faction: str | None = None,
 ) -> tuple[DomainAction, str] | None:
-    """The one answer of a window on top that an engine before codec v152
-    never opened, with its bridge name; None otherwise."""
+    """The answer of a window on top that an engine before ``codec`` never
+    opened, with its bridge name; None otherwise. ``after_faction`` names
+    the Scouts line frame whose lone Faction was just answered, whose draw
+    the older engine took with it."""
 
     decision = engine.current_decision(state)
     if not isinstance(decision, PlayerDecision):
         return None
     frame = state.decision_stack[-1]
     wholes = engine.whole_actions(state, decision.owner)
-    if len(wholes) != 1:
+    if codec < FACTION_WINDOW_CODEC and frame.kind == FrameKind.SCOUTS_EFFECT:
+        held = DomainAction(action_id=_SCOUTS_HELD_DRAW, actor=decision.owner)
+        if frame.frame_id == after_faction and wholes == (held,):
+            return held, FACTION_ALONE_DRAW
+        factions = [
+            whole for whole in wholes if whole.action_id == "scouts_choose_faction"
+        ]
+        if len(factions) == 1 and all(
+            whole in (factions[0], held) for whole in wholes
+        ):
+            return factions[0], FACTION_ALONE
+    if codec >= MISSION_WINDOW_CODEC or len(wholes) != 1:
         return None
     (only,) = wholes
     if (
@@ -4056,13 +4084,25 @@ def _window_never_asked(
 
 
 def _answer_windows_never_asked(
-    engine: UprisingRulesEngine, state: GameState, migrated: _Taken
+    engine: UprisingRulesEngine, state: GameState, migrated: _Taken, *, codec: int
 ) -> GameState:
-    """Answer every window on top that an engine before codec v152 never
+    """Answer every window on top that an engine before ``codec`` never
     opened (``_window_never_asked``), each recorded under its bridge."""
 
-    while (found := _window_never_asked(engine, state)) is not None:
+    after_faction: str | None = None
+    while (
+        found := _window_never_asked(engine, state, codec, after_faction=after_faction)
+    ) is not None:
         answer, bridge = found
+        frame = state.decision_stack[-1]
+        # The draw went with the Faction only where no earlier reward of the
+        # line was a choice (``reward_was_chosen``); after one it waited, and
+        # the record holds its own ``scouts_rewards_first``.
+        after_faction = (
+            frame.frame_id
+            if bridge == FACTION_ALONE and not reward_was_chosen(frame)
+            else None
+        )
         state = _apply_answer(engine, state, answer, bridge, migrated)
     return state
 
