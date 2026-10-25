@@ -5,7 +5,8 @@
 let myTurnBefore = null;
 
 function isMyTurn(summary) {
-  if (!summary || summary.finished) return false;
+  /* A place in a waiting room is no seat yet (sessions.py start_game). */
+  if (!summary || summary.finished || summary.awaiting_start) return false;
   const mine = mySeats();
   if (typeof summary.confirmation === "number") {
     return mine.includes(summary.confirmation);

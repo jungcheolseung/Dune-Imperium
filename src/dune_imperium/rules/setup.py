@@ -232,13 +232,15 @@ def objective_setup_decision(
     """
 
     objectives = objectives_for_players(4)
+    prompt = "Shuffle and deal the four-player Objective cards"
     if config is not None and config.first_player_seat_zero:
         objectives = tuple(
             objective for objective in objectives if not objective.grants_first_player
         )
+        prompt = "Shuffle and deal the other three Objective cards to seats 1-3"
     return ChanceDecision(
         decision_id="setup:objectives",
-        prompt="Shuffle and deal the four-player Objective cards",
+        prompt=prompt,
         options=tuple(objective.objective_id for objective in objectives),
         count=len(objectives),
     )

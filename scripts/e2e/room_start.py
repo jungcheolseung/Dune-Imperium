@@ -112,11 +112,36 @@ def main() -> None:
                 game_id,
             )
             check.ok(refused == 409, "no seat is read before the start", refused)
+            quiet = host.evaluate(
+                "({mine: isMyTurn(state.summary), title: document.title,"
+                " base: baseTitle()})"
+            )
+            check.ok(
+                not quiet["mine"] and quiet["title"] == quiet["base"],
+                "a place in the waiting room is never 'your turn'",
+                quiet,
+            )
 
-            print("[3] a guest joins through the room link")
+            print("[3] a guest joins through the room link, losing a join race")
             guest.goto(f"{base}/#game={game_id}")
             guest.wait_for_selector("#lobby-screen:not([hidden])")
-            join(guest, "친구")
+            # As if both had pressed "join" at once: the guest asks for the
+            # place the host has just taken and gets the next free one.
+            taken = host.evaluate("state.me.seats[0]")
+            guest.fill("#lobby-name", "친구")
+            guest.evaluate("(seat) => claimSeat(seat)", taken)
+            guest.wait_for_function(
+                "state.me && state.me.seats.length === 1 && !state.busy"
+            )
+            raced = guest.evaluate(
+                "({seat: state.me.seats[0],"
+                " error: !document.getElementById('lobby-error').hidden})"
+            )
+            check.ok(
+                raced["seat"] != taken and not raced["error"],
+                "the join race takes the next free place without an error",
+                (taken, raced),
+            )
             for page, label in ((guest, "guest"), (host, "host")):
                 page.wait_for_function("Boolean(document.getElementById('lobby-start'))")
                 room = page.evaluate(ROOM_JS)

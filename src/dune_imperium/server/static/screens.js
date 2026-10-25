@@ -761,7 +761,7 @@ function lobbyButton(text, onClick) {
   return button;
 }
 
-async function claimSeat(seat) {
+async function claimSeat(seat, retries = 0) {
   if (state.busy) return;
   const name = el("lobby-name").value.trim();
   if (!name) {
@@ -786,6 +786,17 @@ async function claimSeat(seat) {
     state.busy = false;
     if (ticket !== openTicket) return;
     await refresh();
+    /* Two people pressing "join" at once in a waiting room: its places are
+       anonymous, so the one who lost the race takes the next free one. */
+    if (error.status === 409 && state.summary && state.summary.awaiting_start) {
+      const next = state.summary.players.find(
+        (info) => info.kind === "human" && !info.claimed && info.seat !== seat
+      );
+      if (next && retries < 3) {
+        await claimSeat(next.seat, retries + 1);
+        return;
+      }
+    }
     lobbyError(
       error.status === 409
         ? t("screens.seat_taken")

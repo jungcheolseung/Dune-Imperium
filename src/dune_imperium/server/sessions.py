@@ -697,6 +697,9 @@ class GameSessionManager:
         session = self._get(game_id)
         self._require_remote("starting a waiting room")
         with session.lock:
+            if session.closed:
+                # Deleted while this request waited for the lock.
+                raise UnknownGameError(f"unknown game: {game_id}")
             if not session.awaiting_start:
                 raise SessionError("this game is not waiting for its start")
             holds = any(
@@ -896,6 +899,25 @@ class GameSessionManager:
             bell = self._ring_locked(session, claim.summary)
         self._publish(game_id, bell)
         return claim
+
+    def held_seats(
+        self, game_id: str, *, credentials: Credentials = ANONYMOUS
+    ) -> dict[str, int]:
+        """Map each seat token the credentials present to the seat it holds.
+
+        Tokens the client does not present never appear, and a token that
+        holds no seat any more is left out. The HTTP layer keeps each seat
+        cookie named after the seat its token now holds: ``start_game``
+        deals the places' tokens to other seats.
+        """
+
+        session = self._get(game_id)
+        with session.lock:
+            return {
+                token: seat
+                for seat, token in session.seat_tokens.items()
+                if token_matches(token, credentials.seat_tokens)
+            }
 
     def release_seat(
         self, game_id: str, seat: int, *, credentials: Credentials = ANONYMOUS
@@ -1277,10 +1299,16 @@ class GameSessionManager:
         No credentials are asked for, so this is never routed: a save
         document spells out every hidden deck order. ``save_game`` is the
         host's door to the same document.
+
+        A room waiting for its start has nothing to save: a save keeps no
+        wait, so its load would start the game at once without drawing the
+        seats (review finding, 2026-10-25).
         """
 
         session = self._get(game_id)
         with session.lock:
+            if session.awaiting_start:
+                raise GameNotStartedError("the game has not started yet")
             elapsed, seat_seconds = session.clock.totals(_monotonic())
             return build_save_document(
                 config=session.config,
