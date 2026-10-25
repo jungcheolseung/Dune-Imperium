@@ -1712,11 +1712,18 @@ def apply_discard(
             context,
             tuple(key for key, ok in zip(ability.armed_icons, met, strict=True) if ok),
         )
+        # With nothing armed the box ends here, with its event (Guild Envoy's
+        # discard of a card that is not Spacing Guild).
+        done = (
+            (agent_box_event(source, box_card_id, player, _RESOLVED),)
+            if context["pending_agent_effect"] is not True
+            else ()
+        )
         return RuleResult(
             state=advance_after_effect(
                 discarded.state, context, discarded.state.players
             ),
-            events=discarded.events,
+            events=(*discarded.events, *done),
         )
     rewards = tuple(
         reward

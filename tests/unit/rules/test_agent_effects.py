@@ -5168,7 +5168,13 @@ def test_guild_envoy_requires_discard_and_only_draws_for_spacing_guild(
     # discard와 draw를 별개 단계로 나눠"; engine audit 2026-10-22, P6).
     assert result.state.players[0].discard_pile == (discarded,)
     assert result.state.players[0].hand == ()
-    assert [event.kind for event in result.events] == ["card_discarded"]
+    # Without a Spacing Guild card nothing is armed: the box ends with the
+    # discard, with its event.
+    assert [event.kind for event in result.events] == (
+        ["card_discarded", "agent_card_effect_resolved"]
+        if discarded_card_id == "dagger"
+        else ["card_discarded"]
+    )
     resolved = _resolve_agent_icons(result.state)
     assert len(resolved.players[0].hand) == expected_hand_count
     assert len(resolved.players[0].deck) == expected_deck_count
