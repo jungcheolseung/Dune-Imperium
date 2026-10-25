@@ -142,6 +142,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 - Count Hasimir Fenring: Intrigue 카드를 trash할 때 Solari를 얻지 않는다. `[Bloodlines p. 12]`
 - Duncan Idaho: Into the Fray로 Conflict에 보낸 Agent는 여전히 자신의 Agent라서 뒤의 turn에 Imperial Privilege의 recall 대상이 된다(디자이너 판정, [OQ-037](open-questions.md#oq-037--into-the-fray로-conflict에-간-agent와-bloodlines-leader-카드면의-아이콘-읽기)(d)). `[Board Guide p. 2]` `[Duncan Idaho card]`
 - Esmar Tuek: setup 때 Tuek's Sietch board space를 game board 옆에 놓는다. Maker board space이므로 spice가 쌓인다. Signet Ring으로 Tuek's Sietch에 bonus spice를 놓고 같은 turn에 그곳으로 보낸 Agent로 그 spice를 가져갈 수 있다. `[Bloodlines p. 12]`
+  - Tuek's Sietch의 인쇄된 속성: Agent 아이콘 Spice Trade, Combat space, Maker space, 비용 없음, 효과 "1 spice —OR— draw 1 card"(Maker 칸이므로 쌓인 bonus spice도 가져간다). Esmar Tuek이 게임에 있을 때만 쓰는 칸이다. `[Tuek's Sietch board tile]` `[Bloodlines p. 12]`
 - Steersman Y'rkoon: 자신의 face-down Navigation 카드를 언제든 볼 수 있다. Influence를 잃었다가 다시 얻으면 같은 Faction에서 Influence 2에 여러 번 도달할 수 있고, 그때마다 Navigation 카드를 play한다. `[Bloodlines p. 12]`
 - Navigation Card 3의 slot 4 효과 "For the rest of the game, during each of your Reveal turns, [1 Persuasion]" `[Navigation Card 3 card]`는 자기 공개 차례 도중에 나오면 그 공개에도 1을 준다(2026-10-19 사용자 판정, [OQ-110](open-questions.md#oq-110--공개-차례-도중에-나온-운항-카드-3의-설득력) — project convention).
 - Steersman Y'rkoon의 Hungry for Spice가 그의 turn 안에서 준 카드는 그 spice를 준 단계에서 뽑지 않고 그의 단계 `draw_owed_card`로 남는다 — 그 전에 버림 더미의 카드를 trash할 수 있게(2026-10-10 사용자 판정, [OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 8 — project convention; OQ-063).
