@@ -96,17 +96,13 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     OnTroopsLostAtConflictEnd,
-    PeekTopCard,
     PlaceSpy,
     RecallSpy,
-    RedirectSpiesOnTurnSpace,
     RetreatTroops,
     RevealContractsTakeOne,
-    SetAsideImperiumRowCard,
     TakeContract,
     TrashDiscardPileCard,
     TrashIntrigueCard,
-    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
@@ -195,7 +191,6 @@ from dune_imperium.rules.contracts import (
     legal_contract_recall_actions,
 )
 from dune_imperium.rules.effect_interpreter import (
-    _trigger_option_block,
     applicable_sections,
     can_afford,
     condition_holds,
@@ -216,7 +211,6 @@ from dune_imperium.rules.effects import (
     BOARD_ICON_TECH,
     OptionalBlockKind,
     active_agent_card,
-    agent_turn_space_id,
     board_icon_is_pending,
     current_agent_effect_context,
     is_grafted,
@@ -437,20 +431,24 @@ def test_greyed_out_rows_are_never_legal_and_never_leak(
             assert any(wanted in key for key in keys), (wanted, sorted(keys))
 
 
-def test_a_greyed_harvest_cells_in_its_window_reads_nothing_hidden() -> None:
+def test_a_harvest_cells_that_changes_nothing_in_its_window_reads_nothing_hidden() -> (
+    None
+):
     """The Conflict-end window opens on public facts for every seat
-    (OQ-103), and a held Harvest Cells it does not offer greys out
-    (``display.unavailable._conflict_end_trigger``). The seeded games above
-    seldom meet it, so the two windows of
-    ``test_harvest_cells_window_skips_a_copy_that_would_change_nothing``
-    are re-dealt here: for the deciding seat the rows stay the same; for
-    any other seat, re-dealing the deciding seat's hand shows nothing."""
+    (OQ-103), and a held Harvest Cells that could change nothing is offered
+    like any other (OQ-113 (C), user ruling 2026-10-24; until then it greyed
+    out, ``display.unavailable._conflict_end_trigger``). The seeded games
+    above seldom meet it, so the two windows of
+    ``test_harvest_cells_window_offers_a_copy_that_would_change_nothing``
+    are re-dealt here: for the deciding seat the legal actions and the (no)
+    greyed rows stay the same; for any other seat, re-dealing the deciding
+    seat's hand shows nothing."""
 
     first, second = HARVEST_CELLS
     lone = _conflict_end_window(first)
     mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
     # The first copy resolves at its play; its acquisition choice answered,
-    # the window is back with the second copy greyed out.
+    # the window is back with the second copy offered.
     resolved = apply_whole(ENGINE, 
         _conflict_end_window(first, second, **mixed), _play_conflict_end(first)
     ).state
@@ -462,7 +460,8 @@ def test_a_greyed_harvest_cells_in_its_window_reads_nothing_hidden() -> None:
     for state in (lone, played):
         legal = ENGINE.whole_actions(state, 0)
         found = unavailable_choices(state, 0, legal)
-        assert found is not None and found["rows"]
+        assert found is None
+        assert any(action.action_id == "play_conflict_end_intrigue" for action in legal)
         for _ in range(20):
             hidden = determinize(state, 0, rng)
             hidden_legal = ENGINE.whole_actions(hidden, 0)
@@ -640,33 +639,31 @@ def _old_choice_costs_feasible(
 def _old_choice_rewards_feasible(
     state: GameState, player: int, sections: tuple[EffectSection, ...]
 ) -> bool:
-    owner = state.players[player]
     for section in sections:
         for reward in section.rewards:
             match reward:
                 # Updated on purpose 2026-10-06: "Deploy up to N troops" may
                 # deploy zero, so DeployFromGarrison no longer gates a play
                 # [FAQ p. 2] (OQ-057 (6)).
-                case PlaceSpy() if not spy_placement_possible(state, player, reward):
-                    return False
-                # Updated on purpose 2026-10-06: Tactical Option's "any
-                # number" retreat now has minimum 0 [Main p. 20] [FAQ p. 3],
-                # yet stays gated on one unit in the Conflict, as before.
-                case RetreatTroops(minimum=minimum) if (
-                    owner.troops_conflict + owner.commanders_conflict
-                    < max(minimum, 1)
+                # Updated on purpose 2026-10-24 (user ruling, OQ-113 (C)): a
+                # Spy placement gates only a line with a cost (Go to Ground,
+                # Sleeper Unit); Special Mission's, Distraction's and
+                # Navigation card 2's are played and fizzle. Tactical
+                # Option's "any number" retreat (minimum 0) no longer needs a
+                # unit in the Conflict either (a rule change made after the
+                # copy).
+                case PlaceSpy() if section.costs and not spy_placement_possible(
+                    state, player, reward
                 ):
                     return False
                 case TakeContract() if not state.config.choam_module:
                     return False
-                case SetAsideImperiumRowCard() if not state.imperium_row:
-                    return False
-                case PeekTopCard() if not owner.deck:
-                    return False
-                case TrashPersonalCard(mandatory=True, hand_only=True) if (
-                    not owner.hand
-                ):
-                    return False
+                # Updated on purpose 2026-10-24 (user ruling, OQ-113 (C)): an
+                # empty Imperium Row's set-aside, an empty deck's peek, an
+                # empty hand's mandatory trash and False Orders before the
+                # turn's Agent is sent are cost-free lines, played and
+                # fizzling, so none of them gates a play any more -- a rule
+                # change made after the copy.
                 case GainInfluence(where_opponent_leads=True) if not (
                     factions_where_opponent_leads(state, player)
                 ):
@@ -680,10 +677,6 @@ def _old_choice_rewards_feasible(
                 # the copy.
                 case GainInfluence() if _old_influence_line_buys_nothing(
                     state, player, section
-                ):
-                    return False
-                case RedirectSpiesOnTurnSpace() if (
-                    agent_turn_space_id(state, player) is None
                 ):
                     return False
                 case _:
@@ -708,19 +701,24 @@ def _old_influence_line_buys_nothing(
 def _old_any_effect(
     state: GameState, player: int, sections: tuple[EffectSection, ...]
 ) -> bool:
-    # Updated on purpose 2026-10-06 (user ruling): an Intrigue option also
-    # needs a reward that can change something now, judged after its
-    # resource cost (``reward_can_change_something``) -- a rule change made
-    # after the copy.
+    # Updated on purpose 2026-10-06 (user ruling) and again 2026-10-24
+    # (OQ-113 (C), "비용을 낸 것만 보장"): a line with a cost needs a reward
+    # that can change something now, judged after its own resource cost
+    # (``reward_can_change_something``), while a line without a cost is played
+    # even when every reward fizzles -- rule changes made after the copy.
     owner = state.players[player]
-    cost = resource_cost(sections)
-    after = pay_cost(owner, cost) if can_afford(owner, cost) else owner
-    return any(
-        reward_can_change_something(state, player, reward, section, after)
-        for section in sections
-        for reward in section.rewards
-        if state.shield_wall_present or not isinstance(reward, DestroyShieldWall)
-    )
+    for section in sections:
+        if not section.costs:
+            continue
+        cost = resource_cost((section,))
+        after = pay_cost(owner, cost) if can_afford(owner, cost) else owner
+        if not any(
+            reward_can_change_something(state, player, reward, section, after)
+            for reward in section.rewards
+            if state.shield_wall_present or not isinstance(reward, DestroyShieldWall)
+        ):
+            return False
+    return True
 
 
 def _old_section_is_usable(
@@ -731,10 +729,8 @@ def _old_section_is_usable(
         state, player, section.condition
     ):
         return False
-    if not state.shield_wall_present and all(
-        isinstance(reward, DestroyShieldWall) for reward in section.rewards
-    ):
-        return False
+    # Updated on purpose 2026-10-24 (OQ-113 (C)): a line of the Shield Wall's
+    # detonation alone still applies once the wall is gone and fizzles.
     sections = (section,)
     return (
         can_afford(owner, resource_cost(sections))
@@ -753,18 +749,13 @@ def _old_option_is_playable(
             _old_section_is_usable(state, player, section)
             for section in option.sections
         )
-    sections = applicable_sections(
-        state, player, option, shield_wall_present=state.shield_wall_present
-    )
+    sections = applicable_sections(state, player, option)
     if option.trigger is not None:
-        # Updated on purpose 2026-10-06 (user ruling): a triggered option
-        # also needs a firing that can change something (Call to Arms' troop,
-        # and in its owner's Reveal a card still to acquire) -- a rule change
-        # made after the copy.
-        return (
-            bool(sections)
-            and _trigger_option_block(state, player, option, sections) is None
-        )
+        # Updated on purpose 2026-10-24 (user ruling, OQ-113 (C)): a
+        # triggered option is played whenever a section applies, even when
+        # its firing can change nothing (Call to Arms' troop, a Reveal turn
+        # with nothing left to acquire) -- a rule change made after the copy.
+        return bool(sections)
     # Updated on purpose 2026-10-03 (codec v129, OQ-016): Coercive
     # Negotiation is no longer a face-up trigger but a Plot whose condition
     # is this turn's deployment, so its Contract-bank check (OQ-064) moved

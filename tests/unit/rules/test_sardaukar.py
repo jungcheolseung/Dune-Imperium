@@ -1697,6 +1697,9 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         # templates leave and 16 rows join.
         - 13
         + 16
+        # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
+        # is confirmed by a row of its own (skip_intrigue_set_aside).
+        + 1
     )
 
     # Stage B3a: the Commander's acquisition at the Sardaukar space is an

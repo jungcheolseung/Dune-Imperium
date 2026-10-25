@@ -318,7 +318,8 @@ def test_an_intrigue_card_greys_out_with_its_failing_cost_or_condition() -> None
         "false_orders",
         "coercive_negotiation",
     )
-    found = _found(_intrigue_state(*cards))
+    state = _intrigue_state(*cards)
+    found = _found(state)
     rows = {
         row["action"]["arguments"]["card_id"]: row
         for row in _rows(found, "intrigue").values()
@@ -330,7 +331,8 @@ def test_an_intrigue_card_greys_out_with_its_failing_cost_or_condition() -> None
         "sietch_ritual": ("Needs 1 card in hand (you have 0)", "cost"),
         "backed_by_choam": ("Needs 1 Influence to lose (you have 0)", "cost"),
         "change_allegiances": ("None of its lines can be used now", "no_line"),
-        "false_orders": ("Only after you send an Agent this turn", "reward"),
+        # False Orders has no cost, so it is played before the turn's Agent is
+        # sent and fizzles (OQ-113 (C), user ruling 2026-10-24): no row.
         # "When you deploy three or more units to the Conflict in a single
         # turn:" is checked first: a play condition (OQ-016, codec v129).
         "coercive_negotiation": (
@@ -341,6 +343,10 @@ def test_an_intrigue_card_greys_out_with_its_failing_cost_or_condition() -> None
     assert {
         card.split(":")[1]: (row["reason"], row["code"]) for card, row in rows.items()
     } == expected
+    assert {"card_id": "intrigue:false_orders:0", "option": 0} in _legal(
+        state, "play_intrigue"
+    )
+    assert "intrigue:false_orders:0" not in found["refs"]
     for card_id, row in rows.items():
         assert row["action"]["action_id"] == "play_intrigue"
         assert row["action"]["arguments"] == {"card_id": card_id, "option": 0}
@@ -424,21 +430,13 @@ PRICEY_ROW = ("tleilaxu:twisted_mentat:0", "tleilaxu:usurp:0")
 # The Conflict's troops are back in the supply when the window opens; lost
 # Sardaukar Commanders go back to their own supply and make no specimen
 # [Bloodlines p. 4] (``combat._harvest_cells_has_effect``).
-NO_TROOP_FOR_A_SPECIMEN = (
-    "No troop in your supply to make a specimen",
-    "{specimen}으로 만들 {troop}이 {supply}에 없음",
-)
-NO_TLEILAXU_CARD = (
-    "; No Tleilaxu card your specimens could acquire",
-    " · {specimen}으로 획득할 수 있는 {tleilaxu} 카드 없음",
-)
 
 
 def _conflict_end_window(*cards: str, **owner_fields: Any) -> GameState:
     """Seat 0's Conflict-end window after a Conflict it fought with three
     Commanders and no troop (Immortality and Bloodlines), holding ``cards``
     (the fixture of ``test_immortality_intrigue.py``'s
-    ``test_harvest_cells_window_skips_a_copy_that_would_change_nothing``)."""
+    ``test_harvest_cells_window_offers_a_copy_that_would_change_nothing``)."""
 
     values: dict[str, Any] = {
         "intrigue_cards": cards,
@@ -467,105 +465,81 @@ def _play_conflict_end(card_id: str) -> DomainAction:
     )
 
 
-def test_harvest_cells_that_could_change_nothing_greys_out_in_its_window() -> None:
+def test_harvest_cells_that_could_change_nothing_is_offered_in_its_window() -> None:
     """The window opens on public facts (OQ-103), so a seat that lost only
-    Commanders sits in it holding a Harvest Cells it may not play: no troop
-    to make a specimen of, and no Tleilaxu card the specimens could pay for
-    (user ruling 2026-10-06, an Intrigue play needs an effect). The card
-    shows greyed out among the Intrigue cards, and dims in the hand, with
-    both dead effects explained."""
+    Commanders sits in it holding a Harvest Cells that can make no specimen:
+    the troops that went back to the supply are none, and no Tleilaxu card
+    its specimens could pay for. The card has no cost, so it is offered all
+    the same and nothing is greyed out (OQ-113 (C), user ruling 2026-10-24,
+    (2) 6: "카드 box가 불발해도 Imperium 카드를 내고"); playing it is noted as a
+    play that changes nothing."""
 
     first = HARVEST_CELLS[0]
     window = _conflict_end_window(first)
     assert ENGINE.whole_actions(window, 0) == (
         DomainAction(action_id="decline_conflict_end_intrigue", actor=0),
+        _play_conflict_end(first),
     )
+    assert unavailable_choices(window, 0, ENGINE.whole_actions(window, 0)) is None
 
-    found = _found(window)
-    assert found["frame"] == "conflict_end_trigger"
-    reason = {
-        "reason": NO_TROOP_FOR_A_SPECIMEN[0] + NO_TLEILAXU_CARD[0],
-        "reason_ko": NO_TROOP_FOR_A_SPECIMEN[1] + NO_TLEILAXU_CARD[1],
-        "code": "reward",
-    }
-    assert found["rows"] == [
-        {
-            "key": f"intrigue:{first}",
-            "surface": "intrigue",
-            "action": {
-                "action_id": "play_conflict_end_intrigue",
-                "arguments": {"card_id": first},
-                "detail": None,
-                "detail_ko": None,
-            },
-            "refs": [first],
-            **reason,
-        }
-    ]
-    assert found["refs"] == {first: reason}
-
-    # A troop in the supply, or three specimens for Reclaimed Forces, makes
-    # it playable: the row becomes the play at once.
-    for fields in (
-        {"troops_supply": 1, "troops_garrison": 11},
-        {"specimens": 3, "troops_garrison": 9},
-    ):
-        lit = _conflict_end_window(first, **fields)
-        assert _legal(lit, "play_conflict_end_intrigue") == [{"card_id": first}]
-        assert unavailable_choices(lit, 0, ENGINE.whole_actions(lit, 0)) is None
+    played = apply_whole(ENGINE, window, _play_conflict_end(first))
+    (without_effect,) = (
+        event for event in played.events if event.kind == "intrigue_without_effect"
+    )
+    assert dict(without_effect.payload) == {"card_id": first, "player": 0}
     # Nobody else is shown anything of it.
     for seat in range(1, 4):
         legal = ENGINE.whole_actions(window, seat)
         assert legal == () and unavailable_choices(window, seat, legal) is None
 
 
-def test_a_second_harvest_cells_greys_out_once_the_first_takes_the_troops() -> None:
+def test_a_second_harvest_cells_is_still_offered_once_the_first_takes_the_troops() -> (
+    None
+):
     """Two troops and a Commander lost: both copies are offered, the first
     played takes both troops as its specimens, and the second, which could
-    make no specimen and buy nothing with two, greys out in the window that
-    stays open while the seat holds an Intrigue card (OQ-103). It reads as
-    any copy with no troop to make a specimen of; the first copy is already
-    in the discard pile and is not dimmed."""
+    make no specimen and buy nothing with two, is offered all the same in the
+    window that stays open while the seat holds an Intrigue card (OQ-103):
+    it has no cost (OQ-113 (C), user ruling 2026-10-24). Playing it is noted
+    as one that changes nothing; with a third troop lost it is not."""
 
     first, second = HARVEST_CELLS
     mixed = {"troops_garrison": 10, "troops_conflict": 2, "commanders_conflict": 1}
     both = _conflict_end_window(first, second, **mixed)
     assert unavailable_choices(both, 0, ENGINE.whole_actions(both, 0)) is None
 
-    played = apply_whole(ENGINE, both, _play_conflict_end(first)).state
+    played = apply_whole(ENGINE, both, _play_conflict_end(first))
+    assert not [e for e in played.events if e.kind == "intrigue_without_effect"]
     # The first copy resolved at its play: its acquisition choice (nothing
     # in the pricey Row pays) is answered, and the window is back on top.
-    assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
-    played = apply_whole(ENGINE, 
-        played, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+    assert played.state.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    staged = apply_whole(
+        ENGINE,
+        played.state,
+        DomainAction(action_id="decline_intrigue_tleilaxu", actor=0),
     ).state
-    assert played.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
-    assert played.players[0].troops_supply == 0
-    assert _legal(played, "play_conflict_end_intrigue") == []
-    found = _found(played)
-    reason = (
-        NO_TROOP_FOR_A_SPECIMEN[0] + NO_TLEILAXU_CARD[0],
-        NO_TROOP_FOR_A_SPECIMEN[1] + NO_TLEILAXU_CARD[1],
-        "reward",
+    assert staged.decision_stack[-1].kind == FrameKind.CONFLICT_END_TRIGGER
+    assert staged.players[0].troops_supply == 0
+    assert _legal(staged, "play_conflict_end_intrigue") == [{"card_id": second}]
+    assert unavailable_choices(staged, 0, ENGINE.whole_actions(staged, 0)) is None
+    again = apply_whole(ENGINE, staged, _play_conflict_end(second))
+    (without_effect,) = (
+        event for event in again.events if event.kind == "intrigue_without_effect"
     )
-    (row,) = found["rows"]
-    assert (row["key"], row["reason"], row["reason_ko"], row["code"]) == (
-        f"intrigue:{second}",
-        *reason,
-    )
-    assert row["action"]["arguments"] == {"card_id": second}
-    assert set(found["refs"]) == {second}
+    assert dict(without_effect.payload) == {"card_id": second, "player": 0}
 
     # A third troop lost leaves the second copy a specimen to make.
     three = _conflict_end_window(
         first, second, troops_garrison=9, troops_conflict=3, commanders_conflict=0
     )
     staged = apply_whole(ENGINE, three, _play_conflict_end(first)).state
-    staged = apply_whole(ENGINE, 
-        staged, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
+    staged = apply_whole(
+        ENGINE, staged, DomainAction(action_id="decline_intrigue_tleilaxu", actor=0)
     ).state
     assert _legal(staged, "play_conflict_end_intrigue") == [{"card_id": second}]
     assert unavailable_choices(staged, 0, ENGINE.whole_actions(staged, 0)) is None
+    changing = apply_whole(ENGINE, staged, _play_conflict_end(second))
+    assert not [e for e in changing.events if e.kind == "intrigue_without_effect"]
 
 
 def test_harvest_cells_below_its_loss_says_how_many_units_are_lost() -> None:
@@ -664,50 +638,56 @@ def _detonation(troops: int, undeployable: int) -> GameState:
     return _state(owner, decision_stack=(turn,))
 
 
-def test_a_deploy_line_with_nothing_to_deploy_is_greyed_with_its_reason() -> None:
+def test_a_deploy_line_with_nothing_to_deploy_is_offered_and_deploys_none() -> None:
     """Detonation's "Deploy up to four troops from your garrison" (option 1)
-    with nothing it may deploy changes nothing, so it is not offered (user
-    ruling 2026-10-06): with only Harkonnen Advisor's barred troop ("can't
-    deploy ... this turn" [Piter De Vries card], OQ-038), or with an empty
-    garrison, the row is greyed with the reason."""
+    with nothing it may deploy has no cost, so it is offered, not greyed out
+    (OQ-113 (C), user ruling 2026-10-24, (2) 1: "zero is a number"): with only
+    Harkonnen Advisor's barred troop ("can't deploy ... this turn" [Piter De
+    Vries card], OQ-038), with an empty garrison, or under Emperor of the
+    Known Universe's ban. Playing it offers only the zero deployment and is
+    noted as a play that changes nothing."""
 
-    def reason(state: GameState) -> tuple[str, str, str]:
-        assert _legal(state, "play_intrigue") == [
-            {"card_id": "intrigue:detonation:0", "option": 0}
-        ]
-        row = _rows(_found(state), "intrigue")["intrigue:intrigue:detonation:0:1"]
-        return row["reason"], row["reason_ko"], row["code"]
-
-    assert reason(_detonation(1, 1)) == (
-        "Your only garrison troop cannot deploy this turn",
-        "{garrison}의 {troop}은 이번 차례에 배치할 수 없음",
-        "reward",
-    )
-    assert reason(_detonation(2, 2))[0] == (
-        "Your garrison troops cannot deploy this turn"
-    )
-    assert reason(_detonation(0, 0)) == (
-        "Needs 1 troop in your garrison (you have 0)",
-        "{garrison}에 {troop:1} 필요 (보유 0)",
-        "garrison",
+    detonation: dict[str, Any] = {"card_id": "intrigue:detonation:0", "option": 1}
+    play = DomainAction(
+        action_id="play_intrigue",
+        actor=0,
+        arguments=(("card_id", "intrigue:detonation:0"), ("option", 1)),
     )
     blocked = replace(
         _detonation(2, 0),
         decision_stack=(replace(TURN, context=(("units_deploy_blocked", True),)),),
     )
-    assert reason(blocked) == (
-        "Emperor of the Known Universe bars deploying units this turn",
-        "알려진 우주의 황제: 이번 차례에는 유닛을 배치할 수 없음",
-        "reward",
-    )
+    for state in (_detonation(1, 1), _detonation(2, 2), _detonation(0, 0), blocked):
+        assert detonation in _legal(state, "play_intrigue")
+        assert unavailable_choices(state, 0, ENGINE.whole_actions(state, 0)) is None
+        played = apply_whole(ENGINE, state, play)
+        assert played.state.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+        assert ENGINE.whole_actions(played.state, 0) == (
+            DomainAction(
+                action_id="deploy_intrigue_troops",
+                actor=0,
+                arguments=(("count", 0),),
+            ),
+        )
+        (without_effect,) = (
+            event for event in played.events if event.kind == "intrigue_without_effect"
+        )
+        assert dict(without_effect.payload) == {
+            "card_id": "intrigue:detonation:0",
+            "player": 0,
+        }
     # One deployable troop beside the barred one: an ordinary play.
-    assert {"card_id": "intrigue:detonation:0", "option": 1} in _legal(
-        _detonation(2, 1), "play_intrigue"
-    )
+    ordinary = apply_whole(ENGINE, _detonation(2, 1), play)
+    assert not [e for e in ordinary.events if e.kind == "intrigue_without_effect"]
+    assert [
+        dict(action.arguments)["count"]
+        for action in ENGINE.whole_actions(ordinary.state, 0)
+    ] == [0, 1]
 
 
-# User ruling 2026-10-06 ("아무 효과 없이 책략을 쓸 수 없는거지"): an Intrigue
-# option none of whose effects could change anything now is greyed out.
+# User ruling 2026-10-24 (OQ-113 (C), "비용을 낸 것만 보장"): an Intrigue
+# option with a cost none of whose rewards could change anything now is greyed
+# out; one without a cost is offered even when every reward fizzles.
 
 _NO_CARD_TO_DRAW = (
     "No card to draw: your deck and discard pile are both empty",
@@ -750,7 +730,41 @@ def _intrigue_reason(
     return row["reason"], row["reason_ko"], row["code"]
 
 
-def test_an_intrigue_option_that_could_change_nothing_names_its_effect() -> None:
+def test_an_intrigue_option_with_a_cost_that_changes_nothing_names_its_effect() -> (
+    None
+):
+    """A line with a cost whose rewards could change nothing stays greyed out
+    with the reason (OQ-113 (C), user ruling 2026-10-24: "비용만 내고 보상을
+    받지 못하는 경우는 없어야 한다", OQ-071). Unexpected Allies' two water
+    buy a Shield Wall detonation and a sandworm in the Conflict, and there is
+    no Conflict this round."""
+
+    state = replace(
+        _seat_with("unexpected_allies", resources=Resources(water=2)),
+        shield_wall_present=False,
+    )
+    assert _intrigue_reason(state, "unexpected_allies", 0) == (
+        "No Conflict this round",
+        "이번 라운드에 교전 없음",
+        "no_conflict",
+    )
+    # The same card without the water to pay is short of it first.
+    seat = replace(state.players[0], resources=Resources())
+    poor = replace(state, players=(seat, *state.players[1:]))
+    assert _intrigue_reason(poor, "unexpected_allies", 0)[2] == "cost"
+
+
+def test_an_intrigue_option_without_a_cost_is_offered_though_every_effect_fizzles() -> (
+    None
+):
+    """The formerly greyed lines without a cost are offered, with no row and
+    no dimmed card (OQ-113 (C), user ruling 2026-10-24: "비용이 없는 효과는
+    모두 불발해도 낸다"), each played and noted as a play that changes nothing
+    (``intrigue_without_effect``) with the card in the Intrigue discard pile:
+    an empty deck's draw, an empty supply's recruit, a Tleilaxu track at its
+    end, an Agent already sent, a Faction requirement nobody can meet, no unit
+    in the Conflict, and a Withdrawn whose turn comes straight back."""
+
     immortality = RulesetConfig(immortality=True)
     bloodlines = RulesetConfig(bloodlines=True)
     alone = replace(
@@ -764,48 +778,14 @@ def test_an_intrigue_option_that_could_change_nothing_names_its_effect() -> None
             *(PlayerState(player_id=seat, has_revealed=True) for seat in range(1, 4)),
         ),
     )
-    cases: list[tuple[GameState, str, int, tuple[str, str, str]]] = [
-        (_seat_with("cunning"), "cunning", 0, _NO_CARD_TO_DRAW),
+    cases: list[tuple[GameState, str, int]] = [
+        (_seat_with("cunning"), "cunning", 0),
+        (_seat_with("shaddam_s_favor", **_EMPTY_SUPPLY), "shaddam_s_favor", 0),
+        (_seat_with("inspire_awe"), "inspire_awe", 0),
         (
-            _seat_with("shaddam_s_favor", **_EMPTY_SUPPLY),
-            "shaddam_s_favor",
-            0,
-            _NO_SUPPLY_TROOP,
-        ),
-        (
-            _seat_with("inspire_awe"),
-            "inspire_awe",
-            0,
-            (
-                "No card costing 3 or less to acquire",
-                "획득할 수 있는 비용 3 이하 카드 없음",
-                "reward",
-            ),
-        ),
-        (
-            replace(
-                _seat_with("unexpected_allies", resources=Resources(water=2)),
-                shield_wall_present=False,
-            ),
-            "unexpected_allies",
-            0,
-            ("No Conflict this round", "이번 라운드에 교전 없음", "no_conflict"),
-        ),
-        (
-            _seat_with(
-                "breakthrough",
-                config=immortality,
-                research_space="c8r2",
-            ),
+            _seat_with("breakthrough", config=immortality, research_space="c8r2"),
             "breakthrough",
             0,
-            (
-                "Past the second genetic marker Research draws a card,"
-                " and your deck and discard pile are both empty",
-                "두 번째 유전자 표지 뒤의 {research}는 카드를 뽑는데"
-                " {deck}과 {discard_pile}이 모두 비었음",
-                "empty",
-            ),
         ),
         (
             _seat_with(
@@ -816,7 +796,6 @@ def test_an_intrigue_option_that_could_change_nothing_names_its_effect() -> None
             ),
             "illicit_dealings",
             0,
-            _TLEILAXU_TRACK_END,
         ),
         (
             _seat_with(
@@ -827,11 +806,6 @@ def test_an_intrigue_option_that_could_change_nothing_names_its_effect() -> None
             ),
             "shadowy_bargain",
             0,
-            (
-                "No troop in your supply to make a specimen",
-                "{specimen}로 만들 {troop}이 {supply}에 없음",
-                "reward",
-            ),
         ),
         (
             _seat_with(
@@ -839,11 +813,6 @@ def test_an_intrigue_option_that_could_change_nothing_names_its_effect() -> None
             ),
             "emperor_s_invitation",
             1,
-            (
-                "Only before you send an Agent this turn",
-                "이번 차례에 {agent}를 보내기 전에만",
-                "reward",
-            ),
         ),
         (
             _seat_with(
@@ -854,39 +823,43 @@ def test_an_intrigue_option_that_could_change_nothing_names_its_effect() -> None
             ),
             "insider_information",
             1,
-            (
-                "No board space's Influence requirement is unmet",
-                "못 채운 {influence_any} 조건이 있는 공간 없음",
-                "reward",
-            ),
         ),
         (
             _seat_with("twisted_calculating", config=bloodlines),
             "twisted_calculating",
             0,
-            ("No unit of yours in the Conflict", "{conflict}에 내 유닛 없음", "reward"),
         ),
-        (
-            alone,
-            "twisted_withdrawn",
-            0,
-            (
-                "Every other player has revealed: the turn would come straight"
-                " back to you",
-                "다른 플레이어가 모두 공개를 마쳐 차례가 바로 돌아옴",
-                "reward",
-            ),
-        ),
+        (alone, "twisted_withdrawn", 0),
     ]
-    for state, card, option, expected in cases:
-        assert _intrigue_reason(state, card, option) == expected, card
+    for state, card, option in cases:
+        card_id = f"intrigue:{card}:0"
+        assert {"card_id": card_id, "option": option} in _legal(
+            state, "play_intrigue"
+        ), card
+        found = unavailable_choices(state, 0, ENGINE.whole_actions(state, 0))
+        greyed = {} if found is None else _rows(found, "intrigue")
+        assert f"intrigue:{card_id}:{option}" not in greyed, card
+        played = apply_whole(
+            ENGINE,
+            state,
+            DomainAction(
+                action_id="play_intrigue",
+                actor=0,
+                arguments=(("card_id", card_id), ("option", option)),
+            ),
+        )
+        (without_effect,) = (
+            event for event in played.events if event.kind == "intrigue_without_effect"
+        )
+        assert dict(without_effect.payload) == {"card_id": card_id, "player": 0}, card
 
 
-def test_a_city_spy_after_a_recall_this_turn_is_greyed_with_why() -> None:
+def test_a_city_spy_after_a_recall_this_turn_is_offered_not_greyed() -> None:
     """Special Mission's [Spy] on [City] with the supply empty and every
     City post full, one held by the seat's Spy alone: once a Spy was
     recalled this turn, recalling and replacing it changes nothing (OQ-101
-    (b))."""
+    (b)), but the line has no cost, so it is offered all the same (OQ-113
+    (C), user ruling 2026-10-24, (2) 5; on 2026-10-06 the row was greyed)."""
 
     owner = PlayerState(
         player_id=0,
@@ -913,12 +886,12 @@ def test_a_city_spy_after_a_recall_this_turn_is_greyed_with_why() -> None:
         PlayerState(player_id=3),
     )
     state = _state(owner, players=(owner, *rivals))
-    assert _intrigue_reason(state, "special_mission") == (
-        "You already recalled a Spy this turn;"
-        " recalling and replacing it would change nothing",
-        "이번 차례에 이미 {spy}를 회수함 — 회수해 다시 놓아도 바뀌는 것 없음",
-        "reward",
+    assert {"card_id": "intrigue:special_mission:0", "option": 0} in _legal(
+        state, "play_intrigue"
     )
+    found = unavailable_choices(state, 0, ENGINE.whole_actions(state, 0))
+    greyed = {} if found is None else _rows(found, "intrigue")
+    assert "intrigue:intrigue:special_mission:0:0" not in greyed
     # Before any recall this turn the play stays (OQ-101 (b)).
     fresh = replace(owner, spies_recalled_turn=0)
     assert {"card_id": "intrigue:special_mission:0", "option": 0} in _legal(
@@ -927,8 +900,10 @@ def test_a_city_spy_after_a_recall_this_turn_is_greyed_with_why() -> None:
 
 
 def test_an_option_with_every_effect_dead_explains_each_of_them() -> None:
-    """When no effect of a card could change anything, the row names every
-    distinct one, joined, so neither half is left unexplained."""
+    """When no effect of a line with a cost could change anything, the row
+    names every distinct one, joined, so neither half is left unexplained.
+    A line without a cost is offered instead (OQ-113 (C), user ruling
+    2026-10-24): Honor Guard, whose troop and discount both fizzle."""
 
     bloodlines = RulesetConfig(bloodlines=True)
     mercenaries = _seat_with(
@@ -948,11 +923,8 @@ def test_an_option_with_every_effect_dead_explains_each_of_them() -> None:
         **_EMPTY_SUPPLY,
         **_SENT,
     )
-    assert _intrigue_reason(honor_guard, "honor_guard") == (
-        "Needs 1 troop in your supply (you have 0);"
-        " No Sardaukar Commander left to recruit this turn",
-        "{supply}에 {troop:1} 필요 (보유 0) · 이번 차례에 고용할 {commander} 없음",
-        "reward",
+    assert {"card_id": "intrigue:honor_guard:0", "option": 0} in _legal(
+        honor_guard, "play_intrigue"
     )
     cunning = _seat_with("cunning", resources=Resources(spice=1))
     assert _intrigue_reason(cunning, "cunning", 1) == (
@@ -968,20 +940,24 @@ def test_an_option_with_every_effect_dead_explains_each_of_them() -> None:
     )
 
 
-def test_call_to_arms_row_explains_nothing_left_to_acquire() -> None:
+def test_call_to_arms_with_nothing_left_to_acquire_is_offered_not_greyed() -> None:
     """Call to Arms in the seat's own Reveal turn with nothing it could
-    still acquire there would recruit nothing (user ruling 2026-10-06)."""
+    still acquire there would recruit nothing, but a triggered option has no
+    cost, so it is offered all the same (OQ-113 (C), user ruling 2026-10-24;
+    on 2026-10-06 the row was greyed)."""
 
     state = _state(
         PlayerState(player_id=0, intrigue_cards=("intrigue:call_to_arms:0",)),
         imperium_row=ROW,
         reserve_stacks=(("prepare_the_way", 8), ("the_spice_must_flow", 0)),
     )
-    assert _intrigue_reason(_reveal(state, 0), "call_to_arms") == (
-        "Nothing left to acquire in this Reveal turn",
-        "이번 공개 차례에 더 획득할 수 있는 카드 없음",
-        "reward",
+    broke = _reveal(state, 0)
+    assert {"card_id": "intrigue:call_to_arms:0", "option": 0} in _legal(
+        broke, "play_intrigue"
     )
+    # (The Reveal shop's unaffordable cards stay greyed; the Intrigue card is not.)
+    assert _rows(_found(broke), "intrigue") == {}
+    assert "intrigue:call_to_arms:0" not in _found(broke)["refs"]
     # Two Persuasion buy Prepare the Way: the play is offered.
     assert {"card_id": "intrigue:call_to_arms:0", "option": 0} in _legal(
         _reveal(state, 2), "play_intrigue"

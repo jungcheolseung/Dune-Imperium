@@ -47,6 +47,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     OpponentsMoveSpiesFromVisitedSpace,
     PrintedRevealValue,
     RedirectSpiesOnTurnSpace,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
@@ -780,6 +781,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",
             "skip_intrigue_acquisition",
+            # Manipulate's set-aside with an empty Imperium Row (OQ-113 (C)).
+            "skip_intrigue_set_aside",
             # An Intrigue "choose a Faction" Influence with every Faction it
             # may raise at the top is confirmed (OQ-060).
             "resolve_intrigue_influence_without_faction",
@@ -1649,14 +1652,20 @@ _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
         "put_back_top_card",
         "discard_top_card",
         "draw_top_card_for_solari",
+        "skip_intrigue_top_card",
     ),
-    # The slots' refusals and empty confirmations (B3d-3).
+    # The slots' refusals and empty confirmations (B3d-3; OQ-113 (C)), a
+    # mandatory trash's own below (``_MANDATORY_TRASH_EFFECTS``).
     "TrashPersonalCard": ("decline_intrigue_trash",),
+    "SetAsideImperiumRowCard": ("skip_intrigue_set_aside",),
     "TrashDiscardPileCard": ("decline_intrigue_trash",),
     "AcquireTleilaxuCard": ("decline_intrigue_tleilaxu",),
     "AcquireCardUpTo": ("skip_intrigue_acquisition",),
     "GainInfluence": ("resolve_intrigue_influence_without_faction",),
 }
+# A mandatory personal-card trash (Twisted Devious) is confirmed with an empty
+# hand instead of refused (OQ-113 (C)).
+_MANDATORY_TRASH_EFFECTS: Final = ("skip_intrigue_trash",)
 # A Conflict reward window's refusal or empty confirmation by the icons
 # whose window offers it (``effect_steps.window_icon``, B3d-3).
 _REWARD_WINDOW_REFUSALS: Final[Mapping[str, tuple[str, ...]]] = {
@@ -1689,7 +1698,7 @@ def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
         card = intrigue_card_for_instance(instance_id)
         for option in card.options:
             slots = {
-                type(slot).__name__
+                slot
                 for wall in (True, False)
                 for slot in choice_slots(option.sections, shield_wall_present=wall)
             }
@@ -1698,7 +1707,14 @@ def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
             effects = {
                 effect
                 for slot in slots
-                for effect in _INTRIGUE_SLOT_EFFECTS.get(slot, ())
+                for effect in (
+                    *_INTRIGUE_SLOT_EFFECTS.get(type(slot).__name__, ()),
+                    *(
+                        _MANDATORY_TRASH_EFFECTS
+                        if isinstance(slot, TrashPersonalCard) and slot.mandatory
+                        else ()
+                    ),
+                )
             }
             if automatic_rewards(option.sections):
                 effects.add("resolve_intrigue_rewards")
@@ -2689,6 +2705,11 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id=action_id)
         for action_id in (
             "decline_research_bonus",
+            # Twisted Controlled's look at an empty deck and Twisted Devious'
+            # mandatory trash with an empty hand, played and confirmed
+            # (OQ-113 (C), user ruling 2026-10-24).
+            "skip_intrigue_top_card",
+            "skip_intrigue_trash",
             # Harvest Cells, played only after the rewards and before the
             # cleanup (OQ-057 (11), user ruling 2026-10-06).
             "decline_conflict_end_intrigue",

@@ -548,23 +548,6 @@ def _conflict_end_reason(option: IntrigueOption) -> Reason:
     )
 
 
-# Harvest Cells in its own window when it could change nothing
-# (``ConflictEndTriggerBlock``): its specimens come from troops in the supply,
-# where the Conflict's troops already went back as the window opened, and
-# lost Sardaukar Commanders go back to their own supply and make none
-# (``combat._harvest_cells_has_effect``).
-_NO_TROOP_FOR_A_SPECIMEN: Final[Reason] = (
-    "No troop in your supply to make a specimen",
-    "{specimen}으로 만들 {troop}이 {supply}에 없음",
-    "reward",
-)
-_NO_TLEILAXU_CARD_TO_ACQUIRE: Final[Reason] = (
-    "No Tleilaxu card your specimens could acquire",
-    "{specimen}으로 획득할 수 있는 {tleilaxu} 카드 없음",
-    "reward",
-)
-
-
 def _conflict_end_trigger_reason(
     state: GameState,
     seat: int,
@@ -576,21 +559,12 @@ def _conflict_end_trigger_reason(
 
     if not isinstance(block, ConflictEndTriggerBlock):
         return intrigue_option_reason(state, seat, option, block)
-    if block is ConflictEndTriggerBlock.LOSS:
-        english, korean, _ = _conflict_end_reason(option)
-        lost = conflict_end_loss(state, seat)
-        return (
-            f"{english} (you lose {lost} unit{plural_s(lost)})",
-            f"{korean} (잃는 유닛 {lost})",
-            "condition",
-        )
-    english, korean, code = _NO_TROOP_FOR_A_SPECIMEN
-    # Both of its effects are dead, each explained, as ``_no_effect_reason``
-    # joins them.
+    english, korean, _ = _conflict_end_reason(option)
+    lost = conflict_end_loss(state, seat)
     return (
-        f"{english}; {_NO_TLEILAXU_CARD_TO_ACQUIRE[0]}",
-        f"{korean} · {_NO_TLEILAXU_CARD_TO_ACQUIRE[1]}",
-        code,
+        f"{english} (you lose {lost} unit{plural_s(lost)})",
+        f"{korean} (잃는 유닛 {lost})",
+        "condition",
     )
 
 
@@ -727,13 +701,6 @@ _DEPLOYMENT_BARRED: Final[Reason] = (
 _BEFORE_THE_AGENT: Final[Reason] = (
     "Only before you send an Agent this turn",
     "이번 차례에 {agent}를 보내기 전에만",
-    "reward",
-)
-# Call to Arms in the owner's Reveal turn once nothing is left to acquire in
-# it (``OptionBlock.NO_ACQUISITION_AHEAD``, user ruling 2026-10-06).
-_NO_ACQUISITION_AHEAD: Final[Reason] = (
-    "Nothing left to acquire in this Reveal turn",
-    "이번 공개 차례에 더 획득할 수 있는 카드 없음",
     "reward",
 )
 
@@ -1044,18 +1011,12 @@ def intrigue_option_reason(
             return _NO_LINE
         case OptionBlock.CONTRACT_BANK:
             return _contract_bank_reason(state, option)
-        case OptionBlock.NO_ACQUISITION_AHEAD:
-            return _NO_ACQUISITION_AHEAD
         case OptionBlock.COST:
-            sections = applicable_sections(
-                state, seat, option, shield_wall_present=state.shield_wall_present
-            )
+            sections = applicable_sections(state, seat, option)
             return _resource_short_reason(owner, resource_cost(sections))
     # A player-choice cost or reward: the very object of the option's
     # applicable sections that ``option_unplayable_reason`` returned.
-    sections = applicable_sections(
-        state, seat, option, shield_wall_present=state.shield_wall_present
-    )
+    sections = applicable_sections(state, seat, option)
     for section in sections:
         for cost in section.costs:
             if cost is block:
@@ -1069,12 +1030,22 @@ def intrigue_option_reason(
 def _no_effect_reason(
     state: GameState, seat: int, sections: tuple[EffectSection, ...], blamed: Reward
 ) -> Reason:
-    """The blamed reward's reason, or, when no reward of the option can
-    change anything (``rewards_with_no_effect``), each distinct reward's
-    reason joined, so a card with two dead halves explains both (Mercenaries'
-    Intrigue draw and recruit, Honor Guard's troop and discount)."""
+    """The blamed reward's reason, or, when no reward of its line can change
+    anything (``rewards_with_no_effect``; only a line with a cost blocks,
+    OQ-113 (C)), each distinct reward's reason joined, so a line with two
+    dead halves explains both (Mercenaries' Intrigue draw and recruit)."""
 
-    dead = rewards_with_no_effect(state, seat, sections)
+    line = next(
+        (
+            section
+            for section in sections
+            if any(reward is blamed for reward in section.rewards)
+        ),
+        None,
+    )
+    dead = rewards_with_no_effect(
+        state, seat, sections if line is None else (line,)
+    )
     if not any(reward is blamed for reward in dead):
         return _choice_reward_reason(state, seat, blamed)
     reasons: list[Reason] = []

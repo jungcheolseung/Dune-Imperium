@@ -1638,6 +1638,10 @@ const UI_TEXT = {
     "ko": "책략 카드덱과 {discard_pile}를 합쳐도 {{short}}장 모자람 ({discard_pile}의 뒤틀린 책략 {{twisted}}장은 섞지 않음)",
     "en": "Intrigue deck and {discard_pile} are {{short}} short of the draw (not counting {{twisted}} Twisted Intrigue there, which are never reshuffled)"
   },
+  "render.shortfall_no_effect": {
+    "ko": "지금 내면 아무 효과가 없음",
+    "en": "Playing it now has no effect"
+  },
   "render.shortfall_specimens": {
     "ko": "{supply} 부족: {specimen} {{requested}}개 중 {{made}}개만 생성",
     "en": "Short {supply}: only {{made}} of {{requested}} {specimen} made"

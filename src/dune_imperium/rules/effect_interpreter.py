@@ -55,10 +55,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     GrantCombatDeployment,
     IgnoreInfluenceRequirementsThisTurn,
     IntrigueOption,
-    IntrigueTiming,
     LoseInfluence,
     LoseTroops,
-    OnRevealAcquisitionThisRound,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
     PassTurn,
@@ -85,7 +83,6 @@ from dune_imperium.content.uprising.effect_dsl import (
     UnitsInConflictAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import (
-    INTRIGUE_CARDS_BY_INSTANCE,
     is_twisted_intrigue,
 )
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
@@ -299,28 +296,20 @@ def applicable_sections(
     state: GameState,
     player: int,
     option: IntrigueOption,
-    *,
-    shield_wall_present: bool = True,
 ) -> tuple[EffectSection, ...]:
     """Return the sections whose conditions currently hold.
 
-    A section that only offers the Shield Wall detonation icon has nothing to
-    do once the token is gone, so it is not applicable then.
+    A section that only offers the Shield Wall detonation icon still applies
+    once the token is gone: the icon is no choice then (``choice_slots``)
+    and the line fizzles, which a line without a cost may (OQ-113 (C), user
+    ruling 2026-10-24: Detonation).
     """
 
     return tuple(
         section
         for section in option.sections
-        if (
-            section.condition is None
-            or condition_holds(state, player, section.condition)
-        )
-        and (
-            shield_wall_present
-            or not all(
-                isinstance(reward, DestroyShieldWall) for reward in section.rewards
-            )
-        )
+        if section.condition is None
+        or condition_holds(state, player, section.condition)
     )
 
 
@@ -811,11 +800,14 @@ def reward_can_change_something(
 
     "Intrigue 카드를 플레이하려면 카드의 모든 조건을 충족하고 모든 비용을
     지불해야 한다. [FAQ p. 2]" (docs/rules/player-turns.md), and the user's
-    ruling of 2026-10-06 that an Intrigue option needs an effect that can
-    change something ("아무 효과 없이 책략을 쓸 수 없는거지"): the Intrigue
-    form of the Arrakeen Scouts check (``scouts_effects.reward_has_effect``,
-    OQ-071). ``owner_after`` is the owner after the option's resource cost,
-    and a cost that feeds a reward of its own section counts (a discarded
+    ruling of 2026-10-24 (OQ-113 (C), "비용을 낸 것만 보장") that a line with
+    a cost needs a reward that can change something, while a line without
+    one is played even when every reward fizzles (``_no_effect_block``): the
+    Intrigue form of the Arrakeen Scouts check
+    (``scouts_effects.reward_has_effect``, OQ-071). It also tells the page
+    when a play would change nothing (``play_changes_nothing``).
+    ``owner_after`` is the owner after the option's resource cost, and a
+    cost that feeds a reward of its own section counts (a discarded
     card can be reshuffled and drawn, a trashed Intrigue card shuffled back,
     a lost troop made a specimen, a lowered Faction raised again). Only
     public state, the owner's own zones and the sizes of hidden piles are
@@ -962,13 +954,10 @@ def rewards_with_no_effect(
     sections: tuple[EffectSection, ...],
 ) -> tuple[Reward, ...]:
     """Every reward of ``sections``, in printed order, when none of them can
-    change anything now; () as soon as one can.
+    change anything now; () as soon as one can (``reward_can_change_something``).
 
-    An option is playable as soon as one of its effects can change
-    something; the others fizzle when it is played (user ruling 2026-10-06,
-    ``reward_can_change_something``). A detonation is left out once the
-    Shield Wall is gone (``choice_slots`` drops it), so the page names only
-    rewards that apply.
+    A detonation is left out once the Shield Wall is gone (``choice_slots``
+    drops it), so the page names only rewards that apply.
     """
 
     owner = state.players[player]
@@ -990,11 +979,48 @@ def _no_effect_block(
     player: int,
     sections: tuple[EffectSection, ...],
 ) -> Reward | None:
-    """Return the first reward to blame when no reward of ``sections`` can
-    change anything now (``rewards_with_no_effect``), or None when one can."""
+    """Return the first reward to blame when a line of ``sections`` with a
+    cost can change nothing now (``rewards_with_no_effect``), or None.
 
-    dead = rewards_with_no_effect(state, player, sections)
-    return dead[0] if dead else None
+    OQ-113 (C), user ruling 2026-10-24 ("비용을 낸 것만 보장"): a line with a
+    cost (left of an arrow: resources, a discard or trash, an Intrigue card,
+    a troop, a Spy) is played only when one of its own rewards can change
+    something -- "비용만 내고 보상을 받지 못하는 경우는 없어야 한다" (OQ-071,
+    user decision 2026-09-29) -- and a line without one is played even when
+    every reward fizzles: the Intrigue card itself is no cost, as a card box
+    that fizzles still lets its Imperium card be played.
+    """
+
+    for section in sections:
+        if not section.costs:
+            continue
+        dead = rewards_with_no_effect(state, player, (section,))
+        if dead:
+            return dead[0]
+    return None
+
+
+def play_changes_nothing(
+    state: GameState,
+    player: int,
+    sections: tuple[EffectSection, ...],
+) -> bool:
+    """Whether playing ``sections`` now could change nothing at all: every
+    line is one without a cost whose rewards all fizzle (a line with a cost
+    is played only when it can change something, ``_no_effect_block``). The
+    page warns before such a play (OQ-113 (5), user ruling 2026-10-24,
+    "지금 내면 아무 효과가 없다"). A detonation with the Shield Wall gone
+    changes nothing too (Detonation's option of that icon alone)."""
+
+    owner = state.players[player]
+    return bool(sections) and all(
+        not section.costs
+        and not any(
+            reward_can_change_something(state, player, reward, section, owner)
+            for reward in section.rewards
+        )
+        for section in sections
+    )
 
 
 def _choice_reward_block(
@@ -1004,35 +1030,20 @@ def _choice_reward_block(
 ) -> Reward | None:
     """Return the first reward that blocks the option whatever else it offers.
 
-    These rewards cannot even be resolved now, or are printed as mandatory,
-    so the option is not playable however its other rewards stand. Every
-    other reward that cannot happen blocks only when no reward can change
-    anything (``_no_effect_block``).
+    A Contract taken without the CHOAM Module cannot even be resolved, so
+    the option is not playable however its other rewards stand. Every other
+    reward that cannot happen fizzles, and blocks only a line with a cost
+    that can change nothing (``_no_effect_block``): an empty deck's peek
+    (Twisted Controlled), an empty Imperium Row's set-aside (Manipulate),
+    an empty hand's mandatory trash (Twisted Devious) and False Orders
+    before the turn's Agent is sent are played and fizzle (OQ-113 (C), user
+    ruling 2026-10-24; (2) 7-9).
     """
 
-    owner = state.players[player]
     for section in sections:
         for reward in section.rewards:
-            match reward:
-                case TakeContract() if not state.config.choam_module:
-                    return reward
-                case SetAsideImperiumRowCard() if not state.imperium_row:
-                    return reward
-                case PeekTopCard() if not owner.deck:
-                    # "덱이 비어 있으면 낼 수 없다" (OQ-038).
-                    return reward
-                case TrashPersonalCard(mandatory=True, hand_only=True) if (
-                    not owner.hand
-                ):
-                    return reward
-                case RedirectSpiesOnTurnSpace() if (
-                    agent_turn_space_id(state, player) is None
-                ):
-                    # "the board space where you sent an Agent this turn":
-                    # only after this turn's placement.
-                    return reward
-                case _:
-                    pass
+            if isinstance(reward, TakeContract) and not state.config.choam_module:
+                return reward
     return None
 
 
@@ -1091,16 +1102,13 @@ def section_is_usable(
     section: EffectSection,
 ) -> bool:
     """A separate printed line is usable when it applies, its cost is payable
-    now and one of its rewards can change something (user ruling
-    2026-10-06, ``_no_effect_block``)."""
+    now and, for a line with a cost, one of its rewards can change something
+    (OQ-113 (C), ``_no_effect_block``): a line without one is usable even
+    when it fizzles, and counts as used (Depart for Arrakis' draw)."""
 
     owner = state.players[player]
     if section.condition is not None and not condition_holds(
         state, player, section.condition
-    ):
-        return False
-    if not state.shield_wall_present and all(
-        isinstance(reward, DestroyShieldWall) for reward in section.rewards
     ):
         return False
     sections = (section,)
@@ -1125,114 +1133,9 @@ class OptionBlock(StrEnum):
     COST = "cost"  # the resource cost is more than the owner holds
     NO_LINE = "no_line"  # separate printed lines: none usable now (OQ-058)
     CONTRACT_BANK = "contract_bank"  # too few Contracts to reveal (OQ-064)
-    # Call to Arms in its owner's Reveal turn with nothing left to acquire
-    # (user ruling 2026-10-06, ``_trigger_option_block``).
-    NO_ACQUISITION_AHEAD = "no_acquisition_ahead"
 
 
 type OptionUnplayable = OptionBlock | Cost | Reward
-
-# Rewards of another Plot Intrigue card that can add an acquisition to the
-# Reveal turn it is played in (Inspire Awe, Tleilaxu Puppet).
-_REVEAL_ACQUISITION_REWARDS = (
-    AcquireCardUpTo,
-    AcquireReserveCard,
-    RevealPersuasionThisRound,
-)
-# Under Immortality, rewards that can add a specimen, which pays for a
-# Tleilaxu Row card in the Reveal turn: "Tleilaxu Row에서 오고 Persuasion
-# 대신 specimen을 비용으로 낸다." [Immortality p. 8] (Shadowy Bargain's
-# specimen, Breakthrough's Research onto a specimen space).
-_REVEAL_SPECIMEN_REWARDS = (GenerateSpecimens, Research)
-
-
-def _reveal_acquisition_ahead(state: GameState, player: int) -> bool:
-    """Whether the owner's open Reveal turn may still acquire a card.
-
-    Deliberately generous, so it never blocks a play that could still fire:
-    any action the Reveal frame offers besides ending the Reveal and playing
-    an Intrigue card counts -- the shop's own offers (Imperium Row, Reserve,
-    a set-aside card, the Tleilaxu Row), and every other choice that might
-    add Persuasion or change what is on offer (a deferred Reveal choice, a
-    Tech tile, a leader ability). So does another held Plot Intrigue option,
-    playable now, that acquires a card, adds Persuasion or, under
-    Immortality, may add a specimen for the Tleilaxu Row; trigger options
-    are skipped, so this never asks itself again.
-    """
-
-    # Function-local: the engine's table and the Intrigue play gate import
-    # this module.
-    from dune_imperium.rules.engine import LEGAL_ACTION_PROVIDERS
-    from dune_imperium.rules.intrigue import (
-        intrigue_play_block,
-        legal_intrigue_play_actions,
-    )
-    from dune_imperium.rules.reveal_turn import legal_finish_reveal_actions
-
-    for provider in LEGAL_ACTION_PROVIDERS[FrameKind.REVEAL]:
-        if provider in (legal_intrigue_play_actions, legal_finish_reveal_actions):
-            continue
-        if provider(state, player):
-            return True
-    feeders = _REVEAL_ACQUISITION_REWARDS + (
-        _REVEAL_SPECIMEN_REWARDS if state.config.immortality else ()
-    )
-    for card_id in state.players[player].intrigue_cards:
-        entry = INTRIGUE_CARDS_BY_INSTANCE.get(card_id)
-        if entry is None or not entry.play_data_complete:
-            continue
-        for other in entry.options:
-            if other.trigger is not None or not any(
-                isinstance(reward, feeders)
-                for section in other.sections
-                for reward in section.rewards
-            ):
-                continue
-            if (
-                intrigue_play_block(
-                    state, player, FrameKind.REVEAL, IntrigueTiming.PLOT, other
-                )
-                is None
-            ):
-                return True
-    return False
-
-
-def _trigger_option_block(
-    state: GameState,
-    player: int,
-    option: IntrigueOption,
-    sections: tuple[EffectSection, ...],
-) -> OptionUnplayable | None:
-    """Why a triggered option cannot be played now, or None.
-
-    Playing it only sets the card waiting face up, and its rewards resolve
-    when the trigger fires, so the check looks ahead to that firing (user
-    ruling 2026-10-06, "아무 효과 없이 책략을 쓸 수 없는거지"). Call to Arms
-    recruits a troop "whenever you acquire a card" in the owner's Reveal
-    turn this round [Call to Arms card]: its troop must be able to join now
-    (``_troop_can_join``, as every recruit is judged), and once the
-    owner's Reveal turn is open, a card must still be acquirable in it
-    (``_reveal_acquisition_ahead``); before the Reveal the whole Reveal
-    turn is still ahead. Harvest Cells is judged by its Conflict-end window
-    instead (``combat._conflict_end_trigger_cards``), which reads the
-    supply the Conflict's troops went back to before the window opened.
-    """
-
-    if not isinstance(option.trigger, OnRevealAcquisitionThisRound):
-        return None
-    dead = _no_effect_block(state, player, sections)
-    if dead is not None:
-        return dead
-    frame = _plot_frame(state, player)
-    if (
-        frame is not None
-        and frame.kind == FrameKind.REVEAL
-        and not _reveal_acquisition_ahead(state, player)
-    ):
-        return OptionBlock.NO_ACQUISITION_AHEAD
-    return None
-
 
 def option_is_playable(
     state: GameState,
@@ -1240,7 +1143,7 @@ def option_is_playable(
     option: IntrigueOption,
 ) -> bool:
     """An option is playable when a section applies, every cost is payable
-    and one of its effects can change something (user ruling 2026-10-06).
+    and each line with a cost can change something (OQ-113 (C)).
 
     Separate printed lines (``separate``) make the card playable as soon as
     one line is usable; each line is paid when it is used (OQ-058).
@@ -1257,15 +1160,15 @@ def option_unplayable_reason(
     """Why ``option`` cannot be played now, or None when it can.
 
     The checks, in order: a separate-lines card needs one usable line; a
-    triggered card needs an applicable section and a firing that can change
-    something (``_trigger_option_block``); any other needs an
+    triggered card needs an applicable section only; any other needs an
     applicable section, the Contracts Coercive Negotiation reveals, its
     resource cost, then each player-choice cost (``_choice_cost_block``), a
     reward that cannot be resolved at all (``_choice_reward_block``), and
-    last an effect that can change something (``_no_effect_block``):
-    "Intrigue 카드를 플레이하려면 카드의 모든 조건을 충족하고 모든 비용을
-    지불해야 한다. [FAQ p. 2]" (docs/rules/player-turns.md), with the
-    user's ruling of 2026-10-06, "아무 효과 없이 책략을 쓸 수 없는거지".
+    last, for each line with a cost, a reward that can change something
+    (``_no_effect_block``): "Intrigue 카드를 플레이하려면 카드의 모든 조건을
+    충족하고 모든 비용을 지불해야 한다. [FAQ p. 2]"
+    (docs/rules/player-turns.md), with the user's ruling of 2026-10-24
+    (OQ-113 (C), "비용을 낸 것만 보장").
     """
 
     owner = state.players[player]
@@ -1275,13 +1178,16 @@ def option_unplayable_reason(
         ):
             return None
         return OptionBlock.NO_LINE
-    sections = applicable_sections(
-        state, player, option, shield_wall_present=state.shield_wall_present
-    )
+    sections = applicable_sections(state, player, option)
     if not sections:
         return OptionBlock.CONDITION
     if option.trigger is not None:
-        return _trigger_option_block(state, player, option, sections)
+        # Playing it only sets the card waiting face up, and its firing has
+        # no cost, so it is played even when that firing can change nothing
+        # (OQ-113 (C): Call to Arms' recruit or a Reveal turn with nothing
+        # left to acquire; Harvest Cells is played in its Conflict-end
+        # window, ``combat.conflict_end_trigger_block``).
+        return None
     if not all(
         contract_reveal_is_possible(state, reward)
         for section in sections

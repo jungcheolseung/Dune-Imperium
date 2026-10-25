@@ -242,14 +242,18 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # held.
         - 13
         + 16
+        # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
+        # is confirmed by a row of its own (skip_intrigue_set_aside).
+        + 1
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged by them. Stage B3a's net +172
     # (above) took it from 2,931 to 3,103, stage B3b-2's net -118 to 2,985,
     # stage B3c-1's net -47 to 2,938, stage B3d-1's net -160 to 2,778,
     # stage B3d-2a's net -1,412 to 1,366, stage B3d-3's net +63 to 1,429,
-    # stage B3d-4's net +2 to 1,431, stage B3e-1's net +3 to 1,434.
-    assert first.size == 1434
+    # stage B3d-4's net +2 to 1,431, stage B3e-1's net +3 to 1,434, codec
+    # v154's Manipulate confirmation (OQ-113 (C)) +1 to 1,435.
+    assert first.size == 1435
 
 
 def _scouts_step_rows(
@@ -460,9 +464,9 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
                 row.action_id, row.arguments
             )
             assert with_scouts.encode(with_scouts.decode(index, actor=0)) == index
-    assert ActionCodec(RulesetConfig()).size == 1434
+    assert ActionCodec(RulesetConfig()).size == 1435
     base_scouts = RulesetConfig(arrakeen_scouts=True)
-    assert ActionCodec(base_scouts).size == 1434 + len(
+    assert ActionCodec(base_scouts).size == 1435 + len(
         _scouts_catalog_additions(base_scouts, set(_scouts_templates(base_scouts)))
     )
 
@@ -669,6 +673,9 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         # rows join (the CHOAM cards' Reveal spice is a Reveal choice's).
         - 13
         + 16
+        # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
+        # is confirmed by a row of its own (skip_intrigue_set_aside).
+        + 1
     )
 
     try:
@@ -899,6 +906,9 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # rows join (the Bloodlines cards' and Commander Skills' among them).
         - 13
         + 25
+        # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
+        # is confirmed by a row of its own (skip_intrigue_set_aside).
+        + 1
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

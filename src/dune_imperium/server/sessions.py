@@ -3691,7 +3691,9 @@ def shortfall_warning(
     after such a reshuffle too, ``shortfall_outcome``), and held Contract
     icons that fizzle as the turn-end press ends the turn
     (OQ-059; the press itself is the confirmation, this is only the
-    warning). With ``player`` only that seat's shortfalls count -- the
+    warning), and an Intrigue play that changes nothing at all (OQ-113 (5),
+    user ruling 2026-10-24: "지금 내면 아무 효과가 없다"; it is played all
+    the same, OQ-113 (C)). With ``player`` only that seat's shortfalls count -- the
     step's own seat, as the play server passes it.
     """
 
@@ -3709,6 +3711,8 @@ def shortfall_warning(
             notes.append(note)
         elif kind == "suspensor":
             notes.append(f"반중력 의복: 병력 {requested}개 중 {made}개만 배치")
+        elif kind == "no_effect":
+            notes.append("지금 내면 아무 효과가 없음")
         else:
             notes.append(f"계약 아이콘 {requested}개 소멸 — 가져갈 수 있는 계약 없음")
     return " · ".join(notes) if notes else None
@@ -3721,12 +3725,14 @@ def shortfall_details(
 
     ``warning`` stays the Korean sentence it always was; a browser showing
     English builds its own from ``kind`` ("specimens", "troops",
-    "intrigue", "suspensor" or "contract"), ``requested`` and ``made``.
+    "intrigue", "suspensor", "contract" or "no_effect"), ``requested`` and
+    ``made``.
     For "intrigue" ``requested`` is what the draw still asked for once the
     deck ran out, so ``requested - made`` is the number of cards missing,
     and ``twisted`` (present only when nonzero) counts the Twisted Intrigue
     cards left in the discard pile, which a reshuffle never takes (OQ-097);
-    for "contract" ``requested`` is the number of icons and ``made`` is 0.
+    for "contract" ``requested`` is the number of icons and ``made`` is 0;
+    for "no_effect" (an Intrigue play that changes nothing) both are 0.
     """
 
     details: list[JsonValue] = []
@@ -3760,13 +3766,15 @@ def _unshuffled_twisted(outcome: RuleResult | None) -> int:
 
 # Event kind -> (shortfall kind, payload key of what was asked for, payload
 # key of what was made). Suspensor Suits logs what is left over, so what was
-# asked for is the sum; a fizzled Contract icon made nothing.
-_SHORTFALL_EVENTS: Final[Mapping[str, tuple[str, str, str | None]]] = {
+# asked for is the sum; a fizzled Contract icon made nothing, and an Intrigue
+# play without effect counts nothing (OQ-113 (5)).
+_SHORTFALL_EVENTS: Final[Mapping[str, tuple[str, str | None, str | None]]] = {
     "specimens_short": ("specimens", "requested", "generated"),
     "troops_recruit_short": ("troops", "requested", "recruited"),
     "intrigue_draw_short": ("intrigue", "requested", "drawn"),
     "suspensor_deployment_unavailable": ("suspensor", "troops", "deployed"),
     "contract_icons_fizzled": ("contract", "count", None),
+    "intrigue_without_effect": ("no_effect", None, None),
 }
 
 
@@ -3793,7 +3801,7 @@ def _shortfalls(
             continue
         kind, asked_key, made_key = entry
         made = _payload_count(payload, made_key) if made_key else 0
-        requested = _payload_count(payload, asked_key)
+        requested = _payload_count(payload, asked_key) if asked_key else 0
         if kind == "suspensor":
             requested += made
         found.append((kind, requested, made))

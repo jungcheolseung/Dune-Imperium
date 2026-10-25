@@ -1824,8 +1824,9 @@ def _harvest_cells_has_effect(
     """Whether playing ``option`` now could change something.
 
     "To play an Intrigue card, you must meet its conditions and pay its
-    costs." [FAQ p. 2], with the user's ruling of 2026-10-06 that an
-    Intrigue option needs an effect that can change something. The window
+    costs." [FAQ p. 2]. Harvest Cells has no cost, so it is offered in its
+    window either way (OQ-113 (C), user ruling 2026-10-24, (2) 6); the page
+    warns before a play that would change nothing. The window
     opens once the Conflict's troops are back in the supply ("When
     resolving combat, troops that return to your supply are considered
     'lost.'" [FAQ p. 1]) and the card resolves as it is played (user
@@ -1877,10 +1878,6 @@ class ConflictEndTriggerBlock(StrEnum):
 
     # Fewer units left the Conflict than the trigger names.
     LOSS = "loss"
-    # The card could change nothing (``_harvest_cells_has_effect``): no
-    # Tleilaxu card its specimens could pay for, and no troop in the supply
-    # to make one.
-    NO_TROOP = "no_troop"
 
 
 def conflict_end_trigger_block(
@@ -1891,9 +1888,10 @@ def conflict_end_trigger_block(
 
     In order: the trigger's loss ("When you lose at least three troops at
     the end of a Conflict:" [Harvest Cells card]; ``lost`` defaults to the
-    seat's loss, ``conflict_end_loss``), the play's own conditions and costs
-    (``option_unplayable_reason``), then an effect that could change
-    something (``_harvest_cells_has_effect``, user ruling 2026-10-06).
+    seat's loss, ``conflict_end_loss``), then the play's own conditions and
+    costs (``option_unplayable_reason``). A copy that could change nothing
+    is offered too: the card has no cost (OQ-113 (C), user ruling
+    2026-10-24, (2) 6).
     """
 
     from dune_imperium.rules.effect_interpreter import option_unplayable_reason
@@ -1905,19 +1903,14 @@ def conflict_end_trigger_block(
         lost = conflict_end_loss(state, player)
     if lost < trigger.minimum:
         return ConflictEndTriggerBlock.LOSS
-    unplayable = option_unplayable_reason(state, player, option)
-    if unplayable is not None:
-        return unplayable
-    if _harvest_cells_has_effect(state, player, option):
-        return None
-    return ConflictEndTriggerBlock.NO_TROOP
+    return option_unplayable_reason(state, player, option)
 
 
 def _conflict_end_trigger_cards(
     state: GameState, player: int, lost: int
 ) -> tuple[str, ...]:
-    """Hand Intrigue whose Conflict-end trigger would fire now, is playable,
-    and could change something (``conflict_end_trigger_block``)."""
+    """Hand Intrigue whose Conflict-end trigger would fire now and is
+    playable (``conflict_end_trigger_block``)."""
 
     cards: list[str] = []
     for card_id in state.players[player].intrigue_cards:
@@ -2175,7 +2168,10 @@ def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleRe
 
     if action not in legal_conflict_end_trigger_actions(state, action.actor):
         raise ValueError("action is not a legal Conflict-end Intrigue choice")
-    from dune_imperium.rules.intrigue import resolve_conflict_end_trigger
+    from dune_imperium.rules.intrigue import (
+        resolve_conflict_end_trigger,
+        without_effect_event,
+    )
 
     player = action.actor
     frame = state.decision_stack[-1]
@@ -2207,8 +2203,7 @@ def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleRe
     # Whether it is still holding one is judged when the window comes back
     # on top (``spent_conflict_end_window``), so a card the played one's
     # acquisition drew -- a Tleilaxu track Intrigue space -- may be played
-    # too (user decision 2026-10-18, OQ-109). Its play actions still offer
-    # only a copy that would change something (``_harvest_cells_has_effect``).
+    # too (user decision 2026-10-18, OQ-109).
     window = replace_top_frame(
         state, with_context(frame, {**dict(frame.context), _PLAYED_KEY: True})
     )
@@ -2217,13 +2212,20 @@ def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleRe
         kind="intrigue_played",
         payload=(("card_id", card_id), ("player", player)),
     )
-    resolved = resolve_conflict_end_trigger(
-        window,
-        player,
-        card_id,
-        source=f"round:{state.round_number}:player:{player}:conflict_end:{card_id}",
+    source = f"round:{state.round_number}:player:{player}:conflict_end:{card_id}"
+    option = _loss_trigger_option(card_id)
+    assert option is not None
+    # A copy that changes nothing is played all the same (OQ-113 (C)) and
+    # noted, as the page warned (``intrigue.without_effect_event``).
+    noted = (
+        ()
+        if _harvest_cells_has_effect(window, player, option)
+        else (without_effect_event(source, card_id, player),)
     )
-    return RuleResult(state=resolved.state, events=(played, *resolved.events))
+    resolved = resolve_conflict_end_trigger(window, player, card_id, source=source)
+    return RuleResult(
+        state=resolved.state, events=(played, *noted, *resolved.events)
+    )
 
 
 def _award_conflict(state: GameState) -> RuleResult:

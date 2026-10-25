@@ -759,6 +759,14 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "put_back_top_card": _spec(_V.KEEP, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "discard_top_card": _spec(_V.DISCARD, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "draw_top_card_for_solari": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    # Cost-free choices with nothing to act on (OQ-113 (C)).
+    "skip_intrigue_top_card": _spec(
+        _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.KEEP
+    ),
+    "skip_intrigue_set_aside": _spec(
+        _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.SET_ASIDE
+    ),
+    "skip_intrigue_trash": _spec(_E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.TRASH),
     # --- Arrakeen Scouts (stage B3d-2b) ---------------------------------------
     # A new High Council seat may join a subcommittee (docs/rules/
     # arrakeen-scouts.md 4): the Agent turn's or the Reveal's row (D-3), then

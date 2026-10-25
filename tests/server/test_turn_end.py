@@ -806,9 +806,11 @@ def test_a_human_answering_an_opponent_interrupt_is_not_held() -> None:
     # Stage B3c-1 plays a card effect first, which moves the random seats'
     # games; of 0-99 seeds 7, 8 and 27 reach it. Stage B3d-2a offers the
     # windows by their target rows, which moved seed 7 off it again; of
-    # 0-99 seeds 8 and 27 reach it.)
+    # 0-99 seeds 8 and 27 reach it. Codec v154 plays cost-free Intrigue
+    # lines that fizzle (OQ-113 (C)), which moved seed 8 off it; of 0-99
+    # seeds 18 and 27 reach it.)
     manager = GameSessionManager()
-    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=8, bloodlines=True)
+    summary = manager.create_game(HUMAN_VS_RANDOM_AI, game_seed=27, bloodlines=True)
     game_id = str(summary["game_id"])
     summary = _play_until(
         manager,

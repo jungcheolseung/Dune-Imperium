@@ -3154,8 +3154,8 @@ def test_rapid_engineering_discards_for_a_discounted_tile_or_two_influence() -> 
     assert bought.players[0].tech_ids == ("gene_locked_vault",)
 
     # A tile left to buy keeps the discard line playable beside the
-    # Influence line (user ruling 2026-10-06: an option needs an effect that
-    # can change something).
+    # Influence line (a line with a cost needs an effect that can change
+    # something: OQ-113 (C), user ruling 2026-10-24).
     rich = _turn_state(
         _tech_owner(
             "glowglobes", "training_depot", "panopticon", intrigue_cards=(card,)
@@ -3229,8 +3229,9 @@ def test_a_cards_tech_discount_must_be_used_when_a_tile_is_affordable() -> None:
     assert "gene_locked_vault" in _tech_actions(affordable)
 
     # Plasteel Blades (3), Panopticon (5), Spy Drones (5): nothing for one
-    # spice, so the card is not offered at all (user ruling 2026-10-06); the
-    # decline-only frame stays as a safety net (OQ-057 (9)).
+    # spice, so the card is not offered at all (the tile's price is a cost,
+    # OQ-113 (C), user ruling 2026-10-24); the decline-only frame stays as a
+    # safety net (OQ-057 (9)).
     unaffordable = (("plasteel_blades",), ("panopticon",), ("spy_drones",))
     poor = _turn_state(
         _owner(intrigue_cards=(card,), resources=Resources(spice=1)),
@@ -3318,9 +3319,10 @@ def test_battlefield_research_retreats_for_a_tile_or_scores_with_three() -> None
 
 # "To play an Intrigue card, you must meet its conditions and pay its costs."
 # [FAQ p. 2] (docs/rules/player-turns.md), and the user's ruling of
-# 2026-10-06 that an Intrigue option needs an effect that can change
-# something now: an Acquire Tech with no tile the owner can buy changes
-# nothing (``tech.tech_acquisition_possible``).
+# 2026-10-24 (OQ-113 (C), 2026-10-06 for every line) that a line with a cost
+# needs an effect that can change something now: an Acquire Tech with no tile
+# the owner can buy changes nothing, and the tile's price is a cost
+# (``tech.tech_acquisition_possible``).
 
 
 def test_battlefield_research_is_not_offered_without_an_acquirable_tile() -> None:
@@ -3417,8 +3419,11 @@ def test_rapid_engineering_tech_line_is_not_offered_without_an_acquirable_tile()
         ] == [0]
 
 
-def test_rapid_engineering_influence_line_needs_a_faction_below_six() -> None:
-    from dune_imperium.display.unavailable import intrigue_option_reason
+def test_rapid_engineering_influence_line_with_every_faction_at_six_fizzles() -> None:
+    # The Influence line has no cost, so with every Faction at the top it is
+    # offered all the same, the play is noted and the choice frame only
+    # confirms (OQ-113 (C), user ruling 2026-10-24; 2026-10-06 it was not
+    # offered, "top").
     from dune_imperium.rules.effect_interpreter import option_unplayable_reason
     from dune_imperium.rules.intrigue import (
         apply_intrigue_choice,
@@ -3443,13 +3448,16 @@ def test_rapid_engineering_influence_line_needs_a_faction_below_six() -> None:
         return _turn_state(owner, stacks=((), (), ()))
 
     full = plot(top)
-    assert legal_intrigue_play_actions(full, 0) == ()
-    block = option_unplayable_reason(full, 0, option)
-    assert block is not None
-    assert intrigue_option_reason(full, 0, option, block)[2] == "top"
+    play = DomainAction("play_intrigue", 0, (("card_id", card), ("option", 1)))
+    assert legal_intrigue_play_actions(full, 0) == (play,)
+    assert option_unplayable_reason(full, 0, option) is None
+    fizzled = apply_intrigue_play(full, play)
+    assert "intrigue_without_effect" in [event.kind for event in fizzled.events]
+    assert [
+        action.action_id for action in legal_intrigue_choice_actions(fizzled.state, 0)
+    ] == ["resolve_intrigue_influence_without_faction"]
     # One Faction below the top: the first pick takes it, the second fizzles.
     one = plot(replace(top, fremen=5))
-    play = DomainAction("play_intrigue", 0, (("card_id", card), ("option", 1)))
     assert legal_intrigue_play_actions(one, 0) == (play,)
     played = apply_intrigue_play(one, play).state
     first = legal_intrigue_choice_actions(played, 0)
