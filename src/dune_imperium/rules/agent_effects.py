@@ -1736,7 +1736,10 @@ def legal_agent_card_payment_actions(
         # The line is judged when it resolves (OQ-028), so the card's own
         # Research, resolved first, may reach the second marker [Main p. 9].
         # Before the Research, the plain resolution is the Research; after
-        # it, the line is an arrow cost the owner may decline.
+        # it, the line is an arrow cost the owner may decline. Trashed by
+        # that line first, the card still owes its Research, alone.
+        if context.get("agent_card_self_trashed") is True:
+            return (DomainAction(action_id="resolve_agent_card_effect", actor=player),)
         if agent_card_cost_block(state, player) is not None:
             return ()
         return (
@@ -1963,11 +1966,17 @@ def _apply_payment_choice(
         return RuleResult(state=advance_after_effect(state, context), events=())
     if action.action_id == "trash_agent_card_self_for_vp":
         # Scientific Breakthrough: the card trashes itself as its own cost,
-        # so its research still pays out (OQ-022) unless it already did;
-        # the direction choice opens above the settled turn.
+        # so its Research still pays out (OQ-022) unless it already did. The
+        # Research is a line printed apart, so it stays the owner's own step
+        # (``resolve_agent_card_effect``): past the second genetic marker it
+        # draws a card [Immortality pp. 6, 16], a hidden draw that is never
+        # bundled with a public choice (OQ-106, user ruling 2026-10-10:
+        # "별개 효과인 공개 선택과 숨은 draw는 엔진의 별개 단계다"; engine
+        # audit 2026-10-22, P5). Before, this same action did the Research.
         card_instance_id = _effect_subject(context)[1]
         research_owed = not _box_researched(context, card_instance_id)
         context["agent_card_self_trashed"] = True
+        context["pending_agent_effect"] = research_owed
         trashed = trash_personal_card(
             state, action.actor, card_instance_id, source=source
         )
@@ -1979,13 +1988,8 @@ def _apply_payment_choice(
         next_state = advance_after_effect(
             trashed.state, context, replace_player(trashed.state.players, rewarded)
         )
-        researched = (
-            advance_research(next_state, action.actor, source=source)
-            if research_owed
-            else RuleResult(state=next_state, events=())
-        )
         return RuleResult(
-            state=researched.state,
+            state=next_state,
             events=(
                 GameEvent(
                     event_id=f"{source}:victory_point",
@@ -1997,22 +2001,6 @@ def _apply_payment_choice(
                     ),
                 ),
                 *trashed.events,
-                *researched.events,
-                # The Research line, done by this same action, ends with its
-                # own event (the trash line's is the payment's, after it).
-                *(
-                    (
-                        agent_box_event(
-                            source,
-                            card_instance_id,
-                            action.actor,
-                            BoxOutcome.RESOLVED,
-                            effect=AGENT_ICON_RESEARCH,
-                        ),
-                    )
-                    if research_owed
-                    else ()
-                ),
             ),
         )
     if recorded is not None and plain_and_paid_box(recorded):
@@ -3435,6 +3423,11 @@ def _hook_scientific_breakthrough(state: GameState) -> RuleResult:
     context[_RESEARCHED_BOXES] = ",".join(
         (*_researched_boxes(context), card_instance_id)
     )
+    # The trash line went first: the Research ends the box, and the box's
+    # event follows its own, as the trash line's does in the other order.
+    ends_box = context.get("agent_card_self_trashed") is True
+    if ends_box:
+        context["pending_agent_effect"] = False
     next_state = advance_after_effect(state, context)
     researched = advance_research(next_state, player, source=event_source)
     return RuleResult(
@@ -3447,6 +3440,15 @@ def _hook_scientific_breakthrough(state: GameState) -> RuleResult:
                 player,
                 BoxOutcome.RESOLVED,
                 effect=AGENT_ICON_RESEARCH,
+            ),
+            *(
+                (
+                    agent_box_event(
+                        event_source, card_instance_id, player, BoxOutcome.RESOLVED
+                    ),
+                )
+                if ends_box
+                else ()
             ),
         ),
     )

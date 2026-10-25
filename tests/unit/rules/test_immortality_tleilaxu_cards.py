@@ -335,18 +335,30 @@ def test_scientific_breakthrough_researches_and_may_trash_itself_at_two_markers(
     owner = result.state.players[0]
     assert breakthrough in owner.trashed and breakthrough not in owner.in_play
     assert owner.victory_points == 2  # one at setup plus the reward
-    # Past the second genetic marker a Research icon draws a card instead.
-    assert len(owner.hand) == 1
     assert "card_trashed" in {event.kind for event in result.events}
-    # The one action did both lines: the Research line's event, then the
-    # box's (cleanup-2c-2 review).
+    # The trash line ends with the box's event; the Research, a line printed
+    # apart, is the owner's own next step: past the second genetic marker it
+    # draws a card instead [Immortality pp. 6, 16], a hidden draw never
+    # bundled with a public choice (OQ-106; engine audit 2026-10-22, P5), so
+    # the trash stays undoable. The card left play by its own cost, so its
+    # Research still pays (OQ-022).
+    assert [event.kind for event in result.events] == [
+        "agent_card_trashed_for_vp",
+        "card_trashed",
+    ]
+    assert len(owner.hand) == 0
+    assert legal_agent_card_payment_actions(result.state, 0) == (
+        DomainAction("resolve_agent_card_effect", 0),
+    )
+    researched = resolve_agent_card_effect(result.state)
+    assert len(researched.state.players[0].hand) == 1
+    # The Research line's event, then the box's: the box ends here.
     box = agent_card_source(two.round_number, 0, breakthrough)
-    assert result.events[-2:] == (
-        agent_box_event(
-            box, breakthrough, 0, BoxOutcome.RESOLVED, effect="research"
-        ),
+    assert researched.events[-2:] == (
+        agent_box_event(box, breakthrough, 0, BoxOutcome.RESOLVED, effect="research"),
         agent_box_event(box, breakthrough, 0, BoxOutcome.RESOLVED),
     )
+    assert legal_agent_card_payment_actions(researched.state, 0) == ()
     kept = resolve_agent_card_effect(two).state.players[0]
     assert breakthrough in kept.in_play and kept.victory_points == 1
 
