@@ -318,7 +318,14 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
                 source, player, solari=cost.solari, spice=cost.spice, water=cost.water
             )
         )
-    if option.trigger is None and play_changes_nothing(state, player, sections):
+    if (
+        option.trigger is None
+        # A Combat Intrigue play always counts in Combat: it restarts the
+        # passes and lets an opponent's Counterattack line apply
+        # (``combat_intrigue_players``), so it is never "without effect".
+        and option.timing is not IntrigueTiming.COMBAT
+        and play_changes_nothing(state, player, sections)
+    ):
         events.append(without_effect_event(source, card_id, player))
 
     if option.trigger is not None:
@@ -511,7 +518,9 @@ def _play_separate_lines(
         for section in option.sections
         if section_is_usable(state, player, section)
     )
-    if play_changes_nothing(state, player, usable):
+    if option.timing is not IntrigueTiming.COMBAT and play_changes_nothing(
+        state, player, usable
+    ):
         events.append(without_effect_event(source, card_id, player))
     working = state
     if (

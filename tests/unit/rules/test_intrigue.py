@@ -2604,7 +2604,10 @@ def test_tactical_option_retreat_with_no_troop_in_the_conflict_retreats_none() -
         _play(state, card, 1),
     )
     opened = apply_whole(engine, state, _play(state, card, 1))
-    assert "intrigue_without_effect" in [event.kind for event in opened.events]
+    # Still no "without effect" note: a Combat Intrigue play restarts the
+    # passes and lets an opponent's Counterattack line apply (v154 review).
+    assert "intrigue_without_effect" not in [event.kind for event in opened.events]
+    assert 0 in opened.state.combat_intrigue_players
     assert engine.whole_actions(opened.state, 0) == (_retreat(0),)
     done = apply_whole(engine, opened.state, _retreat(0)).state
     assert done.players[0].combat_strength == 0

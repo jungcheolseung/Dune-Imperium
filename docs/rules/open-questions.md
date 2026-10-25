@@ -2173,12 +2173,15 @@
       줄 조건만 본다. Harvest Cells 창은 아무것도 바꾸지 못하는 사본도 내놓는다(`combat.conflict_end_trigger_block`).
     - 비용 없는 선택에 고를 것이 없으면 확인 줄 하나만 낸다: `skip_intrigue_top_card`(빈 덱의 Controlled), `skip_intrigue_set_aside`(빈 Imperium Row의
       Manipulate), `skip_intrigue_trash`(빈 손의 Devious 의무 trash). Agent를 보내기 전의 False Orders는 불발한다(Spy frame 없음).
-    - 모든 줄이 비용 없고 모두 불발하는 play는 공개 사건 `intrigue_without_effect`를 남기고(`effect_interpreter.play_changes_nothing`), 사람
+    - 모든 줄이 비용 없고 모두 불발하는 play는 공개 사건 `intrigue_without_effect`를 남기고(`effect_interpreter.play_changes_nothing`; Combat
+      Intrigue는 뺀다 — Combat의 play는 pass 순환을 다시 시작하고 상대 Counterattack 줄의 조건이 되므로 늘 무언가를 바꾼다, v154 리뷰), 사람
       좌석의 그 줄에는 클릭 전 경고 "지금 내면 아무 효과가 없음"(`kind: no_effect`)이 붙는다. 그런 play는 숨은 카드를 드러내지 않으므로 되돌릴 수
       있다(`tests/server/test_undo.py`). turn을 넘기는 Withdrawn은 다른 turn 넘김처럼 되돌릴 수 없다(넘김이 turn을 닫는다, 지금 서버 규칙 그대로).
     - (C)를 그대로 적용한 것(내 적용): Tactical Option의 "Retreat any number of your troops."는 Conflict에 troop이 없어도(sandworm 등 unit은 있어
       Combat Intrigue는 낼 수 있을 때) 0개 후퇴로 낸다 — 앱은 막는다(이전 테스트의 주석). 공지 대상 목록의 "앱과 다른 곳"에 든다.
     - 그대로 둔 것: OQ-064(Coercive Negotiation의 bank 셋)는 이번에도 묻지 않았고 `OptionBlock.CONTRACT_BANK` 그대로다.
+    - Navigation 카드: 비용 없는 option이 늘 낼 수 있게 되어, 그것이 있는 카드(2·5·6·9)는 불발해도 그 option이 의무 play다(거절 없음, 같은
+      결과). 옛 기보의 거절은 다리 `navigation_fizzle_played`·`navigation_fizzle_confirmed`로 잇는다([human-records.md](../human-records.md)).
 
 ## OQ-114 — "Choose two:"는 서로 다른 둘인가
 
