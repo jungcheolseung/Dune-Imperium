@@ -21,7 +21,7 @@ clone해 저장소 루트의 `assets` symlink 하나로 연결한다(그 README 
   설치된 Steam 앱이 있으면 `scripts/dwgr/app_assets.py icons`가 같은 그림의 앱판으로
   덮어쓴다(이름 목록은 `dune_imperium.display.icons`).
 - `assets/tokens/` (또는 `DUNE_IMPERIUM_TOKEN_DIR`): 좌석 색상별 Combat marker
-  그림 8장(`strength_<blue|red|green|yellow>.png`과 `+20` 면
+  그림 8장(`strength_<green|red|yellow|blue>.png`과 `+20` 면
   `strength_<색>_plus20.png`; 이름 규칙은 `dune_imperium.display.token_images`).
   보드 하단 Combat track의 전투력 토큰이 이 그림으로 바뀌고, 전투력이 20을
   넘으면 `+20` 면으로 뒤집힌다[Main p. 12]. 한 색의 두 면이 다 있어야 그 좌석에

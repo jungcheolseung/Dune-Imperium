@@ -407,7 +407,7 @@ APP_ALLIANCE_SOURCES = {
 # Objective. 128x128 is the only size the app has. Cropped to the disc.
 APP_FIRST_PLAYER_SPRITE = "hud_Icon_FirstPlayerToken"
 # Seat order of display.token_images.STRENGTH_TOKEN_COLORS -> app colour name.
-APP_PIECE_COLORS = {"blue": "Blue", "red": "Red", "green": "Green", "yellow": "Yellow"}
+APP_PIECE_COLORS = {"green": "Green", "red": "Red", "yellow": "Yellow", "blue": "Blue"}
 
 
 def clear_emblem(im):
@@ -562,10 +562,10 @@ def cmd_pieces(args):
 # src/dune_imperium/server/static/render.js: keep the two tables in step and
 # run `strength` again when that one changes (a test compares them).
 STRENGTH_TILE_COLORS = {
-    "blue": "#1c49ac",
-    "red": "#c01326",
     "green": "#006e4a",
+    "red": "#c01326",
     "yellow": "#d59d18",
+    "blue": "#1c49ac",
 }
 STRENGTH_INNER = "#231b18"  # the dark inner square, as on the physical marker
 STRENGTH_SIZE = 256  # px; the board shows the token at about 30 px

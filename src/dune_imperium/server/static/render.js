@@ -6,14 +6,17 @@
 
 /* Rulebook icons (catalog.icons, served from the machine-local extraction
    of the official Icon Guide) with a text fallback when the set is absent. */
-/* The seats' colours (blue, red, green, yellow): the Steam app's player
+/* The seats' colours (green, red, yellow, blue): the Steam app's player
    colours, the values its colour maps give a player's leader band, Action
    Log outline and lobby entry (WormImageColorRenderer and
    WormGraphicColorSubscriber; the troop cube pictures are the same hues).
    The app's brighter set (#2a6cff, #ff001d, #2bba71, #ffc438) only lights
    the spaces an Agent may go to. Since 2026-10-08 (owner); before, a light
-   palette of our own. */
-const SEAT_COLORS = ["#1c49ac", "#c01326", "#006e4a", "#d59d18"];
+   palette of our own. Their order is the app's default for its Players 1-4
+   (WormConstants.DefaultColors: Green, Red, Yellow, Blue) since 2026-10-25
+   (play feedback); before, blue, red, green, yellow. Keep it in step with
+   display/token_images.py STRENGTH_TOKEN_COLORS. */
+const SEAT_COLORS = ["#006e4a", "#c01326", "#d59d18", "#1c49ac"];
 
 /* Player pieces traced from the rulebook art.  The rulebook Icon Guide's
    agent.png has a + because it means gaining the third Agent; ordinary UI

@@ -21,9 +21,10 @@ from dune_imperium.display.token_images import (
 
 def test_each_seat_has_its_own_token_colour() -> None:
     # One colour per seat of the four-player game, in seat order; the
-    # browser UI's SEAT_COLORS (blue, red, green, yellow) tint the rest of
-    # what a seat owns, so the two tables must agree.
-    assert STRENGTH_TOKEN_COLORS == ("blue", "red", "green", "yellow")
+    # browser UI's SEAT_COLORS (green, red, yellow, blue) tint the rest of
+    # what a seat owns, so the two tables must agree. The order is the Steam
+    # app's default for its Players 1-4 (user decision 2026-10-25).
+    assert STRENGTH_TOKEN_COLORS == ("green", "red", "yellow", "blue")
     assert len(set(STRENGTH_TOKEN_COLORS)) == 4
 
 
@@ -56,11 +57,12 @@ def test_a_seat_gets_pictures_only_with_both_faces() -> None:
             "unrelated.png",
         }
     )
+    # Seat 3 is blue (STRENGTH_TOKEN_COLORS).
     assert available_strength_tokens(files) == (
+        None,
+        None,
+        None,
         ("strength_blue.png", "strength_blue_plus20.png"),
-        None,
-        None,
-        None,
     )
 
     complete = frozenset(
@@ -116,10 +118,10 @@ def test_seat_pieces_need_all_four_colours() -> None:
     )
     assert available_seat_pieces(files) == {
         "agent": (
-            "agent_blue.png",
-            "agent_red.png",
             "agent_green.png",
+            "agent_red.png",
             "agent_yellow.png",
+            "agent_blue.png",
         )
     }
     assert available_seat_pieces(frozenset()) == {}
