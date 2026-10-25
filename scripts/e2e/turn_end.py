@@ -74,6 +74,8 @@ EXPLICIT_TURN_END_IDS = {
     # Arrakeen Scouts: confirming a sealed bid is the seat's turn end (D5).
     "confirm_scouts_bid",
     "resolve_scouts_choice_without_option",
+    # Political Equilibrium's confirm of losing nothing (OQ-131, codec v152).
+    "resolve_scouts_loss_without_influence",
     # Critical Moment's open call, sent with the turn-end press (2026-10-05).
     "scouts_call",
 }

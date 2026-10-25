@@ -922,6 +922,10 @@ def apply_tech_flip(state: GameState, action: DomainAction) -> RuleResult:
                     working = replace(
                         working, players=replace_player(working.players, seat)
                     )
+                    # Spy Drones' Solari leaves the one resource-gain event
+                    # (user decision 2026-10-17, composed-effects plan 5,
+                    # rule decision 3; engine audit 2026-10-22, P11).
+                    events.append(resources_gained_event(source, player, solari=solari))
                 case TrashPersonalCard():
                     working = open_optional_trash(
                         working,
@@ -1087,6 +1091,14 @@ def apply_tech_choice(state: GameState, action: DomainAction) -> RuleResult:
         trashed = replace(
             owner,
             resources=replace(owner.resources, spice=0),
+            # The spice gained this turn is the spice now, less the turn's
+            # start, plus every spice that left the seat since: a loss counts
+            # like a spend, or the loss would cancel later gains. Steersman
+            # Y'rkoon's Hungry for Spice counts "only the spice gained in his
+            # own Agent or Reveal turn" (OQ-063), and the owner orders the
+            # Reveal's effects [Main p. 12], so a gain taken after this trash
+            # counts as one taken before (engine audit 2026-10-22, R6).
+            spice_spent_turn=owner.spice_spent_turn + owner.resources.spice,
             tech_ids=tuple(held for held in owner.tech_ids if held != tech_id),
             tech_flipped=tuple(held for held in owner.tech_flipped if held != tech_id),
         )

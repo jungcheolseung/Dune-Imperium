@@ -16,7 +16,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, reset_turn_counters
 from dune_imperium.rules.pauses import ROUND_DRAW, push_pause
 from dune_imperium.rules.tech import apply_endgame_tech_effects
 
@@ -132,12 +132,12 @@ def draw_round_hands(state: GameState) -> RuleResult:
             units_deployed_committed=0,
             spice_at_turn_start=player.resources.spice,
             spice_spent_turn=0,
-            # Hungry for Spice is judged once per turn; the round's first
-            # turn opens here, without its own counter reset.
+            # Hungry for Spice is judged once per turn, and a recall made on a
+            # seat's last (Reveal) turn must not reach its next turn's "If
+            # you recalled a Spy this turn" (OQ-044 (d)): every seat's clear
+            # here, before an Arrakeen Scouts step; the First Player's turn
+            # then opens with reset_turn_counters (below, or after the step).
             hungry_for_spice_granted_turn=False,
-            # The round's first turn opens without reset_turn_counters, so a
-            # recall made on a seat's last (Reveal) turn must not reach its
-            # next turn's "If you recalled a Spy this turn" (OQ-044 (d)).
             spies_recalled_turn=0,
             # Urgent Shigawire's boost lasts "this round" only.
             bene_gesserit_boost_pending=False,
@@ -178,6 +178,13 @@ def draw_round_hands(state: GameState) -> RuleResult:
     # (``rules.scouts``), which then opens the first turn itself.
     scouts = state.config.arrakeen_scouts
     opening = () if scouts else (turn_frame(round_number, state.first_player),)
+    if not scouts:
+        # The first turn opens here, so it restarts the First Player's
+        # per-turn counters as every other turn does (``rules.scouts`` does
+        # the same after its step): "If you completed a contract this turn"
+        # [Mercantile Affairs card] must not see a contract of the seat's
+        # last Reveal turn, a different turn [Main p. 8] (OQ-044 (d)).
+        players = reset_turn_counters(players, state.first_player)
     next_state = replace(
         state,
         phase=GamePhase.PLAYER_TURNS,

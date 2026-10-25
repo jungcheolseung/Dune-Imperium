@@ -46,6 +46,8 @@ _SCOUTS_ACTION_PREFIXES = (
     "confirm_scouts_bid",
     # A Scouts choice with no line the seat can take (codec v149).
     "resolve_scouts_choice_without_option",
+    # Political Equilibrium with every track at 0 (codec v152, OQ-131).
+    "resolve_scouts_loss_without_influence",
 )
 
 
@@ -69,7 +71,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     first = ActionCodec(RulesetConfig())
     second = ActionCodec(RulesetConfig())
 
-    assert ACTION_CODEC_VERSION == 151
+    # v152 (engine audit 2026-10-22, P4): Interstellar Conspiracy's spice icon
+    # rows (box 0 and box 1) join the Immortality catalogs, 4,311 to 4,313
+    # with every option on; the base catalog keeps its 1,434.
+    assert ACTION_CODEC_VERSION == 152
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -351,9 +356,10 @@ def _scouts_refusal_rows(config: RulesetConfig) -> set[ActionTemplate]:
     (``of``) and the item that printed it. ``decline_subcommittee`` and
     ``scouts_decline_mission`` refuse a join (the High Council's list, a
     mission), ``scouts_decline_card`` an auction's acquire,
-    ``resolve_scouts_choice_without_option`` an event's or sale's choice, the
-    optional trash window's refusal a trash, and the Spy placement window's
-    empty confirmation a Scouts line's Spy."""
+    ``resolve_scouts_choice_without_option`` an event's or sale's choice,
+    ``resolve_scouts_loss_without_influence`` Political Equilibrium's loss
+    (codec v152, OQ-131), the optional trash window's refusal a trash, and the
+    Spy placement window's empty confirmation a Scouts line's Spy."""
 
     missions = missions_for(
         scouts_pool(immortality=config.immortality), choam=config.choam_module
@@ -370,6 +376,7 @@ def _scouts_refusal_rows(config: RulesetConfig) -> set[ActionTemplate]:
         *(row("decline", "acquire", auction.auction_id) for auction in AUCTIONS),
         *(row("confirm_empty", "choose", event.event_id) for event in EVENTS),
         *(row("confirm_empty", "choose", sale.sale_id) for sale in SALES),
+        row("confirm_empty", "lose_influence", "political_equilibrium"),
         *(row("decline", "trash", item) for item in scouts_trash_items()),
         *(row("confirm_empty", "place_spy", item) for item in scouts_spy_items()),
     }
@@ -431,6 +438,7 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
             "scouts_decline_mission",
             "scouts_decline_card",
             "resolve_scouts_choice_without_option",
+            "resolve_scouts_loss_without_influence",
         }
         assert refusal_ids <= {t.action_id for t in scouts_only}
         assert not any(

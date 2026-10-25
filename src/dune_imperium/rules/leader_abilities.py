@@ -430,6 +430,13 @@ def _block_agent_turn_deployment(state: GameState, player: int) -> GameState:
         return state
     host = dict(frame.context)
     host["units_deploy_blocked"] = True
+    if frame.kind == FrameKind.AGENT_EFFECTS:
+        # Used after the Agent was placed, the ban also closes a deployment
+        # the placement already opened: "Units can't be deployed to the
+        # Conflict this turn." [Shaddam Corrino IV card] (OQ-062 (b); found
+        # by the review of the engine audit's R4, which the graft partner
+        # choice sets the same way).
+        host["pending_combat_deployment"] = False
     return replace(
         state,
         decision_stack=(
@@ -1582,7 +1589,10 @@ def _chroniclers_insight_choices(
 
 def _fedaykin_draw_block(owner: PlayerState) -> OptionalEffectBlock | None:
     """Fedaykin Maneuver's draw: two Fremen Influence and one water [Chani
-    card]."""
+    card], and a card to draw: a cost line is offered only when its reward
+    can change something (OQ-071's card extension, "이제 카드·보드·Leader의
+    비용 줄도 같다", as Ecological Testing Station's "2 water -> draw 2";
+    engine audit 2026-10-22, P9)."""
 
     if owner.influence.fremen < 2:
         return OptionalEffectBlock(
@@ -1591,7 +1601,12 @@ def _fedaykin_draw_block(owner: PlayerState) -> OptionalEffectBlock | None:
             held=owner.influence.fremen,
             faction=Faction.FREMEN.value,
         )
-    return short_of(OptionalBlockKind.WATER, 1, owner.resources.water)
+    water = short_of(OptionalBlockKind.WATER, 1, owner.resources.water)
+    if water is not None:
+        return water
+    if not (owner.deck or owner.discard_pile):
+        return OptionalEffectBlock(OptionalBlockKind.NO_CARD_TO_DRAW)
+    return None
 
 
 def _into_the_fray_block(

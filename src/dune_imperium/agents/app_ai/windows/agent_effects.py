@@ -556,7 +556,15 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
 _GATED_ICON_CARDS = ("fremen_war_name", "stillsuit_manufacturer")
 #: Icons that are the card's generic agent box (state 500): printed
 #: ``AgentWater`` and the like, no ability of their own.
-_GENERIC_ICON_BOXES = frozenset({("stillsuit_manufacturer", "water")})
+_GENERIC_ICON_BOXES = frozenset(
+    {
+        ("stillsuit_manufacturer", "water"),
+        # Interstellar Conspiracy's printed ``AgentSpice``: its own icon since
+        # the Influence is a separate graft-conditioned one (engine audit
+        # 2026-10-22, P4; the Influence is ``_CARD_INFLUENCE_ABILITY``'s).
+        ("interstellar_conspiracy", "spice"),
+    }
+)
 #: Cards whose reward icons are armed after an arrow cost: the app answered
 #: the whole ability at once, so the icons are follow-ups. Elite Forces
 #: (bloodlines-cards.md §3.10): its E names the Emperor card, the Intrigue,
@@ -568,6 +576,9 @@ _ARMED_REWARD_CARDS = (
     "elite_forces",
     # Its "draw two cards and Research" after the lost troop (OQ-106).
     "piter_genius_advisor",
+    # Its two cards after the mandatory discard (OQ-106; engine audit
+    # 2026-10-22, P6): the app's GuildEnvoyAbility answers the discard.
+    "guild_envoy",
 )
 #: Urgent Shigawire's added draw comes after the boosted card's own
 #: abilities in the card row (``_boost_draw``).

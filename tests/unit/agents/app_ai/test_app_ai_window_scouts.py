@@ -437,6 +437,23 @@ def test_highest_track_tie_is_least_loss() -> None:
     assert _arg(action, "faction") == _first(expected)
 
 
+def test_highest_track_alone_and_every_track_at_zero_are_answered() -> None:
+    """Political Equilibrium asks every seat (OQ-131, user decision
+    2026-10-25): a lone highest track's one row, and the confirm of losing
+    nothing with every track at 0."""
+
+    alone = _effect(
+        _me(_base(), influence=Influence(fremen=3)), "political_equilibrium", 0
+    )
+    run = _run(alone)
+    assert [str(_arg(a, "faction")) for a in run.legal] == ["fremen"]
+    assert _decide(alone) == run.legal[0]
+    nothing = _effect(_me(_base(), influence=Influence()), "political_equilibrium", 0)
+    run = _run(nothing)
+    assert [a.action_id for a in run.legal] == ["resolve_scouts_loss_without_influence"]
+    assert _decide(nothing) == run.legal[0]
+
+
 def test_highest_track_loss_split_by_recipient_takes_the_first() -> None:
     state = _effect(_alliance_tie(_base()), "political_equilibrium", 0)
     run = _run(state)

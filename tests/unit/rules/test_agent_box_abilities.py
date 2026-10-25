@@ -193,6 +193,11 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: ("influence", "intrigue"),
         _BOX.DRAW_ONE_AND_COMBAT_ICON: ("cards", "combat"),
         _BOX.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: ("cards", "spy"),
+        # Split per icon (engine audit 2026-10-22, P4; the same decision).
+        _BOX.GAIN_SPICE_AND_CHOSEN_INFLUENCE_IF_GRAFTED_WITH_EMPEROR_OR_GUILD: (
+            "spice",
+            "influence",
+        ),
     }
     for effect, ability in AGENT_BOX_ABILITIES.items():
         if not ability.icons:
@@ -463,6 +468,16 @@ def test_the_seat_picks_which_waiting_trash_icon_trashes_a_card() -> None:
     assert by_other.players[0].trashed == (card,)
     assert turn_rows.pending(by_other.decision_stack[-1]) == (box_icon,)
     assert "agent_card_self_trashed" not in dict(by_other.decision_stack[-1].context)
+    # The engine's expiry hook, which runs after that step, then ends the
+    # trashed card's own waiting icon too: "you can't receive or activate an
+    # effect from a card that is already trashed" (OQ-022; OQ-027 (b); engine
+    # audit 2026-10-22, P1).
+    from dune_imperium.core import RuleResult
+    from dune_imperium.rules.agent_effects import expire_trashed_card_effects
+
+    expired = expire_trashed_card_effects(RuleResult(state=by_other))
+    assert turn_rows.pending(expired.state.decision_stack[-1]) == ()
+    assert [event.kind for event in expired.events] == ["agent_card_effect_expired"]
     # The older engine's own picks.
     assert legacy_trash_whole(waiting, 0, card) == row(card, *by_box)
     assert legacy_trash_whole(waiting, 0, other) == row(other, *by_research)
@@ -842,6 +857,10 @@ def test_eight_discard_arrows_read_the_discarded_card() -> None:
             AGENT_ICON_CARDS,
             AGENT_ICON_INTRIGUE,
         ),
+        # Guild Envoy prints no arrow: its mandatory discard and the hidden
+        # draw printed below it are separate steps (OQ-106; user decision
+        # 2026-10-25; engine audit 2026-10-22, P6).
+        _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: (AGENT_ICON_CARDS,),
     }
     for effect, mark in discards.items():
         ability = AGENT_BOX_ABILITIES[effect]
@@ -989,9 +1008,12 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     gambit = _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE
     elite = _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS
     piter = _BOX.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
+    # Guild Envoy's two cards: the icon path reads an armed line's count
+    # (engine audit 2026-10-22, P6).
+    envoy = _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD
     assert users == {
         AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite},
-        AGENT_ICON_CARDS: {mentat, guild_spy, piter},
+        AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy},
         AGENT_ICON_SPICE: {branching},
         AGENT_ICON_TROOPS: {gambit, elite},
         AGENT_ICON_PLEDGE: {gambit},
@@ -1093,11 +1115,13 @@ def test_control_the_spice_is_a_payment_box() -> None:
     assert payment_box(spice) and not trash_box(spice)
 
 
-def test_three_boxes_put_a_plain_line_beside_a_choice() -> None:
-    """Composed A3f: Southern Faith and High Priority Travel ("Choose one")
-    and Interstellar Conspiracy (a plain line, then a conditioned choice that
-    pays both). The plain line resolves as one action; Possible Futures,
-    whose Bond turns its choice into both, is a hook."""
+def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
+    """Composed A3f: Southern Faith and High Priority Travel ("Choose one").
+    The plain line resolves as one action; Possible Futures, whose Bond
+    turns its choice into both, is a hook. Interstellar Conspiracy, a plain
+    line then a conditioned choice that once paid both, resolves icon by
+    icon since the engine audit 2026-10-22 (P4; OQ-027 extension 3, user
+    decision 2026-10-18 "원칙대로 아이콘마다 나누자")."""
 
     either = {
         effect: ability.structure
@@ -1110,8 +1134,8 @@ def test_three_boxes_put_a_plain_line_beside_a_choice() -> None:
         _BOX.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO: (
             AbilityStructure.ONE_OF
         ),
-        conspiracy: AbilityStructure.SEQUENCE,
     }
+    assert AGENT_BOX_ABILITIES[conspiracy].icons == ("spice", "influence")
     futures = AGENT_BOX_ABILITIES[_BOX.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND]
     assert futures.hook == "possible_futures"
     partner = GraftedWithFaction((Faction.EMPEROR, Faction.SPACING_GUILD))

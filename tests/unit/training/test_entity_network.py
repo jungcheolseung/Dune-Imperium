@@ -92,8 +92,10 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # card of a lines window. Stage B3d-2a: and the Faction whose Influence
 # track opens a Spy window (the Emperor's); a Scouts line's printed item is
 # a label (``SCOUTS_ITEM_IDS``; a Scouts mission's too, stage B3d-2b).
-# Stage B3d-3: a refusal's ``of`` is a label.
-_GOLDEN_DIGEST = "0098fbb63ad1b9a664ffed44dbfc16cbb1afc530d38b16fbcc35ea8d494807c6"
+# Stage B3d-3: a refusal's ``of`` is a label. Engine audit 2026-10-22, P4:
+# Interstellar Conspiracy's record is two icons; P6: Guild Envoy's draw is
+# an armed icon; OQ-128: Overthrow gains two Influence instead of one.
+_GOLDEN_DIGEST = "59761de584e0dd1afd48ae418b975b274f59036ccc6065ffb8b9b4bca2ac4296"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

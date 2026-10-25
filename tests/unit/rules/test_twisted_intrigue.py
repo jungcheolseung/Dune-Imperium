@@ -268,8 +268,13 @@ def test_calculating_pays_per_unit_type_in_the_conflict() -> None:
         sandworms_conflict=1,
         combat_strength=7,
     )
-    done = apply_whole(ENGINE, _turn_state(owner), _play(card)).state
-    assert done.players[0].resources.solari == 3
+    played = apply_whole(ENGINE, _turn_state(owner), _play(card))
+    assert played.state.players[0].resources.solari == 3
+    # The Solari leaves the one resource-gain event (user decision
+    # 2026-10-17, composed-effects plan 5, rule decision 3; engine audit
+    # 2026-10-22, P10).
+    gained = [event for event in played.events if event.kind == "resources_gained"]
+    assert [dict(event.payload)["solari"] for event in gained] == [3]
 
 
 
@@ -447,6 +452,48 @@ def test_controlled_deck_discard_on_a_reveal_turn_feeds_hungry_for_spice() -> No
     ] == [("personal_card_late_revealed", RECON)]
 
 
+CONVINCING = "player:0:starter:convincing_argument:0"
+
+
+def test_controlled_draw_on_a_reveal_turn_is_revealed_at_once() -> None:
+    # "Reveal turn 도중 card를 draw하면 즉시 그 card를 reveal하고 이번 Reveal
+    # turn에 사용한다." [FAQ p. 3] (docs/rules/player-turns.md:205). A Plot
+    # may be played in the Reveal turn [Main p. 7]; Controlled's paid draw
+    # once left the card in hand to the next round, its Persuasion unused
+    # (engine audit 2026-10-22 R2).
+    card = _twisted("controlled")
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        hand=(DAGGER,),
+        intrigue_cards=(card,),
+        deck=(CONVINCING, RECON),
+        resources=Resources(solari=2),
+    )
+    revealed = ENGINE.apply(
+        _turn_state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    before = dict(revealed.decision_stack[-1].context)["persuasion"]
+    assert isinstance(before, int)
+    peeking = apply_whole(ENGINE, revealed, _play(card)).state
+
+    result = apply_whole(
+        ENGINE, peeking, DomainAction(action_id="draw_top_card_for_solari", actor=0)
+    )
+
+    seat = result.state.players[0]
+    assert CONVINCING not in seat.hand
+    assert CONVINCING in seat.in_play
+    assert seat.resources.solari == 1
+    assert [event.kind for event in result.events][:2] == [
+        "top_card_drawn",
+        "personal_card_late_revealed",
+    ]
+    assert result.state.decision_stack[-1].kind == "reveal"
+    # Convincing Argument reveals two Persuasion [card face].
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == before + 2
+
+
 def test_devious_trashes_from_hand_without_a_decline_or_deploys_two() -> None:
     card = _twisted("devious")
     owner = PlayerState(
@@ -608,6 +655,42 @@ def test_resourceful_grants_three_icons_to_the_card_played_this_turn() -> None:
     spaces = {dict(a.arguments)["space_id"] for a in legal_agent_actions(state, 0)}
     assert {"arrakeen", "accept_contract", "assembly_hall"} <= spaces
 
+
+def test_resourceful_and_emperors_invitation_add_up_in_either_order() -> None:
+    # "선택한 공간의 왼쪽 위 Agent 아이콘은 카드에 있는 Agent 아이콘 하나와
+    # 일치해야 한다. [Main p. 9]" (docs/rules/player-turns.md:16). Both Plots
+    # say "The card you play this turn has …" and neither says "instead";
+    # an added icon is on the card (OQ-055). Emperor's Invitation once
+    # replaced Resourceful's three icons when played second (engine audit
+    # 2026-10-22, R5).
+    resourceful = _twisted("resourceful")
+    invitation = "intrigue:emperor_s_invitation:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        intrigue_cards=(resourceful, invitation),
+        hand=(DAGGER,),
+    )
+
+    def granted(first: DomainAction, second: DomainAction) -> GameState:
+        state = apply_whole(ENGINE, _turn_state(owner), first).state
+        return apply_whole(ENGINE, state, second).state
+
+    one = granted(_play(resourceful), _play(invitation, 1))
+    other = granted(_play(invitation, 1), _play(resourceful))
+
+    for state in (one, other):
+        assert set(state.players[0].granted_agent_icon_turn.split(",")) == {
+            "emperor",
+            "landsraad",
+            "city",
+            "spice_trade",
+        }
+    spaces = {dict(a.arguments)["space_id"] for a in legal_agent_actions(one, 0)}
+    assert spaces == {
+        dict(a.arguments)["space_id"] for a in legal_agent_actions(other, 0)
+    }
+    assert {"arrakeen", "dutiful_service", "assembly_hall"} <= spaces
 
 
 def test_resourceful_only_before_the_agent_is_sent() -> None:

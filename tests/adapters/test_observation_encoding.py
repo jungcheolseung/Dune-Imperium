@@ -1056,6 +1056,16 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # review): each digest over the first 5,593 columns of every vector is the
 # pin before them (promo_bloodlines_tech's B3d-2a pin
 # 1a462433...4430cc65), and no game here sets them.
+# Re-pinned for codec v152 (OQ-131, engine audit 2026-10-22 G4): a seat that
+# cannot join a Scouts mission is asked, with the pass alone. An export of the
+# commit before it (10cce681) gives the scouts game's per-decision trace equal
+# to this one up to decision 84, a mission window (seat 3 with two rows before,
+# seat 2 with the pass alone now), where the random seats draw again and the
+# game parts (88611727...bfe48af30, 3,172 then); the other five games ask no
+# such seat and stay pinned. Then Political Equilibrium asks every seat (the
+# same OQ-131, user decision 2026-10-25): the previous commit's trace equals
+# this one up to decision 313, where seat 1 now answers the event's one-row
+# window before its turn (f062b00f...aff7c8c7, 3,404 then).
 _GOLDEN_DIGESTS = {
     "base": ("9ac09f6db7d71edf89ee0d4abb58e32f0a23caad428000c1308138e00863173f", 2780),
     "choam": ("d43306c8745984b856879a1cc9abc57089348efc02b7d9dde0a3bdadcc55f1dc", 2668),
@@ -1069,8 +1079,8 @@ _GOLDEN_DIGESTS = {
     ),
     "draft": ("0df15d5397e3649c558e48a2787907852d0213aa1815abd65126c95bc9ca39c2", 2788),
     "scouts": (
-        "88611727bb78942baa39e75b0013035aa87ab6d7ca8f2ddc4a7a234bfe48af30",
-        3172,
+        "c37a06f8d12e811c096afc519c67c5dd9a8c39e258ec88a695ac7bd86fe729a8",
+        3136,
     ),
 }
 _GOLDEN_CONFIGS = {

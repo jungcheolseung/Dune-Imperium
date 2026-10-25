@@ -225,9 +225,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "카드 1장 {discard} 가능 {arrow_right} {draw:1} "
         "(버린 카드가 우주 항행 길드 카드이면 2장)"
     ),
+    # No arrow on the card face (engine audit 2026-10-22, P6).
     PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: (
-        "카드 1장 {discard} {arrow_right} "
-        "버린 카드가 우주 항행 길드 카드이면 {draw:2}"
+        "카드 1장 {discard}, 버린 카드가 우주 항행 길드 카드이면 {draw:2}"
     ),
     PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: (
         "카드 1장 {discard} 가능 {arrow_right} {intrigue:1}, {draw:1}"
@@ -273,8 +273,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: (
         "베네 게세리트의 유대감이면: {draw:1}, {spy} 배치"
     ),
+    # Overthrow's printed words (OQ-128), as Treacherous Maneuver's.
     PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE: (
-        "방문한 팩션 {influence_any} 1 추가"
+        "방문한 팩션 {influence_any:1} 대신 {influence_any:2}"
     ),
     PersonalCardAgentEffect.GAIN_WATER: "{water:1}",
     # Immortality (card faces).

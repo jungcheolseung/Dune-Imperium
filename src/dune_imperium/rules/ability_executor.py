@@ -134,6 +134,7 @@ from dune_imperium.rules.reveal_turn import (
     add_reveal_persuasion,
     add_reveal_strength,
     add_units_to_reveal,
+    reveal_late_arrivals,
 )
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_moves import (
@@ -1316,16 +1317,20 @@ def _resolve_peek(
         hand=(*owner.hand, top),
         resources=replace(owner.resources, solari=owner.resources.solari - 1),
     )
-    return RuleResult(
-        state=replace(state, players=replace_player(state.players, next_owner)),
-        events=(
-            GameEvent(
-                event_id=f"{step_source}:top_card_drawn",
-                kind="top_card_drawn",
-                payload=(("player", player),),
-            ),
-        ),
+    drawn = replace(state, players=replace_player(state.players, next_owner))
+    event = GameEvent(
+        event_id=f"{step_source}:top_card_drawn",
+        kind="top_card_drawn",
+        payload=(("player", player),),
     )
+    if reveal_is_open_for(drawn, player):
+        # "Reveal turn 도중 card를 draw하면 즉시 그 card를 reveal하고 이번
+        # Reveal turn에 사용한다." [FAQ p. 3] (docs/rules/player-turns.md:205):
+        # a Plot played in the Reveal turn draws like every other draw
+        # (``card_draw``), not into a hand kept to the next round.
+        late = reveal_late_arrivals(drawn, player, (top,))
+        return RuleResult(state=late.state, events=(event, *late.events))
+    return RuleResult(state=drawn, events=(event,))
 
 
 def _follow_reveal_strength(

@@ -78,7 +78,6 @@ from dune_imperium.rules.scouts_auctions import (
 )
 from dune_imperium.rules.scouts_effects import (
     apply_scouts_effect_action,
-    highest_factions,
     offer_scouts_choice,
     push_scouts_effect,
 )
@@ -205,11 +204,10 @@ def advance_scouts_step(state: GameState) -> RuleResult:
 def _open_first_turn(state: GameState) -> RuleResult:
     """End the step and open the First Player's turn.
 
-    The round's first turn opens without ``reset_turn_counters`` when there
-    is no Scouts step (``phases.draw_round_hands``, Round Start's last step,
-    resets part of it for every seat); here the step may have moved any
-    per-turn counter (a Spy recall, a completed Contract), so the First
-    Player's are all reset as their turn opens.
+    Without a Scouts step, Round Start's last step opens the first turn with
+    ``reset_turn_counters`` (``phases.draw_round_hands``); here the step may
+    have moved any per-turn counter (a Spy recall, a completed Contract), so
+    the First Player's are all reset as their turn opens, the same way.
 
     Contract icons a seat held during the step (only the Bloodlines
     Immediate face up and no Intrigue card to trash, OQ-059) wait for the
@@ -548,8 +546,8 @@ def _run_task(state: GameState, task: str) -> RuleResult:
         )
     if task.startswith("equilibrium:"):
         seat = int(task.removeprefix("equilibrium:"))
-        if not highest_factions(state.players[seat]):
-            return RuleResult(state=state)
+        # Every seat is asked, one with every track at 0 to confirm it loses
+        # nothing (OQ-131, user decision 2026-10-25).
         return RuleResult(
             state=push_scouts_effect(state, seat, item, 0, source=f"{source}:{seat}")
         )

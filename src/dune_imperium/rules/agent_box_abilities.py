@@ -118,7 +118,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     UnitsInConflictAtLeast,
 )
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -150,6 +150,7 @@ from dune_imperium.rules.effects import (
     advance_after_effect,
     agent_card_source,
     arm_agent_icons,
+    boosted_cards,
     current_agent_effect_context,
     finish_agent_icon,
     is_grafted,
@@ -199,6 +200,9 @@ class AgentIconCondition(StrEnum):
     INFLUENCE = "influence"
     SPICE_GAINED = "spice_gained"
     GRAFTED = "grafted"
+    # Grafted with a card of one of ``factions`` (Interstellar Conspiracy);
+    # the partner is chosen once, so it stays so all turn.
+    GRAFTED_WITH = "grafted_with"
     GENETIC_MARKERS = "genetic_markers"
     CONTRACTS_COMPLETED = "contracts_completed"
     # Another card of ``faction`` in play; it can only be lost in a turn.
@@ -222,6 +226,7 @@ class AgentIconBlock:
     needed: int = 0
     held: int = 0
     faction: Faction | None = None
+    factions: tuple[Faction, ...] = ()
 
 
 NOT_PRINTED_BLOCK = AgentIconBlock(AgentIconCondition.NOT_PRINTED)
@@ -329,6 +334,10 @@ def condition_block(
             if is_grafted(context):
                 return None
             return AgentIconBlock(AgentIconCondition.GRAFTED)
+        case GraftedWithFaction(factions=factions):
+            if box_condition_holds(condition, owner, context):
+                return None
+            return AgentIconBlock(AgentIconCondition.GRAFTED_WITH, factions=factions)
         case HasAlliance(faction=faction):
             held_alliance = (
                 bool(owner.alliance_faction_ids)
@@ -520,7 +529,16 @@ def holds_space_influence(ability: Ability | None) -> bool:
 def _replace_space_influence(context: dict[str, ActionValue]) -> None:
     """The box's gain replaces the visited space's 1 [Main p. 9]: the space's
     own step is used up, and a partner box that held it and expires later
-    does not bring it back."""
+    does not bring it back.
+
+    Once one box replaced it, a second "instead of one" box of the same
+    placement -- Ghola's copy -- gains nothing more: "If you graft this card
+    with Power Play to send an Agent to a faction board space, you gain only
+    2 Influence with that faction, the same as if you'd played Power Play
+    alone." [Immortality p. 14], which the user ruled holds for every card
+    of that text (OQ-128, 2026-10-25: "이와 같은 동작을 하는건 모두 그
+    내용을 따라야지"). The callers skip that second gain.
+    """
 
     context["pending_faction_influence"] = False
     context[SPACE_INFLUENCE_REPLACED] = True
@@ -804,6 +822,10 @@ def resolve_box(state: GameState) -> RuleResult:
             if reward.visited_space:
                 faction = _visited_faction(context)
                 if reward.replaces_space:
+                    if context.get(SPACE_INFLUENCE_REPLACED) is True:
+                        # A second "instead of one" box of the placement (a
+                        # Ghola copy) adds nothing (``_replace_space_influence``).
+                        continue
                     _replace_space_influence(context)
             else:
                 assert reward.factions is not None and not reward.requires_choice
@@ -1703,11 +1725,18 @@ def apply_discard(
             context,
             tuple(key for key, ok in zip(ability.armed_icons, met, strict=True) if ok),
         )
+        # With nothing armed the box ends here, with its event (Guild Envoy's
+        # discard of a card that is not Spacing Guild).
+        done = (
+            (agent_box_event(source, box_card_id, player, _RESOLVED),)
+            if context["pending_agent_effect"] is not True
+            else ()
+        )
         return RuleResult(
             state=advance_after_effect(
                 discarded.state, context, discarded.state.players
             ),
-            events=discarded.events,
+            events=(*discarded.events, *done),
         )
     rewards = tuple(
         reward
@@ -2186,6 +2215,10 @@ def apply_trash(
         if isinstance(reward, GainInfluence) and reward.visited_space:
             faction = _visited_faction(context)
             if reward.replaces_space:
+                if context.get(SPACE_INFLUENCE_REPLACED) is True:
+                    # A second "instead of one" box adds nothing (see
+                    # ``_replace_space_influence``).
+                    continue
                 _replace_space_influence(context)
             gained = gain_faction_influence(
                 trashed.state,
@@ -2386,7 +2419,7 @@ def partner_icon_count(state: GameState, context: Mapping[str, ActionValue]) -> 
     opponents = tuple(seat for seat in state.players if seat.player_id != player)
     # Long Reach in play does not count as its own "another Bene Gesserit
     # card in play" [Long Reach card].
-    return len(
+    icons = set(
         effective_agent_icons(
             personal_card_for_instance(partner),
             owner,
@@ -2395,6 +2428,20 @@ def partner_icon_count(state: GameState, context: Mapping[str, ActionValue]) -> 
             card_instance_id=partner,
         )
     )
+    # "그 순간 상대 카드가 가진 Agent 아이콘 전부를 센다" (OQ-055, user ruling
+    # "추가된 Agent 아이콘도 세는 게 맞다"): a card that took Urgent
+    # Shigawire's boost "has all Agent icons" [Urgent Shigawire card], the
+    # eight kinds Spy included [Main p. 9] (docs/rules/player-turns.md), and
+    # Emperor's Invitation and Twisted Resourceful give "the card you play
+    # this turn" theirs -- both grafted cards are played (OQ-107). User
+    # confirmation 2026-10-25 ("P7의 너의 해석이 맞다고 봐. Slig Farmer가
+    # 세게 해야지"; engine audit 2026-10-22, P7).
+    if partner in boosted_cards(context):
+        icons.update(AgentIcon)
+    icons.update(
+        AgentIcon(value) for value in owner.granted_agent_icon_turn.split(",") if value
+    )
+    return len(icons)
 
 
 def plain_and_paid_block(state: GameState, player: int) -> AgentPaymentBlock | None:
@@ -2920,17 +2967,15 @@ def apply_lose(
 # --- A plain line beside a choice line (stage A3f) --------------------------------
 #
 # Two printed lines, the second a choice: "Choose one: Draw 1 card / If Bene
-# Gesserit Bond: Gain 1 Bene Gesserit Influence" (Southern Faith), "If 2 or
-# more Spacing Guild Influence: Choose one: Draw 1 card / Combat" (High
-# Priority Travel), and "Gain 1 spice, If grafted with an Emperor or Spacing
-# Guild card: Gain 1 Influence with a chosen Faction" (Interstellar
-# Conspiracy). The plain line resolves as one action (``resolve_box``, the
-# A2 conventions). While the choice line's condition holds and it has a
-# target, its rows are offered -- beside the plain row for "Choose one"
-# (``ONE_OF``), alone for a sequence, whose choice then pays the plain line
-# too (its gains after the choice's events); otherwise the frame offers the
-# plain row alone. The Combat answers through its own handler
-# (``take_agent_card_combat_icon``).
+# Gesserit Bond: Gain 1 Bene Gesserit Influence" (Southern Faith) and "If 2
+# or more Spacing Guild Influence: Choose one: Draw 1 card / Combat" (High
+# Priority Travel). The plain line resolves as one action (``resolve_box``,
+# the A2 conventions). While the choice line's condition holds and it has a
+# target, its rows are offered beside the plain row; otherwise the frame
+# offers the plain row alone. The Combat answers through its own handler
+# (``take_agent_card_combat_icon``). Interstellar Conspiracy's two lines,
+# a sequence whose choice once paid the plain line too, are two icons since
+# the engine audit 2026-10-22 (P4; OQ-027 extension 3).
 
 _PLAIN_ROW: Final = "resolve_agent_card_effect"
 
@@ -2954,18 +2999,12 @@ def either_box(ability: Ability | None) -> bool:
         # The choice line is printed under a condition of its own; two plain
         # lines resolve as one action.
         return False
+    if ability.structure is not AbilityStructure.ONE_OF:
+        # Two lines both paid resolve icon by icon (OQ-027 extension 3).
+        return False
     match choice.rewards[0]:
-        case GainInfluence(times=1, distinct=False) as gain:
-            # A sequence pays its plain line with a chosen Faction; "Choose
-            # one" may offer a fixed Faction beside the plain line.
-            if (
-                ability.structure is AbilityStructure.SEQUENCE
-                and not gain.requires_choice
-            ):
-                return False
-        case GrantCombatDeployment():
-            if ability.structure is not AbilityStructure.ONE_OF:
-                return False
+        case GainInfluence(times=1, distinct=False) | GrantCombatDeployment():
+            pass
         case _:
             return False
     return all(
@@ -3006,10 +3045,7 @@ def either_rows(
         rows = (DomainAction(action_id="take_agent_card_combat_icon", actor=player),)
     if not rows:
         return ()
-    plain = ability.sections[0]
-    if ability.structure is AbilityStructure.ONE_OF and _line_holds(
-        plain, state.players[player], context
-    ):
+    if _line_holds(ability.sections[0], state.players[player], context):
         return (DomainAction(action_id=_PLAIN_ROW, actor=player), *rows)
     return rows
 
@@ -3017,8 +3053,7 @@ def either_rows(
 def apply_either_influence(
     state: GameState, action: DomainAction, ability: Ability
 ) -> RuleResult:
-    """Gain the chosen Faction's Influence; a sequence pays its plain line's
-    gains after it (Interstellar Conspiracy's spice)."""
+    """Gain the chosen Faction's Influence (the "Choose one" line taken)."""
 
     _, context = current_agent_effect_context(state)
     _, card_id = _subject(context)
@@ -3029,23 +3064,11 @@ def apply_either_influence(
         state, player, faction, 1, event_prefix=f"{source}:influence:{faction.value}"
     )
     context["pending_agent_effect"] = False
-    players = gained.state.players
-    gains: tuple[GameEvent, ...] = ()
-    if ability.structure is AbilityStructure.SEQUENCE:
-        owner = players[player]
-        for reward in ability.sections[0].rewards:
-            if isinstance(reward, GainResources):
-                owner = _gain(owner, reward)
-        players = replace_player(players, owner)
-        gains = _gains_event(ability.sections[0].rewards, source, player)
-    next_state = advance_after_effect(
-        replace(gained.state, players=players), context, players
-    )
+    next_state = advance_after_effect(gained.state, context, gained.state.players)
     return RuleResult(
         state=next_state,
         events=(
             *gained.events,
-            *gains,
             agent_box_event(source, card_id, player, _RESOLVED),
         ),
     )

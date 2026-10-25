@@ -1569,6 +1569,41 @@ def test_spy_network_recalls_one_of_two_spies_and_draws_intrigue() -> None:
     ) == ("spy_recalled", "intrigue_card_drawn")
 
 
+def test_spy_network_recall_needs_an_intrigue_card_to_draw() -> None:
+    # Spy Network's recall is an arrow cost (OQ-057 (14)); a cost line is
+    # offered only when a reward can change something (OQ-071, user decision
+    # 2026-09-29; card extension "이제 카드·보드·Leader의 비용 줄도 같다").
+    # With the Intrigue deck empty and nothing to shuffle -- a Twisted card
+    # is never shuffled back (OQ-097) -- the recall bought nothing (engine
+    # audit 2026-10-22, P8); a discarded Intrigue card brings it back.
+    spy_network = _imperium_instance("spy_network")
+    posts = ("arrakis-hagga-basin", "bene-gesserit-espionage-secrets")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(spy_network,),
+            troops_supply=8,
+            troops_conflict=1,
+            spies_supply=1,
+            spy_post_ids=posts,
+        )
+    )
+    engine = UprisingRulesEngine()
+
+    def recalls(intrigue_deck: tuple[str, ...], discard: tuple[str, ...]) -> int:
+        start = replace(state, intrigue_deck=intrigue_deck, intrigue_discard=discard)
+        revealed = begin_reveal_turn(start, legal_reveal_actions(start, 0)[0]).state
+        return sum(
+            action.action_id == "recall_spy_for_reveal"
+            for action in engine.whole_actions(revealed, 0)
+        )
+
+    assert recalls((), ()) == 0
+    assert recalls((), ("intrigue:twisted_calculating:0",)) == 0
+    assert recalls((), ("intrigue:test:0",)) == 2
+    assert recalls(("intrigue:test:0",), ()) == 2
+
+
 def test_spy_network_recall_may_be_left_unused_with_two_spies_placed() -> None:
     # Spy Network: "If you have two or more Spies on the board: [recall Spy]
     # -> [Intrigue card]" [Spy Network card]. The recall is left of an arrow,
@@ -2490,6 +2525,45 @@ def test_sardaukar_coordination_counts_each_revealed_emperor_card() -> None:
     assert result.state.players[0].combat_strength == 9
     assert dict(result.state.decision_stack[-1].context)["strength"] == 9
     assert dict(result.state.decision_stack[-1].context)["persuasion"] == 5
+
+
+def test_a_late_sardaukar_coordination_counts_no_trashed_emperor_card() -> None:
+    # OQ-129 (가) (user ruling 2026-10-25, "이미 trash한건 당연히 sword 포함되면
+    # 안 되겠지. 근데 이미 공개해서 sword를 받은 다음 그 다음 폐기하는건
+    # 세야하는거 아니야?"): copy A revealed with another Emperor card X gains
+    # 2 swords and keeps them when X is trashed later in the Reveal; copy B,
+    # drawn and revealed after that [FAQ p. 3], counts only the Emperor cards
+    # still in front of the owner -- A and itself -- and A gains 1 for B, as
+    # the card prints ("for each Emperor card you revealed"). The digital app
+    # gives A nothing for a copy of the same card; that is not followed.
+    first = _imperium_instance("sardaukar_coordination", 0)
+    second = _imperium_instance("sardaukar_coordination", 1)
+    soldier = _imperium_instance("sardaukar_soldier")
+    owner = PlayerState(
+        player_id=0,
+        hand=(first, soldier),
+        troops_supply=8,
+        troops_conflict=1,
+    )
+    revealed = begin_reveal_turn(
+        _state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    # A counts A and the Soldier: 2; the Soldier's own sword 1; a troop 2.
+    assert revealed.players[0].combat_strength == 5
+    # The Soldier is trashed (as Calculus of Power or Cunning would) and B
+    # is drawn into the hand.
+    player = revealed.players[0]
+    trashed = replace(
+        player,
+        in_play=tuple(card for card in player.in_play if card != soldier),
+        trashed=(*player.trashed, soldier),
+        hand=(second,),
+    )
+    state = replace(revealed, players=(trashed, *revealed.players[1:]))
+    arrived = reveal_late_arrivals(state, 0, (second,)).state
+    # B counts A and B (2), A gains 1 for B: 5 + 2 + 1 = 8 -- not 9, which
+    # counted the trashed Soldier for B.
+    assert arrived.players[0].combat_strength == 8
 
 
 def test_sardaukar_coordination_ignores_emperor_agent_cards_in_play() -> None:

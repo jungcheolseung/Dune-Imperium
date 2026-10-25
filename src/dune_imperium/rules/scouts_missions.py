@@ -49,7 +49,10 @@ from dune_imperium.rules.frames import (
     replace_player,
 )
 from dune_imperium.rules.gain_events import resources_gained_event
-from dune_imperium.rules.intrigue_deck import shufflable_intrigue_discard
+from dune_imperium.rules.intrigue_deck import (
+    credit_suspensor_suits,
+    shufflable_intrigue_discard,
+)
 from dune_imperium.rules.specimens import return_specimens
 
 BOARD_ICON_SCOUTS: Final = "scouts_mission"
@@ -428,12 +431,18 @@ def mission_top_up(state: GameState, player: int, mission: Mission) -> int:
 def offer_mission_join(
     state: GameState, player: int, mission_id: str, *, source: str
 ) -> RuleResult:
-    """Ask one seat whether it takes part (OQ-088: skipped when it cannot)."""
+    """Ask one seat whether it takes part.
+
+    A seat that cannot take part is asked too: its window greys the ways in
+    with their reasons (``join_unavailable_reason``) and offers the pass
+    alone. "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다" (user
+    decision 2026-09-30) covers missions (OQ-131, user ruling 2026-10-25
+    "G4: 임무에도 적용하자"; engine audit 2026-10-22, G4); OQ-088 used to
+    skip such a seat with no window and no event.
+    """
 
     mission = MISSIONS_BY_ID[mission_id]
-    if not join_targets(state, player, mission) and not mission_top_up(
-        state, player, mission
-    ):
+    if mission.kind not in _PARTICIPATION:
         return RuleResult(state=state)
     frame = DecisionFrame(
         kind=FrameKind.SCOUTS_MISSION,
@@ -690,6 +699,9 @@ def legal_mission_collect_actions(
 def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
     """Collect everything the visiting seat's missions left on this space."""
 
+    # ``leader_abilities`` imports this module through ``acquisition``.
+    from dune_imperium.rules.leader_abilities import units_deployment_blocked
+
     if action not in legal_mission_collect_actions(state, action.actor):
         raise ValueError("action is not a legal mission collection")
     _, context = current_agent_effect_context(state)
@@ -711,7 +723,14 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
         mission_id, _, _, troops = row
         parked.remove(row)
         kind = MISSIONS_BY_ID[mission_id].kind
-        to_conflict = kind in _TO_CONFLICT
+        # "Units can't be deployed to the Conflict this turn." [Shaddam
+        # Corrino IV card] [Main p. 17] [FAQ p. 3]: on such a turn the troop
+        # is recruited and stays in the garrison (OQ-130, user ruling
+        # 2026-10-25, as Suspensor Suits' troop under OQ-042; engine audit
+        # 2026-10-22, G3).
+        to_conflict = kind in _TO_CONFLICT and not units_deployment_blocked(
+            state, player
+        )
         owner = replace(
             owner,
             troops_parked=owner.troops_parked - troops,
@@ -793,6 +812,12 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
         else:
             owner = replace(owner, intrigue_cards=(*owner.intrigue_cards, card_id))
             intrigue_gained.append(card_id)
+            # Suspensor Suits counts "each Intrigue card you draw or steal
+            # during your turn" [Suspensor Suits Tech tile]; the limit is the
+            # turn only, and an effect taking a card straight from the deck
+            # counts (OQ-042, 2026-09-26 addition; engine audit 2026-10-22,
+            # P3). Emperor's Schemes' card is drawn (OQ-078, OQ-086).
+            owner = credit_suspensor_suits(state, owner, 1)
             events.append(
                 GameEvent(
                     event_id=f"{source}:{mission_id}:intrigue",

@@ -2411,7 +2411,12 @@ def test_paracompass_gains_two_solari_on_its_agent_turn() -> None:
     assert result.state.players[0].resources.solari == 2
 
 
-def test_overthrow_gains_extra_influence_with_the_visited_faction() -> None:
+def test_overthrow_gains_two_influence_instead_of_the_spaces_one() -> None:
+    # "Gain two Influence instead of one." [Overthrow card]: the 2 replace
+    # the visited Faction space's 1 ("When you send an Agent to a Faction's
+    # board space, gain one Influence with that Faction" [Main p. 7]), as
+    # Treacherous Maneuver's and Subversive Advisor's do (OQ-046, OQ-128,
+    # user ruling 2026-10-25 "이건 통일하는게 맞아"); it was a separate +1.
     overthrow = _imperium_instance("overthrow")
     owner = PlayerState(player_id=0, hand=(overthrow,))
     state = GameState(
@@ -2430,11 +2435,15 @@ def test_overthrow_gains_extra_influence_with_the_visited_faction() -> None:
     )
     placed = apply_agent_action(state, _action_to(state, "secrets")).state
 
+    # While the box waits it holds the space's own gain (never 2 + 1).
+    assert "resolve_faction_influence" not in {
+        action.action_id for action in UprisingRulesEngine().whole_actions(placed, 0)
+    }
     result = resolve_agent_card_effect(placed)
     context = dict(result.state.decision_stack[-1].context)
 
-    assert result.state.players[0].influence.bene_gesserit == 1
-    assert context["pending_faction_influence"] is True
+    assert result.state.players[0].influence.bene_gesserit == 2
+    assert context["pending_faction_influence"] is False
 
 
 def test_bene_gesserit_operative_places_a_spy_on_an_empty_post() -> None:
@@ -5161,9 +5170,24 @@ def test_guild_envoy_requires_discard_and_only_draws_for_spacing_guild(
     assert {action.action_id for action in actions} == {"discard_agent_card"}
     result = apply_agent_card_discard(placed, actions[0])
 
+    # "[discard]", then "If you discarded a Spacing Guild card: [card][card]"
+    # [Guild Envoy card]: no arrow, so the discard is the box's mandatory
+    # effect ([FAQ p. 2]) and the draw, printed apart and hidden, is armed
+    # as its own step (OQ-106; user decision 2026-10-25 "Guild Envoy는 (가)
+    # discard와 draw를 별개 단계로 나눠"; engine audit 2026-10-22, P6).
     assert result.state.players[0].discard_pile == (discarded,)
-    assert len(result.state.players[0].hand) == expected_hand_count
-    assert len(result.state.players[0].deck) == expected_deck_count
+    assert result.state.players[0].hand == ()
+    # Without a Spacing Guild card nothing is armed: the box ends with the
+    # discard, with its event.
+    assert [event.kind for event in result.events] == (
+        ["card_discarded", "agent_card_effect_resolved"]
+        if discarded_card_id == "dagger"
+        else ["card_discarded"]
+    )
+    resolved = _resolve_agent_icons(result.state)
+    assert len(resolved.players[0].hand) == expected_hand_count
+    assert len(resolved.players[0].deck) == expected_deck_count
+    assert dict(resolved.decision_stack[-1].context)["pending_agent_effect"] is False
 
 
 def test_guild_envoy_draws_two_for_a_the_spice_must_flow_discard() -> None:
@@ -5199,8 +5223,13 @@ def test_guild_envoy_draws_two_for_a_the_spice_must_flow_discard() -> None:
     result = apply_agent_card_discard(placed, actions[0])
 
     assert result.state.players[0].discard_pile == (discarded,)
-    assert len(result.state.players[0].hand) == 2
-    assert len(result.state.players[0].deck) == 0
+    # The draw is its own step (OQ-106; engine audit 2026-10-22, P6).
+    assert dict(result.state.decision_stack[-1].context)["pending_agent_icons"] == (
+        "cards"
+    )
+    resolved = _resolve_agent_icons(result.state)
+    assert len(resolved.players[0].hand) == 2
+    assert len(resolved.players[0].deck) == 0
 
 
 def test_guild_envoy_has_no_agent_effect_without_another_hand_card() -> None:
@@ -5819,12 +5848,15 @@ def test_agent_card_discard_resolves_spacing_guilds_favor_trigger() -> None:
     result = apply_agent_card_discard(placed, discard)
 
     assert result.state.players[0].resources.spice == 2
-    assert len(result.state.players[0].hand) == 2
     assert result.state.players[0].discard_pile == (favor,)
     assert [event.kind for event in result.events[:2]] == [
         "card_discarded",
         "personal_card_discard_effect_resolved",
     ]
+    # The two cards are Guild Envoy's own next step (OQ-106; engine audit
+    # 2026-10-22, P6).
+    assert result.state.players[0].hand == ()
+    assert len(_resolve_agent_icons(result.state).players[0].hand) == 2
 
 
 # Double Agent: "[Spy] spying on the board space you sent an Agent to this

@@ -719,15 +719,24 @@ def test_imperium_ceremony_through_the_engine() -> None:
 
 
 def test_interstellar_conspiracy_needs_an_emperor_or_guild_partner() -> None:
+    # "Gain 1 spice, If grafted with an Emperor or Spacing Guild card: Gain 1
+    # Influence with a chosen Faction" [Interstellar Conspiracy card]. Each
+    # printed icon is its own action, in the owner's order ("You may carry
+    # out all these effects in any order." [Main p. 9]; OQ-027 extension 3,
+    # user decision 2026-10-18 "원칙대로 아이콘마다 나누자"): the Faction
+    # choice once paid the spice too, so the spice could not come first
+    # (engine audit 2026-10-22, P4).
+    engine = UprisingRulesEngine()
+    spice_icon = DomainAction("resolve_agent_card_effect", 0, (("effect", "spice"),))
     conspiracy = _card("interstellar_conspiracy")
+    box = agent_card_source(1, 0, conspiracy)
     wrong = _graft(_state(_owner((conspiracy, DAGGER))), conspiracy, "arrakeen", DAGGER)
     assert legal_agent_card_influence_actions(wrong, 0) == ()
-    resolved = resolve_agent_card_effect(wrong)
-    assert resolved.state.players[0].resources.spice == 3
-    box = agent_card_source(1, 0, conspiracy)
-    assert resolved.events == (
+    spice = apply_whole(engine, wrong, spice_icon)
+    assert spice.state.players[0].resources.spice == 3
+    assert spice.events == (
         resources_gained_event(box, 0, spice=1),
-        agent_box_event(box, conspiracy, 0, BoxOutcome.RESOLVED),
+        agent_box_event(box, conspiracy, 0, BoxOutcome.RESOLVED, effect="spice"),
     )
     keys = _card("keys_to_power")  # Spacing Guild, Bene Gesserit
     right = _graft(_state(_owner((conspiracy, keys))), conspiracy, "arrakeen", keys)
@@ -738,11 +747,18 @@ def test_interstellar_conspiracy_needs_an_emperor_or_guild_partner() -> None:
         "bene_gesserit",
         "fremen",
     }
+    assert spice_icon in engine.whole_actions(right, 0)
     chosen = apply_agent_card_influence(
         right, next(a for a in picks if dict(a.arguments)["faction"] == "fremen")
     )
     owner = chosen.state.players[0]
-    assert owner.influence.fremen == 1 and owner.resources.spice == 3
+    assert owner.influence.fremen == 1 and owner.resources.spice == 2
+    # The spice is still its own step, before or after the Faction.
+    paid = apply_whole(engine, chosen.state, spice_icon).state.players[0]
+    assert paid.influence.fremen == 1 and paid.resources.spice == 3
+    first = apply_whole(engine, right, spice_icon).state
+    assert first.players[0].resources.spice == 3
+    assert legal_agent_card_influence_actions(first, 0) == picks
 
 
 def test_shadout_mapes_deploys_or_retreats_one_troop_at_reveal() -> None:
@@ -855,8 +871,12 @@ def test_shadout_mapes_deploys_a_garrison_commander() -> None:
     context = dict(result.state.decision_stack[-1].context)
     # Commander 2 + Mapes' sword; the Skills switch on with the Commander:
     # Loyal's 2 strength and Charismatic's late Persuasion (OQ-028 (c)).
-    assert context["strength"] == 2 + 1
     assert owner.combat_strength == 2 + 1 + 2
+    # The Reveal's running total moves with the Skill share as combat_strength
+    # does (it held 2 + 1 until the engine audit 2026-10-22, R3: units leaving
+    # and coming back then brought a stale share back) [Main p. 12]
+    # [Bloodlines p. 4].
+    assert context["strength"] == owner.combat_strength
     assert context["persuasion"] == 1 + 1
     assert "commanders_deployed" in {event.kind for event in result.events}
 

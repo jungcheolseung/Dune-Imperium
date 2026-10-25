@@ -2423,6 +2423,11 @@ def test_flip_tiles_are_offered_once_per_round_and_return_at_round_start() -> No
     )
     assert drones.state.players[0].resources.solari == 4 + 1
     assert drones.state.decision_stack[-1].kind == "turn"
+    # The Solari leaves the one resource-gain event (user decision
+    # 2026-10-17, composed-effects plan 5, rule decision 3; engine audit
+    # 2026-10-22, P11).
+    gained = [event for event in drones.events if event.kind == "resources_gained"]
+    assert [dict(event.payload)["solari"] for event in gained] == [1]
     recalled = replace(
         flipped,
         players=(
@@ -3844,3 +3849,49 @@ def test_the_combat_confirm_keeps_the_frame_for_another_owed_icon() -> None:
     assert frame.kind == "tech_acquisition"
     assert dict(frame.context)[TECH_ACQUIRE_PENDING_KEY] == "plasteel_blades:solari"
     assert confirm not in engine.whole_actions(result.state, 0)
+
+
+def test_forbidden_weapons_spice_loss_does_not_cancel_a_later_gain() -> None:
+    # Steersman Y'rkoon: "Whenever you gain [spice 3] or more in a single
+    # turn: [draw]" [Steersman Y'rkoon card], counting "Y'rkoon 자신의 Agent
+    # turn 또는 Reveal turn에 얻은 spice만" (OQ-063); the owner orders the
+    # Reveal's effects [Main p. 12]. Forbidden Weapons' "spice 전부 잃고 이
+    # tile trash" (docs/rules/bloodlines.md:114) is a loss, not a gain: once
+    # its loss cancelled the 5 spice Market Opportunity gained after it,
+    # though the other order drew the card (engine audit 2026-10-22, R6).
+    from dune_imperium.rules.effects import spice_gained_this_turn
+    from dune_imperium.rules.tech import apply_tech_choice, legal_tech_reveal_actions
+
+    market = "intrigue:market_opportunity:0"
+    owner = _tech_owner(
+        "forbidden_weapons",
+        leader_id="steersman_y_rkoon",
+        intrigue_cards=(market,),
+        resources=Resources(solari=5, spice=4),
+        spice_at_turn_start=4,
+    )
+    state = _gains(_reveal(_turn_state(owner, stacks=((), (), ()))).state)
+    trash = next(
+        a
+        for a in legal_tech_reveal_actions(state, 0)
+        if a.action_id == "choose_tech_trash"
+    )
+    trashed = apply_tech_choice(state, trash).state
+    assert trashed.players[0].resources.spice == 0
+    assert spice_gained_this_turn(trashed.players[0]) == 0
+
+    engine = UprisingRulesEngine()
+    bought = apply_whole(
+        engine,
+        trashed,
+        DomainAction("play_intrigue", 0, (("card_id", market), ("option", 1))),
+    ).state
+
+    assert bought.players[0].resources.spice == 5
+    assert spice_gained_this_turn(bought.players[0]) == 5
+    # The card waits as his own step in the Reveal (OQ-106 8).
+    assert bought.players[0].hungry_for_spice_granted_turn
+    assert [kind for kind, origin, _ in bought.players[0].owed_draws] == ["card"]
+    assert "hungry_for_spice" in {
+        origin for _, origin, _ in bought.players[0].owed_draws
+    }

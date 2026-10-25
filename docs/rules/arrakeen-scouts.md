@@ -159,7 +159,7 @@ Scouts 단계의 결정은 누구의 turn에도 속하지 않는다. "이번 tur
 | `covert_assistance` | Covert Assistance (비밀스러운 지원) | 영향력 증가 | 6 | 4~7 | 각자 선택: Spy 1 회수 → Bene Gesserit +1, 또는 패스 |
 | `gift_of_water` | Gift of Water (물이 가져다 준 선물) | 영향력 증가 | 6 | 4~7 | 각자 선택: 물 1 → Fremen +1, 또는 패스 |
 | `share_intelligence` | Share Intelligence (정보 공유) | 영향력 증가 | 6 | 4~7 | 각자 선택: Intrigue 1장 trash + Solari 1 → 원하는 Faction +1, 또는 패스 |
-| `political_equilibrium` | Political Equilibrium (정치적 균형) | 영향력 축소 | 6 | 4~7 | 모두 자기 Influence가 가장 높은 Faction에서 −1. 동률이면 그중 하나를 고른다. First Player부터 한 좌석씩 처리한다(Alliance가 오갈 수 있어 순서가 결과를 바꾼다, OQ-071) |
+| `political_equilibrium` | Political Equilibrium (정치적 균형) | 영향력 축소 | 6 | 4~7 | 모두 자기 Influence가 가장 높은 Faction에서 −1. 동률이면 그중 하나를 고른다. First Player부터 한 좌석씩 처리한다(Alliance가 오갈 수 있어 순서가 결과를 바꾼다, OQ-071). 모든 좌석에 창을 연다 — 가장 높은 Faction이 하나면 그 한 줄, 모두 0이면 "잃을 영향력 없음" 확인(OQ-131 보강, 2026-10-25 사용자) |
 | `crackdown` | Crackdown (강력 단속) | 영향력 축소 | 6 | 4~7 | 각자 선택: Spy 1 회수, 또는 Emperor −1 |
 | `water_for_spice_smugglers` | Water for Spice Smugglers (밀수업자들에게 물 제공) | 영향력 축소 | 6 | 4~7 | 각자 선택: 물 1 잃기, 또는 Spacing Guild −1 |
 | `bene_gesserit_treachery` | Bene Gesserit Treachery (베네 게세리트의 음모) | 영향력 축소 | 6 | 4~7 | 각자 선택: garrison의 troop 1 잃기, 또는 Bene Gesserit −1. Bloodlines에서는 garrison의 Sardaukar Commander로도 낼 수 있고, 둘 다 있으면 고른다(OQ-105) |

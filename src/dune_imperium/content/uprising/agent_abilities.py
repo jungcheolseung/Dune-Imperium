@@ -360,10 +360,18 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 _line(DrawIntrigueCards(1), condition=_GUILD_DISCARD),
                 armed=("cards", "intrigue"),
             ),
-            # Guild Envoy: the discard is not optional.
+            # Guild Envoy: "[discard]" then, printed below it, "If you
+            # discarded a Spacing Guild card: [card][card]" [card face] -- no
+            # arrow, so the discard is no cost but the box's own mandatory
+            # effect ("Agent turn에 play하면 반드시 card를 discard한다."
+            # [FAQ p. 2]). The draw, a hidden draw printed apart, is armed
+            # as its own step (OQ-106, user decision 2026-10-25 "Guild Envoy는
+            # (가) discard와 draw를 별개 단계로 나눠"; engine audit
+            # 2026-10-22, P6), as Guild Spy's is.
             _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: _discard(
                 _line(DrawPersonalCards(2), condition=_GUILD_DISCARD),
                 mark=AbilityMark.MANDATORY,
+                armed=("cards",),
             ),
             # --- Intrigue arrows (composed effects, A3d) --------------------------
             # Branching Path: "If Bene Gesserit Alliance: You may trash an
@@ -498,11 +506,14 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             # Interstellar Conspiracy: "Gain 1 spice, If grafted with an Emperor
             # or Spacing Guild card: Gain 1 Influence with a chosen Faction" --
-            # with the partner the choice pays both.
-            _INTERSTELLAR_CONSPIRACY: Ability(
-                timing=AbilityTiming.AGENT_BOX,
-                sections=(
-                    _line(GainResources(spice=1)),
+            # each icon resolves on its own, in the owner's order (OQ-027, user
+            # decision 2026-10-18 "원칙대로 아이콘마다 나누자"; engine audit
+            # 2026-10-22, P4): the spice may come first, to pay for another
+            # effect before the Faction is chosen.
+            _INTERSTELLAR_CONSPIRACY: _icons(
+                ("spice", _line(GainResources(spice=1))),
+                (
+                    "influence",
                     _line(
                         GainInfluence(),
                         condition=GraftedWithFaction(
@@ -618,10 +629,14 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # Seek Allies: "Trash this card." [Main p. 20] -- the box trashes
             # its own card (cleanup-2d).
             _BOX.TRASH_SELF: _box(TrashThisCard()),
-            # Overthrow: "Gain 1 additional Influence with the visited
-            # Faction"; nothing to gain off a Faction space (OQ-046).
+            # Overthrow: "Gain two Influence instead of one." [Overthrow card]
+            # -- the 2 replace the visited Faction space's 1, as Subversive
+            # Advisor's and Treacherous Maneuver's do (OQ-046, OQ-128, user
+            # ruling 2026-10-25 "이건 통일하는게 맞아"); nothing to gain off a
+            # Faction space.
             _BOX.GAIN_VISITED_FACTION_INFLUENCE: _box(
-                GainInfluence(visited_space=True), requirement=AtFactionSpace()
+                GainInfluence(visited_space=True, times=2, replaces_space=True),
+                requirement=AtFactionSpace(),
             ),
             # Lisan al Gaib: the Fremen Influence, the Bond judged when the box
             # resolves (a grafted partner may give it).

@@ -80,6 +80,9 @@ EXPLICIT_TURN_ENDS: Final = frozenset(
         # (cleanup-2a, OQ-071); its one confirm says the seat takes nothing,
         # like a pass, so one press ends the seat's part.
         "resolve_scouts_choice_without_option",
+        # Political Equilibrium's confirm for a seat with every track at 0
+        # (OQ-131): one press ends the seat's part, as above.
+        "resolve_scouts_loss_without_influence",
         # Critical Moment's open call (0 a pass) is one action per amount, so
         # the browser sends it with the turn-end press after the stepper set
         # the amount ("경매 ... 턴 종료를 눌러야 확정되게 해줘", user,

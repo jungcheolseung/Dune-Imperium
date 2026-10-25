@@ -74,6 +74,9 @@ CARD_KEYS: Final = frozenset(
         # (``effects.BOOST_DRAW_KEY``): the placed card or a Bene Gesserit
         # partner that took the boost, and a Ghola grafted to it (OQ-107).
         "boost_draw_card_ids",
+        # The cards that took the boost this turn: each has all Agent icons
+        # (``effects.BOOSTED_CARDS_KEY``, Slig Farmer's count, OQ-055).
+        "boosted_card_ids",
         # The cards whose Scientific Breakthrough box did its Research: a
         # Ghola copying it researches once more (``agent_effects``).
         "research_resolved_card_ids",

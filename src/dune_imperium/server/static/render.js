@@ -687,6 +687,7 @@ const EXPLICIT_TURN_END_IDS = new Set([
   "finish_conflict_end_intrigue",
   "confirm_scouts_bid",
   "resolve_scouts_choice_without_option",
+  "resolve_scouts_loss_without_influence",
   "scouts_call",
 ]);
 
@@ -769,6 +770,9 @@ function turnEndButtonLabel(action, actions) {
   }
   if (action.action_id === "resolve_scouts_choice_without_option") {
     return t("render.turn_end_button_nothing");
+  }
+  if (action.action_id === "resolve_scouts_loss_without_influence") {
+    return t("render.turn_end_button_no_influence");
   }
   return t("render.turn_end_button");
 }

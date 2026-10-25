@@ -1127,6 +1127,41 @@ def _waiting_reveal_row(owner: PlayerState) -> dict[str, Any]:
     return row
 
 
+def test_spy_network_with_its_spies_placed_greys_out_for_no_intrigue_card() -> None:
+    """Spy Network's recall waits while its Intrigue card cannot be drawn
+    (OQ-071; engine audit 2026-10-22, P8): with both Spies placed the reason
+    is the empty Intrigue deck, not the Spies it already has."""
+
+    spy_network = next(
+        i for i in imperium_deck_instance_ids(False) if ":spy_network:" in i
+    )
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(spy_network,),
+            troops_supply=8,
+            troops_conflict=1,
+            spies_supply=1,
+            spy_post_ids=("arrakis-hagga-basin", "bene-gesserit-espionage-secrets"),
+        ),
+        intrigue_deck=(),
+        intrigue_discard=(),
+    )
+    pending = apply_whole(
+        ENGINE, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    recall = "recall_spy_to_draw_intrigue_if_two_placed"
+    row = _rows(_found(pending), "waiting")[f"waiting:{spy_network}:{recall}"]
+    assert (row["reason"], row["reason_ko"], row["code"]) == (
+        "No Intrigue card to draw: the Intrigue deck is empty and its discard"
+        " pile holds nothing to shuffle; it lapses unused when the Reveal turn"
+        " ends",
+        "뽑을 {intrigue_card} 없음: 책략 카드덱이 비었고 버린 더미에 섞을 카드"
+        " 없음 — {reveal_turn}를 끝내면 쓰지 않은 채 사라짐",
+        "waiting",
+    )
+
+
 def test_a_command_choice_waits_with_the_persuasion_generated_so_far() -> None:
     """Pointing the Way's "Command (6+ Persuasion)" gain [Bloodlines p. 5] is
     judged on the Persuasion the Reveal turn generates [Bloodlines p. 12]:

@@ -917,6 +917,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "resolve_scouts_choice_without_option": _spec(
         _E, _S.SCOUTS, Printed.SCOUTS_ITEM, of=_V.CHOOSE
     ),
+    # Political Equilibrium's confirm of losing nothing (OQ-131).
+    "resolve_scouts_loss_without_influence": _spec(
+        _E, _S.SCOUTS, "=political_equilibrium", of=_V.LOSE_INFLUENCE
+    ),
     "scouts_decline_card": _spec(
         _D, _S.SCOUTS, Printed.SCOUTS_ITEM, of=_V.ACQUIRE
     ),

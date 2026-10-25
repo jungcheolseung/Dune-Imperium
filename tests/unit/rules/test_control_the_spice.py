@@ -535,3 +535,91 @@ def test_only_epic_catalogs_gain_the_optional_trash_templates() -> None:
         dict(template.arguments).get("printed") == "control_the_spice"
         for template in _codec(RulesetConfig()).catalog
     )
+
+
+# --- a waiting trash expires with its card (engine audit 2026-10-22, P1) ----
+# "You can't receive or activate an effect from a card that is already
+# trashed" (OQ-022, the adopted designer ruling); a card whose arrow is paid
+# and whose reward waits "다른 효과로 trash되면 OQ-022대로 box 전체가
+# 만료된다" (OQ-027 (b)); "자기 box의 아이콘이면 box의 남은 것이 지급되고,
+# 다른 효과의 아이콘이면 만료된다" (OQ-022, 2026-10-20 B3c-2b). The paid trash
+# waits on the turn as a row (cleanup-2b) and once outlived its card.
+
+KIT = "imperium:dissecting_kit:0"
+GHOLA = "tleilaxu:ghola:0"
+GRAFTS = RulesetConfig(epic_game=True, immortality=True, choam_module=True)
+
+
+def _grafted_and_paid(partner: str) -> GameState:
+    owner = _owner((CONTROL, partner, DAGGER), resources=Resources(spice=3))
+    state = _apply(
+        _state(owner, config=GRAFTS), "choose_agent_card", card_id=CONTROL, graft=True
+    )
+    state = _apply(state, "place_agent", space_id="accept_contract")
+    state = _apply(state, "choose_graft_partner", card_id=partner)
+    return _apply(state, "pay_agent_card_spice")
+
+
+def test_a_paid_trash_expires_when_the_partner_trashes_control_the_spice() -> None:
+    paid = _grafted_and_paid(KIT)
+    assert _waiting(paid) == [(turn_rows.OPTIONAL_TRASH, _CONTROL_SOURCE)]
+
+    result = apply_whole(ENGINE, paid, _find(paid, "trash_grafted_card_for_specimen"))
+
+    assert result.state.players[0].trashed == (CONTROL,)
+    assert _waiting(result.state) == []
+    assert not _trash_offer(result.state)
+    assert [
+        dict(event.payload).get("card_id")
+        for event in result.events
+        if event.kind == "agent_card_effect_expired"
+    ] == [CONTROL]
+
+
+def test_a_research_space_trash_its_research_reached_outlives_the_card() -> None:
+    # Only a trash the card printed expires with it (OQ-022: "you can't
+    # receive or activate an effect from a card that is already trashed"):
+    # a research space's trash, reached by the card's Research, is the
+    # track's own effect, so it stays (a corpus record of Experimentation
+    # grafted with Dissecting Kit found the expiry too wide).
+    from dune_imperium.rules.optional_trash import open_optional_trash, trash_printer
+
+    paid = _grafted_and_paid(KIT)
+    research = f"{_CONTROL_SOURCE}:research:c3r3"
+    waiting = open_optional_trash(
+        paid, 0, research, printer=trash_printer(Source.RESEARCH, "c3r3")
+    )
+    assert _waiting(waiting) == [
+        (turn_rows.OPTIONAL_TRASH, _CONTROL_SOURCE),
+        (turn_rows.OPTIONAL_TRASH, research),
+    ]
+
+    result = apply_whole(
+        ENGINE, waiting, _find(waiting, "trash_grafted_card_for_specimen")
+    )
+
+    assert result.state.players[0].trashed == (CONTROL,)
+    assert _waiting(result.state) == [(turn_rows.OPTIONAL_TRASH, research)]
+
+
+@pytest.mark.parametrize(
+    ("trashed", "by", "left"),
+    [(CONTROL, "ghola", GHOLA), (GHOLA, "control_the_spice", CONTROL)],
+)
+def test_a_ghola_copy_and_its_card_trash_each_other_once(
+    trashed: str, by: str, left: str
+) -> None:
+    # Ghola "copies the entire Agent box" [Immortality p. 14]: two trashes
+    # wait. Trashing either card with the other's icon expires its own.
+    paid = _apply(_grafted_and_paid(GHOLA), "pay_agent_card_spice", box=1)
+    assert len(_waiting(paid)) == 2
+
+    result = apply_whole(
+        ENGINE, paid, _find(paid, "trash_optional_card", card_id=trashed, printed=by)
+    )
+
+    seat = result.state.players[0]
+    assert seat.trashed == (trashed,)
+    assert left in seat.in_play
+    assert _waiting(result.state) == []
+    assert not _trash_offer(result.state)

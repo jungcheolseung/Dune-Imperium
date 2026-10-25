@@ -218,9 +218,9 @@ def _retreat_troops_text(troops: RetreatTroops) -> str:
 
 def _gain_influence_text(gain: GainInfluence) -> str:
     if gain.visited_space:
-        # "Gain 1 additional Influence with the visited Faction" [Overthrow
-        # card]; "Gain 2 Influence with the visited Faction" [Subversive
-        # Advisor card] (``tokens.py``).
+        # "Gain two Influence instead of one." [Overthrow card], "gain two
+        # Influence instead of one" [Subversive Advisor card] (``tokens.py``):
+        # the box's gain replaces the visited space's 1 (OQ-046, OQ-128).
         more = "" if gain.replaces_space else " additional"
         return f"Gain {gain.times}{more} Influence with the visited Faction"
     if gain.factions is not None and len(gain.factions) == 1:

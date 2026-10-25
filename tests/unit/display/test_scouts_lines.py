@@ -110,7 +110,12 @@ def test_a_cost_line_without_a_reward_has_no_trailing_arrow() -> None:
 
 
 def test_a_sale_shows_its_unpayable_line_disabled_with_the_reason() -> None:
-    owner = _owner(resources=Resources(solari=5, spice=2))
+    # A card to draw keeps the cheap line's draw alive (OQ-071; engine audit
+    # 2026-10-22, P2): only the dear line's cost is short.
+    hand = starting_deck_instance_ids(0)
+    owner = _owner(
+        hand=hand[1:], deck=hand[:1], resources=Resources(solari=5, spice=2)
+    )
     offered = offer_scouts_choice(
         _state(owner), 0, "unravel_the_future", source="round:2:scouts"
     )
@@ -278,7 +283,9 @@ def _check_rules_helpers(state: GameState, seat: int) -> None:
         else:
             reward = cast(ScoutsReward, step)
             assert option_is_affordable(state, seat, option)
-            assert not reward_has_effect(state, seat, reward, exclude_space=excluded)
+            assert not reward_has_effect(
+                state, seat, reward, option=option, exclude_space=excluded
+            )
     owner = state.players[seat]
     for mission in MISSIONS_BY_ID.values():
         if join_unavailable_reason(state, seat, mission) == ("none", 0, 0):

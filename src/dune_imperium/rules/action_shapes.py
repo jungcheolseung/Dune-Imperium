@@ -756,6 +756,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "resolve_scouts_choice_without_option": _row(
         _V.CONFIRM_EMPTY, _S.SCOUTS, of=_V.CHOOSE
     ),
+    "resolve_scouts_loss_without_influence": _row(
+        _V.CONFIRM_EMPTY, _S.SCOUTS, of=_V.LOSE_INFLUENCE
+    ),
     "scouts_join_mission": _row(_V.JOIN, _S.SCOUTS, _T.MISSION),
     "scouts_decline_mission": _row(
         _V.DECLINE, _S.SCOUTS, of=_V.JOIN, variant="mission"

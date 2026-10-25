@@ -50,7 +50,9 @@ from dune_imperium.rules.agent_turn import (
 )
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import (
+    BOOSTED_CARDS_KEY,
     add_boost_draw,
+    boosted_cards,
     borrowed_agent_card,
     current_agent_effect_context,
     pending_boost_draws,
@@ -247,6 +249,9 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
     if partner_boosted:
         # The added draw waits for its own step, box 1's (OQ-106, OQ-107).
         add_boost_draw(effect_context, partner_id)
+        effect_context[BOOSTED_CARDS_KEY] = ",".join(
+            (*boosted_cards(effect_context), partner_id)
+        )
     # Ghola "copies the entire Agent box of the card it's grafted to"
     # [Immortality p. 14], and the boosted card's draw was "added to its
     # Agent box" [Urgent Shigawire card]: the copy has it too, as its own
@@ -260,6 +265,22 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
             personal_card_for_instance(ghola_id)
         ):
             add_boost_draw(effect_context, ghola_id)
+    if (
+        personal_card_for_instance(partner_id).agent_effect
+        is PersonalCardAgentEffect.LEADER_SIGNET
+        and next_owner.leader_id == "shaddam_corrino_iv"
+    ):
+        # Emperor of the Known Universe: "Units can't be deployed to the
+        # Conflict this turn." [Shaddam Corrino IV card], at once when the
+        # Signet Ring sends the Agent [Main p. 17] [FAQ p. 3]
+        # (docs/rules/choam-module.md:41); "Both played cards are considered
+        # to have “sent” the Agent, no matter which card’s icon you use."
+        # [Immortality p. 10] (docs/rules/immortality.md:94). The placed
+        # Signet Ring sets the ban at the placement (``agent_turn``); as the
+        # partner it sets it here, before anything of the turn deploys
+        # (engine audit 2026-10-22, R4).
+        effect_context["units_deploy_blocked"] = True
+        effect_context["pending_combat_deployment"] = False
     if effect_context.get("units_deploy_blocked") is not True and any(
         isinstance(card, ImperiumCardEntry) and card.allows_recruited_troop_deployment
         for card in (partner, placed)

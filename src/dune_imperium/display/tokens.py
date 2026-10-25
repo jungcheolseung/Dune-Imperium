@@ -167,9 +167,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "You may discard a card → Draw 1 card "
             "(2 if the discarded card has Spacing Guild affiliation)"
         ),
+        # No arrow on the card face: the discard is no cost (engine audit
+        # 2026-10-22, P6).
         PersonalCardAgentEffect.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: (
-            "Discard a card → Draw 2 cards if the discarded card has "
-            "Spacing Guild affiliation"
+            "Discard a card. If you discarded a Spacing Guild card: Draw 2 cards"
         ),
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: (
             "You may discard a card → Draw 1 Intrigue card, Draw 1 card"
@@ -209,8 +210,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: (
             "If Bene Gesserit Bond: Draw 1 card, Place a Spy"
         ),
+        # The printed words [Overthrow card] (OQ-128: it replaces the
+        # space's 1, as Treacherous Maneuver's does).
         PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE: (
-            "Gain 1 additional Influence with the visited Faction"
+            "Gain 2 Influence instead of 1 Influence with the visited Faction"
         ),
         PersonalCardAgentEffect.GAIN_WATER: "Gain 1 water",
         # Immortality (card faces).

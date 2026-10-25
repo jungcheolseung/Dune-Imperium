@@ -225,6 +225,9 @@ def _produced_by_card() -> dict[str, dict[str, list[DomainAction]]]:
                     _state(owner, ALL_OPTIONS),
                     current_conflict_ids=("propaganda",),
                     imperium_row=(_card("strike_fleet"),),
+                    # Spy Network's recall needs an Intrigue card to draw
+                    # (OQ-071; engine audit 2026-10-22, P8).
+                    intrigue_deck=("intrigue:test:0",),
                 )
                 reveal_frame = DecisionFrame(
                     kind=FrameKind.REVEAL,

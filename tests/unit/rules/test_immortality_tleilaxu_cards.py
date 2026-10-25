@@ -335,18 +335,30 @@ def test_scientific_breakthrough_researches_and_may_trash_itself_at_two_markers(
     owner = result.state.players[0]
     assert breakthrough in owner.trashed and breakthrough not in owner.in_play
     assert owner.victory_points == 2  # one at setup plus the reward
-    # Past the second genetic marker a Research icon draws a card instead.
-    assert len(owner.hand) == 1
     assert "card_trashed" in {event.kind for event in result.events}
-    # The one action did both lines: the Research line's event, then the
-    # box's (cleanup-2c-2 review).
+    # The trash line ends with the box's event; the Research, a line printed
+    # apart, is the owner's own next step: past the second genetic marker it
+    # draws a card instead [Immortality pp. 6, 16], a hidden draw never
+    # bundled with a public choice (OQ-106; engine audit 2026-10-22, P5), so
+    # the trash stays undoable. The card left play by its own cost, so its
+    # Research still pays (OQ-022).
+    assert [event.kind for event in result.events] == [
+        "agent_card_trashed_for_vp",
+        "card_trashed",
+    ]
+    assert len(owner.hand) == 0
+    assert legal_agent_card_payment_actions(result.state, 0) == (
+        DomainAction("resolve_agent_card_effect", 0),
+    )
+    researched = resolve_agent_card_effect(result.state)
+    assert len(researched.state.players[0].hand) == 1
+    # The Research line's event, then the box's: the box ends here.
     box = agent_card_source(two.round_number, 0, breakthrough)
-    assert result.events[-2:] == (
-        agent_box_event(
-            box, breakthrough, 0, BoxOutcome.RESOLVED, effect="research"
-        ),
+    assert researched.events[-2:] == (
+        agent_box_event(box, breakthrough, 0, BoxOutcome.RESOLVED, effect="research"),
         agent_box_event(box, breakthrough, 0, BoxOutcome.RESOLVED),
     )
+    assert legal_agent_card_payment_actions(researched.state, 0) == ()
     kept = resolve_agent_card_effect(two).state.players[0]
     assert breakthrough in kept.in_play and kept.victory_points == 1
 
@@ -596,6 +608,62 @@ def test_slig_farmer_offers_no_track_step_at_the_tleilaxu_track_end() -> None:
     resolved = resolve_agent_card_effect(at_end)
     assert resolved.state.players[0].resources.solari == 5 + 3  # Face Dancer
     assert resolved.state.players[0].tleilaxu_space == 7
+
+
+@pytest.mark.parametrize("placed_farmer", [True, False])
+def test_slig_farmer_counts_a_boosted_partners_all_eight_icons(
+    placed_farmer: bool,
+) -> None:
+    # Urgent Shigawire: "The next Bene Gesserit card you play this round has
+    # all Agent icons" [Urgent Shigawire card] -- the eight kinds, Spy
+    # included [Main p. 9] (docs/rules/player-turns.md) -- and OQ-055: "그
+    # 순간 상대 카드가 가진 Agent 아이콘 전부를 센다". Shrouded Counsel prints
+    # the Spy icon alone; boosted, placed or as the partner (OQ-107), it gave
+    # Slig Farmer one Solari (engine audit 2026-10-22, P7; user confirmation
+    # 2026-10-25 "Slig Farmer가 세게 해야지").
+    farmer = _tleilaxu("slig_farmer")
+    counsel = "imperium:shrouded_counsel:0"
+    state = _state(
+        _owner(
+            (farmer, counsel),
+            resources=Resources(solari=0),
+            bene_gesserit_boost_pending=True,
+        ),
+        config=RulesetConfig(bloodlines=True, immortality=True),
+    )
+    if placed_farmer:
+        grafted = _graft(state, farmer, "assembly_hall", counsel)
+    else:
+        grafted = _switch(_graft(state, counsel, "assembly_hall", farmer))
+
+    resolved = resolve_agent_card_effect(grafted)
+
+    assert resolved.state.players[0].resources.solari == 8
+
+
+def test_slig_farmer_counts_the_icon_emperors_invitation_gave_the_turn() -> None:
+    # Emperor's Invitation: "The card you play this turn has the [Emperor]
+    # icon"; both grafted cards are played (OQ-107), and an added icon counts
+    # (OQ-055): the Dagger's Landsraad and the Emperor make two (engine audit
+    # 2026-10-22, P7).
+    farmer = _tleilaxu("slig_farmer")
+    invited = _graft(
+        _state(
+            _owner(
+                (farmer, DAGGER),
+                resources=Resources(solari=0),
+                granted_agent_icon_turn="emperor",
+            ),
+            config=RulesetConfig(bloodlines=True, immortality=True),
+        ),
+        farmer,
+        "assembly_hall",
+        DAGGER,
+    )
+
+    resolved = resolve_agent_card_effect(invited)
+
+    assert resolved.state.players[0].resources.solari == 2
 
 
 def test_slig_farmer_counts_mohiams_clandestine_spy_icon() -> None:
@@ -949,10 +1017,15 @@ def test_a_resolved_subversive_box_keeps_the_space_influence_replaced() -> None:
     assert traded.state.players[0].influence.fremen == 2
 
 
-def test_two_resolved_subversive_boxes_each_gain_two() -> None:
-    # Pinned current behaviour: Ghola copies the whole box [Immortality
-    # p. 14], so when both boxes resolve each gains its own 2 (4 in all);
-    # the space's 1 never adds to them.
+def test_two_resolved_subversive_boxes_gain_two_in_all() -> None:
+    # "If you graft this card with Power Play to send an Agent to a faction
+    # board space, you gain only 2 Influence with that faction, the same as
+    # if you'd played Power Play alone." [Immortality p. 14], for every
+    # "two Influence instead of one" box (OQ-128, user ruling 2026-10-25:
+    # "골라 + 파워플레이 내용이 정확해 … 이와 같은 동작을 하는건 모두 그 내용을
+    # 따라야지"). Ghola copies the whole box [Immortality p. 14], so both
+    # boxes resolve; the copy's Influence adds nothing (4 until OQ-128),
+    # and the space's 1 never adds to them.
     engine = UprisingRulesEngine()
     first = apply_whole(engine, 
         _subversive_ghola_on_desert_tactics(),
@@ -963,7 +1036,37 @@ def test_two_resolved_subversive_boxes_each_gain_two() -> None:
         tagged(DomainAction(action_id="resolve_agent_card_effect", actor=0), 1),
     ).state
 
-    assert second.players[0].influence.fremen == 4
+    assert first.players[0].influence.fremen == 2
+    assert second.players[0].influence.fremen == 2
+    assert "resolve_faction_influence" not in {
+        action.action_id for action in engine.whole_actions(second, 0)
+    }
+
+
+def test_ghola_copying_overthrow_gains_two_in_all() -> None:
+    # OQ-128 (user ruling 2026-10-25): Overthrow's "Gain two Influence
+    # instead of one." [Overthrow card] is modelled as Subversive Advisor's,
+    # and Ghola's copy of it adds nothing: "you gain only 2 Influence with
+    # that faction" [Immortality p. 14]. It once gave 3 (2 + its +1).
+    overthrow = "imperium:overthrow:0"
+    ghola = _tleilaxu("ghola")
+    grafted = _graft(
+        _state(_owner((overthrow, ghola))), overthrow, "secrets", ghola
+    )
+    engine = UprisingRulesEngine()
+    first = apply_whole(
+        engine,
+        grafted,
+        DomainAction(action_id="resolve_agent_card_effect", actor=0),
+    ).state
+    second = apply_whole(
+        engine,
+        first,
+        tagged(DomainAction(action_id="resolve_agent_card_effect", actor=0), 1),
+    ).state
+
+    assert first.players[0].influence.bene_gesserit == 2
+    assert second.players[0].influence.bene_gesserit == 2
     assert "resolve_faction_influence" not in {
         action.action_id for action in engine.whole_actions(second, 0)
     }

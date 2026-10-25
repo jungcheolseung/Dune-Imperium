@@ -21,6 +21,7 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.effect_dsl import (
     CompleteContract,
+    DrawPersonalCards,
     ForceEnemyRetreat,
     GainInfluence,
     GainResources,
@@ -45,6 +46,8 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.action_shapes import Source, printer_parts
 from dune_imperium.rules.agent_box_abilities import (
     NOT_PRINTED_BLOCK,
     SPACE_INFLUENCE_REPLACED,
@@ -611,8 +614,8 @@ def legal_agent_card_influence_actions(
     # A gain on a cube at the top of its track is lost (OQ-060), so no
     # picker below offers such a Faction. With none left the box's plain
     # resolution pays the rest (Southern Faith's draw, Possible Futures'
-    # troops, Interstellar Conspiracy's spice), or else the box waits for
-    # the turn's end (``resolve_agent_card_effect``, OQ-057 (1)).
+    # troops), or else the box waits for the turn's end
+    # (``resolve_agent_card_effect``, OQ-057 (1)).
     recorded = box_ability(effect)
     if isinstance(target_piece(recorded), GainInfluence):
         # A chosen Faction's Influence, from its record (composed A3c).
@@ -623,7 +626,7 @@ def legal_agent_card_influence_actions(
         and either_box(recorded)
         and isinstance(either_choice(recorded), GainInfluence)
     ):
-        # Southern Faith, Interstellar Conspiracy (composed A3f).
+        # Southern Faith (composed A3f).
         return either_rows(state, player, recorded)
     rising = tuple(
         faction
@@ -1735,7 +1738,10 @@ def legal_agent_card_payment_actions(
         # The line is judged when it resolves (OQ-028), so the card's own
         # Research, resolved first, may reach the second marker [Main p. 9].
         # Before the Research, the plain resolution is the Research; after
-        # it, the line is an arrow cost the owner may decline.
+        # it, the line is an arrow cost the owner may decline. Trashed by
+        # that line first, the card still owes its Research, alone.
+        if context.get("agent_card_self_trashed") is True:
+            return (DomainAction(action_id="resolve_agent_card_effect", actor=player),)
         if agent_card_cost_block(state, player) is not None:
             return ()
         return (
@@ -1962,11 +1968,17 @@ def _apply_payment_choice(
         return RuleResult(state=advance_after_effect(state, context), events=())
     if action.action_id == "trash_agent_card_self_for_vp":
         # Scientific Breakthrough: the card trashes itself as its own cost,
-        # so its research still pays out (OQ-022) unless it already did;
-        # the direction choice opens above the settled turn.
+        # so its Research still pays out (OQ-022) unless it already did. The
+        # Research is a line printed apart, so it stays the owner's own step
+        # (``resolve_agent_card_effect``): past the second genetic marker it
+        # draws a card [Immortality pp. 6, 16], a hidden draw that is never
+        # bundled with a public choice (OQ-106, user ruling 2026-10-10:
+        # "별개 효과인 공개 선택과 숨은 draw는 엔진의 별개 단계다"; engine
+        # audit 2026-10-22, P5). Before, this same action did the Research.
         card_instance_id = _effect_subject(context)[1]
         research_owed = not _box_researched(context, card_instance_id)
         context["agent_card_self_trashed"] = True
+        context["pending_agent_effect"] = research_owed
         trashed = trash_personal_card(
             state, action.actor, card_instance_id, source=source
         )
@@ -1978,13 +1990,8 @@ def _apply_payment_choice(
         next_state = advance_after_effect(
             trashed.state, context, replace_player(trashed.state.players, rewarded)
         )
-        researched = (
-            advance_research(next_state, action.actor, source=source)
-            if research_owed
-            else RuleResult(state=next_state, events=())
-        )
         return RuleResult(
-            state=researched.state,
+            state=next_state,
             events=(
                 GameEvent(
                     event_id=f"{source}:victory_point",
@@ -1996,22 +2003,6 @@ def _apply_payment_choice(
                     ),
                 ),
                 *trashed.events,
-                *researched.events,
-                # The Research line, done by this same action, ends with its
-                # own event (the trash line's is the payment's, after it).
-                *(
-                    (
-                        agent_box_event(
-                            source,
-                            card_instance_id,
-                            action.actor,
-                            BoxOutcome.RESOLVED,
-                            effect=AGENT_ICON_RESEARCH,
-                        ),
-                    )
-                    if research_owed
-                    else ()
-                ),
             ),
         )
     if recorded is not None and plain_and_paid_box(recorded):
@@ -2323,12 +2314,17 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
         drop_boost_draw(context, boost_card_id)
         if boost_card_id not in (card for card, _, _ in expired):
             expired_draws.append(boost_card_id)
-    if not expired and not expired_draws:
+    expired_trashes = _expired_waiting_trashes(
+        state, context, owner, (card_instance_id, graft_card_id)
+    )
+    if not expired and not expired_draws and not expired_trashes:
         return result
     _release_space_influence(
         context, held=_waiting_box_holds_space_influence(dict(frame.context))
     )
     next_state = advance_after_effect(state, context)
+    for _, item in expired_trashes:
+        next_state = turn_rows.take(next_state, player, item)
     events = (
         *(
             event
@@ -2353,8 +2349,63 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
             )
             for expired_id in expired_draws
         ),
+        *(
+            agent_box_event(
+                item[1], expired_id, player, BoxOutcome.EXPIRED, effect=AGENT_ICON_TRASH
+            )
+            for expired_id, item in expired_trashes
+        ),
     )
     return RuleResult(state=next_state, events=(*result.events, *events))
+
+
+def _expired_waiting_trashes(
+    state: GameState,
+    context: Mapping[str, ActionValue],
+    owner: PlayerState,
+    card_ids: tuple[str | None, ...],
+) -> list[tuple[str, turn_rows.Pending]]:
+    """The optional trashes a box left waiting on the turn whose card left
+    play by another effect, each with that card.
+
+    A paid arrow's black trash icon waits on the owner's turn as a row
+    (cleanup-2b, ``optional_trash``), outside the box this hook expires.
+    "You can't receive or activate an effect from a card that is already
+    trashed" (OQ-022, the designer's ruling), and the card box extension
+    (OQ-027 (b)): a card whose arrow is paid and whose reward waits expires
+    whole when another effect trashes it; trashed by an icon of its own box
+    it keeps what is left (OQ-022, 2026-10-20 B3c-2b). The rows of Control
+    the Spice, Throne Room Politics and a Ghola copying them once stayed
+    (engine audit 2026-10-22, P1). Only a trash the card printed: a research
+    space its Research reached prints its own (``research|c3r3``), an effect
+    of the track, not of the card, so it stays.
+    """
+
+    frame = turn_rows.rows_frame(state, owner.player_id)
+    if frame is None:
+        return []
+    gone = {
+        agent_card_source(state.round_number, owner.player_id, card_id): card_id
+        for card_id in card_ids
+        if card_id
+        and not _still_owned(owner, card_id)
+        and not _left_play_by_own_effect(context, card_id)
+    }
+    expired: list[tuple[str, turn_rows.Pending]] = []
+    for item in turn_rows.pending(frame):
+        kind, source, printer = item
+        if (
+            kind != turn_rows.OPTIONAL_TRASH
+            or printer_parts(printer)[0] is not Source.AGENT_CARD
+        ):
+            continue
+        box = next(
+            (box for box in gone if source == box or source.startswith(f"{box}:")),
+            None,
+        )
+        if box is not None:
+            expired.append((gone[box], item))
+    return expired
 
 
 def agent_card_icons_at_placement(
@@ -2593,6 +2644,18 @@ def agent_icon_block(
     return None
 
 
+def _armed_draw_count(ability: Ability | None, key: str) -> int:
+    """The cards an armed draw icon's line prints (Piter, Genius Advisor and
+    Guild Envoy draw two), or one."""
+
+    if ability is not None and key in ability.armed_icons:
+        line = ability.sections[ability.armed_icons.index(key)]
+        for reward in line.rewards:
+            if isinstance(reward, DrawPersonalCards):
+                return reward.count
+    return 1
+
+
 def agent_icon_condition_holds(
     owner: PlayerState,
     context: Mapping[str, ActionValue],
@@ -2690,8 +2753,9 @@ def resolve_agent_card_icon(
     match key:
         case "cards":
             if available:
-                # Piter, Genius Advisor's reward draws two cards.
-                personal_draw_count = 2 if effect is _LOSE_TROOP_FOR_CARDS else 1
+                # An armed line prints its count (Piter, Genius Advisor's and
+                # Guild Envoy's two cards); one otherwise.
+                personal_draw_count = _armed_draw_count(recorded, key)
         case "intrigue":
             if available:
                 intrigue_draw_count = 1
@@ -3380,6 +3444,11 @@ def _hook_scientific_breakthrough(state: GameState) -> RuleResult:
     context[_RESEARCHED_BOXES] = ",".join(
         (*_researched_boxes(context), card_instance_id)
     )
+    # The trash line went first: the Research ends the box, and the box's
+    # event follows its own, as the trash line's does in the other order.
+    ends_box = context.get("agent_card_self_trashed") is True
+    if ends_box:
+        context["pending_agent_effect"] = False
     next_state = advance_after_effect(state, context)
     researched = advance_research(next_state, player, source=event_source)
     return RuleResult(
@@ -3392,6 +3461,15 @@ def _hook_scientific_breakthrough(state: GameState) -> RuleResult:
                 player,
                 BoxOutcome.RESOLVED,
                 effect=AGENT_ICON_RESEARCH,
+            ),
+            *(
+                (
+                    agent_box_event(
+                        event_source, card_instance_id, player, BoxOutcome.RESOLVED
+                    ),
+                )
+                if ends_box
+                else ()
             ),
         ),
     )

@@ -22,6 +22,7 @@ from dune_imperium.content.bloodlines.sardaukar import (
     skill_for_instance,
     skill_tile_instance_ids,
 )
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
@@ -47,6 +48,7 @@ from dune_imperium.rules.combat_deployment import (
     apply_commander_deployment,
     apply_commander_withdrawal,
     apply_troop_withdrawal,
+    grant_combat_icon,
     legal_combat_deployments,
     legal_commander_deployments,
     legal_commander_withdrawals,
@@ -54,6 +56,7 @@ from dune_imperium.rules.combat_deployment import (
 )
 from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.reveal_turn import (
     apply_reveal_deployment,
     apply_reveal_gain,
@@ -1004,6 +1007,152 @@ def test_skill_strength_follows_its_conditions_while_a_commander_fights() -> Non
         .combat_strength
         == 2
     )
+
+
+# "Conflict의 troop 하나는 strength 2 … 이번 Reveal turn에 공개한 sword 하나는
+# strength 1을 제공한다." and "Conflict에 유닛이 하나도 없으면 sword가 있어도
+# strength는 0이다." [Main p. 12] (docs/rules/combat-and-round-end.md:9-10);
+# "Commander를 모두 retreat시키면 … Skill의 추가 strength(예: Canny)를 받지
+# 못한다." [Bloodlines p. 4] (docs/rules/bloodlines.md:61); a Skill's
+# condition is judged again after every step (OQ-032). A Skill share that
+# changed during the Reveal once moved combat_strength but not the Reveal's
+# running total, so units leaving and coming back brought the old share
+# back (engine audit 2026-10-22, R3).
+
+AMBER_ENGINE = UprisingRulesEngine(
+    leader_ids=(
+        "lady_amber_metulli",
+        "gurney_halleck",
+        "feyd_rautha_harkonnen",
+        "lady_jessica",
+    )
+)
+
+
+def _amber_reveal(skill: str, **overrides: object) -> GameState:
+    """Lady Amber's Reveal with a Combat icon, her Agent on High Council."""
+
+    values: dict[str, object] = {
+        "leader_id": "lady_amber_metulli",
+        "skill_ids": (_skill(skill),),
+        "troops_garrison": 3,
+        "resources": Resources(water=1),
+        "hand": starting_deck_instance_ids(0)[:5],
+    }
+    values.update(overrides)
+    owner = _seat_with_skills(**values)
+    state = refresh_pre_reveal_strength(RuleResult(state=_turn_state(owner))).state
+    state = begin_reveal_turn(
+        state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    return refresh_pre_reveal_strength(
+        RuleResult(state=grant_combat_icon(state, 0))
+    ).state
+
+
+def _step(state: GameState, label: str, wanted: object) -> GameState:
+    actions = AMBER_ENGINE.legal_actions(state, 0)
+    chosen = [action for action in actions if action == wanted]
+    assert chosen, (label, actions)
+    return AMBER_ENGINE.apply(state, chosen[0], legal_actions=actions).state
+
+
+def _reveal_total(state: GameState) -> int:
+    frame = next(f for f in reversed(state.decision_stack) if f.kind == "reveal")
+    total = dict(frame.context)["strength"]
+    assert isinstance(total, int)
+    return total
+
+
+def test_canny_lost_mid_reveal_does_not_return_with_a_new_troop() -> None:
+    # One troop in, the Commander in the garrison; Shadout Mapes retreats.
+    state = _amber_reveal(
+        "canny",
+        commanders_conflict=0,
+        commanders_garrison=1,
+        combat_strength=2,
+        hand=(*starting_deck_instance_ids(0)[:4], "imperium:shadout_mapes:0"),
+    )
+    swords = state.players[0].combat_strength - 2
+    state = _step(
+        state,
+        "deploy the Commander",
+        DomainAction("deploy_commanders", 0, (("count", 1),)),
+    )
+    # troop 2 + Commander 2 + Canny 2 + swords.
+    assert state.players[0].combat_strength == 6 + swords
+    assert _reveal_total(state) == 6 + swords
+    state = _step(
+        state,
+        "Desert Scouts retreats the troop",
+        DomainAction(
+            "retreat",
+            0,
+            (
+                ("option", "troop"),
+                ("printed", "lady_amber_metulli"),
+                ("source", "leader"),
+            ),
+        ),
+    )
+    retreat = next(
+        action
+        for action in AMBER_ENGINE.legal_actions(state, 0)
+        if "retreat" in action.action_id and "shadout" in str(action.arguments)
+    )
+    state = _step(state, "Shadout Mapes retreats the Commander", retreat)
+    assert state.players[0].units_in_conflict == 0
+    assert state.players[0].combat_strength == 0
+    assert _reveal_total(state) == 0
+
+    state = _step(
+        state, "deploy a troop", DomainAction("deploy_troops", 0, (("count", 1),))
+    )
+
+    # troop 2 + swords; no Commander, so no Canny.
+    assert state.players[0].combat_strength == 2 + swords
+    assert _reveal_total(state) == 2 + swords
+
+
+def test_loyal_gained_mid_reveal_counts_once_when_the_commander_returns() -> None:
+    def redeployed(state: GameState) -> PlayerState:
+        state = _step(
+            state,
+            "Desert Scouts retreats the Commander",
+            DomainAction(
+                "retreat",
+                0,
+                (
+                    ("option", "commander"),
+                    ("printed", "lady_amber_metulli"),
+                    ("source", "leader"),
+                ),
+            ),
+        )
+        assert state.players[0].combat_strength == 0
+        state = _step(
+            state,
+            "redeploy the Commander",
+            DomainAction("deploy_commanders", 0, (("count", 1),)),
+        )
+        assert _reveal_total(state) == state.players[0].combat_strength
+        return state.players[0]
+
+    rising = _amber_reveal(
+        "loyal", troops_conflict=0, troops_supply=9, influence=Influence(emperor=2)
+    )
+    rising = gain_faction_influence(
+        rising, 0, Faction.EMPEROR, 1, event_prefix="test"
+    ).state
+    rising = refresh_pre_reveal_strength(RuleResult(state=rising)).state
+    steady = _amber_reveal(
+        "loyal", troops_conflict=0, troops_supply=9, influence=Influence(emperor=3)
+    )
+
+    # Emperor 3 either way: Commander 2 + Loyal 2 + swords, whatever the
+    # moment the Influence arrived.
+    assert redeployed(rising).combat_strength == redeployed(steady).combat_strength
+    assert redeployed(steady).skill_strength_applied == 2
 
 
 def test_reveal_bonuses_pay_once_and_keep_the_skill_strength() -> None:

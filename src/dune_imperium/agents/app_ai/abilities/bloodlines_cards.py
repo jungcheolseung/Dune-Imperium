@@ -537,9 +537,12 @@ type Grant = Callable[[PlayerState], PlayerState]
 
 def grant_emperor_icon(me: PlayerState) -> PlayerState:
     """Emperor's Invitation: "The card you play this turn has the Emperor
-    icon" (``GrantAgentIconThisTurn``)."""
+    icon" (``GrantAgentIconThisTurn``, appended as the engine does)."""
 
-    return replace(me, granted_agent_icon_turn=AgentIcon.EMPEROR.value)
+    granted = [v for v in me.granted_agent_icon_turn.split(",") if v]
+    if AgentIcon.EMPEROR.value not in granted:
+        granted.append(AgentIcon.EMPEROR.value)
+    return replace(me, granted_agent_icon_turn=",".join(granted))
 
 
 def grant_resourceful_icons(me: PlayerState) -> PlayerState:

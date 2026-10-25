@@ -84,7 +84,12 @@ from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_trash import trash_personal_card
-from dune_imperium.rules.effect_interpreter import apply_rewards
+from dune_imperium.rules.effect_interpreter import (
+    apply_rewards,
+    pay_cost,
+    resource_cost,
+    reward_can_change_something,
+)
 from dune_imperium.rules.effects import (
     advance_after_effect,
     board_icon_is_pending,
@@ -275,14 +280,23 @@ def reward_has_effect(
     player: int,
     reward: ScoutsReward,
     *,
+    option: EffectSection,
     exclude_space: str = "",
 ) -> bool:
-    """Whether ``reward`` can change anything for ``player`` now.
+    """Whether ``reward`` of ``option`` can change anything for ``player`` now.
 
-    Checked are the rewards that can come to nothing: a Reserve card whose
-    stack is empty, an Agent recall with no other Agent out, an Influence
-    gain whose every track is at the top (lost, OQ-060), and a recruit with
-    no troop in the supply (nor a specimen to return, Immortality).
+    The Scouts' own checks come first: a Reserve card whose stack is empty,
+    an Agent recall with no other Agent out, an Influence gain whose every
+    track is at the top (lost, OQ-060), and a recruit with no troop in the
+    supply (nor a specimen to return, Immortality). Every other reward is
+    judged as a card's is (``effect_interpreter.reward_can_change_something``:
+    a draw with both piles empty, Research drawing past the second genetic
+    marker, an Intrigue card with nothing to draw or shuffle, a Tleilaxu
+    advance at the track's end, a specimen with no troop in the supply). The
+    user's decision of 2026-09-29 (OQ-071) reads "비용이 있는 줄은 보상 중
+    하나라도 무언가를 바꿀 수 있을 때만 제시한다", and its card extension of
+    2026-10-06 made the card checks the same rule; the Scouts list had kept
+    only its first four (engine audit 2026-10-22, P2).
     """
 
     owner = state.players[player]
@@ -297,7 +311,10 @@ def reward_has_effect(
             return owner.troops_supply > 0 or (
                 state.config.immortality and owner.specimens > 0
             )
-    return True
+    owner_after = pay_cost(owner, resource_cost((option,)))
+    return reward_can_change_something(
+        state, player, reward, option, owner_after, played_intrigue_held=False
+    )
 
 
 def line_is_offered(
@@ -321,7 +338,9 @@ def line_is_offered(
     if not option.costs or not option.rewards:
         return True  # nothing bought, or a pure loss (Crackdown): no check
     return any(
-        reward_has_effect(state, player, reward, exclude_space=exclude_space)
+        reward_has_effect(
+            state, player, reward, exclude_space=exclude_space, option=option
+        )
         for reward in option.rewards
     )
 
@@ -350,7 +369,9 @@ def line_unavailable_reason(
         (
             reward
             for reward in option.rewards
-            if not reward_has_effect(state, player, reward, exclude_space=exclude_space)
+            if not reward_has_effect(
+                state, player, reward, exclude_space=exclude_space, option=option
+            )
         ),
         option.rewards[0],
     )
@@ -474,7 +495,13 @@ def _is_choice(
         case LoseFactionInfluence(faction=faction):
             return len(_loss_actions(state, player, (faction,))) > 1
         case LoseHighestInfluence():
-            return len(_loss_actions(state, player, highest_factions(owner))) > 1
+            # Political Equilibrium asks every seat: the one Faction it loses
+            # from when its highest track is alone, the confirm of losing
+            # nothing when every track is at 0 (user decision 2026-10-25:
+            # "모든 좌석에 창을 열어: 가장 높은 진영이 하나면 그 한 줄만 있는 창,
+            # 모두 0이면 확인 창"; OQ-131, the 2026-09-30 rule that a step
+            # passing by itself opens a window too).
+            return True
         case LoseGarrisonTroops():
             # The seat picks a troop or a Sardaukar Commander when its
             # garrison holds both (OQ-105).
@@ -1107,7 +1134,10 @@ def legal_scouts_effect_actions(
         case LoseFactionInfluence(faction=faction):
             return _loss_actions(state, player, (faction,))
         case LoseHighestInfluence():
-            return _loss_actions(state, player, highest_factions(owner))
+            losses = _loss_actions(state, player, highest_factions(owner))
+            return losses or (
+                DomainAction(action_id=SCOUTS_NO_INFLUENCE, actor=player),
+            )
         case LoseGarrisonTroops():
             # A troop or a Sardaukar Commander (OQ-105, user ruling
             # 2026-10-10, "3은 그럼 통일해야지. 지휘관도 낼 수 있게 해야지").
@@ -1151,6 +1181,12 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
         return return_specimens(topped, player, returned, source=source)
     if action.action_id == "scouts_lose_garrison_unit":
         return _apply_garrison_unit_loss(state, action, frame, picked, source)
+    if action.action_id == SCOUTS_NO_INFLUENCE:
+        item = context_str(context, "item", owner=_EFFECT_FRAME)
+        return RuleResult(
+            state=_moved(state, frame, step=step + 1),
+            events=(_skipped(item, player, source),),
+        )
     value = str(dict(action.arguments)[action.arguments[0][0]])
     count = getattr(current, "count", 1)
     done = picked + 1 >= count or action.action_id in (
@@ -1346,6 +1382,9 @@ def _is_passable(item: str) -> bool:
 # The one row of a Scouts choice with no line the seat can take: it confirms
 # that the seat takes nothing (cleanup-2a; OQ-071 addendum).
 SCOUTS_NO_OPTION: Final = "resolve_scouts_choice_without_option"
+# The one row of Political Equilibrium for a seat with every track at 0: it
+# confirms that the seat loses nothing (OQ-131, user decision 2026-10-25).
+SCOUTS_NO_INFLUENCE: Final = "resolve_scouts_loss_without_influence"
 _NO_OPTION_PROMPT: Final = "Nothing in this Arrakeen Scouts item can be taken"
 
 

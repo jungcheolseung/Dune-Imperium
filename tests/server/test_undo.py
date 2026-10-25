@@ -2378,3 +2378,130 @@ def test_competitive_study_direction_can_be_taken_back_before_the_next_card() ->
     assert len(rows) == 2
     assert all(row["undoable"] is True for row in rows)
     assert all(row["sent_by_turn_end"] is False for row in rows)
+
+
+def test_scientific_breakthrough_trash_can_be_taken_back_and_its_draw_cannot() -> (
+    None
+):
+    """Scientific Breakthrough: "Research, If 2 genetic markers: You may trash
+    this card -> Gain 1 VP" [card face]. Past the second genetic marker the
+    Research draws a card [Immortality pp. 6, 16]; a public choice and a
+    hidden draw printed apart are separate steps (user ruling 2026-10-10,
+    OQ-106; engine audit 2026-10-22, P5), so the trash stays in the seat's
+    undo window and the Research draw closes it (OQ-010). Before, the trash
+    did the Research in the same step.
+
+    Seed 0 with Immortality: seat 0's first turn, given the card by hand and
+    its research token past the second marker (served flags only).
+    """
+
+    card = "tleilaxu:scientific_breakthrough:0"
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0, immortality=True)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    session.state = replace(
+        session.state,
+        tleilaxu_deck=tuple(c for c in session.state.tleilaxu_deck if c != card),
+        tleilaxu_row=tuple(c for c in session.state.tleilaxu_row if c != card),
+        players=(
+            replace(owner, hand=(*owner.hand, card), research_space="c8r4"),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+    summary = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments.get("card_id") == card
+        and arguments.get("space_id") == "arrakeen",
+    )
+    trash = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "trash_agent_card_self_for_vp"
+    )
+    assert trash["undoable"] is True
+    hand_before = manager._get(game_id).state.players[0].hand
+
+    summary = _play_raw(manager, summary, index=_int(trash["index"]))
+    assert manager._get(game_id).state.players[0].hand == hand_before
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0]
+    research = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "resolve_agent_card_effect"
+    )
+    assert research["undoable"] is False
+
+    summary = _play_raw(manager, summary, index=_int(research["index"]))
+    assert len(manager._get(game_id).state.players[0].hand) == len(hand_before) + 1
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
+
+
+def test_guild_envoy_discard_can_be_taken_back_and_its_draw_cannot() -> None:
+    """Guild Envoy prints "[discard]" and below it "If you discarded a Spacing
+    Guild card: [card][card]" [card face], with no arrow: the discard is the
+    box's mandatory effect ([FAQ p. 2]) and the hidden draw is its own step
+    (OQ-106; user decision 2026-10-25 "Guild Envoy는 (가) discard와 draw를
+    별개 단계로 나눠"; engine audit 2026-10-22, P6), so the discard stays in
+    the seat's undo window and the draw closes it (OQ-010).
+
+    Seed 0: seat 0's first turn, given the card and a Spacing Guild card by
+    hand (served flags only).
+    """
+
+    envoy = "imperium:guild_envoy:0"
+    informant = "imperium:reliable_informant:0"
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    session.state = replace(
+        session.state,
+        imperium_deck=tuple(
+            c for c in session.state.imperium_deck if c not in (envoy, informant)
+        ),
+        imperium_row=tuple(
+            c for c in session.state.imperium_row if c not in (envoy, informant)
+        ),
+        players=(
+            replace(owner, hand=(*owner.hand, envoy, informant)),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+    summary = place_agent(
+        manager,
+        game_id,
+        0,
+        lambda arguments: arguments.get("card_id") == envoy
+        and arguments.get("space_id") == "deliver_supplies",
+    )
+    discard = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "discard_agent_card"
+        and isinstance(row["arguments"], dict)
+        and row["arguments"].get("card_id") == informant
+    )
+    assert discard["undoable"] is True
+    hand_before = manager._get(game_id).state.players[0].hand
+
+    summary = _play_raw(manager, summary, index=_int(discard["index"]))
+    assert len(manager._get(game_id).state.players[0].hand) == len(hand_before) - 1
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0]
+    draw = next(
+        row
+        for row in _served(manager, game_id)
+        if row["action_id"] == "resolve_agent_card_effect"
+        and row["arguments"] == {"effect": "cards"}
+    )
+    assert draw["undoable"] is False
+
+    summary = _play_raw(manager, summary, index=_int(draw["index"]))
+    assert len(manager._get(game_id).state.players[0].hand) == len(hand_before) + 1
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []

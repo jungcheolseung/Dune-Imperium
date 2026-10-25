@@ -297,6 +297,21 @@ def finish_agent_icon(context: dict[str, ActionValue], key: str) -> None:
 BOOST_DRAW_KEY = "boost_draw_card_ids"
 
 
+# The cards that took Urgent Shigawire's boost this turn: each "has all Agent
+# icons" for the turn [Urgent Shigawire card], also once its added draw is
+# drawn (Slig Farmer counts them, OQ-055; engine audit 2026-10-22, P7).
+BOOSTED_CARDS_KEY = "boosted_card_ids"
+
+
+def boosted_cards(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    """Return the cards that took Urgent Shigawire's boost this turn."""
+
+    value = context.get(BOOSTED_CARDS_KEY, "")
+    if not isinstance(value, str):
+        raise RuntimeError("Agent-turn effect frame has invalid boosted cards")
+    return tuple(value.split(",")) if value else ()
+
+
 def pending_boost_draws(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
     """Return the cards whose added draw still waits, in the order added."""
 
