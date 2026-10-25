@@ -1159,18 +1159,27 @@ def apply_tech_choice(state: GameState, action: DomainAction) -> RuleResult:
 
 
 def deploy_suspensor_troops(result: RuleResult) -> RuleResult:
-    """Suspensor Suits: a troop into the Conflict per Intrigue card gained.
+    """Suspensor Suits: recruit a troop and deploy it per Intrigue card gained.
 
     "For each Intrigue card you draw or steal during your turn: troop,
-    deploy it to the Conflict" [Suspensor Suits Tech tile]. The draw paths
-    record the cards gained by the turn owner in ``suspensor_owed``; this
-    hook pays them out after the transition, from the supply, into the
-    Conflict (through the Reveal bookkeeping when the Reveal is open), and
-    drops what the supply or a blocked deployment cannot honour (OQ-030).
-    What is dropped is logged with ``suspensor_deployment_unavailable``
-    (``troops`` left over, ``deployed`` paid), a partial shortfall included,
-    so the play server's dry run warns about it on the step that draws (user
-    ruling 2026-10-02, L2-Q4: "로그 + 클릭 전 경고").
+    deploy it to the Conflict" [Suspensor Suits Tech tile]: the troop icon is
+    a recruit and the deployment follows it. The draw paths record the cards
+    gained by the turn owner in ``suspensor_owed``; this hook pays them out
+    after the transition (OQ-042, user re-ruling 2026-10-25, "그래 (가)로
+    가자"):
+
+    - each troop the supply holds is recruited and deployed to the Conflict
+      (``suspensor_troops_to_conflict``);
+    - with deployment banned (Emperor of the Known Universe) the recruited
+      troop stays in the garrison -- "You still gain the troop, but it just
+      goes to your Garrison instead of deploying." (designer, community FAQ);
+    - what the supply cannot cover is recorded on the seat and made up if
+      troops return to the supply later in the same player turn
+      (``rules.shortfall``, like a recruit's shortfall, OQ-030): as troops
+      owed to the Conflict (``ungained_conflict_troops``), or as a plain
+      recruit shortfall when they could not deploy anyway. It is logged as a
+      recruit shortfall, so the play server's dry run warns about it on the
+      step that draws (user ruling 2026-10-02, L2-Q4: "로그 + 클릭 전 경고").
     """
 
     state = result.state
@@ -1182,61 +1191,107 @@ def deploy_suspensor_troops(result: RuleResult) -> RuleResult:
             continue
         owed = seat.suspensor_owed
         player = seat.player_id
-        cleared = replace(seat, suspensor_owed=0)
+        count = min(owed, seat.troops_supply)
+        short = owed - count
+        if suspensor_can_deploy(state, player):
+            cleared = replace(
+                seat,
+                suspensor_owed=0,
+                ungained_conflict_troops=seat.ungained_conflict_troops + short,
+            )
+        else:
+            cleared = replace(
+                seat, suspensor_owed=0, ungained_troops=seat.ungained_troops + short
+            )
         state = replace(state, players=replace_player(state.players, cleared))
         source = f"round:{state.round_number}:player:{player}:suspensor_suits"
-        count = min(owed, cleared.troops_supply)
-        if (
-            count == 0
-            or not state.current_conflict_ids
-            or units_deployment_blocked(state, player)
-        ):
-            events.append(_suspensor_shortfall_event(source, player, owed, 0))
-            continue
-        if reveal_is_open_for(state, player):
-            staged = replace(
-                cleared,
-                troops_supply=cleared.troops_supply - count,
-                troops_garrison=cleared.troops_garrison + count,
-            )
-            state = replace(state, players=replace_player(state.players, staged))
-            deployed = add_units_to_reveal(state, player, troops=count)
-            state = deployed.state
-            events.extend(deployed.events)
-        else:
-            deployed_seat = replace(
-                cleared,
-                troops_supply=cleared.troops_supply - count,
-                troops_conflict=cleared.troops_conflict + count,
-                units_deployed_turn=cleared.units_deployed_turn + count,
-            )
-            state = replace(state, players=replace_player(state.players, deployed_seat))
-        events.append(
-            GameEvent(
-                event_id=f"{source}:deployed",
-                kind="troops_deployed",
-                payload=(("count", count), ("player", player), ("source", "tech")),
-            )
-        )
-        if count < owed:
-            # The supply covers only part of what is owed: the rest is lost
-            # (OQ-042 (b)), and logged (L2-Q4).
-            events.append(_suspensor_shortfall_event(source, player, owed, count))
+        if count:
+            placed = suspensor_troops_to_conflict(state, player, count, source=source)
+            state = placed.state
+            events.extend(placed.events)
+        events.extend(recruit_shortfall_events(source, player, owed, count))
     return RuleResult(state=state, events=tuple(events))
 
 
-def _suspensor_shortfall_event(
-    source: str, player: int, owed: int, deployed: int
-) -> GameEvent:
-    """The public event for Suspensor Suits troops that could not deploy."""
+def suspensor_can_deploy(state: GameState, player: int) -> bool:
+    """Whether Suspensor Suits' troops can go to the Conflict now.
+
+    Not while Emperor of the Known Universe bans deployment, and not without
+    a Conflict (a player turn always has one; kept as the engine's guard).
+    """
+
+    return bool(state.current_conflict_ids) and not units_deployment_blocked(
+        state, player
+    )
+
+
+def suspensor_troops_to_conflict(
+    state: GameState, player: int, count: int, *, source: str
+) -> RuleResult:
+    """Recruit ``count`` troops from ``player``'s supply for Suspensor Suits.
+
+    They are deployed to the Conflict (through the Reveal bookkeeping when the
+    owner's Reveal is open); with deployment banned they stay in the garrison
+    as this turn's recruits and ``suspensor_deployment_unavailable`` says so
+    (OQ-042). The caller checks the supply holds ``count`` troops; the
+    shortfall refill (``rules.shortfall``) uses this for the troops it makes
+    up.
+    """
+
+    seat = state.players[player]
+    if count < 1 or count > seat.troops_supply:
+        raise ValueError("Suspensor Suits recruits only troops in the supply")
+    if not suspensor_can_deploy(state, player):
+        recruited = replace(
+            seat,
+            troops_supply=seat.troops_supply - count,
+            troops_garrison=seat.troops_garrison + count,
+        )
+        state = replace(state, players=replace_player(state.players, recruited))
+        state = update_turn_recruits(state, troops_recruited=count)
+        return RuleResult(
+            state=state,
+            events=(_suspensor_garrison_event(source, player, count),),
+        )
+    events: list[GameEvent] = []
+    if reveal_is_open_for(state, player):
+        staged = replace(
+            seat,
+            troops_supply=seat.troops_supply - count,
+            troops_garrison=seat.troops_garrison + count,
+        )
+        state = replace(state, players=replace_player(state.players, staged))
+        deployed = add_units_to_reveal(state, player, troops=count)
+        state = deployed.state
+        events.extend(deployed.events)
+    else:
+        deployed_seat = replace(
+            seat,
+            troops_supply=seat.troops_supply - count,
+            troops_conflict=seat.troops_conflict + count,
+            units_deployed_turn=seat.units_deployed_turn + count,
+        )
+        state = replace(state, players=replace_player(state.players, deployed_seat))
+    events.append(
+        GameEvent(
+            event_id=f"{source}:deployed",
+            kind="troops_deployed",
+            payload=(("count", count), ("player", player), ("source", "tech")),
+        )
+    )
+    return RuleResult(state=state, events=tuple(events))
+
+
+def _suspensor_garrison_event(source: str, player: int, troops: int) -> GameEvent:
+    """The public event for Suspensor Suits troops kept in the garrison."""
 
     return GameEvent(
         event_id=f"{source}:unavailable",
         kind="suspensor_deployment_unavailable",
         payload=(
-            ("deployed", deployed),
+            ("deployed", 0),
             ("player", player),
-            ("troops", owed - deployed),
+            ("troops", troops),
         ),
     )
 

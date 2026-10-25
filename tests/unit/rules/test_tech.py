@@ -2206,19 +2206,20 @@ def test_suspensor_suits_deploys_a_troop_per_intrigue_gained_in_the_owners_turn(
     assert quiet.state.players[1].suspensor_owed == 0
 
 
-def test_suspensor_suits_logs_the_troops_the_supply_cannot_cover() -> None:
-    # OQ-042 (b): what the supply cannot cover is lost, never paid later.
-    # Nothing is left to choose, so no window opens, but the troops left
-    # over are logged, a partial shortfall included (user ruling 2026-10-02,
-    # L2-Q4: "로그 + 클릭 전 경고").
+def test_suspensor_suits_records_the_troops_the_supply_cannot_cover() -> None:
+    # OQ-042 (user re-ruling 2026-10-25, "그래 (가)로 가자"): what the supply
+    # cannot cover waits on the seat as troops owed to the Conflict, to be
+    # made up like a recruit's shortfall (OQ-030). Nothing is left to choose,
+    # so no window opens; the shortfall is logged as a recruit shortfall for
+    # the dry run's warning (user ruling 2026-10-02, L2-Q4).
     from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
     from dune_imperium.rules.tech import deploy_suspensor_troops
 
-    def shortfalls(result: RuleResult) -> list[dict[str, object]]:
+    def shorts(result: RuleResult) -> list[dict[str, object]]:
         return [
             dict(event.payload)
             for event in result.events
-            if event.kind == "suspensor_deployment_unavailable"
+            if event.kind == "troops_recruit_short"
         ]
 
     partial = _turn_state(
@@ -2229,9 +2230,13 @@ def test_suspensor_suits_logs_the_troops_the_supply_cannot_cover() -> None:
     seat = paid.state.players[0]
     assert seat.suspensor_owed == 0
     assert seat.troops_conflict == 1 and seat.troops_supply == 0
-    assert shortfalls(paid) == [{"deployed": 1, "player": 0, "troops": 1}]
+    assert seat.ungained_conflict_troops == 1 and seat.ungained_troops == 0
+    assert shorts(paid) == [
+        {"player": 0, "recruited": 1, "requested": 2, "short": 1}
+    ]
     deployed = [event for event in paid.events if event.kind == "troops_deployed"]
     assert [dict(event.payload)["count"] for event in deployed] == [1]
+    assert "suspensor_deployment_unavailable" not in [e.kind for e in paid.events]
 
     empty = replace(
         partial,
@@ -2240,12 +2245,15 @@ def test_suspensor_suits_logs_the_troops_the_supply_cannot_cover() -> None:
             *partial.players[1:],
         ),
     )
-    lost = deploy_suspensor_troops(draw_intrigue_cards(empty, 0, 2, source="t"))
-    assert lost.state.players[0].troops_conflict == 0
-    assert shortfalls(lost) == [{"deployed": 0, "player": 0, "troops": 2}]
-    assert "troops_deployed" not in [event.kind for event in lost.events]
+    waiting = deploy_suspensor_troops(draw_intrigue_cards(empty, 0, 2, source="t"))
+    assert waiting.state.players[0].troops_conflict == 0
+    assert waiting.state.players[0].ungained_conflict_troops == 2
+    assert shorts(waiting) == [
+        {"player": 0, "recruited": 0, "requested": 2, "short": 2}
+    ]
+    assert "troops_deployed" not in [event.kind for event in waiting.events]
 
-    # A full supply: nothing to log.
+    # A full supply: nothing to log or to wait for.
     full = deploy_suspensor_troops(
         draw_intrigue_cards(
             _turn_state(_tech_owner("suspensor_suits"), stacks=((), (), ())),
@@ -2254,8 +2262,70 @@ def test_suspensor_suits_logs_the_troops_the_supply_cannot_cover() -> None:
             source="t",
         )
     )
-    assert shortfalls(full) == []
+    assert shorts(full) == []
+    assert full.state.players[0].ungained_conflict_troops == 0
 
+
+def test_a_troop_back_in_the_supply_deploys_for_suspensor_suits() -> None:
+    # OQ-042: the troops owed to the Conflict are made up when troops return
+    # to the supply in the same player turn, after the recruit shortfall
+    # (the Steam app's order: recruits, then deployments, then specimens).
+    from dune_imperium.rules.shortfall import refill_shortfall, shortfall_refill_seat
+
+    owner = _tech_owner(
+        "suspensor_suits",
+        troops_supply=1,
+        troops_garrison=11,
+        ungained_conflict_troops=2,
+    )
+    state = _turn_state(owner, stacks=((), (), ()))
+    assert shortfall_refill_seat(state) == 0
+    refilled = refill_shortfall(state, 0)
+    seat = refilled.state.players[0]
+    assert seat.troops_supply == 0 and seat.troops_conflict == 1
+    assert seat.troops_garrison == 11
+    assert seat.ungained_conflict_troops == 1
+    kinds = [event.kind for event in refilled.events]
+    assert kinds == ["shortfall_refilled", "troops_deployed"]
+    assert dict(refilled.events[0].payload) == {"conflict_troops": 1, "player": 0}
+
+    # A recruit shortfall comes first: the returned troop is that recruit.
+    both = replace(
+        state,
+        players=(replace(owner, ungained_troops=1), *state.players[1:]),
+    )
+    recruit_first = refill_shortfall(both, 0).state.players[0]
+    assert recruit_first.troops_garrison == 12 and recruit_first.troops_conflict == 0
+    assert recruit_first.ungained_troops == 0
+    assert recruit_first.ungained_conflict_troops == 2
+
+
+def test_suspensor_suits_keeps_the_troop_in_the_garrison_when_deployment_is_banned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # "You still gain the troop, but it just goes to your Garrison instead of
+    # deploying." (designer, community FAQ; OQ-042 re-ruling 2026-10-25): with
+    # Emperor of the Known Universe banning deployment the troop is recruited
+    # and stays in the garrison, and a shortfall waits as a plain recruit's.
+    from dune_imperium.rules import tech
+    from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
+
+    monkeypatch.setattr(tech, "units_deployment_blocked", lambda state, seat: True)
+    state = _turn_state(
+        _tech_owner("suspensor_suits", troops_supply=1, troops_garrison=11),
+        stacks=((), (), ()),
+    )
+    paid = tech.deploy_suspensor_troops(draw_intrigue_cards(state, 0, 2, source="t"))
+    seat = paid.state.players[0]
+    assert seat.troops_garrison == 12 and seat.troops_conflict == 0
+    assert seat.troops_supply == 0
+    assert seat.ungained_troops == 1 and seat.ungained_conflict_troops == 0
+    unavailable = [
+        dict(event.payload)
+        for event in paid.events
+        if event.kind == "suspensor_deployment_unavailable"
+    ]
+    assert unavailable == [{"deployed": 0, "player": 0, "troops": 1}]
 
 def _owed_and_deployed(state: GameState, player: int = 0) -> tuple[int, int]:
     from dune_imperium.rules.tech import deploy_suspensor_troops
