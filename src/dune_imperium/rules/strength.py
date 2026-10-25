@@ -31,7 +31,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeast,
     OpponentSandwormInConflict,
 )
-from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
@@ -188,6 +188,7 @@ def refresh_pre_reveal_strength(result: RuleResult) -> RuleResult:
         # return [Bloodlines p. 4].
         return result
     players = list(state.players)
+    stack = state.decision_stack
     for player in state.players:
         seat = player.player_id
         if (
@@ -202,8 +203,51 @@ def refresh_pre_reveal_strength(result: RuleResult) -> RuleResult:
                 )
         if not state.config.bloodlines:
             continue
+        before = players[seat].combat_strength
         players[seat] = with_skill_strength(tuple(players), seat)
+        if players[seat].combat_strength != before:
+            stack = _shift_reveal_strength(
+                stack, seat, players[seat].combat_strength - before
+            )
     next_players = tuple(players)
-    if next_players == state.players:
+    if next_players == state.players and stack == state.decision_stack:
         return result
-    return replace(result, state=replace(state, players=next_players))
+    return replace(
+        result, state=replace(state, players=next_players, decision_stack=stack)
+    )
+
+
+def _shift_reveal_strength(
+    stack: tuple[DecisionFrame, ...], player: int, amount: int
+) -> tuple[DecisionFrame, ...]:
+    """Move the seat's open Reveal total along with its Skill share.
+
+    The Reveal frame's ``strength`` mirrors ``combat_strength`` while the
+    Reveal runs; units that later enter after the seat had none are
+    counted from it (``reveal_turn.add_units_to_reveal``). A Skill share
+    that changed only ``combat_strength`` left the frame behind, so units
+    leaving and coming back brought an old Canny, Fierce or Loyal share
+    with them (engine audit 2026-10-22, R3): "Conflict에 유닛이 하나도 없으면
+    sword가 있어도 strength는 0이다." [Main p. 12], and with no Commander in
+    the Conflict a Skill gives no strength [Bloodlines p. 4] (OQ-032).
+    """
+
+    for index in range(len(stack) - 1, -1, -1):
+        frame = stack[index]
+        if not (
+            frame.kind == FrameKind.REVEAL
+            and isinstance(frame.decision, PlayerDecision)
+            and frame.decision.owner == player
+        ):
+            continue
+        context = dict(frame.context)
+        strength = context.get("strength")
+        if isinstance(strength, bool) or not isinstance(strength, int):
+            raise RuntimeError("Reveal frame has invalid strength")
+        context["strength"] = strength + amount
+        return (
+            *stack[:index],
+            replace(frame, context=tuple(sorted(context.items()))),
+            *stack[index + 1 :],
+        )
+    return stack
