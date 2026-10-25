@@ -273,8 +273,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: (
         "베네 게세리트의 유대감이면: {draw:1}, {spy} 배치"
     ),
+    # Overthrow's printed words (OQ-128), as Treacherous Maneuver's.
     PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE: (
-        "방문한 팩션 {influence_any} 1 추가"
+        "방문한 팩션 {influence_any:1} 대신 {influence_any:2}"
     ),
     PersonalCardAgentEffect.GAIN_WATER: "{water:1}",
     # Immortality (card faces).

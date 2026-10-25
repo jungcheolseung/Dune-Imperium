@@ -800,10 +800,13 @@ def test_endgame_plays_first_then_matches_then_passes() -> None:
     # step, 2026-10-10, OQ-106, which moved its game at round 3 seat 0's
     # trash of Sardaukar Soldier; then seed 103, until the user ruling of
     # 2026-10-14 (an optional effect of the Agent turn lapses at the turn's
-    # end, OQ-095 (2)) moved the heuristic games. 280, seat 0 (Feyd-Rautha
-    # Harkonnen), is the first seed from 103 that offers a play and a match
-    # together and takes them in that order.)
-    state = _reach("endgame_intrigue", choam=False, seed=280, want="play_and_match")
+    # end, OQ-095 (2)) moved the heuristic games; then seed 280, seat 0
+    # (Feyd-Rautha Harkonnen), until Overthrow's "two Influence instead of
+    # one" replaced the space's own gain, 2026-10-25, OQ-128. 355, seat 1,
+    # is the first seed from 280 that offers a play and a match together and
+    # takes them in that order: Secure Spice Trade, then Propaganda as the
+    # desert mouse Objective's match.)
+    state = _reach("endgame_intrigue", choam=False, seed=355, want="play_and_match")
     seat = _seat(state)
     taken: list[tuple[str, dict[str, object]]] = []
     while state.decision_stack and state.decision_stack[-1].kind == "endgame_intrigue":
@@ -815,11 +818,11 @@ def test_endgame_plays_first_then_matches_then_passes() -> None:
         taken.append(_args(action))
         state = apply_whole(ENGINE, state, action, legal_actions=run.legal).state
     assert taken == [
-        ("play_intrigue", {"card_id": "intrigue:shadow_alliance:0", "option": 0}),
+        ("play_intrigue", {"card_id": "intrigue:secure_spice_trade:0", "option": 0}),
         (
             "match_endgame_wild_icon",
             {
-                "matching_card_id": "battle_for_arrakeen",
+                "matching_card_id": "objective_desert_mouse_4_6p",
                 "wild_card_id": "propaganda",
             },
         ),

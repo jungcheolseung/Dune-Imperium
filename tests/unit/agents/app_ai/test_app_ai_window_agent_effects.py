@@ -1969,6 +1969,11 @@ def test_power_play_box_makes_the_influence_step_clear_undo(
     ]
     if not contract_first:
         steps.reverse()
+    if card == "overthrow":
+        # Since OQ-128 (user ruling 2026-10-25) Overthrow's box gains the 2
+        # in place of the space's 1, so no space Influence step is left to
+        # order against the contract.
+        steps = ["complete_contract:contract:deliver_supplies"]
     box = ["resolve_agent_card_effect"] if card == "overthrow" else []
     assert taken == [
         "resolve_board_effect:resources",

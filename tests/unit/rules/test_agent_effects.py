@@ -2411,7 +2411,12 @@ def test_paracompass_gains_two_solari_on_its_agent_turn() -> None:
     assert result.state.players[0].resources.solari == 2
 
 
-def test_overthrow_gains_extra_influence_with_the_visited_faction() -> None:
+def test_overthrow_gains_two_influence_instead_of_the_spaces_one() -> None:
+    # "Gain two Influence instead of one." [Overthrow card]: the 2 replace
+    # the visited Faction space's 1 ("When you send an Agent to a Faction's
+    # board space, gain one Influence with that Faction" [Main p. 7]), as
+    # Treacherous Maneuver's and Subversive Advisor's do (OQ-046, OQ-128,
+    # user ruling 2026-10-25 "이건 통일하는게 맞아"); it was a separate +1.
     overthrow = _imperium_instance("overthrow")
     owner = PlayerState(player_id=0, hand=(overthrow,))
     state = GameState(
@@ -2430,11 +2435,15 @@ def test_overthrow_gains_extra_influence_with_the_visited_faction() -> None:
     )
     placed = apply_agent_action(state, _action_to(state, "secrets")).state
 
+    # While the box waits it holds the space's own gain (never 2 + 1).
+    assert "resolve_faction_influence" not in {
+        action.action_id for action in UprisingRulesEngine().whole_actions(placed, 0)
+    }
     result = resolve_agent_card_effect(placed)
     context = dict(result.state.decision_stack[-1].context)
 
-    assert result.state.players[0].influence.bene_gesserit == 1
-    assert context["pending_faction_influence"] is True
+    assert result.state.players[0].influence.bene_gesserit == 2
+    assert context["pending_faction_influence"] is False
 
 
 def test_bene_gesserit_operative_places_a_spy_on_an_empty_post() -> None:

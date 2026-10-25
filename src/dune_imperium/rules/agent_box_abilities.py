@@ -529,7 +529,16 @@ def holds_space_influence(ability: Ability | None) -> bool:
 def _replace_space_influence(context: dict[str, ActionValue]) -> None:
     """The box's gain replaces the visited space's 1 [Main p. 9]: the space's
     own step is used up, and a partner box that held it and expires later
-    does not bring it back."""
+    does not bring it back.
+
+    Once one box replaced it, a second "instead of one" box of the same
+    placement -- Ghola's copy -- gains nothing more: "If you graft this card
+    with Power Play to send an Agent to a faction board space, you gain only
+    2 Influence with that faction, the same as if you'd played Power Play
+    alone." [Immortality p. 14], which the user ruled holds for every card
+    of that text (OQ-128, 2026-10-25: "이와 같은 동작을 하는건 모두 그
+    내용을 따라야지"). The callers skip that second gain.
+    """
 
     context["pending_faction_influence"] = False
     context[SPACE_INFLUENCE_REPLACED] = True
@@ -813,6 +822,10 @@ def resolve_box(state: GameState) -> RuleResult:
             if reward.visited_space:
                 faction = _visited_faction(context)
                 if reward.replaces_space:
+                    if context.get(SPACE_INFLUENCE_REPLACED) is True:
+                        # A second "instead of one" box of the placement (a
+                        # Ghola copy) adds nothing (``_replace_space_influence``).
+                        continue
                     _replace_space_influence(context)
             else:
                 assert reward.factions is not None and not reward.requires_choice
@@ -2202,6 +2215,10 @@ def apply_trash(
         if isinstance(reward, GainInfluence) and reward.visited_space:
             faction = _visited_faction(context)
             if reward.replaces_space:
+                if context.get(SPACE_INFLUENCE_REPLACED) is True:
+                    # A second "instead of one" box adds nothing (see
+                    # ``_replace_space_influence``).
+                    continue
                 _replace_space_influence(context)
             gained = gain_faction_influence(
                 trashed.state,

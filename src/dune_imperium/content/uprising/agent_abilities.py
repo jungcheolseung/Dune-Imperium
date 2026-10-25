@@ -629,10 +629,14 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # Seek Allies: "Trash this card." [Main p. 20] -- the box trashes
             # its own card (cleanup-2d).
             _BOX.TRASH_SELF: _box(TrashThisCard()),
-            # Overthrow: "Gain 1 additional Influence with the visited
-            # Faction"; nothing to gain off a Faction space (OQ-046).
+            # Overthrow: "Gain two Influence instead of one." [Overthrow card]
+            # -- the 2 replace the visited Faction space's 1, as Subversive
+            # Advisor's and Treacherous Maneuver's do (OQ-046, OQ-128, user
+            # ruling 2026-10-25 "이건 통일하는게 맞아"); nothing to gain off a
+            # Faction space.
             _BOX.GAIN_VISITED_FACTION_INFLUENCE: _box(
-                GainInfluence(visited_space=True), requirement=AtFactionSpace()
+                GainInfluence(visited_space=True, times=2, replaces_space=True),
+                requirement=AtFactionSpace(),
             ),
             # Lisan al Gaib: the Fremen Influence, the Bond judged when the box
             # resolves (a grafted partner may give it).

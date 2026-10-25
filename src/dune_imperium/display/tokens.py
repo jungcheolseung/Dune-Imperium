@@ -210,8 +210,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.DRAW_ONE_AND_PLACE_SPY_IF_BENE_GESSERIT_BOND: (
             "If Bene Gesserit Bond: Draw 1 card, Place a Spy"
         ),
+        # The printed words [Overthrow card] (OQ-128: it replaces the
+        # space's 1, as Treacherous Maneuver's does).
         PersonalCardAgentEffect.GAIN_VISITED_FACTION_INFLUENCE: (
-            "Gain 1 additional Influence with the visited Faction"
+            "Gain 2 Influence instead of 1 Influence with the visited Faction"
         ),
         PersonalCardAgentEffect.GAIN_WATER: "Gain 1 water",
         # Immortality (card faces).

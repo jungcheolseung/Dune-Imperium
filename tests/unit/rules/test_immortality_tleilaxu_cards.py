@@ -1017,10 +1017,15 @@ def test_a_resolved_subversive_box_keeps_the_space_influence_replaced() -> None:
     assert traded.state.players[0].influence.fremen == 2
 
 
-def test_two_resolved_subversive_boxes_each_gain_two() -> None:
-    # Pinned current behaviour: Ghola copies the whole box [Immortality
-    # p. 14], so when both boxes resolve each gains its own 2 (4 in all);
-    # the space's 1 never adds to them.
+def test_two_resolved_subversive_boxes_gain_two_in_all() -> None:
+    # "If you graft this card with Power Play to send an Agent to a faction
+    # board space, you gain only 2 Influence with that faction, the same as
+    # if you'd played Power Play alone." [Immortality p. 14], for every
+    # "two Influence instead of one" box (OQ-128, user ruling 2026-10-25:
+    # "골라 + 파워플레이 내용이 정확해 … 이와 같은 동작을 하는건 모두 그 내용을
+    # 따라야지"). Ghola copies the whole box [Immortality p. 14], so both
+    # boxes resolve; the copy's Influence adds nothing (4 until OQ-128),
+    # and the space's 1 never adds to them.
     engine = UprisingRulesEngine()
     first = apply_whole(engine, 
         _subversive_ghola_on_desert_tactics(),
@@ -1031,7 +1036,37 @@ def test_two_resolved_subversive_boxes_each_gain_two() -> None:
         tagged(DomainAction(action_id="resolve_agent_card_effect", actor=0), 1),
     ).state
 
-    assert second.players[0].influence.fremen == 4
+    assert first.players[0].influence.fremen == 2
+    assert second.players[0].influence.fremen == 2
+    assert "resolve_faction_influence" not in {
+        action.action_id for action in engine.whole_actions(second, 0)
+    }
+
+
+def test_ghola_copying_overthrow_gains_two_in_all() -> None:
+    # OQ-128 (user ruling 2026-10-25): Overthrow's "Gain two Influence
+    # instead of one." [Overthrow card] is modelled as Subversive Advisor's,
+    # and Ghola's copy of it adds nothing: "you gain only 2 Influence with
+    # that faction" [Immortality p. 14]. It once gave 3 (2 + its +1).
+    overthrow = "imperium:overthrow:0"
+    ghola = _tleilaxu("ghola")
+    grafted = _graft(
+        _state(_owner((overthrow, ghola))), overthrow, "secrets", ghola
+    )
+    engine = UprisingRulesEngine()
+    first = apply_whole(
+        engine,
+        grafted,
+        DomainAction(action_id="resolve_agent_card_effect", actor=0),
+    ).state
+    second = apply_whole(
+        engine,
+        first,
+        tagged(DomainAction(action_id="resolve_agent_card_effect", actor=0), 1),
+    ).state
+
+    assert first.players[0].influence.bene_gesserit == 2
+    assert second.players[0].influence.bene_gesserit == 2
     assert "resolve_faction_influence" not in {
         action.action_id for action in engine.whole_actions(second, 0)
     }
