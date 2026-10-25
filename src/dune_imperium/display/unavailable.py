@@ -1530,6 +1530,15 @@ def _reveal_choice_block(
             return english, korean, "waiting"
         case _Choice.MAY_RECALL_SPY_FOR_THREE_STRENGTH:
             return _spies_reason(1, len(owner.spy_post_ids))
+        case _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED if (
+            len(owner.spy_post_ids) >= 2
+        ):
+            # Its Spies are placed: the Intrigue card it pays for cannot be
+            # drawn (OQ-071, ``reveal_turn._paid_reward_can_happen``).
+            english, korean, _ = _choice_reward_reason(
+                state, seat, DrawIntrigueCards(1)
+            )
+            return english, korean, "waiting"
         case choice if choice in _TWO_SPY_RECALLS:
             return _spies_reason(2, len(owner.spy_post_ids))
         case _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS if (
