@@ -552,7 +552,15 @@ def _placements_for_card(
                     graft=graft,
                 )
             )
-            continue
+            # The Infiltrator's promise is one way onto an occupied space,
+            # not the only one: Infiltrate with a connected Spy stays open to
+            # any pair ("Infiltrate하려면 상대 Agent가 있는 space와 연결된
+            # observation post에서 자신의 Spy를 recall한다" [Main p. 11]
+            # [FAQ p. 4]; the Infiltrator joins only a pair it is part of,
+            # [Immortality p. 10]; general rules audit 2026-10-25). Placed
+            # itself, the Infiltrator needs no recall.
+            if not occupying_opponents or is_tleilaxu_infiltrator(card_instance_id):
+                continue
         # OQ-006 decided convention: Infiltrate's trigger is the
         # occupied-by-another-player predicate and its printed cost is one
         # connected Spy recall, so a single recall ignores the opposing

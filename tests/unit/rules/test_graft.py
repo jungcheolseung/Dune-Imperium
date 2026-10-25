@@ -312,6 +312,49 @@ def test_an_occupied_space_needs_the_infiltrator_as_a_partner() -> None:
     assert set(_partners(placed.state)) == {INFILTRATOR}
 
 
+def test_holding_the_infiltrator_keeps_infiltrate_open_to_other_pairs() -> None:
+    # "Infiltrate하려면 상대 Agent가 있는 space와 연결된 observation post에서
+    # 자신의 Spy를 recall한다." [Main p. 11] [FAQ p. 4]: a Spy on the
+    # connected post opens the occupied space to any pair. Tleilaxu
+    # Infiltrator in hand is one more way in, not the only one (general rules
+    # audit 2026-10-25: Dagger + Slig Farmer was not offered).
+    slig_farmer = "tleilaxu:slig_farmer:0"
+    post = "landsraad-assembly-hall-gather-support"
+    blocker = PlayerState(
+        player_id=1,
+        research_space=RESEARCH_START_ID,
+        family_atomics=True,
+        agents_available=1,
+        agent_locations=("assembly_hall",),
+    )
+    state = _state(
+        _owner(
+            (DAGGER, slig_farmer, INFILTRATOR),
+            spy_post_ids=(post,),
+            spies_supply=2,
+        )
+    )
+    state = replace(state, players=(state.players[0], blocker, *state.players[2:]))
+    infiltrating = [
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments).get("card_id") == DAGGER
+        and dict(action.arguments).get("space_id") == "assembly_hall"
+        and dict(action.arguments).get("graft") is True
+        and dict(action.arguments).get("infiltrate_post_id") == post
+    ]
+    assert infiltrating
+    placed = apply_agent_action(state, infiltrating[0])
+    assert set(_partners(placed.state)) == {slig_farmer, INFILTRATOR}
+    # Without the Spy the Infiltrator remains the only way in.
+    no_spy = _state(_owner((DAGGER, slig_farmer, INFILTRATOR)))
+    no_spy = replace(no_spy, players=(no_spy.players[0], blocker, *no_spy.players[2:]))
+    entered = apply_agent_action(
+        no_spy, _placements(no_spy)[(DAGGER, "assembly_hall", True)]
+    )
+    assert set(_partners(entered.state)) == {INFILTRATOR}
+
+
 def test_an_occupied_space_is_not_offered_on_two_different_promises() -> None:
     # Long Reach's icons are Bene Gesserit Bond icons: in hand they switch on
     # only on the promise that Ghola will be the partner (OQ-057). An occupied
@@ -939,6 +982,39 @@ def test_an_infiltrating_usurp_keeps_the_partner_whose_spy_let_it_in() -> None:
     assert context["placed_reaches"] is False
     assert context["infiltrate_post_id"] == "bene-gesserit-espionage-secrets"
     assert partner in _partners(opened)
+
+
+def test_an_infiltrating_usurp_is_offered_with_the_infiltrator_in_hand() -> None:
+    # Usurp's half of the Infiltrator test above: the Infiltrator fits
+    # occupied Arrakeen by its City icon, but a Spy on the connected post
+    # still lets Usurp in with another partner [Main p. 11] [FAQ p. 4]
+    # (general rules audit 2026-10-25).
+    placed = "tleilaxu:usurp:0"
+    partner = "imperium:guild_spy:0"
+    post = "arrakis-spice-refinery-arrakeen"
+    owner = _owner(
+        (placed, INFILTRATOR, partner), spy_post_ids=(post,), spies_supply=2
+    )
+    blocker = PlayerState(
+        player_id=1,
+        research_space=RESEARCH_START_ID,
+        family_atomics=True,
+        agents_available=1,
+        agent_locations=("arrakeen",),
+    )
+    state = _state(owner)
+    state = replace(state, players=(owner, blocker, *state.players[2:]))
+    usurps = {
+        dict(action.arguments).get("infiltrate_post_id"): action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments).get("space_id") == "arrakeen"
+        and dict(action.arguments).get("card_id") == placed
+    }
+    assert set(usurps) == {None, post}
+    on_promise = apply_agent_action(state, usurps[None]).state
+    assert set(_partners(on_promise)) == {INFILTRATOR}
+    infiltrating = apply_agent_action(state, usurps[post]).state
+    assert partner in _partners(infiltrating)
 
 
 @pytest.mark.parametrize("placed_id", ["tleilaxu:chairdog:0", "tleilaxu:ghola:0"])
