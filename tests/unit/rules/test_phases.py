@@ -90,6 +90,46 @@ def test_round_start_forgets_the_spy_recalls_of_the_previous_round() -> None:
     assert all(player.spies_recalled_turn == 0 for player in started.players)
 
 
+def test_round_start_opens_the_first_turn_with_fresh_turn_counters() -> None:
+    # "First Player marker를 가진 플레이어부터 시계 방향으로 한 번씩 turn을
+    # 가진다." [Main p. 8] (docs/rules/player-turns.md:5): the First Player's
+    # last Reveal turn of the previous round and this round's first turn are
+    # two turns. Mercantile Affairs' "If you completed a contract this turn"
+    # once read a contract of that Reveal turn here (engine audit 2026-10-22
+    # R1); like OQ-044 (d), the first turn opens with every per-turn counter
+    # restarted, as the Arrakeen Scouts path already did.
+    state = _setup_state()
+    first = state.first_player or 0
+    stale = replace(
+        state.players[first],
+        contracts_completed_turn=1,
+        commander_recruited_turn=True,
+        commander_discount_turn=1,
+        ignores_influence_requirements_turn=True,
+        granted_agent_icon_turn="emperor",
+        combat_icon_turn=True,
+        held_contract_icons=1,
+        suspensor_owed=1,
+    )
+    state = replace(
+        state,
+        players=tuple(
+            stale if player.player_id == first else player for player in state.players
+        ),
+    )
+
+    opened = begin_round(state).state.players[first]
+
+    assert opened.contracts_completed_turn == 0
+    assert not opened.commander_recruited_turn
+    assert opened.commander_discount_turn == 0
+    assert not opened.ignores_influence_requirements_turn
+    assert opened.granted_agent_icon_turn == ""
+    assert not opened.combat_icon_turn
+    assert opened.held_contract_icons == 0
+    assert opened.suspensor_owed == 0
+
+
 def test_round_start_adds_five_cards_instead_of_refilling_hand_to_five() -> None:
     state = _setup_state()
     first = replace(state.players[0], hand=("retained_card",))
