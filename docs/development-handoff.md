@@ -32,9 +32,9 @@
 | pytest | 8,302개 통과(2026-10-25 원판·Ix P0 병합 `d4291831` 뒤; 엔진 감사 수정 브랜치는 8,340개)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
 | Ruff · mypy | `src tests` 통과, mypy 557파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 68종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-21 `engine-checks` 브랜치(68종 모두 통과, 392초) |
-| action codec | **v152** (다음 번호 v153; 엔진 감사 수정 브랜치 `claude/engine-audit-fixes-16a6cc`, 병합 전). v152는 Interstellar Conspiracy의 spice 줄 둘을 더하고 몇 결정을 나눴다(옛 기보는 다리로, [`human-records.md`](human-records.md)). v151 저장은 서버가 열지 않는다 |
+| action codec | **v152** (다음 번호 v153; 엔진 감사 수정 브랜치 `claude/engine-audit-fixes-16a6cc`, 병합 전). v152는 Interstellar Conspiracy의 spice 줄 둘과 Political Equilibrium의 확인 하나를 더하고 몇 결정을 나눴다(옛 기보는 다리로, [`human-records.md`](human-records.md)). v151 저장은 서버가 열지 않는다 |
 | 관측 | v33, 5,732 int (B단계: 고른 카드·효과·대상 칸 추가) |
-| action catalog | 기본 1,434 · CHOAM 1,555 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,313(v152) |
+| action catalog | 기본 1,434 · CHOAM 1,555 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,314(v152) |
 | 엔티티 망 특성 | `FEATURE_VERSION` 2(능력 기록에서, 행동은 `ACTION_SHAPES` 부분), 지문 `59761de5…`(엔진 감사 수정 뒤); 특성 표가 바뀌어도 파일을 이름으로 옮긴다 |
 | 로컬 서버 기본 AI | 앱 AI 어려움(`app_ai`). 원격 방의 좌석 기본값은 사람 |
 | 탐색 AI 망 | Mac mini의 `checkpoints/play/search.pt` → `readapt-v147-4400.pt`(레시피 MLP를 v147에서 재학습, 2026-10-15; 탐색 좌석 1 대 앱 AI 어려움 3에서 81.8%). v150 이후 엔진에서도 `search:`가 v150 이전 MLP 파일을 옛 codec 어댑터로 둔다(2026-10-22 병합 `bc466f23`; v151 좌석 81.8% 대 같은 파일의 v149 좌석 82.2%, 1 대 앱 AI 어려움 3 400판). 망 단독(`checkpoint:`)은 여전히 4,311줄 가운데 84줄만 학습한 줄. 되돌리기용 `recipe-mlp-1e5-800.pt`, X `mix-v139-10081.pt` |
