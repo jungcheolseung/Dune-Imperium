@@ -57,7 +57,12 @@ from dune_imperium.server.persistence import (
     UnknownSaveError,
     default_saves_directory,
 )
-from dune_imperium.server.seating import DEFAULT_SEATING, SEATINGS
+from dune_imperium.server.seating import (
+    DEFAULT_FIRST_PLAYER,
+    DEFAULT_SEATING,
+    FIRST_PLAYERS,
+    SEATINGS,
+)
 from dune_imperium.server.sessions import (
     AdminAccessError,
     GameSessionManager,
@@ -219,6 +224,10 @@ class CreateGameRequest(BaseModel):
     epic_game: bool = False
     # The Arrakeen Scouts module (docs/rules/arrakeen-scouts.md).
     arrakeen_scouts: bool = False
+    # OQ-132 project convention: seat 0 takes the First Player Objective.
+    # Omitted means off (the printed deal [Main p. 5]); the browser setup
+    # box is checked by default (user decision 2026-10-25).
+    first_player_seat_zero: bool = False
     game_seed: int | None = None
     policy_seed: int | None = None
     # How the AI seats pace their answers for the tables: 'normal', 'fast'
@@ -350,6 +359,7 @@ def create_app(
     public_url: str | None = None,
     autosave: bool | None = None,
     default_seating: str = DEFAULT_SEATING,
+    default_first_player: str = DEFAULT_FIRST_PLAYER,
 ) -> FastAPI:
     """Build the local play server around one session manager.
 
@@ -365,10 +375,14 @@ def create_app(
     ``default_seating`` is only reported (``GET /whoami``): whether the setup
     screen's box that shuffles the configured seats opens checked
     (``server.seating``; the browser shuffles, game creation does not).
+    ``default_first_player`` likewise only says whether the setup screen's
+    "Player 1 starts" box opens checked (OQ-132, ``server.seating``).
     """
 
     if default_seating not in SEATINGS:
         raise ValueError(f"unknown seating {default_seating!r}")
+    if default_first_player not in FIRST_PLAYERS:
+        raise ValueError(f"unknown first player {default_first_player!r}")
     sessions = manager if manager is not None else GameSessionManager()
     hub = DoorbellHub()
     sessions.add_change_listener(hub.publish)
@@ -519,6 +533,8 @@ def create_app(
             "ai_pace": sessions.default_ai_pace,
             # Whether the setup screen shuffles the seats (server/seating.py).
             "seating": default_seating,
+            # Whether its "Player 1 starts" box opens checked (OQ-132).
+            "first_player": default_first_player,
         }
 
     @app.post("/auth/admin")
@@ -549,6 +565,7 @@ def create_app(
                 go_to_11=body.go_to_11,
                 epic_game=body.epic_game,
                 arrakeen_scouts=body.arrakeen_scouts,
+                first_player_seat_zero=body.first_player_seat_zero,
                 game_seed=body.game_seed,
                 policy_seed=body.policy_seed,
                 ai_pace=body.ai_pace,

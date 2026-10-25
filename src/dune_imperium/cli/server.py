@@ -16,7 +16,12 @@ from types import FrameType
 from dune_imperium.paths import SAVES_DIR, SEARCH_CHECKPOINT
 from dune_imperium.server.access import AccessMode, new_token
 from dune_imperium.server.pacing import AI_PACES
-from dune_imperium.server.seating import DEFAULT_SEATING, SEATINGS
+from dune_imperium.server.seating import (
+    DEFAULT_FIRST_PLAYER,
+    DEFAULT_SEATING,
+    FIRST_PLAYERS,
+    SEATINGS,
+)
 
 ADMIN_KEY_ENVIRONMENT = "DUNE_IMPERIUM_ADMIN_KEY"
 SEARCH_CHECKPOINT_ENVIRONMENT = "DUNE_IMPERIUM_SEARCH_CHECKPOINT"
@@ -136,6 +141,18 @@ def _build_parser() -> argparse.ArgumentParser:
             "and with them turn order and colours, when it creates a game) "
             "or unchecked ('fixed': row N plays seat N); a project "
             f"convention, the rules do not seat players (default: {DEFAULT_SEATING})"
+        ),
+    )
+    parser.add_argument(
+        "--first-player",
+        choices=FIRST_PLAYERS,
+        default=DEFAULT_FIRST_PLAYER,
+        help=(
+            "whether the setup screen's 'Player 1 starts' box opens checked "
+            "('player1': Player 1 takes the First Player Objective, the "
+            "others are dealt at random; OQ-132, a project convention) or "
+            "unchecked ('deal': every Objective is dealt at random, as "
+            f"printed) (default: {DEFAULT_FIRST_PLAYER})"
         ),
     )
     parser.add_argument(
@@ -430,6 +447,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         public_url=public_url,
         autosave=autosave,
         default_seating=arguments.seating,
+        default_first_player=arguments.first_player,
     )
     hub = app.state.doorbell_hub
 

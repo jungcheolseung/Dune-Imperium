@@ -632,6 +632,39 @@ def random_seating(base: str, browser) -> None:
     context.close()
 
 
+FIRST_PLAYER_JS = """() => ({
+  checked: el('opt-first-player-seat-zero').checked,
+  label: el('opt-first-player-seat-zero').closest('label').textContent.trim(),
+})"""
+
+
+def first_player(base: str, browser, opens_checked: bool) -> None:
+    """[7] "Player 1 starts" (OQ-132, user decision 2026-10-25): the server's
+    --first-player sets how the box opens; checked, the game seats the First
+    Player Objective at seat 0 (the e2e default server, "deal", keeps the
+    printed deal [Main p. 5] its seeds were chosen for)."""
+    flag = "player1" if opens_checked else "deal"
+    print(f"[7] --first-player {flag}: the box opens {'checked' if opens_checked else 'cleared'}")
+    context, page, rec = open_context(browser, f"setup-first-player-{flag}")
+    open_setup(page, base)
+    form = page.evaluate(FIRST_PLAYER_JS)
+    check.ok(form["checked"] == opens_checked, f"{flag}: how the box opens", form)
+    check.ok("플레이어1" in form["label"], f"{flag}: the Korean label names 플레이어1", form)
+    body = create(page)
+    check.ok(
+        body.get("first_player_seat_zero") is opens_checked,
+        f"{flag}: POST /games carries the box",
+        body,
+    )
+    if opens_checked:
+        check.ok(
+            page.evaluate("state.summary.first_player") == 0,
+            "the box checked: Player 1 is the First Player",
+            page.evaluate("state.summary.first_player"),
+        )
+    context.close()
+
+
 def main() -> None:
     with chrome() as browser:
         with server() as (base, _log):
@@ -639,8 +672,11 @@ def main() -> None:
             epic_game(base, browser)
             retail_game(base, browser)
             fixed_seating(base, browser)
+            first_player(base, browser, opens_checked=False)
         with server("--seating", "random") as (base, _log):
             random_seating(base, browser)
+        with server("--first-player", "player1") as (base, _log):
+            first_player(base, browser, opens_checked=True)
     check.finish()
 
 

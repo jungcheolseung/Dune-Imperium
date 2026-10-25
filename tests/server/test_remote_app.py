@@ -538,6 +538,7 @@ def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
         "search_ai": False,
         "ai_pace": "instant",
         "seating": "random",
+        "first_player": "player1",
     }
 
     host = _admin_client(app).get("/whoami")
@@ -549,6 +550,7 @@ def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
         "search_ai": False,
         "ai_pace": "instant",
         "seating": "random",
+        "first_player": "player1",
     }
 
 
@@ -563,6 +565,7 @@ def test_whoami_on_an_open_server_makes_everyone_the_host(tmp_path: Path) -> Non
         "search_ai": False,
         "ai_pace": "instant",
         "seating": "random",
+        "first_player": "player1",
     }
 
 

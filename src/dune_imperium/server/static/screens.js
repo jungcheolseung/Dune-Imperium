@@ -291,6 +291,10 @@ async function createGame(event) {
     tech_module: el("opt-tech").checked,
     immortality: el("opt-immortality").checked,
     arrakeen_scouts: el("opt-scouts").checked,
+    // OQ-132 project convention (user decision 2026-10-25): Player 1 takes
+    // the First Player Objective. The box opens checked; the engine and the
+    // CLIs keep the printed random deal [Main p. 5].
+    first_player_seat_zero: el("opt-first-player-seat-zero").checked,
     go_to_11: el("opt-go-to-11").checked,
     // Epic Game Mode depends on no other box and opens checked (OQ-092 user
     // decision); the engine and the CLIs keep it off.

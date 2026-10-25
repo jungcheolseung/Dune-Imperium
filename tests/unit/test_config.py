@@ -200,3 +200,15 @@ def test_from_identifier_rebuilds_every_option_combination() -> None:
         RulesetConfig.from_identifier("uprising-4p-base+tech")
     with pytest.raises(ValueError, match="requires the Immortality"):
         RulesetConfig.from_identifier("uprising-4p-base+go11")
+
+
+def test_the_first_player_option_keeps_the_ruleset_identifier() -> None:
+    # OQ-132: who gets which Objective changes no card and no action
+    # catalog, so a checkpoint trained on the ruleset answers for either
+    # deal (like the Leader draft, which the identifier also leaves out).
+    printed = RulesetConfig(choam_module=True, bloodlines=True)
+    seat_zero = RulesetConfig(
+        choam_module=True, bloodlines=True, first_player_seat_zero=True
+    )
+    assert seat_zero.identifier == printed.identifier
+    assert RulesetConfig.from_identifier(seat_zero.identifier) == printed

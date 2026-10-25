@@ -656,6 +656,10 @@ const UI_TEXT = {
     "ko": "11점을 향해 (불멸 필요: 모두 승점 0에서 시작, 종료 점수는 그대로)",
     "en": "Go to 11 (requires Immortality: everyone starts at 0 VP; the end score stays the same)"
   },
+  "html.opt_first_player_seat_zero": {
+    "ko": "플레이어1이 시작 플레이어 (사막쥐 목적 카드는 플레이어1에게, 나머지 목적 카드는 무작위; 공식 규칙 아님)",
+    "en": "Player 1 starts (Player 1 gets the Desert Mouse Objective, the other Objectives are dealt at random; not an official rule)"
+  },
   "html.opt_epic_game": {
     "ko": "에픽 게임 모드 (12점까지 · 교전 I 없이 II·III 5장씩 · 수비대 5·책략 카드 1장으로 시작 · 사막 행성 듄 1장 대신 스파이스를 지배하라)",
     "en": "Epic Game Mode (play to 12 · no Conflict I, five II over five III · start with 5 garrison troops and an Intrigue card · Control the Spice for one Dune, the Desert Planet)"
