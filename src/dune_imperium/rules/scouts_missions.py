@@ -49,7 +49,10 @@ from dune_imperium.rules.frames import (
     replace_player,
 )
 from dune_imperium.rules.gain_events import resources_gained_event
-from dune_imperium.rules.intrigue_deck import shufflable_intrigue_discard
+from dune_imperium.rules.intrigue_deck import (
+    credit_suspensor_suits,
+    shufflable_intrigue_discard,
+)
 from dune_imperium.rules.specimens import return_specimens
 
 BOARD_ICON_SCOUTS: Final = "scouts_mission"
@@ -793,6 +796,12 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
         else:
             owner = replace(owner, intrigue_cards=(*owner.intrigue_cards, card_id))
             intrigue_gained.append(card_id)
+            # Suspensor Suits counts "each Intrigue card you draw or steal
+            # during your turn" [Suspensor Suits Tech tile]; the limit is the
+            # turn only, and an effect taking a card straight from the deck
+            # counts (OQ-042, 2026-09-26 addition; engine audit 2026-10-22,
+            # P3). Emperor's Schemes' card is drawn (OQ-078, OQ-086).
+            owner = credit_suspensor_suits(state, owner, 1)
             events.append(
                 GameEvent(
                     event_id=f"{source}:{mission_id}:intrigue",

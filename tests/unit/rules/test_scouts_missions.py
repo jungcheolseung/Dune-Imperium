@@ -273,6 +273,44 @@ def test_emperors_schemes_hands_one_hidden_intrigue_per_visit() -> None:
     assert len(state.players[0].intrigue_cards) == held + 1
 
 
+def test_an_emperors_schemes_card_counts_for_suspensor_suits() -> None:
+    # Suspensor Suits: "For each Intrigue card you draw or steal during your
+    # turn: [troop] Deploy it to the Conflict" [Suspensor Suits Tech tile];
+    # the limit is the turn only and a card taken straight from the deck
+    # counts (OQ-042, 2026-09-26; docs/rules/bloodlines.md). Emperor's
+    # Schemes' card is drawn on the visit (OQ-078, OQ-086); it once gave no
+    # troop (engine audit 2026-10-22, P3).
+    config = RulesetConfig(
+        arrakeen_scouts=True, choam_module=True, bloodlines=True, tech_module=True
+    )
+    base = _base(config)
+    seat = replace(base.players[0], tech_ids=("suspensor_suits",))
+    base = replace(
+        base,
+        players=(seat, *base.players[1:]),
+        tech_stacks=tuple(
+            tuple(tile for tile in stack if tile != "suspensor_suits")
+            for stack in base.tech_stacks
+        ),
+    )
+    state = _turn_for(_reveal(base, "emperors_schemes"))
+    assert state.players[0].troops_conflict == 0
+    state = _send_agent(state, "sardaukar")
+    collect = next(
+        a
+        for a in ENGINE.whole_actions(state, 0)
+        if a.action_id == "scouts_collect_mission"
+    )
+
+    result = apply_whole(ENGINE, state, collect)
+
+    assert [event.kind for event in result.events] == [
+        "intrigue_card_drawn",
+        "troops_deployed",
+    ]
+    assert result.state.players[0].troops_conflict == 1
+
+
 def test_determinize_redeals_the_board_cards_from_the_hidden_pools() -> None:
     import random
 
