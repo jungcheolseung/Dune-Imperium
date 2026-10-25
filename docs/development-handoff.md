@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-26 (플레이 피드백 병합 — 원격 대기실·첫 플레이어 옵션 OQ-132·앱 좌석 색, codec 그대로; 2026-10-25 엔진 감사 수정 병합으로 codec v152; 그 전 B단계 병합 codec v150 뒤 Reveal 상태 이름 정리로 codec v151; 합계 정리(Reveal·Conflict·계약) 끝 — 효과 조각 엔진 전환 끝; 탐색 좌석이 옛 codec 플레이 망을 어댑터로 두어 v149 실력)
+기준일: 2026-10-26 (일반 규칙 감사의 남은 결함 5개 병합으로 codec v153; 그 앞 플레이 피드백 병합 — 원격 대기실·첫 플레이어 옵션 OQ-132·앱 좌석 색, codec 그대로; 2026-10-25 엔진 감사 수정 병합으로 codec v152; 그 전 B단계 병합 codec v150 뒤 Reveal 상태 이름 정리로 codec v151; 합계 정리(Reveal·Conflict·계약) 끝 — 효과 조각 엔진 전환 끝; 탐색 좌석이 옛 codec 플레이 망을 어댑터로 두어 v149 실력)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -29,12 +29,12 @@
 | 항목 | 값 |
 | --- | --- |
 | master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`)·2026-10-22 `search-adapter` 병합 `bc466f23`(탐색 좌석이 옛 codec 파일을 어댑터로)·2026-10-23 `search-parts` 병합 `79bdcb5b`(탐색 좌석 옵션, 서버 탐색 AI에 E1 뒤집기 문턱)·같은 날 `restore-lost-problems` 병합(문제집의 없어진 거절 정리, 사람 판 281곳 모두 풀림)·2026-10-25 `claude/base-ix-p0-57d7eb` 병합(원판·Ix P0 문서와 판정, 판정 공지 도움말 창; codec 그대로)·같은 날 `claude/engine-audit-fixes-16a6cc` 병합(엔진 감사 2026-10-22 수정, OQ-128~131, codec v152)·2026-10-26 `claude/play-feedback-2026-10-25-808f13` 병합 `f1de07c4`(플레이 피드백: 원격 대기실, OQ-132 첫 플레이어 옵션, 앱 좌석 색 순서 등; codec 그대로) |
-| pytest | 8,365개 통과(2026-10-26 플레이 피드백 병합 전 관문, master v152와 합친 트리)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
+| pytest | 8,375개 통과(2026-10-26 일반 규칙 감사 수정 병합 전 관문, 플레이 피드백이 든 master와 합친 트리, codec v153)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
 | Ruff · mypy | `src tests` 통과, mypy 562파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 69종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-25 플레이 피드백 병합 관문(master v152와 합친 트리, 69종 모두 통과, 사용자 판 중이라 `-j 2`로 702초) |
-| action codec | **v152** (다음 번호 v153; 2026-10-25 엔진 감사 수정 병합). v152는 Interstellar Conspiracy의 spice 줄 둘과 Political Equilibrium의 확인 하나를 더하고 몇 결정을 나눴다(옛 기보는 다리로, [`human-records.md`](human-records.md)). v151 저장은 서버가 열지 않는다 |
+| 브라우저 E2E | `scripts/e2e/` 69종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-26 일반 규칙 감사 수정 병합 관문(플레이 피드백이 든 master와 합친 트리, 69종 모두 통과, 사용자 판 중이라 `-j 2`로 632초) |
+| action codec | **v153** (다음 번호 v154 — 원판·Ix 세션의 Uprising 묶음; 2026-10-26 일반 규칙 감사 수정 병합). v153은 템플릿 변화가 없고, Scouts 줄의 "원하는 Faction" 단계가 Faction 하나뿐이어도 창을 연다(OQ-111 (2)); Infiltrate 줄·Piter Signet troop·Guild Spy 반응도 바뀌었다(옛 기보는 다리로, [`human-records.md`](human-records.md)). v152 저장은 서버가 열지 않는다 |
 | 관측 | v33, 5,732 int (B단계: 고른 카드·효과·대상 칸 추가) |
-| action catalog | 기본 1,434 · CHOAM 1,555 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,314(v152) |
+| action catalog | 기본 1,434 · CHOAM 1,555 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,314(v152·v153 같음) |
 | 엔티티 망 특성 | `FEATURE_VERSION` 2(능력 기록에서, 행동은 `ACTION_SHAPES` 부분), 지문 `59761de5…`(엔진 감사 수정 뒤); 특성 표가 바뀌어도 파일을 이름으로 옮긴다 |
 | 로컬 서버 기본 AI | 앱 AI 어려움(`app_ai`). 원격 방의 좌석 기본값은 사람 |
 | 탐색 AI 망 | Mac mini의 `checkpoints/play/search.pt` → `readapt-v147-4400.pt`(레시피 MLP를 v147에서 재학습, 2026-10-15; 탐색 좌석 1 대 앱 AI 어려움 3에서 81.8%). v150 이후 엔진에서도 `search:`가 v150 이전 MLP 파일을 옛 codec 어댑터로 둔다(2026-10-22 병합 `bc466f23`; v151 좌석 81.8% 대 같은 파일의 v149 좌석 82.2%, 1 대 앱 AI 어려움 3 400판). 망 단독(`checkpoint:`)은 여전히 4,311줄 가운데 84줄만 학습한 줄. 되돌리기용 `recipe-mlp-1e5-800.pt`, X `mix-v139-10081.pt` |
@@ -51,7 +51,7 @@
 | Mac mini (`CS-Mac-mini`, 10코어·16 GB) | ② 재학습과 그 측정, 플레이 서버, git 밖 자료(아래)를 읽는 엔진 관문. 학습은 시작 커밋에 고정한 worktree에서 돌리고 메인 체크아웃은 master에 둔다. 학습이 도는 동안 이 기기에서는 ②와 상관없는 무거운 검사(전체 pytest·E2E·소크)를 돌리지 않는다 |
 | 다른 PC (Windows 11 Pro + WSL2) | Godot 클라이언트(아래 "플레이 화면"), 서버 런처 7단계의 남은 Windows 확인, 그 밖의 엔진·화면 작업. 엔진 관문은 WSL 체크아웃에서 돌린다(2026-10-12 WSL 전체 pytest 통과) |
 
-- **엔진 관문이 읽는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v152-0d137110/`(기보 묶음, exact 2,000의 기준; 그 앞 v151-bb05c259),
+- **엔진 관문이 읽는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v152-0d137110/`(기보 묶음, v152 엔진에서 exact 2,000; v153 엔진에서는 exact 1,983 · 다른 17판은 고친 규칙 몫 — v153 묶음은 아직; 그 앞 v151-bb05c259),
   `local/records/`(사람 판 문제 281곳·AI 실수), `saves/`(사람 저장본), `checkpoints/2026-09-22/exploit/champion-5081.pt`(문제집 tips-v1
   재채굴의 망 몫). 다른 기기에서 관문을 돌리려면 이것을 묶어 옮긴다(2026-10-21에 만든 v150 기준 묶음은 낡아서 지웠다).
 - **②의 망을 플레이 서버에 올릴 때:** 새 이름으로 `checkpoints/play/`에 복사하고 `search.pt` 링크만 바꾼 뒤 서버를 다시 띄운다(아래
@@ -71,7 +71,7 @@
   troop 정리 때 돌아간다. 출처와 다르게 정한 곳은 도움말 창의 판정 공지와 [rules/house-rulings-ko.md](rules/house-rulings-ko.md)에 있다(2026-10-24).
   **다음 (결정):** Uprising 엔진 구현 — OQ-113의 10-06 막기 가운데 비용 없는 경우를 풀기(구현 목록은 OQ-113), OQ-121의 Planetary Array 자리,
   OQ-042의 Suspensor Suits(막히면 garrison, supply 부족분은 같은 turn 안에 보충; 2026-10-25 재판정).
-  codec이 바뀌므로 착수 전에 AI 세션·사용자 확인. 그 뒤 P1(엔진). 전사 흐름(D1·D2): 앱 데이터만 — 속성 표 + 카드별 화면 조각
+  codec이 바뀌므로(다음 v154, 2026-10-26 조정 세션 순서: 일반 규칙 감사 수정 v153 다음) 착수 전에 AI 세션·사용자 확인. 그 뒤 P1(엔진). 전사 흐름(D1·D2): 앱 데이터만 — 속성 표 + 카드별 화면 조각
   (`render/prefabs`, 아이콘·숫자가 칸마다 있음) + 영어 문구. 카드면 스캔은 새로 읽지 않고, P0의 카드면 블라인드 읽기 181장과 한 번 기계 대조해
   다른 카드만 사람이 본다. 도구(D4): 1 채택, 2(화면 조각 → 기록 초안)·시범 전사 5장·갈래 나누기는 P3 첫 묶음에서 시범(D5), 디컴파일러는 P3 끝에
   다시 묻는다. 앱 자료·P0 읽기는 git 밖(에셋 `reference/dune-steam-app/dad97e20…/analysis/base-ix-2026-10-22/`, 그 안 `p0-readings/`).
@@ -296,7 +296,7 @@
   `codex/windows-validation`, 2026-10-21 master 병합). 다른 물리 PC의 접속, 배율·IME·방화벽·GUI 강제 종료·잠자기 복귀,
   학습한 탐색 AI 망 사용 확인이 남았다. Windows 전체 엔진 pytest와 `run_all.py` 전체는 Windows에서 돌린 적 없다(POSIX
   전용 경로가 남은 E2E가 있다). [`windows-host-validation.md`](windows-host-validation.md), [`server-launcher-plan.md`](server-launcher-plan.md)
-- **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 **v152-0d137110**(2026-10-25, 2,000판, 엔진 감사 수정 병합 master에서 만듦; 같은 엔진으로 되돌려 exact 2,000; v151 묶음은 v152 다리로 diverged 43 · failed 0)이고 다음 엔진 변경의 기준이다. 그 앞 **v151-bb05c259**(2026-10-21, 2,000판, Reveal 상태 이름 정리 병합 master에서
+- **기보 묶음:** codec이 오를 때마다 다시 만든다. **v153 묶음은 아직 만들지 않았다**(2026-10-26 일반 규칙 감사 수정 병합 뒤 만들 것). 최신 묶음은 **v152-0d137110**(2026-10-25, 2,000판, 엔진 감사 수정 병합 master에서 만듦; 같은 엔진으로 되돌려 exact 2,000; v151 묶음은 v152 다리로 diverged 43 · failed 0)이고 다음 엔진 변경의 기준이다. 그 앞 **v151-bb05c259**(2026-10-21, 2,000판, Reveal 상태 이름 정리 병합 master에서
   만듦; 같은 엔진으로 되돌려 exact 2,000), v150-14c08062(v151 엔진에서도 exact 2,000 — 상태 비교가
   결정 단계와 사건 기록을 빼므로), v149-86086c6d(B단계 관문의 기준, v150 다리로 1,568 · 431 · 1),
   v148-02e203ce, v147-2af1d9f5, v145-afea63de이며 v144·v146 묶음은 없다.
