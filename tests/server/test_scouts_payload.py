@@ -110,8 +110,14 @@ def test_scouts_lines_is_null_outside_a_scouts_choice() -> None:
 
 
 def test_scouts_lines_number_the_enabled_line_by_its_row() -> None:
+    # A card to draw keeps the cheap line's draw alive (OQ-071; engine audit
+    # 2026-10-22, P2): only the dear line's cost is short.
+    state = _state(2)
+    seat = state.players[0]
+    seat = replace(seat, hand=seat.hand[1:], deck=seat.hand[:1])
+    state = replace(state, players=(seat, *state.players[1:]))
     offered = offer_scouts_choice(
-        _state(2), 0, "unravel_the_future", source="round:2:scouts"
+        state, 0, "unravel_the_future", source="round:2:scouts"
     ).state
     payload = GameSessionManager()._legal_actions_locked(
         _session(offered),  # type: ignore[arg-type]

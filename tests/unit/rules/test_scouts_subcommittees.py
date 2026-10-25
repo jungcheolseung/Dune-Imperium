@@ -1163,3 +1163,67 @@ def test_the_heuristic_joins_a_subcommittee_and_ends_its_turn() -> None:
             ).state
             steps += 1
             assert steps < 20
+
+
+def test_a_scouts_cost_line_needs_a_reward_that_can_happen() -> None:
+    # OQ-071 (user decision 2026-09-29): "비용만 내고 보상을 받지 못하는 경우는
+    # 없어야 한다 … 비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을
+    # 때만 제시한다"; its card extension (2026-10-06) counts a draw with both
+    # piles empty and a Tleilaxu advance at the track's end (OQ-048) as doing
+    # nothing; OQ-076 (b) and docs/rules/arrakeen-scouts.md say the same of
+    # the Scouts lines. The Scouts check knew four rewards only (engine audit
+    # 2026-10-22, P2): each line below was offered with nothing to gain.
+    from dune_imperium.content.arrakeen_scouts import (
+        EVENTS_BY_ID,
+        SALES_BY_ID,
+        SUBCOMMITTEES_BY_ID,
+    )
+    from dune_imperium.content.immortality.board import (
+        RESEARCH_SPACES,
+        SECOND_GENETIC_MARKER_COLUMN,
+    )
+    from dune_imperium.rules.immortality import TLEILAXU_TRACK_END
+    from dune_imperium.rules.scouts_effects import line_is_offered
+
+    immortality = RulesetConfig(arrakeen_scouts=True, immortality=True)
+    past_markers = next(
+        space.space_id
+        for space in RESEARCH_SPACES
+        if space.column >= SECOND_GENETIC_MARKER_COLUMN
+    )
+    empty_piles = _owner(hand=STARTERS, deck=(), discard_pile=())
+    with_deck = replace(empty_piles, deck=STARTERS[:1], hand=STARTERS[1:])
+    at_track_end = _owner(tleilaxu_space=TLEILAXU_TRACK_END, influence=Influence(
+        bene_gesserit=2
+    ))
+    no_supply = _owner(troops_supply=0, troops_garrison=12)
+
+    def offered(owner: PlayerState, option: Any, **fields: Any) -> bool:
+        state = _state(owner, config=immortality, **fields)
+        return line_is_offered(state, 0, option)
+
+    forecasting = SUBCOMMITTEES_BY_ID["forecasting"].option
+    assert not offered(empty_piles, forecasting)
+    assert offered(with_deck, forecasting)
+    for line in SALES_BY_ID["unravel_the_future"].options:
+        assert not offered(empty_piles, line)
+        assert offered(with_deck, line)
+    investigations = SUBCOMMITTEES_BY_ID["investigations"].option
+    assert not offered(_owner(), investigations, intrigue_deck=())
+    assert offered(_owner(), investigations)
+    for line in SALES_BY_ID["secrets_for_sale"].options:
+        assert not offered(_owner(), line, intrigue_deck=())
+    analytics = SUBCOMMITTEES_BY_ID["analytics"].option
+    researched = replace(empty_piles, research_space=past_markers)
+    assert not offered(researched, analytics)
+    assert offered(replace(with_deck, research_space=past_markers), analytics)
+    for line in EVENTS_BY_ID["new_innovations"].options:
+        assert not offered(researched, line)
+    tleilaxu = SUBCOMMITTEES_BY_ID["tleilaxu_relations"].option
+    assert not offered(at_track_end, tleilaxu)
+    assert offered(_owner(influence=Influence(bene_gesserit=2)), tleilaxu)
+    (betrayal,) = EVENTS_BY_ID["betrayal"].options
+    assert not offered(at_track_end, betrayal)
+    (termination,) = EVENTS_BY_ID["termination_request"].options
+    assert not offered(no_supply, termination)
+    assert offered(_owner(), termination)
