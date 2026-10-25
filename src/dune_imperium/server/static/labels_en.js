@@ -240,6 +240,7 @@ const LABELS_EN = {
     "scouts_choose_option": "Choose",
     "scouts_pass": "Pass",
     "resolve_scouts_choice_without_option": "No option you can take — confirm",
+    "resolve_scouts_loss_without_influence": "No Influence to lose — confirm",
     "scouts_join_mission": "Take Part in the Mission",
     "scouts_secret_pick": "Secret Pick",
     "scouts_bid": "Choose a Bid",

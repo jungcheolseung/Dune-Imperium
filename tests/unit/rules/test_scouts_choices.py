@@ -21,7 +21,7 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind
-from dune_imperium.rules.scouts_effects import SCOUTS_NO_OPTION
+from dune_imperium.rules.scouts_effects import SCOUTS_NO_INFLUENCE, SCOUTS_NO_OPTION
 
 ENGINE = UprisingRulesEngine()
 SCOUTS = RulesetConfig(arrakeen_scouts=True)
@@ -205,7 +205,11 @@ def test_crackdown_still_asks_a_seat_with_only_one_possible_loss() -> None:
     assert _on_turn(state)
 
 
-def test_political_equilibrium_lowers_the_highest_track_and_asks_on_a_tie() -> None:
+def test_political_equilibrium_asks_every_seat_for_its_highest_track() -> None:
+    # Every seat is asked (user decision 2026-10-25, "모든 좌석에 창을 열어:
+    # 가장 높은 진영이 하나면 그 한 줄만 있는 창, 모두 0이면 확인 창"; OQ-131):
+    # one row for a lone highest track, one per tied track, and for every
+    # track at 0 the confirm of losing nothing.
     state = _base(
         **{
             "0": {"influence": Influence(fremen=3, emperor=1)},
@@ -215,6 +219,9 @@ def test_political_equilibrium_lowers_the_highest_track_and_asks_on_a_tie() -> N
         }
     )
     state = _reveal(state, "political_equilibrium")
+    assert _owner(state) == 0
+    assert _offered(state) == [("scouts_lose_influence", (("faction", "fremen"),))]
+    state = _act(state, "scouts_lose_influence", faction="fremen")
     assert state.players[0].influence == Influence(fremen=2, emperor=1)
     assert _owner(state) == 1
     assert {dict(args)["faction"] for _, args in _offered(state)} == {
@@ -223,6 +230,18 @@ def test_political_equilibrium_lowers_the_highest_track_and_asks_on_a_tie() -> N
     }
     state = _act(state, "scouts_lose_influence", faction="bene_gesserit")
     assert state.players[1].influence == Influence(spacing_guild=2, bene_gesserit=1)
+    assert _owner(state) == 2
+    assert _offered(state) == [(SCOUTS_NO_INFLUENCE, ())]
+    before = len(state.event_log)
+    state = _act(state, SCOUTS_NO_INFLUENCE)
+    assert state.players[2].influence == Influence()
+    assert [
+        dict(e.payload)["player"]
+        for e in state.event_log[before:]
+        if e.kind == "scouts_choice_skipped"
+    ] == [2]
+    assert _owner(state) == 3
+    state = _act(state, "scouts_lose_influence", faction="fremen")
     assert state.players[3].influence == Influence()
     assert _on_turn(state)
 
@@ -244,12 +263,17 @@ def test_political_equilibrium_transfers_the_alliance_to_the_first_loser() -> No
         }
     )
     state = _reveal(state, "political_equilibrium")
+    state = _act(state, "scouts_lose_influence", faction="emperor")
     # Seat 0 (First Player) loses first, while seat 1 is still tied at 5:
     # the Alliance transfers to seat 1, not returned to the bank.
     assert state.players[0].influence.emperor == 4
     assert state.players[0].alliance_faction_ids == ()
+    assert state.players[1].alliance_faction_ids == ("emperor",)
+    state = _act(state, "scouts_lose_influence", faction="emperor")
     assert state.players[1].influence.emperor == 4
     assert state.players[1].alliance_faction_ids == ("emperor",)
+    for _ in range(2):
+        state = _act(state, SCOUTS_NO_INFLUENCE)
     assert _on_turn(state)
 
 

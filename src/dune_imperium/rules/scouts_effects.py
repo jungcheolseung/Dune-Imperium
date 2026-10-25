@@ -495,7 +495,13 @@ def _is_choice(
         case LoseFactionInfluence(faction=faction):
             return len(_loss_actions(state, player, (faction,))) > 1
         case LoseHighestInfluence():
-            return len(_loss_actions(state, player, highest_factions(owner))) > 1
+            # Political Equilibrium asks every seat: the one Faction it loses
+            # from when its highest track is alone, the confirm of losing
+            # nothing when every track is at 0 (user decision 2026-10-25:
+            # "모든 좌석에 창을 열어: 가장 높은 진영이 하나면 그 한 줄만 있는 창,
+            # 모두 0이면 확인 창"; OQ-131, the 2026-09-30 rule that a step
+            # passing by itself opens a window too).
+            return True
         case LoseGarrisonTroops():
             # The seat picks a troop or a Sardaukar Commander when its
             # garrison holds both (OQ-105).
@@ -1128,7 +1134,10 @@ def legal_scouts_effect_actions(
         case LoseFactionInfluence(faction=faction):
             return _loss_actions(state, player, (faction,))
         case LoseHighestInfluence():
-            return _loss_actions(state, player, highest_factions(owner))
+            losses = _loss_actions(state, player, highest_factions(owner))
+            return losses or (
+                DomainAction(action_id=SCOUTS_NO_INFLUENCE, actor=player),
+            )
         case LoseGarrisonTroops():
             # A troop or a Sardaukar Commander (OQ-105, user ruling
             # 2026-10-10, "3은 그럼 통일해야지. 지휘관도 낼 수 있게 해야지").
@@ -1172,6 +1181,12 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
         return return_specimens(topped, player, returned, source=source)
     if action.action_id == "scouts_lose_garrison_unit":
         return _apply_garrison_unit_loss(state, action, frame, picked, source)
+    if action.action_id == SCOUTS_NO_INFLUENCE:
+        item = context_str(context, "item", owner=_EFFECT_FRAME)
+        return RuleResult(
+            state=_moved(state, frame, step=step + 1),
+            events=(_skipped(item, player, source),),
+        )
     value = str(dict(action.arguments)[action.arguments[0][0]])
     count = getattr(current, "count", 1)
     done = picked + 1 >= count or action.action_id in (
@@ -1367,6 +1382,9 @@ def _is_passable(item: str) -> bool:
 # The one row of a Scouts choice with no line the seat can take: it confirms
 # that the seat takes nothing (cleanup-2a; OQ-071 addendum).
 SCOUTS_NO_OPTION: Final = "resolve_scouts_choice_without_option"
+# The one row of Political Equilibrium for a seat with every track at 0: it
+# confirms that the seat loses nothing (OQ-131, user decision 2026-10-25).
+SCOUTS_NO_INFLUENCE: Final = "resolve_scouts_loss_without_influence"
 _NO_OPTION_PROMPT: Final = "Nothing in this Arrakeen Scouts item can be taken"
 
 

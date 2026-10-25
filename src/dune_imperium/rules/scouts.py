@@ -78,7 +78,6 @@ from dune_imperium.rules.scouts_auctions import (
 )
 from dune_imperium.rules.scouts_effects import (
     apply_scouts_effect_action,
-    highest_factions,
     offer_scouts_choice,
     push_scouts_effect,
 )
@@ -547,8 +546,8 @@ def _run_task(state: GameState, task: str) -> RuleResult:
         )
     if task.startswith("equilibrium:"):
         seat = int(task.removeprefix("equilibrium:"))
-        if not highest_factions(state.players[seat]):
-            return RuleResult(state=state)
+        # Every seat is asked, one with every track at 0 to confirm it loses
+        # nothing (OQ-131, user decision 2026-10-25).
         return RuleResult(
             state=push_scouts_effect(state, seat, item, 0, source=f"{source}:{seat}")
         )

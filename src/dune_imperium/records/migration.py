@@ -512,7 +512,7 @@ def migrate_record(
                 )
             state = settled
         if replay.action_codec_version < MISSION_WINDOW_CODEC:
-            state = _pass_missions_alone(engine, state, migrated)
+            state = _answer_windows_never_asked(engine, state, migrated)
         if graft is not None and graft.drops(recorded):
             dropped.append((index, GRAFT_SWITCH_DROPPED))
             continue
@@ -4015,33 +4015,56 @@ def _scouts_pass_without_option(
 
 
 
-# Codec v152 (OQ-131, engine audit 2026-10-22, G4) asks a seat that cannot
-# take part in a Scouts mission, with the pass alone; an older engine
-# skipped it unasked (OQ-088). Such a window is never the record's to
-# answer: a recorded pass of that seat belongs to a later mission.
+# Codec v152 asks two kinds of window an older engine never opened, so a
+# record never answers them: a seat that cannot take part in a Scouts
+# mission gets the pass alone (OQ-131, engine audit 2026-10-22, G4; an older
+# engine skipped it unasked, OQ-088), and every seat of Political
+# Equilibrium is asked (OQ-131, user decision 2026-10-25) -- one row for a
+# lone highest track, which an older engine took itself, and the confirm of
+# losing nothing for every track at 0, a seat it skipped. A tie offers more
+# than one row and was asked then too.
 MISSION_WINDOW_CODEC: Final = 152
 MISSION_PASS_ALONE: Final = "mission_pass_alone"
+EQUILIBRIUM_ALONE: Final = "equilibrium_alone"
 
 
-def _pass_missions_alone(
+def _window_never_asked(
+    engine: UprisingRulesEngine, state: GameState
+) -> tuple[DomainAction, str] | None:
+    """The one answer of a window on top that an engine before codec v152
+    never opened, with its bridge name; None otherwise."""
+
+    decision = engine.current_decision(state)
+    if not isinstance(decision, PlayerDecision):
+        return None
+    frame = state.decision_stack[-1]
+    wholes = engine.whole_actions(state, decision.owner)
+    if len(wholes) != 1:
+        return None
+    (only,) = wholes
+    if (
+        frame.kind == FrameKind.SCOUTS_MISSION
+        and only.action_id == "scouts_decline_mission"
+    ):
+        return only, MISSION_PASS_ALONE
+    if (
+        frame.kind == FrameKind.SCOUTS_EFFECT
+        and dict(frame.context).get("item") == "political_equilibrium"
+    ):
+        return only, EQUILIBRIUM_ALONE
+    return None
+
+
+def _answer_windows_never_asked(
     engine: UprisingRulesEngine, state: GameState, migrated: _Taken
 ) -> GameState:
-    """Pass every Scouts mission window on top whose seat has the pass as its
-    one action, recorded as ``MISSION_PASS_ALONE``."""
+    """Answer every window on top that an engine before codec v152 never
+    opened (``_window_never_asked``), each recorded under its bridge."""
 
-    while True:
-        decision = engine.current_decision(state)
-        if not (
-            isinstance(decision, PlayerDecision)
-            and state.decision_stack[-1].kind == FrameKind.SCOUTS_MISSION
-        ):
-            return state
-        decline = DomainAction(
-            action_id="scouts_decline_mission", actor=decision.owner
-        )
-        if engine.whole_actions(state, decision.owner) != (decline,):
-            return state
-        state = _apply_answer(engine, state, decline, MISSION_PASS_ALONE, migrated)
+    while (found := _window_never_asked(engine, state)) is not None:
+        answer, bridge = found
+        state = _apply_answer(engine, state, answer, bridge, migrated)
+    return state
 
 
 # A Navigation card's draw (OQ-099) is named after the Influence gain that

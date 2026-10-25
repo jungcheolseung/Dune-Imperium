@@ -226,11 +226,11 @@ FULL = RulesetConfig(
 ENGINE = UprisingRulesEngine()
 
 
-def _this_engine_game(seed: int) -> GameReplay:
+def _this_engine_game(seed: int, config: RulesetConfig = FULL) -> GameReplay:
     """A whole heuristic game on this engine, stamped as its saves are."""
 
     agents = [make_agent("heuristic", 10 + seat) for seat in range(4)]
-    replay = run_policy_game(ENGINE, FULL, seed, agents).replay
+    replay = run_policy_game(ENGINE, config, seed, agents).replay
     return replace(replay, action_codec_version=ACTION_CODEC_VERSION)
 
 
@@ -442,6 +442,32 @@ def _pass_alone_steps(replay: GameReplay) -> set[int]:
     return _only_choice_in(replay, FrameKind.SCOUTS_MISSION, "scouts_decline_mission")
 
 
+@functools.cache
+def _equilibrium_alone_steps(replay: GameReplay) -> frozenset[int]:
+    """This engine's answers of a Political Equilibrium window with one row
+    (OQ-131, user decision 2026-10-25); an engine before v152 took a lone
+    highest track's loss itself and skipped a seat with every track at 0."""
+
+    found = set()
+    for index, (state, step) in enumerate(
+        zip(_states(replay), replay.steps, strict=True)
+    ):
+        frame = state.decision_stack[-1] if state.decision_stack else None
+        if (
+            isinstance(step, DomainAction)
+            and frame is not None
+            and frame.kind == FrameKind.SCOUTS_EFFECT
+            and dict(frame.context).get("item") == "political_equilibrium"
+            and len(ENGINE.whole_actions(state, step.actor)) == 1
+        ):
+            found.add(index)
+    return frozenset(found)
+
+
+def _never_asked_steps(replay: GameReplay) -> set[int]:
+    return _pass_alone_steps(replay) | set(_equilibrium_alone_steps(replay))
+
+
 def _v152_counts(replay: GameReplay) -> Counter[str]:
     """The bridge counts of those steps in a record before v152."""
 
@@ -449,6 +475,9 @@ def _v152_counts(replay: GameReplay) -> Counter[str]:
     passes = len(_pass_alone_steps(replay))
     if passes:
         counts[migration.MISSION_PASS_ALONE] = passes
+    alone = len(_equilibrium_alone_steps(replay))
+    if alone:
+        counts[migration.EQUILIBRIUM_ALONE] = alone
     return counts
 
 
@@ -465,7 +494,7 @@ def _dropped(replay: GameReplay, codec: int, drop: set[int] | None = None) -> se
     return (
         set(drop or ())
         | (set(_v152_split_steps(replay)) if codec < 152 else set())
-        | (_pass_alone_steps(replay) if codec < 152 else set())
+        | (_never_asked_steps(replay) if codec < 152 else set())
         | (set(_held_steps(replay)) if codec < 142 else set())
         | (_no_option_steps(replay) if codec < 149 else set())
         | (_reward_icon_steps(replay) if codec < 150 else set())
@@ -510,7 +539,7 @@ def _effect_counts(replay: GameReplay, codec: int) -> dict[str, int]:
 
     held = set(_held_steps(replay)) if codec < 142 else set()
     if codec < 152:
-        held |= set(_v152_split_steps(replay)) | _pass_alone_steps(replay)
+        held |= set(_v152_split_steps(replay)) | _never_asked_steps(replay)
     # A Contract's in-turn icon row is the reward bridges' (stage B3b).
     rewards = _reward_icon_steps(replay) if codec < 150 else frozenset()
     skipped = _no_option_steps(replay) if codec < 149 else set()
@@ -545,7 +574,10 @@ def _reward_icon_counts(
         if record.replay.action_codec_version < 152
         else Counter[str]()
     )
-    v152 = [name for name, _ in _V152_FOLLOWS] + [migration.MISSION_PASS_ALONE]
+    v152 = [name for name, _ in _V152_FOLLOWS] + [
+        migration.MISSION_PASS_ALONE,
+        migration.EQUILIBRIUM_ALONE,
+    ]
     assert {name: counts.pop(name, 0) for name in v152} == {
         name: split[name] for name in v152
     }
@@ -1304,9 +1336,9 @@ def test_a_scouts_line_draw_an_older_engine_drew_at_once_follows_its_choice() ->
     # Codec v142 (user ruling 2026-10-10, OQ-106) holds a draw printed after
     # one of an Arrakeen Scouts line's reward choices as the line's own
     # ``scouts_rewards_first``, then its only action; an older engine drew
-    # it in the choice's step, so its record has no such step. Seed 15's
-    # heuristic game holds one (round 8, CHOAM Negotiations' Intrigue card
-    # after its contract). Dropped from this engine's
+    # it in the choice's step, so its record has no such step. Seed 3's
+    # heuristic game without Immortality holds one (see the seed history
+    # below). Dropped from this engine's
     # record with the game's other held steps, each is taken right after
     # the same choice again. (Seed 3 until codec v146: optional Agent-turn
     # effects offer no refusal since then, OQ-095 (2), and seed 3's game no
@@ -1315,8 +1347,17 @@ def test_a_scouts_line_draw_an_older_engine_drew_at_once_follows_its_choice() ->
     # was the first of 1-200 that did until the Conflict-end change
     # (2026-10-18: troops back before the windows, Harvest Cells resolving
     # as it is played) moved every game; of 1-60 seeds 15, 29, 48, 50 and 60
-    # hold one that comes back step for step, and 15 is the first.)
-    game = _this_engine_game(15)
+    # hold one that comes back step for step, and 15 is the first. Codec
+    # v152's Political Equilibrium windows, OQ-131, moved seed 15 too, and
+    # none of seeds 1-600 meets this test with every module on: wherever a
+    # Scouts draw is held, a seat also takes an Immortality research
+    # space's icons after another move, an order no engine before v149
+    # recorded (it resolved them inside the research). The game leaves
+    # Immortality, and Go to 11 with it, out; of seeds 1-60 then 3, 27 and
+    # 57 meet it, and 3 is the first.)
+    game = _this_engine_game(
+        3, replace(FULL, immortality=False, go_to_11=False)
+    )
     held = _held_steps(game)
     scouts = [index for index, name in held.items() if name == "scouts_held_draw"]
     assert scouts
@@ -4537,12 +4578,39 @@ def test_a_mission_window_with_the_pass_alone_is_passed_before_the_record() -> N
     taken = migration._Taken()
     # Seat 0 can join: its window is the record's.
     assert missions._owner(state) == 0
-    assert migration._pass_missions_alone(ENGINE, state, taken) is state
+    assert migration._answer_windows_never_asked(ENGINE, state, taken) is state
     state = missions._act(state, "scouts_decline_mission")
     assert missions._owner(state) == 1
-    passed = migration._pass_missions_alone(ENGINE, state, taken)
+    passed = migration._answer_windows_never_asked(ENGINE, state, taken)
     assert missions._owner(passed) == 2
     assert [step.bridge for step in taken.steps] == [migration.MISSION_PASS_ALONE]
+
+
+def test_political_equilibrium_windows_an_older_engine_never_opened() -> None:
+    # Codec v152 asks every seat (OQ-131, user decision 2026-10-25): an older
+    # engine took a lone highest track's loss itself and skipped a seat with
+    # every track at 0, but asked a tie. The one-row windows are answered
+    # before the record's next step; a tie is the record's.
+    from tests.unit.rules import test_scouts_choices as choices
+
+    state = choices._base(
+        **{
+            "0": {"influence": Influence(fremen=3, emperor=1)},
+            "1": {"influence": Influence(spacing_guild=2, bene_gesserit=2)},
+            "2": {"influence": Influence()},
+            "3": {"influence": Influence(fremen=1)},
+        }
+    )
+    state = choices._reveal(state, "political_equilibrium")
+    taken = migration._Taken()
+    tied = migration._answer_windows_never_asked(ENGINE, state, taken)
+    assert choices._owner(tied) == 1
+    assert tied.players[0].influence == Influence(fremen=2, emperor=1)
+    state = choices._act(tied, "scouts_lose_influence", faction="bene_gesserit")
+    done = migration._answer_windows_never_asked(ENGINE, state, taken)
+    assert choices._on_turn(done)
+    assert done.players[3].influence == Influence()
+    assert [step.bridge for step in taken.steps] == [migration.EQUILIBRIUM_ALONE] * 3
 
 
 def test_a_recorded_scouts_pass_is_the_confirm_where_every_line_is_withheld() -> None:

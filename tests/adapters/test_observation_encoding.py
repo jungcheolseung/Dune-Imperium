@@ -1062,7 +1062,10 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # to this one up to decision 84, a mission window (seat 3 with two rows before,
 # seat 2 with the pass alone now), where the random seats draw again and the
 # game parts (88611727...bfe48af30, 3,172 then); the other five games ask no
-# such seat and stay pinned.
+# such seat and stay pinned. Then Political Equilibrium asks every seat (the
+# same OQ-131, user decision 2026-10-25): the previous commit's trace equals
+# this one up to decision 313, where seat 1 now answers the event's one-row
+# window before its turn (f062b00f...aff7c8c7, 3,404 then).
 _GOLDEN_DIGESTS = {
     "base": ("9ac09f6db7d71edf89ee0d4abb58e32f0a23caad428000c1308138e00863173f", 2780),
     "choam": ("d43306c8745984b856879a1cc9abc57089348efc02b7d9dde0a3bdadcc55f1dc", 2668),
@@ -1076,8 +1079,8 @@ _GOLDEN_DIGESTS = {
     ),
     "draft": ("0df15d5397e3649c558e48a2787907852d0213aa1815abd65126c95bc9ca39c2", 2788),
     "scouts": (
-        "f062b00f24124fd06b3725a0ff23a283f10ffac1387b8b0aaf928e87aff7c8c7",
-        3404,
+        "c37a06f8d12e811c096afc519c67c5dd9a8c39e258ec88a695ac7bd86fe729a8",
+        3136,
     ),
 }
 _GOLDEN_CONFIGS = {

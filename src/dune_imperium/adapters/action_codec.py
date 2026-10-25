@@ -595,7 +595,10 @@ from dune_imperium.rules.tech import optional_trash_tech_ids
 # icons (``resolve_agent_card_effect(effect=spice)``, P4); Scientific
 # Breakthrough's Research after its trash and Guild Envoy's two cards after a
 # Spacing Guild discard are steps of their own (P5, P6); a seat that cannot
-# take part in a Scouts mission is asked, with the pass alone (G4, OQ-131).
+# take part in a Scouts mission is asked, with the pass alone (G4, OQ-131),
+# and Political Equilibrium asks every seat, one with every track at 0 to
+# confirm ``resolve_scouts_loss_without_influence`` (new template, Scouts
+# catalogs; OQ-131, user decision 2026-10-25).
 # The offered rows change too: Scouts cost lines and Spy Network's recall need
 # a reward that can happen (P2, P8), Chani's water line a card to draw (P9),
 # and the round's first turn, Reveal-turn draws, Signet grafts and Overthrow
@@ -606,8 +609,9 @@ from dune_imperium.rules.tech import optional_trash_tech_ids
 # ``overthrow_deferred``, ``overthrow_with_the_space``), rename the
 # Navigation reshuffle it moves (``navigation_reshuffle_renamed``), take a
 # recorded Scouts pass as the confirm where every line is withheld
-# (``scouts_pass_without_option``) and pass the new mission windows
-# (``mission_pass_alone``); docs/human-records.md.
+# (``scouts_pass_without_option``) and answer the new one-row windows
+# before the next recorded step (``mission_pass_alone``,
+# ``equilibrium_alone``); docs/human-records.md.
 ACTION_CODEC_VERSION = 152
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
@@ -2496,6 +2500,9 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for n in range(MAX_SPECIMEN_TOP_UP + 1 if config.immortality else 0)
         ),
+        # Political Equilibrium for a seat with every track at 0: the confirm
+        # of losing nothing (v152, OQ-131).
+        ActionTemplate(action_id="resolve_scouts_loss_without_influence"),
         # Influence losses (Crackdown and the like, Political Equilibrium),
         # with the Alliance recipient when several opponents tie.
         *(

@@ -1678,6 +1678,10 @@ const UI_TEXT = {
     "ko": "할 수 있는 선택 없음 · 턴 종료 ▶",
     "en": "Nothing to take · End turn ▶"
   },
+  "render.turn_end_button_no_influence": {
+    "ko": "잃을 영향력 없음 · 턴 종료 ▶",
+    "en": "No Influence to lose · End turn ▶"
+  },
   "render.turn_end_button_with_buys": {
     "ko": "구매 끝 · 턴 종료 ▶",
     "en": "Done acquiring · End turn ▶"

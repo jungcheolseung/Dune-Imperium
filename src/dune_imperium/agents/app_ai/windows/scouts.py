@@ -152,6 +152,7 @@ from dune_imperium.content.uprising.effect_dsl import (
 )
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.rules.scouts_effects import (
+    SCOUTS_NO_INFLUENCE,
     SCOUTS_NO_OPTION,
     option_steps,
     scouts_option,
@@ -425,6 +426,11 @@ def scouts_effect(run: DecisionRun) -> DomainAction | None:
                 return None
             return _loss(run, faction.value)
         case LoseHighestInfluence():
+            # Every track at 0: the one row confirms losing nothing (OQ-131,
+            # user decision 2026-10-25); the app skips such a seat.
+            nothing = run.first(SCOUTS_NO_INFLUENCE)
+            if nothing is not None and len(run.legal) == 1:
+                return nothing
             if not _only(run, _LOSS_IDS):
                 return None
             if _line_ability(line, sc.LoseHighestInfluenceAbility) is None:
