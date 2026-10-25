@@ -2879,7 +2879,19 @@ def fire_guild_spy_on_spice_must_flow(
     events: list[GameEvent] = []
     if not bought:
         return RuleResult(state=working)
-    for card_id in working.players[player].in_play:
+    # Only the cards revealed in this Reveal, still in play: "방금 reveal한
+    # card들의 Reveal box 효과만 얻는다. 앞선 Agent turn에 낸 card의 Reveal box
+    # 효과는 얻지 않는다." [Main p. 12] (docs/rules/player-turns.md). A Guild
+    # Spy played in an Agent turn is in play too but was not revealed
+    # (general rules audit 2026-10-25); a late-revealed one is on the list.
+    revealed = tuple(
+        context_str(context, f"revealed_card_{index:03d}", owner="Reveal frame")
+        for index in range(
+            context_int(context, "revealed_card_count", owner="Reveal frame")
+        )
+    )
+    in_play = working.players[player].in_play
+    for card_id in (card for card in revealed if card in in_play):
         if card_id in fired or (
             personal_card_for_instance(card_id).reveal_acquisition_effect
             is not _GUILD_SPY_EFFECT

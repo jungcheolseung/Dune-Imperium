@@ -90,14 +90,16 @@ def _imperium_instance(card_id: str, *, choam_module: bool = False) -> str:
     )
 
 
-def _reveal_state(*cards: str, choam_module: bool = False) -> GameState:
+def _reveal_state(
+    *cards: str, choam_module: bool = False, in_play: tuple[str, ...] = ()
+) -> GameState:
     state = GameState(
         config=RulesetConfig(choam_module=choam_module),
         seed=1,
         phase=GamePhase.PLAYER_TURNS,
         round_number=1,
         players=(
-            PlayerState(player_id=0, hand=cards),
+            PlayerState(player_id=0, hand=cards, in_play=in_play),
             *(PlayerState(player_id=seat) for seat in range(1, 4)),
         ),
         reserve_stacks=(
@@ -1048,6 +1050,55 @@ def test_guild_spy_gains_influence_for_spied_factions_on_spice_must_flow() -> No
         "influence_gained",
     ]
 
+
+
+def test_a_guild_spy_played_in_an_agent_turn_does_not_react() -> None:
+    # "방금 reveal한 card들의 Reveal box 효과만 얻는다. 앞선 Agent turn에 낸
+    # card의 Reveal box 효과는 얻지 않는다." [Main p. 12]
+    # (docs/rules/player-turns.md): a Guild Spy sent with an Agent is in
+    # play but was not revealed, so The Spice Must Flow bought in the Reveal
+    # gives it nothing (general rules audit 2026-10-25).
+    guild_spy = next(
+        card for card in imperium_deck_instance_ids(False) if ":guild_spy:" in card
+    )
+    state = _reveal_state(
+        _instance("convincing_argument", 0),
+        _instance("convincing_argument", 1),
+        _instance("dune_the_desert_planet", 0),
+        _instance("dune_the_desert_planet", 1),
+        _instance("diplomacy"),
+        in_play=(guild_spy,),
+    )
+    owner = replace(
+        state.players[0],
+        spies_supply=1,
+        spy_post_ids=(
+            "emperor-sardaukar-dutiful-service",
+            "spacing-guild-heighliner-deliver-supplies",
+        ),
+    )
+    # Persuasion enough for The Spice Must Flow without the Spy's own.
+    frame = state.decision_stack[-1]
+    context = {**dict(frame.context), "persuasion": 9}
+    state = replace(
+        state,
+        players=(owner, *state.players[1:]),
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+    action = next(
+        action
+        for action in legal_reserve_acquisitions(state, 0)
+        if dict(action.arguments)["card_id"] == "the_spice_must_flow"
+    )
+
+    result = apply_reserve_acquisition(state, action)
+
+    assert result.state.players[0].influence.emperor == 0
+    assert result.state.players[0].influence.spacing_guild == 0
+    assert [event.kind for event in result.events] == ["card_acquired"]
 
 
 def test_guild_spy_bumps_once_per_reveal_and_a_late_guild_spy_still_reacts() -> None:
