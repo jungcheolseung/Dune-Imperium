@@ -1181,8 +1181,8 @@ def test_a_scouts_cost_line_needs_a_reward_that_can_happen() -> None:
     from dune_imperium.content.immortality.board import (
         RESEARCH_SPACES,
         SECOND_GENETIC_MARKER_COLUMN,
+        TLEILAXU_TRACK_END,
     )
-    from dune_imperium.rules.immortality import TLEILAXU_TRACK_END
     from dune_imperium.rules.scouts_effects import line_is_offered
 
     immortality = RulesetConfig(arrakeen_scouts=True, immortality=True)
