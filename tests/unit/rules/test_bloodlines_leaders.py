@@ -345,6 +345,34 @@ def test_fedaykin_maneuver_draw_shuffles_the_discard_when_the_deck_is_short() ->
     assert paid.players[0].resources.water == 0
 
 
+def test_fedaykin_maneuver_draw_needs_a_card_to_draw() -> None:
+    # "water -> [draw][draw]" is a cost line: OQ-071's card extension ("이제
+    # 카드·보드·Leader의 비용 줄도 같다"; Ecological Testing Station's "2 water
+    # -> draw 2" needs a card in the deck or discard pile) blocks it with both
+    # piles empty, as OQ-099 keeps it (engine audit 2026-10-22, P9).
+    from dune_imperium.rules.effects import OptionalBlockKind
+    from dune_imperium.rules.leader_abilities import signet_optional_block
+
+    owner = PlayerState(
+        player_id=0,
+        leader_id="chani",
+        hand=(SIGNET,),
+        deck=(),
+        discard_pile=(),
+        resources=Resources(water=1),
+        influence=Influence(fremen=2),
+    )
+    state = _play(_turn_state(owner), SIGNET, "arrakeen")
+
+    ids = {a.action_id for a in legal_leader_signet_actions(state, 0)}
+
+    assert "pay_leader_signet_water" not in ids
+    block = signet_optional_block(state, 0)
+    assert block is not None
+    assert block.also is not None
+    assert block.also.kind is OptionalBlockKind.NO_CARD_TO_DRAW
+
+
 def _deploy_two_then_fedaykin_retreat(count: int) -> GameState:
     """Chani at Arrakeen: deploy two garrison troops, then retreat ``count``."""
 

@@ -1589,7 +1589,10 @@ def _chroniclers_insight_choices(
 
 def _fedaykin_draw_block(owner: PlayerState) -> OptionalEffectBlock | None:
     """Fedaykin Maneuver's draw: two Fremen Influence and one water [Chani
-    card]."""
+    card], and a card to draw: a cost line is offered only when its reward
+    can change something (OQ-071's card extension, "이제 카드·보드·Leader의
+    비용 줄도 같다", as Ecological Testing Station's "2 water -> draw 2";
+    engine audit 2026-10-22, P9)."""
 
     if owner.influence.fremen < 2:
         return OptionalEffectBlock(
@@ -1598,7 +1601,12 @@ def _fedaykin_draw_block(owner: PlayerState) -> OptionalEffectBlock | None:
             held=owner.influence.fremen,
             faction=Faction.FREMEN.value,
         )
-    return short_of(OptionalBlockKind.WATER, 1, owner.resources.water)
+    water = short_of(OptionalBlockKind.WATER, 1, owner.resources.water)
+    if water is not None:
+        return water
+    if not (owner.deck or owner.discard_pile):
+        return OptionalEffectBlock(OptionalBlockKind.NO_CARD_TO_DRAW)
+    return None
 
 
 def _into_the_fray_block(
