@@ -598,6 +598,62 @@ def test_slig_farmer_offers_no_track_step_at_the_tleilaxu_track_end() -> None:
     assert resolved.state.players[0].tleilaxu_space == 7
 
 
+@pytest.mark.parametrize("placed_farmer", [True, False])
+def test_slig_farmer_counts_a_boosted_partners_all_eight_icons(
+    placed_farmer: bool,
+) -> None:
+    # Urgent Shigawire: "The next Bene Gesserit card you play this round has
+    # all Agent icons" [Urgent Shigawire card] -- the eight kinds, Spy
+    # included [Main p. 9] (docs/rules/player-turns.md) -- and OQ-055: "그
+    # 순간 상대 카드가 가진 Agent 아이콘 전부를 센다". Shrouded Counsel prints
+    # the Spy icon alone; boosted, placed or as the partner (OQ-107), it gave
+    # Slig Farmer one Solari (engine audit 2026-10-22, P7; user confirmation
+    # 2026-10-25 "Slig Farmer가 세게 해야지").
+    farmer = _tleilaxu("slig_farmer")
+    counsel = "imperium:shrouded_counsel:0"
+    state = _state(
+        _owner(
+            (farmer, counsel),
+            resources=Resources(solari=0),
+            bene_gesserit_boost_pending=True,
+        ),
+        config=RulesetConfig(bloodlines=True, immortality=True),
+    )
+    if placed_farmer:
+        grafted = _graft(state, farmer, "assembly_hall", counsel)
+    else:
+        grafted = _switch(_graft(state, counsel, "assembly_hall", farmer))
+
+    resolved = resolve_agent_card_effect(grafted)
+
+    assert resolved.state.players[0].resources.solari == 8
+
+
+def test_slig_farmer_counts_the_icon_emperors_invitation_gave_the_turn() -> None:
+    # Emperor's Invitation: "The card you play this turn has the [Emperor]
+    # icon"; both grafted cards are played (OQ-107), and an added icon counts
+    # (OQ-055): the Dagger's Landsraad and the Emperor make two (engine audit
+    # 2026-10-22, P7).
+    farmer = _tleilaxu("slig_farmer")
+    invited = _graft(
+        _state(
+            _owner(
+                (farmer, DAGGER),
+                resources=Resources(solari=0),
+                granted_agent_icon_turn="emperor",
+            ),
+            config=RulesetConfig(bloodlines=True, immortality=True),
+        ),
+        farmer,
+        "assembly_hall",
+        DAGGER,
+    )
+
+    resolved = resolve_agent_card_effect(invited)
+
+    assert resolved.state.players[0].resources.solari == 2
+
+
 def test_slig_farmer_counts_mohiams_clandestine_spy_icon() -> None:
     # Clandestine: "Each card you play has the [Spy] icon" [Gaius Helen
     # Mohiam card]; Slig Farmer counts every Agent icon the other grafted

@@ -118,7 +118,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     UnitsInConflictAtLeast,
 )
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -150,6 +150,7 @@ from dune_imperium.rules.effects import (
     advance_after_effect,
     agent_card_source,
     arm_agent_icons,
+    boosted_cards,
     current_agent_effect_context,
     finish_agent_icon,
     is_grafted,
@@ -2386,7 +2387,7 @@ def partner_icon_count(state: GameState, context: Mapping[str, ActionValue]) -> 
     opponents = tuple(seat for seat in state.players if seat.player_id != player)
     # Long Reach in play does not count as its own "another Bene Gesserit
     # card in play" [Long Reach card].
-    return len(
+    icons = set(
         effective_agent_icons(
             personal_card_for_instance(partner),
             owner,
@@ -2395,6 +2396,20 @@ def partner_icon_count(state: GameState, context: Mapping[str, ActionValue]) -> 
             card_instance_id=partner,
         )
     )
+    # "그 순간 상대 카드가 가진 Agent 아이콘 전부를 센다" (OQ-055, user ruling
+    # "추가된 Agent 아이콘도 세는 게 맞다"): a card that took Urgent
+    # Shigawire's boost "has all Agent icons" [Urgent Shigawire card], the
+    # eight kinds Spy included [Main p. 9] (docs/rules/player-turns.md), and
+    # Emperor's Invitation and Twisted Resourceful give "the card you play
+    # this turn" theirs -- both grafted cards are played (OQ-107). User
+    # confirmation 2026-10-25 ("P7의 너의 해석이 맞다고 봐. Slig Farmer가
+    # 세게 해야지"; engine audit 2026-10-22, P7).
+    if partner in boosted_cards(context):
+        icons.update(AgentIcon)
+    icons.update(
+        AgentIcon(value) for value in owner.granted_agent_icon_turn.split(",") if value
+    )
+    return len(icons)
 
 
 def plain_and_paid_block(state: GameState, player: int) -> AgentPaymentBlock | None:

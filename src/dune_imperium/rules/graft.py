@@ -50,7 +50,9 @@ from dune_imperium.rules.agent_turn import (
 )
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.effects import (
+    BOOSTED_CARDS_KEY,
     add_boost_draw,
+    boosted_cards,
     borrowed_agent_card,
     current_agent_effect_context,
     pending_boost_draws,
@@ -247,6 +249,9 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
     if partner_boosted:
         # The added draw waits for its own step, box 1's (OQ-106, OQ-107).
         add_boost_draw(effect_context, partner_id)
+        effect_context[BOOSTED_CARDS_KEY] = ",".join(
+            (*boosted_cards(effect_context), partner_id)
+        )
     # Ghola "copies the entire Agent box of the card it's grafted to"
     # [Immortality p. 14], and the boosted card's draw was "added to its
     # Agent box" [Urgent Shigawire card]: the copy has it too, as its own

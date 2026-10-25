@@ -61,7 +61,11 @@ from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
 )
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
-from dune_imperium.rules.effects import BOOST_DRAW_KEY, open_next_turn
+from dune_imperium.rules.effects import (
+    BOOST_DRAW_KEY,
+    BOOSTED_CARDS_KEY,
+    open_next_turn,
+)
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
     TECH_ACQUIRE_PENDING_KEY,
@@ -730,7 +734,14 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                         "existing_troop_deployment_limit",
                         2 if combat_space or owner.combat_icon_turn else 0,
                     ),
-                    *(((BOOST_DRAW_KEY, card_instance_id),) if boosted else ()),
+                    *(
+                        (
+                            (BOOST_DRAW_KEY, card_instance_id),
+                            (BOOSTED_CARDS_KEY, card_instance_id),
+                        )
+                        if boosted
+                        else ()
+                    ),
                     ("pending_agent_effect", agent_effect_pending),
                     ("pending_agent_icons", agent_icons),
                     ("pending_board_effect", bool(board_icons)),
