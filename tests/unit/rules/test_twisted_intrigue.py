@@ -268,8 +268,13 @@ def test_calculating_pays_per_unit_type_in_the_conflict() -> None:
         sandworms_conflict=1,
         combat_strength=7,
     )
-    done = apply_whole(ENGINE, _turn_state(owner), _play(card)).state
-    assert done.players[0].resources.solari == 3
+    played = apply_whole(ENGINE, _turn_state(owner), _play(card))
+    assert played.state.players[0].resources.solari == 3
+    # The Solari leaves the one resource-gain event (user decision
+    # 2026-10-17, composed-effects plan 5, rule decision 3; engine audit
+    # 2026-10-22, P10).
+    gained = [event for event in played.events if event.kind == "resources_gained"]
+    assert [dict(event.payload)["solari"] for event in gained] == [3]
 
 
 

@@ -922,6 +922,10 @@ def apply_tech_flip(state: GameState, action: DomainAction) -> RuleResult:
                     working = replace(
                         working, players=replace_player(working.players, seat)
                     )
+                    # Spy Drones' Solari leaves the one resource-gain event
+                    # (user decision 2026-10-17, composed-effects plan 5,
+                    # rule decision 3; engine audit 2026-10-22, P11).
+                    events.append(resources_gained_event(source, player, solari=solari))
                 case TrashPersonalCard():
                     working = open_optional_trash(
                         working,

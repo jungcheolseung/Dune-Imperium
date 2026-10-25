@@ -1499,6 +1499,12 @@ def apply_rewards(
                         owner.resources, solari=owner.resources.solari + kinds
                     ),
                 )
+                if kinds:
+                    # The one resource-gain event, as every line's gain
+                    # (user decision 2026-10-17, composed-effects plan 5,
+                    # rule decision 3; engine audit 2026-10-22, P10).
+                    gain_at = len(events) if gain_at is None else gain_at
+                    gains["solari"] += kinds
             case PassTurn():
                 passes_turn = True
             case PermanentRevealPersuasion(amount=amount):

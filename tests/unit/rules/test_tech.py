@@ -2423,6 +2423,11 @@ def test_flip_tiles_are_offered_once_per_round_and_return_at_round_start() -> No
     )
     assert drones.state.players[0].resources.solari == 4 + 1
     assert drones.state.decision_stack[-1].kind == "turn"
+    # The Solari leaves the one resource-gain event (user decision
+    # 2026-10-17, composed-effects plan 5, rule decision 3; engine audit
+    # 2026-10-22, P11).
+    gained = [event for event in drones.events if event.kind == "resources_gained"]
+    assert [dict(event.payload)["solari"] for event in gained] == [1]
     recalled = replace(
         flipped,
         players=(
