@@ -541,14 +541,16 @@ def test_a_card_with_no_playable_option_is_spent_without_effect() -> None:
     assert dropped.events[0].kind == "navigation_exhausted"
 
 
-def test_a_card_with_nothing_playable_opens_with_only_the_spend() -> None:
+def test_a_card_with_only_a_fizzling_free_option_opens_with_that_option() -> None:
     # Card 2 places a Spy, or recalls one for an Intrigue card and 2 spice;
     # with every Spy in the box (Advanced Data Analysis, Tech Module)
-    # neither can happen. The card is still spent without effect (OQ-039
-    # (b)), but no longer unasked: the window opens with decline_navigation
-    # alone (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도
-    # 모두 결정 창을 연다"), and the event says it fizzled. The options show
-    # greyed out with their reasons meanwhile.
+    # neither can happen. The Spy placement has no cost, so it is the card's
+    # mandatory play and fizzles: the window opens with play_navigation for it
+    # alone, not decline_navigation (OQ-113 (C), user ruling 2026-10-24;
+    # 2026-10-06 the card was spent through decline_navigation alone, OQ-039
+    # (b), and the window was kept open by the user ruling 2026-09-30, "결정
+    # 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"). The recall
+    # option, with its cost, shows greyed out with its reason.
     from dune_imperium.display.unavailable import unavailable_choices
 
     owner = _steersman(
@@ -560,33 +562,41 @@ def test_a_card_with_nothing_playable_opens_with_only_the_spend() -> None:
     tech = RulesetConfig(bloodlines=True, tech_module=True)
     opened = _reach_two(_turn_state(owner, config=tech), Faction.EMPEROR)
     assert opened.decision_stack[-1].kind == "navigation_choice"
-    decline = DomainAction(action_id="decline_navigation", actor=0)
-    assert ENGINE.whole_actions(opened, 0) == (decline,)
-    found = unavailable_choices(opened, 0, (decline,))
+    play = DomainAction(
+        action_id="play_navigation", actor=0, arguments=(("option", 0),)
+    )
+    assert ENGINE.whole_actions(opened, 0) == (play,)
+    found = unavailable_choices(opened, 0, (play,))
     assert found is not None
     listed = found["rows"]
     assert isinstance(listed, list)
     rows = {row["key"]: row for row in listed}
-    assert set(rows) == {"choice:play_navigation:0", "choice:play_navigation:1"}
+    assert set(rows) == {"choice:play_navigation:1"}
     assert rows["choice:play_navigation:1"]["reason"] == (
         "Needs 1 Spy on the board (you have 0)"
     )
     assert all(row["surface"] == "choice" for row in rows.values())
 
-    spent = apply_navigation_play(opened, decline)
-    seat = spent.state.players[0]
-    assert seat.navigation_played == (_card(2),)
-    assert seat.navigation_slots == (_card(5),)
-    assert seat.navigation_active_slot == 0
-    assert spent.state.decision_stack[-1].kind == "turn"
-    [event] = spent.events
+    played = apply_navigation_play(opened, play)
+    [event] = played.events
     assert event.kind == "navigation_card_played"
     assert dict(event.payload) == {
         "card_id": _card(2),
         "faction": "emperor",
-        "fizzled": 1,
+        "option": 0,
         "player": 0,
+        "slot": 1,
     }
+    # No Spy to place: the placement window only declines.
+    assert played.state.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    decline = DomainAction(action_id="decline_intrigue_spy", actor=0)
+    assert ENGINE.whole_actions(played.state, 0) == (decline,)
+    spent = apply_whole(ENGINE, played.state, decline).state
+    seat = spent.players[0]
+    assert seat.navigation_played == (_card(2),)
+    assert seat.navigation_slots == (_card(5),)
+    assert seat.navigation_active_slot == 0
+    assert spent.decision_stack[-1].kind == "turn"
 
 
 def test_card_ten_arrow_cost_may_be_declined_and_the_card_is_spent() -> None:
@@ -646,21 +656,19 @@ def test_card_five_pays_spice_for_trashing_a_costed_card() -> None:
 
 
 # A Navigation option is judged as an Intrigue option is: its condition, its
-# cost, and an effect that can change something now ("To play an Intrigue
-# card, you must meet its conditions and pay its costs." [FAQ p. 2], with
-# the user's ruling of 2026-10-06; for Navigation a project convention,
-# OQ-039). A card with no such option is spent through decline_navigation
-# (OQ-039 (b)).
+# cost, and, for a line with a cost, an effect that can change something now
+# ("To play an Intrigue card, you must meet its conditions and pay its
+# costs." [FAQ p. 2], with the user's ruling of 2026-10-24, OQ-113 (C),
+# "비용을 낸 것만 보장"; for Navigation a project convention, OQ-039). A card
+# with no such option is spent through decline_navigation (OQ-039 (b)); a
+# line without a cost is played even when it fizzles, and is then the card's
+# mandatory play.
 
-_DECLINE = DomainAction(action_id="decline_navigation", actor=0)
 
-
-def _spent_kind(state: GameState) -> str:
-    """Whether declining spends the card as "fizzled" or as "declined"."""
-
-    [event] = apply_navigation_play(state, _DECLINE).events
-    payload = dict(event.payload)
-    return "fizzled" if payload.get("fizzled") == 1 else "declined"
+def _play_navigation(option: int) -> DomainAction:
+    return DomainAction(
+        action_id="play_navigation", actor=0, arguments=(("option", option),)
+    )
 
 
 def test_card_four_spice_must_flow_line_is_not_offered_with_the_stack_empty() -> None:
@@ -677,17 +685,30 @@ def test_card_four_spice_must_flow_line_is_not_offered_with_the_stack_empty() ->
     )
 
 
-def test_card_five_with_nothing_to_trash_offers_only_the_spend() -> None:
+def test_card_five_with_nothing_to_trash_offers_its_fizzling_trash() -> None:
+    # The trash has no cost, so with nothing to trash it is still the card's
+    # mandatory play and fizzles, the window offering only to decline the
+    # trash (OQ-113 (C), user ruling 2026-10-24; 2026-10-06 the card could
+    # only be spent through decline_navigation).
     owner = _steersman((_card(5),), influence=Influence(emperor=1))
     opened = _reach_two(_turn_state(owner), Faction.EMPEROR)
-    assert legal_navigation_play_actions(opened, 0) == (_DECLINE,)
-    assert _spent_kind(opened) == "fizzled"
+    assert legal_navigation_play_actions(opened, 0) == (_play_navigation(0),)
+    played = _play_option(opened, 0)
+    assert played.decision_stack[-1].kind == FrameKind.INTRIGUE_CHOICE
+    decline = DomainAction(action_id="decline_intrigue_trash", actor=0)
+    assert ENGINE.whole_actions(played, 0) == (decline,)
+    spent = apply_whole(ENGINE, played, decline).state
+    assert spent.players[0].navigation_played == (_card(5),)
+    assert spent.players[0].resources.spice == 0
+    assert spent.decision_stack[-1].kind == "turn"
 
 
-def test_card_six_with_an_empty_supply_offers_only_the_spend() -> None:
+def test_card_six_with_an_empty_supply_offers_only_the_free_recruit() -> None:
     # Neither option can recruit with no troop in the supply, in Combat or
-    # in a player turn: a recorded shortfall does not count (main-session
-    # decision on the 2026-10-06 ruling).
+    # in a player turn: a recorded shortfall does not count. Option 0 has no
+    # cost, so it is offered and fizzles, while option 1 (3 Solari -> recruit
+    # 3) keeps its cost line blocked (OQ-113 (C), user ruling 2026-10-24;
+    # 2026-10-06 the card could only be spent through decline_navigation).
     owner = _steersman(
         (_card(6),),
         influence=Influence(emperor=1),
@@ -700,8 +721,11 @@ def test_card_six_with_an_empty_supply_offers_only_the_spend() -> None:
         _turn_state(owner, phase=GamePhase.COMBAT, decision_stack=()), Faction.EMPEROR
     )
     for opened in (turn, combat):
-        assert legal_navigation_play_actions(opened, 0) == (_DECLINE,)
-        assert _spent_kind(opened) == "fizzled"
+        assert legal_navigation_play_actions(opened, 0) == (_play_navigation(0),)
+        played = apply_navigation_play(opened, _play_navigation(0))
+        assert "troops_recruit_short" in [event.kind for event in played.events]
+        assert played.state.players[0].troops_garrison == 12
+        assert played.state.players[0].navigation_played == (_card(6),)
     # A troop in the supply: both options play.
     stocked = replace(owner, troops_supply=1, troops_garrison=11)
     opened = _reach_two(
@@ -719,7 +743,9 @@ def test_card_six_counts_a_specimen_only_where_it_can_become_a_troop() -> None:
     # owner's own decisions (OQ-050). In the owner's turn the recorded
     # shortfall is made up when it does (OQ-030), so both options play; a
     # Navigation choice opened in Combat has no return and drops the
-    # shortfall at once, so a specimen does not make the recruit count.
+    # shortfall at once, so a specimen does not make the recruit count: only
+    # the cost-free option 0 is offered there, fizzling (OQ-113 (C), user
+    # ruling 2026-10-24).
     owner = _steersman(
         (_card(6),),
         influence=Influence(emperor=1),
@@ -740,23 +766,35 @@ def test_card_six_counts_a_specimen_only_where_it_can_become_a_troop() -> None:
         ),
         Faction.EMPEROR,
     )
-    assert legal_navigation_play_actions(combat, 0) == (_DECLINE,)
-    assert _spent_kind(combat) == "fizzled"
+    assert legal_navigation_play_actions(combat, 0) == (_play_navigation(0),)
+    played = apply_navigation_play(combat, _play_navigation(0))
+    assert "troops_recruit_short" in [event.kind for event in played.events]
+    assert played.state.players[0].specimens == 1
 
 
-def test_card_nine_with_nothing_to_draw_offers_only_the_spend_or_the_vp_line() -> None:
+def test_card_nine_with_nothing_to_draw_offers_its_fizzling_draw_or_the_vp_line() -> (
+    None
+):
+    # The draw has no cost, so with nothing to draw it is still offered, and
+    # is the card's mandatory play; the 5-spice VP line is another option
+    # when affordable (OQ-113 (C), user ruling 2026-10-24; 2026-10-06 the
+    # card could only be spent through decline_navigation).
     owner = _steersman((_card(9),), influence=Influence(fremen=1))
     poor = _reach_two(_turn_state(owner), Faction.FREMEN)
-    assert legal_navigation_play_actions(poor, 0) == (_DECLINE,)
-    assert _spent_kind(poor) == "fizzled"
+    assert legal_navigation_play_actions(poor, 0) == (_play_navigation(0),)
+    spent = apply_navigation_play(poor, _play_navigation(0))
+    assert spent.state.players[0].hand == ()
+    assert spent.state.players[0].navigation_played == (_card(9),)
     rich = _reach_two(
         _turn_state(replace(owner, resources=Resources(spice=5))), Faction.FREMEN
     )
     assert legal_navigation_play_actions(rich, 0) == (
-        DomainAction(action_id="play_navigation", actor=0, arguments=(("option", 1),)),
-        _DECLINE,
+        _play_navigation(0),
+        _play_navigation(1),
     )
-    assert _spent_kind(rich) == "declined"
+    paid = apply_navigation_play(rich, _play_navigation(1)).state
+    assert paid.players[0].resources.spice == 0
+    assert paid.players[0].victory_points == rich.players[0].victory_points + 1
 
 
 def test_two_triggers_in_one_effect_open_one_play_at_a_time() -> None:

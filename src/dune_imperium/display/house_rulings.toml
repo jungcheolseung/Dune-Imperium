@@ -258,7 +258,6 @@ title_ko = "Call to Arms는 발동해도 바뀔 것이 없어도 낸다"
 title = "Call to Arms may be played even if it would change nothing"
 ruling_ko = "Call to Arms는 비용이 없으므로, 소집할 병력이 없거나 더 획득할 카드가 없어도 낼 수 있다."
 ruling = "Call to Arms has no cost, so it may be played even with no troop to recruit or nothing left to acquire."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-016 (e)"
@@ -605,7 +604,6 @@ title_ko = "운항 카드 줄을 쓸 수 있는 조건"
 title = "When a Navigation option is usable"
 ruling_ko = "운항 카드 줄도 책략과 같은 기준이다: 비용이 있는 줄은 보상 하나가 살아 있어야 쓰고, 비용 없는 줄은 불발해도 쓴다."
 ruling = "Navigation options follow the Intrigue rule: an option with a cost needs a reward that can still do something; one without a cost may be used and fizzle."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-040"
@@ -633,7 +631,6 @@ title_ko = "반중력 의복의 \"자기 차례\"와 배치 부족"
 title = "Suspensor Suits: \"your turn\" and shortfalls"
 ruling_ko = "반중력 의복은 자기 에이전트 차례나 공개 차례에 책략을 뽑거나 훔칠 때만 병력 1을 소집해 교전 칸에 배치한다(전투 보상·종료 단계·다른 플레이어의 차례는 세지 않고, 책략 카드덱에서 바로 가져오는 효과는 센다). 배치가 막혔으면 그 병력은 주둔지에 남는다. 개인 공급처가 모자라면 모자란 만큼 기록해 두었다가, 같은 차례 안에 개인 공급처로 병력이 돌아오면 곧바로 소집해 교전 칸에 배치한다."
 ruling = "Suspensor Suits recruits a troop and deploys it to the Conflict only for Intrigue cards drawn or stolen in your own Agent or Reveal turn (not in Combat rewards, the Endgame or another player's turn; effects taking straight from the Intrigue Deck count). With a deployment ban the troop stays in your garrison. What the supply cannot cover is noted, and if troops come back to your supply later in the same turn they are recruited and deployed at once."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-043"
@@ -715,7 +712,6 @@ title_ko = "마지막 칸에서도 내는 비용 없는 책략"
 title = "Cost-free Intrigue cards still played at the track's end"
 ruling_ko = "비용이 없는 불법 거래와 은밀한 협상의 종료 단계 줄은 틀레이락스 트랙 마지막 칸에서도 낸다(전진은 불발)."
 ruling = "Illicit Dealings and Shadowy Bargain's Endgame option, which cost nothing, can be played at the track's last space too; the advance fizzles."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-049"
@@ -852,7 +848,6 @@ ruling_ko = "Inspire Awe는 비용이 없으므로 비용 3 이하로 얻을 카
 ruling = "Inspire Awe has no cost, so it may be played with nothing to acquire for 3 or less; the acquisition fizzles."
 sources_ko = "공식·디자이너는 말하지 않음. 앱은 얻을 카드가 없으면 막는 것으로 보인다(코드 읽기 추정)."
 sources = "The official documents and the designer are silent. The app seems to block it (read from its code, not confirmed)."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-057 (7)"
@@ -977,7 +972,6 @@ title_ko = "비용 없는 줄이 불발해도 \"쓴 줄\""
 title = "A cost-free line that fizzles still counts as used"
 ruling_ko = "비용 없는 줄은 불발해도 낼 때 해결하고 쓴 줄로 센다(예: 아라키스를 향해의 우주 항행 길드 3 뽑기가 두 더미가 비어 불발해도)."
 ruling = "A cost-free line resolves as the card is played and counts as used even if it fizzles (Depart for Arrakis's Spacing Guild 3 draw with both piles empty, say)."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-059"
@@ -1005,7 +999,6 @@ title_ko = "네 진영이 모두 6일 때 급속 공학의 영향력 줄"
 title = "Rapid Engineering's Influence line with every Faction at 6"
 ruling_ko = "비용이 없는 급속 공학의 기술 타일 3개 줄(진영 둘 영향력)은 네 진영이 모두 6이어도 낸다(불발)."
 ruling = "Rapid Engineering's cost-free three-Tech line (two Factions' Influence) may be played with all four Factions at 6; it fizzles."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-060 (c)"
@@ -1481,7 +1474,6 @@ ruling_ko = "개인 공급처가 비고 도시 관측소가 모두 찼어도, �
 ruling = "With your supply empty and every City post taken, Special Mission's City Spy option may still be played if your Spy alone holds one of them (recall it and place it back); having already recalled this turn does not stop it, as it has no cost."
 sources_ko = "공식 문서는 말하지 않음. 앱은 빈 도시 관측소가 있어야만 내놓는다."
 sources = "The official documents are silent. The app offers it only with an empty City post."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-102"
@@ -1572,7 +1564,6 @@ title_ko = "행성 군사력의 카드를 뽑는 때"
 title = "When Planetary Array's card is drawn"
 ruling_ko = "행성 군사력의 카드는 이긴 데 걸린 효과라서 승자의 보상 창에서 뽑는다(2위 보상보다 앞). 승자가 교전 카드를 가져가 배틀 아이콘을 확인하는 것은 그대로 모든 순위 보상 뒤이고, 그다음 병력 반환·교전 끝 창·나머지 정리를 한다."
 ruling = "Planetary Array's card is an effect of winning, so it is drawn in the winner's reward window, before the second place is paid. The winner still takes the Conflict card and checks its battle icon after every place's reward, then troops go home, the Conflict-end window opens and clean-up finishes."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-109"
@@ -1620,7 +1611,6 @@ ruling_ko = "책략은 인쇄 조건을 갖추고 비용을 내야 낸다. 비�
 ruling = "An Intrigue card needs its printed condition and its cost. A line with a cost (resources left of an arrow, a card discarded or trashed, a troop lost, a Spy recalled...) can be played only when one of its rewards can still change something; effects with no cost may be played and all fizzle, the card itself being no cost. Such a play shows nothing hidden, so it can be taken back, and you are warned that it would do nothing before you click. The base game and Rise of Ix use the same rule."
 sources_ko = "디자이너의 일반 판정과 앱의 카드별 처리가 카드마다 반대로 갈려 어느 쪽도 통째로 따르지 않았다. 비용 줄은 디자이너와 같고, 앱과는 카드마다 다르다."
 sources = "The designer's general rulings and the app's per-card handling disagree card by card, so neither is followed wholesale; lines with a cost match the designer, and the app differs card by card."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-113 (2) 1"
@@ -1633,7 +1623,6 @@ ruling = "Counterattack's, Detonation's and Devious's \"Deploy up to N troops fr
 names = ["Devious"]
 sources_ko = "디자이너 판정 \"zero is a number\"(따름) — 앱은 배치할 부대가 있어야 내놓는다."
 sources = "The designer's \"zero is a number\" (followed); the app offers it only with a unit to deploy."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-113 (2)"
@@ -1644,7 +1633,6 @@ title = "Cost-free Intrigue cards may fizzle: the cases"
 ruling_ko = "Honor Guard(병력도 할인도 쓸 데가 없을 때 — \"하나는 해야 한다\"는 둘 다 거절할 수 없다는 뜻이고 불발은 거절이 아니다), 뒤틀린 책략 Withdrawn(다른 좌석이 모두 공개했을 때, 넘긴 차례가 곧바로 돌아온다), 세포 수확(잃은 병력이 지휘관뿐이라 표본을 만들 수 없을 때), 뒤틀린 책략 Controlled(덱이 비었을 때), Devious의 의무 폐기(핸드가 비었을 때), False Orders(이번 차례에 아직 에이전트를 보내지 않았거나, 옮길 스파이도 빈 관측소도 없을 때 — 먼저 내 두었다가 나중 배치에 적용하지는 않는다)."
 ruling = "Honor Guard with neither its troop nor its discount usable (\"perform at least one\" means you cannot decline both, and fizzling is not declining); Withdrawn when every other seat has revealed (the passed turn comes straight back); Harvest Cells when only Commanders were lost and no specimen can be made; Controlled with an empty deck; Devious's mandatory trash with an empty hand; False Orders before you have sent an Agent this turn, or with no Spy to move and no post to fill (it is not held for a later placement)."
 names = ["Honor Guard", "Withdrawn", "Controlled", "Devious"]
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-113 (뽑기)"
@@ -1656,7 +1644,6 @@ ruling_ko = "Intelligence Report, Cunning의 무료 뽑기 줄, 황제의 초대
 ruling = "Cost-free draws (Intelligence Report, Cunning's free draw, Emperor's Invitation's draw, Breakthrough past two genetic markers) may be played with both your deck and discard pile empty."
 sources_ko = "디자이너 판정 \"뽑을 카드가 없어도 낸다\"(따름) — 앱은 뽑을 카드가 있어야 낸다."
 sources = "The designer's \"even with zero cards left to draw\" (followed); the app needs a card to draw."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-113 (비용 줄)"

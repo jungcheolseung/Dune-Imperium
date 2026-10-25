@@ -1414,6 +1414,56 @@ def test_cunning_trash_can_be_taken_back_and_its_draw_cannot() -> None:
     assert [row for row in _rows(summary["undo"]) if row["seat"] == 0] == []
 
 
+def test_an_intrigue_play_without_effect_is_warned_and_can_be_taken_back() -> None:
+    """OQ-113 (C) and (5), user ruling 2026-10-24: a cost-free line is played
+    even when every reward fizzles, the page warns before the click ("지금
+    내면 아무 효과가 없다"), and the play reveals nothing new, so it stays
+    in the seat's undo window ("되돌리기가 가능한게 중요해").
+
+    Seed 0: seat 0's first turn, given Intelligence Report ("Draw 1 card"
+    [Intelligence Report card]) by hand with an empty deck and discard pile.
+    """
+
+    report = "intrigue:intelligence_report:0"
+    manager = GameSessionManager()
+    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    game_id = str(summary["game_id"])
+    session = manager._get(game_id)
+    owner = session.state.players[0]
+    session.state = replace(
+        session.state,
+        intrigue_deck=tuple(c for c in session.state.intrigue_deck if c != report),
+        players=(
+            replace(owner, intrigue_cards=(report,), deck=(), discard_pile=()),
+            *session.state.players[1:],
+        ),
+    )
+    summary = manager.summary(game_id)
+
+    play = next(
+        row
+        for row in _rows(manager.legal_actions(game_id, 0)["actions"])
+        if row["action_id"] == "play_intrigue"
+        and row["arguments"] == {"card_id": report, "option": 0}
+    )
+    assert play["warning"] == "지금 내면 아무 효과가 없음"
+    assert play["shortfall"] == [{"kind": "no_effect", "requested": 0, "made": 0}]
+    assert play["undoable"] is True
+    hand = owner.hand
+
+    summary = _play_raw(manager, summary, index=_int(play["index"]))
+    played = manager._get(game_id).state
+    assert played.players[0].hand == hand
+    assert report in played.intrigue_discard
+    assert "intrigue_without_effect" in [
+        event["kind"]
+        for entry in _rows(manager.log(game_id, 0)["entries"])
+        if entry["type"] == "action"
+        for event in _rows(entry["events"])
+    ]
+    assert [row for row in _rows(summary["undo"]) if row["seat"] == 0]
+
+
 # ------------------------------------------------ Long Live the Fighters
 
 

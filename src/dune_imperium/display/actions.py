@@ -27,6 +27,7 @@ from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
+    DrawPersonalCards,
     EffectSection,
     GainInfluence,
     GainResources,
@@ -658,6 +659,14 @@ def combat_reward_icon_action_text(
     multiplier = context["multiplier"]
     assert isinstance(rank, int) and isinstance(multiplier, int)
     kind = str(dict(action.arguments)["effect"])
+    if kind == "planetary_array":
+        # Planetary Array's "When you win a Conflict: draw a card", a row of
+        # the winner's window (OQ-121); never doubled by a sandworm.
+        draw = DrawPersonalCards(count=1)
+        return (
+            f"{_PLANETARY_ARRAY}: {reward_text(draw)}",
+            f"{_PLANETARY_ARRAY_KO}: {reward_text_ko(draw)}",
+        )
     piece = reward_icon_piece(state.current_conflict_ids[-1], rank, kind)
     match piece:
         case EffectSection():
@@ -782,6 +791,8 @@ def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
 # Tech tile by its catalog name; Leader abilities keep their printed English
 # name.
 _CHOAM_TRANSPORTS = TECH_TILES_BY_ID["choam_transports"].name
+_PLANETARY_ARRAY = TECH_TILES_BY_ID["planetary_array"].name
+_PLANETARY_ARRAY_KO = KOREAN_CARD_NAMES["tech"].get("planetary_array", _PLANETARY_ARRAY)
 _OWED_ORIGINS: dict[str, tuple[str, str]] = {
     "bene_gesserit_4": (
         "Bene Gesserit Influence 4",

@@ -924,7 +924,8 @@ def test_shortfall_warning_reports_shortfalls_with_nothing_to_choose() -> None:
 def test_serialized_actions_warn_about_shortfalls_with_nothing_to_choose() -> None:
     """L2-Q4 through the dry run of the real steps: the Assembly Hall draw
     with both Intrigue piles empty, the same draw paying Suspensor Suits'
-    troop from an empty supply, and the turn-end press over a held Contract
+    troop from an empty supply (a recruit shortfall since the OQ-042
+    re-ruling of 2026-10-25), and the turn-end press over a held Contract
     icon (the press itself confirms the fizzle, OQ-059; this is only the
     warning). The warning reads nothing hidden: a seat-0 determinization
     of the state words it the same."""
@@ -1034,19 +1035,19 @@ def test_serialized_actions_warn_about_shortfalls_with_nothing_to_choose() -> No
     intrigue = intrigue_deck_instance_ids(True, bloodlines=True)
     no_troops = placed(tech, suits, intrigue_deck=intrigue[:3], intrigue_discard=())
     assert warnings(no_troops)["resolve_board_effect"] == (
-        "반중력 의복: 병력 1개 중 0개만 배치",
-        [{"kind": "suspensor", "requested": 1, "made": 0}],
+        "supply 부족: troop 1개 중 0개만 recruit",
+        [{"kind": "troops", "requested": 1, "made": 0}],
     )
     same_when_determinized(no_troops)
 
     # A draw that needs a reshuffle: the step stops at the chance frame and
-    # the troop is lost in that chance step's hook, yet it is still warned
+    # the troop is owed in that chance step's hook, yet it is still warned
     # on the step that asks for the shuffle (sessions.shortfall_outcome);
     # the discard is public, so a determinization words it the same.
     reshuffle = placed(tech, suits, intrigue_deck=(), intrigue_discard=intrigue[:2])
     assert warnings(reshuffle)["resolve_board_effect"] == (
-        "반중력 의복: 병력 1개 중 0개만 배치",
-        [{"kind": "suspensor", "requested": 1, "made": 0}],
+        "supply 부족: troop 1개 중 0개만 recruit",
+        [{"kind": "troops", "requested": 1, "made": 0}],
     )
     same_when_determinized(reshuffle)
     shuffled = apply_whole(

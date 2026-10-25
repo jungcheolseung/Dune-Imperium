@@ -509,6 +509,14 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "put_back_top_card": _row(_V.KEEP, _S.INTRIGUE, variant="deck_top"),
     "discard_top_card": _row(_V.DISCARD, _S.INTRIGUE, variant="deck_top"),
     "draw_top_card_for_solari": _row(_V.DRAW, _S.INTRIGUE, variant="deck_top"),
+    # Cost-free choices with nothing to act on are played and confirmed
+    # (OQ-113 (C), user ruling 2026-10-24): an empty deck's peek, an empty
+    # Imperium Row's set-aside, an empty hand's mandatory trash.
+    "skip_intrigue_top_card": _row(
+        _V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.KEEP, variant="deck_top"
+    ),
+    "skip_intrigue_set_aside": _row(_V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.SET_ASIDE),
+    "skip_intrigue_trash": _row(_V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.TRASH),
     "acquire_intrigue_imperium": _row(_V.ACQUIRE, _S.INTRIGUE, _T.IMPERIUM_CARD),
     "acquire_intrigue_reserve": _row(_V.ACQUIRE, _S.INTRIGUE, _T.RESERVE_CARD),
     "skip_intrigue_acquisition": _row(_V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.ACQUIRE),

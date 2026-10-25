@@ -10,10 +10,10 @@ turn-start play again.
 Four human seats, Bloodlines and the Leader draft on (Withdrawn is a Twisted
 Intrigue card, dealt to Piter De Vries, whom the draft can seat); every seat
 plays ``random.Random(SEED).choice`` over its legal actions but never a
-turn-start play, and every hold is confirmed at once. Seed 28 is the first
-of 0-199 whose walk meets such a turn start: seat 0 in round 8, holding
-Litany Against Fear and Withdrawn, with a Plot (Crysknife) that leaves it on
-its turn frame. The walk saves there, plays that Plot, goes on, and records
+turn-start play, and every hold is confirmed at once. Seed 45 is the first
+of 0-399 whose walk meets such a turn start: seat 0 in round 8, holding
+Litany Against Fear and Withdrawn, with a Plot (Desert Mouse) that leaves it
+on its turn frame. The walk saves there, plays that Plot, goes on, and records
 every step up to seat 0's next turn start
 (Withdrawn legal again), so the page can replay them and must open the
 window once more. (Stage B1 split the Agent turn into a card pick and a space
@@ -24,7 +24,12 @@ draw, so it is the same walk again with the reward rows recorded too: 58
 steps, 55 of them actions.) (Seed 185 until codec
 v147 moved the AI-free walks: a Reveal choice became a row of the Reveal, so
 every seat's legal list changed; seed 185 then had both plays at that next
-turn too.)
+turn too. Seed 28 until codec v154 moved the AI-free walks again: a
+cost-free Intrigue line is played even when it fizzles (OQ-113 (C)), the
+Planetary Array card is a row of the Conflict winner's reward window (OQ-121)
+and Suspensor Suits' missing troop is made up later (OQ-042); of 0-399
+seeds 45, 205 and 388 reach both turn starts, and 45 is the first: seat 0,
+round 8, as seed 28 was, with 51 steps, 49 of them actions.)
 
 Prints {"turn-start": {save_id, seat, round, revision, plays, plot, steps,
 next_revision, next_plays}} as JSON. ``plays`` and ``next_plays`` are the
@@ -46,7 +51,7 @@ from dune_imperium.server.persistence import SaveStore
 from dune_imperium.server.sessions import GameSessionManager
 
 SEATS = ("human", "human", "human", "human")
-SEED = 28
+SEED = 45
 STEPS = 6_000
 
 store = SaveStore(Path(sys.argv[1]))

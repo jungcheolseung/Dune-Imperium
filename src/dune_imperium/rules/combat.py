@@ -43,6 +43,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import trashable_cards
+from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import contract_choice_frame
 from dune_imperium.rules.effects import (
@@ -478,6 +479,10 @@ COMBAT_REWARD_ICON_KINDS: Final = (
     "trash",
     "spy",
     "deep_cover_spy",
+    # Not a reward icon: Planetary Array's "When you win a Conflict: draw a
+    # card", a row of the sole winner's window (OQ-121, user ruling
+    # 2026-10-25, "PA는 승자의 창 (추천)").
+    "planetary_array",
 )
 # Frame context keys of the window: the icons still to resolve, in the order
 # the engine paid them before stage B2 (``LEGACY_ICON_ORDER``: an older
@@ -630,6 +635,18 @@ def _reward_window(
             icons.extend([kind] * counts.get(kind, 0))
     for kind in _LEGACY_LATER_CHOICES:
         icons.extend([kind] * (counts.get(kind, 0) * multiplier))
+    if assignment.rank is RewardRank.FIRST:
+        # The first-place reward goes to a sole winner only (a tie for first
+        # takes second place's [Main p. 14]), and its window holds what the
+        # win sets off: Planetary Array's card is a row of it, the winner's to
+        # order with the reward's icons, before the second place is paid
+        # (OQ-121, user ruling 2026-10-25, "PA는 승자의 창 (추천)"; OQ-108
+        # re-ruled). Not doubled by a sandworm: it is no reward. Last in the
+        # fixed order the AI seats and older records follow.
+        draws = tech_draws_on(state.players[assignment.player].tech_ids, OnConflictWon)
+        if draws:
+            icons.extend(["planetary_array"] * draws)
+            printed.append("planetary_array")
     context: dict[str, ActionValue] = {
         _ICONS_KEY: ",".join(icons),
         _PRINTED_KEY: ",".join(printed),
@@ -868,6 +885,8 @@ def _icon_details(
             return (("space_id", space_id),)
         case "contract", TakeContract(count=count):
             return (("contracts", count * multiplier),)
+        case "planetary_array", None:
+            return (("cards", 1),)
     return ()
 
 
@@ -964,6 +983,16 @@ def _resolve_automatic_icon(
                 owner, victory_points=owner.victory_points + amount * multiplier
             )
             return RuleResult(state=_with_owner(state, next_owner))
+        case "planetary_array", None:
+            # "When you win a Conflict: draw a card" [Planetary Array Tech
+            # tile], drawn as this row resolves, before the next place is
+            # paid (OQ-121); its reshuffle keeps the Tech draw's decision id.
+            return draw_or_request_personal_cards(
+                state,
+                player,
+                1,
+                source=f"round:{state.round_number}:player:{player}:tech_draw",
+            )
         case "contract", TakeContract(count=count):
             # Without the CHOAM Module a Contract icon is 2 Solari
             # [Main pp. 16, 20].
@@ -1795,8 +1824,9 @@ def _harvest_cells_has_effect(
     """Whether playing ``option`` now could change something.
 
     "To play an Intrigue card, you must meet its conditions and pay its
-    costs." [FAQ p. 2], with the user's ruling of 2026-10-06 that an
-    Intrigue option needs an effect that can change something. The window
+    costs." [FAQ p. 2]. Harvest Cells has no cost, so it is offered in its
+    window either way (OQ-113 (C), user ruling 2026-10-24, (2) 6); the page
+    warns before a play that would change nothing. The window
     opens once the Conflict's troops are back in the supply ("When
     resolving combat, troops that return to your supply are considered
     'lost.'" [FAQ p. 1]) and the card resolves as it is played (user
@@ -1848,10 +1878,6 @@ class ConflictEndTriggerBlock(StrEnum):
 
     # Fewer units left the Conflict than the trigger names.
     LOSS = "loss"
-    # The card could change nothing (``_harvest_cells_has_effect``): no
-    # Tleilaxu card its specimens could pay for, and no troop in the supply
-    # to make one.
-    NO_TROOP = "no_troop"
 
 
 def conflict_end_trigger_block(
@@ -1862,9 +1888,10 @@ def conflict_end_trigger_block(
 
     In order: the trigger's loss ("When you lose at least three troops at
     the end of a Conflict:" [Harvest Cells card]; ``lost`` defaults to the
-    seat's loss, ``conflict_end_loss``), the play's own conditions and costs
-    (``option_unplayable_reason``), then an effect that could change
-    something (``_harvest_cells_has_effect``, user ruling 2026-10-06).
+    seat's loss, ``conflict_end_loss``), then the play's own conditions and
+    costs (``option_unplayable_reason``). A copy that could change nothing
+    is offered too: the card has no cost (OQ-113 (C), user ruling
+    2026-10-24, (2) 6).
     """
 
     from dune_imperium.rules.effect_interpreter import option_unplayable_reason
@@ -1876,19 +1903,14 @@ def conflict_end_trigger_block(
         lost = conflict_end_loss(state, player)
     if lost < trigger.minimum:
         return ConflictEndTriggerBlock.LOSS
-    unplayable = option_unplayable_reason(state, player, option)
-    if unplayable is not None:
-        return unplayable
-    if _harvest_cells_has_effect(state, player, option):
-        return None
-    return ConflictEndTriggerBlock.NO_TROOP
+    return option_unplayable_reason(state, player, option)
 
 
 def _conflict_end_trigger_cards(
     state: GameState, player: int, lost: int
 ) -> tuple[str, ...]:
-    """Hand Intrigue whose Conflict-end trigger would fire now, is playable,
-    and could change something (``conflict_end_trigger_block``)."""
+    """Hand Intrigue whose Conflict-end trigger would fire now and is
+    playable (``conflict_end_trigger_block``)."""
 
     cards: list[str] = []
     for card_id in state.players[player].intrigue_cards:
@@ -2146,7 +2168,10 @@ def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleRe
 
     if action not in legal_conflict_end_trigger_actions(state, action.actor):
         raise ValueError("action is not a legal Conflict-end Intrigue choice")
-    from dune_imperium.rules.intrigue import resolve_conflict_end_trigger
+    from dune_imperium.rules.intrigue import (
+        resolve_conflict_end_trigger,
+        without_effect_event,
+    )
 
     player = action.actor
     frame = state.decision_stack[-1]
@@ -2178,8 +2203,7 @@ def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleRe
     # Whether it is still holding one is judged when the window comes back
     # on top (``spent_conflict_end_window``), so a card the played one's
     # acquisition drew -- a Tleilaxu track Intrigue space -- may be played
-    # too (user decision 2026-10-18, OQ-109). Its play actions still offer
-    # only a copy that would change something (``_harvest_cells_has_effect``).
+    # too (user decision 2026-10-18, OQ-109).
     window = replace_top_frame(
         state, with_context(frame, {**dict(frame.context), _PLAYED_KEY: True})
     )
@@ -2188,13 +2212,20 @@ def apply_conflict_end_trigger(state: GameState, action: DomainAction) -> RuleRe
         kind="intrigue_played",
         payload=(("card_id", card_id), ("player", player)),
     )
-    resolved = resolve_conflict_end_trigger(
-        window,
-        player,
-        card_id,
-        source=f"round:{state.round_number}:player:{player}:conflict_end:{card_id}",
+    source = f"round:{state.round_number}:player:{player}:conflict_end:{card_id}"
+    option = _loss_trigger_option(card_id)
+    assert option is not None
+    # A copy that changes nothing is played all the same (OQ-113 (C)) and
+    # noted, as the page warned (``intrigue.without_effect_event``).
+    noted = (
+        ()
+        if _harvest_cells_has_effect(window, player, option)
+        else (without_effect_event(source, card_id, player),)
     )
-    return RuleResult(state=resolved.state, events=(played, *resolved.events))
+    resolved = resolve_conflict_end_trigger(window, player, card_id, source=source)
+    return RuleResult(
+        state=resolved.state, events=(played, *noted, *resolved.events)
+    )
 
 
 def _award_conflict(state: GameState) -> RuleResult:
@@ -2203,9 +2234,10 @@ def _award_conflict(state: GameState) -> RuleResult:
     일치를 확인한다. [Main p. 14]" (docs/rules/combat-and-round-end.md), before
     the cleanup returns the troops (user decision 2026-10-18, OQ-108). A tie
     leaves the card on the board [Main pp. 8, 14]. Planetary Array's card
-    ("When you win a Conflict: draw a card") is owed here and drawn before
-    anything else follows: as the step settles when a Conflict-end window
-    opens, else by the engine before the cleanup (``rules/engine.py``)."""
+    ("When you win a Conflict: draw a card") is no longer drawn here but in
+    the winner's reward window (OQ-121, user ruling 2026-10-25; OQ-108
+    re-ruled): the win sets it off, the Conflict card's award is a step of
+    its own after every place's reward [Main p. 14]."""
 
     if not state.current_conflict_ids:
         raise ValueError("Combat cleanup requires a current Conflict")
@@ -2235,12 +2267,6 @@ def _award_conflict(state: GameState) -> RuleResult:
         winner, match_events = match_all_battle_icons(
             winner, source=f"round:{state.round_number}:conflict_won"
         )
-    draws = tech_draws_on(winner.tech_ids, OnConflictWon)
-    if draws:
-        # Planetary Array: "When you win a Conflict: draw a card" — a sole
-        # winner only [FAQ p. 4] [Planetary Array Tech tile]; owed to the
-        # engine's post-step draw.
-        winner = replace(winner, tech_cards_owed=winner.tech_cards_owed + draws)
     events: list[GameEvent] = [
         GameEvent(
             event_id=f"round:{state.round_number}:conflict_won:{ranking.winner}",

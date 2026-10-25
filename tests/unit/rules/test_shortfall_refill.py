@@ -114,6 +114,61 @@ def test_other_memories_makes_up_a_recruit_shortfall_this_turn() -> None:
     assert dict(turn.context)["troops_recruited"] == 1
 
 
+def test_other_memories_deploys_a_suspensor_suits_troop_owed_this_turn() -> None:
+    # OQ-042 (user re-ruling 2026-10-25): a Suspensor Suits troop the supply
+    # could not cover is made up through the engine's automatic step like a
+    # recruit's shortfall, and goes to the Conflict.
+    from dune_imperium.content.uprising.conflicts import CONFLICTS
+
+    owner = PlayerState(
+        player_id=0,
+        leader_id="lady_jessica",
+        leader_face_id="lady_jessica",
+        resources=Resources(spice=1, water=1),
+        troops_supply=0,
+        troops_garrison=3,
+        troops_conflict=7,
+        memories=2,
+        hand=(DIPLOMACY,),
+        ungained_conflict_troops=1,
+    )
+    state = replace(
+        _turn_state(owner, RulesetConfig()),
+        current_conflict_ids=(CONFLICTS[0].card.card_id,),
+    )
+    placement = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "espionage"
+        and dict(action.arguments)["card_id"] == DIPLOMACY
+    )
+    placed = apply_agent_action(state, placement).state
+    use = next(
+        action
+        for action in legal_leader_placement_ability_actions(placed, 0)
+        if action.action_id == "use_other_memories"
+    )
+
+    result = apply_whole(UprisingRulesEngine(), placed, use)
+
+    seat = result.state.players[0]
+    assert seat.memories == 0
+    assert seat.troops_conflict == 8
+    assert seat.troops_garrison == 3
+    assert seat.troops_supply == 1
+    assert seat.ungained_conflict_troops == 0
+    refills = [event for event in result.events if event.kind == "shortfall_refilled"]
+    assert [dict(event.payload) for event in refills] == [
+        {"conflict_troops": 1, "player": 0}
+    ]
+    deployed = [
+        dict(event.payload)
+        for event in result.events
+        if event.kind == "troops_deployed"
+    ]
+    assert deployed == [{"count": 1, "player": 0, "source": "tech"}]
+
+
 def test_a_returned_specimen_makes_up_a_recruit_shortfall() -> None:
     config = RulesetConfig(immortality=True)
     owner = PlayerState(
@@ -206,6 +261,26 @@ def test_every_seat_s_shortfall_clears_when_a_turn_opens() -> None:
 
     assert all(seat.ungained_troops == 0 for seat in cleared)
     assert all(seat.ungained_specimens == 0 for seat in cleared)
+
+
+def test_suspensor_troops_owed_to_the_conflict_clear_with_the_turn() -> None:
+    # OQ-042: the Suspensor Suits troops the supply could not cover wait no
+    # longer than a recruit's shortfall (OQ-030): they clear when a turn opens
+    # and whenever no player turn is open.
+    players = (
+        PlayerState(player_id=0, ungained_conflict_troops=2),
+        *(PlayerState(player_id=seat) for seat in range(1, 4)),
+    )
+    cleared = reset_turn_counters(players, 1, closing=0)
+    assert cleared[0].ungained_conflict_troops == 0
+
+    owner = PlayerState(
+        player_id=0, troops_supply=1, troops_garrison=11, ungained_conflict_troops=1
+    )
+    combat = replace(_turn_state(owner, RulesetConfig()), phase=GamePhase.COMBAT)
+    combat = replace(combat, decision_stack=())
+    assert shortfall_is_stale(combat)
+    assert drop_stale_shortfalls(combat).state.players[0].ungained_conflict_troops == 0
 
 
 def test_a_refill_on_another_seat_is_not_the_turn_owner_s_recruit() -> None:

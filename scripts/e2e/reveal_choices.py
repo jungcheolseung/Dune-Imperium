@@ -15,10 +15,10 @@ four-human games with random steps and saves the first Reveal that shows an
 optional choice and a mandatory one offered, a card to buy and a choice
 waiting, twice: "optional" (the waiting choice is optional; seed 306: Public
 Spectacle's Spy icon, Arrakis Observer's recall, Unswerving Loyalty without
-its Fremen Bond) and "command" (a Command (6+) choice waits; seed 167:
-Desert Power's branch with its sandworm greyed out for want of Maker Hooks,
-Unswerving Loyalty's troop, Intelligence Training waiting for Command,
-which Desert Power's 2 Persuasion then opens). For each, on a page holding
+its Fremen Bond) and "command" (a Command (6+) choice waits; seed 6270 since
+codec v154, seed 167 before: Delivery Logistics' mandatory choice, whose
+Persuasion then opens Intelligence Training waiting for Command, beside
+Disruption Tactics' optional one). For each, on a page holding
 every seat (open server):
 
 - [1] Korean: each offered choice is a header naming its card and what the

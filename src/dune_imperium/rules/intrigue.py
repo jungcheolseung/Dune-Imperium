@@ -67,6 +67,7 @@ from dune_imperium.rules.effect_interpreter import (
     condition_holds,
     option_unplayable_reason,
     pay_cost,
+    play_changes_nothing,
     resource_cost,
     section_is_usable,
 )
@@ -233,6 +234,18 @@ def legal_intrigue_play_actions(
     return tuple(actions)
 
 
+def without_effect_event(source: str, card_id: str, player: int) -> GameEvent:
+    """The public note that a play changes nothing: every line is one without
+    a cost and fizzles (OQ-113 (C) and (5), user ruling 2026-10-24: played
+    all the same, warned beforehand and logged; ``play_changes_nothing``)."""
+
+    return GameEvent(
+        event_id=f"{source}:without_effect",
+        kind="intrigue_without_effect",
+        payload=(("card_id", card_id), ("player", player)),
+    )
+
+
 def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     """Reveal and pay for one Intrigue option, then resolve or open choices."""
 
@@ -252,9 +265,7 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
         return _play_separate_lines(
             state, player, card_id, option_index, option, source
         )
-    sections = applicable_sections(
-        state, player, option, shield_wall_present=state.shield_wall_present
-    )
+    sections = applicable_sections(state, player, option)
     cost = resource_cost(sections)
 
     paid_owner = pay_cost(owner, cost)
@@ -307,6 +318,15 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
                 source, player, solari=cost.solari, spice=cost.spice, water=cost.water
             )
         )
+    if (
+        option.trigger is None
+        # A Combat Intrigue play always counts in Combat: it restarts the
+        # passes and lets an opponent's Counterattack line apply
+        # (``combat_intrigue_players``), so it is never "without effect".
+        and option.timing is not IntrigueTiming.COMBAT
+        and play_changes_nothing(state, player, sections)
+    ):
+        events.append(without_effect_event(source, card_id, player))
 
     if option.trigger is not None:
         # The effect does not apply yet: the card waits face up in front of
@@ -360,9 +380,7 @@ def resolve_conflict_end_trigger(
         index for index, option in enumerate(entry.options) if option.trigger
     )
     option = entry.options[option_index]
-    sections = applicable_sections(
-        state, player, option, shield_wall_present=state.shield_wall_present
-    )
+    sections = applicable_sections(state, player, option)
     return _resolve_paid_option(
         state, player, card_id, option_index, option, sections, source, [],
         rewards_first=True,
@@ -495,6 +513,15 @@ def _play_separate_lines(
             ),
         )
     ]
+    usable = tuple(
+        section
+        for section in option.sections
+        if section_is_usable(state, player, section)
+    )
+    if option.timing is not IntrigueTiming.COMBAT and play_changes_nothing(
+        state, player, usable
+    ):
+        events.append(without_effect_event(source, card_id, player))
     working = state
     if (
         option.timing is IntrigueTiming.COMBAT
@@ -505,10 +532,9 @@ def _play_separate_lines(
             working,
             combat_intrigue_players=(*working.combat_intrigue_players, player),
         )
-    # A cost-free line resolves at once only if it can change something
-    # (``section_is_usable``, user ruling 2026-10-06): one that cannot is
-    # neither resolved nor counted as used, so the owner still owes a line
-    # (OQ-058, Depart for Arrakis' draw with an empty deck and discard pile).
+    # A cost-free line resolves at once and counts as used even when it
+    # fizzles (``section_is_usable``; OQ-113 (C), user ruling 2026-10-24:
+    # Depart for Arrakis' draw with an empty deck and discard pile, OQ-058).
     automatic = tuple(
         index
         for index, section in enumerate(option.sections)

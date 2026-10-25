@@ -874,9 +874,23 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
     (``lose_intrigue_troop`` with ``commanders`` 1) and a troop for slot 1,
     its only Commander retreat event, and the census counts no Commander
     retreat for it (scratch replay).
+
+    Re-derived 2026-10-26 for codec v154 (a cost-free Intrigue line is played
+    even when it changes nothing, OQ-113 (C); Planetary Array's card is a row
+    of the winner's reward window, OQ-121; Suspensor Suits' troop the supply
+    lacks is made up later, OQ-042): seed 3 seat 0 now pays its Commander in
+    round 5 (slot 1) and also retreats one by its own Reach Agreement play in
+    round 6, so the loss is no longer its only Commander retreat. The same
+    listing over full seeds 1-300 (``troops_retreated`` events with
+    Commanders per seat, scratch replay) gives seeds 6 and 17 (seat 1 each)
+    first, but this test reads seat 0, so the case is seed 25 seat 0, the
+    first seat 0 whose only Commander retreat is the loss (seed 36 follows):
+    in round 10 its Gruesome Sacrifice pays a troop for slot 0 and the
+    Commander for slot 1 (``unit_lost`` with one Commander), and the census
+    counts no Commander retreat for it.
     """
 
-    spec = _spec(True, 3)
+    spec = _spec(True, 25)
     events: list[GameEvent] = []
     _play_to_finished(tip_census, spec, events)
     commander_retreats = [
@@ -887,7 +901,7 @@ def test_commander_retreats_excludes_a_real_gruesome_sacrifice_loss(
         and dict(event.payload).get("commanders", 0)
     ]
     assert commander_retreats == [
-        "round:6:player:0:intrigue:intrigue:gruesome_sacrifice:0:slot:0:loss:retreat",
+        "round:10:player:0:intrigue:intrigue:gruesome_sacrifice:0:slot:1:loss:retreat",
     ]
     census = tip_census.play(spec, ("endgame",))
     assert census["seats"][0]["bt.commander_retreats"] == 0

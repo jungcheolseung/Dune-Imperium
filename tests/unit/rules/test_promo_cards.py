@@ -830,6 +830,9 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # templates leave and 16 rows join (the promo cards' among them).
         - 13
         + 16
+        # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
+        # is confirmed by a row of its own (skip_intrigue_set_aside).
+        + 1
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -897,6 +900,9 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # among them).
         - 13
         + 16
+        # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
+        # is confirmed by a row of its own (skip_intrigue_set_aside).
+        + 1
     )
     # Stage B3a: Arrakis Revolt's two payments are ``pay`` effect rows naming
     # the card (an effect without a target is one row). The other cards that

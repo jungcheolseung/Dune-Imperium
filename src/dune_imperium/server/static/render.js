@@ -2223,6 +2223,7 @@ function tableRefs(action) {
 const SHORTFALL_TEXT = {
   contract: "render.shortfall_contract",
   intrigue: "render.shortfall_intrigue",
+  no_effect: "render.shortfall_no_effect",
   specimens: "render.shortfall_specimens",
   suspensor: "render.shortfall_suspensor",
   troops: "render.shortfall_troops",
@@ -2251,8 +2252,9 @@ function shortfallText(short) {
    supply cannot cover a specimen or a recruit (OQ-030, OQ-049), or nothing
    is left to choose (user ruling 2026-10-02, L2-Q4: "로그 + 클릭 전 경고")
    -- an Intrigue draw the Intrigue deck and discard cannot cover together,
-   Suspensor Suits troops that cannot deploy (OQ-042), held Contract icons
-   that fizzle as the turn ends (OQ-059). Shared by actionItem() and the
+   Suspensor Suits troops kept in the garrison (OQ-042), held Contract
+   icons that fizzle as the turn ends (OQ-059), an Intrigue play that
+   changes nothing (OQ-113 (5)), played all the same. Shared by actionItem() and the
    turn-end row (appendTurnEndRow), which is built by hand. */
 function appendShortfallBadge(row, button, action) {
   if (!action.warning) return;

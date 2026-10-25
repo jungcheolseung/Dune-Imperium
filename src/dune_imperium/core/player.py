@@ -129,6 +129,10 @@ class PlayerState:
     # turn is open (``rules.shortfall``).
     ungained_troops: int = 0
     ungained_specimens: int = 0
+    # Suspensor Suits troops the supply could not cover: made up the same way
+    # and deployed to the Conflict as they come (OQ-042, user re-ruling
+    # 2026-10-25), after the recruit shortfall and before the specimens.
+    ungained_conflict_troops: int = 0
     # Turn-scoped Plot modifiers (Bloodlines): Honor Guard's Commander
     # discount, Insider Information's requirement waiver, and the Agent icon
     # Emperor's Invitation grants to the card played this turn ("" = none).
@@ -283,6 +287,7 @@ class PlayerState:
             self.held_contract_icons,
             self.ungained_troops,
             self.ungained_specimens,
+            self.ungained_conflict_troops,
             self.commander_discount_turn,
             self.spies_boxed,
             self.spies_recalled_turn,

@@ -1414,10 +1414,10 @@ def test_sleeper_unit_pays_for_a_spy_or_recalls_one_for_troops() -> None:
 
 # "To play an Intrigue card, you must meet its conditions and pay its costs."
 # [FAQ p. 2] (docs/rules/player-turns.md), with the user's ruling of
-# 2026-10-06 that an Intrigue option also needs an effect that can change
-# something now. A recruit with no troop in the supply changes nothing, a
-# recorded shortfall included (main-session decision, as the Arrakeen Scouts
-# recruit, OQ-071).
+# 2026-10-24 (OQ-113 (C), 2026-10-06 for every line) that a line with a cost
+# also needs an effect that can change something now. A recruit with no troop
+# in the supply changes nothing, a recorded shortfall included (as the
+# Arrakeen Scouts recruit, OQ-071).
 
 
 def _play_options(state: GameState, card: str) -> list[object]:
@@ -1658,8 +1658,9 @@ def test_honor_guard_with_an_empty_supply_needs_a_paid_commander_ahead() -> None
     # from the supply, once per turn "Agent 또는 Reveal", or a Commander on
     # a board space an Agent visits [Bloodlines p. 4]. A bank Commander
     # costs nothing, so with no token left on the board and no paid recruit
-    # left, the discount lowers nothing.
-    from dune_imperium.content.uprising.effect_dsl import RecruitTroops
+    # left, the discount lowers nothing -- but the card has no cost, so it is
+    # offered all the same and both halves fizzle (OQ-113 (C), user ruling
+    # 2026-10-24, (2) 2: "불발은 거절이 아니다"; 2026-10-06 it was not offered).
     from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
     from dune_imperium.rules.effect_interpreter import option_unplayable_reason
     from dune_imperium.rules.sardaukar import (
@@ -1695,8 +1696,14 @@ def test_honor_guard_with_an_empty_supply_needs_a_paid_commander_ahead() -> None
         # The Reveal turn buys no board Commander.
         _reveal(on_board),
     ):
-        assert _play_options(state, card) == []
-        assert option_unplayable_reason(state, 0, option) == RecruitTroops(count=1)
+        assert _play_options(state, card) == [0]
+        assert option_unplayable_reason(state, 0, option) is None
+        played = apply_whole(UprisingRulesEngine(), state, _play_intrigue(card))
+        kinds = [event.kind for event in played.events]
+        assert "intrigue_without_effect" in kinds
+        assert "troops_recruit_short" in kinds
+        assert played.state.players[0].troops_garrison == 12
+        assert played.state.intrigue_discard == (card,)
     # A Commander in the supply to recruit in the Reveal turn.
     recruitable = _reveal(_state(replace(owner, commanders_supply=1)))
     assert _play_options(recruitable, card) == [0]
@@ -1710,7 +1717,7 @@ def test_honor_guard_with_an_empty_supply_needs_a_paid_commander_ahead() -> None
         if a.action_id == "acquire_sardaukar_commander"
     )
     bought = apply_sardaukar_commander_action(visited, buy).state
-    assert _play_options(bought, card) == []
+    assert _play_options(bought, card) == [0]
     # A troop in the supply: the recruit itself changes something.
     stocked = replace(sent, troops_supply=1, troops_garrison=11)
     assert _play_options(_state(stocked), card) == [0]
@@ -1742,10 +1749,9 @@ def test_insider_information_waiver_needs_an_agent_ahead_and_an_unmet_requiremen
     # this turn, and only while some board space's Influence requirement
     # bars the owner: Imperial Privilege (Emperor 2), Sietch Tabr (Fremen 2,
     # waived for Arrakis Planetologist [Liet Kynes card]) and Shipping
-    # (Guild 2) [Board Guide p. 1].
-    from dune_imperium.content.uprising.effect_dsl import (
-        IgnoreInfluenceRequirementsThisTurn,
-    )
+    # (Guild 2) [Board Guide p. 1]. The waiver has no cost, so otherwise it is
+    # offered all the same and fizzles (OQ-113 (C), user ruling 2026-10-24,
+    # as Dispatch an Envoy; 2026-10-06 it was not offered).
     from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
     from dune_imperium.rules.effect_interpreter import option_unplayable_reason
 
@@ -1769,11 +1775,21 @@ def test_insider_information_waiver_needs_an_agent_ahead_and_an_unmet_requiremen
         _play(_state(owner), diplomacy),
         _reveal(_state(owner)),
     )
+    engine = UprisingRulesEngine()
     for state in blocked:
-        assert _play_options(state, card) == []
-    assert option_unplayable_reason(
-        _state(replace(owner, influence=qualified)), 0, option
-    ) == IgnoreInfluenceRequirementsThisTurn()
+        # Option 0 (recall a Spy) still needs a placed Spy.
+        assert _play_options(state, card) == [1]
+        played = apply_whole(engine, state, _play_intrigue(card, 1))
+        assert "intrigue_without_effect" in [event.kind for event in played.events]
+        assert played.state.intrigue_discard == (card,)
+    assert (
+        option_unplayable_reason(_state(replace(owner, influence=qualified)), 0, option)
+        is None
+    )
+    # With a requirement unmet and an Agent ahead the waiver changes
+    # something: not a play that changes nothing.
+    useful = apply_whole(engine, _state(owner), _play_intrigue(card, 1))
+    assert "intrigue_without_effect" not in [event.kind for event in useful.events]
     # Liet still needs the waiver for an unmet Emperor or Guild requirement.
     emperor_short = replace(liet, influence=Influence(emperor=2))
     assert _play_options(_state(emperor_short), card) == [1]
@@ -1862,8 +1878,12 @@ def test_emperors_invitation_lends_the_emperor_icon_for_the_turn() -> None:
 
 
 
-def test_emperors_invitation_draw_needs_a_card_to_draw() -> None:
-    from dune_imperium.content.uprising.effect_dsl import DrawPersonalCards
+def test_emperors_invitation_draw_with_nothing_to_draw_is_offered_and_fizzles() -> (
+    None
+):
+    # The draw has no cost, so with the deck and discard pile empty it is
+    # offered all the same and fizzles (OQ-113 (C), user ruling 2026-10-24;
+    # 2026-10-06 only the icon option was offered).
     from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
     from dune_imperium.rules.effect_interpreter import option_unplayable_reason
 
@@ -1872,18 +1892,25 @@ def test_emperors_invitation_draw_needs_a_card_to_draw() -> None:
     diplomacy = STARTERS[4]
     owner = _owner(intrigue_cards=(card,), hand=(diplomacy,), deck=())
     state = _state(owner)
-    assert _play_options(state, card) == [1]
-    assert option_unplayable_reason(state, 0, option) == DrawPersonalCards(count=1)
+    assert _play_options(state, card) == [0, 1]
+    assert option_unplayable_reason(state, 0, option) is None
+    played = apply_whole(UprisingRulesEngine(), state, _play_intrigue(card, 0))
+    assert "intrigue_without_effect" in [event.kind for event in played.events]
+    assert played.state.players[0].hand == (diplomacy,)
+    assert played.state.intrigue_discard == (card,)
     discard = _state(replace(owner, discard_pile=(STARTERS[0],)))
     assert _play_options(discard, card) == [0, 1]
 
 
-def test_emperors_invitation_icon_only_before_the_agent_is_sent() -> None:
+def test_emperors_invitation_icon_after_the_agent_is_sent_is_offered_and_fizzles() -> (
+    None
+):
     # The Emperor icon helps only an Agent placement still ahead this turn:
-    # the turn frame with an Agent and a card to play.
-    from dune_imperium.content.uprising.effect_dsl import GrantAgentIconThisTurn
+    # the turn frame with an Agent and a card to play. The icon has no cost,
+    # so after the Agent is sent (or in the Reveal turn) it is offered all the
+    # same and fizzles (OQ-113 (C), user ruling 2026-10-24, as Dispatch an
+    # Envoy after the Agent is sent; 2026-10-06 it was not offered).
     from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
-    from dune_imperium.content.uprising.types import AgentIcon
     from dune_imperium.rules.effect_interpreter import option_unplayable_reason
 
     card = _intrigue("emperor_s_invitation")
@@ -1894,11 +1921,17 @@ def test_emperors_invitation_icon_only_before_the_agent_is_sent() -> None:
     sent = _state(
         replace(owner, agents_available=0, agent_locations=("arrakeen", "carthag"))
     )
+    engine = UprisingRulesEngine()
     for state in (_play(_state(owner), diplomacy), _reveal(_state(owner)), sent):
-        assert _play_options(state, card) == [0]
-    assert option_unplayable_reason(sent, 0, option) == GrantAgentIconThisTurn(
-        icon=AgentIcon.EMPEROR
-    )
+        assert _play_options(state, card) == [0, 1]
+        played = apply_whole(engine, state, _play_intrigue(card, 1))
+        assert "intrigue_without_effect" in [event.kind for event in played.events]
+        assert played.state.intrigue_discard == (card,)
+    assert option_unplayable_reason(sent, 0, option) is None
+    # Before the placement the icon changes something: not a play that
+    # changes nothing.
+    ahead = apply_whole(engine, _state(owner), _play_intrigue(card, 1))
+    assert "intrigue_without_effect" not in [event.kind for event in ahead.events]
 
 
 # --- Combat icon (slice 4c-2b) ----------------------------------------------
@@ -3961,8 +3994,10 @@ def test_false_orders_moves_watching_spies_then_places_one() -> None:
     landsraad = _card("sardaukar_coordination")
     base = _state(_owner(hand=(landsraad,), intrigue_cards=(card,)))
     base = replace(base, players=(base.players[0], watcher, *base.players[2:]))
-    # Before any placement there is no "space where you sent an Agent".
-    assert _play_intrigue(card) not in legal_intrigue_play_actions(base, 0)
+    # Before any placement there is no "space where you sent an Agent": the
+    # card is offered all the same (see
+    # ``test_false_orders_before_the_agent_is_sent_is_offered_and_fizzles``).
+    assert _play_intrigue(card) in legal_intrigue_play_actions(base, 0)
     state = _play(base, landsraad, "assembly_hall")
     assert _play_intrigue(card) in legal_intrigue_play_actions(state, 0)
     engine = UprisingRulesEngine()
@@ -3979,6 +4014,31 @@ def test_false_orders_moves_watching_spies_then_places_one() -> None:
     placed = apply_spy_placement(moved, placements[0]).state
     assert ASSEMBLY_POST in placed.players[0].spy_post_ids
     assert placed.decision_stack[-1].kind == "agent_effects"
+
+
+def test_false_orders_before_the_agent_is_sent_is_offered_and_fizzles() -> None:
+    # "the board space where you sent an Agent this turn" [False Orders card]
+    # names a space already visited, so before the turn's Agent is sent there
+    # is none. The card has no cost, so it is offered all the same and fizzles:
+    # no opponent Spy moves, no placement window opens and the card is
+    # discarded (OQ-113 (C), user ruling 2026-10-24, (2) 9, choice (가);
+    # 2026-10-06 it was not offered).
+    card = _intrigue("false_orders")
+    watcher = replace(
+        PlayerState(player_id=1), spies_supply=2, spy_post_ids=(ASSEMBLY_POST,)
+    )
+    owner = _owner(hand=(_card("sardaukar_coordination"),), intrigue_cards=(card,))
+    base = replace(_state(owner), players=(owner, watcher, *_state(owner).players[2:]))
+    assert _play_options(base, card) == [0]
+    played = apply_whole(UprisingRulesEngine(), base, _play_intrigue(card))
+    events = [event.kind for event in played.events]
+    assert "intrigue_without_effect" in events
+    assert not any(kind.startswith("spy_") for kind in events)
+    assert [frame.kind for frame in played.state.decision_stack] == ["turn"]
+    assert played.state.players[0].spy_post_ids == ()
+    assert played.state.players[1].spy_post_ids == (ASSEMBLY_POST,)
+    assert played.state.intrigue_discard == (card,)
+    assert played.state.players[0].intrigue_cards == ()
 
 
 REFINERY_POSTS = (
@@ -4022,12 +4082,15 @@ def test_false_orders_moves_the_spy_off_every_post_of_the_space() -> None:
 
 
 
-def test_false_orders_needs_a_spy_to_move_or_a_post_to_fill() -> None:
+def test_false_orders_with_nothing_to_move_or_fill_is_offered_and_fizzles() -> None:
     # Nothing to move and nowhere to place: every post connected to this
-    # turn's space holds the owner's Spy alone, so the card changes nothing
-    # (user ruling 2026-10-06). An opponent's Spy there (moved, or lost with
-    # nowhere to go, OQ-065), or an empty connected post, is enough.
-    from dune_imperium.content.uprising.effect_dsl import RedirectSpiesOnTurnSpace
+    # turn's space holds the owner's Spy alone, so the card changes nothing.
+    # It has no cost, so it is offered all the same and fizzles: "You may play
+    # this Intrigue card even if no opponents' Spies are on the space where
+    # you sent an Agent this turn." [FAQ p. 2] (OQ-113 (C), user ruling
+    # 2026-10-24, (2) 9; 2026-10-06 it was not offered). An opponent's Spy there
+    # (moved, or lost with nowhere to go, OQ-065), or an empty connected post,
+    # makes it a play that changes something.
     from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
     from dune_imperium.rules.effect_interpreter import option_unplayable_reason
 
@@ -4053,15 +4116,37 @@ def test_false_orders_needs_a_spy_to_move_or_a_post_to_fill() -> None:
         base = replace(base, players=(base.players[0], rival, *base.players[2:]))
         return _play(base, city, "spice_refinery")
 
+    engine = UprisingRulesEngine()
+
+    def played_after_the_visit(state: GameState) -> Transition:
+        # The visited space's Gather Intelligence is declined first.
+        decline = DomainAction(action_id="decline_gather_intelligence", actor=0)
+        declined = apply_whole(engine, state, decline).state
+        return apply_whole(engine, declined, _play_intrigue(card))
+
     for state in (placed(REFINERY_POSTS),):
-        assert _play_options(state, card) == []
-        assert option_unplayable_reason(state, 0, option) == RedirectSpiesOnTurnSpace()
+        assert _play_options(state, card) == [0]
+        assert option_unplayable_reason(state, 0, option) is None
+        fizzled = played_after_the_visit(state)
+        assert "intrigue_without_effect" in [event.kind for event in fizzled.events]
+        # The owner's placement window still opens, with only its decline
+        # (OQ-057 (14): no post to place on).
+        assert fizzled.state.decision_stack[-1].kind == "spy_placement"
+        decline = DomainAction(action_id="decline_spy_placement", actor=0)
+        assert engine.whole_actions(fizzled.state, 0) == (decline,)
+        declined = apply_whole(engine, fizzled.state, decline)
+        assert "spy_placement_unavailable" in [e.kind for e in declined.events]
+        assert declined.state.decision_stack[-1].kind == "agent_effects"
+        assert declined.state.players[0].spy_post_ids == REFINERY_POSTS
+        assert declined.state.intrigue_discard == (card,)
     for state in (
         placed(REFINERY_POSTS[:1]),  # the other post is empty
         placed(REFINERY_POSTS[:1], REFINERY_POSTS[1:]),  # a rival watches
         placed(REFINERY_POSTS, REFINERY_POSTS[:1]),  # a rival shares a post
     ):
         assert _play_options(state, card) == [0]
+        played = played_after_the_visit(state)
+        assert "intrigue_without_effect" not in [event.kind for event in played.events]
 
 
 def test_holy_war_moves_the_spy_off_every_post_of_the_space() -> None:
@@ -4567,6 +4652,12 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # and Commander Skills' among them).
         - 13
         + 25
+        # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
+        # is confirmed by a row of its own (skip_intrigue_set_aside), and so
+        # are Twisted Controlled's look at an empty deck and Twisted Devious'
+        # mandatory trash with an empty hand (Bloodlines catalogs, +2).
+        + 1
+        + 2
     )
     # Stage B3a: the Agent-effect frame offers the trash as an effect row
     # naming the card, then the card to trash as its target row.

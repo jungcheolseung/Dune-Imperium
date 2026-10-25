@@ -47,6 +47,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     OpponentsMoveSpiesFromVisitedSpace,
     PrintedRevealValue,
     RedirectSpiesOnTurnSpace,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
@@ -626,7 +627,17 @@ from dune_imperium.rules.tech import optional_trash_tech_ids
 # ``scouts_faction_alone``), and take a reshuffle the Faction's track card
 # asks under its old name (``scouts_faction_reshuffle_renamed``);
 # docs/human-records.md.
-ACTION_CODEC_VERSION = 153
+# v154 (Uprising rulings batch, user rulings 2026-10-25): Planetary Array's
+# card is a row of the sole winner's reward window (OQ-121, OQ-108
+# re-ruled): ``resolve_combat_reward_icon{effect: planetary_array}`` and its
+# step row ``draw{icon: planetary_array, printed: <conflict>, source:
+# conflict}`` (new templates, Tech catalogs). Suspensor Suits' troop is
+# recruited and the part the supply lacks is made up as troops return to it
+# in the same player turn (OQ-042 (가)); no template changes. Older records
+# answer the row once only it is left and the record goes on
+# (``planetary_array_row``), and take its reshuffle from the award ahead
+# (``tech_draw_at_the_win``, widened); docs/human-records.md.
+ACTION_CODEC_VERSION = 154
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -770,6 +781,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "decline_gather_intelligence",
             "decline_reveal_spy_recall",
             "skip_intrigue_acquisition",
+            # Manipulate's set-aside with an empty Imperium Row (OQ-113 (C)).
+            "skip_intrigue_set_aside",
             # An Intrigue "choose a Faction" Influence with every Faction it
             # may raise at the top is confirmed (OQ-060).
             "resolve_intrigue_influence_without_faction",
@@ -834,7 +847,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="resolve_combat_reward_icon", arguments=(("effect", kind),)
         )
         for kind in COMBAT_REWARD_ICON_KINDS
-        if kind != "deep_cover_spy" or config.bloodlines
+        if (kind != "deep_cover_spy" or config.bloodlines)
+        # Planetary Array's row of the winner's window (OQ-121).
+        and (kind != "planetary_array" or config.tech_module)
     )
     # One board-effect resolution per printed automatic icon (OQ-027).
     templates.extend(
@@ -1455,7 +1470,7 @@ def _effect_step_templates(
         elif spec.printed == Printed.CONFLICT_CARD:
             # A Conflict reward icon (stage B3d-1): each Conflict printing
             # it, and any Conflict's first place for Pivotal Gambit's
-            # Influence (OQ-025).
+            # Influence (OQ-025) and for Planetary Array's card (OQ-121).
             # A reward window's other effect (B3d-2a): each Conflict printing
             # an icon that opens the window.
             kind = dict(template.arguments).get("effect")
@@ -1471,6 +1486,7 @@ def _effect_step_templates(
                         for printed in kinds
                     )
                     or (kind == "choose_influence" and config.promo_cards)
+                    or kind == "planetary_array"
                 )
             )
         elif spec.printed == Printed.CONTRACT:
@@ -1636,14 +1652,20 @@ _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
         "put_back_top_card",
         "discard_top_card",
         "draw_top_card_for_solari",
+        "skip_intrigue_top_card",
     ),
-    # The slots' refusals and empty confirmations (B3d-3).
+    # The slots' refusals and empty confirmations (B3d-3; OQ-113 (C)), a
+    # mandatory trash's own below (``_MANDATORY_TRASH_EFFECTS``).
     "TrashPersonalCard": ("decline_intrigue_trash",),
+    "SetAsideImperiumRowCard": ("skip_intrigue_set_aside",),
     "TrashDiscardPileCard": ("decline_intrigue_trash",),
     "AcquireTleilaxuCard": ("decline_intrigue_tleilaxu",),
     "AcquireCardUpTo": ("skip_intrigue_acquisition",),
     "GainInfluence": ("resolve_intrigue_influence_without_faction",),
 }
+# A mandatory personal-card trash (Twisted Devious) is confirmed with an empty
+# hand instead of refused (OQ-113 (C)).
+_MANDATORY_TRASH_EFFECTS: Final = ("skip_intrigue_trash",)
 # A Conflict reward window's refusal or empty confirmation by the icons
 # whose window offers it (``effect_steps.window_icon``, B3d-3).
 _REWARD_WINDOW_REFUSALS: Final[Mapping[str, tuple[str, ...]]] = {
@@ -1676,7 +1698,7 @@ def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
         card = intrigue_card_for_instance(instance_id)
         for option in card.options:
             slots = {
-                type(slot).__name__
+                slot
                 for wall in (True, False)
                 for slot in choice_slots(option.sections, shield_wall_present=wall)
             }
@@ -1685,7 +1707,14 @@ def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
             effects = {
                 effect
                 for slot in slots
-                for effect in _INTRIGUE_SLOT_EFFECTS.get(slot, ())
+                for effect in (
+                    *_INTRIGUE_SLOT_EFFECTS.get(type(slot).__name__, ()),
+                    *(
+                        _MANDATORY_TRASH_EFFECTS
+                        if isinstance(slot, TrashPersonalCard) and slot.mandatory
+                        else ()
+                    ),
+                )
             }
             if automatic_rewards(option.sections):
                 effects.add("resolve_intrigue_rewards")
@@ -2332,6 +2361,11 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "put_back_top_card",
             "discard_top_card",
             "draw_top_card_for_solari",
+            # Twisted Controlled's look at an empty deck and Twisted Devious'
+            # mandatory trash with an empty hand, played and confirmed
+            # (OQ-113 (C), user ruling 2026-10-24).
+            "skip_intrigue_top_card",
+            "skip_intrigue_trash",
         )
     )
     templates.extend(

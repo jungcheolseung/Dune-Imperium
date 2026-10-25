@@ -84,7 +84,8 @@ class PublicPlayerView:
     # the turn to end or for a token to become reachable (OQ-059).
     held_contract_icons: int
     # Recruit and specimen shortfalls waiting for troops to return to this
-    # seat's supply this turn (OQ-030, OQ-049).
+    # seat's supply this turn (OQ-030, OQ-049); the troops count includes the
+    # Suspensor Suits troops owed to the Conflict (OQ-042).
     ungained_troops: int
     ungained_specimens: int
     commander_discount_turn: int
@@ -908,7 +909,9 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         commander_recruited_turn=player.commander_recruited_turn,
         contracts_completed_turn=player.contracts_completed_turn,
         held_contract_icons=player.held_contract_icons,
-        ungained_troops=player.ungained_troops,
+        # Troops owed to the Conflict (Suspensor Suits, OQ-042) wait like a
+        # recruit shortfall; the encoding keeps one troop slot per seat.
+        ungained_troops=player.ungained_troops + player.ungained_conflict_troops,
         ungained_specimens=player.ungained_specimens,
         commander_discount_turn=player.commander_discount_turn,
         ignores_influence_requirements_turn=player.ignores_influence_requirements_turn,

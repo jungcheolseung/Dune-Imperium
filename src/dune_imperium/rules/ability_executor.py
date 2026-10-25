@@ -472,6 +472,10 @@ def piece_rows(
                 row(Verb.TRASH, Target.PERSONAL_CARD, (("card_id", card_id),))
                 for card_id in trashable_cards(owner, hand_only=hand_only)
             )
+            if not rows and empty_confirm:
+                # A mandatory trash with an empty hand fizzles and is
+                # confirmed (Twisted Devious, OQ-113 (C) (2) 8).
+                rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.TRASH))
         case LoseTroops(from_conflict=from_conflict):
             # The zone and, for a Sardaukar Commander, the kind (OQ-038).
             for zone in ("conflict",) if from_conflict else ("garrison", "conflict"):
@@ -537,6 +541,10 @@ def piece_rows(
                 rows.append(row(Verb.DISCARD, variant="deck_top"))
                 if owner.resources.solari >= 1:
                     rows.append(row(Verb.DRAW, variant="deck_top"))
+            elif empty_confirm:
+                # No card to look at: the look fizzles and is confirmed
+                # (Twisted Controlled, OQ-113 (C) (2) 7).
+                rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.KEEP, variant="deck_top"))
         case RecallSpy():
             rows.extend(
                 row(Verb.RECALL_SPY, Target.POST, (("post_id", post_id),))
@@ -575,6 +583,10 @@ def piece_rows(
                 row(Verb.SET_ASIDE, Target.IMPERIUM_CARD, (("instance_id", instance),))
                 for instance in state.imperium_row
             )
+            if not rows and empty_confirm:
+                # An empty Imperium Row: the set-aside fizzles and is
+                # confirmed (Manipulate, OQ-113 (C)).
+                rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.SET_ASIDE))
         case AcquireCardUpTo(max_cost=max_cost):
             rows.extend(
                 row(Verb.ACQUIRE, Target.RESERVE_CARD, (("card_id", card_id),))
@@ -715,6 +727,13 @@ _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
         "influence_unavailable",
         "intrigue_influence_unavailable",
     ),
+    # Cost-free choices with nothing to act on (OQ-113 (C)).
+    "skip_intrigue_top_card": ("top_card_unavailable", "intrigue_top_card_unavailable"),
+    "skip_intrigue_set_aside": (
+        "set_aside_unavailable",
+        "intrigue_set_aside_unavailable",
+    ),
+    "skip_intrigue_trash": ("trash_unavailable", "intrigue_trash_unavailable"),
 }
 # The event a Faction named for a later step announces (``held``), by source.
 _HELD_FACTION_EVENTS: Final[Mapping[Source, str]] = {
@@ -802,6 +821,8 @@ def apply_piece(
     match piece:
         case AcquireCardUpTo():
             raise ValueError("an acquisition piece resolves through acquire_by_piece")
+        case SetAsideImperiumRowCard() if shape.verb is Verb.CONFIRM_EMPTY:
+            result = _passed(state, player, action, step_source)
         case SetAsideImperiumRowCard():
             instance_id = str(arguments["instance_id"])
             imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
@@ -946,7 +967,7 @@ def apply_piece(
                     state, player, step_source, troops=count, commanders=commanders
                 )
         case TrashPersonalCard(bonus_spice=bonus_spice, bonus_minimum_cost=minimum):
-            if shape.verb is Verb.DECLINE:
+            if shape.verb in (Verb.DECLINE, Verb.CONFIRM_EMPTY):
                 result = _passed(state, player, action, step_source)
             else:
                 trashed_id = str(arguments["card_id"])
@@ -1048,6 +1069,8 @@ def apply_piece(
             result = _trash_intrigue_hand_card(
                 state, player, str(arguments["card_id"]), troops_bonus, step_source
             )
+        case PeekTopCard() if shape.verb is Verb.CONFIRM_EMPTY:
+            result = _passed(state, player, action, step_source)
         case PeekTopCard():
             result = _resolve_peek(state, player, shape.verb, step_source)
         case PlaceSpy() if shape.verb is Verb.DECLINE:
@@ -1523,12 +1546,18 @@ def apply_automatic_rewards(
                 payload=(("player", player),),
             )
         )
-    if outcome.redirects_turn_space_spies:
+    space_id = (
+        agent_turn_space_id(next_state, player)
+        if outcome.redirects_turn_space_spies
+        else None
+    )
+    if space_id is not None:
         # False Orders: the owner's placement waits beneath the opponents'
         # forced moves so it resolves after them ("Then you place a Spy").
-        space_id = agent_turn_space_id(next_state, player)
-        if space_id is None:
-            raise RuntimeError("False Orders needs this turn's Agent placement")
+        # Before the turn's Agent is sent there is no such space and the
+        # card fizzles (OQ-113 (C) (2) 9, user choice (가) 2026-10-24: "the
+        # board space where you sent an Agent this turn" [False Orders
+        # card] names a space already visited).
         printed = intrigue_card_for_instance(played_card_id).card.card_id
         next_state = spy_placement_frame(
             next_state,

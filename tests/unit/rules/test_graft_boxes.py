@@ -1180,6 +1180,9 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
         + (100 - 37)
         + (4 - 2)
         + (16 - 13)
+        # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
+        # is confirmed by a row of its own (skip_intrigue_set_aside).
+        + 1
     )
     codec = ActionCodec(IMMORTALITY)
     templates = set(codec.catalog)

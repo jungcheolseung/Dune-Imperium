@@ -72,6 +72,10 @@ from dune_imperium.content.arrakeen_scouts import (
 )
 from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
+from dune_imperium.content.uprising.intrigue import (
+    intrigue_card_for_instance,
+    navigation_card_instance_ids,
+)
 from dune_imperium.content.uprising.personal_cards import (
     card_is_ghola,
     personal_card_for_instance,
@@ -105,11 +109,16 @@ from dune_imperium.rules.contracts import (
     legacy_contract_icon_row,
     legacy_contract_reward_icon,
 )
+from dune_imperium.rules.effect_interpreter import (
+    applicable_sections,
+    play_changes_nothing,
+)
 from dune_imperium.rules.effect_steps import (
     first_step,
     path_of,
     picked_rows,
     presents_steps,
+    steps_for,
     without_pick,
 )
 from dune_imperium.rules.effects import (
@@ -123,6 +132,7 @@ from dune_imperium.rules.frames import (
     OWED_ORIGIN_CHOAM_TRANSPORTS,
     FrameKind,
     own_turn_frame_index,
+    owned_top_frame,
     replace_player,
 )
 from dune_imperium.rules.graft_boxes import (
@@ -148,7 +158,7 @@ from dune_imperium.rules.optional_trash import (
     legacy_trash_whole,
 )
 from dune_imperium.rules.owed_draws import legacy_owed_draw_whole, next_owed_draw
-from dune_imperium.rules.pauses import SCOUTS_REWARD
+from dune_imperium.rules.pauses import CONFLICT_END, REWARDS, SCOUTS_REWARD
 from dune_imperium.rules.reveal_turn import (
     GENERATED_PERSUASION_KEY,
     REVEAL_CHOICE_EFFECT_ACTIONS,
@@ -400,6 +410,7 @@ def migrate_record(
     drops_refusals = replay.action_codec_version < OPTIONAL_REFUSALS_CODEC
     drops_turn_row_refusals = replay.action_codec_version < TURN_ROW_REFUSALS_CODEC
     contract_rows_wait = replay.action_codec_version < CONTRACT_TURN_ROWS_CODEC
+    tech_draw_moves = replay.action_codec_version < PLANETARY_ARRAY_ROW_CODEC
     reveal = (
         _RevealSlot() if replay.action_codec_version < REVEAL_CHOICES_CODEC else None
     )
@@ -649,7 +660,9 @@ def migrate_record(
                 ):
                     dropped.append((index, OVERTHROW_PART_DROPPED))
                     break
-                if bridged is None and (drops_turn_row_refusals or contract_rows_wait):
+                if bridged is None and (
+                    drops_turn_row_refusals or contract_rows_wait or tech_draw_moves
+                ):
                     earlier = _asked_earlier(
                         engine,
                         state,
@@ -658,6 +671,7 @@ def migrate_record(
                         consumed,
                         turn_rows_codec=drops_turn_row_refusals,
                         contract_rows_codec=contract_rows_wait,
+                        tech_draw_codec=tech_draw_moves,
                     )
                     if earlier is not None:
                         asked_index, asked_step, asked_bridge = earlier
@@ -919,8 +933,11 @@ HARVEST_CELLS_AT_ONCE: Final = "harvest_cells_at_once"
 # Also from v149 (user decision 2026-10-18, OQ-108): the winner takes the
 # Conflict card, and Planetary Array's card, before the troops go back; a
 # recorded reshuffle of that draw is taken as this engine asks
-# (``_tech_draw_earlier``).
+# (``_tech_draw_earlier``). From v154 (OQ-121, user ruling 2026-10-25) that
+# card is a row of the sole winner's reward window (``PLANETARY_ARRAY_ROW``),
+# so it is asked earlier still, before the other places are paid.
 TECH_DRAW_AT_THE_WIN: Final = "tech_draw_at_the_win"
+PLANETARY_ARRAY_ROW_CODEC: Final = 154
 # ... and a seat's reshuffle of the same cards the recording engine did
 # later under another decision (``_reshuffle_earlier``).
 RESHUFFLE_MOVED: Final = "reshuffle_moved"
@@ -974,15 +991,18 @@ def _asked_earlier(
     *,
     turn_rows_codec: bool,
     contract_rows_codec: bool,
+    tech_draw_codec: bool = False,
 ) -> tuple[int, ReplayStep, str] | None:
     """A later recorded step this engine asks for now, with its bridge's
     name: before codec v149, the owner's later recorded answer to the
-    Harvest Cells acquisition this engine asks now, if it is legal here; or
-    the later recorded reshuffle of the Planetary Array card this engine
-    draws as the Conflict is won (``_tech_draw_earlier``), or of the same
-    cards under another decision (``_reshuffle_earlier``). Before codec
-    v150, the owner's next pick in a frame that stands over its turn's
-    Contract rows (``_frame_before_contract_rows``)."""
+    Harvest Cells acquisition this engine asks now, if it is legal here, or
+    the later recorded reshuffle of the same cards under another decision
+    (``_reshuffle_earlier``). Before codec v154 (``tech_draw_codec``, which
+    every record before v149 also has), the later recorded reshuffle of the
+    Planetary Array card this engine draws as the Conflict is won
+    (``_tech_draw_earlier``). Before codec v150, the owner's next pick in a
+    frame that stands over its turn's Contract rows
+    (``_frame_before_contract_rows``)."""
 
     if turn_rows_codec:
         owner = _harvest_cells_choice(state)
@@ -1000,9 +1020,10 @@ def _asked_earlier(
                     return ahead, step, HARVEST_CELLS_AT_ONCE
                 return None
             return None
-        found = _tech_draw_earlier(
-            engine, state, steps, index, consumed
-        ) or _reshuffle_earlier(engine, state, steps, index, consumed)
+    if turn_rows_codec or tech_draw_codec:
+        found = _tech_draw_earlier(engine, state, steps, index, consumed)
+        if found is None and turn_rows_codec:
+            found = _reshuffle_earlier(engine, state, steps, index, consumed)
         if found is not None:
             return (*found, _asked_earlier_bridge(found[1], steps[found[0]]))
     if contract_rows_codec:
@@ -1083,17 +1104,33 @@ def _tech_draw_earlier(
     """The winner takes the Conflict card before the troops go back (codec
     v149, OQ-108), so Planetary Array's card is drawn there; a recording
     engine whose cleanup also fired a Harvest Cells drew it at that cleanup.
-    Its reshuffle, recorded there under the same decision, is taken as this
-    engine asks (none is looked for past the recording's next pause)."""
+    Codec v154 (OQ-121, user ruling 2026-10-25) draws it earlier still, as
+    its row of the sole winner's reward window resolves, before the other
+    places are paid (``PLANETARY_ARRAY_ROW``). Its reshuffle, recorded at the
+    award or the cleanup under the same decision, is taken as this engine
+    asks. None is looked for past the recording's next pause, except, when
+    asked among the rewards, the pauses before the round's later rewards and
+    before the award, which the recording passed before it drew."""
 
     decision = engine.current_decision(state)
     if (
         not isinstance(decision, ChanceDecision)
         or state.phase is not GamePhase.COMBAT
-        or not state.combat_end_triggers_offered
         or ":tech_draw:" not in decision.decision_id
     ):
         return None
+    asked = _PERSONAL_SHUFFLE.match(decision.decision_id)
+    among_rewards = (
+        not state.combat_rewards_resolved
+        and asked is not None
+        and _PLANETARY_ARRAY in state.players[int(asked.group(1))].tech_ids
+    )
+    if not (state.combat_end_triggers_offered or among_rewards):
+        return None
+    before_the_award = (
+        f"{REWARDS}{FIXED_OUTCOME_SUFFIX}",
+        f"{CONFLICT_END}{FIXED_OUTCOME_SUFFIX}",
+    )
     for ahead in range(index, len(steps)):
         step = steps[ahead]
         if ahead in consumed or not isinstance(step, ChanceOutcome):
@@ -1102,7 +1139,11 @@ def _tech_draw_earlier(
             if sorted(step.values) != sorted(decision.options):
                 return None
             return ahead, step
-        if step.decision_id.endswith(FIXED_OUTCOME_SUFFIX):
+        if step.decision_id.endswith(FIXED_OUTCOME_SUFFIX) and not (
+            among_rewards
+            and step.decision_id.startswith(f"round:{state.round_number}:")
+            and step.decision_id.endswith(before_the_award)
+        ):
             return None
     return None
 
@@ -3748,6 +3789,135 @@ def _combat_reward_icon(
     return answer
 
 
+# Codec v154 (OQ-121, user ruling 2026-10-25, "PA는 승자의 창 (추천)"):
+# Planetary Array's "When you win a Conflict: draw a card" is a row of the
+# sole winner's reward window, last in its fixed order. A recording engine
+# drew the card as the Conflict card was awarded, after every place's
+# reward, so its record never answers the row.
+PLANETARY_ARRAY_ROW: Final = "planetary_array_row"
+
+
+def _planetary_array_row(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Answer the Planetary Array row once only it is left in the winner's
+    window and the record goes on past it (see ``PLANETARY_ARRAY_ROW``). The
+    seat's deck is the same then as at the award, which no other place's
+    reward touches; a reshuffle the draw asks for is recorded at the award
+    and taken from there (``_tech_draw_earlier``)."""
+
+    del step
+    if not isinstance(decision, PlayerDecision):
+        return None
+    answer = legacy_combat_reward_icon(state, decision.owner)
+    if (
+        answer is None
+        or dict(answer.arguments).get("effect") != _PLANETARY_ARRAY
+        or answer not in engine.whole_actions(state, decision.owner)
+    ):
+        return None
+    return answer
+
+
+# Codec v154 (OQ-113 (C), user ruling 2026-10-24; OQ-039 follows it): a
+# Navigation card's cost-free option is played even when it changes nothing,
+# and is then the card's mandatory play, since ``decline_navigation`` stays
+# offered only while every playable option costs something (OQ-058). An older
+# engine judged that option unplayable and spent the card through the decline
+# (OQ-039 (b)), alone or beside a costed option. The recorded decline is that
+# option's play (``NAVIGATION_FIZZLE_PLAYED``), which spends the card the same
+# way; the refusal its fizzle leaves on top -- a Spy placement or a trash with
+# nothing to place or trash -- follows it (``NAVIGATION_FIZZLE_CONFIRMED``).
+COST_FREE_PLAYS_CODEC: Final = 154
+NAVIGATION_FIZZLE_PLAYED: Final = "navigation_fizzle_played"
+NAVIGATION_FIZZLE_CONFIRMED: Final = "navigation_fizzle_confirmed"
+_NAVIGATION_FIZZLE_ANSWERS: Final = frozenset(
+    {
+        "decline_intrigue_spy",
+        "decline_intrigue_trash",
+        "skip_intrigue_acquisition",
+        "skip_intrigue_set_aside",
+        "skip_intrigue_top_card",
+        "skip_intrigue_trash",
+        "resolve_intrigue_influence_without_faction",
+    }
+)
+
+
+def _navigation_fizzle_played(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded ``decline_navigation`` where this engine offers no decline:
+    the play of the one cost-free option that changes nothing, which an
+    older engine did not offer (see ``NAVIGATION_FIZZLE_PLAYED``)."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+    ):
+        return None
+    frame = owned_top_frame(state, FrameKind.NAVIGATION_CHOICE, step.actor)
+    if frame is None:
+        return None
+    card_id = str(dict(frame.context)["card_id"])
+    card = intrigue_card_for_instance(card_id)
+    decline = DomainAction(action_id="decline_navigation", actor=step.actor)
+    if step != decline and step not in steps_for(decline, card.card.card_id):
+        return None
+    offered = engine.whole_actions(state, step.actor)
+    if decline in offered:
+        return None
+    fizzling = [
+        play
+        for play in offered
+        if play.action_id == "play_navigation"
+        and (option := card.options[int(str(dict(play.arguments)["option"]))])
+        and not any(section.costs for section in option.sections)
+        and play_changes_nothing(
+            state, step.actor, applicable_sections(state, step.actor, option)
+        )
+    ]
+    if len(fizzling) != 1:
+        return None
+    return first_step(state, fizzling[0])
+
+
+def _navigation_fizzle_confirmed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Right after a Navigation card's option is played, a choice frame of
+    that card with only its refusal or empty confirmation left: the fizzle
+    of a play ``NAVIGATION_FIZZLE_PLAYED`` took for a recorded decline (an
+    older engine never offered such a play, so no record of it reached one)."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and step.action_id in ("play_navigation", "choose_option")
+        and isinstance(decision, PlayerDecision)
+    ):
+        return None
+    frame = owned_top_frame(state, FrameKind.INTRIGUE_CHOICE, decision.owner)
+    if frame is None:
+        return None
+    card_id = dict(frame.context).get("card_id")
+    if card_id not in navigation_card_instance_ids():
+        return None
+    offered = engine.whole_actions(state, decision.owner)
+    if len(offered) != 1 or offered[0].action_id not in _NAVIGATION_FIZZLE_ANSWERS:
+        return None
+    return first_step(state, offered[0])
+
+
 # Stage B2 (user decision 2026-10-19): CHOAM Transports' card is the
 # owner's only step right after a Contract's completion, before every row of
 # its reward (OQ-106 13, OQ-112). An engine before codec v150 paid the
@@ -4215,6 +4385,23 @@ BRIDGES: tuple[Bridge, ...] = (
         follows=True,
     ),
     Bridge("combat_reward_icon", _combat_reward_icon, before_codec=150),
+    Bridge(
+        PLANETARY_ARRAY_ROW,
+        _planetary_array_row,
+        before_codec=PLANETARY_ARRAY_ROW_CODEC,
+    ),
+    Bridge(
+        NAVIGATION_FIZZLE_PLAYED,
+        _navigation_fizzle_played,
+        before_codec=COST_FREE_PLAYS_CODEC,
+        rewrites=True,
+    ),
+    Bridge(
+        NAVIGATION_FIZZLE_CONFIRMED,
+        _navigation_fizzle_confirmed,
+        before_codec=COST_FREE_PLAYS_CODEC,
+        follows=True,
+    ),
     Bridge(TRANSPORTS_CARD_FIRST, _transports_card_first, before_codec=150),
     Bridge(
         "transports_reshuffle_renamed",

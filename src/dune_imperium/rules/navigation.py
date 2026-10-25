@@ -323,9 +323,7 @@ def apply_navigation_play(state: GameState, action: DomainAction) -> RuleResult:
     player = action.actor
     owner = state.players[player]
     option = intrigue_card_for_instance(card_id).options[option_index]
-    sections = applicable_sections(
-        state, player, option, shield_wall_present=state.shield_wall_present
-    )
+    sections = applicable_sections(state, player, option)
     section_indexes = tuple(
         index for index, section in enumerate(option.sections) if section in sections
     )

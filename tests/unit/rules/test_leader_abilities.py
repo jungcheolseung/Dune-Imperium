@@ -2386,13 +2386,15 @@ def test_emperor_restriction_withholds_the_maker_sandworm_summon() -> None:
     assert [action.action_id for action in actions] == ["harvest_maker_spice"]
 
 
-def test_emperor_restriction_blocks_intrigue_deployment_options() -> None:
+def test_emperor_restriction_leaves_intrigue_deployment_options_deploying_none() -> (
+    None
+):
     # Emperor of the Known Universe blocks every unit for the turn
-    # [Main p. 17], so "Deploy up to four troops" could change nothing and
-    # is not offered: "Intrigue 카드를 플레이하려면 카드의 모든 조건을
-    # 충족하고 모든 비용을 지불해야 한다. [FAQ p. 2]", with the user's ruling
-    # of 2026-10-06 that an Intrigue option needs an effect that can change
-    # something.
+    # [Main p. 17], so "Deploy up to four troops" could change nothing; the
+    # line has no cost, so it is offered all the same and only the zero
+    # deployment is: "Intrigue 카드를 플레이하려면 카드의 모든 조건을 충족하고
+    # 모든 비용을 지불해야 한다. [FAQ p. 2]", with the user's ruling of
+    # 2026-10-24 (OQ-113 (C), (2) 1; on 2026-10-06 it was not offered).
     from dune_imperium.content.uprising.intrigue import (
         INTRIGUE_CARDS_BY_INSTANCE,
     )
@@ -2422,7 +2424,24 @@ def test_emperor_restriction_blocks_intrigue_deployment_options() -> None:
         )
     )
 
-    assert not option_is_playable(placed, 0, card.options[deploy_option])
+    assert option_is_playable(placed, 0, card.options[deploy_option])
+    nothing = apply_whole(
+        UprisingRulesEngine(),
+        placed,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", detonation), ("option", deploy_option)),
+        ),
+    )
+    assert "intrigue_without_effect" in [event.kind for event in nothing.events]
+    assert UprisingRulesEngine().whole_actions(nothing.state, 0) == (
+        DomainAction(
+            action_id="deploy_intrigue_troops",
+            actor=0,
+            arguments=(("count", 0),),
+        ),
+    )
     unrestricted = _choam_turn_state(
         replace(owner, hand=(), intrigue_cards=(detonation,))
     )

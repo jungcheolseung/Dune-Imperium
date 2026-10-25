@@ -703,6 +703,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_intrigue_imperium": apply_intrigue_choice,
     "acquire_intrigue_reserve": apply_intrigue_choice,
     "skip_intrigue_acquisition": apply_intrigue_choice,
+    "skip_intrigue_top_card": apply_intrigue_choice,
+    "skip_intrigue_set_aside": apply_intrigue_choice,
+    "skip_intrigue_trash": apply_intrigue_choice,
     "resolve_intrigue_influence_without_faction": apply_intrigue_choice,
     "acquire_intrigue_tleilaxu": apply_intrigue_choice,
     "acquire_intrigue_reclaimed_forces": apply_intrigue_choice,
@@ -1308,10 +1311,10 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
                     else offer_conflict_end_triggers(state)
                 )
             elif any(seat.tech_cards_owed for seat in state.players):
-                # The card Planetary Array owes for the win is drawn before
-                # the cleanup runs on into the next round (OQ-108): with a
-                # Conflict-end window open it is drawn as that step settles;
-                # with none, here (a reshuffle stops the run).
+                # A card still owed to a Tech tile (Planetary Array's, owed
+                # by its row of the winner's window, OQ-121) is drawn before
+                # the cleanup runs on into the next round: normally as its
+                # step settles; else here (a reshuffle stops the run).
                 automatic = draw_owed_tech_cards(RuleResult(state=state))
             else:
                 automatic = finish_combat(state)

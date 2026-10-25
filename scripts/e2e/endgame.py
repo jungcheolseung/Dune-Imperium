@@ -29,6 +29,16 @@ garrison. Scanning seeds 0-39 the same way (2026-10-19, codec v149: the
 page's payload sent through `GameSessionManager.create_game`, the standings
 read from `summary`), seed 3 is the first where three seats hold one (ranks 1,
 2 and 4, the last holding two).
+
+Codec v154 (the cost-free Intrigue lines played even when they fizzle, OQ-113
+(C); the Planetary Array card drawn as a row of the Conflict winner's reward
+window, OQ-121; Suspensor Suits' missing troop made up later, OQ-042) moved
+seed 3 off its garrisoned Commanders in turn. The same scan over seeds 0-39
+(2026-10-26, codec v154), now with "Player 1 starts" off as the E2E server
+runs it (``--first-player deal``, so the printed deal): seeds 1, 5, 8, 13, 18,
+19, 20, 26, 27, 29, 30, 32 and 36 have two seats holding one, and seed 12 is
+the first where three seats hold one (ranks 1, 2 and 3, the first holding
+two).
 """
 
 from __future__ import annotations
@@ -52,7 +62,7 @@ from common import (
 
 check = Check()
 
-SEED = 3
+SEED = 12
 EXPANSIONS = ("choam", "bloodlines", "tech", "immortality", "promo")
 
 

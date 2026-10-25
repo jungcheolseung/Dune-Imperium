@@ -21,9 +21,10 @@ kind the walks meet:
   Spy icon and Arrakis Observer's recall offered, Unswerving Loyalty
   without its Fremen Bond waiting);
 - "command": the waiting choice is a Command (6+) one, so its reason is
-  the Persuasion the Reveal has generated (seed 167 today: Desert Power's
-  branch and Unswerving Loyalty's troop offered, Intelligence Training
-  waiting for Command; Desert Power's 2 Persuasion then opens it).
+  the Persuasion the Reveal has generated (seed 6270 today: Delivery
+  Logistics' Persuasion-or-Contract choice and Disruption Tactics' trash
+  offered, Intelligence Training waiting for Command; Delivery Logistics'
+  Persuasion then opens it).
 
 Prints {"optional": {...}, "command": {...}} as JSON, each {save_id, seed,
 seat, round, revision, choices}: ``choices`` are the page's
@@ -59,7 +60,20 @@ OPTIONS = {
 # seeds 199, 306, 316 and 386 -- reveal_choices.py reads Public Spectacle's
 # logged Spy step off the "optional" Reveal, and only seed 306 has that card
 # among them.
-KNOWN = (306, 167)
+# Seed 167 until codec v154 moved the AI-free walks (a cost-free Intrigue line
+# is played even when it fizzles, OQ-113 (C); the Planetary Array card is a
+# row of the Conflict winner's reward window, OQ-121; Suspensor Suits' missing
+# troop is made up later, OQ-042): the "command" Reveal is rare (a scan of
+# 0-7805 meets one in about 700 seeds: 766, 3241, 4106, 4477, 5853, 5941,
+# 6198, 6270, 6355, 6522 and 6983), and reveal_choices.py's step [3] needs a
+# mandatory choice that generates the Persuasion to open the waiting Command
+# choice (Desert Power's or Delivery Logistics') and an optional choice still
+# on offer at the end; of those only seed 6270 has it (seed 766 and the
+# others wait on a Command choice no mandatory answer opens). The "optional"
+# Reveal stays at seed 306 (seeds 22, 199, 458, 500, 639, 662, 667 and 941
+# also meet one in 0-999, and 306, 458, 639 and 941 have Public Spectacle
+# among them). A fallback scan of 0-399 therefore finds no "command" Reveal.
+KNOWN = (306, 6270)
 SEEDS = (*KNOWN, *(seed for seed in range(400) if seed not in KNOWN))
 STEPS = 6_000
 

@@ -1940,9 +1940,18 @@ def test_ornithopter_fleet_blocks_crysknife_flips_but_frees_ornithopter_ones() -
     assert flippable_battle_card_ids(seat, BattleIcon.ORNITHOPTER) == ("skirmish_wild",)
 
 
-def test_planetary_array_owes_a_card_the_engine_draws_after_the_win() -> None:
-    from dune_imperium.rules.combat import offer_conflict_end_triggers
-    from dune_imperium.rules.tech import draw_owed_tech_cards
+def test_planetary_array_is_a_row_of_the_sole_winner_s_window() -> None:
+    # OQ-121 (user ruling 2026-10-25, "PA는 승자의 창 (추천)"; OQ-108
+    # re-ruled): "When you win a Conflict: draw a card" [Planetary Array Tech
+    # tile] is a row of the winner's reward window, last in the fixed order
+    # the AI seats and older records follow; the Conflict card's award after
+    # the rewards owes nothing any more.
+    from dune_imperium.rules.combat import (
+        legacy_combat_reward_icon,
+        legal_combat_reward_icon_actions,
+        offer_conflict_end_triggers,
+        resolve_combat_rewards,
+    )
 
     owner = _tech_owner(
         "planetary_array",
@@ -1958,7 +1967,6 @@ def test_planetary_array_owes_a_card_the_engine_draws_after_the_win() -> None:
         phase=GamePhase.COMBAT,
         first_player=0,
         combat_intrigue_complete=True,
-        combat_rewards_resolved=True,
         decision_stack=(),
         players=(
             owner,
@@ -1968,23 +1976,51 @@ def test_planetary_array_owes_a_card_the_engine_draws_after_the_win() -> None:
             ),
         ),
     )
-    # The card is owed as the Conflict card is awarded (OQ-108, user decision
-    # 2026-10-18), and drawn once that step settles.
-    offered = offer_conflict_end_triggers(state)
-    assert offered.state.players[0].tech_cards_owed == 1
-    drawn = draw_owed_tech_cards(offered).state
-    assert drawn.players[0].tech_cards_owed == 0
+    window = resolve_combat_rewards(state).state
+    rows = legal_combat_reward_icon_actions(window, 0)
+    assert rows[-1] == DomainAction(
+        action_id="resolve_combat_reward_icon",
+        actor=0,
+        arguments=(("effect", "planetary_array"),),
+    )
+    icons = str(dict(window.decision_stack[-1].context)["icons"]).split(",")
+    assert icons[-1] == "planetary_array" and icons.count("planetary_array") == 1
+    assert legacy_combat_reward_icon(window, 0) != rows[-1] or len(icons) == 1
+    # The winner may take it first: the card is drawn as the row resolves.
+    assert window.players[0].hand == ()
+    drawn = apply_whole(UprisingRulesEngine(), window, rows[-1]).state
     assert len(drawn.players[0].hand) == 1
+    assert drawn.players[0].tech_cards_owed == 0
+    assert drawn.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
 
+    # The award after the rewards owes no card.
+    done = replace(state, combat_rewards_resolved=True)
+    assert offer_conflict_end_triggers(done).state.players[0].tech_cards_owed == 0
 
-def _planetary_array_conflict_end(
+    # A tie for first takes second place's reward [Main p. 14]: no winner, no
+    # row.
+    rival = replace(
+        state.players[1],
+        troops_conflict=1,
+        troops_supply=11,
+        troops_garrison=0,
+        combat_strength=2,
+    )
+    tied = replace(state, players=(owner, rival, *state.players[2:]))
+    tied_window = resolve_combat_rewards(tied).state
+    assert all(
+        dict(action.arguments)["effect"] != "planetary_array"
+        for seat in (0, 1)
+        for action in legal_combat_reward_icon_actions(tied_window, seat)
+    )
+
+def _planetary_array_combat(
     deck: tuple[str, ...], discard: tuple[str, ...]
-) -> tuple[UprisingRulesEngine, Transition]:
-    """A Combat the Planetary Array owner wins, through the engine up to the
-    transition that offers the Conflict-end windows (Immortality, so the
-    owner's loss of three and its Intrigue card open one)."""
+) -> GameState:
+    """A Combat the Planetary Array owner wins alone, at its Combat Intrigue
+    (Immortality, so the owner's loss of three and its Intrigue card open a
+    Conflict-end window)."""
 
-    engine = UprisingRulesEngine()
     owner = _tech_owner(
         "planetary_array",
         troops_supply=9,
@@ -2012,7 +2048,18 @@ def _planetary_array_conflict_end(
             *(PlayerState(player_id=seat, has_revealed=True) for seat in (1, 2, 3)),
         ),
     )
-    state = begin_combat_intrigue(state).state
+    return begin_combat_intrigue(state).state
+
+
+def _planetary_array_conflict_end(
+    deck: tuple[str, ...], discard: tuple[str, ...]
+) -> tuple[UprisingRulesEngine, Transition]:
+    """``_planetary_array_combat`` through the engine up to the transition
+    that offers the Conflict-end windows, or that asks the Planetary Array
+    draw's reshuffle."""
+
+    engine = UprisingRulesEngine()
+    state = _planetary_array_combat(deck, discard)
     while True:
         frame = state.decision_stack[-1]
         if frame.kind == FrameKind.PAUSE:
@@ -2024,17 +2071,20 @@ def _planetary_array_conflict_end(
                 (a for a in actions if a.action_id.startswith("pass_")), actions[0]
             )
             transition = apply_whole(engine, state, passing)
-        if transition.state.combat_end_triggers_offered:
+        if (
+            transition.state.combat_end_triggers_offered
+            or transition.state.decision_stack[-1].kind
+            == FrameKind.PERSONAL_DRAW_RESHUFFLE
+        ):
             return engine, transition
         state = transition.state
 
 
 def test_planetary_array_s_card_is_in_hand_before_any_conflict_end_window() -> None:
-    # "When you win a Conflict: draw a card" [Planetary Array Tech tile].
-    # The winner takes the Conflict card right after the rewards [Main p. 14]
-    # (OQ-108, user decision 2026-10-18), so the card is owed there and drawn
-    # as that step settles: the Conflict-end window it opens finds the card
-    # already in the hand, before any window is answered.
+    # "When you win a Conflict: draw a card" [Planetary Array Tech tile]: a
+    # row of the winner's reward window (OQ-121, 2026-10-25), so the
+    # Conflict-end window finds the card already in the hand, before any
+    # window is answered.
     deck = starting_deck_instance_ids(0)[5:8]
     engine, offered = _planetary_array_conflict_end(deck, ())
 
@@ -2059,36 +2109,30 @@ def test_planetary_array_s_card_is_in_hand_before_any_conflict_end_window() -> N
     assert declined.players[0].tech_cards_owed == 0
 
 
-def test_planetary_array_s_empty_deck_reshuffles_before_the_window() -> None:
-    # The same draw with an empty deck: the discard pile is shuffled first
-    # (a ``...:tech_draw:discard_shuffle`` chance on top of the unanswered
-    # window), then the card is drawn and the window is the decision again.
+def test_planetary_array_s_empty_deck_reshuffles_in_the_winner_s_window() -> None:
+    # The same draw with an empty deck: the discard pile is shuffled as the
+    # row resolves (a ``...:tech_draw:discard_shuffle`` chance), still among
+    # the rewards, before any Conflict-end window (OQ-121).
     discard = starting_deck_instance_ids(0)[5:8]
-    engine, offered = _planetary_array_conflict_end((), discard)
+    engine, asked = _planetary_array_conflict_end((), discard)
 
-    seat = offered.state.players[0]
+    state = asked.state
+    assert not state.combat_end_triggers_offered
+    seat = state.players[0]
     assert seat.hand == () and seat.tech_cards_owed == 0
-    top = offered.state.decision_stack[-1]
+    top = state.decision_stack[-1]
     assert top.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
     assert isinstance(top.decision, ChanceDecision)
     assert top.decision.decision_id == "round:1:player:0:tech_draw:discard_shuffle"
     assert tuple(sorted(top.decision.options)) == tuple(sorted(discard))
-    # The Conflict-end window waits underneath, unanswered.
-    assert offered.state.decision_stack[-2].kind == FrameKind.CONFLICT_END_TRIGGER
-    assert [event.kind for event in offered.events].count("conflict_won") == 1
+    assert [event.kind for event in asked.events].count("conflict_won") == 0
 
     shuffled = tuple(reversed(discard))
-    answered = apply_whole(engine, 
-        offered.state, ChanceOutcome(top.decision.decision_id, shuffled)
+    answered = apply_whole(
+        engine, state, ChanceOutcome(top.decision.decision_id, shuffled)
     )
-
     assert answered.state.players[0].hand == (shuffled[0],)
     assert answered.state.players[0].deck == shuffled[1:]
-    assert [event.kind for event in answered.events] == ["personal_discard_shuffled"]
-    window = answered.state.decision_stack[-1]
-    assert window.kind == FrameKind.CONFLICT_END_TRIGGER
-    assert isinstance(window.decision, PlayerDecision) and window.decision.owner == 0
-
 
 def _planetary_array_win_without_windows(
     deck: tuple[str, ...], discard: tuple[str, ...]
@@ -2146,11 +2190,10 @@ def _planetary_array_win_without_windows(
 
 
 def test_planetary_array_s_card_comes_at_the_win_with_no_window() -> None:
-    # OQ-108 (B), user decision 2026-10-18: "When you win a Conflict: draw a
-    # card" [Planetary Array Tech tile] at the Conflict card's award, right
-    # after the rewards [Main p. 14] -- also when no Conflict-end window
-    # opens, where the cleanup runs on into the next round in one step (the
-    # card used to come after the next round's hand there).
+    # OQ-121 (2026-10-25; OQ-108 re-ruled): "When you win a Conflict: draw a
+    # card" [Planetary Array Tech tile] in the winner's reward window -- also
+    # when no Conflict-end window opens and the cleanup runs on into the next
+    # round in one step.
     deck = starting_deck_instance_ids(0)[5:10]
     _engine, paused = _planetary_array_win_without_windows(deck, ())
 
@@ -2166,6 +2209,7 @@ def test_planetary_array_s_empty_deck_reshuffles_in_combat_with_no_window() -> N
     engine, asked = _planetary_array_win_without_windows((), discard)
 
     assert asked.phase is GamePhase.COMBAT
+    assert not asked.combat_rewards_resolved
     top = asked.decision_stack[-1]
     assert top.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
     assert isinstance(top.decision, ChanceDecision)
@@ -2177,8 +2221,7 @@ def test_planetary_array_s_empty_deck_reshuffles_in_combat_with_no_window() -> N
     seat = answered.state.players[0]
     assert seat.hand == (shuffled[0],)
     assert seat.tech_cards_owed == 0
-    assert answered.state.phase is GamePhase.ROUND_START
-
+    assert answered.state.phase is GamePhase.COMBAT
 
 def test_suspensor_suits_deploys_a_troop_per_intrigue_gained_in_the_owners_turn() -> (
     None
@@ -2206,19 +2249,20 @@ def test_suspensor_suits_deploys_a_troop_per_intrigue_gained_in_the_owners_turn(
     assert quiet.state.players[1].suspensor_owed == 0
 
 
-def test_suspensor_suits_logs_the_troops_the_supply_cannot_cover() -> None:
-    # OQ-042 (b): what the supply cannot cover is lost, never paid later.
-    # Nothing is left to choose, so no window opens, but the troops left
-    # over are logged, a partial shortfall included (user ruling 2026-10-02,
-    # L2-Q4: "로그 + 클릭 전 경고").
+def test_suspensor_suits_records_the_troops_the_supply_cannot_cover() -> None:
+    # OQ-042 (user re-ruling 2026-10-25, "그래 (가)로 가자"): what the supply
+    # cannot cover waits on the seat as troops owed to the Conflict, to be
+    # made up like a recruit's shortfall (OQ-030). Nothing is left to choose,
+    # so no window opens; the shortfall is logged as a recruit shortfall for
+    # the dry run's warning (user ruling 2026-10-02, L2-Q4).
     from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
     from dune_imperium.rules.tech import deploy_suspensor_troops
 
-    def shortfalls(result: RuleResult) -> list[dict[str, object]]:
+    def shorts(result: RuleResult) -> list[dict[str, object]]:
         return [
             dict(event.payload)
             for event in result.events
-            if event.kind == "suspensor_deployment_unavailable"
+            if event.kind == "troops_recruit_short"
         ]
 
     partial = _turn_state(
@@ -2229,9 +2273,13 @@ def test_suspensor_suits_logs_the_troops_the_supply_cannot_cover() -> None:
     seat = paid.state.players[0]
     assert seat.suspensor_owed == 0
     assert seat.troops_conflict == 1 and seat.troops_supply == 0
-    assert shortfalls(paid) == [{"deployed": 1, "player": 0, "troops": 1}]
+    assert seat.ungained_conflict_troops == 1 and seat.ungained_troops == 0
+    assert shorts(paid) == [
+        {"player": 0, "recruited": 1, "requested": 2, "short": 1}
+    ]
     deployed = [event for event in paid.events if event.kind == "troops_deployed"]
     assert [dict(event.payload)["count"] for event in deployed] == [1]
+    assert "suspensor_deployment_unavailable" not in [e.kind for e in paid.events]
 
     empty = replace(
         partial,
@@ -2240,12 +2288,15 @@ def test_suspensor_suits_logs_the_troops_the_supply_cannot_cover() -> None:
             *partial.players[1:],
         ),
     )
-    lost = deploy_suspensor_troops(draw_intrigue_cards(empty, 0, 2, source="t"))
-    assert lost.state.players[0].troops_conflict == 0
-    assert shortfalls(lost) == [{"deployed": 0, "player": 0, "troops": 2}]
-    assert "troops_deployed" not in [event.kind for event in lost.events]
+    waiting = deploy_suspensor_troops(draw_intrigue_cards(empty, 0, 2, source="t"))
+    assert waiting.state.players[0].troops_conflict == 0
+    assert waiting.state.players[0].ungained_conflict_troops == 2
+    assert shorts(waiting) == [
+        {"player": 0, "recruited": 0, "requested": 2, "short": 2}
+    ]
+    assert "troops_deployed" not in [event.kind for event in waiting.events]
 
-    # A full supply: nothing to log.
+    # A full supply: nothing to log or to wait for.
     full = deploy_suspensor_troops(
         draw_intrigue_cards(
             _turn_state(_tech_owner("suspensor_suits"), stacks=((), (), ())),
@@ -2254,8 +2305,70 @@ def test_suspensor_suits_logs_the_troops_the_supply_cannot_cover() -> None:
             source="t",
         )
     )
-    assert shortfalls(full) == []
+    assert shorts(full) == []
+    assert full.state.players[0].ungained_conflict_troops == 0
 
+
+def test_a_troop_back_in_the_supply_deploys_for_suspensor_suits() -> None:
+    # OQ-042: the troops owed to the Conflict are made up when troops return
+    # to the supply in the same player turn, after the recruit shortfall
+    # (the Steam app's order: recruits, then deployments, then specimens).
+    from dune_imperium.rules.shortfall import refill_shortfall, shortfall_refill_seat
+
+    owner = _tech_owner(
+        "suspensor_suits",
+        troops_supply=1,
+        troops_garrison=11,
+        ungained_conflict_troops=2,
+    )
+    state = _turn_state(owner, stacks=((), (), ()))
+    assert shortfall_refill_seat(state) == 0
+    refilled = refill_shortfall(state, 0)
+    seat = refilled.state.players[0]
+    assert seat.troops_supply == 0 and seat.troops_conflict == 1
+    assert seat.troops_garrison == 11
+    assert seat.ungained_conflict_troops == 1
+    kinds = [event.kind for event in refilled.events]
+    assert kinds == ["shortfall_refilled", "troops_deployed"]
+    assert dict(refilled.events[0].payload) == {"conflict_troops": 1, "player": 0}
+
+    # A recruit shortfall comes first: the returned troop is that recruit.
+    both = replace(
+        state,
+        players=(replace(owner, ungained_troops=1), *state.players[1:]),
+    )
+    recruit_first = refill_shortfall(both, 0).state.players[0]
+    assert recruit_first.troops_garrison == 12 and recruit_first.troops_conflict == 0
+    assert recruit_first.ungained_troops == 0
+    assert recruit_first.ungained_conflict_troops == 2
+
+
+def test_suspensor_suits_keeps_the_troop_in_the_garrison_when_deployment_is_banned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # "You still gain the troop, but it just goes to your Garrison instead of
+    # deploying." (designer, community FAQ; OQ-042 re-ruling 2026-10-25): with
+    # Emperor of the Known Universe banning deployment the troop is recruited
+    # and stays in the garrison, and a shortfall waits as a plain recruit's.
+    from dune_imperium.rules import tech
+    from dune_imperium.rules.intrigue_deck import draw_intrigue_cards
+
+    monkeypatch.setattr(tech, "units_deployment_blocked", lambda state, seat: True)
+    state = _turn_state(
+        _tech_owner("suspensor_suits", troops_supply=1, troops_garrison=11),
+        stacks=((), (), ()),
+    )
+    paid = tech.deploy_suspensor_troops(draw_intrigue_cards(state, 0, 2, source="t"))
+    seat = paid.state.players[0]
+    assert seat.troops_garrison == 12 and seat.troops_conflict == 0
+    assert seat.troops_supply == 0
+    assert seat.ungained_troops == 1 and seat.ungained_conflict_troops == 0
+    unavailable = [
+        dict(event.payload)
+        for event in paid.events
+        if event.kind == "suspensor_deployment_unavailable"
+    ]
+    assert unavailable == [{"deployed": 0, "player": 0, "troops": 1}]
 
 def _owed_and_deployed(state: GameState, player: int = 0) -> tuple[int, int]:
     from dune_imperium.rules.tech import deploy_suspensor_troops
@@ -3041,8 +3154,8 @@ def test_rapid_engineering_discards_for_a_discounted_tile_or_two_influence() -> 
     assert bought.players[0].tech_ids == ("gene_locked_vault",)
 
     # A tile left to buy keeps the discard line playable beside the
-    # Influence line (user ruling 2026-10-06: an option needs an effect that
-    # can change something).
+    # Influence line (a line with a cost needs an effect that can change
+    # something: OQ-113 (C), user ruling 2026-10-24).
     rich = _turn_state(
         _tech_owner(
             "glowglobes", "training_depot", "panopticon", intrigue_cards=(card,)
@@ -3116,8 +3229,9 @@ def test_a_cards_tech_discount_must_be_used_when_a_tile_is_affordable() -> None:
     assert "gene_locked_vault" in _tech_actions(affordable)
 
     # Plasteel Blades (3), Panopticon (5), Spy Drones (5): nothing for one
-    # spice, so the card is not offered at all (user ruling 2026-10-06); the
-    # decline-only frame stays as a safety net (OQ-057 (9)).
+    # spice, so the card is not offered at all (the tile's price is a cost,
+    # OQ-113 (C), user ruling 2026-10-24); the decline-only frame stays as a
+    # safety net (OQ-057 (9)).
     unaffordable = (("plasteel_blades",), ("panopticon",), ("spy_drones",))
     poor = _turn_state(
         _owner(intrigue_cards=(card,), resources=Resources(spice=1)),
@@ -3205,9 +3319,10 @@ def test_battlefield_research_retreats_for_a_tile_or_scores_with_three() -> None
 
 # "To play an Intrigue card, you must meet its conditions and pay its costs."
 # [FAQ p. 2] (docs/rules/player-turns.md), and the user's ruling of
-# 2026-10-06 that an Intrigue option needs an effect that can change
-# something now: an Acquire Tech with no tile the owner can buy changes
-# nothing (``tech.tech_acquisition_possible``).
+# 2026-10-24 (OQ-113 (C), 2026-10-06 for every line) that a line with a cost
+# needs an effect that can change something now: an Acquire Tech with no tile
+# the owner can buy changes nothing, and the tile's price is a cost
+# (``tech.tech_acquisition_possible``).
 
 
 def test_battlefield_research_is_not_offered_without_an_acquirable_tile() -> None:
@@ -3304,8 +3419,11 @@ def test_rapid_engineering_tech_line_is_not_offered_without_an_acquirable_tile()
         ] == [0]
 
 
-def test_rapid_engineering_influence_line_needs_a_faction_below_six() -> None:
-    from dune_imperium.display.unavailable import intrigue_option_reason
+def test_rapid_engineering_influence_line_with_every_faction_at_six_fizzles() -> None:
+    # The Influence line has no cost, so with every Faction at the top it is
+    # offered all the same, the play is noted and the choice frame only
+    # confirms (OQ-113 (C), user ruling 2026-10-24; 2026-10-06 it was not
+    # offered, "top").
     from dune_imperium.rules.effect_interpreter import option_unplayable_reason
     from dune_imperium.rules.intrigue import (
         apply_intrigue_choice,
@@ -3330,13 +3448,16 @@ def test_rapid_engineering_influence_line_needs_a_faction_below_six() -> None:
         return _turn_state(owner, stacks=((), (), ()))
 
     full = plot(top)
-    assert legal_intrigue_play_actions(full, 0) == ()
-    block = option_unplayable_reason(full, 0, option)
-    assert block is not None
-    assert intrigue_option_reason(full, 0, option, block)[2] == "top"
+    play = DomainAction("play_intrigue", 0, (("card_id", card), ("option", 1)))
+    assert legal_intrigue_play_actions(full, 0) == (play,)
+    assert option_unplayable_reason(full, 0, option) is None
+    fizzled = apply_intrigue_play(full, play)
+    assert "intrigue_without_effect" in [event.kind for event in fizzled.events]
+    assert [
+        action.action_id for action in legal_intrigue_choice_actions(fizzled.state, 0)
+    ] == ["resolve_intrigue_influence_without_faction"]
     # One Faction below the top: the first pick takes it, the second fizzles.
     one = plot(replace(top, fremen=5))
-    play = DomainAction("play_intrigue", 0, (("card_id", card), ("option", 1)))
     assert legal_intrigue_play_actions(one, 0) == (play,)
     played = apply_intrigue_play(one, play).state
     first = legal_intrigue_choice_actions(played, 0)

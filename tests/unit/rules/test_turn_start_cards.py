@@ -248,22 +248,30 @@ def test_a_turn_passed_to_the_seat_itself_starts_afresh() -> None:
     assert LITANY in passed.players[0].in_play
 
 
-def test_withdrawn_is_not_offered_when_every_other_seat_has_revealed() -> None:
+def test_withdrawn_is_offered_when_every_other_seat_has_revealed() -> None:
     # "Pass your turn." [Withdrawn card] with every other seat revealed hands
-    # the turn straight back [Main p. 8]: its only effect changes nothing, so
-    # it is not offered ("To play an Intrigue card, you must meet its
-    # conditions and pay its costs." [FAQ p. 2], with the user's ruling of
-    # 2026-10-06 that an Intrigue option needs an effect that can change
-    # something). Litany Against Fear is an Imperium card and keeps its pass.
-    from dune_imperium.content.uprising.effect_dsl import PassTurn
+    # the turn straight back [Main p. 8]: its only effect changes nothing, but
+    # the card has no cost, so it is offered all the same ("To play an
+    # Intrigue card, you must meet its conditions and pay its costs." [FAQ
+    # p. 2], with the user's ruling of 2026-10-24, OQ-113 (C), (2) 4; on
+    # 2026-10-06 it was not offered). Litany Against Fear is an Imperium card
+    # and keeps its pass.
     from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
     from dune_imperium.rules.effect_interpreter import option_unplayable_reason
 
     option = intrigue_card_for_instance(WITHDRAWN).options[0]
     alone = _turn_state(_owner(), others_revealed=True)
-    assert WITHDRAWN_PLAY not in _offered(alone)
+    assert WITHDRAWN_PLAY in _offered(alone)
     assert LITANY_PLAY in _offered(alone)
-    assert option_unplayable_reason(alone, 0, option) == PassTurn()
+    assert option_unplayable_reason(alone, 0, option) is None
+    # Played, the passed turn comes straight back to the owner, and the play is
+    # noted as one that changes nothing.
+    played = apply_whole(ENGINE, alone, WITHDRAWN_PLAY)
+    kinds = [event.kind for event in played.events]
+    assert "intrigue_without_effect" in kinds
+    assert "turn_passed" in kinds
+    assert dict(played.state.decision_stack[-1].context)["turn_owner"] == 0
+    assert WITHDRAWN in played.state.intrigue_discard
     # One seat still to reveal is enough.
     waiting = replace(
         alone,
