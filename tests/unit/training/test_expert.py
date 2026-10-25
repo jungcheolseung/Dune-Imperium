@@ -431,11 +431,13 @@ def test_collect_to_directory_labels_mixed_games_of_the_games_own_catalog(
     # seeded teacher network, and with it the game of seed 2, changed: that
     # game no longer meets a decision of untrained templates only. Seed 3's
     # did, until codec v154 added Planetary Array's reward row (OQ-121) and
-    # resized it again; seed 7's game meets 4 of them.
+    # resized it again; seed 7's game met 4 of them until the same codec's
+    # Manipulate confirmation (OQ-113 (C)) resized it once more. Seed 5's
+    # game meets 4 (so do 9 and 10).
     summary = collect_to_directory(
         teacher,
         out,
-        start_seed=7,
+        start_seed=5,
         games=1,
         workers=1,
         config=config,

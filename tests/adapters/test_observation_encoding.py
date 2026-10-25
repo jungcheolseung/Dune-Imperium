@@ -1066,6 +1066,14 @@ def test_leader_draft_pool_is_encoded_for_every_observer() -> None:
 # same OQ-131, user decision 2026-10-25): the previous commit's trace equals
 # this one up to decision 313, where seat 1 now answers the event's one-row
 # window before its turn (f062b00f...aff7c8c7, 3,404 then).
+# Re-pinned for codec v154 (OQ-113 (C), user ruling 2026-10-24: a cost-free
+# Intrigue line is played even when it fizzles). A trace of master
+# 7303f91d's game equals this one up to decision 630, round 8, where seat 3
+# is now offered False Orders with no Spy to move and no post to fill (it
+# played its Agent; "You may play this Intrigue card even if no opponents'
+# Spies are on the space where you sent an Agent this turn." [FAQ p. 2]),
+# the random seat plays it and the everything game parts; the other five
+# games meet no such play and stay pinned.
 _GOLDEN_DIGESTS = {
     "base": ("9ac09f6db7d71edf89ee0d4abb58e32f0a23caad428000c1308138e00863173f", 2780),
     "choam": ("d43306c8745984b856879a1cc9abc57089348efc02b7d9dde0a3bdadcc55f1dc", 2668),
@@ -1074,8 +1082,8 @@ _GOLDEN_DIGESTS = {
         3300,
     ),
     "everything": (
-        "02de194289d54dd6f1e784bcadcfc9bbdb07ae7aa44912aecd4cdf0f4785f482",
-        3616,
+        "93f8a0d1562aa3d9bf0caed24013fcc90dc0f393ed6df8c77586ebd3fccc2466",
+        3556,
     ),
     "draft": ("0df15d5397e3649c558e48a2787907852d0213aa1815abd65126c95bc9ca39c2", 2788),
     "scouts": (
