@@ -693,6 +693,9 @@ def legal_mission_collect_actions(
 def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
     """Collect everything the visiting seat's missions left on this space."""
 
+    # ``leader_abilities`` imports this module through ``acquisition``.
+    from dune_imperium.rules.leader_abilities import units_deployment_blocked
+
     if action not in legal_mission_collect_actions(state, action.actor):
         raise ValueError("action is not a legal mission collection")
     _, context = current_agent_effect_context(state)
@@ -714,7 +717,14 @@ def apply_mission_collect(state: GameState, action: DomainAction) -> RuleResult:
         mission_id, _, _, troops = row
         parked.remove(row)
         kind = MISSIONS_BY_ID[mission_id].kind
-        to_conflict = kind in _TO_CONFLICT
+        # "Units can't be deployed to the Conflict this turn." [Shaddam
+        # Corrino IV card] [Main p. 17] [FAQ p. 3]: on such a turn the troop
+        # is recruited and stays in the garrison (OQ-130, user ruling
+        # 2026-10-25, as Suspensor Suits' troop under OQ-042; engine audit
+        # 2026-10-22, G3).
+        to_conflict = kind in _TO_CONFLICT and not units_deployment_blocked(
+            state, player
+        )
         owner = replace(
             owner,
             troops_parked=owner.troops_parked - troops,

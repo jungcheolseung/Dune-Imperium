@@ -467,6 +467,36 @@ def test_send_for_aid_moves_a_garrison_troop_and_its_water() -> None:
     assert state.players[0].resources.water == water + 1
 
 
+def test_send_for_aid_troop_stays_in_the_garrison_on_a_turn_with_no_deployment() -> (
+    None
+):
+    # Emperor of the Known Universe: "Units can't be deployed to the Conflict
+    # this turn." [Shaddam Corrino IV card] [Main p. 17] [FAQ p. 3]
+    # (docs/rules/choam-module.md). On such a turn the troop Send for Aid
+    # stood on the space is recruited and stays in the garrison (OQ-130,
+    # user ruling 2026-10-25 "G3은 추천대로", as Suspensor Suits' troop under
+    # OQ-042); it once went to the Conflict (engine audit 2026-10-22, G3).
+    # The ban waits in the turn frame as Servo-Receivers leaves it there
+    # before the placement (OQ-062 (b)).
+    state = _reveal(_base(), "send_for_aid")
+    state = _answer(state, {0: ""})
+    garrison = state.players[0].troops_garrison
+    turn = _turn_for(state)
+    frame = turn.decision_stack[-1]
+    banned = replace(
+        turn,
+        decision_stack=(
+            replace(frame, context=(("units_deploy_blocked", True),)),
+        ),
+    )
+
+    visited = _visit(banned, "gather_support")
+
+    seat = visited.players[0]
+    assert seat.troops_conflict == 0
+    assert seat.troops_garrison == garrison + 1
+
+
 def test_coordinate_with_the_emperor_parks_a_specimen() -> None:
     base = _base(IMMORTALITY)
     seat = replace(
