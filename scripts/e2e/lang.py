@@ -144,7 +144,8 @@ ENGLISH_TERMS_JS = r"""() => {
 # "Family Atomics" (2026-09-22).
 KOREAN_LATIN_JS = r"""({keep, scoped}) => {
     const names = new Set(keep);
-    const NAME_FIELDS = new Set(['name', 'ability', 'signet']);
+    /* 'names': the rulings notice's English card names (house_rulings). */
+    const NAME_FIELDS = new Set(['name', 'ability', 'signet', 'names']);
     const walk = (value, key) => {
         if (typeof value === 'string') {
             if (NAME_FIELDS.has(key) && /[A-Za-z]{2}/.test(value)) names.add(value);

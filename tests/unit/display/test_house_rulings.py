@@ -111,3 +111,55 @@ def test_each_entry_reads_in_both_languages_without_developer_talk() -> None:
 def test_the_groups_and_games_are_all_used() -> None:
     assert {entry.group for entry in HOUSE_RULINGS} == set(RulingGroup)
     assert {entry.game for entry in HOUSE_RULINGS} == set(RulingGame)
+
+
+# Words a Korean page may show in English on purpose (scripts/e2e/lang.py
+# KOREAN_KEEPS_ENGLISH and KOREAN_CHROME_ENGLISH are the browser's list).
+_CHROME_ENGLISH = ("AI", "Esc", "II·III")
+_NAME_FIELDS = frozenset({"name", "ability", "signet", "names"})
+
+
+def _catalog_names() -> set[str]:
+    from dune_imperium.server.catalog import build_catalog
+
+    names: set[str] = set()
+
+    def walk(value: object, key: str) -> None:
+        if isinstance(value, str):
+            if key in _NAME_FIELDS and re.search(r"[A-Za-z]{2}", value):
+                names.add(value)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item, key)
+        elif isinstance(value, dict):
+            for name, item in value.items():
+                # In Korean the page shows a name's Korean print where the
+                # catalog has one (i18n.js localizeCatalog), so the English
+                # name is not on the page and must not be in the text.
+                if f"{name}_ko" in value:
+                    walk(value[f"{name}_ko"], str(name))
+                elif not str(name).endswith("_ko"):
+                    walk(item, str(name))
+
+    walk(build_catalog(), "")
+    return names
+
+
+def test_the_korean_text_keeps_only_names_in_english() -> None:
+    # The help panel in Korean is scanned by scripts/e2e/lang.py ("Korean: no
+    # English outside names in the help panel"): every English word must be a
+    # catalog name or one the entry lists in ``names``. This is that check
+    # without a browser, so a new entry fails here first (2026-10-25: 47
+    # fields of the first notice passed help.py and failed lang.py).
+    known = sorted(_catalog_names() | set(_CHROME_ENGLISH), key=len, reverse=True)
+    left = []
+    for entry in HOUSE_RULINGS:
+        for field in ("title_ko", "ruling_ko"):
+            bare = getattr(entry, field)
+            for name in known:
+                bare = bare.replace(name, " ")
+            bare = re.sub(r"\S*/\S*|OQ-\d+", " ", bare)
+            words = re.findall(r"[A-Za-z]{2,}", bare)
+            if words:
+                left.append((entry.oq, field, " ".join(words)))
+    assert not left, left

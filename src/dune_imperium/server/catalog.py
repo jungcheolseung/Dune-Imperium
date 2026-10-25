@@ -170,6 +170,7 @@ def _house_rulings() -> list[JsonValue]:
             "sources": entry.sources,
             "sources_ko": entry.sources_ko,
             "engine_pending": entry.engine_pending,
+            "names": list(entry.names),
         }
         rulings.append(row)
     return rulings

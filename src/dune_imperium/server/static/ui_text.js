@@ -465,7 +465,7 @@ const UI_TEXT = {
     "en": "The official rules are silent and this game differs from the app ({{count}})"
   },
   "help.rulings_base_ix": {
-    "ko": "원판·Rise of Ix (아직 구현 전)",
+    "ko": "원판·익스의 부상 (아직 구현 전)",
     "en": "base game · Rise of Ix (not playable yet)"
   },
   "help.rulings_engine_pending": {

@@ -61,7 +61,10 @@ class HouseRuling:
     item of a question that holds several). ``sources`` names, for the
     first two groups, which source the ruling follows and which it departs
     from. ``engine_pending`` marks a ruling the engine does not play yet
-    (decided, its implementation still ahead).
+    (decided, its implementation still ahead). ``names`` lists the English
+    card and Leader names the Korean text keeps that the catalog does not
+    know (the base game and Rise of Ix, short Twisted Intrigue names), so a
+    check for stray English can tell them from words left untranslated.
     """
 
     oq: str
@@ -74,6 +77,7 @@ class HouseRuling:
     sources_ko: str = ""
     sources: str = ""
     engine_pending: bool = False
+    names: tuple[str, ...] = ()
 
     @property
     def question(self) -> str:
@@ -98,6 +102,7 @@ def _load() -> tuple[dict[str, Any], tuple[HouseRuling, ...]]:
             sources_ko=row.get("sources_ko", "").strip(),
             sources=row.get("sources", "").strip(),
             engine_pending=row.get("engine_pending", False),
+            names=tuple(row.get("names", ())),
         )
         for row in data.get("ruling", [])
     )

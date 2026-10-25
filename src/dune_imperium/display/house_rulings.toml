@@ -6,6 +6,8 @@
 # record. group: "sources_differ" (가, two sources disagree and one is
 # followed), "app_differs" (나, official silent and the app differs) or
 # "project" (다, every other ruling of a gap). game: "uprising" or "base_ix".
+# names: English card and Leader names the Korean text keeps that the
+# catalog does not know (scripts/e2e/lang.py and the unit test read them).
 # The player-facing text (title, ruling, sources, both languages) names no
 # question number, path or code (user decision 2026-10-14).
 
@@ -179,8 +181,9 @@ group = "sources_differ"
 game = "uprising"
 title_ko = "\"버려질 때\" 능력은 카드덱에서 버릴 때도"
 title = "\"When this card is discarded\" from the deck too"
-ruling_ko = "\"When this card is discarded\" 능력(우주 항행 길드의 호의, 부패한 관료)은 핸드에서 버릴 때와 카드덱에서 곧바로 버릴 때(전사들이여 영원하라, Controlled) 발동한다. 정리 때 플레이 영역에서 버림 더미로 옮기는 것은 발동하지 않는다."
+ruling_ko = "\"이 카드를 버릴 때\" 능력(우주 항행 길드의 호의, 부패한 관료)은 핸드에서 버릴 때와 카드덱에서 곧바로 버릴 때(전사들이여 영원하라, Controlled) 발동한다. 정리 때 플레이 영역에서 버림 더미로 옮기는 것은 발동하지 않는다."
 ruling = "\"When this card is discarded\" abilities (Spacing Guild's Favor, Corrupt Bureaucrat) trigger when the card is discarded from the hand and when it is discarded straight from the deck (Long Live the Fighters, Controlled); moving it from play to the discard pile at Clean Up does not."
+names = ["Controlled"]
 sources_ko = "앱과 사용자 판정(따름) — 룰북은 \"핸드에서 버릴 때만\"이라고 적는다."
 sources = "The app and the user's ruling (followed); the rulebook says only discarding from the hand triggers it."
 
@@ -226,7 +229,7 @@ group = "project"
 game = "uprising"
 title_ko = "앞면으로 기다리는 책략의 수명"
 title = "How long a face-up Intrigue card waits"
-ruling_ko = "Call to Arms처럼 기다리는 때가 정해진 앞면 책략은 그때(주인의 공개 차례 끝)가 지나면 발동했든 안 했든 버린다. \"whenever\" 효과는 그때까지 몇 번이고 발동한다."
+ruling_ko = "Call to Arms처럼 기다리는 때가 정해진 앞면 책략은 그때(주인의 공개 차례 끝)가 지나면 발동했든 안 했든 버린다. \"할 때마다\" 효과는 그때까지 몇 번이고 발동한다."
 ruling = "A face-up Intrigue card with a set window, like Call to Arms, is discarded when the window closes (the end of its owner's Reveal turn), fired or not; a \"whenever\" effect fires as often as it can until then."
 
 [[ruling]]
@@ -355,7 +358,7 @@ group = "project"
 game = "uprising"
 title_ko = "The Beast's Spoils(프로모)"
 title = "The Beast's Spoils (promo)"
-ruling_ko = "The Beast's Spoils는 앞면인 배틀 아이콘 종류마다 보상을 한 번 준다. 앞면 와일드(Propaganda)는 세지 않는다."
+ruling_ko = "The Beast's Spoils는 앞면인 배틀 아이콘 종류마다 보상을 한 번 준다. 앞면 와일드(프로파간다)는 세지 않는다."
 ruling = "The Beast's Spoils pays once per kind of battle icon face up; a face-up wild (Propaganda) does not count."
 
 [[ruling]]
@@ -371,9 +374,9 @@ ruling = "The Influence Pivotal Gambit adds goes to the Conflict's winner whoeve
 oq = "OQ-026"
 group = "project"
 game = "uprising"
-title_ko = "Arrakis Revolt(프로모)와 방어벽"
+title_ko = "아라키스 반란(프로모)과 방어벽"
 title = "Arrakis Revolt (promo) and the Shield Wall"
-ruling_ko = "Arrakis Revolt는 \"방어벽 제거 + 모래벌레 부르기\"와, 방어벽이 막지 않는 교전에서 \"방어벽 유지 + 부르기\"만 고를 수 있다. 아무것도 얻지 못하는 선택(벽을 남겼는데 부를 수 없음)은 내놓지 않는다."
+ruling_ko = "아라키스 반란은 \"방어벽 제거 + 모래벌레 부르기\"와, 방어벽이 막지 않는 교전에서 \"방어벽 유지 + 부르기\"만 고를 수 있다. 아무것도 얻지 못하는 선택(벽을 남겼는데 부를 수 없음)은 내놓지 않는다."
 ruling = "Arrakis Revolt offers \"destroy the Shield Wall and summon\" and, in a Conflict the wall does not protect, \"keep the wall and summon\"; a choice that would get nothing (keeping the wall where no sandworm can come) is not offered."
 
 [[ruling]]
@@ -499,9 +502,9 @@ ruling = "A Command effect is usable the moment the Persuasion you generated in 
 oq = "OQ-034"
 group = "project"
 game = "uprising"
-title_ko = "Disruption Tactics와 공개 차례의 배치"
+title_ko = "방해 전술과 공개 차례의 배치"
 title = "Disruption Tactics, and deploying in a Reveal turn"
-ruling_ko = "Disruption Tactics를 쓴 사람이 다른 플레이어의 좌석과 부대 종류(병력 또는 사다우카 지휘관)를 고른다. 교전 칸에 그런 부대가 없으면 효과 없이 끝난다. 공개 차례의 전투 아이콘으로 여는 배치에서는 배치한 병력을 되돌리는 선택을 내놓지 않는다."
+ruling_ko = "방해 전술을 쓴 사람이 다른 플레이어의 좌석과 부대 종류(병력 또는 사다우카 지휘관)를 고른다. 교전 칸에 그런 부대가 없으면 효과 없이 끝난다. 공개 차례의 전투 아이콘으로 여는 배치에서는 배치한 병력을 되돌리는 선택을 내놓지 않는다."
 ruling = "Whoever plays Disruption Tactics picks the other player and the kind of unit (troop or Sardaukar Commander); with none in the Conflict it does nothing. Deploying through a Combat icon in a Reveal turn offers no taking troops back."
 
 [[ruling]]
@@ -555,7 +558,7 @@ group = "project"
 game = "uprising"
 title_ko = "리에트 카인즈의 폐기와 챠니의 병력"
 title = "Liet Kynes's trash and Chani's troops"
-ruling_ko = "리에트 카인즈 대체 아이콘의 폐기는 선택이고, 챠니의 \"troops\"에는 사다우카 지휘관도 든다."
+ruling_ko = "리에트 카인즈 대체 아이콘의 폐기는 선택이고, 챠니의 \"병력\"에는 사다우카 지휘관도 든다."
 ruling = "The trash in Liet Kynes's replacement icons is optional, and Chani's \"troops\" include Sardaukar Commanders."
 
 [[ruling]]
@@ -591,7 +594,7 @@ group = "project"
 game = "uprising"
 title_ko = "운항 카드의 화살표 비용은 거절할 수 있다"
 title = "A Navigation card's arrow cost may be declined"
-ruling_ko = "운항 카드의 화살표 비용(카드 10의 영향력 1 잃기 등)은 낼 수 있어도 거절할 수 있고, 거절한 카드는 효과 없이 소모된다. 책략은 비용을 꼭 내야 한다는 FAQ 문장은 억지로 내는 운항 카드에는 적용하지 않는다."
+ruling_ko = "운항 카드의 화살표 비용(카드 10의 영향력 1 잃기 등)은 낼 수 있어도 거절할 수 있고, 거절한 카드는 효과 없이 소모된다. 책략은 비용을 꼭 내야 한다는 공식 질의응답 문장은 억지로 내는 운항 카드에는 적용하지 않는다."
 ruling = "A Navigation card's arrow cost (card 10's Influence loss...) may be declined even when payable, and the card is then spent for nothing; the FAQ's \"an Intrigue card's cost must be paid\" does not apply to a card you are made to play."
 
 [[ruling]]
@@ -628,8 +631,8 @@ group = "project"
 game = "uprising"
 title_ko = "반중력 의복의 \"자기 차례\"와 배치 부족"
 title = "Suspensor Suits: \"your turn\" and shortfalls"
-ruling_ko = "반중력 의복은 자기 에이전트 차례나 공개 차례에 책략을 뽑거나 훔칠 때만 병력 1을 소집해 교전 칸에 배치한다(전투 보상·종료 단계·다른 플레이어의 차례는 세지 않고, 책략 카드덱에서 바로 가져오는 효과는 센다). 배치가 막혔거나 교전이 없으면 그 병력은 주둔지에 남는다. 개인 공급처가 모자라면 모자란 만큼 기록해 두었다가, 같은 차례 안에 개인 공급처로 병력이 돌아오면 곧바로 소집해 교전 칸에 배치한다."
-ruling = "Suspensor Suits recruits a troop and deploys it to the Conflict only for Intrigue cards drawn or stolen in your own Agent or Reveal turn (not in Combat rewards, the Endgame or another player's turn; effects taking straight from the Intrigue Deck count). With a deployment ban or no Conflict the troop stays in your garrison. What the supply cannot cover is noted, and if troops come back to your supply later in the same turn they are recruited and deployed at once."
+ruling_ko = "반중력 의복은 자기 에이전트 차례나 공개 차례에 책략을 뽑거나 훔칠 때만 병력 1을 소집해 교전 칸에 배치한다(전투 보상·종료 단계·다른 플레이어의 차례는 세지 않고, 책략 카드덱에서 바로 가져오는 효과는 센다). 배치가 막혔으면 그 병력은 주둔지에 남는다. 개인 공급처가 모자라면 모자란 만큼 기록해 두었다가, 같은 차례 안에 개인 공급처로 병력이 돌아오면 곧바로 소집해 교전 칸에 배치한다."
+ruling = "Suspensor Suits recruits a troop and deploys it to the Conflict only for Intrigue cards drawn or stolen in your own Agent or Reveal turn (not in Combat rewards, the Endgame or another player's turn; effects taking straight from the Intrigue Deck count). With a deployment ban the troop stays in your garrison. What the supply cannot cover is noted, and if troops come back to your supply later in the same turn they are recruited and deployed at once."
 engine_pending = true
 
 [[ruling]]
@@ -825,9 +828,9 @@ sources = "The designer's ruling (followed); the app waits until a Spy watches a
 oq = "OQ-057 (4)"
 group = "project"
 game = "uprising"
-title_ko = "\"Choose two\"는 둘을 먼저 정하고"
+title_ko = "\"둘을 고른다\"는 둘을 먼저 정하고"
 title = "\"Choose two\" picks both first"
-ruling_ko = "프로파간다, 공포의 누더기 괴물, 급속 공학, 광대한 세력 범위의 \"Choose two\"는 둘을 먼저 정하고 해결한다. 첫 효과의 결과(예: 베네 게세리트 4단계에서 뽑은 책략)를 보고 둘째를 고를 수 없다(디자이너 판정)."
+ruling_ko = "프로파간다, 공포의 누더기 괴물, 급속 공학, 광대한 세력 범위의 \"둘을 고른다\"는 둘을 먼저 정하고 해결한다. 첫 효과의 결과(예: 베네 게세리트 4단계에서 뽑은 책략)를 보고 둘째를 고를 수 없다(디자이너 판정)."
 ruling = "Propaganda, Stitched Horror, Rapid Engineering and Long Reach pick both of their \"Choose two\" before resolving; you cannot see the first (say an Intrigue card from Bene Gesserit's 4) before picking the second (the designer's ruling)."
 
 [[ruling]]
@@ -953,8 +956,9 @@ group = "project"
 game = "uprising"
 title_ko = "책략의 인쇄 줄은 따로 쓰고, 한 줄은 꼭 쓴다"
 title = "An Intrigue card's lines are used separately, at least one"
-ruling_ko = "\"—OR—\" 없이 따로 인쇄된 화살표 줄(Change Allegiances, Strategic Stockpiling, 아라키스를 향해, Find Weakness, Questionable Methods)은 각각 따로인 행동이고 의무가 아니다. 각 줄의 비용은 쓸 때 내고, 비용 없는 줄은 낼 때 바로 해결된다. 낸 뒤 적어도 한 줄은 써야 끝낼 수 있다."
+ruling_ko = "\"—또는—\" 없이 따로 인쇄된 화살표 줄(Change Allegiances, Strategic Stockpiling, 아라키스를 향해, Find Weakness, Questionable Methods)은 각각 따로인 행동이고 의무가 아니다. 각 줄의 비용은 쓸 때 내고, 비용 없는 줄은 낼 때 바로 해결된다. 낸 뒤 적어도 한 줄은 써야 끝낼 수 있다."
 ruling = "Arrow lines printed apart with no \"—OR—\" (Change Allegiances, Strategic Stockpiling, Depart for Arrakis, Find Weakness, Questionable Methods) are separate, optional actions, each paid when used; a cost-free line resolves as the card is played. At least one line must be used before the card is finished."
+names = ["Change Allegiances", "Strategic Stockpiling", "Find Weakness", "Questionable Methods"]
 
 [[ruling]]
 oq = "OQ-058 (b)"
@@ -962,7 +966,7 @@ group = "project"
 game = "uprising"
 title_ko = "책략의 화살표 비용은 거절할 수 없다"
 title = "An Intrigue card's arrow cost cannot be declined"
-ruling_ko = "화살표 줄 하나뿐인 책략은 그 비용을 거절할 수 없다(FAQ의 \"책략을 낼 때는 비용을 내야 한다\"). 따로 인쇄된 줄을 모두 쓰게 하는 뜻은 아니다."
+ruling_ko = "화살표 줄 하나뿐인 책략은 그 비용을 거절할 수 없다(공식 질의응답의 \"책략을 낼 때는 비용을 내야 한다\"). 따로 인쇄된 줄을 모두 쓰게 하는 뜻은 아니다."
 ruling = "An Intrigue card with a single arrow line cannot decline its cost (the FAQ's \"paying a cost is required\"); it does not make you use every separately printed line."
 
 [[ruling]]
@@ -1029,7 +1033,7 @@ group = "project"
 game = "uprising"
 title_ko = "서보 수신기의 인장 반지 아이콘"
 title = "Servo-Receivers' Signet Ring icon"
-ruling_ko = "서보 수신기를 얻으면 지도자의 인장 반지 능력을 인장 반지 카드의 칸과 같은 선택으로 해결한다. \"이번 차례\"는 진행 중인 에이전트 차례다. 공개 차례에 쓰면 에이전트를 보낸 칸이 없어 그 부분은 아무것도 주지 않는다. 조타수 이르쿤은 인장 반지 능력이 없어 아무 일도 없고, 레이디 앰버 메툴리의 Fill Coffers는 그 순간에 동맹을 본다."
+ruling_ko = "서보 수신기를 얻으면 지도자의 인장 반지 능력을 인장 반지 카드의 칸과 같은 선택으로 해결한다. \"이번 차례\"는 진행 중인 에이전트 차례다. 공개 차례에 쓰면 에이전트를 보낸 칸이 없어 그 부분은 아무것도 주지 않는다. 조타수 이르쿤은 인장 반지 능력이 없어 아무 일도 없고, 레이디 앰버 메툴리의 재원 확보는 그 순간에 동맹을 본다."
 ruling = "Gaining Servo-Receivers resolves the Leader's Signet Ring ability as the Signet Ring card's box would; \"this turn\" is the Agent turn under way, and in a Reveal turn the parts about the space you sent an Agent to give nothing. Steersman Y'rkoon prints none, so nothing happens, and Lady Amber Metulli's Fill Coffers checks the Alliance at that moment."
 
 [[ruling]]
@@ -1343,7 +1347,7 @@ group = "project"
 game = "uprising"
 title_ko = "에픽 게임 모드를 익스 없이"
 title = "Epic Game Mode without Rise of Ix"
-ruling_ko = "에픽 게임 모드를 Rise of Ix 없이 봉기의 따로인 선택으로 쓴다(필요한 것은 스파이스를 지배하라와 경제적 패권뿐). AI 좌석도 앉을 수 있다."
+ruling_ko = "에픽 게임 모드를 익스의 부상 없이 봉기의 따로인 선택으로 쓴다(필요한 것은 스파이스를 지배하라와 경제적 패권뿐). AI 좌석도 앉을 수 있다."
 ruling = "Epic Game Mode is its own option for Uprising, without Rise of Ix (it needs only Control the Spice and Economic Supremacy), and AI seats may sit."
 
 [[ruling]]
@@ -1381,7 +1385,7 @@ group = "project"
 game = "uprising"
 title_ko = "에이전트 차례는 \"턴 종료\"로만 끝난다"
 title = "An Agent turn ends only with \"End turn\""
-ruling_ko = "모든 에이전트 차례는 주인이 \"턴 종료\"를 누를 때만 끝난다(할 것이 없어도, 사람·AI 모두). 마지막 효과 뒤에도 음모 책략, 가문 핵, 표본 되돌리기, 배치·되돌리기를 할 수 있다. \"턴 종료\"는 의무 효과(조건이 맞은 계약 완수, 의무 에이전트 칸, 놓지 않은 황제 스파이)가 끝났을 때만 나오고, \"may\"·화살표 비용·검은 폐기 아이콘 같은 선택 효과는 쓰지 않고 누르면 사라진다."
+ruling_ko = "모든 에이전트 차례는 주인이 \"턴 종료\"를 누를 때만 끝난다(할 것이 없어도, 사람·AI 모두). 마지막 효과 뒤에도 음모 책략, 가문 핵, 표본 되돌리기, 배치·되돌리기를 할 수 있다. \"턴 종료\"는 의무 효과(조건이 맞은 계약 완수, 의무 에이전트 칸, 놓지 않은 황제 스파이)가 끝났을 때만 나오고, \"할 수 있다\"·화살표 비용·검은 폐기 아이콘 같은 선택 효과는 쓰지 않고 누르면 사라진다."
 ruling = "Every Agent turn ends only when its owner presses \"End turn\", with nothing left to do too, humans and AI alike; after the last effect you may still play Plot cards, Family Atomics, return specimens, deploy or take troops back. \"End turn\" appears only once mandatory effects are done (a contract whose condition is met, a mandatory Agent box, an unplaced Emperor Spy); optional ones (\"may\", arrow costs, black trash icons) lapse if you press it without using them."
 
 [[ruling]]
@@ -1401,6 +1405,7 @@ title_ko = "차례를 넘기는 카드(Withdrawn, 두려움에 맞서는 기도)
 title = "Cards that pass the turn (Withdrawn, Litany Against Fear)"
 ruling_ko = "뒤틀린 책략 Withdrawn과 두려움에 맞서는 기도는 카드 효과가 곧 \"턴 종료\"이고, 그 차례의 첫 행동으로만 쓸 수 있다. 다른 행동을 하나라도 하면 쓸 수 없다. 낼 수 있는 동안은 차례가 이 카드만 보이는 창으로 먼저 열린다."
 ruling = "Withdrawn (Twisted Intrigue) and Litany Against Fear are themselves an \"End turn\" and can only be your turn's first action; after any other action they cannot be used. While they can be, the turn opens first on a window showing only them."
+names = ["Withdrawn"]
 
 [[ruling]]
 oq = "OQ-095 (d)"
@@ -1419,6 +1424,7 @@ title_ko = "에픽 시작 책략과 지도자의 게임 시작 선택"
 title = "Epic's starting Intrigue and Leaders' game-start choices"
 ruling_ko = "모든 지도자의 게임 시작 선택(조타수 이르쿤의 운항 카드 고르기, 코타 오닥스의 비밀 프로젝트 등)은 에픽 시작 책략을 받은 뒤에 한다(Hundro와 같게)."
 ruling = "Every Leader's game-start choice (Steersman Y'rkoon's Navigation picks, Kota Odax's Secret Project...) comes after Epic's starting Intrigue card is dealt, as for Hundro."
+names = ["Hundro"]
 
 [[ruling]]
 oq = "OQ-097"
@@ -1610,7 +1616,7 @@ group = "sources_differ"
 game = "uprising"
 title_ko = "책략을 낼 수 있는 기준: 비용을 낸 것만 보장"
 title = "When an Intrigue card may be played: only what you pay is protected"
-ruling_ko = "책략은 인쇄 조건을 갖추고 비용을 내야 낸다. 비용(화살표 왼쪽의 자원, 카드 버리기·폐기, 병력 잃기, 스파이 소환 등)이 있는 줄은 보상 하나라도 지금 무언가를 바꿀 수 있을 때만 낸다. 비용이 없는 효과는 모두 불발해도 낸다 — 책략 카드 자체는 비용이 아니다. 효과 없는 책략도 숨은 카드를 드러내지 않으므로 되돌릴 수 있고, 내기 전에 \"지금 내면 아무 효과가 없다\"고 알린다. 원판·Rise of Ix에도 같은 기준이다."
+ruling_ko = "책략은 인쇄 조건을 갖추고 비용을 내야 낸다. 비용(화살표 왼쪽의 자원, 카드 버리기·폐기, 병력 잃기, 스파이 소환 등)이 있는 줄은 보상 하나라도 지금 무언가를 바꿀 수 있을 때만 낸다. 비용이 없는 효과는 모두 불발해도 낸다 — 책략 카드 자체는 비용이 아니다. 효과 없는 책략도 숨은 카드를 드러내지 않으므로 되돌릴 수 있고, 내기 전에 \"지금 내면 아무 효과가 없다\"고 알린다. 원판·익스의 부상에도 같은 기준이다."
 ruling = "An Intrigue card needs its printed condition and its cost. A line with a cost (resources left of an arrow, a card discarded or trashed, a troop lost, a Spy recalled...) can be played only when one of its rewards can still change something; effects with no cost may be played and all fizzle, the card itself being no cost. Such a play shows nothing hidden, so it can be taken back, and you are warned that it would do nothing before you click. The base game and Rise of Ix use the same rule."
 sources_ko = "디자이너의 일반 판정과 앱의 카드별 처리가 카드마다 반대로 갈려 어느 쪽도 통째로 따르지 않았다. 비용 줄은 디자이너와 같고, 앱과는 카드마다 다르다."
 sources = "The designer's general rulings and the app's per-card handling disagree card by card, so neither is followed wholesale; lines with a cost match the designer, and the app differs card by card."
@@ -1620,10 +1626,11 @@ engine_pending = true
 oq = "OQ-113 (2) 1"
 group = "sources_differ"
 game = "uprising"
-title_ko = "주둔지에서 배치할 부대가 없어도 \"Deploy up to N\""
+title_ko = "주둔지에서 배치할 부대가 없어도 \"N개까지 배치\""
 title = "\"Deploy up to N troops from your garrison\" with nothing to deploy"
 ruling_ko = "역습, Detonation, 뒤틀린 책략 Devious의 \"주둔지에서 병력을 N개까지 교전 칸에 배치\" 줄은 배치할 부대가 없어도(배치 금지 차례, 하코넨 조언자의 병력 포함) 0개 배치로 낸다."
 ruling = "Counterattack's, Detonation's and Devious's \"Deploy up to N troops from your garrison\" may be played with nothing to deploy (a turn with deployment banned and Harkonnen Advisor's troop included); you deploy zero."
+names = ["Devious"]
 sources_ko = "디자이너 판정 \"zero is a number\"(따름) — 앱은 배치할 부대가 있어야 내놓는다."
 sources = "The designer's \"zero is a number\" (followed); the app offers it only with a unit to deploy."
 engine_pending = true
@@ -1636,6 +1643,7 @@ title_ko = "비용 없는 책략은 불발해도 낸다 — 사례"
 title = "Cost-free Intrigue cards may fizzle: the cases"
 ruling_ko = "Honor Guard(병력도 할인도 쓸 데가 없을 때 — \"하나는 해야 한다\"는 둘 다 거절할 수 없다는 뜻이고 불발은 거절이 아니다), 뒤틀린 책략 Withdrawn(다른 좌석이 모두 공개했을 때, 넘긴 차례가 곧바로 돌아온다), 세포 수확(잃은 병력이 지휘관뿐이라 표본을 만들 수 없을 때), 뒤틀린 책략 Controlled(덱이 비었을 때), Devious의 의무 폐기(핸드가 비었을 때), False Orders(이번 차례에 아직 에이전트를 보내지 않았거나, 옮길 스파이도 빈 관측소도 없을 때 — 먼저 내 두었다가 나중 배치에 적용하지는 않는다)."
 ruling = "Honor Guard with neither its troop nor its discount usable (\"perform at least one\" means you cannot decline both, and fizzling is not declining); Withdrawn when every other seat has revealed (the passed turn comes straight back); Harvest Cells when only Commanders were lost and no specimen can be made; Controlled with an empty deck; Devious's mandatory trash with an empty hand; False Orders before you have sent an Agent this turn, or with no Spy to move and no post to fill (it is not held for a later placement)."
+names = ["Honor Guard", "Withdrawn", "Controlled", "Devious"]
 engine_pending = true
 
 [[ruling]]
@@ -1658,6 +1666,7 @@ title_ko = "비용만 내고 아무것도 못 받는 책략 줄은 낼 수 없�
 title = "No Intrigue line that takes its cost and gives nothing"
 ruling_ko = "비용 뒤의 보상이 모두 아무것도 못 하는 줄은 낼 수 없다: 잠복 유닛, Adaptive Tactics, 소름끼치는 희생, Mercenaries(책략도 병력도 못 받을 때), 아라키스를 향해의 스파이스 2 줄, Unexpected Allies(방어벽도 없고 모래벌레도 못 부를 때), 뒤틀린 책략 Sadistic·Unnatural, Cunning의 유료 줄, 합의 달성, 운항 카드의 비용 줄."
 ruling = "A line whose rewards after the cost can all do nothing cannot be played: Sleeper Unit, Adaptive Tactics, Gruesome Sacrifice, Mercenaries (no Intrigue card and no troop to get), Depart for Arrakis's 2-spice line, Unexpected Allies (no Shield Wall and no sandworm possible), Sadistic and Unnatural, Cunning's paid line, Reach Agreement, Navigation cards' paid lines."
+names = ["Adaptive Tactics", "Mercenaries", "Unexpected Allies", "Sadistic", "Unnatural", "Cunning"]
 sources_ko = "디자이너 판정 \"비용만 내고 화살표 오른쪽에서 아무것도 안 할 수는 없다\"(따름) — 앱은 Mercenaries·아라키스를 향해·Unexpected Allies를 비용만 보고 허용한다."
 sources = "The designer's \"you can't pay the cost and do nothing on the right side of the arrow\" (followed); the app allows Mercenaries, Depart for Arrakis and Unexpected Allies on their cost alone."
 
@@ -1671,6 +1680,7 @@ title_ko = "비용 없는 원판 책략은 불발해도 낸다"
 title = "Cost-free base-game Intrigue cards may fizzle"
 ruling_ko = "Know Their Ways는 프레멘 트랙 맨 위에서도, Dispatch an Envoy는 공개 차례나 에이전트를 보낸 뒤에도(아이콘은 붙지 않는다), Infiltrate는 에이전트를 놓은 뒤에도, Rapid Mobilization은 주둔지가 비어도(0개 배치) 낸다. Double Cross는 공식대로 다른 플레이어 하나 이상이 교전 칸에 병력이 있어야 낸다."
 ruling = "Know Their Ways may be played at the top of the Fremen track, Dispatch an Envoy in a Reveal turn or after your Agent is sent (no icons are added), Infiltrate after your Agent is placed, and Rapid Mobilization with an empty garrison (deploying zero). Double Cross, as the official FAQ says, needs another player with a troop in the Conflict."
+names = ["Know Their Ways", "Dispatch an Envoy", "Infiltrate", "Rapid Mobilization", "Double Cross"]
 
 [[ruling]]
 oq = "OQ-113 (3) Water of Life"
@@ -1687,10 +1697,11 @@ sources = "This game's rule for lines with a cost; the designer allows it with n
 oq = "OQ-113 (3) Advanced Weaponry"
 group = "sources_differ"
 game = "base_ix"
-title_ko = "dreadnought 둘을 가지면 Advanced Weaponry의 음모면은 못 낸다"
+title_ko = "드레드노트 둘을 가지면 Advanced Weaponry의 음모면은 못 낸다"
 title = "Advanced Weaponry's Plot side with both dreadnoughts out"
-ruling_ko = "dreadnought를 이미 둘 가진 좌석은 Advanced Weaponry의 음모면(솔라리 3 → dreadnought)을 낼 수 없다. 전투면은 그대로 낸다."
+ruling_ko = "드레드노트를 이미 둘 가진 좌석은 Advanced Weaponry의 음모면(솔라리 3 → 드레드노트)을 낼 수 없다. 전투면은 그대로 낸다."
 ruling = "A seat with both dreadnoughts already cannot play Advanced Weaponry's Plot side (3 Solari for a dreadnought); its Combat side is unaffected."
+names = ["Advanced Weaponry"]
 sources_ko = "앱(따름) — 커뮤니티 정리본 편집자는 출처 없이 \"둘이어도 3 솔라리를 내고 낸다\"고 추론했다."
 sources = "The app (followed); the community digest's editor inferred, without a source, that it may still be played for 3 Solari."
 
@@ -1702,6 +1713,7 @@ title_ko = "Urgent Mission은 소환할 에이전트가 없어도 낸다"
 title = "Urgent Mission with no Agent to recall"
 ruling_ko = "Urgent Mission(\"내 에이전트 하나를 소환\")은 비용이 없으므로 게임판에 내 에이전트가 없어도 낸다(불발)."
 ruling = "Urgent Mission (\"recall one of your Agents\") has no cost, so it may be played with none of your Agents on the board; it fizzles."
+names = ["Urgent Mission"]
 sources_ko = "공식은 말하지 않음(디자이너 판정은 에이전트가 게임판에 있을 때를 다룸). 앱은 게임판에 에이전트가 있어야 낸다."
 sources = "The official documents are silent (the designer's ruling covers an Agent on the board). The app needs an Agent on the board."
 
@@ -1711,17 +1723,19 @@ group = "project"
 game = "base_ix"
 title_ko = "Machine Culture는 살 기술 타일이 있어야"
 title = "Machine Culture needs a Tech tile you can buy"
-ruling_ko = "기술 획득은 그 타일 값(스파이스)을 내는 비용 줄로 본다. 그래서 Machine Culture의 음모면(\"Acquire Tech\")은 살 수 있는 타일이 없으면 낼 수 없다(디자이너 판정 \"반드시 기술을 얻어야 한다\"와 같다)."
+ruling_ko = "기술 획득은 그 타일 값(스파이스)을 내는 비용 줄로 본다. 그래서 Machine Culture의 음모면(\"기술 타일 획득\")은 살 수 있는 타일이 없으면 낼 수 없다(디자이너 판정 \"반드시 기술을 얻어야 한다\"와 같다)."
 ruling = "Acquiring a Tech pays the tile's spice, so it counts as a line with a cost: Machine Culture's Plot side (\"Acquire Tech\") cannot be played with no tile you could buy, as the designer's \"you must acquire a tech\" says."
+names = ["Machine Culture"]
 
 [[ruling]]
 oq = "OQ-114"
 group = "project"
 game = "base_ix"
-title_ko = "\"Choose two:\"는 서로 다른 둘"
+title_ko = "\"둘을 고른다:\"는 서로 다른 둘"
 title = "\"Choose two:\" means two different items"
-ruling_ko = "원판·Ix의 \"Choose two:\" 보상(Machinations, Battle for Arrakeen, Shuttle Fleet)은 나열된 것 가운데 서로 다른 두 항목을 먼저 정하고 해결한다."
+ruling_ko = "원판·익스의 \"둘을 고른다:\" 보상(Machinations, Battle for Arrakeen, Shuttle Fleet)은 나열된 것 가운데 서로 다른 두 항목을 먼저 정하고 해결한다."
 ruling = "The base game's and Ix's \"Choose two:\" rewards (Machinations, Battle for Arrakeen, Shuttle Fleet) take two different listed items, both chosen before resolving."
+names = ["Machinations", "Battle for Arrakeen", "Shuttle Fleet"]
 
 [[ruling]]
 oq = "OQ-115"
@@ -1731,6 +1745,7 @@ title_ko = "Baron Harkonnen의 Masterstroke 공개는 의무"
 title = "Baron Harkonnen's Masterstroke reveal is mandatory"
 ruling_ko = "처음 조건(한 차례에 병력 넷 이상 배치)을 이루는 순간 비밀 진영 둘을 반드시 공개하고 각각 영향력 1을 얻는다(게임에 한 번). 고른 진영이 이미 6이면 그 영향력만 불발한다."
 ruling = "The first time the condition is met (four or more troops deployed in a turn) the two secret Factions must be revealed for 1 Influence each, once a game; a Faction already at 6 gives nothing."
+names = ["Baron Harkonnen", "Masterstroke"]
 
 [[ruling]]
 oq = "OQ-115 (b)"
@@ -1738,8 +1753,9 @@ group = "sources_differ"
 game = "base_ix"
 title_ko = "Masterstroke의 병력 넷을 세는 법"
 title = "How Masterstroke counts four troops"
-ruling_ko = "봉기의 \"이번 차례에 3개 이상 배치\" 책략과 같은 셈이고 문턱만 4다: 이번 차례에 배치한 병력이 교전 칸에 동시에 넷 이상 있었던 순간이 있으면 된다. 사다우카 지휘관은 병력으로 세고 dreadnought는 빼며, 자기 차례 밖의 지배 방어 배치는 더하지 않는다."
+ruling_ko = "봉기의 \"이번 차례에 3개 이상 배치\" 책략과 같은 셈이고 문턱만 4다: 이번 차례에 배치한 병력이 교전 칸에 동시에 넷 이상 있었던 순간이 있으면 된다. 사다우카 지휘관은 병력으로 세고 드레드노트는 빼며, 자기 차례 밖의 지배 방어 배치는 더하지 않는다."
 ruling = "The same count as Uprising's \"deploy three or more in a single turn\" cards with a threshold of four: four troops deployed this turn in the Conflict at the same moment. Sardaukar Commanders count as troops, dreadnoughts do not, and a Control defence outside your turn is not added."
+names = ["Masterstroke"]
 sources_ko = "이 게임의 기존 판정(따름) — 앱은 배치한 수를 누적해 세어, 후퇴했다 다시 배치한 병력을 두 번 세고 라운드 시작의 방어 배치도 더한다."
 sources = "This game's existing ruling (followed); the app adds up deployments, so a troop retreated and deployed again counts twice and Round Start's defence is added."
 
@@ -1751,6 +1767,7 @@ title_ko = "The Voice의 막힘은 다른 플레이어마다 다음 배치 한 �
 title = "The Voice blocks each opponent's next Agent once"
 ruling_ko = "The Voice는 다른 플레이어마다 이번 라운드의 다음 에이전트 배치 한 번까지만 그 칸을 막는다. 에이전트를 보내지 않고 차례를 넘긴 것(Bindu Suspension, 두려움에 맞서는 기도)은 막힘을 쓰지 않고, Weirding Way의 추가 차례에는 남지 않는다. 지배 마커는 막힌 칸을 보이는 표시일 뿐 비용·조건이 아니다(모두 쓰고 있어도 효과는 그대로)."
 ruling = "The Voice blocks the space for each other player's next Agent placement this round, once: a turn passed without sending an Agent (Bindu Suspension, Litany Against Fear) does not use it up, and Weirding Way's additional turn is not blocked. The Control marker only shows the space and is no cost or condition, so the effect holds with all of them in use."
+names = ["The Voice", "Bindu Suspension", "Weirding Way"]
 sources_ko = "카드 문구 \"their next Agents\"·디자이너 판정·앱(따름) — 고정 룰북은 \"내 지배 마커로 표시하고 내 다음 차례에 치운다\"고 적는다."
 sources = "The card's \"their next Agents\", the designer's rulings and the app (followed); the pinned rulebook says to mark it with one of your available Control markers and remove it on your next turn."
 
@@ -1762,6 +1779,7 @@ title_ko = "Bindu Suspension: 뽑은 뒤 넘길지는 선택"
 title = "Bindu Suspension: passing after the draw is optional"
 ruling_ko = "Bindu Suspension은 차례 시작의 첫 행동으로만 쓰고(공개해야 하는 차례에도), 카드 1장을 뽑은 뒤 차례를 넘길지 그대로 진행할지 고른다."
 ruling = "Bindu Suspension is only your turn's first action (a turn you must reveal in too); after drawing a card you choose whether to pass or play the turn as usual."
+names = ["Bindu Suspension"]
 sources_ko = "디자이너의 정정 문구와 앱(따름) — 고정 룰북은 \"then immediately end your turn\"이라고 적는다."
 sources = "The designer's corrected wording and the app (followed); the pinned rulebook says \"then immediately end your turn\"."
 
@@ -1771,8 +1789,9 @@ group = "project"
 game = "base_ix"
 title_ko = "\"두 장 버린다\"인데 한 장뿐이면"
 title = "\"Discards two cards\" with one in hand"
-ruling_ko = "Reverend Mother Mohiam의 \"each opponent discards two cards\"는 핸드에 한 장뿐이면 그 한 장을, 비었으면 0장을 버린다. 각자 자기 카드를 고르고 카드 주인 다음 좌석부터 시계 방향이다. 비용으로 두 장 버리는 효과는 다 내야 한다."
+ruling_ko = "Reverend Mother Mohiam의 \"각 상대는 카드 두 장을 버린다\"는 핸드에 한 장뿐이면 그 한 장을, 비었으면 0장을 버린다. 각자 자기 카드를 고르고 카드 주인 다음 좌석부터 시계 방향이다. 비용으로 두 장 버리는 효과는 다 내야 한다."
 ruling = "Reverend Mother Mohiam's \"each opponent discards two cards\" makes a player with one card discard it and one with none discard nothing; each picks their own cards, clockwise from the player after her owner. A cost of two discards must still be paid in full."
+names = ["Reverend Mother Mohiam"]
 
 [[ruling]]
 oq = "OQ-119"
@@ -1782,14 +1801,15 @@ title_ko = "Ilesa Ecaz의 \"둘째 차례\""
 title = "Ilesa Ecaz's \"second turn\""
 ruling_ko = "에이전트를 보내지 않고 넘긴 차례(Bindu Suspension, 두려움에 맞서는 기도)와 Weirding Way의 추가 차례도 차례로 센다. Bindu를 쓰고 그대로 진행하면 같은 차례다."
 ruling = "A turn passed without sending an Agent (Bindu Suspension, Litany Against Fear) and Weirding Way's additional turn both count; using Bindu and playing on is the same turn."
+names = ["Ilesa Ecaz", "Bindu Suspension", "Weirding Way", "Bindu"]
 
 [[ruling]]
 oq = "OQ-120"
 group = "project"
 game = "base_ix"
-title_ko = "공개한 Unload 카드를 같은 차례에 폐기하면"
+title_ko = "공개한 처분 카드를 같은 차례에 폐기하면"
 title = "Trashing a revealed Unload card in the same turn"
-ruling_ko = "Unload 카드를 공개해 효과를 받은 뒤 같은 공개 차례에 다른 효과로 폐기하면 그 효과를 한 번 더 받는다. 정리 때 플레이 영역에서 버림 더미로 옮기는 것은 버리기가 아니라 Unload를 일으키지 않는다."
+ruling_ko = "처분 카드를 공개해 효과를 받은 뒤 같은 공개 차례에 다른 효과로 폐기하면 그 효과를 한 번 더 받는다. 정리 때 플레이 영역에서 버림 더미로 옮기는 것은 버리기가 아니라 처분을 일으키지 않는다."
 ruling = "A revealed Unload card trashed by another effect in the same Reveal turn gives its Reveal effect again; moving it to the discard pile at Clean Up is not a discard and triggers nothing."
 
 [[ruling]]
@@ -1800,6 +1820,7 @@ title_ko = "전투 보상은 순위마다 그 사람의 창에서"
 title = "Each place's reward comes in that player's window"
 ruling_ko = "교전 보상은 순위 순서로 한 사람씩, 그 사람의 창에서 받는다. 승자의 창에는 보상 아이콘과 함께 드레드노트 지배(해야 하고, Detonation Devices가 있으면 그 대신 드레드노트를 개인 공급처로 돌려 승점 1), Windtraps, Strategic Push의 승리 몫, 승리 책략(To the Victor…, Demand Respect)이 들고, 승자가 순서를 고른다. 승리 책략은 이 창에서만 낼 수 있다. 공동 1위면 승리 효과가 없다."
 ruling = "Conflict rewards go place by place, each in that player's window. The winner's window holds the reward icons together with the dreadnought's control (mandatory; with Detonation Devices the dreadnought may instead go back to the supply for 1 VP), Windtraps, Strategic Push's winning part and the winning Intrigue cards (To the Victor…, Demand Respect), in the winner's order. Winning Intrigue cards can be played only in this window. A tie for first has no winning effects."
+names = ["Detonation Devices", "Windtraps", "Strategic Push", "To the Victor…", "Demand Respect"]
 
 [[ruling]]
 oq = "OQ-121 (복귀)"
@@ -1809,6 +1830,7 @@ title_ko = "드레드노트가 주둔지로 돌아가는 때"
 title = "When dreadnoughts go back to the garrison"
 ruling_ko = "지난 라운드에 칸을 지배한 드레드노트는 다음 전투 단계의 맨 끝에 주둔지로 돌아간다. 그 전투의 승자는 아직 드레드노트가 있는 그 칸을 고를 수 없다. 교전 칸에 남은 드레드노트(진 쪽 전부, 승자가 둘을 냈을 때 지배하러 가지 않는 하나)는 병력을 개인 공급처로 돌릴 때 함께 주둔지로 간다. Detonation Devices로 개인 공급처에 보내는 것은 지배하러 갈 교전 칸의 드레드노트다."
 ruling = "A dreadnought that controlled a space since last round goes back to its garrison at the very end of the next Combat phase, so that Combat's winner cannot choose its space. Dreadnoughts left in the Conflict (all of the losers', and the winner's second) go to the garrison when troops go back to the supply. Detonation Devices sends the Conflict dreadnought that would take control back to the supply."
+names = ["Detonation Devices"]
 sources_ko = "Rise of Ix 룰북(따름) — 앱은 둘 다 라운드 끝 회수 때 옮긴다(지금 카드로는 결과가 같다)."
 sources = "The Rise of Ix rulebook (followed); the app moves both at the round's Recall (the same result with today's cards)."
 
@@ -1820,6 +1842,7 @@ title_ko = "라운드 시작 효과의 순서"
 title = "The order of Round Start effects"
 ruling_ko = "교전 공개 → 지배 방어 배치 → 각자 5장 뽑기(뒤집은 기술 타일 되돌리기 함께) → 결정 없는 라운드 시작 효과(뒤틀린 책략, Holtzman Engine, Shuttle Fleet) → Ilesa Ecaz의 따로 두기. 좌석 사이는 시작 플레이어부터다."
 ruling = "Reveal the Conflict, the Control defence, everyone draws five (flipped Tech tiles turn back then), Round Start effects with no choice (Twisted Intrigue, Holtzman Engine, Shuttle Fleet), then Ilesa Ecaz sets her card aside; seats go from the First Player."
+names = ["Holtzman Engine", "Shuttle Fleet", "Ilesa Ecaz"]
 
 [[ruling]]
 oq = "OQ-122 (b)"
@@ -1840,6 +1863,7 @@ title_ko = "스파이스는 흘러야 한다는 가진 사본을 모두 센다"
 title = "Counting every The Spice Must Flow you own"
 ruling_ko = "Corner the Market, Grand Conspiracy, Holtzman Engine과 봉기의 Secure Spice Trade의 \"스파이스는 흘러야 한다가 몇 장\" 조건은 카드덱·핸드·버림 더미·플레이 영역의 사본을 모두 센다(폐기한 것은 뺀다)."
 ruling = "Corner the Market, Grand Conspiracy, Holtzman Engine and Uprising's Secure Spice Trade count every The Spice Must Flow in your deck, hand, discard pile and play area (not trashed ones)."
+names = ["Corner the Market", "Grand Conspiracy", "Holtzman Engine"]
 sources_ko = "앱과 사용자 판정(따름) — 공식 FAQ의 Corner the Market 문장은 \"덱과 버림 더미\"만 든다."
 sources = "The app and the user's ruling (followed); the official FAQ's Corner the Market entry names only your deck and discard pile."
 
@@ -1862,6 +1886,7 @@ title_ko = "\"비용 N 이하 카드를 얻는다\"에 예비 카드"
 title = "\"Acquire a card that costs N or less\" includes the Reserve"
 ruling_ko = "\"비용 N 이하 카드를 얻는다\"(봉기의 Impress·Inspire Awe·틀레이락스의 주인, 원판의 Bypass Protocol 등)는 임페리움 열 다섯 장과 예비 카드 더미의 Arrakis Liaison·스파이스는 흘러야 한다 가운데 고른다. Foldspace는 Foldspace 아이콘으로만 얻는다."
 ruling = "\"Acquire a card that costs N or less\" (Uprising's Impress, Inspire Awe and Tleilaxu Master, the base game's Bypass Protocol...) picks from the five Imperium Row cards and the Reserve's Arrakis Liaison and The Spice Must Flow; Foldspace comes only from a Foldspace icon."
+names = ["Bypass Protocol", "Arrakis Liaison", "Foldspace"]
 sources_ko = "공식 문서는 말하지 않음. 앱은 임페리움 열 카드만 고르게 한다."
 sources = "The official documents are silent. The app offers Imperium Row cards only."
 
@@ -1873,12 +1898,14 @@ title_ko = "Disposal Facility의 \"설득 비용 6 이상\""
 title = "Disposal Facility's \"6 or more Persuasion\""
 ruling_ko = "이번 공개 차례에 얻은 설득 비용의 합계(구매에 쓴 것 포함)가 6 이상이면 맞는다. 카드를 산 뒤에도 쓸 수 있다."
 ruling = "It is met once the Persuasion gained this Reveal turn, spent or not, adds up to 6, so it can be used after buying."
+names = ["Disposal Facility"]
 
 [[ruling]]
 oq = "OQ-127"
 group = "project"
 game = "base_ix"
-title_ko = "전투 중에 열린 Treachery의 Unload"
+title_ko = "전투 중에 열린 Treachery의 처분"
 title = "Treachery's Unload opened during Combat"
-ruling_ko = "전투를 해결하는 중에 Treachery가 폐기되거나 버려져 Unload가 열리면 그 병력 둘을 교전 칸에 배치하고, 바로 다음 단계(병력 반환)에서 다른 병력과 함께 개인 공급처로 돌아간다."
+ruling_ko = "전투를 해결하는 중에 Treachery가 폐기되거나 버려져 처분이 열리면 그 병력 둘을 교전 칸에 배치하고, 바로 다음 단계(병력 반환)에서 다른 병력과 함께 개인 공급처로 돌아간다."
 ruling = "If Treachery is trashed or discarded while Combat is resolved and its Unload opens, its two troops deploy to the Conflict and go back to the supply with the rest in the very next step."
+names = ["Treachery"]
