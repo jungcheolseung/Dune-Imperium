@@ -205,11 +205,10 @@ def advance_scouts_step(state: GameState) -> RuleResult:
 def _open_first_turn(state: GameState) -> RuleResult:
     """End the step and open the First Player's turn.
 
-    The round's first turn opens without ``reset_turn_counters`` when there
-    is no Scouts step (``phases.draw_round_hands``, Round Start's last step,
-    resets part of it for every seat); here the step may have moved any
-    per-turn counter (a Spy recall, a completed Contract), so the First
-    Player's are all reset as their turn opens.
+    Without a Scouts step, Round Start's last step opens the first turn with
+    ``reset_turn_counters`` (``phases.draw_round_hands``); here the step may
+    have moved any per-turn counter (a Spy recall, a completed Contract), so
+    the First Player's are all reset as their turn opens, the same way.
 
     Contract icons a seat held during the step (only the Bloodlines
     Immediate face up and no Intrigue card to trash, OQ-059) wait for the

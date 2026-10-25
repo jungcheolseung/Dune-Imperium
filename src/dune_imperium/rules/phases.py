@@ -132,12 +132,12 @@ def draw_round_hands(state: GameState) -> RuleResult:
             units_deployed_committed=0,
             spice_at_turn_start=player.resources.spice,
             spice_spent_turn=0,
-            # Hungry for Spice is judged once per turn; the round's first
-            # turn opens here, without its own counter reset.
+            # Hungry for Spice is judged once per turn, and a recall made on a
+            # seat's last (Reveal) turn must not reach its next turn's "If
+            # you recalled a Spy this turn" (OQ-044 (d)): every seat's clear
+            # here, before an Arrakeen Scouts step; the First Player's turn
+            # then opens with reset_turn_counters (below, or after the step).
             hungry_for_spice_granted_turn=False,
-            # The round's first turn opens without reset_turn_counters, so a
-            # recall made on a seat's last (Reveal) turn must not reach its
-            # next turn's "If you recalled a Spy this turn" (OQ-044 (d)).
             spies_recalled_turn=0,
             # Urgent Shigawire's boost lasts "this round" only.
             bene_gesserit_boost_pending=False,
