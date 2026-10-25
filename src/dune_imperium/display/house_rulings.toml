@@ -333,7 +333,6 @@ title_ko = "불온한 조언자가 먼저 폐기되면"
 title = "Subversive Advisor trashed first"
 ruling_ko = "불온한 조언자의 \"영향력 1 대신 2\" 칸이 다른 효과의 폐기로 사라져도, 방문한 진영 칸 자신의 영향력 1은 다시 얻는다. 골라로 복사해 칸이 둘이어도 그 진영의 영향력은 2만 얻는다(아래 \"영향력 1 대신 2를 골라로 복사할 때\")."
 ruling = "If Subversive Advisor's \"two Influence instead of one\" box is lost to another effect's trash, the Faction space's own 1 Influence comes back; copied by Ghola, the two boxes still gain only 2 Influence (see \"Ghola copying two Influence instead of one\")."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-022 (c)"
@@ -1679,7 +1678,6 @@ title_ko = "영향력 1 대신 2를 골라로 복사할 때"
 title = "Ghola copying two Influence instead of one"
 ruling_ko = "\"영향력 1 대신 2\"를 얻는 칸(타도, 불온한 조언자, 기만적인 계책)은 방문한 진영 칸의 영향력 1을 대신한다. 골라로 복사해 그런 칸이 둘이 되어도 그 진영의 영향력은 2만 얻는다 — 불멸 룰북이 같은 효과의 원판 카드에 대해 정한 대로다. 복사한 칸의 다른 효과(이 카드 폐기 등)는 그대로 일어난다."
 ruling = "A box that gains \"two Influence instead of one\" (Overthrow, Subversive Advisor, Treacherous Maneuver) replaces the visited Faction space's one Influence. Copied by Ghola, two such boxes still gain only 2 Influence with that Faction, as the Immortality rulebook rules for Power Play; the copy's other effects (\"Trash this card.\" and the like) still happen."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-130"
@@ -1689,7 +1687,6 @@ title_ko = "배치 금지 차례에 임무가 세워 둔 병력"
 title = "A mission's standing troops on a turn with no deployment"
 ruling_ko = "샤담 코리노 4세의 \"이번 차례에는 유닛을 교전 칸에 배치할 수 없다\"가 걸린 차례에 임무 칸을 방문하면, \"곧바로 교전 칸에\" 넣을 병력은 소집만 하고 주둔지에 남는다(그 차례의 소집으로 센다)."
 ruling = "On a turn under Shaddam Corrino IV's \"Units can't be deployed to the Conflict this turn\", a mission troop that would go \"straight into the Conflict\" is recruited and stays in the garrison (it counts as that turn's recruit)."
-engine_pending = true
 
 [[ruling]]
 oq = "OQ-131"
@@ -1699,7 +1696,6 @@ title_ko = "참여할 수 없는 임무 좌석에도 창을 연다"
 title = "A seat that cannot join a mission still gets the window"
 ruling_ko = "비용을 못 내거나 세울 병력이 없는 좌석에도 임무 참여 창을 열어, 참여를 이유와 함께 회색으로 보이고 패스만 누를 수 있게 한다. 자동으로 넘어가는 곳도 결정 창을 열어 직접 확인하게 한다는 원칙을 임무에도 적용했다."
 ruling = "A seat that cannot pay or has no troops to stand still gets the mission's window, with joining greyed out and its reason shown, and passes: the rule that a step which used to pass by itself opens a window to check applies to missions too."
-engine_pending = true
 
 # ------------------------------------------- base game and Rise of Ix
 

@@ -2591,7 +2591,7 @@
 
 ## OQ-128 — instead of one Influence 효과를 Ghola가 복사할 때
 
-- 상태: `DECIDED` (2026-10-25 사용자 판정; **엔진 반영 전** — 지금 엔진은 아래 "지금 엔진"대로다)
+- 상태: `DECIDED` (2026-10-25 사용자 판정; 2026-10-25 엔진 반영, codec v152 — 아래 "지금 엔진"은 판정 전 상태다)
 - 인쇄: Overthrow "Gain two Influence instead of one." `[Overthrow card]`; Subversive Advisor "If you sent an Agent to a Faction board space this turn,
   gain two Influence instead of one and trash this card." `[Subversive Advisor card]`; Treacherous Maneuver "Trash this card and an Emperor card from
   your hand → Gain two Influence instead of one." `[Treacherous Maneuver card]`(OQ-046). 셋 다 Faction 칸의 Influence 1("When you send an Agent to a
@@ -2600,7 +2600,7 @@
   같은 쪽에 "Ghola — If you graft this card with Power Play to send an Agent to a faction board space, you gain only 2 Influence with that faction, the
   same as if you’d played Power Play alone." `[Immortality p. 14]`가 있다. Power Play(원판 카드)의 Agent box도 같은 "instead of one" 효과다
   ([imperium-base.md](imperium-base.md)의 Power Play 줄).
-- 지금 엔진(감사 확인, 2026-10-25 다시 확인): Subversive Advisor와 Treacherous Maneuver는 칸의 1을 대신하지만(`replaces_space`), Overthrow는 처음
+- 판정 전 엔진(감사 확인, 2026-10-25 다시 확인): Subversive Advisor와 Treacherous Maneuver는 칸의 1을 대신하지만(`replaces_space`), Overthrow는 처음
   전사 때 "Gain 1 additional Influence with the visited Faction"(인쇄문이 아님)으로 적혀 칸의 1에 더하는 +1로 구현돼 있다. 혼자 쓰면 셋 모두 2라 2026-10-06
   결과 대조에서 드러나지 않았다. Ghola와 graft하면 갈린다: Ghola + Overthrow는 3, Ghola + Subversive Advisor는 4(OQ-022 Subversive 보강이 "공식 문서도
   침묵"이라며 남긴 2 + 2 — 위 `[Immortality p. 14]` 해설을 놓친 것이다).
@@ -2608,9 +2608,11 @@
   모두 그 내용을 따라야지". (1) "instead of one" 효과는 모두 칸의 Influence 1을 대신한다 — Overthrow도 Subversive Advisor·Treacherous Maneuver와 같은
   모델로 고친다. (2) 그런 효과가 한 배치에 둘이어도(Ghola의 복사) 그 진영 Influence는 2다 — Power Play 해설을 같은 문구의 카드 모두에 적용한다
   (Ghola + Overthrow·Subversive Advisor·Treacherous Maneuver, 원판의 Power Play). 복사한 box의 다른 효과("Trash this card." 등)는 그대로다.
-- 구현 목록(감사 묶음 C): Overthrow 기록(`content/uprising/agent_abilities.py`)을 `replaces_space`로, 두 번째 "instead" box는 더 주지 않게, 고정 테스트
-  `tests/unit/rules/test_immortality_tleilaxu_cards.py`의 Subversive + Ghola = 4를 2로, 표시 문구의 오인용("Gain 1 additional Influence", `display/tokens.py`·
-  `display/tokens_ko.py`·`rules/effect_dsl_text.py`), OQ-022 Subversive 보강의 "남은 의문" 닫기.
+- 구현(감사 묶음 C, 2026-10-25, codec v152): Overthrow 기록(`content/uprising/agent_abilities.py`)을 `replaces_space`로, 두 번째 "instead" box는 더 주지 않게
+  (`rules/agent_box_abilities.py`의 `_replace_space_influence`), 고정 테스트 `tests/unit/rules/test_immortality_tleilaxu_cards.py`의 Subversive + Ghola = 4를 2로,
+  표시 문구의 오인용("Gain 1 additional Influence", `display/tokens.py`·`display/tokens_ko.py`·`rules/effect_dsl_text.py`), OQ-022 Subversive 보강의
+  "남은 의문" 닫기. 옛 기보는 칸의 1과 카드의 +1을 두 수로 적었다: 영향력 트랙 보상(2·4)이 옛 판과 같은 수에서 나오도록 한 수에서 2를 얻고 다른
+  수는 지운다(`records.migration`의 `overthrow_*`, [human-records.md](../human-records.md)).
 
 ## OQ-129 — Sardaukar Coordination이 trash된 Emperor 카드를 세는가
 
@@ -2633,11 +2635,11 @@
 
 ## OQ-130 — 배치 금지 turn의 Arrakeen Scouts 임무 troop
 
-- 상태: `DECIDED` (2026-10-25 사용자 "G3은 추천대로" — 아래 (가); **엔진 반영 전**)
+- 상태: `DECIDED` (2026-10-25 사용자 "G3은 추천대로" — 아래 (가); 2026-10-25 엔진 반영, codec v152)
 - 상황: Send for Aid·Security Detail·Weirding Warfare는 칸에 세워 둔 troop을 다음 방문 때 "recruit해 곧바로 Conflict에" 넣는다([arrakeen-scouts.md](arrakeen-scouts.md)
   임무 표, OQ-077 (c)는 이를 그 troop 전용 배치 몫으로 판정). Shaddam이 Signet Ring으로 그 칸(Gather Support 등)에 가거나 Servo-Receivers로 금지를 건
   turn에는 Emperor of the Known Universe의 "Units can't be deployed to the Conflict this turn."이 걸리는데 `[Main p. 17]` `[FAQ p. 3]`
-  ([choam-module.md](choam-module.md)), 지금 엔진은 이 troop을 그대로 Conflict에 넣는다(`rules/scouts_missions.py`의 방문 처리에 금지 확인이 없다;
+  ([choam-module.md](choam-module.md)), 판정 전 엔진은 이 troop을 그대로 Conflict에 넣었다(`rules/scouts_missions.py`의 방문 처리에 금지 확인이 없었다;
   다른 배치 경로 — Combat 배치, sandworm, Tech, Intrigue, Leader — 는 모두 금지를 본다).
 - 공식 문서: Scouts 임무에는 공식 룰북이 없다(OQ-071 머리말). 금지 문장은 모든 배치에 걸린다.
 - 선택지: (가) recruit는 하고 troop은 garrison에 남는다. (나) troop을 칸에 그대로 두어 다음 방문을 기다린다. (다) troop을 잃는다(supply로).
@@ -2648,8 +2650,8 @@
 
 ## OQ-131 — 참가할 수 없는 임무 좌석과 결정 창
 
-- 상태: `DECIDED` (임무: 2026-10-25 사용자 "임무에도 적용하자" — 아래 (가); **엔진 반영 전**. Political Equilibrium은 확인 대기)
-- 지금 엔진: OQ-088대로 비용을 낼 수 없거나 세울 troop이 없는 좌석에는 임무 참가를 묻지 않는다 — 창도 사건도 없이 넘어간다
+- 상태: `DECIDED` (임무: 2026-10-25 사용자 "임무에도 적용하자" — 아래 (가); 2026-10-25 엔진 반영, codec v152. Political Equilibrium은 확인 대기)
+- 판정 전 엔진: OQ-088대로 비용을 낼 수 없거나 세울 troop이 없는 좌석에는 임무 참가를 묻지 않는다 — 창도 사건도 없이 넘어간다
   (`rules/scouts_missions.offer_mission_join`). 모든 진영이 0일 때의 Political Equilibrium도 사건 없이 넘어간다(`rules/scouts.py`).
 - 부딪치는 결정: 2026-09-30 사용자 결정 "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다"("플레이어가 직접 체크하는게 플레이하는데에는
   도움이 될 것 같아", [unavailable-options-plan.md](../unavailable-options-plan.md) 1절). 2026-10-17 판단 6(OQ-071 보강)은 고르기 이벤트·판매·비밀
@@ -2660,3 +2662,5 @@
 - 판정(2026-10-25 사용자, "G4: 임무에도 적용하자"): **임무 참가에 (가)** — 참가할 수 없는 좌석에도 참가 결정 창을 열어 참가를 이유와 함께 회색으로
   보이고 확인(패스)만 누를 수 있게 한다(OQ-088의 "묻지 않는다"를 바꾼다; 참가의 합법성은 그대로). Political Equilibrium(모든 진영 0)은 임무가 아니어서
   따로 확인한다.
+- 구현(감사 묶음 C, 2026-10-25, codec v152): `rules/scouts_missions.offer_mission_join`이 참가 방식이 있는 임무마다 창을 연다. 옛 기보는
+  묻지 않은 좌석을 다리 `mission_pass_alone`이 pass로 답한다([human-records.md](../human-records.md)).
