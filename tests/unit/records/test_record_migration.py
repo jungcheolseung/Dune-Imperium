@@ -4654,12 +4654,125 @@ def test_a_lone_scouts_faction_and_leverage_s_draw_are_answered_unrecorded() -> 
         len(lone.players[0].intrigue_cards) + 1
     )
     assert subcommittees._scouts_frames_done(answered)
+    # The line's card is taken ahead of the Faction, so it is still the
+    # first card drawn, as the older engine drew it.
     assert [step.bridge for step in taken.steps] == [
-        migration.FACTION_ALONE,
         migration.FACTION_ALONE_DRAW,
+        migration.FACTION_ALONE,
     ]
     two = recalled(Influence(emperor=6, spacing_guild=6))
     assert migration._answer_windows_never_asked(ENGINE, two, taken, codec=152) is two
+
+
+def _scouts_track_card_start(*, empty_intrigue_deck: bool = False) -> GameState:
+    """High Council's subcommittee list, the seat's Bene Gesserit track one
+    short of its 4 (an Intrigue card, owed at once in the seat's turn) and
+    every other track at the top, so a line's lone Faction is that one;
+    with ``empty_intrigue_deck`` two cards wait in the discard pile."""
+
+    from tests.unit.rules import test_scouts_subcommittees as subcommittees
+
+    owner = subcommittees._owner(
+        spies_supply=1,
+        spy_post_ids=("arrakis-deep-desert", "arrakis-hagga-basin"),
+        influence=Influence(emperor=6, spacing_guild=6, fremen=6, bene_gesserit=3),
+    )
+    state = subcommittees._state(owner)
+    if empty_intrigue_deck:
+        state = replace(
+            state, intrigue_deck=(), intrigue_discard=("intrigue:0", "intrigue:1")
+        )
+    return subcommittees._choose(subcommittees._visit_high_council(state))
+
+
+# A record before v150 holds whole actions, a later one the rows.
+_JOIN = "join_subcommittee"
+_BG4_CARD = DomainAction(
+    action_id="draw",
+    actor=0,
+    arguments=(
+        ("icon", "intrigue"),
+        ("printed", "bene_gesserit"),
+        ("source", "influence_track"),
+    ),
+)
+_FINISH = DomainAction(action_id="finish_agent_turn", actor=0)
+
+
+def _seat_0(action_id: str, **arguments: str) -> DomainAction:
+    return DomainAction(
+        action_id=action_id, actor=0, arguments=tuple(sorted(arguments.items()))
+    )
+
+
+def test_a_lone_leverage_faction_reaching_a_track_card_takes_both_cards() -> None:
+    # Review of codec v153: the Faction's Bene Gesserit 4 card is owed at
+    # once. A v152 engine drew Leverage's card in the last recall and then
+    # recorded the track card as its own step; the line's card is taken
+    # ahead of the Faction so the recorded track card comes next, as then.
+    start = _scouts_track_card_start()
+    record = migrate_record(
+        _v142_record(
+            start,
+            _seat_0("choose_subcommittee", subcommittee_id="leverage"),
+            _seat_0("choose_post", post_id="arrakis-hagga-basin"),
+            _seat_0("choose_post", post_id="arrakis-deep-desert"),
+            _BG4_CARD,
+            _FINISH,
+            codec=152,
+        ),
+        _StartingAt(start),
+    )
+    assert record.complete, record.divergence
+    assert record.bridge_counts() == {
+        migration.FACTION_ALONE_DRAW: 1,
+        migration.FACTION_ALONE: 1,
+    }
+    seat = record.state.players[0]
+    assert seat.influence.bene_gesserit == 4
+    assert seat.intrigue_cards == start.intrigue_deck[:2]
+
+
+def test_a_lone_relations_faction_before_v142_draws_its_track_card_with_it() -> None:
+    # An engine before v142 drew the Bene Gesserit 4 card inside the step
+    # (``owed_draw``); it follows the bridged Faction as it follows a step.
+    start = _scouts_track_card_start()
+    record = migrate_record(
+        _v142_record(
+            start, _seat_0(_JOIN, subcommittee_id="relations"), _FINISH, codec=141
+        ),
+        _StartingAt(start),
+    )
+    assert record.complete, record.divergence
+    counts = record.bridge_counts()
+    assert counts[migration.FACTION_ALONE] == 1
+    assert counts["owed_draw"] == 1
+    assert record.state.players[0].intrigue_cards == start.intrigue_deck[:1]
+
+
+def test_a_track_card_reshuffle_after_a_lone_faction_keeps_its_old_name() -> None:
+    # The picked row's gain names the pick (``...:relations:1:0:track_bonus``);
+    # the v152 engine's own gain did not, and an empty Intrigue deck asks the
+    # reshuffle under that name.
+    start = _scouts_track_card_start(empty_intrigue_deck=True)
+    old_id = (
+        f"round:{start.round_number}:player:0:board:high_council:high_council:"
+        "relations:1:track_bonus:0:intrigue:intrigue_shuffle"
+    )
+    record = migrate_record(
+        _v142_record(
+            start,
+            _seat_0("choose_subcommittee", subcommittee_id="relations"),
+            _BG4_CARD,
+            ChanceOutcome(old_id, ("intrigue:1", "intrigue:0")),
+            _FINISH,
+            codec=152,
+        ),
+        _StartingAt(start),
+    )
+    assert record.complete, record.divergence
+    assert record.bridge_counts()[migration.FACTION_RESHUFFLE_RENAMED] == 1
+    assert record.state.players[0].intrigue_cards == ("intrigue:1",)
 
 
 def test_a_recorded_scouts_pass_is_the_confirm_where_every_line_is_withheld() -> None:

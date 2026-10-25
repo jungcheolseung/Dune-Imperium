@@ -621,9 +621,11 @@ from dune_imperium.rules.tech import optional_trash_tech_ids
 # Tleilaxu Infiltrator in hand, a refilled Harkonnen Advisor troop stays
 # undeployable (OQ-038), and a Guild Spy played in an Agent turn no longer
 # reacts to The Spice Must Flow.
-# Older records answer the one-row Faction window and Leverage's draw after
-# it before the next recorded step (``scouts_faction_alone``,
-# ``scouts_faction_alone_draw``); docs/human-records.md.
+# Older records answer the one-row Faction window before the next recorded
+# step, Leverage's draw taken ahead of it (``scouts_faction_alone_draw``,
+# ``scouts_faction_alone``), and take a reshuffle the Faction's track card
+# asks under its old name (``scouts_faction_reshuffle_renamed``);
+# docs/human-records.md.
 ACTION_CODEC_VERSION = 153
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
