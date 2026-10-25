@@ -70,6 +70,14 @@ WITHDRAWABLE_UNITS_KEY: Final = "combat_troops_withdrawable"
 WITHDRAWABLE_COMMANDERS_KEY: Final = "combat_commanders_withdrawable"
 
 
+# Harkonnen Advisor troops the supply could not give yet: the part of the
+# seat's recruit shortfall (``PlayerState.ungained_troops``, OQ-030) that
+# stays undeployable once the supply refills it (OQ-038, 2026-10-26).
+# Kept beside ``undeployable_troops`` in the owner's turn frame; absent
+# means none.
+UNGAINED_UNDEPLOYABLE_KEY: Final = "undeployable_troops_ungained"
+
+
 def undeployable_troops(context: dict[str, ActionValue]) -> int:
     """Return the garrison troops the turn's effects forbid deploying."""
 
@@ -77,6 +85,62 @@ def undeployable_troops(context: dict[str, ActionValue]) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise RuntimeError("Agent-turn effect frame has invalid undeployable count")
     return value
+
+
+def ungained_undeployable_troops(context: dict[str, ActionValue]) -> int:
+    """Return the undeployable troops still waiting in the shortfall."""
+
+    value = context.get(UNGAINED_UNDEPLOYABLE_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError("turn frame has an invalid ungained undeployable count")
+    return value
+
+
+def refill_undeployable_troops(
+    state: GameState,
+    player: int,
+    troops: int,
+    *,
+    ungained: int,
+) -> tuple[GameState, int]:
+    """Keep a refilled Harkonnen Advisor troop undeployable (OQ-038).
+
+    "1 troop. You can't deploy this troop to the Conflict this turn."
+    [Piter De Vries card]: the troop the supply could not give at once is
+    still that troop when a later supply refill gives it (user ruling
+    2026-10-26, "카드 문구대로", amending OQ-030's refill). Troops are
+    indistinguishable, so a partial refill gives the deployable recruits
+    first, as a garrison loss gives up the undeployable troop first.
+    ``ungained`` is the seat's shortfall before this refill; returns the
+    state and how many of the ``troops`` stay undeployable.
+    """
+
+    index = own_turn_frame_index(state, player)
+    if index is None or troops < 1:
+        return state, 0
+    frame = state.decision_stack[index]
+    context = dict(frame.context)
+    waiting = min(ungained_undeployable_troops(context), ungained)
+    deployable_waiting = ungained - waiting
+    kept = min(waiting, max(0, troops - deployable_waiting))
+    if not kept:
+        return state, 0
+    if waiting - kept:
+        context[UNGAINED_UNDEPLOYABLE_KEY] = waiting - kept
+    else:
+        context.pop(UNGAINED_UNDEPLOYABLE_KEY, None)
+    context["undeployable_troops"] = undeployable_troops(context) + kept
+    return (
+        replace(
+            state,
+            decision_stack=(
+                *state.decision_stack[:index],
+                replace(frame, context=tuple(sorted(context.items()))),
+                *state.decision_stack[index + 1 :],
+            ),
+        ),
+        kept,
+    )
 
 
 def undeployable_troops_this_turn(state: GameState, player: int) -> int:

@@ -99,11 +99,13 @@ from dune_imperium.rules.card_bonds import (
 )
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
+    UNGAINED_UNDEPLOYABLE_KEY,
     deployment_rooms,
     grant_combat_icon,
     reconcile_deployment_after_retreat,
     undeployable_troops,
     undeployable_troops_this_turn,
+    ungained_undeployable_troops,
 )
 from dune_imperium.rules.conditions import owner_condition_holds
 from dune_imperium.rules.effect_steps import named_whole, reveal_gain_printer
@@ -5029,6 +5031,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     # Reveal (OQ-038, OQ-062); ``legal_reveal_deployments`` already reads
     # this key off the Reveal frame's context.
     carried_undeployable = undeployable_troops(turn_context)
+    carried_ungained_undeployable = ungained_undeployable_troops(turn_context)
     resource_gains = (
         *(
             resource_gain_entry(
@@ -5144,6 +5147,8 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     context.extend(turn_rows.carried(turn_context))
     if carried_undeployable:
         context.append(("undeployable_troops", carried_undeployable))
+    if carried_ungained_undeployable:
+        context.append((UNGAINED_UNDEPLOYABLE_KEY, carried_ungained_undeployable))
     if carried_commanders:
         context.append((REVEAL_COMMANDERS_RECRUITED_KEY, carried_commanders))
     context.extend(

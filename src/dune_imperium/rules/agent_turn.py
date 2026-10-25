@@ -60,6 +60,10 @@ from dune_imperium.rules.board_effects import (
 from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
 )
+from dune_imperium.rules.combat_deployment import (
+    UNGAINED_UNDEPLOYABLE_KEY,
+    ungained_undeployable_troops,
+)
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
 from dune_imperium.rules.effects import (
     BOOST_DRAW_KEY,
@@ -668,6 +672,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     undeployable = turn_context.get("undeployable_troops", 0)
     if isinstance(undeployable, bool) or not isinstance(undeployable, int):
         raise RuntimeError("turn frame has an invalid undeployable count")
+    ungained_undeployable = ungained_undeployable_troops(turn_context)
     commanders_before = _commanders_recruited_before_placement(state)
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
@@ -815,6 +820,11 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     ("troops_recruited", _troops_recruited_before_placement(state)),
                     ("turn_owner", action.actor),
                     *((("undeployable_troops", undeployable),) if undeployable else ()),
+                    *(
+                        ((UNGAINED_UNDEPLOYABLE_KEY, ungained_undeployable),)
+                        if ungained_undeployable
+                        else ()
+                    ),
                     # A Commander recruited before the placement keeps its
                     # deploy slot for a Commander (OQ-070).
                     *(
