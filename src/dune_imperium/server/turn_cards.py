@@ -46,6 +46,7 @@ from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine, turn_rows
+from dune_imperium.rules.action_shapes import Source, printer_parts
 from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.effects import agent_card_source, pending_boost_draws
 from dune_imperium.rules.frames import FrameKind
@@ -281,14 +282,16 @@ def _box_doomed(state: GameState, card_id: str) -> bool:
 def _trash_waits(
     state: GameState, frame: DecisionFrame, owner: int, card_id: str
 ) -> bool:
-    """Whether an optional trash ``card_id``'s box left waits on the turn
-    (its own box source, or a Ghola copy's numbered one), which expires
-    when another effect trashes the card (``agent_effects``'s expiry hook,
-    OQ-022; engine audit 2026-10-22, P1)."""
+    """Whether an optional trash ``card_id`` printed waits on the turn (its
+    own box source, or a Ghola copy's numbered one), which expires when
+    another effect trashes the card (``agent_effects``'s expiry hook,
+    OQ-022; engine audit 2026-10-22, P1). A research space's trash its
+    Research reached is the track's own and stays."""
 
     source = agent_card_source(state.round_number, owner, card_id)
     return any(
         kind == turn_rows.OPTIONAL_TRASH
+        and printer_parts(printer)[0] is Source.AGENT_CARD
         and (item_source == source or item_source.startswith(f"{source}:"))
-        for kind, item_source, _ in turn_rows.pending(frame)
+        for kind, item_source, printer in turn_rows.pending(frame)
     )

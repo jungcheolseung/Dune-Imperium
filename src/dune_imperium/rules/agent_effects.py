@@ -47,6 +47,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.action_shapes import Source, printer_parts
 from dune_imperium.rules.agent_box_abilities import (
     NOT_PRINTED_BLOCK,
     SPACE_INFLUENCE_REPLACED,
@@ -2375,7 +2376,9 @@ def _expired_waiting_trashes(
     whole when another effect trashes it; trashed by an icon of its own box
     it keeps what is left (OQ-022, 2026-10-20 B3c-2b). The rows of Control
     the Spice, Throne Room Politics and a Ghola copying them once stayed
-    (engine audit 2026-10-22, P1).
+    (engine audit 2026-10-22, P1). Only a trash the card printed: a research
+    space its Research reached prints its own (``research|c3r3``), an effect
+    of the track, not of the card, so it stays.
     """
 
     frame = turn_rows.rows_frame(state, owner.player_id)
@@ -2390,8 +2393,11 @@ def _expired_waiting_trashes(
     }
     expired: list[tuple[str, turn_rows.Pending]] = []
     for item in turn_rows.pending(frame):
-        kind, source, _ = item
-        if kind != turn_rows.OPTIONAL_TRASH:
+        kind, source, printer = item
+        if (
+            kind != turn_rows.OPTIONAL_TRASH
+            or printer_parts(printer)[0] is not Source.AGENT_CARD
+        ):
             continue
         box = next(
             (box for box in gone if source == box or source.startswith(f"{box}:")),

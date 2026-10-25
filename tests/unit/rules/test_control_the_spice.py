@@ -576,6 +576,32 @@ def test_a_paid_trash_expires_when_the_partner_trashes_control_the_spice() -> No
     ] == [CONTROL]
 
 
+def test_a_research_space_trash_its_research_reached_outlives_the_card() -> None:
+    # Only a trash the card printed expires with it (OQ-022: "you can't
+    # receive or activate an effect from a card that is already trashed"):
+    # a research space's trash, reached by the card's Research, is the
+    # track's own effect, so it stays (a corpus record of Experimentation
+    # grafted with Dissecting Kit found the expiry too wide).
+    from dune_imperium.rules.optional_trash import open_optional_trash, trash_printer
+
+    paid = _grafted_and_paid(KIT)
+    research = f"{_CONTROL_SOURCE}:research:c3r3"
+    waiting = open_optional_trash(
+        paid, 0, research, printer=trash_printer(Source.RESEARCH, "c3r3")
+    )
+    assert _waiting(waiting) == [
+        (turn_rows.OPTIONAL_TRASH, _CONTROL_SOURCE),
+        (turn_rows.OPTIONAL_TRASH, research),
+    ]
+
+    result = apply_whole(
+        ENGINE, waiting, _find(waiting, "trash_grafted_card_for_specimen")
+    )
+
+    assert result.state.players[0].trashed == (CONTROL,)
+    assert _waiting(result.state) == [(turn_rows.OPTIONAL_TRASH, research)]
+
+
 @pytest.mark.parametrize(
     ("trashed", "by", "left"),
     [(CONTROL, "ghola", GHOLA), (GHOLA, "control_the_spice", CONTROL)],
