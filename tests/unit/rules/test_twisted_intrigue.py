@@ -447,6 +447,48 @@ def test_controlled_deck_discard_on_a_reveal_turn_feeds_hungry_for_spice() -> No
     ] == [("personal_card_late_revealed", RECON)]
 
 
+CONVINCING = "player:0:starter:convincing_argument:0"
+
+
+def test_controlled_draw_on_a_reveal_turn_is_revealed_at_once() -> None:
+    # "Reveal turn 도중 card를 draw하면 즉시 그 card를 reveal하고 이번 Reveal
+    # turn에 사용한다." [FAQ p. 3] (docs/rules/player-turns.md:205). A Plot
+    # may be played in the Reveal turn [Main p. 7]; Controlled's paid draw
+    # once left the card in hand to the next round, its Persuasion unused
+    # (engine audit 2026-10-22 R2).
+    card = _twisted("controlled")
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        hand=(DAGGER,),
+        intrigue_cards=(card,),
+        deck=(CONVINCING, RECON),
+        resources=Resources(solari=2),
+    )
+    revealed = ENGINE.apply(
+        _turn_state(owner), DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    before = dict(revealed.decision_stack[-1].context)["persuasion"]
+    assert isinstance(before, int)
+    peeking = apply_whole(ENGINE, revealed, _play(card)).state
+
+    result = apply_whole(
+        ENGINE, peeking, DomainAction(action_id="draw_top_card_for_solari", actor=0)
+    )
+
+    seat = result.state.players[0]
+    assert CONVINCING not in seat.hand
+    assert CONVINCING in seat.in_play
+    assert seat.resources.solari == 1
+    assert [event.kind for event in result.events][:2] == [
+        "top_card_drawn",
+        "personal_card_late_revealed",
+    ]
+    assert result.state.decision_stack[-1].kind == "reveal"
+    # Convincing Argument reveals two Persuasion [card face].
+    assert dict(result.state.decision_stack[-1].context)["persuasion"] == before + 2
+
+
 def test_devious_trashes_from_hand_without_a_decline_or_deploys_two() -> None:
     card = _twisted("devious")
     owner = PlayerState(
