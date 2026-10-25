@@ -264,6 +264,10 @@ const UI_TEXT = {
     "ko": "더미 {{index}} 비었음",
     "en": "stack {{index}} empty"
   },
+  "board.tech_stack_count": {
+    "ko": "이 더미의 기술 타일 {{count}}개 (맨 위 포함)",
+    "en": "{{count}} Tech tiles in this stack (the top one included)"
+  },
   "board.strip_contracts": {
     "ko": "{contract} · 남은 {{count}}장",
     "en": "Contracts · bank {{count}}"

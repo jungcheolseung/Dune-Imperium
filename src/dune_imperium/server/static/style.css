@@ -1362,6 +1362,22 @@ kbd {
   border-radius: 5px;
   padding: 0 0.35em;
 }
+/* A Tech stack's size, drawn like a face-down deck's count (piles.css
+   .deck-pile-count): a stack of different tiles, not copies of one. */
+.vcard-badge.stack-count {
+  min-width: 1.6em;
+  box-sizing: border-box;
+  padding: 0.1em 0.3em;
+  border: 1px solid rgba(243, 230, 208, 0.7);
+  border-radius: 999px;
+  background: #1a140c;
+  color: #f3e6d0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ---------- own hand ---------- */
 

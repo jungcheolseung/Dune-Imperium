@@ -26,6 +26,34 @@ from open_mode import settled
 check = Check()
 
 
+# The Ixian Embassy's face-up tiles and their stack counts: a stack holds
+# different tiles [Bloodlines p. 6], so its size is a plain count like a
+# deck's, not the Reserve's "×N" copies (play feedback 2026-10-25).
+STACKS_JS = """() => {
+  const strip = document.querySelector("#market .strip[data-strip='Ixian Embassy']");
+  return {
+    sizes: (state.view.tech_stack_sizes || [])
+      .filter((_, index) => (state.view.tech_face_up || [])[index]),
+    badges: strip ? [...strip.querySelectorAll('.vcard.tile .vcard-badge')]
+      .map((badge) => ({text: badge.textContent,
+        counted: badge.classList.contains('stack-count'),
+        titled: badge.title.includes(badge.textContent)})) : null,
+  };
+}"""
+
+
+def check_stack_counts(page, label):
+    stacks = page.evaluate(STACKS_JS)
+    badges = stacks["badges"]
+    check.ok(
+        badges is not None
+        and [badge["text"] for badge in badges] == [str(n) for n in stacks["sizes"]]
+        and all(badge["counted"] and badge["titled"] for badge in badges),
+        f"{label}: each Tech stack shows its size as a deck count, not ×N",
+        stacks,
+    )
+
+
 def rows(page, action_id):
     return page.evaluate(
         "id => state.actions.actions.filter(a => a.action_id === id)", action_id
@@ -186,6 +214,7 @@ def main():
                 page.wait_for_function("state.view !== null && refreshFlight === null")
                 page.evaluate("lang => setLanguage(lang)", lang)
                 assert settled(page, 20)
+                check_stack_counts(page, f"{tech_id} before the purchase")
                 before = page.evaluate("state.view.players[state.viewSeat].influence")
                 offers = [
                     a
@@ -200,6 +229,7 @@ def main():
                     f"{tech_id}: purchase leaves every Influence unchanged",
                 )
                 check_deck_top(page, tech_id)
+                check_stack_counts(page, f"{tech_id} after the purchase")
                 rewards = [
                     a
                     for a in rows(page, "resolve_tech_acquire_effect")

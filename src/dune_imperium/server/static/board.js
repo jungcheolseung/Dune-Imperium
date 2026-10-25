@@ -1646,8 +1646,9 @@ function visualCard(instanceId, options = {}) {
   }
   if (options.badge) {
     const badge = document.createElement("span");
-    badge.className = "vcard-badge";
+    badge.className = "vcard-badge" + (options.badgeClass ? ` ${options.badgeClass}` : "");
     badge.textContent = options.badge;
+    if (options.badgeTitle) badge.title = options.badgeTitle;
     card.appendChild(badge);
   }
   const name = entry ? entry.name : nameOf(instanceId);
@@ -1888,7 +1889,10 @@ function renderMarket() {
 
 function renderIxianEmbassy(market, view) {
   /* The Ixian Embassy's three stacks: the face-up top of each with the
-     stack size; an emptied stack simply offers nothing [Bloodlines p. 7]. */
+     stack size; an emptied stack simply offers nothing [Bloodlines p. 7].
+     A stack holds different tiles [Bloodlines p. 6], so its size is a
+     deck's count (the pill piles.js deckPile draws), not the Reserve's
+     "×N" copies of one card (play feedback 2026-10-25). */
   const box = stripBox(
     t("board.strip_ixian_embassy"),
     (view.tech_face_up || []).filter(Boolean).length,
@@ -1906,7 +1910,14 @@ function renderIxianEmbassy(market, view) {
       row.appendChild(empty);
       return;
     }
-    row.appendChild(visualCard(tileId, { className: "tile", badge: `×${size}` }));
+    row.appendChild(
+      visualCard(tileId, {
+        className: "tile",
+        badge: String(size),
+        badgeClass: "stack-count",
+        badgeTitle: t("board.tech_stack_count", { count: size }),
+      }),
+    );
   });
   box.appendChild(row);
   market.appendChild(box);
