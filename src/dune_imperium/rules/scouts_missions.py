@@ -431,12 +431,18 @@ def mission_top_up(state: GameState, player: int, mission: Mission) -> int:
 def offer_mission_join(
     state: GameState, player: int, mission_id: str, *, source: str
 ) -> RuleResult:
-    """Ask one seat whether it takes part (OQ-088: skipped when it cannot)."""
+    """Ask one seat whether it takes part.
+
+    A seat that cannot take part is asked too: its window greys the ways in
+    with their reasons (``join_unavailable_reason``) and offers the pass
+    alone. "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을 연다" (user
+    decision 2026-09-30) covers missions (OQ-131, user ruling 2026-10-25
+    "G4: 임무에도 적용하자"; engine audit 2026-10-22, G4); OQ-088 used to
+    skip such a seat with no window and no event.
+    """
 
     mission = MISSIONS_BY_ID[mission_id]
-    if not join_targets(state, player, mission) and not mission_top_up(
-        state, player, mission
-    ):
+    if mission.kind not in _PARTICIPATION:
         return RuleResult(state=state)
     frame = DecisionFrame(
         kind=FrameKind.SCOUTS_MISSION,

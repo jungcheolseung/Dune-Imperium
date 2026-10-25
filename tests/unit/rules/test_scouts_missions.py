@@ -218,7 +218,11 @@ def test_security_detail_parks_a_troop_that_joins_the_conflict_on_a_visit() -> N
     assert state.scouts_parked == ()
 
 
-def test_a_seat_that_cannot_take_part_is_not_asked() -> None:
+def test_a_seat_that_cannot_take_part_is_asked_with_the_pass_alone() -> None:
+    # OQ-131 (user ruling 2026-10-25 "G4: 임무에도 적용하자"): the user's
+    # 2026-09-30 decision "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
+    # 연다" covers missions, so a seat that cannot take part is asked too,
+    # with the pass alone (OQ-088 used to skip it).
     base = _base()
     empty = replace(base.players[1], troops_supply=0, troops_garrison=12)
     state = _reveal(
@@ -228,8 +232,12 @@ def test_a_seat_that_cannot_take_part_is_not_asked() -> None:
     asked = []
     while state.decision_stack[-1].kind == FrameKind.SCOUTS_MISSION:
         asked.append(_owner(state))
+        if _owner(state) == 1:
+            assert ENGINE.whole_actions(state, 1) == (
+                DomainAction(action_id="scouts_decline_mission", actor=1),
+            )
         state = _act(state, "scouts_decline_mission")
-    assert asked == [0, 2, 3]
+    assert asked == [0, 1, 2, 3]
 
 
 def test_imperial_reserve_gives_one_of_its_two_goods_per_visit() -> None:
@@ -347,7 +355,11 @@ def test_prison_planet_needs_a_free_control_marker() -> None:
         control_space_ids=("arrakeen", "spice_refinery", "imperial_basin"),
     )
     state = _reveal(replace(base, players=(three, *base.players[1:])), "prison_planet")
-    assert _owner(state) == 1
+    # Asked with the pass alone (OQ-131, user ruling 2026-10-25).
+    assert _owner(state) == 0
+    assert ENGINE.whole_actions(state, 0) == (
+        DomainAction(action_id="scouts_decline_mission", actor=0),
+    )
 
 
 # OQ-105, user ruling 2026-10-10: "3은 그럼 통일해야지. 지휘관도 낼 수 있게
@@ -426,8 +438,13 @@ def test_prison_planet_with_troops_only_greys_out_the_commander_way() -> None:
     assert commander["reason_ko"] == "{garrison}에 {commander} 1 필요 (보유 0)"
 
 
-def test_prison_planet_skips_a_seat_with_no_garrison_unit() -> None:
-    assert _owner(_prison_planet(troops=0, commanders=0)) == 1
+def test_prison_planet_asks_a_seat_with_no_garrison_unit_to_pass() -> None:
+    # Asked with the pass alone (OQ-131, user ruling 2026-10-25).
+    state = _prison_planet(troops=0, commanders=0)
+    assert _owner(state) == 0
+    assert ENGINE.whole_actions(state, 0) == (
+        DomainAction(action_id="scouts_decline_mission", actor=0),
+    )
 
 
 def test_fedaykin_assistance_recruits_its_troops_on_a_visit() -> None:
@@ -999,19 +1016,32 @@ def test_tleilaxu_offering_turns_parked_troops_into_specimens() -> None:
     assert state.scouts_parked == ()
 
 
-def test_tleilaxu_offering_skips_a_seat_already_past_the_third_space() -> None:
-    from dune_imperium.rules.scouts_missions import offer_mission_join
+def test_tleilaxu_offering_asks_a_seat_already_past_the_third_space_to_pass() -> (
+    None
+):
+    from dune_imperium.rules.scouts_missions import (
+        legal_mission_join_actions,
+        offer_mission_join,
+    )
 
     state = replace(_immortality_state(), decision_stack=())
     seat = replace(state.players[0], tleilaxu_space=3)
     state = replace(state, players=(seat, *state.players[1:]))
-    assert offer_mission_join(state, 0, "tleilaxu_offering", source="t").state == state
+    # Asked with the pass alone (OQ-131, user ruling 2026-10-25).
+    offered = offer_mission_join(state, 0, "tleilaxu_offering", source="t").state
+    assert legal_mission_join_actions(offered, 0) == (
+        DomainAction(action_id="scouts_decline_mission", actor=0),
+    )
 
 
 def test_a_parking_mission_needs_its_whole_troop_count() -> None:
     """OQ-088, the missions' English: Weirding Warfare parks 2 supply troops,
-    so a seat with only 1 (and no Immortality) is not asked at all."""
-    from dune_imperium.rules.scouts_missions import offer_mission_join
+    so a seat with only 1 (and no Immortality) cannot take part; it is asked
+    with the pass alone (OQ-131, user ruling 2026-10-25)."""
+    from dune_imperium.rules.scouts_missions import (
+        legal_mission_join_actions,
+        offer_mission_join,
+    )
 
     base = _base()
     short = replace(
@@ -1023,8 +1053,9 @@ def test_a_parking_mission_needs_its_whole_troop_count() -> None:
     )
     state = replace(base, players=(short, *base.players[1:]))
     result = offer_mission_join(state, 0, "weirding_warfare", source="t")
-    assert result.state == state
-    assert result.events == ()
+    assert legal_mission_join_actions(result.state, 0) == (
+        DomainAction(action_id="scouts_decline_mission", actor=0),
+    )
 
 
 def test_immortality_offers_the_specimen_shortfall_before_joining_a_mission() -> None:
