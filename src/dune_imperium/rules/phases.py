@@ -275,11 +275,13 @@ def apply_round_start_reshuffle(
         for candidate in state.players
     )
     prepared = prepare_round_start(replace(state.pop_decision(), players=players))
+    # Public like the in-turn reshuffle (``card_draw``): the payload carries
+    # only the count, and "장수·수량만 담는 이벤트는 전원 공개다" (OQ-010
+    # ruling 3; general rules audit 2026-10-25).
     event = GameEvent(
         event_id=f"round:{state.round_number + 1}:player:{player}:discard_shuffled",
         kind="personal_discard_shuffled",
         payload=(("count", len(outcome.values)), ("player", player)),
-        visible_to=(player,),
     )
     return RuleResult(state=prepared.state, events=(event, *prepared.events))
 
