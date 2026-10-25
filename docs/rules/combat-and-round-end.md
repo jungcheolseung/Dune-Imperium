@@ -55,9 +55,11 @@
 - Arrakeen, Spice Refinery, Imperial Basin을 대상으로 하는 Conflict에서 승리해 control 보상을 받으면 해당 위치 아래 깃발에 자신의 Control marker를 놓으며, 기존 상대 marker가 있다면 교체한다. [Main p. 10] [Main p. 20]
 - 자신이 Arrakeen 또는 Spice Refinery를 control하는 동안 어떤 플레이어든 그 공간에 Agent를 보내면 controller가 1 Solari를 받는다. Imperial Basin의 같은 보너스는 spice 1이다. [Main p. 10]
 - 자신이 이미 control하는 위치의 Conflict 카드가 공개되면, 자신의 supply에서 troop 하나를 Conflict에 배치할 수 있다. 이 방어 배치는 선택 사항이다. [Main p. 10] [Main p. 20]
+  - Bloodlines에서도 방어 유닛은 troop뿐이다. supply의 Sardaukar Commander는 보낼 수 없고, supply에 Commander만 있으면 방어 창이 열리지 않는다(supply의 Commander는 일반 수단으로 recruit할 수 없다 `[Bloodlines p. 4]`; 2026-10-26 사용자 판정, [OQ-135](open-questions.md#oq-135--control-방어-배치와-supply의-sardaukar-commander) — project convention).
 - battle icon은 Crysknife, Desert Mouse, Ornithopter 세 종류다. Conflict 승자가 새 카드를 supply에 가져왔을 때, supply의 다른 face-up Conflict 또는 Objective 카드에 같은 icon이 있으면 그 두 장을 반드시 face-down으로 뒤집고 Victory Point 1을 얻는다. [Main p. 14]
 - Endgame 중 wild battle icon은 supply에 있는 세 종류 중 하나의 battle icon과 짝지을 수 있다. 선택했다면 두 장을 face-down으로 뒤집고 Victory Point 1을 얻는다. [Main p. 20] Bloodlines를 켜면 wild가 여러 장 있을 수 있고, wild끼리도 짝지을 수 있다 `[Bloodlines p. 5]`([bloodlines.md](bloodlines.md) 4절). wild Conflict 카드를 이겨서 가져올 때는 도착 즉시 매칭하지 않는다(wild의 매칭은 Endgame의 선택이다). [Main p. 20]
 - 공동 1위로 승자가 없으면 누구도 현재 Conflict 카드를 가져가지 않는다. 그 카드는 board에 face-up으로 남고, 다음 Round Start의 Conflict는 이전 카드 위에 놓인다. [Main pp. 8, 14]
+  - 남은 카드는 게임 끝까지 보드에 남는다. 다음 승자는 그 라운드의 맨 위 카드만 가져가고, 남은 카드의 battle icon은 쓰이지 않는다(2026-10-26 사용자 판정, [OQ-137](open-questions.md#oq-137--공동-1위로-남은-conflict-카드) — project convention).
 
 ## 6. Combat 정리
 

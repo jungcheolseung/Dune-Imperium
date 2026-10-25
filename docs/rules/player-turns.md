@@ -29,6 +29,7 @@
 - Agent icon은 Emperor, Spacing Guild, Bene Gesserit, Fremen, Landsraad, City, Spice Trade, Spy의 여덟 종류다. [Main p. 9]
 - Spy Agent 아이콘은 현재 자신의 Spy가 놓인 관측소와 연결된 공간에 Agent를 보낼 수 있게 한다. 이 아이콘을 사용하기 위해 Spy를 회수하지는 않는다. [Main p. 11]
 - Infiltrate하려면 상대 Agent가 있는 space와 연결된 observation post에서 자신의 Spy를 recall한다. Infiltrate를 사용하더라도 Agent turn의 card 한 장은 정상적으로 내야 한다. [Main p. 11] [FAQ p. 4]
+- Spy Agent 아이콘으로만 닿는 칸에 상대 Agent가 있으면, 접근을 준 바로 그 Spy를 회수해 Infiltrate할 수 있다. 접근은 카드와 칸을 고를 때 판정하고, 회수는 그 뒤의 별개 효과다(2026-10-26 사용자 판정, [OQ-133](open-questions.md#oq-133--spy-아이콘으로-닿은-칸에서-그-spy로-infiltrate) — project convention).
 - space에 Agent를 놓은 직후, space나 card의 효과를 받기 전에 연결된 자신의 Spy를 recall하면 card 한 장을 draw할 수 있다. 이것이 Gather Intelligence다. [Main p. 11]
 - 같은 Spy를 Infiltrate와 Gather Intelligence에 함께 사용할 수 없다. 서로 다른 Spy 두 개를 한 turn에 recall해 하나는 Infiltrate, 하나는 Gather Intelligence에 사용할 수 있지만, 둘을 모두 Gather Intelligence에 사용할 수는 없다. [Main p. 11] [FAQ p. 4]
 

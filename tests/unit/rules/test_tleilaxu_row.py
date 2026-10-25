@@ -167,6 +167,21 @@ def test_acquiring_pays_specimens_refills_the_row_and_pays_the_acquire_box() -> 
     assert result.events[0].kind == "tleilaxu_card_acquired"
 
 
+def test_an_empty_tleilaxu_deck_leaves_the_row_short() -> None:
+    # The Row is refilled "from the top of the Tleilaxu deck" [Immortality
+    # p. 9]; nothing reshuffles into an empty one. OQ-136 (user decision
+    # 2026-10-26, like OQ-004 for the Imperium deck): the Row goes on short,
+    # and Reclaimed Forces, which never leaves it, is still offered.
+    state = _reveal_state(_owner(), tleilaxu_deck=())
+
+    result = apply_tleilaxu_acquisition(state, _actions(state)[SUBJECT])
+
+    assert result.state.tleilaxu_row == (CONTAMINATOR,)
+    assert result.state.tleilaxu_deck == ()
+    empty = _reveal_state(_owner(), tleilaxu_row=(), tleilaxu_deck=())
+    assert sorted(_actions(empty)) == ["reclaimed:tleilaxu", "reclaimed:troops"]
+
+
 def test_a_future_troop_acquire_box_fails_loudly_instead_of_dropping_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

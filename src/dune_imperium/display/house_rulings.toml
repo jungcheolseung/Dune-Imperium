@@ -1717,6 +1717,61 @@ ruling = "With this option Player 1 takes the Desert Mouse Objective with the Fi
 # ------------------------------------------- base game and Rise of Ix
 
 [[ruling]]
+oq = "OQ-133"
+group = "project"
+game = "uprising"
+title_ko = "스파이 아이콘으로 간 장소에서 같은 스파이로 침투"
+title = "Infiltrating with the Spy that gave the Spy icon its access"
+ruling_ko = "스파이 아이콘만으로 닿는 장소에 다른 에이전트가 있으면, 그 접근을 준 바로 그 스파이를 소환해 침투할 수 있다. 접근은 카드와 장소를 고를 때 판정하고, 소환은 그 뒤의 다른 효과다. 그 스파이로 정보 수집을 함께 할 수는 없다."
+ruling = "If a space you reach only through a Spy icon holds another Agent, you may recall the very Spy that gave the access to Infiltrate: the access is judged when you choose the card and the space, and the recall is a separate effect after it. That Spy cannot also Gather Intelligence."
+
+[[ruling]]
+oq = "OQ-134"
+group = "project"
+game = "uprising"
+title_ko = "코린트 시티로 원로회 자리를 얻은 뒤의 첫 원로회 방문"
+title = "The first High Council visit after a seat from Corrinth City"
+ruling_ko = "코린트 시티의 공개 효과로 원로회 자리를 먼저 얻었다면, 나중에 원로회 장소에 처음 에이전트를 보낼 때 다시 방문한 것으로 보고 스파이스 2, 책략 카드 1장, 병력 3을 받는다. 첫 방문의 일인 의원 토큰 놓기는 이미 일어났다."
+ruling = "If Corrinth City's Reveal effect gave you your High Council seat, your first Agent at the High Council space counts as a later visit: 2 spice, an Intrigue card and three troops. Placing the Councilor, the first visit's only effect, has already happened."
+
+[[ruling]]
+oq = "OQ-135"
+group = "project"
+game = "uprising"
+title_ko = "지배 방어 배치에는 병력만"
+title = "Only a troop defends a controlled location"
+ruling_ko = "지배하는 위치의 교전 카드가 공개될 때의 방어 배치는 개인 공급처의 병력 하나만 보낼 수 있다. 개인 공급처의 사다우카 지휘관은 보낼 수 없고, 개인 공급처에 지휘관만 있으면 방어 창이 열리지 않는다. 개인 공급처의 지휘관은 차례마다 한 번 솔라리 2를 내야 데려올 수 있기 때문이다."
+ruling = "The defense when a Conflict card is revealed for a location you control sends one troop from your supply. A Sardaukar Commander in your supply cannot go, and a supply holding only a Commander opens no defense, since a supply Commander comes back only for 2 Solari once per turn."
+
+[[ruling]]
+oq = "OQ-136"
+group = "project"
+game = "uprising"
+title_ko = "틀레이락스 카드덱이 바닥나면"
+title = "When the Tleilaxu deck runs out"
+ruling_ko = "틀레이락스 카드덱이 비면 틀레이락스 열의 빈자리는 채우지 않고 남은 카드로 계속한다. 어떤 카드도 덱으로 돌아가지 않으며, 되돌아온 병사들은 늘 남는다. 임페리움 카드덱이 바닥날 때와 같다."
+ruling = "Once the Tleilaxu deck is empty, the Tleilaxu Row's gaps stay empty and the game goes on with the cards left; no card returns to the deck, and Reclaimed Forces always stays. The same as when the Imperium deck runs out."
+
+[[ruling]]
+oq = "OQ-137"
+group = "project"
+game = "uprising"
+title_ko = "1위 동률로 남은 교전 카드"
+title = "A Conflict card left by a tie for first"
+ruling_ko = "1위 동률로 아무도 가져가지 않은 교전 카드는 게임이 끝날 때까지 게임판에 남는다. 다음 라운드의 승자는 그 라운드의 맨 위 카드만 가져가고, 남은 카드의 배틀 아이콘은 쓰이지 않는다."
+ruling = "A Conflict card nobody took after a tie for first stays on the board until the end of the game: a later winner takes only that round's card on top, and the battle icon of the card left below is never used."
+
+[[ruling]]
+oq = "OQ-138"
+group = "project"
+game = "uprising"
+engine_pending = true
+title_ko = "비밀 작전에서 손이 빈 상대에게도 창을"
+title = "Covert Operation asks an opponent with an empty hand"
+ruling_ko = "비밀 작전의 \"각 상대가 카드 1장을 버린다\"에서 손에 카드가 없는 상대에게도 창을 열어, 버리기를 \"버릴 카드 없음\"과 함께 회색으로 보이고 확인만 누르게 한다. 자동으로 넘어가는 곳도 결정 창을 열어 직접 확인하게 한다는 원칙을 이 카드에도 적용했다."
+ruling = "Covert Operation's \"Each opponent discards a card\" also opens a window for an opponent with no card in hand, with the discard greyed out as \"no card to discard\" and only a confirm to press: the rule that a step which used to pass by itself opens a window to check applies to this card too."
+
+[[ruling]]
 oq = "OQ-113 (3)"
 group = "project"
 game = "base_ix"

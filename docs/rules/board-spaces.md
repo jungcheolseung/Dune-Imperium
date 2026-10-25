@@ -56,6 +56,8 @@ order." `[Main p. 9]`). 아래 표의 "space 결과"는 인쇄 순서대로 적�
 | Imperial Privilege | Landsraad; Emperor Influence 2 이상; cost 3 Solari | 원하면 hand의 Intrigue 1장을 trash하고 Intrigue 1장을 draw(board의 인쇄는 Trash an Intrigue card 아이콘 → Intrigue 아이콘 `[Main p. 20]`; Board Guide의 문장은 "discard"라고 적는다 — [OQ-061](open-questions.md#oq-061--imperial-privilege-인쇄된-trash-an-intrigue-card-아이콘과-board-guide의-discard), 인쇄된 아이콘을 따른다). 이번 turn에 보낸 Agent가 아닌 자신의 다른 Agent 1개를 recall하고 card 1장을 draw(recall과 draw는 별개의 효과 — [OQ-023](open-questions.md#oq-023--imperial-privilege의-recall-의무와-대상-부재-시-처리); 엔진은 두 단계로 해결한다, 2026-10-10 사용자 판정 [OQ-027](open-questions.md#oq-027--보드-공간에-인쇄된-여러-아이콘의-해결-단위) (d)). | `[Board Guide p. 2]` `[Main p. 20]` |
 | Swordmaster | Landsraad; 아무도 Swordmaster를 얻지 않았다면 cost 8 Solari, 한 명이라도 얻은 뒤에는 6 Solari | 플레이어마다 게임 중 1회만 방문. setup 때 board 옆에 둔 세 번째 Agent를 Leader에 놓으며, 현재 round를 포함해 이후 사용한다. | `[Board Guide p. 2]` |
 
+Corrinth City의 Reveal 효과로 원로회 자리를 먼저 얻은 좌석이 High Council에 처음 Agent를 보내면 "다시 방문"의 보상(spice 2, Intrigue 1장, troop 3)을 받는다. 첫 방문의 일인 Councilor 놓기는 이미 일어났기 때문이다(2026-10-26 사용자 판정, [OQ-134](open-questions.md#oq-134--corrinth-city로-원로회-자리를-얻은-뒤의-첫-high-council-방문) — project convention).
+
 ## City
 
 | space | 속성·진입 조건 | space 결과 | 출처 |
