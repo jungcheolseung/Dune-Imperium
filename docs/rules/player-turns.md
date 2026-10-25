@@ -312,13 +312,20 @@
     Immortality에서 되돌릴 specimen이 있을 때만 센다. Navigation option도 같은 판정을
     쓴다(project convention). 세부와 카드 목록은 OQ-071의 카드 확장 2, OQ-057 (6) 재판정,
     trigger 카드는 OQ-016; 구현 `effect_interpreter.reward_can_change_something`.
+  - 재판정(2026-10-24 사용자, OQ-113의 통일 기준 (C) "비용을 낸 것만 보장"; codec v154에서
+    엔진 반영): 위 셋째 조건은 비용이 있는 줄(화살표 왼쪽의 자원, 카드 discard·trash,
+    Intrigue trash, troop 손실, Spy recall 등)에만 남는다. 비용이 없는 효과는 모두 불발해도
+    낸다 — 책략 카드 자체는 비용이 아니다. 모든 줄이 불발하는 play는 사람 좌석에 클릭 전
+    "지금 내면 아무 효과가 없음"으로 알리고 되돌릴 수 있다. 구현
+    `effect_interpreter._no_effect_block`·`play_changes_nothing`.
 - 구현 convention: 자신의 turn 선택이 제시된 시점부터 "턴 종료"를 누르기 전까지
   Plot을 낼 수 있다(OQ-015 (a), OQ-095). "—OR—" 없이 줄이 따로 인쇄된 Intrigue
   (Change Allegiances, Strategic Stockpiling, Depart for Arrakis, Find Weakness,
   Questionable Methods)는 줄마다 별개 행동이고, 각 줄의 비용은 그 줄을 쓸 때 낸다.
   지금 쓸 수 있는 줄이 하나라도 있으면 낼 수 있고, 2026-10-04부터는 적어도 한 줄을
   써야 카드를 끝낼 수 있다(낼 때 지불 없이 바로 해결되는 줄은 쓴 것으로 센다 —
-  2026-10-06부터는 무언가를 바꿀 수 있는 줄만 "쓸 수 있는 줄"이다, 위 사용자 판정). 한
+  2026-10-06부터는 무언가를 바꿀 수 있는 줄만 "쓸 수 있는 줄"이었고, 2026-10-24
+  OQ-113 (C)부터는 비용 없는 줄은 불발해도 쓴 것으로 센다, 위 재판정). 한
   줄을 쓴 뒤 나머지 줄은 선택이다. 공식 문서가 Plot 시점을 명시하지 않으므로 OQ-015
   (a)·OQ-095로 관리한다. 줄 처리에 닿는 공식 문장은 하나다 — 화살표 효과는 "if you
   don't want the effect, you may choose not to pay the cost—except when playing an
