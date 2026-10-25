@@ -22,9 +22,12 @@ SHOTS = os.environ.get("E2E_SHOTS_DIR") or tempfile.mkdtemp(
 PENDING = """() => [playEffects.current, ...playEffects.queue].filter(Boolean)
   .map((c) => ({index: c.index, card: c.cardId ?? null, seat: c.seat,
     cards: c.cards ?? null, totals: c.kind === 'reveal'
-      ? [c.persuasion, c.strength] : null}))"""
+      ? [c.persuasion, c.swords] : null}))"""
 
-# A Reveal is one cue for its two events (reveal_started, cards_revealed).
+# A Reveal is one cue for its two events (reveal_started, cards_revealed):
+# its Persuasion from the first, its hand and revealed swords from the second
+# (the toast shows the swords, not the seat's whole strength; play feedback
+# 2026-10-25).
 EXPECTED = """(from) => state.log.entries.slice(from).flatMap((entry) => {
   if (entry.undone) return [];
   const out = [];
@@ -37,8 +40,11 @@ EXPECTED = """(from) => state.log.entries.slice(from).flatMap((entry) => {
           totals: [null, null]};
         out.push(reveal);
       }
-      if (event.kind === 'reveal_started') reveal.totals = [p.persuasion, p.strength];
-      else reveal.cards = p.card_ids;
+      if (event.kind === 'reveal_started') reveal.totals[0] = p.persuasion;
+      else {
+        reveal.cards = p.card_ids;
+        reveal.totals[1] = p.swords;
+      }
     } else if (['agent_placed', 'turn_start_card_played', 'card_grafted',
         'intrigue_played', 'navigation_card_played'].includes(event.kind)) {
       out.push({index: entry.index, card: p.card_id, seat: p.player, cards: null,

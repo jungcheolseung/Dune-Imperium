@@ -809,6 +809,7 @@ const PAYLOAD_KEY_LABELS = {
   strength: "전투력",
   subcommittee_id: "소위원회",
   subcommittee_ids: "소위원회",
+  swords: "검",
   target: "대상",
   tech_id: "기술 타일",
   to: "보낸 곳",

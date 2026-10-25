@@ -5151,10 +5151,17 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     # The revealed hand, for the tables to show (report-only: the engine
     # keeps it out of the state, ``UprisingRulesEngine``). Revealed cards
     # are public from here on [Main p. 12]; the view lists them in play.
+    # ``swords`` is the sword icons they reveal, the Reveal's own share of
+    # the strength ("reveal한 sword 하나는 strength 1이다" [Main p. 12]),
+    # which the table's Reveal toast shows (play feedback 2026-10-25).
     shown = GameEvent(
         event_id=f"round:{state.round_number}:player:{action.actor}:revealed",
         kind="cards_revealed",
-        payload=(("card_ids", tuple(revealed)), ("player", action.actor)),
+        payload=(
+            ("card_ids", tuple(revealed)),
+            ("player", action.actor),
+            ("swords", sword_strength),
+        ),
     )
     events: list[GameEvent] = [event, shown]
     for card_id, effect in reveal_effects:

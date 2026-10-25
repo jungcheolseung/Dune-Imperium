@@ -754,6 +754,7 @@ const LABELS_EN = {
     "strength": "Strength",
     "subcommittee_id": "Subcommittee",
     "subcommittee_ids": "Subcommittees",
+    "swords": "Swords",
     "target": "Target",
     "tech_id": "Tech tile",
     "to": "Sent to",
