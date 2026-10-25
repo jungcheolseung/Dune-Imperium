@@ -463,6 +463,16 @@ def test_the_seat_picks_which_waiting_trash_icon_trashes_a_card() -> None:
     assert by_other.players[0].trashed == (card,)
     assert turn_rows.pending(by_other.decision_stack[-1]) == (box_icon,)
     assert "agent_card_self_trashed" not in dict(by_other.decision_stack[-1].context)
+    # The engine's expiry hook, which runs after that step, then ends the
+    # trashed card's own waiting icon too: "you can't receive or activate an
+    # effect from a card that is already trashed" (OQ-022; OQ-027 (b); engine
+    # audit 2026-10-22, P1).
+    from dune_imperium.core import RuleResult
+    from dune_imperium.rules.agent_effects import expire_trashed_card_effects
+
+    expired = expire_trashed_card_effects(RuleResult(state=by_other))
+    assert turn_rows.pending(expired.state.decision_stack[-1]) == ()
+    assert [event.kind for event in expired.events] == ["agent_card_effect_expired"]
     # The older engine's own picks.
     assert legacy_trash_whole(waiting, 0, card) == row(card, *by_box)
     assert legacy_trash_whole(waiting, 0, other) == row(other, *by_research)

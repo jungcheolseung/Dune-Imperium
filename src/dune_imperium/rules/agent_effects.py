@@ -45,6 +45,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.agent_box_abilities import (
     NOT_PRINTED_BLOCK,
     SPACE_INFLUENCE_REPLACED,
@@ -2323,12 +2324,17 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
         drop_boost_draw(context, boost_card_id)
         if boost_card_id not in (card for card, _, _ in expired):
             expired_draws.append(boost_card_id)
-    if not expired and not expired_draws:
+    expired_trashes = _expired_waiting_trashes(
+        state, context, owner, (card_instance_id, graft_card_id)
+    )
+    if not expired and not expired_draws and not expired_trashes:
         return result
     _release_space_influence(
         context, held=_waiting_box_holds_space_influence(dict(frame.context))
     )
     next_state = advance_after_effect(state, context)
+    for _, item in expired_trashes:
+        next_state = turn_rows.take(next_state, player, item)
     events = (
         *(
             event
@@ -2353,9 +2359,58 @@ def expire_trashed_card_effects(result: RuleResult) -> RuleResult:
             )
             for expired_id in expired_draws
         ),
+        *(
+            agent_box_event(
+                item[1], expired_id, player, BoxOutcome.EXPIRED, effect=AGENT_ICON_TRASH
+            )
+            for expired_id, item in expired_trashes
+        ),
     )
     return RuleResult(state=next_state, events=(*result.events, *events))
 
+
+def _expired_waiting_trashes(
+    state: GameState,
+    context: Mapping[str, ActionValue],
+    owner: PlayerState,
+    card_ids: tuple[str | None, ...],
+) -> list[tuple[str, turn_rows.Pending]]:
+    """The optional trashes a box left waiting on the turn whose card left
+    play by another effect, each with that card.
+
+    A paid arrow's black trash icon waits on the owner's turn as a row
+    (cleanup-2b, ``optional_trash``), outside the box this hook expires.
+    "You can't receive or activate an effect from a card that is already
+    trashed" (OQ-022, the designer's ruling), and the card box extension
+    (OQ-027 (b)): a card whose arrow is paid and whose reward waits expires
+    whole when another effect trashes it; trashed by an icon of its own box
+    it keeps what is left (OQ-022, 2026-10-20 B3c-2b). The rows of Control
+    the Spice, Throne Room Politics and a Ghola copying them once stayed
+    (engine audit 2026-10-22, P1).
+    """
+
+    frame = turn_rows.rows_frame(state, owner.player_id)
+    if frame is None:
+        return []
+    gone = {
+        agent_card_source(state.round_number, owner.player_id, card_id): card_id
+        for card_id in card_ids
+        if card_id
+        and not _still_owned(owner, card_id)
+        and not _left_play_by_own_effect(context, card_id)
+    }
+    expired: list[tuple[str, turn_rows.Pending]] = []
+    for item in turn_rows.pending(frame):
+        kind, source, _ = item
+        if kind != turn_rows.OPTIONAL_TRASH:
+            continue
+        box = next(
+            (box for box in gone if source == box or source.startswith(f"{box}:")),
+            None,
+        )
+        if box is not None:
+            expired.append((gone[box], item))
+    return expired
 
 def agent_card_icons_at_placement(
     effect: PersonalCardAgentEffect | None,
