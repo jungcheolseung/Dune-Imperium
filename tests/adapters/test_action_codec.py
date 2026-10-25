@@ -74,8 +74,9 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # v152 (engine audit 2026-10-22, P4): Interstellar Conspiracy's spice icon
     # rows (box 0 and box 1) join the Immortality catalogs, 4,311 to 4,313
     # with every option on; the base catalog keeps its 1,434. v153 (general
-    # rules audit 2026-10-25) adds no template.
-    assert ACTION_CODEC_VERSION == 153
+    # rules audit 2026-10-25) adds no template. v154 (OQ-121): Planetary
+    # Array's reward-window row and its step row join the Tech catalogs only.
+    assert ACTION_CODEC_VERSION == 154
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,

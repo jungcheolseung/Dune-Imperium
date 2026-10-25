@@ -43,6 +43,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.card_bonds import trashable_cards
+from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import contract_choice_frame
 from dune_imperium.rules.effects import (
@@ -478,6 +479,10 @@ COMBAT_REWARD_ICON_KINDS: Final = (
     "trash",
     "spy",
     "deep_cover_spy",
+    # Not a reward icon: Planetary Array's "When you win a Conflict: draw a
+    # card", a row of the sole winner's window (OQ-121, user ruling
+    # 2026-10-25, "PA는 승자의 창 (추천)").
+    "planetary_array",
 )
 # Frame context keys of the window: the icons still to resolve, in the order
 # the engine paid them before stage B2 (``LEGACY_ICON_ORDER``: an older
@@ -630,6 +635,18 @@ def _reward_window(
             icons.extend([kind] * counts.get(kind, 0))
     for kind in _LEGACY_LATER_CHOICES:
         icons.extend([kind] * (counts.get(kind, 0) * multiplier))
+    if assignment.rank is RewardRank.FIRST:
+        # The first-place reward goes to a sole winner only (a tie for first
+        # takes second place's [Main p. 14]), and its window holds what the
+        # win sets off: Planetary Array's card is a row of it, the winner's to
+        # order with the reward's icons, before the second place is paid
+        # (OQ-121, user ruling 2026-10-25, "PA는 승자의 창 (추천)"; OQ-108
+        # re-ruled). Not doubled by a sandworm: it is no reward. Last in the
+        # fixed order the AI seats and older records follow.
+        draws = tech_draws_on(state.players[assignment.player].tech_ids, OnConflictWon)
+        if draws:
+            icons.extend(["planetary_array"] * draws)
+            printed.append("planetary_array")
     context: dict[str, ActionValue] = {
         _ICONS_KEY: ",".join(icons),
         _PRINTED_KEY: ",".join(printed),
@@ -868,6 +885,8 @@ def _icon_details(
             return (("space_id", space_id),)
         case "contract", TakeContract(count=count):
             return (("contracts", count * multiplier),)
+        case "planetary_array", None:
+            return (("cards", 1),)
     return ()
 
 
@@ -964,6 +983,16 @@ def _resolve_automatic_icon(
                 owner, victory_points=owner.victory_points + amount * multiplier
             )
             return RuleResult(state=_with_owner(state, next_owner))
+        case "planetary_array", None:
+            # "When you win a Conflict: draw a card" [Planetary Array Tech
+            # tile], drawn as this row resolves, before the next place is
+            # paid (OQ-121); its reshuffle keeps the Tech draw's decision id.
+            return draw_or_request_personal_cards(
+                state,
+                player,
+                1,
+                source=f"round:{state.round_number}:player:{player}:tech_draw",
+            )
         case "contract", TakeContract(count=count):
             # Without the CHOAM Module a Contract icon is 2 Solari
             # [Main pp. 16, 20].
@@ -2203,9 +2232,10 @@ def _award_conflict(state: GameState) -> RuleResult:
     일치를 확인한다. [Main p. 14]" (docs/rules/combat-and-round-end.md), before
     the cleanup returns the troops (user decision 2026-10-18, OQ-108). A tie
     leaves the card on the board [Main pp. 8, 14]. Planetary Array's card
-    ("When you win a Conflict: draw a card") is owed here and drawn before
-    anything else follows: as the step settles when a Conflict-end window
-    opens, else by the engine before the cleanup (``rules/engine.py``)."""
+    ("When you win a Conflict: draw a card") is no longer drawn here but in
+    the winner's reward window (OQ-121, user ruling 2026-10-25; OQ-108
+    re-ruled): the win sets it off, the Conflict card's award is a step of
+    its own after every place's reward [Main p. 14]."""
 
     if not state.current_conflict_ids:
         raise ValueError("Combat cleanup requires a current Conflict")
@@ -2235,12 +2265,6 @@ def _award_conflict(state: GameState) -> RuleResult:
         winner, match_events = match_all_battle_icons(
             winner, source=f"round:{state.round_number}:conflict_won"
         )
-    draws = tech_draws_on(winner.tech_ids, OnConflictWon)
-    if draws:
-        # Planetary Array: "When you win a Conflict: draw a card" — a sole
-        # winner only [FAQ p. 4] [Planetary Array Tech tile]; owed to the
-        # engine's post-step draw.
-        winner = replace(winner, tech_cards_owed=winner.tech_cards_owed + draws)
     events: list[GameEvent] = [
         GameEvent(
             event_id=f"round:{state.round_number}:conflict_won:{ranking.winner}",

@@ -308,6 +308,8 @@ _COMBAT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "trash": _V.TRASH,
     "spy": _V.PLACE_SPY,
     "deep_cover_spy": _V.PLACE_SPY,
+    # Planetary Array's card, a row of the winner's window (OQ-121).
+    "planetary_array": _V.DRAW,
 })
 # What a completed Contract's icon does (``contracts.CONTRACT_REWARD_ICON_KINDS``).
 _CONTRACT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({

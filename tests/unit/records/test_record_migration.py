@@ -62,6 +62,7 @@ from tests.unit.rules.test_immortality_intrigue import _offer as _window_offer
 from tests.unit.rules.test_tech import (
     _bought_glowglobes,
     _combat_acquire_frame,
+    _planetary_array_combat,
     _planetary_array_conflict_end,
 )
 
@@ -87,6 +88,7 @@ from dune_imperium.rules.agent_effect_frame import route_box_action
 from dune_imperium.rules.agent_effects import resolves_boost_draw
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.board_effects import BOARD_ICON_IMPERIAL_PRIVILEGE
+from dune_imperium.rules.combat import legacy_combat_reward_icon
 from dune_imperium.rules.contracts import begin_contract_gain, legal_contract_actions
 from dune_imperium.rules.effect_steps import (
     completed_whole,
@@ -3531,16 +3533,19 @@ def test_a_frame_over_contract_rows_takes_its_recorded_pick_first() -> None:
     assert earlier(waiting, (shuffle, take)) is None
 
 
-def test_a_planetary_array_reshuffle_recorded_at_the_cleanup_is_taken_at_the_win() -> (
+def test_a_planetary_array_reshuffle_recorded_later_is_taken_in_its_window() -> (
     None
 ):
-    # The recording engine drew Planetary Array's card at a cleanup that also
-    # fired a Harvest Cells, under the same decision this engine asks as the
-    # Conflict card is awarded.
+    # The recording engine drew Planetary Array's card as the Conflict card
+    # was awarded (codec v149 to v153), or at a cleanup that also fired a
+    # Harvest Cells, under the same decision this engine asks as the row of
+    # the sole winner's reward window resolves (codec v154, OQ-121).
     state, decision, shuffled = _planetary_array_reshuffle()
     recorded = ChanceOutcome(decision.decision_id, shuffled)
     elsewhere = ChanceOutcome("round:2:player:0:discard_shuffle", shuffled)
-    pause = ChanceOutcome("round:1:conflict_end:pause", (CONTINUE,))
+    rewards = ChanceOutcome("round:1:reward:1:rewards:pause", (CONTINUE,))
+    award = ChanceOutcome("round:1:conflict_end:pause", (CONTINUE,))
+    pause = ChanceOutcome("round:2:round_start:pause", (CONTINUE,))
     filler = DomainAction("finish_conflict_end_intrigue", 0)
 
     def earlier(
@@ -3554,17 +3559,30 @@ def test_a_planetary_array_reshuffle_recorded_at_the_cleanup_is_taken_at_the_win
     # Looked for from the step the record stands at, and taken once.
     assert earlier((recorded, filler), index=1) is None
     assert earlier((filler, recorded), consumed={1}) is None
-    # None is looked for past the recording's next pause.
+    # Asked among the rewards, it is looked for past the pauses the recording
+    # passed before it drew: the later places' rewards and the award.
+    assert not state.combat_rewards_resolved
+    assert not state.combat_end_triggers_offered
+    assert earlier((rewards, filler, award, recorded)) == (3, recorded)
+    # None is looked for past any other pause, or another round's.
     assert earlier((pause, recorded)) is None
-    # Only the draw of the win: not another chance, another phase, or a state
-    # whose windows were not offered yet.
+    later_award = ChanceOutcome("round:2:conflict_end:pause", (CONTINUE,))
+    assert earlier((later_award, recorded)) is None
+    # Only the draw of the win: not another chance, another phase, a state
+    # past the rewards whose windows were not offered yet, or a seat without
+    # Planetary Array.
     plain, _ = _asking(state, "round:2:player:0:discard_shuffle")
     assert (
         migration._tech_draw_earlier(ENGINE, plain, (recorded,), 0, set()) is None
     )
+    owner = state.players[0]
+    without = replace(owner, tech_ids=tuple(
+        tile for tile in owner.tech_ids if tile != "planetary_array"
+    ))
     for changed in (
         replace(state, phase=GamePhase.MAKERS),
-        replace(state, combat_end_triggers_offered=False),
+        replace(state, combat_rewards_resolved=True),
+        replace(state, players=(without, *state.players[1:])),
     ):
         assert (
             migration._tech_draw_earlier(ENGINE, changed, (recorded,), 0, set())
@@ -3606,6 +3624,93 @@ def test_a_planetary_array_reshuffle_recorded_at_the_cleanup_is_taken_at_the_win
         ChanceOutcome(decision.decision_id, shuffled),
         migration.RESHUFFLE_MOVED,
     )
+
+
+def _planetary_array_combat_played(
+    deck: tuple[str, ...], discard: tuple[str, ...]
+) -> tuple[GameState, tuple[ReplayStep, ...], GameState]:
+    """``_planetary_array_combat`` with seat 1 in second place, played on this
+    engine to the end of the Combat: the start, the steps (each window in
+    its fixed order, so the Planetary Array row last of the winner's) and
+    the end."""
+
+    start = _planetary_array_combat(deck, discard)
+    second = replace(
+        start.players[1], troops_supply=8, troops_conflict=1, combat_strength=2
+    )
+    start = replace(start, players=(start.players[0], second, *start.players[2:]))
+    state, steps = start, []
+    while state.phase is GamePhase.COMBAT:
+        decision = ENGINE.current_decision(state)
+        step: ReplayStep
+        if isinstance(decision, ChanceDecision):
+            values = (
+                decision.options
+                if is_fixed_outcome(decision)
+                else tuple(sorted(decision.options, reverse=True))
+            )
+            step = ChanceOutcome(decision.decision_id, values)
+        else:
+            assert isinstance(decision, PlayerDecision)
+            legal = ENGINE.legal_actions(state, decision.owner)
+            fixed = legacy_combat_reward_icon(state, decision.owner)
+            icon = None if fixed is None else dict(fixed.arguments)["effect"]
+            step = next(
+                (a for a in legal if dict(a.arguments).get("icon") == icon), None
+            ) or next(
+                (a for a in legal if a.action_id.startswith(("pass_", "decline_"))),
+                legal[0],
+            )
+        steps.append(step)
+        state = ENGINE.apply(state, step).state
+    return start, tuple(steps), state
+
+
+@pytest.mark.parametrize("empty_deck", [False, True])
+def test_a_record_before_the_planetary_array_row_draws_in_the_winner_s_window(
+    empty_deck: bool,
+) -> None:
+    # Before codec v154 Planetary Array's card was drawn as the Conflict card
+    # was awarded, after every place's reward (a reshuffle recorded right
+    # after the award's pause, as the Conflict-end window opened); this
+    # engine draws it as the last row of the sole winner's window (OQ-121).
+    cards = starting_deck_instance_ids(0)[5:8]
+    deck, discard = ((), cards) if empty_deck else (cards, ())
+    start, steps, end = _planetary_array_combat_played(deck, discard)
+    row = next(
+        index
+        for index, step in enumerate(steps)
+        if isinstance(step, DomainAction)
+        and dict(step.arguments).get("icon") == "planetary_array"
+    )
+    award = steps.index(ChanceOutcome("round:1:conflict_end:pause", (CONTINUE,)))
+    assert ChanceOutcome("round:1:reward:1:rewards:pause", (CONTINUE,)) in steps[
+        row:award
+    ]
+    older = [step for index, step in enumerate(steps) if index != row]
+    if empty_deck:
+        shuffle = steps[row + 1]
+        assert isinstance(shuffle, ChanceOutcome)
+        assert shuffle.decision_id == "round:1:player:0:tech_draw:discard_shuffle"
+        older.remove(shuffle)
+        older.insert(older.index(steps[award]) + 1, shuffle)
+
+    record = migrate_record(
+        _v142_record(start, *older, codec=153), engine=_StartingAt(start)
+    )
+
+    assert record.complete, record.divergence
+    assert canonical_state_hash(record.state) == canonical_state_hash(end)
+    assert [migrated.step for migrated in record.steps] == list(steps)
+    assert record.bridge_counts() == (
+        Counter({"planetary_array_row": 1, "tech_draw_at_the_win": 1})
+        if empty_deck
+        else Counter({"planetary_array_row": 1})
+    )
+    # A record of this codec answers the row itself.
+    assert not migrate_record(
+        _v142_record(start, *steps, codec=154), engine=_StartingAt(start)
+    ).bridge_counts()
 
 
 def test_a_reshuffle_of_the_same_cards_is_taken_under_this_engines_decision() -> None:

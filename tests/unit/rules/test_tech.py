@@ -1940,9 +1940,18 @@ def test_ornithopter_fleet_blocks_crysknife_flips_but_frees_ornithopter_ones() -
     assert flippable_battle_card_ids(seat, BattleIcon.ORNITHOPTER) == ("skirmish_wild",)
 
 
-def test_planetary_array_owes_a_card_the_engine_draws_after_the_win() -> None:
-    from dune_imperium.rules.combat import offer_conflict_end_triggers
-    from dune_imperium.rules.tech import draw_owed_tech_cards
+def test_planetary_array_is_a_row_of_the_sole_winner_s_window() -> None:
+    # OQ-121 (user ruling 2026-10-25, "PA는 승자의 창 (추천)"; OQ-108
+    # re-ruled): "When you win a Conflict: draw a card" [Planetary Array Tech
+    # tile] is a row of the winner's reward window, last in the fixed order
+    # the AI seats and older records follow; the Conflict card's award after
+    # the rewards owes nothing any more.
+    from dune_imperium.rules.combat import (
+        legacy_combat_reward_icon,
+        legal_combat_reward_icon_actions,
+        offer_conflict_end_triggers,
+        resolve_combat_rewards,
+    )
 
     owner = _tech_owner(
         "planetary_array",
@@ -1958,7 +1967,6 @@ def test_planetary_array_owes_a_card_the_engine_draws_after_the_win() -> None:
         phase=GamePhase.COMBAT,
         first_player=0,
         combat_intrigue_complete=True,
-        combat_rewards_resolved=True,
         decision_stack=(),
         players=(
             owner,
@@ -1968,23 +1976,51 @@ def test_planetary_array_owes_a_card_the_engine_draws_after_the_win() -> None:
             ),
         ),
     )
-    # The card is owed as the Conflict card is awarded (OQ-108, user decision
-    # 2026-10-18), and drawn once that step settles.
-    offered = offer_conflict_end_triggers(state)
-    assert offered.state.players[0].tech_cards_owed == 1
-    drawn = draw_owed_tech_cards(offered).state
-    assert drawn.players[0].tech_cards_owed == 0
+    window = resolve_combat_rewards(state).state
+    rows = legal_combat_reward_icon_actions(window, 0)
+    assert rows[-1] == DomainAction(
+        action_id="resolve_combat_reward_icon",
+        actor=0,
+        arguments=(("effect", "planetary_array"),),
+    )
+    icons = str(dict(window.decision_stack[-1].context)["icons"]).split(",")
+    assert icons[-1] == "planetary_array" and icons.count("planetary_array") == 1
+    assert legacy_combat_reward_icon(window, 0) != rows[-1] or len(icons) == 1
+    # The winner may take it first: the card is drawn as the row resolves.
+    assert window.players[0].hand == ()
+    drawn = apply_whole(UprisingRulesEngine(), window, rows[-1]).state
     assert len(drawn.players[0].hand) == 1
+    assert drawn.players[0].tech_cards_owed == 0
+    assert drawn.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
 
+    # The award after the rewards owes no card.
+    done = replace(state, combat_rewards_resolved=True)
+    assert offer_conflict_end_triggers(done).state.players[0].tech_cards_owed == 0
 
-def _planetary_array_conflict_end(
+    # A tie for first takes second place's reward [Main p. 14]: no winner, no
+    # row.
+    rival = replace(
+        state.players[1],
+        troops_conflict=1,
+        troops_supply=11,
+        troops_garrison=0,
+        combat_strength=2,
+    )
+    tied = replace(state, players=(owner, rival, *state.players[2:]))
+    tied_window = resolve_combat_rewards(tied).state
+    assert all(
+        dict(action.arguments)["effect"] != "planetary_array"
+        for seat in (0, 1)
+        for action in legal_combat_reward_icon_actions(tied_window, seat)
+    )
+
+def _planetary_array_combat(
     deck: tuple[str, ...], discard: tuple[str, ...]
-) -> tuple[UprisingRulesEngine, Transition]:
-    """A Combat the Planetary Array owner wins, through the engine up to the
-    transition that offers the Conflict-end windows (Immortality, so the
-    owner's loss of three and its Intrigue card open one)."""
+) -> GameState:
+    """A Combat the Planetary Array owner wins alone, at its Combat Intrigue
+    (Immortality, so the owner's loss of three and its Intrigue card open a
+    Conflict-end window)."""
 
-    engine = UprisingRulesEngine()
     owner = _tech_owner(
         "planetary_array",
         troops_supply=9,
@@ -2012,7 +2048,18 @@ def _planetary_array_conflict_end(
             *(PlayerState(player_id=seat, has_revealed=True) for seat in (1, 2, 3)),
         ),
     )
-    state = begin_combat_intrigue(state).state
+    return begin_combat_intrigue(state).state
+
+
+def _planetary_array_conflict_end(
+    deck: tuple[str, ...], discard: tuple[str, ...]
+) -> tuple[UprisingRulesEngine, Transition]:
+    """``_planetary_array_combat`` through the engine up to the transition
+    that offers the Conflict-end windows, or that asks the Planetary Array
+    draw's reshuffle."""
+
+    engine = UprisingRulesEngine()
+    state = _planetary_array_combat(deck, discard)
     while True:
         frame = state.decision_stack[-1]
         if frame.kind == FrameKind.PAUSE:
@@ -2024,17 +2071,20 @@ def _planetary_array_conflict_end(
                 (a for a in actions if a.action_id.startswith("pass_")), actions[0]
             )
             transition = apply_whole(engine, state, passing)
-        if transition.state.combat_end_triggers_offered:
+        if (
+            transition.state.combat_end_triggers_offered
+            or transition.state.decision_stack[-1].kind
+            == FrameKind.PERSONAL_DRAW_RESHUFFLE
+        ):
             return engine, transition
         state = transition.state
 
 
 def test_planetary_array_s_card_is_in_hand_before_any_conflict_end_window() -> None:
-    # "When you win a Conflict: draw a card" [Planetary Array Tech tile].
-    # The winner takes the Conflict card right after the rewards [Main p. 14]
-    # (OQ-108, user decision 2026-10-18), so the card is owed there and drawn
-    # as that step settles: the Conflict-end window it opens finds the card
-    # already in the hand, before any window is answered.
+    # "When you win a Conflict: draw a card" [Planetary Array Tech tile]: a
+    # row of the winner's reward window (OQ-121, 2026-10-25), so the
+    # Conflict-end window finds the card already in the hand, before any
+    # window is answered.
     deck = starting_deck_instance_ids(0)[5:8]
     engine, offered = _planetary_array_conflict_end(deck, ())
 
@@ -2059,36 +2109,30 @@ def test_planetary_array_s_card_is_in_hand_before_any_conflict_end_window() -> N
     assert declined.players[0].tech_cards_owed == 0
 
 
-def test_planetary_array_s_empty_deck_reshuffles_before_the_window() -> None:
-    # The same draw with an empty deck: the discard pile is shuffled first
-    # (a ``...:tech_draw:discard_shuffle`` chance on top of the unanswered
-    # window), then the card is drawn and the window is the decision again.
+def test_planetary_array_s_empty_deck_reshuffles_in_the_winner_s_window() -> None:
+    # The same draw with an empty deck: the discard pile is shuffled as the
+    # row resolves (a ``...:tech_draw:discard_shuffle`` chance), still among
+    # the rewards, before any Conflict-end window (OQ-121).
     discard = starting_deck_instance_ids(0)[5:8]
-    engine, offered = _planetary_array_conflict_end((), discard)
+    engine, asked = _planetary_array_conflict_end((), discard)
 
-    seat = offered.state.players[0]
+    state = asked.state
+    assert not state.combat_end_triggers_offered
+    seat = state.players[0]
     assert seat.hand == () and seat.tech_cards_owed == 0
-    top = offered.state.decision_stack[-1]
+    top = state.decision_stack[-1]
     assert top.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
     assert isinstance(top.decision, ChanceDecision)
     assert top.decision.decision_id == "round:1:player:0:tech_draw:discard_shuffle"
     assert tuple(sorted(top.decision.options)) == tuple(sorted(discard))
-    # The Conflict-end window waits underneath, unanswered.
-    assert offered.state.decision_stack[-2].kind == FrameKind.CONFLICT_END_TRIGGER
-    assert [event.kind for event in offered.events].count("conflict_won") == 1
+    assert [event.kind for event in asked.events].count("conflict_won") == 0
 
     shuffled = tuple(reversed(discard))
-    answered = apply_whole(engine, 
-        offered.state, ChanceOutcome(top.decision.decision_id, shuffled)
+    answered = apply_whole(
+        engine, state, ChanceOutcome(top.decision.decision_id, shuffled)
     )
-
     assert answered.state.players[0].hand == (shuffled[0],)
     assert answered.state.players[0].deck == shuffled[1:]
-    assert [event.kind for event in answered.events] == ["personal_discard_shuffled"]
-    window = answered.state.decision_stack[-1]
-    assert window.kind == FrameKind.CONFLICT_END_TRIGGER
-    assert isinstance(window.decision, PlayerDecision) and window.decision.owner == 0
-
 
 def _planetary_array_win_without_windows(
     deck: tuple[str, ...], discard: tuple[str, ...]
@@ -2146,11 +2190,10 @@ def _planetary_array_win_without_windows(
 
 
 def test_planetary_array_s_card_comes_at_the_win_with_no_window() -> None:
-    # OQ-108 (B), user decision 2026-10-18: "When you win a Conflict: draw a
-    # card" [Planetary Array Tech tile] at the Conflict card's award, right
-    # after the rewards [Main p. 14] -- also when no Conflict-end window
-    # opens, where the cleanup runs on into the next round in one step (the
-    # card used to come after the next round's hand there).
+    # OQ-121 (2026-10-25; OQ-108 re-ruled): "When you win a Conflict: draw a
+    # card" [Planetary Array Tech tile] in the winner's reward window -- also
+    # when no Conflict-end window opens and the cleanup runs on into the next
+    # round in one step.
     deck = starting_deck_instance_ids(0)[5:10]
     _engine, paused = _planetary_array_win_without_windows(deck, ())
 
@@ -2166,6 +2209,7 @@ def test_planetary_array_s_empty_deck_reshuffles_in_combat_with_no_window() -> N
     engine, asked = _planetary_array_win_without_windows((), discard)
 
     assert asked.phase is GamePhase.COMBAT
+    assert not asked.combat_rewards_resolved
     top = asked.decision_stack[-1]
     assert top.kind == FrameKind.PERSONAL_DRAW_RESHUFFLE
     assert isinstance(top.decision, ChanceDecision)
@@ -2177,8 +2221,7 @@ def test_planetary_array_s_empty_deck_reshuffles_in_combat_with_no_window() -> N
     seat = answered.state.players[0]
     assert seat.hand == (shuffled[0],)
     assert seat.tech_cards_owed == 0
-    assert answered.state.phase is GamePhase.ROUND_START
-
+    assert answered.state.phase is GamePhase.COMBAT
 
 def test_suspensor_suits_deploys_a_troop_per_intrigue_gained_in_the_owners_turn() -> (
     None

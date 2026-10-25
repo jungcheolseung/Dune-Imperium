@@ -626,7 +626,17 @@ from dune_imperium.rules.tech import optional_trash_tech_ids
 # ``scouts_faction_alone``), and take a reshuffle the Faction's track card
 # asks under its old name (``scouts_faction_reshuffle_renamed``);
 # docs/human-records.md.
-ACTION_CODEC_VERSION = 153
+# v154 (Uprising rulings batch, user rulings 2026-10-25): Planetary Array's
+# card is a row of the sole winner's reward window (OQ-121, OQ-108
+# re-ruled): ``resolve_combat_reward_icon{effect: planetary_array}`` and its
+# step row ``draw{icon: planetary_array, printed: <conflict>, source:
+# conflict}`` (new templates, Tech catalogs). Suspensor Suits' troop is
+# recruited and the part the supply lacks is made up as troops return to it
+# in the same player turn (OQ-042 (가)); no template changes. Older records
+# answer the row once only it is left and the record goes on
+# (``planetary_array_row``), and take its reshuffle from the award ahead
+# (``tech_draw_at_the_win``, widened); docs/human-records.md.
+ACTION_CODEC_VERSION = 154
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -834,7 +844,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="resolve_combat_reward_icon", arguments=(("effect", kind),)
         )
         for kind in COMBAT_REWARD_ICON_KINDS
-        if kind != "deep_cover_spy" or config.bloodlines
+        if (kind != "deep_cover_spy" or config.bloodlines)
+        # Planetary Array's row of the winner's window (OQ-121).
+        and (kind != "planetary_array" or config.tech_module)
     )
     # One board-effect resolution per printed automatic icon (OQ-027).
     templates.extend(
@@ -1455,7 +1467,7 @@ def _effect_step_templates(
         elif spec.printed == Printed.CONFLICT_CARD:
             # A Conflict reward icon (stage B3d-1): each Conflict printing
             # it, and any Conflict's first place for Pivotal Gambit's
-            # Influence (OQ-025).
+            # Influence (OQ-025) and for Planetary Array's card (OQ-121).
             # A reward window's other effect (B3d-2a): each Conflict printing
             # an icon that opens the window.
             kind = dict(template.arguments).get("effect")
@@ -1471,6 +1483,7 @@ def _effect_step_templates(
                         for printed in kinds
                     )
                     or (kind == "choose_influence" and config.promo_cards)
+                    or kind == "planetary_array"
                 )
             )
         elif spec.printed == Printed.CONTRACT:

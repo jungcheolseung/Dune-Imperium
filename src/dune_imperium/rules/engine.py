@@ -1308,10 +1308,10 @@ def _advance_automatic(result: RuleResult) -> RuleResult:
                     else offer_conflict_end_triggers(state)
                 )
             elif any(seat.tech_cards_owed for seat in state.players):
-                # The card Planetary Array owes for the win is drawn before
-                # the cleanup runs on into the next round (OQ-108): with a
-                # Conflict-end window open it is drawn as that step settles;
-                # with none, here (a reshuffle stops the run).
+                # A card still owed to a Tech tile (Planetary Array's, owed
+                # by its row of the winner's window, OQ-121) is drawn before
+                # the cleanup runs on into the next round: normally as its
+                # step settles; else here (a reshuffle stops the run).
                 automatic = draw_owed_tech_cards(RuleResult(state=state))
             else:
                 automatic = finish_combat(state)

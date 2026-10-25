@@ -354,6 +354,7 @@ const LABELS_EN = {
     "optional_recall_spies": "Recall {spy} for {victory_point} (optional)",
     "spy": "Place {spy}",
     "deep_cover_spy": "Place {spy} with Deep Cover",
+    "planetary_array": "Planetary Array: {draw} 1",
     "recall_agent": "Recall {agent}"
   },
   "RESEARCH_BONUS_LABELS": {

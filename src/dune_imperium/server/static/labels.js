@@ -615,6 +615,9 @@ const EFFECT_ICON_LABELS = {
   optional_recall_spies: "{spy} 회수하고 {victory_point} (선택)",
   spy: "{spy} 배치",
   deep_cover_spy: "잠복 {spy} 배치",
+  /* Planetary Array's "When you win a Conflict" card, a row of the
+     winner's window (OQ-121). */
+  planetary_array: "행성 군사력: {draw} 1",
   recall_agent: "{agent} 회수",
 };
 const RESEARCH_BONUS_LABELS = {
