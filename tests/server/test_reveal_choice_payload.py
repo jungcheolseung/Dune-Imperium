@@ -291,6 +291,9 @@ def test_a_rows_card_comes_from_the_server_not_the_source_id() -> None:
             spy_post_ids=POSTS[:2],
         )
     )
+    # Spy Network's recall needs an Intrigue card to draw (OQ-071, engine
+    # audit 2026-10-22, P8).
+    state = replace(state, intrigue_deck=("intrigue:test:0",))
     rows = [
         row
         for row in _rows(_payload(state)["actions"])

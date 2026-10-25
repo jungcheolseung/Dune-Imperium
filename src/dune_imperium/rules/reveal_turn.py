@@ -137,6 +137,7 @@ from dune_imperium.rules.influence import (
 from dune_imperium.rules.intrigue_deck import (
     credit_suspensor_suits,
     draw_or_queue_intrigue_cards,
+    shufflable_intrigue_discard,
 )
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
@@ -682,24 +683,51 @@ def _target_reward_targets(
 
 
 def target_reward_is_available(
+    state: GameState,
     owner: PlayerState,
     cards_in_play: tuple[str, ...],
     card_id: str,
     effect: PersonalCardRevealChoiceEffect,
     persuasion: int | None,
 ) -> bool:
-    """The gate of a "target -> reward" choice: its printed condition holds
-    and it has something to pay with -- for a self-trash, the card counted in
-    play; Disruption Tactics' trash needs no condition, so its gate holds
-    and its row waits for the card in play."""
+    """The gate of a "target -> reward" choice: its printed condition holds,
+    its paid reward can happen (``_paid_reward_can_happen``) and it has
+    something to pay with -- for a self-trash, the card counted in play;
+    Disruption Tactics' trash needs no condition, so its gate holds and its
+    row waits for the card in play."""
 
     line = _target_reward_line(effect)
     if not _target_condition_holds(line.condition, owner, persuasion):
+        return False
+    if not _paid_reward_can_happen(state, line):
         return False
     match line.costs:
         case (TrashCard(this_card=True),):
             return line.condition is None or card_id in cards_in_play
     return bool(_target_reward_targets(owner, card_id, line, cards_in_play))
+
+
+def _paid_reward_can_happen(state: GameState, line: EffectSection) -> bool:
+    """Whether a paid "target -> reward" line's reward can do something.
+
+    A cost line is offered only when a reward can change something (OQ-071,
+    user decision 2026-09-29, and its card extension: "이제 카드·보드·
+    Leader의 비용 줄도 같다"). Spy Network's recall is an arrow cost (OQ-057
+    (14)), so its Intrigue card needs the Intrigue deck or a discard pile it
+    may shuffle (Twisted cards are never shuffled back, OQ-097); the recall's
+    own count of a Spy recalled this turn does not keep the line alive, as
+    a cost's side effect never does (OQ-071 extension 2). Engine audit
+    2026-10-22, P8; the other rewards of this shape are judged as before.
+    """
+
+    if not line.costs:
+        return True
+    for reward in line.rewards:
+        if not isinstance(reward, DrawIntrigueCards):
+            return True
+        if state.intrigue_deck or shufflable_intrigue_discard(state):
+            return True
+    return False
 
 
 def _target_reward_action_id(line: EffectSection) -> tuple[str, str]:
@@ -725,6 +753,8 @@ def target_reward_rows(
     if isinstance(line.condition, SpiesPlacedAtLeast) and not _target_condition_holds(
         line.condition, owner, None
     ):
+        return ()
+    if not _paid_reward_can_happen(state, line):
         return ()
     action_id, argument = _target_reward_action_id(line)
     return tuple(
@@ -4002,7 +4032,7 @@ def _reveal_choice_effect_is_available(
         # Counsel, Disruption Tactics, CHOAM Demands, Pointing the Way, Ixian
         # Ambassador: from their records (composed A4d).
         return target_reward_is_available(
-            owner, cards_in_play, card_id, effect, persuasion
+            state, owner, cards_in_play, card_id, effect, persuasion
         )
     if spy_icon_choice(ability):
         # A Spy icon always opens (a supply Spy with no free post waits on

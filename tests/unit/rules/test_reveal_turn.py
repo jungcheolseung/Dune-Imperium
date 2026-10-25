@@ -1569,6 +1569,41 @@ def test_spy_network_recalls_one_of_two_spies_and_draws_intrigue() -> None:
     ) == ("spy_recalled", "intrigue_card_drawn")
 
 
+def test_spy_network_recall_needs_an_intrigue_card_to_draw() -> None:
+    # Spy Network's recall is an arrow cost (OQ-057 (14)); a cost line is
+    # offered only when a reward can change something (OQ-071, user decision
+    # 2026-09-29; card extension "이제 카드·보드·Leader의 비용 줄도 같다").
+    # With the Intrigue deck empty and nothing to shuffle -- a Twisted card
+    # is never shuffled back (OQ-097) -- the recall bought nothing (engine
+    # audit 2026-10-22, P8); a discarded Intrigue card brings it back.
+    spy_network = _imperium_instance("spy_network")
+    posts = ("arrakis-hagga-basin", "bene-gesserit-espionage-secrets")
+    state = _state(
+        PlayerState(
+            player_id=0,
+            hand=(spy_network,),
+            troops_supply=8,
+            troops_conflict=1,
+            spies_supply=1,
+            spy_post_ids=posts,
+        )
+    )
+    engine = UprisingRulesEngine()
+
+    def recalls(intrigue_deck: tuple[str, ...], discard: tuple[str, ...]) -> int:
+        start = replace(state, intrigue_deck=intrigue_deck, intrigue_discard=discard)
+        revealed = begin_reveal_turn(start, legal_reveal_actions(start, 0)[0]).state
+        return sum(
+            action.action_id == "recall_spy_for_reveal"
+            for action in engine.whole_actions(revealed, 0)
+        )
+
+    assert recalls((), ()) == 0
+    assert recalls((), ("intrigue:twisted_calculating:0",)) == 0
+    assert recalls((), ("intrigue:test:0",)) == 2
+    assert recalls(("intrigue:test:0",), ()) == 2
+
+
 def test_spy_network_recall_may_be_left_unused_with_two_spies_placed() -> None:
     # Spy Network: "If you have two or more Spies on the board: [recall Spy]
     # -> [Intrigue card]" [Spy Network card]. The recall is left of an arrow,
