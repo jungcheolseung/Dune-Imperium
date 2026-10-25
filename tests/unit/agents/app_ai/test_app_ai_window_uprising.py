@@ -64,6 +64,7 @@ POST_BASIN = "arrakis-imperial-basin"
 POST_DEEP = "arrakis-deep-desert"
 POST_BG = "bene-gesserit-espionage-secrets"
 POST_FREMEN = "fremen-desert-tactics-fremkit"
+POST_GUILD = "spacing-guild-heighliner-deliver-supplies"
 
 
 # -- helpers ---------------------------------------------------------------------------
@@ -194,15 +195,24 @@ SPY = _first("spy_placement", 4)
 # Seat 1 (Gurney), supply 3: Landsraad (High Council) 3.0, Fremen 3.0,
 # Emperor/Guild/BG 2.0, Assembly Hall 1.0, the rest 0.0.
 CONTRACT_SPY = _first("contract_reward_spy", 2)
-# Round 7, seat 2 (Lady Amber Metulli), supply 0, spies on Hagga Basin 5.0,
-# Deep Desert 5.0, Emperor 3.0 (the worst); empty Landsraad (High Council)
-# post 6.0 (the best). Seed 14 reached this until 5654d7f8 (a Combat Intrigue
-# pass right after a card play no longer counts as a consecutive pass,
-# 2026-10-07) moved its game; of seeds 14-413 only 23, 262 and 356 reach it,
-# and 23 and 356 tie their worst spies (23 its best free posts too), which
-# would leave both answers to the shuffle.
+# Round 10, seat 3 (Lady Jessica), supply 0, spies on CHOAM Shipping 3.0,
+# Bene Gesserit 3.0 and Emperor 2.0 (the worst, alone); the empty Landsraad
+# (High Council) post 5.0 is the best free post once the Emperor spy is
+# recalled, tied with Spacing Guild 5.0, so the test checks that the
+# shuffle reaches both. Seed 14 reached
+# the shape until 5654d7f8 (a Combat Intrigue pass right after a card play no
+# longer counts as a consecutive pass, 2026-10-07) moved its game; of seeds
+# 14-413 only 23, 262 and 356 reached it, and 23 and 356 tie their worst
+# spies (23 its best free posts too), which would leave both answers to the
+# shuffle. Seed 262 then, until codec v154 (a cost-free Intrigue line is
+# played even when it changes nothing, OQ-113 (C); Planetary Array's card is
+# a row of the winner's reward window, OQ-121; Suspensor Suits' troop the
+# supply lacks is made up later, OQ-042) moved its game: of seeds 1-10154 and
+# 12001-14328, 204 reach an empty-supply Contract spy window, and only 2190
+# recalls the Emperor spy and then places on Landsraad (no seed of those has
+# a lone best free post as well).
 CONTRACT_SPY_RECALL = _first(
-    "contract_reward_spy", 262, lambda s, o: s.players[o].spies_supply == 0
+    "contract_reward_spy", 2190, lambda s, o: s.players[o].spies_supply == 0
 )
 # Round 1, seat 0 (Feyd) at Dutiful Service: Arrakeen I 1.40625, Immediate 2.86.
 MARKET = _first("contract_market", 1)
@@ -331,7 +341,13 @@ def test_contract_spy_with_an_empty_supply_never_declines() -> None:
     assert recall == _act("recall_spy_for_contract", seat, post_id=POST_EMPEROR)
     after = apply_whole(ENGINE, CONTRACT_SPY_RECALL, recall).state
     assert after.decision_stack[-1].kind == "contract_reward_spy"
-    assert _answer(after) == _act("place_contract_spy", seat, post_id=POST_LANDSRAAD)
+    # Seed 2190's two best free posts tie (5.0 each): the shuffle picks one,
+    # and both are reachable (as test_contract_spy_tied_best_posts_are_both_
+    # reachable checks for a supplied seat).
+    assert {_answer(after, seed=seed) for seed in range(12)} == {
+        _act("place_contract_spy", seat, post_id=POST_LANDSRAAD),
+        _act("place_contract_spy", seat, post_id=POST_GUILD),
+    }
 
 
 # -- contract_market -------------------------------------------------------------------

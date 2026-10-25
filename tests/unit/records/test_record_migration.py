@@ -240,23 +240,32 @@ def _this_engine_game(seed: int, config: RulesetConfig = FULL) -> GameReplay:
 def game() -> GameReplay:
     """A whole heuristic game on this engine with every module on.
 
-    Seed 187; seed 1 until codec v146: optional Agent-turn effects no longer
-    offer a refusal (OQ-095 (2), user ruling 2026-10-14), which moved seed
-    1's game off these tests' preconditions -- a seat now deploys troops
-    before drawing the Intrigue card a Research owes it (an older engine
-    drew it inside the Research, so the bridge takes it first), and no seat
-    places with Navigation Chamber's discount any more. Seed 102 then, until
-    codec v149 (cleanup-2a) asked Scouts seats with nothing to take, an
-    extra decision that moved 102's game off them the same way; of the
-    seeds that met them then (95, 96, 102, 141, 149, 154, 182, 186, 187,
-    194), 95 still did. Seed 95 until cleanup-2b kept an in-turn optional
-    trash on the turn as rows (a seat now takes a Reveal's Research before
-    an owed Intrigue card); of those ten, 187 still meets them all. The
-    triggered-draw test needs a game whose only split steps are owed draws
-    and has a seed of its own.
+    Seed 1005; seed 187 until codec v154 (a cost-free Intrigue line is played
+    even when it changes nothing, OQ-113 (C); Planetary Array's card is a row
+    of the winner's reward window, OQ-121; Suspensor Suits' troop the supply
+    lacks is made up later, OQ-042) moved 187's game the same way: a seat
+    deploys a Commander between a Research and the icons it owes, so the
+    bridge that adds the icons right after the Research puts them before a
+    deploy the game made first. Of seeds 1-1004 only 235 met what the nine
+    tests that failed on 187 need, and it has no Tech tile acquired at a board
+    space for the effect-row tests; 1005 is the first that meets all of them.
+    Seed 1 until codec v146: optional Agent-turn effects no longer offer a
+    refusal (OQ-095 (2), user ruling 2026-10-14), which moved seed 1's game
+    off these tests' preconditions -- a seat now deploys troops before
+    drawing the Intrigue card a Research owes it (an older engine drew it
+    inside the Research, so the bridge takes it first), and no seat places
+    with Navigation Chamber's discount any more. Seed 102 then, until codec
+    v149 (cleanup-2a) asked Scouts seats with nothing to take, an extra
+    decision that moved 102's game off them the same way; of the seeds that
+    met them then (95, 96, 102, 141, 149, 154, 182, 186, 187, 194), 95 still
+    did. Seed 95 until cleanup-2b kept an in-turn optional trash on the turn
+    as rows (a seat now takes a Reveal's Research before an owed Intrigue
+    card); of those ten, 187 still met them all. The triggered-draw test
+    needs a game whose only split steps are owed draws and has a seed of its
+    own.
     """
 
-    return _this_engine_game(187)
+    return _this_engine_game(1005)
 
 
 def _states(replay: GameReplay) -> list[GameState]:
@@ -1293,9 +1302,16 @@ def test_a_triggered_draw_an_older_engine_drew_at_once_follows_its_trigger() -> 
     # the trigger, so its record has no such step. Dropped from this
     # engine's record (whose heuristic takes each at once), each is taken
     # right after its trigger again, so the game comes back step for step.
-    # Seed 22's game (one owed draw, the Intrigue card of the Bene Gesserit
-    # track); its other split steps are dropped with the draw and taken back
-    # by their own bridges. (Seed 10 until codec v149, whose game
+    # Seed 10's game (two owed draws, the Intrigue cards of the Bene Gesserit
+    # track in round 4 and of the Tleilaxu track in round 8); its other split
+    # steps are dropped with the draws and taken back by their own bridges.
+    # (Seed 22's game, one owed draw, the Intrigue card of the Bene Gesserit
+    # track, until codec v154 (a cost-free Intrigue line is played even when
+    # it changes nothing, OQ-113 (C); Planetary Array's card is a row of the
+    # winner's reward window, OQ-121; Suspensor Suits' troop the supply lacks
+    # is made up later, OQ-042) moved it; seed 10 still brings every owed
+    # draw back and is the first of 1-300 that does (18, 26, 53, 96, 135,
+    # 170, 231, 235 and 250 follow). Seed 10 until codec v149 had a game that
     # split nothing but its three owed draws, one of three such seeds of
     # 1-200; cleanup-2a's Scouts confirms moved every game, none of 1-200
     # splits only owed draws now, and seed 10's heuristic takes one owed
@@ -1310,7 +1326,7 @@ def test_a_triggered_draw_an_older_engine_drew_at_once_follows_its_trigger() -> 
     # whose research icons now come back in another order, and of 1-60
     # seeds 10, 18 and 22 do. The fixture's seed 1 drew one a step late
     # until codec v146, OQ-095 (2).)
-    game = _this_engine_game(22)
+    game = _this_engine_game(10)
     # Since stage B3d-4 (D-3) an owed draw is a ``draw`` row naming what
     # earned it; the whole action it stands for is still ``draw_owed_*``.
     owed = {
@@ -3198,15 +3214,20 @@ def test_the_rewards_step_asked_at_a_harvest_cells_cleanup_is_dropped() -> None:
 def test_a_decline_recorded_after_a_play_is_rewritten_to_the_finish() -> None:
     # An older engine offered the window's decline again after a card was
     # played in it (the window stays open while the seat holds Intrigue,
-    # OQ-103); this engine's press there reads "finish". Seed 28: seat 2
-    # plays a Harvest Cells (1039), declines its Tleilaxu card (1040), and
-    # ends the window with ``finish_conflict_end_intrigue`` (1041). (Seed 4
+    # OQ-103); this engine's press there reads "finish". Seed 4: seat 2
+    # plays a Harvest Cells (445, its card), takes a Tleilaxu card (446) and
+    # ends the window with ``finish_conflict_end_intrigue`` (447). (Seed 4
     # until codec v152 asked a seat that cannot join a Scouts mission, OQ-131,
-    # which moved its game; 28 is the first of 1-120 that meets this test
-    # and the next.) No fixture of ``data/`` has a window that stayed open
-    # after a play, so the record is this engine's own game, with that press
-    # recorded as the decline.
-    game = _this_engine_game(28)
+    # which moved its game; seed 28 then, until codec v154 (a cost-free
+    # Intrigue line is played even when it changes nothing, OQ-113 (C);
+    # Planetary Array's card is a row of the winner's reward window, OQ-121;
+    # Suspensor Suits' troop the supply lacks is made up later, OQ-042) moved
+    # that game in turn; of 1-300 seeds 4, 50, 53, 61, 96, 120, 178, 183,
+    # 191, 250, 252 and 299 meet this test and the next, and 4 is the first.)
+    # No fixture of ``data/`` has a window that stayed open after a play, so
+    # the record is this engine's own game, with that press recorded as the
+    # decline.
+    game = _this_engine_game(4)
     finishes = [
         index
         for index, step in enumerate(game.steps)
@@ -3246,7 +3267,7 @@ def test_a_decline_recorded_after_a_play_is_rewritten_to_the_finish() -> None:
 def test_a_decline_is_rewritten_only_where_the_window_stays_open_after_a_play() -> (
     None
 ):
-    game = _this_engine_game(28)
+    game = _this_engine_game(4)
     states = _states(game)
     declines = finishes = 0
     for index, step in enumerate(game.steps):
@@ -3284,13 +3305,20 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # A record's Harvest Cells owes its "resolve the rewards" step until the
     # next recorded Round Start pause; a record of an engine before v140 has no
     # pauses, so the count stays. Another Intrigue card's own rewards step by
-    # that seat -- its choice frame on top -- must still apply. Seed 131:
-    # seat 2 plays Harvest Cells in round 1 (117) and Insider Information in
-    # round 9 (rewards at 1185); the pauses of the game are left out of its
-    # record as an older engine left them out. (Seed 175 until codec v152
-    # asked a seat that cannot join a Scouts mission, OQ-131, which moved
-    # its game; 131 is the first of 1-500 that meets this test again, the
-    # notes below are 175's history.) Seed 65 until
+    # that seat -- its choice frame on top -- must still apply. Seed 178:
+    # seat 3 plays Harvest Cells in round 8 (1080) and Insider Information in
+    # round 10 (rewards at 1296); the pauses of the game are left out of its
+    # record as an older engine left them out. (Seed 131: seat 2 played
+    # Harvest Cells in round 1 (117) and Insider Information in round 9
+    # (rewards at 1185) until codec v154 (a cost-free Intrigue line is played
+    # even when it changes nothing, OQ-113 (C); Planetary Array's card is a
+    # row of the winner's reward window, OQ-121; Suspensor Suits' troop the
+    # supply lacks is made up later, OQ-042) moved its game; 178 is the
+    # first of 1-300 that meets this test and the next, 191 follows, and its
+    # round starts between the two are 1084 and 1260. Seed 175 until codec
+    # v152 asked a seat that cannot join a Scouts mission, OQ-131, which
+    # moved its game; 131 was then the first of 1-500 that met this test
+    # again, the notes below are 175's history.) Seed 65 until
     # cleanup-2d split three Agent boxes per icon (2026-10-18) moved its game
     # (its step 575 is now seat 1's Agent turn); 175 is the first seed of
     # 1-500 meeting every precondition below, the v148 record of its game
@@ -3307,8 +3335,8 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
     # from 1108 and 375, 495, 649, 807, 955, 1075 (the rewards step is now
     # the card's effect row, ``resolve``);
     # ``play`` is the step that ends the Harvest Cells play, its card.)
-    game = _this_engine_game(131)
-    play, rewards = 117, 1185
+    game = _this_engine_game(178)
+    play, rewards = 1080, 1296
     assert _whole(game, play).action_id == "play_conflict_end_intrigue"
     assert _whole(game, rewards).action_id == "resolve_intrigue_rewards"
     assert _actor(game, rewards) == _actor(game, play)
@@ -3321,7 +3349,7 @@ def test_another_cards_rewards_step_is_not_taken_for_a_harvest_cells() -> None:
         if isinstance(step, ChanceOutcome) and ":round_start:" in step.decision_id
     }
     # round starts between the two
-    assert {119, 226, 346, 478, 627, 749, 898, 1064} <= starts
+    assert {1084, 1260} <= starts
     older = _older(game, 148, starts)
 
     record = migrate_record(older)
@@ -3346,8 +3374,8 @@ def test_another_cards_rewards_step_is_dropped_without_its_choice_on_top(
     # on top removed: the due count would drop Insider Information's rewards
     # step as if it were a Harvest Cells', and the record would stop there.
     # That is what the check keeps from happening.
-    game = _this_engine_game(131)
-    rewards = 1185
+    game = _this_engine_game(178)
+    rewards = 1296
     starts = {
         index
         for index, step in enumerate(game.steps)
