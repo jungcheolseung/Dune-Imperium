@@ -51,7 +51,7 @@
 | Mac mini (`CS-Mac-mini`, 10코어·16 GB) | ② 재학습과 그 측정, 플레이 서버, git 밖 자료(아래)를 읽는 엔진 관문. 학습은 시작 커밋에 고정한 worktree에서 돌리고 메인 체크아웃은 master에 둔다. 학습이 도는 동안 이 기기에서는 ②와 상관없는 무거운 검사(전체 pytest·E2E·소크)를 돌리지 않는다 |
 | 다른 PC (Windows 11 Pro + WSL2) | Godot 클라이언트(아래 "플레이 화면"), 서버 런처 7단계의 남은 Windows 확인, 그 밖의 엔진·화면 작업. 엔진 관문은 WSL 체크아웃에서 돌린다(2026-10-12 WSL 전체 pytest 통과) |
 
-- **엔진 관문이 읽는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v152-0d137110/`(기보 묶음, v152 엔진에서 exact 2,000; v153 엔진에서는 exact 1,983 · 다른 17판은 고친 규칙 몫 — v153 묶음은 아직; 그 앞 v151-bb05c259),
+- **엔진 관문이 읽는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v153-7303f91d/`(기보 묶음, exact 2,000의 기준; 그 앞 v152-0d137110 — v153 엔진에서 exact 1,983 · 다른 17판은 고친 규칙 몫),
   `local/records/`(사람 판 문제 281곳·AI 실수), `saves/`(사람 저장본), `checkpoints/2026-09-22/exploit/champion-5081.pt`(문제집 tips-v1
   재채굴의 망 몫). 다른 기기에서 관문을 돌리려면 이것을 묶어 옮긴다(2026-10-21에 만든 v150 기준 묶음은 낡아서 지웠다).
 - **②의 망을 플레이 서버에 올릴 때:** 새 이름으로 `checkpoints/play/`에 복사하고 `search.pt` 링크만 바꾼 뒤 서버를 다시 띄운다(아래
@@ -296,7 +296,7 @@
   `codex/windows-validation`, 2026-10-21 master 병합). 다른 물리 PC의 접속, 배율·IME·방화벽·GUI 강제 종료·잠자기 복귀,
   학습한 탐색 AI 망 사용 확인이 남았다. Windows 전체 엔진 pytest와 `run_all.py` 전체는 Windows에서 돌린 적 없다(POSIX
   전용 경로가 남은 E2E가 있다). [`windows-host-validation.md`](windows-host-validation.md), [`server-launcher-plan.md`](server-launcher-plan.md)
-- **기보 묶음:** codec이 오를 때마다 다시 만든다. **v153 묶음은 아직 만들지 않았다**(2026-10-26 일반 규칙 감사 수정 병합 뒤 만들 것). 최신 묶음은 **v152-0d137110**(2026-10-25, 2,000판, 엔진 감사 수정 병합 master에서 만듦; 같은 엔진으로 되돌려 exact 2,000; v151 묶음은 v152 다리로 diverged 43 · failed 0)이고 다음 엔진 변경의 기준이다. 그 앞 **v151-bb05c259**(2026-10-21, 2,000판, Reveal 상태 이름 정리 병합 master에서
+- **기보 묶음:** codec이 오를 때마다 다시 만든다. 최신 묶음은 **v153-7303f91d**(2026-10-26, 2,000판, 일반 규칙 감사 수정 병합 master `7303f91d`에서 6 worker로 만듦, 실패 0; 같은 엔진으로 되돌려 exact 2,000, 132초; v152 묶음은 v153 엔진에서 exact 1,983 · persistent 9 · diverged 8 · failed 0 — 17판 모두 Guild Spy·Piter Signet 수정 몫)이고 다음 엔진 변경의 기준이다. 그 앞 **v152-0d137110**(2026-10-25, 2,000판, 엔진 감사 수정 병합 master에서 만듦; 같은 엔진으로 되돌려 exact 2,000; v151 묶음은 v152 다리로 diverged 43 · failed 0), **v151-bb05c259**(2026-10-21, 2,000판, Reveal 상태 이름 정리 병합 master에서
   만듦; 같은 엔진으로 되돌려 exact 2,000), v150-14c08062(v151 엔진에서도 exact 2,000 — 상태 비교가
   결정 단계와 사건 기록을 빼므로), v149-86086c6d(B단계 관문의 기준, v150 다리로 1,568 · 431 · 1),
   v148-02e203ce, v147-2af1d9f5, v145-afea63de이며 v144·v146 묶음은 없다.
