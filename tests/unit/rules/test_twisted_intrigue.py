@@ -651,6 +651,42 @@ def test_resourceful_grants_three_icons_to_the_card_played_this_turn() -> None:
     assert {"arrakeen", "accept_contract", "assembly_hall"} <= spaces
 
 
+def test_resourceful_and_emperors_invitation_add_up_in_either_order() -> None:
+    # "선택한 공간의 왼쪽 위 Agent 아이콘은 카드에 있는 Agent 아이콘 하나와
+    # 일치해야 한다. [Main p. 9]" (docs/rules/player-turns.md:16). Both Plots
+    # say "The card you play this turn has …" and neither says "instead";
+    # an added icon is on the card (OQ-055). Emperor's Invitation once
+    # replaced Resourceful's three icons when played second (engine audit
+    # 2026-10-22, R5).
+    resourceful = _twisted("resourceful")
+    invitation = "intrigue:emperor_s_invitation:0"
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        intrigue_cards=(resourceful, invitation),
+        hand=(DAGGER,),
+    )
+
+    def granted(first: DomainAction, second: DomainAction) -> GameState:
+        state = apply_whole(ENGINE, _turn_state(owner), first).state
+        return apply_whole(ENGINE, state, second).state
+
+    one = granted(_play(resourceful), _play(invitation, 1))
+    other = granted(_play(invitation, 1), _play(resourceful))
+
+    for state in (one, other):
+        assert set(state.players[0].granted_agent_icon_turn.split(",")) == {
+            "emperor",
+            "landsraad",
+            "city",
+            "spice_trade",
+        }
+    spaces = {dict(a.arguments)["space_id"] for a in legal_agent_actions(one, 0)}
+    assert spaces == {
+        dict(a.arguments)["space_id"] for a in legal_agent_actions(other, 0)
+    }
+    assert {"arrakeen", "dutiful_service", "assembly_hall"} <= spaces
+
 
 def test_resourceful_only_before_the_agent_is_sent() -> None:
     # The icons help only an Agent placement still ahead this turn: on the

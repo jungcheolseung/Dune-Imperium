@@ -89,7 +89,7 @@ from dune_imperium.content.uprising.intrigue import (
     is_twisted_intrigue,
 )
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
-from dune_imperium.content.uprising.types import BattleIcon
+from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
@@ -164,6 +164,16 @@ type ChoiceSlot = (
     | PeekTopCard
     | AcquireTleilaxuCard
 )
+
+
+def _add_granted_icons(granted: str, icons: tuple[AgentIcon, ...]) -> str:
+    """The seat's granted Agent icons (comma-joined) with ``icons`` added."""
+
+    values = [value for value in granted.split(",") if value]
+    values.extend(
+        icon.value for icon in dict.fromkeys(icons) if icon.value not in values
+    )
+    return ",".join(values)
 
 
 def _battle_card_icon(card_id: str) -> BattleIcon | None:
@@ -1453,16 +1463,25 @@ def apply_rewards(
             case IgnoreInfluenceRequirementsThisTurn():
                 owner = replace(owner, ignores_influence_requirements_turn=True)
             case GrantAgentIconThisTurn(icon=icon):
-                owner = replace(owner, granted_agent_icon_turn=icon.value)
+                # Emperor's Invitation adds its icon to any already granted:
+                # both cards say "The card you play this turn has …", not
+                # "instead", and an added icon is on the card (OQ-055), so
+                # with Resourceful the card has all four whatever the order
+                # (engine audit 2026-10-22, R5).
+                owner = replace(
+                    owner,
+                    granted_agent_icon_turn=_add_granted_icons(
+                        owner.granted_agent_icon_turn, (icon,)
+                    ),
+                )
             case GrantAgentIconsThisTurn(icons=icons):
                 # Resourceful: several icons at once, comma-joined.
-                granted = [
-                    value for value in owner.granted_agent_icon_turn.split(",") if value
-                ]
-                granted.extend(
-                    icon.value for icon in icons if icon.value not in granted
+                owner = replace(
+                    owner,
+                    granted_agent_icon_turn=_add_granted_icons(
+                        owner.granted_agent_icon_turn, icons
+                    ),
                 )
-                owner = replace(owner, granted_agent_icon_turn=",".join(granted))
             case GainSolariPerUnitType():
                 # Calculating: troops, sandworms, Commanders and a fighting
                 # Agent are each a kind of unit.

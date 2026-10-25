@@ -790,6 +790,11 @@ def test_grants_change_only_the_seat_state(turn_state: GameState) -> None:
     assert bc.grant_resourceful_icons(me).granted_agent_icon_turn == (
         "landsraad,city,spice_trade"
     )
+    # Either order keeps all four icons, as the engine does (engine audit
+    # 2026-10-22, R5).
+    assert bc.grant_emperor_icon(
+        bc.grant_resourceful_icons(me)
+    ).granted_agent_icon_turn == ("landsraad,city,spice_trade,emperor")
     assert bc.grant_ignore_requirements(me).ignores_influence_requirements_turn
     assert bc.grant_bene_gesserit_boost(me).bene_gesserit_boost_pending
 
