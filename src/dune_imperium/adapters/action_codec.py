@@ -2361,6 +2361,11 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "put_back_top_card",
             "discard_top_card",
             "draw_top_card_for_solari",
+            # Twisted Controlled's look at an empty deck and Twisted Devious'
+            # mandatory trash with an empty hand, played and confirmed
+            # (OQ-113 (C), user ruling 2026-10-24).
+            "skip_intrigue_top_card",
+            "skip_intrigue_trash",
         )
     )
     templates.extend(
@@ -2705,11 +2710,6 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         ActionTemplate(action_id=action_id)
         for action_id in (
             "decline_research_bonus",
-            # Twisted Controlled's look at an empty deck and Twisted Devious'
-            # mandatory trash with an empty hand, played and confirmed
-            # (OQ-113 (C), user ruling 2026-10-24).
-            "skip_intrigue_top_card",
-            "skip_intrigue_trash",
             # Harvest Cells, played only after the rewards and before the
             # cleanup (OQ-057 (11), user ruling 2026-10-06).
             "decline_conflict_end_intrigue",

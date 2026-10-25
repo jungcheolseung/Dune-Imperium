@@ -907,8 +907,11 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         - 13
         + 25
         # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
-        # is confirmed by a row of its own (skip_intrigue_set_aside).
+        # is confirmed by a row of its own (skip_intrigue_set_aside), and so
+        # are Twisted Controlled's look at an empty deck and Twisted Devious'
+        # mandatory trash with an empty hand (Bloodlines catalogs, +2).
         + 1
+        + 2
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))

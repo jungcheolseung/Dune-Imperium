@@ -9,6 +9,7 @@ recruited this turn).
 from dataclasses import replace
 
 from dune_imperium import RulesetConfig
+from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.effect_dsl import (
@@ -421,6 +422,33 @@ def test_controlled_with_an_empty_deck_is_offered_and_only_confirms() -> None:
     assert done.state.intrigue_discard == (card,)
     assert done.state.players[0].intrigue_cards == ()
     assert done.state.players[0].deck == ()
+
+
+def test_the_twisted_confirm_rows_are_in_every_catalog_with_bloodlines() -> None:
+    # Twisted Intrigue is Piter De Vries' (Bloodlines), so its confirm rows
+    # join every Bloodlines catalog, with Immortality or without (the
+    # v154 review found them registered with Immortality only, so a
+    # Bloodlines game could not encode them).
+    controlled, devious = _twisted("controlled"), _twisted("devious")
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        intrigue_cards=(controlled, devious),
+        deck=(),
+        discard_pile=(),
+        hand=(),
+    )
+    for config in (
+        BLOODLINES,
+        replace(BLOODLINES, choam_module=True, tech_module=True),
+        replace(BLOODLINES, immortality=True),
+    ):
+        codec = ActionCodec(config)
+        state = _turn_state(owner, config=config)
+        for card, option in ((controlled, 0), (devious, 0)):
+            opened = apply_whole(ENGINE, state, _play(card, option)).state
+            (row,) = ENGINE.legal_actions(opened, 0)
+            assert codec.decode(codec.encode(row), actor=0) == row
 
 
 FAVOR = "imperium:spacing_guild_s_favor:0"

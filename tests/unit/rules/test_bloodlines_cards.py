@@ -4653,8 +4653,11 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         - 13
         + 25
         # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
-        # is confirmed by a row of its own (skip_intrigue_set_aside).
+        # is confirmed by a row of its own (skip_intrigue_set_aside), and so
+        # are Twisted Controlled's look at an empty deck and Twisted Devious'
+        # mandatory trash with an empty hand (Bloodlines catalogs, +2).
         + 1
+        + 2
     )
     # Stage B3a: the Agent-effect frame offers the trash as an effect row
     # naming the card, then the card to trash as its target row.
