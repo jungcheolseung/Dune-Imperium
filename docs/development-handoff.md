@@ -28,7 +28,7 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`)·2026-10-22 `search-adapter` 병합 `bc466f23`(탐색 좌석이 옛 codec 파일을 어댑터로)·2026-10-23 `search-parts` 병합 `79bdcb5b`(탐색 좌석 옵션, 서버 탐색 AI에 E1 뒤집기 문턱)·같은 날 `restore-lost-problems` 병합(문제집의 없어진 거절 정리, 사람 판 281곳 모두 풀림) |
+| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`)·2026-10-22 `search-adapter` 병합 `bc466f23`(탐색 좌석이 옛 codec 파일을 어댑터로)·2026-10-23 `search-parts` 병합 `79bdcb5b`(탐색 좌석 옵션, 서버 탐색 AI에 E1 뒤집기 문턱)·같은 날 `restore-lost-problems` 병합(문제집의 없어진 거절 정리, 사람 판 281곳 모두 풀림)·2026-10-25 `claude/base-ix-p0-57d7eb` 병합(원판·Ix P0 문서와 판정, 판정 공지 도움말 창; codec 그대로) |
 | pytest | 8,292개 통과(2026-10-23 `search-parts` 병합 뒤)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
 | Ruff · mypy | `src tests` 통과, mypy 557파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 68종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-21 `engine-checks` 브랜치(68종 모두 통과, 392초) |
@@ -63,9 +63,19 @@
 
 **엔진**
 
-- **원판·Rise of Ix — 계획·결정 끝, 다음 P0(2026-10-21):** [base-game-and-ix-plan.md](base-game-and-ix-plan.md). 새 세션이 12절
-  순서로 P0(공식 출처 등록·규칙 명세 두 편·앱 자료 로컬 추출·도구 시범·새 OQ 한꺼번에)를 Mac mini에서 시작한다. P0의 OQ 판정 전에는
-  P1(엔진) 착수 금지. [2026-10-21 원판·Rise of Ix 구현 계획]
+- **원판·Rise of Ix — P0 판정 모두 끝(2026-10-25, `claude/base-ix-p0-57d7eb` master 병합):** 계획
+  [base-game-and-ix-plan.md](base-game-and-ix-plan.md) 13절. 규칙 명세 [rules/imperium-base.md](rules/imperium-base.md)·
+  [rules/rise-of-ix.md](rules/rise-of-ix.md). OQ-113~127과 진행 결정 D1~D5는 모두 사용자 판정 확정(2026-10-22~25). OQ-113은 통일 기준 (C)
+  "비용을 낸 것만 보장"(비용 줄은 보상이 살아야, 비용 없는 효과는 불발해도 낸다). OQ-121은 세 판 공통으로 순위마다 "보상 + 그 좌석의 창"이고
+  (Uprising에서는 Planetary Array의 카드가 승자의 창으로, OQ-108 재판정), 지난 지배 dreadnought는 룰북대로 Combat 단계 끝, Conflict에 남은 것은
+  troop 정리 때 돌아간다. 출처와 다르게 정한 곳은 도움말 창의 판정 공지와 [rules/house-rulings-ko.md](rules/house-rulings-ko.md)에 있다(2026-10-24).
+  **다음 (결정):** Uprising 엔진 구현 — OQ-113의 10-06 막기 가운데 비용 없는 경우를 풀기(구현 목록은 OQ-113), OQ-121의 Planetary Array 자리,
+  OQ-042의 Suspensor Suits(막히면 garrison, supply 부족분은 같은 turn 안에 보충; 2026-10-25 재판정).
+  codec이 바뀌므로 착수 전에 AI 세션·사용자 확인. 그 뒤 P1(엔진). 전사 흐름(D1·D2): 앱 데이터만 — 속성 표 + 카드별 화면 조각
+  (`render/prefabs`, 아이콘·숫자가 칸마다 있음) + 영어 문구. 카드면 스캔은 새로 읽지 않고, P0의 카드면 블라인드 읽기 181장과 한 번 기계 대조해
+  다른 카드만 사람이 본다. 도구(D4): 1 채택, 2(화면 조각 → 기록 초안)·시범 전사 5장·갈래 나누기는 P3 첫 묶음에서 시범(D5), 디컴파일러는 P3 끝에
+  다시 묻는다. 앱 자료·P0 읽기는 git 밖(에셋 `reference/dune-steam-app/dad97e20…/analysis/base-ix-2026-10-22/`, 그 안 `p0-readings/`).
+  [2026-10-22 원판·Rise of Ix P0] [2026-10-23 원판·Ix 남은 판정] [2026-10-24 OQ-121 dreadnought 복귀 시점] [2026-10-25 OQ-121 Combat 순서]
 - **효과 조각 엔진 전환 — B단계 끝(codec v150, 2026-10-20 병합 `c133be07`, 2026-10-21 원격 반영):** Agent 차례는 카드 → 칸, 보상·계약은 아이콘마다,
   기다리는 효과는 효과 줄 → 대상 줄, 효과는 인쇄한 것마다 한 줄, Reveal은 능력 기록을 직접 읽는다. 옛 저장본은 못 불러오고 옛 기보는 v150
   다리로 옮긴다. 세부는 [stage-b-plan.md](stage-b-plan.md) 3a~3c절. **다음 둘(사용자 결정 2026-10-21):** ① Reveal 합계 정리 —
@@ -308,6 +318,9 @@
 - **공유 체크아웃.** 여러 세션이 같은 메인 체크아웃을 쓴다. 메인 체크아웃은 master에 두고 작업은 worktree에서 한다.
   2026-10-11에 한 세션의 병합이 메인 체크아웃에 걸려 있던 다른 세션의 브랜치에 들어갔다.
 - **떠 있는 서버.** 규칙이나 카탈로그가 바뀐 뒤에는 떠 있는 플레이 서버를 다시 띄워야 적용된다(정적 파일은 즉시).
+- **판정 공지.** 판정을 새로 적거나 바꾸면 플레이하는 사람에게 알리는 공지(`display/house_rulings.toml`, 도움말 창과
+  [rules/house-rulings-ko.md](rules/house-rulings-ko.md))도 고치고 `uv run scripts/house_rulings_doc.py`로 문서를 다시 만든다
+  (사용자 요청 2026-10-24). 결정된 OQ가 공지에서 빠지면 테스트가 잡지만, 바뀐 판정의 문장은 잡지 못한다.
 
 ## 원격 저장소 인계 주의
 

@@ -98,9 +98,27 @@ workflow, not an import into Codex's account-level memory.
   and other card images or card-level reference data.
 - Use https://dunecardshub.com and select another expansion when that expansion's
   card material is needed.
-- Treat Dune Cards Hub as a card and visual reference, not as the authority for
-  rules adjudication. Official Dire Wolf Digital rules and supplements take
-  precedence when sources conflict.
+- For the base game (Dune: Imperium) and Rise of Ix, transcribe from the Steam
+  app's data instead of reading card images (user decision 2026-10-21,
+  `docs/base-game-and-ix-plan.md` sections 2 and 9): its attribute table
+  (copies, cost, Faction, Agent icons, Reveal values, acquire bonus), the
+  per-card UI layouts the app draws each face with (icon sprites, numbers
+  and switched-on boxes; user decision 2026-10-23) and its English card
+  text, whose icons are named sprites. Card-face images are not read again;
+  the digital edition is compared with print once by script, and only the
+  cards that differ get a human look. The app's code is read only where the
+  layout and text leave order, may/must or timing open. App text,
+  definitions and extractions stay in the assets checkout's git-ignored
+  `reference/dune-steam-app/`; only names, numbers, our DSL and our own
+  display text enter this repository. Details: `docs/card-data-sources.md`.
+- Treat Dune Cards Hub and the Steam app as card and visual references, not as
+  the authority for rules adjudication. Official Dire Wolf Digital rules,
+  supplements and FAQ (including its errata) take precedence when sources
+  conflict.
+- Korean card names and text come only from the official Korean edition (its
+  rulebooks and photos of printed Korean cards); never from the app's Korean
+  strings or Tabletop Simulator Korean mods (user decisions 2026-10-07,
+  2026-10-21). A card with no Korean source shows its English face.
 - For per-card physical copy counts use the BGG community card inventory
   sheet kept in the assets repo (`assets/reference/bgg-card-inventory/`,
   README there has the URL and its known spelling slips); it matched the

@@ -14,7 +14,7 @@
 
 대조 대상: Uprising 4인 기본 + CHOAM + 프로모 + Immortality + Bloodlines/Tech Module에 존재하는 카드·메커니즘.
 
-제외: Rise of Ix 전용(Appropriate, dreadnought, infiltration, Tech Negotiation, Tessia Vernius, Yuna Moritani, Ilesa Ecaz, Armand Ecaz, Helena Richese의 능력, Full Scale Assault, Second Wave, Imperial Bashar, Spaceport·Windtraps·Troop Transports·Spy Satellites·Chaumurky), 원본 Dune: Imperium 전용 카드(Bindu Suspension, Kwisatz Haderach, Power Play, Dispatch an Envoy, The Voice, Foldspace, Selective Breeding, Guild Bankers, Poison Snooper, Refocus, Test of Humanity, Reverend Mother Mohiam, Demand Respect, Staged Incident, Sort Through the Chaos, Calculated Hire, Mentat, Duke Leto 등), 3v3, Rivals·Solo, Auction variant.
+제외(2026-10-22에 감사함 — 원판 몫은 [imperium-base.md](imperium-base.md) 13.3절, Rise of Ix 몫은 [rise-of-ix.md](rise-of-ix.md) 9.3절; 같은 정리본 2026-06-07판을 다시 받아 원판·Ix 이름이 나오는 비공식 출처 항목 57개를 읽었다): Rise of Ix 전용(Appropriate, dreadnought, infiltration, Tech Negotiation, Tessia Vernius, Yuna Moritani, Ilesa Ecaz, Armand Ecaz, Helena Richese의 능력, Full Scale Assault, Second Wave, Imperial Bashar, Spaceport·Windtraps·Troop Transports·Spy Satellites·Chaumurky), 원본 Dune: Imperium 전용 카드(Bindu Suspension, Kwisatz Haderach, Power Play, Dispatch an Envoy, The Voice, Foldspace, Selective Breeding, Guild Bankers, Poison Snooper, Refocus, Test of Humanity, Reverend Mother Mohiam, Demand Respect, Staged Incident, Sort Through the Chaos, Calculated Hire, Mentat, Duke Leto 등), 3v3, Rivals·Solo, Auction variant.
 
 ## 일치 확인 항목 (코드로 직접 확인)
 
@@ -45,7 +45,7 @@
 | Sardaukar II contract: recall 대상이 없으면 불발 | `rules/contracts.py`(`contract_recall_unavailable`; 2026-10-02부터 소유자가 recall 창에서 `resolve_contract_without_recall`로 확인한다, OQ-068) |
 | Harvest contract: contract를 받기 전 같은 turn에 얻은 spice도 셈 | `rules/effects.py` `eligible_agent_contract_ids`(turn이 열린 때부터의 좌석 카운터 `spice_at_turn_start`·`spice_spent_turn`), `docs/lessons.md` 2026-08-28. **2026-10-06 정정**: 이 행은 "일치"로 적혀 있었지만 엔진은 Agent 배치 뒤에 얻은 spice만 세어, 같은 turn에 배치 전 Plot으로 얻은 spice가 빠졌다(Steam 앱과의 카드 대조에서 발견). 이제 turn 전체를 세어 판정과 일치한다(`tests/unit/rules/test_contracts.py::test_harvest_counts_plot_spice_gained_before_the_placement`). |
 | Rapid Dropships는 Agent 배치 뒤에만 | `rules/tech.py` `legal_tech_flip_actions` |
-| Suspensor Suits: 구매 전 draw는 troop 없음, Shaddam Signet turn에는 garrison | `rules/intrigue_deck.py`, OQ-042 |
+| Suspensor Suits: 구매 전 draw는 troop 없음, Shaddam Signet turn에는 garrison | `rules/intrigue_deck.py`, OQ-042. **2026-10-25 정정**: Signet turn의 garrison은 반영돼 있지 않다 — `tech.deploy_suspensor_troops`는 배치가 막히면 troop을 recruit하지 않는다(OQ-042 재조사). 같은 날 재판정으로 엔진을 고치기로 했다(구현 전) |
 | Forbidden Weapons: Influence가 있으면 반드시 잃음 | `rules/tech.py` `legal_tech_reveal_actions` |
 | Ornithopter Fleet: Crysknife·Desert Mouse VP 불가, 획득 즉시 매칭 | `rules/effect_interpreter.py:149`, `rules/ornithopter.py` |
 | wild 두 개끼리 Endgame 매칭 | `rules/endgame.py` `_endgame_wild_matches` |

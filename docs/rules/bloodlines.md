@@ -124,7 +124,7 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 | Self-Destroying Messages | 4 | Intrigue 2 | Reveal Turn: Persuasion 1 |
 | Servo-Receivers | 2 | Leader의 Signet Ring 능력 1회 사용 — 갈색·금색 반지 = Signet Ring 아이콘 "you use the Signet Ring ability … on your Leader" `[Main p. 20]` (2026-09-26 정정, 이전 전사는 Shield Wall 파괴; 해결 시점은 [OQ-062](open-questions.md#oq-062--servo-receivers의-signet-ring-아이콘-signet-ring-카드-밖에서-쓰는-leader-능력)) | 자신의 Signet Ring은 Emperor·Guild·BG·Fremen Agent 아이콘을 가진다 |
 | Spy Drones | 5 | Spy with Deep Cover 2 | Flip → Solari 1; 이번 turn Spy를 recall했으면 trash 1(선택) |
-| Suspensor Suits | 3 | — | 자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 Conflict에 배치 |
+| Suspensor Suits | 3 | — | 자기 turn에 Intrigue 카드를 draw하거나 훔칠 때마다 troop 1을 recruit해 Conflict에 배치(막히면 garrison, supply 부족분은 같은 turn 안에 보충 — OQ-042 2026-10-25 재판정, 엔진 반영 전) |
 | Training Depot | 1 | — | Reveal Turn: Command (6+): 검 2 |
 
 - Navigation Chamber의 감소는 의무다. spice와 Solari를 함께 받는 칸에서만 어느 쪽을 줄일지 고르고(4인 보드에는 그런 칸이 없다), Spice Refinery·Gather Support의 화살표 비용 옵션(`[Board Guide pp. 1-2]`)에도 닿는다. 타일 문장(may 없음)을 읽은 project reading이며 공식 판정은 아니다([OQ-104](open-questions.md#oq-104--navigation-chamber의-할인은-의무인가)).
@@ -155,6 +155,9 @@ Uprising setup에 다음 단계를 더하거나 바꾼다. `[Bloodlines p. 3]`
 ## 8. 구현 상태
 
 - 2026-10-18(정리-2, 브랜치 `cleanup2`, codec v149, 사용자 결정 "그래 둘다 B가 맞겠다", [OQ-108](open-questions.md#oq-108--planetary-array의-카드를-뽑는-때)): Planetary Array의 "When you win a Conflict: draw a card"는 승자가 Conflict 카드를 가져가는 순간 — 보상을 다 준 뒤, troop 반환과 Conflict 끝 창 전 — 에 뽑는다([Main p. 14]의 순서). 전에는 정리에서 카드를 빚져 대개 다음 라운드 패 5장 뒤에 뽑았다(판정 없이 엔진 흐름에서 생긴 시점).
+  - 재판정(2026-10-25, 사용자 "PA는 승자의 창 (추천)", OQ-108·[OQ-121](open-questions.md#oq-121--dreadnought-지배를-놓는-때와-지난-dreadnought가-떠나는-때) 판정 2):
+    카드는 **승자의 창**(1위 보상 창의 자동 줄, 2위 보상 전)에서 뽑는다. Ix의 Windtraps와 같은 "When you win a Conflict" Tech이므로 같은 때이고,
+    Conflict 카드와 battle icon은 그대로 모든 순위 보상 뒤다. **구현 전**: 엔진은 아직 위 2026-10-18 자리에서 뽑는다.
 - 2026-10-17(정리-2b, 브랜치 `cleanup2`, codec v149, 사용자 결정 — [composed-effects-plan.md](../composed-effects-plan.md) 5절 "정한 규칙 판단" 1번, [OQ-060](open-questions.md#oq-060--influence-track-맨-위6에서의-진영을-골라-influence-보상)): Glowglobes·Navigation Chamber의 획득 "Influence 1 선택"은 이미 6인 진영을 내지 않는다. 모두 6이면 turn 안에서는 회색 "기다림" 줄로 남아 턴 종료를 막지 않고 누름에 `tech_acquire_effect_lapsed`로 사라지며, Combat의 획득 효과 frame(Battlefield Research)에서는 확인 줄 `resolve_tech_influence_without_faction`을 낸다. 같은 결정으로 Shipping의 Influence 선택도 네 진영이 모두 6이면 아무 진영도 내지 않고 기다리다 누름에 사라진다(이전의 "알려진 경계" 폐지).
 - 2026-10-17(정리-2b, 브랜치 `cleanup2`, codec v149, 사용자 결정 — [composed-effects-plan.md](../composed-effects-plan.md) 5절 "정한 규칙 판단" 2번): 소유자 자신의 Agent·Reveal turn 안에서 얻은 선택 "[trash a card]" 아이콘은 창(`optional_trash` frame) 대신 turn의 줄로 기다리고(카드마다 `trash_optional_card`, 거절 `decline_optional_trash` 없음), 쓰지 않으면 턴 종료 누름에 `optional_trash_lapsed`("{trash}: 쓰지 않음")로 사라진다 — 선택 효과는 "턴 종료를 막지 않고 거절도 없으며 누름이 소멸시킨다"(OQ-095 (2)). 줄 하나는 가장 나중에 생긴 trash를 쓴다(쌓인 창이 답하던 순서); 고른 카드의 자기 box가 연 trash가 있으면 그것을 쓴다(OQ-022의 자기 trash). Planetary Array의 획득 trash와 뒤집는 Tech tile의 trash가 여기에 든다. Liet Kynes의 Arrakis Planetologist는 대체마다 trash 줄과 Intrigue 카드 줄(`draw_planetologist_intrigue`, 의무라 턴 종료를 막음)이 turn에 기다린다([OQ-106](open-questions.md#oq-106--공개-선택과-숨은-draw를-한-단계에-묶지-않는다) 3). Combat·Arrakeen Scouts 단계·Scouts 줄의 창은 그대로다. 구현 `rules/optional_trash.py`(`open_optional_trash`, `open_planetologist_replacement`), `rules/turn_rows.py`.
 - 2026-09-07 슬라이스 1: `RulesetConfig(bloodlines=True)`·`tech_module=True` 옵션과 이 명세.

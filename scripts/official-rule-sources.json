@@ -41,6 +41,20 @@
     "pdf_filename": "di-rise-of-ix.pdf",
     "text_filename": "di-rise-of-ix.txt"
   },
+  "imperium": {
+    "label": "Dune: Imperium Rulebook",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_Rules_2020_10_26.pdf",
+    "sha256": "a689f19e7bda36ec03240ba19cbc481dd4d681f55837529cd8170ec9d19be6db",
+    "pdf_filename": "di-base.pdf",
+    "text_filename": "di-base.txt"
+  },
+  "imperium-player-aid": {
+    "label": "Dune: Imperium Player Aid (Icons and Board Spaces)",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/DUNE_IMPERIUM_Player_Aid_Icons_and_Board_Spaces.pdf",
+    "sha256": "b191bffe4658bacc3ae5626312ef4fc83c51134aeb007daffa171bb85c9ba44d",
+    "pdf_filename": "di-player-aid.pdf",
+    "text_filename": "di-player-aid.txt"
+  },
   "main-ko": {
     "label": "Uprising Main Rulebook (Korean)",
     "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/KR_DUNE_IMPERIUM_UPRISING_Rulebook.pdf",
@@ -75,5 +89,12 @@
     "sha256": "177a00b5efa4a0fec42f02e34314dcbb9c37bab9429448d76a82addba9529bfb",
     "pdf_filename": "di-rise-of-ix-ko.pdf",
     "text_filename": "di-rise-of-ix-ko.txt"
+  },
+  "imperium-ko": {
+    "label": "Dune: Imperium Rulebook (Korean)",
+    "url": "https://d19y2ttatozxjp.cloudfront.net/pdfs/KR_Dune_Imperium_Rulebook.pdf",
+    "sha256": "f3bf683902763491cc7e37a0ffbc279ec085c8cc88c3f2253e92afee66fe0700",
+    "pdf_filename": "di-base-ko.pdf",
+    "text_filename": "di-base-ko.txt"
   }
 }

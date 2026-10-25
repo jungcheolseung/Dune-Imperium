@@ -460,6 +460,38 @@ const UI_TEXT = {
     "ko": "아이콘",
     "en": "Icons"
   },
+  "help.rulings_app_differs": {
+    "ko": "공식은 말이 없고, 앱과 다르게 정한 곳 ({{count}})",
+    "en": "The official rules are silent and this game differs from the app ({{count}})"
+  },
+  "help.rulings_base_ix": {
+    "ko": "원판·익스의 부상 (아직 구현 전)",
+    "en": "base game · Rise of Ix (not playable yet)"
+  },
+  "help.rulings_engine_pending": {
+    "ko": "엔진 반영 전 — 지금은 이전 판정대로 동작",
+    "en": "not in the engine yet — the game still plays the earlier ruling"
+  },
+  "help.rulings_heading": {
+    "ko": "이 게임에서 정한 판정",
+    "en": "Rulings made for this game"
+  },
+  "help.rulings_intro": {
+    "ko": "공식 룰북·FAQ가 정하지 않았거나 출처(룰북·FAQ, 디자이너 답변, 공식 디지털판 앱)끼리 말이 다른 곳에서 이 게임이 정한 판정입니다.",
+    "en": "How this game rules the points the official rulebook and FAQ leave open, or where the sources (rulebook and FAQ, the designer's answers, the official digital app) disagree."
+  },
+  "help.rulings_project": {
+    "ko": "공식이 정하지 않아 이 게임이 정한 곳 ({{count}})",
+    "en": "The official rules are silent and this game decided ({{count}})"
+  },
+  "help.rulings_sources": {
+    "ko": "출처: {{sources}}",
+    "en": "Sources: {{sources}}"
+  },
+  "help.rulings_sources_differ": {
+    "ko": "출처끼리 말이 달라 하나를 고른 곳 ({{count}})",
+    "en": "Sources disagree and one was chosen ({{count}})"
+  },
   "help.seat_mark_commander": {
     "ko": "{supply}에 있는 {commander} 수 ({garrison}·{conflict}에 있는 것은 보드에 그려짐)",
     "en": "{commander} count in {supply} (those in the {garrison} or the {conflict} are drawn on the board)"
