@@ -2401,6 +2401,7 @@ def _expired_waiting_trashes(
             expired.append((gone[box], item))
     return expired
 
+
 def agent_card_icons_at_placement(
     effect: PersonalCardAgentEffect | None,
     leader_id: str | None = None,

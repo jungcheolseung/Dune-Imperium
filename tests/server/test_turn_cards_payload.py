@@ -685,6 +685,25 @@ def test_graft_trashes_flag_the_partner_and_never_the_active_card() -> None:
     )
 
 
+def test_a_waiting_optional_trash_marks_its_card_pending() -> None:
+    """Control the Spice's paid arrow leaves its trash waiting on the turn
+    (cleanup-2b), outside the box, and it expires when another effect
+    trashes the card (OQ-022; engine audit 2026-10-22, P1): Dissecting Kit's
+    trash of its partner is flagged as losing it."""
+
+    from tests.unit.rules import test_control_the_spice as cts
+
+    paid = cts._grafted_and_paid(cts.KIT)
+    assert cts._waiting(paid) == [
+        ("optional_trash", "round:1:player:0:agent_card:" + cts.CONTROL)
+    ]
+    _, pending = turn_cards(paid)
+    assert cts.CONTROL in pending
+    assert ("trash_grafted_card_for_specimen", cts.CONTROL, ()) in box_losing_trash(
+        ENGINE, paid, 0
+    )
+
+
 def test_a_usurped_row_card_is_this_turns_card_but_never_pending() -> None:
     """A Row card borrowed with Usurp is not "in play" for any trash choice
     (OQ-054) and is trashed when the turn ends, so its box is never shown as

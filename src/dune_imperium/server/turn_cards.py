@@ -18,7 +18,10 @@ pending flags when the other box's row is taken (``rules.graft_boxes``), so
 each card is read with its own flag: ``pending_agent_effect`` for
 ``card_id``, ``graft_pending_effect`` for ``graft_card_id``, and a boosted
 card's added draw (``BOOST_DRAW_KEY``, "added to its Agent box" [Urgent
-Shigawire card]; a Ghola's copy of it, OQ-107) for the card it names.
+Shigawire card]; a Ghola's copy of it, OQ-107) for the card it names. A
+paid arrow's optional trash waits on the turn instead, outside the box
+(cleanup-2b, ``turn_rows.OPTIONAL_TRASH`` under the card's box source),
+and expires with the card too (engine audit 2026-10-22, P1).
 
 Every fact here is public: the played card and its partner lie face up in
 play, and each box's resolution is announced as it happens. A Reveal turn
@@ -39,12 +42,12 @@ from typing import Final
 
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.core.actions import ActionValue
-from dune_imperium.core.decisions import PlayerDecision
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
-from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules import UprisingRulesEngine, turn_rows
 from dune_imperium.rules.agent_effect_frame import route_box_action
-from dune_imperium.rules.effects import pending_boost_draws
+from dune_imperium.rules.effects import agent_card_source, pending_boost_draws
 from dune_imperium.rules.frames import FrameKind
 
 _LOGGER = logging.getLogger(__name__)
@@ -122,7 +125,11 @@ def _turn_cards(state: GameState) -> tuple[tuple[str, ...], tuple[str, ...]]:
             owners.append(owner)
             if card_id == borrowed:
                 continue
-            if context.get(pending_key) is True or card_id in boosted:
+            if (
+                context.get(pending_key) is True
+                or card_id in boosted
+                or _trash_waits(state, frame, owner, card_id)
+            ):
                 pending.add(card_id)
     order = [
         card_id
@@ -266,4 +273,22 @@ def _box_doomed(state: GameState, card_id: str) -> bool:
                 return True
             if card_id in pending_boost_draws(context):
                 return True
+            if _trash_waits(state, frame, owner, card_id):
+                return True
     return False
+
+
+def _trash_waits(
+    state: GameState, frame: DecisionFrame, owner: int, card_id: str
+) -> bool:
+    """Whether an optional trash ``card_id``'s box left waits on the turn
+    (its own box source, or a Ghola copy's numbered one), which expires
+    when another effect trashes the card (``agent_effects``'s expiry hook,
+    OQ-022; engine audit 2026-10-22, P1)."""
+
+    source = agent_card_source(state.round_number, owner, card_id)
+    return any(
+        kind == turn_rows.OPTIONAL_TRASH
+        and (item_source == source or item_source.startswith(f"{source}:"))
+        for kind, item_source, _ in turn_rows.pending(frame)
+    )
