@@ -72,6 +72,10 @@ from dune_imperium.content.arrakeen_scouts import (
 )
 from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
+from dune_imperium.content.uprising.intrigue import (
+    intrigue_card_for_instance,
+    navigation_card_instance_ids,
+)
 from dune_imperium.content.uprising.personal_cards import (
     card_is_ghola,
     personal_card_for_instance,
@@ -105,11 +109,16 @@ from dune_imperium.rules.contracts import (
     legacy_contract_icon_row,
     legacy_contract_reward_icon,
 )
+from dune_imperium.rules.effect_interpreter import (
+    applicable_sections,
+    play_changes_nothing,
+)
 from dune_imperium.rules.effect_steps import (
     first_step,
     path_of,
     picked_rows,
     presents_steps,
+    steps_for,
     without_pick,
 )
 from dune_imperium.rules.effects import (
@@ -123,6 +132,7 @@ from dune_imperium.rules.frames import (
     OWED_ORIGIN_CHOAM_TRANSPORTS,
     FrameKind,
     own_turn_frame_index,
+    owned_top_frame,
     replace_player,
 )
 from dune_imperium.rules.graft_boxes import (
@@ -3812,6 +3822,102 @@ def _planetary_array_row(
     return answer
 
 
+# Codec v154 (OQ-113 (C), user ruling 2026-10-24; OQ-039 follows it): a
+# Navigation card's cost-free option is played even when it changes nothing,
+# and is then the card's mandatory play, since ``decline_navigation`` stays
+# offered only while every playable option costs something (OQ-058). An older
+# engine judged that option unplayable and spent the card through the decline
+# (OQ-039 (b)), alone or beside a costed option. The recorded decline is that
+# option's play (``NAVIGATION_FIZZLE_PLAYED``), which spends the card the same
+# way; the refusal its fizzle leaves on top -- a Spy placement or a trash with
+# nothing to place or trash -- follows it (``NAVIGATION_FIZZLE_CONFIRMED``).
+COST_FREE_PLAYS_CODEC: Final = 154
+NAVIGATION_FIZZLE_PLAYED: Final = "navigation_fizzle_played"
+NAVIGATION_FIZZLE_CONFIRMED: Final = "navigation_fizzle_confirmed"
+_NAVIGATION_FIZZLE_ANSWERS: Final = frozenset(
+    {
+        "decline_intrigue_spy",
+        "decline_intrigue_trash",
+        "skip_intrigue_acquisition",
+        "skip_intrigue_set_aside",
+        "skip_intrigue_top_card",
+        "skip_intrigue_trash",
+        "resolve_intrigue_influence_without_faction",
+    }
+)
+
+
+def _navigation_fizzle_played(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A recorded ``decline_navigation`` where this engine offers no decline:
+    the play of the one cost-free option that changes nothing, which an
+    older engine did not offer (see ``NAVIGATION_FIZZLE_PLAYED``)."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and isinstance(decision, PlayerDecision)
+        and decision.owner == step.actor
+    ):
+        return None
+    frame = owned_top_frame(state, FrameKind.NAVIGATION_CHOICE, step.actor)
+    if frame is None:
+        return None
+    card_id = str(dict(frame.context)["card_id"])
+    card = intrigue_card_for_instance(card_id)
+    decline = DomainAction(action_id="decline_navigation", actor=step.actor)
+    if step != decline and step not in steps_for(decline, card.card.card_id):
+        return None
+    offered = engine.whole_actions(state, step.actor)
+    if decline in offered:
+        return None
+    fizzling = [
+        play
+        for play in offered
+        if play.action_id == "play_navigation"
+        and (option := card.options[int(str(dict(play.arguments)["option"]))])
+        and not any(section.costs for section in option.sections)
+        and play_changes_nothing(
+            state, step.actor, applicable_sections(state, step.actor, option)
+        )
+    ]
+    if len(fizzling) != 1:
+        return None
+    return first_step(state, fizzling[0])
+
+
+def _navigation_fizzle_confirmed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Right after a Navigation card's option is played, a choice frame of
+    that card with only its refusal or empty confirmation left: the fizzle
+    of a play ``NAVIGATION_FIZZLE_PLAYED`` took for a recorded decline (an
+    older engine never offered such a play, so no record of it reached one)."""
+
+    if not (
+        isinstance(step, DomainAction)
+        and step.action_id in ("play_navigation", "choose_option")
+        and isinstance(decision, PlayerDecision)
+    ):
+        return None
+    frame = owned_top_frame(state, FrameKind.INTRIGUE_CHOICE, decision.owner)
+    if frame is None:
+        return None
+    card_id = dict(frame.context).get("card_id")
+    if card_id not in navigation_card_instance_ids():
+        return None
+    offered = engine.whole_actions(state, decision.owner)
+    if len(offered) != 1 or offered[0].action_id not in _NAVIGATION_FIZZLE_ANSWERS:
+        return None
+    return first_step(state, offered[0])
+
+
 # Stage B2 (user decision 2026-10-19): CHOAM Transports' card is the
 # owner's only step right after a Contract's completion, before every row of
 # its reward (OQ-106 13, OQ-112). An engine before codec v150 paid the
@@ -4283,6 +4389,18 @@ BRIDGES: tuple[Bridge, ...] = (
         PLANETARY_ARRAY_ROW,
         _planetary_array_row,
         before_codec=PLANETARY_ARRAY_ROW_CODEC,
+    ),
+    Bridge(
+        NAVIGATION_FIZZLE_PLAYED,
+        _navigation_fizzle_played,
+        before_codec=COST_FREE_PLAYS_CODEC,
+        rewrites=True,
+    ),
+    Bridge(
+        NAVIGATION_FIZZLE_CONFIRMED,
+        _navigation_fizzle_confirmed,
+        before_codec=COST_FREE_PLAYS_CODEC,
+        follows=True,
     ),
     Bridge(TRANSPORTS_CARD_FIRST, _transports_card_first, before_codec=150),
     Bridge(
