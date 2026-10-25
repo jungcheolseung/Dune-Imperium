@@ -53,6 +53,7 @@ from dune_imperium.rules.graft_boxes import other_box_state, row_box, tagged
 from dune_imperium.rules.leader_abilities import (
     apply_leader_agent_deploy,
     legal_leader_signet_actions,
+    units_deployment_blocked,
 )
 from dune_imperium.rules.reveal_turn import begin_reveal_turn
 from dune_imperium.simulation.sweep import run_checked_game
@@ -938,3 +939,42 @@ def test_an_infiltrating_usurp_keeps_the_partner_whose_spy_let_it_in() -> None:
     assert context["placed_reaches"] is False
     assert context["infiltrate_post_id"] == "bene-gesserit-espionage-secrets"
     assert partner in _partners(opened)
+
+
+@pytest.mark.parametrize("placed_id", ["tleilaxu:chairdog:0", "tleilaxu:ghola:0"])
+def test_shaddams_signet_ring_as_the_partner_blocks_the_turns_deployment(
+    placed_id: str,
+) -> None:
+    # Emperor of the Known Universe: "Units can't be deployed to the Conflict
+    # this turn." [Shaddam Corrino IV card], "Signet Ring으로 Agent를 보낼 때
+    # 즉시 적용된다. [Main p. 17] [FAQ p. 3]" (docs/rules/choam-module.md:41),
+    # and in a graft "Both played cards are considered to have “sent” the
+    # Agent, no matter which card’s icon you use." [Immortality p. 10]
+    # (docs/rules/immortality.md:94). The Signet Ring as the partner once
+    # left Arrakeen's deployment open (engine audit 2026-10-22, R4); Ghola
+    # copying it plays the Signet Ring as well.
+    owner = _owner(
+        (placed_id, SIGNET),
+        leader_id="shaddam_corrino_iv",
+        troops_garrison=3,
+        troops_supply=9,
+    )
+    state = _state(owner, config=RulesetConfig(immortality=True, choam_module=True))
+
+    grafted = _graft(state, placed_id, "arrakeen", SIGNET)
+
+    assert units_deployment_blocked(grafted, 0)
+    engine = UprisingRulesEngine()
+    working = grafted
+    for _ in range(12):
+        actions = engine.legal_actions(working, 0)
+        assert not any("deploy" in action.action_id for action in actions)
+        steps = [
+            action
+            for action in actions
+            if action.action_id not in ("use_family_atomics", "finish_agent_turn")
+        ]
+        if not steps:
+            break
+        working = engine.apply(working, steps[0], legal_actions=actions).state
+    assert working.players[0].troops_conflict == 0
