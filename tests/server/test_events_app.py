@@ -290,7 +290,7 @@ def test_a_stream_closed_before_its_first_byte_is_not_a_server_error(
 # --- hello ---------------------------------------------------------------
 
 
-def test_the_first_event_is_hello_with_the_ten_keys(app: FastAPI) -> None:
+def test_the_first_event_is_hello_with_the_eleven_keys(app: FastAPI) -> None:
     with LiveServer(app) as server, _client(server) as client:
         summary = _create(client)
         game_id = summary["game_id"]
@@ -311,6 +311,7 @@ def test_the_first_event_is_hello_with_the_ten_keys(app: FastAPI) -> None:
                 "thinking",
                 "finished",
                 "ai_pace",
+                "awaiting_start",
                 "players",
             }
 

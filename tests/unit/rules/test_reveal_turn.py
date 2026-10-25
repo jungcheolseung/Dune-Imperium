@@ -2725,6 +2725,30 @@ def test_reveal_strength_requires_a_unit_in_conflict() -> None:
     assert unit_result.state.players[0].combat_strength == 3
 
 
+def test_cards_revealed_reports_the_revealed_swords_apart_from_strength() -> None:
+    # "strength는 Conflict의 unit과 이번 Reveal turn에 reveal한 sword icon으로
+    # 계산한다 ... reveal한 sword 하나는 strength 1이다" [Main p. 12]
+    # (docs/rules/player-turns.md). The report-only cards_revealed event
+    # carries the revealed swords alone for the table's Reveal toast (play
+    # feedback 2026-10-25); reveal_started keeps the strength.
+    hand = (_instance("dagger"), _imperium_instance("tread_in_darkness"))
+
+    def revealed(state: GameState) -> tuple[object, object]:
+        result = begin_reveal_turn(state, legal_reveal_actions(state, 0)[0])
+        payloads = {event.kind: dict(event.payload) for event in result.events}
+        swords = payloads["cards_revealed"]["swords"]
+        return swords, payloads["reveal_started"]["strength"]
+
+    with_units = _state(
+        PlayerState(player_id=0, hand=hand, troops_supply=7, troops_conflict=2)
+    )
+    assert revealed(with_units) == (2, 6)
+    # Without a unit the swords add no strength [Main p. 12], but they were
+    # still revealed.
+    without_units = _state(PlayerState(player_id=0, hand=hand))
+    assert revealed(without_units) == (2, 0)
+
+
 def test_reserve_cards_contribute_their_printed_reveal_values() -> None:
     prepare = "reserve:prepare_the_way:7"
     spice = "reserve:the_spice_must_flow:9"

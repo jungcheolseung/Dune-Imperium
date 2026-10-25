@@ -1362,6 +1362,22 @@ kbd {
   border-radius: 5px;
   padding: 0 0.35em;
 }
+/* A Tech stack's size, drawn like a face-down deck's count (piles.css
+   .deck-pile-count): a stack of different tiles, not copies of one. */
+.vcard-badge.stack-count {
+  min-width: 1.6em;
+  box-sizing: border-box;
+  padding: 0.1em 0.3em;
+  border: 1px solid rgba(243, 230, 208, 0.7);
+  border-radius: 999px;
+  background: #1a140c;
+  color: #f3e6d0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ---------- own hand ---------- */
 
@@ -1732,6 +1748,8 @@ body.hand-dragging, body.hand-dragging * {
   flex-wrap: wrap;
 }
 .count-label { font-weight: 600; }
+/* Critical Moment's amounts already called (render.js calledAmountsNote). */
+.scouts-called-note { flex-basis: 100%; font-size: 0.85em; }
 .stepper {
   display: inline-flex;
   align-items: center;
@@ -2542,6 +2560,10 @@ body.hand-dragging, body.hand-dragging * {
   border-bottom: 1px solid var(--line);
 }
 .lobby-seat-label { min-width: 9rem; font-weight: 600; }
+/* A waiting room's join / start row and its note (screens.js
+   renderWaitingRoom). */
+.waiting-room-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin-top: 0.6rem; }
+.waiting-room-actions .muted { margin: 0; flex-basis: 100%; }
 .lobby-seat button, .host-seats button { margin-left: auto; }
 #lobby-host { margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 0.6rem; }
 #lobby-host h3, #host-panel-body h3 { font-size: 0.95rem; margin: 0.3rem 0; }

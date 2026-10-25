@@ -1,5 +1,6 @@
 """Tests for rules-backed player setup constructors."""
 
+import json
 from dataclasses import replace
 
 import pytest
@@ -10,11 +11,13 @@ from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core import ChanceReplayError, ChanceResolver, GamePhase, PlayerState
+from dune_imperium.core.state import _canonicalize, canonical_state_hash
 from dune_imperium.rules.setup import (
     apply_starting_deck_shuffle,
     assign_objectives,
     build_conflict_setup,
     conflict_setup_decisions,
+    create_draft_initial_state,
     create_initial_state,
     create_unshuffled_players,
     objective_setup_decision,
@@ -141,6 +144,73 @@ def test_objectives_are_dealt_once_and_determine_first_player() -> None:
     expected = {objective.objective_id for objective in objectives_for_players(4)}
     assert set(dealt) == expected
     assert assigned[first_player].objective_ids == ("objective_desert_mouse",)
+
+
+def test_seat_zero_takes_the_first_player_objective_with_the_option() -> None:
+    # OQ-132 project convention (user decision 2026-10-25): "Player 1"
+    # starts round 1 and holds the Desert Mouse with the First Player
+    # marker; the other three Objectives are dealt at random to seats 1-3.
+    # The printed deal gives each player a random one [Main p. 5].
+    config = RulesetConfig(first_player_seat_zero=True)
+    others = {
+        objective.objective_id
+        for objective in objectives_for_players(4)
+        if not objective.grants_first_player
+    }
+    orders = set()
+    for seed in range(40):
+        decision = objective_setup_decision(config)
+        assert set(decision.options) == others
+        assert decision.count == 3
+        assigned, first_player = assign_objectives(
+            create_unshuffled_players(),
+            ChanceResolver(seed=seed).resolve(decision),
+            config,
+        )
+        assert first_player == 0
+        assert assigned[0].objective_ids == ("objective_desert_mouse",)
+        rest = tuple(player.objective_ids[0] for player in assigned[1:])
+        assert set(rest) == others
+        orders.add(rest)
+    # Seats 1-3 still get theirs at random.
+    assert len(orders) == 6
+
+
+@pytest.mark.parametrize("draft", [False, True])
+def test_both_setups_seat_the_first_player_at_zero_with_the_option(
+    draft: bool,
+) -> None:
+    on = RulesetConfig(leader_draft=draft, first_player_seat_zero=True)
+    for seed in range(12):
+        result = (
+            create_draft_initial_state(on, seed)
+            if draft
+            else create_initial_state(on, seed, SELECTED_LEADERS)
+        )
+        assert result.state.first_player == 0
+        assert result.state.players[0].objective_ids == ("objective_desert_mouse",)
+    # Without it the printed deal still seats the marker anywhere.
+    off = RulesetConfig(leader_draft=draft)
+    firsts = {
+        (
+            create_draft_initial_state(off, seed)
+            if draft
+            else create_initial_state(off, seed, SELECTED_LEADERS)
+        ).state.first_player
+        for seed in range(12)
+    }
+    assert len(firsts) > 1
+
+
+def test_the_option_leaves_the_hash_of_games_without_it_alone() -> None:
+    # Saves and records hold canonical state hashes taken before the option
+    # existed: at its default it is left out of the hash
+    # (RulesetConfig.HASH_OMITTED_AT_DEFAULT), and on it counts.
+    state = create_initial_state(RulesetConfig(), 5, SELECTED_LEADERS).state
+    on = replace(state, config=RulesetConfig(first_player_seat_zero=True))
+    assert canonical_state_hash(on) != canonical_state_hash(state)
+    assert "first_player_seat_zero" not in json.dumps(_canonicalize(state))
+    assert '"first_player_seat_zero": true' in json.dumps(_canonicalize(on))
 
 
 def test_starting_deck_shuffle_is_a_full_recorded_permutation() -> None:

@@ -101,6 +101,7 @@ from dune_imperium.rules.effect_steps import first_step, picked_rows
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import plays_turn_start_option
+from dune_imperium.rules.sardaukar import commander_cost
 from dune_imperium.server.access import (
     ANONYMOUS,
     AccessMode,
@@ -190,6 +191,12 @@ AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
 # space (stage B1, OQ-111); the turn frame keeps its own prompt. That a card
 # was picked is public (the log shows the pick, sealed), which card is not.
 AGENT_SPACE_PROMPT: Final = "Choose a space for the Agent"
+# The rows that pay for a Sardaukar Commander: a visited space's Commander
+# and the once-per-turn recruit from the supply [Bloodlines p. 4]. Each row
+# carries what it costs the seat now (``_serialize_action`` ``solari_cost``).
+COMMANDER_PAYMENTS: Final = frozenset(
+    {"acquire_sardaukar_commander", "recruit_sardaukar_commander"}
+)
 # Every other seat names an agent of the evaluation registry
 # (``dune_imperium.agents.make_agent``): the Steam app's computer opponent
 # ``app_ai`` (Hard), ``app_ai_medium`` or ``app_ai_easy`` (about 1-2 ms a
@@ -249,6 +256,12 @@ class SeatTakenError(SessionError):
     """Raised when a claim loses to the client that already holds the seat."""
 
 
+class GameNotStartedError(SessionError):
+    """Raised when a room that draws its seats at the start has not started:
+    nobody reads or acts for a seat before the seats are drawn
+    (``GameSessionManager.start_game``)."""
+
+
 class StaleRevisionError(SessionError):
     """Raised when an action targets an outdated state revision."""
 
@@ -301,6 +314,13 @@ class GameSession:
     # Like everything above they change only under ``lock``.
     seat_tokens: dict[int, str] = field(default_factory=dict)
     seat_names: dict[int, str] = field(default_factory=dict)
+    # A remote room that draws its human seats at the start (user decision
+    # 2026-10-25, play feedback): until a seated player presses "게임 시작"
+    # with every human seat taken, a claim only holds a place in the room,
+    # nobody reads or acts for a seat, and the game does not advance (no AI
+    # step, no clock). ``start_game`` then deals the claims out to the human
+    # seats at random and starts the game.
+    awaiting_start: bool = False
     # Doorbell sequence (M14 slice 3): bumped by every rung change so a
     # listener can drop a payload that arrives after a newer one.
     event_seq: int = 0
@@ -561,6 +581,8 @@ class GameSessionManager:
         go_to_11: bool = False,
         epic_game: bool = False,
         arrakeen_scouts: bool = False,
+        first_player_seat_zero: bool = False,
+        seats_at_start: bool = False,
         game_seed: int | None = None,
         policy_seed: int | None = None,
         ai_pace: str | None = None,
@@ -585,9 +607,17 @@ class GameSessionManager:
 
         Host-only on a remote server: a ``checkpoint:<path>`` seat makes the
         server open a file, and search seats spend its CPU.
+
+        ``seats_at_start`` (remote only) opens the game as a room that waits
+        for its start: the human seats are drawn when a seated player starts
+        it (``start_game``), and nothing advances before then.
         """
 
         self.require_admin(credentials)
+        if seats_at_start:
+            self._require_remote("drawing the seats at the start")
+            if HUMAN_SEAT not in seats:
+                raise SessionError("drawing the seats at the start needs a human seat")
         seats = tuple(self._seat_assignment(assignment) for assignment in seats)
         try:
             config = RulesetConfig(
@@ -600,6 +630,7 @@ class GameSessionManager:
                 go_to_11=go_to_11,
                 epic_game=epic_game,
                 arrakeen_scouts=arrakeen_scouts,
+                first_player_seat_zero=first_player_seat_zero,
             )
         except ValueError as error:
             # RulesetConfig rejects unsupported combinations (the Tech Module
@@ -635,13 +666,77 @@ class GameSessionManager:
         )
         with session.lock:
             self._set_pace_locked(session, pace)
-            self._advance_locked(session)
-            # The clock starts with the game, its Leader draft included.
-            _start_clock_locked(session)
+            if seats_at_start:
+                session.awaiting_start = True
+            else:
+                self._advance_locked(session)
+                # The clock starts with the game, its Leader draft included.
+                _start_clock_locked(session)
             summary = self._summary_locked(session)
         with self._registry_lock:
             self._sessions[session.game_id] = session
         self._kick_ai(session)
+        return summary
+
+    def start_game(
+        self, game_id: str, *, credentials: Credentials = ANONYMOUS
+    ) -> JsonObject:
+        """Draw the human seats of a waiting room at random and start it.
+
+        Any player holding a place in the room, or the host, may start it
+        once every human seat is taken (user decision 2026-10-25: "앉은 사람
+        누구나 시작"). Each claim, its token and name together, moves to a
+        human seat drawn by the system's random source, not the game seed:
+        who sits where is a table convention, no rule (the rules do not seat
+        players; the First Player comes from the Objectives [Main p. 5]),
+        and no save records it. Then the game advances to its first human
+        decision and its clock starts, as a game created without waiting
+        does.
+        """
+
+        session = self._get(game_id)
+        self._require_remote("starting a waiting room")
+        with session.lock:
+            if session.closed:
+                # Deleted while this request waited for the lock.
+                raise UnknownGameError(f"unknown game: {game_id}")
+            if not session.awaiting_start:
+                raise SessionError("this game is not waiting for its start")
+            holds = any(
+                token_matches(token, credentials.seat_tokens)
+                for token in session.seat_tokens.values()
+            )
+            if not holds and not self.is_admin(credentials):
+                raise SeatAccessError(
+                    "only a player in the room or the host may start the game"
+                )
+            humans = [
+                seat
+                for seat, assignment in enumerate(session.seats)
+                if assignment == HUMAN_SEAT
+            ]
+            if any(seat not in session.seat_tokens for seat in humans):
+                raise SessionError("every human seat must be taken before the start")
+            claims = [
+                (session.seat_tokens[seat], session.seat_names.get(seat))
+                for seat in humans
+            ]
+            random.SystemRandom().shuffle(claims)
+            for seat, (token, name) in zip(humans, claims, strict=True):
+                session.seat_tokens[seat] = token
+                if name is None:
+                    session.seat_names.pop(seat, None)
+                else:
+                    session.seat_names[seat] = name
+            session.awaiting_start = False
+            self._advance_locked(session)
+            _start_clock_locked(session)
+            summary = self._changed_summary_locked(session)
+            bell = self._ring_locked(session, summary)
+        try:
+            self._publish(game_id, bell)
+        finally:
+            self._kick_ai(session)
         return summary
 
     def _seat_assignment(self, assignment: str) -> str:
@@ -804,6 +899,25 @@ class GameSessionManager:
             bell = self._ring_locked(session, claim.summary)
         self._publish(game_id, bell)
         return claim
+
+    def held_seats(
+        self, game_id: str, *, credentials: Credentials = ANONYMOUS
+    ) -> dict[str, int]:
+        """Map each seat token the credentials present to the seat it holds.
+
+        Tokens the client does not present never appear, and a token that
+        holds no seat any more is left out. The HTTP layer keeps each seat
+        cookie named after the seat its token now holds: ``start_game``
+        deals the places' tokens to other seats.
+        """
+
+        session = self._get(game_id)
+        with session.lock:
+            return {
+                token: seat
+                for seat, token in session.seat_tokens.items()
+                if token_matches(token, credentials.seat_tokens)
+            }
 
     def release_seat(
         self, game_id: str, seat: int, *, credentials: Credentials = ANONYMOUS
@@ -1185,10 +1299,16 @@ class GameSessionManager:
         No credentials are asked for, so this is never routed: a save
         document spells out every hidden deck order. ``save_game`` is the
         host's door to the same document.
+
+        A room waiting for its start has nothing to save: a save keeps no
+        wait, so its load would start the game at once without drawing the
+        seats (review finding, 2026-10-25).
         """
 
         session = self._get(game_id)
         with session.lock:
+            if session.awaiting_start:
+                raise GameNotStartedError("the game has not started yet")
             elapsed, seat_seconds = session.clock.totals(_monotonic())
             return build_save_document(
                 config=session.config,
@@ -1630,6 +1750,9 @@ class GameSessionManager:
 
         if self._access is AccessMode.OPEN:
             return
+        if session.awaiting_start:
+            # A place in a waiting room is not a seat yet (``start_game``).
+            raise GameNotStartedError("the game has not started yet")
         token = session.seat_tokens.get(seat)
         if token is None or not token_matches(token, credentials.seat_tokens):
             raise SeatAccessError(f"this client does not hold seat {seat}")
@@ -1647,6 +1770,8 @@ class GameSessionManager:
 
         if self._access is AccessMode.OPEN or _is_finished(session.state):
             return
+        if session.awaiting_start:
+            raise GameNotStartedError("the game has not started yet")
         if not any(
             token_matches(token, credentials.seat_tokens)
             for token in session.seat_tokens.values()
@@ -1919,7 +2044,12 @@ class GameSessionManager:
         """
 
         with session.lock:
-            if session.closed or session.thinking is None or session.ai_worker:
+            if (
+                session.closed
+                or session.awaiting_start
+                or session.thinking is None
+                or session.ai_worker
+            ):
                 return
             session.ai_worker = True
         worker = threading.Thread(
@@ -2216,6 +2346,9 @@ class GameSessionManager:
             # owns the pending decision, which ``decision`` names anyway).
             "thinking": session.thinking,
             "ai_pace": session.ai_pace,
+            # A room waiting for its start (``start_game``): the human seats
+            # are not drawn yet and the tables show the room, not the game.
+            "awaiting_start": session.awaiting_start,
             "phase": str(state.phase),
             "round_number": state.round_number,
             "first_player": state.first_player,
@@ -2232,6 +2365,7 @@ class GameSessionManager:
             "go_to_11": session.config.go_to_11,
             "epic_game": session.config.epic_game,
             "arrakeen_scouts": session.config.arrakeen_scouts,
+            "first_player_seat_zero": session.config.first_player_seat_zero,
             "seats": list(kinds),
             "players": players,
             "decision": decision,
@@ -2946,6 +3080,7 @@ def _doorbell(session: GameSession, summary: JsonObject) -> JsonObject:
         "thinking": summary["thinking"],
         "finished": summary["finished"],
         "ai_pace": summary["ai_pace"],
+        "awaiting_start": summary["awaiting_start"],
         "players": summary["players"],
     }
 
@@ -3212,6 +3347,9 @@ def _serialize_action(
     first and alone, in a window of the seat's own page that sends nothing
     when it is put aside (static/turn.js, user decision 2026-10-14). It is
     read off the action alone, and only the seat's own rows carry it.
+
+    ``solari_cost`` is what a Sardaukar Commander row
+    (``COMMANDER_PAYMENTS``) costs the seat now, its discounts included.
     """
 
     serialized: JsonObject = {
@@ -3224,6 +3362,11 @@ def _serialize_action(
     }
     if action.action_id == "play_turn_start_card" or plays_turn_start_option(action):
         serialized["turn_start"] = True
+    if action.action_id in COMMANDER_PAYMENTS:
+        # What the Commander costs this seat now (``commander_cost``), so the
+        # row does not print the base 2 Solari [Bloodlines p. 4] when
+        # Sardaukar High Command or Honor Guard lowers it.
+        serialized["solari_cost"] = commander_cost(session.state.players[action.actor])
     title = agent_box_row_title(session.state, action)
     if title is not None:
         serialized["detail_title"], serialized["detail_title_ko"] = title

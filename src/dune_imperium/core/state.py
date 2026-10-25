@@ -663,9 +663,18 @@ def canonical_state_hash(state: GameState) -> str:
 
 def _canonicalize(value: Any) -> Any:
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        # A field added after hashes were recorded is left out at its
+        # default (``RulesetConfig.HASH_OMITTED_AT_DEFAULT``), so the states
+        # of every game without it hash as they did before it existed.
+        omitted: frozenset[str] = getattr(
+            type(value), "HASH_OMITTED_AT_DEFAULT", frozenset()
+        )
         return {
             field.name: _canonicalize(getattr(value, field.name))
             for field in dataclasses.fields(value)
+            if not (
+                field.name in omitted and getattr(value, field.name) == field.default
+            )
         }
     if isinstance(value, StrEnum):
         return value.value

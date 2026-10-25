@@ -32,7 +32,9 @@ function isMine(seat) {
 }
 
 function announceTurn(summary) {
-  if (!summary || state.review) return;
+  /* A waiting room has no turns yet: a place index is no seat, and its key
+     would swallow the real announcement once the seats are drawn. */
+  if (!summary || state.review || summary.awaiting_start) return;
   let key;
   let text;
   if (summary.finished) {

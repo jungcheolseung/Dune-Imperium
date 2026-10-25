@@ -37,7 +37,7 @@
           <div id="seat-selects"></div>
           <label id="opt-shuffle-seats-row"><input type="checkbox" id="opt-shuffle-seats">
             <span data-i18n="html.opt_shuffle_seats">자리 무작위 배치</span></label>
-          <p id="opt-shuffle-seats-note" class="muted" hidden data-i18n="html.shuffle_seats_note">시작할 때 설정한 플레이어들의 자리(차례 순서·색)를 무작위로 섞습니다.</p>
+          <p id="opt-shuffle-seats-note" class="muted" hidden data-i18n="html.shuffle_seats_note">시작할 때 설정한 플레이어들의 자리(차례 순서·색)를 무작위로 섞습니다. 원격 방에서는 사람 자리가 모두 찬 뒤 "게임 시작"을 누를 때 사람들의 자리를 무작위로 정합니다.</p>
           <label id="opt-checkpoint-row" hidden><span data-i18n="html.checkpoint_path_label">체크포인트 경로 (플레이어 유형에서 "학습 체크포인트"를 고르면 사용)</span>
             <input type="text" id="opt-checkpoint"></label>
           <p id="opt-search-note" class="muted" hidden data-i18n="html.search_ai_note">탐색 AI는 학습한 망으로 몇 수 앞을 두어 보고 고릅니다. 한 결정에 보통 1–3초 걸리고, 생각하는 동안에도 화면은 움직입니다.</p>
@@ -49,6 +49,8 @@
         <fieldset class="setup-rules">
           <legend data-i18n="html.rule_options_legend">규칙 옵션</legend>
           <div id="rule-options">
+          <label><input type="checkbox" id="opt-first-player-seat-zero" checked>
+            <span data-i18n="html.opt_first_player_seat_zero">플레이어1이 시작 플레이어 (사막쥐 목적 카드는 플레이어1에게, 나머지 목적 카드는 무작위; 공식 규칙 아님)</span></label>
           <label><input type="checkbox" id="opt-leader-draft" checked>
             <span data-i18n="html.opt_leader_draft">지도자 6종 공개 드래프트 (공식 규칙 아님)</span></label>
           <label><input type="checkbox" id="opt-choam" checked>
@@ -95,7 +97,7 @@
     </section>
 
     <section id="lobby-screen" class="panel" hidden>
-      <h2 data-i18n="html.lobby_title">플레이어 고르기</h2>
+      <h2 id="lobby-title" data-i18n="html.lobby_title">플레이어 고르기</h2>
       <p id="lobby-status" class="muted"></p>
       <label><span data-i18n="html.lobby_name_label">이름 (다른 플레이어에게 보입니다)</span>
         <input type="text" id="lobby-name" maxlength="20" autocomplete="off"></label>

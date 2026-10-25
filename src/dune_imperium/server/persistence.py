@@ -271,6 +271,7 @@ def build_save_document(
             "go_to_11": config.go_to_11,
             "epic_game": config.epic_game,
             "arrakeen_scouts": config.arrakeen_scouts,
+            "first_player_seat_zero": config.first_player_seat_zero,
         },
         "game_seed": replay.seed,
         "policy_seed": policy_seed,
@@ -350,6 +351,7 @@ def parse_save_document(
         "go_to_11",
         "epic_game",
         "arrakeen_scouts",
+        "first_player_seat_zero",
     ):
         flag = ruleset_value.get(key, False)
         if not isinstance(flag, bool):

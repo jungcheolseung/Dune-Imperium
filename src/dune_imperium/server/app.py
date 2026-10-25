@@ -57,9 +57,15 @@ from dune_imperium.server.persistence import (
     UnknownSaveError,
     default_saves_directory,
 )
-from dune_imperium.server.seating import DEFAULT_SEATING, SEATINGS
+from dune_imperium.server.seating import (
+    DEFAULT_FIRST_PLAYER,
+    DEFAULT_SEATING,
+    FIRST_PLAYERS,
+    SEATINGS,
+)
 from dune_imperium.server.sessions import (
     AdminAccessError,
+    GameNotStartedError,
     GameSessionManager,
     JsonObject,
     SeatAccessError,
@@ -219,6 +225,14 @@ class CreateGameRequest(BaseModel):
     epic_game: bool = False
     # The Arrakeen Scouts module (docs/rules/arrakeen-scouts.md).
     arrakeen_scouts: bool = False
+    # OQ-132 project convention: seat 0 takes the First Player Objective.
+    # Omitted means off (the printed deal [Main p. 5]); the browser setup
+    # box is checked by default (user decision 2026-10-25).
+    first_player_seat_zero: bool = False
+    # A remote room that draws its human seats when a seated player starts
+    # it (``GameSessionManager.start_game``); the browser asks for it when
+    # its "Random seating" box is checked on a remote server.
+    seats_at_start: bool = False
     game_seed: int | None = None
     policy_seed: int | None = None
     # How the AI seats pace their answers for the tables: 'normal', 'fast'
@@ -320,6 +334,63 @@ def seat_cookie_name(game_id: str, seat: int) -> str:
     return f"{_SEAT_COOKIE_PREFIX}{game_id}_{seat}"
 
 
+def _set_seat_cookie(response: Response, game_id: str, seat: int, token: str) -> None:
+    response.set_cookie(
+        seat_cookie_name(game_id, seat),
+        token,
+        max_age=_COOKIE_MAX_AGE,
+        path=f"/games/{game_id}",
+        httponly=True,
+        samesite="strict",
+    )
+
+
+def _delete_seat_cookie(response: Response, game_id: str, name: str) -> None:
+    response.delete_cookie(
+        name, path=f"/games/{game_id}", httponly=True, samesite="strict"
+    )
+
+
+def _home_seat_cookies(
+    sessions: GameSessionManager,
+    request: Request,
+    response: Response,
+    game_id: str,
+    *,
+    keep: str | None = None,
+) -> None:
+    """Name every seat cookie after the seat its token holds now.
+
+    ``start_game`` deals the places of a waiting room to other seats, so a
+    cookie can still carry the name of the place it was claimed for. A later
+    claim of a seat with that name would overwrite it and lock its player
+    out of the drawn seat (review finding, 2026-10-25). Identity never rests
+    on the name (``_credentials``); this only keeps the names from
+    colliding. ``keep`` is a cookie name the caller is about to set itself.
+    """
+
+    prefix = f"{_SEAT_COOKIE_PREFIX}{game_id}_"
+    presented = {
+        name: value
+        for name, value in request.cookies.items()
+        if name.startswith(prefix)
+    }
+    if not presented:
+        return
+    held = sessions.held_seats(
+        game_id, credentials=_credentials(request, game_id)
+    )
+    homes = {
+        seat_cookie_name(game_id, seat): (seat, token) for token, seat in held.items()
+    }
+    for name, value in presented.items():
+        if value in held and name not in homes and name != keep:
+            _delete_seat_cookie(response, game_id, name)
+    for name, (seat, token) in homes.items():
+        if presented.get(name) != token and name != keep:
+            _set_seat_cookie(response, game_id, seat, token)
+
+
 def _credentials(request: Request, game_id: str | None = None) -> Credentials:
     """Collect what a request presents: its seat tokens for one game, and admin.
 
@@ -350,6 +421,7 @@ def create_app(
     public_url: str | None = None,
     autosave: bool | None = None,
     default_seating: str = DEFAULT_SEATING,
+    default_first_player: str = DEFAULT_FIRST_PLAYER,
 ) -> FastAPI:
     """Build the local play server around one session manager.
 
@@ -365,10 +437,14 @@ def create_app(
     ``default_seating`` is only reported (``GET /whoami``): whether the setup
     screen's box that shuffles the configured seats opens checked
     (``server.seating``; the browser shuffles, game creation does not).
+    ``default_first_player`` likewise only says whether the setup screen's
+    "Player 1 starts" box opens checked (OQ-132, ``server.seating``).
     """
 
     if default_seating not in SEATINGS:
         raise ValueError(f"unknown seating {default_seating!r}")
+    if default_first_player not in FIRST_PLAYERS:
+        raise ValueError(f"unknown first player {default_first_player!r}")
     sessions = manager if manager is not None else GameSessionManager()
     hub = DoorbellHub()
     sessions.add_change_listener(hub.publish)
@@ -519,6 +595,8 @@ def create_app(
             "ai_pace": sessions.default_ai_pace,
             # Whether the setup screen shuffles the seats (server/seating.py).
             "seating": default_seating,
+            # Whether its "Player 1 starts" box opens checked (OQ-132).
+            "first_player": default_first_player,
         }
 
     @app.post("/auth/admin")
@@ -549,6 +627,8 @@ def create_app(
                 go_to_11=body.go_to_11,
                 epic_game=body.epic_game,
                 arrakeen_scouts=body.arrakeen_scouts,
+                first_player_seat_zero=body.first_player_seat_zero,
+                seats_at_start=body.seats_at_start,
                 game_seed=body.game_seed,
                 policy_seed=body.policy_seed,
                 ai_pace=body.ai_pace,
@@ -583,18 +663,22 @@ def create_app(
     def game_snapshot(
         game_id: str,
         request: Request,
+        response: Response,
         seat: int | None = None,
         log_after: int = 0,
         log_epoch: str | None = None,
     ) -> JsonObject:
         with _http_errors():
-            return sessions.snapshot(
+            snapshot = sessions.snapshot(
                 game_id,
                 seat,
                 log_after=log_after,
                 log_epoch=log_epoch,
                 credentials=_credentials(request, game_id),
             )
+            # Every page asks for a snapshot after a waiting room starts.
+            _home_seat_cookies(sessions, request, response, game_id)
+        return snapshot
 
     @app.get("/games/{game_id}/events")
     async def game_events(game_id: str, request: Request) -> StreamingResponse:
@@ -640,6 +724,13 @@ def create_app(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @app.post("/games/{game_id}/start")
+    def start_game(game_id: str, request: Request) -> JsonObject:
+        with _http_errors():
+            return sessions.start_game(
+                game_id, credentials=_credentials(request, game_id)
+            )
+
     @app.post("/games/{game_id}/seats/{seat}/claim")
     def claim_seat(
         game_id: str,
@@ -655,14 +746,17 @@ def create_app(
                 body.name,
                 credentials=_credentials(request, game_id),
             )
-        response.set_cookie(
-            seat_cookie_name(game_id, seat),
-            claim.token,
-            max_age=_COOKIE_MAX_AGE,
-            path=f"/games/{game_id}",
-            httponly=True,
-            samesite="strict",
-        )
+            # A cookie named after this seat may carry another seat's token
+            # (``start_game``): move it to its own name before the claim's
+            # cookie takes this one.
+            _home_seat_cookies(
+                sessions,
+                request,
+                response,
+                game_id,
+                keep=seat_cookie_name(game_id, seat),
+            )
+        _set_seat_cookie(response, game_id, seat, claim.token)
         return claim.summary
 
     @app.post("/games/{game_id}/seats/{seat}/release")
@@ -827,7 +921,7 @@ def _http_errors() -> Iterator[None]:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except (SeatAccessError, AdminAccessError) as error:
         raise HTTPException(status_code=403, detail=str(error)) from error
-    except (StaleRevisionError, SeatTakenError) as error:
+    except (StaleRevisionError, SeatTakenError, GameNotStartedError) as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except (SessionError, SaveError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

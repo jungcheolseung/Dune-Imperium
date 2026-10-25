@@ -39,6 +39,8 @@ async function init() {
   /* The server's default (its --seating); the box keeps what is chosen
      after that, a language switch included. */
   el("opt-shuffle-seats").checked = state.server.seating === "random";
+  /* Likewise its --first-player (OQ-132): "player1" opens the box checked. */
+  el("opt-first-player-seat-zero").checked = state.server.first_player !== "deal";
   buildSeatSelects();
   el("open-help").addEventListener("click", () => openHelp());
   el("language-toggle").addEventListener("click", () =>

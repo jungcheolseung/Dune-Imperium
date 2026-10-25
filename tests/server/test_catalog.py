@@ -1092,7 +1092,7 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
         None,
     ]
     assert with_assets["seat_pieces"] == {
-        "troop": [f"/tokens/troop_{c}.png" for c in ("blue", "red", "green", "yellow")]
+        "troop": [f"/tokens/troop_{c}.png" for c in ("green", "red", "yellow", "blue")]
     }
     assert with_assets["first_player_token"] == "/tokens/first_player.png"
     # Each back stands alone: the Conflict II deck shows its back while

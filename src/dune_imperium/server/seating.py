@@ -18,3 +18,12 @@ from typing import Final
 # "random" opens the setup screen's box checked, "fixed" unchecked.
 SEATINGS: Final = ("random", "fixed")
 DEFAULT_SEATING: Final = "random"
+
+# The setup screen's "Player 1 starts" box (OQ-132 project convention, user
+# decision 2026-10-25): checked, seat 0 takes the Objective with the First
+# Player marker (``RulesetConfig.first_player_seat_zero``); unchecked, every
+# Objective is dealt at random and whoever gets the marker starts
+# [Main p. 5]. The play server's ``--first-player`` flag only sets how the
+# box opens, like ``--seating``: "player1" checked, "deal" unchecked.
+FIRST_PLAYERS: Final = ("player1", "deal")
+DEFAULT_FIRST_PLAYER: Final = "player1"

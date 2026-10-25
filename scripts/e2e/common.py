@@ -117,6 +117,9 @@ class ServerProcess:
             # checks here expect row N to play seat N, unless a script asks
             # for a seating (setup_options.py).
             *(() if "--seating" in self._extra else ("--seating", "fixed")),
+            # Likewise its "Player 1 starts" box (OQ-132) opens checked; the
+            # checks here play the printed deal their seeds were chosen for.
+            *(() if "--first-player" in self._extra else ("--first-player", "deal")),
             *self._extra,
         ]
         self._process = subprocess.Popen(

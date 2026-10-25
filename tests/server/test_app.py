@@ -599,8 +599,9 @@ def test_pictured_combat_markers_are_served_when_present(tmp_path: Path) -> None
         )
     ) as token_client:
         catalog = token_client.get("/catalog").json()
-        green = catalog["strength_tokens"][2]
-        assert catalog["strength_tokens"] == [None, None, green, None]
+        # Green is seat 0 (display.token_images.STRENGTH_TOKEN_COLORS).
+        green = catalog["strength_tokens"][0]
+        assert catalog["strength_tokens"] == [green, None, None, None]
         assert _unversioned(green["front"]) == "/tokens/strength_green.png"
         assert _unversioned(green["plus20"]) == "/tokens/strength_green_plus20.png"
         assert token_client.get(green["front"]).content == b"png-green-sword"

@@ -1,6 +1,7 @@
 """Ruleset configuration for supported games."""
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +60,22 @@ class RulesetConfig:
     # auctions and sales revealed round by round. Off by default; combines
     # with every other option.
     arrakeen_scouts: bool = False
+    # OQ-132 project convention (not an official rule; user decision
+    # 2026-10-25): seat 0 ("Player 1") takes the Objective with the First
+    # Player marker and so starts round 1; the other three Objectives are
+    # dealt at random to seats 1-3. The rulebook deals all four at random
+    # and whoever gets the marker starts [Main p. 5]; with the seats
+    # themselves assigned at random the odds are the same. Off by default
+    # (the engine, CLIs and training keep the printed deal).
+    first_player_seat_zero: bool = False
+
+    # Options added after saves and records already held state hashes: the
+    # canonical state hash leaves each one out while it holds its default,
+    # so every game without it keeps the hash it was saved with
+    # (core.state.canonical_state_hash).
+    HASH_OMITTED_AT_DEFAULT: ClassVar[frozenset[str]] = frozenset(
+        {"first_player_seat_zero"}
+    )
 
     def __post_init__(self) -> None:
         if self.players != 4:
@@ -113,6 +130,9 @@ class RulesetConfig:
         go_to_11 = "+go11" if self.go_to_11 else ""
         epic = "+epic" if self.epic_game else ""
         scouts = "+scouts" if self.arrakeen_scouts else ""
+        # Like the Leader draft, ``first_player_seat_zero`` changes only who
+        # gets which Objective, not the cards or the action catalog, so it
+        # is left out: a trained network answers for either deal.
         return (
             f"uprising-4p-{module}{promo}{bloodlines}{tech}{immortality}"
             f"{go_to_11}{epic}{scouts}"
@@ -124,7 +144,8 @@ class RulesetConfig:
 
         Checkpoints and reports carry only the identifier; the inverse lets
         them rebuild their ruleset (and so their action catalog) later.
-        ``leader_draft`` is not part of the identifier and stays off.
+        ``leader_draft`` and ``first_player_seat_zero`` are not part of the
+        identifier and stay off.
         """
 
         prefix = "uprising-4p-"

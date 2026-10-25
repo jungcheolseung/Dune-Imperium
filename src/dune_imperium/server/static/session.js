@@ -5,7 +5,8 @@
 let myTurnBefore = null;
 
 function isMyTurn(summary) {
-  if (!summary || summary.finished) return false;
+  /* A place in a waiting room is no seat yet (sessions.py start_game). */
+  if (!summary || summary.finished || summary.awaiting_start) return false;
   const mine = mySeats();
   if (typeof summary.confirmation === "number") {
     return mine.includes(summary.confirmation);
@@ -193,13 +194,21 @@ async function loadSnapshot(hint, first) {
     try {
       snapshot = await api(snapshotPath(seat));
     } catch (error) {
-      if (error.status !== 403 || seat === null || attempt >= 3) throw error;
-      /* The seat is no longer this browser's (the host released it): a
-         snapshot without a seat says which seats still are. */
+      const refused = error.status === 403 || error.status === 409;
+      if (!refused || seat === null || attempt >= 3) throw error;
+      /* The seat is no longer this browser's (the host released it), or the
+         room has not started (409, sessions.py start_game): a snapshot
+         without a seat says which seats still are. */
       seat = null;
       continue;
     }
     if (state.gameId !== gameId) return;
+    /* A waiting room reads no seat before its start: the seatless answer
+       is the whole picture. */
+    if (snapshot.summary.awaiting_start) {
+      adoptSnapshot(snapshot, null);
+      return;
+    }
     /* The seats to pick from are the ones this very answer names. */
     const wanted = pickViewSeat(snapshot.summary, snapshot.you.seats);
     if (wanted === seat || attempt >= 3) {
@@ -224,6 +233,7 @@ function adoptSnapshot(snapshot, seat) {
   const errorBox = el("game-error");
   if (!errorBox.hidden && errorBox.dataset.source === "refresh") hideGameError();
   const held = mySeats().length > 0;
+  const waited = Boolean(state.summary && state.summary.awaiting_start);
   state.summary = snapshot.summary;
   /* The play clock counts on from this snapshot (clock.js). */
   anchorClock(snapshot);
@@ -247,6 +257,17 @@ function adoptSnapshot(snapshot, seat) {
   }
   noticeTurn();
   watchIdle();
+  /* A waiting room has just started (sessions.py start_game): its players
+     go to the table at the seat drawn for them. */
+  if (
+    waited &&
+    !state.summary.awaiting_start &&
+    !el("lobby-screen").hidden &&
+    mySeats().length
+  ) {
+    enterTable(state.summary);
+    return;
+  }
   if (!el("lobby-screen").hidden) renderLobby();
   render({ foreign: refreshForeign });
   announceTurn(state.summary);
@@ -429,7 +450,8 @@ function onDoorbell(bell) {
     bell.confirmation !== summary.confirmation ||
     bell.thinking !== summary.thinking ||
     bell.finished !== summary.finished ||
-    bell.ai_pace !== summary.ai_pace
+    bell.ai_pace !== summary.ai_pace ||
+    bell.awaiting_start !== summary.awaiting_start
   ) {
     refresh(null, { foreign: true }).catch(showRefreshError);
   } else if (

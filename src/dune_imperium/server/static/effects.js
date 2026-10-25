@@ -38,8 +38,8 @@ function resetPlayEffects() {
   playEffects.count = 0;
 }
 
-/* A Reveal: the hand the seat revealed (cards_revealed, a public event
-   the engine reports without keeping) and its Persuasion and strength
+/* A Reveal: the hand the seat revealed and its swords (cards_revealed, a
+   public event the engine reports without keeping) and its Persuasion
    (reveal_started), as one cue. */
 const REVEAL_EVENTS = new Set(["reveal_started", "cards_revealed"]);
 
@@ -56,14 +56,14 @@ function cardPlayCues(entries) {
         }
         if (!reveal) {
           reveal = { index: entry.index, order: position, kind: "reveal",
-            seat: payload.player, cards: [], persuasion: null, strength: null };
+            seat: payload.player, cards: [], persuasion: null, swords: null };
           cues.push(reveal);
         }
         if (event.kind === "reveal_started") {
           reveal.persuasion = payload.persuasion;
-          reveal.strength = payload.strength;
         } else if (Array.isArray(payload.card_ids)) {
           reveal.cards = payload.card_ids.filter((id) => entryOf(id, "cards"));
+          reveal.swords = payload.swords;
         }
         continue;
       }
@@ -107,7 +107,9 @@ function positionPlayEffect() {
 }
 
 /* The revealed hand fanned out under the seat's name, with what it adds
-   up to. */
+   up to: its Persuasion and its swords, not the seat's whole strength,
+   which counts the units in the Conflict too (play feedback 2026-10-25:
+   "총 전투력이 아니라 공개로 추가된 검"). */
 function drawRevealEffect(cue) {
   const box = el("play-effects");
   box.textContent = "";
@@ -151,9 +153,9 @@ function drawRevealEffect(cue) {
   if (Number.isInteger(cue.persuasion)) {
     totals.appendChild(amount("persuasion", termLabel("persuasion"), cue.persuasion));
   }
-  if (Number.isInteger(cue.strength)) {
+  if (Number.isInteger(cue.swords)) {
     if (totals.childNodes.length) totals.append(" · ");
-    totals.appendChild(amount("sword", phraseText("{strength}"), cue.strength));
+    totals.appendChild(amount("sword", phraseText("{sword}"), cue.swords));
   }
   toast.append(words, fan, totals);
   box.appendChild(toast);

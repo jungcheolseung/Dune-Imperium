@@ -220,16 +220,29 @@ def build_conflict_setup(
     )
 
 
-def objective_setup_decision() -> ChanceDecision:
-    """Return the ordered four-card deal for a four-player game."""
+def objective_setup_decision(
+    config: RulesetConfig | None = None,
+) -> ChanceDecision:
+    """Return the ordered Objective deal of a four-player game.
 
+    Each player gets a random Objective [Main p. 5]: four cards for seats
+    0-3 in order. With ``first_player_seat_zero`` (OQ-132 project
+    convention) seat 0 takes the First Player Objective and only the other
+    three are dealt, to seats 1-3.
+    """
+
+    objectives = objectives_for_players(4)
+    prompt = "Shuffle and deal the four-player Objective cards"
+    if config is not None and config.first_player_seat_zero:
+        objectives = tuple(
+            objective for objective in objectives if not objective.grants_first_player
+        )
+        prompt = "Shuffle and deal the other three Objective cards to seats 1-3"
     return ChanceDecision(
         decision_id="setup:objectives",
-        prompt="Shuffle and deal the four-player Objective cards",
-        options=tuple(
-            objective.objective_id for objective in objectives_for_players(4)
-        ),
-        count=4,
+        prompt=prompt,
+        options=tuple(objective.objective_id for objective in objectives),
+        count=len(objectives),
     )
 
 
@@ -264,22 +277,37 @@ def contract_setup_decision(
 def assign_objectives(
     players: tuple[PlayerState, ...],
     outcome: ChanceOutcome,
+    config: RulesetConfig | None = None,
 ) -> tuple[tuple[PlayerState, ...], int]:
-    """Deal one Objective per seat and return the First Player seat."""
+    """Deal one Objective per seat and return the First Player seat.
+
+    "각 플레이어는 Objective를 무작위로 한 장 받아 ... Objective에 First
+    Player marker가 표시된 플레이어가 그 marker를 가져간다" [Main p. 5]
+    (docs/rules/setup-and-game-flow.md). With ``first_player_seat_zero``
+    (OQ-132) seat 0 holds that Objective and ``outcome`` deals the rest.
+    """
 
     if len(players) != 4 or tuple(player.player_id for player in players) != tuple(
         range(4)
     ):
         raise ValueError("Objective setup requires players in seat order 0 through 3")
-    decision = objective_setup_decision()
+    decision = objective_setup_decision(config)
     validate_chance_outcome(decision, outcome)
 
     definitions = {
         objective.objective_id: objective for objective in objectives_for_players(4)
     }
+    dealt = outcome.values
+    if config is not None and config.first_player_seat_zero:
+        (marked,) = (
+            objective.objective_id
+            for objective in definitions.values()
+            if objective.grants_first_player
+        )
+        dealt = (marked, *dealt)
     assigned = tuple(
         replace(player, objective_ids=(objective_id,))
-        for player, objective_id in zip(players, outcome.values, strict=True)
+        for player, objective_id in zip(players, dealt, strict=True)
     )
     first_players = tuple(
         player.player_id
@@ -568,7 +596,8 @@ def create_initial_state(
     conflict = _conflict_setup(config, resolver)
     players, first_player = assign_objectives(
         _unshuffled_players(config),
-        resolver.resolve(objective_setup_decision()),
+        resolver.resolve(objective_setup_decision(config)),
+        config,
     )
     # The shuffle decision below then covers the reduced decks.
     players = tuple(
@@ -766,7 +795,8 @@ def create_draft_initial_state(
     conflict = _conflict_setup(config, resolver)
     players, first_player = assign_objectives(
         _unshuffled_players(config),
-        resolver.resolve(objective_setup_decision()),
+        resolver.resolve(objective_setup_decision(config)),
+        config,
     )
     pool = resolver.resolve(leader_draft_pool_decision(config)).values
     imperium = resolver.resolve(

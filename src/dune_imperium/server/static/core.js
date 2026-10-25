@@ -299,6 +299,11 @@ const PROVENANCE_KINDS = {
   intrigue: "intrigue",
   skill: "skills",
   tech: "tech",
+  /* A Tech tile's Endgame line ("round:9:player:0:endgame_tech:
+     choam_transports", rules/tech.py apply_endgame_tech_effects): it pays
+     on the step that ends the last Combat, so without its name the point
+     reads as part of the Conflict's result (play feedback 2026-10-25). */
+  endgame_tech: "tech",
 };
 
 /* A provenance string ("imperium:high_priority_travel:1",
@@ -1487,6 +1492,12 @@ function describeAction(action, options = {}) {
       label = label.replace("{influence_any}", "{influence_lose}");
     }
     fragment.appendChild(phrase(label));
+  }
+  /* A Sardaukar Commander row's price is the seat's own (Sardaukar High
+     Command, Honor Guard): the server sends it (sessions.py
+     COMMANDER_PAYMENTS). A logged step names what it paid in its event. */
+  if (Number.isInteger(action.solari_cost)) {
+    fragment.appendChild(phrase(` (${action.solari_cost} {solari})`));
   }
   /* A Reveal gain's bundle or Faction is its own argument beside the entity
      that printed it (stage B3e-1): both are shown, the entity by its name. */

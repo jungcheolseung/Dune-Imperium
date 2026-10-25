@@ -40,6 +40,10 @@ CONTRACT = f"contract:{SPACE}"
 ACQUIRE_SOURCE = (
     "round:3:player:1:acquire:imperium:interstellar_trade:0:acquisition_bonus"
 )
+# A Tech tile's Endgame line (rules/tech.py apply_endgame_tech_effects): its
+# point arrives on the step that ends the last Combat, so a log line without
+# the tile's name read as a Conflict reward (play feedback 2026-10-25).
+ENDGAME_TECH_SOURCE = "round:9:player:0:endgame_tech:choam_transports"
 ACQUIRE_CHANCE = (
     "round:9:player:2:acquire:imperium:spiritual_fervor:1:acquisition_bonus"
     ":research:c7r3:card:discard_shuffle"
@@ -57,6 +61,7 @@ NAMES_JS = """() => {
     acquire: c.contracts.acquire.name,
     trade: c.cards.interstellar_trade.name,
     fervor: c.cards.spiritual_fervor.name,
+    transports: c.tech.choam_transports.name,
   };
 }"""
 
@@ -305,6 +310,9 @@ def one_language(page, lang: str) -> None:
     check.ok(source == names["trade"],
              "a contract taken with Interstellar Trade names the card, not Acquire",
              (source, names["acquire"]))
+    endgame = page.evaluate("(value) => sourceName(value)", ENDGAME_TECH_SOURCE)
+    check.ok(endgame == names["transports"],
+             "CHOAM Transports' Endgame point names the tile", endgame)
     chance = page.evaluate("(value) => describeChance(value)", ACQUIRE_CHANCE)
     check.ok(names["fervor"] in chance and names["acquire"] not in chance,
              "a reshuffle from Spiritual Fervor's research names the card", chance)

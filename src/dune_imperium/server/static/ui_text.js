@@ -197,8 +197,8 @@ const UI_TEXT = {
     "en": "No {commander} left on the board"
   },
   "board.space_with_commander": {
-    "ko": "{{space}} · {commander} (2 {solari})",
-    "en": "{{space}} · {commander} (2 {solari})"
+    "ko": "{{space}} · {commander}",
+    "en": "{{space}} · {commander}"
   },
   "board.no_human_seats": {
     "ko": "사람 플레이어가 없는 게임입니다. 최종 순위의 \"AI 대국 다시 보기\"로 처음부터 볼 수 있습니다.",
@@ -263,6 +263,10 @@ const UI_TEXT = {
   "board.stack_empty": {
     "ko": "더미 {{index}} 비었음",
     "en": "stack {{index}} empty"
+  },
+  "board.tech_stack_count": {
+    "ko": "이 더미의 기술 타일 {{count}}개 (맨 위 포함)",
+    "en": "{{count}} Tech tiles in this stack (the top one included)"
   },
   "board.strip_contracts": {
     "ko": "{contract} · 남은 {{count}}장",
@@ -652,6 +656,10 @@ const UI_TEXT = {
     "ko": "11점을 향해 (불멸 필요: 모두 승점 0에서 시작, 종료 점수는 그대로)",
     "en": "Go to 11 (requires Immortality: everyone starts at 0 VP; the end score stays the same)"
   },
+  "html.opt_first_player_seat_zero": {
+    "ko": "플레이어1이 시작 플레이어 (사막쥐 목적 카드는 플레이어1에게, 나머지 목적 카드는 무작위; 공식 규칙 아님)",
+    "en": "Player 1 starts (Player 1 gets the Desert Mouse Objective, the other Objectives are dealt at random; not an official rule)"
+  },
   "html.opt_epic_game": {
     "ko": "에픽 게임 모드 (12점까지 · 교전 I 없이 II·III 5장씩 · 수비대 5·책략 카드 1장으로 시작 · 사막 행성 듄 1장 대신 스파이스를 지배하라)",
     "en": "Epic Game Mode (play to 12 · no Conflict I, five II over five III · start with 5 garrison troops and an Intrigue card · Control the Spice for one Dune, the Desert Planet)"
@@ -681,8 +689,8 @@ const UI_TEXT = {
     "en": "Random seating"
   },
   "html.shuffle_seats_note": {
-    "ko": "시작할 때 설정한 플레이어들의 자리(차례 순서·색)를 무작위로 섞습니다.",
-    "en": "Shuffles the configured players' seats (turn order and colour) when the game starts."
+    "ko": "시작할 때 설정한 플레이어들의 자리(차례 순서·색)를 무작위로 섞습니다. 원격 방에서는 사람 자리가 모두 찬 뒤 \"게임 시작\"을 누를 때 사람들의 자리를 무작위로 정합니다.",
+    "en": "Shuffles the configured players' seats (turn order and colour) when the game starts. In a remote room the people are seated at random when \"Start game\" is pressed, once every human place is taken."
   },
   "html.opt_seed_label": {
     "ko": "시드 (빈칸 = 무작위)",
@@ -1252,6 +1260,14 @@ const UI_TEXT = {
     "ko": "{supply}의 {commander}",
     "en": "{commander} in {supply}"
   },
+  "panels.memories": {
+    "ko": "기억",
+    "en": "Memories"
+  },
+  "panels.memories_title": {
+    "ko": "기억: 스파이스의 고통으로 게임판의 베네 게세리트 영역에 옮긴 병력",
+    "en": "Memories: troops Spice Agony moved to the Bene Gesserit board area"
+  },
   "panels.tactics_space": {
     "ko": "전술 트랙 {{space}}칸",
     "en": "Tactics space {{space}}"
@@ -1363,6 +1379,10 @@ const UI_TEXT = {
   "render.count_step_down": {
     "ko": "하나 적게",
     "en": "One fewer"
+  },
+  "render.scouts_called_amounts": {
+    "ko": "이미 나온 액수: {{amounts}} (부를 수 없음)",
+    "en": "Already called: {{amounts}} (cannot be called again)"
   },
   "render.count_step_up": {
     "ko": "하나 더",
@@ -2025,6 +2045,30 @@ const UI_TEXT = {
   "screens.server_address_label": {
     "ko": "친구들이 접속하는 서버 주소 (예: http://100.x.y.z:8000)",
     "en": "Server address your friends connect to (e.g. http://100.x.y.z:8000)"
+  },
+  "screens.waiting_room_title": {
+    "ko": "게임 대기실",
+    "en": "Waiting room"
+  },
+  "screens.waiting_room_status": {
+    "ko": "참여 {{joined}}/{{total}}명",
+    "en": "{{joined}} of {{total}} joined"
+  },
+  "screens.waiting_room_me": {
+    "ko": "나",
+    "en": "Me"
+  },
+  "screens.waiting_room_note": {
+    "ko": "모두 참여하면 \"게임 시작\"이 나타납니다. 자리(차례 순서·색)는 시작할 때 무작위로 정해집니다.",
+    "en": "\"Start game\" appears once everyone has joined. The seats (turn order and colour) are drawn at random at the start."
+  },
+  "screens.waiting_room_ready_note": {
+    "ko": "모두 모였습니다. 참여한 사람 누구나 시작할 수 있고, 시작하면 자리를 무작위로 정합니다.",
+    "en": "Everyone is here. Anyone who joined may start; the seats are drawn at random then."
+  },
+  "screens.start_game_button": {
+    "ko": "게임 시작 ▶",
+    "en": "Start game ▶"
   },
   "screens.sit_button": {
     "ko": "참여",

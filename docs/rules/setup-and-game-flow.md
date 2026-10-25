@@ -70,7 +70,11 @@
 2. 각 플레이어는 Objective를 무작위로 한 장 받아 자기 supply에 앞면으로 공개한다. [Main p. 5]
 3. Objective에 First Player marker가 표시된 플레이어가 그 marker를 가져간다. [Main p. 5]
 
-자리 배치(누가 어느 좌석에 앉는가)는 규칙서가 정하지 않는다. First Player는 위의 Objective 배분으로 정해진다. [Main p. 5] 플레이 UI는 기본으로, 설정 화면에서 고른 좌석들을 게임을 만들 때 무작위로 섞는다. 차례 순서와 색은 좌석을 따른다. 서버 `--seating fixed`로 기본을 끌 수 있고, 설정 화면의 "자리 무작위 배치" 칸으로 판마다 고를 수 있다(`server/seating.py`). 이 칸이 켜져 있으면 "각 플레이어는 색상을 하나 정하고"[Main p. 5](위 플레이어 상태 1)의 색도 뽑힌 좌석이 정하고, 끄면 고른 줄의 색으로 앉는다. (project convention, user request 2026-10-10, not an official rule)
+선택 규칙(`first_player_seat_zero`, [OQ-132](open-questions.md#oq-132--1라운드-첫-플레이어를-플레이어1로-선택-규칙), project convention,
+not an official rule, user decision 2026-10-25): 켜면 플레이어1(좌석 0)이 First Player marker가 표시된 Objective(사막쥐)를 받아 1라운드 첫
+플레이어가 되고, 나머지 Objective는 다른 세 좌석에 무작위로 나눈다. 엔진 기본은 꺼짐, 브라우저 새 게임 화면은 기본 켜짐.
+
+자리 배치(누가 어느 좌석에 앉는가)는 규칙서가 정하지 않는다. First Player는 위의 Objective 배분으로 정해진다. [Main p. 5] 플레이 UI는 기본으로, 설정 화면에서 고른 좌석들을 게임을 만들 때 무작위로 섞는다. 차례 순서와 색은 좌석을 따른다. 서버 `--seating fixed`로 기본을 끌 수 있고, 설정 화면의 "자리 무작위 배치" 칸으로 판마다 고를 수 있다(`server/seating.py`). 이 칸이 켜져 있으면 "각 플레이어는 색상을 하나 정하고"[Main p. 5](위 플레이어 상태 1)의 색도 뽑힌 좌석이 정하고, 끄면 고른 줄의 색으로 앉는다. (project convention, user request 2026-10-10, not an official rule) 원격 방에서 이 칸이 켜져 있으면 브라우저는 좌석 종류만 섞고, 사람들의 자리는 사람 자리가 모두 찬 뒤 참여한 사람이 "게임 시작"을 누를 때 서버가 무작위로 정한다. 그 전에는 아무도 게임 화면을 보지 않고 게임도 진행되지 않는다(`server/sessions.py` `start_game`; project convention, user decision 2026-10-25, not an official rule).
 
 ## 3. 일반 개념
 
