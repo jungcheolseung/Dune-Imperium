@@ -281,9 +281,14 @@ async function createGame(event) {
     (select) =>
       select.value === "checkpoint" ? `checkpoint:${checkpoint}` : select.value
   );
-  const seats = el("opt-shuffle-seats").checked ? shuffledSeats(configured) : configured;
+  const shuffle = el("opt-shuffle-seats").checked;
+  const seats = shuffle ? shuffledSeats(configured) : configured;
   const payload = {
     seats,
+    /* A remote room also draws its people to the human seats when one of
+       them starts it (user decision 2026-10-25): the shuffle above places
+       the AI seats, the start places the people (sessions.py start_game). */
+    seats_at_start: shuffle && isRemote() && seats.includes("human"),
     choam_module: el("opt-choam").checked,
     leader_draft: el("opt-leader-draft").checked,
     promo_cards: el("opt-promo").checked,
@@ -531,7 +536,11 @@ async function openGame(gameId) {
   setRoomHash(gameId);
   storageSet("dune.lastGame", gameId);
   openDoorbell();
-  if (mySeats().length || !humanSeatsOf(entry.summary).length) {
+  if (entry.summary.awaiting_start) {
+    /* A room drawing its seats at the start shows the room, not the game,
+       until someone starts it (adoptSnapshot enters the table then). */
+    showLobby();
+  } else if (mySeats().length || !humanSeatsOf(entry.summary).length) {
     enterTable(entry.summary);
   } else {
     showLobby();
@@ -595,6 +604,13 @@ function lobbyError(text) {
 function renderLobby() {
   const summary = state.summary;
   if (!summary) return;
+  el("lobby-title").textContent = t(
+    summary.awaiting_start ? "screens.waiting_room_title" : "html.lobby_title"
+  );
+  if (summary.awaiting_start) {
+    renderWaitingRoom(summary);
+    return;
+  }
   const mine = mySeats();
   el("lobby-status").textContent =
     t("screens.lobby_status", {
@@ -642,6 +658,96 @@ function renderLobby() {
   /* The seat picker above already lists the seats, with the host's release
      buttons. */
   renderHostBlock(el("lobby-host"), { seats: false });
+}
+
+/* A room that draws its seats at the start (user decision 2026-10-25): the
+   people who joined, without seats or colours (those are drawn when the
+   game starts), the AI seats where the setup put them, one "join" for
+   whoever has not, and "game start" once every human place is taken, for
+   any player in the room or the host (sessions.py start_game). */
+function renderWaitingRoom(summary) {
+  const mine = mySeats();
+  const humans = summary.players.filter((info) => info.kind === "human");
+  const joined = humans.filter((info) => info.claimed).length;
+  el("lobby-status").textContent = t("screens.waiting_room_status", {
+    joined,
+    total: humans.length,
+  });
+  const list = el("lobby-seats");
+  list.textContent = "";
+  for (const info of summary.players) {
+    const item = document.createElement("li");
+    item.className = "lobby-seat";
+    if (info.kind === "human") {
+      item.classList.add("waiting-place");
+      const label = document.createElement("span");
+      label.className = "lobby-seat-label";
+      label.textContent = info.claimed
+        ? info.name || t("screens.person")
+        : t("screens.empty_seat");
+      item.appendChild(label);
+      if (info.claimed) item.appendChild(presenceDot(info));
+      if (mine.includes(info.seat)) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = t("screens.waiting_room_me");
+        item.appendChild(badge);
+        item.appendChild(lobbyButton(t("screens.leave_seat"), () => releaseSeat(info.seat)));
+      } else if (info.claimed && isAdmin()) {
+        item.appendChild(lobbyButton(t("common.release_seat"), () => releaseSeat(info.seat)));
+      }
+    } else {
+      item.dataset.seat = String(info.seat);
+      item.appendChild(seatToken(info.seat, "seat-mark"));
+      const label = document.createElement("span");
+      label.className = "lobby-seat-label";
+      label.textContent = playerName(info.seat);
+      item.appendChild(label);
+      const badge = document.createElement("span");
+      badge.className = "badge ai";
+      badge.textContent = seatKindLabel(info.kind);
+      item.appendChild(badge);
+    }
+    list.appendChild(item);
+  }
+  const free = humans.find((info) => !info.claimed);
+  const row = document.createElement("li");
+  row.className = "waiting-room-actions";
+  if (!mine.length && free) {
+    row.appendChild(lobbyButton(t("screens.sit_button"), () => claimSeat(free.seat)));
+  }
+  if (!free && (mine.length || isAdmin())) {
+    const start = lobbyButton(t("screens.start_game_button"), startGame);
+    start.id = "lobby-start";
+    row.appendChild(start);
+  }
+  const note = document.createElement("p");
+  note.className = "muted";
+  note.textContent = t(
+    free ? "screens.waiting_room_note" : "screens.waiting_room_ready_note"
+  );
+  row.appendChild(note);
+  list.appendChild(row);
+  if (!mine.length && !free && !isAdmin()) lobbyError(t("screens.no_free_seats"));
+  el("lobby-enter").hidden = true;
+  renderHostBlock(el("lobby-host"), { seats: false });
+}
+
+/* Start a waiting room: the server draws the seats and the game moves on;
+   the snapshot after it says which seat this browser now plays
+   (adoptSnapshot then enters the table). */
+async function startGame() {
+  if (state.busy) return;
+  const ticket = openTicket;
+  let summary;
+  state.busy = true;
+  try {
+    summary = await api(`/games/${state.gameId}/start`, { method: "POST" });
+  } finally {
+    state.busy = false;
+  }
+  if (ticket !== openTicket) return;
+  await refresh(summary, { seat: null });
 }
 
 function lobbyButton(text, onClick) {
@@ -693,6 +799,12 @@ async function claimSeat(seat) {
   /* A stream registers presence with the cookies it was opened with, so the
      seat only shows as online once the stream is opened again. */
   openDoorbell();
+  if (summary.awaiting_start) {
+    /* A place in a waiting room, not a seat yet: stay in the room, and ask
+       who this browser is now without asking for a seat. */
+    await refresh(summary, { seat: null });
+    return;
+  }
   /* state.me does not know the new seat yet; only a snapshot may say so
      (see refresh), and this one asks for the seat by name. */
   enterTable(summary, seat);

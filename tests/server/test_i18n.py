@@ -892,6 +892,7 @@ _ERROR_RAISERS = {
     "AdminAccessError",
     "SeatTakenError",
     "StaleRevisionError",
+    "GameNotStartedError",
 }
 _SERVER = _REPO / "src" / "dune_imperium" / "server"
 # What a `{field}` hole of a message names (persistence.py's version check).
@@ -942,7 +943,7 @@ def _server_error_messages() -> set[str]:
         and node.func.attr == "_require_remote"
         and isinstance(node.args[0], ast.Constant)
     )
-    assert len(operations) == 2, operations
+    assert len(operations) == 4, operations
     for path in (_SERVER / "sessions.py", _SERVER / "persistence.py"):
         for node in ast.walk(ast.parse(path.read_text())):
             if not isinstance(node, ast.Call):

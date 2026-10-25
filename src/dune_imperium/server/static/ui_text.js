@@ -689,8 +689,8 @@ const UI_TEXT = {
     "en": "Random seating"
   },
   "html.shuffle_seats_note": {
-    "ko": "시작할 때 설정한 플레이어들의 자리(차례 순서·색)를 무작위로 섞습니다.",
-    "en": "Shuffles the configured players' seats (turn order and colour) when the game starts."
+    "ko": "시작할 때 설정한 플레이어들의 자리(차례 순서·색)를 무작위로 섞습니다. 원격 방에서는 사람 자리가 모두 찬 뒤 \"게임 시작\"을 누를 때 사람들의 자리를 무작위로 정합니다.",
+    "en": "Shuffles the configured players' seats (turn order and colour) when the game starts. In a remote room the people are seated at random when \"Start game\" is pressed, once every human place is taken."
   },
   "html.opt_seed_label": {
     "ko": "시드 (빈칸 = 무작위)",
@@ -2037,6 +2037,30 @@ const UI_TEXT = {
   "screens.server_address_label": {
     "ko": "친구들이 접속하는 서버 주소 (예: http://100.x.y.z:8000)",
     "en": "Server address your friends connect to (e.g. http://100.x.y.z:8000)"
+  },
+  "screens.waiting_room_title": {
+    "ko": "게임 대기실",
+    "en": "Waiting room"
+  },
+  "screens.waiting_room_status": {
+    "ko": "참여 {{joined}}/{{total}}명",
+    "en": "{{joined}} of {{total}} joined"
+  },
+  "screens.waiting_room_me": {
+    "ko": "나",
+    "en": "Me"
+  },
+  "screens.waiting_room_note": {
+    "ko": "모두 참여하면 \"게임 시작\"이 나타납니다. 자리(차례 순서·색)는 시작할 때 무작위로 정해집니다.",
+    "en": "\"Start game\" appears once everyone has joined. The seats (turn order and colour) are drawn at random at the start."
+  },
+  "screens.waiting_room_ready_note": {
+    "ko": "모두 모였습니다. 참여한 사람 누구나 시작할 수 있고, 시작하면 자리를 무작위로 정합니다.",
+    "en": "Everyone is here. Anyone who joined may start; the seats are drawn at random then."
+  },
+  "screens.start_game_button": {
+    "ko": "게임 시작 ▶",
+    "en": "Start game ▶"
   },
   "screens.sit_button": {
     "ko": "참여",

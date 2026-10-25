@@ -65,6 +65,7 @@ from dune_imperium.server.seating import (
 )
 from dune_imperium.server.sessions import (
     AdminAccessError,
+    GameNotStartedError,
     GameSessionManager,
     JsonObject,
     SeatAccessError,
@@ -228,6 +229,10 @@ class CreateGameRequest(BaseModel):
     # Omitted means off (the printed deal [Main p. 5]); the browser setup
     # box is checked by default (user decision 2026-10-25).
     first_player_seat_zero: bool = False
+    # A remote room that draws its human seats when a seated player starts
+    # it (``GameSessionManager.start_game``); the browser asks for it when
+    # its "Random seating" box is checked on a remote server.
+    seats_at_start: bool = False
     game_seed: int | None = None
     policy_seed: int | None = None
     # How the AI seats pace their answers for the tables: 'normal', 'fast'
@@ -566,6 +571,7 @@ def create_app(
                 epic_game=body.epic_game,
                 arrakeen_scouts=body.arrakeen_scouts,
                 first_player_seat_zero=body.first_player_seat_zero,
+                seats_at_start=body.seats_at_start,
                 game_seed=body.game_seed,
                 policy_seed=body.policy_seed,
                 ai_pace=body.ai_pace,
@@ -656,6 +662,13 @@ def create_app(
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.post("/games/{game_id}/start")
+    def start_game(game_id: str, request: Request) -> JsonObject:
+        with _http_errors():
+            return sessions.start_game(
+                game_id, credentials=_credentials(request, game_id)
+            )
 
     @app.post("/games/{game_id}/seats/{seat}/claim")
     def claim_seat(
@@ -844,7 +857,7 @@ def _http_errors() -> Iterator[None]:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except (SeatAccessError, AdminAccessError) as error:
         raise HTTPException(status_code=403, detail=str(error)) from error
-    except (StaleRevisionError, SeatTakenError) as error:
+    except (StaleRevisionError, SeatTakenError, GameNotStartedError) as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except (SessionError, SaveError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
