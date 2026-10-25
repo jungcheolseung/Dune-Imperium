@@ -959,3 +959,56 @@ def test_random_games_finish_with_the_promo_cards_in_both_rulesets() -> None:
                 )
             }
             assert {"arrakis_revolt", "pivotal_gambit", "the_beast_s_spoils"} <= dealt
+
+
+def test_servo_receivers_after_the_placement_closes_shaddams_deployment() -> None:
+    # Emperor of the Known Universe: "Units can't be deployed to the Conflict
+    # this turn." [Shaddam Corrino IV card], at once [Main p. 17] [FAQ p. 3]
+    # (docs/rules/choam-module.md:41); used through Servo-Receivers the ban
+    # holds on that Agent turn (OQ-062 (b)). Used after Arrakis Revolt's
+    # placement on Arrakeen it once left the opened deployment offered and a
+    # troop went in (review of the engine audit 2026-10-22, R4).
+    from dune_imperium.core import Resources
+    from dune_imperium.rules.leader_abilities import units_deployment_blocked
+
+    rapid = "intrigue:rapid_engineering:0"
+    dagger = _starter("dagger")
+    revolt = _promo_instance("arrakis_revolt")
+    owner = PlayerState(
+        player_id=0,
+        leader_id="shaddam_corrino_iv",
+        hand=(revolt, dagger),
+        maker_hooks=True,
+        intrigue_cards=(rapid,),
+        resources=Resources(solari=4, spice=6),
+        troops_garrison=3,
+        troops_supply=9,
+    )
+    state = replace(
+        _turn_state(owner),
+        config=RulesetConfig(bloodlines=True, tech_module=True, promo_cards=True),
+        tech_stacks=(("servo_receivers",), (), ()),
+    )
+    engine = UprisingRulesEngine()
+    for action_id, arguments in (
+        ("choose_agent_card", (("card_id", revolt),)),
+        ("place_agent", (("space_id", "arrakeen"),)),
+        ("play_intrigue", (("card_id", rapid),)),
+        ("choose_intrigue_discard", (("card_id", dagger),)),
+        ("acquire_tech", (("tech_id", "servo_receivers"),)),
+        ("resolve_tech_acquire_effect", (("effect", "signet"),)),
+        ("gain_leader_signet_troop", ()),
+    ):
+        action = next(
+            a
+            for a in engine.whole_actions(state, 0)
+            if a.action_id == action_id
+            and all(dict(a.arguments).get(k) == v for k, v in arguments)
+        )
+        state = apply_whole(engine, state, action).state
+
+    assert units_deployment_blocked(state, 0)
+    assert not any(
+        "deploy" in action.action_id for action in engine.legal_actions(state, 0)
+    )
+    assert state.players[0].troops_conflict == 0

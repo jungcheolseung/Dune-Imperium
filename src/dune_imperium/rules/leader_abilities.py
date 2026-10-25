@@ -430,6 +430,13 @@ def _block_agent_turn_deployment(state: GameState, player: int) -> GameState:
         return state
     host = dict(frame.context)
     host["units_deploy_blocked"] = True
+    if frame.kind == FrameKind.AGENT_EFFECTS:
+        # Used after the Agent was placed, the ban also closes a deployment
+        # the placement already opened: "Units can't be deployed to the
+        # Conflict this turn." [Shaddam Corrino IV card] (OQ-062 (b); found
+        # by the review of the engine audit's R4, which the graft partner
+        # choice sets the same way).
+        host["pending_combat_deployment"] = False
     return replace(
         state,
         decision_stack=(
