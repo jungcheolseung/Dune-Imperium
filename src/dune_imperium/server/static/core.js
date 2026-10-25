@@ -1493,6 +1493,12 @@ function describeAction(action, options = {}) {
     }
     fragment.appendChild(phrase(label));
   }
+  /* A Sardaukar Commander row's price is the seat's own (Sardaukar High
+     Command, Honor Guard): the server sends it (sessions.py
+     COMMANDER_PAYMENTS). A logged step names what it paid in its event. */
+  if (Number.isInteger(action.solari_cost)) {
+    fragment.appendChild(phrase(` (${action.solari_cost} {solari})`));
+  }
   /* A Reveal gain's bundle or Faction is its own argument beside the entity
      that printed it (stage B3e-1): both are shown, the entity by its name. */
   const namesPrinter = NAMED_PRINTER_ACTIONS.has(action.action_id);

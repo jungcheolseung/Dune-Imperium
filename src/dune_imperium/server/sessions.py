@@ -101,6 +101,7 @@ from dune_imperium.rules.effect_steps import first_step, picked_rows
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import plays_turn_start_option
+from dune_imperium.rules.sardaukar import commander_cost
 from dune_imperium.server.access import (
     ANONYMOUS,
     AccessMode,
@@ -190,6 +191,12 @@ AGENT_TURN_END_PROMPT: Final = "End the turn, or take another action first"
 # space (stage B1, OQ-111); the turn frame keeps its own prompt. That a card
 # was picked is public (the log shows the pick, sealed), which card is not.
 AGENT_SPACE_PROMPT: Final = "Choose a space for the Agent"
+# The rows that pay for a Sardaukar Commander: a visited space's Commander
+# and the once-per-turn recruit from the supply [Bloodlines p. 4]. Each row
+# carries what it costs the seat now (``_serialize_action`` ``solari_cost``).
+COMMANDER_PAYMENTS: Final = frozenset(
+    {"acquire_sardaukar_commander", "recruit_sardaukar_commander"}
+)
 # Every other seat names an agent of the evaluation registry
 # (``dune_imperium.agents.make_agent``): the Steam app's computer opponent
 # ``app_ai`` (Hard), ``app_ai_medium`` or ``app_ai_easy`` (about 1-2 ms a
@@ -3212,6 +3219,9 @@ def _serialize_action(
     first and alone, in a window of the seat's own page that sends nothing
     when it is put aside (static/turn.js, user decision 2026-10-14). It is
     read off the action alone, and only the seat's own rows carry it.
+
+    ``solari_cost`` is what a Sardaukar Commander row
+    (``COMMANDER_PAYMENTS``) costs the seat now, its discounts included.
     """
 
     serialized: JsonObject = {
@@ -3224,6 +3234,11 @@ def _serialize_action(
     }
     if action.action_id == "play_turn_start_card" or plays_turn_start_option(action):
         serialized["turn_start"] = True
+    if action.action_id in COMMANDER_PAYMENTS:
+        # What the Commander costs this seat now (``commander_cost``), so the
+        # row does not print the base 2 Solari [Bloodlines p. 4] when
+        # Sardaukar High Command or Honor Guard lowers it.
+        serialized["solari_cost"] = commander_cost(session.state.players[action.actor])
     title = agent_box_row_title(session.state, action)
     if title is not None:
         serialized["detail_title"], serialized["detail_title_ko"] = title
