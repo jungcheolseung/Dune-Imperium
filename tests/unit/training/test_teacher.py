@@ -10,6 +10,7 @@ torch = pytest.importorskip("torch")
 
 from dune_imperium import RulesetConfig  # noqa: E402
 from dune_imperium.adapters.action_codec import ActionCodec  # noqa: E402
+from dune_imperium.training.checkpoint import save_checkpoint  # noqa: E402
 from dune_imperium.training.collect import (  # noqa: E402
     LEARNER,
     CollectionResult,
@@ -32,6 +33,7 @@ from dune_imperium.training.teacher import (  # noqa: E402
     save_teacher_data,
     score_student,
     split_rows,
+    start_from,
     student_choices,
     teacher_choices,
     train_student,
@@ -401,3 +403,28 @@ def test_a_cosine_schedule_trains_and_an_unknown_one_is_refused(
     assert after.cross_entropy < before.cross_entropy
     with pytest.raises(ValueError, match="schedule"):
         StudentConfig(schedule="linear")
+
+
+def test_a_student_starts_from_a_saved_student_of_its_architecture(
+    tmp_path: Path,
+) -> None:
+    size = ActionCodec(_RULES).size
+    torch.manual_seed(2)
+    saved = PolicyValueNetwork(size, hidden=(16,))
+    save_checkpoint(
+        tmp_path / "student.pt",
+        saved,
+        ruleset=_RULES.identifier,
+        iteration=0,
+        codec=ActionCodec(_RULES),
+    )
+    torch.manual_seed(3)
+    student = PolicyValueNetwork(size, hidden=(16,))
+    start_from(student, tmp_path / "student.pt", _RULES)
+    for name, tensor in saved.state_dict().items():
+        assert torch.equal(student.state_dict()[name], tensor), name
+
+    with pytest.raises(ValueError, match="network, not"):
+        start_from(
+            PolicyValueNetwork(size, hidden=(32,)), tmp_path / "student.pt", _RULES
+        )

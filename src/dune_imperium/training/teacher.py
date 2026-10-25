@@ -43,6 +43,8 @@ import torch
 from torch import Tensor, nn
 
 from dune_imperium.adapters.observation_encoding import OBSERVATION_SIZE
+from dune_imperium.config import RulesetConfig
+from dune_imperium.training.checkpoint import load_checkpoint
 from dune_imperium.training.collect import CollectionResult
 from dune_imperium.training.network import MASKED_LOGIT, PolicyValueNetwork
 
@@ -578,6 +580,28 @@ def score_student(
         vp_mse=totals["vp"] / total if has_vp else None,
         teacher_value_mse=totals["teacher"] / total,
     )
+
+
+def start_from(
+    student: PolicyValueNetwork, path: Path, ruleset: RulesetConfig
+) -> None:
+    """Copy a saved student's weights into ``student`` to train it further.
+
+    The 2026-10-24 four-times student fit its teacher's policy but not its
+    value (held-out MSE to the teacher's value 0.0021, about 0.046 root
+    mean square, against a search that separates candidates at 0.01), and
+    its search seat lost on those leaves (2026-10-26). E7 trains such a
+    student on with a larger ``StudentConfig.value_coefficient`` instead
+    of from the start. The file must have ``student``'s architecture;
+    ``load_checkpoint`` rebuilds it for ``ruleset``'s catalog.
+    """
+
+    network, _ = load_checkpoint(path, ruleset=ruleset)
+    if network.arch_spec() != student.arch_spec():
+        raise ValueError(
+            f"{path} is a {network.arch_spec()} network, not {student.arch_spec()}"
+        )
+    student.load_state_dict(network.state_dict())
 
 
 def train_student(

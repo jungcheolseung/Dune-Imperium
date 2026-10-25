@@ -81,6 +81,7 @@ from dune_imperium.training.teacher import (
     pack_teacher_data,
     save_teacher_data,
     split_rows,
+    start_from,
     student_choices,
     teacher_choices,
     train_student,
@@ -295,10 +296,13 @@ def train(arguments: argparse.Namespace) -> int:
             print("--aux-vp and --own-actions are entity options", file=sys.stderr)
             return 2
         student = PolicyValueNetwork(data.action_size)
+    if arguments.init is not None:
+        start_from(student, arguments.init, ruleset)
     config = StudentConfig(
         learning_rate=arguments.learning_rate,
         minibatch_size=arguments.minibatch,
         epochs=arguments.epochs,
+        value_coefficient=arguments.value_coefficient,
         value_target=arguments.value_target,
         seed=arguments.seed,
         threads=arguments.threads,
@@ -313,6 +317,7 @@ def train(arguments: argparse.Namespace) -> int:
             {
                 "arch": student.arch_spec(),
                 "data": str(arguments.data),
+                "init": None if arguments.init is None else str(arguments.init),
                 "shards": len(shards),
                 "rows": data.rows,
                 "config": asdict(config),
@@ -455,6 +460,17 @@ def main(argv: list[str] | None = None) -> int:
     student.add_argument("--own-actions", action="store_true")
     student.add_argument(
         "--value-target", choices=("outcome", "teacher"), default="outcome"
+    )
+    student.add_argument(
+        "--value-coefficient",
+        type=float,
+        default=StudentConfig().value_coefficient,
+        help="the value loss's weight against the policy cross-entropy",
+    )
+    student.add_argument(
+        "--init",
+        type=Path,
+        help="start from this student checkpoint's weights (same architecture)",
     )
     student.add_argument("--entity-width", type=int, default=DEFAULT_ENTITY_WIDTH)
     student.add_argument("--seat-width", type=int, default=DEFAULT_SEAT_WIDTH)
