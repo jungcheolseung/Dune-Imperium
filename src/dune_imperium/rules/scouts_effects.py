@@ -312,7 +312,9 @@ def reward_has_effect(
                 state.config.immortality and owner.specimens > 0
             )
     owner_after = pay_cost(owner, resource_cost((option,)))
-    return reward_can_change_something(state, player, reward, option, owner_after)
+    return reward_can_change_something(
+        state, player, reward, option, owner_after, played_intrigue_held=False
+    )
 
 
 def line_is_offered(

@@ -1227,3 +1227,32 @@ def test_a_scouts_cost_line_needs_a_reward_that_can_happen() -> None:
     (termination,) = EVENTS_BY_ID["termination_request"].options
     assert not offered(no_supply, termination)
     assert offered(_owner(), termination)
+
+
+def test_scouts_choam_management_takes_the_immediate_with_one_intrigue_card() -> None:
+    # "You can't take the new Immediate contract unless you have an Intrigue
+    # card to trash." [Bloodlines p. 2]. An Intrigue card that gives a
+    # Contract is still held while it is judged, so it needs a second card;
+    # a Scouts line plays none, so one card is enough (review of engine audit
+    # 2026-10-22, P2, which judged CHOAM Management as an Intrigue play).
+    from dune_imperium.content.arrakeen_scouts import SUBCOMMITTEES_BY_ID
+    from dune_imperium.rules.contracts import takeable_contract_ids
+    from dune_imperium.rules.scouts_effects import line_is_offered
+
+    config = RulesetConfig(arrakeen_scouts=True, choam_module=True, bloodlines=True)
+    option = SUBCOMMITTEES_BY_ID["choam_management"].option
+    immediate = ("contract:bloodlines_immediate",)
+
+    def offered(*intrigue_cards: str) -> bool:
+        owner = _owner(intrigue_cards=intrigue_cards)
+        state = _state(owner, config=config, face_up_contract_ids=immediate)
+        return line_is_offered(state, 0, option)
+
+    one_card = _state(
+        _owner(intrigue_cards=("intrigue:x:0",)),
+        config=config,
+        face_up_contract_ids=immediate,
+    )
+    assert takeable_contract_ids(one_card, 0) == immediate
+    assert offered("intrigue:x:0")
+    assert not offered()

@@ -748,7 +748,9 @@ def _unmet_influence_requirement(state: GameState, player: int) -> bool:
     )
 
 
-def _contract_can_be_taken(state: GameState, player: int) -> bool:
+def _contract_can_be_taken(
+    state: GameState, player: int, *, played_intrigue_held: bool
+) -> bool:
     """A Contract icon of ``player`` can change something now (CHOAM on).
 
     With the market exhausted the icon becomes 2 Solari [Main p. 16]
@@ -756,9 +758,10 @@ def _contract_can_be_taken(state: GameState, player: int) -> bool:
     Bloodlines Immediate (Shaddam's set-aside Sardaukar Contracts included)
     can be taken, or the Immediate can, with another Intrigue card to trash:
     "You can't take the new Immediate contract unless you have an Intrigue
-    card to trash." [Bloodlines p. 2]. The played Intrigue card is still
-    held while this is judged and leaves the hand before the choice, so a
-    second card is needed.
+    card to trash." [Bloodlines p. 2]. A played Intrigue card is still held
+    while this is judged and leaves the hand before the choice, so it then
+    needs a second card (``played_intrigue_held``); an Arrakeen Scouts line
+    plays none.
     """
 
     if not contract_gain_opens_market(state, player):
@@ -768,7 +771,8 @@ def _contract_can_be_taken(state: GameState, player: int) -> bool:
         for instance_id in market_contract_ids(state, player)
     ):
         return True
-    return len(state.players[player].intrigue_cards) >= 2
+    needed = 2 if played_intrigue_held else 1
+    return len(state.players[player].intrigue_cards) >= needed
 
 
 def _redirect_has_target(state: GameState, player: int) -> bool:
@@ -800,6 +804,8 @@ def reward_can_change_something(
     reward: Reward,
     section: EffectSection,
     owner_after: PlayerState,
+    *,
+    played_intrigue_held: bool = True,
 ) -> bool:
     """Whether ``reward`` of ``section`` can change anything for ``player`` now.
 
@@ -813,7 +819,8 @@ def reward_can_change_something(
     card can be reshuffled and drawn, a trashed Intrigue card shuffled back,
     a lost troop made a specimen, a lowered Faction raised again). Only
     public state, the owner's own zones and the sizes of hidden piles are
-    read.
+    read. ``played_intrigue_held`` is False for an Arrakeen Scouts line,
+    which judges its rewards here too but plays no Intrigue card.
     """
 
     owner = state.players[player]
@@ -914,7 +921,9 @@ def reward_can_change_something(
 
             return tech_acquisition_possible(state, owner_after, discount)
         case TakeContract():
-            return state.config.choam_module and _contract_can_be_taken(state, player)
+            return state.config.choam_module and _contract_can_be_taken(
+                state, player, played_intrigue_held=played_intrigue_held
+            )
         case GainSolariPerUnitType():
             return owner.units_in_conflict > 0
         case PassTurn():
