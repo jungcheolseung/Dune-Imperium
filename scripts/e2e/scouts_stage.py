@@ -28,7 +28,8 @@ finished all-AI game's review at a Scouts step.
 
 Second request the same day: every revealed item comes up, not only those
 with a choice, and the card stays at hand all round. All-AI games replayed
-step by step (their rounds as a table sees them). Seed 83: round 4's choice
+step by step (their rounds as a table sees them). Seed 265 (83 until codec
+v152): round 4's choice
 stays up after the step and through the turns, the panel's button reopens
 it, the viewer's own Agent turn folds it once (reopened, it stays); round
 5's auction is on the card while the calls are open, and another seat's
@@ -39,7 +40,7 @@ arrows with focus inside the card (not outside, not with Alt), the browsed
 page kept on a refresh, the panel's button naming the page and how many
 more; a browser arriving after the step opens the first unseen page and
 marks next "new" (mark and title) without an update moving the card; round
-6 has no card before its reveal and Market Opening, also choice-less, opens
+6 has no card before its reveal and Clear the Market, also choice-less, opens
 it again. Seed 4's round
 2 (Planetary Exploration with no decision, then Send for Aid): the card
 stays on the item being decided, previous marked new, through another
@@ -58,15 +59,16 @@ named by its word and the item, "카드 접기" / "Hide card" while the card is
 up), which keeps its node and focus across renders; clicking it, Enter and
 Space on it, and `a` open and fold the card. Two: during a Scouts step that
 revealed secret picks, the card listed the picks still waiting under "비밀
-선택 공개", so players read them as revealed. Seed 428's Covert Operation
-(round 6: seat 3 picks a next-round line, the other three two-round lines),
-replayed with the log the table holds: at round 7's reveal a waiting seat's
-card shows exactly seat 3's row with its line under "6라운드 작전 변경", the
+선택 공개", so players read them as revealed. Seed 193's (428 until codec
+v152) Covert Operation
+(round 6: one seat picks a next-round line, the other three two-round
+lines), replayed with the log the table holds: at round 7's reveal a waiting
+seat's card shows exactly that seat's row with its line under "6라운드 작전 변경", the
 other three apart as "아직 비공개: …" with none of their lines anywhere, and
 the Scouts panel words them the same way; at round 8's the three rows and
 nothing waiting; with no log reaching the step, the title says the reveal is
 to come ("비밀 선택 공개 준비"). Korean and English at 1366x768 and
-1600x950, and seed 428's review at round 7's reveal.
+1600x950, and seed 193's review at round 7's reveal.
 
 Nothing is submitted: a UI callback records any index the page would send.
 Screenshots per kind (Korean, 1600x950) go to E2E_SHOTS_DIR as
@@ -160,10 +162,16 @@ secrets = offer_secret_reward(
     0, "covert_operation", 2, source="round:6:scouts:secret:0").state
 
 # All-AI games replayed step by step: their rounds as a table sees them.
-# Seed 83: round 4 resolves Royal Delegation with choices; round 5
+# Seed 265: round 4 resolves Water for Spice Smugglers with choices; round 5
 # reveals the Critical Moment auction (calls) and only after it closes
 # Unlikely Allies, which resolves with no Scouts decision; round 6 reveals
-# only Market Opening, also with none. (Seed 21 until codec v146 -- an Agent
+# only Clear the Market, also with none. (Seed 83 until codec v152 asked a
+# seat that cannot join a Scouts mission, OQ-131, which moved its game from
+# round 4 on; a scan of seeds 1-300 through GameSessionManager finds this
+# shape -- a choice event, then the open-call auction and a choice-less
+# event, then a choice-less event -- in seeds 55, 265 and 299, and 265 keeps
+# round 4 to 6 and Unlikely Allies, so only the two other item ids changed.
+# Its table is its own, as seed 4's is. Seed 21 until codec v146 -- an Agent
 # turn's optional effects lapse at the turn-end press instead of being
 # declined, so the heuristic's games moved -- with Bene Gesserit Treachery
 # and Market Opening, events of the same kind and rounds. A scan through
@@ -208,19 +216,21 @@ def played(state, seat=None, game=None):
     seat = owner(state) if seat is None else seat
     return dict(snapshot(state, seat, game), seat=seat)
 
-def waiting(state):
-    return played(state, (owner(state) + 1) % 4)
+def waiting(state, game=None):
+    return played(state, (owner(state) + 1) % 4, game)
 
-g83 = replayed(83)
-assert this_round(turns(g83, 4)[0]) == ["royal_delegation"]
-assert scouts_choices(g83, 4, "royal_delegation")
-assert this_round(turns(g83, 5)[0]) == ["critical_moment_mid", "unlikely_allies"]
-calls = scouts_choices(g83, 5, "critical_moment_mid")
-assert calls and not scouts_choices(g83, 5, "unlikely_allies")
+g265 = replayed(265)
+table265 = str(manager.create_game(("human",) * 4, game_seed=265,
+                                   arrakeen_scouts=True)["game_id"])
+assert this_round(turns(g265, 4)[0]) == ["water_for_spice_smugglers"]
+assert scouts_choices(g265, 4, "water_for_spice_smugglers")
+assert this_round(turns(g265, 5)[0]) == ["critical_moment_mid", "unlikely_allies"]
+calls = scouts_choices(g265, 5, "critical_moment_mid")
+assert calls and not scouts_choices(g265, 5, "unlikely_allies")
 assert all(this_round(s) == ["critical_moment_mid"] for s in calls)
-assert this_round(turns(g83, 6)[0]) == ["market_opening"]
-assert not scouts_choices(g83, 6, "market_opening")
-r6_start = next(s for s in g83 if s.round_number == 6 and not this_round(s))
+assert this_round(turns(g265, 6)[0]) == ["clear_the_market"]
+assert not scouts_choices(g265, 6, "clear_the_market")
+r6_start = next(s for s in g265 if s.round_number == 6 and not this_round(s))
 # Another seat's call after the viewer's own: an update during the auction.
 call_later = next(s for s in calls if owner(s) != owner(calls[0]))
 
@@ -237,10 +247,10 @@ aid_turn = turns(g4, 2)[0]
 watcher = next(seat for seat in range(4)
                if seat not in {owner(aid[0]), owner(aid_later), owner(aid_turn)})
 
-# Seed 428: round 6 reveals Covert Operation; seat 3 picks a next-round line,
-# the other three two-round lines. Round 7's Scouts step reveals seat 3's
-# pick alone (its Spy placement is being decided) while the other three wait;
-# round 8's reveals those three. The table sees them with the log it would
+# Seed 193: round 6 reveals Covert Operation; one seat picks a next-round
+# line, the other three two-round lines. Round 7's Scouts step reveals that
+# seat's pick alone (its Spy placement is being decided) while the other
+# three wait; round 8's reveals those three. The table sees them with the log it would
 # hold (the AI game's own, cut at that step, redacted for the seat).
 # (Seed 2 until codec v146 moved its game off Covert Operation, then seed 157
 # until codec v149 moved it again: a scan over seeds 1-299 had found 157 first
@@ -251,14 +261,17 @@ watcher = next(seat for seat in range(4)
 # none has a seat deciding at both reveals: in all six the pick revealed in
 # round 7 is line 1 (2 Solari, no decision), and 193 has none at round 8's
 # either. Seed 428 is the first with all of it: its round 7 pick is line 0,
-# the Spy placement.)
+# the Spy placement. Codec v152's mission windows for a seat that cannot
+# join, OQ-131, moved 428 off Covert Operation; the same scan over seeds
+# 1-300 meets the split with a seat deciding at both reveals in seed 193,
+# round 6, the only one in that round.)
 ai2 = manager._get(str(manager.create_game(
-    ("heuristic",) * 4, game_seed=428, arrakeen_scouts=True)["game_id"]))
+    ("heuristic",) * 4, game_seed=193, arrakeen_scouts=True)["game_id"]))
 g2 = [ai2.engine.reset(ai2.config, ai2.game_seed)]
 for recorded in ai2.steps:
     g2.append(ai2.engine.apply(g2[-1], recorded).state)
 assert len(ai2.log) == len(ai2.steps)
-table2 = str(manager.create_game(("human",) * 4, game_seed=428,
+table2 = str(manager.create_game(("human",) * 4, game_seed=193,
                                  arrakeen_scouts=True)["game_id"])
 picks2 = sorted({row for s in g2 for row in s.scouts_secret_picks})
 assert {(r, e) for r, e, _, _ in picks2} == {(6, "covert_operation")}, picks2
@@ -282,7 +295,14 @@ def with_log(index, seat):
     fixture["expect"] = {
         "event_round": 6, "event": "covert_operation",
         "revealed": due(state.round_number),
-        "pending": sorted(seat for _, _, seat, _ in state.scouts_secret_picks),
+        # In the order the seats picked, as the page lists them: the event's
+        # turn order from the First Player ("First Player부터 좌석마다 ...
+        # 고른다", docs/rules/arrakeen-scouts.md, slice 7), public like each
+        # seat's scouts_secret_picked event; never the lines. In seed 428
+        # the First Player, seat 3, was the seat revealed at round 7, so the
+        # three still waiting (0, 1, 2) were in seat order too.
+        "pending": list(dict.fromkeys(
+            seat for _, _, seat, _ in state.scouts_secret_picks)),
         "hidden_picks": sorted({pick for _, _, _, pick in state.scouts_secret_picks}),
     }
     return fixture
@@ -301,16 +321,17 @@ fixtures = {
     "sec_r7": sec_r7,
     "sec_r7_nolog": sec_r7_nolog,
     "sec_r8": with_log(r8, r8_viewer),
-    "r4_choice": played(scouts_choices(g83, 4, "royal_delegation")[0]),
-    "r4_turn": waiting(turns(g83, 4)[0]),
-    "r4_turn_own": played(turns(g83, 4)[0]),
-    "r5_auction": played(calls[0]),
-    "r5_auction_later": played(call_later, owner(calls[0])),
-    "r5_turn": waiting(turns(g83, 5)[0]),
-    "r5_later": waiting(turns(g83, 5)[2]),
-    "r6_start": played(r6_start, 0),
-    "r6_turn": waiting(turns(g83, 6)[0]),
-    "r6_turn_own": played(turns(g83, 6)[0]),
+    "r4_choice": played(
+        scouts_choices(g265, 4, "water_for_spice_smugglers")[0], game=table265),
+    "r4_turn": waiting(turns(g265, 4)[0], table265),
+    "r4_turn_own": played(turns(g265, 4)[0], game=table265),
+    "r5_auction": played(calls[0], game=table265),
+    "r5_auction_later": played(call_later, owner(calls[0]), table265),
+    "r5_turn": waiting(turns(g265, 5)[0], table265),
+    "r5_later": waiting(turns(g265, 5)[2], table265),
+    "r6_start": played(r6_start, 0, table265),
+    "r6_turn": waiting(turns(g265, 6)[0], table265),
+    "r6_turn_own": played(turns(g265, 6)[0], game=table265),
     "aid_choice": played(aid[0], watcher, table4),
     "aid_later": played(aid_later, watcher, table4),
     "aid_turn": played(aid_turn, watcher, table4),
@@ -944,7 +965,7 @@ def pager_fits(stage: dict) -> bool:
 
 
 def rounds(page, fixtures, language: str, viewport: dict) -> None:
-    """Seed 83's rounds 4 to 6 as one table sees them (the replayed all-AI
+    """Seed 265's rounds 4 to 6 as one table sees them (the replayed all-AI
     game): every revealed item comes up, a choice or not, the button stays
     through the turns, two items page, a new round opens it again."""
 
@@ -960,21 +981,21 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
     # Round 4: a choice comes up; the step ends and the card stays.
     stage = render(page, fixtures, "r4_choice", language)
     check.ok(
-        stage["open"] and stage["item"] == "royal_delegation"
+        stage["open"] and stage["item"] == "water_for_spice_smugglers"
         and not stage["pager"],
         f"{where}: round 4's choice is up, one item, no pager",
         (stage["open"], stage["item"], stage["pager"]),
     )
     stage = render(page, fixtures, "r4_turn", language)
     check.ok(
-        stage["open"] and stage["item"] == "royal_delegation",
+        stage["open"] and stage["item"] == "water_for_spice_smugglers",
         f"{where}: the step is over and the card stays during the turns",
         (stage["open"], stage["item"]),
     )
     page.locator("#scouts-stage .scouts-stage-hide").click()
     page.evaluate("render({foreign: true})")
     stage = page.evaluate(STAGE_JS)
-    treachery = name("royal_delegation")
+    treachery = name("water_for_spice_smugglers")
     check.ok(
         folded(stage) and stage["openerText"] == show_label(language, treachery),
         f"{where}: folded through another seat's turn, the panel's button stays",
@@ -1190,10 +1211,10 @@ def rounds(page, fixtures, language: str, viewport: dict) -> None:
         and page.evaluate("toggleScoutsStage()") is False,
         f"{where}: a round with no item yet takes it away",
     )
-    # Market Opening resolves with no choice: it comes up by itself.
+    # Clear the Market resolves with no choice: it comes up by itself.
     stage = render(page, fixtures, "r6_turn", language)
     check.ok(
-        stage["open"] and stage["item"] == "market_opening" and not stage["pager"]
+        stage["open"] and stage["item"] == "clear_the_market" and not stage["pager"]
         and stage["lineHtml"] == stage["panelLineHtml"] and stage["lineHtml"],
         f"{where}: round 6's choice-less event opens it, every line there",
         (stage["open"], stage["item"], stage["pager"]),
@@ -1348,7 +1369,7 @@ SECRETS_JS = """(expect) => {
 
 
 def secret_reveals(page, fixtures, language: str, viewport: dict) -> None:
-    """Seed 428's Covert Operation (round 6) as a waiting seat sees its reveal
+    """Seed 193's Covert Operation (round 6) as a waiting seat sees its reveal
     (user report 2026-10-11: the page listed the picks still waiting, under
     "secret picks revealed", so they read as revealed). Round 7's step
     reveals seat 3's next-round pick only: the page shows exactly that row
@@ -1425,7 +1446,7 @@ def secret_reveals(page, fixtures, language: str, viewport: dict) -> None:
 
 
 def secrets_review(browser, base: str) -> None:
-    """Seed 428's finished all-AI game reviewed at round 7's reveal: the page
+    """Seed 193's finished all-AI game reviewed at round 7's reveal: the page
     reads the review's log up to its cursor."""
 
     context, page, _ = open_context(browser, "scouts-stage-secrets", VIEWPORTS[1])
@@ -1439,7 +1460,7 @@ def secrets_review(browser, base: str) -> None:
                    "promo", "immortality", "bloodlines"):
         page.set_checked(f"#opt-{option}", False)
     page.set_checked("#opt-scouts", True)
-    page.fill("#opt-seed", "428")
+    page.fill("#opt-seed", "193")
     page.click("#create-game")
     page.wait_for_selector("#game-screen:not([hidden])")
     page.wait_for_function("state.review !== null && state.view !== null")

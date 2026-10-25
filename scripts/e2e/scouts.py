@@ -100,8 +100,13 @@ check = Check()
 # Codec v149 (cleanup-2a: a Scouts seat with nothing to take is asked) moves
 # every game; a walk of seeds 1-36 finds seed 27 with the open call and both
 # markets and seed 1 with the secret pick, the seat's own pick and bid and
-# the pieces; both ask the seat to take nothing at least once.
-SEEDS = (27, 1)
+# the pieces; both ask the seat to take nothing at least once. Codec v152
+# (OQ-131: a seat that cannot join a Scouts mission is asked, with the pass
+# alone) moves every game again; 27 and 1 still show everything but the
+# three-card market, and a walk of seeds 2-25 finds it in seeds 10, 12, 15
+# and 23 -- none of them with every other sight, and no two of 2-25 between
+# them show all -- so seed 10 comes third.
+SEEDS = (27, 1, 10)
 # COUNCIL_JS's walk takes a council seat with a subcommittee still to join
 # (round 4; the list then offers two joins and the decline). Seed 21 until
 # OQ-095's explicit Agent-turn end moved its seat to round 7, when every
