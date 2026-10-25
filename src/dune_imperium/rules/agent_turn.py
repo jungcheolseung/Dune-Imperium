@@ -60,6 +60,10 @@ from dune_imperium.rules.board_effects import (
 from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
 )
+from dune_imperium.rules.combat_deployment import (
+    UNGAINED_UNDEPLOYABLE_KEY,
+    ungained_undeployable_troops,
+)
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
 from dune_imperium.rules.effects import (
     BOOST_DRAW_KEY,
@@ -552,7 +556,15 @@ def _placements_for_card(
                     graft=graft,
                 )
             )
-            continue
+            # The Infiltrator's promise is one way onto an occupied space,
+            # not the only one: Infiltrate with a connected Spy stays open to
+            # any pair ("Infiltrate하려면 상대 Agent가 있는 space와 연결된
+            # observation post에서 자신의 Spy를 recall한다" [Main p. 11]
+            # [FAQ p. 4]; the Infiltrator joins only a pair it is part of,
+            # [Immortality p. 10]; general rules audit 2026-10-25). Placed
+            # itself, the Infiltrator needs no recall.
+            if not occupying_opponents or is_tleilaxu_infiltrator(card_instance_id):
+                continue
         # OQ-006 decided convention: Infiltrate's trigger is the
         # occupied-by-another-player predicate and its printed cost is one
         # connected Spy recall, so a single recall ignores the opposing
@@ -660,6 +672,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     undeployable = turn_context.get("undeployable_troops", 0)
     if isinstance(undeployable, bool) or not isinstance(undeployable, int):
         raise RuntimeError("turn frame has an invalid undeployable count")
+    ungained_undeployable = ungained_undeployable_troops(turn_context)
     commanders_before = _commanders_recruited_before_placement(state)
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
@@ -807,6 +820,11 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     ("troops_recruited", _troops_recruited_before_placement(state)),
                     ("turn_owner", action.actor),
                     *((("undeployable_troops", undeployable),) if undeployable else ()),
+                    *(
+                        ((UNGAINED_UNDEPLOYABLE_KEY, ungained_undeployable),)
+                        if ungained_undeployable
+                        else ()
+                    ),
                     # A Commander recruited before the placement keeps its
                     # deploy slot for a Commander (OQ-070).
                     *(

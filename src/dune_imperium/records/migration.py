@@ -64,6 +64,12 @@ from dataclasses import dataclass, field, replace
 from typing import Final
 
 from dune_imperium.agents.agent_turn_steps import apply_whole, steps_after
+from dune_imperium.content.arrakeen_scouts import (
+    AUCTIONS_BY_ID,
+    EVENTS_BY_ID,
+    SALES_BY_ID,
+    SUBCOMMITTEES_BY_ID,
+)
 from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.personal_cards import (
@@ -511,8 +517,14 @@ def migrate_record(
                     state,
                 )
             state = settled
-        if replay.action_codec_version < MISSION_WINDOW_CODEC:
-            state = _answer_windows_never_asked(engine, state, migrated)
+        if replay.action_codec_version < FACTION_WINDOW_CODEC:
+            state = _answer_windows_never_asked(
+                engine,
+                state,
+                migrated,
+                codec=replay.action_codec_version,
+                bridges=bridges,
+            )
         if graft is not None and graft.drops(recorded):
             dropped.append((index, GRAFT_SWITCH_DROPPED))
             continue
@@ -592,6 +604,19 @@ def migrate_record(
             try:
                 after = engine.apply(state, step).state
             except IllegalActionError as error:
+                if replay.action_codec_version < FACTION_WINDOW_CODEC:
+                    # A window an older engine never opened, which a bridge's
+                    # step above opened (a pause before a Scouts reward).
+                    answered = _answer_windows_never_asked(
+                        engine,
+                        state,
+                        migrated,
+                        codec=replay.action_codec_version,
+                        bridges=bridges,
+                    )
+                    if answered is not state:
+                        state = answered
+                        continue
                 # While box 1 was active, a rewrite bridge reads the step as
                 # box 1's (``agent_card_effect_named``).
                 asked = (
@@ -4026,20 +4051,50 @@ def _scouts_pass_without_option(
 MISSION_WINDOW_CODEC: Final = 152
 MISSION_PASS_ALONE: Final = "mission_pass_alone"
 EQUILIBRIUM_ALONE: Final = "equilibrium_alone"
+# Codec v153 opens an Arrakeen Scouts line's Faction step with one track
+# below the top too ("대상이 하나뿐이어도 둘째 단계를 연다", OQ-111 (2); user
+# decision 2026-10-26: Leverage, and with it Relations, Share Intelligence
+# and Ingratiate). An older engine took that Faction itself, and Leverage's
+# Intrigue printed after it in the same step: a draw waits only after one of
+# the line's choices (OQ-106), and the lone Faction was none. Leverage's
+# card is taken ahead of the Faction (``scouts_rewards_first``), so it is
+# still the first card drawn, before one the Faction's track earns (Bene
+# Gesserit 4, Imperial Birthright), and asks a reshuffle under its old name.
+# What the older engine did inside the step after the Faction follows it
+# (``_follow``: before v142, that track card); a reshuffle that card asks
+# carries the Faction's pick in its name (``scouts_faction_reshuffle_renamed``).
+FACTION_WINDOW_CODEC: Final = 153
+FACTION_ALONE: Final = "scouts_faction_alone"
+FACTION_ALONE_DRAW: Final = "scouts_faction_alone_draw"
+FACTION_RESHUFFLE_RENAMED: Final = "scouts_faction_reshuffle_renamed"
 
 
 def _window_never_asked(
-    engine: UprisingRulesEngine, state: GameState
+    engine: UprisingRulesEngine, state: GameState, codec: int
 ) -> tuple[DomainAction, str] | None:
-    """The one answer of a window on top that an engine before codec v152
-    never opened, with its bridge name; None otherwise."""
+    """The answer of a window on top that an engine before ``codec`` never
+    opened, with its bridge name; None otherwise."""
 
     decision = engine.current_decision(state)
     if not isinstance(decision, PlayerDecision):
         return None
     frame = state.decision_stack[-1]
     wholes = engine.whole_actions(state, decision.owner)
-    if len(wholes) != 1:
+    if codec < FACTION_WINDOW_CODEC and frame.kind == FrameKind.SCOUTS_EFFECT:
+        held = DomainAction(action_id=_SCOUTS_HELD_DRAW, actor=decision.owner)
+        factions = [
+            whole for whole in wholes if whole.action_id == "scouts_choose_faction"
+        ]
+        if len(factions) == 1 and all(
+            whole in (factions[0], held) for whole in wholes
+        ):
+            # The draw went with the Faction only where no earlier reward of
+            # the line was a choice (``reward_was_chosen``); after one it
+            # waited, and the record holds its own ``scouts_rewards_first``.
+            if held in wholes and not reward_was_chosen(frame):
+                return held, FACTION_ALONE_DRAW
+            return factions[0], FACTION_ALONE
+    if codec >= MISSION_WINDOW_CODEC or len(wholes) != 1:
         return None
     (only,) = wholes
     if (
@@ -4056,15 +4111,69 @@ def _window_never_asked(
 
 
 def _answer_windows_never_asked(
-    engine: UprisingRulesEngine, state: GameState, migrated: _Taken
+    engine: UprisingRulesEngine,
+    state: GameState,
+    migrated: _Taken,
+    *,
+    codec: int,
+    bridges: tuple[Bridge, ...] = (),
 ) -> GameState:
-    """Answer every window on top that an engine before codec v152 never
-    opened (``_window_never_asked``), each recorded under its bridge."""
+    """Answer every window on top that an engine before ``codec`` never
+    opened (``_window_never_asked``), each recorded under its bridge; after
+    a lone Faction, what the ``follows`` bridges add (``bridges``, the
+    record's), as the older engine did it inside the step."""
 
-    while (found := _window_never_asked(engine, state)) is not None:
+    while (found := _window_never_asked(engine, state, codec)) is not None:
         answer, bridge = found
         state = _apply_answer(engine, state, answer, bridge, migrated)
+        if bridge == FACTION_ALONE:
+            mark = len(migrated)
+            followed = _follow(engine, state, answer, bridges, migrated)
+            if followed is None:
+                migrated.cut(mark)
+            else:
+                state = followed
     return state
+
+
+def _scouts_faction_reshuffle_renamed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """Give a recorded reshuffle the id this engine asks when a lone Scouts
+    Faction (``scouts_faction_alone``) earned the draw: a picked row's gain
+    is named with the pick (``...:<line>:<step>:0:track_bonus:...``), the
+    older engine's own gain without it. The same pile, the recorded order
+    kept."""
+
+    del engine
+    if not (
+        isinstance(step, ChanceOutcome)
+        and isinstance(decision, ChanceDecision)
+        and step.decision_id != decision.decision_id
+        and state.decision_stack[-1].kind
+        in (FrameKind.INTRIGUE_RESHUFFLE, FrameKind.PERSONAL_DRAW_RESHUFFLE)
+        and Counter(step.values) == Counter(decision.options)
+    ):
+        return None
+    old = step.decision_id.split(":")
+    new = decision.decision_id.split(":")
+    if len(new) != len(old) + 1:
+        return None
+    items = SUBCOMMITTEES_BY_ID.keys() | EVENTS_BY_ID.keys()
+    items |= SALES_BY_ID.keys() | AUCTIONS_BY_ID.keys()
+    for at in range(2, len(old)):
+        if (
+            new[at] == "0"
+            and new[:at] == old[:at]
+            and new[at + 1 :] == old[at:]
+            and old[at - 1].isdigit()
+            and any(part in items for part in old[: at - 1])
+        ):
+            return ChanceOutcome(decision.decision_id, step.values)
+    return None
 
 
 # A Navigation card's draw (OQ-099) is named after the Influence gain that
@@ -4344,6 +4453,12 @@ BRIDGES: tuple[Bridge, ...] = (
         "scouts_pass_without_option",
         _scouts_pass_without_option,
         before_codec=152,
+        rewrites=True,
+    ),
+    Bridge(
+        FACTION_RESHUFFLE_RENAMED,
+        _scouts_faction_reshuffle_renamed,
+        before_codec=FACTION_WINDOW_CODEC,
         rewrites=True,
     ),
 )

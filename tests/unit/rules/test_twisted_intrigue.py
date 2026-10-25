@@ -209,6 +209,57 @@ def test_harkonnen_advisor_troop_is_not_deployable_this_turn() -> None:
     assert released.players[0].troops_garrison == 3
 
 
+def test_a_refilled_harkonnen_advisor_troop_stays_undeployable() -> None:
+    # "1 troop. You can't deploy this troop to the Conflict this turn."
+    # [Piter De Vries card]: the troop an empty supply could not give is
+    # still that troop when a later refill gives it (user ruling 2026-10-26,
+    # "카드 문구대로", amending OQ-030's refill; general rules audit
+    # 2026-10-25). A partial refill gives the deployable recruit first.
+    from dune_imperium.rules.combat_deployment import legal_combat_deployments
+    from dune_imperium.rules.shortfall import refill_shortfall
+
+    owner = PlayerState(
+        player_id=0,
+        leader_id="piter_de_vries",
+        hand=(SIGNET,),
+        troops_supply=0,
+        troops_garrison=12,
+    )
+    signet = resolve_leader_signet(_placed(_turn_state(owner), SIGNET, "arrakeen"))
+    board = next(
+        action
+        for action in ENGINE.whole_actions(signet.state, 0)
+        if action.action_id == "resolve_board_effect"
+    )
+    short = apply_whole(ENGINE, signet.state, board).state
+    assert short.players[0].ungained_troops == 2
+    assert {
+        dict(a.arguments)["count"] for a in legal_combat_deployments(short, 0)
+    } == {1, 2}
+
+    def refill(state: GameState) -> GameState:
+        seat = state.players[0]
+        returned = replace(
+            seat, troops_supply=1, troops_garrison=seat.troops_garrison - 1
+        )
+        state = replace(state, players=(returned, *state.players[1:]))
+        return refill_shortfall(state, 0).state
+
+    first = refill(short)
+    context = dict(first.decision_stack[-1].context)
+    assert first.players[0].ungained_troops == 1
+    assert context["troops_recruited"] == 1
+    assert context.get("undeployable_troops", 0) == 0
+    second = refill(first)
+    context = dict(second.decision_stack[-1].context)
+    assert second.players[0].ungained_troops == 0
+    assert context["troops_recruited"] == 1
+    assert context["undeployable_troops"] == 1
+    assert {
+        dict(a.arguments)["count"] for a in legal_combat_deployments(second, 0)
+    } == {1, 2, 3}
+
+
 # --- Twisted Intrigue --------------------------------------------------------
 
 

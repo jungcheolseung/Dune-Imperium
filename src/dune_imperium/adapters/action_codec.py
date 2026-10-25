@@ -612,7 +612,21 @@ from dune_imperium.rules.tech import optional_trash_tech_ids
 # (``scouts_pass_without_option``) and answer the new one-row windows
 # before the next recorded step (``mission_pass_alone``,
 # ``equilibrium_alone``); docs/human-records.md.
-ACTION_CODEC_VERSION = 152
+# v153 (general rules audit 2026-10-25; user decisions 2026-10-26): an
+# Arrakeen Scouts line's Faction step opens with one track below the top
+# too (OQ-111 (2); Leverage, Relations, Share Intelligence, Ingratiate), and
+# Leverage's Intrigue then waits as the line's ``scouts_rewards_first``
+# (OQ-106). No template changes. The audit's other fixes change what is
+# offered or gained too: Infiltrate stays open to other graft pairs with
+# Tleilaxu Infiltrator in hand, a refilled Harkonnen Advisor troop stays
+# undeployable (OQ-038), and a Guild Spy played in an Agent turn no longer
+# reacts to The Spice Must Flow.
+# Older records answer the one-row Faction window before the next recorded
+# step, Leverage's draw taken ahead of it (``scouts_faction_alone_draw``,
+# ``scouts_faction_alone``), and take a reshuffle the Faction's track card
+# asks under its old name (``scouts_faction_reshuffle_renamed``);
+# docs/human-records.md.
+ACTION_CODEC_VERSION = 153
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].

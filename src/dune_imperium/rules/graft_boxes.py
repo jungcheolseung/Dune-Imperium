@@ -123,6 +123,8 @@ TURN_KEYS: Final = frozenset(
         "turn_agent_recalled",
         "turn_owner",
         "undeployable_troops",
+        # A Harkonnen Advisor troop still in the shortfall (OQ-038).
+        "undeployable_troops_ungained",
         "units_deploy_blocked",
     }
 )

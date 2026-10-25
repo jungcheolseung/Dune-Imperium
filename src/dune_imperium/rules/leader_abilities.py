@@ -90,7 +90,10 @@ from dune_imperium.rules.box_events import (
 from dune_imperium.rules.card_bonds import counted_in_play, trashable_cards
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
-from dune_imperium.rules.combat_deployment import reconcile_deployment_after_retreat
+from dune_imperium.rules.combat_deployment import (
+    UNGAINED_UNDEPLOYABLE_KEY,
+    reconcile_deployment_after_retreat,
+)
 from dune_imperium.rules.effects import (
     OPTIONAL_BOARD_ICONS,
     OptionalBlockKind,
@@ -193,6 +196,7 @@ SERVO_SIGNET_CARD_ID: Final = "tech:servo_receivers"
 _TURN_COUNTERS: Final = (
     "troops_recruited",
     "undeployable_troops",
+    UNGAINED_UNDEPLOYABLE_KEY,
 )
 
 
@@ -311,9 +315,9 @@ def _close_servo_signet(
         host["reveal_troops_recruited"] = _context_count(
             host, "reveal_troops_recruited"
         ) + _context_count(context, "troops_recruited")
-        keys: tuple[str, ...] = ("undeployable_troops",)
+        keys: tuple[str, ...] = ("undeployable_troops", UNGAINED_UNDEPLOYABLE_KEY)
     elif frame.kind == FrameKind.TURN:
-        keys = ("troops_recruited", "undeployable_troops")
+        keys = _TURN_COUNTERS
     else:
         # A Spy recalled for the ability counts through the seat's
         # spies_recalled_turn.
@@ -644,6 +648,14 @@ def _resolve_automatic_signet(
                             "Agent-turn effect frame has invalid undeployable count"
                         )
                     context["undeployable_troops"] = previous_undeployable + recruited
+                    if count - recruited:
+                        # The troop the supply could not give stays this
+                        # troop when a refill gives it (OQ-038, 2026-10-26).
+                        context[UNGAINED_UNDEPLOYABLE_KEY] = (
+                            _context_count(context, UNGAINED_UNDEPLOYABLE_KEY)
+                            + count
+                            - recruited
+                        )
                     recruit_shortfall = recruit_shortfall_events(
                         source, player, count, recruited
                     )

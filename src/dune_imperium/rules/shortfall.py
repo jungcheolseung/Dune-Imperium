@@ -9,10 +9,12 @@ specimen returned or paid, Other Memories -- the engine takes the shortfall
 from them at once: troops first, then specimens (OQ-030, OQ-049; user ruling
 2026-10-04, "앱 구현 방식으로 가자", following the Steam app). Refilled troops
 are this turn's recruits, so on the turn owner's seat they raise the Combat
-deployment allowance like any other recruit. Every seat's shortfall clears
-when a turn opens (``frames.reset_turn_counters``) and whenever no player
-turn is open (``drop_stale_shortfalls``): outside a turn nothing is
-refilled, so a Combat reward's shortfall is simply dropped.
+deployment allowance like any other recruit -- except a Harkonnen Advisor
+troop, which stays undeployable however it arrives (OQ-038, 2026-10-26).
+Every seat's shortfall clears when a turn opens
+(``frames.reset_turn_counters``) and whenever no player turn is open
+(``drop_stale_shortfalls``): outside a turn nothing is refilled, so a
+Combat reward's shortfall is simply dropped.
 """
 
 from copy import replace
@@ -20,6 +22,7 @@ from copy import replace
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.combat_deployment import refill_undeployable_troops
 from dune_imperium.rules.frames import (
     FrameKind,
     replace_player,
@@ -69,7 +72,15 @@ def refill_shortfall(state: GameState, player: int) -> RuleResult:
     )
     next_state = replace(state, players=replace_player(state.players, next_owner))
     if troops and turn_owner_of(state) == player:
-        next_state = update_turn_recruits(next_state, troops_recruited=troops)
+        # A Harkonnen Advisor troop stays undeployable however it arrives
+        # (OQ-038, 2026-10-26); the rest are this turn's recruits.
+        next_state, undeployable = refill_undeployable_troops(
+            next_state, player, troops, ungained=owner.ungained_troops
+        )
+        if troops - undeployable:
+            next_state = update_turn_recruits(
+                next_state, troops_recruited=troops - undeployable
+            )
     # Ids need not be unique: two refills of one seat share it (cleanup-2c-6;
     # it used to count the event log), and a zero is left out.
     event = GameEvent(

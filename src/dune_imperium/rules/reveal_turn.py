@@ -99,11 +99,13 @@ from dune_imperium.rules.card_bonds import (
 )
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
+    UNGAINED_UNDEPLOYABLE_KEY,
     deployment_rooms,
     grant_combat_icon,
     reconcile_deployment_after_retreat,
     undeployable_troops,
     undeployable_troops_this_turn,
+    ungained_undeployable_troops,
 )
 from dune_imperium.rules.conditions import owner_condition_holds
 from dune_imperium.rules.effect_steps import named_whole, reveal_gain_printer
@@ -2879,7 +2881,19 @@ def fire_guild_spy_on_spice_must_flow(
     events: list[GameEvent] = []
     if not bought:
         return RuleResult(state=working)
-    for card_id in working.players[player].in_play:
+    # Only the cards revealed in this Reveal, still in play: "방금 reveal한
+    # card들의 Reveal box 효과만 얻는다. 앞선 Agent turn에 낸 card의 Reveal box
+    # 효과는 얻지 않는다." [Main p. 12] (docs/rules/player-turns.md). A Guild
+    # Spy played in an Agent turn is in play too but was not revealed
+    # (general rules audit 2026-10-25); a late-revealed one is on the list.
+    revealed = tuple(
+        context_str(context, f"revealed_card_{index:03d}", owner="Reveal frame")
+        for index in range(
+            context_int(context, "revealed_card_count", owner="Reveal frame")
+        )
+    )
+    in_play = working.players[player].in_play
+    for card_id in (card for card in revealed if card in in_play):
         if card_id in fired or (
             personal_card_for_instance(card_id).reveal_acquisition_effect
             is not _GUILD_SPY_EFFECT
@@ -5017,6 +5031,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     # Reveal (OQ-038, OQ-062); ``legal_reveal_deployments`` already reads
     # this key off the Reveal frame's context.
     carried_undeployable = undeployable_troops(turn_context)
+    carried_ungained_undeployable = ungained_undeployable_troops(turn_context)
     resource_gains = (
         *(
             resource_gain_entry(
@@ -5132,6 +5147,8 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     context.extend(turn_rows.carried(turn_context))
     if carried_undeployable:
         context.append(("undeployable_troops", carried_undeployable))
+    if carried_ungained_undeployable:
+        context.append((UNGAINED_UNDEPLOYABLE_KEY, carried_ungained_undeployable))
     if carried_commanders:
         context.append((REVEAL_COMMANDERS_RECRUITED_KEY, carried_commanders))
     context.extend(

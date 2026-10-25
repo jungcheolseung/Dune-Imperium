@@ -576,8 +576,8 @@ group = "project"
 game = "uprising"
 title_ko = "하코넨 조언자의 배치 못 하는 병력"
 title = "Harkonnen Advisor's troop that cannot deploy"
-ruling_ko = "하코넨 조언자가 준 병력 하나는 이번 차례에 교전 칸에 배치할 수 없다. 병력은 서로 구별되지 않으므로, 같은 차례에 주둔지에서 병력을 잃으면 그 병력을 잃은 것으로 쳐서 배치할 수 있는 수가 돌아온다."
-ruling = "The troop Harkonnen Advisor gives cannot deploy this turn. Troops are not told apart, so losing one from the garrison in the same turn counts as losing that one and the deployable count recovers."
+ruling_ko = "하코넨 조언자가 준 병력 하나는 이번 차례에 교전 칸에 배치할 수 없다. 개인 공급처가 모자라 그 병력이 같은 차례에 늦게 채워져도 배치할 수 없다(카드 문구대로). 병력은 서로 구별되지 않으므로, 같은 차례에 주둔지에서 병력을 잃으면 그 병력을 잃은 것으로 쳐서 배치할 수 있는 수가 돌아온다."
+ruling = "The troop Harkonnen Advisor gives cannot deploy this turn, even when a short supply fills it later in the turn (the card's words). Troops are not told apart, so losing one from the garrison in the same turn counts as losing that one and the deployable count recovers."
 
 [[ruling]]
 oq = "OQ-039"

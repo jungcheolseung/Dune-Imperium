@@ -487,7 +487,11 @@ def _is_choice(
                 else (*owner.hand, *owner.discard_pile, *counted_in_play(owner))
             )
         case GainInfluence() if step.requires_choice:
-            return len(_gainable_factions(owner, step)) > 1
+            # "대상이 하나뿐이어도 둘째 단계를 연다" (OQ-111 (2)): a lone
+            # Faction below the top is still the seat's pick (user decision
+            # 2026-10-26, Leverage; general rules audit 2026-10-25). With
+            # every track at the top there is no target and nothing to ask.
+            return bool(_gainable_factions(owner, step))
         case GainLowestInfluence():
             return len(_lowest_factions(owner)) > 1
         case RecallOtherAgent():

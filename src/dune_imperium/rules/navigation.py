@@ -122,11 +122,14 @@ def apply_navigation_setup_action(
     )
     owner = state.players[action.actor]
     placed = replace(owner, navigation_slots=(*owner.navigation_slots, card_id))
+    # Public: the card goes face down, so the payload names only the slot,
+    # whose count every seat already sees (``navigation_remaining``);
+    # "장수·수량만 담는 이벤트는 전원 공개다" (OQ-010 ruling 3; general rules
+    # audit 2026-10-25).
     event = GameEvent(
         event_id=f"{frame.frame_id}:slot:{len(placed.navigation_slots)}",
         kind="navigation_card_placed",
         payload=(("player", action.actor), ("slot", len(placed.navigation_slots))),
-        visible_to=(action.actor,),
     )
     if len(placed.navigation_slots) < NAVIGATION_SLOTS:
         context["hand"] = ",".join(hand)

@@ -134,7 +134,18 @@ def test_strange_form_and_the_navigation_setup_choice() -> None:
     working = state
     for _ in range(4):
         options = legal_navigation_setup_actions(working, 0)
-        working = apply_navigation_setup_action(working, options[0]).state
+        placed = apply_navigation_setup_action(working, options[0])
+        # Every seat sees a card go face down into the next slot; the event
+        # names only the slot (OQ-010 ruling 3, "장수·수량만 담는 이벤트는
+        # 전원 공개다").
+        event = next(
+            event
+            for event in placed.events
+            if event.kind == "navigation_card_placed"
+        )
+        assert event.visible_to is None
+        assert set(dict(event.payload)) == {"player", "slot"}
+        working = placed.state
     seat = working.players[0]
     assert len(seat.navigation_slots) == 4
     assert len(seat.navigation_box) == 6

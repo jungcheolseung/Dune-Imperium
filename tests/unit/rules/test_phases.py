@@ -590,6 +590,10 @@ def test_round_start_requests_and_applies_recorded_discard_reshuffle() -> None:
     )
     assert result.state.players[0].discard_pile == ()
     assert result.events[0].kind == "personal_discard_shuffled"
+    # Public like the in-turn reshuffle: only the count, never the order
+    # (OQ-010 ruling 3, "장수·수량만 담는 이벤트는 전원 공개다").
+    assert result.events[0].visible_to is None
+    assert dict(result.events[0].payload) == {"count": 4, "player": 0}
 
 
 def test_round_start_draws_all_available_cards_when_total_is_below_five() -> None:
