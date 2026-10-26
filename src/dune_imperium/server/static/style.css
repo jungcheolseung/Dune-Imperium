@@ -1362,6 +1362,22 @@ kbd {
   border-radius: 5px;
   padding: 0 0.35em;
 }
+/* Why the log names a card (panels.js turnCard, render.js logTargets):
+   a small mark across the top of the picture, apart from the corner count
+   other cards carry. */
+.vcard-badge.log-reason {
+  top: 2px;
+  bottom: auto;
+  left: 2px;
+  right: 2px;
+  font-size: 0.62rem;
+  line-height: 1.3;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.turn-cards-more { align-self: center; font-size: 0.8rem; }
 /* A Tech stack's size, drawn like a face-down deck's count (piles.css
    .deck-pile-count): a stack of different tiles, not copies of one. */
 .vcard-badge.stack-count {
@@ -2250,6 +2266,8 @@ body.hand-dragging, body.hand-dragging * {
 .turn-line.undone, .turn-card.passes .pass-seat.undone { opacity: 0.55; text-decoration: line-through; }
 .turn-cards { display: flex; flex-direction: column; gap: 0.25rem; flex: none; }
 .turn-cards .vcard.small { width: 54px; }
+.turn-cards.many { display: grid; grid-template-columns: repeat(2, 54px); }
+.turn-cards.many .turn-cards-more { grid-column: 1 / -1; }
 .logevent { margin: 0.05rem 0 0.05rem 1.4rem; font-size: 0.72rem; opacity: 0.65; }
 /* The step a Victory Point ledger row asked for (panels.js findLogEntry). */
 .log-target {

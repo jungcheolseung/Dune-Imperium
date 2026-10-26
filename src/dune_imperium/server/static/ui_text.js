@@ -1260,6 +1260,15 @@ const UI_TEXT = {
     "ko": "{supply}의 {commander}",
     "en": "{commander} in {supply}"
   },
+  "panels.log_reason_acquired": { "ko": "획득", "en": "Acquired" },
+  "panels.log_reason_trashed": { "ko": "폐기", "en": "Trashed" },
+  "panels.log_reason_discarded": { "ko": "버리기", "en": "Discarded" },
+  "panels.log_reason_flipped": { "ko": "뒤집기", "en": "Flipped" },
+  "panels.log_reason_grafted": { "ko": "접합", "en": "Grafted" },
+  "panels.log_reason_completed": { "ko": "완료", "en": "Completed" },
+  "panels.log_reason_revealed": { "ko": "공개", "en": "Revealed" },
+  "panels.log_reason_used": { "ko": "사용", "en": "Used" },
+  "panels.log_cards_more": { "ko": "+{{count}}장", "en": "+{{count}} more" },
   "panels.memories": {
     "ko": "기억",
     "en": "Memories"

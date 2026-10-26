@@ -1988,6 +1988,20 @@ function seatLeaderNode(seat) {
   return entry && entry.name === name ? cardNameNode(entry) : document.createTextNode(name);
 }
 
+/* How many card pictures a turn card in the log shows before "+N". */
+const LOG_CARDS_SHOWN = 8;
+/* The mark for each reason logTargets gives a card. */
+const LOG_REASON_TEXT = {
+  acquired: "panels.log_reason_acquired",
+  trashed: "panels.log_reason_trashed",
+  discarded: "panels.log_reason_discarded",
+  flipped: "panels.log_reason_flipped",
+  grafted: "panels.log_reason_grafted",
+  completed: "panels.log_reason_completed",
+  revealed: "panels.log_reason_revealed",
+  used: "panels.log_reason_used",
+};
+
 function turnCard(group, glowFrom) {
   const card = document.createElement("div");
   card.className = "turn-card";
@@ -2034,15 +2048,36 @@ function turnCard(group, glowFrom) {
   if (targets.cards.length) {
     const row = document.createElement("div");
     row.className = "turn-cards";
-    for (const id of targets.cards.slice(0, 4)) {
+    /* Every card the turn named, up to LOG_CARDS_SHOWN, each marked with
+       why it is there (logTargets reasons). Four used to be the limit, and
+       a busy turn lost its later cards: a Tech tile flipped after an Agent
+       card, a graft and a Skill (play feedback 2026-10-26). */
+    for (const id of targets.cards.slice(0, LOG_CARDS_SHOWN)) {
+      const reasons = targets.reasons.get(baseId(id)) || [];
+      const text = reasons
+        .slice(0, 2)
+        .map((reason) => t(LOG_REASON_TEXT[reason]))
+        .join("·");
       row.appendChild(
         visualCard(id, {
           className: "small",
+          badge: text || undefined,
+          badgeClass: "log-reason",
           onClick: (entry, node) => {
             if (entry) pinPopover(entry, node);
           },
         })
       );
+    }
+    /* Past four pictures they stand two abreast, so the card does not
+       grow twice as tall. */
+    if (Math.min(targets.cards.length, LOG_CARDS_SHOWN) > 4) row.classList.add("many");
+    const more = targets.cards.length - LOG_CARDS_SHOWN;
+    if (more > 0) {
+      const extra = document.createElement("span");
+      extra.className = "turn-cards-more muted";
+      extra.textContent = t("panels.log_cards_more", { count: more });
+      row.appendChild(extra);
     }
     body.appendChild(row);
   }
