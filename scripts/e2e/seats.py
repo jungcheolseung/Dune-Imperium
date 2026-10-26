@@ -140,8 +140,11 @@ TILES_JS = """() => state.view.players.map((player) => {
         wantTech: player.tech_ids || [],
         flipped: player.tech_flipped || [],
         words: card.querySelectorAll('.tile-line strong, .tile-line .tag').length,
-        contracts: [...card.querySelectorAll('.tag[data-contract]')]
-            .map((tag) => tag.dataset.contract),
+        contracts: [...card.querySelectorAll('.contract-thumb[data-contract]')]
+            .map((thumb) => ({
+                id: thumb.dataset.contract,
+                picture: Boolean(thumb.querySelector('img.tile-thumb')),
+            })),
         active: player.active_contract_ids,
         completed: player.completed_contract_ids.length,
     };
@@ -679,9 +682,15 @@ def run(base: str, browser) -> None:
         [t for row in tiles for t in row["tech"]],
     )
     check.ok(
-        all(row["contracts"] == row["active"] for row in tiles)
+        all(
+            [c["id"] for c in row["contracts"]] == row["active"]
+            and all(c["picture"] for c in row["contracts"])
+            for row in tiles
+        )
+        and any(row["contracts"] for row in tiles)
         and any(row["completed"] for row in tiles),
-        "only the open Contracts stay on the panel, though some seat completed one",
+        "only the open Contracts stay on the panel, as pictures, though some seat"
+        " completed one",
         tiles,
     )
     split = page.evaluate(TRASH_SPLIT_JS)
@@ -721,7 +730,7 @@ def run(base: str, browser) -> None:
         battle_group = shown["groups"][0]
         check.ok(
             battle_group["faceDown"] == want["faceDown"]
-            and all(mark == "짝지어 뒤집힘" for mark in battle_group["marks"]),
+            and all(mark == "뒤집힘" for mark in battle_group["marks"]),
             f"seat {seat + 1}'s matched pairs are marked",
             (battle_group, want["faceDown"]),
         )

@@ -1268,7 +1268,7 @@ const UI_TEXT = {
     "en": "Trashed Tech tiles ({{count}})"
   },
   "panels.details_none": { "ko": "없음", "en": "None" },
-  "panels.battle_card_matched": { "ko": "짝지어 뒤집힘", "en": "Matched, face down" },
+  "panels.battle_card_matched": { "ko": "뒤집힘", "en": "Face down" },
   "panels.memories_title": {
     "ko": "기억: 스파이스의 고통으로 게임판의 베네 게세리트 영역에 옮긴 병력",
     "en": "Memories: troops Spice Agony moved to the Bene Gesserit board area"

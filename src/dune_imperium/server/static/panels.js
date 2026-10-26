@@ -75,11 +75,12 @@ function heldBattleIcons(player) {
 
 const BATTLE_ICON_ORDER = ["desert_mouse", "crysknife", "ornithopter", "wild"];
 
-/* A seat's Skill or Tech tile as a small picture: hover enlarges it and a
-   click pins it, as a chip does. A flipped Tech tile is dimmed and says so
-   in its title. Without the picture the chip stands in. */
+/* A seat's Skill or Tech tile or open Contract as a small picture, one
+   height for all (about their real heights, 44-46 mm): hover enlarges it
+   and a click pins it, as a chip does. A flipped Tech tile is dimmed and
+   says so in its title. Without the picture the chip stands in. */
 function tileThumb(id, kind, flipped = false) {
-  const entry = lookup(id, kind);
+  const entry = entryOf(id, kind);
   const suffix = flipped ? t("panels.flip_suffix") : "";
   if (!entry || !entry.image) {
     const tag = chip(id, kind);
@@ -500,22 +501,27 @@ function renderSeats() {
     battleLine.append(icons, details);
     /* First of the lines, beside the counts it reads like. */
     detail.prepend(battleLine);
-    /* The open Contracts; the completed ones are in the seat's details
-       (play feedback 2026-10-26), still re-checkable (OQ-010). */
+    /* The open Contracts as small pictures too ("아직 완료 전인 계약도
+       텍스트 말고 그냥 이미지로", play feedback 2026-10-26); the completed
+       ones are in the seat's details, still re-checkable (OQ-010). */
     if (player.active_contract_ids.length) {
       const line = document.createElement("div");
-      line.className = "cardline";
-      const strong = document.createElement("strong");
-      strong.textContent = `${t("panels.contracts_label")} `;
-      line.appendChild(strong);
+      line.className = "cardline tile-line";
+      const group = document.createElement("span");
+      group.className = "tile-group";
+      group.setAttribute("role", "group");
+      group.setAttribute("aria-label", t("panels.contracts_label"));
       for (const id of player.active_contract_ids) {
-        const tag = chip(id);
-        tag.dataset.contract = id;
+        const holder = document.createElement("span");
+        holder.className = "contract-thumb";
+        holder.dataset.contract = id;
+        holder.appendChild(tileThumb(id, "contracts"));
         /* CHOAM Escort's goods wait on the Contract until it is completed. */
         const tray = scoutsTray(`contract:${id}`, view);
-        if (tray) tag.appendChild(tray);
-        line.appendChild(tag);
+        if (tray) holder.appendChild(tray);
+        group.appendChild(holder);
       }
+      line.appendChild(group);
       detail.appendChild(line);
     }
     if (player.in_play.length) {
@@ -846,7 +852,7 @@ function seatDetailsContent(key, view) {
       "panels.details_battle",
       [...player.objective_ids, ...player.won_conflict_ids].map((id) =>
         detailsCard(id, {
-          className: faceDown.has(id) ? "small face-down" : "small",
+          className: faceDown.has(id) ? "real-card face-down" : "real-card",
           entry: lookup(id, id.startsWith("objective") ? "objectives" : "conflicts"),
           badge: faceDown.has(id) ? t("panels.battle_card_matched") : undefined,
         })
@@ -857,19 +863,19 @@ function seatDetailsContent(key, view) {
     groups.push([
       "panels.details_contracts",
       player.completed_contract_ids.map((id) =>
-        detailsCard(id, { className: "contract" })
+        detailsCard(id, { className: "real-contract" })
       ),
     ]);
   }
   groups.push([
     "panels.details_trashed_cards",
-    (player.trashed || []).map((id) => detailsCard(id, { className: "small" })),
+    (player.trashed || []).map((id) => detailsCard(id, { className: "real-card" })),
   ]);
   if (summary.bloodlines) {
     groups.push([
       "panels.details_trashed_skills",
       (player.trashed_skill_ids || []).map((id) =>
-        detailsCard(id, { className: "skill", entry: lookup(skillIdOf(id), "skills") })
+        detailsCard(id, { className: "real-skill", entry: lookup(skillIdOf(id), "skills") })
       ),
     ]);
   }
@@ -877,7 +883,7 @@ function seatDetailsContent(key, view) {
     groups.push([
       "panels.details_trashed_tech",
       (player.trashed_tech_ids || []).map((id) =>
-        detailsCard(id, { className: "tile", entry: lookup(id, "tech") })
+        detailsCard(id, { className: "real-tech", entry: lookup(id, "tech") })
       ),
     ]);
   }
