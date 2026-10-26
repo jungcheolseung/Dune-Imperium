@@ -1765,7 +1765,6 @@ ruling = "A Conflict card nobody took after a tie for first stays on the board u
 oq = "OQ-138"
 group = "project"
 game = "uprising"
-engine_pending = true
 title_ko = "비밀 작전에서 손이 빈 상대에게도 창을"
 title = "Covert Operation asks an opponent with an empty hand"
 ruling_ko = "비밀 작전의 \"각 상대가 카드 1장을 버린다\"에서 손에 카드가 없는 상대에게도 창을 열어, 버리기를 \"버릴 카드 없음\"과 함께 회색으로 보이고 확인만 누르게 한다. 자동으로 넘어가는 곳도 결정 창을 열어 직접 확인하게 한다는 원칙을 이 카드에도 적용했다."
