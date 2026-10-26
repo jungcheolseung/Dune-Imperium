@@ -179,9 +179,14 @@ const ACTION_LABELS = {
   hold_contract_icons: "{contract} 아이콘 보류 — 지금 가져갈 {contract} 없음",
   resolve_contract_icons_without_contract: "{contract} 아이콘 소멸 — 지금 가져갈 {contract} 없음",
   take_high_council_from_reveal: "원로회 자리 차지",
-  take_sietch_tabr_supplies: "시치 타브르 보급 ({maker_hooks})",
-  take_sietch_tabr_water: "시치 타브르 {water}",
-  take_sietch_tabr_water_and_destroy_wall: "{water} + {shield_wall} 파괴",
+  /* Sietch Tabr's two printed choices, each with all it gives: (a) Maker
+     Hooks if you lack them, a troop and a water; (b) a water, removing the
+     Shield Wall if you like [Board Guide p. 2] (play feedback 2026-10-26:
+     the first row showed only the hooks, so its water read as the second
+     row's). "제거" is the Korean space text's word (display/spaces.py). */
+  take_sietch_tabr_supplies: "{maker_hooks}(없다면) + 1 {troop} + 1 {water}",
+  take_sietch_tabr_water: "1 {water}만",
+  take_sietch_tabr_water_and_destroy_wall: "1 {water} + {shield_wall} 제거",
   take_tuek_sietch_spice: "튜엑의 시치: {spice} 1",
   take_tuek_sietch_card: "튜엑의 시치: {draw} 1",
   place_leader_bonus_spice: "튜엑의 시치에 보너스 {spice} 놓기 ({signet_ring})",
