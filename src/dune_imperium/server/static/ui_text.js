@@ -844,10 +844,6 @@ const UI_TEXT = {
     "ko": "의자개: {reveal_turn} 시작 때 {hand}로 {{cards}}",
     "en": "Chairdog: returns to {hand} at the start of {reveal_turn} — {{cards}}"
   },
-  "panels.completed_suffix": {
-    "ko": " (완료)",
-    "en": " (completed)"
-  },
   "panels.contracts_label": {
     "ko": "{contract}",
     "en": "Contracts"
@@ -1248,16 +1244,30 @@ const UI_TEXT = {
   "panels.log_reason_completed": { "ko": "완료", "en": "Completed" },
   "panels.log_reason_used": { "ko": "사용", "en": "Used" },
   "panels.log_cards_more": { "ko": "+{{count}}장", "en": "+{{count}} more" },
-  "panels.battle_icons_none": { "ko": "없음", "en": "none" },
-  "panels.battle_cards_open": { "ko": "카드 {{count}}장 ▸", "en": "{{count}} cards ▸" },
-  "panels.battle_cards_title": {
-    "ko": "목적 카드와 이긴 교전 카드 {{count}}장 보기",
-    "en": "Show the {{count}} Objective and won Conflict cards"
+  "panels.seat_details_open": { "ko": "자세히 ▸", "en": "Details ▸" },
+  "panels.seat_details_title": {
+    "ko": "자세히 보기: 이긴 교전 카드, 완료한 {contract}, 폐기한 카드와 타일",
+    "en": "Details: won Conflict cards, completed Contracts, trashed cards and tiles"
   },
-  "panels.battle_cards_viewer": {
-    "ko": "{{name}}의 목적 카드와 이긴 교전 카드 ({{count}})",
-    "en": "{{name}}'s Objective and won Conflict cards ({{count}})"
+  "panels.seat_details_viewer": { "ko": "{{name}} 자세히", "en": "{{name}}: details" },
+  "panels.details_battle": {
+    "ko": "목적 카드와 이긴 교전 카드 ({{count}})",
+    "en": "Objective and won Conflict cards ({{count}})"
   },
+  "panels.details_contracts": {
+    "ko": "완료한 {contract} ({{count}})",
+    "en": "Completed Contracts ({{count}})"
+  },
+  "panels.details_trashed_cards": { "ko": "폐기한 카드 ({{count}})", "en": "Trashed cards ({{count}})" },
+  "panels.details_trashed_skills": {
+    "ko": "폐기한 {commander_skill} ({{count}})",
+    "en": "Trashed Sardaukar Commander Skills ({{count}})"
+  },
+  "panels.details_trashed_tech": {
+    "ko": "폐기한 {tech_tile} ({{count}})",
+    "en": "Trashed Tech tiles ({{count}})"
+  },
+  "panels.details_none": { "ko": "없음", "en": "None" },
   "panels.battle_card_matched": { "ko": "짝지어 뒤집힘", "en": "Matched, face down" },
   "panels.memories_title": {
     "ko": "기억: 스파이스의 고통으로 게임판의 베네 게세리트 영역에 옮긴 병력",

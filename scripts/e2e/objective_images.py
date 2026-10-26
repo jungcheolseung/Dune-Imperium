@@ -28,9 +28,6 @@ def main() -> None:
         check.ok(len(set(dealt)) == 4, "setup deals the four distinct Objective faces")
         ids = page.evaluate("Object.keys(state.catalog.objectives)")
         check.ok(len(ids) == 5, "all five Objective faces have catalog entries")
-        page.evaluate("""() => {
-          for (const player of state.view.players) setSeatExpanded(player.player, true);
-        }""")
         for lang, width in (("ko", 1600), ("en", 1366)):
             page.set_viewport_size({"width": width, "height": 900})
             page.evaluate("setLanguage", lang)
@@ -41,18 +38,14 @@ def main() -> None:
                     f"/card-images/{language}/uprising/objective/" in entry["image"],
                     f"{lang}: {card_id} uses its language or fallback",
                 )
-                # Use the actual battle tag when dealt, otherwise the same tag
-                # renderer for the 1-3P face outside this four-player setup.
+                # The seat panel draws only the battle icons since 2026-10-26
+                # (the cards are in its details), so every face gets the tag
+                # renderer's chip, the 1-3P face outside this setup included.
                 page.evaluate(
                     """(id) => {
                   closePopover();
-                  const entry = state.catalog.objectives[id];
-                  let tag = [...document.querySelectorAll('#seats .tag')]
-                    .find((n) => n.textContent === entry.name);
-                  if (!tag) {
-                    tag = chip(id);
-                    el('private-zone').appendChild(tag);
-                  }
+                  const tag = chip(id);
+                  el('private-zone').appendChild(tag);
                   tag.dataset.objective = id;
                 }""",
                     card_id,
@@ -82,7 +75,7 @@ def main() -> None:
                 )
             page.evaluate("""() => pinPopover(
               state.catalog.objectives.objective_desert_mouse,
-              document.querySelector('#seats .tag'))""")
+              document.querySelector('.tag[data-objective]'))""")
             page.locator("#card-popover").screenshot(
                 path=f"{SHOTS}/objective_{lang}.png"
             )
@@ -90,7 +83,7 @@ def main() -> None:
           closePopover();
           const entry = {...state.catalog.objectives.objective_desert_mouse,
             image: null};
-          pinPopover(entry, document.querySelector('#seats .tag'));
+          pinPopover(entry, document.querySelector('.tag[data-objective]'));
         }""")
         check.ok(
             page.locator("#card-popover img").count() == 0,

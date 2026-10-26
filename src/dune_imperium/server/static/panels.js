@@ -75,6 +75,35 @@ function heldBattleIcons(player) {
 
 const BATTLE_ICON_ORDER = ["desert_mouse", "crysknife", "ornithopter", "wild"];
 
+/* A seat's Skill or Tech tile as a small picture: hover enlarges it and a
+   click pins it, as a chip does. A flipped Tech tile is dimmed and says so
+   in its title. Without the picture the chip stands in. */
+function tileThumb(id, kind, flipped = false) {
+  const entry = lookup(id, kind);
+  const suffix = flipped ? t("panels.flip_suffix") : "";
+  if (!entry || !entry.image) {
+    const tag = chip(id, kind);
+    if (flipped) {
+      tag.textContent += suffix;
+      tag.classList.add("muted");
+    }
+    return tag;
+  }
+  const image = document.createElement("img");
+  image.className = `tile-thumb ${kind}` + (flipped ? " flipped" : "");
+  image.src = entry.image;
+  image.alt = entry.name + suffix;
+  image.title = entry.name + suffix;
+  image.draggable = false;
+  image.dataset.tile = id;
+  image.addEventListener("click", (event) => {
+    event.stopPropagation();
+    pinPopover(entry, image);
+  });
+  hoverPopover(image, () => entry);
+  return image;
+}
+
 /* A stat that opens a card list: a button for the mouse and the keyboard
    (Enter or Space), its title and accessible name saying what it opens.
    Escape closes the list (app.js). */
@@ -357,28 +386,27 @@ function renderSeats() {
       });
       seatLine(detail, t("panels.status_label"), status);
     }
-    if (player.skill_ids && player.skill_ids.length) {
+    /* The Skill and Tech tiles as small pictures, no label: their names
+       alone did not say which tile was which, so the player hovered each
+       one (play feedback 2026-10-26). */
+    const skills = (player.skill_ids || []).map((id) => tileThumb(skillIdOf(id), "skills"));
+    const tech = (player.tech_ids || []).map((id) =>
+      tileThumb(id, "tech", (player.tech_flipped || []).includes(id))
+    );
+    if (skills.length || tech.length) {
       const line = document.createElement("div");
-      line.className = "cardline";
-      const strong = document.createElement("strong");
-      strong.textContent = `${t("panels.skills_label")} `;
-      line.appendChild(strong);
-      for (const id of player.skill_ids) line.appendChild(chip(skillIdOf(id)));
-      detail.appendChild(line);
-    }
-    if (player.tech_ids && player.tech_ids.length) {
-      const line = document.createElement("div");
-      line.className = "cardline";
-      const strong = document.createElement("strong");
-      strong.textContent = `${t("panels.tech_label")} `;
-      line.appendChild(strong);
-      for (const id of player.tech_ids) {
-        const mark = chip(id);
-        if ((player.tech_flipped || []).includes(id)) {
-          mark.textContent += t("panels.flip_suffix");
-          mark.classList.add("muted");
-        }
-        line.appendChild(mark);
+      line.className = "cardline tile-line";
+      for (const [labelKey, thumbs] of [
+        ["panels.skills_label", skills],
+        ["panels.tech_label", tech],
+      ]) {
+        if (!thumbs.length) continue;
+        const group = document.createElement("span");
+        group.className = "tile-group";
+        group.setAttribute("role", "group");
+        group.setAttribute("aria-label", t(labelKey));
+        group.append(...thumbs);
+        line.appendChild(group);
       }
       detail.appendChild(line);
     }
@@ -439,42 +467,42 @@ function renderSeats() {
       card.appendChild(line);
     }
 
-    /* The battle icons held face up, as icons, and the cards behind them
-       (the Objective and the won Conflicts, matched pairs included) on a
-       click (play feedback 2026-10-26). */
-    const battle = [...player.objective_ids, ...player.won_conflict_ids];
-    if (battle.length) {
-      const line = document.createElement("div");
-      line.className = "cardline battle-line";
-      const strong = document.createElement("strong");
-      strong.textContent = `${t("panels.battle_label")} `;
-      line.appendChild(strong);
-      const held = heldBattleIcons(player);
-      for (const kind of BATTLE_ICON_ORDER) {
-        const count = held.get(kind);
-        if (!count) continue;
-        const mark = statNode(`battle_${kind}`, termLabel(`battle_${kind}`), count);
-        mark.dataset.stat = `battle:${kind}`;
-        line.appendChild(mark);
-      }
-      if (!held.size) {
-        const none = document.createElement("span");
-        none.className = "muted";
-        none.textContent = t("panels.battle_icons_none");
-        line.appendChild(none);
-      }
-      const opener = document.createElement("span");
-      opener.className = "stat battle-cards";
-      opener.textContent = t("panels.battle_cards_open", { count: battle.length });
-      const battleOpener = `seat-battle:${seat}`;
-      opener.dataset.pileOpener = battleOpener;
-      openerStat(opener, t("panels.battle_cards_title", { count: battle.length }), () =>
-        togglePileViewer({ kind: "battle", seat, opener: battleOpener }, opener)
-      );
-      line.appendChild(opener);
-      detail.appendChild(line);
+    /* The battle icons held face up, icons alone (play feedback
+       2026-10-26), and at the line's end the seat's details: what the
+       panel leaves out but a player looks up now and then -- the cards
+       behind those icons, matched pairs included, the completed Contracts
+       and what the seat trashed ("자세히 보기를 다시 만들고"). */
+    const battleLine = document.createElement("div");
+    battleLine.className = "cardline battle-line";
+    const icons = document.createElement("span");
+    icons.className = "battle-icons";
+    icons.setAttribute("role", "group");
+    icons.setAttribute("aria-label", t("panels.battle_label"));
+    const held = heldBattleIcons(player);
+    for (const kind of BATTLE_ICON_ORDER) {
+      const count = held.get(kind);
+      if (!count) continue;
+      const mark = statNode(`battle_${kind}`, termLabel(`battle_${kind}`), count);
+      mark.dataset.stat = `battle:${kind}`;
+      icons.appendChild(mark);
     }
-    if (player.active_contract_ids.length || player.completed_contract_ids.length) {
+    const details = document.createElement("button");
+    details.type = "button";
+    details.className = "seat-details";
+    details.textContent = t("panels.seat_details_open");
+    const detailsOpener = `seat-details:${seat}`;
+    details.dataset.pileOpener = detailsOpener;
+    details.title = t("panels.seat_details_title");
+    details.addEventListener("click", (event) => {
+      event.stopPropagation();
+      togglePileViewer({ kind: "details", seat, opener: detailsOpener }, details);
+    });
+    battleLine.append(icons, details);
+    /* First of the lines, beside the counts it reads like. */
+    detail.prepend(battleLine);
+    /* The open Contracts; the completed ones are in the seat's details
+       (play feedback 2026-10-26), still re-checkable (OQ-010). */
+    if (player.active_contract_ids.length) {
       const line = document.createElement("div");
       line.className = "cardline";
       const strong = document.createElement("strong");
@@ -487,14 +515,6 @@ function renderSeats() {
         const tray = scoutsTray(`contract:${id}`, view);
         if (tray) tag.appendChild(tray);
         line.appendChild(tag);
-      }
-      /* Completed Contracts stay re-checkable (OQ-010): their completion
-         was announced before they flipped face down. */
-      for (const id of player.completed_contract_ids) {
-        const mark = chip(id);
-        mark.textContent += t("panels.completed_suffix");
-        mark.classList.add("muted");
-        line.appendChild(mark);
       }
       detail.appendChild(line);
     }
@@ -734,6 +754,11 @@ function fillPileViewer(content) {
       body.append(...(section.notes || []), section.body);
       return;
     }
+    /* A title alone (the seat details' own heading) or an empty group. */
+    if (!section.cards || !section.cards.length) {
+      body.append(...(section.notes || []));
+      return;
+    }
     const row = document.createElement("div");
     row.className = "strip-cards wrap";
     row.append(...section.cards);
@@ -751,7 +776,7 @@ function pileViewerContent(key) {
   if (!view) return null;
   if (key.kind === "vp") return vpLedgerContent(key, view);
   if (key.kind === "deck") return deckListContent(key, view);
-  if (key.kind === "battle") return battleCardsContent(key, view);
+  if (key.kind === "details") return seatDetailsContent(key, view);
   if (key.kind === "intrigue_discard") {
     const ids = [...(view.intrigue_discard || [])].reverse();
     return pileListContent([[t("board.pile_intrigue_discard"), ids]]);
@@ -786,29 +811,90 @@ function pileViewerContent(key) {
   return sections.length ? { sections } : null;
 }
 
-/* A seat's battle icon cards (heldBattleIcons): its Objective and the
-   Conflict cards it won, the matched pairs marked face down [Main p. 14].
-   Null once there are none (a new game's view before the deal). */
-function battleCardsContent(key, view) {
+/* A card in the seat's details, which only show: a click pins its
+   enlargement, and it neither lights as a legal choice nor dims as an
+   unavailable one (a won Conflict card can be one to flip, and a trashed
+   Skill copy shares its name with the copy still in play). */
+function detailsCard(id, options) {
+  const card = visualCard(id, {
+    ...options,
+    onClick: (entry, node) => {
+      if (entry) pinPopover(entry, node);
+    },
+  });
+  card.classList.remove("legal", "blocked", "picked", "partner", "alternative");
+  const entry = options.entry || entryOf(id);
+  card.title = entry ? entry.name : nameOf(id);
+  return card;
+}
+
+/* A seat's details (the battle line's "자세히" button, play feedback
+   2026-10-26): its Objective and the Conflict cards it won, the matched
+   pairs marked face down [Main p. 14]; its completed Contracts; the cards
+   it trashed; and the Skill and Tech tiles it trashed (sessions.py
+   `_trashed_tiles`, a Skill by its copy). The trashed cards are the ones in
+   the box: a trashed Reserve card goes back to its Reserve stack
+   [Main p. 20], so it is not among them. Each group of the game's modules
+   is listed, an empty one as "없음". */
+function seatDetailsContent(key, view) {
   const player = view.players.find((p) => p.player === key.seat);
   if (!player) return null;
-  const ids = [...player.objective_ids, ...player.won_conflict_ids];
-  if (!ids.length) return null;
+  const summary = state.summary || {};
   const faceDown = new Set(player.face_down_battle_card_ids || []);
-  const title = t("panels.battle_cards_viewer", {
-    name: seatLeaderName(key.seat),
-    count: ids.length,
-  });
-  const cards = ids.map((id) => {
-    const kind = id.startsWith("objective") ? "objectives" : "conflicts";
-    const card = visualCard(id, {
-      className: faceDown.has(id) ? "small face-down" : "small",
-      entry: lookup(id, kind),
-      badge: faceDown.has(id) ? t("panels.battle_card_matched") : undefined,
-    });
-    return card;
-  });
-  return { sections: [{ title, cards }] };
+  const groups = [
+    [
+      "panels.details_battle",
+      [...player.objective_ids, ...player.won_conflict_ids].map((id) =>
+        detailsCard(id, {
+          className: faceDown.has(id) ? "small face-down" : "small",
+          entry: lookup(id, id.startsWith("objective") ? "objectives" : "conflicts"),
+          badge: faceDown.has(id) ? t("panels.battle_card_matched") : undefined,
+        })
+      ),
+    ],
+  ];
+  if (summary.choam_module) {
+    groups.push([
+      "panels.details_contracts",
+      player.completed_contract_ids.map((id) =>
+        detailsCard(id, { className: "contract" })
+      ),
+    ]);
+  }
+  groups.push([
+    "panels.details_trashed_cards",
+    (player.trashed || []).map((id) => detailsCard(id, { className: "small" })),
+  ]);
+  if (summary.bloodlines) {
+    groups.push([
+      "panels.details_trashed_skills",
+      (player.trashed_skill_ids || []).map((id) =>
+        detailsCard(id, { className: "skill", entry: lookup(skillIdOf(id), "skills") })
+      ),
+    ]);
+  }
+  if (summary.tech_module) {
+    groups.push([
+      "panels.details_trashed_tech",
+      (player.trashed_tech_ids || []).map((id) =>
+        detailsCard(id, { className: "tile", entry: lookup(id, "tech") })
+      ),
+    ]);
+  }
+  const sections = [
+    { title: t("panels.seat_details_viewer", { name: seatLeaderName(key.seat) }) },
+  ];
+  for (const [textKey, cards] of groups) {
+    const section = { title: t(textKey, { count: cards.length }), cards };
+    if (!cards.length) {
+      const none = document.createElement("div");
+      none.className = "popover-note muted";
+      none.textContent = t("panels.details_none");
+      section.notes = [none];
+    }
+    sections.push(section);
+  }
+  return { sections };
 }
 
 /* A seat's deck pool as a viewer section: the cards of its draw deck and of

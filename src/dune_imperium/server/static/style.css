@@ -1103,10 +1103,33 @@ img.seat-disc.pictured { border-radius: 50%; }
   margin-left: -0.55em;
   transform: rotate(8deg);
 }
-/* The battle icons held face up, and the opener of the cards behind them. */
-.battle-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.5rem; }
-.battle-line .battle-cards { font-size: 0.8rem; opacity: 0.85; }
+/* The battle icons held face up (panels.js heldBattleIcons), and the
+   seat's details button at the line's end. */
+.battle-line { display: flex; align-items: center; gap: 0.15rem 0.5rem; }
+.battle-icons { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.5rem; }
 .pile-viewer .vcard.face-down img { filter: grayscale(0.7) brightness(0.75); }
+/* A seat's Skill and Tech tiles as small pictures (panels.js tileThumb):
+   the Skill tokens square, the Tech tiles landscape, at one height. */
+.tile-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.6rem; }
+.tile-group { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
+.tile-thumb {
+  display: block;
+  height: 2rem;
+  width: auto;
+  border-radius: 3px;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(243, 230, 208, 0.25);
+}
+.tile-thumb.flipped { filter: grayscale(0.9) brightness(0.55); }
+/* The head's details button (panels.js seatDetailsContent). */
+.seat-details {
+  flex: none;
+  margin-left: auto;
+  padding: 0 0.35rem;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  white-space: nowrap;
+}
 
 /* Short screens — a 1366x768 or 1536x864 laptop, 1440x900: the Leader
    picture gives way (the name keeps its hover card) and the name and badges

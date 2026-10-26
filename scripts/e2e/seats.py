@@ -6,9 +6,20 @@ the lines always (play feedback 2026-10-26). Now nothing folds and the
 panel says less: the High Council seat, the Maker Hooks, the Control markers
 and the placed Agents are left to the board; the hand, deck, discard pile and
 Intrigue counts are icons in one row (the Intrigue count once); the battle
-icons a seat holds face up are icons, and its Objective and won Conflict
-cards open from that line in the pile viewer, the matched pairs marked. The
-column scrolls when four panels do not fit.
+icons a seat holds face up are icons with no label, and its Skill and Tech
+tiles small pictures with no label; only the open Contracts stay on the
+panel. The column scrolls when four panels do not fit.
+
+The second feedback that day ("그냥 자세히 보기를 다시 만들고, 이긴 교전
+카드, 완료한 계약, 그리고 폐기한 카드, 폐기한 사다우카 지휘관 기술토큰,
+폐기한 기술 이렇게 볼 수 있게") put a "자세히" button at the end of the battle
+line: it opens the pile viewer with the Objective and won Conflict cards
+(the matched pairs marked), the completed Contracts, the trashed cards and
+the trashed Skill and Tech tiles. The engine keeps one trash of tiles for
+the table; the server names each seat's from the public events
+(sessions.py `_trashed_tiles`, a Skill by its copy), so the four seats'
+lists together must be that trash. The details only show: a card there
+neither lights as a legal choice nor acts on a click.
 
 Board-visible Influence, garrison, Conflict forces, strength and Bene Tleilax
 track positions are absent from the panel; troop supply is absent too. Specimens
@@ -73,10 +84,10 @@ SEATS = """() => {
     };
 }"""
 
-# Each seat's battle line: the icons it shows by kind, the count on the
-# opener, and what the view says it should be (heldBattleIcons recomputed
-# here from the catalog: the Objective and won Conflicts less the pairs
-# matched face down [Main p. 14]).
+# Each seat's battle line: the icons it shows by kind, and what the view
+# says it should be (heldBattleIcons recomputed here from the catalog: the
+# Objective and won Conflicts less the pairs matched face down
+# [Main p. 14]); the line has no label word and ends with the details button.
 BATTLE_JS = """() => state.view.players.map((player) => {
     const card = document.querySelector(`#seats .seat[data-seat='${player.player}']`);
     const line = card.querySelector('.battle-line');
@@ -95,14 +106,98 @@ BATTLE_JS = """() => state.view.players.map((player) => {
         const kind = state.catalog[section][id] && state.catalog[section][id].icon;
         if (kind) want[kind] = String(Number(want[kind] || 0) + 1);
     }
-    const opener = line ? line.querySelector('.battle-cards') : null;
+    const button = line ? line.querySelector('.seat-details') : null;
     return {
         seat: player.player,
         shown, want,
         cards: cards.length,
         faceDown: cards.filter((id) => faceDown.has(id)).length,
-        opener: opener ? opener.textContent : null,
+        words: line ? line.querySelectorAll('strong').length : null,
+        details: button ? button.textContent : null,
+        last: Boolean(button && line.lastElementChild === button),
     };
+})"""
+
+# Each seat's Skill and Tech tiles as pictures, against the view, and its
+# Contract chips (the open ones only).
+TILES_JS = """() => state.view.players.map((player) => {
+    const card = document.querySelector(`#seats .seat[data-seat='${player.player}']`);
+    const thumbs = (kind) => [
+        ...card.querySelectorAll(`.tile-line img.tile-thumb.${kind}`),
+    ]
+        .map((img) => ({
+            id: img.dataset.tile,
+            flipped: img.classList.contains('flipped'),
+            src: img.getAttribute('src'),
+            want: (state.catalog[kind][img.dataset.tile] || {}).image || null,
+            title: img.title,
+        }));
+    return {
+        seat: player.player,
+        skills: thumbs('skills'),
+        tech: thumbs('tech'),
+        wantSkills: (player.skill_ids || []).map(skillIdOf),
+        wantTech: player.tech_ids || [],
+        flipped: player.tech_flipped || [],
+        words: card.querySelectorAll('.tile-line strong, .tile-line .tag').length,
+        contracts: [...card.querySelectorAll('.tag[data-contract]')]
+            .map((tag) => tag.dataset.contract),
+        active: player.active_contract_ids,
+        completed: player.completed_contract_ids.length,
+    };
+})"""
+
+# The open details viewer: its title and, per group, the heading, the cards
+# by id, the matched pairs and their marks, and the "none" note.
+DETAILS_JS = """() => {
+    const groups = [];
+    let group = null;
+    for (const node of document.getElementById('pile-viewer-body').children) {
+        if (node.classList.contains('popover-title')) {
+            group = {
+                title: node.textContent, ids: [], faceDown: 0, marks: [], none: null,
+            };
+            groups.push(group);
+        } else if (group && node.classList.contains('strip-cards')) {
+            group.ids = [...node.querySelectorAll('.vcard')]
+                .map((v) => v.dataset.instance);
+            group.faceDown = node.querySelectorAll('.vcard.face-down').length;
+            group.marks = [...node.querySelectorAll('.vcard.face-down .vcard-badge')]
+                .map((b) => b.textContent);
+        } else if (group && node.classList.contains('popover-note')) {
+            group.none = node.textContent;
+        }
+    }
+    return {
+        title: document.getElementById('pile-viewer-title').textContent,
+        groups,
+        lit: document.querySelectorAll(
+            '#pile-viewer .vcard.legal, #pile-viewer .vcard.blocked').length,
+    };
+}"""
+
+# What each seat's details must hold, from the view alone.
+DETAILS_WANT_JS = """(seat) => {
+    const p = state.view.players.find((player) => player.player === seat);
+    return {
+        name: seatLeaderName(seat),
+        groups: [
+            ['목적 카드와 이긴 교전 카드', [...p.objective_ids, ...p.won_conflict_ids]],
+            ['완료한 계약', p.completed_contract_ids],
+            ['폐기한 카드', p.trashed],
+            ['폐기한 사다우카 지휘관 기술 토큰', p.trashed_skill_ids],
+            ['폐기한 기술 타일', p.trashed_tech_ids],
+        ],
+        faceDown: p.face_down_battle_card_ids.length,
+    };
+}"""
+
+# The table's trashes of tiles against the seats' lists together.
+TRASH_SPLIT_JS = """() => ({
+    skills: [...state.view.skill_trash].sort(),
+    tech: [...state.view.tech_trash].sort(),
+    seatSkills: state.view.players.flatMap((p) => p.trashed_skill_ids).sort(),
+    seatTech: state.view.players.flatMap((p) => p.trashed_tech_ids).sort(),
 })"""
 
 
@@ -538,38 +633,100 @@ def run(base: str, browser) -> None:
         "late in the game some seat holds battle cards, some of them matched",
         battle,
     )
+    wrong = [row for row in battle if row["shown"] != row["want"] or row["words"]]
+    check.ok(
+        not wrong,
+        "each seat shows the battle icons it holds face up, icons alone",
+        wrong,
+    )
+    check.ok(
+        all(row["details"] == "자세히 ▸" and row["last"] for row in battle),
+        "each seat's battle line ends with its details button",
+        battle,
+    )
+    tiles = page.evaluate(TILES_JS)
+    check.ok(
+        any(row["skills"] for row in tiles) and any(row["tech"] for row in tiles),
+        "late in the game some seat holds Skill and Tech tiles",
+        tiles,
+    )
     wrong = [
         row
-        for row in battle
-        if row["cards"]
-        and (
-            row["shown"] != row["want"]
-            or str(row["cards"]) not in (row["opener"] or "")
+        for row in tiles
+        if [t["id"] for t in row["skills"]] != row["wantSkills"]
+        or [t["id"] for t in row["tech"]] != row["wantTech"]
+        or any(t["flipped"] != (t["id"] in row["flipped"]) for t in row["tech"])
+        or any(
+            not t["want"] or t["src"] != t["want"]
+            for t in row["skills"] + row["tech"]
         )
+        or row["words"]
     ]
     check.ok(
         not wrong,
-        "each seat shows the battle icons it holds face up, and how many cards",
+        "each seat's Skill and Tech tiles are their pictures, no words,"
+        " the flipped dim",
         wrong,
     )
-    paired = next(row for row in battle if row["faceDown"])
-    page.click(f"#seats article.seat[data-seat='{paired['seat']}'] .battle-cards")
-    page.wait_for_selector("#pile-viewer:not([hidden]) .vcard")
-    viewer = page.evaluate(
-        "({cards: document.querySelectorAll('#pile-viewer .vcard').length,"
-        " faceDown: document.querySelectorAll('#pile-viewer .vcard.face-down').length,"
-        " marks: [...document.querySelectorAll("
-        "'#pile-viewer .vcard.face-down .vcard-badge')]"
-        ".map((b) => b.textContent)})"
+    check.ok(
+        any(t["flipped"] for row in tiles for t in row["tech"])
+        and all(
+            t["title"].endswith("(뒤집힘)") == t["flipped"]
+            for row in tiles
+            for t in row["tech"]
+        ),
+        "a flipped Tech tile says so in its title",
+        [t for row in tiles for t in row["tech"]],
     )
     check.ok(
-        viewer["cards"] == paired["cards"]
-        and viewer["faceDown"] == paired["faceDown"]
-        and all(mark == "짝지어 뒤집힘" for mark in viewer["marks"]),
-        "the battle cards open in the viewer, the matched pairs marked",
-        (viewer, paired),
+        all(row["contracts"] == row["active"] for row in tiles)
+        and any(row["completed"] for row in tiles),
+        "only the open Contracts stay on the panel, though some seat completed one",
+        tiles,
     )
-    page.keyboard.press("Escape")
+    split = page.evaluate(TRASH_SPLIT_JS)
+    check.ok(
+        (split["skills"] or split["tech"])
+        and split["seatSkills"] == split["skills"]
+        and split["seatTech"] == split["tech"],
+        "some tile was trashed, and the seats' trashed tiles together are the"
+        " table's trash",
+        split,
+    )
+    for seat in range(4):
+        want = page.evaluate(DETAILS_WANT_JS, seat)
+        page.click(f"#seats article.seat[data-seat='{seat}'] .seat-details")
+        page.wait_for_selector("#pile-viewer:not([hidden])")
+        shown = page.evaluate(DETAILS_JS)
+        expected = [
+            {
+                "title": f"{title} ({len(ids)})",
+                "ids": ids,
+                "none": None if ids else "없음",
+            }
+            for title, ids in want["groups"]
+        ]
+        got = [
+            {key: group[key] for key in ("title", "ids", "none")}
+            for group in shown["groups"]
+        ]
+        check.ok(
+            shown["title"] == f"{want['name']} 자세히"
+            and got == expected
+            and not shown["lit"],
+            f"seat {seat + 1}'s details list its battle cards, completed Contracts"
+            " and trashed cards and tiles",
+            (shown, expected),
+        )
+        battle_group = shown["groups"][0]
+        check.ok(
+            battle_group["faceDown"] == want["faceDown"]
+            and all(mark == "짝지어 뒤집힘" for mark in battle_group["marks"]),
+            f"seat {seat + 1}'s matched pairs are marked",
+            (battle_group, want["faceDown"]),
+        )
+        page.keyboard.press("Escape")
+        page.wait_for_selector("#pile-viewer", state="hidden")
 
     # The zone counts' titles must speak the same language as the rest.
     english = [
