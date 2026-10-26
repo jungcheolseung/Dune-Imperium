@@ -2828,6 +2828,12 @@
   (다) 지금대로 둔다.
 - 판정(2026-10-26 사용자, 추천대로): **(가)**, OQ-131과 Holy War에 맞춘다. 창의 순서는 지금 카드를 쥔 상대에게 묻는 순서(다음 좌석부터)와
   같다. 버리는 것은 없으므로 게임 결과는 그대로다.
+- 되돌리기에 미치는 결과(2026-10-26 사용자 확인 "Holy War처럼 이대로 둠"): 되돌리기 창은 그 좌석이 이어서 둔 마지막 단계들뿐이라
+  (`server/sessions.py` `_open_undo_window`, `server/session_log.undo_window`) 상대가 한 명이라도 답하면 카드를 쓴 좌석은 그
+  Covert Operation Agent turn을 — Agent 배치와 그 앞 단계까지 — 더는 되돌릴 수 없다. 손이 빈 상대도 이제 확인을 누르므로 상대가 모두
+  손이 비었을 때도 그렇다(판정 전에는 이때만 되돌릴 수 있었다). AI 상대는 창이 열리자마자 답하므로 Agent box를 해결한 바로 뒤 되돌리기가
+  닫힌다. 상대들이 공개 차례를 마친 뒤 이 카드를 쓰면 늘 그렇다. [OQ-036](#oq-036--lose-a-troop의-출처와-강제-spy-이동의-목적지)의
+  Holy War(2026-10-02 사용자 확인 "이대로 둔다")와 같다. 엔진은 바꾸지 않았다.
 - 구현(2026-10-26, codec v155): `rules/agent_box_abilities._opponents_decide`가 모든 상대에게 `OPPONENT_CARD_DISCARD` 창을 다음
   좌석부터 연다(창은 연 카드를 `printer`로 적는다). 손이 빈 좌석에는 `rules/agent_effects.legal_opponent_card_discard_actions`가
   `resolve_opponent_discard_without_card`("버릴 카드 없음 — 확인", 모든 catalog의 `confirm_empty` 줄) 하나만 내고, 그 누름은 아무것도
