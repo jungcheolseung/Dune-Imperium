@@ -2,6 +2,7 @@
 
 import dataclasses
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -10,6 +11,7 @@ torch = pytest.importorskip("torch")
 
 from dune_imperium import RulesetConfig  # noqa: E402
 from dune_imperium.adapters.action_codec import ActionCodec  # noqa: E402
+from dune_imperium.training import teacher as teacher_module  # noqa: E402
 from dune_imperium.training.checkpoint import save_checkpoint  # noqa: E402
 from dune_imperium.training.collect import (  # noqa: E402
     LEARNER,
@@ -22,6 +24,7 @@ from dune_imperium.training.selfplay import SelfPlaySpec  # noqa: E402
 from dune_imperium.training.teacher import (  # noqa: E402
     VP_SCALE,
     StudentConfig,
+    StudentScore,
     TeacherData,
     add_teacher_values,
     build_teacher_data,
@@ -405,43 +408,61 @@ def test_a_cosine_schedule_trains_and_an_unknown_one_is_refused(
         StudentConfig(schedule="linear")
 
 
-@pytest.mark.parametrize("keep", ["cross_entropy", "teacher_value", "last"])
+@pytest.mark.parametrize(
+    ("keep", "kept_epoch"), [("cross_entropy", 1), ("teacher_value", 2), ("last", 3)]
+)
 def test_a_student_ends_holding_the_epoch_its_keep_rule_names(
-    collected: list[tuple[CollectionResult, TeacherData]], keep: str
+    collected: list[tuple[CollectionResult, TeacherData]],
+    monkeypatch: pytest.MonkeyPatch,
+    keep: str,
+    kept_epoch: int,
 ) -> None:
-    # E7 (2026-10-26): a student that starts at its teacher's policy and
-    # trains on value alone drifts away from the policy every epoch, so
-    # keeping by cross-entropy saves epoch 1. On this small data the value
-    # error is lowest at epoch 2, so the three rules keep three epochs.
-    spread = _teacher()
-    with torch.no_grad():
-        spread.value_head.weight.mul_(40.0)
-    data = add_teacher_values(concatenate([part for _, part in collected]), spread)
-    student = _teacher()
+    # E7 (2026-10-26): on a value-first run the cross-entropy rises every
+    # epoch while the value error falls, so keeping by cross-entropy saved
+    # epoch 1. The held-out scores are scripted here so that the three rules
+    # name three different epochs whatever the small run does.
+    scripted = iter([(1.0, 0.3), (2.0, 0.1), (3.0, 0.2)])
+    weights: list[dict[str, Any]] = []
+    real = teacher_module.score_student
+
+    def score(
+        network: PolicyValueNetwork, data: TeacherData, rows: np.ndarray
+    ) -> StudentScore:
+        weights.append(
+            {name: tensor.clone() for name, tensor in network.state_dict().items()}
+        )
+        cross_entropy, teacher_value_mse = next(scripted)
+        return dataclasses.replace(
+            real(network, data, rows),
+            cross_entropy=cross_entropy,
+            teacher_value_mse=teacher_value_mse,
+        )
+
+    monkeypatch.setattr(teacher_module, "score_student", score)
+    data = concatenate([part for _, part in collected])
+    torch.manual_seed(1)
+    student = PolicyValueNetwork(data.action_size, hidden=(8,))
     config = StudentConfig(
-        learning_rate=3e-4,
+        learning_rate=3e-3,
         warmup_steps=5,
         minibatch_size=64,
         epochs=3,
-        value_coefficient=1000.0,
-        value_target="teacher",
         heldout_modulus=2,
         threads=1,
         keep=keep,
     )
     history = train_student(student, data, config)
-    _, heldout_rows = split_rows(data, config.heldout_modulus)
-    final = score_student(student, data, heldout_rows)
-    by_ce = min(history, key=lambda record: record.heldout.cross_entropy)
-    by_value = min(history, key=lambda record: record.heldout.teacher_value_mse)
-    # The rules disagree on this run, so each one is seen to be followed.
-    assert len({by_ce.epoch, by_value.epoch, history[-1].epoch}) == 3
-    kept = {"cross_entropy": by_ce, "teacher_value": by_value, "last": history[-1]}
-    expected = kept[keep].heldout
-    assert final.cross_entropy == pytest.approx(expected.cross_entropy, rel=1e-5)
-    assert final.teacher_value_mse == pytest.approx(
-        expected.teacher_value_mse, rel=1e-5
-    )
+    assert [record.heldout.cross_entropy for record in history] == [1.0, 2.0, 3.0]
+    assert len(weights) == 3
+    # Every epoch moved the weights, so the kept one is told apart.
+    for left, right in ((0, 1), (1, 2), (0, 2)):
+        assert any(
+            not torch.equal(weights[left][name], weights[right][name])
+            for name in weights[left]
+        )
+    final = student.state_dict()
+    for name, tensor in weights[kept_epoch - 1].items():
+        assert torch.equal(final[name], tensor), name
 
 
 def test_an_unknown_keep_rule_and_keeping_by_missing_values_are_refused(
