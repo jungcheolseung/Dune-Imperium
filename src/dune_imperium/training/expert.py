@@ -40,7 +40,6 @@ from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.adapters.observation_encoding import (
     OBSERVATION_SIZE,
     OBSERVATION_VERSION,
-    encode_player_view,
 )
 from dune_imperium.adapters.pettingzoo_env import LOSER_REWARD, WINNER_REWARD
 from dune_imperium.agents.network_search_agent import (
@@ -64,7 +63,7 @@ from dune_imperium.evaluation.tournament import (
 )
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.simulation.runner import run_policy_game
-from dune_imperium.training.policy import without_undo_actions
+from dune_imperium.training.policy import encoded_view, without_undo_actions
 from dune_imperium.training.torch_policy import load_network_agent
 
 # Format 2 adds the per-row decision ``frame``, the per-seat ``g_labelled``
@@ -204,7 +203,7 @@ class LabellingAgent:
             # logits, no shortlist), so there is nothing to label.
             self.untrained_skips += 1
             return played
-        encoded = np.asarray(encode_player_view(observation), dtype=np.int32)
+        encoded = encoded_view(observation)
         seat = observation.player
         if orders_agent_effects(state):
             if self._coin.random() < self.config.anchor_probability:

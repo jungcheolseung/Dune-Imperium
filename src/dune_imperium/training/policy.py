@@ -15,6 +15,9 @@ be a legal one; the runner rejects anything else.
 may be given: it drops the pure-undo actions (``UNDO_ACTION_IDS``), which
 no policy needs and a sampled policy learns to loop on
 (docs/rl-environment.md, "정책에 주지 않는 되돌리기 행동").
+
+``encoded_view`` is the int32 observation array a network reads, built
+without NumPy's per-element conversion.
 """
 
 import random
@@ -24,6 +27,7 @@ from typing import Final, Protocol
 
 import numpy as np
 
+from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.agents import Agent, StateAgent, make_agent
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
@@ -49,6 +53,26 @@ def without_undo_actions(
         action for action in legal_actions if action.action_id not in UNDO_ACTION_IDS
     )
     return kept or legal_actions
+
+
+def encoded_view(view: PlayerView) -> np.ndarray:
+    """``view``'s observation encoding as a new int32 array.
+
+    The same array as ``np.asarray(encode_player_view(view), dtype=np.int32)``
+    at a fifteenth of the cost: NumPy converts the encoding's 5,732 Python
+    ints one at a time (about 150us on the Mac mini), while ``bytes`` packs
+    them in about 10us when every value fits a byte, as the counts and flags
+    of an observation do. A value outside 0..255 takes the slow conversion.
+    A search seat encodes every playout step, so the conversion was about 8%
+    of its time (ai-speedup, 2026-10-27).
+    """
+
+    values = encode_player_view(view)
+    try:
+        packed = bytes(values)
+    except (TypeError, ValueError):
+        return np.asarray(values, dtype=np.int32)
+    return np.frombuffer(packed, dtype=np.uint8).astype(np.int32)
 
 
 @dataclass(frozen=True, slots=True)

@@ -52,7 +52,6 @@ import torch
 from torch import Tensor
 
 from dune_imperium.adapters.action_codec import _normalize_arguments
-from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.agents.agent_turn_steps import PlacementMemory, placements_for_steps
 from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.agents.heuristic_agent import HeuristicAgent
@@ -64,8 +63,10 @@ from dune_imperium.training.network import PolicyValueNetwork
 from dune_imperium.training.policy import (
     BatchPolicy,
     PolicyRequest,
+    encoded_view,
     without_undo_actions,
 )
+from dune_imperium.training.trunk_cache import TrunkCache
 
 TemplateKey = tuple[str, tuple[tuple[str, Any], ...]]
 
@@ -95,12 +96,20 @@ class OlderNetwork:
     path: str
 
     def scores(
-        self, observation: np.ndarray, rows: Sequence[int | None]
+        self,
+        observation: np.ndarray,
+        rows: Sequence[int | None],
+        trunks: TrunkCache | None = None,
     ) -> tuple[np.ndarray, float]:
-        """Logits of ``rows`` (0 for None) and the value, on one observation."""
+        """Logits of ``rows`` (0 for None) and the value, on one observation;
+        ``trunks`` hands back a trunk a search decision already read."""
 
         with torch.no_grad():
-            hidden = self.network.trunk(torch.from_numpy(observation).unsqueeze(0))[0]
+            if trunks is None:
+                batch = torch.from_numpy(observation).unsqueeze(0)
+                hidden = self.network.trunk(batch)[0]
+            else:
+                hidden = trunks.hidden(self.network, observation)[0]
             value = float(self.network.value_head(hidden).item())
             known = [index for index, row in enumerate(rows) if row is not None]
             logits = np.zeros(len(rows), dtype=np.float64)
@@ -227,6 +236,8 @@ class OlderTeacher:
     _fallbacks: dict[object, HeuristicAgent] = field(default_factory=dict)
     counts: Counter[str] = field(default_factory=Counter)
     unmapped: Counter[str] = field(default_factory=Counter)
+    # A search seat's trunks of the decision it answers (``TrunkCache``).
+    trunks: TrunkCache | None = None
 
     def fallback(self, key: object) -> HeuristicAgent:
         agent = self._fallbacks.get(key)
@@ -286,7 +297,7 @@ class OlderTeacher:
         if not wholes:
             return scores
         rows = [older_row(self.older.rows, whole) for whole in wholes]
-        logits, _ = self.older.scores(observation, rows)
+        logits, _ = self.older.scores(observation, rows, self.trunks)
         total = np.logaddexp.reduce(logits)
         for target in set(targets):
             mine = logits[[index for index, row in enumerate(targets) if row == target]]
@@ -296,7 +307,7 @@ class OlderTeacher:
     def value(self, observation: np.ndarray) -> float:
         """The file's value of the position."""
 
-        return self.older.scores(observation, [])[1]
+        return self.older.scores(observation, [], self.trunks)[1]
 
     def whole_scores(
         self,
@@ -308,8 +319,8 @@ class OlderTeacher:
 
         rows = [older_row(self.older.rows, whole) for whole in wholes]
         if observation is None:
-            observation = np.asarray(encode_player_view(view), dtype=np.int32)
-        logits, value = self.older.scores(observation, rows)
+            observation = encoded_view(view)
+        logits, value = self.older.scores(observation, rows, self.trunks)
         return logits, value, rows
 
     def answer(
@@ -326,7 +337,7 @@ class OlderTeacher:
         and the file's value of the position."""
 
         if observation is None:
-            observation = np.asarray(encode_player_view(view), dtype=np.int32)
+            observation = encoded_view(view)
         answer = engine_order_answer(state, player, legal_actions)
         if answer is not None:
             index = legal_actions.index(answer)
@@ -351,7 +362,7 @@ class OlderTeacher:
                 FALLBACK,
                 missing,
             )
-        logits, value = self.older.scores(observation, rows)
+        logits, value = self.older.scores(observation, rows, self.trunks)
         weights = np.exp(logits - logits.max())
         weights /= weights.sum()
         probabilities = np.zeros(len(legal_actions), dtype=np.float64)
@@ -379,7 +390,7 @@ class OlderTeacher:
         self.counts[source] += 1
         probabilities = np.zeros(size, dtype=np.float64)
         probabilities[index] = 1.0
-        _, value = self.older.scores(observation, [])
+        _, value = self.older.scores(observation, [], self.trunks)
         return TeacherAnswer(
             probabilities=probabilities,
             value=value,
@@ -400,8 +411,14 @@ class OlderNetworkAgent:
     30,000-action game in the 2026-10-21 feasibility check).
     """
 
-    def __init__(self, older: OlderNetwork, *, seed: int = 0) -> None:
-        self.teacher = OlderTeacher(older, seed=seed)
+    def __init__(
+        self,
+        older: OlderNetwork,
+        *,
+        seed: int = 0,
+        trunks: TrunkCache | None = None,
+    ) -> None:
+        self.teacher = OlderTeacher(older, seed=seed, trunks=trunks)
         self._memory = PlacementMemory()
         self._round = -1
         self._taken: dict[bytes, set[DomainAction]] = {}
@@ -427,10 +444,13 @@ class OlderNetworkAgent:
         if observation.round_number != self._round:
             self._round = observation.round_number
             self._taken.clear()
-        encoded = np.asarray(encode_player_view(observation), dtype=np.int32)
-        taken = self._taken.setdefault(encoded.tobytes(), set())
 
+        # Encoded only when the file is asked: the later step of a placement
+        # or whole action it chose is answered from memory (about one call
+        # in seven inside a search seat's playouts).
         def decide(shown: tuple[DomainAction, ...]) -> DomainAction:
+            encoded = encoded_view(observation)
+            taken = self._taken.setdefault(encoded.tobytes(), set())
             logits, _, rows = self.teacher.whole_scores(observation, shown, encoded)
             if all(row is None for row in rows):
                 self.teacher.counts[FALLBACK] += 1

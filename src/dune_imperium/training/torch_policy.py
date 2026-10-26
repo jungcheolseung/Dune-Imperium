@@ -26,7 +26,6 @@ import numpy as np
 import torch
 
 from dune_imperium.adapters.action_codec import ActionCodec
-from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.agents.heuristic_agent import HeuristicAgent
 from dune_imperium.config import RulesetConfig
 from dune_imperium.core.actions import DomainAction
@@ -34,7 +33,11 @@ from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GameState
 from dune_imperium.training.checkpoint import CheckpointInfo, load_checkpoint
 from dune_imperium.training.network import MASKED_LOGIT, PolicyValueNetwork
-from dune_imperium.training.policy import PolicyRequest, without_undo_actions
+from dune_imperium.training.policy import (
+    PolicyRequest,
+    encoded_view,
+    without_undo_actions,
+)
 
 
 class _CycleGuard:
@@ -299,7 +302,7 @@ class NetworkAgent:
             return self.fallback.choose_action(observation, legal_actions)
         mask = np.zeros(self.codec.size, dtype=np.int8)
         mask[list(legal_indices)] = 1
-        encoded = np.asarray(encode_player_view(observation), dtype=np.int32)
+        encoded = encoded_view(observation)
         with torch.no_grad():
             logits, _ = self.network(
                 torch.from_numpy(encoded).unsqueeze(0),

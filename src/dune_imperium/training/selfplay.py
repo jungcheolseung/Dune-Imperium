@@ -31,7 +31,6 @@ from pathlib import Path
 import numpy as np
 
 from dune_imperium.adapters.action_codec import ActionCodec
-from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.adapters.pettingzoo_env import LOSER_REWARD, WINNER_REWARD
 from dune_imperium.agents.app_ai.family_atomics import (
     FAMILY_ATOMICS_ACTION,
@@ -48,6 +47,7 @@ from dune_imperium.rules.endgame import final_standings
 from dune_imperium.training.policy import (
     BatchPolicy,
     PolicyRequest,
+    encoded_view,
     without_undo_actions,
 )
 
@@ -452,7 +452,7 @@ class SelfPlayRunner:
             view=view,
             legal_actions=legal_actions,
             legal_indices=legal_indices,
-            observation=np.asarray(encode_player_view(view), dtype=np.int32),
+            observation=encoded_view(view),
             mask=mask,
         )
 

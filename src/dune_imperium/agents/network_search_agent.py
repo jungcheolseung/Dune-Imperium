@@ -105,7 +105,6 @@ from typing import TYPE_CHECKING, Protocol
 import numpy as np
 import torch
 
-from dune_imperium.adapters.observation_encoding import encode_player_view
 from dune_imperium.adapters.pettingzoo_env import LOSER_REWARD, WINNER_REWARD
 from dune_imperium.agents.app_ai.family_atomics import (
     FAMILY_ATOMICS_ACTION,
@@ -129,7 +128,8 @@ from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.effect_steps import first_step
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.rules.frames import FrameKind
-from dune_imperium.training.policy import without_undo_actions
+from dune_imperium.training.policy import encoded_view, without_undo_actions
+from dune_imperium.training.trunk_cache import TrunkCache
 
 if TYPE_CHECKING:
     from dune_imperium.training.network import PolicyValueNetwork
@@ -331,6 +331,9 @@ class NetworkSearchAgent:
 
         self._network_agent: NetworkAgent | None = None
         self._older: OlderTeacher | None = None
+        # Trunks already read in the decision being answered (every entry
+        # point wraps its decision in ``_trunks.decision()``).
+        self._trunks = TrunkCache()
         # An older codec's value file under a current policy file.
         self._older_value: OlderTeacher | None = None
         self.value_network: PolicyValueNetwork
@@ -340,7 +343,7 @@ class NetworkSearchAgent:
             if value_path is not None:
                 raise ValueError("an older-codec file searches with its own value head")
             older = cached_older_network(path)
-            self._older = OlderTeacher(older, seed=seed)
+            self._older = OlderTeacher(older, seed=seed, trunks=self._trunks)
             self._answerer: _GreedyAnswer = OlderNetworkAgent(older, seed=seed)
             # Every playout plays a fresh one (``_playout``).
             self._walker = OlderNetworkAgent
@@ -359,7 +362,9 @@ class NetworkSearchAgent:
                 self.value_network = self._network_agent.network
             elif reads_older_rows(value_path):
                 older_value = cached_older_network(value_path)
-                self._older_value = OlderTeacher(older_value, seed=seed)
+                self._older_value = OlderTeacher(
+                    older_value, seed=seed, trunks=self._trunks
+                )
                 self.value_network = older_value.network
             else:
                 self.value_network = load_network_agent(
@@ -406,10 +411,10 @@ class NetworkSearchAgent:
     # over 1,695 decisions, never a different argmax) at a sixth of the cost.
     @staticmethod
     def _encode(view: PlayerView) -> np.ndarray:
-        return np.asarray(encode_player_view(view), dtype=np.int32)
+        return encoded_view(view)
 
     def _hidden(self, encoded: np.ndarray) -> torch.Tensor:
-        return self.greedy.network.trunk(torch.from_numpy(encoded).unsqueeze(0))
+        return self._trunks.hidden(self.greedy.network, encoded)
 
     def _scores(
         self, encoded: np.ndarray, legal: Sequence[DomainAction]
@@ -498,9 +503,9 @@ class NetworkSearchAgent:
         if older is not None:
             return older.value(self._encode(view))
         network = self.value_network
-        encoded = torch.from_numpy(self._encode(view)).unsqueeze(0)
+        hidden = self._trunks.hidden(network, self._encode(view))
         with torch.no_grad():
-            value = network.value_head(network.trunk(encoded))
+            value = network.value_head(hidden)
         return float(value[0, 0])
 
     # -- the agent contract -------------------------------------------------
@@ -545,6 +550,15 @@ class NetworkSearchAgent:
         expert iteration reads the values as training targets.
         """
 
+        with self._trunks.decision():
+            return self._search_with_state(state, observation, legal_actions)
+
+    def _search_with_state(
+        self,
+        state: GameState,
+        observation: PlayerView,
+        legal_actions: tuple[DomainAction, ...],
+    ) -> SearchResult:
         plan = self._shortlist(state, observation, legal_actions)
         if not isinstance(plan, _Shortlist):
             return SearchResult(chosen=plan, searched=False)
@@ -648,7 +662,8 @@ class NetworkSearchAgent:
         searched decision chose is taken on trust.
         """
 
-        plan = self._shortlist(state, observation, legal_actions)
+        with self._trunks.decision():
+            plan = self._shortlist(state, observation, legal_actions)
         if not isinstance(plan, _Shortlist):
             return plan == action
         if len(plan.candidates) > 1:
@@ -737,7 +752,9 @@ class NetworkSearchAgent:
     ) -> tuple[DomainAction, ...]:
         """``actions`` in the order the search ranks candidates (stable)."""
 
-        order = np.argsort(-self._logits(observation, actions), kind="stable")
+        with self._trunks.decision():
+            logits = self._logits(observation, actions)
+        order = np.argsort(-logits, kind="stable")
         return tuple(actions[int(index)] for index in order)
 
     def evaluate_candidates(
@@ -750,7 +767,8 @@ class NetworkSearchAgent:
         the search choose the move.
         """
 
-        return self._search(state, seat, candidates)
+        with self._trunks.decision():
+            return self._search(state, seat, candidates)
 
     # -- the search ---------------------------------------------------------
     def _search(
@@ -859,7 +877,9 @@ class NetworkSearchAgent:
         # every chair: whole actions, that engine's fixed answers, its guard.
         walker: _GreedyAnswer | None = None
         if self._older is not None:
-            walker = self._walker(self._older.older, seed=chance_seed)
+            walker = self._walker(
+                self._older.older, seed=chance_seed, trunks=self._trunks
+            )
         for _ in range(self.max_rollout_steps):
             if state.phase is GamePhase.FINISHED or past_horizon(state, horizon):
                 break
