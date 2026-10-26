@@ -453,6 +453,11 @@ class StudentConfig:
     # it down to zero over every step of every epoch (the stage B retrain's
     # student plateaued at a constant 1e-3, 2026-10-21).
     schedule: str = "constant"
+    # Which epoch the network ends holding: "cross_entropy" (the lowest
+    # held-out cross-entropy), "teacher_value" (the lowest held-out error to
+    # the teacher's value) or "last". A value-first run's cross-entropy can
+    # rise every epoch, so keeping by it saved E7's epoch 1 (2026-10-26).
+    keep: str = "cross_entropy"
 
     def __post_init__(self) -> None:
         if self.learning_rate <= 0.0 or self.minibatch_size < 1 or self.epochs < 1:
@@ -461,6 +466,8 @@ class StudentConfig:
             raise ValueError("value_target is 'outcome' or 'teacher'")
         if self.schedule not in ("constant", "cosine"):
             raise ValueError("schedule is 'constant' or 'cosine'")
+        if self.keep not in ("cross_entropy", "teacher_value", "last"):
+            raise ValueError("keep is 'cross_entropy', 'teacher_value' or 'last'")
 
 
 @dataclass(frozen=True, slots=True)
@@ -613,12 +620,14 @@ def train_student(
 ) -> list[StudentEpoch]:
     """Fit ``network`` to the teacher data; keep the best held-out epoch.
 
-    The network ends holding the weights of the epoch with the lowest
-    held-out cross-entropy.
+    The network ends holding the weights of the epoch ``config.keep`` names:
+    by default the one with the lowest held-out cross-entropy.
     """
 
     if data.action_size != network.action_size:
         raise ValueError("the student and the data have different catalogs")
+    if config.keep == "teacher_value" and np.isnan(data.values).any():
+        raise ValueError("keeping by the teacher's value needs teacher values")
     torch.set_num_threads(config.threads)
     torch.manual_seed(config.seed)
     generator = np.random.default_rng(config.seed)
@@ -674,8 +683,13 @@ def train_student(
         history.append(record)
         if on_epoch is not None:
             on_epoch(record)
-        if best is None or score.cross_entropy < best[0]:
-            best = (score.cross_entropy, copy.deepcopy(network.state_dict()))
+        measure = {
+            "cross_entropy": score.cross_entropy,
+            "teacher_value": score.teacher_value_mse,
+            "last": -float(epoch),
+        }[config.keep]
+        if best is None or measure < best[0]:
+            best = (measure, copy.deepcopy(network.state_dict()))
     assert best is not None
     network.load_state_dict(best[1])
     network.eval()
