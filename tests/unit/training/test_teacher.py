@@ -405,6 +405,60 @@ def test_a_cosine_schedule_trains_and_an_unknown_one_is_refused(
         StudentConfig(schedule="linear")
 
 
+@pytest.mark.parametrize("keep", ["cross_entropy", "teacher_value", "last"])
+def test_a_student_ends_holding_the_epoch_its_keep_rule_names(
+    collected: list[tuple[CollectionResult, TeacherData]], keep: str
+) -> None:
+    # E7 (2026-10-26): a student that starts at its teacher's policy and
+    # trains on value alone drifts away from the policy every epoch, so
+    # keeping by cross-entropy saves epoch 1. On this small data the value
+    # error is lowest at epoch 2, so the three rules keep three epochs.
+    spread = _teacher()
+    with torch.no_grad():
+        spread.value_head.weight.mul_(40.0)
+    data = add_teacher_values(concatenate([part for _, part in collected]), spread)
+    student = _teacher()
+    config = StudentConfig(
+        learning_rate=3e-4,
+        warmup_steps=5,
+        minibatch_size=64,
+        epochs=3,
+        value_coefficient=1000.0,
+        value_target="teacher",
+        heldout_modulus=2,
+        threads=1,
+        keep=keep,
+    )
+    history = train_student(student, data, config)
+    _, heldout_rows = split_rows(data, config.heldout_modulus)
+    final = score_student(student, data, heldout_rows)
+    by_ce = min(history, key=lambda record: record.heldout.cross_entropy)
+    by_value = min(history, key=lambda record: record.heldout.teacher_value_mse)
+    # The rules disagree on this run, so each one is seen to be followed.
+    assert len({by_ce.epoch, by_value.epoch, history[-1].epoch}) == 3
+    kept = {"cross_entropy": by_ce, "teacher_value": by_value, "last": history[-1]}
+    expected = kept[keep].heldout
+    assert final.cross_entropy == pytest.approx(expected.cross_entropy, rel=1e-5)
+    assert final.teacher_value_mse == pytest.approx(
+        expected.teacher_value_mse, rel=1e-5
+    )
+
+
+def test_an_unknown_keep_rule_and_keeping_by_missing_values_are_refused(
+    collected: list[tuple[CollectionResult, TeacherData]],
+) -> None:
+    with pytest.raises(ValueError, match="keep"):
+        StudentConfig(keep="best")
+    data = collected[0][1]
+    missing = dataclasses.replace(data, values=np.full_like(data.values, np.nan))
+    with pytest.raises(ValueError, match="needs teacher values"):
+        train_student(
+            PolicyValueNetwork(missing.action_size, hidden=(8,)),
+            missing,
+            StudentConfig(keep="teacher_value", epochs=1, heldout_modulus=2),
+        )
+
+
 def test_a_student_starts_from_a_saved_student_of_its_architecture(
     tmp_path: Path,
 ) -> None:

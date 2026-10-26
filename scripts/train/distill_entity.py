@@ -307,6 +307,7 @@ def train(arguments: argparse.Namespace) -> int:
         seed=arguments.seed,
         threads=arguments.threads,
         schedule=arguments.schedule,
+        keep=arguments.keep,
     )
     out: Path = arguments.out
     out.mkdir(parents=True, exist_ok=True)
@@ -478,6 +479,13 @@ def main(argv: list[str] | None = None) -> int:
     student.add_argument("--learning-rate", type=float, default=3.0e-4)
     student.add_argument(
         "--schedule", choices=("constant", "cosine"), default="constant"
+    )
+    student.add_argument(
+        "--keep",
+        choices=("cross_entropy", "teacher_value", "last"),
+        default=StudentConfig().keep,
+        help="the epoch saved: lowest held-out cross-entropy or teacher-value "
+        "error, or the last",
     )
     student.add_argument("--minibatch", type=int, default=512)
     student.add_argument("--seed", type=int, default=0)
