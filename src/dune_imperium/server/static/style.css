@@ -1090,33 +1090,29 @@ img.seat-disc.pictured { border-radius: 50%; }
 .strip.collapsed { flex: none; }
 /* Every column folded: let the whole shared-card column give its width back
    to the board, and keep the headings on one line so it can be narrow. */
-.seat-more {
-  all: unset;
-  cursor: pointer;
-  display: block;
-  width: 100%;
-  margin-top: 0.15rem;
-  font-size: 0.7rem;
-  opacity: 0.8;
-  line-height: 1.25;
+/* A seat's card piles as icons (panels.js pileStat): the hand as two
+   fanned card backs, the deck as one, at a stat icon's height. */
+.pile-mark { display: inline-flex; align-items: center; margin-right: 0.1em; }
+.pile-mark-back {
+  height: 1.35em;
+  width: auto;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(243, 230, 208, 0.45);
 }
-.seat-more {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.pile-mark.hand .pile-mark-back + .pile-mark-back {
+  margin-left: -0.55em;
+  transform: rotate(8deg);
 }
-.seat-more:hover { opacity: 1; color: #c9a227; }
-.seat-more:focus-visible { outline: 2px solid #c9a227; outline-offset: 2px; }
-.seat-detail[hidden] { display: none; }
+/* The battle icons held face up, and the opener of the cards behind them. */
+.battle-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.5rem; }
+.battle-line .battle-cards { font-size: 0.8rem; opacity: 0.85; }
+.pile-viewer .vcard.face-down img { filter: grayscale(0.7) brightness(0.75); }
 
-/* Short screens — a 1366x768 or 1536x864 laptop, 1440x900: the four folded
-   seats took 703-738px of a column 519-652px tall at 1366x768 (seed 7, every
-   expansion; the full-width hand then shortened every column). The
-   Leader picture gives way (the name keeps its hover card), the name and
-   badges keep one line, and the fold toggle joins the head as its arrow; its
-   words stay its accessible name, and its title the folded summary. 171 ->
-   111px a seat: all four fit at every point of that game at 1366x768,
-   1440x900 and 1536x864. Taller screens keep the picture (they fit already). */
+/* Short screens — a 1366x768 or 1536x864 laptop, 1440x900: the Leader
+   picture gives way (the name keeps its hover card) and the name and badges
+   keep one line. The seats once folded their card lines to fit four in the
+   column (171 -> 111px a seat at 1366x768); since 2026-10-26 the lines
+   always show (play feedback) and the column scrolls when they do not fit. */
 @media (max-height: 960px) {
   #seats .seat {
     display: grid;
@@ -1127,20 +1123,6 @@ img.seat-disc.pictured { border-radius: 50%; }
   }
   #seats .seat > * { grid-column: 1 / -1; }
   #seats .seat > .seat-head { grid-column: 1; grid-row: 1; }
-  #seats .seat > .seat-more {
-    grid-column: 2;
-    grid-row: 1;
-    align-self: center;
-    width: auto;
-    min-width: 1rem;
-    margin: 0;
-    padding: 0 0.1rem;
-    text-align: center;
-    font-size: 0;
-    opacity: 0.9;
-  }
-  #seats .seat > .seat-more::before { content: "\25B8"; font-size: 0.95rem; }
-  #seats .seat > .seat-more[aria-expanded="true"]::before { content: "\25BE"; }
   #seats .leader-thumb { display: none; }
   #seats .seat .who { flex-wrap: nowrap; }
   #seats .seat .who-name { flex: 1 1 auto; }

@@ -927,6 +927,12 @@ const TERMS = {
   command: { icon: null, ko: "통솔", en: "Command" },
   navigation: { icon: null, ko: "운항 카드", en: "Navigation card" },
   battle_icon: { icon: null, ko: "배틀 아이콘", en: "Battle Icon" },
+  /* The battle icons themselves (glossary-ko.md: 크리스나이프 / 사막쥐 / 오니솝터;
+     the seat panel draws the ones a seat holds, 2026-10-26). */
+  battle_desert_mouse: { icon: "battle_desert_mouse", ko: "사막쥐", en: "Desert Mouse" },
+  battle_crysknife: { icon: "battle_crysknife", ko: "크리스나이프", en: "Crysknife" },
+  battle_ornithopter: { icon: "battle_ornithopter", ko: "오니솝터", en: "Ornithopter" },
+  battle_wild: { icon: "battle_wild", ko: "와일드", en: "Wild" },
   retreat: { icon: null, ko: "후퇴", en: "Retreat" },
   observation_post: { icon: null, ko: "관측소", en: "observation post" },
   bene_tleilax_board: { icon: null, ko: "베네 틀레이락스 게임판", en: "Bene Tleilax board" },

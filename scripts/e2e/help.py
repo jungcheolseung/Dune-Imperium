@@ -321,7 +321,15 @@ def help_panel(page) -> None:
         "the supply Commander figure has its legend row",
         commander,
     )
-    for key in ("c", "s", "Esc", "?"):
+    # `s` folded the seats' card lines until 2026-10-26; they always show now.
+    check.ok(
+        not page.evaluate(
+            "[...document.querySelectorAll('#help-body kbd')]"
+            ".some((k) => k.textContent === 's')"
+        ),
+        "the seat fold's shortcut s is gone",
+    )
+    for key in ("c", "Esc", "?"):
         check.ok(
             page.evaluate(
                 "(key) => [...document.querySelectorAll('#help-body kbd')]"

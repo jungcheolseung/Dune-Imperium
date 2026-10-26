@@ -1,16 +1,18 @@
-"""E2E of the seat panels folding their detail away.
+"""E2E of the seat panels.
 
-Four panels of everything do not fit the column they live in. Measured on an
-all-expansion game before this: the four cards came to 1,678px mid-game and
-2,189px late against 751px of room, so the fourth seat was always below the
-fold and the card lines — Battle, In play, Tech, Contracts — were most of the
-weight.
+Until 2026-10-26 the card lines folded behind "자세히 ▸", whose summary named
+every line in words; the user found the panel cluttered and would rather see
+the lines always (play feedback 2026-10-26). Now nothing folds and the
+panel says less: the High Council seat, the Maker Hooks, the Control markers
+and the placed Agents are left to the board; the hand, deck, discard pile and
+Intrigue counts are icons in one row (the Intrigue count once); the battle
+icons a seat holds face up are icons, and its Objective and won Conflict
+cards open from that line in the pile viewer, the matched pairs marked. The
+column scrolls when four panels do not fit.
 
 Board-visible Influence, garrison, Conflict forces, strength and Bene Tleilax
 track positions are absent from the panel; troop supply is absent too. Specimens
-remain as an icon count. Head, compact stats and the zone counts stay. The rest
-folds, and the fold still says what it is holding rather than going blank. `s`
-folds or opens all four, and the choice is remembered per browser.
+remain as an icon count.
 
 The one supply count of Sardaukar Commanders is the exception (2026-10-10,
 user request): the board draws the garrison and Conflict ones but nothing on
@@ -23,9 +25,8 @@ The holder of the First Player marker shows the app's token beside its
 name (`catalog.first_player_token`), or the text badge without the picture;
 a review step marks that step's holder, not the game's last one.
 
-Also guards the last English line in the panel: the zone counts used to read
-`hand 5 · deck 5 · discard 0`, which the label de-mixing never reached
-because it is built by concatenation rather than from a label table.
+Also guards the zone counts' language: they once read `hand 5 · deck 5 ·
+discard 0` in a Korean panel; their titles now come from the glossary terms.
 """
 
 from __future__ import annotations
@@ -53,19 +54,56 @@ SEATS = """() => {
     return {
         client: wrap.clientHeight,
         scroll: wrap.scrollHeight,
+        overflow: getComputedStyle(wrap).overflowY,
         cards: [...wrap.children].map((c) => ({
             height: c.getBoundingClientRect().height,
             hasMore: !!c.querySelector('.seat-more'),
-            expanded: c.querySelector('.seat-more')
-                ? c.querySelector('.seat-more').getAttribute('aria-expanded') : null,
-            summary: c.querySelector('.seat-more')
-                ? c.querySelector('.seat-more').textContent : '',
+            detail: !!c.querySelector('.seat-detail'),
             detailShown: !!c.querySelector('.seat-detail:not([hidden])'),
-            zones: c.querySelector('.zones')
-                ? c.querySelector('.zones').textContent : '',
+            lines: [...c.querySelectorAll('.seat-detail > .cardline')].map((line) =>
+                (line.querySelector('strong') || {}).textContent?.trim() || ''),
+            status: [...c.querySelectorAll('.seat-detail > .cardline')]
+                .filter((line) =>
+                    (line.querySelector('strong') || {}).textContent?.trim()
+                    === t('panels.status_label'))
+                .map((line) => line.textContent).join(' '),
+            pileTitles: [...c.querySelectorAll('.zones .pile-stat')]
+                .map((p) => p.title),
         })),
     };
 }"""
+
+# Each seat's battle line: the icons it shows by kind, the count on the
+# opener, and what the view says it should be (heldBattleIcons recomputed
+# here from the catalog: the Objective and won Conflicts less the pairs
+# matched face down [Main p. 14]).
+BATTLE_JS = """() => state.view.players.map((player) => {
+    const card = document.querySelector(`#seats .seat[data-seat='${player.player}']`);
+    const line = card.querySelector('.battle-line');
+    const shown = {};
+    if (line) {
+        for (const stat of line.querySelectorAll('.stat[data-stat^="battle:"]')) {
+            shown[stat.dataset.stat.slice(7)] = stat.textContent.trim();
+        }
+    }
+    const faceDown = new Set(player.face_down_battle_card_ids || []);
+    const want = {};
+    const cards = [...player.objective_ids, ...player.won_conflict_ids];
+    for (const id of cards) {
+        if (faceDown.has(id)) continue;
+        const section = id.startsWith('objective') ? 'objectives' : 'conflicts';
+        const kind = state.catalog[section][id] && state.catalog[section][id].icon;
+        if (kind) want[kind] = String(Number(want[kind] || 0) + 1);
+    }
+    const opener = line ? line.querySelector('.battle-cards') : null;
+    return {
+        seat: player.player,
+        shown, want,
+        cards: cards.length,
+        faceDown: cards.filter((id) => faceDown.has(id)).length,
+        opener: opener ? opener.textContent : null,
+    };
+})"""
 
 
 def watched_game(page, base: str) -> None:
@@ -121,11 +159,15 @@ def check_compact_stats(page) -> None:
                     phraseText('{spice}'),
                     phraseText('{solari}'),
                     phraseText('{water}'),
-                    phraseText('{intrigue}'),
                     phraseText('{specimen}'),
                     t('panels.agent_remaining'),
                     t('panels.supply_spy'),
                     t('panels.supply_commander'),
+                    // The card piles' row (2026-10-26): the Intrigue count once.
+                    phraseText('{hand}'),
+                    phraseText('{deck}'),
+                    phraseText('{discard_pile}'),
+                    phraseText('{intrigue}'),
                 ],
                 supplyLine: lines.some((line) =>
                     line.querySelector('strong')?.textContent.trim() ===
@@ -463,37 +505,79 @@ def run(base: str, browser) -> None:
     page.evaluate("setLanguage('ko')")
     check_first_player_in_review(page)
 
-    folded = page.evaluate(SEATS)
-    check.ok(len(folded["cards"]) == 4, "four seat panels", len(folded["cards"]))
+    seats = page.evaluate(SEATS)
+    check.ok(len(seats["cards"]) == 4, "four seat panels", len(seats["cards"]))
     check.ok(
-        all(c["hasMore"] for c in folded["cards"]),
-        "every seat offers its detail",
-        [i for i, c in enumerate(folded["cards"]) if not c["hasMore"]],
+        not any(c["hasMore"] for c in seats["cards"]),
+        "no seat folds its card lines away any more",
+        [i for i, c in enumerate(seats["cards"]) if c["hasMore"]],
     )
     check.ok(
-        all(c["expanded"] == "false" for c in folded["cards"]),
-        "seats start folded",
-        [c["expanded"] for c in folded["cards"]],
+        all(c["detailShown"] for c in seats["cards"] if c["detail"]),
+        "every seat's card lines are shown",
+        [c["detailShown"] for c in seats["cards"]],
+    )
+    # What the board already draws is not repeated (2026-10-26).
+    board_words = ["원로회", "메이커 작살", "지배:", "배치"]
+    repeated = [
+        (i, word)
+        for i, c in enumerate(seats["cards"])
+        for word in board_words
+        if word in c["status"] or word in c["lines"]
+    ]
+    check.ok(not repeated, "the panel leaves the board's pieces to the board", repeated)
+    # `s` folded the seats once; it does nothing now.
+    page.keyboard.press("s")
+    check.ok(
+        page.evaluate(SEATS)["cards"] == seats["cards"],
+        "s leaves the seats as they are",
+    )
+    battle = page.evaluate(BATTLE_JS)
+    check.ok(
+        any(row["cards"] for row in battle) and any(row["faceDown"] for row in battle),
+        "late in the game some seat holds battle cards, some of them matched",
+        battle,
+    )
+    wrong = [
+        row
+        for row in battle
+        if row["cards"]
+        and (
+            row["shown"] != row["want"]
+            or str(row["cards"]) not in (row["opener"] or "")
+        )
+    ]
+    check.ok(
+        not wrong,
+        "each seat shows the battle icons it holds face up, and how many cards",
+        wrong,
+    )
+    paired = next(row for row in battle if row["faceDown"])
+    page.click(f"#seats article.seat[data-seat='{paired['seat']}'] .battle-cards")
+    page.wait_for_selector("#pile-viewer:not([hidden]) .vcard")
+    viewer = page.evaluate(
+        "({cards: document.querySelectorAll('#pile-viewer .vcard').length,"
+        " faceDown: document.querySelectorAll('#pile-viewer .vcard.face-down').length,"
+        " marks: [...document.querySelectorAll("
+        "'#pile-viewer .vcard.face-down .vcard-badge')]"
+        ".map((b) => b.textContent)})"
     )
     check.ok(
-        not any(c["detailShown"] for c in folded["cards"]),
-        "a folded seat's card lines are hidden",
+        viewer["cards"] == paired["cards"]
+        and viewer["faceDown"] == paired["faceDown"]
+        and all(mark == "짝지어 뒤집힘" for mark in viewer["marks"]),
+        "the battle cards open in the viewer, the matched pairs marked",
+        (viewer, paired),
     )
-    # A fold that says nothing would be worse than the scroll it replaces.
-    check.ok(
-        all(len(c["summary"]) > len("자세히 ▸ · ") for c in folded["cards"]),
-        "a folded seat names what it is holding",
-        [c["summary"][:40] for c in folded["cards"]],
-    )
+    page.keyboard.press("Escape")
 
-    # The zone counts must speak the same language as the rest.
+    # The zone counts' titles must speak the same language as the rest.
     english = [
-        c["zones"]
-        for c in folded["cards"]
-        if any(word in c["zones"] for word in ("hand", "deck", "discard", "supply"))
+        c["pileTitles"]
+        for c in seats["cards"]
+        if any(re.search(r"[A-Za-z]", title) for title in c["pileTitles"])
     ]
     check.ok(not english, "the zone counts are not left in English", english[:2])
-
     # The zone counts are clickable when a seat has a deck pool or a discard
     # pile, opening a viewer whose discard title used to concatenate
     # `${t("common.seat", {seat})} discard` (ITEM 8f, 2026-09-25): fixed English
@@ -552,13 +636,16 @@ def run(base: str, browser) -> None:
         },
     )
 
-    # The point of folding: all four seats in the column at 1600x1000, late in
-    # an every-expansion game. They took 986px of 751 before the rows were
-    # tightened (a wrapping name, "Commander 0/1", a two-row zone line).
+    # Late in an every-expansion game four open panels outgrow the column at
+    # 1600x1000: it scrolls rather than cutting a seat off.
     check.ok(
-        folded["scroll"] <= folded["client"],
-        "all four folded seats fit the column",
-        (folded["scroll"], folded["client"]),
+        seats["overflow"] in ("auto", "scroll"),
+        "the seat column scrolls when the panels outgrow it",
+        (seats["scroll"], seats["client"], seats["overflow"]),
+    )
+    print(
+        f"  .. the four panels take {seats['scroll']:.0f}px"
+        f" of {seats['client']:.0f}px"
     )
     # A tall screen keeps the Leader pictures; only short ones give them up.
     shown = page.evaluate(
@@ -567,66 +654,6 @@ def run(base: str, browser) -> None:
     )
     check.ok(shown == 4, "1600x1000 keeps the four Leader pictures", shown)
     check_compact_stats(page)
-
-    # Open one seat: only that one grows.
-    page.click("#seats article.seat[data-seat='1'] .seat-more")
-    one = page.evaluate(SEATS)
-    check.ok(one["cards"][1]["expanded"] == "true", "the clicked seat opened")
-    check.ok(one["cards"][1]["detailShown"], "its card lines are shown")
-    check.ok(
-        sum(1 for c in one["cards"] if c["detailShown"]) == 1,
-        "opening one seat leaves the others folded",
-        [i for i, c in enumerate(one["cards"]) if c["detailShown"]],
-    )
-    check.ok(
-        one["cards"][1]["height"] > folded["cards"][1]["height"],
-        "the opened seat is taller than it was",
-        (folded["cards"][1]["height"], one["cards"][1]["height"]),
-    )
-
-    # #seats is rebuilt by every render, so the choice must live outside it.
-    page.evaluate("render({ foreign: true })")
-    after = page.evaluate(SEATS)
-    check.ok(
-        after["cards"][1]["expanded"] == "true",
-        "the choice survives another seat moving",
-    )
-
-    # `s` opens them all, and that is what the fold is buying.
-    page.keyboard.press("s")
-    opened = page.evaluate(SEATS)
-    check.ok(
-        all(c["expanded"] == "true" for c in opened["cards"]),
-        "s opens every seat",
-        [c["expanded"] for c in opened["cards"]],
-    )
-    check.ok(
-        opened["scroll"] > folded["scroll"],
-        "folding really is what keeps the column short",
-        (folded["scroll"], opened["scroll"]),
-    )
-    print(
-        f"  .. column holds {folded['scroll']:.0f}px folded"
-        f" vs {opened['scroll']:.0f}px open, in {folded['client']:.0f}px of room"
-    )
-    page.keyboard.press("s")
-    check.ok(
-        all(c["expanded"] == "false" for c in page.evaluate(SEATS)["cards"]),
-        "s again folds every seat",
-    )
-
-    # Remembered across a reload.
-    page.click("#seats article.seat[data-seat='2'] .seat-more")
-    page.reload()
-    page.wait_for_selector("#game-screen:not([hidden])")
-    page.wait_for_function("state.view !== null && refreshFlight === null")
-    reloaded = page.evaluate(SEATS)
-    check.ok(
-        [c["expanded"] for c in reloaded["cards"]]
-        == ["false", "false", "true", "false"],
-        "the opened seat is remembered across a reload",
-        [c["expanded"] for c in reloaded["cards"]],
-    )
 
     bad = [r for r in rec.requests if r[3] is not None and r[3] >= 400]
     check.ok(not bad, "no failed requests", bad[:3])
@@ -645,22 +672,20 @@ def seek(page, fraction: float) -> None:
     )
 
 
-FOLD_GEOMETRY = """() => [...document.querySelectorAll('#seats .seat')].map((card) => {
-    const more = card.querySelector('.seat-more').getBoundingClientRect();
-    const head = card.querySelector('.seat-head').getBoundingClientRect();
-    return {
-        width: Math.round(more.width),
-        onHeadLine: more.top < head.bottom && more.bottom > head.top,
-        name: card.querySelector('.leader-name').textContent,
-    };
-})"""
+HEAD_GEOMETRY = """() => [...document.querySelectorAll('#seats .seat')].map((card) => ({
+    picture: (() => {
+        const img = card.querySelector('.leader-thumb');
+        return Boolean(img && getComputedStyle(img).display !== 'none');
+    })(),
+    name: card.querySelector('.leader-name').textContent,
+}))"""
 
 
 def run_laptop(base: str, browser) -> None:
     """A 1366x768 laptop: the column is 519-652px tall (it loses a row when the
-    hand takes two lines) and the four folded seats took 703-738px of it at
-    every point of this game. The short-screen layout (style.css, max-height:
-    960px) drops the Leader picture and puts the fold on the head's line."""
+    hand takes two lines). The short-screen layout (style.css, max-height:
+    960px) drops the Leader picture; since the card lines stopped folding
+    (2026-10-26) the column scrolls when the four panels outgrow it."""
     context, page, rec = open_context(browser, "seats-laptop", LAPTOP_VIEWPORT)
     watched_game(page, base)
     for fraction in (0.25, 0.5, 0.75, 0.95):
@@ -668,32 +693,21 @@ def run_laptop(base: str, browser) -> None:
         check_number_badges(page, f"1366x768 at {fraction:.0%}")
         seats = page.evaluate(SEATS)
         check.ok(
-            seats["scroll"] <= seats["client"],
-            f"1366x768 at {fraction:.0%}: all four folded seats fit the column",
-            (seats["scroll"], seats["client"]),
+            seats["scroll"] <= seats["client"]
+            or seats["overflow"] in ("auto", "scroll"),
+            f"1366x768 at {fraction:.0%}: every seat is in the column or a scroll away",
+            (seats["scroll"], seats["client"], seats["overflow"]),
         )
-    geometry = page.evaluate(FOLD_GEOMETRY)
+    geometry = page.evaluate(HEAD_GEOMETRY)
     check.ok(
-        all(g["width"] >= 12 and g["onHeadLine"] for g in geometry),
-        "the fold is an arrow on each seat's head line, wide enough to press",
+        not any(g["picture"] for g in geometry),
+        "the short screen gives up the Leader pictures",
         geometry,
     )
     check.ok(
         all(g["name"].strip() for g in geometry),
         "the Leader is still named where the picture was",
         [g["name"] for g in geometry],
-    )
-    page.click("#seats article.seat[data-seat='0'] .seat-more")
-    opened = page.evaluate(SEATS)["cards"][0]
-    check.ok(
-        opened["expanded"] == "true" and opened["detailShown"],
-        "the arrow opens its seat",
-        opened["expanded"],
-    )
-    page.click("#seats article.seat[data-seat='0'] .seat-more")
-    check.ok(
-        page.evaluate(SEATS)["cards"][0]["expanded"] == "false",
-        "and folds it again",
     )
     check.ok(not rec.js_errors, "no JS errors on the laptop", rec.js_errors[:3])
     context.close()
@@ -717,8 +731,7 @@ CLOCK_ROW_JS = """() => [...document.querySelectorAll('#seats article.seat')].ma
 
 
 def run_laptop_live(base: str, browser) -> None:
-    """A live game on a 1366x768 laptop: the seat clocks take no extra line,
-    so the four folded seats still fit the column."""
+    """A live game on a 1366x768 laptop: the seat clocks take no extra line."""
     context, page, rec = open_context(browser, "seats-laptop-live", LAPTOP_VIEWPORT)
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
@@ -750,9 +763,10 @@ def run_laptop_live(base: str, browser) -> None:
         )
         seats = page.evaluate(SEATS)
         check.ok(
-            seats["scroll"] <= seats["client"],
-            f"{where}: all four folded seats fit the column with their clocks",
-            (seats["scroll"], seats["client"]),
+            seats["scroll"] <= seats["client"]
+            or seats["overflow"] in ("auto", "scroll"),
+            f"{where}: every seat is in the column or a scroll away",
+            (seats["scroll"], seats["client"], seats["overflow"]),
         )
     check_compact_stats(page)
     check.ok(not rec.js_errors, "no JS errors in the live game", rec.js_errors[:3])

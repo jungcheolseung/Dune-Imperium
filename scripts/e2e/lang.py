@@ -156,12 +156,7 @@ KOREAN_LATIN_JS = r"""({keep, scoped}) => {
         }
     };
     walk(state.catalog, '');
-    const seatsBefore = expandedSeats;
-    const atTable = state.view && !document.getElementById('game-screen').hidden;
-    if (atTable) {
-        expandedSeats = new Set(state.view.players.map((p) => p.player));
-        renderSeats();
-    }
+    /* The seats' card lines always show (no fold since 2026-10-26). */
     const opened = [...document.querySelectorAll('.action-detail[hidden]')];
     for (const detail of opened) detail.hidden = false;
     const sorted = [...names].sort((a, b) => b.length - a.length);
@@ -206,10 +201,6 @@ KOREAN_LATIN_JS = r"""({keep, scoped}) => {
     }
     note(document.title, 'document.title');
     for (const detail of opened) detail.hidden = true;
-    if (atTable) {
-        expandedSeats = seatsBefore;
-        renderSeats();
-    }
     const seen = new Set();
     return found.filter(([words, text]) => {
         const key = words + '|' + text;
@@ -238,13 +229,11 @@ KOREAN_CHROME_ENGLISH = (
 KOREAN_SCOPED_ENGLISH = ((".slot-deck", ("교전 III", "교전 II")),)
 
 
-# The seat status line, every seat opened: in Korean the High Council seat
-# and the Swordmaster are 원로회 and 소드마스터 (since 2026-10-11 the board
-# spaces of the same names are too, so only the status lines are read).
+# The seat status line (the card lines always show since 2026-10-26): in
+# Korean the Swordmaster is 소드마스터 (since 2026-10-11 the board spaces of
+# the same names are too, so only the status lines are read; the High
+# Council seat left the line on 2026-10-26, the board draws it).
 SEAT_STATUS_JS = r"""() => {
-    const before = expandedSeats;
-    expandedSeats = new Set(state.view.players.map((p) => p.player));
-    renderSeats();
     /* Only the status lines: the contracts and placed-Agent lines name
        catalog contracts and spaces by their catalog names. */
     const label = t('panels.status_label');
@@ -252,8 +241,6 @@ SEAT_STATUS_JS = r"""() => {
         .filter((line) => line.querySelector('strong')?.textContent.trim() === label)
         .map((line) => line.innerText)
         .join('\n');
-    expandedSeats = before;
-    renderSeats();
     return {
         text,
         council: state.view.players.some((p) => p.high_council),
@@ -468,16 +455,17 @@ def finished_game(base: str, browser) -> None:
     )
     seats = page.evaluate(SEAT_STATUS_JS)
     check.ok(
-        seats["council"] and seats["swordmaster"],
-        "the finished game has a High Council seat and a Swordmaster to show",
+        seats["swordmaster"],
+        "the finished game has a Swordmaster to show",
         seats,
     )
     check.ok(
-        "원로회" in seats["text"]
-        and "소드마스터" in seats["text"]
-        and "High Council" not in seats["text"]
-        and "Swordmaster" not in seats["text"],
-        "Korean: the seats say 원로회 and 소드마스터",
+        "소드마스터" in seats["text"]
+        and "Swordmaster" not in seats["text"]
+        # The High Council seat is the board's to show (2026-10-26).
+        and "원로회" not in seats["text"]
+        and "High Council" not in seats["text"],
+        "Korean: the seats say 소드마스터, and leave the council seat to the board",
         seats["text"][:300],
     )
     check.ok(

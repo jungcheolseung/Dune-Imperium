@@ -8,9 +8,10 @@ Scenario A drives a real seeded game (seat 0 human, three heuristic seats,
 every expansion) to a state where the deck holds copies of one card, then
 checks, in Korean and English at 1366x768:
 
-- the seat panels' zone line reads hand/deck/discard/Intrigue for all four
-  seats, the Intrigue figure equal to the view's intrigue_card_count (and to
-  the icon stat that stays beside it), and no count is broken across lines;
+- the seat panels' card row shows hand/deck/discard/Intrigue as icons and
+  counts for all four seats (since 2026-10-26, play feedback: a line of
+  words before), each count equal to the view's, the Intrigue count once,
+  on one line;
 - the hand strip's deck count is a keyboard-reachable button; the list it
   opens in the pile viewer (#pile-viewer, 2026-10-11) is titled "My deck - N
   cards (order hidden)", N equals the shown deck size and the server's
@@ -115,9 +116,6 @@ TEXT = {
         },
         "discard_button": "버림 더미 보기",
         "discard_title": "내 버림 더미 ({n})",
-        "zones": (
-            "핸드 {hand} · 카드덱 {deck} · 버림 더미 {discard} · 책략 카드 {intrigue}"
-        ),
     },
     "en": {
         "title": "My deck · {n} cards (order hidden)",
@@ -145,10 +143,6 @@ TEXT = {
         },
         "discard_button": "View discard pile",
         "discard_title": "My discard pile ({n})",
-        "zones": (
-            "hand {hand} · deck {deck} · discard pile {discard}"
-            " · Intrigue card {intrigue}"
-        ),
     },
 }
 
@@ -245,20 +239,23 @@ CHOICE_PANEL_JS = """(top) => {
 SEATS_JS = """() => state.view.players.map((player) => {
   const card = document.querySelector(`#seats .seat[data-seat='${player.player}']`);
   const zones = card.querySelector('.zones');
-  const intrigueStat = [...card.querySelectorAll('.stats .stat')]
-    .find((stat) => stat.title === phraseText('{intrigue}'));
+  const piles = Object.fromEntries([...zones.querySelectorAll('.pile-stat')]
+    .map((stat) => [stat.dataset.stat,
+      {count: stat.textContent.trim(), title: stat.title}]));
+  const tops = [...zones.querySelectorAll('.pile-stat')]
+    .map((stat) => Math.round(stat.getBoundingClientRect().top));
   return {
     seat: player.player,
-    zones: zones.textContent.replace(/\\s+/g, ' ').trim(),
-    parts: [...zones.querySelectorAll('.zone-count')]
-      .map((part) => part.getClientRects().length),
-    lines: Math.round(zones.getBoundingClientRect().height /
-      parseFloat(getComputedStyle(zones).lineHeight || 16)),
+    piles,
+    oneLine: tops.length === 4 && Math.max(...tops) - Math.min(...tops) < 6,
+    intrigueStats: [...card.querySelectorAll('.stat')]
+      .filter((stat) => stat.title === phraseText('{intrigue}')).length,
+    titles: {hand: phraseText('{hand}'), deck: phraseText('{deck}'),
+      discard: phraseText('{discard_pile}'), intrigue: phraseText('{intrigue}')},
     hand: player.hand_size,
     deck: player.deck_size,
     discard: player.discard_pile.length,
     intrigue: player.intrigue_card_count,
-    stat: intrigueStat ? intrigueStat.textContent.trim() : null,
   };
 })"""
 
@@ -360,38 +357,35 @@ def check_zone_lines(page: Any, lang: str, stage: str) -> None:
     seats = page.evaluate(SEATS_JS)
     check.ok(len(seats) == 4, f"{label} four seat panels", len(seats))
     for row in seats:
-        expected = TEXT[lang]["zones"].format(**row)
         seat = row["seat"]
+        piles = row["piles"]
+        names = ("hand", "deck", "discard", "intrigue")
+        want = {name: str(row[name]) for name in names}
         check.ok(
-            row["zones"] == expected,
-            f"{label} seat {seat} zone line reads hand/deck/discard/Intrigue",
-            (row["zones"], expected),
+            {name: piles.get(name, {}).get("count") for name in want} == want
+            and all(piles[name]["title"] == row["titles"][name] for name in want),
+            f"{label} seat {seat} card row shows hand/deck/discard/Intrigue counts",
+            (piles, want),
         )
         check.ok(
-            row["stat"] == str(row["intrigue"]),
-            f"{label} seat {seat} keeps its Intrigue icon stat",
-            (row["stat"], row["intrigue"]),
+            row["intrigueStats"] == 1,
+            f"{label} seat {seat} shows its Intrigue count once",
+            row["intrigueStats"],
         )
-        check.ok(
-            row["parts"] == [1, 1, 1, 1],
-            f"{label} seat {seat} breaks the line between counts only",
-            row["parts"],
-        )
-        check.ok(
-            row["lines"] <= 2,
-            f"{label} seat {seat} zone line is at most two lines",
-            row["lines"],
-        )
+        check.ok(row["oneLine"], f"{label} seat {seat} card row is one line", row)
     check.ok(
         any(row["intrigue"] > 0 for row in seats),
         f"{label} some seat holds Intrigue, so the figure is not all zeros",
         [row["intrigue"] for row in seats],
     )
-    fit = page.evaluate(
-        "[document.getElementById('seats').scrollHeight,"
-        " document.getElementById('seats').clientHeight]"
+    # The seats' card lines always show since 2026-10-26 (play feedback), so
+    # late in a game the column scrolls rather than hiding a seat.
+    reach = page.evaluate(
+        "(() => { const wrap = document.getElementById('seats');"
+        " return getComputedStyle(wrap).overflowY !== 'hidden'"
+        " && wrap.querySelectorAll('.seat').length === 4; })()"
     )
-    check.ok(fit[0] <= fit[1] + 1, f"{label} the four seat panels fit the column", fit)
+    check.ok(reach, f"{label} all four seat panels are in a column that scrolls", reach)
 
 
 def check_deck_list(

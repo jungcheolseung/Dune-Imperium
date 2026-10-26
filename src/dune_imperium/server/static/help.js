@@ -94,6 +94,9 @@ function announceTurn(summary) {
 /* What the seat panel draws that no rulebook icon explains: how to draw
    the mark, and what it means (a phrase template). */
 const HELP_SEAT_MARKS = [
+  [() => pileStat("hand", phraseText("{hand}"), 5), "help.seat_mark_hand"],
+  [() => pileStat("deck", phraseText("{deck}"), 8), "help.seat_mark_deck"],
+  [() => memoryStat(2), "help.seat_mark_memories"],
   [() => commanderStatIcon(phraseText("{commander}")), "help.seat_mark_commander"],
   [() => firstPlayerMark(), "help.seat_mark_first_player"],
   [helpClockSample, "help.seat_mark_clock"],
@@ -110,7 +113,6 @@ function helpClockSample() {
 
 const HELP_SHORTCUTS = [
   ["c", "help.shortcut_collapse_columns"],
-  ["s", "help.shortcut_expand_seats"],
   ["Esc", "help.shortcut_cancel"],
   ["?", "help.shortcut_open_help"],
   /* The column handles and the hand's own order (layout.js). */

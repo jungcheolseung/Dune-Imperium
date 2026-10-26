@@ -854,13 +854,13 @@ TURN_MARK_TITLE = {
 }
 
 # Each in-play chip of a seat panel, in the seat's in_play order: its
-# classes, its own mark (if any) and the seat's fold summary.
+# classes and its own mark (if any). The seat's card lines always show since
+# 2026-10-26 (play feedback), so there is no fold to count them.
 SEAT_CHIPS_JS = """(seat) => {
     const card = document.querySelector(`#seats .seat[data-seat='${seat}']`);
     const label = t('panels.in_play_label');
     const line = [...card.querySelectorAll('.cardline')].find(
         (row) => (row.querySelector('strong') || {}).textContent?.trim() === label);
-    const more = card.querySelector('.seat-more');
     return {
         chips: line ? [...line.querySelectorAll('.tag')].map((tag) => {
             const mark = tag.querySelector('.this-turn-mark');
@@ -873,8 +873,6 @@ SEAT_CHIPS_JS = """(seat) => {
             };
         }) : null,
         marks: card.querySelectorAll('.this-turn-mark').length,
-        more: more ? more.textContent : null,
-        expanded: more ? more.getAttribute('aria-expanded') : null,
     };
 }"""
 
@@ -972,13 +970,6 @@ def check_turn_chips(page, what: str, lang: str, case: dict) -> None:
         f"{what}: one chip per in-play card (the mark is no chip)",
         (len(chips), in_play),
     )
-    label = {"ko": "플레이 영역", "en": "In play"}[lang]
-    if shown["expanded"] == "false":
-        check.ok(
-            f"{label} {len(in_play)}" in (shown["more"] or ""),
-            f"{what}: the fold still counts {len(in_play)} in-play cards",
-            shown["more"],
-        )
     kind = "pending" if case["pending"] else "done"
     for position, card_id in enumerate(in_play):
         if position >= len(chips):
@@ -1085,11 +1076,8 @@ def check_turn_case(browser, base: str, name: str, case: dict) -> None:
         what = f"{name} ({lang})"
         check_turn_rows(page, what, lang, case)
         check_turn_chips(page, what, lang, case)
-        page.locator(f"#seats .seat[data-seat='{case['seat']}'] .seat-more").click()
-        check_turn_chips(page, f"{what}, unfolded", lang, case)
         page.screenshot(path=str(SHOTS / f"turn_card_{name}_{lang}.png"))
         print(f"  screenshot: {SHOTS / f'turn_card_{name}_{lang}.png'}")
-        page.locator(f"#seats .seat[data-seat='{case['seat']}'] .seat-more").click()
 
     # The earlier copy's row trashes that copy; this turn's card stays in
     # play with its mark, and an undo brings the same choice back.
