@@ -492,7 +492,7 @@ def chain_observations(
     linkable = np.count_nonzero(changed, axis=1) < CHAIN_SHARE * np.diff(
         data.obs_offsets
     )
-    linkable[0] = False
+    linkable[:1] = False  # (an empty shard has no first row)
     linkable[1:] &= data.games[1:] == data.games[:-1]
     chain = np.zeros(rows, dtype=np.uint8)
     for row in np.flatnonzero(linkable).tolist():
@@ -588,6 +588,9 @@ def compact_teacher_data(shards: Sequence[Path], directory: Path) -> TeacherData
             assert base == total
         else:
             dtype = np.uint8 if name == "obs_values" and small else pieces[0].dtype
+            for path, piece in zip(shards, pieces, strict=True):
+                if name != "obs_values" and piece.dtype != dtype:
+                    raise ValueError(f"{path}: {name} is {piece.dtype}, not {dtype}")
             out = np.empty(
                 (sum(piece.shape[0] for piece in pieces), *pieces[0].shape[1:]), dtype
             )

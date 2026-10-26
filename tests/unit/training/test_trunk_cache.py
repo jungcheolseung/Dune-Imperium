@@ -121,3 +121,22 @@ def test_a_decision_reads_each_observation_s_trunk_once() -> None:
     assert len(cache) == 0
     with cache.decision():
         assert cache.hidden(network, first) is not kept
+
+
+def test_a_decision_keeps_at_most_the_limit_and_reads_the_rest_afresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dune_imperium.training import trunk_cache
+
+    monkeypatch.setattr(trunk_cache, "LIMIT", 2)
+    views = _views(RulesetConfig(), seed=4, decisions=1)
+    observations = [encoded_view(view) for view in views[:3]]
+    network, cache = _network(0), TrunkCache()
+    with cache.decision():
+        kept = [cache.hidden(network, observation) for observation in observations]
+        assert len(cache) == 2
+        assert cache.hidden(network, observations[0]) is kept[0]
+        third = cache.hidden(network, observations[2])
+        assert third is not kept[2] and torch.equal(third, kept[2])
+        # The same bytes as another dtype are another observation.
+        assert cache.hidden(network, observations[0].view(np.float32)) is not kept[0]

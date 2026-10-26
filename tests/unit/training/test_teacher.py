@@ -316,6 +316,39 @@ def test_a_chained_copy_keeps_a_value_beyond_a_byte_and_stays_in_memory(
     save_teacher_data(other, tmp_path / "shard_0001.npz")
     with pytest.raises(ValueError, match="different catalogs"):
         compact_teacher_data(shards, tmp_path / "other")
+    widened = dataclasses.replace(second, returns=second.returns.astype(np.float64))
+    save_teacher_data(widened, tmp_path / "shard_0001.npz")
+    with pytest.raises(ValueError, match="returns is float64"):
+        compact_teacher_data(shards, tmp_path / "widened")
+
+
+def test_a_chained_copy_takes_an_empty_shard(
+    collected: list[tuple[CollectionResult, TeacherData]], tmp_path: Path
+) -> None:
+    first = collected[0][1]
+    nothing = np.zeros(0, dtype=np.int64)
+    empty = dataclasses.replace(
+        first,
+        obs_columns=first.obs_columns[:0],
+        obs_values=first.obs_values[:0],
+        obs_offsets=np.zeros(1, dtype=np.int64),
+        legal_indices=first.legal_indices[:0],
+        legal_offsets=np.zeros(1, dtype=np.int64),
+        teacher=first.teacher[:0],
+        actions=first.actions[:0],
+        returns=first.returns[:0],
+        victory_points=first.victory_points[:0],
+        games=first.games[:0],
+        values=first.values[:0],
+    )
+    save_teacher_data(empty, tmp_path / "shard_0000.npz")
+    save_teacher_data(first, tmp_path / "shard_0001.npz")
+    shards = [tmp_path / "shard_0000.npz", tmp_path / "shard_0001.npz"]
+    chained = compact_teacher_data(shards, tmp_path / "compact")
+    every = np.arange(first.rows)
+    assert np.array_equal(chained.observations(every), first.observations(every))
+    width = first.observations(every).shape[1]
+    assert chained.observations(nothing).shape == (0, width)
 
 
 @pytest.mark.parametrize("arch", ["entity", "mlp"])

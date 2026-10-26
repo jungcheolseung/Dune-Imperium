@@ -17,9 +17,10 @@ as the callers computed it: a ``[1, H]`` tensor (older-codec callers index
 row 0, as they did). It keeps what it computes only inside ``decision()``,
 which a search seat wraps around each decision it answers; the cache is
 emptied when the decision begins and ends, so an entry never outlives the
-weights it was read with, and it holds at most one decision's observations
-(about a thousand, 23 KB each as keys). Outside a decision every call reads
-the trunk afresh.
+weights it was read with, and it holds at most one decision's observations:
+about a thousand, 23 KB each as keys, in a default decision, and never more
+than ``LIMIT`` (a decision whose playouts ran long reads the rest afresh).
+Outside a decision every call reads the trunk afresh.
 """
 
 from collections.abc import Iterator
@@ -31,6 +32,10 @@ from torch import Tensor
 
 from dune_imperium.training.network import PolicyValueNetwork
 
+# Entries one decision keeps at most: about 100 MB of keys. A default
+# decision kept 1,058 at its peak (8 worlds x 5 candidates, horizon 1).
+LIMIT = 4096
+
 
 class TrunkCache:
     """``network.trunk`` of observations already seen in a decision, per
@@ -39,7 +44,7 @@ class TrunkCache:
     __slots__ = ("_depth", "_hidden", "hits", "misses")
 
     def __init__(self) -> None:
-        self._hidden: dict[tuple[int, bytes], Tensor] = {}
+        self._hidden: dict[tuple[int, str, bytes], Tensor] = {}
         self._depth = 0
         self.hits = 0
         self.misses = 0
@@ -72,7 +77,7 @@ class TrunkCache:
                 return network.trunk(torch.from_numpy(observation).unsqueeze(0))
         # The network's identity, not its weights: nothing trains or
         # replaces a search seat's networks while it answers a decision.
-        key = (id(network), observation.tobytes())
+        key = (id(network), observation.dtype.str, observation.tobytes())
         found = self._hidden.get(key)
         if found is not None:
             self.hits += 1
@@ -80,5 +85,6 @@ class TrunkCache:
         self.misses += 1
         with torch.no_grad():
             found = network.trunk(torch.from_numpy(observation).unsqueeze(0))
-        self._hidden[key] = found
+        if len(self._hidden) < LIMIT:
+            self._hidden[key] = found
         return found
