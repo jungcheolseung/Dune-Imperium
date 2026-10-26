@@ -42,6 +42,7 @@ from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireTech,
+    EachOpponentDiscardsCard,
     EachOpponentLosesTroop,
     OnTroopsLostAtConflictEnd,
     OpponentsMoveSpiesFromVisitedSpace,
@@ -637,7 +638,15 @@ from dune_imperium.rules.tech import optional_trash_tech_ids
 # answer the row once only it is left and the record goes on
 # (``planetary_array_row``), and take its reshuffle from the award ahead
 # (``tech_draw_at_the_win``, widened); docs/human-records.md.
-ACTION_CODEC_VERSION = 154
+# v155 (general rules audit gap 6, OQ-138; user ruling 2026-10-26): Covert
+# Operation's "Each opponent discards a card." opens its window for every
+# opponent, an empty hand too, which confirms it discards nothing
+# (``resolve_opponent_discard_without_card``, every catalog: its
+# ``confirm_empty`` row by Covert Operation, and by Ghola with Immortality).
+# The window records the card that opened it (``printer``). Older records
+# answer the new window before the next recorded step
+# (``opponent_discard_alone``); docs/human-records.md.
+ACTION_CODEC_VERSION = 155
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -1353,6 +1362,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.extend(_trash_templates(config, "select_long_live_fighters_discard"))
     templates.extend(_trash_templates(config, "discard_agent_card"))
     templates.extend(_trash_templates(config, "discard_opponent_card"))
+    # Covert Operation: an opponent with an empty hand confirms it discards
+    # nothing (OQ-138, user ruling 2026-10-26; codec v155).
+    templates.append(ActionTemplate(action_id="resolve_opponent_discard_without_card"))
     templates.extend(_trash_templates(config, "trash_reveal_card"))
     templates.extend(_trash_templates(config, "trash_combat_reward_card"))
     templates.extend(_trash_templates(config, "trash_card_for_desert_tactics"))
@@ -1955,6 +1967,11 @@ def _window_printers(
         return tuple(
             (Source.INTRIGUE, card)
             for card in _intrigue_reward_cards(config, AcquireTech)
+        )
+    if action_id == "resolve_opponent_discard_without_card":
+        return tuple(
+            (Source.AGENT_CARD, card)
+            for card in _box_reward_cards(config, EachOpponentDiscardsCard)
         )
     if action_id == "resolve_unit_loss_without_unit":
         return tuple(

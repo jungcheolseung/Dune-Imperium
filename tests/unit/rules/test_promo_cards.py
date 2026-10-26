@@ -833,6 +833,9 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
         # is confirmed by a row of its own (skip_intrigue_set_aside).
         + 1
+        # v155 (OQ-138): Covert Operation's confirm of an empty hand
+        # (resolve_opponent_discard_without_card).
+        + 1
     )
     # v130 (OQ-021, user ruling 2026-10-04): the CHOAM catalog loses
     # take_exhausted_contract_solari (-1).
@@ -902,6 +905,9 @@ def test_promo_actions_round_trip_through_the_codec() -> None:
         + 16
         # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
         # is confirmed by a row of its own (skip_intrigue_set_aside).
+        + 1
+        # v155 (OQ-138): Covert Operation's confirm of an empty hand
+        # (resolve_opponent_discard_without_card).
         + 1
     )
     # Stage B3a: Arrakis Revolt's two payments are ``pay`` effect rows naming

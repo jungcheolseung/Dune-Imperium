@@ -809,6 +809,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "select_long_live_fighters_draw": apply_agent_card_long_live_action,
     "select_long_live_fighters_discard": apply_agent_card_long_live_action,
     "discard_opponent_card": apply_opponent_card_discard,
+    # Covert Operation: an opponent with an empty hand confirms (OQ-138).
+    "resolve_opponent_discard_without_card": apply_opponent_card_discard,
     # Leader Signet Ring and placement-triggered Leader abilities
     "advance_feyd_track": apply_feyd_track_action,
     "trash_leader_card": apply_leader_card_trash,

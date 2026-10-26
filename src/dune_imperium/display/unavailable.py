@@ -18,9 +18,9 @@ whose reward would change nothing (OQ-071), a Conflict reward's, a research
 space's or Shipping's Faction already at the top, a Conflict reward's payment
 (resource or Spies) the seat is short of, a Maker space's sandworm or Desert
 Riding token it cannot take, Sietch Tabr's detonation once the Shield Wall is
-destroyed, a Holy War unit the
-seat does not have, a Skill the seat already holds, a Navigation card's
-option it cannot play, an Acquire Tech with every stack empty, an
+destroyed, a Holy War unit the seat does not have, Covert Operation's
+discard from an empty hand, a Skill the seat already holds, a Navigation
+card's option it cannot play, an Acquire Tech with every stack empty, an
 Agent-box icon that cannot come back before the turn's end, a Contract the
 seat has no Intrigue card to trash for, Litany Against Fear once the seat
 already acted in its turn, a separate-lines Intrigue card's finish before
@@ -464,6 +464,12 @@ _NAMED_FOR_THIS_REWARD: Final[Reason] = (
     "named",
 )
 _NO_UNIT_TO_LOSE: Final[Reason] = ("No unit to lose", "잃을 유닛 없음", "no_unit")
+# Covert Operation against an empty hand (OQ-138, user ruling 2026-10-26).
+_NO_CARD_TO_DISCARD: Final[Reason] = (
+    "No card to discard",
+    "버릴 카드 없음",
+    "no_card",
+)
 # A reward that would change nothing keeps its cost line off the list
 # (OQ-071): the draw of an empty deck and discard pile (Gather Intelligence,
 # OQ-099; Ecological Testing Station) and a Tleilaxu advance from the
@@ -2181,6 +2187,27 @@ def _unit_loss(state: GameState, seat: int, found: _Found) -> None:
         )
 
 
+def _opponent_card_discard(state: GameState, seat: int, found: _Found) -> None:
+    """Covert Operation's discard: greyed for a seat with an empty hand.
+
+    Every opponent is asked, an empty hand too (OQ-138, user ruling
+    2026-10-26, after the 2026-09-30 decision "결정 창 없이 자동으로 넘어가는
+    곳도 모두 결정 창을 연다"). The provider offers a ``discard_opponent_card``
+    per hand card; with none only ``resolve_opponent_discard_without_card``
+    is offered, and the discard reads "No card to discard" beside it. The
+    seat's own hand is its own to see.
+    """
+
+    if state.players[seat].hand:
+        return
+    found.row(
+        "choice",
+        "discard_opponent_card",
+        DomainAction(action_id="discard_opponent_card", actor=seat),
+        _NO_CARD_TO_DISCARD,
+    )
+
+
 def _navigation(state: GameState, seat: int, found: _Found) -> None:
     """A Navigation card's options that cannot be played now (Steersman
     Y'rkoon's Plot Course, OQ-039).
@@ -3208,6 +3235,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
     FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE: (_combat_reward_influence,),
     FrameKind.COMBAT_REWARD_OPTIONAL: (_combat_reward_payment,),
     FrameKind.COMBAT_REWARD_SPY_RECALL: (_combat_reward_payment,),
+    FrameKind.OPPONENT_CARD_DISCARD: (_opponent_card_discard,),
     FrameKind.OPPONENT_UNIT_LOSS: (_unit_loss,),
     FrameKind.SKILL_CHOICE: (_skill_choice,),
     FrameKind.NAVIGATION_CHOICE: (_navigation,),

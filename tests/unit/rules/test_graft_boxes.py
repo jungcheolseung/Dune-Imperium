@@ -49,9 +49,11 @@ from dune_imperium.rules import (
     frames,
     leader_abilities,
 )
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.agent_icons import card_is_boosted
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.effects import current_agent_effect_context
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.graft_boxes import (
@@ -1183,6 +1185,9 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
         # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
         # is confirmed by a row of its own (skip_intrigue_set_aside).
         + 1
+        # v155 (OQ-138): Covert Operation's confirm of an empty hand
+        # (resolve_opponent_discard_without_card).
+        + 1
     )
     codec = ActionCodec(IMMORTALITY)
     templates = set(codec.catalog)
@@ -1196,11 +1201,27 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
         or dict(t.arguments).get("source") in {"agent_card", "leader"}
         for t in twins
     )
+    # An opponent's window names the card that opened it, whichever box
+    # resolved it (``effect_steps.Printed.WINDOW``), so Covert Operation's
+    # confirm of an empty hand (OQ-138, codec v155) has no box 1 twin, as
+    # Holy War's confirm of no unit has none.
+    window_rows = {
+        ActionTemplate(row.action_id, row.arguments)
+        for card in ("covert_operation", "ghola")
+        for row in steps_for(
+            DomainAction("resolve_opponent_discard_without_card", 1),
+            card,
+            Source.AGENT_CARD,
+        )
+    }
+    assert window_rows <= templates
     for template in codec.catalog:
         is_box_effect = dict(template.arguments).get("source") == "agent_card"
         if (
-            template.action_id in BOX_ACTION_IDS or is_box_effect
-        ) and template not in twins:
+            (template.action_id in BOX_ACTION_IDS or is_box_effect)
+            and template not in twins
+            and template not in window_rows
+        ):
             twin = ActionTemplate(
                 template.action_id,
                 tuple(sorted((*template.arguments, ("box", 1)))),

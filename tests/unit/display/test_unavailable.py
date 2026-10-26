@@ -2374,6 +2374,47 @@ def _legal_for(state: GameState, seat: int) -> list[tuple[str, dict[str, Any]]]:
     ]
 
 
+# --- Covert Operation's discard ---
+
+_NO_CARD_TO_DISCARD = ("No card to discard", "버릴 카드 없음", "no_card")
+
+
+def _covert_operation(*hands: tuple[str, ...]) -> GameState:
+    """Seat 0's resolved Covert Operation box; seats 1-3 hold ``hands``."""
+
+    from tests.unit.rules.test_agent_effects import _covert_operation_hands
+
+    state, _ = _covert_operation_hands(*hands)
+    assert state.decision_stack[-1].kind == FrameKind.OPPONENT_CARD_DISCARD
+    return state
+
+
+def test_an_empty_hand_confirms_beside_the_greyed_discard() -> None:
+    """OQ-138 (user ruling 2026-10-26): every opponent is asked, and a seat
+    with an empty hand gets the window with the discard greyed out ("버릴 카드
+    없음") and only the confirm."""
+
+    held = starting_deck_instance_ids(2)[0]
+    state = _covert_operation((), (held,), ())
+    assert _legal_for(state, 1) == [("resolve_opponent_discard_without_card", {})]
+    found = unavailable_choices(state, 1, ENGINE.whole_actions(state, 1))
+    assert found is not None
+    assert found["frame"] == FrameKind.OPPONENT_CARD_DISCARD
+    assert found["refs"] == {}
+    rows = _rows(cast(dict[str, Any], found), "choice")
+    assert list(rows) == ["choice:discard_opponent_card"]
+    row = rows["choice:discard_opponent_card"]
+    assert row["action"]["action_id"] == "discard_opponent_card"
+    assert row["action"]["arguments"] == {}
+    assert _why(row) == _NO_CARD_TO_DISCARD
+    # Seat 2 waits under seat 1's window: nothing is shown to it yet.
+    assert unavailable_choices(state, 2, ENGINE.whole_actions(state, 2)) is None
+    # Once seat 1 confirms, seat 2 holds a card: nothing is greyed out.
+    confirmed = apply_whole(ENGINE, state, ENGINE.whole_actions(state, 1)[0]).state
+    assert _legal_for(confirmed, 2) == [("discard_opponent_card", {"card_id": held})]
+    assert unavailable_choices(confirmed, 2, ENGINE.whole_actions(confirmed, 2)) is None
+
+
 # --- Whose decision ---
 
 

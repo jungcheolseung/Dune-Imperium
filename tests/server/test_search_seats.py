@@ -989,8 +989,10 @@ def test_a_search_seat_restores_without_searching_again(
     # Stage B3b-2 (the Reveal frame's effects come effect first) changes the
     # codec's rows again and seed 39 gives 10 and 8; seed 40 gives 16 and 16.
     # Stage B3c-2b (an optional trash's icon row) moves them again: seed 40
-    # gives 10 and 22; seed 46 gives 29 and 27.
-    original = _advance(manager, manager.create_game(seats, game_seed=46), 30)
+    # gives 10 and 22; seed 46 gives 29 and 27. Codec v155 (Covert
+    # Operation's confirm of an empty hand, OQ-138) adds a row: seed 46
+    # gives 21 and 2; seed 47 gives 24 and 11.
+    original = _advance(manager, manager.create_game(seats, game_seed=47), 30)
     game_id = _text(original["game_id"])
     session = manager._sessions[game_id]
     assert _seat_steps(session.steps, {1}) > 10

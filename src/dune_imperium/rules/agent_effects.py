@@ -525,11 +525,20 @@ def apply_agent_card_long_live_action(
     )
 
 
+# Covert Operation's confirm of a seat with an empty hand (OQ-138).
+OPPONENT_DISCARD_WITHOUT_CARD: Final = "resolve_opponent_discard_without_card"
+
+
 def legal_opponent_card_discard_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return hand cards the current Covert Operation target may discard."""
+    """Return hand cards the current Covert Operation target may discard.
+
+    With an empty hand only ``resolve_opponent_discard_without_card`` is
+    offered: the window still opens (OQ-138, user ruling 2026-10-26), and the
+    seat confirms that it discards nothing.
+    """
 
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
@@ -542,6 +551,8 @@ def legal_opponent_card_discard_actions(
         or "covert_operation_owner" not in context
     ):
         return ()
+    if not state.players[player].hand:
+        return (DomainAction(action_id=OPPONENT_DISCARD_WITHOUT_CARD, actor=player),)
     return tuple(
         DomainAction(
             action_id="discard_opponent_card",
@@ -556,7 +567,8 @@ def apply_opponent_card_discard(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Discard one target-owned card and expose the next opponent decision."""
+    """Discard one target-owned card, or confirm there is none, and expose
+    the next opponent decision."""
 
     if action not in legal_opponent_card_discard_actions(state, action.actor):
         raise ValueError("action is not a legal opponent-card discard")
@@ -564,22 +576,36 @@ def apply_opponent_card_discard(
     source_card_id = context["covert_operation_card_id"]
     source_owner = context["covert_operation_owner"]
     card_id = dict(action.arguments).get("card_id")
+    confirmed = action.action_id == OPPONENT_DISCARD_WITHOUT_CARD
     if (
         not isinstance(source_card_id, str)
         or isinstance(source_owner, bool)
         or not isinstance(source_owner, int)
-        or not isinstance(card_id, str)
+        or not (confirmed or isinstance(card_id, str))
     ):
         raise RuntimeError("Covert Operation frame has invalid context")
-    discarded = discard_personal_card_from_hand(
-        state,
-        action.actor,
-        card_id,
-        source=(
-            f"round:{state.round_number}:player:{source_owner}:"
-            f"agent_card:{source_card_id}:opponent:{action.actor}"
-        ),
+    source = (
+        f"round:{state.round_number}:player:{source_owner}:"
+        f"agent_card:{source_card_id}:opponent:{action.actor}"
     )
+    if confirmed:
+        # Nothing to discard: the seat's own confirm leaves a public event,
+        # as Holy War's confirm with no unit does (``unit_loss_unavailable``).
+        discarded = RuleResult(
+            state=state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:none",
+                    kind="opponent_discard_unavailable",
+                    payload=(("player", action.actor),),
+                ),
+            ),
+        )
+    else:
+        assert isinstance(card_id, str)
+        discarded = discard_personal_card_from_hand(
+            state, action.actor, card_id, source=source
+        )
     popped = replace(
         discarded.state,
         decision_stack=discarded.state.decision_stack[:-1],

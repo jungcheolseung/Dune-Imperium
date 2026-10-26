@@ -732,6 +732,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "resolve_research_icon": _row(_V.RESOLVE, _S.RESEARCH, _T.OPTION),
     # --- Choices an opponent's effect forces ---------------------------------
     "discard_opponent_card": _row(_V.DISCARD, _S.OPPONENT, _T.PERSONAL_CARD),
+    # Covert Operation's confirm of a seat with an empty hand (OQ-138).
+    "resolve_opponent_discard_without_card": _row(
+        _V.CONFIRM_EMPTY, _S.OPPONENT, of=_V.DISCARD
+    ),
     "move_spy": _row(_V.MOVE_SPY, _S.OPPONENT, _T.POST),
     "lose_moved_spy": _row(_V.LOSE_SPY, _S.OPPONENT),
     "lose_unit": _row(_V.LOSE_UNIT, _S.OPPONENT, _T.UNITS),

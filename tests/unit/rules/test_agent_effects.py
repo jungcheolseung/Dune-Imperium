@@ -5662,7 +5662,10 @@ def test_guild_spy_guild_discard_reshuffles_the_intrigue_discard_pile() -> None:
     assert resolved.players[0].hand == (_instance("convincing_argument"),)
 
 
-def test_covert_operation_makes_opponents_with_cards_discard_clockwise() -> None:
+def test_covert_operation_asks_every_opponent_clockwise() -> None:
+    # [Covert Operation card] "Each opponent discards a card.": the next seat
+    # answers first, and seat 3's empty hand gets the window too, with only
+    # the confirm that it discards nothing (OQ-138, user ruling 2026-10-26).
     covert_operation = _imperium_instance("covert_operation")
     first_discard = _instance("dagger").replace("player:0:", "player:1:")
     second_discard = _imperium_instance("spacing_guild_s_favor")
@@ -5714,13 +5717,171 @@ def test_covert_operation_makes_opponents_with_cards_discard_clockwise() -> None
 
     assert second.state.players[2].discard_pile == (second_discard,)
     assert second.state.players[2].resources.spice == 2
-    resumed = second.state.decision_stack[-1].decision
-    assert isinstance(resumed, PlayerDecision)
-    assert resumed.owner == 0
     assert [event.kind for event in second.events] == [
         "card_discarded",
         "personal_card_discard_effect_resolved",
     ]
+    assert second.state.decision_stack[-1].decision == PlayerDecision(
+        owner=3,
+        prompt="No card to discard",
+    )
+    confirm = DomainAction(action_id="resolve_opponent_discard_without_card", actor=3)
+    assert engine.whole_actions(second.state, 3) == (confirm,)
+
+    third = apply_whole(engine, second.state, confirm)
+
+    assert third.state.players[3] == second.state.players[3]
+    resumed = third.state.decision_stack[-1].decision
+    assert isinstance(resumed, PlayerDecision)
+    assert resumed.owner == 0
+    assert [(event.kind, event.payload) for event in third.events] == [
+        ("opponent_discard_unavailable", (("player", 3),)),
+    ]
+
+
+def _covert_operation_hands(
+    *hands: tuple[str, ...],
+) -> tuple[GameState, UprisingRulesEngine]:
+    """Seat 0's Covert Operation at Assembly Hall, every other group of the
+    Agent turn resolved first so its box is the turn's last effect, and the
+    box resolved; seats 1-3 hold ``hands``."""
+
+    covert_operation = _imperium_instance("covert_operation")
+    owner = PlayerState(
+        player_id=0,
+        spies_supply=2,
+        spy_post_ids=("landsraad-assembly-hall-gather-support",),
+        hand=(covert_operation,),
+    )
+    state = GameState(
+        config=RulesetConfig(),
+        seed=1,
+        phase=GamePhase.PLAYER_TURNS,
+        round_number=1,
+        intrigue_deck=intrigue_deck_instance_ids(False)[:1],
+        players=(
+            owner,
+            *(
+                PlayerState(player_id=seat, hand=hand)
+                for seat, hand in enumerate(hands, start=1)
+            ),
+        ),
+        decision_stack=(
+            DecisionFrame(
+                kind="turn",
+                frame_id="round:1:turn:0",
+                decision=PlayerDecision(owner=0, prompt="Choose a turn"),
+            ),
+        ),
+    )
+    engine = UprisingRulesEngine()
+    current = apply_agent_action(state, _action_to(state, "assembly_hall")).state
+    while True:
+        others = [
+            action
+            for action in engine.whole_actions(current, 0)
+            if action.action_id != "resolve_agent_card_effect"
+        ]
+        if not others:
+            break
+        current = apply_whole(engine, current, others[0]).state
+    current = apply_whole(
+        engine, current, DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    ).state
+    return current, engine
+
+
+def test_covert_operation_opens_a_confirm_window_for_an_empty_hand() -> None:
+    """OQ-138 (user ruling 2026-10-26, "규칙 공백 1~6은 모두 추천대로" --
+    option (가)): Covert Operation's "Each opponent discards a card."
+    [Covert Operation card] opens its window for every opponent, an empty
+    hand too, which sees the discard greyed ("버릴 카드 없음") and can only
+    confirm; the order stays the next seat first, and nothing is discarded.
+    As OQ-131 (user 2026-10-25, "임무에도 적용하자"; Political Equilibrium:
+    "모든 좌석에 창을 열어") and Holy War's seat with no unit, after the
+    user's 2026-09-30 decision "결정 창 없이 자동으로 넘어가는 곳도 모두 결정
+    창을 연다"."""
+
+    held = _instance("dagger").replace("player:0:", "player:2:")
+    state, engine = _covert_operation_hands((), (held,), ())
+
+    # One window per opponent above the owner's open Agent turn, seat 1 on
+    # top: seats 1, 2, 3 answer in that order.
+    frames = state.decision_stack[-3:]
+    assert [frame.kind for frame in frames] == [FrameKind.OPPONENT_CARD_DISCARD] * 3
+    assert [frame.decision for frame in frames] == [
+        PlayerDecision(owner=3, prompt="No card to discard"),
+        PlayerDecision(
+            owner=2, prompt="Choose a card to discard for Covert Operation"
+        ),
+        PlayerDecision(owner=1, prompt="No card to discard"),
+    ]
+    assert state.decision_stack[-4].kind == FrameKind.AGENT_EFFECTS
+
+    # The empty hand's only action is the confirm, shown as the row that
+    # names the card that opened the window.
+    confirm = DomainAction(action_id="resolve_opponent_discard_without_card", actor=1)
+    assert engine.whole_actions(state, 1) == (confirm,)
+    assert engine.legal_actions(state, 1) == (
+        DomainAction(
+            action_id="confirm_empty",
+            actor=1,
+            arguments=(
+                ("of", "discard"),
+                ("printed", "covert_operation"),
+                ("source", "agent_card"),
+            ),
+        ),
+    )
+    assert engine.whole_actions(state, 2) == ()
+    assert engine.whole_actions(state, 3) == ()
+    first = apply_whole(engine, state, confirm)
+    assert first.state.players == state.players
+    assert [event.kind for event in first.events] == ["opponent_discard_unavailable"]
+
+    # Seat 2 holds a card: its discard is as before.
+    assert engine.whole_actions(first.state, 2) == (
+        DomainAction(
+            action_id="discard_opponent_card",
+            actor=2,
+            arguments=(("card_id", held),),
+        ),
+    )
+    second = apply_whole(engine, first.state, engine.whole_actions(first.state, 2)[0])
+    assert second.state.players[2].discard_pile == (held,)
+    last = DomainAction(action_id="resolve_opponent_discard_without_card", actor=3)
+    assert engine.whole_actions(second.state, 3) == (last,)
+    third = apply_whole(engine, second.state, last).state
+
+    # After the last answer the owner's open turn continues as before: only
+    # its end is left, which only the owner closes (OQ-095 (1)).
+    top = third.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert isinstance(top.decision, PlayerDecision)
+    assert top.decision.owner == 0
+    assert [action.action_id for action in engine.whole_actions(third, 0)] == [
+        "finish_agent_turn"
+    ]
+
+
+def test_covert_operation_against_every_hand_empty_asks_each_opponent() -> None:
+    # OQ-138: even with no card in any opponent's hand, every opponent gets
+    # the confirm window in turn, and the owner's turn then goes on.
+    state, engine = _covert_operation_hands((), (), ())
+
+    for seat in (1, 2, 3):
+        decision = state.decision_stack[-1].decision
+        assert decision == PlayerDecision(owner=seat, prompt="No card to discard")
+        confirm = DomainAction(
+            action_id="resolve_opponent_discard_without_card", actor=seat
+        )
+        assert engine.whole_actions(state, seat) == (confirm,)
+        state = apply_whole(engine, state, confirm).state
+
+    top = state.decision_stack[-1]
+    assert top.kind == FrameKind.AGENT_EFFECTS
+    assert isinstance(top.decision, PlayerDecision)
+    assert top.decision.owner == 0
 
 
 def test_covert_operation_resolved_last_still_ends_the_agent_turn() -> None:
@@ -5771,6 +5932,12 @@ def test_covert_operation_resolved_last_still_ends_the_agent_turn() -> None:
     ).state
     current = apply_whole(engine, current, engine.whole_actions(current, 1)[0]).state
     current = apply_whole(engine, current, engine.whole_actions(current, 2)[0]).state
+    # Seat 3's empty hand confirms (OQ-138).
+    current = apply_whole(
+        engine,
+        current,
+        DomainAction(action_id="resolve_opponent_discard_without_card", actor=3),
+    ).state
 
     # Back to the owner's open turn, which only its owner's end closes
     # (user ruling OQ-095 (1)).

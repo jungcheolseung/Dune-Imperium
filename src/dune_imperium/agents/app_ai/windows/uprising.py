@@ -29,7 +29,8 @@ answer) or answers through the shared spy evaluators:
   (``abilities/board.py``) over the offered Agents in board order.
 - ``opponent_card_discard``: each victim's ``ChooseDiscardEvaluator::
   Evaluate`` (``spec/profile-economy.md`` §12.2) with
-  ``spacingGuildBonus = false``.
+  ``spacingGuildBonus = false``; a victim with an empty hand, which the app
+  never asks, confirms (OQ-138).
 - ``long_live_fighters``: the draw prompt = ``LongLiveTheFightersAbility::
   Evaluate``, the discard prompt = ``LongLiveTheFightersEvaluator::Evaluate``
   (``abilities/imperium_a.py``; ``R6`` §12: our two steps are the app's two
@@ -309,7 +310,11 @@ def contract_reward_recall(run: DecisionRun) -> DomainAction | None:
 
 # -- Covert Operation victims ---------------------------------------------------------
 
-_OPPONENT_DISCARD_IDS = frozenset({"discard_opponent_card"})
+_OPPONENT_DISCARD = "discard_opponent_card"
+# A victim with an empty hand confirms it discards nothing (OQ-138); the app
+# asks no such seat, so the confirm, always offered alone, is the answer.
+_OPPONENT_DISCARD_CONFIRM = "resolve_opponent_discard_without_card"
+_OPPONENT_DISCARD_IDS = frozenset({_OPPONENT_DISCARD, _OPPONENT_DISCARD_CONFIRM})
 
 
 def choose_discard_evaluate(p: Profile, cards: Sequence[Entity], n: int) -> Answer:
@@ -334,11 +339,15 @@ def opponent_card_discard(run: DecisionRun) -> DomainAction | None:
     App: ``CovertOperationAbility`` attaches ``ChooseDiscardEvaluator`` to
     each opponent's discard prompt; the victim's own profile answers it
     (``R6`` §13). Targets: the victim's hand in hand order (stable sort ties).
+    A victim with an empty hand is asked too (OQ-138) and only confirms
+    (``resolve_opponent_discard_without_card``, offered alone).
     """
 
     if not _known_only(run, _OPPONENT_DISCARD_IDS):
         return None
-    discards = run.by_id("discard_opponent_card")
+    discards = run.by_id(_OPPONENT_DISCARD)
+    if not discards:
+        return run.first(_OPPONENT_DISCARD_CONFIRM)
     seat = run.ctx.seat
     ids = [str_arg(a, "card_id") for a in discards]
     cards = [card_entity(i, seat) for i in ids if i is not None]

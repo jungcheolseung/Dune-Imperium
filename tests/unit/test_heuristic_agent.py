@@ -133,6 +133,24 @@ def test_unknown_actions_fall_back_to_a_legal_choice() -> None:
     assert HeuristicAgent(seed=9).choose_action(_view(), actions) == actions[0]
 
 
+def test_covert_operation_s_empty_hand_confirm_is_answered() -> None:
+    # Codec v155 (OQ-138, user ruling 2026-10-26): an opponent with an empty
+    # hand is asked too; its window holds only the confirm, a known action
+    # with a neutral score, which the agent answers.
+    from tests.unit.rules.test_agent_effects import _covert_operation_hands
+
+    state, engine = _covert_operation_hands((), (), ())
+    legal = engine.whole_actions(state, 1)
+    assert legal == (
+        DomainAction(action_id="resolve_opponent_discard_without_card", actor=1),
+    )
+    assert score_action(legal[0]) == 0.0
+    agent = HeuristicAgent(seed=3)
+    assert agent.choose_action_with_state(state, engine.observe(state, 1), legal) == (
+        legal[0]
+    )
+
+
 def test_score_ordering_matches_the_strategy_tiers() -> None:
     complete = score_action(_action("complete_contract"))
     place = score_action(

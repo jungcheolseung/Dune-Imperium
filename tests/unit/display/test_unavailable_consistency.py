@@ -154,6 +154,7 @@ from dune_imperium.rules.agent_effects import (
     legal_agent_card_influence_actions,
     legal_agent_card_recall_actions,
     legal_agent_card_trash_actions,
+    legal_opponent_card_discard_actions,
 )
 from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE,
@@ -1442,6 +1443,33 @@ def _old_unit_loss(state: GameState, player: int) -> tuple[DomainAction, ...]:
     )
 
 
+def _old_opponent_card_discard(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """``agent_effects.legal_opponent_card_discard_actions`` before the confirm
+    with an empty hand (codec v155, OQ-138): an empty hand was never asked,
+    and its window would have offered nothing."""
+
+    if not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if (
+        not isinstance(frame.decision, PlayerDecision)
+        or frame.decision.owner != player
+        or "covert_operation_card_id" not in context
+    ):
+        return ()
+    return tuple(
+        DomainAction(
+            action_id="discard_opponent_card",
+            actor=player,
+            arguments=(("card_id", card_id),),
+        )
+        for card_id in state.players[player].hand
+    )
+
+
 def _old_eligible_skills(state: GameState, owner: PlayerState) -> tuple[str, ...]:
     """``sardaukar.eligible_face_up_skill_ids`` before ``skill_choice_block``
     (2026-10-02)."""
@@ -1807,6 +1835,12 @@ _CONFIRMS: list[
         _old_unit_loss,
         FrameKind.OPPONENT_UNIT_LOSS,
         "resolve_unit_loss_without_unit",
+    ),
+    (
+        legal_opponent_card_discard_actions,
+        _old_opponent_card_discard,
+        FrameKind.OPPONENT_CARD_DISCARD,
+        "resolve_opponent_discard_without_card",
     ),
     (
         legal_skill_choice_actions,

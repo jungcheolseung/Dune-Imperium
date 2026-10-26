@@ -127,7 +127,13 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.ability_executor import piece_rows
 from dune_imperium.rules.acquisition import agent_box_acquisition
-from dune_imperium.rules.action_shapes import Source, Verb, printer_value, template_id
+from dune_imperium.rules.action_shapes import (
+    PRINTER_KEY,
+    Source,
+    Verb,
+    printer_value,
+    template_id,
+)
 from dune_imperium.rules.agent_icons import effective_agent_icons
 from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
 from dune_imperium.rules.card_bonds import (
@@ -910,27 +916,31 @@ def _opponents_decide(
     source = agent_card_source(state.round_number, player, card_id)
     match reward:
         case EachOpponentDiscardsCard():
-            # Only a seat holding a card is asked; the next seat answers
-            # first. The owner's frame is already written back beneath them;
-            # the last answer writes it back again, unchanged
+            # Every opponent is asked, the next seat first (OQ-138, user
+            # ruling 2026-10-26, as OQ-131 and Holy War's unit loss): a seat
+            # with an empty hand gets the window too and confirms that it
+            # discards nothing (``resolve_opponent_discard_without_card``).
+            # The owner's frame is already written back beneath them; the
+            # last answer writes it back again, unchanged
             # (``agent_effects.apply_opponent_card_discard``).
             seats = state.config.players
-            targets = tuple(
-                (player + offset) % seats
-                for offset in range(1, seats)
-                if state.players[(player + offset) % seats].hand
-            )
+            targets = tuple((player + offset) % seats for offset in range(1, seats))
             frames = tuple(
                 DecisionFrame(
                     kind=FrameKind.OPPONENT_CARD_DISCARD,
                     frame_id=f"{source}:opponent:{target}",
                     decision=PlayerDecision(
                         owner=target,
-                        prompt="Choose a card to discard for Covert Operation",
+                        prompt=(
+                            "Choose a card to discard for Covert Operation"
+                            if state.players[target].hand
+                            else "No card to discard"
+                        ),
                     ),
                     context=(
                         ("covert_operation_card_id", card_id),
                         ("covert_operation_owner", player),
+                        (PRINTER_KEY, _card_printer(card_id)),
                     ),
                 )
                 for target in reversed(targets)
