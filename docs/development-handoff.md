@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-26 (Uprising 판정 묶음 OQ-113 (C)·OQ-121·OQ-042 병합으로 codec v154; 그 앞 일반 규칙 감사의 남은 결함 5개 병합으로 codec v153; 그 앞 플레이 피드백 병합 — 원격 대기실·첫 플레이어 옵션 OQ-132·앱 좌석 색, codec 그대로; 2026-10-25 엔진 감사 수정 병합으로 codec v152; 그 전 B단계 병합 codec v150 뒤 Reveal 상태 이름 정리로 codec v151; 합계 정리(Reveal·Conflict·계약) 끝 — 효과 조각 엔진 전환 끝; 탐색 좌석이 옛 codec 플레이 망을 어댑터로 두어 v149 실력)
+기준일: 2026-10-26 (OQ-138 Covert Operation의 손이 빈 상대 창으로 codec v155; 그 앞 Uprising 판정 묶음 OQ-113 (C)·OQ-121·OQ-042 병합으로 codec v154; 그 앞 일반 규칙 감사의 남은 결함 5개 병합으로 codec v153; 그 앞 플레이 피드백 병합 — 원격 대기실·첫 플레이어 옵션 OQ-132·앱 좌석 색, codec 그대로; 2026-10-25 엔진 감사 수정 병합으로 codec v152; 그 전 B단계 병합 codec v150 뒤 Reveal 상태 이름 정리로 codec v151; 합계 정리(Reveal·Conflict·계약) 끝 — 효과 조각 엔진 전환 끝; 탐색 좌석이 옛 codec 플레이 망을 어댑터로 두어 v149 실력)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -29,12 +29,12 @@
 | 항목 | 값 |
 | --- | --- |
 | master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`)·2026-10-22 `search-adapter` 병합 `bc466f23`(탐색 좌석이 옛 codec 파일을 어댑터로)·2026-10-23 `search-parts` 병합 `79bdcb5b`(탐색 좌석 옵션, 서버 탐색 AI에 E1 뒤집기 문턱)·같은 날 `restore-lost-problems` 병합(문제집의 없어진 거절 정리, 사람 판 281곳 모두 풀림)·2026-10-25 `claude/base-ix-p0-57d7eb` 병합(원판·Ix P0 문서와 판정, 판정 공지 도움말 창; codec 그대로)·같은 날 `claude/engine-audit-fixes-16a6cc` 병합(엔진 감사 2026-10-22 수정, OQ-128~131, codec v152)·2026-10-26 `claude/play-feedback-2026-10-25-808f13` 병합 `f1de07c4`(플레이 피드백: 원격 대기실, OQ-132 첫 플레이어 옵션, 앱 좌석 색 순서 등; codec 그대로)·같은 날 `claude/rules-audit-fixes` 병합 `55265b73`(일반 규칙 감사의 남은 결함 5개, codec v153)·`claude/uprising-rulings-v154` 병합 `e9e992eb`(Uprising 판정 묶음 OQ-113 (C)·OQ-121·OQ-042, codec v154)·`search-draft`·`e5-student-distill` 병합 `5cef7268`·`78d86d29`(탐색 좌석 측정 옵션과 증류 도구, codec 그대로) |
-| pytest | 8,401개 통과(2026-10-26 실험 브랜치 `search-draft`·`e5-student-distill` 병합 관문, codec v154, `-n 4`)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
+| pytest | 8,413개 통과(2026-10-26 OQ-138 묶음 관문, codec v155, `-n 4`)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
 | Ruff · mypy | `src tests` 통과, mypy 563파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 69종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-26 Uprising 판정 묶음 관문(`-j 2`, 64 통과; 나머지 다섯은 고친 스크립트 하나와 다시 고른 시드 넷으로 하나씩 통과) |
-| action codec | **v154** (2026-10-26 Uprising 판정 묶음). Planetary Array의 승자 창 줄(Tech 카탈로그), 비용 없는 책략 선택의 확인 줄 셋(Manipulate는 모든 카탈로그, Twisted 둘은 Bloodlines 카탈로그)이 늘었고, 비용 없는 책략 줄은 불발해도 낸다(OQ-113 (C)); 옛 기보는 다리로([`human-records.md`](human-records.md)). v153 저장은 서버가 열지 않는다 |
+| action codec | **v155** (2026-10-26 OQ-138: Covert Operation의 손이 빈 상대도 창을 열고 확인 줄 `resolve_opponent_discard_without_card` 하나를 받는다 — 모든 카탈로그 +1, Immortality는 Ghola 사본 줄까지 +2; 옛 기보 다리 `opponent_discard_alone`). 그 앞 **v154** (2026-10-26 Uprising 판정 묶음). Planetary Array의 승자 창 줄(Tech 카탈로그), 비용 없는 책략 선택의 확인 줄 셋(Manipulate는 모든 카탈로그, Twisted 둘은 Bloodlines 카탈로그)이 늘었고, 비용 없는 책략 줄은 불발해도 낸다(OQ-113 (C)); 옛 기보는 다리로([`human-records.md`](human-records.md)). v153 저장은 서버가 열지 않는다 |
 | 관측 | v33, 5,732 int (B단계: 고른 카드·효과·대상 칸 추가) |
-| action catalog | 기본 1,435 · CHOAM 1,556 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,336(v154) |
+| action catalog | 기본 1,436 · CHOAM 1,557 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,338(v155) |
 | 엔티티 망 특성 | `FEATURE_VERSION` 2(능력 기록에서, 행동은 `ACTION_SHAPES` 부분), 지문 `59761de5…`(엔진 감사 수정 뒤); 특성 표가 바뀌어도 파일을 이름으로 옮긴다 |
 | 로컬 서버 기본 AI | 앱 AI 어려움(`app_ai`). 원격 방의 좌석 기본값은 사람 |
 | 탐색 AI 망 | Mac mini의 `checkpoints/play/search.pt` → `readapt-v147-4400.pt`(레시피 MLP를 v147에서 재학습, 2026-10-15; 탐색 좌석 1 대 앱 AI 어려움 3에서 81.8%). v150 이후 엔진에서도 `search:`가 v150 이전 MLP 파일을 옛 codec 어댑터로 둔다(2026-10-22 병합 `bc466f23`; v151 좌석 81.8% 대 같은 파일의 v149 좌석 82.2%, 1 대 앱 AI 어려움 3 400판). 망 단독(`checkpoint:`)은 여전히 4,311줄 가운데 84줄만 학습한 줄. 되돌리기용 `recipe-mlp-1e5-800.pt`, X `mix-v139-10081.pt` |
