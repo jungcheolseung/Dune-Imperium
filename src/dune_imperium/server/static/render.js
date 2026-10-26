@@ -344,16 +344,19 @@ const LOG_CARD_EVENT_REASONS = {
   tleilaxu_card_acquired: "acquired",
   tech_acquired: "acquired",
   skill_gained: "acquired",
+  scouts_card_bought: "acquired",
   card_trashed: "trashed",
   intrigue_card_trashed: "trashed",
+  tech_trashed: "trashed",
+  usurped_card_trashed: "trashed",
   agent_card_trashed_for_vp: "trashed",
   contract_reveal_card_trashed_for_vp: "trashed",
   skill_trashed: "trashed",
   card_discarded: "discarded",
+  top_card_discarded: "discarded",
   tech_flipped: "flipped",
   card_grafted: "grafted",
   contract_completed: "completed",
-  tech_revealed: "revealed",
   agent_card_picked: "used",
   agent_placed: "used",
   intrigue_played: "used",
@@ -376,11 +379,11 @@ function logActionReason(actionId, key, args) {
     if (/^flip/.test(actionId)) return "flipped";
     return "used";
   }
-  if (/^acquire|^take_contract$/.test(actionId)) return "acquired";
+  if (/^acquire|^take_(trigger_)?contract$/.test(actionId)) return "acquired";
   if (/^trash/.test(actionId)) return "trashed";
   if (/^discard/.test(actionId)) return "discarded";
   if (/^flip/.test(actionId)) return "flipped";
-  if (actionId === "complete_contract") return "completed";
+  if (/^complete_contract/.test(actionId)) return "completed";
   if (actionId === "choose_graft_partner") return "grafted";
   if (
     ["choose_agent_card", "play_intrigue", "choose_intrigue_card", "play_turn_start_card"]
@@ -420,17 +423,22 @@ function logTargets(group) {
     if (!known.includes(reason)) reasons.set(key, [...known, reason]);
   };
   for (const entry of group.entries) {
-    if (entry.type !== "action") continue;
+    /* A step taken back named nothing that stayed. */
+    if (entry.type !== "action" || entry.undone) continue;
     for (const [key, value] of Object.entries(entry.arguments)) {
       consider(value, logActionReason(entry.action_id, key, entry.arguments));
     }
     for (const event of entry.events) {
       if (!event.payload) continue;
+      /* The stack's next Tech tile turning face up after a purchase is the
+         market's, not the buyer's (independent review, 2026-10-26). */
+      if (event.kind === "tech_revealed") continue;
       for (const [key, value] of Object.entries(event.payload)) {
         if (
           key === "card_id" ||
           key === "space_id" ||
           key === "tech_id" ||
+          key === "contract_id" ||
           key.endsWith("instance_id")
         ) {
           consider(value, LOG_CARD_EVENT_REASONS[event.kind] || null);

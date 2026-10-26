@@ -1998,7 +1998,6 @@ const LOG_REASON_TEXT = {
   flipped: "panels.log_reason_flipped",
   grafted: "panels.log_reason_grafted",
   completed: "panels.log_reason_completed",
-  revealed: "panels.log_reason_revealed",
   used: "panels.log_reason_used",
 };
 
@@ -2063,6 +2062,7 @@ function turnCard(group, glowFrom) {
           className: "small",
           badge: text || undefined,
           badgeClass: "log-reason",
+          badgeTitle: text || undefined,
           onClick: (entry, node) => {
             if (entry) pinPopover(entry, node);
           },

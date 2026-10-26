@@ -13,7 +13,8 @@ built from a synthetic group (panels.js turnCard, render.js logTargets):
     acquired, a card trashed, an Agent card played, an Intrigue card played,
     and a card named by a waiting effect's `printed` argument;
 [2] up to eight pictures stand two abreast, the rest as "+N";
-[3] a picture whose card no event explains carries no mark.
+[3] a picture whose card no event explains carries no mark; an undone
+    step and the market's next Tech tile (tech_revealed) give no picture.
 The pictures come from the log entries alone, which the server has already
 filtered for this seat, so nothing here reads another seat's hidden cards.
 """
@@ -25,7 +26,7 @@ from open_mode import create_game
 
 check = Check()
 
-GROUP_JS = """(ids) => {
+GROUP_JS = """({ids, undone, market}) => {
   const [agent, acquired, trashed, tech, intrigue, printed, ...rest] = ids;
   const action = (action_id, args, events) => ({type: 'action', actor: 0, index: 1,
     action_id, arguments: args, events, undone: false});
@@ -37,7 +38,12 @@ GROUP_JS = """(ids) => {
     action('trash_optional_card', {card_id: trashed, printed: agent, source: 'agent_card'},
       [{kind: 'card_trashed', payload: {card_id: trashed, player: 0}}]),
     action('flip', {printed: tech, source: 'tech'},
-      [{kind: 'tech_flipped', payload: {tech_id: tech, player: 0}}]),
+      [{kind: 'tech_flipped', payload: {tech_id: tech, player: 0}},
+       // The stack's next tile, face up after a purchase: the market's.
+       {kind: 'tech_revealed', payload: {stack: 0, tech_id: market}}]),
+    // A purchase taken back named nothing that stayed.
+    {...action('acquire', {printed: undone, source: 'purchase'},
+      [{kind: 'card_acquired', payload: {card_id: undone, player: 0}}]), undone: true},
     action('play_intrigue', {card_id: intrigue, option: 0},
       [{kind: 'intrigue_played', payload: {card_id: intrigue, player: 0}}]),
     action('gain', {icon: 'resources', printed: printed, source: 'reveal_card'}, []),
@@ -63,6 +69,7 @@ IDS_JS = """() => {
   return {
     cards,
     tech: Object.keys(c.tech)[0],
+    market: Object.keys(c.tech)[1],
     intrigue: Object.keys(c.intrigue)[0],
   };
 }"""
@@ -81,9 +88,10 @@ def main() -> None:
         cards = found["cards"]
         ids = [cards[0], cards[1], cards[2], found["tech"], found["intrigue"], cards[3],
                *cards[4:9]]
+        extra = {"undone": cards[10], "market": found["market"]}
         for lang in ("ko", "en"):
             page.evaluate("lang => setLanguage(lang)", lang)
-            result = page.evaluate(GROUP_JS, ids)
+            result = page.evaluate(GROUP_JS, {"ids": ids, **extra})
             marks = result["marks"]
             print(f"[{lang}]")
             check.ok(
@@ -101,6 +109,12 @@ def main() -> None:
                 all(m["mark"] is None for m in marks[6:]),
                 f"{lang}: a card no event explains carries no mark",
                 marks[6:],
+            )
+            shown = {m["id"] for m in marks}
+            check.ok(
+                extra["undone"] not in shown and extra["market"] not in shown,
+                f"{lang}: no picture for an undone step or the market's next Tech tile",
+                (extra, sorted(shown)),
             )
         check.ok(not rec.js_errors, "no JS errors", rec.js_errors[:3])
     check.finish()

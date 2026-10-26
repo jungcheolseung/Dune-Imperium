@@ -1371,11 +1371,11 @@ kbd {
   left: 2px;
   right: 2px;
   font-size: 0.62rem;
-  line-height: 1.3;
+  line-height: 1.25;
   text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Two marks may take two lines rather than lose the second word. */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .turn-cards-more { align-self: center; font-size: 0.8rem; }
 /* A Tech stack's size, drawn like a face-down deck's count (piles.css

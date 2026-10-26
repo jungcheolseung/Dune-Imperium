@@ -1266,7 +1266,6 @@ const UI_TEXT = {
   "panels.log_reason_flipped": { "ko": "뒤집기", "en": "Flipped" },
   "panels.log_reason_grafted": { "ko": "접합", "en": "Grafted" },
   "panels.log_reason_completed": { "ko": "완료", "en": "Completed" },
-  "panels.log_reason_revealed": { "ko": "공개", "en": "Revealed" },
   "panels.log_reason_used": { "ko": "사용", "en": "Used" },
   "panels.log_cards_more": { "ko": "+{{count}}장", "en": "+{{count}} more" },
   "panels.memories": {
