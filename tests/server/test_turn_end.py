@@ -960,10 +960,10 @@ def _starter_instance(card_id: str) -> str:
 
 
 def test_a_humans_own_covert_operation_does_not_hold_it_mid_turn() -> None:
-    # The Covert Operation mechanic (each opponent with cards in hand
-    # discards one) is already exercised for its card text in
+    # The Covert Operation mechanic (each opponent discards one; an empty
+    # hand confirms, OQ-138) is already exercised for its card text in
     # tests/unit/rules/test_agent_effects.py::
-    # test_covert_operation_makes_opponents_with_cards_discard_clockwise,
+    # test_covert_operation_asks_every_opponent_clockwise,
     # whose fixture is reused here to reach the decision-stack shape
     # directly (an organic search across 250+ seeds never got the card
     # acquired, cycled back into hand, and played before the opponents'
@@ -1039,6 +1039,9 @@ def test_a_humans_own_covert_operation_does_not_hold_it_mid_turn() -> None:
 
 def _covert_operation_game(
     manager: GameSessionManager,
+    seats: tuple[str, ...] = HUMAN_FIRST,
+    *,
+    empty_first: bool = False,
 ) -> tuple[str, str, str]:
     """Seat 0's open Covert Operation turn at Assembly Hall, its last effect
     pending: the fixture of
@@ -1046,7 +1049,9 @@ def _covert_operation_game(
     board's own Intrigue-draw icon resolved BEFORE the personal card effect
     so nothing else is left once the last opponent discards (probe:
     scratchpad/probe2.py, 2026-09-24 session). Returns the game id and the
-    two cards the AI opponents will discard."""
+    two cards seats 1 and 2 will discard; with ``empty_first`` seat 1's hand
+    is empty instead, and seat 1's card is the first one returned all the
+    same."""
 
     covert_operation = _covert_operation_instance("covert_operation")
     first_discard = _starter_instance("dagger").replace("player:0:", "player:1:")
@@ -1065,7 +1070,7 @@ def _covert_operation_game(
         round_number=1,
         players=(
             owner,
-            PlayerState(player_id=1, hand=(first_discard,)),
+            PlayerState(player_id=1, hand=() if empty_first else (first_discard,)),
             PlayerState(player_id=2, hand=(second_discard,)),
             PlayerState(player_id=3),
         ),
@@ -1078,7 +1083,7 @@ def _covert_operation_game(
         ),
     )
 
-    summary = manager.create_game(HUMAN_FIRST, game_seed=0)
+    summary = manager.create_game(seats, game_seed=0)
     game_id = str(summary["game_id"])
     manager._get(game_id).state = state
     summary = manager.summary(game_id)
@@ -1099,6 +1104,72 @@ def _covert_operation_game(
         )
         assert summary["confirmation"] is None
     return game_id, first_discard, second_discard
+
+
+def test_the_covert_operation_owner_waits_for_a_human_empty_hand_s_confirm() -> None:
+    # OQ-138 (user ruling 2026-10-26): every opponent is asked, an empty hand
+    # too, which only confirms that it discards nothing. As Holy War's seat
+    # with no unit (OQ-036 (a)), the window sits above the owner's still-open
+    # Agent turn (OQ-095), so the owner's turn end waits for the human
+    # opponent's confirm, and that confirm is an interrupt
+    # (``INTERRUPT_KINDS``), not a turn end of the opponent's own.
+    manager = GameSessionManager()
+    game_id, _, second_discard = _covert_operation_game(
+        manager, TWO_HUMANS, empty_first=True
+    )
+    session = manager._get(game_id)
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert [a["action_id"] for a in actions] == ["resolve_agent_card_effect"]
+    summary = manager.apply_action(
+        game_id,
+        0,
+        _int(manager.summary(game_id)["revision"]),
+        _int(actions[0]["index"]),
+    )
+
+    assert summary["confirmation"] is None
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "opponent_card_discard"
+    assert decision["owner"] == 1 and decision["owner_is_human"] is True
+    assert decision["turn_end_ready"] is False
+    assert agent_turn_end_ready(session.state) is None
+    assert manager.legal_actions(game_id, 0)["actions"] == []
+    payload = manager.legal_actions(game_id, 1)
+    offered = _rows(payload["actions"])
+    assert [a["action_id"] for a in offered] == [
+        "resolve_opponent_discard_without_card"
+    ]
+    # The discard it cannot make is shown greyed out with the reason.
+    greyed = _rows(_obj(payload["unavailable"])["rows"])
+    assert [(row["surface"], row["reason_ko"]) for row in greyed] == [
+        ("choice", "버릴 카드 없음")
+    ]
+
+    log_before = len(session.log)
+    summary = manager.apply_action(
+        game_id, 1, _int(summary["revision"]), _int(offered[0]["index"])
+    )
+
+    assert summary["confirmation"] is None
+    assert 1 not in session.open_units
+    with pytest.raises(SessionError, match="no turn end to confirm"):
+        manager.confirm_turn(game_id, 1, _int(summary["revision"]))
+    logged = [
+        (entry.kind, dict(entry.payload).get("player"))
+        for step in live_steps(session.log[log_before:])
+        for entry in step.events
+    ]
+    # Seat 1's own confirm, then AI seat 2's discard and AI seat 3's confirm.
+    assert ("opponent_discard_unavailable", 1) in logged
+    assert ("opponent_discard_unavailable", 3) in logged
+    assert session.state.players[1].discard_pile == ()
+    assert session.state.players[2].discard_pile == (second_discard,)
+    # Every opponent has answered: the owner's turn end is offered now.
+    decision = _obj(summary["decision"])
+    assert decision["kind"] == "agent_effects" and decision["owner"] == 0
+    assert decision["turn_end_ready"] is True
+    offered = _rows(manager.legal_actions(game_id, 0)["actions"])
+    assert [a["action_id"] for a in offered] == ["finish_agent_turn"]
 
 
 def test_an_owed_emperor_track_spy_holds_the_turn_end_ready_flag() -> None:

@@ -76,7 +76,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # with every option on; the base catalog keeps its 1,434. v153 (general
     # rules audit 2026-10-25) adds no template. v154 (OQ-121): Planetary
     # Array's reward-window row and its step row join the Tech catalogs only.
-    assert ACTION_CODEC_VERSION == 154
+    # v155 (OQ-138): Covert Operation's confirm of an empty hand joins every
+    # catalog (its ``confirm_empty`` row; Ghola's too with Immortality, 4,336
+    # to 4,338 with every option on).
+    assert ACTION_CODEC_VERSION == 155
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -245,6 +248,9 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
         # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
         # is confirmed by a row of its own (skip_intrigue_set_aside).
         + 1
+        # v155 (OQ-138): Covert Operation's confirm of an empty hand
+        # (resolve_opponent_discard_without_card).
+        + 1
     )
     # v143: the box 1 twins of a grafted turn join the Immortality catalogs
     # only, so the base catalog is unchanged by them. Stage B3a's net +172
@@ -252,8 +258,9 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # stage B3c-1's net -47 to 2,938, stage B3d-1's net -160 to 2,778,
     # stage B3d-2a's net -1,412 to 1,366, stage B3d-3's net +63 to 1,429,
     # stage B3d-4's net +2 to 1,431, stage B3e-1's net +3 to 1,434, codec
-    # v154's Manipulate confirmation (OQ-113 (C)) +1 to 1,435.
-    assert first.size == 1435
+    # v154's Manipulate confirmation (OQ-113 (C)) +1 to 1,435, codec v155's
+    # Covert Operation confirmation (OQ-138) +1 to 1,436.
+    assert first.size == 1436
 
 
 def _scouts_step_rows(
@@ -464,9 +471,9 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
                 row.action_id, row.arguments
             )
             assert with_scouts.encode(with_scouts.decode(index, actor=0)) == index
-    assert ActionCodec(RulesetConfig()).size == 1435
+    assert ActionCodec(RulesetConfig()).size == 1436
     base_scouts = RulesetConfig(arrakeen_scouts=True)
-    assert ActionCodec(base_scouts).size == 1435 + len(
+    assert ActionCodec(base_scouts).size == 1436 + len(
         _scouts_catalog_additions(base_scouts, set(_scouts_templates(base_scouts)))
     )
 
@@ -675,6 +682,9 @@ def test_choam_contract_choice_round_trips_only_in_the_module_catalog() -> None:
         + 16
         # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
         # is confirmed by a row of its own (skip_intrigue_set_aside).
+        + 1
+        # v155 (OQ-138): Covert Operation's confirm of an empty hand
+        # (resolve_opponent_discard_without_card).
         + 1
     )
 
@@ -912,6 +922,9 @@ def test_bloodlines_contract_tokens_round_trip_only_with_both_options() -> None:
         # mandatory trash with an empty hand (Bloodlines catalogs, +2).
         + 1
         + 2
+        # v155 (OQ-138): Covert Operation's confirm of an empty hand
+        # (resolve_opponent_discard_without_card).
+        + 1
     )
 
     choam_only = ActionCodec(RulesetConfig(choam_module=True))
@@ -1243,6 +1256,37 @@ def test_long_live_the_fighters_choices_round_trip() -> None:
         assert codec.decode(codec.encode(action), actor=action.actor) == action
         with pytest.raises(ValueError, match="not present"):
             codec.encode(whole)
+
+
+@pytest.mark.parametrize(
+    ("config", "cards"),
+    [
+        (RulesetConfig(), ("covert_operation",)),
+        (RulesetConfig(immortality=True), ("covert_operation", "ghola")),
+    ],
+    ids=["base", "immortality"],
+)
+def test_covert_operation_s_empty_hand_confirm_round_trips(
+    config: RulesetConfig, cards: tuple[str, ...]
+) -> None:
+    # Codec v155 (OQ-138, user ruling 2026-10-26): an opponent with an empty
+    # hand confirms it discards nothing, the ``confirm_empty`` row naming the
+    # card that opened the window, in every catalog; Ghola copies the box
+    # with Immortality. The whole template is not in the catalog.
+    from dune_imperium.rules.action_shapes import Source
+
+    codec = ActionCodec(config)
+    whole = DomainAction(action_id="resolve_opponent_discard_without_card", actor=2)
+    for card in cards:
+        (row,) = steps_for(whole, card, Source.AGENT_CARD)
+        assert row == DomainAction(
+            action_id="confirm_empty",
+            actor=2,
+            arguments=(("of", "discard"), ("printed", card), ("source", "agent_card")),
+        )
+        assert codec.decode(codec.encode(row), actor=2) == row
+    with pytest.raises(ValueError, match="not present"):
+        codec.encode(whole)
 
 
 def test_subversive_advisor_agent_turn_round_trips() -> None:

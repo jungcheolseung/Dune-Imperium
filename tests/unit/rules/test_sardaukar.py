@@ -1700,6 +1700,9 @@ def test_bloodlines_actions_round_trip_only_in_the_bloodlines_catalog() -> None:
         # v154 (OQ-113 (C)): Manipulate's set-aside with an empty Imperium Row
         # is confirmed by a row of its own (skip_intrigue_set_aside).
         + 1
+        # v155 (OQ-138): Covert Operation's confirm of an empty hand
+        # (resolve_opponent_discard_without_card).
+        + 1
     )
 
     # Stage B3a: the Commander's acquisition at the Sardaukar space is an

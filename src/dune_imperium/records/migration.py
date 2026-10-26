@@ -101,7 +101,11 @@ from dune_imperium.rules.agent_effect_frame import (
     box_actions,
     route_box_action,
 )
-from dune_imperium.rules.agent_effects import boost_draw_card, resolves_boost_draw
+from dune_imperium.rules.agent_effects import (
+    OPPONENT_DISCARD_WITHOUT_CARD,
+    boost_draw_card,
+    resolves_boost_draw,
+)
 from dune_imperium.rules.agent_turn import agent_card_pick
 from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.combat import legacy_combat_reward_icon
@@ -528,7 +532,7 @@ def migrate_record(
                     state,
                 )
             state = settled
-        if replay.action_codec_version < FACTION_WINDOW_CODEC:
+        if replay.action_codec_version < NEVER_ASKED_CODEC:
             state = _answer_windows_never_asked(
                 engine,
                 state,
@@ -615,7 +619,7 @@ def migrate_record(
             try:
                 after = engine.apply(state, step).state
             except IllegalActionError as error:
-                if replay.action_codec_version < FACTION_WINDOW_CODEC:
+                if replay.action_codec_version < NEVER_ASKED_CODEC:
                     # A window an older engine never opened, which a bridge's
                     # step above opened (a pause before a Scouts reward).
                     answered = _answer_windows_never_asked(
@@ -4237,6 +4241,16 @@ FACTION_WINDOW_CODEC: Final = 153
 FACTION_ALONE: Final = "scouts_faction_alone"
 FACTION_ALONE_DRAW: Final = "scouts_faction_alone_draw"
 FACTION_RESHUFFLE_RENAMED: Final = "scouts_faction_reshuffle_renamed"
+# Codec v155 opens Covert Operation's discard window for every opponent, an
+# empty hand too, which confirms it discards nothing (OQ-138, user ruling
+# 2026-10-26, "규칙 공백 1~6은 모두 추천대로"). An older engine skipped that
+# seat unasked, so the window is never the record's to answer: the confirm,
+# the seat's one action there, is taken before the record's next step.
+OPPONENT_DISCARD_WINDOW_CODEC: Final = 155
+OPPONENT_DISCARD_ALONE: Final = "opponent_discard_alone"
+# The newest codec a window ``_window_never_asked`` answers was never opened
+# before: the replay asks it only for a record older than that.
+NEVER_ASKED_CODEC: Final = OPPONENT_DISCARD_WINDOW_CODEC
 
 
 def _window_never_asked(
@@ -4264,6 +4278,17 @@ def _window_never_asked(
             if held in wholes and not reward_was_chosen(frame):
                 return held, FACTION_ALONE_DRAW
             return factions[0], FACTION_ALONE
+    if (
+        codec < OPPONENT_DISCARD_WINDOW_CODEC
+        and frame.kind == FrameKind.OPPONENT_CARD_DISCARD
+        and wholes
+        == (
+            DomainAction(
+                action_id=OPPONENT_DISCARD_WITHOUT_CARD, actor=decision.owner
+            ),
+        )
+    ):
+        return wholes[0], OPPONENT_DISCARD_ALONE
     if codec >= MISSION_WINDOW_CODEC or len(wholes) != 1:
         return None
     (only,) = wholes

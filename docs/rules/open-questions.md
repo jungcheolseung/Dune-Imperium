@@ -2814,8 +2814,8 @@
 
 ## OQ-138 — Covert Operation에서 손이 빈 상대와 결정 창
 
-- 상태: `DECIDED` (2026-10-26 사용자 판정 "규칙 공백 1~6은 모두 추천대로" — (가); project convention; **엔진 반영 전**. 구현 묶음과 codec
-  번호는 아직 정하지 않았다)
+- 상태: `DECIDED` (2026-10-26 사용자 판정 "규칙 공백 1~6은 모두 추천대로" — (가); project convention; 2026-10-26 엔진 반영,
+  codec v155)
 - 계기: 2026-10-25 일반 규칙 감사의 규칙 공백 6(B9).
 - 질문: Covert Operation의 Agent box "Each opponent discards a card." `[Covert Operation card]`에서 손이 빈 상대에게도 창을 여는가.
 - 판정 전 엔진: 카드를 쥔 상대에게만 버리기 창을 열고, 손이 빈 상대는 창·확인·사건 없이 건너뛴다(`rules/agent_box_abilities.py`의
@@ -2828,3 +2828,25 @@
   (다) 지금대로 둔다.
 - 판정(2026-10-26 사용자, 추천대로): **(가)**, OQ-131과 Holy War에 맞춘다. 창의 순서는 지금 카드를 쥔 상대에게 묻는 순서(다음 좌석부터)와
   같다. 버리는 것은 없으므로 게임 결과는 그대로다.
+- 되돌리기에 미치는 결과(2026-10-26 사용자 확인 "Holy War처럼 이대로 둠"): 되돌리기 창은 그 좌석이 이어서 둔 마지막 단계들뿐이라
+  (`server/sessions.py` `_open_undo_window`, `server/session_log.undo_window`) 상대가 한 명이라도 답하면 카드를 쓴 좌석은 그
+  Covert Operation Agent turn을 — Agent 배치와 그 앞 단계까지 — 더는 되돌릴 수 없다. 손이 빈 상대도 이제 확인을 누르므로 상대가 모두
+  손이 비었을 때도 그렇다(판정 전에는 이때만 되돌릴 수 있었다). AI 상대는 창이 열리자마자 답하므로 Agent box를 해결한 바로 뒤 되돌리기가
+  닫힌다. 상대들이 공개 차례를 마친 뒤 이 카드를 쓰면 늘 그렇다. [OQ-036](#oq-036--lose-a-troop의-출처와-강제-spy-이동의-목적지)의
+  Holy War(2026-10-02 사용자 확인 "이대로 둔다")와 같다. 엔진은 바꾸지 않았다.
+- 구현(2026-10-26, codec v155): `rules/agent_box_abilities._opponents_decide`가 모든 상대에게 `OPPONENT_CARD_DISCARD` 창을 다음
+  좌석부터 연다(창은 연 카드를 `printer`로 적는다). 손이 빈 좌석에는 `rules/agent_effects.legal_opponent_card_discard_actions`가
+  `resolve_opponent_discard_without_card`("버릴 카드 없음 — 확인", 모든 catalog의 `confirm_empty` 줄) 하나만 내고, 그 누름은 아무것도
+  버리지 않고 `opponent_discard_unavailable` 사건을 남긴다(Holy War 확인의 `unit_loss_unavailable`처럼). 화면은
+  `display/unavailable._opponent_card_discard`가 버리기를 "버릴 카드 없음"으로 회색으로 보인다. 상대의 답은 그 상대의 턴 종료가
+  아니다(`server/turn_end.py` `INTERRUPT_KINDS`, 창 종류로 판단). heuristic은 확인을 중립 점수로, 앱 AI는 확인으로 답한다(앱은 그런
+  좌석에 묻지 않는다). 옛 기보(codec 154 이하)는 다리 `opponent_discard_alone`이 그 창을 다음 적힌 수 앞에서 확인으로 답한다
+  ([human-records.md](../human-records.md)). `tests/unit/rules/test_agent_effects.py`(`test_covert_operation_asks_every_opponent_clockwise`,
+  `test_covert_operation_opens_a_confirm_window_for_an_empty_hand`, `test_covert_operation_against_every_hand_empty_asks_each_opponent`,
+  `test_covert_operation_resolved_last_still_ends_the_agent_turn`), `tests/unit/display/test_unavailable.py`
+  (`test_an_empty_hand_confirms_beside_the_greyed_discard`), `tests/unit/display/test_unavailable_consistency.py`,
+  `tests/adapters/test_action_codec.py`(`test_covert_operation_s_empty_hand_confirm_round_trips`),
+  `tests/unit/records/test_record_migration.py`(`test_an_empty_hand_s_covert_operation_window_is_confirmed_unrecorded`,
+  `test_a_record_before_v155_skips_the_empty_hands_covert_operation_asks`), `tests/unit/test_heuristic_agent.py`,
+  `tests/unit/agents/app_ai/test_app_ai_window_uprising.py`, `tests/server/test_turn_end.py`
+  (`test_the_covert_operation_owner_waits_for_a_human_empty_hand_s_confirm`)로 고정한다.

@@ -4658,6 +4658,9 @@ def test_ruthless_leadership_round_trips_and_is_dealt_in_random_games() -> None:
         # mandatory trash with an empty hand (Bloodlines catalogs, +2).
         + 1
         + 2
+        # v155 (OQ-138): Covert Operation's confirm of an empty hand
+        # (resolve_opponent_discard_without_card).
+        + 1
     )
     # Stage B3a: the Agent-effect frame offers the trash as an effect row
     # naming the card, then the card to trash as its target row.

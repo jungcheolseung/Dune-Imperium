@@ -226,6 +226,11 @@ def test_the_greedy_seat_does_not_repeat_a_choice_at_the_same_observation() -> N
     agent = OlderNetworkAgent(_older(rows))
     view = _ENGINE.observe(state, player)
     legal = _ENGINE.legal_actions(state, player)
-    first = agent.choose_action_with_state(state, view, legal)
-    again = agent.choose_action_with_state(state, view, legal)
-    assert again != first
+    agent.choose_action_with_state(state, view, legal)
+    agent.choose_action_with_state(state, view, legal)
+    # The guard is over whole actions (placements): the second pick is another
+    # placement, though its first step, the card pick, may name the same card
+    # (with codec v155's catalog this untrained network's two best placements
+    # both play the Dagger).
+    (taken,) = agent._taken.values()
+    assert len(taken) == 2

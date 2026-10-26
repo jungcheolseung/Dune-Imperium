@@ -103,6 +103,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # the confirm with no unit to lose is the window's only action.
     "lose_unit": 0.0,
     "resolve_unit_loss_without_unit": 0.0,
+    # Covert Operation against an empty hand (OQ-138): the confirm is the
+    # discard window's only action.
+    "resolve_opponent_discard_without_card": 0.0,
     # A bank Commander with no choosable Skill (OQ-031, OQ-035 (b)): the
     # confirm is the Skill choice window's only action.
     "resolve_commander_without_skill": 0.0,

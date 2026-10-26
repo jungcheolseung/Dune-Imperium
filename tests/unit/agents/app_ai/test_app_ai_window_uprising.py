@@ -660,6 +660,25 @@ def test_covert_operation_victim_orders_by_its_own_agents(
     assert _answer(state) == _act("discard_opponent_card", seat, card_id=card)
 
 
+def test_covert_operation_victim_with_an_empty_hand_confirms() -> None:
+    """Codec v155 (OQ-138, user ruling 2026-10-26): a victim with an empty
+    hand is asked too, with the confirm alone; the app never asks such a
+    seat, so the window answers with that confirm."""
+
+    seat = _owner(DISCARD)
+    player = DISCARD.players[seat]
+    state = with_player(
+        DISCARD, seat, hand=(), discard_pile=(*player.discard_pile, *player.hand)
+    )
+    confirm = _act("resolve_opponent_discard_without_card", seat)
+    assert ENGINE.whole_actions(state, seat) == (confirm,)
+    assert _answer(state) == confirm
+    agent = AppAIAgent(seed=0)
+    assert agent.choose_action_with_state(
+        state, ENGINE.observe(state, seat), (confirm,)
+    ) == confirm
+
+
 def test_choose_discard_evaluator_with_nothing_to_pick() -> None:
     profile = _profile(DISCARD, _owner(DISCARD), random.Random(0))
     assert window.choose_discard_evaluate(profile, [], 1) == Answer(

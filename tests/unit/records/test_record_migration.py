@@ -85,7 +85,10 @@ from dune_imperium.records import migration
 from dune_imperium.records.migration import migrate_record, replayed, walk
 from dune_imperium.rules import UprisingRulesEngine, turn_rows
 from dune_imperium.rules.agent_effect_frame import route_box_action
-from dune_imperium.rules.agent_effects import resolves_boost_draw
+from dune_imperium.rules.agent_effects import (
+    OPPONENT_DISCARD_WITHOUT_CARD,
+    resolves_boost_draw,
+)
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.board_effects import BOARD_ICON_IMPERIAL_PRIVILEGE
 from dune_imperium.rules.combat import legacy_combat_reward_icon
@@ -479,6 +482,16 @@ def _never_asked_steps(replay: GameReplay) -> set[int]:
     return _pass_alone_steps(replay) | set(_equilibrium_alone_steps(replay))
 
 
+def _opponent_discard_alone_steps(replay: GameReplay) -> set[int]:
+    """This engine's confirms of a Covert Operation window an empty hand got
+    (OQ-138, user ruling 2026-10-26); an engine before v155 skipped the
+    seat unasked."""
+
+    return _only_choice_in(
+        replay, FrameKind.OPPONENT_CARD_DISCARD, OPPONENT_DISCARD_WITHOUT_CARD
+    )
+
+
 def _v152_counts(replay: GameReplay) -> Counter[str]:
     """The bridge counts of those steps in a record before v152."""
 
@@ -500,12 +513,14 @@ def _dropped(replay: GameReplay, codec: int, drop: set[int] | None = None) -> se
     of a reward it paid in one step (``_reward_icon_steps``) and the steps
     that only pick toward a whole action (``_effect_pick_steps``), and
     before v152 the parts of an Agent box it did inside the step before
-    them (``_v152_split_steps``)."""
+    them (``_v152_split_steps``), and before v155 the confirms of a Covert
+    Operation window an empty hand got (``_opponent_discard_alone_steps``)."""
 
     return (
         set(drop or ())
         | (set(_v152_split_steps(replay)) if codec < 152 else set())
         | (_never_asked_steps(replay) if codec < 152 else set())
+        | (_opponent_discard_alone_steps(replay) if codec < 155 else set())
         | (set(_held_steps(replay)) if codec < 142 else set())
         | (_no_option_steps(replay) if codec < 149 else set())
         | (_reward_icon_steps(replay) if codec < 150 else set())
@@ -551,6 +566,8 @@ def _effect_counts(replay: GameReplay, codec: int) -> dict[str, int]:
     held = set(_held_steps(replay)) if codec < 142 else set()
     if codec < 152:
         held |= set(_v152_split_steps(replay)) | _never_asked_steps(replay)
+    if codec < 155:
+        held |= _opponent_discard_alone_steps(replay)
     # A Contract's in-turn icon row is the reward bridges' (stage B3b).
     rewards = _reward_icon_steps(replay) if codec < 150 else frozenset()
     skipped = _no_option_steps(replay) if codec < 149 else set()
@@ -592,6 +609,12 @@ def _reward_icon_counts(
     assert {name: counts.pop(name, 0) for name in v152} == {
         name: split[name] for name in v152
     }
+    alone = (
+        len(_opponent_discard_alone_steps(replay))
+        if record.replay.action_codec_version < 155
+        else 0
+    )
+    assert counts.pop(migration.OPPONENT_DISCARD_ALONE, 0) == alone
     return counts
 
 
@@ -4722,6 +4745,92 @@ def test_a_mission_window_with_the_pass_alone_is_passed_before_the_record() -> N
     passed = migration._answer_windows_never_asked(ENGINE, state, taken, codec=151)
     assert missions._owner(passed) == 2
     assert [step.bridge for step in taken.steps] == [migration.MISSION_PASS_ALONE]
+
+
+def _covert_operation_windows() -> tuple[GameState, str]:
+    """Seat 0's resolved Covert Operation box: seat 1's and seat 3's hands
+    are empty, seat 2 holds the returned card."""
+
+    from tests.unit.rules.test_agent_effects import _covert_operation_hands
+
+    held = starting_deck_instance_ids(2)[0]
+    state, _ = _covert_operation_hands((), (held,), ())
+    return state, held
+
+
+def test_an_empty_hand_s_covert_operation_window_is_confirmed_unrecorded() -> None:
+    # OQ-138 (user ruling 2026-10-26, "규칙 공백 1~6은 모두 추천대로"): codec
+    # v155 opens Covert Operation's discard window for an empty hand too,
+    # with the confirm alone; an older engine skipped the seat unasked, so
+    # that window is never the record's to answer. A seat holding a card is
+    # asked as before, and its window stays the record's.
+    state, held = _covert_operation_windows()
+    taken = migration._Taken()
+    assert ENGINE.current_decision(state) == PlayerDecision(
+        owner=1, prompt="No card to discard"
+    )
+    assert migration._answer_windows_never_asked(ENGINE, state, taken, codec=155) is (
+        state
+    )
+    passed = migration._answer_windows_never_asked(ENGINE, state, taken, codec=154)
+    decision = ENGINE.current_decision(passed)
+    assert isinstance(decision, PlayerDecision) and decision.owner == 2
+    assert migration._answer_windows_never_asked(ENGINE, passed, taken, codec=154) is (
+        passed
+    )
+    discard = DomainAction(
+        action_id="discard_opponent_card", actor=2, arguments=(("card_id", held),)
+    )
+    discarded = apply_whole(ENGINE, passed, discard).state
+    done = migration._answer_windows_never_asked(ENGINE, discarded, taken, codec=154)
+    assert done.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    assert [step.bridge for step in taken.steps] == [
+        migration.OPPONENT_DISCARD_ALONE
+    ] * 2
+
+
+def test_a_record_before_v155_skips_the_empty_hands_covert_operation_asks() -> None:
+    # The same windows end to end: this engine's steps are seat 1's confirm,
+    # seat 2's discard and seat 3's confirm (each one ``confirm_empty`` or
+    # target row), then the owner's turn end; a record before v155 holds
+    # only the discard and the turn end.
+    start, held = _covert_operation_windows()
+    steps: list[ReplayStep] = []
+    state = start
+    while state.decision_stack[-1].kind == FrameKind.OPPONENT_CARD_DISCARD:
+        decision = ENGINE.current_decision(state)
+        assert isinstance(decision, PlayerDecision)
+        (row,) = ENGINE.legal_actions(state, decision.owner)
+        steps.append(row)
+        state = ENGINE.apply(state, row).state
+    (finish,) = ENGINE.legal_actions(state, 0)
+    assert finish.action_id == "finish_agent_turn"
+    steps.append(finish)
+    state = ENGINE.apply(state, finish).state
+    assert [
+        (step.action_id, step.actor) for step in steps if isinstance(step, DomainAction)
+    ] == [
+        ("confirm_empty", 1),
+        ("choose_personal_card", 2),
+        ("confirm_empty", 3),
+        ("finish_agent_turn", 0),
+    ]
+    older = [steps[1], steps[3]]
+
+    record = migrate_record(
+        _v142_record(start, *older, codec=154), engine=_StartingAt(start)
+    )
+
+    assert record.complete, record.divergence
+    assert canonical_state_hash(record.state) == canonical_state_hash(state)
+    assert [migrated.step for migrated in record.steps] == steps
+    assert record.bridge_counts() == Counter({migration.OPPONENT_DISCARD_ALONE: 2})
+    assert state.players[2].discard_pile == (held,)
+    # A record of this codec answers the windows itself.
+    current = migrate_record(
+        _v142_record(start, *steps, codec=155), engine=_StartingAt(start)
+    )
+    assert current.complete and not current.bridge_counts()
 
 
 def test_political_equilibrium_windows_an_older_engine_never_opened() -> None:

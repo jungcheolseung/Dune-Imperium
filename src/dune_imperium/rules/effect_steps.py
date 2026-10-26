@@ -914,7 +914,11 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "resolve_commander_without_skill": _spec(
         _E, _S.COMMANDER, Printed.SKILL_WINDOW, of=_V.CHOOSE
     ),
-    # An opponent's card that makes the seat lose a unit or move a Spy.
+    # An opponent's card that makes the seat discard a card (OQ-138), lose a
+    # unit or move a Spy.
+    "resolve_opponent_discard_without_card": _spec(
+        _E, _S.REF, Printed.WINDOW, of=_V.DISCARD
+    ),
     "resolve_unit_loss_without_unit": _spec(
         _E, _S.REF, Printed.WINDOW, of=_V.LOSE_UNIT
     ),
