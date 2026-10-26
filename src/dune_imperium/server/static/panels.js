@@ -75,9 +75,9 @@ function heldBattleIcons(player) {
 
 const BATTLE_ICON_ORDER = ["desert_mouse", "crysknife", "ornithopter", "wild"];
 
-/* A seat's Skill or Tech tile or open Contract as a small picture, one
-   height for all (about their real heights, 44-46 mm): hover enlarges it
-   and a click pins it, as a chip does. A flipped Tech tile is dimmed and
+/* A seat's Skill or Tech tile or open Contract as a small picture at its
+   real height (style.css --thumb-mm): hover enlarges it and a click pins
+   it, as a chip does. A flipped Tech tile is dimmed and
    says so in its title. Without the picture the chip stands in. */
 function tileThumb(id, kind, flipped = false) {
   const entry = entryOf(id, kind);
@@ -852,7 +852,7 @@ function seatDetailsContent(key, view) {
       "panels.details_battle",
       [...player.objective_ids, ...player.won_conflict_ids].map((id) =>
         detailsCard(id, {
-          className: faceDown.has(id) ? "real-card face-down" : "real-card",
+          className: faceDown.has(id) ? "real-small-card face-down" : "real-small-card",
           entry: lookup(id, id.startsWith("objective") ? "objectives" : "conflicts"),
           badge: faceDown.has(id) ? t("panels.battle_card_matched") : undefined,
         })

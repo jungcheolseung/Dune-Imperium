@@ -1106,13 +1106,27 @@ img.seat-disc.pictured { border-radius: 50%; }
 .battle-line { display: flex; align-items: center; }
 .battle-icons { display: inline-flex; flex-wrap: wrap; align-items: center; gap: inherit; }
 .pile-viewer .vcard.face-down img { filter: grayscale(0.7) brightness(0.75); }
-/* A seat's Skill and Tech tiles as small pictures (panels.js tileThumb):
-   the Skill tokens square, the Tech tiles landscape, at one height. */
+/* The components' real sizes, in millimetres (play feedback 2026-10-26:
+   "실물 보드게임에서 각각의 실제 크기"). Measured on a Korean copy
+   (blog.naver.com/namju004/222319423812): a big card (Imperium, Reserve,
+   starting) 63.5 x 88.2 and a small card (Intrigue, Conflict, Objective)
+   44.2 x 67.4. The board scan prints the Conflict card's slot at exactly
+   44.2 x 67.3 at 11.42 px a millimetre, and at that scale a Contract
+   token's slot is 55 x 35 (display/board_layout.py; the Research Station
+   tile matched on the print comes to 82 x 44.6). Not measured yet, so
+   estimated: a Tech tile 70 x 46 and a Skill token 44 x 44. The seat panel
+   draws a millimetre as --thumb-mm, the seat's details as --mm. */
+.seat { --thumb-mm: 0.7px; }
+.pile-viewer { --mm: 1.2px; }
+/* A seat's Skill and Tech tiles and open Contracts as small pictures
+   (panels.js tileThumb), each at its real height. */
 .tile-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.6rem; }
-.tile-group { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
+.tile-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+.tile-thumb.skills { height: calc(44 * var(--thumb-mm)); }
+.tile-thumb.tech { height: calc(46 * var(--thumb-mm)); }
+.tile-thumb.contracts { height: calc(35 * var(--thumb-mm)); }
 .tile-thumb {
   display: block;
-  height: 2rem;
   width: auto;
   border-radius: 3px;
   cursor: pointer;
@@ -1122,7 +1136,7 @@ img.seat-disc.pictured { border-radius: 50%; }
 /* An open Contract's picture holds CHOAM Escort's goods over its left. */
 .contract-thumb { position: relative; display: inline-block; }
 .contract-thumb .scouts-tray { position: absolute; top: 2px; left: 2px; font-size: 0.7rem; }
-/* The head's details button (panels.js seatDetailsContent). */
+/* The battle line's details button (panels.js seatDetailsContent). */
 .seat-details {
   flex: none;
   margin-left: auto;
@@ -1131,16 +1145,13 @@ img.seat-disc.pictured { border-radius: 50%; }
   line-height: 1.5;
   white-space: nowrap;
 }
-/* The seat's details at the components' real proportions, a pixel a
-   millimetre: a card 63.5 x 88 mm and a Contract a mini card 67 x 44 mm
-   (the Uprising box's sleeve lists); a Tech tile about 70 x 46 mm and a
-   Skill token about 44 mm square, from their scale beside an 88 mm card in
-   the Tabletop Simulator module the table played on (no published size).
-   The picture's own aspect gives the height. */
-.pile-viewer .vcard.real-card { width: 63.5px; }
-.pile-viewer .vcard.real-contract { width: 67px; }
-.pile-viewer .vcard.real-tech { width: 70px; }
-.pile-viewer .vcard.real-skill { width: 44px; }
+/* The seat's details at the components' real widths (the sizes above);
+   the picture's own aspect gives the height. */
+.pile-viewer .vcard.real-card { width: calc(63.5 * var(--mm)); }
+.pile-viewer .vcard.real-small-card { width: calc(44.2 * var(--mm)); }
+.pile-viewer .vcard.real-contract { width: calc(55 * var(--mm)); }
+.pile-viewer .vcard.real-tech { width: calc(70 * var(--mm)); }
+.pile-viewer .vcard.real-skill { width: calc(44 * var(--mm)); }
 
 /* Short screens — a 1366x768 or 1536x864 laptop, 1440x900: the Leader
    picture gives way (the name keeps its hover card) and the name and badges
