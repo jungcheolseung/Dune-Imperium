@@ -7,8 +7,9 @@ board space and the Uprising contract that pays for visiting it, and
 every id kind-blindly (core.js lookup() in section order, contracts before
 spaces), so the Bloodlines Sardaukar Commander strip opened the contract for
 the Deliver Supplies space; in Korean, where the contract has a Korean name
-and the space none, the action list, the log, the seat panel and the staged
-Agent turn named the space "보급품 배송"; a log turn card that completed the
+and the space none, the action list, the log, the seat panel (which listed the
+placed Agents until 2026-10-26) and the staged Agent turn named the space
+"보급품 배송"; a log turn card that completed the
 Deliver Supplies contract lost its thumbnail; and a contract taken with
 Interstellar Trade said it came from "Acquire" (docs/lessons.md 2026-09-27).
 
@@ -289,8 +290,11 @@ def one_language(page, lang: str) -> None:
     check.ok(names_space(staged["chooser"]),
              "the placement chooser's title names the space", staged)
 
-    # An Agent on the space: the seat panel's placed-Agents line. The view
-    # is the render's only input, so the page's copy is edited and redrawn.
+    # An Agent on the space: the seat panel listed the placed Agents until
+    # the board's own pieces took that over (play feedback 2026-10-26), so
+    # it names neither the space nor, taking it for the contract, the
+    # contract. The view is the render's only input, so the page's copy is
+    # edited and redrawn.
     seat_text = page.evaluate(
         """() => {
           const player = state.view.players[0];
@@ -303,8 +307,12 @@ def one_language(page, lang: str) -> None:
           return text;
         }"""
     )
-    check.ok(names_space(seat_text), "the seat panel's Agents line names the space",
-             names["space"] in seat_text)
+    check.ok(
+        names["space"] not in seat_text
+        and (not distinct or names["contract"] not in seat_text),
+        "the seat panel leaves a placed Agent to the board",
+        seat_text,
+    )
 
     source = page.evaluate("(value) => sourceName(value)", ACQUIRE_SOURCE)
     check.ok(source == names["trade"],

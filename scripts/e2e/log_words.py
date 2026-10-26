@@ -752,12 +752,8 @@ def check_page(page, base: str, game_id: str, posts: list[str], names) -> None:
         "state.review.cursor === state.review.meta.step_count"
         " && !playback.playing && refreshFlight === null"
     )
-    # Folded seat detail is [hidden] and skipped below; open it (the research
-    # flag there printed a coordinate, `c5r1`).
-    page.evaluate(
-        "if (!state.view.players.every((p) => expandedSeats.has(p.player)))"
-        " toggleAllSeats()"
-    )
+    # The seats' card lines always show since 2026-10-26 (the research flag
+    # there once printed a coordinate, `c5r1`).
     for lang in ("ko", "en"):
         page.evaluate(f"setLanguage('{lang}')")
         page.wait_for_function("refreshFlight === null")

@@ -496,6 +496,18 @@ const UI_TEXT = {
     "ko": "출처끼리 말이 달라 하나를 고른 곳 ({{count}})",
     "en": "Sources disagree and one was chosen ({{count}})"
   },
+  "help.seat_mark_hand": {
+    "ko": "핸드의 카드 수",
+    "en": "Cards in the hand"
+  },
+  "help.seat_mark_deck": {
+    "ko": "카드덱의 카드 수 (핸드·카드덱·버림 더미를 누르면 목록)",
+    "en": "Cards in the deck (click the hand, deck or discard pile for the lists)"
+  },
+  "help.seat_mark_memories": {
+    "ko": "레이디 제시카의 기억 (스파이스의 고통으로 게임판의 베네 게세리트 영역에 옮긴 병력)",
+    "en": "Lady Jessica's memories (troops Spice Agony moved to the Bene Gesserit board area)"
+  },
   "help.seat_mark_commander": {
     "ko": "{supply}에 있는 {commander} 수 ({garrison}·{conflict}에 있는 것은 보드에 그려짐)",
     "en": "{commander} count in {supply} (those in the {garrison} or the {conflict} are drawn on the board)"
@@ -519,10 +531,6 @@ const UI_TEXT = {
   "help.shortcut_collapse_columns": {
     "ko": "공용 카드 열을 모두 접기 / 펴기",
     "en": "Collapse / expand all shared card rows"
-  },
-  "help.shortcut_expand_seats": {
-    "ko": "모든 플레이어의 자세히 펴기 / 접기",
-    "en": "Expand / collapse every player's detail"
   },
   "help.shortcut_scouts_card": {
     "ko": "보드 위 아라킨 스카웃 카드 접기 / 펴기 (이번 라운드에 공개된 항목이 있을 때)",
@@ -828,29 +836,17 @@ const UI_TEXT = {
     "ko": "남은 {agent}",
     "en": "{agent} remaining"
   },
-  "panels.agents_placed_label": {
-    "ko": "배치",
-    "en": "Placed"
-  },
   "panels.battle_label": {
-    "ko": "배틀 아이콘 카드",
-    "en": "Battle"
+    "ko": "배틀 아이콘",
+    "en": "Battle icons"
   },
   "panels.chairdog_return": {
     "ko": "의자개: {reveal_turn} 시작 때 {hand}로 {{cards}}",
     "en": "Chairdog: returns to {hand} at the start of {reveal_turn} — {{cards}}"
   },
-  "panels.completed_suffix": {
-    "ko": " (완료)",
-    "en": " (completed)"
-  },
   "panels.contracts_label": {
     "ko": "{contract}",
     "en": "Contracts"
-  },
-  "panels.control_spaces": {
-    "ko": "{control}: {{spaces}}",
-    "en": "{control}: {{spaces}}"
   },
   "panels.deck_top_badge": {
     "ko": "덱 맨 위",
@@ -924,10 +920,6 @@ const UI_TEXT = {
     "ko": "뒷면",
     "en": "Face down"
   },
-  "panels.facedown_suffix": {
-    "ko": " (뒤집힘)",
-    "en": " (face-down)"
-  },
   "panels.first_badge": {
     "ko": "시작",
     "en": "1st"
@@ -980,10 +972,6 @@ const UI_TEXT = {
     "ko": "행동 로그",
     "en": "Action log"
   },
-  "panels.high_council": {
-    "ko": "원로회",
-    "en": "High Council"
-  },
   "panels.swordmaster": {
     "ko": "소드마스터",
     "en": "Swordmaster"
@@ -991,10 +979,6 @@ const UI_TEXT = {
   "panels.family_atomics": {
     "ko": "가문 핵 토큰",
     "en": "Family Atomics"
-  },
-  "panels.maker_hooks": {
-    "ko": "{maker_hooks}",
-    "en": "{maker_hooks}"
   },
   "panels.my_discard": {
     "ko": "내 {discard_pile}",
@@ -1079,14 +1063,6 @@ const UI_TEXT = {
   "panels.seat_hand": {
     "ko": "{{name}}의 손패",
     "en": "{{name}}'s hand"
-  },
-  "panels.seat_more_collapse": {
-    "ko": "자세히 ▾",
-    "en": "Details ▾"
-  },
-  "panels.seat_more_expand": {
-    "ko": "자세히 ▸ · {{summary}}",
-    "en": "Details ▸ · {{summary}}"
   },
   "panels.secret_project": {
     "ko": "비밀 프로젝트 (뒷면 {tech_tile})",
@@ -1260,10 +1236,39 @@ const UI_TEXT = {
     "ko": "{supply}의 {commander}",
     "en": "{commander} in {supply}"
   },
-  "panels.memories": {
-    "ko": "기억",
-    "en": "Memories"
+  "panels.log_reason_acquired": { "ko": "획득", "en": "Acquired" },
+  "panels.log_reason_trashed": { "ko": "폐기", "en": "Trashed" },
+  "panels.log_reason_discarded": { "ko": "버리기", "en": "Discarded" },
+  "panels.log_reason_flipped": { "ko": "뒤집기", "en": "Flipped" },
+  "panels.log_reason_grafted": { "ko": "접합", "en": "Grafted" },
+  "panels.log_reason_completed": { "ko": "완료", "en": "Completed" },
+  "panels.log_reason_used": { "ko": "사용", "en": "Used" },
+  "panels.log_cards_more": { "ko": "+{{count}}장", "en": "+{{count}} more" },
+  "panels.seat_details_open": { "ko": "자세히 ▸", "en": "Details ▸" },
+  "panels.seat_details_title": {
+    "ko": "자세히 보기: 이긴 교전 카드, 완료한 {contract}, 폐기한 카드와 타일",
+    "en": "Details: won Conflict cards, completed Contracts, trashed cards and tiles"
   },
+  "panels.seat_details_viewer": { "ko": "{{name}} 자세히", "en": "{{name}}: details" },
+  "panels.details_battle": {
+    "ko": "목적 카드와 이긴 교전 카드 ({{count}})",
+    "en": "Objective and won Conflict cards ({{count}})"
+  },
+  "panels.details_contracts": {
+    "ko": "완료한 {contract} ({{count}})",
+    "en": "Completed Contracts ({{count}})"
+  },
+  "panels.details_trashed_cards": { "ko": "폐기한 카드 ({{count}})", "en": "Trashed cards ({{count}})" },
+  "panels.details_trashed_skills": {
+    "ko": "폐기한 {commander_skill} ({{count}})",
+    "en": "Trashed Sardaukar Commander Skills ({{count}})"
+  },
+  "panels.details_trashed_tech": {
+    "ko": "폐기한 {tech_tile} ({{count}})",
+    "en": "Trashed Tech tiles ({{count}})"
+  },
+  "panels.details_none": { "ko": "없음", "en": "None" },
+  "panels.battle_card_matched": { "ko": "뒤집힘", "en": "Face down" },
   "panels.memories_title": {
     "ko": "기억: 스파이스의 고통으로 게임판의 베네 게세리트 영역에 옮긴 병력",
     "en": "Memories: troops Spice Agony moved to the Bene Gesserit board area"

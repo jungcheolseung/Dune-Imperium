@@ -691,7 +691,7 @@ PIECES_JS = """(() => {
     else if (loc === 'helix' || loc === 'tleilaxu_track') { host = btStage; where = 'bt'; }
     else if (loc.startsWith('contract:')) {
       host = document.querySelector(
-        `#seats .seat[data-seat="${row.seat}"] .tag[data-contract="${loc.slice(9)}"]`);
+        `#seats .seat[data-seat="${row.seat}"] [data-contract="${loc.slice(9)}"]`);
       where = 'contract';
     } else if (loc === 'reclaimed_forces') {
       host = document.querySelector('#market .vcard[data-instance="reclaimed_forces"]');

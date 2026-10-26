@@ -1090,33 +1090,74 @@ img.seat-disc.pictured { border-radius: 50%; }
 .strip.collapsed { flex: none; }
 /* Every column folded: let the whole shared-card column give its width back
    to the board, and keep the headings on one line so it can be narrow. */
-.seat-more {
-  all: unset;
-  cursor: pointer;
+/* A seat's card piles as icons (panels.js pileStat): the hand as two
+   fanned card backs, the deck as one, at a stat icon's height. */
+.pile-mark { display: inline-flex; align-items: center; }
+.pile-mark-back {
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(243, 230, 208, 0.45);
+}
+.pile-mark.hand .pile-mark-back + .pile-mark-back {
+  margin-left: -0.55em;
+  transform: rotate(8deg);
+}
+/* The battle icons held face up (panels.js heldBattleIcons), and the
+   seat's details button at the line's end. */
+.battle-line { display: flex; align-items: center; }
+.battle-icons { display: inline-flex; flex-wrap: wrap; align-items: center; gap: inherit; }
+.pile-viewer .vcard.face-down img { filter: grayscale(0.7) brightness(0.75); }
+/* The components' real sizes, in millimetres (play feedback 2026-10-26:
+   "실물 보드게임에서 각각의 실제 크기"). Measured on a Korean copy
+   (blog.naver.com/namju004/222319423812): a big card (Imperium, Reserve,
+   starting) 63.5 x 88.2 and a small card (Intrigue, Conflict, Objective)
+   44.2 x 67.4. The board scan prints the Conflict card's slot at exactly
+   44.2 x 67.3 at 11.42 px a millimetre, and at that scale a Contract
+   token's slot is 55 x 35 (display/board_layout.py; the Research Station
+   tile matched on the print comes to 82 x 44.6). Not measured yet, so
+   estimated: a Tech tile 70 x 46 and a Skill token 44 x 44. The seat panel
+   draws a millimetre as --thumb-mm, the seat's details as --mm. */
+.seat { --thumb-mm: 0.7px; }
+.pile-viewer { --mm: 1.2px; }
+/* A seat's Skill and Tech tiles and open Contracts as small pictures
+   (panels.js tileThumb), each at its real height. */
+.tile-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.6rem; }
+.tile-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+.tile-thumb.skills { height: calc(44 * var(--thumb-mm)); }
+.tile-thumb.tech { height: calc(46 * var(--thumb-mm)); }
+.tile-thumb.contracts { height: calc(35 * var(--thumb-mm)); }
+.tile-thumb {
   display: block;
-  width: 100%;
-  margin-top: 0.15rem;
-  font-size: 0.7rem;
-  opacity: 0.8;
-  line-height: 1.25;
+  width: auto;
+  border-radius: 3px;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(243, 230, 208, 0.25);
 }
-.seat-more {
+.tile-thumb.flipped { filter: grayscale(0.9) brightness(0.55); }
+/* An open Contract's picture holds CHOAM Escort's goods over its left. */
+.contract-thumb { position: relative; display: inline-block; }
+.contract-thumb .scouts-tray { position: absolute; top: 2px; left: 2px; font-size: 0.7rem; }
+/* The battle line's details button (panels.js seatDetailsContent). */
+.seat-details {
+  flex: none;
+  margin-left: auto;
+  padding: 0 0.4em;
+  font-size: 0.85em;
+  line-height: 1.5;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.seat-more:hover { opacity: 1; color: #c9a227; }
-.seat-more:focus-visible { outline: 2px solid #c9a227; outline-offset: 2px; }
-.seat-detail[hidden] { display: none; }
+/* The seat's details at the components' real widths (the sizes above);
+   the picture's own aspect gives the height. */
+.pile-viewer .vcard.real-card { width: calc(63.5 * var(--mm)); }
+.pile-viewer .vcard.real-small-card { width: calc(44.2 * var(--mm)); }
+.pile-viewer .vcard.real-contract { width: calc(55 * var(--mm)); }
+.pile-viewer .vcard.real-tech { width: calc(70 * var(--mm)); }
+.pile-viewer .vcard.real-skill { width: calc(44 * var(--mm)); }
 
-/* Short screens — a 1366x768 or 1536x864 laptop, 1440x900: the four folded
-   seats took 703-738px of a column 519-652px tall at 1366x768 (seed 7, every
-   expansion; the full-width hand then shortened every column). The
-   Leader picture gives way (the name keeps its hover card), the name and
-   badges keep one line, and the fold toggle joins the head as its arrow; its
-   words stay its accessible name, and its title the folded summary. 171 ->
-   111px a seat: all four fit at every point of that game at 1366x768,
-   1440x900 and 1536x864. Taller screens keep the picture (they fit already). */
+/* Short screens — a 1366x768 or 1536x864 laptop, 1440x900: the Leader
+   picture gives way (the name keeps its hover card) and the name and badges
+   keep one line. The seats once folded their card lines to fit four in the
+   column (171 -> 111px a seat at 1366x768); since 2026-10-26 the lines
+   always show (play feedback) and the column scrolls when they do not fit. */
 @media (max-height: 960px) {
   #seats .seat {
     display: grid;
@@ -1127,26 +1168,11 @@ img.seat-disc.pictured { border-radius: 50%; }
   }
   #seats .seat > * { grid-column: 1 / -1; }
   #seats .seat > .seat-head { grid-column: 1; grid-row: 1; }
-  #seats .seat > .seat-more {
-    grid-column: 2;
-    grid-row: 1;
-    align-self: center;
-    width: auto;
-    min-width: 1rem;
-    margin: 0;
-    padding: 0 0.1rem;
-    text-align: center;
-    font-size: 0;
-    opacity: 0.9;
-  }
-  #seats .seat > .seat-more::before { content: "\25B8"; font-size: 0.95rem; }
-  #seats .seat > .seat-more[aria-expanded="true"]::before { content: "\25BE"; }
   #seats .leader-thumb { display: none; }
   #seats .seat .who { flex-wrap: nowrap; }
   #seats .seat .who-name { flex: 1 1 auto; }
   #seats .seat .badge { white-space: nowrap; }
-  #seats .seat .stats { margin-top: 0.05rem; gap: 0.05rem 0.45rem; }
-  #seats .seat .zones { margin-top: 0.05rem; }
+  #seats .seat .stats, #seats .seat .battle-line { margin-top: 0.05rem; gap: 0.05rem 0.45rem; }
 }
 
 .bt-open {
@@ -1362,6 +1388,22 @@ kbd {
   border-radius: 5px;
   padding: 0 0.35em;
 }
+/* Why the log names a card (panels.js turnCard, render.js logTargets):
+   a small mark across the top of the picture, apart from the corner count
+   other cards carry. */
+.vcard-badge.log-reason {
+  top: 2px;
+  bottom: auto;
+  left: 2px;
+  right: 2px;
+  font-size: 0.62rem;
+  line-height: 1.25;
+  text-align: center;
+  /* Two marks may take two lines rather than lose the second word. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.turn-cards-more { align-self: center; font-size: 0.8rem; }
 /* A Tech stack's size, drawn like a face-down deck's count (piles.css
    .deck-pile-count): a stack of different tiles, not copies of one. */
 .vcard-badge.stack-count {
@@ -1483,7 +1525,19 @@ body.hand-dragging, body.hand-dragging * {
 /* A search seat working on its answer (summary.thinking): its badge says
    "thinking" in the badge's own place and size. */
 .seat .badge.ai.thinking { background: var(--accent-soft); color: var(--accent); }
-.seat .stats { margin-top: 0.15rem; gap: 0.15rem 0.55rem; }
+/* The seat's first four rows -- counts, pieces, piles and battle icons --
+   read as one table: one text size, one icon height, one row height and
+   one gap between rows (play feedback 2026-10-26: "첫 네 줄 글자크기나
+   위아래 줄간격, 통일됐으면 좋겠어 ... 숫자 글자가 크기도 다르잖아"). */
+.seat .stats, .seat .battle-line {
+  min-height: 1.5em;
+  margin-top: 0.15rem;
+  gap: 0.15rem 0.55rem;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+.seat .stat { display: inline-flex; align-items: center; gap: 0.15em; }
+.seat .stat .icon, .seat .pile-mark-back { height: 1.2em; width: auto; margin: 0; }
 /* The seat's time holding control (clock.js), last in the pieces row; the
    seat whose clock moves now shows it in the accent colour. */
 .seat-clock {
@@ -1493,8 +1547,6 @@ body.hand-dragging, body.hand-dragging * {
   opacity: 0.7;
 }
 .seat-clock.running { opacity: 1; color: var(--accent); font-weight: 700; }
-.seat .zones { font-size: 0.75rem; opacity: 0.7; margin-top: 0.15rem; }
-.zone-count { white-space: nowrap; }
 
 .cardline { margin: 0.1rem 0; }
 .tag {
@@ -2250,6 +2302,8 @@ body.hand-dragging, body.hand-dragging * {
 .turn-line.undone, .turn-card.passes .pass-seat.undone { opacity: 0.55; text-decoration: line-through; }
 .turn-cards { display: flex; flex-direction: column; gap: 0.25rem; flex: none; }
 .turn-cards .vcard.small { width: 54px; }
+.turn-cards.many { display: grid; grid-template-columns: repeat(2, 54px); }
+.turn-cards.many .turn-cards-more { grid-column: 1 / -1; }
 .logevent { margin: 0.05rem 0 0.05rem 1.4rem; font-size: 0.72rem; opacity: 0.65; }
 /* The step a Victory Point ledger row asked for (panels.js findLogEntry). */
 .log-target {
@@ -2356,14 +2410,12 @@ body.hand-dragging, body.hand-dragging * {
 .commander-stat-icon.drawn {
   display: inline-flex;
   box-sizing: border-box;
-  /* 1.35em, -0.3em and 0.1em of the stat's text (.stat .icon), divided
-     by this mark's own smaller letter. */
-  height: calc(1.35em / 0.7);
+  /* 1.2em of the stat's text (.seat .stat .icon), divided by this mark's
+     own smaller letter; the stat centres it and spaces it. */
+  height: calc(1.2em / 0.7);
   aspect-ratio: 130 / 195;
   align-items: center;
   justify-content: center;
-  vertical-align: calc(-0.3em / 0.7);
-  margin-right: calc(0.1em / 0.7);
   border: 1px solid #111;
   border-radius: 45% 45% 18% 18%;
   background: #c8bdb9;

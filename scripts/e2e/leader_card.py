@@ -1331,7 +1331,6 @@ def pinned_popover_survives_rerender(base: str, browser) -> None:
     page.evaluate(
         """(card) => {
           state.view.players[1].in_play = [card];
-          expandedSeats = new Set([1]);
           render();
         }""",
         card,
@@ -1414,7 +1413,6 @@ def status_line_drops_leader_flags(page) -> None:
           player.navigation_played = ["intrigue:navigation_card_1:0"];
           player.has_secret_project = true;
           player.twisted_deck_size = 2;
-          expandedSeats = new Set([seat]);
           render();
         }""",
         0,
@@ -1447,8 +1445,6 @@ def status_line_drops_leader_flags(page) -> None:
         "Piter's Twisted-deck flag is unrelated leader state and stays",
         status,
     )
-    # Leaves nothing behind for whatever the script checks next.
-    page.evaluate("() => { expandedSeats = new Set(); }")
 
 
 POPOVER_TEXT_JS = """() => {

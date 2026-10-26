@@ -3259,6 +3259,11 @@ def _serialize_view(
     review, and kept beside the other public table facts here rather than
     in ``PlayerView``, so the AI observation's encoding stays as it was.
 
+    Each seat's ``trashed_skill_ids`` and ``trashed_tech_ids`` name the
+    Skill and Tech tiles it trashed (``_trashed_tiles``, from the public
+    events), for the seat panel's details (play feedback 2026-10-26); the
+    same for every seat and in a review, and outside ``PlayerView`` too.
+
     ``box_losing_trash`` lists, as ``{action_id, card_id}`` (and, for an
     optional trash on the turn, the trash icon it uses: ``source``,
     ``printed``, ``printed_box``), the decision owner's legal trash rows
@@ -3285,6 +3290,14 @@ def _serialize_view(
     serialized["conflict_deck_top_tier"] = (
         CONFLICTS_BY_ID[state.conflict_deck[0]].tier.value if state.conflict_deck else 0
     )
+    trashed_tiles = _trashed_tiles(state)
+    players = serialized["players"]
+    assert isinstance(players, list)
+    for seat_view in players:
+        assert isinstance(seat_view, dict)
+        skills, tech = trashed_tiles.get(int(str(seat_view["player"])), ([], []))
+        seat_view["trashed_skill_ids"] = list(skills)
+        seat_view["trashed_tech_ids"] = list(tech)
     played, pending = turn_cards(state)
     serialized["turn_card_ids"] = list(played)
     serialized["pending_box_card_ids"] = list(pending)
@@ -3295,6 +3308,34 @@ def _serialize_view(
     if disclose:
         serialized["disclosure"] = _jsonify(asdict(disclose_hidden_zones(state)))
     return serialized
+
+
+def _trashed_tiles(state: GameState) -> dict[int, tuple[list[str], list[str]]]:
+    """Each seat's trashed Skill and Tech tiles, in the order trashed.
+
+    The state keeps one trash of each for the table (``skill_trash``,
+    ``tech_trash``); only the public ``skill_trashed`` and ``tech_trashed``
+    events say whose tile it was. Every rule that trashes one takes it from
+    its owner's own tiles, so the event's seat is the owner. A Skill is named
+    by its copy (``skill_instance_id``, as in ``skill_trash``): the actions
+    name a Skill by its catalog id, which the other copy may still answer
+    to, so a trashed copy must not.
+    """
+
+    trashed: dict[int, tuple[list[str], list[str]]] = {}
+    for event in state.event_log:
+        if event.visible_to is not None:
+            continue
+        if event.kind == "skill_trashed":
+            field, slot = "skill_instance_id", 0
+        elif event.kind == "tech_trashed":
+            field, slot = "tech_id", 1
+        else:
+            continue
+        payload = dict(event.payload)
+        seat = int(str(payload["player"]))
+        trashed.setdefault(seat, ([], []))[slot].append(str(payload[field]))
+    return trashed
 
 
 def _serialize_action(

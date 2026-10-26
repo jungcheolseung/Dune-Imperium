@@ -334,13 +334,78 @@ function setSpotlight(group) {
   applySpotlight();
 }
 
+/* Why the log names a card, by the event that names it (play feedback
+   2026-10-26: a picture in the log did not say whether the card was
+   bought, trashed or used). Effect events of a card already played read as
+   a use. Kinds left out (a card back in the hand, a Row card set aside)
+   name the card without a mark. */
+const LOG_CARD_EVENT_REASONS = {
+  card_acquired: "acquired",
+  tleilaxu_card_acquired: "acquired",
+  tech_acquired: "acquired",
+  skill_gained: "acquired",
+  scouts_card_bought: "acquired",
+  card_trashed: "trashed",
+  intrigue_card_trashed: "trashed",
+  tech_trashed: "trashed",
+  usurped_card_trashed: "trashed",
+  agent_card_trashed_for_vp: "trashed",
+  contract_reveal_card_trashed_for_vp: "trashed",
+  skill_trashed: "trashed",
+  card_discarded: "discarded",
+  top_card_discarded: "discarded",
+  tech_flipped: "flipped",
+  card_grafted: "grafted",
+  contract_completed: "completed",
+  agent_card_picked: "used",
+  agent_placed: "used",
+  intrigue_played: "used",
+  turn_start_card_played: "used",
+  navigation_card_played: "used",
+  agent_card_effect_resolved: "used",
+  intrigue_effect_used: "used",
+  tech_acquire_effect_resolved: "used",
+  tech_reveal_bonus: "used",
+  leader_signet_resolved: "used",
+};
+
+/* The same for a card an action's own argument names, by the action. A
+   waiting effect's `printed` names the card whose line is used (a trash
+   line's card is not the one trashed), except a purchase's, which names
+   the card bought, and a flip's, the Tech tile flipped. */
+function logActionReason(actionId, key, args) {
+  if (key === "printed") {
+    if (args.source === "purchase") return "acquired";
+    if (/^flip/.test(actionId)) return "flipped";
+    return "used";
+  }
+  if (/^acquire|^take_(trigger_)?contract$/.test(actionId)) return "acquired";
+  if (/^trash/.test(actionId)) return "trashed";
+  if (/^discard/.test(actionId)) return "discarded";
+  if (/^flip/.test(actionId)) return "flipped";
+  if (/^complete_contract/.test(actionId)) return "completed";
+  if (actionId === "choose_graft_partner") return "grafted";
+  if (
+    ["choose_agent_card", "play_intrigue", "choose_intrigue_card", "play_turn_start_card"]
+      .includes(actionId)
+  ) {
+    return "used";
+  }
+  return null;
+}
+
 /* Everything a group of steps points at: spaces and cards named by the
-   action arguments or by the events (acquired card, placed Agent). */
+   action arguments or by the events (acquired card, placed Agent), and for
+   each card why (`reasons`, keyed by baseId: LOG_CARD_EVENT_REASONS and
+   logActionReason, in the order they first apply). Only what the log
+   entries carry is read, and the server already left out of them what
+   this seat may not see. */
 function logTargets(group) {
   const spaces = [];
   const cards = [];
+  const reasons = new Map();
   const seen = new Set();
-  const consider = (value) => {
+  const consider = (value, reason) => {
     if (typeof value !== "string") return;
     /* An event may name a card both by kind (card_id) and by the exact
        copy (instance_id); one image per printed card is enough. A bare
@@ -348,24 +413,40 @@ function logTargets(group) {
        targets, so a space is kept apart in `seen`. */
     const space = state.catalog.spaces[value];
     const key = space ? `space:${value}` : baseId(value);
-    if (seen.has(key)) return;
-    seen.add(key);
-    if (space) spaces.push(value);
-    else if (entryOf(value)) cards.push(value);
+    if (!seen.has(key)) {
+      seen.add(key);
+      if (space) spaces.push(value);
+      else if (entryOf(value)) cards.push(value);
+    }
+    if (space || !reason) return;
+    const known = reasons.get(key) || [];
+    if (!known.includes(reason)) reasons.set(key, [...known, reason]);
   };
   for (const entry of group.entries) {
-    if (entry.type !== "action") continue;
-    for (const value of Object.values(entry.arguments)) consider(value);
+    /* A step taken back named nothing that stayed. */
+    if (entry.type !== "action" || entry.undone) continue;
+    for (const [key, value] of Object.entries(entry.arguments)) {
+      consider(value, logActionReason(entry.action_id, key, entry.arguments));
+    }
     for (const event of entry.events) {
       if (!event.payload) continue;
+      /* The stack's next Tech tile turning face up after a purchase is the
+         market's, not the buyer's (independent review, 2026-10-26). */
+      if (event.kind === "tech_revealed") continue;
       for (const [key, value] of Object.entries(event.payload)) {
-        if (key === "card_id" || key === "space_id" || key.endsWith("instance_id")) {
-          consider(value);
+        if (
+          key === "card_id" ||
+          key === "space_id" ||
+          key === "tech_id" ||
+          key === "contract_id" ||
+          key.endsWith("instance_id")
+        ) {
+          consider(value, LOG_CARD_EVENT_REASONS[event.kind] || null);
         }
       }
     }
   }
-  return { spaces, cards };
+  return { spaces, cards, reasons };
 }
 
 function applySpotlight() {

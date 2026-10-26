@@ -22,7 +22,6 @@ async function init() {
   /* First: everything below, errors included, speaks the chosen language. */
   loadLanguage();
   loadCollapsedStrips();
-  loadExpandedSeats();
   /* The column widths and the hand's own order (layout.js). */
   watchColumnSplitters();
   watchHandOrder();
@@ -110,12 +109,6 @@ async function init() {
       if (el("game-screen").hidden) return;
       event.preventDefault();
       toggleAllStrips();
-    }
-    /* `s` shows or hides every seat's detail at once. */
-    if (pressed("KeyS", "s")) {
-      if (el("game-screen").hidden) return;
-      event.preventDefault();
-      toggleAllSeats();
     }
     /* `a` folds the Arrakeen Scouts card over the board away, or brings it
        back (scouts_stage.js); nothing in a round with no revealed item. */

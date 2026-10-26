@@ -932,10 +932,11 @@ PAYMENTS_EXPECTED = {
     },
     "sietch": {
         "key": "choice:take_sietch_tabr_water_and_destroy_wall",
-        "ko": ("지금 고를 수 없는 선택지", "물 + 방어벽 파괴", "방어벽이 이미 파괴됨"),
+        # Sietch Tabr's rows name all they give (play feedback 2026-10-26).
+        "ko": ("지금 고를 수 없는 선택지", "1 물 + 방어벽 제거", "방어벽이 이미 파괴됨"),
         "en": (
             "Choices you cannot take now",
-            "water + Destroy Shield Wall",
+            "1 water + remove the Shield Wall",
             "The Shield Wall is already destroyed",
         ),
     },

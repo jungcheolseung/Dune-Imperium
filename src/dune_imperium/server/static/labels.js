@@ -179,9 +179,14 @@ const ACTION_LABELS = {
   hold_contract_icons: "{contract} 아이콘 보류 — 지금 가져갈 {contract} 없음",
   resolve_contract_icons_without_contract: "{contract} 아이콘 소멸 — 지금 가져갈 {contract} 없음",
   take_high_council_from_reveal: "원로회 자리 차지",
-  take_sietch_tabr_supplies: "시치 타브르 보급 ({maker_hooks})",
-  take_sietch_tabr_water: "시치 타브르 {water}",
-  take_sietch_tabr_water_and_destroy_wall: "{water} + {shield_wall} 파괴",
+  /* Sietch Tabr's two printed choices, each with all it gives: (a) Maker
+     Hooks if you lack them, a troop and a water; (b) a water, removing the
+     Shield Wall if you like [Board Guide p. 2] (play feedback 2026-10-26:
+     the first row showed only the hooks, so its water read as the second
+     row's). "제거" is the Korean space text's word (display/spaces.py). */
+  take_sietch_tabr_supplies: "{maker_hooks}(없다면) + 1 {troop} + 1 {water}",
+  take_sietch_tabr_water: "1 {water}만",
+  take_sietch_tabr_water_and_destroy_wall: "1 {water} + {shield_wall} 제거",
   take_tuek_sietch_spice: "튜엑의 시치: {spice} 1",
   take_tuek_sietch_card: "튜엑의 시치: {draw} 1",
   place_leader_bonus_spice: "튜엑의 시치에 보너스 {spice} 놓기 ({signet_ring})",
@@ -922,6 +927,12 @@ const TERMS = {
   command: { icon: null, ko: "통솔", en: "Command" },
   navigation: { icon: null, ko: "운항 카드", en: "Navigation card" },
   battle_icon: { icon: null, ko: "배틀 아이콘", en: "Battle Icon" },
+  /* The battle icons themselves (glossary-ko.md: 크리스나이프 / 사막쥐 / 오니솝터;
+     the seat panel draws the ones a seat holds, 2026-10-26). */
+  battle_desert_mouse: { icon: "battle_desert_mouse", ko: "사막쥐", en: "Desert Mouse" },
+  battle_crysknife: { icon: "battle_crysknife", ko: "크리스나이프", en: "Crysknife" },
+  battle_ornithopter: { icon: "battle_ornithopter", ko: "오니솝터", en: "Ornithopter" },
+  battle_wild: { icon: "battle_wild", ko: "와일드", en: "Wild" },
   retreat: { icon: null, ko: "후퇴", en: "Retreat" },
   observation_post: { icon: null, ko: "관측소", en: "observation post" },
   bene_tleilax_board: { icon: null, ko: "베네 틀레이락스 게임판", en: "Bene Tleilax board" },
