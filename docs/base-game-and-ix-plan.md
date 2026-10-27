@@ -939,6 +939,10 @@ Test of Humanity(`EachOpponentDiscardsOrLosesDeployedTroop`, Covert Operation �
 병력만 — Commander는 P7), Firm Grip(Solari 화살표 + 고른 진영) 구현. 멈춘 곳: Shifting Allegiances(Agent box의 대상 비용 + 한 진영 2), Other Memory(버림 더미의
 Bene Gesserit 카드를 손으로, OQ-010), The Voice(상대별 다음 배치 봉쇄 상태, 관측 변경). 문서가 말하지 않는 가장자리: 같은 Reveal에서 Guild Bankers를 나중에
 trash해도 이미 연 할인은 남는다(구현).
+Imperium 마지막 둘(06:21~06:53): Shifting Allegiances(Agent box의 Influence 잃기 화살표 `influence_loss_box`, 한 진영 +2), Other Memory
+(`TakeCardFromDiscard`, 버림 더미의 Bene Gesserit 카드를 `hand_public`으로 손에 — OQ-010) 구현. P7에 넘기는 것: Firm Grip의 `pay_agent_card_solari`가
+`graft_boxes.BOX_ACTION_IDS`에 없어 원판 + Immortality의 접합 차례에서 막힌다(지금 더하면 Uprising + Immortality 카탈로그가 바뀔 수 있어 그대로 둠).
+휴리스틱은 새 행(`lose_agent_card_influence`, `take_agent_card_from_discard`, Bindu의 pass, 승리 책략)을 고르지 않는다 — P6.
 - **Uprising Tread in Darkness(확인 필요):** 같은 차례에 Bond가 깨져 뽑기 아이콘이 안 나올 때 상자가 선택형이 되는가(OQ-057 (1)). Gene Manipulation에는
   그렇게 했고(`_WAITING_ICON_BOXES`), Uprising 카드는 사용자 확인 전까지 그대로 둔다(`2a51da4c`).
 
