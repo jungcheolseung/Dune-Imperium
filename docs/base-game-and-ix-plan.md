@@ -564,3 +564,33 @@ Leader 14명은 hook이 많아 P2·P4에서 지도자마다 따로 잰다. 정�
   - 5 관문 전 검사: **명령은 만들지 않고** 구성표·`known_card_seats` 등록·제공자 목록 셋을 P1~P4의 보통 테스트로.
   - 6 렌더·스캔 이미지 거리: **채택 안 함**(사람이 고친 25장을 못 잡음). 필요하면 P5에서 칸별 정렬 비교로 다시 판단.
 - **D5 — 4번 시범과 시범 전사 5장: 확정(2026-10-23) P3 첫 묶음으로 미룸.** P1 전에는 엔진에 원판 콘텐츠 자리가 없어 실제 전사의 시간·토큰을 잴 수 없다.
+
+## 14. P1 결과 (2026-10-27, 브랜치 `claude/base-ix-p1-6a418f`)
+
+4.2절의 모양대로 세 커밋으로 넣었다. 하위 단계마다 관문 전체(pytest·ruff·mypy, 같음 확인 200판 check·compare, 소크 900판, 기보
+v155 2,000판, 저장본·문제집, tips-v1 재채굴, E2E)를 돌렸다.
+
+1. **콘텐츠 조회(순수 리팩터, `9671a015`):** `content/rulesets.py`의 `content_for(config)`가 그 판이 **쓰는 것**을 돌려준다 — 보드 칸,
+   관측 초소, Conflict(전체와 이 설정의 단계별 더미), Reserve, 지도자, Imperium·Intrigue 덱, 계약, Objective, 스타터 덱 — 와 보드에
+   **인쇄된 값**: 영향력 4칸 보너스(능력 기록 `PlaceSpy`·`GainResources`·`DrawIntrigueCards`로; `rules/influence.py`가 진영 대신 기록을
+   읽는다), Maker 칸과 모래벌레 칸, 지배 칸의 방문 보너스. setup·Agent 칸 목록·codec·Maker 검사·소크 도구가 이것을 읽는다.
+   **id로 찾는 표는 하나로 둔다**(`BOARD_SPACES_BY_ID`, `personal_card_for_instance` 등): 4.2절 7대로 id 하나가 인쇄 하나라, 두 판의
+   것을 한 표에 넣어도 섞이지 않는다(관측·엔티티 망 어휘도 이미 합집합이다). Uprising에만 있는 체계의 속(Spy·모래벌레·계약의 모듈 표)은
+   그대로 두었다 — 원판은 그 길에 닿지 않는다(4.2절 3).
+2. **판 축(`4729b583`):** `RulesetConfig.base_game`(`BaseGame.UPRISING` 기본 / `IMPERIUM`)과 `rise_of_ix`. 판마다 허용 확장 목록:
+   Uprising은 지금 그대로, 원판은 프로모·Rise of Ix·Epic(Rise of Ix와 함께, 9절 9). 원판 식별자 `imperium-4p-base+promo+ix+epic`,
+   Uprising 식별자는 한 글자도 그대로. 새 칸 둘은 기본값일 때 상태 해시에서 빠져(`HASH_OMITTED_AT_DEFAULT`) 옛 저장·기보·체크포인트가
+   그대로 읽힌다. 저장 문서는 `base_game`·`rise_of_ix`를 싣고, 없으면 Uprising이다. 원판 콘텐츠는 아직 비어 있고(스타터 덱만 Uprising과
+   같은 인쇄, `[DI p. 3]`), 보드가 없는 판의 setup은 `NotImplementedError`(P2에서 풀린다). codec은 원판 카탈로그(지금 73줄)를 그 콘텐츠로
+   만들고, 보드가 인쇄하지 않는 Uprising 체계의 줄(Spy·모래벌레·Sietch Tabr 고르기, Uprising 카드 한 장이 인쇄한 Reveal 줄, Uprising
+   Conflict의 지배 칸, Uprising 카드의 미룬 Reveal 고르기)은 넣지 않는다. Uprising 144개 조합의 행 목록은 시작 커밋과 바이트까지 같다.
+   테스트: 판마다 허용 목록·식별자 왕복, 원판 카탈로그에 Uprising id·체계가 새지 않음, **종류 안에서 id 유일·종류 사이 겹침은 목록으로**
+   (10.1절 3; 지금 겹침은 `deliver_supplies` 하나 — 보드 칸과 계약).
+3. **관측 v34(`6bb72629`):** `PlayerView.base_game`과 맨 끝의 `base_game` 1칸(원판이면 1). Uprising 관측은 v33 벡터 뒤에 0 하나다.
+   형식 2 이관은 새 열을 0에서 시작하므로(MLP 구간 이름, `mlp_slots` 행 열쇠, 엔티티 입력 이름 `raw:base_game:0`) 옮긴 망이 Uprising
+   판에서 같은 출력을 낸다. 같음 확인의 정해진 차이는 `scripts/ab/differences/base_game_axis.py`(설정의 새 칸 둘과 보기의 `base_game`).
+
+P2가 할 일(이 축 위에서): `content/imperium/`에 보드 22칸·Conflict 18·지도자 8·Reserve 셋을 넣고 `rulesets._imperium_content`가
+돌려주게 한다. 보드에 인쇄된 원판 값(영향력 4칸 보너스, Maker 칸 셋, 지배 칸 Arrakeen·Carthag·Imperial Basin의 방문 보너스)은 D3대로
+앱 자료에서 읽어 같은 자리에 채운다. 영향력 보너스에 새 모양(예: 병력)이 있으면 `_apply_track_bonus`에 그 기록을 더한다. 이름이 같아도
+인쇄가 다른 칸·카드는 새 id(4.2절 7)로 하고, id 테스트의 겹침 목록이 그것을 지킨다.
