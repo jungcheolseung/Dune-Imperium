@@ -36,8 +36,11 @@ format, so ``train`` reads a folder mixing them with teacher-played ones;
 best held-out epoch as ``student.pt`` with an ``epochs.jsonl`` log
 (docs/entity-network-plan.md section 5, P2). With ``--pack`` the shards are
 joined on disk in ``<folder>/packed`` (``pack_teacher_data``) instead of in
-memory, for data larger than the machine's memory; the student trains the
-same.
+memory, for data larger than the machine's memory; with ``--compact`` they
+are joined in memory as a chained copy (``compact_teacher_data``, about a
+fifth of the observation entries), written once to ``<folder>/compact`` (or
+``--compact-dir``) and loaded from there next time. The student trains the
+same either way.
 """
 
 from __future__ import annotations
@@ -76,6 +79,7 @@ from dune_imperium.training.teacher import (
     add_teacher_values,
     build_teacher_data,
     choice_frequency,
+    compact_teacher_data,
     concatenate,
     load_teacher_data,
     pack_teacher_data,
@@ -276,8 +280,14 @@ def train(arguments: argparse.Namespace) -> int:
     if not shards:
         print(f"no shards in {arguments.data}", file=sys.stderr)
         return 1
+    if arguments.pack and arguments.compact:
+        print("--pack and --compact are two ways to hold the rows", file=sys.stderr)
+        return 2
     if arguments.pack:
         data = pack_teacher_data(shards, arguments.data / "packed")
+    elif arguments.compact:
+        folder = arguments.compact_dir or arguments.data / "compact"
+        data = compact_teacher_data(shards, folder)
     else:
         data = concatenate([load_teacher_data(path) for path in shards])
     ruleset = RulesetConfig.from_identifier(data.ruleset)
@@ -454,6 +464,16 @@ def main(argv: list[str] | None = None) -> int:
         "--pack",
         action="store_true",
         help="join the shards on disk in <data>/packed and read rows from there",
+    )
+    student.add_argument(
+        "--compact",
+        action="store_true",
+        help="join the shards in memory as a chained copy, kept in <data>/compact",
+    )
+    student.add_argument(
+        "--compact-dir",
+        type=Path,
+        help="with --compact: keep the copy in this folder instead",
     )
     student.add_argument("--out", type=Path, required=True)
     student.add_argument("--arch", choices=("entity", "mlp"), required=True)

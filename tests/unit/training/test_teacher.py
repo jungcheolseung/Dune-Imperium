@@ -22,6 +22,7 @@ from dune_imperium.training.entity_network import EntityNetwork  # noqa: E402
 from dune_imperium.training.network import PolicyValueNetwork  # noqa: E402
 from dune_imperium.training.selfplay import SelfPlaySpec  # noqa: E402
 from dune_imperium.training.teacher import (  # noqa: E402
+    CHAIN_DEPTH,
     VP_SCALE,
     StudentConfig,
     StudentScore,
@@ -29,6 +30,7 @@ from dune_imperium.training.teacher import (  # noqa: E402
     add_teacher_values,
     build_teacher_data,
     choice_frequency,
+    compact_teacher_data,
     concatenate,
     gather_rows,
     load_teacher_data,
@@ -231,6 +233,162 @@ def test_a_student_trains_the_same_on_a_pack(
     assert weights.keys() == packed_weights.keys()
     for name, tensor in weights.items():
         assert torch.equal(tensor, packed_weights[name]), name
+
+
+def test_a_chained_copy_reads_back_every_row_and_is_reused(
+    collected: list[tuple[CollectionResult, TeacherData]], tmp_path: Path
+) -> None:
+    shards = _shards(collected, tmp_path)
+    joined = concatenate([load_teacher_data(path) for path in shards])
+    chained = compact_teacher_data(shards, tmp_path / "compact")
+    assert (chained.ruleset, chained.action_size) == (
+        joined.ruleset,
+        joined.action_size,
+    )
+    for name in (
+        "legal_indices",
+        "legal_offsets",
+        "teacher",
+        "actions",
+        "returns",
+        "victory_points",
+        "games",
+        "values",
+    ):
+        left, right = getattr(chained, name), getattr(joined, name)
+        assert not isinstance(left, np.memmap), name
+        assert left.dtype == right.dtype, name
+        assert np.array_equal(left, right, equal_nan=True), name
+    chain = chained.obs_chain
+    assert chain is not None and joined.obs_chain is None
+    # Whole rows begin every game and every shard; most rows are links.
+    starts = np.flatnonzero(np.diff(joined.games, prepend=-1) != 0)
+    assert (chain[starts] == 0).all() and chain[collected[0][1].rows] == 0
+    assert 0 < chain.max() <= CHAIN_DEPTH and (chain > 0).mean() > 0.5
+    assert chained.obs_values.dtype == np.uint8
+    assert chained.obs_columns.shape[0] < joined.obs_columns.shape[0] / 2
+
+    every = np.arange(joined.rows)
+    assert np.array_equal(chained.observations(every), joined.observations(every))
+    generator = np.random.default_rng(3)
+    for rows in (
+        generator.permutation(joined.rows)[:100],
+        generator.integers(0, joined.rows, 300),  # repeats too
+        np.flatnonzero(chain == chain.max()),
+        np.zeros(0, dtype=np.int64),
+    ):
+        assert np.array_equal(chained.observations(rows), joined.observations(rows))
+
+    # The same shards reuse the copy; another set, or a copy left without
+    # its manifest (interrupted), is built again.
+    written = (tmp_path / "compact" / "obs_chain.npy").stat().st_mtime_ns
+    again = compact_teacher_data(shards, tmp_path / "compact")
+    assert (tmp_path / "compact" / "obs_chain.npy").stat().st_mtime_ns == written
+    assert np.array_equal(again.observations(every), joined.observations(every))
+    first = compact_teacher_data(shards[:1], tmp_path / "compact")
+    assert first.rows == collected[0][1].rows
+    (tmp_path / "compact" / "manifest.json").unlink()
+    assert compact_teacher_data(shards, tmp_path / "compact").rows == joined.rows
+
+
+def test_a_chained_copy_keeps_a_value_beyond_a_byte_and_stays_in_memory(
+    collected: list[tuple[CollectionResult, TeacherData]], tmp_path: Path
+) -> None:
+    first, second = (data for _, data in collected)
+    values = first.obs_values.copy()
+    values[7] = 300
+    save_teacher_data(
+        dataclasses.replace(first, obs_values=values), tmp_path / "shard_0000.npz"
+    )
+    save_teacher_data(second, tmp_path / "shard_0001.npz")
+    shards = [tmp_path / "shard_0000.npz", tmp_path / "shard_0001.npz"]
+    joined = concatenate([load_teacher_data(path) for path in shards])
+    chained = compact_teacher_data(shards, tmp_path / "compact")
+    assert chained.obs_values.dtype == np.int16
+    every = np.arange(joined.rows)
+    assert np.array_equal(chained.observations(every), joined.observations(every))
+    # A chained copy is not a shard and does not join others.
+    with pytest.raises(ValueError, match="chained copy"):
+        save_teacher_data(chained, tmp_path / "again.npz")
+    with pytest.raises(ValueError, match="chained copy"):
+        concatenate([chained, joined])
+    other = dataclasses.replace(second, action_size=second.action_size + 1)
+    save_teacher_data(other, tmp_path / "shard_0001.npz")
+    with pytest.raises(ValueError, match="different catalogs"):
+        compact_teacher_data(shards, tmp_path / "other")
+    widened = dataclasses.replace(second, returns=second.returns.astype(np.float64))
+    save_teacher_data(widened, tmp_path / "shard_0001.npz")
+    with pytest.raises(ValueError, match="returns is float64"):
+        compact_teacher_data(shards, tmp_path / "widened")
+
+
+def test_a_chained_copy_takes_an_empty_shard(
+    collected: list[tuple[CollectionResult, TeacherData]], tmp_path: Path
+) -> None:
+    first = collected[0][1]
+    nothing = np.zeros(0, dtype=np.int64)
+    empty = dataclasses.replace(
+        first,
+        obs_columns=first.obs_columns[:0],
+        obs_values=first.obs_values[:0],
+        obs_offsets=np.zeros(1, dtype=np.int64),
+        legal_indices=first.legal_indices[:0],
+        legal_offsets=np.zeros(1, dtype=np.int64),
+        teacher=first.teacher[:0],
+        actions=first.actions[:0],
+        returns=first.returns[:0],
+        victory_points=first.victory_points[:0],
+        games=first.games[:0],
+        values=first.values[:0],
+    )
+    save_teacher_data(empty, tmp_path / "shard_0000.npz")
+    save_teacher_data(first, tmp_path / "shard_0001.npz")
+    shards = [tmp_path / "shard_0000.npz", tmp_path / "shard_0001.npz"]
+    chained = compact_teacher_data(shards, tmp_path / "compact")
+    every = np.arange(first.rows)
+    assert np.array_equal(chained.observations(every), first.observations(every))
+    width = first.observations(every).shape[1]
+    assert chained.observations(nothing).shape == (0, width)
+
+
+@pytest.mark.parametrize("arch", ["entity", "mlp"])
+def test_a_student_trains_the_same_on_a_chained_copy(
+    collected: list[tuple[CollectionResult, TeacherData]], tmp_path: Path, arch: str
+) -> None:
+    shards = _shards(collected, tmp_path)
+    datasets = (
+        concatenate([load_teacher_data(path) for path in shards]),
+        compact_teacher_data(shards, tmp_path / "compact"),
+    )
+    config = StudentConfig(
+        learning_rate=3e-3,
+        warmup_steps=5,
+        minibatch_size=64,
+        epochs=2,
+        heldout_modulus=2,
+        value_target="teacher",
+        threads=1,
+    )
+    results = []
+    for data in datasets:
+        torch.manual_seed(1)
+        student: PolicyValueNetwork
+        if arch == "entity":
+            student = EntityNetwork(
+                _RULES, hidden=(32,), entity_width=16, seat_width=32, action_width=16
+            )
+        else:
+            student = PolicyValueNetwork(data.action_size, hidden=(32,))
+        history = train_student(student, data, config)
+        results.append((history, student.state_dict()))
+    (history, weights), (chained_history, chained_weights) = results
+    assert chained_history == [
+        dataclasses.replace(record, seconds=chained.seconds)
+        for record, chained in zip(history, chained_history, strict=True)
+    ]
+    assert weights.keys() == chained_weights.keys()
+    for name, tensor in weights.items():
+        assert torch.equal(tensor, chained_weights[name]), name
 
 
 @pytest.mark.parametrize("arch", ["entity", "mlp"])

@@ -190,6 +190,9 @@ def test_without_a_student_the_teacher_plays_as_before(tmp_path: Path) -> None:
         if field.name in ("ruleset", "action_size"):
             continue
         mine, theirs = getattr(data, field.name), getattr(before, field.name)
+        if theirs is None:  # a shard is not a chained copy (``obs_chain``)
+            assert mine is None, field.name
+            continue
         assert mine.dtype == theirs.dtype, field.name
         assert mine.tobytes() == theirs.tobytes(), field.name
 

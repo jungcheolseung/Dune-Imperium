@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-26 (OQ-138 Covert Operation의 손이 빈 상대 창으로 codec v155; 그 앞 Uprising 판정 묶음 OQ-113 (C)·OQ-121·OQ-042 병합으로 codec v154; 그 앞 일반 규칙 감사의 남은 결함 5개 병합으로 codec v153; 그 앞 플레이 피드백 병합 — 원격 대기실·첫 플레이어 옵션 OQ-132·앱 좌석 색, codec 그대로; 2026-10-25 엔진 감사 수정 병합으로 codec v152; 그 전 B단계 병합 codec v150 뒤 Reveal 상태 이름 정리로 codec v151; 합계 정리(Reveal·Conflict·계약) 끝 — 효과 조각 엔진 전환 끝; 탐색 좌석이 옛 codec 플레이 망을 어댑터로 두어 v149 실력)
+기준일: 2026-10-27 (AI 실험 속도 셋 병합: 탐색 같은 판 −13~14%, 증류 `--compact`, 가치 망 선별; 그 앞 OQ-138 Covert Operation의 손이 빈 상대 창으로 codec v155; 그 앞 Uprising 판정 묶음 OQ-113 (C)·OQ-121·OQ-042 병합으로 codec v154; 그 앞 일반 규칙 감사의 남은 결함 5개 병합으로 codec v153; 그 앞 플레이 피드백 병합 — 원격 대기실·첫 플레이어 옵션 OQ-132·앱 좌석 색, codec 그대로; 2026-10-25 엔진 감사 수정 병합으로 codec v152; 그 전 B단계 병합 codec v150 뒤 Reveal 상태 이름 정리로 codec v151; 합계 정리(Reveal·Conflict·계약) 끝 — 효과 조각 엔진 전환 끝; 탐색 좌석이 옛 codec 플레이 망을 어댑터로 두어 v149 실력)
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -28,8 +28,8 @@
 
 | 항목 | 값 |
 | --- | --- |
-| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`)·2026-10-22 `search-adapter` 병합 `bc466f23`(탐색 좌석이 옛 codec 파일을 어댑터로)·2026-10-23 `search-parts` 병합 `79bdcb5b`(탐색 좌석 옵션, 서버 탐색 AI에 E1 뒤집기 문턱)·같은 날 `restore-lost-problems` 병합(문제집의 없어진 거절 정리, 사람 판 281곳 모두 풀림)·2026-10-25 `claude/base-ix-p0-57d7eb` 병합(원판·Ix P0 문서와 판정, 판정 공지 도움말 창; codec 그대로)·같은 날 `claude/engine-audit-fixes-16a6cc` 병합(엔진 감사 2026-10-22 수정, OQ-128~131, codec v152)·2026-10-26 `claude/play-feedback-2026-10-25-808f13` 병합 `f1de07c4`(플레이 피드백: 원격 대기실, OQ-132 첫 플레이어 옵션, 앱 좌석 색 순서 등; codec 그대로)·같은 날 `claude/rules-audit-fixes` 병합 `55265b73`(일반 규칙 감사의 남은 결함 5개, codec v153)·`claude/uprising-rulings-v154` 병합 `e9e992eb`(Uprising 판정 묶음 OQ-113 (C)·OQ-121·OQ-042, codec v154)·`search-draft`·`e5-student-distill` 병합 `5cef7268`·`78d86d29`(탐색 좌석 측정 옵션과 증류 도구, codec 그대로)·`e5-student-distill` 다시 병합 `d22f4392`·`abecbf43`(증류 `--keep`, codec 그대로)·`claude/play-feedback-2026-10-26` 병합 `ad54fb72`(시에치 타브르 문구, 로그 카드 그림과 까닭, 좌석 패널 정리와 자세히 창; codec 그대로) |
-| pytest | 8,419개 통과(2026-10-26 플레이 피드백 묶음의 합친 트리, codec v155, `-n 4`)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
+| master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`)·2026-10-22 `search-adapter` 병합 `bc466f23`(탐색 좌석이 옛 codec 파일을 어댑터로)·2026-10-23 `search-parts` 병합 `79bdcb5b`(탐색 좌석 옵션, 서버 탐색 AI에 E1 뒤집기 문턱)·같은 날 `restore-lost-problems` 병합(문제집의 없어진 거절 정리, 사람 판 281곳 모두 풀림)·2026-10-25 `claude/base-ix-p0-57d7eb` 병합(원판·Ix P0 문서와 판정, 판정 공지 도움말 창; codec 그대로)·같은 날 `claude/engine-audit-fixes-16a6cc` 병합(엔진 감사 2026-10-22 수정, OQ-128~131, codec v152)·2026-10-26 `claude/play-feedback-2026-10-25-808f13` 병합 `f1de07c4`(플레이 피드백: 원격 대기실, OQ-132 첫 플레이어 옵션, 앱 좌석 색 순서 등; codec 그대로)·같은 날 `claude/rules-audit-fixes` 병합 `55265b73`(일반 규칙 감사의 남은 결함 5개, codec v153)·`claude/uprising-rulings-v154` 병합 `e9e992eb`(Uprising 판정 묶음 OQ-113 (C)·OQ-121·OQ-042, codec v154)·`search-draft`·`e5-student-distill` 병합 `5cef7268`·`78d86d29`(탐색 좌석 측정 옵션과 증류 도구, codec 그대로)·`e5-student-distill` 다시 병합 `d22f4392`·`abecbf43`(증류 `--keep`, codec 그대로)·`claude/play-feedback-2026-10-26` 병합 `ad54fb72`(시에치 타브르 문구, 로그 카드 그림과 까닭, 좌석 패널 정리와 자세히 창; codec 그대로)·2026-10-27 `claude/ai-speedup-1e9ed9` 병합(AI 실험 속도: 같은 판 그대로 탐색 −13~14%, 증류 `--compact`, 가치 망 선별 도구; codec 그대로) |
+| pytest | 8,437개 통과(2026-10-27 ai-speedup의 합친 트리, codec v155, `-n 8`)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
 | Ruff · mypy | `src tests` 통과, mypy 563파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 70종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-26 플레이 피드백 묶음 관문(`-j 2`, 69 통과; 나머지 `catalog_kinds`는 스크립트를 고쳐 다시 통과) |
 | action codec | **v155** (2026-10-26 OQ-138: Covert Operation의 손이 빈 상대도 창을 열고 확인 줄 `resolve_opponent_discard_without_card` 하나를 받는다 — 모든 카탈로그 +1, Immortality는 Ghola 사본 줄까지 +2; 옛 기보 다리 `opponent_discard_alone`). 그 앞 **v154** (2026-10-26 Uprising 판정 묶음). Planetary Array의 승자 창 줄(Tech 카탈로그), 비용 없는 책략 선택의 확인 줄 셋(Manipulate는 모든 카탈로그, Twisted 둘은 Bloodlines 카탈로그)이 늘었고, 비용 없는 책략 줄은 불발해도 낸다(OQ-113 (C)); 옛 기보는 다리로([`human-records.md`](human-records.md)). v153 저장은 서버가 열지 않는다 |
@@ -229,6 +229,15 @@
   - **판정 주의:** 81.8% 근처에서는 400판 승률 차의 구간이 ±5%p 안팎이라 탐색 실험은 플레이 망 셋 상대로도 재고 순위·점수 차를 함께 본다.
     망만의 이득이 탐색 좌석으로 안 넘어온 전례(M 대 8081)가 있으니 망·가치 변경은 탐색 좌석으로 판정한다.
   - **보류:** PPO 재시도(2026-09-18 붕괴, 다인원 self-play에서 같은 판 반복 사용은 해롭다는 문헌), E8 탐침 밖의 MLP 폭 확대, LSTM, CFR 계열(2인 영합 게임에만 보장).
+- **AI 실험 속도(2026-10-27, 작업 기록 같은 날, 기록 worktree `ai-speedup-1e9ed9`의 `checkpoints/2026-10-27/ai-speedup/README.md`):**
+  - 증류 학습은 `distill_entity.py train --compact`로 한다. 네 배 자료가 2.19 GB(묶음 11.70 GB)로 메모리에 들어가고 epoch이 585초다
+    (`--pack` 1,650초). 사본은 `<data>/compact`(또는 `--compact-dir`)에 한 번 만들고(약 5분), 같은 shard면 다시 읽는다. 8배 자료도 약 4.4 GB다.
+  - 가치 망은 탐색 좌석 관문 전에 `scripts/ab/value_screen.py`로 거른다. 그 망과 함께 쓸 정책의 탐색 좌석으로 잎을 기록하고(관문 8판, 프로세스
+    8개로 약 6분), 망마다 v147 잎과의 선택 일치율·regret을 매긴다(11초). 학생 0.933·E7b 0.952로, 400판 관문이 못 가른 차를 갈랐다.
+    v147을 기준으로 재므로 v147보다 나은 망은 가려내지 못한다.
+  - 탐색 관문은 `--workers 10` 그대로 둔다(같은 판으로 4·6·8개보다 빠름).
+  - **(결정)** 수치를 바꾸는 탐색 가속: 40 playout을 같이 걸려 망을 묶어 계산하기(−30~40% 추정), MLP 첫 층을 0 아닌 열로만 계산하기(시험 −23%).
+    둘 다 비트가 달라 판이 갈릴 수 있어 관문으로 판정한다. 엔진 속도(상태 복사 등, 곳곳에 흩어짐)는 위험이 높다.
 - **readapt-v147(끝남) → 플레이 망 교체(2026-10-15):** 레시피 MLP를 v147 엔진에서 3,600 iteration 더 학습한 R(4,400)이
   시작 망과 1,400판에서 +5.6%p [+0.6, +10.4](확정), 탐색 좌석(1 대 앱 AI 어려움 3)에서는 81.8% 대 78.0%, +3.7%p
   [−1.8, +9.2](규칙상 비김, 지표 모두 R 쪽). 사용자 결정으로 `checkpoints/play/search.pt` → `readapt-v147-4400.pt`
@@ -343,6 +352,8 @@
   체크아웃에서는 `src/`가 바뀌는 pull을 하지 않는다. 몇 시간 걸리는 실행은 착수 전에 사용자에게 묻는다.
 - **공유 체크아웃.** 여러 세션이 같은 메인 체크아웃을 쓴다. 메인 체크아웃은 master에 두고 작업은 worktree에서 한다.
   2026-10-11에 한 세션의 병합이 메인 체크아웃에 걸려 있던 다른 세션의 브랜치에 들어갔다.
+- **학습 재현성.** 증류 학생 학습은 `--threads` 2 이상에서 같은 명령·같은 자료로도 비트까지 같게 되풀이되지 않는다(2026-10-27,
+  묶음끼리·사본끼리 모두 2단계부터 다름). 자료 형식이나 코드 정리 뒤 "같은 결과"를 비교할 때는 `--threads 1`로 돌린다.
 - **떠 있는 서버.** 규칙이나 카탈로그가 바뀐 뒤에는 떠 있는 플레이 서버를 다시 띄워야 적용된다(정적 파일은 즉시).
 - **판정 공지.** 판정을 새로 적거나 바꾸면 플레이하는 사람에게 알리는 공지(`display/house_rulings.toml`, 도움말 창과
   [rules/house-rulings-ko.md](rules/house-rulings-ko.md))도 고치고 `uv run scripts/house_rulings_doc.py`로 문서를 다시 만든다

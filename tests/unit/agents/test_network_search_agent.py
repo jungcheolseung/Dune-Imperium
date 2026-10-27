@@ -189,6 +189,38 @@ def test_a_seat_reading_its_own_file_as_value_searches_like_the_plain_seat(
     assert same.search_with_state(state, view, actions) == expected
 
 
+@pytest.mark.parametrize("own_value", [True, False])
+def test_reading_each_trunk_once_leaves_every_playout_value_as_it_was(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, own_value: bool
+) -> None:
+    """A searched decision keeps the trunks it read (``TrunkCache``,
+    ai-speedup 2026-10-27): its choice and every playout value are the same,
+    bit for bit, as a seat's that reads every trunk again."""
+
+    from contextlib import nullcontext
+
+    from dune_imperium.training.trunk_cache import TrunkCache
+
+    config = RulesetConfig()
+    path = _checkpoint(tmp_path, config)
+    value = None if own_value else _other_checkpoint(tmp_path, config)
+    state, view, actions = _searched_decision(config, seed=5)
+
+    def seat() -> NetworkSearchAgent:
+        return NetworkSearchAgent(
+            path, seed=3, candidates=3, rollouts=4, value_path=value
+        )
+
+    cached = seat()
+    expected = cached.search_with_state(state, view, actions)
+    assert expected.searched
+    assert cached._trunks.hits > 0 and len(cached._trunks) == 0
+    monkeypatch.setattr(TrunkCache, "decision", lambda self: nullcontext())
+    fresh = seat()
+    assert fresh.search_with_state(state, view, actions) == expected
+    assert fresh._trunks.hits == 0
+
+
 def test_search_picks_among_the_network_s_own_best_actions(tmp_path: Path) -> None:
     """The search never leaves the candidate set, and repeats its own choice.
 

@@ -375,6 +375,41 @@ def test_an_older_seat_keeps_that_engine_s_fixed_answers_without_searching(
     assert plain.search_with_state(state, view, legal).searched
 
 
+def test_the_playouts_share_the_decision_s_trunks_without_changing_a_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every playout's walker and the leaves read the seat's ``TrunkCache``
+    (ai-speedup 2026-10-27); the search is the same, bit for bit, as one
+    that reads every trunk again."""
+
+    from contextlib import nullcontext
+
+    from dune_imperium.training.trunk_cache import TrunkCache
+
+    path = _older_file(tmp_path)
+    decided = _game(
+        NetworkSearchAgent(path, seed=11, rollouts=3, candidates=3, config=_RULES),
+        seed=0,
+        chair=1,
+        count=12,
+    )
+    assert sum(entry.result.searched for entry in decided) >= 3
+    cached = NetworkSearchAgent(path, seed=11, rollouts=3, candidates=3, config=_RULES)
+    hits = 0
+    for entry in decided:
+        assert cached.search_with_state(entry.state, entry.view, entry.actions) == (
+            entry.result
+        )
+        hits = cached._trunks.hits
+    assert hits > 0
+    monkeypatch.setattr(TrunkCache, "decision", lambda self: nullcontext())
+    fresh = NetworkSearchAgent(path, seed=11, rollouts=3, candidates=3, config=_RULES)
+    for entry in decided:
+        result = fresh.search_with_state(entry.state, entry.view, entry.actions)
+        assert result == entry.result
+    assert fresh._trunks.hits == 0
+
+
 def test_a_row_no_whole_action_reaches_is_no_candidate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -88,6 +88,12 @@ class TeacherData:
     # float32 [rows]: the teacher's value of the position; NaN in a format 1
     # shard until ``add_teacher_values`` fills it in.
     values: np.ndarray
+    # uint8 [rows] in a chained copy (``compact_teacher_data``): how many
+    # rows back the row's whole observation is. A row at 0 holds its non-zero
+    # columns; a row at k > 0 holds only the columns whose value differs from
+    # the row before it, with the new value (0 included). None: every row
+    # holds its non-zero columns.
+    obs_chain: np.ndarray | None = None
 
     @property
     def rows(self) -> int:
@@ -96,11 +102,31 @@ class TeacherData:
     def observations(self, rows: np.ndarray) -> np.ndarray:
         """The dense observations ``int32 [len(rows), OBSERVATION_SIZE]``."""
 
+        if self.obs_chain is not None:
+            return self._chained_observations(rows, self.obs_chain)
         columns, offsets = gather_rows(self.obs_columns, self.obs_offsets, rows)
         values, _ = gather_rows(self.obs_values, self.obs_offsets, rows)
         dense = np.zeros((rows.shape[0], OBSERVATION_SIZE), dtype=np.int32)
         owner = np.repeat(np.arange(rows.shape[0]), np.diff(offsets))
         dense[owner, columns.astype(np.int64)] = values
+        return dense
+
+    def _chained_observations(self, rows: np.ndarray, chain: np.ndarray) -> np.ndarray:
+        """``observations`` of a chained copy: each row's whole observation,
+        then the changes of every row after it up to the row itself, one
+        link at a time, so a later value overwrites an earlier one."""
+
+        links = chain[rows].astype(np.int64)
+        first = rows - links
+        dense = np.zeros((rows.shape[0], OBSERVATION_SIZE), dtype=np.int32)
+        for link in range(int(links.max(initial=0)) + 1):
+            # One stored row per wanted row: no two writes share a cell.
+            owners = np.flatnonzero(links >= link)
+            stored = first[owners] + link
+            columns, offsets = gather_rows(self.obs_columns, self.obs_offsets, stored)
+            values, _ = gather_rows(self.obs_values, self.obs_offsets, stored)
+            owner = np.repeat(owners, np.diff(offsets))
+            dense[owner, columns.astype(np.int64)] = values
         return dense
 
     def legal(self, rows: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -247,7 +273,13 @@ _ARRAYS = (
 )
 
 
+def _refuse_chained(data: TeacherData, what: str) -> None:
+    if data.obs_chain is not None:
+        raise ValueError(f"{what} takes plain teacher data, not a chained copy")
+
+
 def save_teacher_data(data: TeacherData, path: Path) -> None:
+    _refuse_chained(data, "a shard")
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez(
         path,
@@ -280,6 +312,8 @@ def concatenate(parts: Sequence[TeacherData]) -> TeacherData:
 
     if not parts:
         raise ValueError("nothing to concatenate")
+    for part in parts:
+        _refuse_chained(part, "concatenate")
     if len({(part.ruleset, part.action_size) for part in parts}) != 1:
         raise ValueError("the parts come from different catalogs")
 
@@ -424,6 +458,162 @@ def pack_teacher_data(shards: Sequence[Path], directory: Path) -> TeacherData:
     }
     manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")
     return _open_pack(directory, manifest)
+
+
+COMPACT_MANIFEST = "manifest.json"
+_COMPACT_FORMAT = 1
+# A row is stored as its changes from the row before it (``obs_chain``) when
+# those are fewer than this share of its non-zero columns and it is at most
+# ``CHAIN_DEPTH`` rows from a whole one. On four shards of the four-times
+# set (2026-10-27) rows kept 50.9 entries instead of 266.7 non-zero values,
+# and reading a minibatch of 512 rows took 4.8 ms against 4.2 ms.
+CHAIN_SHARE = 0.5
+CHAIN_DEPTH = 16
+_CHAINED = ("obs_columns", "obs_values", "obs_offsets", "obs_chain")
+
+
+def chain_observations(
+    data: TeacherData,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """``data``'s observations as a chain (``TeacherData.obs_chain``): the
+    columns uint16, the values (int16, as stored), offsets and links.
+
+    A row links to the row before it only within one game, and the first
+    row is always whole, so chains of separate parts can be joined.
+    """
+
+    _refuse_chained(data, "chain_observations")
+    rows = data.rows
+    dense = np.zeros((rows, OBSERVATION_SIZE), dtype=np.int16)
+    owner = np.repeat(np.arange(rows), np.diff(data.obs_offsets))
+    dense[owner, data.obs_columns.astype(np.int64)] = data.obs_values
+    changed = np.zeros(dense.shape, dtype=bool)
+    np.not_equal(dense[1:], dense[:-1], out=changed[1:])
+    linkable = np.count_nonzero(changed, axis=1) < CHAIN_SHARE * np.diff(
+        data.obs_offsets
+    )
+    linkable[:1] = False  # (an empty shard has no first row)
+    linkable[1:] &= data.games[1:] == data.games[:-1]
+    chain = np.zeros(rows, dtype=np.uint8)
+    for row in np.flatnonzero(linkable).tolist():
+        if chain[row - 1] < CHAIN_DEPTH:
+            chain[row] = chain[row - 1] + 1
+    whole = chain == 0
+    changed[whole] = dense[whole] != 0
+    owner, columns = np.nonzero(changed)
+    offsets = np.zeros(rows + 1, dtype=np.int64)
+    np.cumsum(np.bincount(owner, minlength=rows), out=offsets[1:])
+    return columns.astype(np.uint16), dense[owner, columns], offsets, chain
+
+
+def _load_compact(directory: Path, manifest: dict[str, object]) -> TeacherData:
+    arrays = {
+        name: np.load(directory / f"{name}.npy")
+        for name in (*_ARRAYS, "obs_chain")
+    }
+    return TeacherData(
+        ruleset=str(manifest["ruleset"]),
+        action_size=int(str(manifest["action_size"])),
+        **arrays,
+    )
+
+
+def compact_teacher_data(shards: Sequence[Path], directory: Path) -> TeacherData:
+    """``concatenate`` of the ``shards`` as a chained copy held in memory.
+
+    Every row of the four-times distillation set (10.4M rows, 320 shards)
+    did not fit the 16 GB machine as ``concatenate`` holds it -- its
+    observations alone are 11.1 GB -- so ``pack_teacher_data`` kept it on
+    disk, and an epoch read from there took 1,650s. Consecutive decisions
+    of a game mostly differ in a few columns, so a chained copy
+    (``TeacherData.obs_chain``) keeps about a fifth of the observation
+    entries, with the values in a byte when they fit. Every row reads back
+    the same dense observation, every other array is the shards' own, and
+    a student trains on it bit for bit as on ``concatenate``.
+
+    The copy is written to ``directory`` once and loaded from there while
+    its manifest names the same shards (resolved path, size, modification
+    time); the manifest is written last, so an interrupted copy is rebuilt.
+    """
+
+    if not shards:
+        raise ValueError("nothing to compact")
+    entries = _pack_entries(shards)
+    shape = {"share": CHAIN_SHARE, "depth": CHAIN_DEPTH}
+    manifest_path = directory / COMPACT_MANIFEST
+    if manifest_path.exists():
+        stored = json.loads(manifest_path.read_text())
+        if (
+            stored.get("format") == _COMPACT_FORMAT
+            and stored.get("chain") == shape
+            and stored.get("shards") == entries
+        ):
+            return _load_compact(directory, stored)
+        manifest_path.unlink()
+    directory.mkdir(parents=True, exist_ok=True)
+
+    parts: list[dict[str, np.ndarray]] = []
+    catalogs: set[tuple[str, int]] = set()
+    for path in shards:
+        data = load_teacher_data(path)
+        catalogs.add((data.ruleset, data.action_size))
+        columns, values, offsets, chain = chain_observations(data)
+        part = {name: getattr(data, name) for name in _ARRAYS}
+        part.update(
+            obs_columns=columns, obs_values=values, obs_offsets=offsets, obs_chain=chain
+        )
+        parts.append(part)
+        del data
+    if len(catalogs) != 1:
+        raise ValueError("the shards come from different catalogs")
+    ruleset, action_size = catalogs.pop()
+    small = all(
+        not part["obs_values"].size
+        or (part["obs_values"].min() >= 0 and part["obs_values"].max() <= 255)
+        for part in parts
+    )
+
+    joined: dict[str, np.ndarray] = {}
+    for name in (*_ARRAYS, "obs_chain"):
+        pieces = [part[name] for part in parts]
+        if name.endswith("_offsets"):
+            total = sum(int(piece[-1]) for piece in pieces)
+            out = np.empty(sum(piece.shape[0] - 1 for piece in pieces) + 1, np.int64)
+            out[0] = 0
+            row = base = 0
+            for piece in pieces:
+                out[row + 1 : row + piece.shape[0]] = piece[1:] + base
+                row += piece.shape[0] - 1
+                base += int(piece[-1])
+            assert base == total
+        else:
+            dtype = np.uint8 if name == "obs_values" and small else pieces[0].dtype
+            for path, piece in zip(shards, pieces, strict=True):
+                if name != "obs_values" and piece.dtype != dtype:
+                    raise ValueError(f"{path}: {name} is {piece.dtype}, not {dtype}")
+            out = np.empty(
+                (sum(piece.shape[0] for piece in pieces), *pieces[0].shape[1:]), dtype
+            )
+            start = 0
+            for piece in pieces:
+                out[start : start + piece.shape[0]] = piece
+                start += piece.shape[0]
+        # Each part's copy goes as soon as it is joined, so the peak is one
+        # copy and the parts of one array, not twice the copy.
+        for part in parts:
+            del part[name]
+        np.save(directory / f"{name}.npy", out)
+        joined[name] = out
+    manifest: dict[str, object] = {
+        "format": _COMPACT_FORMAT,
+        "ruleset": ruleset,
+        "action_size": action_size,
+        "rows": int(joined["actions"].shape[0]),
+        "chain": shape,
+        "shards": entries,
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")
+    return TeacherData(ruleset=ruleset, action_size=action_size, **joined)
 
 
 # -- the student ------------------------------------------------------------
