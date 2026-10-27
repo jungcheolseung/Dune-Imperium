@@ -37,6 +37,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     IntrigueOption,
     IntrigueTiming,
+    OnConflictWon,
     Trigger,
 )
 
@@ -161,8 +162,19 @@ class Ability:
             section.costs for section in self.sections
         ):
             raise ValueError("an automatic ability has nothing to pay")
-        if self.trigger is not None and any(
-            section.costs or section.condition is not None for section in self.sections
+        if (
+            self.trigger is not None
+            # A winning Intrigue is played from the hand once the win has
+            # happened, with the cost and condition its play needs [FAQ p. 2]
+            # (``IntrigueOption``).
+            and not (
+                self.timing is AbilityTiming.COMBAT
+                and isinstance(self.trigger, OnConflictWon)
+            )
+            and any(
+                section.costs or section.condition is not None
+                for section in self.sections
+            )
         ):
             raise ValueError("triggered lines must be free and unconditional")
         if self.at_turn_start and self.timing is not AbilityTiming.PLOT:

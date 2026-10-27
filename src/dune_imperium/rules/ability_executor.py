@@ -921,6 +921,18 @@ def apply_piece(
                 lost.state, player, entry.held, step_source, lost.events
             )
             taken = replace(taken, held=())
+        case GainInfluence(one_faction=True, times=times):
+            # "Gain two Influence with one Faction of your choice" [DI p. 16]:
+            # one pick, every Influence on that Faction (a cube at 5 gains 1).
+            faction = Faction(str(arguments["faction"]))
+            taken = replace(taken, chosen=(*entry.chosen, faction.value))
+            result = gain_faction_influence(
+                state,
+                player,
+                faction,
+                times,
+                event_prefix=f"{step_source}:gained:{faction.value}",
+            )
         case GainInfluence(distinct=distinct):
             faction = Faction(str(arguments["faction"]))
             later_distinct = distinct and any(

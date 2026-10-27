@@ -32,6 +32,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeastOnTracks,
     LoseTroops,
     MoreSpiceMustFlowThanEachOpponent,
+    OnConflictWon,
     PayResources,
     RecruitTroops,
     RetreatTroops,
@@ -41,6 +42,7 @@ from dune_imperium.content.uprising.effect_dsl import (
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
     _combat,
+    _combat_trigger,
     _endgame,
     _plot,
 )
@@ -191,6 +193,25 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("demand_respect", "Demand Respect"),
         copies=1,
+        # "When you win a Conflict:" then "1 Influence (any Faction) -OR-
+        # 2 spice -> 2 Influence" [Demand Respect card, app text]: a winning
+        # Intrigue, played from the hand in the sole winner's reward window
+        # [DI p. 12] (OQ-121), never in a Combat Intrigue round, and two
+        # exclusive options (OQ-058). The two chevrons are one Faction's two
+        # Influence [DI p. 16] ("you can't choose two different Factions");
+        # the spice may be the reward's own [DI p. 13] (imperium-base.md 13.1)
+        # and the arrow's line needs a live reward (OQ-113 (C)); a Faction at
+        # the top of its track is not offered (OQ-060).
+        options=(
+            _combat_trigger(OnConflictWon(), EffectSection(rewards=(GainInfluence(),))),
+            _combat_trigger(
+                OnConflictWon(),
+                EffectSection(
+                    costs=(PayResources(spice=2),),
+                    rewards=(GainInfluence(times=2, one_faction=True),),
+                ),
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("dispatch_an_envoy", "Dispatch an Envoy"),
@@ -401,6 +422,16 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("to_the_victor", "To the Victor..."),
         copies=1,
+        # "When you win a Conflict: 3 spice" [To the Victor... card, app
+        # text]: a cost-free winning Intrigue, played from the hand in the
+        # sole winner's reward window [DI p. 12] (OQ-121); it may be played
+        # at once when the Conflict reward drew it [FAQ p. 4] and its spice
+        # may pay Demand Respect (imperium-base.md 13.1).
+        options=(
+            _combat_trigger(
+                OnConflictWon(), EffectSection(rewards=(GainResources(spice=3),))
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("urgent_mission", "Urgent Mission"),

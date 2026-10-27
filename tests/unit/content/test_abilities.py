@@ -20,7 +20,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     GainVictoryPoints,
     HasAlliance,
+    IntrigueOption,
     IntrigueTiming,
+    OnConflictWon,
     OnRevealAcquisitionThisRound,
     PayResources,
 )
@@ -94,3 +96,32 @@ def test_ability_validation() -> None:
         Ability(AbilityTiming.PLOT, (paid,), trigger=OnRevealAcquisitionThisRound())
     with pytest.raises(ValueError, match="start of a turn"):
         Ability(AbilityTiming.COMBAT, (_VP,), at_turn_start=True)
+
+
+def test_a_winning_intrigue_is_played_with_the_cost_and_condition_it_needs() -> None:
+    # "When you win a Conflict:" (the original game's Demand Respect) is played
+    # from the hand once the win has happened, in the winner's window: unlike a
+    # card waiting face up it may carry a cost and a condition [FAQ p. 2]
+    # (OQ-121 decision 6), and it is a Combat card.
+    paid = EffectSection(
+        rewards=(GainVictoryPoints(1),),
+        costs=(PayResources(spice=2),),
+        condition=HasAlliance(),
+    )
+    option = IntrigueOption(
+        timing=IntrigueTiming.COMBAT, sections=(paid,), trigger=OnConflictWon()
+    )
+    assert intrigue_option(intrigue_ability(option)) == option
+    with pytest.raises(ValueError, match="combat timing"):
+        IntrigueOption(
+            timing=IntrigueTiming.PLOT, sections=(paid,), trigger=OnConflictWon()
+        )
+    with pytest.raises(ValueError, match="free and unconditional"):
+        IntrigueOption(
+            timing=IntrigueTiming.PLOT,
+            sections=(paid,),
+            trigger=OnRevealAcquisitionThisRound(),
+        )
+    assert Ability(AbilityTiming.COMBAT, (paid,), trigger=OnConflictWon()).sections
+    with pytest.raises(ValueError, match="free and unconditional"):
+        Ability(AbilityTiming.PLOT, (paid,), trigger=OnConflictWon())

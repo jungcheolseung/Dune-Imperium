@@ -555,6 +555,22 @@ def _conflict_end_reason(option: IntrigueOption) -> Reason:
     )
 
 
+# "When you win a Conflict:" in a Combat Intrigue round (To the Victor...,
+# Demand Respect): played only in the sole winner's reward window (OQ-121).
+_CONFLICT_WON: Final[Reason] = (
+    "Played in your reward window when you win the Conflict",
+    "{conflict}에서 승리했을 때 보상 창에서 사용",
+    "timing",
+)
+# A Combat card of the rounds in the reward window, where only the winning
+# Intrigue is played (OQ-121 decision 6).
+_COMBAT_ROUNDS_OVER: Final[Reason] = (
+    "Combat Intrigue: its rounds are over",
+    "전투 책략 카드: 전투 책략 단계가 끝남",
+    "timing",
+)
+
+
 def _conflict_end_trigger_reason(
     state: GameState,
     seat: int,
@@ -1239,7 +1255,15 @@ def _intrigue(state: GameState, seat: int, found: _Found) -> None:
                 other_window = other_window or _TURN_START
                 continue
             if block is IntriguePlayBlock.TIMING:
-                other_window = other_window or _TIMING[option.timing]
+                other_window = other_window or (
+                    _COMBAT_ROUNDS_OVER
+                    if frame_kind == FrameKind.COMBAT_REWARD_ICONS
+                    and option.timing is IntrigueTiming.COMBAT
+                    else _TIMING[option.timing]
+                )
+                continue
+            if block is IntriguePlayBlock.CONFLICT_WON:
+                other_window = other_window or _CONFLICT_WON
                 continue
             if block is IntriguePlayBlock.CONFLICT_END:
                 other_window = other_window or _conflict_end_reason(option)
@@ -3252,6 +3276,10 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _intrigue,
     ),
     FrameKind.COMBAT_INTRIGUE: (_intrigue,),
+    # The sole winner's reward window holds its winning Intrigue as rows
+    # (OQ-121 decision 6); ``_intrigue`` collects nothing for any other
+    # window of the frame.
+    FrameKind.COMBAT_REWARD_ICONS: (_intrigue,),
     FrameKind.CONFLICT_END_TRIGGER: (_conflict_end_trigger,),
     FrameKind.ENDGAME_INTRIGUE: (_intrigue,),
 }

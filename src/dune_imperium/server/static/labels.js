@@ -644,6 +644,9 @@ const EFFECT_ICON_LABELS = {
   /* Planetary Array's "When you win a Conflict" card, a row of the
      winner's window (OQ-121). */
   planetary_array: "행성 군사력: {draw} 1",
+  /* The sole winner's close of its window: no more "When you win a
+     Conflict" Intrigue (OQ-121 decision 6). */
+  winning_intrigue: "승리 {intrigue} 끝내기",
   recall_agent: "{agent} 회수",
 };
 const RESEARCH_BONUS_LABELS = {
