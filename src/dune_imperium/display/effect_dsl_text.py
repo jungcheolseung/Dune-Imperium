@@ -614,6 +614,8 @@ def reward_text(reward: Reward) -> str:
             return "In your Reveal turn, you may deploy these troops to the Conflict"
         case GainSolariPerUnitType():
             return "Gain 1 solari for each type of unit you have in the Conflict"
+        case PeekTopCard(draw_or_trash=True):
+            return "Look at the top card of your deck: draw it or trash it"
         case PeekTopCard():
             return (
                 "Look at the top card of your deck: put it back, discard it, or"

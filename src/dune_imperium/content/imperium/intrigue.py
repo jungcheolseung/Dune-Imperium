@@ -34,6 +34,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     MoreSpiceMustFlowThanEachOpponent,
     OnConflictWon,
     PayResources,
+    PeekTopCard,
     RecruitTroops,
     RetreatTroops,
     RevealPersuasionThisRound,
@@ -313,6 +314,18 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("poison_snooper", "Poison Snooper"),
         copies=2,
+        # "Look at the top card of your deck. Draw or trash it." [Poison
+        # Snooper card, app text]: a cost-free Plot whose one choice is
+        # mandatory -- no "may", and the black trash icon is not printed,
+        # the card says "trash it" in words (P0 sheet; imperium-base.md 15
+        # "Poison Snooper | 낸 좌석 | 뽑기 -OR- trash"). Only the playing seat
+        # is told the card (imperium-base.md 14), through the same private
+        # ``peeked_card_id`` Controlled uses; "덱이 비면 맨 위를 볼 수 없다"
+        # (13.1), so with an empty deck the cost-free look is played and
+        # fizzles (OQ-113 (C) (1), the empty-deck Controlled's ruling (2) 7).
+        # A card drawn in the Reveal turn is revealed at once [FAQ p. 3]
+        # (13.2 "Poison Snooper → Reveal turn").
+        options=(_plot(EffectSection(rewards=(PeekTopCard(draw_or_trash=True),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("private_army", "Private Army"),

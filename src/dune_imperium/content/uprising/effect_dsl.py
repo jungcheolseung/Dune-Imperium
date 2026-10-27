@@ -1228,7 +1228,14 @@ class GainSolariPerUnitType:
 @dataclass(frozen=True, slots=True)
 class PeekTopCard:
     """Controlled (Twisted Intrigue): look at the top card of the deck and
-    put it back, discard it, or pay one Solari to draw it (player choice)."""
+    put it back, discard it, or pay one Solari to draw it (player choice).
+
+    ``draw_or_trash``: Poison Snooper (the original game), "Look at the top
+    card of your deck. Draw or trash it." [Poison Snooper card, app text]:
+    the look is the same, but the card is drawn (free) or trashed, never put
+    back or discarded; it is mandatory once the card is played."""
+
+    draw_or_trash: bool = False
 
 
 @dataclass(frozen=True, slots=True)

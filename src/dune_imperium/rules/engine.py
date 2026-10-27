@@ -723,6 +723,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "put_back_top_card": apply_intrigue_choice,
     "discard_top_card": apply_intrigue_choice,
     "draw_top_card_for_solari": apply_intrigue_choice,
+    "draw_top_card": apply_intrigue_choice,
+    "trash_top_card": apply_intrigue_choice,
     "recall_spy_for_intrigue": apply_intrigue_choice,
     "retreat_intrigue_troops": apply_intrigue_choice,
     "acquire_intrigue_imperium": apply_intrigue_choice,

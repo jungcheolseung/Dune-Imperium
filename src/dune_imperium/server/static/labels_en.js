@@ -170,6 +170,8 @@ const LABELS_EN = {
     "put_back_top_card": "Leave top card of {deck} on top",
     "discard_top_card": "Discard top card of {deck}",
     "draw_top_card_for_solari": "Pay 1 {solari} -> Draw top card of {deck}",
+    "draw_top_card": "Draw top card of {deck}",
+    "trash_top_card": "Trash top card of {deck}",
     "place_navigation_card": "Place {navigation} in slot",
     "play_navigation": "Play {navigation}",
     "decline_navigation": "Spend {navigation} without effect",
@@ -662,7 +664,8 @@ const LABELS_EN = {
     "control_defense_deployed": "{control} Defense Deployed",
     "spies_recalled": "{recall_spy}",
     "top_card_discarded": "Discard: Top Card of {deck}",
-    "top_card_drawn": "Draw: Top Card of {deck} (1 {solari} Paid)"
+    "top_card_drawn": "Draw: Top Card of {deck} (1 {solari} Paid)",
+    "top_card_drawn_free": "Draw: Top Card of {deck}"
   },
   "PAYLOAD_KEY_LABELS": {
     "action_id": "Action",

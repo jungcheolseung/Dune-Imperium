@@ -841,6 +841,10 @@ def reward_text_ko(reward: Reward) -> str:
             return "{combat} (전투 장소에 보낸 것처럼 배치 가능)"
         case GainSolariPerUnitType():
             return "{conflict}에 있는 부대 종류마다 {solari:1}"
+        case PeekTopCard(draw_or_trash=True):
+            # The look as in the next case's print, then the plain word
+            # "뽑기" and the trash icon (the original game's Poison Snooper).
+            return "{deck} 맨 위 카드 확인: 뽑거나 {trash}하기"
         case PeekTopCard():
             # "언제든지 당신의 카드덱 맨 위 카드 1장 확인 가능." — Glowglobes'
             # own Korean print (`[KO card: Glowglobes]`, docs/rules/korean-card-style.md

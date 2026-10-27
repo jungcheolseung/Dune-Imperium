@@ -536,6 +536,16 @@ def piece_rows(
             )
             if refusals:
                 rows.append(row(Verb.DECLINE, of=Verb.ACQUIRE))
+        case PeekTopCard(draw_or_trash=True):
+            # Poison Snooper: draw the card it looked at, or trash it; both
+            # are free and it is neither put back nor discarded.
+            if owner.deck:
+                rows.append(row(Verb.DRAW, variant="deck_top_free"))
+                rows.append(row(Verb.TRASH, variant="deck_top"))
+            elif empty_confirm:
+                # "덱이 비면 맨 위를 볼 수 없다" (imperium-base.md 13.1): the
+                # look fizzles and is confirmed (OQ-113 (C), like Controlled).
+                rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.KEEP, variant="deck_top"))
         case PeekTopCard():
             if owner.deck:
                 rows.append(row(Verb.KEEP, variant="deck_top"))
@@ -1084,6 +1094,8 @@ def apply_piece(
             )
         case PeekTopCard() if shape.verb is Verb.CONFIRM_EMPTY:
             result = _passed(state, player, action, step_source)
+        case PeekTopCard(draw_or_trash=True):
+            result = _resolve_look(state, player, shape.verb, step_source)
         case PeekTopCard():
             result = _resolve_peek(state, player, shape.verb, step_source)
         case PlaceSpy() if shape.verb is Verb.DECLINE:
@@ -1285,6 +1297,49 @@ def _trash_intrigue_hand_card(
     if recruited and turn_owner_of(next_state) == player:
         next_state = update_turn_recruits(next_state, troops_recruited=recruited)
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _resolve_look(
+    state: GameState,
+    player: int,
+    verb: Verb,
+    step_source: str,
+) -> RuleResult:
+    """Poison Snooper: draw the top card it looked at, or trash it.
+
+    "Look at the top card of your deck. Draw or trash it." [Poison Snooper
+    card, app text]. The drawn card goes to the hand and stays hidden from
+    the others (``top_card_drawn_free`` names no card); in the owner's Reveal
+    turn it is revealed at once and used this turn [FAQ p. 3]
+    (imperium-base.md 13.2). The trashed card becomes public (imperium-base.md
+    14: "trash하면 공개"): it is trashed from the deck like Long Live the
+    Fighters' (``trash_personal_card`` with ``allow_deck``), so a Reserve card
+    returns to its pile [DI p. 16] and the card's own trash trigger fires.
+    """
+
+    owner = state.players[player]
+    if not owner.deck:
+        raise RuntimeError("Poison Snooper needs a card on top of the deck")
+    top = owner.deck[0]
+    if verb is Verb.TRASH:
+        trashed = trash_personal_card(
+            state, player, top, source=step_source, allow_deck=True
+        )
+        # A troop the card's own trash box recruits is this turn's recruit
+        # [Main p. 10] [FAQ p. 4], as for the discard-pile trash above.
+        return credit_trash_recruits(trashed, player)
+    next_owner = replace(owner, deck=owner.deck[1:], hand=(*owner.hand, top))
+    drawn = replace(state, players=replace_player(state.players, next_owner))
+    event = GameEvent(
+        event_id=f"{step_source}:top_card_drawn_free",
+        kind="top_card_drawn_free",
+        payload=(("player", player),),
+    )
+    if reveal_is_open_for(drawn, player):
+        # "Reveal turn에 뽑으면 바로 공개해 이번 turn에 쓴다" [FAQ p. 3].
+        late = reveal_late_arrivals(drawn, player, (top,))
+        return RuleResult(state=late.state, events=(event, *late.events))
+    return RuleResult(state=drawn, events=(event,))
 
 
 def _resolve_peek(

@@ -2428,15 +2428,18 @@ function renderLog() {
 
 /* ---------- own hand ---------- */
 
-/* Controlled's choice on the deck's top card (rules/intrigue.py, the
-   PeekTopCard choice): these actions are offered exactly while that choice
-   is up for the seat. Their live buttons name the card the seat is looking
-   at (deckTopChoiceLabel, the text keyed here); the logged step keeps its
-   plain label (ACTION_LABELS), since the log is everyone's to read. */
+/* Controlled's and Poison Snooper's choice on the deck's top card
+   (rules/intrigue.py, the PeekTopCard choice): these actions are offered
+   exactly while that choice is up for the seat. Their live buttons name the
+   card the seat is looking at (deckTopChoiceLabel, the text keyed here); the
+   logged step keeps its plain label (ACTION_LABELS), since the log is
+   everyone's to read. */
 const DECK_TOP_CHOICE_TEXT = {
   put_back_top_card: "panels.deck_top_put_back",
   discard_top_card: "panels.deck_top_discard",
   draw_top_card_for_solari: "panels.deck_top_draw",
+  draw_top_card: "panels.deck_top_draw_free",
+  trash_top_card: "panels.deck_top_trash",
 };
 const DECK_TOP_CHOICES = new Set(Object.keys(DECK_TOP_CHOICE_TEXT));
 

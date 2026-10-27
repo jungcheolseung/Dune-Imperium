@@ -7,6 +7,7 @@ card text is the Steam app's (docs/base-game-and-ix-plan.md 16.3). Seat 0
 holds the card, in an original-game ``RulesetConfig``.
 """
 
+import random
 from dataclasses import replace
 from typing import Any
 
@@ -15,6 +16,7 @@ import pytest
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.agents.determinize import determinize
 from dune_imperium.content.imperium.conflict_abilities import _line, _one_of
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.conflict_abilities import (
@@ -3834,3 +3836,289 @@ def test_refocus_shows_paul_atreides_the_new_top_card() -> None:
     assert peeked_card_id(done, 0) == top
     assert known_card_seats(done)[top] == frozenset({0})
     assert peeked_card_id(done, 1) == ""
+
+
+# --- Poison Snooper (Plot, stage P3c) -----------------------------------------
+
+SNOOPER = _intrigue("poison_snooper")
+
+
+def _snooper_hand(
+    *, deck: int = 4, discard: int = 3
+) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 with Poison Snooper and ``deck`` / ``discard`` of its ten starter
+    cards left in those piles (the rest stay in hand)."""
+
+    engine, state = _start()
+    owner = state.players[0]
+    cards = (*owner.deck, *owner.hand)
+    return engine, _seat(
+        state,
+        intrigue_cards=(SNOOPER,),
+        deck=cards[:deck],
+        discard_pile=cards[deck : deck + discard],
+        hand=cards[deck + discard :],
+    )
+
+
+def _snooper_choice(
+    engine: UprisingRulesEngine, state: GameState
+) -> GameState:
+    """``state`` with the Poison Snooper played and its choice open."""
+
+    opened = apply_whole(engine, state, _play(SNOOPER)).state
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    return opened
+
+
+def _look_action(action_id: str) -> DomainAction:
+    return DomainAction(action_id=action_id, actor=0)
+
+
+def test_poison_snooper_is_one_cost_free_plot_with_two_copies() -> None:
+    # "Look at the top card of your deck. Draw or trash it." [Poison Snooper
+    # card, Steam app text]; 2 copies [DI p. 3]. No cost, no condition.
+    entry = intrigue_card_for_instance(SNOOPER)
+    assert entry.card.name == "Poison Snooper"
+    assert entry.copies == 2
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert not entry.options[0].sections[0].costs
+    assert intrigue_card_text(entry) == [
+        "Plot — Look at the top card of your deck: draw it or trash it"
+    ]
+    assert "poison_snooper" not in {card.card.card_id for card in INTRIGUE_CARDS}
+    # Both copies are in the original Intrigue deck.
+    deck = content_for(CONFIG).intrigue_deck_instance_ids
+    assert [card for card in deck if "poison_snooper" in card] == [
+        _intrigue("poison_snooper", 0),
+        _intrigue("poison_snooper", 1),
+    ]
+
+
+def test_poison_snooper_offers_only_to_draw_or_to_trash_the_top_card() -> None:
+    # "Draw or trash it": the two answers of the look, free, and nothing else
+    # -- no "may", so neither putting the card back nor a refusal is offered
+    # (P0 sheet: "must either draw it or trash it"; imperium-base.md 15).
+    engine, state = _snooper_hand()
+    assert legal_intrigue_play_actions(state, 0) == (_play(SNOOPER),)
+
+    opened = _snooper_choice(engine, state)
+
+    assert {action.action_id for action in engine.whole_actions(opened, 0)} == {
+        "draw_top_card",
+        "trash_top_card",
+    }
+    assert engine.whole_actions(opened, 1) == ()
+    # Nothing moved while the choice is open, and the card is still held.
+    assert opened.players[0].deck == state.players[0].deck
+    assert opened.players[0].intrigue_cards == (SNOOPER,)
+
+
+def test_poison_snooper_draws_the_top_card_into_the_hand_for_free() -> None:
+    engine, state = _snooper_hand(deck=4, discard=3)
+    before = state.players[0]
+    opened = _snooper_choice(engine, state)
+
+    result = apply_whole(engine, opened, _look_action("draw_top_card"))
+    done = result.state.players[0]
+
+    assert done.hand == (*before.hand, before.deck[0])
+    assert done.deck == before.deck[1:]
+    assert done.discard_pile == before.discard_pile
+    assert done.trashed == before.trashed
+    assert done.resources == before.resources
+    assert done.intrigue_cards == ()
+    assert result.state.intrigue_discard == (SNOOPER,)
+    # Public: that the seat drew, never which card (it sits in a hidden hand).
+    drawn = [event for event in result.events if event.kind == "top_card_drawn_free"]
+    assert len(drawn) == 1
+    assert dict(drawn[0].payload) == {"player": 0}
+    # The turn goes on: the Plot did not end it.
+    assert result.state.decision_stack[-1].kind == "turn"
+
+
+def test_poison_snooper_trashes_the_top_card_and_shows_it() -> None:
+    # "trash하면 공개" (imperium-base.md 14): the trashed card is face up in
+    # the trash and the event names it.
+    engine, state = _snooper_hand(deck=4, discard=3)
+    before = state.players[0]
+    opened = _snooper_choice(engine, state)
+
+    result = apply_whole(engine, opened, _look_action("trash_top_card"))
+    done = result.state.players[0]
+
+    assert done.trashed == (*before.trashed, before.deck[0])
+    assert done.deck == before.deck[1:]
+    assert done.hand == before.hand
+    assert done.intrigue_cards == ()
+    assert result.state.intrigue_discard == (SNOOPER,)
+    trashed = [event for event in result.events if event.kind == "card_trashed"]
+    assert len(trashed) == 1
+    assert dict(trashed[0].payload) == {"card_id": before.deck[0], "player": 0}
+    assert known_card_seats(result.state).get(before.deck[0]) is None
+
+
+def test_poison_snooper_returns_a_trashed_reserve_card_to_its_pile() -> None:
+    # "A trashed Reserve card returns to its pile" [DI p. 16] (P0 sheet).
+    engine, state = _snooper_hand(deck=4, discard=3)
+    reserve_card = "reserve:imperium_the_spice_must_flow:9"
+    owner = state.players[0]
+    state = _seat(state, deck=(reserve_card, *owner.deck[1:]))
+    pile = dict(state.reserve_stacks)["imperium_the_spice_must_flow"]
+    opened = _snooper_choice(engine, state)
+
+    done = apply_whole(engine, opened, _look_action("trash_top_card")).state
+
+    assert reserve_card not in done.players[0].trashed
+    assert dict(done.reserve_stacks)["imperium_the_spice_must_flow"] == pile + 1
+
+
+def test_poison_snooper_tells_only_its_owner_the_top_card() -> None:
+    # "낸 좌석이 자기 덱 맨 위" (imperium-base.md 14): while the choice is open
+    # the playing seat's view carries the top card (``peeked_card_id``) and
+    # ``known_card_seats`` lists it for that seat alone; every other seat's
+    # view is the same whatever the card is.
+    engine, state = _snooper_hand(deck=4, discard=3)
+    before = state.players[0]
+    opened = _snooper_choice(engine, state)
+
+    top = before.deck[0]
+    assert peeked_card_id(opened, 0) == top
+    own = observe_state(opened, 0).private
+    assert own is not None
+    assert own.peeked_card_id == top
+    assert known_card_seats(opened)[top] == frozenset({0})
+    for seat in (1, 2, 3):
+        assert peeked_card_id(opened, seat) == ""
+        private = observe_state(opened, seat).private
+        assert private is not None
+        assert private.peeked_card_id == ""
+    # Nothing a seat without the choice sees depends on which card lies there.
+    swapped = _seat(opened, deck=(before.deck[1], before.deck[0], *before.deck[2:]))
+    for seat in (1, 2, 3):
+        assert observe_state(swapped, seat) == observe_state(opened, seat)
+    check_observation_privacy(opened)
+    # The look ends with the choice: the next top card is not told.
+    drawn = apply_whole(engine, opened, _look_action("draw_top_card")).state
+    assert peeked_card_id(drawn, 0) == ""
+    assert before.deck[1] not in {
+        card for card, seats in known_card_seats(drawn).items() if seats
+    } or known_card_seats(drawn)[before.deck[1]] == frozenset()
+
+
+def test_poison_snooper_look_survives_the_ai_determinizer() -> None:
+    # A sampled world for the seat that looks keeps the card it saw on top, or
+    # the open choice would have no card to draw or trash; for any other
+    # observer the card is unknown and is dealt again.
+    engine, state = _snooper_hand(deck=4, discard=3)
+    opened = _snooper_choice(engine, state)
+    top = opened.players[0].deck[0]
+
+    for seed in range(8):
+        own = determinize(opened, 0, random.Random(seed))
+        assert own.players[0].deck[0] == top
+        assert {action.action_id for action in engine.whole_actions(own, 0)} == {
+            "draw_top_card",
+            "trash_top_card",
+        }
+        other = determinize(opened, 1, random.Random(seed))
+        assert {action.action_id for action in engine.whole_actions(other, 0)} == {
+            "draw_top_card",
+            "trash_top_card",
+        }
+
+
+def test_poison_snooper_cannot_look_at_an_empty_deck_and_does_not_shuffle() -> None:
+    # "덱이 비면 맨 위를 볼 수 없다(discard를 섞어 덱을 만드는 것은 뽑아야 할
+    # 때뿐)" (imperium-base.md 13.1): with the deck empty the discard pile is
+    # not shuffled for the look. A cost-free effect is played even when it
+    # fizzles (OQ-113 (C) (1)), so the card is played and the empty look is
+    # confirmed, as the empty-deck Controlled's.
+    engine, state = _snooper_hand(deck=0, discard=4)
+    before = state.players[0]
+    assert legal_intrigue_play_actions(state, 0) == (_play(SNOOPER),)
+
+    result = apply_whole(engine, state, _play(SNOOPER))
+    opened = result.state
+    assert "intrigue_without_effect" in [event.kind for event in result.events]
+    assert [action.action_id for action in engine.whole_actions(opened, 0)] == [
+        "skip_intrigue_top_card"
+    ]
+
+    done = apply_whole(engine, opened, _look_action("skip_intrigue_top_card"))
+
+    assert done.state.decision_stack[-1].kind == "turn"
+    assert done.state.players[0].deck == ()
+    assert done.state.players[0].discard_pile == before.discard_pile
+    assert done.state.players[0].hand == before.hand
+    assert done.state.intrigue_discard == (SNOOPER,)
+    assert peeked_card_id(opened, 0) == ""
+
+
+def test_poison_snooper_cards_are_revealed_at_once_in_the_reveal_turn() -> None:
+    # "Reveal turn에 뽑으면 바로 공개해 이번 turn에 쓴다" `[FAQ p. 3]`
+    # (imperium-base.md 13.2 "Poison Snooper → Reveal turn"): the drawn card
+    # goes straight into play.
+    engine, state = _snooper_hand(deck=5, discard=3)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    before = revealed.players[0]
+    opened = _snooper_choice(engine, revealed)
+
+    result = apply_whole(engine, opened, _look_action("draw_top_card"))
+    done = result.state.players[0]
+
+    assert done.hand == before.hand == ()
+    assert done.in_play == (*before.in_play, before.deck[0])
+    assert done.deck == before.deck[1:]
+    assert [e.kind for e in result.events].count("personal_card_late_revealed") == 1
+
+
+def test_poison_snooper_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _snooper_hand()
+    actions = engine.whole_actions(state, 0)
+    assert _play(SNOOPER) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (SNOOPER,)
+    assert placed.players[0].deck == state.players[0].deck
+
+
+def test_poison_snooper_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _snooper_hand()
+    state = _seat(state, 1, intrigue_cards=(SNOOPER,))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_poison_snooper_rows_have_catalog_templates_and_step_rows() -> None:
+    # The original game's catalog lists the rows of the look -- draw, trash and
+    # the empty deck's confirmation, each naming Poison Snooper as the card
+    # that prints it -- and the codec round-trips what the seat is offered;
+    # Uprising's catalog has none of them.
+    engine, state = _snooper_hand()
+    codec = ActionCodec(CONFIG)
+    for held in (state, _seat(state, deck=())):
+        opened = _snooper_choice(engine, held)
+        offered = engine.legal_actions(opened, 0)
+        assert offered
+        for action in offered:
+            assert codec.decode(codec.encode(action), 0) == action
+
+    def rows(config: RulesetConfig) -> set[str]:
+        return {
+            template.action_id
+            for template in ActionCodec(config).catalog
+            if dict(template.arguments).get("printed") == "poison_snooper"
+        }
+
+    assert rows(CONFIG) == {"draw", "trash", "confirm_empty"}
+    assert not rows(RulesetConfig())
+    assert not rows(RulesetConfig(bloodlines=True, tech_module=True))

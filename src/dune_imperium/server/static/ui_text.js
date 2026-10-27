@@ -864,6 +864,14 @@ const UI_TEXT = {
     "ko": "{solari} 1 지불 → {deck} 맨 위 카드({{card}}) 뽑기",
     "en": "Pay 1 {solari} -> Draw top card of {deck} ({{card}})"
   },
+  "panels.deck_top_draw_free": {
+    "ko": "{deck} 맨 위 카드({{card}}) 뽑기",
+    "en": "Draw top card of {deck} ({{card}})"
+  },
+  "panels.deck_top_trash": {
+    "ko": "{deck} 맨 위 카드({{card}}) 폐기",
+    "en": "Trash top card of {deck} ({{card}})"
+  },
   "panels.deck_list_note": {
     "ko": "이름순으로 보여 줍니다. 뽑는 순서와는 무관합니다.",
     "en": "Shown by name, not in draw order."

@@ -210,6 +210,8 @@ const ACTION_LABELS = {
   put_back_top_card: "{deck} 맨 위 카드 그대로 두기",
   discard_top_card: "{deck} 맨 위 카드 버리기",
   draw_top_card_for_solari: "{solari} 1 지불 → {deck} 맨 위 카드 뽑기",
+  draw_top_card: "{deck} 맨 위 카드 뽑기",
+  trash_top_card: "{deck} 맨 위 카드 폐기",
   place_navigation_card: "{navigation} 슬롯에 놓기",
   play_navigation: "{navigation} 사용",
   decline_navigation: "{navigation} 효과 없이 사용",
@@ -596,6 +598,7 @@ const EVENT_LABELS = {
   spies_recalled: "{recall_spy}",
   top_card_discarded: "{deck} 맨 위 카드 버리기",
   top_card_drawn: "{deck} 맨 위 카드 뽑기 ({solari} 1 지불)",
+  top_card_drawn_free: "{deck} 맨 위 카드 뽑기",
 };
 /* Korean labels for the printed icon a keyed resolve_board_effect /
    resolve_agent_card_effect action resolves (OQ-027). A legal action carries

@@ -813,6 +813,8 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "put_back_top_card": _spec(_V.KEEP, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "discard_top_card": _spec(_V.DISCARD, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "draw_top_card_for_solari": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    "draw_top_card": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    "trash_top_card": _spec(_V.TRASH, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     # Cost-free choices with nothing to act on (OQ-113 (C)).
     "skip_intrigue_top_card": _spec(
         _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.KEEP

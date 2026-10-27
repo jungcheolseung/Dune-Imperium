@@ -523,6 +523,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "put_back_top_card": _row(_V.KEEP, _S.INTRIGUE, variant="deck_top"),
     "discard_top_card": _row(_V.DISCARD, _S.INTRIGUE, variant="deck_top"),
     "draw_top_card_for_solari": _row(_V.DRAW, _S.INTRIGUE, variant="deck_top"),
+    # Poison Snooper (the original game): draw the card it looked at, or
+    # trash it, free either way.
+    "draw_top_card": _row(_V.DRAW, _S.INTRIGUE, variant="deck_top_free"),
+    "trash_top_card": _row(_V.TRASH, _S.INTRIGUE, variant="deck_top"),
     # Cost-free choices with nothing to act on are played and confirmed
     # (OQ-113 (C), user ruling 2026-10-24): an empty deck's peek, an empty
     # Imperium Row's set-aside, an empty hand's mandatory trash.
