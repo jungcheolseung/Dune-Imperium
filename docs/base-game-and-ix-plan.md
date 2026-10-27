@@ -915,7 +915,7 @@ card-implementer는 기존 조각으로 안 되는 카드를 건너뛰고 빠진
 | `DeployTheseTroops`(Reveal turn에 이 줄이 recruit한 병력 배치) | Reinforcements, Gurney Halleck | 카드 문구, `[DI p. 10]` `[FAQ p. 4]`, OQ-030 | 구현 `ce6deec6`; 가장자리 OQ-140(사용자 확인 대기) |
 | `DeployFromGarrison(up_to=None)`("any number") | Rapid Mobilization | 카드 문구, `[FAQ p. 3]` | 구현(Intrigue 묶음 2) |
 | 조건 `MoreSpiceMustFlowThanEachOpponent`, `InfluenceAtLeastOnTracks` | Corner the Market, Plans Within Plans | imperium-base.md 13.2, OQ-123, `[FAQ p. 2]` | 구현(명세는 내가; `SpiceMustFlowCardsAtLeast`가 원판의 The Spice Must Flow도 세게 고침) |
-| 획득 상자 아이콘 창(아이콘마다 줄, 순서는 소유자) | CHOAM Directorship(고정 진영 넷), Lady Jessica(고른 진영 하나) | OQ-027·OQ-112 원칙의 확장 — OQ-141 | 설계 끝, 구현 대기 |
+| 획득 상자 아이콘 줄(아이콘마다 차례의 줄, 순서는 소유자) | CHOAM Directorship(고정 진영 넷), Lady Jessica(고른 진영 하나) | OQ-027·OQ-112 원칙의 확장 — OQ-141 | 구현(`rules/acquire_icons.py`, 행동 `resolve_acquire_icon`): 자기 차례 안에서는 차례의 줄(OQ-112 (4) 선례), 고를 진영이 모두 6이면 회색으로 기다리다 누름에 사라짐(차례 안 선례), 고정 진영 6은 얻는 것 없는 의무 줄. 자기 차례 밖 획득(원판 + Scouts의 Critical Moment, P7)은 아직 `NotImplementedError` |
 | 승자의 창에서 내는 Intrigue("When you win a Conflict:") | To the Victor..., Demand Respect | OQ-121 판정 6("쥐고 있고 조건·비용을 갖췄을 때 낼 수 있는 줄이다. 안 내도 창이 닫힌다"), `[DI p. 13]`(보상 spice로 낼 수 있음) | 구현; 닫기 줄의 숨은 정보 처리는 OQ-142(사용자 확인 대기). 휴리스틱·앱 AI는 이 카드를 내지 않는다(P6) |
 | 덱 맨 위로 획득 | Bypass Protocol(B), Recruitment Mission(획득마다 위/버림) | 카드 문구, `[FAQ p. 3]`, imperium-base.md 14(덱 맨 위가 공개되는 숨은 정보) | 미설계 |
 | 상대 하나 지정 Conflict 손실 + supply에서 배치 | Double Cross | 카드 문구, `[FAQ p. 2]`(상대 troop이 있어야 낸다) | 미설계 |
