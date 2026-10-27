@@ -131,6 +131,8 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
                 condition=FactionBond(Faction.FREMEN),
             )
         ),
+        # Smuggler's Thopter (original game): "1 spice" beside its Persuasion.
+        "smugglers_thopter": _reveal(_line(GainResources(spice=1))),
         # Spice Hunter (original game): "Fremen Bond: 1 spice".
         "spice_hunter": _reveal(
             _line(GainResources(spice=1), condition=FactionBond(Faction.FREMEN))

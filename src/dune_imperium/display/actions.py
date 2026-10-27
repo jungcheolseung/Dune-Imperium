@@ -128,6 +128,12 @@ _ICON_CONDITIONS: dict[tuple[PersonalCardAgentEffect, str], str] = {
     (_BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN, "cards"): (
         "if you gained 2 or more spice this turn"
     ),
+    (_BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO, "cards"): (
+        "at 2 Spacing Guild Influence"
+    ),
+    (_BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO, "cards_second"): (
+        "at 2 Spacing Guild Influence"
+    ),
     (_BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO, "cards"): (
         "if you have completed 2 or more contracts"
     ),
@@ -182,6 +188,12 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
         "이번 차례에 {spice}를 2 이상 얻었다면"
     ),
     # Cargo Runner's lines, in tokens_ko.py's own words for the same box.
+    (_BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO, "cards"): (
+        "{influence_spacing_guild:2}일 때"
+    ),
+    (_BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO, "cards_second"): (
+        "{influence_spacing_guild:2}일 때"
+    ),
     (_BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO, "cards"): (
         "{contract} 둘 이상 완수했다면"
     ),

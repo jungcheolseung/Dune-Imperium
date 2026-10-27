@@ -455,6 +455,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS: (
             "You may pay 2 spice → Recruit 3 troops"
         ),
+        PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: (
+            "If you have 2 or more Spacing Guild Influence: Draw 2 cards"
+        ),
     }
 )
 

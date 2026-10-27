@@ -512,6 +512,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS: (
         "{spice:2} 지불 가능 {arrow_right} {troop:3}"
     ),
+    PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: (
+        "{influence_spacing_guild} 2 이상이면: {draw:2}"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box

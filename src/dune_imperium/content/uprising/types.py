@@ -335,6 +335,9 @@ class PersonalCardAgentEffect(StrEnum):
     # Fremen Camp: "[2 spice] -> [3 troops]", an optional arrow paid once
     # [DI p. 9] [FAQ p. 3].
     MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS = "may_pay_two_spice_for_three_troops"
+    # Smuggler's Thopter: "[Spacing Guild] 2 Influence: [draw 1] [draw 1]", two
+    # draw icons each judged when it resolves (OQ-027, OQ-028).
+    DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO = "draw_two_if_spacing_guild_influence_two"
 
 
 class PersonalCardTrashEffect(StrEnum):

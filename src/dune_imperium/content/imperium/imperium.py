@@ -357,10 +357,20 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         agent_effect=PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
         play_data_complete=True,
     ),
+    # App table: cost 4, 2 copies, Spacing Guild, Spice Trade, Reveal 1
+    # Persuasion and 1 spice (tag SpacingGuildInfluence). Agent: "Spacing
+    # Guild Influence 2: [draw] [draw]" -- two icons, each judged when it
+    # resolves (OQ-027, OQ-028; the P0 sweep's "two icons"). Reveal: "[P1]
+    # [1 spice]" ([DI p. 11] example).
     ImperiumCardEntry(
         card=imperium_card("smugglers_thopter", "Smuggler's Thopter"),
         copies=2,
         acquisition_cost=4,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO,
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
     # App table: cost 3, 2 copies, Spacing Guild, Spacing Guild, Reveal 2
     # Persuasion. Agent: "Draw 1 card" (the card-draw icon alone; its own step,

@@ -917,6 +917,13 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                     ),
                 ),
             ),
+            # Smuggler's Thopter (original game): "Spacing Guild Influence 2:
+            # [draw] [draw]" -- two printed draw icons, each its own step with
+            # the Influence judged when it resolves (OQ-027, OQ-028, OQ-106).
+            _BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: _icons(
+                ("cards", _line(DrawPersonalCards(1), condition=_GUILD_TWO)),
+                ("cards_second", _line(DrawPersonalCards(1), condition=_GUILD_TWO)),
+            ),
         }
     )
 )

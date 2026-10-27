@@ -161,8 +161,9 @@ _BOX = PersonalCardAgentEffect
 def test_every_record_is_a_printed_agent_box() -> None:
     # 103 Uprising-family boxes, the original game's Foldspace and the
     # original Imperium cards' new boxes (stage P3: Arrakis Recruiter, Spice
-    # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 7
+    # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence,
+    # Smuggler's Thopter).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 8
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -204,6 +205,8 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         # The original game's Foldspace: "Draw 1 card" and "Trash this card",
         # separate effects (imperium-base.md 13.3).
         _BOX.DRAW_ONE_AND_TRASH_SELF: ("cards", "trash_self"),
+        # Smuggler's Thopter: two draw icons behind one Influence line.
+        _BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: ("cards", "cards_second"),
     }
     for effect, ability in AGENT_BOX_ABILITIES.items():
         if not ability.icons:

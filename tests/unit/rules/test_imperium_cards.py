@@ -1711,3 +1711,106 @@ def test_sietch_reverend_mother_fremen_bond_gives_three_persuasion_and_a_spice()
         engine, revealed, "gain_reveal_resources", printed="sietch_reverend_mother"
     )
     assert gained.players[0].resources.spice == before.spice + 1
+
+
+# --- Smuggler's Thopter -----------------------------------------------------------
+
+
+def test_smugglers_thopter_matches_the_app_table() -> None:
+    # App attribute table: cost 4, 2 copies, Spacing Guild, Spice Trade,
+    # Reveal 1 Persuasion and no swords (tag SpacingGuildInfluence).
+    entry = IMPERIUM_CARDS_BY_ID["smugglers_thopter"]
+    assert entry.card.name == "Smuggler's Thopter"
+    assert entry.acquisition_cost == 4
+    assert entry.copies == 2
+    assert entry.factions == (Faction.SPACING_GUILD,)
+    assert entry.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:smugglers_thopter:1") is entry
+
+
+def _thopter_placed(
+    engine: UprisingRulesEngine, state: GameState, guild: int
+) -> GameState:
+    """Seat 0 sends Smuggler's Thopter to Secure Contract (a Spice Trade
+    space, no cost) holding ``guild`` Spacing Guild Influence."""
+
+    held, _ = _with_card(state, "smugglers_thopter")
+    seated = _seat(held, influence=Influence(spacing_guild=guild))
+    return _place(engine, seated, "secure_contract", "smugglers_thopter")
+
+
+def _thopter_icons(engine: UprisingRulesEngine, state: GameState) -> list[object]:
+    return [
+        dict(action.arguments)["effect"]
+        for action in _wholes(engine, state)
+        if action.action_id == "resolve_agent_card_effect"
+    ]
+
+
+def test_smugglers_thopter_draws_two_cards_at_two_guild_influence() -> None:
+    """"Spacing Guild Influence 2: [draw 1] [draw 1]": the Influence condition
+    holds at 2 ("Influence 조건" [DI p. 16], imperium-base.md 11) and each draw
+    icon is its own step (OQ-027, OQ-106): both are offered, and each takes the
+    deck's next card."""
+
+    engine, state = _start()
+    placed = _thopter_placed(engine, state, guild=2)
+    owner = placed.players[0]
+    assert sorted(str(icon) for icon in _thopter_icons(engine, placed)) == [
+        "cards",
+        "cards_second",
+    ]
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    first = _do(engine, placed, "resolve_agent_card_effect", effect="cards")
+    assert first.players[0].hand == (*owner.hand, owner.deck[0])
+    assert _thopter_icons(engine, first) == ["cards_second"]
+    second = _do(engine, first, "resolve_agent_card_effect", effect="cards_second")
+    assert second.players[0].hand == (*owner.hand, owner.deck[0], owner.deck[1])
+    assert second.players[0].deck == owner.deck[2:]
+
+
+def test_smugglers_thopter_draws_nothing_below_two_guild_influence() -> None:
+    """One Spacing Guild Influence is short of the condition: neither icon is
+    offered, and the box waits until the turn's end (OQ-057 (1))."""
+
+    engine, state = _start()
+    placed = _thopter_placed(engine, state, guild=1)
+    owner = placed.players[0]
+    assert _thopter_icons(engine, placed) == []
+    resolved = _do(engine, placed, "resolve_board_effect", effect="resources")
+    finished = _do(engine, resolved, "finish_agent_turn")
+    assert finished.players[0].hand == resolved.players[0].hand
+    assert finished.players[0].deck == owner.deck
+
+
+def test_smugglers_thopter_icon_is_judged_when_it_resolves() -> None:
+    """"조건은 해결할 때 판정한다(OQ-028)" (imperium-base.md 16): the Influence
+    is read for each icon when it resolves, so Secure Contract's own effect
+    does not matter, but a drop below 2 between the icons closes the second."""
+
+    engine, state = _start()
+    placed = _thopter_placed(engine, state, guild=2)
+    first = _do(engine, placed, "resolve_agent_card_effect", effect="cards")
+    lowered = _seat(first, influence=Influence(spacing_guild=1))
+    assert _thopter_icons(engine, lowered) == []
+    raised = _seat(lowered, influence=Influence(spacing_guild=2))
+    assert _thopter_icons(engine, raised) == ["cards_second"]
+
+
+def test_smugglers_thopter_reveals_one_persuasion_and_one_spice() -> None:
+    """P0 sweep: "REVEAL: P1, spice 1" ([DI p. 11] example): the spice is a
+    gain row of the Reveal turn."""
+
+    engine, state = _start()
+    held, instance = _with_card(state, "smugglers_thopter", alone=True)
+    held = _seat(held, resources=Resources())
+    revealed = _do(engine, held, "reveal_turn")
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (1, 0)
+    gained = _do(engine, revealed, "gain_reveal_resources")
+    assert gained.players[0].resources.spice == 1

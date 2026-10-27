@@ -1628,6 +1628,13 @@ def _old_icon_condition_holds(
             return len(owner.completed_contract_ids) >= 2
         if key == "cards_second":
             return len(owner.completed_contract_ids) >= 4
+    # 2026-10-28 (the original game, stage P3): Smuggler's Thopter's two draw
+    # icons, each judged at 2 Spacing Guild Influence.
+    if (
+        effect is PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO
+        and key in ("cards", "cards_second")
+    ):
+        return owner.influence.spacing_guild >= 2
     if key == "cards_second":
         return False
     # Stillsuit Manufacturer's water and its Fremen Alliance return.
