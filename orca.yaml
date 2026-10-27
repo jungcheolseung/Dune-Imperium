@@ -1,0 +1,3 @@
+# Orca repository hooks. The setup script is tool-neutral (AGENTS.md "Worktrees").
+scripts:
+  setup: bash scripts/setup_worktree.sh

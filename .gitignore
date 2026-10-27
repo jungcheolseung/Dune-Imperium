@@ -189,6 +189,10 @@ checkpoints/
 # nothing the project makes lives outside the project directory
 /tmp/
 
+# Worktrees that Orca makes for this repository (its project worktree base
+# path; AGENTS.md "Worktrees"). Claude Code's own live in .claude/worktrees/.
+/.worktrees/
+
 # This machine's own files that outlive a run (dune_imperium.paths.LOCAL_DIR):
 # the server launcher's settings, admin key included
 /local/
