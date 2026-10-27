@@ -380,6 +380,17 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE = (
         "may_pay_two_solari_for_chosen_influence"
     )
+    # Shifting Allegiances: "[lose 1 Influence with a chosen Faction] [2 spice]
+    # -> [2 Influence with one chosen Faction]", an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3]; the same Faction may be lost and gained [FAQ p. 4].
+    MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE = (
+        "may_lose_influence_and_pay_two_spice_for_two_influence"
+    )
+    # Other Memory: "[draw 1] -OR- Draw a Bene Gesserit card from your discard
+    # pile" -- a printed -OR- the owner must settle.
+    DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD = (
+        "draw_one_or_bene_gesserit_card_from_discard"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

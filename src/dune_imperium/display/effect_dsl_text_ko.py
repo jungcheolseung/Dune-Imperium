@@ -177,6 +177,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     StrengthInConflictAtLeast,
     SummonSandworm,
+    TakeCardFromDiscard,
     TakeContract,
     TakeControl,
     TakeHighCouncilSeat,
@@ -777,6 +778,11 @@ def reward_text_ko(reward: Reward) -> str:
             return f"{{draw:{count}}}"
         case ShuffleDiscardIntoDeck(draw=draw):
             return f"{{discard_pile}}을 {{deck}}에 섞은 뒤 {{draw:{draw}}}"
+        case TakeCardFromDiscard(faction=faction):
+            # Quotes ``tokens_ko.py``'s Other Memory line.
+            return (
+                f"{{discard_pile}}의 {_faction_name_ko(faction)} 카드 1장을 {{hand}}로"
+            )
         case DrawIntrigueCards(count=count):
             return f"{{intrigue:{count}}}"
         case GainCombatStrength(amount=amount):

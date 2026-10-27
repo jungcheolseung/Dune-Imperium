@@ -520,6 +520,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: (
         "하나 선택: {influence_spacing_guild:1} / {spice:2}"
     ),
+    PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD: (
+        "하나 선택: {draw:1} / {discard_pile}의 베네 게세리트 카드 1장을 {hand}로"
+    ),
     PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE: "{troop:2}, {draw:1}",
     PersonalCardAgentEffect.MAY_TRASH_SELF_TO_DRAW_INTRIGUE: (
         "이 카드 {trash} 가능 {arrow_right} {intrigue:1}"
@@ -545,6 +548,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "{solari:2} 지불 가능 {arrow_right} 하나 선택: "
         "{influence_spacing_guild:1} / {influence_bene_gesserit:1} / "
         "{influence_fremen:1}"
+    ),
+    PersonalCardAgentEffect.MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE: (
+        "{influence_any:1} 선택 잃기·{spice:2} 지불 가능 {arrow_right} "
+        "{influence_any:2} 한 번 선택"
     ),
 }
 

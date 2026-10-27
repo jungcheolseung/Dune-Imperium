@@ -28,6 +28,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GrantCombatDeployment,
     PlaceSpy,
+    TakeCardFromDiscard,
 )
 from dune_imperium.content.uprising.leader_abilities import (
     SIGNET_ABILITIES,
@@ -58,7 +59,9 @@ from dune_imperium.rules.agent_box_abilities import (
     apply_chosen_reward,
     apply_discard,
     apply_discard_pay,
+    apply_discard_take,
     apply_either_influence,
+    apply_influence_loss,
     apply_intrigue_payment,
     apply_lose,
     apply_payment,
@@ -83,6 +86,9 @@ from dune_imperium.rules.agent_box_abilities import (
     graft_trash_box,
     graft_trash_rows,
     icon_line,
+    influence_loss_block,
+    influence_loss_box,
+    influence_loss_rows,
     intrigue_box,
     intrigue_cost_block,
     intrigue_rows,
@@ -810,14 +816,17 @@ def apply_agent_card_influence(
         f"round:{state.round_number}:player:{action.actor}:"
         f"agent_card:{source_card_id}"
     )
+    icon = icon_line(context, recorded, GainInfluence)
+    # One Faction gaining both of a "two Influence with one Faction" icon
+    # (Shifting Allegiances' armed gain, [DI p. 16]), else the one.
+    times = icon[1].times if icon is not None and icon[1].one_faction else 1
     gained = gain_faction_influence(
         state,
         action.actor,
         faction,
-        1,
+        times,
         event_prefix=f"{source}:influence:{faction.value}",
     )
-    icon = icon_line(context, recorded, GainInfluence)
     if icon is not None:
         # The box's other printed icons (Dangerous Rhetoric's "Trash this
         # card.", Clandestine Meeting's Intrigue card) resolve by their own
@@ -1770,6 +1779,8 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
         )
     if ability is not None and lose_box(ability):
         return lose_cost_block(owner)
+    if ability is not None and influence_loss_box(ability):
+        return influence_loss_block(owner, ability)
     if ability is not None and discard_pay_box(ability):
         return discard_pay_block(owner, ability)
     return None
@@ -1808,10 +1819,13 @@ def legal_agent_card_payment_actions(
     if (
         recorded is not None
         and either_box(recorded)
-        and isinstance(either_choice(recorded), GrantCombatDeployment)
+        and isinstance(
+            either_choice(recorded), GrantCombatDeployment | TakeCardFromDiscard
+        )
     ):
         # High Priority Travel: "[Guild] 2 Influence: draw a card —OR—
-        # Combat" [card face], from its record (composed A3f).
+        # Combat" [card face], from its record (composed A3f); Other Memory's
+        # card from the discard pile beside its draw (stage P3b).
         return either_rows(state, player, recorded)
     combat = _combat_icon_rows(state, player, context, recorded)
     if combat is not None:
@@ -1845,6 +1859,9 @@ def legal_agent_card_payment_actions(
     if recorded is not None and lose_box(recorded):
         # Piter, Genius Advisor, from its record (composed A3f).
         return lose_rows(state, player)
+    if recorded is not None and influence_loss_box(recorded):
+        # Shifting Allegiances, from its record (stage P3b).
+        return influence_loss_rows(state, player, recorded)
     if recorded is not None and choose_two_box(recorded):
         # Stitched Horror, from its record (cleanup-2d).
         return choose_two_rows(state, player, recorded)
@@ -2043,6 +2060,9 @@ def _apply_payment_choice(
     if recorded is not None and lose_box(recorded):
         # Piter, Genius Advisor (composed A3f).
         return apply_lose(state, action, recorded, context, source)
+    if recorded is not None and influence_loss_box(recorded):
+        # Shifting Allegiances (stage P3b).
+        return apply_influence_loss(state, action, recorded, context, source)
 
     if recorded is not None and graft_trash_box(recorded):
         return _apply_graft_trash(state, action, recorded, context, source)
@@ -2050,6 +2070,9 @@ def _apply_payment_choice(
         # High Priority Travel's Combat half [Bloodlines p. 5].
         open_combat_deployment(context)
         return RuleResult(state=advance_after_effect(state, context), events=())
+    if action.action_id == "take_agent_card_from_discard":
+        # Other Memory's card from the discard pile (stage P3b).
+        return apply_discard_take(state, action)
     if action.action_id == "trash_agent_card_self_for_vp":
         # Scientific Breakthrough: the card trashes itself as its own cost,
         # so its Research still pays out (OQ-022) unless it already did. The

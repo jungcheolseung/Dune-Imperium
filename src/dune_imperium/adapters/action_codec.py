@@ -1492,6 +1492,30 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for faction in Faction
         )
+        # Shifting Allegiances' "lose 1 Influence + 2 spice -> 2 Influence" (an
+        # Agent-box arrow): the Faction lost, and where its Alliance token could
+        # go to several seats, the recipient.
+        templates.extend(
+            ActionTemplate(
+                action_id="lose_agent_card_influence",
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        )
+        templates.extend(
+            ActionTemplate(
+                action_id="lose_agent_card_influence",
+                arguments=(
+                    ("alliance_recipient", recipient),
+                    ("faction", faction.value),
+                ),
+            )
+            for faction in Faction
+            for recipient in range(config.players)
+        )
+        # Other Memory's Bene Gesserit card taken from the discard pile (an
+        # Agent-box choice).
+        templates.extend(_trash_templates(config, "take_agent_card_from_discard"))
         templates.extend(
             ActionTemplate(
                 action_id="set_aside_leader_imperium",
@@ -2412,6 +2436,10 @@ _PIECE_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "ForceEnemyRetreat": (("retreat", ""),),
     "CompleteContract": (("complete_contract", ""),),
     "LoseTroops": (("lose_unit", ""),),
+    # Shifting Allegiances' cost (no Uprising box prints one).
+    "LoseInfluence": (("lose_influence", ""),),
+    # Other Memory's card from the discard pile.
+    "TakeCardFromDiscard": (("take", ""),),
     "AcquireCardForSolari": (("acquire", ""),),
     "AcquireCardUpTo": (("acquire", ""),),
     "GrantCombatDeployment": (("gain", "combat"),),

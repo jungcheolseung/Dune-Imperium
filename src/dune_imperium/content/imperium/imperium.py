@@ -445,10 +445,21 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         ),
         play_data_complete=True,
     ),
+    # App table: cost 4, 1 copy, Bene Gesserit, City and Spice Trade, Reveal 2
+    # Persuasion. Agent: "[draw 1] -OR- Draw a Bene Gesserit card from your
+    # discard pile" -- a printed -OR- the owner must settle (P0 sweep, imperium-
+    # base.md 15); the draw is a hidden step of its own (OQ-106) and the card
+    # taken from the discard pile reaches the hand publicly (imperium-base.md 14,
+    # OQ-010). Reveal: "[P2]".
     ImperiumCardEntry(
         card=imperium_card("other_memory", "Other Memory"),
         copies=1,
         acquisition_cost=4,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD,
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     # App table: cost 5, 1 copy, no Faction, Landsraad and City, Reveal 3
     # Persuasion and 1 sword. Agent: "Draw 1 Intrigue card" (the Intrigue-draw
@@ -552,10 +563,22 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         ),
         play_data_complete=True,
     ),
+    # App table: cost 3, 2 copies, no Faction, Landsraad and Spice Trade, Reveal 2
+    # Persuasion. Agent: "[lose 1 Influence with a chosen Faction] [2 spice] ->
+    # [2 Influence with one chosen Faction]" -- an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3]; the same Faction may be lost and gained again [FAQ
+    # p. 4]; the +2 is one unbreakable gain (imperium-base.md 13.2, 13.3), and an
+    # Influence-less Faction cannot be lost. Reveal: "[P2]".
     ImperiumCardEntry(
         card=imperium_card("shifting_allegiances", "Shifting Allegiances"),
         copies=2,
         acquisition_cost=3,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE
+        ),
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     # App table: cost 4, 1 copy, Bene Gesserit and Fremen, Bene Gesserit and
     # Fremen, no fixed Reveal values (tag FremenBond). Agent: the black trash

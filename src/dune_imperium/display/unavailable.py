@@ -2844,6 +2844,11 @@ _OPTIONAL_REASONS: Final[Mapping[OptionalBlockKind, Reason]] = {
     ),
     OptionalBlockKind.MAKER_HOOKS: _NO_MAKER_HOOKS,
     OptionalBlockKind.NO_CARD_TO_DRAW: _NO_CARD_TO_DRAW,
+    OptionalBlockKind.NO_INFLUENCE_TO_LOSE: (
+        "No Influence of yours to lose",
+        "잃을 내 {influence_any} 없음",
+        "cost",
+    ),
     OptionalBlockKind.TECH_NEEDS_SPY: (
         "Advanced Data Analysis needs a Spy of yours on the board to trash",
         "고급 데이터 분석은 보드에 있는 내 {spy}를 폐기해야 함",

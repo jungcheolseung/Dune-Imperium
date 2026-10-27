@@ -702,6 +702,11 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_agent_card_five_solari_for_tleilaxu": apply_agent_card_payment,
     "trash_grafted_card_for_influence": apply_agent_card_payment,
     "lose_agent_card_troop": apply_agent_card_payment,
+    # Shifting Allegiances (original game): "lose 1 Influence + 2 spice -> 2
+    # Influence with one Faction".
+    "lose_agent_card_influence": apply_agent_card_payment,
+    # Other Memory (original game): a Bene Gesserit card from the discard pile.
+    "take_agent_card_from_discard": apply_agent_card_payment,
     "choose_agent_card_reward": apply_agent_card_payment,
     "keep_peeked_intrigue": apply_intrigue_peek,
     "gain_reveal_resources": apply_reveal_gain,

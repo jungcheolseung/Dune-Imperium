@@ -466,6 +466,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: (
             "Choose one: Gain 1 Spacing Guild Influence / Gain 2 spice"
         ),
+        PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD: (
+            "Choose one: Draw 1 card / Draw a Bene Gesserit card from your "
+            "discard pile"
+        ),
         PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE: (
             "Recruit 2 troops, Draw 1 card"
         ),
@@ -490,6 +494,13 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: (
             "You may pay 2 solari → Choose one: Gain 1 Spacing Guild Influence / "
             "Gain 1 Bene Gesserit Influence / Gain 1 Fremen Influence"
+        ),
+        (
+            PersonalCardAgentEffect
+            .MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE
+        ): (
+            "You may lose 1 Influence with a chosen Faction and pay 2 spice → "
+            "Gain 2 Influence with one chosen Faction"
         ),
     }
 )
