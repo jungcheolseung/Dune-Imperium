@@ -217,10 +217,18 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=2,
         acquisition_cost=3,
     ),
+    # App table: cost 2, 2 copies, Spacing Guild, Spacing Guild and Spice
+    # Trade, Reveal 1 Persuasion. Agent: the black trash icon, "You may trash
+    # a card" (an optional icon, [DI p. 16] [FAQ p. 3]).
     ImperiumCardEntry(
         card=imperium_card("guild_administrator", "Guild Administrator"),
         copies=2,
         acquisition_cost=2,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("guild_ambassador", "Guild Ambassador"),

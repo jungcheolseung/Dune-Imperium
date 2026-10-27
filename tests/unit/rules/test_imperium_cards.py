@@ -1094,3 +1094,70 @@ def test_fremen_camp_reveals_two_persuasion_and_one_sword() -> None:
     frame = _reveal(engine, state)
     assert frame["persuasion"] == 2
     assert frame["sword_strength"] == 1
+
+
+# --- Guild Administrator ----------------------------------------------------------
+
+
+def test_guild_administrator_matches_the_app_table() -> None:
+    # App attribute table: cost 2, 2 copies, Spacing Guild, Spacing Guild and
+    # Spice Trade, Reveal 1 Persuasion and no swords.
+    entry = IMPERIUM_CARDS_BY_ID["guild_administrator"]
+    assert entry.card.name == "Guild Administrator"
+    assert entry.acquisition_cost == 2
+    assert entry.copies == 2
+    assert entry.factions == (Faction.SPACING_GUILD,)
+    assert entry.agent_icons == (AgentIcon.SPACING_GUILD, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is PersonalCardAgentEffect.TRASH_PERSONAL_CARD
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:guild_administrator:1") is entry
+
+
+def _administrator_placed(engine: UprisingRulesEngine, state: GameState) -> GameState:
+    held, _ = _with_card(state, "guild_administrator")
+    return _place(engine, held, "secure_contract", "guild_administrator")
+
+
+def test_guild_administrator_may_trash_a_card() -> None:
+    """"Trash(...비용이거나 카드가 자기를 trash하라고 할 때만 의무)" (imperium-base.md
+    11, [DI p. 16]): the black trash icon is optional ([FAQ p. 3]); its rows
+    are the hand's cards and the card itself in play."""
+
+    engine, state = _start()
+    placed = _administrator_placed(engine, state)
+    owner = placed.players[0]
+    me = "imperium:guild_administrator:0"
+    assert _trash_rows(engine, placed) == {*owner.hand, me}
+    victim = owner.hand[0]
+    trashed = _do(engine, placed, "trash_agent_card", card_id=victim)
+    assert victim in trashed.players[0].trashed
+    assert victim not in trashed.players[0].hand
+    assert not _trash_rows(engine, trashed)
+
+
+def test_guild_administrator_may_trash_itself() -> None:
+    engine, state = _start()
+    placed = _administrator_placed(engine, state)
+    me = "imperium:guild_administrator:0"
+    trashed = _do(engine, placed, "trash_agent_card", card_id=me)
+    assert me in trashed.players[0].trashed
+    assert me not in trashed.players[0].in_play
+
+
+def test_guild_administrator_trash_is_optional() -> None:
+    engine, state = _start()
+    placed = _administrator_placed(engine, state)
+    before = placed.players[0]
+    assert _trash_rows(engine, placed)
+    resolved = _do(engine, placed, "resolve_board_effect", effect="resources")
+    finished = _do(engine, resolved, "finish_agent_turn")
+    assert finished.players[0].trashed == before.trashed
+
+
+def test_guild_administrator_reveals_one_persuasion() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "guild_administrator", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 1
+    assert frame["sword_strength"] == 0
