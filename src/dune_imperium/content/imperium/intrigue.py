@@ -257,6 +257,17 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("secret_of_the_sisterhood", "Secret of the Sisterhood"),
         copies=1,
+        # "+1 Bene Gesserit Influence" [Secret of the Sisterhood card, app
+        # text]: a cost-free Plot naming its Faction, played even with the
+        # Bene Gesserit track at the top and then gaining nothing (OQ-113
+        # (C), imperium-base.md 13.3).
+        options=(
+            _plot(
+                EffectSection(
+                    rewards=(GainInfluence(factions=(Faction.BENE_GESSERIT,)),)
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("staged_incident", "Staged Incident"),

@@ -1845,6 +1845,12 @@ FACTION_PLOTS = (
     ("favored_subject", "Favored Subject", "emperor", "Emperor"),
     ("guild_authorization", "Guild Authorization", "spacing_guild", "Spacing Guild"),
     ("know_their_ways", "Know Their Ways", "fremen", "Fremen"),
+    (
+        "secret_of_the_sisterhood",
+        "Secret of the Sisterhood",
+        "bene_gesserit",
+        "Bene Gesserit",
+    ),
 )
 
 
