@@ -1161,3 +1161,74 @@ def test_guild_administrator_reveals_one_persuasion() -> None:
     frame = _reveal(engine, state)
     assert frame["persuasion"] == 1
     assert frame["sword_strength"] == 0
+
+
+# --- Piter De Vries ---------------------------------------------------------------
+
+
+def _piter_placed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    intrigue_deck: tuple[str, ...] = ("intrigue:bribery:0", "intrigue:bribery:1"),
+) -> GameState:
+    """Seat 0 sends Piter De Vries to Research Station (a City space; its two
+    water are paid) with the given Intrigue deck."""
+
+    held, _ = _with_card(state, "piter_de_vries_card")
+    seated = replace(
+        _seat(held, resources=Resources(water=2)), intrigue_deck=intrigue_deck
+    )
+    return _place(engine, seated, "imperium_research_station", "piter_de_vries_card")
+
+
+def test_piter_de_vries_matches_the_app_table() -> None:
+    # App attribute table: cost 5, 1 copy, no Faction, Landsraad and City,
+    # Reveal 3 Persuasion and 1 sword.
+    entry = IMPERIUM_CARDS_BY_ID["piter_de_vries_card"]
+    assert entry.card.name == "Piter De Vries"
+    assert entry.acquisition_cost == 5
+    assert entry.copies == 1
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.CITY)
+    assert entry.agent_effect is PersonalCardAgentEffect.DRAW_INTRIGUE_CARD
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (3, 1)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:piter_de_vries_card:0") is entry
+
+
+def test_piter_de_vries_draws_one_intrigue_card() -> None:
+    """P0 sweep: "AGENT: draw 1 Intrigue"; the icon is mandatory ("everything
+    else mandatory" [FAQ p. 3]) and a hidden draw is its own step (OQ-106):
+    the owner takes the Intrigue deck's top card, the rest stays."""
+
+    engine, state = _start()
+    placed = _piter_placed(engine, state)
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    assert resolved.players[0].intrigue_cards == (
+        *placed.players[0].intrigue_cards,
+        "intrigue:bribery:0",
+    )
+    assert resolved.intrigue_deck == ("intrigue:bribery:1",)
+    # The card's own box is done: no second draw is offered.
+    assert "resolve_agent_card_effect" not in _ids(engine, resolved)
+
+
+def test_piter_de_vries_with_no_intrigue_card_left_draws_nothing() -> None:
+    """With the Intrigue deck and its discard pile both empty there is nothing
+    to draw: the box still resolves and the owner's hand is unchanged (the
+    engine's Intrigue draw, shared with every Uprising Intrigue-draw box)."""
+
+    engine, state = _start()
+    placed = _piter_placed(engine, state, intrigue_deck=())
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    assert resolved.players[0].intrigue_cards == placed.players[0].intrigue_cards
+    assert resolved.intrigue_deck == ()
+
+
+def test_piter_de_vries_reveals_three_persuasion_and_one_sword() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "piter_de_vries_card", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 3
+    assert frame["sword_strength"] == 1

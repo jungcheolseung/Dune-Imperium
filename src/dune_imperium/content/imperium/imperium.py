@@ -280,10 +280,18 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=4,
     ),
+    # App table: cost 5, 1 copy, no Faction, Landsraad and City, Reveal 3
+    # Persuasion and 1 sword. Agent: "Draw 1 Intrigue card" (the Intrigue-draw
+    # icon alone; a hidden draw, its own step, OQ-106).
     ImperiumCardEntry(
         card=imperium_card("piter_de_vries_card", "Piter De Vries"),
         copies=1,
         acquisition_cost=5,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY),
+        agent_effect=PersonalCardAgentEffect.DRAW_INTRIGUE_CARD,
+        reveal_persuasion=3,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("power_play", "Power Play"),
