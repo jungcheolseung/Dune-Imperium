@@ -249,6 +249,8 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         # 많은 진영에 Influence 1" -- an arrow, so never forced; the Faction is
         # judged as it resolves (OQ-028) and none at the top is offered
         # (OQ-060, P0 sweep L5).
+        # Discipline (stage P2b): draw a card.
+        "paul_atreides": _automatic(EffectSection(rewards=(DrawPersonalCards(1),))),
         # Manipulate (stage P2b): set a Row card aside and refill the Row;
         # this round's Reveal turn may acquire it for 1 Persuasion less --
         # "Uprising Intrigue Manipulate와 같은 판정 [FAQ p. 3]".
@@ -446,6 +448,9 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         # Eyes Everywhere (stage P2b): opponents' Agents do not block her on
         # Landsraad and City spaces (P0 sweep L8).
         "helena_richese": (_standing("eyes_everywhere"),),
+        # Prescience (stage P2b): he sees his deck's top card at any time,
+        # none while the deck is empty [DI p. 13] (``core.observation``).
+        "paul_atreides": (_standing("prescience"),),
     }
 )
 

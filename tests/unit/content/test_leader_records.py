@@ -249,9 +249,9 @@ def test_every_leader_face_prints_its_left_box_as_records() -> None:
         record for abilities in LEADER_ABILITIES.values() for record in abilities
     ]
     # The original game's: Ruthless Negotiator, Connections, Spice Addict's
-    # standing record and its draw, and the standing Landsraad Popularity and
-    # Eyes Everywhere.
-    assert len(records) == 21 + 6
+    # standing record and its draw, and the standing Landsraad Popularity,
+    # Eyes Everywhere and Prescience.
+    assert len(records) == 21 + 7
     assert {
         record.hook
         for record in records
@@ -271,6 +271,7 @@ def test_every_leader_face_prints_its_left_box_as_records() -> None:
         "countess_ariana_thorvald",
         "duke_leto_atreides",
         "helena_richese",
+        "paul_atreides",
     }
     triggered = [record for record in records if record.trigger is not None]
     assert len(triggered) == 8 + 3

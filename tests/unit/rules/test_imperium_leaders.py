@@ -2,8 +2,8 @@
 
 docs/rules/imperium-base.md 12 (and its 13.2 FAQ rows) and
 docs/base-game-and-ix-plan.md 15.1: Glossu Rabban, Count Ilban Richese, Earl
-Memnon Thorvald and Countess Ariana Thorvald (P2a), then Duke Leto Atreides
-and Helena Richese (P2b). Each is seated at seat 0.
+Memnon Thorvald and Countess Ariana Thorvald (P2a), then Duke Leto Atreides,
+Helena Richese and Paul Atreides (P2b). Each is seated at seat 0.
 """
 
 from dataclasses import replace
@@ -391,3 +391,38 @@ def test_manipulate_sets_a_row_card_aside_and_refills_the_row() -> None:
     assert taken.players[0].imperium_set_aside == (cards[2],)
     assert taken.imperium_row == (*cards[:2], cards[5], *cards[3:5])
     assert taken.imperium_deck == ()
+
+
+# --- Paul Atreides (P2b) ------------------------------------------------------
+
+
+def test_prescience_shows_paul_his_deck_s_top_card() -> None:
+    # "자기 덱 맨 위 카드를 언제든 볼 수 있다"; "덱이 비면 볼 수 없다
+    # (discard를 섞지 않는다) [DI p. 13]" (imperium-base.md 12).
+    engine, state = _start("paul_atreides")
+    top = state.players[0].deck[0]
+    private = engine.observe(state, 0).private
+    assert private is not None and private.peeked_card_id == top
+    empty = _seat(state, deck=(), discard_pile=state.players[0].deck)
+    private = engine.observe(empty, 0).private
+    assert private is not None and private.peeked_card_id == ""
+
+
+def test_prescience_shows_the_opponents_nothing() -> None:
+    # Hidden information (imperium-base.md 14): every other seat sees the
+    # same whichever card lies on top.
+    engine, state = _start("paul_atreides")
+    deck = state.players[0].deck
+    turned = _seat(state, deck=(*deck[1:], deck[0]))
+    for seat in range(1, 4):
+        assert engine.observe(state, seat) == engine.observe(turned, seat)
+    assert engine.observe(state, 0) != engine.observe(turned, 0)
+
+
+def test_discipline_draws_a_card() -> None:
+    engine, state = _start("paul_atreides")
+    state = _with_card(state, "signet_ring")
+    hand = len(state.players[0].hand)
+    placed = _place(engine, state, "secure_contract", "signet_ring")
+    drawn = _do(engine, placed, "resolve_agent_card_effect")
+    assert len(drawn.players[0].hand) == hand - 1 + 1

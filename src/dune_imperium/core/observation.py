@@ -718,15 +718,22 @@ def effect_pick_of(
 
 
 def peeked_card_id(state: GameState, player: int) -> str:
-    """Return the deck card the owner may see: Controlled's peek, or Glowglobes.
+    """Return the deck card the owner may see: Controlled's peek, Glowglobes,
+    or Paul Atreides' Prescience.
 
     Controlled shows the top card while its choice is up; Glowglobes lets
     the owner "look at the top card of your deck at any time" [Glowglobes
-    Tech tile].
+    Tech tile], as Prescience lets the original game's Paul Atreides: "자기
+    덱 맨 위 카드를 언제든 볼 수 있다", never while the deck is empty (the
+    discard pile is not shuffled for it) [DI p. 13] (docs/rules/
+    imperium-base.md 12, 14).
     """
 
     owner = state.players[player]
-    if owner.deck and has_tech(owner.tech_ids, TechAbility.PEEK_TOP_CARD):
+    if owner.deck and (
+        has_tech(owner.tech_ids, TechAbility.PEEK_TOP_CARD)
+        or owner.leader_id == "paul_atreides"
+    ):
         return owner.deck[0]
     if not state.decision_stack:
         return ""

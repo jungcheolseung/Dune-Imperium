@@ -183,6 +183,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "countess_ariana_thorvald",
         "duke_leto_atreides",
         "helena_richese",
+        "paul_atreides",
     }
 )
 

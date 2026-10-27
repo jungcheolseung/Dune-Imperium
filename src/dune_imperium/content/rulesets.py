@@ -135,6 +135,7 @@ IMPERIUM_CONTROL_VISIT_BONUSES: Final[Mapping[str, str]] = MappingProxyType(
 # order (docs/base-game-and-ix-plan.md 15.1: stage P2a has four, P2b the
 # other four).
 IMPERIUM_LEADER_IDS: Final = (
+    "paul_atreides",
     "duke_leto_atreides",
     "glossu_rabban",
     "count_ilban_richese",

@@ -158,6 +158,7 @@ def test_the_original_game_plays_its_own_board_and_no_deck_yet() -> None:
         "foldspace_card": 6,
     }
     assert [leader.leader_id for leader in content.leaders] == [
+        "paul_atreides",
         "duke_leto_atreides",
         "glossu_rabban",
         "count_ilban_richese",

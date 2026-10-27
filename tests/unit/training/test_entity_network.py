@@ -105,8 +105,8 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # scale of every column an Uprising entity uses stay those of 12294215
 # (405 rows compared; ``entity_features._table``). Stage P2b: each original
 # Leader's records join its row as the stage brings them (Duke Leto, Helena
-# Richese).
-_GOLDEN_DIGEST = "5701a304cc40403a30e4632e37ba615c11ea1da5aee2a22a3d42e77db088ce58"
+# Richese, Paul Atreides).
+_GOLDEN_DIGEST = "36f8ae8b874667570b4b71cac7809855a6161ba30a739cd56764e2521d8e40d9"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -243,7 +243,7 @@ def test_what_an_entity_does_is_read_from_its_records() -> None:
         leader.leader_id
         for leader in content_for(RulesetConfig(base_game=BaseGame.IMPERIUM)).leaders
     }
-    assert len(pending) == 2
+    assert len(pending) == 1
     for name in ("personal", "leader", "tech", "space", "conflict"):
         table = tables[name]
         rows = [
