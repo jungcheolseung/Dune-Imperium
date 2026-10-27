@@ -1613,3 +1613,170 @@ def test_choam_directorship_rows_come_from_every_acquisition_path() -> None:
             replace(held, decision_stack=()), 0, instance, to_hand=False, source="test"
         )
 
+
+# --- Lady Jessica -----------------------------------------------------------------
+
+_JESSICA = "imperium:lady_jessica_card:0"
+
+
+def _jessica_bought(
+    engine: UprisingRulesEngine, state: GameState, influence: Influence
+) -> GameState:
+    """Seat 0 buys Lady Jessica in its Reveal holding ``influence``."""
+
+    revealed = _buyer_revealed(
+        engine, state, "lady_jessica_card", influence=influence
+    )
+    return _do(engine, revealed, "acquire_imperium", instance_id=_JESSICA)
+
+
+def test_lady_jessica_matches_the_app_table() -> None:
+    # App attribute table: cost 7, 1 copy, Bene Gesserit, Bene Gesserit,
+    # Landsraad, City and Spice Trade, Reveal 3 Persuasion and 1 sword;
+    # AcquireEffectList AnyRank (Influence with a Faction of the owner's
+    # choice), abilities DrawAbility x2.
+    entry = IMPERIUM_CARDS_BY_ID["lady_jessica_card"]
+    assert entry.card.name == "Lady Jessica"
+    assert entry.acquisition_cost == 7
+    assert entry.copies == 1
+    assert entry.factions == (Faction.BENE_GESSERIT,)
+    assert entry.agent_icons == (
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.LANDSRAAD,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert entry.agent_effect is PersonalCardAgentEffect.DRAW_TWO_CARDS
+    assert entry.acquisition_effect is (
+        PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_CHOSEN_FACTION
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (3, 1)
+    assert entry.has_acquisition_bonus and entry.play_data_complete
+    assert personal_card_for_instance(_JESSICA) is entry
+    assert acquire_box_icons(entry) == ("influence_any",)
+    assert _JESSICA in content_for(CONFIG).imperium_deck_instance_ids
+
+
+def test_lady_jessica_draws_two_cards_in_one_step() -> None:
+    """Agent: "draw 2" (P0 sweep S30: the card-draw icon printed twice, a hidden
+    draw that is its own step, OQ-106): one resolution takes the deck's top two
+    cards."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "lady_jessica_card")
+    owner = state.players[0]
+    top = owner.deck[:2]
+    space = next(
+        str(dict(placement.arguments)["space_id"])
+        for placement in executable_placements(state, 0)
+        if ":lady_jessica_card:" in str(dict(placement.arguments)["card_id"])
+    )
+    placed = _place(engine, state, space, "lady_jessica_card")
+    assert "resolve_agent_card_effect" in _ids(engine, placed)
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    after = resolved.players[0]
+    assert after.hand == (*placed.players[0].hand, *top)
+    assert after.deck == owner.deck[2:]
+
+
+def test_lady_jessica_reveals_three_persuasion_and_one_sword() -> None:
+    engine, state = _start()
+    held, _ = _with_card(state, "lady_jessica_card", alone=True)
+    held = _with_troops(held, 0, garrison=0, conflict=1)
+    revealed = _do(engine, held, "reveal_turn")
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (3, 1)
+
+
+def test_lady_jessica_acquire_row_offers_every_faction_below_six() -> None:
+    """Acquire: "+1 Influence, any Faction" -- one icon with a choice, so a row
+    of the Reveal turn (OQ-141) that names the Faction; a Faction at 6 is not
+    offered (OQ-060: "고를 수 있는 진영이 하나도 없을 때 ..." / imperium-base.md
+    16). It holds the Reveal's end until taken."""
+
+    engine, state = _start()
+    bought = _jessica_bought(
+        engine, state, Influence(emperor=6, fremen=6, bene_gesserit=2)
+    )
+    rows = _acquire_rows(engine, bought)
+    assert {dict(row.arguments)["faction"] for row in rows} == {
+        "spacing_guild",
+        "bene_gesserit",
+    }
+    assert {dict(row.arguments)["acquired_card_id"] for row in rows} == {
+        "lady_jessica_card"
+    }
+    assert "finish_reveal" not in _ids(engine, bought)
+    # The Reveal still offers its other purchases beside the row.
+    assert "acquire_imperium" in _ids(engine, bought)
+    before = bought.players[0].influence
+    taken = _take_icon(engine, bought, "influence_any", faction="spacing_guild")
+    assert taken.players[0].influence == replace(
+        before, spacing_guild=before.spacing_guild + 1
+    )
+    assert _acquire_rows(engine, taken) == ()
+    assert "finish_reveal" in _ids(engine, taken)
+
+
+def test_lady_jessica_acquire_waits_and_lapses_with_every_faction_at_six() -> None:
+    """With every cube at the top the icon offers no row: it waits beside the
+    turn greyed out (OQ-060), holds nothing back, and the press lapses it with
+    an event, as every in-turn "Influence with any Faction" does."""
+
+    engine, state = _start()
+    bought = _jessica_bought(
+        engine,
+        state,
+        Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    assert _acquire_rows(engine, bought) == ()
+    assert "finish_reveal" in _ids(engine, bought)
+    found = unavailable_choices(bought, 0, _wholes(engine, bought))
+    assert found is not None
+    waiting = [
+        row
+        for row in found["rows"]  # type: ignore[attr-defined]
+        if str(row["key"]).startswith("waiting:acquire_icon:")
+    ]
+    assert len(waiting) == 1
+    pressed = apply_whole(engine, bought, _do_action(engine, bought, "finish_reveal"))
+    assert "acquire_icon_lapsed" in {event.kind for event in pressed.events}
+    assert pressed.state.players[0].influence == bought.players[0].influence
+
+
+def _do_action(
+    engine: UprisingRulesEngine, state: GameState, action_id: str
+) -> DomainAction:
+    return next(a for a in _wholes(engine, state) if a.action_id == action_id)
+
+
+def test_lady_jessica_and_choam_directorship_icons_share_a_turn() -> None:
+    """Two acquire boxes in one Reveal turn (15 Persuasion): CHOAM's four fixed
+    icons and Jessica's chosen one are five rows of the turn; a fixed Emperor
+    icon and a chosen Emperor row are different rows, so each is taken on its
+    own."""
+
+    engine, state = _start()
+    revealed = _buyer_revealed(engine, state, "choam_directorship")
+    jessica = _JESSICA
+    others = tuple(c for c in revealed.imperium_row if c != jessica)
+    revealed = replace(
+        revealed,
+        imperium_row=(*revealed.imperium_row[:1], jessica, *others[1:4]),
+        imperium_deck=tuple(c for c in revealed.imperium_deck if c != jessica),
+    )
+    bought = _do(engine, revealed, "acquire_imperium", instance_id=_CHOAM)
+    bought = _do(engine, bought, "acquire_imperium", instance_id=jessica)
+    rows = _acquire_rows(engine, bought)
+    assert len([r for r in rows if "faction" not in dict(r.arguments)]) == 4
+    assert len([r for r in rows if "faction" in dict(r.arguments)]) == 4
+    before = bought.players[0].influence
+    # Emperor via the chosen icon leaves CHOAM's own Emperor icon waiting.
+    chosen = _take_icon(engine, bought, "influence_any", faction="emperor")
+    assert chosen.players[0].influence.emperor == before.emperor + 1
+    assert "influence_emperor" in {
+        dict(row.arguments)["effect"] for row in _acquire_rows(engine, chosen)
+    }
+    assert "finish_reveal" not in _ids(engine, chosen)
+
