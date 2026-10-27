@@ -19,7 +19,10 @@ holds the end until drawn, and so does each icon of a research space's pair
 (specimen and trash, specimen and Tleilaxu), resolved in the owner's order
 (rule decision 5, OQ-027). Outside the owner's turn -- Combat, the Arrakeen
 Scouts step, and a Scouts line run inside the turn, which keeps the module's
-own windows -- the effect still opens its window.
+own windows -- the effect still opens its window. An acquired Imperium
+card's acquire box of several icons, or of a chosen Faction's Influence,
+waits the same way, a row per icon (``ACQUIRE_ICON``, OQ-141); outside the
+turn it has no window yet (``rules.acquire_icons``).
 
 The waiting effects live in the turn frame's context (``PENDING_KEY``), as the
 Tech tiles' acquire icons do (``TECH_ACQUIRE_PENDING_KEY``, OQ-098), and move
@@ -73,6 +76,17 @@ CONTRACT_ICON: Final = "contract_icon"
 stage B3b): ``value`` is ``"<contract instance>|<icon>"``; a Recall Agent
 icon judges what it may not take when it is taken (``rules.contracts``);
 mandatory."""
+
+ACQUIRE_ICON: Final = "acquire_icon"
+"""One icon of an Imperium card's acquire box, taken in its owner's own turn
+(OQ-141, the original game's CHOAM Directorship and Lady Jessica): ``value``
+is ``"<card id>|<icon>"`` (``rules.acquire_icons``). A fixed Faction's icon is
+mandatory; the chosen-Faction icon is too while a Faction can rise, and with
+every cube at the top it waits and the press lapses it (OQ-060, OQ-057 (1))."""
+
+CHOSEN_INFLUENCE_ICON: Final = "influence_any"
+"""The acquire icon ``value`` of an Influence with a Faction of the owner's
+choice."""
 
 type Pending = tuple[str, str, str]
 
@@ -195,13 +209,24 @@ def take_newest(state: GameState, player: int, kind: str) -> tuple[GameState, st
     return take(state, player, item), item[1]
 
 
+def acquire_icon_blocked(value: str, owner: PlayerState) -> bool:
+    """Whether an acquire icon ``value`` (``"<card id>|<icon>"``) is the
+    chosen Faction's Influence with every Faction at the top, where it offers
+    no row (OQ-060): it waits, greyed out, and the press lapses it."""
+
+    _card_id, icon = value.split("|")
+    return icon == CHOSEN_INFLUENCE_ICON and not any(
+        influence_can_rise(owner, faction) for faction in Faction
+    )
+
+
 def holds_the_end(state: GameState, player: int) -> bool:
     """Whether a waiting effect still offers a mandatory row: c6r6 with a
     Faction it can raise ("획득은 의무다", OQ-060 2026-09-30 addition),
-    Arrakis Planetologist's Intrigue card, a research pair's icon, or a
-    completed Contract's icon (OQ-112 (4)). Read from public facts only (the
-    frame's context, the seat's Influence), so the server's turn-end mirror
-    may ask it too."""
+    Arrakis Planetologist's Intrigue card, a research pair's icon, a
+    completed Contract's icon (OQ-112 (4)), or an acquire box's icon that
+    offers a row (OQ-141). Read from public facts only (the frame's context,
+    the seat's Influence), so the server's turn-end mirror may ask it too."""
 
     frame = rows_frame(state, player)
     if frame is None:
@@ -214,6 +239,7 @@ def holds_the_end(state: GameState, player: int) -> bool:
             and ResearchBonus(value) is ResearchBonus.INFLUENCE_ANY
             and any(influence_can_rise(owner, faction) for faction in Faction)
         )
+        or (kind == ACQUIRE_ICON and not acquire_icon_blocked(value, owner))
         for kind, _source, value in pending(frame)
     )
 
@@ -279,6 +305,15 @@ def _lapsed(player: int, item: Pending) -> GameEvent:
             event_id=f"{source}:trash_lapsed",
             kind="optional_trash_lapsed",
             payload=(("player", player),),
+        )
+    if kind == ACQUIRE_ICON:
+        # Only the chosen Influence with every Faction at the top reaches the
+        # press (``holds_the_end``).
+        card_id, icon = value.split("|")
+        return GameEvent(
+            event_id=f"{source}:{icon}_lapsed",
+            kind="acquire_icon_lapsed",
+            payload=(("card_id", card_id), ("effect", icon), ("player", player)),
         )
     # Arrakis Planetologist's Intrigue card and a research space's icon hold
     # the end (``holds_the_end``).

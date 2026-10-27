@@ -8,6 +8,8 @@ printed values are the Steam app's attribute table (plan 2.4, D1).
 
 from dataclasses import replace
 
+import pytest
+
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.rulesets import content_for
@@ -35,6 +37,8 @@ from dune_imperium.display.tokens import reveal_effect_text
 from dune_imperium.display.tokens_ko import reveal_effect_text_ko
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.acquire_icons import acquire_box_icons
+from dune_imperium.rules.acquisition import acquire_imperium_for_intrigue
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.frames import FrameKind
@@ -153,7 +157,7 @@ def test_arrakis_recruiter_recruits_one_troop() -> None:
 
 
 def test_arrakis_recruiter_troop_deploys_at_a_combat_space() -> None:
-    """"Combat 칸(사막 그림과 교차한 칼)에 Agent를 보내면 이번 turn에 recruit한
+    """ "Combat 칸(사막 그림과 교차한 칼)에 Agent를 보내면 이번 turn에 recruit한
     troop 전부와 garrison의 troop 둘까지를 Conflict에 배치할 수 있다."
     [DI pp. 10, 17-18] (imperium-base.md 7); Research Station is a Combat
     space. The card prints no deployment of its own, so the recruited troop
@@ -224,7 +228,7 @@ def test_spice_smugglers_matches_the_app_table() -> None:
 
 
 def test_spice_smugglers_pays_two_spice_for_influence_and_three_solari() -> None:
-    """"비용 화살표" [DI p. 16]: the arrow's cost is paid for its reward. Two
+    """ "비용 화살표" [DI p. 16]: the arrow's cost is paid for its reward. Two
     spice buy one Spacing Guild Influence and 3 Solari."""
 
     engine, state = _start()
@@ -241,7 +245,7 @@ def test_spice_smugglers_pays_two_spice_for_influence_and_three_solari() -> None
 
 
 def test_spice_smugglers_arrow_is_paid_once() -> None:
-    """"An arrow cost is optional [DI p. 9] and paid once [FAQ p. 3]": with
+    """ "An arrow cost is optional [DI p. 9] and paid once [FAQ p. 3]": with
     spice for a second payment the arrow is no longer offered."""
 
     engine, state = _start()
@@ -279,7 +283,7 @@ def test_spice_smugglers_needs_two_spice_to_pay() -> None:
 
 
 def test_spice_smugglers_at_the_top_of_the_track_still_pays_its_solari() -> None:
-    """"비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다" (imperium-base.md
+    """ "비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다" (imperium-base.md
     16, OQ-071): the 3 Solari are a reward, so the arrow is offered with the
     Spacing Guild cube at 6. The Influence gain there is dropped: "엔진은 처음부터
     6에 있는 cube에 대한 Influence 획득을 버린다" (OQ-060)."""
@@ -374,7 +378,7 @@ def test_gun_thopter_matches_the_app_table() -> None:
 
 
 def test_gun_thopter_takes_one_garrisoned_troop_from_each_opponent() -> None:
-    """"| Gun Thopter | 2 | garrison troop이 없는 상대는 영향 없음 |" [FAQ p. 2]
+    """ "| Gun Thopter | 2 | garrison troop이 없는 상대는 영향 없음 |" [FAQ p. 2]
     (imperium-base.md 13.2); the lost troop goes to its owner's supply ("troop
     잃기(supply로)" [DI p. 16]); "\"each opponent\"는 다음 좌석부터 시계 방향"
     (imperium-base.md 16, OQ-036). The Conflict's troops are not touched."""
@@ -411,7 +415,7 @@ def test_gun_thopter_takes_one_garrisoned_troop_from_each_opponent() -> None:
 
 
 def test_gun_thopter_leaves_an_opponent_with_no_garrisoned_troop_alone() -> None:
-    """"garrison troop이 없는 상대는 영향 없음" [FAQ p. 2]: its Conflict troops
+    """ "garrison troop이 없는 상대는 영향 없음" [FAQ p. 2]: its Conflict troops
     stay. The window still opens (OQ-036 (a), user ruling 2026-09-30: "선택지가 단
     하나여도 어쨌든 확인을 거치는 걸로"), offering the one confirmation."""
 
@@ -594,7 +598,7 @@ def _sister_revealed(
 
 
 def test_bene_gesserit_sister_must_pick_persuasion_or_swords() -> None:
-    """"-OR-" is a must-pick-one choice (P0 sweep; imperium-base.md 16, OQ-058
+    """ "-OR-" is a must-pick-one choice (P0 sweep; imperium-base.md 16, OQ-058
     for the same shape on Intrigue): both rows are offered, nothing else holds
     the Reveal open, and the turn cannot finish before one is taken."""
 
@@ -705,7 +709,7 @@ def test_crysknife_reveals_one_sword_and_no_persuasion() -> None:
 
 
 def test_crysknife_fremen_bond_gains_one_fremen_influence() -> None:
-    """"Fremen Bond = another Fremen card in play" [DI p. 16] (imperium-base.md
+    """ "Fremen Bond = another Fremen card in play" [DI p. 16] (imperium-base.md
     11); Influence is gained as an ordinary Faction gain ("Influence 얻기"
     [DI p. 16], 11): Fremen 2 becomes 3. Fedaykin Stilltent is another Fremen
     card."""
@@ -806,7 +810,7 @@ def test_duncan_idaho_matches_the_app_table() -> None:
 
 
 def test_duncan_idaho_pays_one_water_for_a_troop_and_a_card() -> None:
-    """"An arrow cost is optional [DI p. 9] and paid once [FAQ p. 3]" (P0 sweep:
+    """ "An arrow cost is optional [DI p. 9] and paid once [FAQ p. 3]" (P0 sweep:
     "may pay 1 water (arrow) -> recruit 1 troop and draw 1"): one water buys
     the troop and the card."""
 
@@ -827,7 +831,7 @@ def test_duncan_idaho_pays_one_water_for_a_troop_and_a_card() -> None:
 
 
 def test_duncan_idaho_troop_and_draw_are_separate_steps_in_any_order() -> None:
-    """"Troop and draw are separate steps (OQ-027 (b), OQ-106)" (P0 sweep): a
+    """ "Troop and draw are separate steps (OQ-027 (b), OQ-106)" (P0 sweep): a
     hidden draw is never bundled with the public choice, so the owner may draw
     first (to trash a discard card beforehand), and the turn cannot end while
     either waits."""
@@ -935,7 +939,7 @@ def _trash_rows(engine: UprisingRulesEngine, state: GameState) -> set[object]:
 
 
 def test_fedaykin_death_commando_may_trash_a_card_of_the_hand() -> None:
-    """"Trash(...비용이거나 카드가 자기를 trash하라고 할 때만 의무)" (imperium-base.md
+    """ "Trash(...비용이거나 카드가 자기를 trash하라고 할 때만 의무)" (imperium-base.md
     11, [DI p. 16]): the black trash icon is optional. Its rows are the hand's
     cards and the card itself in play."""
 
@@ -1008,7 +1012,7 @@ def test_fedaykin_death_commando_reveals_one_persuasion_and_no_bond_swords() -> 
 
 
 def test_fedaykin_death_commando_fremen_bond_gives_three_swords() -> None:
-    """"Fremen Bond = another Fremen card in play" [DI p. 16] (imperium-base.md
+    """ "Fremen Bond = another Fremen card in play" [DI p. 16] (imperium-base.md
     11), judged when the line resolves (OQ-028): with Fedaykin Stilltent also
     revealed the card's 3 swords join the troop's 2."""
 
@@ -1052,7 +1056,7 @@ def test_fremen_camp_matches_the_app_table() -> None:
 
 
 def test_fremen_camp_pays_two_spice_for_three_troops() -> None:
-    """"비용 화살표" [DI p. 16]: the arrow's cost is paid for its reward; two
+    """ "비용 화살표" [DI p. 16]: the arrow's cost is paid for its reward; two
     spice buy 3 troops, recruited into the garrison."""
 
     engine, state = _start()
@@ -1067,7 +1071,7 @@ def test_fremen_camp_pays_two_spice_for_three_troops() -> None:
 
 
 def test_fremen_camp_arrow_is_paid_once() -> None:
-    """"An arrow cost is optional [DI p. 9] and paid once [FAQ p. 3]": with
+    """ "An arrow cost is optional [DI p. 9] and paid once [FAQ p. 3]": with
     spice for a second payment the arrow is no longer offered."""
 
     engine, state = _start()
@@ -1127,7 +1131,7 @@ def _administrator_placed(engine: UprisingRulesEngine, state: GameState) -> Game
 
 
 def test_guild_administrator_may_trash_a_card() -> None:
-    """"Trash(...비용이거나 카드가 자기를 trash하라고 할 때만 의무)" (imperium-base.md
+    """ "Trash(...비용이거나 카드가 자기를 trash하라고 할 때만 의무)" (imperium-base.md
     11, [DI p. 16]): the black trash icon is optional ([FAQ p. 3]); its rows
     are the hand's cards and the card itself in play."""
 
@@ -1278,9 +1282,7 @@ def _opulence_revealed(
     """Seat 0 reveals Opulence (and the other cards) holding ``solari``."""
 
     held, instance = _with_card(state, "opulence", alone=True)
-    held = _seat(
-        held, hand=(instance, *others), resources=Resources(solari=solari)
-    )
+    held = _seat(held, hand=(instance, *others), resources=Resources(solari=solari))
     return _do(engine, held, "reveal_turn")
 
 
@@ -1292,7 +1294,7 @@ def test_opulence_reveals_one_persuasion() -> None:
 
 
 def test_opulence_pays_six_solari_for_one_victory_point() -> None:
-    """"비용 화살표" [DI p. 16] (imperium-base.md 11): the arrow's cost is paid
+    """ "비용 화살표" [DI p. 16] (imperium-base.md 11): the arrow's cost is paid
     for its reward; six Solari buy one Victory Point, once (the choice is used
     up)."""
 
@@ -1362,7 +1364,7 @@ def test_sardaukar_infantry_matches_the_app_table() -> None:
 
 
 def test_sardaukar_infantry_cannot_be_sent_as_an_agent() -> None:
-    """"Agent 아이콘이 없는 카드는 Agent turn에 낼 수 없다" [DI p. 9]
+    """ "Agent 아이콘이 없는 카드는 Agent turn에 낼 수 없다" [DI p. 9]
     (imperium-base.md 5): the card is Reveal-only."""
 
     engine, state = _start()
@@ -1605,7 +1607,7 @@ def _spice_hunter_revealed(
 
 
 def test_spice_hunter_without_a_bond_gains_no_spice() -> None:
-    """"Fremen Bond = another Fremen card in play" [DI p. 16] (imperium-base.md
+    """ "Fremen Bond = another Fremen card in play" [DI p. 16] (imperium-base.md
     11): alone, Spice Hunter has no Bond; it reveals its 1 Persuasion and 1
     sword and no gain row opens."""
 
@@ -1654,7 +1656,7 @@ def _mother_placed(engine: UprisingRulesEngine, state: GameState) -> GameState:
 
 
 def test_sietch_reverend_mother_may_trash_a_card() -> None:
-    """"Trash(...비용이거나 카드가 자기를 trash하라고 할 때만 의무)" (imperium-base.md
+    """ "Trash(...비용이거나 카드가 자기를 trash하라고 할 때만 의무)" (imperium-base.md
     11, [DI p. 16]): the black trash icon is optional ([FAQ p. 3]); its rows
     are the hand's cards and the card itself in play."""
 
@@ -1760,7 +1762,7 @@ def _thopter_icons(engine: UprisingRulesEngine, state: GameState) -> list[object
 
 
 def test_smugglers_thopter_draws_two_cards_at_two_guild_influence() -> None:
-    """"Spacing Guild Influence 2: [draw 1] [draw 1]": the Influence condition
+    """ "Spacing Guild Influence 2: [draw 1] [draw 1]": the Influence condition
     holds at 2 ("Influence 조건" [DI p. 16], imperium-base.md 11) and each draw
     icon is its own step (OQ-027, OQ-106): both are offered, and each takes the
     deck's next card."""
@@ -1796,7 +1798,7 @@ def test_smugglers_thopter_draws_nothing_below_two_guild_influence() -> None:
 
 
 def test_smugglers_thopter_icon_is_judged_when_it_resolves() -> None:
-    """"조건은 해결할 때 판정한다(OQ-028)" (imperium-base.md 16): the Influence
+    """ "조건은 해결할 때 판정한다(OQ-028)" (imperium-base.md 16): the Influence
     is read for each icon when it resolves, so Secure Contract's own effect
     does not matter, but a drop below 2 between the icons closes the second."""
 
@@ -1888,7 +1890,7 @@ def test_worm_riders_reveals_nothing_without_influence_or_alliance() -> None:
 
 
 def test_worm_riders_fremen_influence_two_gives_four_swords() -> None:
-    """"Influence 조건" [DI p. 16] (imperium-base.md 11): the first line holds
+    """ "Influence 조건" [DI p. 16] (imperium-base.md 11): the first line holds
     at 2 Fremen Influence, without the Alliance."""
 
     engine, state = _start()
@@ -1907,7 +1909,7 @@ def test_worm_riders_fremen_alliance_adds_two_swords() -> None:
 
 
 def test_worm_riders_swords_count_with_a_troop_in_the_conflict() -> None:
-    """"Conflict에 troop이 하나도 없으면 0" [DI p. 11]: the 4 swords join the
+    """ "Conflict에 troop이 하나도 없으면 0" [DI p. 11]: the 4 swords join the
     troop's 2 once a troop stands in the Conflict, and are worth nothing
     without one."""
 
@@ -1970,7 +1972,7 @@ def _ambassador_placed(
 
 
 def test_guild_ambassador_must_pick_influence_or_two_spice() -> None:
-    """"-OR-" is a must-pick-one choice (P0 sweep: "choose one (must)";
+    """ "-OR-" is a must-pick-one choice (P0 sweep: "choose one (must)";
     imperium-base.md 16, OQ-058 for the same shape on Intrigue): both the
     Spacing Guild Influence and the 2 spice are offered, and the turn cannot
     finish before one is taken."""
@@ -2005,9 +2007,7 @@ def test_guild_ambassador_influence_branch() -> None:
     engine, state = _start()
     placed = _ambassador_placed(engine, state, guild=1)
     before = placed.players[0]
-    chosen = _do(
-        engine, placed, "choose_agent_card_influence", faction="spacing_guild"
-    )
+    chosen = _do(engine, placed, "choose_agent_card_influence", faction="spacing_guild")
     after = chosen.players[0]
     assert after.influence.spacing_guild == before.influence.spacing_guild + 1
     assert after.resources.spice == before.resources.spice
@@ -2016,7 +2016,7 @@ def test_guild_ambassador_influence_branch() -> None:
 
 
 def test_guild_ambassador_at_the_top_of_the_track_offers_the_spice_alone() -> None:
-    """"6칸 진영은 Influence를 내지 않는다(OQ-060)" (imperium-base.md 16): at 6
+    """ "6칸 진영은 Influence를 내지 않는다(OQ-060)" (imperium-base.md 16): at 6
     the Influence option gains nothing, so only the 2 spice remain."""
 
     engine, state = _start()
@@ -2056,7 +2056,7 @@ def test_guild_ambassador_reveals_no_persuasion_or_swords() -> None:
 
 
 def test_guild_ambassador_pays_three_spice_for_a_victory_point() -> None:
-    """"비용 화살표" [DI p. 16] (imperium-base.md 11): with the Spacing Guild
+    """ "비용 화살표" [DI p. 16] (imperium-base.md 11): with the Spacing Guild
     Alliance three spice buy one Victory Point, once (the choice is used up)."""
 
     engine, state = _start()
@@ -2071,7 +2071,7 @@ def test_guild_ambassador_pays_three_spice_for_a_victory_point() -> None:
 
 
 def test_guild_ambassador_needs_the_alliance() -> None:
-    """"Alliance 조건" [DI p. 16] (11): without the Spacing Guild Alliance
+    """ "Alliance 조건" [DI p. 16] (11): without the Spacing Guild Alliance
     the payment is not offered, however much spice is held."""
 
     engine, state = _start()
@@ -2133,7 +2133,7 @@ def _gurney_placed(engine: UprisingRulesEngine, state: GameState) -> GameState:
 
 
 def test_gurney_halleck_recruits_two_troops_and_draws_a_card_apart() -> None:
-    """"[troop 2][draw 1]": separate icons (OQ-027), the hidden draw apart from
+    """ "[troop 2][draw 1]": separate icons (OQ-027), the hidden draw apart from
     the public recruit (OQ-106, imperium-base.md 15): both icons are offered,
     in either order, and the turn cannot end while either waits."""
 
@@ -2185,7 +2185,7 @@ def test_gurney_halleck_reveals_two_persuasion() -> None:
 
 
 def test_gurney_halleck_pays_three_solari_for_two_troops_it_may_deploy() -> None:
-    """"비용 화살표" [DI p. 16] (imperium-base.md 11), optional [DI p. 9] and
+    """ "비용 화살표" [DI p. 16] (imperium-base.md 11), optional [DI p. 9] and
     paid once [FAQ p. 3]: three Solari recruit two troops, and in the Reveal
     turn "you may deploy these troops to the Conflict" -- up to the two
     recruited, and no other garrison troop."""
@@ -2216,7 +2216,7 @@ def test_gurney_halleck_pays_three_solari_for_two_troops_it_may_deploy() -> None
 
 
 def test_gurney_halleck_deployment_is_optional() -> None:
-    """"May deploy": the recruited troops stay in the garrison when not
+    """ "May deploy": the recruited troops stay in the garrison when not
     deployed, and the Reveal ends without a refusal."""
 
     engine, state = _start()
@@ -2286,14 +2286,12 @@ def _spy_placed(engine: UprisingRulesEngine, state: GameState) -> GameState:
     known Intrigue deck."""
 
     held, _ = _with_card(state, "imperial_spy")
-    seated = replace(
-        held, intrigue_deck=("intrigue:bribery:0", "intrigue:bribery:1")
-    )
+    seated = replace(held, intrigue_deck=("intrigue:bribery:0", "intrigue:bribery:1"))
     return _place(engine, seated, "wealth", "imperial_spy")
 
 
 def test_imperial_spy_trashes_itself_to_draw_an_intrigue_card() -> None:
-    """"Trash this card -> [Intrigue card]": an arrow cost, optional [DI p. 9]
+    """ "Trash this card -> [Intrigue card]": an arrow cost, optional [DI p. 9]
     [FAQ p. 3]; the card trashes itself as its own cost, so its draw is still
     paid (imperium-base.md 16, OQ-022's own-effect case) and, a hidden draw,
     is a step of its own (OQ-106): the turn cannot end before it is taken."""
@@ -2301,11 +2299,13 @@ def test_imperial_spy_trashes_itself_to_draw_an_intrigue_card() -> None:
     engine, state = _start()
     placed = _spy_placed(engine, state)
     me = "imperium:imperial_spy:0"
-    assert dict(next(
-        action.arguments
-        for action in _wholes(engine, placed)
-        if action.action_id == "trash_agent_card"
-    )) == {"card_id": me}
+    assert dict(
+        next(
+            action.arguments
+            for action in _wholes(engine, placed)
+            if action.action_id == "trash_agent_card"
+        )
+    ) == {"card_id": me}
     trashed = _do(engine, placed, "trash_agent_card", card_id=me)
     assert me in trashed.players[0].trashed
     assert me not in trashed.players[0].in_play
@@ -2332,7 +2332,7 @@ def test_imperial_spy_arrow_is_optional() -> None:
 
 
 def test_imperial_spy_trashed_by_another_effect_draws_nothing() -> None:
-    """"이 카드로 자신을 trash해야 Intrigue; 다른 수단으로 trash되면 없음" (FAQ p.
+    """ "이 카드로 자신을 trash해야 Intrigue; 다른 수단으로 trash되면 없음" (FAQ p.
     2, imperium-base.md 13.2) and "다른 수단으로 먼저 trash하면 남은 효과는 없다"
     (16, OQ-022): once the Spy has left play by another effect, its arrow
     offers no trash."""
@@ -2378,7 +2378,7 @@ def test_assassination_mission_matches_the_app_table() -> None:
 
 
 def test_assassination_mission_cannot_be_sent_as_an_agent() -> None:
-    """"Agent 아이콘이 없는 카드는 Agent turn에 낼 수 없다" [DI p. 9]
+    """ "Agent 아이콘이 없는 카드는 Agent turn에 낼 수 없다" [DI p. 9]
     (imperium-base.md 5): the card is Reveal-only, and has no way to trash
     itself [FAQ p. 1]."""
 
@@ -2424,7 +2424,7 @@ def _administrator_with_mission(
 
 
 def test_assassination_mission_trashed_from_the_hand_pays_four_solari() -> None:
-    """"다른 수단으로 trash해야 4 Solari" (imperium-base.md 13.2, [FAQ p. 1]): a
+    """ "다른 수단으로 trash해야 4 Solari" (imperium-base.md 13.2, [FAQ p. 1]): a
     trash by another card's effect -- here Guild Administrator's black trash
     icon, optional ([DI p. 16], [FAQ p. 3]) -- pays 4 Solari to the owner."""
 
@@ -2472,9 +2472,7 @@ def test_assassination_mission_trashed_at_selective_breeding_pays_four_solari() 
     held, _ = _with_card(state, "sietch_reverend_mother")
     mission = "imperium:assassination_mission:0"
     owner = held.players[0]
-    seated = _seat(
-        held, hand=(*owner.hand, mission), resources=Resources(spice=2)
-    )
+    seated = _seat(held, hand=(*owner.hand, mission), resources=Resources(spice=2))
     placed = _place(engine, seated, "selective_breeding", "sietch_reverend_mother")
     rows = [
         action
@@ -2540,7 +2538,7 @@ def _influence_rows(engine: UprisingRulesEngine, state: GameState) -> list[objec
 
 
 def test_missionaria_protectiva_gains_influence_with_another_bene_gesserit() -> None:
-    """"another Bene Gesserit card in play" (imperium-base.md 16, OQ-028; the
+    """ "another Bene Gesserit card in play" (imperium-base.md 16, OQ-028; the
     Bond of [DI p. 16]): with one in play the owner chooses any Faction for 1
     Influence, and the turn cannot end before the choice."""
 
@@ -2574,7 +2572,7 @@ def test_missionaria_protectiva_alone_gains_nothing() -> None:
 
 
 def test_missionaria_protectiva_condition_is_judged_when_it_resolves() -> None:
-    """"조건은 해결할 때 판정한다(OQ-028)": if the other Bene Gesserit card has
+    """ "조건은 해결할 때 판정한다(OQ-028)": if the other Bene Gesserit card has
     left play before the choice, the box offers nothing and the turn's end
     fizzles it (OQ-057 (1))."""
 
@@ -2587,7 +2585,7 @@ def test_missionaria_protectiva_condition_is_judged_when_it_resolves() -> None:
 
 
 def test_missionaria_protectiva_does_not_offer_a_faction_at_the_top() -> None:
-    """"6칸 진영은 Influence를 내지 않는다(OQ-060)" (imperium-base.md 16)."""
+    """ "6칸 진영은 Influence를 내지 않는다(OQ-060)" (imperium-base.md 16)."""
 
     engine, state = _start()
     placed = _missionaria_placed(
@@ -2654,7 +2652,7 @@ def _spice_icon(engine: UprisingRulesEngine, state: GameState) -> bool:
 
 
 def test_gene_manipulation_trashes_and_gains_two_spice_apart() -> None:
-    """"[trash] AND ...[2 spice]": two printed icons, one action each in any
+    """ "[trash] AND ...[2 spice]": two printed icons, one action each in any
     order (OQ-027, imperium-base.md 15). The black trash icon is optional
     ([DI p. 16], [FAQ p. 3]); the spice icon is mandatory and needs another
     Bene Gesserit card in play (OQ-028)."""
@@ -2693,7 +2691,7 @@ def test_gene_manipulation_without_another_bene_gesserit_gains_no_spice() -> Non
 
 
 def test_gene_manipulation_trashing_the_other_card_first_loses_the_spice() -> None:
-    """"조건은 해결할 때 판정한다(OQ-028)" (imperium-base.md 16, P0 sweep:
+    """ "조건은 해결할 때 판정한다(OQ-028)" (imperium-base.md 16, P0 sweep:
     "trashing the other BG card first loses the spice"): the Bond is read when
     the spice icon resolves, so the trash icon may break it first."""
 
@@ -2792,7 +2790,7 @@ _HAND = ("imperium:dr_yueh:0", "imperium:stilgar:0", "imperium:space_travel:0")
 
 
 def test_reverend_mother_mohiam_each_opponent_discards_two_cards() -> None:
-    """"Mohiam | 상대가 버릴 카드를 고르고, 내 왼쪽부터 시계 방향" (imperium-base.md
+    """ "Mohiam | 상대가 버릴 카드를 고르고, 내 왼쪽부터 시계 방향" (imperium-base.md
     13.2, [FAQ p. 3]); OQ-118: two cards where the hand holds them, one where it
     holds one, and the opponent that has none confirms it discards nothing. The
     opponents are asked one after the other, the next seat first."""
@@ -2852,7 +2850,7 @@ def test_reverend_mother_mohiam_without_another_bene_gesserit_does_nothing() -> 
 
 
 def test_reverend_mother_mohiam_condition_is_judged_when_it_resolves() -> None:
-    """"조건은 해결할 때 판정한다(OQ-028)" (imperium-base.md 16): with the other
+    """ "조건은 해결할 때 판정한다(OQ-028)" (imperium-base.md 16): with the other
     Bene Gesserit card gone from play before the box resolves, no opponent is
     asked."""
 
@@ -2924,7 +2922,7 @@ def _liet_persuasion(
 
 
 def test_liet_kynes_counts_two_persuasion_for_each_fremen_card_in_play() -> None:
-    """"Liet Kynes | 이번 라운드 Agent turn의 카드와 지금 Reveal turn의 카드를 센다;
+    """ "Liet Kynes | 이번 라운드 Agent turn의 카드와 지금 Reveal turn의 카드를 센다;
     장마다 Persuasion 2" (imperium-base.md 13.2, [FAQ p. 2]); the card counts
     itself ("including this one"): alone it is one Fremen card."""
 
@@ -2952,7 +2950,7 @@ def test_liet_kynes_counts_this_rounds_agent_turn_cards() -> None:
 
 
 def test_liet_kynes_acquisition_gains_one_emperor_influence() -> None:
-    """"AcquireEffect RankE" (app table): buying the card gives 1 Emperor
+    """ "AcquireEffect RankE" (app table): buying the card gives 1 Emperor
     Influence, once."""
 
     engine, state = _start()
@@ -2974,3 +2972,438 @@ def test_liet_kynes_acquisition_gains_one_emperor_influence() -> None:
     assert liet in after.discard_pile
     assert after.influence.emperor == before.influence.emperor + 1
     assert after.influence.fremen == before.influence.fremen
+
+
+# --- CHOAM Directorship -----------------------------------------------------------
+
+_CHOAM = "imperium:choam_directorship:0"
+_CHOAM_ICONS = (
+    "influence_emperor",
+    "influence_spacing_guild",
+    "influence_bene_gesserit",
+    "influence_fremen",
+)
+
+
+def _buyer_revealed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    card_id: str,
+    *,
+    persuasion: int = 20,
+    influence: Influence | None = None,
+) -> GameState:
+    """Seat 0 mid-Reveal with ``persuasion`` to spend and the Imperium card
+    ``card_id`` first in the Row."""
+
+    held, _ = _with_card(state, "dr_yueh", alone=True)
+    if influence is not None:
+        held = _seat(held, influence=influence)
+    instance = f"imperium:{card_id}:0"
+    others = tuple(card for card in held.imperium_row if card != instance)
+    held = replace(
+        held,
+        imperium_row=(instance, *others[:4]),
+        imperium_deck=tuple(card for card in held.imperium_deck if card != instance),
+    )
+    revealed = _do(engine, held, "reveal_turn")
+    frame = revealed.decision_stack[-1]
+    context = dict(frame.context)
+    context["persuasion"] = persuasion
+    frame = replace(frame, context=tuple(sorted(context.items())))
+    return replace(revealed, decision_stack=(*revealed.decision_stack[:-1], frame))
+
+
+def _acquire_rows(
+    engine: UprisingRulesEngine, state: GameState
+) -> tuple[DomainAction, ...]:
+    return tuple(
+        action
+        for action in _wholes(engine, state)
+        if action.action_id == "resolve_acquire_icon"
+    )
+
+
+def _take_icon(
+    engine: UprisingRulesEngine, state: GameState, effect: str, **arguments: object
+) -> GameState:
+    return _do(engine, state, "resolve_acquire_icon", effect=effect, **arguments)
+
+
+def test_choam_directorship_matches_the_app_table() -> None:
+    # App attribute table: cost 8, 1 copy, no Faction, no Agent icons and no
+    # fixed Reveal values (its Reveal is the "3 Solari" gain line); acquire
+    # box: Influence with each of the four Factions (AcquireEffectList RankE,
+    # RankSG, RankBG, RankF).
+    entry = IMPERIUM_CARDS_BY_ID["choam_directorship"]
+    assert entry.card.name == "CHOAM Directorship"
+    assert entry.acquisition_cost == 8
+    assert entry.copies == 1
+    assert entry.factions == ()
+    assert entry.agent_icons == ()
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.has_acquisition_bonus and entry.play_data_complete
+    assert entry.acquisition_effect is (
+        PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_EACH_FACTION
+    )
+    assert personal_card_for_instance("imperium:choam_directorship:0") is entry
+    # Four separate icons, one row each (OQ-141); the original deck holds it.
+    assert acquire_box_icons(entry) == _CHOAM_ICONS
+    assert _CHOAM in content_for(CONFIG).imperium_deck_instance_ids
+
+
+def test_choam_directorship_reveals_three_solari() -> None:
+    """Reveal: "3 Solari" (P0 sweep); with no Agent icon the card is Reveal
+    only [DI p. 9]."""
+
+    engine, state = _start()
+    held, _ = _with_card(state, "choam_directorship", alone=True)
+    solari = held.players[0].resources.solari
+    assert not any(
+        action.action_id == "agent_turn" or action.action_id == "place_agent"
+        for action in _wholes(engine, held)
+    )
+    revealed = _do(engine, held, "reveal_turn")
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (0, 0)
+    gained = _do(engine, revealed, "gain_reveal_resources")
+    assert gained.players[0].resources.solari == solari + 3
+
+
+def test_choam_directorship_bought_in_a_reveal_gives_four_rows_in_any_order() -> None:
+    """ "The acquisition bonus is paid once, when acquired" [DI p. 16]; its four
+    printed icons are independent effects whose order the owner picks
+    (OQ-141, the principle of OQ-027 and OQ-112). They are rows of the Reveal
+    turn and hold its end until each is taken."""
+
+    engine, state = _start()
+    revealed = _buyer_revealed(engine, state, "choam_directorship")
+    before = revealed.players[0]
+    bought = _do(engine, revealed, "acquire_imperium", instance_id=_CHOAM)
+    # The purchase gains nothing at once; the card is in the discard pile.
+    assert bought.players[0].discard_pile[-1] == "imperium:choam_directorship:0"
+    assert bought.players[0].influence == before.influence
+    rows = _acquire_rows(engine, bought)
+    assert {dict(row.arguments)["effect"] for row in rows} == set(_CHOAM_ICONS)
+    assert {dict(row.arguments)["acquired_card_id"] for row in rows} == {
+        "choam_directorship"
+    }
+    assert "finish_reveal" not in _ids(engine, bought)
+    # The owner's order, not the printed one: Fremen, then the Emperor, ...
+    state_now = bought
+    expected = before.influence
+    for effect, field in (
+        ("influence_fremen", "fremen"),
+        ("influence_emperor", "emperor"),
+        ("influence_bene_gesserit", "bene_gesserit"),
+    ):
+        state_now = _take_icon(engine, state_now, effect)
+        expected = replace(expected, **{field: getattr(expected, field) + 1})
+        assert state_now.players[0].influence == expected
+        assert "finish_reveal" not in _ids(engine, state_now)
+    left = _acquire_rows(engine, state_now)
+    assert [dict(row.arguments)["effect"] for row in left] == [
+        "influence_spacing_guild"
+    ]
+    state_now = _take_icon(engine, state_now, "influence_spacing_guild")
+    assert _acquire_rows(engine, state_now) == ()
+    assert state_now.players[0].influence == Influence(
+        emperor=before.influence.emperor + 1,
+        spacing_guild=before.influence.spacing_guild + 1,
+        bene_gesserit=before.influence.bene_gesserit + 1,
+        fremen=before.influence.fremen + 1,
+    )
+    assert "finish_reveal" in _ids(engine, state_now)
+
+
+def test_choam_directorship_icons_wait_beside_other_acquisitions() -> None:
+    """The rows are the turn's, not a window: the Reveal still offers its other
+    purchases beside them."""
+
+    engine, state = _start()
+    revealed = _buyer_revealed(engine, state, "choam_directorship")
+    bought = _do(engine, revealed, "acquire_imperium", instance_id=_CHOAM)
+    assert bought.decision_stack[-1].kind == FrameKind.REVEAL
+    assert {"acquire_imperium", "resolve_acquire_icon"} <= _ids(engine, bought)
+
+
+def test_choam_directorship_bought_in_an_agent_turn_waits_on_the_turn() -> None:
+    """The same rows when an Agent turn took the card (Price is No Object:
+    "acquire a card for Solari to hand"): beside the turn's other effects,
+    holding its end."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "price_is_no_object", alone=True)
+    state = _seat(state, resources=Resources(solari=20))
+    instance = _CHOAM
+    others = tuple(card for card in state.imperium_row if card != instance)
+    state = replace(
+        state,
+        imperium_row=(instance, *others[:4]),
+        imperium_deck=tuple(card for card in state.imperium_deck if card != instance),
+    )
+    placed = _place(engine, state, "wealth", "price_is_no_object")
+    before = placed.players[0].influence
+    bought = _do(engine, placed, "acquire_imperium_with_solari", instance_id=instance)
+    assert bought.players[0].hand == (instance,)
+    assert bought.players[0].influence == before
+    assert bought.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    rows = _acquire_rows(engine, bought)
+    assert {dict(row.arguments)["effect"] for row in rows} == set(_CHOAM_ICONS)
+    # The turn's own effect is still offered beside the rows, and the turn
+    # cannot end until every icon is taken.
+    assert "resolve_board_effect" in _ids(engine, bought)
+    taken = bought
+    for effect in reversed(_CHOAM_ICONS):
+        assert "finish_agent_turn" not in _ids(engine, taken)
+        taken = _take_icon(engine, taken, effect)
+    assert taken.players[0].influence == Influence(
+        emperor=before.emperor + 1,
+        spacing_guild=before.spacing_guild + 1,
+        bene_gesserit=before.bene_gesserit + 1,
+        fremen=before.fremen + 1,
+    )
+    resolved = _do(engine, taken, "resolve_board_effect")
+    resolved = _do(engine, resolved, "resolve_faction_influence")
+    assert "finish_agent_turn" in _ids(engine, resolved)
+
+
+def test_choam_directorship_track_at_six_gains_nothing() -> None:
+    """A Faction already at 6 gains nothing (OQ-060: "엔진은 6에 있는 cube에
+    대한 Influence 획득을 버린다"): its icon is still a row, taking it changes
+    nothing, and the other three icons are paid."""
+
+    engine, state = _start()
+    revealed = _buyer_revealed(
+        engine,
+        state,
+        "choam_directorship",
+        influence=Influence(emperor=6, fremen=1),
+    )
+    bought = _do(engine, revealed, "acquire_imperium", instance_id=_CHOAM)
+    assert "influence_emperor" in {
+        dict(row.arguments)["effect"] for row in _acquire_rows(engine, bought)
+    }
+    taken = bought
+    for effect in _CHOAM_ICONS:
+        taken = _take_icon(engine, taken, effect)
+    assert taken.players[0].influence == Influence(
+        emperor=6, spacing_guild=1, bene_gesserit=1, fremen=2
+    )
+    assert "finish_reveal" in _ids(engine, taken)
+
+
+def test_an_uprising_one_icon_acquire_box_is_still_paid_at_once() -> None:
+    """A box of one icon with nothing to choose resolves at once, exactly as
+    before OQ-141 (Steersman: one Spacing Guild Influence): no row waits."""
+
+    engine, state = _start()
+    revealed = _buyer_revealed(engine, state, "steersman")
+    before = revealed.players[0].influence
+    bought = _do(
+        engine, revealed, "acquire_imperium", instance_id="imperium:steersman:0"
+    )
+    assert bought.players[0].influence == replace(
+        before, spacing_guild=before.spacing_guild + 1
+    )
+    assert _acquire_rows(engine, bought) == ()
+    assert "finish_reveal" in _ids(engine, bought)
+
+
+def test_choam_directorship_rows_come_from_every_acquisition_path() -> None:
+    """Every path that pays an acquire box routes the four icons to rows: the
+    Manipulate set-aside card bought in a Reveal and an Intrigue effect's
+    acquisition inside an Agent turn; outside its owner's turn the rows have
+    nowhere to wait and the acquisition refuses (OQ-141: no window yet)."""
+
+    engine, state = _start()
+    instance = _CHOAM
+    drawn_off = replace(
+        state, imperium_deck=tuple(c for c in state.imperium_deck if c != instance)
+    )
+    revealed = _buyer_revealed(engine, drawn_off, "dr_yueh")
+    revealed = _seat(revealed, imperium_set_aside=(instance,))
+    manipulated = _do(
+        engine, revealed, "acquire_manipulated_imperium", instance_id=instance
+    )
+    assert len(_acquire_rows(engine, manipulated)) == 4
+
+    held, _ = _with_card(drawn_off, "dr_yueh", alone=True)
+    others = tuple(card for card in held.imperium_row if card != instance)
+    held = replace(held, imperium_row=(instance, *others[:4]))
+    space = str(dict(executable_placements(held, 0)[0].arguments)["space_id"])
+    placed = _place(engine, held, space, "dr_yueh")
+    acquired = acquire_imperium_for_intrigue(
+        placed, 0, instance, to_hand=False, source="test"
+    )
+    assert len(_acquire_rows(engine, acquired.result.state)) == 4
+    with pytest.raises(NotImplementedError, match="outside its owner's turn"):
+        acquire_imperium_for_intrigue(
+            replace(held, decision_stack=()), 0, instance, to_hand=False, source="test"
+        )
+
+
+# --- Lady Jessica -----------------------------------------------------------------
+
+_JESSICA = "imperium:lady_jessica_card:0"
+
+
+def _jessica_bought(
+    engine: UprisingRulesEngine, state: GameState, influence: Influence
+) -> GameState:
+    """Seat 0 buys Lady Jessica in its Reveal holding ``influence``."""
+
+    revealed = _buyer_revealed(engine, state, "lady_jessica_card", influence=influence)
+    return _do(engine, revealed, "acquire_imperium", instance_id=_JESSICA)
+
+
+def test_lady_jessica_matches_the_app_table() -> None:
+    # App attribute table: cost 7, 1 copy, Bene Gesserit, Bene Gesserit,
+    # Landsraad, City and Spice Trade, Reveal 3 Persuasion and 1 sword;
+    # AcquireEffectList AnyRank (Influence with a Faction of the owner's
+    # choice), abilities DrawAbility x2.
+    entry = IMPERIUM_CARDS_BY_ID["lady_jessica_card"]
+    assert entry.card.name == "Lady Jessica"
+    assert entry.acquisition_cost == 7
+    assert entry.copies == 1
+    assert entry.factions == (Faction.BENE_GESSERIT,)
+    assert entry.agent_icons == (
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.LANDSRAAD,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert entry.agent_effect is PersonalCardAgentEffect.DRAW_TWO_CARDS
+    assert entry.acquisition_effect is (
+        PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_CHOSEN_FACTION
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (3, 1)
+    assert entry.has_acquisition_bonus and entry.play_data_complete
+    assert personal_card_for_instance(_JESSICA) is entry
+    assert acquire_box_icons(entry) == ("influence_any",)
+    assert _JESSICA in content_for(CONFIG).imperium_deck_instance_ids
+
+
+def test_lady_jessica_draws_two_cards_in_one_step() -> None:
+    """Agent: "draw 2" (P0 sweep S30: the card-draw icon printed twice, a hidden
+    draw that is its own step, OQ-106): one resolution takes the deck's top two
+    cards."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "lady_jessica_card")
+    owner = state.players[0]
+    top = owner.deck[:2]
+    space = next(
+        str(dict(placement.arguments)["space_id"])
+        for placement in executable_placements(state, 0)
+        if ":lady_jessica_card:" in str(dict(placement.arguments)["card_id"])
+    )
+    placed = _place(engine, state, space, "lady_jessica_card")
+    assert "resolve_agent_card_effect" in _ids(engine, placed)
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    after = resolved.players[0]
+    assert after.hand == (*placed.players[0].hand, *top)
+    assert after.deck == owner.deck[2:]
+
+
+def test_lady_jessica_reveals_three_persuasion_and_one_sword() -> None:
+    engine, state = _start()
+    held, _ = _with_card(state, "lady_jessica_card", alone=True)
+    held = _with_troops(held, 0, garrison=0, conflict=1)
+    revealed = _do(engine, held, "reveal_turn")
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (3, 1)
+
+
+def test_lady_jessica_acquire_row_offers_every_faction_below_six() -> None:
+    """Acquire: "+1 Influence, any Faction" -- one icon with a choice, so a row
+    of the Reveal turn (OQ-141) that names the Faction; a Faction at 6 is not
+    offered (OQ-060: "고를 수 있는 진영이 하나도 없을 때 ..." / imperium-base.md
+    16). It holds the Reveal's end until taken."""
+
+    engine, state = _start()
+    bought = _jessica_bought(
+        engine, state, Influence(emperor=6, fremen=6, bene_gesserit=2)
+    )
+    rows = _acquire_rows(engine, bought)
+    assert {dict(row.arguments)["faction"] for row in rows} == {
+        "spacing_guild",
+        "bene_gesserit",
+    }
+    assert {dict(row.arguments)["acquired_card_id"] for row in rows} == {
+        "lady_jessica_card"
+    }
+    assert "finish_reveal" not in _ids(engine, bought)
+    # The Reveal still offers its other purchases beside the row.
+    assert "acquire_imperium" in _ids(engine, bought)
+    before = bought.players[0].influence
+    taken = _take_icon(engine, bought, "influence_any", faction="spacing_guild")
+    assert taken.players[0].influence == replace(
+        before, spacing_guild=before.spacing_guild + 1
+    )
+    assert _acquire_rows(engine, taken) == ()
+    assert "finish_reveal" in _ids(engine, taken)
+
+
+def test_lady_jessica_acquire_waits_and_lapses_with_every_faction_at_six() -> None:
+    """With every cube at the top the icon offers no row: it waits beside the
+    turn greyed out (OQ-060), holds nothing back, and the press lapses it with
+    an event, as every in-turn "Influence with any Faction" does."""
+
+    engine, state = _start()
+    bought = _jessica_bought(
+        engine,
+        state,
+        Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    assert _acquire_rows(engine, bought) == ()
+    assert "finish_reveal" in _ids(engine, bought)
+    found = unavailable_choices(bought, 0, _wholes(engine, bought))
+    assert found is not None
+    waiting = [
+        row
+        for row in found["rows"]  # type: ignore[attr-defined]
+        if str(row["key"]).startswith("waiting:acquire_icon:")
+    ]
+    assert len(waiting) == 1
+    pressed = apply_whole(engine, bought, _do_action(engine, bought, "finish_reveal"))
+    assert "acquire_icon_lapsed" in {event.kind for event in pressed.events}
+    assert pressed.state.players[0].influence == bought.players[0].influence
+
+
+def _do_action(
+    engine: UprisingRulesEngine, state: GameState, action_id: str
+) -> DomainAction:
+    return next(a for a in _wholes(engine, state) if a.action_id == action_id)
+
+
+def test_lady_jessica_and_choam_directorship_icons_share_a_turn() -> None:
+    """Two acquire boxes in one Reveal turn (15 Persuasion): CHOAM's four fixed
+    icons and Jessica's chosen one are five rows of the turn; a fixed Emperor
+    icon and a chosen Emperor row are different rows, so each is taken on its
+    own."""
+
+    engine, state = _start()
+    revealed = _buyer_revealed(engine, state, "choam_directorship")
+    jessica = _JESSICA
+    others = tuple(c for c in revealed.imperium_row if c != jessica)
+    revealed = replace(
+        revealed,
+        imperium_row=(*revealed.imperium_row[:1], jessica, *others[1:4]),
+        imperium_deck=tuple(c for c in revealed.imperium_deck if c != jessica),
+    )
+    bought = _do(engine, revealed, "acquire_imperium", instance_id=_CHOAM)
+    bought = _do(engine, bought, "acquire_imperium", instance_id=jessica)
+    rows = _acquire_rows(engine, bought)
+    assert len([r for r in rows if "faction" not in dict(r.arguments)]) == 4
+    assert len([r for r in rows if "faction" in dict(r.arguments)]) == 4
+    before = bought.players[0].influence
+    # Emperor via the chosen icon leaves CHOAM's own Emperor icon waiting.
+    chosen = _take_icon(engine, bought, "influence_any", faction="emperor")
+    assert chosen.players[0].influence.emperor == before.emperor + 1
+    assert "influence_emperor" in {
+        dict(row.arguments)["effect"] for row in _acquire_rows(engine, chosen)
+    }
+    assert "finish_reveal" not in _ids(engine, chosen)

@@ -134,10 +134,21 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         ),
         play_data_complete=True,
     ),
+    # App table: cost 8, 1 copy, no Faction, no Agent icons, no fixed Reveal
+    # values. No Agent box and no icon: Reveal only [DI p. 9]. Acquire: four
+    # separate Influence icons, one with each of the four Factions, "once,
+    # when acquired" [DI p. 16], each a row in the owner's order (OQ-141, the
+    # principle of OQ-027 and OQ-112); a track at 6 gains nothing (OQ-060).
+    # Reveal: "3 Solari".
     ImperiumCardEntry(
         card=imperium_card("choam_directorship", "CHOAM Directorship"),
         copies=1,
         acquisition_cost=8,
+        has_acquisition_bonus=True,
+        acquisition_effect=(
+            PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_EACH_FACTION
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("carryall", "Carryall"),
@@ -316,10 +327,31 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=8,
     ),
+    # App table: cost 7, 1 copy, Bene Gesserit, Bene Gesserit, Landsraad, City
+    # and Spice Trade, Reveal 3 Persuasion and 1 sword. Agent: "Draw 2 cards",
+    # the card-draw icon printed twice -- one draw of two, its own step
+    # (OQ-106). Acquire: Influence with a Faction of the owner's choice, "once,
+    # when acquired" [DI p. 16], a row (OQ-141); a Faction at 6 is not offered
+    # (OQ-060).
     ImperiumCardEntry(
         card=imperium_card("lady_jessica_card", "Lady Jessica"),
         copies=1,
         acquisition_cost=7,
+        has_acquisition_bonus=True,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.LANDSRAAD,
+            AgentIcon.CITY,
+            AgentIcon.SPICE_TRADE,
+        ),
+        agent_effect=PersonalCardAgentEffect.DRAW_TWO_CARDS,
+        acquisition_effect=(
+            PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_CHOSEN_FACTION
+        ),
+        reveal_persuasion=3,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     # App table: cost 5, 1 copy, Emperor and Fremen, Fremen and City, no fixed
     # Reveal values, AcquireEffect RankE. Acquire: "1 Emperor Influence".

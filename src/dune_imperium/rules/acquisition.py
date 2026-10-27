@@ -41,6 +41,10 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.acquire_icons import (
+    acquire_box_icons,
+    queue_acquire_icons,
+)
 from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.contracts import (
@@ -666,20 +670,9 @@ def _acquire_imperium_to_hand_with_solari(
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
         decision_stack=(*state.decision_stack[:-1], base_frame),
     )
-    faction = _acquisition_influence_faction(definition.acquisition_effect)
-    if faction is not None:
-        gained = gain_faction_influence(
-            prepared,
-            action.actor,
-            faction,
-            1,
-            event_prefix=(
-                f"round:{state.round_number}:player:{action.actor}:"
-                f"acquire_with_solari:{instance_id}:influence:{faction.value}"
-            ),
-        )
-        prepared = gained.state
-        acquisition_events = (*acquisition_events, *gained.events)
+    gained = _acquisition_influence(prepared, action.actor, definition, source=source)
+    prepared = gained.state
+    acquisition_events = (*acquisition_events, *gained.events)
     completed = complete_acquire_contracts(
         prepared,
         action.actor,
@@ -1080,21 +1073,12 @@ def _acquisition_effects(
     state: GameState, player: int, definition: ImperiumCardEntry, *, source: str
 ) -> RuleResult:
     """The acquired card's effects after its bonus, in this order: the
-    acquire box's Influence (``<source>:influence:<faction>``), its track
-    steps (``apply_acquisition_track_effects``) and the Contracts the
-    acquisition completes (``complete_acquire_contracts``)."""
+    acquire box's Influence (``_acquisition_influence``), its track steps
+    (``apply_acquisition_track_effects``) and the Contracts the acquisition
+    completes (``complete_acquire_contracts``)."""
 
-    events: tuple[GameEvent, ...] = ()
-    faction = _acquisition_influence_faction(definition.acquisition_effect)
-    if faction is not None:
-        gained = gain_faction_influence(
-            state,
-            player,
-            faction,
-            1,
-            event_prefix=f"{source}:influence:{faction.value}",
-        )
-        state, events = gained.state, gained.events
+    influenced = _acquisition_influence(state, player, definition, source=source)
+    state, events = influenced.state, influenced.events
     tracked = apply_acquisition_track_effects(state, player, definition, source=source)
     completed = complete_acquire_contracts(
         tracked.state, player, definition.card.card_id, source=source
@@ -1132,16 +1116,48 @@ def apply_acquisition_track_effects(
 def _acquisition_influence_faction(
     effect: PersonalCardAcquisitionEffect | None,
 ) -> Faction | None:
-    """Return the Faction an acquisition bonus raises by one, if any."""
+    """Return the Faction an acquisition bonus raises by one, if any: the
+    box's single fixed Influence icon (Steersman, Imperial Throneship). A box
+    of several icons or a chosen Faction is paid icon by icon instead
+    (``rules.acquire_icons``) and is refused here, never half paid."""
 
     ability = acquisition_ability(effect)
-    for reward in () if ability is None else ability.sections[0].rewards:
-        if isinstance(reward, GainInfluence):
-            # Steersman's and Imperial Throneship's fixed Faction.
-            if reward.factions is None or reward.requires_choice:
-                raise ValueError(f"{reward!r} is not a fixed Faction's Influence")
-            return reward.factions[0]
-    return None
+    rewards = () if ability is None else ability.sections[0].rewards
+    gains = [reward for reward in rewards if isinstance(reward, GainInfluence)]
+    if not gains:
+        return None
+    (reward,) = gains
+    if reward.factions is None or reward.requires_choice:
+        raise ValueError(f"{reward!r} is not a fixed Faction's Influence")
+    return reward.factions[0]
+
+
+def _acquisition_influence(
+    state: GameState,
+    player: int,
+    definition: ImperiumCardEntry,
+    *,
+    source: str,
+) -> RuleResult:
+    """The acquire box's Influence. One fixed Faction's icon is gained at
+    once (``<source>:influence:<faction>``), as it always was; a box of
+    several icons or a Faction of the owner's choice waits as a row per icon
+    on the owner's turn (``acquire_icons``, OQ-141)."""
+
+    if acquire_box_icons(definition) is not None:
+        return RuleResult(
+            state=queue_acquire_icons(state, player, definition, source=source)
+        )
+    faction = _acquisition_influence_faction(definition.acquisition_effect)
+    if faction is None:
+        return RuleResult(state=state)
+    return gain_faction_influence(
+        state,
+        player,
+        faction,
+        1,
+        event_prefix=f"{source}:influence:{faction.value}",
+    )
 
 
 def _resolve_imperium_acquisition_bonus(

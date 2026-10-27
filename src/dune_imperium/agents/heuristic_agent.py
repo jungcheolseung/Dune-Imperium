@@ -214,6 +214,9 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # minor picks and never blocks a turn (the decline still ranks lowest).
     "acquire_tech": 2.5,
     "resolve_tech_acquire_effect": 1.5,
+    # An acquire box's Influence icon (the original game's CHOAM Directorship
+    # and Lady Jessica, OQ-141): a mandatory gain.
+    "resolve_acquire_icon": 2.0,
     # Flips are free once per round; Forbidden Weapons' swords beat losing
     # all spice, and Plasteel Blades' extra Skill is worth the tile.
     "flip_tech": 1.5,
@@ -756,6 +759,7 @@ _FACTION_CHOICE_FAMILIES: Final = frozenset(
         "gain_reveal_faction_influence",
         "choose_intrigue_faction",
         "resolve_tech_acquire_effect",
+        "resolve_acquire_icon",
     }
 )
 _TRASH_FAMILIES: Final = frozenset(
@@ -950,6 +954,12 @@ def _faction_tie(
     ):
         # Different acquire icons can share this action family and score.
         # Apply faction preferences only to an Influence-only choice.
+        return top
+    if family == "resolve_acquire_icon" and any(
+        _argument(action, "faction") is None for action in top
+    ):
+        # A fixed Faction's icon names no Faction to prefer; only a chosen
+        # Influence picks one.
         return top
     offered = frozenset(
         f for f in (_argument(a, "faction") for a in top) if isinstance(f, str)

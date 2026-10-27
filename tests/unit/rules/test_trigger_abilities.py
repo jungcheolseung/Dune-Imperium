@@ -78,16 +78,19 @@ _TABLES: tuple[
 
 def test_every_trigger_box_is_an_automatic_record() -> None:
     """Every acquire, trash and discard box has its record: one line, no cost,
-    nothing to choose, at its own timing."""
+    nothing to choose, at its own timing. A box prints one icon, but the
+    original game's CHOAM Directorship prints four Influence icons (one per
+    Faction): an acquire box paid icon by icon (OQ-141)."""
 
+    several = {PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_EACH_FACTION: 4}
     for table, members, timing, _, _ in _TABLES:
         assert set(table) == set(members)
-        for ability in table.values():
+        for effect, ability in table.items():
             assert ability.timing is timing
             assert ability.mark is AbilityMark.AUTOMATIC
             (line,) = ability.sections
             assert line.costs == () and line.condition is None
-            assert len(line.rewards) == 1
+            assert len(line.rewards) == several.get(effect, 1)
 
 
 def test_trigger_records_read_as_the_cards_print_them() -> None:
@@ -96,9 +99,9 @@ def test_trigger_records_read_as_the_cards_print_them() -> None:
 
     for table, _, _, english, korean in _TABLES:
         for effect, ability in table.items():
-            (reward,) = ability.sections[0].rewards
-            assert reward_text(reward) == english[effect], effect
-            assert reward_text_ko(reward) == korean[effect], effect
+            rewards = ability.sections[0].rewards
+            assert ", ".join(map(reward_text, rewards)) == english[effect], effect
+            assert ", ".join(map(reward_text_ko, rewards)) == korean[effect], effect
 
 
 def test_a_trigger_gain_names_its_one_resource() -> None:
@@ -106,9 +109,9 @@ def test_a_trigger_gain_names_its_one_resource() -> None:
     assert single_resource(GainResources(water=1)) == ("water", 1)
     for table, _, _, _, _ in _TABLES:
         for ability in table.values():
-            (reward,) = ability.sections[0].rewards
-            if isinstance(reward, GainResources):
-                single_resource(reward)
+            for reward in ability.sections[0].rewards:
+                if isinstance(reward, GainResources):
+                    single_resource(reward)
 
 
 def _game(owner: PlayerState, deck: tuple[str, ...]) -> GameState:

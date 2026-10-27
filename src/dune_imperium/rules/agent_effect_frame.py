@@ -22,6 +22,7 @@ box's rows wait.
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.acquire_icons import legal_acquire_icon_actions
 from dune_imperium.rules.acquisition import legal_agent_card_acquisitions
 from dune_imperium.rules.agent_effects import (
     agent_card_effect_is_unavailable,
@@ -161,6 +162,8 @@ def legal_agent_effect_frame_actions(
         # A Contract completed in the turn: its icons wait on it as rows
         # (OQ-112 (4)).
         *legal_contract_icon_row_actions(state, player),
+        # And an acquire box's icons, a row each (OQ-141).
+        *legal_acquire_icon_actions(state, player),
         *legal_leader_placement_ability_actions(state, player),
         *legal_leader_board_repeat_actions(state, player),
         *legal_contract_completion_actions(state, player),

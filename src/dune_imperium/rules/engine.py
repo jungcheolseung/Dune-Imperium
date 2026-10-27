@@ -20,6 +20,10 @@ from dune_imperium.core.engine import RuleResult, RulesEngine
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import PlayerView, observe_state
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.acquire_icons import (
+    apply_acquire_icon,
+    legal_acquire_icon_actions,
+)
 from dune_imperium.rules.acquisition import (
     apply_acquisition_spy_action,
     apply_agent_card_acquisition,
@@ -495,6 +499,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_owed_draw_actions,
         # A Contract completed in the turn waits on it as rows (OQ-112 (4)).
         legal_contract_icon_row_actions,
+        # So does an acquire box's icon, a row each (OQ-141).
+        legal_acquire_icon_actions,
         # A research bonus or trash icon a Plot raised waits on the turn
         # (cleanup-2b).
         legal_research_bonus_actions,
@@ -522,6 +528,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_owed_draw_actions,
         # A Contract completed in the Reveal waits on it as rows (OQ-112 (4)).
         legal_contract_icon_row_actions,
+        # So does an acquire box's icon, a row each (OQ-141).
+        legal_acquire_icon_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
@@ -923,6 +931,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "hold_contract_icons": apply_contract_hold,
     "resolve_contract_icons_without_contract": apply_contract_fizzle,
     "resolve_contract_reward_icon": apply_contract_reward_icon,
+    # An acquire box's icon waiting on the owner's turn (OQ-141).
+    "resolve_acquire_icon": apply_acquire_icon,
     "place_contract_spy": apply_contract_spy_action,
     "recall_spy_for_contract": apply_contract_spy_action,
     "decline_contract_spy": apply_contract_spy_action,
