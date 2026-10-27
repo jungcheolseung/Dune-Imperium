@@ -1020,3 +1020,207 @@ def test_windfall_is_not_offered_outside_the_seats_turn() -> None:
     _, state = _plot_hand(WINDFALL)
     state = _seat(state, 1, intrigue_cards=(WINDFALL,))
     assert legal_intrigue_play_actions(state, 1) == ()
+
+
+# --- Water of Life (Plot) ---------------------------------------------------
+
+LIFE = _intrigue("water_of_life")
+
+
+def _settle(engine: UprisingRulesEngine, state: GameState, seed: int = 3) -> GameState:
+    """Resolve the chance decisions (a discard-pile shuffle) waiting in ``state``."""
+
+    chance = ChanceResolver(seed=seed)
+    while isinstance(decision := engine.current_decision(state), ChanceDecision):
+        state = engine.apply(state, chance.resolve(decision)).state
+    return state
+
+
+def _life_hand(
+    *, deck: int = 5, discard: int = 0, resources: Resources | None = None
+) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 with Water of Life and ``deck`` / ``discard`` of its ten starter
+    cards left in those piles (the rest stay in hand)."""
+
+    engine, state = _start()
+    owner = state.players[0]
+    cards = (*owner.deck, *owner.hand)
+    state = _seat(
+        state,
+        intrigue_cards=(LIFE,),
+        resources=resources or Resources(solari=1, spice=1, water=1),
+        deck=cards[:deck],
+        discard_pile=cards[deck : deck + discard],
+        hand=cards[deck + discard :],
+    )
+    return engine, state
+
+
+def test_water_of_life_is_one_plot_cost_line() -> None:
+    # "Plot: 1 water + 1 spice -> draw 3 cards" [Water of Life card, Steam app
+    # text]; 1 copy [DI p. 3]. One cost line paying both resources.
+    entry = intrigue_card_for_instance(LIFE)
+    assert entry.card.name == "Water of Life"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert len(entry.options[0].sections) == 1
+    assert intrigue_card_text(entry) == ["Plot — Pay 1 spice, 1 water → Draw 3 cards"]
+    assert "water_of_life" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_water_of_life_pays_one_water_and_one_spice_to_draw_three_cards() -> None:
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." `[FAQ p. 2]`; the arrow cost is required once the card is
+    # played `[FAQ p. 3]`; the reward is a draw of three from the seat's own
+    # deck (imperium-base.md 11, "카드 뽑기" `[DI p. 16]`).
+    engine, state = _life_hand(resources=Resources(solari=4, spice=3, water=2))
+    before = state.players[0]
+    assert legal_intrigue_play_actions(state, 0) == (_play(LIFE),)
+
+    result = apply_intrigue_play(state, _play(LIFE))
+    done = result.state.players[0]
+
+    assert done.resources == Resources(solari=4, spice=2, water=1)
+    assert done.hand == (*before.hand, *before.deck[:3])
+    assert done.deck == before.deck[3:]
+    assert done.intrigue_cards == ()
+    assert result.state.intrigue_discard == (LIFE,)
+    assert [event.kind for event in result.events] == [
+        "intrigue_played",
+        "resources_paid",
+    ]
+    payload = dict(result.events[1].payload)
+    assert (payload["spice"], payload["water"]) == (1, 1)
+    # The turn goes on: the Plot did not end it.
+    assert result.state.decision_stack[-1].kind == "turn"
+    assert apply_whole(engine, state, _play(LIFE)).state.players[0] == done
+
+
+def test_water_of_life_needs_both_the_water_and_the_spice() -> None:
+    # One resource does not pay a two-resource cost: with no water or no
+    # spice the card is not offered (FAQ p. 2), whatever else the seat holds.
+    engine, no_water = _life_hand(resources=Resources(solari=9, spice=5, water=0))
+    assert legal_intrigue_play_actions(no_water, 0) == ()
+    assert _play(LIFE) not in engine.whole_actions(no_water, 0)
+
+    _, no_spice = _life_hand(resources=Resources(solari=9, spice=0, water=4))
+    assert legal_intrigue_play_actions(no_spice, 0) == ()
+
+    _, exact = _life_hand(resources=Resources(spice=1, water=1))
+    assert legal_intrigue_play_actions(exact, 0) == (_play(LIFE),)
+    done = apply_whole(engine, exact, _play(LIFE)).state.players[0]
+    assert done.resources == Resources(spice=0, water=0)
+
+
+def test_water_of_life_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`: the seat keeps
+    # the card, the water and the spice and takes another turn action.
+    engine, state = _life_hand()
+    actions = engine.whole_actions(state, 0)
+    assert _play(LIFE) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (LIFE,)
+    assert placed.players[0].resources == state.players[0].resources
+
+
+def test_water_of_life_draws_every_card_when_fewer_than_three_remain() -> None:
+    # "draw as many as exist": with two cards in the deck and nothing in the
+    # discard pile there is nothing to shuffle, and the draw takes the two.
+    engine, state = _life_hand(deck=2, discard=0)
+    before = state.players[0]
+    assert legal_intrigue_play_actions(state, 0) == (_play(LIFE),)
+
+    done = apply_whole(engine, state, _play(LIFE)).state.players[0]
+
+    assert done.deck == ()
+    assert done.discard_pile == ()
+    assert done.hand == (*before.hand, *before.deck)
+    assert done.resources == Resources(solari=1, spice=0, water=0)
+
+
+def test_water_of_life_reshuffles_the_discard_pile_to_finish_the_draw() -> None:
+    # With the deck too short the discard pile is shuffled to make a new deck
+    # and the draw goes on (imperium-base.md 11, "카드 뽑기" `[DI p. 16]`): two
+    # cards from the old deck, then one from the new one.
+    engine, state = _life_hand(deck=2, discard=3)
+    before = state.players[0]
+
+    opened = apply_whole(engine, state, _play(LIFE)).state
+    assert opened.decision_stack[-1].kind == "personal_draw_reshuffle"
+    settled = _settle(engine, opened)
+
+    done = settled.players[0]
+    assert len(done.hand) == len(before.hand) + 3
+    assert done.hand[: len(before.hand) + 2] == (*before.hand, *before.deck)
+    assert len(done.deck) == 2
+    assert done.discard_pile == ()
+    held = before.hand + before.deck + before.discard_pile
+    assert set(done.hand + done.deck) == set(held)
+    assert settled.intrigue_discard == (LIFE,)
+
+
+def test_water_of_life_reshuffles_a_discard_pile_when_the_deck_is_empty() -> None:
+    # An empty deck is no bar while the discard pile holds cards: the shuffle
+    # makes the deck and all three cards come from it.
+    engine, state = _life_hand(deck=0, discard=4)
+    assert legal_intrigue_play_actions(state, 0) == (_play(LIFE),)
+    before = state.players[0]
+
+    settled = _settle(engine, apply_whole(engine, state, _play(LIFE)).state)
+
+    done = settled.players[0]
+    assert len(done.hand) == len(before.hand) + 3
+    assert len(done.deck) == 1
+    assert done.discard_pile == ()
+
+
+def test_water_of_life_is_not_played_when_deck_and_discard_are_both_empty() -> None:
+    # "Water of Life는 ... 비용 줄이라 덱과 버린 더미가 모두 비면 **막는다**"
+    # (imperium-base.md 13.3, OQ-113 (C): a line with a cost needs a live
+    # reward, so the water and the spice are never paid for no card).
+    engine, state = _life_hand(deck=0, discard=0, resources=Resources(spice=3, water=3))
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert _play(LIFE) not in engine.whole_actions(state, 0)
+    assert state.players[0].resources == Resources(spice=3, water=3)
+
+    # One card anywhere is enough: the draw then changes something.
+    _, one = _life_hand(deck=1, discard=0)
+    assert legal_intrigue_play_actions(one, 0) == (_play(LIFE),)
+    _, one_discarded = _life_hand(deck=0, discard=1)
+    assert legal_intrigue_play_actions(one_discarded, 0) == (_play(LIFE),)
+
+
+def test_water_of_life_cards_are_revealed_at_once_in_the_reveal_turn() -> None:
+    # "Reveal turn에 뽑으면 바로 공개해 이번 turn에 쓴다" `[FAQ p. 3]`
+    # (imperium-base.md 13.2 Poison Snooper row, 14): in the Reveal turn the
+    # three drawn cards go straight into play instead of the hand.
+    engine, state = _life_hand()
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    before = revealed.players[0]
+    assert _play(LIFE) in engine.whole_actions(revealed, 0)
+
+    result = apply_whole(engine, revealed, _play(LIFE))
+    done = result.state.players[0]
+
+    assert done.hand == before.hand == ()
+    assert done.in_play == (*before.in_play, *before.deck[:3])
+    assert done.deck == before.deck[3:]
+    assert [e.kind for e in result.events].count("personal_card_late_revealed") == 3
+    assert done.resources == Resources(solari=1, spice=0, water=0)
+
+
+def test_water_of_life_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _life_hand()
+    state = _seat(
+        state, 1, intrigue_cards=(LIFE,), resources=Resources(spice=3, water=3)
+    )
+    assert legal_intrigue_play_actions(state, 1) == ()

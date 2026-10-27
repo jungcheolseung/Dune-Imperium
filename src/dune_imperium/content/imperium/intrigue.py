@@ -16,6 +16,7 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.effect_dsl import (
+    DrawPersonalCards,
     EffectSection,
     GainCombatStrength,
     GainInfluence,
@@ -232,6 +233,18 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("water_of_life", "Water of Life"),
         copies=1,
+        # "1 water + 1 spice -> draw 3 cards" [Water of Life card, app text]:
+        # one cost line paying both resources, so a draw with both piles
+        # empty is a cost with no live reward and the card is not played
+        # (OQ-113 (C), imperium-base.md 13.3).
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(water=1, spice=1),),
+                    rewards=(DrawPersonalCards(3),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("windfall", "Windfall"),
