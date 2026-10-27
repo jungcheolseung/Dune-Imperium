@@ -3647,7 +3647,7 @@ def test_bindu_suspension_passing_is_the_press_and_keeping_the_turn_is_not() -> 
     manager, game_id = _bindu_game()
     session = manager._get(game_id)
 
-    def offered() -> list[JsonObject]:
+    def offered() -> list[dict[str, object]]:
         return _rows(manager.legal_actions(game_id, 0)["actions"])
 
     play = next(a for a in offered() if a["action_id"] == "play_intrigue")

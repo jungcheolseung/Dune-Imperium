@@ -143,6 +143,9 @@ OTHER_FRAME_KEYS = frozenset(
         "reveal_units_deployed",
         "revealed_card_count",
         "separate_effect",
+        # Refocus's reshuffle of the deck along with the discard pile
+        # (``card_draw.SHUFFLE_DECK_KEY``).
+        "shuffle_deck",
         "skill_reveal_granted",
         "source",
         "spice_must_flow_acquired",
