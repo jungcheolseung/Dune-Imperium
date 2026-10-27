@@ -1,5 +1,6 @@
 """Tests for the supported ruleset boundary."""
 
+from itertools import product
 from typing import Any
 
 import pytest
@@ -254,63 +255,73 @@ def test_the_original_game_has_its_own_identifier_prefix() -> None:
     assert RulesetConfig(base_game="imperium").base_game is BaseGame.IMPERIUM  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize(
-    "option",
-    ["choam_module", "bloodlines", "immortality", "arrakeen_scouts"],
+_EXPANSIONS = (
+    "choam_module",
+    "promo_cards",
+    "rise_of_ix",
+    "bloodlines",
+    "tech_module",
+    "immortality",
+    "go_to_11",
+    "epic_game",
+    "arrakeen_scouts",
 )
-def test_uprising_expansions_are_not_offered_with_the_original_game(
-    option: str,
-) -> None:
-    # Plan 4.2 item 1: CHOAM, Bloodlines and Scouts are Uprising's;
-    # Immortality with the original game is stage P7, its Scouts P8.
-    with pytest.raises(ValueError, match=f"{option} is not offered with the imperium"):
-        RulesetConfig(base_game=BaseGame.IMPERIUM, **{option: True})
 
 
-def test_rise_of_ix_is_offered_with_the_original_game_only() -> None:
-    # Uprising + Rise of Ix [Main p. 18] is stage P7.
-    with pytest.raises(ValueError, match="rise_of_ix is not offered with the uprising"):
-        RulesetConfig(rise_of_ix=True)
-
-
-def test_epic_game_on_the_original_game_needs_rise_of_ix() -> None:
-    # Plan 9 item 9: Epic Game Mode belongs to Rise of Ix [Rise of Ix p. 10]
-    # there; on Uprising it needs no other option (OQ-092).
-    with pytest.raises(ValueError, match="requires Rise of Ix"):
-        RulesetConfig(base_game=BaseGame.IMPERIUM, epic_game=True)
-    assert RulesetConfig(epic_game=True).epic_game is True
-
-
-def test_from_identifier_rebuilds_every_original_game_combination() -> None:
-    from itertools import product
-
-    seen = 0
-    for promo, ix, epic in product((False, True), repeat=3):
-        if epic and not ix:
+def _combinations(base_game: BaseGame) -> list[RulesetConfig]:
+    configs = []
+    for values in product((False, True), repeat=len(_EXPANSIONS)):
+        options: dict[str, Any] = dict(zip(_EXPANSIONS, values, strict=True))
+        if (options["tech_module"] and not options["bloodlines"]) or (
+            options["go_to_11"] and not options["immortality"]
+        ):
             continue
-        config = RulesetConfig(
-            base_game=BaseGame.IMPERIUM,
-            promo_cards=promo,
-            rise_of_ix=ix,
-            epic_game=epic,
-        )
-        assert RulesetConfig.from_identifier(config.identifier) == config
-        seen += 1
-    assert seen == 6
+        configs.append(RulesetConfig(base_game=base_game, **options))
+    return configs
+
+
+def test_every_expansion_combines_with_either_base_game() -> None:
+    # User decision 2026-10-27: "모든 확장은 서로 서로 다양한 조합으로 결합될
+    # 수 있어야해. 다만 base나 uprising 둘 중 하나는 꼭 있어야 하고". Only an
+    # expansion's own parts keep their requirement: the Tech Module comes
+    # with Bloodlines [Bloodlines pp. 6-7], Go to 11 with Immortality
+    # (OQ-091).
+    for base_game in BaseGame:
+        configs = _combinations(base_game)
+        # 2^9 option sets, less Tech without Bloodlines and Go to 11
+        # without Immortality: 3 of 4 for each pair.
+        assert len(configs) == 512 * 3 // 4 * 3 // 4 == 288
+        identifiers = {config.identifier for config in configs}
+        assert len(identifiers) == 288
+        for config in configs:
+            assert RulesetConfig.from_identifier(config.identifier) == config
+    assert (
+        RulesetConfig(base_game=BaseGame.IMPERIUM, choam_module=True).identifier
+        == "imperium-4p-choam"
+    )
+    assert (
+        RulesetConfig(rise_of_ix=True, bloodlines=True).identifier
+        == "uprising-4p-base+ix+bloodlines"
+    )
+    assert (
+        RulesetConfig(base_game=BaseGame.IMPERIUM, epic_game=True).identifier
+        == "imperium-4p-base+epic"
+    )
+
+
+def test_from_identifier_refuses_an_unknown_original_game_identifier() -> None:
     for bad in (
         "imperium-3p-base",
         "imperium-4p-ix",
         "imperium-4p-base+ix+promo",
         "imperium-4p-base+epic+ix",
+        "dune-4p-base",
     ):
         with pytest.raises(ValueError, match="unknown ruleset identifier"):
             RulesetConfig.from_identifier(bad)
     # The identifier parses; the configuration itself rejects the option.
-    for refused in ("imperium-4p-choam", "imperium-4p-base+bloodlines"):
-        with pytest.raises(ValueError, match="is not offered with the imperium"):
-            RulesetConfig.from_identifier(refused)
-    with pytest.raises(ValueError, match="is not offered with the uprising"):
-        RulesetConfig.from_identifier("uprising-4p-base+ix")
+    with pytest.raises(ValueError, match="requires the Bloodlines"):
+        RulesetConfig.from_identifier("imperium-4p-base+tech")
 
 
 def test_the_axis_leaves_uprising_state_hashes_alone() -> None:

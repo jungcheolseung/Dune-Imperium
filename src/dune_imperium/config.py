@@ -17,27 +17,6 @@ class BaseGame(StrEnum):
     IMPERIUM = "imperium"
 
 
-# The expansion options each base game may combine with (plan 4.2 item 1,
-# 9 items 8-9). CHOAM, Bloodlines and Arrakeen Scouts are Uprising's; Rise
-# of Ix is the original game's for now (Uprising + Ix is stage P7, the
-# original game's Scouts P8, Immortality with the original game P7), and
-# its Epic Game Mode needs Rise of Ix there [Rise of Ix p. 10].
-_OPTIONS_BY_BASE_GAME: Final = {
-    BaseGame.UPRISING: frozenset(
-        {
-            "choam_module",
-            "promo_cards",
-            "bloodlines",
-            "tech_module",
-            "immortality",
-            "go_to_11",
-            "epic_game",
-            "arrakeen_scouts",
-        }
-    ),
-    BaseGame.IMPERIUM: frozenset({"promo_cards", "rise_of_ix", "epic_game"}),
-}
-_EXPANSION_OPTIONS: Final = frozenset().union(*_OPTIONS_BY_BASE_GAME.values())
 _IDENTIFIER_PREFIXES: Final = {
     BaseGame.UPRISING: "uprising-4p-",
     BaseGame.IMPERIUM: "imperium-4p-",
@@ -62,8 +41,12 @@ class RulesetConfig:
     The first implementation target is specifically the four-player Uprising
     ruleset.  Keeping this restriction explicit prevents unsupported player
     counts from silently entering engine state. ``base_game`` selects the
-    original Dune: Imperium instead (docs/base-game-and-ix-plan.md); each
-    base game allows its own expansion options.
+    original Dune: Imperium instead (docs/base-game-and-ix-plan.md). Every
+    expansion combines with either base game and with the others (user
+    decision 2026-10-27: "모든 확장은 서로 서로 다양한 조합으로 결합될 수
+    있어야해. 다만 base나 uprising 둘 중 하나는 꼭 있어야 하고"); the
+    engine refuses to set up a combination whose content is not in it yet
+    (``rules.setup``).
     """
 
     players: int = 4
@@ -122,9 +105,9 @@ class RulesetConfig:
     # themselves assigned at random the odds are the same. Off by default
     # (the engine, CLIs and training keep the printed deal).
     first_player_seat_zero: bool = False
-    # The Rise of Ix expansion (docs/rules/rise-of-ix.md) on the original
-    # base game: its board overlay, Tech tiles, Dreadnoughts, Shipping
-    # track and cards (stage P4). Off by default.
+    # The Rise of Ix expansion (docs/rules/rise-of-ix.md): its board overlay,
+    # Tech tiles, Dreadnoughts, Shipping track and cards (stage P4 on the
+    # original game; with Uprising, [Main p. 18], stage P7). Off by default.
     rise_of_ix: bool = False
 
     # Options added after saves and records already held state hashes: the
@@ -143,14 +126,6 @@ class RulesetConfig:
         if base_game is not self.base_game:
             # A plain string names its base game too (a save or a CLI).
             object.__setattr__(self, "base_game", base_game)
-        allowed = _OPTIONS_BY_BASE_GAME[base_game]
-        for option in sorted(_EXPANSION_OPTIONS - allowed):
-            if getattr(self, option):
-                message = f"{option} is not offered with the {base_game} base game"
-                raise ValueError(message)
-        if base_game is BaseGame.IMPERIUM and self.epic_game and not self.rise_of_ix:
-            message = "Epic Game Mode on the original game requires Rise of Ix"
-            raise ValueError(message)
         if self.tech_module and not self.bloodlines:
             message = "the Tech Module requires the Bloodlines expansion"
             raise ValueError(message)

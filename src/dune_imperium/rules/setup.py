@@ -575,7 +575,7 @@ def create_initial_state(
     Every actual shuffle and deal is routed through the returned chance stream.
     """
 
-    _require_board(config)
+    _require_content(config)
     _validate_leader_selection(config, leader_ids)
     resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
 
@@ -750,7 +750,7 @@ def create_draft_initial_state(
 
     if not config.leader_draft:
         raise ValueError("the draft setup requires the leader_draft option")
-    _require_board(config)
+    _require_content(config)
     resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
 
     conflict = _conflict_setup(config, resolver)
@@ -834,13 +834,17 @@ def create_draft_initial_state(
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 
-def _require_board(config: RulesetConfig) -> None:
-    """Refuse a base game whose board is not in the engine yet: the original
-    Dune: Imperium's content arrives in stage P2 of
-    docs/base-game-and-ix-plan.md."""
+def _require_content(config: RulesetConfig) -> None:
+    """Refuse a combination whose content is not in the engine yet, rather
+    than play it without: the original Dune: Imperium's board arrives in
+    stage P2 of docs/base-game-and-ix-plan.md, Rise of Ix in P4 (P7 with
+    Uprising)."""
 
     if not content_for(config).board_spaces:
         message = f"the {config.base_game} base game has no board in the engine yet"
+        raise NotImplementedError(message)
+    if config.rise_of_ix:
+        message = "Rise of Ix has no content in the engine yet"
         raise NotImplementedError(message)
 
 

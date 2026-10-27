@@ -503,9 +503,12 @@ def test_saves_name_their_base_game() -> None:
     )
     with pytest.raises(SaveError, match="base game"):
         parse_save_document({**document, "ruleset": {**ruleset, "base_game": "dune"}})
-    # Rise of Ix is not offered with Uprising (stage P7).
-    with pytest.raises(SaveError, match="rise_of_ix"):
-        parse_save_document({**document, "ruleset": {**ruleset, "rise_of_ix": True}})
+    # Every expansion combines with either base game (user decision
+    # 2026-10-27); Uprising with Rise of Ix reads back as such.
+    uprising_ix = parse_save_document(
+        {**document, "ruleset": {**ruleset, "rise_of_ix": True}}, check_versions=False
+    )
+    assert uprising_ix.replay.ruleset == RulesetConfig(rise_of_ix=True)
 
 
 # --- app_ai seats ------------------------------------------------------------

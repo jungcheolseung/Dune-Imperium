@@ -167,6 +167,11 @@ def test_the_original_game_has_no_content_but_its_starting_deck_yet() -> None:
         }
 
 
-def test_a_base_game_without_a_board_cannot_be_set_up() -> None:
+def test_a_combination_without_its_content_cannot_be_set_up() -> None:
+    # Every expansion combines with either base game (user decision
+    # 2026-10-27), but the engine plays only what it holds: no original
+    # board before stage P2, no Rise of Ix before P4 (P7 with Uprising).
     with pytest.raises(NotImplementedError, match="imperium base game has no board"):
         UprisingRulesEngine().reset(RulesetConfig(base_game=BaseGame.IMPERIUM), 0)
+    with pytest.raises(NotImplementedError, match="Rise of Ix has no content"):
+        UprisingRulesEngine().reset(RulesetConfig(rise_of_ix=True), 0)

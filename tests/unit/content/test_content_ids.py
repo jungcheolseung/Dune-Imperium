@@ -30,7 +30,7 @@ CROSS_KIND_IDS = {"deliver_supplies": frozenset({"board_space", "contract"})}
 
 
 def _widest(base_game: BaseGame) -> RulesetConfig:
-    """The base game's configuration with every option it allows."""
+    """The base game with every expansion (each combines with either)."""
 
     for flags in product((True, False), repeat=10):
         names = (
