@@ -353,10 +353,18 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=2,
         acquisition_cost=4,
     ),
+    # App table: cost 3, 2 copies, Spacing Guild, Spacing Guild, Reveal 2
+    # Persuasion. Agent: "Draw 1 card" (the card-draw icon alone; its own step,
+    # OQ-106).
     ImperiumCardEntry(
         card=imperium_card("space_travel", "Space Travel"),
         copies=2,
         acquisition_cost=3,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD,),
+        agent_effect=PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("spice_hunter", "Spice Hunter"),

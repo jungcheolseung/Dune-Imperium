@@ -1377,3 +1377,44 @@ def test_sardaukar_infantry_reveals_one_persuasion_and_two_swords() -> None:
     assert frame["sword_strength"] == 2
     # Nothing else holds the Reveal open; the troop's 2 and the card's 2 swords.
     assert _do(engine, revealed, "finish_reveal").players[0].combat_strength == 2 + 2
+
+
+# --- Space Travel -----------------------------------------------------------------
+
+
+def test_space_travel_matches_the_app_table() -> None:
+    # App attribute table: cost 3, 2 copies, Spacing Guild, Spacing Guild,
+    # Reveal 2 Persuasion and no swords.
+    entry = IMPERIUM_CARDS_BY_ID["space_travel"]
+    assert entry.card.name == "Space Travel"
+    assert entry.acquisition_cost == 3
+    assert entry.copies == 2
+    assert entry.factions == (Faction.SPACING_GUILD,)
+    assert entry.agent_icons == (AgentIcon.SPACING_GUILD,)
+    assert entry.agent_effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:space_travel:1") is entry
+
+
+def test_space_travel_draws_one_card() -> None:
+    """P0 sweep: "AGENT: draw 1"; the draw icon is mandatory and a hidden draw
+    is its own step ([FAQ p. 3], imperium-base.md 16, OQ-106)."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "space_travel")
+    top = state.players[0].deck[0]
+    placed = _place(engine, state, "foldspace", "space_travel")
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    assert resolved.players[0].hand == (*placed.players[0].hand, top)
+    assert resolved.players[0].deck == placed.players[0].deck[1:]
+
+
+def test_space_travel_reveals_two_persuasion() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "space_travel", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 2
+    assert frame["sword_strength"] == 0
+
