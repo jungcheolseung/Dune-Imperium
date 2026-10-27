@@ -16,6 +16,7 @@ from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.effect_dsl import (
+    DeployFromGarrison,
     HasAlliance,
     LoseTroops,
     PayResources,
@@ -1992,3 +1993,174 @@ def test_know_their_ways_at_the_top_of_the_fremen_track_fizzles() -> None:
 
     assert done.players[0].influence == Influence(emperor=2, fremen=6, bene_gesserit=3)
     assert done.intrigue_discard == (card,)
+
+
+# --- Rapid Mobilization (Plot) ----------------------------------------------
+
+MOBILIZATION = _intrigue("rapid_mobilization")
+
+
+def _deploy_troops(count: int) -> DomainAction:
+    return DomainAction(
+        action_id="deploy_intrigue_troops", actor=0, arguments=(("count", count),)
+    )
+
+
+def _mobilization_hand(garrison: int) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 holding Rapid Mobilization with ``garrison`` troops at home."""
+
+    return _plot_hand(
+        MOBILIZATION,
+        troops_garrison=garrison,
+        troops_supply=12 - garrison,
+        troops_conflict=0,
+    )
+
+
+def test_rapid_mobilization_is_one_cost_free_plot_deploying_any_number() -> None:
+    # "Plot: Deploy any number of your garrisoned troops to the Conflict"
+    # [Rapid Mobilization card, Steam app text]; 1 copy [DI p. 3]. No arrow:
+    # a cost-free Plot.
+    entry = intrigue_card_for_instance(MOBILIZATION)
+    assert entry.card.name == "Rapid Mobilization"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert entry.options[0].sections[0].costs == ()
+    assert entry.options[0].sections[0].rewards == (DeployFromGarrison(up_to=None),)
+    assert intrigue_card_text(entry) == [
+        "Plot — Deploy any number of troops from your garrison to the Conflict"
+    ]
+    assert "rapid_mobilization" not in {
+        entry.card.card_id for entry in INTRIGUE_CARDS
+    }
+
+
+def test_rapid_mobilization_deploys_the_whole_garrison_past_two_troops() -> None:
+    # "any number of your garrisoned troops": the choice runs from none up to
+    # every troop at home, with no two-troop limit (the limit is the Agent
+    # turn's `[DI p. 10]`, the card is its own effect). A Plot is played at
+    # any time in the seat's own turn `[DI pp. 7-8]` (imperium-base.md 5).
+    engine, state = _mobilization_hand(5)
+    assert legal_intrigue_play_actions(state, 0) == (_play(MOBILIZATION),)
+
+    opened = apply_whole(engine, state, _play(MOBILIZATION)).state
+    # Nothing moves until the owner names the number; the card waits in hand.
+    assert opened.players[0].troops_garrison == 5
+    assert opened.players[0].intrigue_cards == (MOBILIZATION,)
+    assert engine.whole_actions(opened, 0) == tuple(_deploy_troops(n) for n in range(6))
+    assert engine.whole_actions(opened, 1) == ()
+
+    done = apply_whole(engine, opened, _deploy_troops(5)).state
+
+    player = done.players[0]
+    assert player.troops_garrison == 0
+    assert player.troops_conflict == 5
+    assert player.troops_supply == 7
+    assert player.intrigue_cards == ()
+    assert done.intrigue_discard == (MOBILIZATION,)
+    # The turn goes on: the Plot did not end it.
+    assert done.decision_stack[-1].kind == "turn"
+
+
+def test_rapid_mobilization_may_deploy_only_some_of_the_garrison() -> None:
+    # "any number" includes a part of the garrison; the rest stays home.
+    engine, state = _mobilization_hand(4)
+    opened = apply_whole(engine, state, _play(MOBILIZATION)).state
+
+    done = apply_whole(engine, opened, _deploy_troops(3)).state
+
+    assert done.players[0].troops_garrison == 1
+    assert done.players[0].troops_conflict == 3
+
+
+def test_rapid_mobilization_may_deploy_zero_troops() -> None:
+    # "'any number'는 0 가능" `[FAQ p. 3]` (imperium-base.md 13.2, the
+    # Retreat row the FAQ points Rapid Mobilization at; 13.3: "Rapid
+    # Mobilization은 0개를 배치하며 낼 수 있다"): zero is a number, the card is
+    # still played and discarded.
+    engine, state = _mobilization_hand(3)
+    opened = apply_whole(engine, state, _play(MOBILIZATION)).state
+
+    done = apply_whole(engine, opened, _deploy_troops(0)).state
+
+    assert done.players[0].troops_garrison == 3
+    assert done.players[0].troops_conflict == 0
+    assert done.intrigue_discard == (MOBILIZATION,)
+    assert done.decision_stack[-1].kind == "turn"
+
+
+def test_rapid_mobilization_is_played_with_an_empty_garrison() -> None:
+    # "garrison에 troop이 없어도 낸다(0개 배치; OQ-113 (2) 1)" (imperium-base.md
+    # 13.3, OQ-113 (C): "비용이 없는 효과는 모두 불발해도 낸다"): the card is
+    # offered, only the zero deployment is, and the play is logged as a play
+    # that changes nothing.
+    engine, state = _mobilization_hand(0)
+    assert legal_intrigue_play_actions(state, 0) == (_play(MOBILIZATION),)
+
+    played = apply_whole(engine, state, _play(MOBILIZATION))
+    assert engine.whole_actions(played.state, 0) == (_deploy_troops(0),)
+    assert "intrigue_without_effect" in [e.kind for e in played.events]
+
+    done = apply_whole(engine, played.state, _deploy_troops(0)).state
+    assert done.players[0].troops_conflict == 0
+    assert done.intrigue_discard == (MOBILIZATION,)
+
+
+def test_rapid_mobilization_counts_as_a_deployment_this_turn() -> None:
+    # "When you deploy 4+ troops to the Conflict in a turn" (Baron's
+    # Masterstroke, OQ-115: "그 turn에 배치한 troop"): troops deployed by an
+    # Intrigue are deployed this turn like Detonation's, so the seat's
+    # count of the turn's deployments rises with them.
+    engine, state = _mobilization_hand(4)
+    opened = apply_whole(engine, state, _play(MOBILIZATION)).state
+
+    done = apply_whole(engine, opened, _deploy_troops(4)).state
+
+    assert done.players[0].units_deployed_turn == 4
+    assert done.players[0].units_deployed_peak == 4
+
+
+def test_rapid_mobilization_in_the_reveal_turn_adds_troop_strength() -> None:
+    # "troop 2" strength `[DI p. 11]` (imperium-base.md 10): a Plot played in
+    # the Reveal turn puts its troops into the Conflict before the strength
+    # is set, so each adds 2.
+    engine, state = _mobilization_hand(3)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _play(MOBILIZATION) in engine.whole_actions(revealed, 0)
+    swords = dict(revealed.decision_stack[-1].context)["sword_strength"]
+    assert isinstance(swords, int)
+    opened = apply_whole(engine, revealed, _play(MOBILIZATION)).state
+
+    done = apply_whole(engine, opened, _deploy_troops(3)).state
+
+    assert done.players[0].troops_conflict == 3
+    assert done.players[0].combat_strength == 2 * 3 + swords
+
+
+def test_rapid_mobilization_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _mobilization_hand(3)
+    actions = engine.whole_actions(state, 0)
+    assert _play(MOBILIZATION) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (MOBILIZATION,)
+    assert placed.players[0].troops_garrison == 3
+
+
+def test_rapid_mobilization_is_not_a_combat_card_nor_offered_off_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _mobilization_hand(3)
+    other = _seat(state, 1, intrigue_cards=(MOBILIZATION,), troops_garrison=3)
+    assert legal_intrigue_play_actions(other, 1) == ()
+
+    fighting = _combat_state(
+        _fighter(0, 2, intrigue_cards=(MOBILIZATION,)), _fighter(1, 1)
+    )
+    assert legal_intrigue_play_actions(fighting, 0) == ()

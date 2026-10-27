@@ -18,6 +18,7 @@ from typing import Final
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    DeployFromGarrison,
     DrawPersonalCards,
     EffectSection,
     GainCombatStrength,
@@ -241,6 +242,11 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("rapid_mobilization", "Rapid Mobilization"),
         copies=1,
+        # "Deploy any number of your garrisoned troops to the Conflict"
+        # [Rapid Mobilization card, app text]: a cost-free Plot. "Any number"
+        # allows zero [FAQ p. 3], and a cost-free effect is played even with
+        # an empty garrison (OQ-113 (C), (2) 1; imperium-base.md 13.3).
+        options=(_plot(EffectSection(rewards=(DeployFromGarrison(up_to=None),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("recruitment_mission", "Recruitment Mission"),

@@ -951,12 +951,16 @@ class SummonSandworm:
 
 @dataclass(frozen=True, slots=True)
 class DeployFromGarrison:
-    """Deploy up to ``up_to`` garrison troops to the Conflict (player choice)."""
+    """Deploy up to ``up_to`` garrison troops to the Conflict (player choice).
 
-    up_to: int
+    ``up_to=None`` is a printed "any number" [Rapid Mobilization card]: as
+    for a retreat, zero is a choice too [FAQ p. 3].
+    """
+
+    up_to: int | None
 
     def __post_init__(self) -> None:
-        if self.up_to < 1:
+        if self.up_to is not None and self.up_to < 1:
             raise ValueError("deployment limit must be positive")
 
 
