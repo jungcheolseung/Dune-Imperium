@@ -613,6 +613,24 @@ def apply_opponent_card_discard(
         discarded = discard_personal_card_from_hand(
             state, action.actor, card_id, source=source
         )
+    owed = context.get("opponent_discards_remaining", 1)
+    if isinstance(owed, bool) or not isinstance(owed, int):
+        raise RuntimeError("Covert Operation frame has invalid discard count")
+    if not confirmed and owed > 1 and discarded.state.players[action.actor].hand:
+        # "Each opponent discards two cards": the same opponent picks again,
+        # as many as the hand holds (OQ-118), before the next one is asked.
+        frame = discarded.state.decision_stack[-1]
+        context["opponent_discards_remaining"] = owed - 1
+        return RuleResult(
+            state=replace(
+                discarded.state,
+                decision_stack=(
+                    *discarded.state.decision_stack[:-1],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                ),
+            ),
+            events=discarded.events,
+        )
     popped = replace(
         discarded.state,
         decision_stack=discarded.state.decision_stack[:-1],

@@ -915,7 +915,7 @@ def _opponents_decide(
     player, card_id = _subject(dict(context))
     source = agent_card_source(state.round_number, player, card_id)
     match reward:
-        case EachOpponentDiscardsCard():
+        case EachOpponentDiscardsCard(count=count):
             # Every opponent is asked, the next seat first (OQ-138, user
             # ruling 2026-10-26, as OQ-131 and Holy War's unit loss): a seat
             # with an empty hand gets the window too and confirms that it
@@ -925,6 +925,7 @@ def _opponents_decide(
             # (``agent_effects.apply_opponent_card_discard``).
             seats = state.config.players
             targets = tuple((player + offset) % seats for offset in range(1, seats))
+            is_covert_operation = ":covert_operation:" in card_id
             frames = tuple(
                 DecisionFrame(
                     kind=FrameKind.OPPONENT_CARD_DISCARD,
@@ -933,6 +934,8 @@ def _opponents_decide(
                         owner=target,
                         prompt=(
                             "Choose a card to discard for Covert Operation"
+                            if state.players[target].hand and is_covert_operation
+                            else "Choose a card to discard for Reverend Mother Mohiam"
                             if state.players[target].hand
                             else "No card to discard"
                         ),
@@ -940,6 +943,14 @@ def _opponents_decide(
                     context=(
                         ("covert_operation_card_id", card_id),
                         ("covert_operation_owner", player),
+                        # "Each opponent discards two cards" (Reverend Mother
+                        # Mohiam): the picks still owed, as many as the hand
+                        # holds (OQ-118); Covert Operation's one needs no key.
+                        *(
+                            (("opponent_discards_remaining", count),)
+                            if count > 1
+                            else ()
+                        ),
                         (PRINTER_KEY, _card_printer(card_id)),
                     ),
                 )

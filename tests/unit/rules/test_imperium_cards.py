@@ -2580,7 +2580,9 @@ def test_missionaria_protectiva_condition_is_judged_when_it_resolves() -> None:
 
     engine, state = _start()
     placed = _missionaria_placed(engine, state, bene_gesserit=True)
-    gone = _seat(placed, in_play=())
+    initiate = "imperium:bene_gesserit_initiate:0"
+    remaining = tuple(card for card in placed.players[0].in_play if card != initiate)
+    gone = _seat(placed, in_play=remaining)
     assert not _influence_rows(engine, gone)
 
 
@@ -2724,3 +2726,150 @@ def test_gene_manipulation_reveals_two_persuasion() -> None:
     frame = _reveal(engine, state)
     assert frame["persuasion"] == 2
     assert frame["sword_strength"] == 0
+
+
+# --- Reverend Mother Mohiam -------------------------------------------------------
+
+
+def test_reverend_mother_mohiam_matches_the_app_table() -> None:
+    # App attribute table: cost 6, 1 copy, Emperor and Bene Gesserit, Emperor
+    # and Bene Gesserit, Reveal 2 Persuasion and 2 spice (tags NamedCharacter,
+    # WantBG).
+    entry = IMPERIUM_CARDS_BY_ID["reverend_mother_mohiam"]
+    assert entry.card.name == "Reverend Mother Mohiam"
+    assert entry.acquisition_cost == 6
+    assert entry.copies == 1
+    assert entry.factions == (Faction.EMPEROR, Faction.BENE_GESSERIT)
+    assert entry.agent_icons == (AgentIcon.EMPEROR, AgentIcon.BENE_GESSERIT)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:reverend_mother_mohiam:0") is entry
+
+
+def _do_for(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    seat: int,
+    action_id: str,
+    **arguments: object,
+) -> GameState:
+    """``seat``'s own action (an opponent's window opened by seat 0's card)."""
+
+    action = next(
+        action
+        for action in engine.whole_actions(state, seat)
+        if action.action_id == action_id
+        and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+    )
+    return apply_whole(engine, state, action).state
+
+
+def _mohiam_played(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    hands: dict[int, tuple[str, ...]],
+    *,
+    bene_gesserit: bool = True,
+) -> GameState:
+    """Seat 0 sends Reverend Mother Mohiam to Secrets (a Bene Gesserit space,
+    no cost) with, or without, another Bene Gesserit card in play, the
+    opponents holding ``hands``; the box is resolved when the Bond holds."""
+
+    held, _ = _with_card(state, "reverend_mother_mohiam")
+    held = _seat(
+        held,
+        in_play=("imperium:bene_gesserit_initiate:0",) if bene_gesserit else (),
+    )
+    for seat, hand in hands.items():
+        held = _seat(held, seat, hand=hand)
+    return _place(engine, held, "secrets", "reverend_mother_mohiam")
+
+
+_HAND = ("imperium:dr_yueh:0", "imperium:stilgar:0", "imperium:space_travel:0")
+
+
+def test_reverend_mother_mohiam_each_opponent_discards_two_cards() -> None:
+    """"Mohiam | 상대가 버릴 카드를 고르고, 내 왼쪽부터 시계 방향" (imperium-base.md
+    13.2, [FAQ p. 3]); OQ-118: two cards where the hand holds them, one where it
+    holds one, and the opponent that has none confirms it discards nothing. The
+    opponents are asked one after the other, the next seat first."""
+
+    engine, state = _start()
+    placed = _mohiam_played(
+        engine,
+        state,
+        {1: _HAND, 2: ("imperium:space_travel:1",), 3: ()},
+    )
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    top = resolved.decision_stack[-1]
+    assert top.kind is FrameKind.OPPONENT_CARD_DISCARD
+    assert top.decision.owner == 1  # type: ignore[union-attr]
+    # Seat 1: two picks of its own, one card each.
+    first = _do_for(engine, resolved, 1, "discard_opponent_card", card_id=_HAND[1])
+    assert first.players[1].hand == (_HAND[0], _HAND[2])
+    assert first.decision_stack[-1].decision.owner == 1  # type: ignore[union-attr]
+    second = _do_for(engine, first, 1, "discard_opponent_card", card_id=_HAND[0])
+    assert second.players[1].hand == (_HAND[2],)
+    assert set(second.players[1].discard_pile) >= {_HAND[1], _HAND[0]}
+    # Seat 2 holds one card: it discards it and is done.
+    assert second.decision_stack[-1].decision.owner == 2  # type: ignore[union-attr]
+    third = _do_for(
+        engine, second, 2, "discard_opponent_card", card_id="imperium:space_travel:1"
+    )
+    assert third.players[2].hand == ()
+    assert third.decision_stack[-1].decision.owner == 3  # type: ignore[union-attr]
+    # Seat 3 holds none: its window opens and confirms there is nothing.
+    done = _do_for(engine, third, 3, "resolve_opponent_discard_without_card")
+    assert done.decision_stack[-1].kind is not FrameKind.OPPONENT_CARD_DISCARD
+    assert done.players[0].hand == placed.players[0].hand
+
+
+def test_reverend_mother_mohiam_opponent_with_two_cards_loses_them_both() -> None:
+    engine, state = _start()
+    two = _HAND[:2]
+    placed = _mohiam_played(engine, state, {1: two, 2: (), 3: ()})
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    first = _do_for(engine, resolved, 1, "discard_opponent_card", card_id=two[0])
+    second = _do_for(engine, first, 1, "discard_opponent_card", card_id=two[1])
+    assert second.players[1].hand == ()
+    assert second.decision_stack[-1].decision.owner == 2  # type: ignore[union-attr]
+
+
+def test_reverend_mother_mohiam_without_another_bene_gesserit_does_nothing() -> None:
+    """The Bond opens the box at the placement (OQ-028): alone, Mohiam makes no
+    opponent discard, and the turn goes on."""
+
+    engine, state = _start()
+    placed = _mohiam_played(
+        engine, state, {1: _HAND, 2: _HAND, 3: _HAND}, bene_gesserit=False
+    )
+    assert "resolve_agent_card_effect" not in _ids(engine, placed)
+    assert placed.decision_stack[-1].kind is not FrameKind.OPPONENT_CARD_DISCARD
+    assert all(placed.players[seat].hand == _HAND for seat in (1, 2, 3))
+
+
+def test_reverend_mother_mohiam_condition_is_judged_when_it_resolves() -> None:
+    """"조건은 해결할 때 판정한다(OQ-028)" (imperium-base.md 16): with the other
+    Bene Gesserit card gone from play before the box resolves, no opponent is
+    asked."""
+
+    engine, state = _start()
+    placed = _mohiam_played(engine, state, {1: _HAND, 2: _HAND, 3: _HAND})
+    initiate = "imperium:bene_gesserit_initiate:0"
+    remaining = tuple(card for card in placed.players[0].in_play if card != initiate)
+    gone = _seat(placed, in_play=remaining)
+    assert "resolve_agent_card_effect" not in _ids(engine, gone)
+
+
+def test_reverend_mother_mohiam_reveals_two_persuasion_and_two_spice() -> None:
+    engine, state = _start()
+    held, _ = _with_card(state, "reverend_mother_mohiam", alone=True)
+    held = _seat(held, resources=Resources())
+    revealed = _do(engine, held, "reveal_turn")
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (2, 0)
+    gained = _do(engine, revealed, "gain_reveal_resources")
+    assert gained.players[0].resources.spice == 2

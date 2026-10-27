@@ -1309,7 +1309,18 @@ class RecallAgent:
 @dataclass(frozen=True, slots=True)
 class EachOpponentDiscardsCard:
     """Each opponent discards a card [Covert Operation card]: every opponent
-    holding a card picks one, clockwise from the next seat."""
+    holding a card picks one, clockwise from the next seat.
+
+    ``count``: "each opponent discards two cards" [Reverend Mother Mohiam
+    card] -- each opponent picks that many, as many as the hand holds
+    (OQ-118), one opponent after the other.
+    """
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("an opponent discards at least one card")
 
 
 @dataclass(frozen=True, slots=True)

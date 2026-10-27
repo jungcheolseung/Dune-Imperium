@@ -163,8 +163,9 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # original Imperium cards' new boxes (stage P3: Arrakis Recruiter, Spice
     # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence,
     # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
-    # Imperial Spy, Missionaria Protectiva, Gene Manipulation).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 14
+    # Imperial Spy, Missionaria Protectiva, Gene Manipulation, Reverend Mother
+    # Mohiam).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 15
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 

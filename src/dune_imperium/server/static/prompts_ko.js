@@ -13,6 +13,7 @@ const PROMPT_KO = {
   "Choose where to place the Spy you chose over two strength": "{strength} 2 대신 고른 {spy}를 배치할 위치 선택",
   "Choose a Spy to recall for this Reveal effect": "이 {reveal_turn} 효과로 소환할 {spy} 선택",
   "Choose a card to discard for Covert Operation": "비밀 작전 효과로 버릴 카드 선택",
+  "Choose a card to discard for Reverend Mother Mohiam": "버릴 카드 선택",
   "Choose a different faction to gain one Influence": "{influence_any} 1을 얻을 다른 {faction} 선택",
   "Masterstroke: secretly choose two Factions": "{leader} 능력: 비밀로 {faction} 둘 선택",
   "Choose a faction to gain one Influence": "{influence_any} 1을 얻을 {faction} 선택",

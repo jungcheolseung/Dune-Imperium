@@ -476,6 +476,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: (
             "You may trash a card, If Bene Gesserit Bond: Gain 2 spice"
         ),
+        PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: Each opponent discards 2 cards"
+        ),
     }
 )
 

@@ -529,6 +529,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: (
         "카드 1장 {trash} 가능, 베네 게세리트의 유대감이면: {spice:2}"
     ),
+    PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: (
+        "베네 게세리트의 유대감이면: 다른 플레이어 각자 카드 2장 버리기"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box

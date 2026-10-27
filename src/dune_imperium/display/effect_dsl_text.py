@@ -672,8 +672,12 @@ def reward_text(reward: Reward) -> str:
             return f"You may {text}" if optional else text.capitalize()
         case RecallAgent():
             return "Recall 1 Agent"
-        case EachOpponentDiscardsCard():
-            return "Each opponent discards a card"
+        case EachOpponentDiscardsCard(count=count):
+            return (
+                "Each opponent discards a card"
+                if count == 1
+                else f"Each opponent discards {count} cards"
+            )
         case EachOpponentLosesTroop(garrison_only=garrison_only):
             return (
                 "Each opponent loses one garrisoned troop"

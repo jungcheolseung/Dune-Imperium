@@ -380,10 +380,23 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=3,
         acquisition_cost=5,
     ),
+    # App table: cost 6, 1 copy, Emperor and Bene Gesserit, Emperor and Bene
+    # Gesserit, Reveal 2 Persuasion and 2 spice (tags NamedCharacter, WantBG).
+    # Agent: "If you have another Bene Gesserit card in play, each opponent
+    # discards two cards" -- judged at resolution (OQ-028); each opponent
+    # picks, clockwise from the player's left, as many as the hand holds
+    # [FAQ p. 3] (OQ-118). Reveal: "[P2] [2 spice]".
     ImperiumCardEntry(
         card=imperium_card("reverend_mother_mohiam", "Reverend Mother Mohiam"),
         copies=1,
         acquisition_cost=6,
+        factions=(Faction.EMPEROR, Faction.BENE_GESSERIT),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.BENE_GESSERIT),
+        agent_effect=(
+            PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND
+        ),
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     # App table: cost 1, 2 copies, Emperor, no Agent icons, Reveal 1 Persuasion
     # and 2 swords. A card with no Agent icon is a Reveal-only card [DI p. 9]:

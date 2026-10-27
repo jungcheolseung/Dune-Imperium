@@ -361,6 +361,11 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND = (
         "may_trash_and_gain_two_spice_if_bene_gesserit_bond"
     )
+    # Reverend Mother Mohiam: "If you have another Bene Gesserit card in play,
+    # each opponent discards two cards."
+    EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND = (
+        "each_opponent_discards_two_if_bene_gesserit_bond"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

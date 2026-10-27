@@ -976,6 +976,14 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ("trash", _line(TrashPersonalCard())),
                 ("spice", _line(GainResources(spice=2), condition=_BG_BOND)),
             ),
+            # Reverend Mother Mohiam (original game): "If you have another Bene
+            # Gesserit card in play, each opponent discards two cards" -- the
+            # Bond opens the box at the placement and is judged again when it
+            # resolves (OQ-028); each opponent picks, clockwise from the next
+            # seat, as many as the hand holds (OQ-118, [FAQ p. 3]).
+            _BOX.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: _box(
+                EachOpponentDiscardsCard(2), condition=_BG_BOND, requirement=_BG_BOND
+            ),
         }
     )
 )
