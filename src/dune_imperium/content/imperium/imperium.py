@@ -95,10 +95,18 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=2,
         acquisition_cost=1,
     ),
+    # App table: cost 3, 2 copies, Bene Gesserit, Landsraad, City and Spice
+    # Trade, Reveal 1 Persuasion. Agent: "Draw 1 card" (the card-draw icon
+    # alone; its own step, OQ-106).
     ImperiumCardEntry(
         card=imperium_card("bene_gesserit_initiate", "Bene Gesserit Initiate"),
         copies=2,
         acquisition_cost=3,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("bene_gesserit_sister", "Bene Gesserit Sister"),

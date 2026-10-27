@@ -487,3 +487,58 @@ def test_gun_thopter_cannot_deploy_from_an_empty_garrison() -> None:
     revealed = _do(engine, state, "reveal_turn")
     assert "deploy_reveal_card_troop" not in _ids(engine, revealed)
     assert "finish_reveal" in _ids(engine, revealed)
+
+
+# --- Bene Gesserit Initiate -------------------------------------------------------
+
+
+def test_bene_gesserit_initiate_matches_the_app_table() -> None:
+    # App attribute table: cost 3, 2 copies, Bene Gesserit, Landsraad, City and
+    # Spice Trade, Reveal 1 Persuasion and no swords.
+    entry = IMPERIUM_CARDS_BY_ID["bene_gesserit_initiate"]
+    assert entry.card.name == "Bene Gesserit Initiate"
+    assert entry.acquisition_cost == 3
+    assert entry.copies == 2
+    assert entry.factions == (Faction.BENE_GESSERIT,)
+    assert entry.agent_icons == (
+        AgentIcon.LANDSRAAD,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert entry.agent_effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:bene_gesserit_initiate:1") is entry
+
+
+def test_bene_gesserit_initiate_draws_one_card() -> None:
+    """P0 sweep: "AGENT: draw 1 (must; hidden draw, its own step -- OQ-106)".
+    The draw icon is mandatory ("everything else mandatory" [FAQ p. 3]), a
+    hidden draw (imperium-base.md 16, OQ-106), and takes the deck's top card."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "bene_gesserit_initiate")
+    state = _seat(state, resources=Resources(water=2))
+    owner = state.players[0]
+    top = owner.deck[0]
+    placed = _place(
+        engine, state, "imperium_research_station", "bene_gesserit_initiate"
+    )
+    assert placed.players[0].hand == tuple(
+        card for card in owner.hand if ":bene_gesserit_initiate:" not in card
+    )
+    # Mandatory: the turn cannot end with the draw still waiting.
+    assert "resolve_agent_card_effect" in _ids(engine, placed)
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    after = resolved.players[0]
+    assert after.hand == (*placed.players[0].hand, top)
+    assert after.deck == owner.deck[1:]
+
+
+def test_bene_gesserit_initiate_reveals_one_persuasion() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "bene_gesserit_initiate", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 1
+    assert frame["sword_strength"] == 0
