@@ -630,7 +630,7 @@ P2a에 지도자 넷을 넣는 까닭: 4인 판을 차리려면 서로 다른 �
   `imperium_battle_for_imperial_basin`, `imperium_secure_imperial_basin`, `imperium_siege_of_arrakeen`; Reserve `imperium_the_spice_must_flow`.
 - **원판에만 있는 이름 → 이름 그대로:** 칸 `conspire`, `wealth`, `foldspace`, `selective_breeding`, `hardy_warriors`, `stillsuits`,
   `hall_of_oratory`, `rally_troops`, `mentat`, `carthag`, `the_great_flat`, `secure_contract`, `sell_melange`; Conflict `battle_for_carthag`,
-  `cloak_and_dagger`, `desert_power`, `grand_vision`, `guild_bank_raid`, `machinations`, `raid_stockpiles`, `siege_of_carthag`,
+  `cloak_and_dagger`, `desert_power_conflict`(`desert_power`는 Uprising 카드 id라 종류 사이 겹침을 피함), `grand_vision`, `guild_bank_raid`, `machinations`, `raid_stockpiles`, `siege_of_carthag`,
   `skirmish_a`~`skirmish_d`(앱 `SkirmishA`~`D`, 카드면 파일 이름과의 짝은 P0 sweep), `sort_through_the_chaos`, `terrible_purpose`; Reserve
   `arrakis_liaison`; 지도자 `paul_atreides`, `duke_leto_atreides`, `glossu_rabban`, `baron_vladimir_harkonnen`, `count_ilban_richese`,
   `helena_richese`, `earl_memnon_thorvald`, `countess_ariana_thorvald`.
@@ -719,3 +719,30 @@ Combat·Makers·Recall(10절 `[DI pp. 11-13]`), 영향력(6절 `[DI p. 7]`, 값�
 4. `FEATURE_DIGEST`가 바뀌는 것(지시의 "그대로" 대신 "Uprising 행 그대로 + 같은 수", 15.4).
 5. OQ-139(Mentat 말 구분 없음, 엔진 이유, P3에서 다시 엶).
 6. P2 동안 원판 + 확장 설정은 거절(15.4).
+
+### 15.8 P2a 결과와 P2b 진행 (2026-10-27, Claude Desktop 세션 `local_7d968935`)
+
+Orca 작업자가 멈춘 P2a(커밋 안 된 30파일)를 이어 받아 끝냈다. 커밋은 브랜치 `jungcheolseung/base-ix-p2`에 있다.
+
+- **P2a `56c8e8c9`:** 15.1의 P2a 행 전부. 원판 4인 판(확장 없음)이 보드 22칸, Mentat, Conflict 18장, Reserve 셋, 지도자 넷(Rabban·Ilban·Memnon·
+  Ariana)으로 끝까지 돈다. 이어 받으며 고친 것: codec 카탈로그가 원판 칸에 Uprising 아이콘(계약·연구)을 붙이던 것, Selective Breeding의 trash가
+  화살표 비용이 아니던 것(Desert Tactics에 엉뚱한 뽑기를 붙일 뻔함), Foldspace 카드가 엔진의 Reveal 구매에 남아 있던 것(`[DI p. 11]`·`[FAQ p. 2]`,
+  OQ-125), 합친 id 표를 도는 Uprising 코드(서버 카탈로그, 관측 id, Esmar Tuek의 codec 행)가 원판을 읽던 것, Reserve 정의의 새 필드가 Uprising
+  특성 행을 바꾸던 것(기본값 `False`인 `icon_only`로).
+- **지도자 넷의 능력:** Rabban의 Brutality는 "-OR-"가 고르기가 아니다(동맹이 있으면 2, P0 L7) — 자동 Signet의 `ONE_OF`는 조건이 맞는 첫 줄. Ilban의
+  Ruthless Negotiator와 Ariana의 Spice Addict는 빚진 뽑기(OQ-106). Memnon의 Connections는 원로회 자리를 얻은 방문의 아이콘 하나(새 행동
+  `choose_connections_influence`, 6칸 진영 제외 OQ-060).
+- **codec v155 그대로:** Uprising 144개 조합 행이 `12294215`와 바이트까지 같다. 원판 `imperium-4p-base` 카탈로그 580줄(P2b 셋 뒤).
+- **관측 v35(5,827 int):** 15.4대로. Uprising 판에서 새 열은 모두 0이고, 골든 다이제스트 여섯은 v34 열에서 그대로다. slot 열쇠 1,467(열쇠로 다시
+  잇는다), v31 엔티티 파일의 이름은 v35 열쇠·필드를 뺀다. 엔티티 특성의 열 척도는 Uprising 개체로 정한다(`entity_features._table`) — Uprising 405행이
+  `12294215`와 열 척도까지 같다(승인 조건). `FEATURE_DIGEST`는 바뀐다(P2b 지도자마다 다시).
+- **P2a 관문(15.6, `56c8e8c9` 스냅숏, 2026-10-27 22:05~):** pytest 8,667·ruff·mypy 585, 같음 확인 200판 check(선언한 차이 `imperium_board.py`의
+  Mentat 칸만)·compare 200 같음, 소크 Uprising 900 + 원판 300(휴리스틱 150·무작위 150, 지도자 돌려 앉기, codec 왕복 25수마다) 실패 0, Uprising 카탈로그
+  144/144, 특성 행 405 차이 0, 기보 v155 2,000판, 저장본 11, 문제집 281·3, tips-v1 재채굴 118곳 같음(머리말의 판 번호만 다름), E2E 70/70(`-j 4`),
+  같은 수(시작 커밋 대 `56c8e8c9`) older 12/12·MLP X 12/12·엔티티 12/12·탐색 좌석 4/4. 22:38에 모두 끝.
+- **P2b(지도자마다 커밋, 13.4의 측정 — 앞 커밋에서 그 커밋까지의 벽시계; 커밋 메시지의 분 어림은 틀렸다):** Duke Leto `cc5e1962`(약 7분, Signet
+  hook 하나·standing 하나), Helena Richese `99dd5ced`(약 6분, Signet hook 하나·standing 하나·행동 하나; P3 전에는 Row가 비어 Manipulate는 빈 확인),
+  Paul Atreides `a05a2789`(약 2분, hook 없음; Prescience는 Glowglobes의 덱 맨 위 보기와 같은 경로라 관측 v36이 필요 없다). 독립 리뷰(조정자의 Codex)가 찾은 결함 하나를 `83cf2b1d`에서 고쳤다: 원판 Emperor 4칸의 병력 둘이
+  그 turn의 recruit에 들지 않았다(7절 "이번 turn에 recruit한 troop 전부", `[FAQ p. 4]`). 남은 것: Baron Harkonnen(비밀 진영 결정, 의무 공개 OQ-115,
+  관측 칸), 지도자 draft(여덟이 모이면), P2b 관문, 문서의 "P2 결과".
+
