@@ -1224,3 +1224,108 @@ def test_water_of_life_is_not_offered_outside_the_seats_turn() -> None:
         state, 1, intrigue_cards=(LIFE,), resources=Resources(spice=3, water=3)
     )
     assert legal_intrigue_play_actions(state, 1) == ()
+
+
+# --- Councilor's Dispensation (Plot) ----------------------------------------
+
+DISPENSATION = _intrigue("councilors_dispensation")
+
+
+def test_councilors_dispensation_is_one_conditional_plot() -> None:
+    # "Plot: If you have a seat on the High Council: +2 spice" [Councilor's
+    # Dispensation card, Steam app text]; 1 copy [DI p. 3].
+    entry = intrigue_card_for_instance(DISPENSATION)
+    assert entry.card.name == "Councilor's Dispensation"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert entry.options[0].sections[0].costs == ()
+    assert intrigue_card_text(entry) == [
+        "Plot — If you hold a High Council seat: Gain 2 spice"
+    ]
+    assert "councilors_dispensation" not in {
+        entry.card.card_id for entry in INTRIGUE_CARDS
+    }
+
+
+def test_councilors_dispensation_gains_two_spice_with_a_high_council_seat() -> None:
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." `[FAQ p. 2]`: with the seat the condition holds, and a Plot may
+    # be played at any time in the seat's own turn `[DI pp. 7-8]`
+    # (imperium-base.md 5).
+    _, state = _plot_hand(
+        DISPENSATION, high_council=True, resources=Resources(solari=1, spice=1)
+    )
+    assert legal_intrigue_play_actions(state, 0) == (_play(DISPENSATION),)
+
+    result = apply_intrigue_play(state, _play(DISPENSATION))
+    done = result.state
+
+    assert done.players[0].resources == Resources(solari=1, spice=3)
+    assert done.players[0].high_council is True
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (DISPENSATION,)
+    assert [event.kind for event in result.events] == [
+        "intrigue_played",
+        "resources_gained",
+    ]
+    assert dict(result.events[1].payload)["spice"] == 2
+    assert done.decision_stack[-1].kind == "turn"
+
+
+def test_councilors_dispensation_is_not_played_without_a_seat() -> None:
+    # "원로회 자리가 있어야 Councilor's Dispensation을 낸다" `[FAQ p. 2]`
+    # (open-questions.md OQ-071 re-ruling (6), OQ-113 (C): "공식 문서가 조건으로
+    # 정한 것(원로회 자리 ...)은 그대로 조건이다", imperium-base.md 16): the
+    # condition is not a cost, so a seat without it is not offered the card
+    # even though a cost-free effect would otherwise be played.
+    engine, state = _plot_hand(DISPENSATION, high_council=False)
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert _play(DISPENSATION) not in engine.whole_actions(state, 0)
+
+
+def test_councilors_dispensation_follows_the_seat_as_it_comes_and_goes() -> None:
+    # "조건은 해결할 때 판정한다" (imperium-base.md 16, OQ-028): the check
+    # reads the seat's High Council seat at the moment of playing.
+    _, state = _plot_hand(DISPENSATION, high_council=False)
+    assert legal_intrigue_play_actions(state, 0) == ()
+    seated = _seat(state, high_council=True)
+    assert legal_intrigue_play_actions(seated, 0) == (_play(DISPENSATION),)
+    # Another seat's seat does not count.
+    other = _seat(state, 1, high_council=True)
+    assert legal_intrigue_play_actions(other, 0) == ()
+
+
+def test_councilors_dispensation_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _plot_hand(DISPENSATION, high_council=True)
+    actions = engine.whole_actions(state, 0)
+    assert _play(DISPENSATION) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (DISPENSATION,)
+    assert placed.players[0].resources.spice == state.players[0].resources.spice
+
+
+def test_councilors_dispensation_is_played_in_the_reveal_turn_too() -> None:
+    # "아무 때나" within the seat's own Agent or Reveal turn (imperium-base.md
+    # 5, `[DI pp. 7-8]`).
+    engine, state = _plot_hand(DISPENSATION, high_council=True)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _play(DISPENSATION) in engine.whole_actions(revealed, 0)
+
+    done = apply_whole(engine, revealed, _play(DISPENSATION)).state
+
+    assert done.players[0].resources.spice == state.players[0].resources.spice + 2
+
+
+def test_councilors_dispensation_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _plot_hand(DISPENSATION)
+    state = _seat(state, 1, intrigue_cards=(DISPENSATION,), high_council=True)
+    assert legal_intrigue_play_actions(state, 1) == ()

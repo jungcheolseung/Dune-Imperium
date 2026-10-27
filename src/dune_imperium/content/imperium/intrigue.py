@@ -22,6 +22,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluence,
     GainResources,
     GainVictoryPoints,
+    HasHighCouncil,
     PayResources,
     RetreatTroops,
 )
@@ -122,6 +123,18 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("councilors_dispensation", "Councilor's Dispensation"),
         copies=1,
+        # "If you have a seat on the High Council: +2 spice" [Councilor's
+        # Dispensation card, app text]: the seat is a condition the official
+        # documents set (FAQ p. 2's example), so without it the card is not
+        # played (OQ-113 (C); Uprising's Councilor's Ambition has this shape).
+        options=(
+            _plot(
+                EffectSection(
+                    condition=HasHighCouncil(),
+                    rewards=(GainResources(spice=2),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("demand_respect", "Demand Respect"),
