@@ -255,6 +255,7 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _TROOP_MOVE_ACTIONS,
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _TROOP_MOVE_ACTIONS,
     _Choice.MAY_DEPLOY_ONE_TROOP: frozenset({"deploy_reveal_card_troop"}),
+    _Choice.MAY_DEPLOY_UP_TO_THREE_TROOPS: frozenset({"deploy_reveal_card_troops"}),
     _Choice.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: frozenset(
         {"gain_two_reveal_persuasion", "gain_two_reveal_swords"}
     ),
@@ -301,6 +302,8 @@ SOURCED_REVEAL_ACTION_IDS: Final = frozenset(
         "gain_reveal_influence",
         "deploy_reveal_card_troop",
         "retreat_reveal_card_troop",
+        "deploy_reveal_card_troops",
+        "retreat_reveal_card_troops",
         "decline_reveal_spy_recall",
     }
 )
@@ -612,6 +615,42 @@ def troop_move_retreats(effect: PersonalCardRevealChoiceEffect | str | None) -> 
         and len(reveal_choice_ability(PersonalCardRevealChoiceEffect(effect)).sections)
         == 2
     )
+
+
+def troops_move_shape(
+    effect: PersonalCardRevealChoiceEffect | str | None,
+) -> tuple[str, int | None] | None:
+    """"Deploy up to three troops from your garrison to the Conflict" [Sardaukar
+    Legion card], "Retreat up to two of your troops" [Scout card], "Retreat any
+    number of your troops" [Chani card]: ``("deploy" | "retreat", most)`` --
+    the most it moves, None for "any number" -- or None for another choice.
+
+    The owner picks the count, none included ("up to"/"any number" allow 0
+    [FAQ p. 3]: an optional choice, no refusal is offered, OQ-095 (7)).
+    Troops only: the original game has no Sardaukar Commander, and whether
+    one counts as one of these troops is for the combinations stage (P7).
+    """
+
+    if effect is None:
+        return None
+    ability = reveal_choice_ability(PersonalCardRevealChoiceEffect(effect))
+    if (
+        ability is None
+        or ability.hook is not None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.structure is not AbilityStructure.SEQUENCE
+        or len(ability.sections) != 1
+    ):
+        return None
+    line = ability.sections[0]
+    if line.condition is not None or line.costs:
+        return None
+    match line.rewards:
+        case (DeployFromGarrison(up_to=int(most)),) if most >= 2:
+            return "deploy", most
+        case (RetreatTroops(minimum=0, maximum=most),) if most is None or most >= 1:
+            return "retreat", most
+    return None
 
 
 def _troop_move_bond(effect: PersonalCardRevealChoiceEffect) -> Faction | None:
@@ -2599,6 +2638,86 @@ def apply_reveal_troop_move(
     return RuleResult(state=next_state, events=retreated.events)
 
 
+def legal_reveal_troops_move_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Sardaukar Legion's deploy, Scout's and Chani's retreat of several troops.
+
+    One row per count from 1 to what the card allows and the seat can move:
+    the garrison's troops that may deploy (Harkonnen Advisor's stays out,
+    ``_deployable_garrison_troops``) or the Conflict's. None is not a row
+    ("May": no refusal is offered, the choice lapses at ``finish_reveal``).
+    """
+
+    pending = pending_choice_rows(state, player, legal_reveal_troops_move_actions)
+    if pending is not None:
+        return pending
+    context = _reveal_choice_frame_matching(
+        state, player, lambda effect: troops_move_shape(effect) is not None
+    )
+    if context is None:
+        return ()
+    shape = troops_move_shape(_effect_value(context))
+    assert shape is not None
+    kind, most = shape
+    card_id, _ = _reveal_choice_card_source(state, player, context, "troops_move")
+    room = (
+        _deployable_garrison_troops(state, player)
+        if kind == "deploy"
+        else state.players[player].troops_conflict
+    )
+    top = room if most is None else min(room, most)
+    return tuple(
+        _sourced(f"{kind}_reveal_card_troops", player, card_id, (("count", count),))
+        for count in range(1, top + 1)
+    )
+
+
+def apply_reveal_troops_move(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Deploy ``count`` garrison troops, or retreat ``count`` Conflict troops
+    (the chosen count; the choice is used up)."""
+
+    state = _open_pending(state, action, legal_reveal_troops_move_actions)
+    if action not in legal_reveal_troops_move_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal troops move")
+    context = dict(state.decision_stack[-1].context)
+    _, source = _reveal_choice_card_source(state, action.actor, context, "troops_move")
+    popped = state.pop_decision()
+    count = dict(action.arguments)["count"]
+    assert isinstance(count, int) and not isinstance(count, bool)
+    if action.action_id == "deploy_reveal_card_troops":
+        counted = add_units_to_reveal(popped, action.actor, troops=count)
+        return RuleResult(
+            state=counted.state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:deployed",
+                    kind="troops_deployed",
+                    payload=(("count", count), ("player", action.actor)),
+                ),
+                *counted.events,
+            ),
+        )
+    before = popped.players[action.actor].combat_strength
+    retreated = retreat_units(popped, action.actor, source, troops=count)
+    delta = retreated.state.players[action.actor].combat_strength - before
+    # Retreated troops no longer count among the turn's deployed units, as on
+    # an Agent turn (OQ-016).
+    next_state = reconcile_deployment_after_retreat(
+        retreated.state, action.actor, troops=count
+    )
+    if delta:
+        next_state = replace(
+            next_state,
+            decision_stack=add_reveal_strength(next_state.decision_stack, delta),
+        )
+    return RuleResult(state=next_state, events=retreated.events)
+
+
 def legal_reveal_troop_sacrifice_actions(
     state: GameState,
     player: int,
@@ -4264,6 +4383,8 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
         else "You may deploy one troop from your garrison to the Conflict"
         if effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP
+        else "You may deploy up to three troops from your garrison to the Conflict"
+        if effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS
         else "You may lose two troops for two specimens"
         if effect is _LOSE_TROOPS_FOR_SPECIMENS
         else "You may trash this card for one Influence with each Faction"
@@ -4431,6 +4552,18 @@ def _reveal_choice_effect_is_available(
                 owner.troops_conflict + owner.commanders_conflict
                 if troop_move_retreats(effect)
                 else 0
+            )
+            >= 1
+        )
+        or (
+            # Sardaukar Legion, Scout, Chani (original game): a troop to move --
+            # none is not asked ("up to" allows 0 [FAQ p. 3]), so with no troop
+            # to move the choice waits.
+            (move := troops_move_shape(effect)) is not None
+            and (
+                _deployable_garrison_troops(state, player)
+                if move[0] == "deploy"
+                else owner.troops_conflict
             )
             >= 1
         )
@@ -4668,6 +4801,7 @@ def reveal_choice_providers() -> tuple[ChoiceProvider, ...]:
         legal_reveal_troop_retreat_actions,
         legal_reveal_influence_loss_actions,
         legal_reveal_troop_move_actions,
+        legal_reveal_troops_move_actions,
         legal_reveal_troop_sacrifice_actions,
     )
 

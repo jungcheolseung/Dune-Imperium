@@ -247,6 +247,13 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                 ),
                 mark=_OPTIONAL,
             ),
+            # Sardaukar Legion (original game): "Deploy up to three troops from
+            # your garrison to the Conflict" -- a count the owner picks, none
+            # included ("up to" [FAQ p. 3]); troops only (a Commander's share
+            # is for the combinations stage, P7).
+            _CHOICE.MAY_DEPLOY_UP_TO_THREE_TROOPS: _choice(
+                _line(DeployFromGarrison(3)), mark=_OPTIONAL
+            ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
             _CHOICE.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: _choice(

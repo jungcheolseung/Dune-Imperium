@@ -706,6 +706,14 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "retreat_reveal_card_troop": _row(
         _V.RETREAT, _S.REVEAL_CARD, _T.UNITS, tag=_SOURCE
     ),
+    # Sardaukar Legion's deploy, Scout's and Chani's retreat of ``count`` troops
+    # (original game).
+    "deploy_reveal_card_troops": _row(
+        _V.DEPLOY, _S.REVEAL_CARD, _T.UNITS, variant="count", tag=_SOURCE
+    ),
+    "retreat_reveal_card_troops": _row(
+        _V.RETREAT, _S.REVEAL_CARD, _T.UNITS, variant="count", tag=_SOURCE
+    ),
     "retreat_two_troops_for_reveal": _row(
         _V.RETREAT, _S.REVEAL_CARD, _T.UNITS, variant="two", tag=_SOURCE
     ),

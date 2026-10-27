@@ -645,6 +645,9 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: (
                 "Choose one: 2 Persuasion / 2 swords"
             ),
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS: (
+                "You may deploy up to 3 troops from your garrison to the Conflict"
+            ),
             PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
                 "You may pay 6 solari → Gain 1 Victory Point"
             ),

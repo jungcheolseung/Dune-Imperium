@@ -657,6 +657,14 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "retreat_two_troops_for_reveal": _spec(_V.RETREAT, _S.REVEAL_CARD, "source"),
     "deploy_reveal_card_troop": _spec(_V.DEPLOY, _S.REVEAL_CARD, "source"),
     "retreat_reveal_card_troop": _spec(_V.RETREAT, _S.REVEAL_CARD, "source"),
+    # The count the owner picks of Sardaukar Legion's deploy, Scout's and
+    # Chani's retreat (original game).
+    "deploy_reveal_card_troops": _spec(
+        _V.DEPLOY, _S.REVEAL_CARD, "source", targets=(("count", _C.COUNT),)
+    ),
+    "retreat_reveal_card_troops": _spec(
+        _V.RETREAT, _S.REVEAL_CARD, "source", targets=(("count", _C.COUNT),)
+    ),
     "lose_reveal_troops_for_specimens": _spec(
         _V.LOSE_UNIT, _S.REVEAL_CARD, "=tleilaxu_surgeon"
     ),

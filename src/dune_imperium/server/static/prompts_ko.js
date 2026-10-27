@@ -67,6 +67,7 @@ const PROMPT_KO = {
   "Deploy one troop from supply to defend your location?": "{supply}에서 병력 1을 배치해 이 위치를 방어하시겠습니까?",
   "You may deploy or retreat one troop": "병력 1 배치 또는 {retreat} 가능",
   "You may deploy one troop from your garrison to the Conflict": "{garrison}의 병력 1을 {conflict}에 배치 가능",
+  "You may deploy up to three troops from your garrison to the Conflict": "{garrison}의 병력 3까지 {conflict}에 배치 가능",
   "Gain Spice or trash this card for one Victory Point": "{spice} 획득 또는 이 카드를 폐기하고 {victory_point} 1 획득",
   "Gain five Solari or pay five for a High Council seat": "{solari} 5 획득 또는 {solari} 5 지불하고 원로회 자리 차지",
   "Gain the Sardaukar Commander without a Skill": "{commander_skill} 없이 {commander} 획득",

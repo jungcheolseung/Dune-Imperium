@@ -128,7 +128,11 @@ from dune_imperium.rules.immortality import (
 )
 from dune_imperium.rules.planetologist import PLANETOLOGIST_LEADER
 from dune_imperium.rules.reveal_lines import RevealLine, reveal_lines
-from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT, card_holds_reveal_value
+from dune_imperium.rules.reveal_turn import (
+    SOURCE_ARGUMENT,
+    card_holds_reveal_value,
+    troops_move_shape,
+)
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
 from dune_imperium.rules.tech import optional_trash_tech_ids
@@ -3544,6 +3548,11 @@ _SOURCED_SPY_PLACEMENT: Final = (
 # A plain Spy icon also passes up its empty-supply recall-first (OQ-057 (14)).
 _SOURCED_PLAIN_SPY: Final = (*_SOURCED_SPY_PLACEMENT, "decline_reveal_spy_recall")
 _SOURCED_TROOP_MOVE: Final = ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
+# The troops a count of which a Reveal choice moves (original game).
+_SOURCED_TROOPS_MOVE: Final = (
+    "deploy_reveal_card_troops",
+    "retreat_reveal_card_troops",
+)
 _Choice = PersonalCardRevealChoiceEffect
 _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     _Choice.PLACE_SPY: _SOURCED_PLAIN_SPY,
@@ -3557,6 +3566,8 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _SOURCED_TROOP_MOVE,
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _SOURCED_TROOP_MOVE,
     _Choice.MAY_DEPLOY_ONE_TROOP: ("deploy_reveal_card_troop",),
+    # Sardaukar Legion, Scout, Chani (original game): a count of troops.
+    _Choice.MAY_DEPLOY_UP_TO_THREE_TROOPS: ("deploy_reveal_card_troops",),
     _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED: (
         "recall_spy_for_reveal",
     ),
@@ -3627,6 +3638,15 @@ def _reveal_source_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...
                     variants = shares
                 elif action_id in _SOURCED_TROOP_MOVE:
                     variants = one_unit
+                elif action_id in _SOURCED_TROOPS_MOVE:
+                    # One row per count the card allows: up to its most, or
+                    # as many as a seat can have in play ("any number").
+                    shape = troops_move_shape(effect)
+                    assert shape is not None
+                    most = shape[1] or MAX_DEPLOYMENT_COUNT
+                    variants = tuple(
+                        (("count", count),) for count in range(1, most + 1)
+                    )
                 elif action_id == "gain_reveal_influence":
                     variants = tuple(
                         (("faction", faction.value),) for faction in Faction

@@ -146,8 +146,9 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
     }
     assert optional | mandatory == set(PersonalCardRevealChoiceEffect)
     # Sixteen of the Uprising family's, Gun Thopter's deploy, Opulence's and
-    # Guild Ambassador's Victory Point and Gurney Halleck's troops (stage P3).
-    assert len(optional) == 16 + 4
+    # Guild Ambassador's Victory Point, Gurney Halleck's troops, and Sardaukar
+    # Legion's counts of troops (stage P3).
+    assert len(optional) == 16 + 5
     # Ten of the Uprising family's and Bene Gesserit Sister's -OR- (stage P3).
     assert len(mandatory) == 10 + 1
     assert set(REVEAL_CHOICE_EFFECT_ACTIONS) == set(PersonalCardRevealChoiceEffect)
@@ -282,15 +283,18 @@ def test_an_id_two_cards_produce_always_names_its_card() -> None:
     # Operation's pass leaves its second icon), so no id two cards produce is
     # left without it.
     produced = _produced_by_card()
-    # Bene Gesserit Sister's -OR- rows and Opulence's payment (the original
-    # game, stage P3) belong to no card of the Uprising deck read here; their
-    # tests are in ``test_imperium_cards.py``.
+    # Bene Gesserit Sister's -OR- rows, Opulence's payment and the counted troop
+    # moves of Sardaukar Legion, Scout and Chani (the original game, stage P3)
+    # belong to no card of the Uprising deck read here; their tests are in
+    # ``test_imperium_cards.py``.
     original_only = {
         "gain_two_reveal_persuasion",
         "gain_two_reveal_swords",
         "pay_reveal_solari_for_vp",
         "pay_reveal_spice_for_vp",
         "pay_reveal_solari_for_troops",
+        "deploy_reveal_card_troops",
+        "retreat_reveal_card_troops",
     }
     assert set(produced) == REVEAL_CHOICE_ACTION_IDS - original_only
     for action_id, by_card in produced.items():
@@ -307,9 +311,9 @@ def test_an_id_two_cards_produce_always_names_its_card() -> None:
         assert len(by_card) == 1, (action_id, sorted(by_card))
     assert {
         action_id
-        for action_id in SOURCED_REVEAL_ACTION_IDS
+        for action_id in SOURCED_REVEAL_ACTION_IDS - original_only
         if len(produced[action_id]) > 1
-    } == SOURCED_REVEAL_ACTION_IDS
+    } == SOURCED_REVEAL_ACTION_IDS - original_only
 
 
 # --- the Reveal frame offers the choices -------------------------------------

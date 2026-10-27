@@ -221,6 +221,8 @@ const LABELS_EN = {
     "lose_reveal_influence_for_vp": "Lose 2 {influence_any} -> 1 {victory_point}",
     "deploy_reveal_card_troop": "Deploy 1 {troop}",
     "retreat_reveal_card_troop": "Retreat 1 {troop}",
+    "deploy_reveal_card_troops": "Deploy {troop}",
+    "retreat_reveal_card_troops": "Retreat {troop}",
     "lose_reveal_troops_for_specimens": "Lose 2 {troop} (choose zone) -> 2 {specimen}",
     "trash_agent_card_self_for_vp": "Trash this card -> 1 {victory_point}",
     "pay_agent_card_five_solari_for_tleilaxu": "Pay 5 {solari} -> {tleilaxu}",

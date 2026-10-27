@@ -457,10 +457,24 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_strength=2,
         play_data_complete=True,
     ),
+    # App table: cost 5, 2 copies, Emperor, Emperor and Landsraad, Reveal 1
+    # Persuasion, AgentTroops 2. Agent: "[2 troops]" (neither space is a Combat
+    # space, so they stay in the garrison). Reveal: "[P1]" and "Deploy up to
+    # three troops from your garrison to the Conflict" -- 0 to 3 ("up to"
+    # [FAQ p. 3], P0 sweep); troops only (a Commander's share is for the
+    # combinations stage, P7); the card prints no Combat icon.
     ImperiumCardEntry(
         card=imperium_card("sardaukar_legion", "Sardaukar Legion"),
         copies=2,
         acquisition_cost=5,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.LANDSRAAD),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
+        reveal_persuasion=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("scout", "Scout"),

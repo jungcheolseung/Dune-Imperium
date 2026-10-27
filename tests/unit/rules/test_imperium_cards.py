@@ -33,8 +33,11 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.engine import RuleResult
-from dune_imperium.display.tokens import reveal_effect_text
-from dune_imperium.display.tokens_ko import reveal_effect_text_ko
+from dune_imperium.display.tokens import REVEAL_CHOICE_EFFECT_TEXT, reveal_effect_text
+from dune_imperium.display.tokens_ko import (
+    REVEAL_CHOICE_EFFECT_TEXT_KO,
+    reveal_effect_text_ko,
+)
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import expire_trashed_card_effects
@@ -3580,3 +3583,177 @@ def test_test_of_humanity_text_names_the_choice() -> None:
         "Each opponent chooses: Discard a card -OR- Lose a deployed troop"
     )
     assert "{discard}" in AGENT_EFFECT_TEXT_KO[effect]
+
+
+# --- Sardaukar Legion, Scout and Chani: troops moved by count ---------------------
+#
+# "Deploy up to three troops from your garrison to the Conflict" (Legion),
+# "Retreat up to two of your troops" (Scout), "Retreat any number of your
+# troops" (Chani): the owner picks the count, and "up to" / "any number" allow
+# 0 [FAQ p. 3] (imperium-base.md 13.2: "Chani (Imperium) -> Retreat | 'any
+# number'는 0 가능"); a retreat goes to the garrison [DI p. 16]; troops only (the
+# original game has no Sardaukar Commander, P7 decides whether one counts).
+
+
+def _counts(engine: UprisingRulesEngine, state: GameState, action_id: str) -> set[int]:
+    """The counts the Reveal frame offers as ``action_id``."""
+
+    return {
+        int(dict(action.arguments)["count"])
+        for action in _wholes(engine, state)
+        if action.action_id == action_id
+    }
+
+
+def _revealed_alone(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    card_id: str,
+    *,
+    garrison: int,
+    conflict: int = 0,
+    copies: int = 1,
+) -> GameState:
+    """Seat 0 reveals ``copies`` of ``card_id`` and nothing else, holding that
+    many troops in the garrison and the Conflict."""
+
+    held = _with_troops(state, 0, garrison, conflict)
+    hand = tuple(f"imperium:{card_id}:{copy}" for copy in range(copies))
+    held = _seat(held, hand=hand, resources=Resources())
+    return _do(engine, held, "reveal_turn")
+
+
+# --- Sardaukar Legion
+
+
+def test_sardaukar_legion_matches_the_app_table() -> None:
+    # App attribute table: cost 5, 2 copies, Emperor, Emperor and Landsraad,
+    # Reveal 1 Persuasion; AgentTroops 2.
+    entry = IMPERIUM_CARDS_BY_ID["sardaukar_legion"]
+    assert entry.card.name == "Sardaukar Legion"
+    assert entry.acquisition_cost == 5
+    assert entry.copies == 2
+    assert entry.factions == (Faction.EMPEROR,)
+    assert entry.agent_icons == (AgentIcon.EMPEROR, AgentIcon.LANDSRAAD)
+    assert entry.agent_effect is PersonalCardAgentEffect.RECRUIT_TWO_TROOPS
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS,
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:sardaukar_legion:1") is entry
+
+
+def test_sardaukar_legion_recruits_two_troops_that_stay_in_the_garrison() -> None:
+    """Agent "[2 troops]"; "Emperor and Landsraad spaces are not Combat spaces"
+    (P0 sweep, imperium-base.md 7): the two stay in the garrison."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "sardaukar_legion")
+    garrison = state.players[0].troops_garrison
+    placed = _place(engine, state, "wealth", "sardaukar_legion")
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    after = resolved.players[0]
+    assert after.troops_garrison == garrison + 2
+    assert after.troops_conflict == 0
+    assert not legal_combat_deployments(resolved, 0)
+
+
+def test_sardaukar_legion_deploys_up_to_three_troops_by_count() -> None:
+    """"Deploy up to three troops from your garrison to the Conflict" [Sardaukar
+    Legion card]: one row for each count the garrison allows, 1 to 3; three
+    troops make 6 strength and the printed Persuasion is 1."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "sardaukar_legion", garrison=5)
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 1
+    assert _counts(engine, revealed, "deploy_reveal_card_troops") == {1, 2, 3}
+    deployed = _do(engine, revealed, "deploy_reveal_card_troops", count=3)
+    after = deployed.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (2, 3)
+    assert after.combat_strength == 6
+    # The choice is used up.
+    assert "deploy_reveal_card_troops" not in _ids(engine, deployed)
+    finished = _do(engine, deployed, "finish_reveal")
+    assert finished.players[0].combat_strength == 6
+
+
+def test_sardaukar_legion_deploys_only_what_the_garrison_holds() -> None:
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "sardaukar_legion", garrison=2)
+    assert _counts(engine, revealed, "deploy_reveal_card_troops") == {1, 2}
+    one = _do(engine, revealed, "deploy_reveal_card_troops", count=1)
+    assert (one.players[0].troops_garrison, one.players[0].troops_conflict) == (1, 1)
+    empty = _revealed_alone(engine, state, "sardaukar_legion", garrison=0)
+    assert _counts(engine, empty, "deploy_reveal_card_troops") == set()
+    assert "finish_reveal" in _ids(engine, empty)
+
+
+def test_sardaukar_legion_may_deploy_none() -> None:
+    """"Up to" allows none [FAQ p. 3]: no refusal is offered (OQ-095 (7)); the
+    owner who deploys nothing ends the Reveal and the choice lapses."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "sardaukar_legion", garrison=3)
+    assert not {a for a in _ids(engine, revealed) if a.startswith("decline_")}
+    finished = _do(engine, revealed, "finish_reveal")
+    after = finished.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (3, 0)
+    assert after.combat_strength == 0
+
+
+def test_sardaukar_legion_deployed_troops_count_for_the_turn() -> None:
+    """Troops deployed by a Reveal card are deployed this turn (OQ-115: the
+    Baron's Masterstroke counts them)."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "sardaukar_legion", garrison=4)
+    deployed = _do(engine, revealed, "deploy_reveal_card_troops", count=3)
+    assert deployed.players[0].units_deployed_turn == 3
+
+
+def test_sardaukar_legion_text_names_the_count() -> None:
+    effect = PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS
+    assert REVEAL_CHOICE_EFFECT_TEXT[effect] == (
+        "You may deploy up to 3 troops from your garrison to the Conflict"
+    )
+    assert "{troop:3}" in REVEAL_CHOICE_EFFECT_TEXT_KO[effect]
+
+
+
+
+def test_the_counted_troop_moves_are_staged_rows_of_the_original_catalog() -> None:
+    """The effect is one row, then the owner picks the count (``choose_count``,
+    stage B3); every row encodes and decodes in the original game's catalog and
+    the picked count moves that many troops. Legion 1-3, Scout 1-2, Chani every
+    count up to the troops in the Conflict."""
+
+    from dune_imperium.adapters import ActionCodec
+
+    codec = ActionCodec(CONFIG)
+    engine, state = _start()
+    for card_id, verb, garrison, conflict, counts in (
+        ("sardaukar_legion", "deploy", 5, 0, {1, 2, 3}),
+    ):
+        revealed = _revealed_alone(
+            engine, state, card_id, garrison=garrison, conflict=conflict
+        )
+        rows = engine.legal_actions(revealed, 0)
+        for action in rows:
+            assert codec.decode(codec.encode(action), 0) == action
+        effect = next(
+            action
+            for action in rows
+            if action.action_id == verb
+            and dict(action.arguments)["printed"] == card_id
+        )
+        picked = engine.apply(revealed, effect).state
+        offered = engine.legal_actions(picked, 0)
+        assert {dict(a.arguments)["count"] for a in offered} == counts
+        for action in offered:
+            assert action.action_id == "choose_count"
+            assert codec.decode(codec.encode(action), 0) == action
+        moved = engine.apply(picked, offered[0]).state
+        after = moved.players[0]
+        # The first row is count 1: one troop crossed.
+        assert abs(after.troops_conflict - conflict) == 1, card_id
