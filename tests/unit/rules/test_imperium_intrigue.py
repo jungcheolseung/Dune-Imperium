@@ -439,3 +439,113 @@ def test_master_tactician_needs_a_unit_in_the_conflict() -> None:
     # Seat 1 is the participant with priority but holds no card.
     assert legal_intrigue_play_actions(state, 1) == ()
 
+
+
+def _pass(actor: int) -> DomainAction:
+    return DomainAction(action_id="pass_combat_intrigue", actor=actor)
+
+
+# --- Ambush (Combat) --------------------------------------------------------
+
+AMBUSH = _intrigue("ambush")
+
+
+def test_ambush_is_one_cost_free_combat_option_with_two_copies() -> None:
+    # "Combat: +4 swords" [Ambush card, Steam app text]; 2 copies [DI p. 3].
+    # No arrow, no condition: a cost-free Combat line (OQ-113 (C)).
+    entry = intrigue_card_for_instance(_intrigue("ambush", 1))
+    assert entry.card.name == "Ambush"
+    assert entry.copies == 2
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["combat"]
+    assert entry.options[0].sections[0].costs == ()
+    assert entry.options[0].sections[0].condition is None
+    assert intrigue_card_text(entry) == ["Combat — Gain 4 swords"]
+    assert "ambush" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_ambush_is_not_a_plot() -> None:
+    # Combat Intrigue is played in the Combat phase only [DI p. 12]
+    # (imperium-base.md 8, 10), never in the seat's Agent or Reveal turn.
+    _, state = _start()
+    state = _seat(state, intrigue_cards=(AMBUSH,))
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+def test_ambush_gains_four_swords_and_is_discarded() -> None:
+    # "strength는 troop 2 + sword 1"; Combat Intrigue strength changes update
+    # the marker at once `[DI pp. 11-12]` (imperium-base.md 10).
+    state = _combat_state(_fighter(0, 2, intrigue_cards=(AMBUSH,)), _fighter(1, 1))
+    engine = UprisingRulesEngine()
+    assert legal_intrigue_play_actions(state, 0) == (_play(AMBUSH),)
+
+    result = apply_whole(engine, state, _play(AMBUSH))
+    done = result.state
+
+    assert done.players[0].combat_strength == 4 + 4
+    assert done.players[0].troops_conflict == 2
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (AMBUSH,)
+    # Nothing was paid: no resource event, no "without effect" note.
+    kinds = [event.kind for event in result.events]
+    assert "resources_paid" not in kinds
+    assert "intrigue_without_effect" not in kinds
+    assert "combat_strength_gained" in kinds
+    # The card was played: the pass count restarts and the seat stays in.
+    frame = done.decision_stack[-1]
+    assert frame.kind == "combat_intrigue"
+    assert dict(frame.context)["consecutive_passes"] == 0
+    assert dict(frame.context)["participants_mask"] == 0b11
+
+
+def test_ambush_copies_are_played_one_at_a_time() -> None:
+    # Two copies in hand are two cards: each is its own instance and a play
+    # discards exactly one of them.
+    second = _intrigue("ambush", 1)
+    state = _combat_state(
+        _fighter(0, 2, intrigue_cards=(AMBUSH, second)), _fighter(1, 1)
+    )
+    assert legal_intrigue_play_actions(state, 0) == (_play(AMBUSH), _play(second))
+
+    done = apply_whole(UprisingRulesEngine(), state, _play(second)).state
+
+    assert done.players[0].combat_strength == 4 + 4
+    assert done.players[0].intrigue_cards == (AMBUSH,)
+    assert done.intrigue_discard == (second,)
+
+
+def test_ambush_may_be_declined_by_passing() -> None:
+    # Playing is a choice, never forced: the seat passes and keeps the card
+    # `[DI p. 12]` (imperium-base.md 10: "Combat Intrigue를 내거나 pass한다").
+    state = _combat_state(_fighter(0, 2, intrigue_cards=(AMBUSH,)), _fighter(1, 1))
+    engine = UprisingRulesEngine()
+    assert _pass(0) in engine.whole_actions(state, 0)
+
+    passed = apply_whole(engine, state, _pass(0)).state
+
+    assert passed.players[0].intrigue_cards == (AMBUSH,)
+    assert passed.players[0].combat_strength == 4
+    assert passed.intrigue_discard == ()
+
+
+def test_ambush_needs_a_unit_in_the_conflict() -> None:
+    # "Conflict에 troop이 있는 플레이어가 Combat Intrigue를 내거나 pass한다"
+    # `[DI p. 12]` (imperium-base.md 10): a seat with no troop in the Conflict
+    # takes no part, so it is never offered the card.
+    state = _combat_state(
+        PlayerState(player_id=0, intrigue_cards=(AMBUSH,), troops_garrison=3),
+        _fighter(1, 2),
+    )
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_ambush_is_offered_only_to_the_seat_with_priority() -> None:
+    # Participants act in turn from the First Player [DI p. 12]
+    # (imperium-base.md 10): seat 1 holds a card but seat 0 has priority.
+    state = _combat_state(
+        _fighter(0, 2), _fighter(1, 1, intrigue_cards=(AMBUSH,))
+    )
+    assert legal_intrigue_play_actions(state, 1) == ()
+    passed = apply_whole(UprisingRulesEngine(), state, _pass(0)).state
+    assert legal_intrigue_play_actions(passed, 1) == (_play(AMBUSH, actor=1),)

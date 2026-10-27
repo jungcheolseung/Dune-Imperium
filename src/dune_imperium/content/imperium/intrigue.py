@@ -78,6 +78,8 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("ambush", "Ambush"),
         copies=2,
+        # "+4 swords" [Ambush card, app text]: a cost-free Combat line.
+        options=(_combat(EffectSection(rewards=(GainCombatStrength(4),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("bindu_suspension", "Bindu Suspension"),
