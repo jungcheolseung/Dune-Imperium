@@ -37,6 +37,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Condition,
     Cost,
     DeployFromGarrison,
+    DeployTheseTroops,
     DrawIntrigueCards,
     EffectSection,
     FactionBond,
@@ -53,6 +54,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     PrintedRevealValue,
     RecallSpy,
+    RecruitTroops,
     RetreatTroops,
     RevealPersuasion,
     RevealSwords,
@@ -232,6 +234,18 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                     ),
                     mark=_OPTIONAL,
                 )
+            ),
+            # Gurney Halleck (original game): "[3 Solari] -> [2 troops], you may
+            # deploy these troops to the Conflict" -- an optional arrow paid once;
+            # in a Reveal turn the two recruits may deploy ("these troops" only,
+            # no garrison share).
+            _CHOICE.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY: _choice(
+                _line(
+                    RecruitTroops(2),
+                    DeployTheseTroops(),
+                    costs=(PayResources(solari=3),),
+                ),
+                mark=_OPTIONAL,
             ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).

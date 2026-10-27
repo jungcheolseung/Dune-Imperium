@@ -1444,6 +1444,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "gain_two_reveal_swords",
                 "pay_reveal_solari_for_vp",
                 "pay_reveal_spice_for_vp",
+                "pay_reveal_solari_for_troops",
             )
         )
         templates.extend(

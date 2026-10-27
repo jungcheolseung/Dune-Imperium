@@ -345,6 +345,9 @@ class PersonalCardAgentEffect(StrEnum):
     GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE = (
         "gain_spacing_guild_influence_or_two_spice"
     )
+    # Gurney Halleck: "[2 troops] [draw 1 card]", two icons each its own step
+    # (OQ-027, OQ-106).
+    RECRUIT_TWO_AND_DRAW_ONE = "recruit_two_and_draw_one"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -506,6 +509,11 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE = (
         "may_pay_three_spice_for_victory_point_if_spacing_guild_alliance"
     )
+    # Gurney Halleck: "[3 Solari] -> [2 troops], you may deploy these troops to
+    # the Conflict", an optional arrow paid once [DI p. 9] [FAQ p. 3].
+    MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY = (
+        "may_pay_three_solari_for_two_troops_and_deploy"
+    )
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -534,6 +542,7 @@ IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = froz
         PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
         PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT,
         PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE,
+        PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY,
     }
 )
 

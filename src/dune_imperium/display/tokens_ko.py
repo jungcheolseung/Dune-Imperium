@@ -519,6 +519,7 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: (
         "하나 선택: {influence_spacing_guild:1} / {spice:2}"
     ),
+    PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE: "{troop:2}, {draw:1}",
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box
@@ -650,6 +651,13 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     ),
     PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
         "{solari:6} 지불 가능 {arrow_right} {victory_point:1}"
+    ),
+    (
+        PersonalCardRevealChoiceEffect
+        .MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY
+    ): (
+        "{solari:3} 지불 가능 {arrow_right} {troop:2}, "
+        "이 병력을 {conflict}에 배치 가능"
     ),
     (
         PersonalCardRevealChoiceEffect

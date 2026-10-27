@@ -270,7 +270,11 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
         case "intrigue":
             base = "Draw 1 Intrigue card"
         case "troops":
-            base = "Recruit 1 troop"
+            base = (
+                "Recruit 2 troops"
+                if effect is _BOX.RECRUIT_TWO_AND_DRAW_ONE
+                else "Recruit 1 troop"
+            )
         case "solari":
             # Fill Coffers (the Signet Ring's box) pays 1.
             base = (
@@ -335,7 +339,11 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
         case "intrigue":
             base = "{intrigue:1}"
         case "troops":
-            base = "{troop:1}"
+            base = (
+                "{troop:2}"
+                if effect is _BOX.RECRUIT_TWO_AND_DRAW_ONE
+                else "{troop:1}"
+            )
         case "solari":
             base = "{solari:1}" if effect is _BOX.LEADER_SIGNET else "{solari:2}"
         case "spice":

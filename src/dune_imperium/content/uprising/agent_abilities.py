@@ -940,6 +940,13 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ),
                 structure=AbilityStructure.ONE_OF,
             ),
+            # Gurney Halleck (original game): "[2 troops] [draw 1 card]" -- two
+            # printed icons, each its own step in the owner's order (OQ-027);
+            # the hidden draw is apart from the public recruit (OQ-106).
+            _BOX.RECRUIT_TWO_AND_DRAW_ONE: _icons(
+                ("troops", _line(RecruitTroops(2))),
+                ("cards", _line(DrawPersonalCards(1))),
+            ),
         }
     )
 )

@@ -27,6 +27,7 @@ const PROMPT_KO = {
   "Choose two Persuasion or two swords": "{persuasion} 2 또는 {sword} 2 중 선택",
   "You may pay six Solari for a Victory Point": "{solari} 6을 지불하고 {victory_point} 1 획득 가능",
   "You may pay three spice for a Victory Point": "{spice} 3을 지불하고 {victory_point} 1 획득 가능",
+  "You may pay three Solari for two troops": "{solari} 3을 지불하고 {troop} 2 획득, 이 {troop}은 {conflict}에 배치 가능",
   "Choose one of your other Agents to recall": "소환할 다른 {agent} 선택",
   "No other Agent to recall": "소환할 다른 {agent} 없음",
   "Choose the Skill for the acquired Sardaukar Commander": "획득한 {commander}의 기술 토큰 선택",

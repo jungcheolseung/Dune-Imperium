@@ -146,8 +146,8 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
     }
     assert optional | mandatory == set(PersonalCardRevealChoiceEffect)
     # Sixteen of the Uprising family's, Gun Thopter's deploy, Opulence's and
-    # Guild Ambassador's Victory Point (stage P3).
-    assert len(optional) == 16 + 3
+    # Guild Ambassador's Victory Point and Gurney Halleck's troops (stage P3).
+    assert len(optional) == 16 + 4
     # Ten of the Uprising family's and Bene Gesserit Sister's -OR- (stage P3).
     assert len(mandatory) == 10 + 1
     assert set(REVEAL_CHOICE_EFFECT_ACTIONS) == set(PersonalCardRevealChoiceEffect)
@@ -290,6 +290,7 @@ def test_an_id_two_cards_produce_always_names_its_card() -> None:
         "gain_two_reveal_swords",
         "pay_reveal_solari_for_vp",
         "pay_reveal_spice_for_vp",
+        "pay_reveal_solari_for_troops",
     }
     assert set(produced) == REVEAL_CHOICE_ACTION_IDS - original_only
     for action_id, by_card in produced.items():

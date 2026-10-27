@@ -288,6 +288,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
     apply_reveal_troop_move,
+    apply_reveal_troop_purchase,
     apply_reveal_troop_retreat,
     apply_reveal_troop_sacrifice,
     apply_reveal_vp_payment,
@@ -901,6 +902,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Ambassador: "Spacing Guild Alliance: 3 spice -> 1 Victory Point".
     "pay_reveal_solari_for_vp": apply_reveal_vp_payment,
     "pay_reveal_spice_for_vp": apply_reveal_vp_payment,
+    # Gurney Halleck (original game): "3 Solari -> 2 troops".
+    "pay_reveal_solari_for_troops": apply_reveal_troop_purchase,
     "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
     # Immortality Reveal choices (For Humanity, Shadout Mapes, Tleilaxu
     # Surgeon)

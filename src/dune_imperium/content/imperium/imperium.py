@@ -254,10 +254,23 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=3,
     ),
+    # App table: cost 6, 1 copy, no Faction, City, Reveal 2 Persuasion, AgentTroops
+    # 2. Agent: "[2 troops] [draw 1 card]" -- separate icons (OQ-027), the draw
+    # a hidden step of its own (OQ-106). Reveal: "[P2] AND [3 Solari] -> [2
+    # troops] + may deploy these troops" -- an optional arrow paid once [DI p.
+    # 9] [FAQ p. 3]; in the Reveal turn the two recruits may deploy
+    # (``DeployTheseTroops``).
     ImperiumCardEntry(
         card=imperium_card("gurney_halleck_card", "Gurney Halleck"),
         copies=1,
         acquisition_cost=6,
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE,
+        reveal_persuasion=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("imperial_spy", "Imperial Spy"),

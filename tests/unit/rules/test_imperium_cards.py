@@ -2099,3 +2099,164 @@ def test_guild_ambassador_arrow_is_optional() -> None:
     finished = _do(engine, revealed, "finish_reveal")
     assert finished.players[0].resources.spice == 3
     assert finished.players[0].victory_points == before.victory_points
+
+
+# --- Gurney Halleck ---------------------------------------------------------------
+
+
+def test_gurney_halleck_matches_the_app_table() -> None:
+    # App attribute table: cost 6, 1 copy, no Faction, City, Reveal 2
+    # Persuasion and no swords; AgentTroops 2.
+    entry = IMPERIUM_CARDS_BY_ID["gurney_halleck_card"]
+    assert entry.card.name == "Gurney Halleck"
+    assert entry.acquisition_cost == 6
+    assert entry.copies == 1
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.CITY,)
+    assert entry.agent_effect is PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY,
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:gurney_halleck_card:0") is entry
+
+
+def _gurney_placed(engine: UprisingRulesEngine, state: GameState) -> GameState:
+    """Seat 0 sends Gurney Halleck to Research Station (a City space; its two
+    water are paid)."""
+
+    held, _ = _with_card(state, "gurney_halleck_card")
+    seated = _seat(held, resources=Resources(water=2))
+    return _place(engine, seated, "imperium_research_station", "gurney_halleck_card")
+
+
+def test_gurney_halleck_recruits_two_troops_and_draws_a_card_apart() -> None:
+    """"[troop 2][draw 1]": separate icons (OQ-027), the hidden draw apart from
+    the public recruit (OQ-106, imperium-base.md 15): both icons are offered,
+    in either order, and the turn cannot end while either waits."""
+
+    engine, state = _start()
+    placed = _gurney_placed(engine, state)
+    owner = placed.players[0]
+    icons = {
+        dict(action.arguments)["effect"]
+        for action in _wholes(engine, placed)
+        if action.action_id == "resolve_agent_card_effect"
+    }
+    assert icons == {"troops", "cards"}
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    drawn = _do(engine, placed, "resolve_agent_card_effect", effect="cards")
+    assert drawn.players[0].hand == (*owner.hand, owner.deck[0])
+    assert drawn.players[0].troops_garrison == owner.troops_garrison
+    done = _do(engine, drawn, "resolve_agent_card_effect", effect="troops")
+    assert done.players[0].troops_garrison == owner.troops_garrison + 2
+    assert done.players[0].troops_supply == owner.troops_supply - 2
+
+
+def test_gurney_halleck_recruited_troops_deploy_at_a_combat_space() -> None:
+    """Research Station is a Combat space: "이번 turn에 recruit한 troop 전부와
+    garrison의 troop 둘까지를 Conflict에 배치할 수 있다" [DI pp. 10, 17-18]
+    (imperium-base.md 7): the two recruited and two from the garrison."""
+
+    engine, state = _start()
+    placed = _gurney_placed(engine, state)
+    recruited = _do(engine, placed, "resolve_agent_card_effect", effect="troops")
+    most = max(
+        int(dict(action.arguments)["count"])
+        for action in legal_combat_deployments(recruited, 0)
+    )
+    assert most == 2 + 2
+
+
+def _gurney_revealed(
+    engine: UprisingRulesEngine, state: GameState, solari: int
+) -> GameState:
+    held, _ = _with_card(state, "gurney_halleck_card", alone=True)
+    held = _seat(held, resources=Resources(solari=solari))
+    return _do(engine, held, "reveal_turn")
+
+
+def test_gurney_halleck_reveals_two_persuasion() -> None:
+    engine, state = _start()
+    frame = dict(_gurney_revealed(engine, state, 0).decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (2, 0)
+
+
+def test_gurney_halleck_pays_three_solari_for_two_troops_it_may_deploy() -> None:
+    """"비용 화살표" [DI p. 16] (imperium-base.md 11), optional [DI p. 9] and
+    paid once [FAQ p. 3]: three Solari recruit two troops, and in the Reveal
+    turn "you may deploy these troops to the Conflict" -- up to the two
+    recruited, and no other garrison troop."""
+
+    engine, state = _start()
+    revealed = _gurney_revealed(engine, state, 3)
+    before = revealed.players[0]
+    assert "pay_reveal_solari_for_troops" in _ids(engine, revealed)
+    # Nothing deploys before the payment: no Combat icon, no recruit.
+    assert "deploy_troops" not in _ids(engine, revealed)
+    paid = _do(engine, revealed, "pay_reveal_solari_for_troops")
+    after = paid.players[0]
+    assert after.resources.solari == 0
+    assert after.troops_garrison == before.troops_garrison + 2
+    assert after.troops_supply == before.troops_supply - 2
+    assert "pay_reveal_solari_for_troops" not in _ids(engine, paid)
+    counts = {
+        int(dict(action.arguments)["count"])
+        for action in _wholes(engine, paid)
+        if action.action_id == "deploy_troops"
+    }
+    assert counts == {1, 2}
+    deployed = _do(engine, paid, "deploy_troops", count=2)
+    assert deployed.players[0].troops_conflict == before.troops_conflict + 2
+    assert deployed.players[0].troops_garrison == before.troops_garrison
+    finished = _do(engine, deployed, "finish_reveal")
+    assert finished.players[0].combat_strength == 2 * 2
+
+
+def test_gurney_halleck_deployment_is_optional() -> None:
+    """"May deploy": the recruited troops stay in the garrison when not
+    deployed, and the Reveal ends without a refusal."""
+
+    engine, state = _start()
+    revealed = _gurney_revealed(engine, state, 3)
+    paid = _do(engine, revealed, "pay_reveal_solari_for_troops")
+    finished = _do(engine, paid, "finish_reveal")
+    assert finished.players[0].troops_conflict == 0
+    assert finished.players[0].troops_garrison == paid.players[0].troops_garrison
+
+
+def test_gurney_halleck_arrow_is_optional() -> None:
+    """The arrow cost is optional [DI p. 9] ("You do not have to pay such a
+    cost on a card" [Main p. 20]): the Reveal ends with no refusal needed."""
+
+    engine, state = _start()
+    revealed = _gurney_revealed(engine, state, 5)
+    finished = _do(engine, revealed, "finish_reveal")
+    assert finished.players[0].resources.solari == 5
+    assert finished.players[0].troops_garrison == revealed.players[0].troops_garrison
+
+
+def test_gurney_halleck_needs_three_solari_to_pay() -> None:
+    engine, state = _start()
+    revealed = _gurney_revealed(engine, state, 2)
+    assert "pay_reveal_solari_for_troops" not in _ids(engine, revealed)
+
+
+def test_gurney_halleck_payment_opens_once_a_later_gain_makes_three_solari() -> None:
+    """Reveal effects resolve in any order ([Main p. 12]; OQ-028: judged when
+    asked): Price is No Object's 2 Solari bring 1 to the 3 the arrow costs."""
+
+    engine, state = _start()
+    held, instance = _with_card(state, "gurney_halleck_card", alone=True)
+    held = _seat(
+        held,
+        hand=(instance, "imperium:price_is_no_object:0"),
+        resources=Resources(solari=1),
+    )
+    revealed = _do(engine, held, "reveal_turn")
+    assert "pay_reveal_solari_for_troops" not in _ids(engine, revealed)
+    gained = _do(engine, revealed, "gain_reveal_resources")
+    assert gained.players[0].resources.solari == 3
+    paid = _do(engine, gained, "pay_reveal_solari_for_troops")
+    assert paid.players[0].resources.solari == 0
