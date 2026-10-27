@@ -448,6 +448,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "Each opponent loses one garrisoned troop"
         ),
         PersonalCardAgentEffect.GAIN_ONE_SOLARI: "Gain 1 solari",
+        PersonalCardAgentEffect.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE: (
+            "You may pay 1 water → Recruit 1 troop, Draw 1 card"
+        ),
     }
 )
 

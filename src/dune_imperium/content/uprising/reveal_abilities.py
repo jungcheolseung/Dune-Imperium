@@ -116,6 +116,8 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
                 condition=FactionBond(Faction.FREMEN),
             )
         ),
+        # Duncan Idaho (original game): "1 water" beside its printed swords.
+        "duncan_idaho_card": _reveal(_line(GainResources(water=1))),
         # Junction Headquarters.
         "junction_headquarters": _reveal(
             _line(GainResources(water=1), RecruitTroops(1))

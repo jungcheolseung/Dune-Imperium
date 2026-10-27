@@ -1121,8 +1121,32 @@ def payment_box(ability: Ability | None) -> bool:
         or ability.mark is not AbilityMark.OPTIONAL
         or ability.icons
         or ability.hook is not None
-        or len(ability.sections) != 1
+        or not ability.sections
     ):
+        return False
+    if ability.armed_icons:
+        # An arrow whose rewards wait as icons once the cost is paid (Duncan
+        # Idaho's troop and draw, OQ-027, OQ-106): every line armed, the
+        # cost on the first.
+        first, *rest = ability.sections
+        if (
+            len(first.costs) != 1
+            or any(line.costs for line in rest)
+            or len(ability.armed_icons) != len(ability.sections)
+            or not all(
+                _armed_line(key, line)
+                for key, line in zip(
+                    ability.armed_icons, ability.sections, strict=True
+                )
+            )
+        ):
+            return False
+        try:
+            _paid_resource(first.costs[0])
+        except ValueError:
+            return False
+        return True
+    if len(ability.sections) != 1:
         return False
     (section,) = ability.sections
     if len(section.costs) != 1 or not all(
@@ -1194,6 +1218,17 @@ def payment_reward_block(
 ) -> AgentPaymentBlock | None:
     """Why the arrow would buy nothing now (OQ-071), or None."""
 
+    if ability.armed_icons:
+        # Rewards waiting as icons: the arrow is dead only when none of them
+        # can pay (a troop is always a live reward, like Control the Spice's).
+        if any(
+            not isinstance(reward, DrawPersonalCards)
+            or gather_intelligence_draw_available(state, player)
+            for line in ability.sections
+            for reward in line.rewards
+        ):
+            return None
+        return AgentPaymentBlock.NO_CARD_TO_DRAW
     for reward in ability.sections[0].rewards:
         if isinstance(reward, DrawPersonalCards) and not (
             gather_intelligence_draw_available(state, player)
@@ -1237,6 +1272,29 @@ def apply_payment(
 
     cost = _payment_cost(ability)
     owner = state.players[player]
+    if ability.armed_icons:
+        # Only the cost is paid now; the rewards are armed as icons, each
+        # its own step in the owner's order (Duncan Idaho: the troop and
+        # the hidden draw, OQ-027, OQ-106).
+        assert isinstance(cost, PayResources)
+        paid_owner = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                solari=owner.resources.solari - cost.solari,
+                spice=owner.resources.spice - cost.spice,
+                water=owner.resources.water - cost.water,
+            ),
+            spice_spent_turn=owner.spice_spent_turn + cost.spice,
+        )
+        arm_agent_icons(context, ability.armed_icons)
+        resource, spent = _paid_resource(cost)
+        return RuleResult(
+            state=advance_after_effect(
+                state, context, replace_player(state.players, paid_owner)
+            ),
+            events=(resources_paid_event(source, player, **{resource: spent}),),
+        )
     match cost:
         case SpendSpecimens(count=count):
             # The specimens return to the supply as they are spent

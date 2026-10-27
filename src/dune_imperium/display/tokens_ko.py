@@ -505,6 +505,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "다른 플레이어 각자 {garrison}의 {troop} 하나 잃음"
     ),
     PersonalCardAgentEffect.GAIN_ONE_SOLARI: "{solari:1}",
+    PersonalCardAgentEffect.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE: (
+        "{water:1} 지불 가능 {arrow_right} {troop:1}, {draw:1}"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box

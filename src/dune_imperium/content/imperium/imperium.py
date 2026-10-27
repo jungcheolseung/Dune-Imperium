@@ -162,10 +162,21 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
+    # App table: cost 4, 1 copy, no Faction, City, Reveal 2 swords and 1 water
+    # (the app's 2 swords, not the Dune Cards Hub scan's 3; P0 sweep, user
+    # ruling). Agent: "[1 water] -> [troop] [draw 1 card]", an optional arrow
+    # paid once [DI p. 9] [FAQ p. 3]; the troop and the draw are separate
+    # steps (OQ-027, OQ-106).
     ImperiumCardEntry(
         card=imperium_card("duncan_idaho_card", "Duncan Idaho"),
         copies=1,
         acquisition_cost=4,
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE
+        ),
+        reveal_strength=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("fedaykin_death_commando", "Fedaykin Death Commando"),

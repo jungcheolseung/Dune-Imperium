@@ -324,6 +324,12 @@ class PersonalCardAgentEffect(StrEnum):
     EACH_OPPONENT_LOSES_GARRISON_TROOP = "each_opponent_loses_garrison_troop"
     # Crysknife: the Solari icon alone, "Gain 1 Solari".
     GAIN_ONE_SOLARI = "gain_one_solari"
+    # Duncan Idaho: "[1 water] -> [troop] [draw 1 card]"; the arrow cost is
+    # optional and paid once [DI p. 9] [FAQ p. 3], and the troop and the
+    # hidden draw are separate steps (OQ-027, OQ-106).
+    MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE = (
+        "may_pay_one_water_for_troop_and_draw_one"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

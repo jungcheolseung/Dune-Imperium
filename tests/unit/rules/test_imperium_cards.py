@@ -764,3 +764,129 @@ def test_dr_yueh_reveals_one_persuasion() -> None:
     frame = _reveal(engine, state)
     assert frame["persuasion"] == 1
     assert frame["sword_strength"] == 0
+
+
+# --- Duncan Idaho -----------------------------------------------------------------
+
+
+def _duncan_placed(
+    engine: UprisingRulesEngine, state: GameState, water: int = 3
+) -> GameState:
+    """Seat 0 sends Duncan Idaho to Research Station (a City space; its two
+    water are paid) holding ``water`` water."""
+
+    held, _ = _with_card(state, "duncan_idaho_card")
+    seated = _seat(held, resources=Resources(water=water))
+    return _place(engine, seated, "imperium_research_station", "duncan_idaho_card")
+
+
+def test_duncan_idaho_matches_the_app_table() -> None:
+    # App attribute table: cost 4, 1 copy, no Faction, City, Reveal 2 swords
+    # and 1 water (the app's 2 swords: the Dune Cards Hub scan's 3 is the known
+    # bad scan, P0 sweep) and no Persuasion.
+    entry = IMPERIUM_CARDS_BY_ID["duncan_idaho_card"]
+    assert entry.card.name == "Duncan Idaho"
+    assert entry.acquisition_cost == 4
+    assert entry.copies == 1
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.CITY,)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 2)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:duncan_idaho_card:0") is entry
+
+
+def test_duncan_idaho_pays_one_water_for_a_troop_and_a_card() -> None:
+    """"An arrow cost is optional [DI p. 9] and paid once [FAQ p. 3]" (P0 sweep:
+    "may pay 1 water (arrow) -> recruit 1 troop and draw 1"): one water buys
+    the troop and the card."""
+
+    engine, state = _start()
+    placed = _duncan_placed(engine, state)
+    before = placed.players[0]
+    assert "pay_agent_card_water" in _ids(engine, placed)
+    paid = _do(engine, placed, "pay_agent_card_water")
+    assert paid.players[0].resources.water == before.resources.water - 1
+    # Both rewards still wait: the arrow pays only its cost at once.
+    assert paid.players[0].troops_garrison == before.troops_garrison
+    assert paid.players[0].hand == before.hand
+    recruited = _do(engine, paid, "resolve_agent_card_effect", effect="troops")
+    assert recruited.players[0].troops_garrison == before.troops_garrison + 1
+    assert recruited.players[0].troops_supply == before.troops_supply - 1
+    drawn = _do(engine, recruited, "resolve_agent_card_effect", effect="cards")
+    assert drawn.players[0].hand == (*before.hand, before.deck[0])
+
+
+def test_duncan_idaho_troop_and_draw_are_separate_steps_in_any_order() -> None:
+    """"Troop and draw are separate steps (OQ-027 (b), OQ-106)" (P0 sweep): a
+    hidden draw is never bundled with the public choice, so the owner may draw
+    first (to trash a discard card beforehand), and the turn cannot end while
+    either waits."""
+
+    engine, state = _start()
+    paid = _do(engine, _duncan_placed(engine, state), "pay_agent_card_water")
+    effects = {
+        dict(action.arguments)["effect"]
+        for action in _wholes(engine, paid)
+        if action.action_id == "resolve_agent_card_effect"
+    }
+    assert effects == {"troops", "cards"}
+    drawn_first = _do(engine, paid, "resolve_agent_card_effect", effect="cards")
+    assert drawn_first.players[0].troops_garrison == paid.players[0].troops_garrison
+    assert "finish_agent_turn" not in _ids(engine, drawn_first)
+    done = _do(engine, drawn_first, "resolve_agent_card_effect", effect="troops")
+    assert done.players[0].troops_garrison == paid.players[0].troops_garrison + 1
+
+
+def test_duncan_idaho_arrow_is_paid_once() -> None:
+    engine, state = _start()
+    placed = _duncan_placed(engine, state, water=6)
+    paid = _do(engine, placed, "pay_agent_card_water")
+    assert paid.players[0].resources.water == 3
+    assert "pay_agent_card_water" not in _ids(engine, paid)
+
+
+def test_duncan_idaho_arrow_is_optional() -> None:
+    """The arrow cost is optional [DI p. 9]: the owner who does not pay keeps
+    the water and gets neither the troop nor the card."""
+
+    engine, state = _start()
+    placed = _duncan_placed(engine, state)
+    before = placed.players[0]
+    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    assert "pay_agent_card_water" in _ids(engine, resolved)
+    finished = _do(engine, resolved, "finish_agent_turn")
+    after = finished.players[0]
+    assert after.resources.water == before.resources.water
+    assert after.troops_garrison == before.troops_garrison
+    # The card's draw was never bought: the finish drew nothing.
+    assert after.hand == resolved.players[0].hand
+
+
+def test_duncan_idaho_needs_one_water_to_pay() -> None:
+    engine, state = _start()
+    # Research Station takes its two water first: none is left to pay with.
+    assert "pay_agent_card_water" not in _ids(
+        engine, _duncan_placed(engine, state, water=2)
+    )
+    exact = _duncan_placed(engine, state, water=3)
+    assert _do(engine, exact, "pay_agent_card_water").players[0].resources.water == 0
+
+
+def test_duncan_idaho_reveals_one_water_and_two_swords() -> None:
+    """Reveal: "1 water" is a gain line and the swords count once a troop
+    stands in the Conflict ("Conflict에 troop이 하나도 없으면 0" [DI p. 11])."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "duncan_idaho_card", alone=True)
+    state = _with_troops(state, 0, garrison=0, conflict=1)
+    water = state.players[0].resources.water
+    revealed = _do(engine, state, "reveal_turn")
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (0, 2)
+    gained = _do(engine, revealed, "gain_reveal_resources")
+    assert gained.players[0].resources.water == water + 1
+    finished = _do(engine, gained, "finish_reveal")
+    assert finished.players[0].combat_strength == 2 + 2

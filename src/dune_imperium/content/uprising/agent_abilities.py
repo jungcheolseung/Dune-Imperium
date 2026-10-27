@@ -631,6 +631,20 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 GainInfluence(factions=(Faction.SPACING_GUILD,)),
                 GainResources(solari=3),
             ),
+            # Duncan Idaho (original game): "[1 water] -> [troop] [draw 1
+            # card]" -- a paid arrow whose two rewards wait as icons once the
+            # water is paid, each its own step (OQ-027 (b), OQ-106).
+            _BOX.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(RecruitTroops(1),), costs=(PayResources(water=1),)
+                    ),
+                    _line(DrawPersonalCards(1)),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("troops", "cards"),
+            ),
             # --- One action with follow-ups for the opponents (composed A3g) -----
             # Covert Operation: "Each opponent discards a card" -- one frame per
             # opponent holding a card, named ``<box>:opponent:<seat>``.
