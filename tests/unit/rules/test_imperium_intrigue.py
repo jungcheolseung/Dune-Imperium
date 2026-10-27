@@ -1844,6 +1844,7 @@ def test_charisma_is_not_offered_outside_the_seats_turn() -> None:
 FACTION_PLOTS = (
     ("favored_subject", "Favored Subject", "emperor", "Emperor"),
     ("guild_authorization", "Guild Authorization", "spacing_guild", "Spacing Guild"),
+    ("know_their_ways", "Know Their Ways", "fremen", "Fremen"),
 )
 
 
@@ -1970,3 +1971,18 @@ def test_a_faction_plot_is_not_offered_outside_the_seats_turn(
     _, state = _plot_hand(card)
     state = _seat(state, 1, intrigue_cards=(card,))
     assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_know_their_ways_at_the_top_of_the_fremen_track_fizzles() -> None:
+    # "Know Their Ways는 Fremen track 맨 위에서도 낸다(불발)" (imperium-base.md
+    # 13.3; OQ-113 (3): "Know Their Ways(Fremen 맨 위) 낸다"): the designer
+    # ruling the project adopted by (C). The other tracks are untouched.
+    card = _intrigue("know_their_ways")
+    engine, state = _plot_hand(
+        card, influence=Influence(emperor=2, fremen=6, bene_gesserit=3)
+    )
+
+    done = apply_whole(engine, state, _play(card)).state
+
+    assert done.players[0].influence == Influence(emperor=2, fremen=6, bene_gesserit=3)
+    assert done.intrigue_discard == (card,)

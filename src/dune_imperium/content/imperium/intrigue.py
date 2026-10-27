@@ -205,6 +205,15 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("know_their_ways", "Know Their Ways"),
         copies=1,
+        # "+1 Fremen Influence" [Know Their Ways card, app text]: a cost-free
+        # Plot naming its Faction. The designer ruling that it is played with
+        # the Fremen track at the top (the effect then fizzles) is OQ-113
+        # (3), imperium-base.md 13.3.
+        options=(
+            _plot(
+                EffectSection(rewards=(GainInfluence(factions=(Faction.FREMEN,)),))
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("plans_within_plans", "Plans Within Plans"),
