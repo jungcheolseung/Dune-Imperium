@@ -164,7 +164,7 @@
 | [OQ-136](#oq-136--tleilaxu-덱-고갈) | Tleilaxu 덱 고갈 | `DECIDED` |
 | [OQ-137](#oq-137--공동-1위로-남은-conflict-카드) | 공동 1위로 남은 Conflict 카드 | `DECIDED` |
 | [OQ-138](#oq-138--covert-operation에서-손이-빈-상대와-결정-창) | Covert Operation에서 손이 빈 상대와 결정 창 | `DECIDED` |
-| [OQ-139](#oq-139--mentat이-어느-말인가-원판) | Mentat이 어느 말인가 (원판) | `OPEN` |
+| [OQ-139](#oq-139--mentat이-어느-말인가-원판) | Mentat이 어느 말인가 (원판) | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -2854,7 +2854,8 @@
 
 ## OQ-139 — Mentat이 어느 말인가 (원판)
 
-- 상태: `OPEN` (2026-10-27 P2 설계에서 기록; 추천은 엔진 이유의 project convention)
+- 상태: `DECIDED` (2026-10-27 사용자 판정 (가), 조정자 경유; 공식 규칙이 아닌 project convention(엔진 이유). P3의 Kwisatz
+  Haderach·Urgent Mission에서 다시 연다)
 - 계기: 원판 P2(보드·흐름, [base-game-and-ix-plan.md](../base-game-and-ix-plan.md) 15절)의 Mentat 구현.
 - 질문: Mentat을 쥔 좌석이 Agent turn에 말을 보낼 때, 엔진이 "Mentat을 보냈는가, 자기 Agent를 보냈는가"를 가려 기록해야 하는가.
 - 공식 문장: Mentat 칸 "If the Mentat is here, take it and place it on your Leader; this round, you may use it as one of your Agents"
@@ -2868,3 +2869,6 @@
   P3의 두 카드에서 이 OQ를 다시 연다. (나) 처음부터 말을 가린다: Agent turn마다 "Mentat으로 보내기"를 따로 고르게 하고, 놓인 Mentat의 칸을 상태에
   둔다.
 - 추천: **(가)**. P3에서 다시 열 때 (나)로 바꾸면 그 단계의 codec·관측 변경으로 함께 낸다.
+- 판정(2026-10-27 사용자, P2 설계 승인과 함께): **(가)**. P2에서는 Mentat과 자기 Agent를 가리지 않고 그 라운드 Agent 수만 하나 늘린다.
+  공식 규칙이 아닌 project convention(엔진 이유)이고, 놓인 말이 Mentat인지가 결과를 바꾸는 P3 카드(Kwisatz Haderach, Urgent Mission)에서 다시
+  연다. 테스트는 P2a 구현 커밋에서 이 OQ를 인용한다.

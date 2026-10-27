@@ -601,6 +601,10 @@ P2가 할 일(이 축 위에서): `content/imperium/`에 보드 22칸·Conflict 
 
 ## 15. P2 계획 (2026-10-27 초안, 브랜치 `jungcheolseung/base-ix-p2`, master `12294215`에서)
 
+**승인(2026-10-27, 조정자 경유 사용자 확인):** 15.7의 1~6 모두. 4는 조건을 더했다: Uprising 개체의 `feature_tables()` 행은 열 척도까지
+시작 커밋 `12294215`와 바이트로 같아야 한다(척도가 원판 값으로 바뀌면 이관 보정에 기대지 않고 Uprising 값으로 고정하거나 먼저 묻는다). 5는
+사용자 판정 (가)로 OQ-139 `DECIDED`.
+
 8절 표의 P2(원판 보드·흐름)를 두 하위 단계로 나눈다. 끝의 모습은 원판 4인 판(확장 없음)이 휴리스틱 좌석으로 끝까지 도는 소크이고,
 그동안 Uprising은 바이트까지 그대로다(14절의 관문). 규칙 근거는 [rules/imperium-base.md](rules/imperium-base.md)의 절과 인용,
 보드에만 인쇄된 값은 D3대로 앱 자료(로컬 `reference/dune-steam-app/dad97e20…/`)에서 읽는다.
