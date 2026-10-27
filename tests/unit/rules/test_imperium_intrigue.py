@@ -17,6 +17,7 @@ from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.effect_dsl import (
     DeployFromGarrison,
+    GrantAgentIconsThisTurn,
     HasAlliance,
     LoseTroops,
     PayResources,
@@ -25,6 +26,7 @@ from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS,
     intrigue_card_for_instance,
 )
+from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core import (
     ChanceDecision,
     ChanceResolver,
@@ -37,7 +39,9 @@ from dune_imperium.core import (
 )
 from dune_imperium.display import intrigue_card_text
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import legal_agent_actions
 from dune_imperium.rules.combat import begin_combat_intrigue
+from dune_imperium.rules.frames import reset_turn_counters
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
     apply_intrigue_play,
@@ -2164,3 +2168,196 @@ def test_rapid_mobilization_is_not_a_combat_card_nor_offered_off_turn() -> None:
         _fighter(0, 2, intrigue_cards=(MOBILIZATION,)), _fighter(1, 1)
     )
     assert legal_intrigue_play_actions(fighting, 0) == ()
+
+
+# --- Dispatch an Envoy (Plot) -----------------------------------------------
+
+ENVOY = _intrigue("dispatch_an_envoy")
+# A starter card with no Agent icon at all: it cannot be sent anywhere.
+ARGUMENT = "player:0:starter:convincing_argument:0"
+RECONNAISSANCE = "player:0:starter:reconnaissance:0"
+FACTION_ICONS = {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
+
+
+def _envoy_hand(*hand: str) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 holding Dispatch an Envoy and only ``hand`` to play.
+
+    The cards of ``hand`` leave the deck, whatever the shuffle dealt (each
+    Intrigue card added to the deck moves it).
+    """
+
+    engine, state = _start()
+    owner = state.players[0]
+    deck = tuple(card for card in owner.deck if card not in hand)
+    return engine, _seat(
+        state, intrigue_cards=(ENVOY,), hand=hand, deck=deck, discard_pile=()
+    )
+
+
+def _agent_spaces(state: GameState) -> set[str]:
+    return {
+        str(dict(action.arguments)["space_id"])
+        for action in legal_agent_actions(state, 0)
+    }
+
+
+def test_dispatch_an_envoy_is_one_cost_free_plot_with_two_copies() -> None:
+    # "Plot: The card you play this turn has the following icons: Emperor,
+    # Spacing Guild, Bene Gesserit, Fremen" [Dispatch an Envoy card, Steam
+    # app text]; 2 copies [DI p. 3]. No arrow: a cost-free Plot.
+    entry = intrigue_card_for_instance(_intrigue("dispatch_an_envoy", 1))
+    assert entry.card.name == "Dispatch an Envoy"
+    assert entry.copies == 2
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert entry.options[0].sections[0].costs == ()
+    assert entry.options[0].sections[0].rewards == (
+        GrantAgentIconsThisTurn(
+            (
+                AgentIcon.EMPEROR,
+                AgentIcon.SPACING_GUILD,
+                AgentIcon.BENE_GESSERIT,
+                AgentIcon.FREMEN,
+            )
+        ),
+    )
+    assert intrigue_card_text(entry) == [
+        "Plot — The card you play this turn has the"
+        " emperor, spacing_guild, bene_gesserit, fremen icons"
+    ]
+    assert "dispatch_an_envoy" not in {
+        entry.card.card_id for entry in INTRIGUE_CARDS
+    }
+
+
+def test_dispatch_an_envoy_gives_a_card_with_no_icon_the_four_faction_icons() -> None:
+    # "Agent 아이콘이 없는 카드는 Agent turn에 낼 수 없다 `[DI p. 9]`"
+    # (imperium-base.md 5) -- until Dispatch an Envoy gives the card the
+    # Emperor, Spacing Guild, Bene Gesserit and Fremen icons: then it may be
+    # sent to a space of any of those four, and to no other icon's.
+    engine, state = _envoy_hand(ARGUMENT)
+    assert _agent_spaces(state) == set()
+    assert legal_intrigue_play_actions(state, 0) == (_play(ENVOY),)
+
+    result = apply_whole(engine, state, _play(ENVOY))
+    played = result.state
+
+    assert set(played.players[0].granted_agent_icon_turn.split(",")) == FACTION_ICONS
+    assert played.players[0].intrigue_cards == ()
+    assert played.intrigue_discard == (ENVOY,)
+    assert "intrigue_without_effect" not in [e.kind for e in result.events]
+    spaces = _agent_spaces(played)
+    # An Emperor, a Spacing Guild, a Bene Gesserit and a Fremen space.
+    assert {"wealth", "foldspace", "secrets", "stillsuits"} <= spaces
+    # Landsraad, City and Spice Trade stay out of reach of this card.
+    assert not spaces & {
+        "hall_of_oratory",
+        "rally_troops",
+        "arrakeen",
+        "carthag",
+        "imperial_basin",
+        "secure_contract",
+    }
+    # The Plot did not end the turn.
+    assert played.decision_stack[-1].kind == "turn"
+
+
+def test_dispatch_an_envoy_removes_no_icon_the_card_already_has() -> None:
+    # "아이콘을 지우지 않고" `[FAQ p. 2]` (imperium-base.md 13.2, Dispatch an
+    # Envoy row): Reconnaissance keeps its City icon and gains the four.
+    engine, state = _envoy_hand(RECONNAISSANCE)
+    assert _agent_spaces(state) == {"arrakeen", "carthag"}
+
+    played = apply_whole(engine, state, _play(ENVOY)).state
+
+    spaces = _agent_spaces(played)
+    assert {"arrakeen", "carthag"} <= spaces
+    assert {"wealth", "foldspace", "secrets", "stillsuits"} <= spaces
+
+
+def test_dispatch_an_envoy_adds_no_icon_twice() -> None:
+    # "이미 있는 아이콘을 하나 더 주지 않는다" `[FAQ p. 2]` (imperium-base.md
+    # 13.2): a second copy played the same turn adds nothing, so each of the
+    # four icons is on the card once.
+    engine, state = _envoy_hand(ARGUMENT)
+    state = _seat(state, intrigue_cards=(ENVOY, _intrigue("dispatch_an_envoy", 1)))
+    other = _play(_intrigue("dispatch_an_envoy", 1))
+    assert {_play(ENVOY), other} <= set(legal_intrigue_play_actions(state, 0))
+
+    first = apply_whole(engine, state, _play(ENVOY)).state
+    second = apply_whole(engine, first, other).state
+
+    granted = second.players[0].granted_agent_icon_turn.split(",")
+    assert sorted(granted) == sorted(FACTION_ICONS)
+    assert second.intrigue_discard == (ENVOY, _intrigue("dispatch_an_envoy", 1))
+
+
+def test_dispatch_an_envoy_icons_are_for_this_turn_only() -> None:
+    # "The card you play this turn": the grant is cleared when the seat's
+    # next turn opens, with the other per-turn counters (OQ-055).
+    engine, state = _envoy_hand(ARGUMENT)
+    played = apply_whole(engine, state, _play(ENVOY)).state
+    assert played.players[0].granted_agent_icon_turn
+
+    reopened = reset_turn_counters(played.players, 0)
+
+    assert reopened[0].granted_agent_icon_turn == ""
+
+
+def test_dispatch_an_envoy_is_played_after_the_agent_is_sent_and_fizzles() -> None:
+    # "Dispatch an Envoy는 Reveal turn에도, Agent를 보낸 뒤에도 낸다(아이콘은
+    # 붙지 않는다)" (imperium-base.md 13.3, OQ-113 (3): "비용이 없는 효과는 모두
+    # 불발해도 낸다"): offered after the placement, logged as a play that
+    # changes nothing, and the card is discarded.
+    engine, state = _envoy_hand(RECONNAISSANCE)
+    to_arrakeen = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "arrakeen"
+    )
+    placed = apply_whole(engine, state, to_arrakeen).state
+    assert _play(ENVOY) in engine.whole_actions(placed, 0)
+
+    result = apply_whole(engine, placed, _play(ENVOY))
+
+    assert "intrigue_without_effect" in [e.kind for e in result.events]
+    assert result.state.intrigue_discard == (ENVOY,)
+    assert result.state.players[0].intrigue_cards == ()
+
+
+def test_dispatch_an_envoy_is_played_in_the_reveal_turn_and_fizzles() -> None:
+    # OQ-113 (3), imperium-base.md 13.3: "Dispatch an Envoy는 Reveal turn에도
+    # ... 낸다(아이콘 없음)": there is no placement ahead, the play is logged
+    # as one that changes nothing.
+    engine, state = _envoy_hand(ARGUMENT)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _play(ENVOY) in engine.whole_actions(revealed, 0)
+
+    result = apply_whole(engine, revealed, _play(ENVOY))
+
+    assert "intrigue_without_effect" in [e.kind for e in result.events]
+    assert result.state.intrigue_discard == (ENVOY,)
+    assert result.state.decision_stack[-1].kind == "reveal"
+
+
+def test_dispatch_an_envoy_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _envoy_hand(RECONNAISSANCE)
+    actions = engine.whole_actions(state, 0)
+    assert _play(ENVOY) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (ENVOY,)
+    assert placed.players[0].granted_agent_icon_turn == ""
+
+
+def test_dispatch_an_envoy_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _envoy_hand(ARGUMENT)
+    state = _seat(state, 1, intrigue_cards=(ENVOY,))
+    assert legal_intrigue_play_actions(state, 1) == ()

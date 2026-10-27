@@ -25,6 +25,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluence,
     GainResources,
     GainVictoryPoints,
+    GrantAgentIconsThisTurn,
     HasAlliance,
     HasHighCouncil,
     LoseTroops,
@@ -37,6 +38,7 @@ from dune_imperium.content.uprising.intrigue import (
     _combat,
     _plot,
 )
+from dune_imperium.content.uprising.types import AgentIcon
 
 IMPERIUM_INTRIGUE_SOURCES: Final = (
     SourceRef(SourceDocument.IMPERIUM_RULEBOOK, (3, 13, 14)),
@@ -168,6 +170,28 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("dispatch_an_envoy", "Dispatch an Envoy"),
         copies=2,
+        # "The card you play this turn has the following icons: Emperor,
+        # Spacing Guild, Bene Gesserit, Fremen" [Dispatch an Envoy card, app
+        # text]: the four Faction Agent icons added to the card, none
+        # removed and none repeated [FAQ p. 2] -- Resourceful's shape with
+        # other icons. A cost-free Plot, played even after the Agent is sent
+        # or in the Reveal turn (OQ-113 (C), (3); imperium-base.md 13.3).
+        options=(
+            _plot(
+                EffectSection(
+                    rewards=(
+                        GrantAgentIconsThisTurn(
+                            (
+                                AgentIcon.EMPEROR,
+                                AgentIcon.SPACING_GUILD,
+                                AgentIcon.BENE_GESSERIT,
+                                AgentIcon.FREMEN,
+                            )
+                        ),
+                    )
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("double_cross", "Double Cross"),
