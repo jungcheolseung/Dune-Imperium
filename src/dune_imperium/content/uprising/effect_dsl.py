@@ -445,6 +445,14 @@ class OpponentSandwormInConflict:
 
 
 @dataclass(frozen=True, slots=True)
+class OpponentHasTroopInConflict:
+    """An opponent has a troop in the Conflict: "Double Cross | 상대 하나
+    이상이 Conflict에 troop이 있어야 낸다" `[FAQ p. 2]` (imperium-base.md
+    13.2), an official condition of playing the card. A Sardaukar Commander
+    is a troop for a card effect [Bloodlines p. 4] (OQ-036 (a))."""
+
+
+@dataclass(frozen=True, slots=True)
 class StrengthInConflictAtLeast:
     """The player has ``amount`` or more strength in the Conflict ("If you
     have 6 or more strength in the Conflict" [Gurney Halleck card])."""
@@ -532,6 +540,7 @@ type Condition = (
     | StrengthInConflictAtLeast
     | AgentOnSpaceWithIcon
     | OpponentSandwormInConflict
+    | OpponentHasTroopInConflict
 )
 
 
@@ -1396,6 +1405,38 @@ class EachOpponentDiscardsCard:
 
 
 @dataclass(frozen=True, slots=True)
+class OpponentLosesTroop:
+    """An opponent of the owner's choice loses one troop in the Conflict
+    ("An opponent of your choice loses one troop in the Conflict" [Double
+    Cross card, app text]; the troop goes back to its supply [DI p. 16]).
+
+    The owner names the opponent -- only one with a troop in the Conflict
+    (``OpponentHasTroopInConflict``, the card's official condition) -- and
+    that seat chooses the troop it loses in the same window Holy War opens,
+    limited to the Conflict (OQ-036 (a): the loser chooses the unit, a
+    Sardaukar Commander being a troop for a card effect [Bloodlines p. 4]).
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class DeployFromSupply:
+    """Deploy ``count`` troops from the owner's supply to the Conflict
+    ("you deploy one troop from your supply to the Conflict" [Double Cross
+    card, app text]): a deployment, not a recruit, so it needs no Combat icon.
+    With an empty supply nothing deploys [FAQ p. 2] and the shortfall is
+    recorded as Suspensor Suits' is (OQ-042 ruling (2): "Double Cross ...
+    같은 기록을 쓴다"); while deployment is banned (Emperor of the Known
+    Universe, [Main p. 17]) nothing deploys.
+    """
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("a deployment moves at least one troop")
+
+
+@dataclass(frozen=True, slots=True)
 class EachOpponentLosesTroop:
     """Each opponent loses one troop [Holy War card]: every opponent is
     asked, clockwise from the next seat, even with nothing to lose (OQ-036
@@ -1740,6 +1781,8 @@ type Reward = (
     | RecallAgent
     | EachOpponentDiscardsCard
     | EachOpponentLosesTroop
+    | OpponentLosesTroop
+    | DeployFromSupply
     | OpponentsMoveSpiesFromVisitedSpace
     | ReturnOtherGraftedCardAtRevealStart
     | GainSolariPerPartnerAgentIcon

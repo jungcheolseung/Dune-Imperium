@@ -43,6 +43,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EachOpponentLosesTroop,
     GrantAgentIconsThisTurn,
     OnTroopsLostAtConflictEnd,
+    OpponentLosesTroop,
     OpponentsMoveSpiesFromVisitedSpace,
     PeekTopCard,
     PrintedRevealValue,
@@ -1030,6 +1031,13 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         templates.extend(
             ActionTemplate(action_id=action_id)
             for action_id in (*_DRAW_OR_TRASH_EFFECTS, *_OPTIONAL_PASS_EFFECTS)
+        )
+        # Double Cross: the opponent whose Conflict troop is lost.
+        templates.extend(
+            ActionTemplate(
+                action_id="choose_opponent_troop_loss", arguments=(("player", seat),)
+            )
+            for seat in range(config.players)
         )
     if config.tech_module:
         templates.extend(_tech_templates(config))
@@ -2164,9 +2172,17 @@ def _window_printers(
             for card in _box_reward_cards(config, EachOpponentDiscardsCard)
         )
     if action_id == "resolve_unit_loss_without_unit":
-        return tuple(
-            (Source.AGENT_CARD, card)
-            for card in _box_reward_cards(config, EachOpponentLosesTroop)
+        return (
+            *(
+                (Source.AGENT_CARD, card)
+                for card in _box_reward_cards(config, EachOpponentLosesTroop)
+            ),
+            # Double Cross's chosen opponent (never without a troop to lose
+            # in the Conflict, but the window can always be confirmed).
+            *(
+                (Source.INTRIGUE, card)
+                for card in _intrigue_reward_cards(config, OpponentLosesTroop)
+            ),
         )
     if action_id == "lose_moved_spy":
         return (

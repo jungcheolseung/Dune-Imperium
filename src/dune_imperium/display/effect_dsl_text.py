@@ -38,6 +38,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ContractTaken,
     Cost,
     DeployFromGarrison,
+    DeployFromSupply,
     DeployTheseTroops,
     DestroyShieldWall,
     DiscardedCardHasFaction,
@@ -105,6 +106,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnSpiceGainedInTurnAtLeast,
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
+    OpponentHasTroopInConflict,
+    OpponentLosesTroop,
     OpponentPlayedCombatIntrigue,
     OpponentSandwormInConflict,
     OpponentsMoveSpiesFromVisitedSpace,
@@ -412,6 +415,8 @@ def condition_text(condition: Condition) -> str:
         case OpponentSandwormInConflict():
             # Quotes ``display/bloodlines.py``'s Fierce line.
             return "any opponent has a sandworm in the Conflict"
+        case OpponentHasTroopInConflict():
+            return "an opponent has a troop in the Conflict"
         case CommandReached():
             return "Command (6+ Persuasion)"
         case AtBoardSpace(space_id=space_id):
@@ -707,6 +712,13 @@ def reward_text(reward: Reward) -> str:
                 "Each opponent loses one garrisoned troop"
                 if garrison_only
                 else "Each opponent loses one troop"
+            )
+        case OpponentLosesTroop():
+            return "An opponent of your choice loses one troop in the Conflict"
+        case DeployFromSupply(count=count):
+            return (
+                f"Deploy {count} {_plural(count, 'troop')} from your supply to the"
+                " Conflict"
             )
         case OpponentsMoveSpiesFromVisitedSpace():
             return (

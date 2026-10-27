@@ -65,6 +65,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ContractTaken,
     Cost,
     DeployFromGarrison,
+    DeployFromSupply,
     DeployTheseTroops,
     DestroyShieldWall,
     DiscardedCardHasFaction,
@@ -132,6 +133,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnSpiceGainedInTurnAtLeast,
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
+    OpponentHasTroopInConflict,
+    OpponentLosesTroop,
     OpponentPlayedCombatIntrigue,
     OpponentSandwormInConflict,
     OpponentsMoveSpiesFromVisitedSpace,
@@ -597,6 +600,8 @@ def condition_text_ko(condition: Condition) -> str:
         case OpponentSandwormInConflict():
             # Quotes ``display/bloodlines.py``'s Fierce line.
             return "다른 플레이어 중 누군가 {conflict}에 {sandworm}를 가지고 있다면"
+        case OpponentHasTroopInConflict():
+            return "다른 플레이어 중 누군가 {conflict}에 {troop}이 있다면"
         case CommandReached():
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return "{command} ({persuasion} 6 이상)이면"
@@ -981,6 +986,11 @@ def reward_text_ko(reward: Reward) -> str:
                 if garrison_only
                 else "다른 플레이어 각자 {troop} 하나 잃음"
             )
+        case OpponentLosesTroop():
+            # The choice of the opponent is the owner's (Double Cross).
+            return "원하는 다른 플레이어 하나가 {conflict}에서 {troop} 하나 잃음"
+        case DeployFromSupply(count=count):
+            return f"{{supply}}의 {{troop:{count}}}을 {{conflict}}에 배치"
         case OpponentsMoveSpiesFromVisitedSpace():
             # Quotes ``tokens_ko.py``'s Holy War line.
             return (

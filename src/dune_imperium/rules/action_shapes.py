@@ -523,6 +523,11 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "put_back_top_card": _row(_V.KEEP, _S.INTRIGUE, variant="deck_top"),
     "discard_top_card": _row(_V.DISCARD, _S.INTRIGUE, variant="deck_top"),
     "draw_top_card_for_solari": _row(_V.DRAW, _S.INTRIGUE, variant="deck_top"),
+    # Double Cross (the original game): the opponent whose troop in the
+    # Conflict is lost, named by the owner.
+    "choose_opponent_troop_loss": _row(
+        _V.LOSE_UNIT, _S.INTRIGUE, _T.UNITS, variant="opponent"
+    ),
     # Bindu Suspension (the original game): pass the turn after the draw, or
     # play it normally (OQ-117).
     "pass_turn_intrigue": _row(_V.PASS, _S.INTRIGUE, variant="turn"),

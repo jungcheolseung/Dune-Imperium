@@ -1073,6 +1073,8 @@ TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxy
     "deploy_intrigue_troops": _COUNT,
     "retreat_intrigue_troops": _COUNT,
     "lose_intrigue_troop": _UNIT,
+    # Double Cross: the opponent whose troop in the Conflict is lost.
+    "choose_opponent_troop_loss": (("player", _C.SEAT),),
     "acquire_intrigue_imperium": _IMPERIUM,
     "acquire_intrigue_reserve": _RESERVE,
     "manipulate_imperium_row": _IMPERIUM,

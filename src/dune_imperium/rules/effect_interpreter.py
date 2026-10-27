@@ -30,6 +30,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ContractCompletedThisTurn,
     Cost,
     DeployFromGarrison,
+    DeployFromSupply,
     DeployTheseTroops,
     DestroyShieldWall,
     DiscardedCardHasFaction,
@@ -59,6 +60,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     MoreSpiceMustFlowThanEachOpponent,
     OnConflictWon,
     OpponentAllianceInfluenceAtLeast,
+    OpponentHasTroopInConflict,
+    OpponentLosesTroop,
     OpponentPlayedCombatIntrigue,
     PassTurn,
     PayResources,
@@ -147,6 +150,7 @@ from dune_imperium.rules.spy_placement import (
     spy_placement_allowed_post_ids,
     spy_placement_posts,
 )
+from dune_imperium.rules.unit_loss import opponents_with_conflict_troop
 
 type ChoiceSlot = (
     LoseInfluence
@@ -169,6 +173,7 @@ type ChoiceSlot = (
     | PeekTopCard
     | AcquireTleilaxuCard
     | PassTurn
+    | OpponentLosesTroop
 )
 
 
@@ -269,6 +274,10 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             return any(
                 seat != player for seat in state.combat_intrigue_players
             )
+        case OpponentHasTroopInConflict():
+            # Double Cross: "상대 하나 이상이 Conflict에 troop이 있어야 낸다"
+            # `[FAQ p. 2]` (imperium-base.md 13.2).
+            return bool(opponents_with_conflict_troop(state, player))
         case AllConditions(conditions=conditions):
             return all(condition_holds(state, player, item) for item in conditions)
         case MoreSpiceMustFlowThanEachOpponent():
@@ -432,6 +441,9 @@ def choice_slots(
                 case PassTurn(optional=True):
                     # Bindu Suspension: "You may pass your turn" is the
                     # owner's choice, after the line's draw.
+                    slots.append(reward)
+                case OpponentLosesTroop():
+                    # Double Cross: the owner names the opponent.
                     slots.append(reward)
                 case _:
                     pass
@@ -948,6 +960,14 @@ def reward_can_change_something(
             )
         case GainSolariPerUnitType():
             return owner.units_in_conflict > 0
+        case OpponentLosesTroop():
+            return bool(opponents_with_conflict_troop(state, player))
+        case DeployFromSupply():
+            # Nothing deploys with an empty supply [FAQ p. 2] or while
+            # deployment is banned (Emperor of the Known Universe).
+            return owner_after.troops_supply > 0 and not units_deployment_blocked(
+                state, player
+            )
         case PassTurn():
             # With every other seat revealed, the pass hands the turn
             # straight back [Main p. 8] (``effects.next_unrevealed_player``).
@@ -1261,6 +1281,9 @@ class RewardOutcome:
     reserve_acquisitions: tuple[str, ...] = ()
     # Acquire Tech icons to open, one discount per icon (Tech Module).
     tech_acquisitions: tuple[int, ...] = ()
+    # Troops to deploy from the supply to the Conflict (Double Cross; the
+    # caller moves them, ``tech.deploy_troops_from_supply``).
+    supply_deployments: int = 0
 
 
 def rewards_come_first(sections: tuple[EffectSection, ...]) -> bool:
@@ -1299,6 +1322,7 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | SetAsideImperiumRowCard
             | PeekTopCard
             | AcquireTleilaxuCard
+            | OpponentLosesTroop
             | RevealContractsTakeOne,
         )
     )
@@ -1328,6 +1352,7 @@ def apply_rewards(
     passes_turn = False
     reserve_acquisitions: list[str] = []
     tech_acquisitions: list[int] = []
+    supply_deployments = 0
     personal_draws = 0
     shuffle_draws: list[int] = []
     intrigue_draws = 0
@@ -1480,6 +1505,8 @@ def apply_rewards(
                     gains["solari"] += kinds
             case PassTurn():
                 passes_turn = True
+            case DeployFromSupply(count=count):
+                supply_deployments += count
             case PermanentRevealPersuasion(amount=amount):
                 owner = replace(
                     owner,
@@ -1582,4 +1609,5 @@ def apply_rewards(
         passes_turn=passes_turn,
         reserve_acquisitions=tuple(reserve_acquisitions),
         tech_acquisitions=tuple(tech_acquisitions),
+        supply_deployments=supply_deployments,
     )

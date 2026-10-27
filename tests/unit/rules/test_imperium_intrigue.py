@@ -36,6 +36,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseTroops,
     MoreSpiceMustFlowThanEachOpponent,
     OnConflictWon,
+    OpponentHasTroopInConflict,
     PayResources,
     SpiceMustFlowCardsAtLeast,
 )
@@ -78,6 +79,11 @@ from dune_imperium.rules.intrigue import (
     apply_intrigue_play,
     legal_intrigue_play_actions,
 )
+from dune_imperium.rules.unit_loss import (
+    legal_unit_loss_actions,
+    opponent_unit_loss_frames,
+    opponents_with_conflict_troop,
+)
 from dune_imperium.simulation.invariants import check_observation_privacy
 
 CONFIG = RulesetConfig(base_game=BaseGame.IMPERIUM, first_player_seat_zero=True)
@@ -90,11 +96,13 @@ LEADERS = (
 FACTIONS = {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
 
 
-def _start(seed: int = 3) -> tuple[UprisingRulesEngine, GameState]:
+def _start(
+    seed: int = 3, config: RulesetConfig = CONFIG
+) -> tuple[UprisingRulesEngine, GameState]:
     """Round 1 of the original game at seat 0's first turn."""
 
     engine = UprisingRulesEngine(leader_ids=LEADERS)
-    state = engine.reset(CONFIG, seed)
+    state = engine.reset(config, seed)
     chance = ChanceResolver(seed=seed)
     while isinstance(decision := engine.current_decision(state), ChanceDecision):
         state = engine.apply(state, chance.resolve(decision)).state
@@ -4379,3 +4387,416 @@ def test_bindu_suspension_rows_have_catalog_templates_and_step_rows() -> None:
     assert rows(CONFIG) == {"pass", "decline"}
     assert not rows(RulesetConfig())
     assert not rows(RulesetConfig(bloodlines=True, tech_module=True))
+
+
+# --- Double Cross (Plot, stage P3c) -------------------------------------------
+
+CROSS = _intrigue("double_cross")
+
+
+def _cross_state(
+    *,
+    solari: int = 3,
+    supply: int = 11,
+    conflict: int = 1,
+    rivals: dict[int, dict[str, Any]] | None = None,
+    config: RulesetConfig = CONFIG,
+) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 holding Double Cross with ``conflict`` troops in the Conflict and
+    ``supply`` in its supply (the rest at home); ``rivals`` maps a seat to its
+    own changes (default: seat 2 with two troops in the Conflict)."""
+
+    engine, state = _start(config=config)
+    state = _seat(
+        state,
+        intrigue_cards=(CROSS,),
+        resources=Resources(solari=solari),
+        troops_supply=supply,
+        troops_conflict=conflict,
+        troops_garrison=12 - supply - conflict,
+        combat_strength=2 * conflict,
+    )
+    for seat, changes in (rivals or {2: {"troops": 2}}).items():
+        troops = changes.get("troops", 0)
+        state = _seat(
+            state,
+            seat,
+            troops_conflict=troops,
+            troops_supply=12 - troops - changes.get("garrison", 0),
+            troops_garrison=changes.get("garrison", 0),
+            combat_strength=2 * troops,
+        )
+    return engine, state
+
+
+def _name_opponent(seat: int) -> DomainAction:
+    return DomainAction(
+        action_id="choose_opponent_troop_loss",
+        actor=0,
+        arguments=(("player", seat),),
+    )
+
+
+def _rewards_row() -> DomainAction:
+    return DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+
+
+def _lose_in_conflict(seat: int, *, commander: bool = False) -> DomainAction:
+    return DomainAction(
+        action_id="lose_unit",
+        actor=seat,
+        arguments=(*((("commanders", 1),) if commander else ()), ("zone", "conflict")),
+    )
+
+
+def test_double_cross_is_one_plot_cost_line_with_one_copy() -> None:
+    # "1 Solari -> An opponent of your choice loses one troop in the Conflict
+    # and you deploy one troop from your supply to the Conflict." [Double
+    # Cross card, Steam app text]; 1 copy [DI p. 3]. A cost arrow line
+    # [DI p. 16], with the card's one official condition (below).
+    entry = intrigue_card_for_instance(CROSS)
+    assert entry.card.name == "Double Cross"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    section = entry.options[0].sections[0]
+    assert section.costs == (PayResources(solari=1),)
+    assert section.condition == OpponentHasTroopInConflict()
+    assert intrigue_card_text(entry) == [
+        "Plot — If an opponent has a troop in the Conflict: Pay 1 solari →"
+        " An opponent of your choice loses one troop in the Conflict,"
+        " Deploy 1 troop from your supply to the Conflict"
+    ]
+    assert "double_cross" not in {card.card.card_id for card in INTRIGUE_CARDS}
+
+
+def test_double_cross_is_played_only_when_an_opponent_has_a_troop_in_the_conflict() -> (
+    None
+):
+    # "Double Cross | 상대 하나 이상이 Conflict에 troop이 있어야 낸다`[FAQ p. 2]`
+    # (imperium-base.md 13.2, 16): an official condition, not a case of a
+    # reward that cannot change anything (OQ-113 (C)). The seat's own troops
+    # in the Conflict do not count, and neither does an opponent's garrison.
+    engine, state = _cross_state(rivals={2: {"troops": 0, "garrison": 3}})
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert _play(CROSS) not in engine.whole_actions(state, 0)
+
+    _, with_troop = _cross_state(rivals={2: {"troops": 1}})
+    assert legal_intrigue_play_actions(with_troop, 0) == (_play(CROSS),)
+    assert with_troop.players[0].resources.solari == 3
+
+
+
+def test_double_cross_needs_the_one_solari() -> None:
+    # "1 Solari ->": the arrow's cost is paid once played [FAQ p. 2].
+    engine, state = _cross_state(solari=0)
+    assert legal_intrigue_play_actions(state, 0) == ()
+    _, exact = _cross_state(solari=1)
+    assert legal_intrigue_play_actions(exact, 0) == (_play(CROSS),)
+    opened = apply_whole(engine, exact, _play(CROSS)).state
+    assert opened.players[0].resources.solari == 0
+
+
+def test_double_cross_names_an_opponent_then_both_effects_happen() -> None:
+    # "An opponent of your choice loses one troop in the Conflict and you
+    # deploy one troop from your supply to the Conflict": the owner names the
+    # opponent, the opponent chooses the troop it loses (OQ-036 (a)), the lost
+    # troop returns to that seat's supply [DI p. 16], and the owner's troop
+    # moves from its supply to the Conflict; both strength markers follow
+    # [Main p. 12].
+    engine, state = _cross_state(solari=3, supply=11, conflict=1)
+    opened = apply_whole(engine, state, _play(CROSS)).state
+    assert opened.players[0].resources.solari == 2
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    assert {action.action_id for action in engine.whole_actions(opened, 0)} == {
+        "choose_opponent_troop_loss",
+        "resolve_intrigue_rewards",
+    }
+    assert engine.whole_actions(opened, 1) == ()
+
+    named = apply_whole(engine, opened, _name_opponent(2))
+    # The card is played out; the named opponent decides alone.
+    assert named.state.intrigue_discard == (CROSS,)
+    assert named.state.players[0].intrigue_cards == ()
+    frame = named.state.decision_stack[-1]
+    assert frame.kind == FrameKind.OPPONENT_UNIT_LOSS
+    assert frame.decision.owner == 2  # type: ignore[union-attr]
+    assert engine.whole_actions(named.state, 0) == ()
+    # The owner's troop is already in the Conflict, from its supply.
+    mine = named.state.players[0]
+    assert (mine.troops_supply, mine.troops_conflict) == (10, 2)
+    assert mine.combat_strength == 4
+    assert mine.units_deployed_turn == 1
+    assert [e.kind for e in named.events].count("troops_deployed") == 1
+    # The opponent's loss is still to come.
+    assert named.state.players[2].troops_conflict == 2
+
+    lost = apply_whole(engine, named.state, _lose_in_conflict(2))
+    rival = lost.state.players[2]
+    assert (rival.troops_conflict, rival.troops_supply) == (1, 11)
+    assert rival.combat_strength == 2
+    assert lost.state.decision_stack[-1].kind == "turn"
+    assert "unit_lost" in [event.kind for event in lost.events]
+    # The turn goes on: the Plot did not end it.
+    assert dict(lost.state.decision_stack[-1].context)["turn_owner"] == 0
+
+
+def test_double_cross_effects_may_be_taken_in_either_order() -> None:
+    # The two icons are independent effects in the owner's order (OQ-015):
+    # deploying first, then naming the opponent, gives the same outcome.
+    engine, state = _cross_state()
+    opened = apply_whole(engine, state, _play(CROSS)).state
+
+    deployed = apply_whole(engine, opened, _rewards_row()).state
+    assert (deployed.players[0].troops_supply, deployed.players[0].troops_conflict) == (
+        10,
+        2,
+    )
+    assert deployed.decision_stack[-1].kind == "intrigue_choice"
+    assert {action.action_id for action in engine.whole_actions(deployed, 0)} == {
+        "choose_opponent_troop_loss"
+    }
+
+    named = apply_whole(engine, deployed, _name_opponent(2)).state
+    assert named.decision_stack[-1].kind == FrameKind.OPPONENT_UNIT_LOSS
+    assert named.intrigue_discard == (CROSS,)
+    assert (named.players[0].troops_supply, named.players[0].troops_conflict) == (
+        10,
+        2,
+    )
+
+
+def test_double_cross_names_only_opponents_with_a_troop_in_the_conflict() -> None:
+    # The condition is an opponent's troop in the Conflict, so only such an
+    # opponent is named, clockwise from the next seat.
+    engine, state = _cross_state(
+        rivals={1: {"troops": 1}, 2: {"troops": 0, "garrison": 2}, 3: {"troops": 3}}
+    )
+    opened = apply_whole(engine, state, _play(CROSS)).state
+
+    named = [
+        action
+        for action in engine.whole_actions(opened, 0)
+        if action.action_id == "choose_opponent_troop_loss"
+    ]
+    assert named == [_name_opponent(1), _name_opponent(3)]
+    assert _name_opponent(2) not in engine.whole_actions(opened, 0)
+
+
+def test_double_cross_the_named_opponent_chooses_among_its_conflict_units() -> None:
+    # "loses one troop in the Conflict": the choice is limited to the Conflict
+    # (its garrison is no option) (OQ-036 (a)).
+    engine, state = _cross_state(rivals={2: {"troops": 3, "garrison": 4}})
+    opened = apply_whole(engine, state, _play(CROSS)).state
+    named = apply_whole(engine, opened, _name_opponent(2)).state
+
+    assert engine.whole_actions(named, 2) == (_lose_in_conflict(2),)
+    gone = apply_whole(engine, named, _lose_in_conflict(2)).state
+    assert gone.players[2].troops_conflict == 2
+    assert gone.players[2].troops_garrison == 4
+
+
+def test_a_sardaukar_commander_is_a_troop_for_double_cross_s_condition_and_loss() -> (
+    None
+):
+    # "A Sardaukar Commander is a 'troop'" [Bloodlines p. 4] and the loser
+    # chooses the unit it loses (OQ-036 (a)). The original game takes
+    # Bloodlines only from stage P7, so the rule is read on an Uprising game
+    # with Bloodlines: the condition holds for a Commander alone in the
+    # Conflict, and the named seat's window offers the Commander and the troop
+    # of the Conflict, never its garrison.
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(bloodlines=True, first_player_seat_zero=True), 3)
+    chance = ChanceResolver(seed=3)
+    while isinstance(decision := engine.current_decision(state), ChanceDecision):
+        state = engine.apply(state, chance.resolve(decision)).state
+    assert not condition_holds(state, 0, OpponentHasTroopInConflict())
+
+    alone = _seat(state, 2, commanders_conflict=1, commanders_supply=0)
+    assert condition_holds(alone, 0, OpponentHasTroopInConflict())
+    assert opponents_with_conflict_troop(alone, 0) == (2,)
+
+    both = _seat(
+        alone, 2, troops_conflict=1, troops_supply=7, troops_garrison=4
+    )
+    window = opponent_unit_loss_frames(
+        both, 0, source="test", printer="intrigue|double_cross",
+        conflict_only=True, seats=(2,),
+    ).state
+    assert {
+        tuple(sorted(dict(action.arguments).items()))
+        for action in legal_unit_loss_actions(window, 2)
+    } == {(("zone", "conflict"),), (("commanders", 1), ("zone", "conflict"))}
+    # Only the named seat is asked.
+    assert [frame.decision.owner for frame in window.decision_stack[-1:]] == [2]  # type: ignore[union-attr]
+    assert window.decision_stack[-2:-1] == both.decision_stack[-1:]
+
+
+def test_double_cross_with_an_empty_supply_is_played_and_deploys_nothing() -> None:
+    # "내 supply는 비어도 된다" `[FAQ p. 2]` (imperium-base.md 13.2): the empty
+    # supply is no bar to playing it; nothing deploys. The opponent still
+    # loses its troop. The troop owed is recorded as Suspensor Suits' are
+    # (OQ-042 ruling (2): Double Cross "같은 기록을 쓴다").
+    engine, state = _cross_state(supply=0, conflict=1)
+    state = _seat(state, troops_garrison=11)
+    assert legal_intrigue_play_actions(state, 0) == (_play(CROSS),)
+    opened = apply_whole(engine, state, _play(CROSS)).state
+
+    named = apply_whole(engine, opened, _name_opponent(2))
+
+    mine = named.state.players[0]
+    assert (mine.troops_supply, mine.troops_conflict, mine.troops_garrison) == (
+        0,
+        1,
+        11,
+    )
+    assert mine.units_deployed_turn == 0
+    assert mine.ungained_conflict_troops == 1
+    assert "troops_deployed" not in [event.kind for event in named.events]
+    lost = apply_whole(engine, named.state, _lose_in_conflict(2)).state
+    assert lost.players[2].troops_conflict == 1
+
+
+def test_double_cross_owed_troop_is_made_up_when_a_troop_returns_this_turn() -> None:
+    # The recorded troop goes to the Conflict as soon as the seat's supply
+    # holds one again in the same turn (``rules.shortfall``).
+    from dune_imperium.rules.shortfall import refill_shortfall, shortfall_refill_seat
+
+    engine, state = _cross_state(supply=0, conflict=1)
+    state = _seat(state, troops_garrison=11)
+    opened = apply_whole(engine, state, _play(CROSS)).state
+    named = apply_whole(engine, opened, _name_opponent(2)).state
+    done = apply_whole(engine, named, _lose_in_conflict(2)).state
+    assert shortfall_refill_seat(done) is None
+
+    # A troop returns to the seat's supply (a loss of its own, say).
+    returned = _seat(
+        done, troops_supply=1, troops_garrison=done.players[0].troops_garrison - 1
+    )
+    assert shortfall_refill_seat(returned) == 0
+    refilled = refill_shortfall(returned, 0).state.players[0]
+    assert (refilled.troops_supply, refilled.troops_conflict) == (0, 2)
+    assert refilled.ungained_conflict_troops == 0
+
+
+def test_double_cross_deploys_nothing_while_deployment_is_banned() -> None:
+    # Emperor of the Known Universe: "units can't be deployed to the Conflict"
+    # for the whole turn [Main p. 17]. The card is still played and the
+    # opponent still loses its troop; the deployment does nothing and owes
+    # nothing.
+    engine, state = _cross_state()
+    frame = state.decision_stack[-1]
+    banned = replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(
+                frame,
+                context=tuple(
+                    sorted((*frame.context, ("units_deploy_blocked", True)))
+                ),
+            ),
+        ),
+    )
+    assert legal_intrigue_play_actions(banned, 0) == (_play(CROSS),)
+    opened = apply_whole(engine, banned, _play(CROSS)).state
+
+    named = apply_whole(engine, opened, _name_opponent(2))
+
+    mine = named.state.players[0]
+    assert (mine.troops_supply, mine.troops_conflict) == (11, 1)
+    assert mine.ungained_conflict_troops == 0
+    assert named.state.decision_stack[-1].kind == FrameKind.OPPONENT_UNIT_LOSS
+
+
+def test_double_cross_in_the_reveal_turn_adds_the_troop_to_the_reveal() -> None:
+    # The deployed troop joins the Reveal's strength like any troop sent to
+    # the Conflict in the owner's Reveal turn [Main p. 13]; the opponent's loss
+    # takes its own strength off at once [Main p. 12].
+    engine, state = _cross_state(supply=11, conflict=1)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    before = revealed.players[0]
+    assert _play(CROSS) in engine.whole_actions(revealed, 0)
+
+    opened = apply_whole(engine, revealed, _play(CROSS)).state
+    named = apply_whole(engine, opened, _name_opponent(2)).state
+
+    mine = named.players[0]
+    assert mine.troops_conflict == before.troops_conflict + 1
+    assert mine.combat_strength == before.combat_strength + 2
+    lost = apply_whole(engine, named, _lose_in_conflict(2)).state
+    assert lost.players[2].combat_strength == 2
+    assert lost.decision_stack[-1].kind == "reveal"
+
+
+def test_double_cross_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _cross_state()
+    actions = engine.whole_actions(state, 0)
+    assert _play(CROSS) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (CROSS,)
+    assert placed.players[0].resources.solari == 3
+
+
+def test_double_cross_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5), and
+    # never in Combat: it is a Plot card.
+    _, state = _cross_state()
+    state = _seat(state, 1, intrigue_cards=(CROSS,), resources=Resources(solari=3))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_double_cross_is_greyed_out_and_says_why_without_an_opponent_troop() -> None:
+    engine, state = _cross_state(rivals={2: {"troops": 0}})
+    found = unavailable_choices(state, 0, engine.whole_actions(state, 0))
+    assert found is not None
+    reason = found["refs"][CROSS]  # type: ignore[index]
+    assert reason["code"] == "condition"
+    assert reason["reason"] == "Only if an opponent has a troop in the Conflict"
+
+
+def test_double_cross_rows_have_catalog_templates_and_step_rows() -> None:
+    # The original game's catalog lists the opponent pick (a seat row) and the
+    # card's automatic rewards; the codec round-trips what each seat is
+    # offered; Uprising's catalog has none of them.
+    engine, state = _cross_state()
+    codec = ActionCodec(CONFIG)
+    opened = apply_whole(engine, state, _play(CROSS)).state
+    named = apply_whole(engine, opened, _name_opponent(2)).state
+    for held, seat in ((opened, 0), (named, 2)):
+        offered = engine.legal_actions(held, seat)
+        assert offered
+        for action in offered:
+            assert codec.decode(codec.encode(action), seat) == action
+
+    def rows(config: RulesetConfig) -> set[str]:
+        return {
+            template.action_id
+            for template in ActionCodec(config).catalog
+            if dict(template.arguments).get("printed") == "double_cross"
+        }
+
+    # The card's automatic rewards, and the confirmation of the named
+    # opponent's window (never needed with a troop to lose, but always legal).
+    assert rows(CONFIG) == {"resolve", "confirm_empty"}
+    assert not rows(RulesetConfig())
+    assert not rows(RulesetConfig(bloodlines=True, tech_module=True))
+    # The seat pick is shown as ``choose_seat`` rows, one per seat; the whole
+    # id ``choose_opponent_troop_loss`` is no catalog row of its own.
+    assert not any(
+        template.action_id == "choose_opponent_troop_loss"
+        for template in ActionCodec(CONFIG).catalog
+    )
+    assert {
+        dict(template.arguments)["player"]
+        for template in ActionCodec(CONFIG).catalog
+        if template.action_id == "choose_seat"
+    } == {0, 1, 2, 3}

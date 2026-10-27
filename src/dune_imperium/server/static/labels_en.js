@@ -158,6 +158,7 @@ const LABELS_EN = {
     "place_leader_bonus_spice": "Place bonus {spice} on Tuek's Sietch ({signet_ring})",
     "take_leader_bonus_spice": "Take bonus {spice} from {maker} space ({signet_ring})",
     "lose_intrigue_troop": "Lose {troop} ({intrigue_card})",
+    "choose_opponent_troop_loss": "Choose the opponent who loses a {troop} in the {conflict} ({intrigue_card})",
     "give_intrigue_card": "Give {intrigue_card} to opponent",
     "trash_intrigue_hand_card": "{trash_intrigue}",
     "skip_intrigue_acquisition": "No card to acquire (skip)",

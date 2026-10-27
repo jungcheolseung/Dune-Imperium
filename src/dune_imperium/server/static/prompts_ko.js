@@ -53,6 +53,7 @@ const PROMPT_KO = {
   "Choose where to advance your research token": "{research} 토큰을 전진시킬 위치 선택",
   "Choose where to lose one unit": "부대 1을 잃을 위치 선택",
   "Choose a garrisoned unit to lose": "{garrison}에서 잃을 부대 선택",
+  "Choose a unit in the Conflict to lose": "{conflict}에서 잃을 부대 선택",
   "No unit to lose": "잃을 유닛 없음",
   "No card to discard": "버릴 카드 없음",
   "Choose where to place a Spy for this Reveal effect": "이 {reveal_turn} 효과로 {spy}를 배치할 위치 선택",

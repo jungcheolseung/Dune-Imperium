@@ -55,6 +55,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GiveIntrigueToOpponent,
     LoseInfluence,
     LoseTroops,
+    OpponentLosesTroop,
     PassTurn,
     PeekTopCard,
     PlaceSpy,
@@ -152,14 +153,18 @@ from dune_imperium.rules.spy_placement import (
 )
 from dune_imperium.rules.strength import reveal_in_progress
 from dune_imperium.rules.tactics import advance_tactics_token
-from dune_imperium.rules.tech import push_tech_acquisition
+from dune_imperium.rules.tech import deploy_troops_from_supply, push_tech_acquisition
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
     acquire_reclaimed_forces,
     acquire_tleilaxu_card,
     reclaimed_forces_block,
 )
-from dune_imperium.rules.unit_loss import lose_unit
+from dune_imperium.rules.unit_loss import (
+    lose_unit,
+    opponent_unit_loss_frames,
+    opponents_with_conflict_troop,
+)
 from dune_imperium.rules.units import retreat_units, unit_count_arguments, unit_counts
 
 # --- Pending entries ---------------------------------------------------------
@@ -508,6 +513,19 @@ def piece_rows(
                 row(Verb.TRASH, Target.INTRIGUE_CARD, (("card_id", held),))
                 for held in owner.intrigue_cards
                 if held != played_card_id
+            )
+        case OpponentLosesTroop():
+            # Double Cross: the opponent whose troop goes, one that has a
+            # troop in the Conflict to lose (the card's official condition,
+            # [FAQ p. 2]), clockwise from the next seat.
+            rows.extend(
+                row(
+                    Verb.LOSE_UNIT,
+                    Target.UNITS,
+                    (("player", seat),),
+                    variant="opponent",
+                )
+                for seat in opponents_with_conflict_troop(state, player)
             )
         case AcquireTleilaxuCard():
             # "You may also acquire a Tleilaxu card (paying its normal
@@ -1101,6 +1119,23 @@ def apply_piece(
             result = _trash_intrigue_hand_card(
                 state, player, str(arguments["card_id"]), troops_bonus, step_source
             )
+        case OpponentLosesTroop():
+            # The named opponent chooses the troop it loses, in a window of
+            # its own above this frame (OQ-036 (a)); the card's own
+            # deployment waits for its automatic rewards.
+            printed = intrigue_card_for_instance(
+                split_intrigue_ref(entry.ref)[0]
+            ).card.card_id
+            chosen = arguments["player"]
+            assert isinstance(chosen, int) and not isinstance(chosen, bool)
+            result = opponent_unit_loss_frames(
+                state,
+                player,
+                source=step_source,
+                printer=printer_value(Source.INTRIGUE, printed),
+                conflict_only=True,
+                seats=(chosen,),
+            )
         case PassTurn(optional=True) if shape.verb is Verb.DECLINE:
             result = _passed(state, player, action, step_source)
         case PassTurn(optional=True):
@@ -1588,6 +1623,16 @@ def apply_automatic_rewards(
         )
     if outcome.combat_icons:
         next_state = grant_combat_icon(next_state, player)
+    if outcome.supply_deployments:
+        # Double Cross: its troop goes from the supply to the Conflict.
+        deployed = deploy_troops_from_supply(
+            next_state,
+            player,
+            outcome.supply_deployments,
+            source=f"{source}:supply",
+        )
+        next_state = deployed.state
+        events.extend(deployed.events)
     if outcome.deployable_recruits:
         next_state = grant_recruit_deployment(
             next_state, player, outcome.deployable_recruits

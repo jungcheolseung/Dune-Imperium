@@ -198,6 +198,7 @@ const ACTION_LABELS = {
   place_leader_bonus_spice: "튜엑의 시치에 보너스 {spice} 놓기 ({signet_ring})",
   take_leader_bonus_spice: "{maker} 장소의 보너스 {spice} 가져오기 ({signet_ring})",
   lose_intrigue_troop: "{troop} 잃기 ({intrigue_card})",
+  choose_opponent_troop_loss: "{conflict}에서 {troop} 잃을 상대 고르기 ({intrigue_card})",
   give_intrigue_card: "상대에게 {intrigue_card} 주기",
   trash_intrigue_hand_card: "{trash_intrigue}",
   skip_intrigue_acquisition: "획득할 카드 없음 (건너뛰기)",

@@ -19,6 +19,7 @@ from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceR
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     DeployFromGarrison,
+    DeployFromSupply,
     DeployTheseTroops,
     DrawPersonalCards,
     EffectSection,
@@ -35,6 +36,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseTroops,
     MoreSpiceMustFlowThanEachOpponent,
     OnConflictWon,
+    OpponentHasTroopInConflict,
+    OpponentLosesTroop,
     PassTurn,
     PayResources,
     PeekTopCard,
@@ -269,6 +272,25 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("double_cross", "Double Cross"),
         copies=1,
+        # "1 Solari -> An opponent of your choice loses one troop in the
+        # Conflict and you deploy one troop from your supply to the
+        # Conflict." [Double Cross card, app text]: a cost arrow line [DI
+        # p. 16], paid once played [FAQ p. 2]. "상대 하나 이상이 Conflict에
+        # troop이 있어야 낸다; 내 supply는 비어도 된다" `[FAQ p. 2]`
+        # (imperium-base.md 13.2, 16): the opponent's troop is an official
+        # condition of the card, the empty supply is not one (the deployment
+        # then deploys nothing). The lost troop returns to its owner's supply
+        # [DI p. 16]; the two icons are independent effects in the owner's
+        # order (OQ-015).
+        options=(
+            _plot(
+                EffectSection(
+                    condition=OpponentHasTroopInConflict(),
+                    costs=(PayResources(solari=1),),
+                    rewards=(OpponentLosesTroop(), DeployFromSupply(1)),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("favored_subject", "Favored Subject"),
