@@ -1454,6 +1454,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "pay_reveal_solari_for_vp",
                 "pay_reveal_spice_for_vp",
                 "pay_reveal_solari_for_troops",
+                # Firm Grip's "2 Solari -> Influence" (an Agent-box arrow).
+                "pay_agent_card_solari",
             )
         )
         templates.extend(

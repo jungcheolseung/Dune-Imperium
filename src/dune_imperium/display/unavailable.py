@@ -2599,9 +2599,13 @@ _CHOICE_ICON_ROWS: Final[Mapping[str, str]] = {
 _PAYMENT_BLOCK_REASONS: Final[Mapping[AgentPaymentBlock, Reason]] = {
     AgentPaymentBlock.NO_CARD_TO_DRAW: _NO_CARD_TO_DRAW,
     AgentPaymentBlock.TLEILAXU_TRACK_END: _TLEILAXU_TRACK_END,
+    AgentPaymentBlock.NO_FACTION_TO_RAISE: _ALL_AT_THE_TOP,
 }
 # The payment an ``AgentPaymentBlock`` withholds, by the box's effect.
 _WITHHELD_PAYMENTS: Final[Mapping[PersonalCardAgentEffect, str]] = {
+    PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: (
+        "pay_agent_card_solari"
+    ),
     PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO: "pay_agent_card_water",
     PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: (
         "pay_agent_card_two_specimens"

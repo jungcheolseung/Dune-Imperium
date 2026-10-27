@@ -541,6 +541,11 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "다른 플레이어 각자 하나 선택: 카드 1장 {discard} 또는 "
         "{conflict}에 배치된 {troop} 하나 잃음"
     ),
+    PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: (
+        "{solari:2} 지불 가능 {arrow_right} 하나 선택: "
+        "{influence_spacing_guild:1} / {influence_bene_gesserit:1} / "
+        "{influence_fremen:1}"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box

@@ -374,6 +374,12 @@ class PersonalCardAgentEffect(StrEnum):
     EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP = (
         "each_opponent_discards_or_loses_deployed_troop"
     )
+    # Firm Grip: "[2 Solari] -> Choose one: [Spacing Guild Influence] / [Bene
+    # Gesserit Influence] / [Fremen Influence]", an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3].
+    MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE = (
+        "may_pay_two_solari_for_chosen_influence"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

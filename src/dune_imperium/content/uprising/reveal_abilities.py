@@ -159,6 +159,11 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "thufir_hawat": _reveal(_line(DrawIntrigueCards(1))),
         # Carryall (original game): "1 spice" beside its Persuasion.
         "carryall": _reveal(_line(GainResources(spice=1))),
+        # Firm Grip (original game): "Emperor Alliance: 4 Persuasion", judged
+        # when the line resolves (OQ-028); nothing unconditional.
+        "firm_grip": _reveal(
+            _line(RevealPersuasion(4), condition=HasAlliance(Faction.EMPEROR))
+        ),
         # Guild Bankers (original game): "The Spice Must Flow costs 3 Persuasion
         # less to acquire this turn" -- each copy, both printings of the card.
         "guild_bankers": _reveal(

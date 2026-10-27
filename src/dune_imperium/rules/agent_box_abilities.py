@@ -257,6 +257,10 @@ class AgentPaymentBlock(StrEnum):
     # Tleilaxu Surgeon's and Slig Farmer's advance: the token is on the
     # track's last space, where it does nothing (OQ-048).
     TLEILAXU_TRACK_END = "tleilaxu_track_end"
+    # Firm Grip's chosen Influence: every Faction it may raise is at the top
+    # of its track, where a gain is lost (OQ-060), so the 2 Solari would buy
+    # nothing ("the cost line is not offered if all three are at 6", OQ-071).
+    NO_FACTION_TO_RAISE = "no_faction_to_raise"
 
 
 def box_ability(effect: PersonalCardAgentEffect | None) -> Ability | None:
@@ -450,9 +454,10 @@ def box_icon_block(
 ) -> AgentIconBlock | None:
     """Why the box's icon ``key`` is not offered now, or None when it is."""
 
-    if key not in ability.icons:
+    keys = ability.icons or ability.armed_icons
+    if key not in keys:
         return NOT_PRINTED_BLOCK
-    return _line_block(ability.sections[ability.icons.index(key)], owner, context)
+    return _line_block(ability.sections[keys.index(key)], owner, context)
 
 
 # --- Resolution --------------------------------------------------------------------
@@ -1022,10 +1027,16 @@ def icon_line[P](
     recall and the trash by theirs.
     """
 
-    if ability is None or not ability.icons:
+    if ability is None:
+        return None
+    # An arrow's armed icons are looked up like printed ones (Firm Grip's
+    # chosen Influence once its 2 Solari are paid); a line after the keyed
+    # ones is paid with the cost and has no icon.
+    keys = ability.icons or ability.armed_icons
+    if not keys:
         return None
     pending = pending_agent_icons(context)
-    for key, line in zip(ability.icons, ability.sections, strict=True):
+    for key, line in zip(keys, ability.sections, strict=bool(ability.icons)):
         if key in pending:
             for reward in line.rewards:
                 if isinstance(reward, piece):
@@ -1220,6 +1231,10 @@ def _paid_resource(cost: object) -> tuple[str, int]:
             return "water", water
         case PayResources(solari=0, spice=spice, water=0) if spice:
             return "spice", spice
+        case PayResources(solari=solari, spice=0, water=0) if solari:
+            # Firm Grip's 2 Solari: an arrow cost, not a board space's printed
+            # cost, so no Count Ilban card [FAQ p. 2].
+            return "solari", solari
     raise ValueError(f"no payment row pays {cost!r}")
 
 
@@ -1262,6 +1277,23 @@ def payment_reward_block(
     if ability.armed_icons:
         # Rewards waiting as icons: the arrow is dead only when none of them
         # can pay (a troop is always a live reward, like Control the Spice's).
+        if any(
+            isinstance(reward, GainInfluence)
+            for line in ability.sections
+            for reward in line.rewards
+        ):
+            # A chosen Faction's Influence pays while one of its Factions can
+            # rise (OQ-060, OQ-071).
+            owner = state.players[player]
+            if any(
+                influence_can_rise(owner, faction)
+                for line in ability.sections
+                for reward in line.rewards
+                if isinstance(reward, GainInfluence)
+                for faction in (reward.factions or tuple(Faction))
+            ):
+                return None
+            return AgentPaymentBlock.NO_FACTION_TO_RAISE
         if any(
             not isinstance(reward, DrawPersonalCards)
             or gather_intelligence_draw_available(state, player)
@@ -1730,7 +1762,19 @@ _ARMED_REWARDS: Final[Mapping[str, tuple[Reward, ...]]] = {
 def _armed_line(key: str, line: EffectSection) -> bool:
     """Whether ``line`` is the one reward the icon path pays for ``key``."""
 
+    if key == "influence":
+        # Firm Grip's "choose one: Spacing Guild / Bene Gesserit / Fremen
+        # Influence": a chosen Faction's Influence, answered by
+        # ``choose_agent_card_influence`` (never a track at the top, OQ-060).
+        return (
+            len(line.rewards) == 1
+            and isinstance(line.rewards[0], GainInfluence)
+            and line.rewards[0].requires_choice
+            and not line.rewards[0].distinct
+            and line.rewards[0].times == 1
+        )
     return len(line.rewards) == 1 and line.rewards[0] in _ARMED_REWARDS.get(key, ())
+
 
 
 def discard_box(ability: Ability | None) -> bool:

@@ -986,6 +986,30 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: _box(
                 EachOpponentDiscardsCard(2), condition=_BG_BOND, requirement=_BG_BOND
             ),
+            # Firm Grip (original game): "[2 Solari] -> Choose one: [Spacing Guild
+            # Influence] / [Bene Gesserit Influence] / [Fremen Influence]" -- an
+            # optional arrow paid once [DI p. 9] [FAQ p. 3]; paid, its reward waits
+            # as an icon and the owner picks the Faction (never a track at 6,
+            # OQ-060). No Emperor choice.
+            _BOX.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(
+                            GainInfluence(
+                                factions=(
+                                    Faction.SPACING_GUILD,
+                                    Faction.BENE_GESSERIT,
+                                    Faction.FREMEN,
+                                )
+                            ),
+                        ),
+                        costs=(PayResources(solari=2),),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("influence",),
+            ),
             # Test of Humanity (original game): "Each opponent chooses: Discard a
             # card -OR- Lose a deployed troop" -- one frame per opponent, the
             # next seat first, named ``<box>:opponent:<seat>`` as Covert

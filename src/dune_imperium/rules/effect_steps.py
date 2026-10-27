@@ -396,6 +396,7 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "pay_agent_card_water": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
     "pay_agent_card_spice": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
+    "pay_agent_card_solari": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
     "pay_agent_card_specimen": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
     "pay_agent_card_two_specimens": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
     "pay_agent_card_five_solari_for_tleilaxu": _spec(_V.PAY, _S.AGENT_CARD, _BOX),

@@ -229,10 +229,23 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
+    # App table: cost 4, 1 copy, Emperor, Emperor and Landsraad, no fixed Reveal
+    # values (tag EmperorAlliance). Agent: "[2 Solari] -> Choose one: [Spacing
+    # Guild Influence] / [Bene Gesserit Influence] / [Fremen Influence]" (no
+    # Emperor) -- an optional arrow paid once [DI p. 9] [FAQ p. 3]; the Faction
+    # is chosen once the Solari are paid, never a track at 6 (OQ-060), and the
+    # arrow is not offered when all three are at 6 (OQ-071). The 2 Solari are
+    # not a board space's printed cost, so no Count Ilban card [FAQ p. 2].
+    # Reveal: "Emperor Alliance: [P4]", judged at resolution (OQ-028); nothing
+    # unconditional.
     ImperiumCardEntry(
         card=imperium_card("firm_grip", "Firm Grip"),
         copies=1,
         acquisition_cost=4,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.LANDSRAAD),
+        agent_effect=PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE,
+        play_data_complete=True,
     ),
     # App table: cost 4, 2 copies, Fremen, Spice Trade, Reveal 2 Persuasion and
     # 1 sword. Agent: "[2 spice] -> [3 troops]", an optional arrow paid once

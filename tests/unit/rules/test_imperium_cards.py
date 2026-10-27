@@ -3930,3 +3930,159 @@ def test_the_counted_troop_moves_are_staged_rows_of_the_original_catalog() -> No
         after = moved.players[0]
         # The first row is count 1: one troop crossed.
         assert abs(after.troops_conflict - conflict) == 1, card_id
+
+
+# --- Firm Grip --------------------------------------------------------------------
+
+
+def test_firm_grip_matches_the_app_table() -> None:
+    # App attribute table: cost 4, 1 copy, Emperor, Emperor and Landsraad, no
+    # fixed Reveal values (tag EmperorAlliance).
+    entry = IMPERIUM_CARDS_BY_ID["firm_grip"]
+    assert entry.card.name == "Firm Grip"
+    assert entry.acquisition_cost == 4
+    assert entry.copies == 1
+    assert entry.factions == (Faction.EMPEROR,)
+    assert entry.agent_icons == (AgentIcon.EMPEROR, AgentIcon.LANDSRAAD)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:firm_grip:0") is entry
+
+
+def _grip_placed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    *,
+    solari: int = 3,
+    influence: Influence | None = None,
+    leader: str | None = None,
+) -> GameState:
+    """Seat 0 sends Firm Grip to Hall of Oratory (a Landsraad space, no cost,
+    one troop) holding ``solari`` Solari."""
+
+    held, _ = _with_card(state, "firm_grip")
+    held = _seat(
+        held, resources=Resources(solari=solari), influence=influence or Influence()
+    )
+    if leader is not None:
+        held = _seat(held, leader_id=leader, leader_face_id=leader)
+    return _place(engine, held, "hall_of_oratory", "firm_grip")
+
+
+def test_firm_grip_pays_two_solari_for_one_influence_of_three_factions() -> None:
+    """"[2 Solari] -> Choose one: +1 Spacing Guild / +1 Bene Gesserit / +1
+    Fremen Influence" (the card; P0 sweep): an arrow cost, optional [DI p. 9]
+    and paid once [FAQ p. 3]. Paying leaves the choice of the three Factions --
+    never the Emperor -- and the turn cannot end before it is made."""
+
+    engine, state = _start()
+    placed = _grip_placed(engine, state)
+    assert "pay_agent_card_solari" in _ids(engine, placed)
+    paid = _do(engine, placed, "pay_agent_card_solari")
+    assert paid.players[0].resources.solari == 3 - 2
+    assert paid.players[0].influence == placed.players[0].influence
+    assert sorted(str(f) for f in _influence_rows(engine, paid)) == [
+        "bene_gesserit",
+        "fremen",
+        "spacing_guild",
+    ]
+    assert "finish_agent_turn" not in _ids(engine, paid)
+    chosen = _do(engine, paid, "choose_agent_card_influence", faction="bene_gesserit")
+    after = chosen.players[0].influence
+    assert after.bene_gesserit == placed.players[0].influence.bene_gesserit + 1
+    assert after.emperor == placed.players[0].influence.emperor
+    assert not _influence_rows(engine, chosen)
+
+
+def test_firm_grip_arrow_is_paid_once() -> None:
+    engine, state = _start()
+    placed = _grip_placed(engine, state, solari=9)
+    paid = _do(engine, placed, "pay_agent_card_solari")
+    chosen = _do(engine, paid, "choose_agent_card_influence", faction="fremen")
+    assert chosen.players[0].resources.solari == 7
+    assert "pay_agent_card_solari" not in _ids(engine, paid)
+    assert "pay_agent_card_solari" not in _ids(engine, chosen)
+
+
+def test_firm_grip_arrow_is_optional_and_needs_two_solari() -> None:
+    """The owner who does not pay keeps the Solari and gains nothing; one
+    Solari is too few to offer the arrow."""
+
+    engine, state = _start()
+    placed = _grip_placed(engine, state)
+    resolved = _do(engine, placed, "resolve_board_effect", effect="troops")
+    finished = _do(engine, resolved, "finish_agent_turn")
+    assert finished.players[0].resources.solari == 3
+    assert finished.players[0].influence == placed.players[0].influence
+    poor = _grip_placed(engine, state, solari=1)
+    assert "pay_agent_card_solari" not in _ids(engine, poor)
+
+
+def test_firm_grip_does_not_offer_a_faction_at_the_top() -> None:
+    """"6칸 진영은 Influence를 내지 않는다(OQ-060)" (imperium-base.md 16): with the
+    Fremen track at 6 the choice is the other two."""
+
+    engine, state = _start()
+    placed = _grip_placed(engine, state, influence=Influence(fremen=6))
+    paid = _do(engine, placed, "pay_agent_card_solari")
+    assert sorted(str(f) for f in _influence_rows(engine, paid)) == [
+        "bene_gesserit",
+        "spacing_guild",
+    ]
+
+
+def test_firm_grip_arrow_is_not_offered_when_all_three_are_at_the_top() -> None:
+    """"비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다(OQ-071)"
+    (imperium-base.md 16): with all three Factions at 6 the 2 Solari would buy
+    nothing, so the arrow is withheld (the Emperor is no option of the card);
+    the page greys it out with the reason."""
+
+    engine, state = _start()
+    top = Influence(spacing_guild=6, bene_gesserit=6, fremen=6)
+    placed = _grip_placed(engine, state, influence=top)
+    assert "pay_agent_card_solari" not in _ids(engine, placed)
+    found = unavailable_choices(placed, 0, engine.whole_actions(placed, 0))
+    assert found is not None
+    rows = cast("list[dict[str, Any]]", found["rows"])
+    assert {"top"} <= {row["code"] for row in rows}
+
+
+def test_firm_grip_solari_are_not_a_board_spaces_cost() -> None:
+    """"The 2 Solari is not a board-space cost for Count Ilban [FAQ p. 2]":
+    paying the arrow draws no card for a Count Ilban Richese seat."""
+
+    engine, state = _start()
+    placed = _grip_placed(engine, state, leader="count_ilban_richese")
+    before = placed.players[0]
+    paid = _do(engine, placed, "pay_agent_card_solari")
+    after = paid.players[0]
+    assert after.owed_draws == before.owed_draws
+    assert after.hand == before.hand
+
+
+def test_firm_grip_reveals_four_persuasion_with_the_emperor_alliance() -> None:
+    """"Emperor Alliance: [P4]" judged when the line resolves (OQ-028); the
+    card prints no Persuasion of its own."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "firm_grip", alone=True)
+    without = _reveal(engine, state)
+    assert without["persuasion"] == 0
+    allied = _seat(state, alliance_faction_ids=("emperor",))
+    assert _reveal(engine, allied)["persuasion"] == 4
+
+
+def test_firm_grip_text_names_the_arrow_and_the_alliance_line() -> None:
+    from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
+    from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
+
+    effect = PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE
+    assert "Spacing Guild" in AGENT_EFFECT_TEXT[effect]
+    assert "Emperor" not in AGENT_EFFECT_TEXT[effect]
+    assert "{solari:2}" in AGENT_EFFECT_TEXT_KO[effect]
+    line = reveal_lines(IMPERIUM_CARDS_BY_ID["firm_grip"])[0]
+    assert reveal_effect_text(line) == "If you have the Emperor Alliance: +4 Persuasion"

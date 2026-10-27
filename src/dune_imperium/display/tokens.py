@@ -487,6 +487,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP: (
             "Each opponent chooses: Discard a card -OR- Lose a deployed troop"
         ),
+        PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: (
+            "You may pay 2 solari → Choose one: Gain 1 Spacing Guild Influence / "
+            "Gain 1 Bene Gesserit Influence / Gain 1 Fremen Influence"
+        ),
     }
 )
 
