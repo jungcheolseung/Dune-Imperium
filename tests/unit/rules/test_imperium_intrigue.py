@@ -851,3 +851,89 @@ def test_the_sleeper_must_awaken_is_not_offered_outside_the_seats_turn() -> None
     _, state = _plot_hand(SLEEPER)
     state = _seat(state, 1, intrigue_cards=(SLEEPER,), resources=Resources(spice=9))
     assert legal_intrigue_play_actions(state, 1) == ()
+
+
+# --- Water Peddlers Union (Plot) --------------------------------------------
+
+PEDDLERS = _intrigue("water_peddlers_union")
+
+
+def test_water_peddlers_union_is_one_cost_free_plot() -> None:
+    # "Plot: +1 water" [Water Peddlers Union card, Steam app text]; 1 copy
+    # [DI p. 3].
+    entry = intrigue_card_for_instance(PEDDLERS)
+    assert entry.card.name == "Water Peddlers Union"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert entry.options[0].sections[0].costs == ()
+    assert intrigue_card_text(entry) == ["Plot — Gain 1 water"]
+    assert "water_peddlers_union" not in {
+        entry.card.card_id for entry in INTRIGUE_CARDS
+    }
+
+
+def test_water_peddlers_union_gains_one_water() -> None:
+    # A Plot Intrigue may be played at any time in the seat's own turn
+    # `[DI pp. 7-8]` (imperium-base.md 5); with no arrow there is no cost.
+    _, state = _plot_hand(PEDDLERS, resources=Resources(solari=1, spice=2, water=1))
+    assert legal_intrigue_play_actions(state, 0) == (_play(PEDDLERS),)
+
+    result = apply_intrigue_play(state, _play(PEDDLERS))
+    done = result.state
+
+    assert done.players[0].resources == Resources(solari=1, spice=2, water=2)
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (PEDDLERS,)
+    assert [event.kind for event in result.events] == [
+        "intrigue_played",
+        "resources_gained",
+    ]
+    assert dict(result.events[1].payload)["water"] == 1
+    assert done.decision_stack[-1].kind == "turn"
+
+
+def test_water_peddlers_union_is_played_with_nothing_in_hand_to_pay() -> None:
+    # No cost and nothing to wait for: the seat may play it holding no
+    # resource at all (OQ-113 (C): a cost-free effect is played).
+    engine, state = _plot_hand(PEDDLERS, resources=Resources(water=0))
+    assert legal_intrigue_play_actions(state, 0) == (_play(PEDDLERS),)
+
+    done = apply_whole(engine, state, _play(PEDDLERS)).state
+
+    assert done.players[0].resources == Resources(water=1)
+
+
+def test_water_peddlers_union_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _plot_hand(PEDDLERS)
+    actions = engine.whole_actions(state, 0)
+    assert _play(PEDDLERS) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (PEDDLERS,)
+    assert placed.players[0].resources == state.players[0].resources
+
+
+def test_water_peddlers_union_is_played_in_the_reveal_turn_too() -> None:
+    # "아무 때나" within the seat's own Agent or Reveal turn (imperium-base.md
+    # 5, `[DI pp. 7-8]`).
+    engine, state = _plot_hand(PEDDLERS)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _play(PEDDLERS) in engine.whole_actions(revealed, 0)
+
+    done = apply_whole(engine, revealed, _play(PEDDLERS)).state
+
+    assert done.players[0].resources.water == state.players[0].resources.water + 1
+
+
+def test_water_peddlers_union_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _plot_hand(PEDDLERS)
+    state = _seat(state, 1, intrigue_cards=(PEDDLERS,))
+    assert legal_intrigue_play_actions(state, 1) == ()

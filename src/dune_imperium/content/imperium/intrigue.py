@@ -19,6 +19,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     GainCombatStrength,
     GainInfluence,
+    GainResources,
     GainVictoryPoints,
     PayResources,
     RetreatTroops,
@@ -225,6 +226,8 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("water_peddlers_union", "Water Peddlers Union"),
         copies=1,
+        # "+1 water" [Water Peddlers Union card, app text]: a cost-free Plot.
+        options=(_plot(EffectSection(rewards=(GainResources(water=1),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("water_of_life", "Water of Life"),
