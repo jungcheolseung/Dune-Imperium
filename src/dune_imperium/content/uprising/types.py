@@ -351,6 +351,11 @@ class PersonalCardAgentEffect(StrEnum):
     # Imperial Spy: "Trash this card -> [Intrigue card]", an optional arrow
     # paid once [DI p. 9] [FAQ p. 3].
     MAY_TRASH_SELF_TO_DRAW_INTRIGUE = "may_trash_self_to_draw_intrigue"
+    # Missionaria Protectiva: "If you have another Bene Gesserit card in play:
+    # [Influence of your choice]".
+    GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND = (
+        "gain_chosen_influence_if_bene_gesserit_bond"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

@@ -163,8 +163,8 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # original Imperium cards' new boxes (stage P3: Arrakis Recruiter, Spice
     # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence,
     # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
-    # Imperial Spy).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 12
+    # Imperial Spy, Missionaria Protectiva).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 13
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -730,6 +730,8 @@ def test_seven_boxes_choose_one_target_and_read_as_their_cards() -> None:
         _BOX.FORCE_OPPONENT_TROOP_RETREAT: ForceEnemyRetreat,
         _BOX.COMPLETE_ONE_CONTRACT: CompleteContract,
         _BOX.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE: GainInfluence,
+        # Missionaria Protectiva (the original game, stage P3).
+        _BOX.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: GainInfluence,
     }
     for effect in (
         _BOX.PLACE_SPY,

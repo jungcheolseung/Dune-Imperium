@@ -959,6 +959,13 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ),
                 armed=("intrigue",),
             ),
+            # Missionaria Protectiva (original game): "If you have another Bene
+            # Gesserit card in play: [Influence of your choice]" -- the Bond
+            # opens the box at the placement and is judged again when it
+            # resolves (OQ-028); a track at 6 is not offered (OQ-060).
+            _BOX.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: _box(
+                GainInfluence(), condition=_BG_BOND, requirement=_BG_BOND
+            ),
         }
     )
 )

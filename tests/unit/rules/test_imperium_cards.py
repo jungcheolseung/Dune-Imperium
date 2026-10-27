@@ -2487,3 +2487,121 @@ def test_assassination_mission_trashed_at_selective_breeding_pays_four_solari() 
     assert mission in trashed.players[0].trashed
     assert trashed.players[0].resources.spice == 0
     assert trashed.players[0].resources.solari == placed.players[0].resources.solari + 4
+
+
+# --- Missionaria Protectiva -------------------------------------------------------
+
+
+def test_missionaria_protectiva_matches_the_app_table() -> None:
+    # App attribute table: cost 1, 2 copies, Bene Gesserit (the first English
+    # printing's missing band is errata, [FAQ p. 1]), City, Reveal 1 Persuasion
+    # and no swords (tag WantBG).
+    entry = IMPERIUM_CARDS_BY_ID["missionaria_protectiva"]
+    assert entry.card.name == "Missionaria Protectiva"
+    assert entry.acquisition_cost == 1
+    assert entry.copies == 2
+    assert entry.factions == (Faction.BENE_GESSERIT,)
+    assert entry.agent_icons == (AgentIcon.CITY,)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:missionaria_protectiva:1") is entry
+
+
+def _missionaria_placed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    *,
+    bene_gesserit: bool,
+    influence: Influence | None = None,
+) -> GameState:
+    """Seat 0 sends Missionaria Protectiva to Research Station (a City space;
+    its two water are paid) with, or without, another Bene Gesserit card (Bene
+    Gesserit Initiate) already in play."""
+
+    held, _ = _with_card(state, "missionaria_protectiva")
+    seated = _seat(
+        held,
+        in_play=("imperium:bene_gesserit_initiate:0",) if bene_gesserit else (),
+        resources=Resources(water=2),
+        influence=influence or Influence(),
+    )
+    return _place(engine, seated, "imperium_research_station", "missionaria_protectiva")
+
+
+def _influence_rows(engine: UprisingRulesEngine, state: GameState) -> list[object]:
+    return [
+        dict(action.arguments)["faction"]
+        for action in _wholes(engine, state)
+        if action.action_id == "choose_agent_card_influence"
+    ]
+
+
+def test_missionaria_protectiva_gains_influence_with_another_bene_gesserit() -> None:
+    """"another Bene Gesserit card in play" (imperium-base.md 16, OQ-028; the
+    Bond of [DI p. 16]): with one in play the owner chooses any Faction for 1
+    Influence, and the turn cannot end before the choice."""
+
+    engine, state = _start()
+    placed = _missionaria_placed(engine, state, bene_gesserit=True)
+    assert sorted(str(f) for f in _influence_rows(engine, placed)) == [
+        "bene_gesserit",
+        "emperor",
+        "fremen",
+        "spacing_guild",
+    ]
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    before = placed.players[0].influence
+    chosen = _do(engine, placed, "choose_agent_card_influence", faction="fremen")
+    after = chosen.players[0].influence
+    assert after.fremen == before.fremen + 1
+    assert after.emperor == before.emperor
+    assert not _influence_rows(engine, chosen)
+
+
+def test_missionaria_protectiva_alone_gains_nothing() -> None:
+    """Without another Bene Gesserit card in play the condition fails at the
+    placement: no row is offered and the turn ends freely."""
+
+    engine, state = _start()
+    placed = _missionaria_placed(engine, state, bene_gesserit=False)
+    assert not _influence_rows(engine, placed)
+    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    finished = _do(engine, resolved, "finish_agent_turn")
+    assert finished.players[0].influence == placed.players[0].influence
+
+
+def test_missionaria_protectiva_condition_is_judged_when_it_resolves() -> None:
+    """"조건은 해결할 때 판정한다(OQ-028)": if the other Bene Gesserit card has
+    left play before the choice, the box offers nothing and the turn's end
+    fizzles it (OQ-057 (1))."""
+
+    engine, state = _start()
+    placed = _missionaria_placed(engine, state, bene_gesserit=True)
+    gone = _seat(placed, in_play=())
+    assert not _influence_rows(engine, gone)
+
+
+def test_missionaria_protectiva_does_not_offer_a_faction_at_the_top() -> None:
+    """"6칸 진영은 Influence를 내지 않는다(OQ-060)" (imperium-base.md 16)."""
+
+    engine, state = _start()
+    placed = _missionaria_placed(
+        engine,
+        state,
+        bene_gesserit=True,
+        influence=Influence(emperor=6, fremen=3),
+    )
+    rows = _influence_rows(engine, placed)
+    assert "emperor" not in rows
+    assert {"fremen", "spacing_guild", "bene_gesserit"} <= set(rows)
+
+
+def test_missionaria_protectiva_reveals_one_persuasion() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "missionaria_protectiva", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 1
+    assert frame["sword_strength"] == 0

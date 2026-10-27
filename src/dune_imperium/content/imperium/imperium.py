@@ -313,10 +313,21 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=5,
     ),
+    # App table: cost 1, 2 copies, Bene Gesserit (the errata's faction, [FAQ p.
+    # 1]), City, Reveal 1 Persuasion (tag WantBG). Agent: "If you have another
+    # Bene Gesserit card in play: [Influence of your choice]", judged at
+    # resolution (OQ-028); a track at 6 is not offered (OQ-060).
     ImperiumCardEntry(
         card=imperium_card("missionaria_protectiva", "Missionaria Protectiva"),
         copies=2,
         acquisition_cost=1,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND
+        ),
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
     # App table: cost 6, 1 copy, Emperor, Emperor, Reveal 1 Persuasion,
     # AgentSolari 3. Agent: "3 Solari". Reveal: "1 Persuasion AND [6 Solari]
