@@ -151,10 +151,16 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_strength=1,
         play_data_complete=True,
     ),
+    # App table: cost 1, 1 copy, no Faction, City, Reveal 1 Persuasion. Agent:
+    # "Draw 1 card" (its own step, OQ-106).
     ImperiumCardEntry(
         card=imperium_card("dr_yueh", "Dr. Yueh"),
         copies=1,
         acquisition_cost=1,
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("duncan_idaho_card", "Duncan Idaho"),

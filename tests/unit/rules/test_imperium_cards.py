@@ -723,3 +723,44 @@ def test_crysknife_without_a_bond_gains_no_influence() -> None:
         assert _do(engine, revealed, "finish_reveal").players[0].influence == Influence(
             fremen=2
         )
+
+
+# --- Dr. Yueh ---------------------------------------------------------------------
+
+
+def test_dr_yueh_matches_the_app_table() -> None:
+    # App attribute table: cost 1, 1 copy, no Faction, City, Reveal 1
+    # Persuasion and no swords.
+    entry = IMPERIUM_CARDS_BY_ID["dr_yueh"]
+    assert entry.card.name == "Dr. Yueh"
+    assert entry.acquisition_cost == 1
+    assert entry.copies == 1
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.CITY,)
+    assert entry.agent_effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:dr_yueh:0") is entry
+
+
+def test_dr_yueh_draws_one_card() -> None:
+    """P0 sweep: "AGENT: draw 1"; the draw icon is mandatory and a hidden draw
+    is its own step ([FAQ p. 3], imperium-base.md 16, OQ-106)."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "dr_yueh")
+    state = _seat(state, resources=Resources(water=2))
+    top = state.players[0].deck[0]
+    placed = _place(engine, state, "imperium_research_station", "dr_yueh")
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    assert resolved.players[0].hand == (*placed.players[0].hand, top)
+    assert resolved.players[0].deck == placed.players[0].deck[1:]
+
+
+def test_dr_yueh_reveals_one_persuasion() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "dr_yueh", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 1
+    assert frame["sword_strength"] == 0
