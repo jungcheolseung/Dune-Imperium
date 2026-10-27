@@ -186,6 +186,17 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("guild_authorization", "Guild Authorization"),
         copies=1,
+        # "+1 Spacing Guild Influence" [Guild Authorization card, app text]:
+        # a cost-free Plot naming its Faction, played even with the Spacing
+        # Guild track at the top and then gaining nothing (OQ-113 (C),
+        # imperium-base.md 13.3).
+        options=(
+            _plot(
+                EffectSection(
+                    rewards=(GainInfluence(factions=(Faction.SPACING_GUILD,)),)
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("infiltrate", "Infiltrate"),

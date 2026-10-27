@@ -1841,7 +1841,10 @@ def test_charisma_is_not_offered_outside_the_seats_turn() -> None:
 # its Faction. Each card adds its row to this table.
 
 # card id, printed name, Faction, the Influence field of that Faction
-FACTION_PLOTS = (("favored_subject", "Favored Subject", "emperor", "Emperor"),)
+FACTION_PLOTS = (
+    ("favored_subject", "Favored Subject", "emperor", "Emperor"),
+    ("guild_authorization", "Guild Authorization", "spacing_guild", "Spacing Guild"),
+)
 
 
 @pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
