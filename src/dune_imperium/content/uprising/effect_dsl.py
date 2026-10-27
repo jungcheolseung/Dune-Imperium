@@ -1881,7 +1881,7 @@ class IntrigueOption:
     triggers name the moment the card is *played* instead, so the card is
     played from the hand then and resolves at once (``OnTroopsLostAtConflictEnd``,
     Harvest Cells' Conflict-end window; ``OnConflictWon``, a winning Intrigue
-    in the winner's reward window).
+    in the winner's reward window, which may carry a cost and a condition).
     """
 
     timing: IntrigueTiming
@@ -1916,7 +1916,12 @@ class IntrigueOption:
                     f"this trigger's Intrigue options must use {expected.value} timing"
                 )
             for section in self.sections:
-                if section.costs or section.condition is not None:
+                # A winning Intrigue is played from the hand once the win has
+                # happened, so it may carry the cost and the condition its
+                # play needs [FAQ p. 2]; a card waiting face up may not.
+                if (section.costs or section.condition is not None) and not isinstance(
+                    self.trigger, OnConflictWon
+                ):
                     raise ValueError(
                         "triggered Intrigue sections must be free and unconditional"
                     )

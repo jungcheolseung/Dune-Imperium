@@ -752,12 +752,17 @@ def _old_option_is_playable(
             for section in option.sections
         )
     sections = applicable_sections(state, player, option)
-    if option.trigger is not None:
+    if option.trigger is not None and not isinstance(option.trigger, OnConflictWon):
         # Updated on purpose 2026-10-24 (user ruling, OQ-113 (C)): a
         # triggered option is played whenever a section applies, even when
         # its firing can change nothing (Call to Arms' troop, a Reveal turn
         # with nothing left to acquire) -- a rule change made after the copy.
         return bool(sections)
+    # Updated on purpose 2026-10-28 (stage P3c, OQ-121 decision 6): a winning
+    # Intrigue ("When you win a Conflict:", the original game's To the
+    # Victor... and Demand Respect) is played from the hand in the sole
+    # winner's window, so it meets the cost and the live reward like any
+    # other played card; only a card waiting face up skips them.
     # Updated on purpose 2026-10-03 (codec v129, OQ-016): Coercive
     # Negotiation is no longer a face-up trigger but a Plot whose condition
     # is this turn's deployment, so its Contract-bank check (OQ-064) moved

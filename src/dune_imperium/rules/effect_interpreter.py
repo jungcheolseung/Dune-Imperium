@@ -57,6 +57,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     MoreSpiceMustFlowThanEachOpponent,
+    OnConflictWon,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
     PassTurn,
@@ -407,7 +408,9 @@ def choice_slots(
         for reward in section.rewards:
             match reward:
                 case GainInfluence() if reward.requires_choice:
-                    slots.extend([reward] * reward.times)
+                    # A one-Faction gain (the two-chevron icon [DI p. 16])
+                    # names its Faction once and gains all its Influence there.
+                    slots.extend([reward] * (1 if reward.one_faction else reward.times))
                 case DestroyShieldWall() if shield_wall_present:
                     slots.append(reward)
                 case (
@@ -1198,7 +1201,7 @@ def option_unplayable_reason(
     sections = applicable_sections(state, player, option)
     if not sections:
         return OptionBlock.CONDITION
-    if option.trigger is not None:
+    if option.trigger is not None and not isinstance(option.trigger, OnConflictWon):
         # Playing it only sets the card waiting face up, and its firing has
         # no cost, so it is played even when that firing can change nothing
         # (OQ-113 (C): Call to Arms' recruit or a Reveal turn with nothing

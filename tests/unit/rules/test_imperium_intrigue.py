@@ -24,6 +24,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Condition,
     DeployFromGarrison,
     EffectSection,
+    GainInfluence,
     GainResources,
     GainVictoryPoints,
     GrantAgentIconsThisTurn,
@@ -61,7 +62,7 @@ from dune_imperium.rules.combat import (
     legacy_combat_reward_icon,
     winning_intrigue_is_hidden,
 )
-from dune_imperium.rules.effect_interpreter import condition_holds
+from dune_imperium.rules.effect_interpreter import choice_slots, condition_holds
 from dune_imperium.rules.endgame import begin_endgame_intrigue, final_standings
 from dune_imperium.rules.frames import FrameKind, reset_turn_counters
 from dune_imperium.rules.intrigue import (
@@ -3365,3 +3366,219 @@ def test_the_original_game_alone_has_the_winning_intrigue_row() -> None:
     assert not winning_intrigue_is_hidden(uprising)
     _, original = _start()
     assert winning_intrigue_is_hidden(original)
+
+
+# --- Demand Respect (winning Intrigue, stage P3c) ----------------------------
+#
+# [DI p. 13] Demand Respect is paid with the spice the win gave (imperium-
+# base.md 13.1); its two chevrons are one Faction's two Influence [DI p. 16].
+
+DEMAND = _intrigue("demand_respect")
+
+
+def test_demand_respect_is_two_exclusive_winning_options() -> None:
+    # "When you win a Conflict:" then "1 Influence (any Faction) -OR- 2 spice
+    # -> 2 Influence" [Demand Respect card, Steam app text]; 1 copy [DI p. 3].
+    # "-OR-" cards are exclusive options (OQ-058); the two chevrons are one
+    # Faction's two Influence: "you can't choose two different Factions"
+    # [DI p. 16]. The cost line may be paid at the winner's window (OQ-113 (C):
+    # a line with a cost needs a live reward).
+    entry = intrigue_card_for_instance(DEMAND)
+    assert entry.card.name == "Demand Respect"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.trigger for option in entry.options] == [OnConflictWon()] * 2
+    assert [option.timing for option in entry.options] == [IntrigueTiming.COMBAT] * 2
+    assert [option.sections for option in entry.options] == [
+        (EffectSection(rewards=(GainInfluence(),)),),
+        (
+            EffectSection(
+                costs=(PayResources(spice=2),),
+                rewards=(GainInfluence(times=2, one_faction=True),),
+            ),
+        ),
+    ]
+    assert intrigue_card_text(entry) == [
+        "Combat — When you win a Conflict: Gain 1 Influence (choose any Faction)",
+        "Combat — When you win a Conflict: Pay 2 spice → Gain 2 Influence"
+        " (choose any Faction once)",
+    ]
+    assert "demand_respect" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_demand_respect_is_played_in_the_winners_window_only() -> None:
+    # Not in a Combat Intrigue round, even with the spice for its second
+    # option, nor as a Plot (`[DI p. 12]`); nor by the second place, nor on a
+    # tie for first (OQ-121 decision 6, `[FAQ p. 4]`).
+    rounds = _combat_state(
+        _fighter(0, 3, intrigue_cards=(DEMAND,), resources=Resources(spice=5)),
+        _fighter(1, 1),
+    )
+    assert legal_intrigue_play_actions(rounds, 0) == ()
+    _, turn = _start()
+    turn = _seat(turn, intrigue_cards=(DEMAND,), resources=Resources(spice=5))
+    assert legal_intrigue_play_actions(turn, 0) == ()
+
+    second = _window(
+        NO_SPICE_CONFLICT,
+        others=(DEMAND,),
+        deck=(_intrigue("ambush", 1),),
+    )
+    second = apply_whole(UprisingRulesEngine(), second, _icon("resources")).state
+    second = apply_whole(UprisingRulesEngine(), second, _icon("winning_intrigue")).state
+    second = _continue(second)
+    assert dict(second.decision_stack[-1].context)["rank"] == 2
+    assert _plays(second, 1) == ()
+
+    tied = _combat_state(
+        _fighter(0, 2, intrigue_cards=(DEMAND,), resources=Resources(spice=5)),
+        _fighter(1, 2),
+    )
+    tied = replace(tied, current_conflict_ids=(NO_SPICE_CONFLICT,))
+    tied = apply_whole(UprisingRulesEngine(), tied, _pass(0)).state
+    tied = apply_whole(UprisingRulesEngine(), tied, _pass(1)).state
+    assert dict(tied.decision_stack[-1].context)["rank"] == 2
+    assert _plays(tied, 0) == ()
+
+
+def test_the_window_greys_out_an_unaffordable_demand_respect_option() -> None:
+    # The 2-Influence option waits for the spice, and says so on the page.
+    state = _window(NO_SPICE_CONFLICT, cards=(DEMAND,))
+    found = unavailable_choices(
+        state, 0, UprisingRulesEngine().whole_actions(state, 0)
+    )
+    assert found is not None
+    rows: Any = found["rows"]
+    assert len(rows) == 1
+    assert rows[0]["action"]["arguments"] == {"card_id": DEMAND, "option": 1}
+    assert (rows[0]["reason"], rows[0]["code"]) == (
+        "Needs 2 spice (you have 0)",
+        "cost",
+    )
+
+
+def test_demand_respect_pays_two_spice_with_the_spice_the_reward_gave() -> None:
+    # "이겨서 받은 spice로 낼 수 있다" (imperium-base.md 13.1, `[DI p. 13]`): at
+    # first the seat has no spice, so only 1 Influence is offered; the
+    # reward's 3 spice then pay for the 2-Influence option.
+    engine = UprisingRulesEngine()
+    state = _window(
+        SPICE_CONFLICT,
+        cards=(DEMAND,),
+        deck=(AMBUSH,),
+        influence=Influence(emperor=1),
+    )
+    assert _plays(state) == ((DEMAND, 0),)
+
+    state = apply_whole(engine, state, _icon("resources")).state
+    assert state.players[0].resources.spice == 3
+    assert _plays(state) == ((DEMAND, 0), (DEMAND, 1))
+
+    opened = apply_whole(engine, state, _play(DEMAND, 1)).state
+    assert opened.players[0].resources.spice == 1
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    done = apply_whole(engine, opened, _choose_faction("emperor")).state
+    assert done.players[0].influence.emperor == 1 + 2
+    assert done.players[0].victory_points == state.players[0].victory_points + 1
+    assert done.intrigue_discard == (DEMAND,)
+    # Back in the window with what the reward still holds.
+    assert done.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    assert _icons(done) == ["intrigue", "winning_intrigue"]
+
+
+def test_demand_respect_is_paid_with_spice_to_the_victor_gave_first() -> None:
+    # "To the Victor…로 먼저 spice를 얻어도 된다" (imperium-base.md 13.1): no
+    # spice at all, then +3 from To the Victor..., then Demand Respect's two
+    # Influence for 2 of them.
+    engine = UprisingRulesEngine()
+    state = _window(NO_SPICE_CONFLICT, cards=(VICTOR, DEMAND))
+    assert set(_wholes(state)) == {
+        _icon("resources"),
+        _play(VICTOR),
+        _play(DEMAND, 0),
+    }
+
+    state = apply_whole(engine, state, _play(VICTOR)).state
+    assert state.players[0].resources.spice == 3
+    assert _plays(state) == ((DEMAND, 0), (DEMAND, 1))
+
+    state = apply_whole(engine, state, _play(DEMAND, 1)).state
+    state = apply_whole(engine, state, _choose_faction("fremen")).state
+    assert state.players[0].resources.spice == 1
+    assert state.players[0].influence.fremen == 2
+    assert state.players[0].intrigue_cards == ()
+    assert state.intrigue_discard == (VICTOR, DEMAND)
+    # The window closes after both, once the icons are resolved too.
+    state = apply_whole(engine, state, _icon("resources")).state
+    closed = apply_whole(engine, state, _icon("winning_intrigue")).state
+    assert closed.decision_stack[-1].kind == FrameKind.PAUSE
+
+
+def test_demand_respect_one_influence_names_only_factions_below_the_top() -> None:
+    # "6인 진영은 아무것도 얻지 못하고 고르는 대상이 아니다" (OQ-060, imperium-
+    # base.md 16): Demand Respect's 1 Influence offers the Factions that can
+    # still rise, and with every track at 6 the cost-free card is played all
+    # the same and confirms it gains nothing (OQ-113 (C)).
+    engine = UprisingRulesEngine()
+    state = _window(
+        NO_SPICE_CONFLICT,
+        cards=(DEMAND,),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=3),
+    )
+    opened = apply_whole(engine, state, _play(DEMAND, 0)).state
+    assert _offered_factions(engine, opened) == {"fremen"}
+    done = apply_whole(engine, opened, _choose_faction("fremen")).state
+    assert done.players[0].influence.fremen == 4
+    assert done.intrigue_discard == (DEMAND,)
+
+    capped = _window(
+        NO_SPICE_CONFLICT,
+        cards=(DEMAND,),
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    assert _plays(capped) == ((DEMAND, 0),)
+    confirmed = apply_whole(engine, capped, _play(DEMAND, 0)).state
+    assert [
+        action.action_id for action in engine.whole_actions(confirmed, 0)
+    ] == ["resolve_intrigue_influence_without_faction"]
+
+
+def test_demand_respect_two_influence_go_to_one_faction() -> None:
+    # "you can't choose two different Factions" [DI p. 16]: one pick, both
+    # Influence on it, and a Faction at 5 gains one (OQ-060: the cube stops at
+    # the top). The 2-Influence line is a cost line, so it needs a live reward
+    # (OQ-113 (C)): with every track at 6 it is not offered.
+    engine = UprisingRulesEngine()
+    spice = Resources(spice=2)
+    # One Faction to name for the two Influence, not one per Influence.
+    two_chevrons = intrigue_card_for_instance(DEMAND).options[1].sections
+    assert len(choice_slots(two_chevrons)) == 1
+    state = _window(
+        NO_SPICE_CONFLICT,
+        cards=(DEMAND,),
+        resources=spice,
+        influence=Influence(emperor=2, spacing_guild=3, bene_gesserit=5, fremen=1),
+    )
+    opened = apply_whole(engine, state, _play(DEMAND, 1)).state
+    assert opened.players[0].resources.spice == 0
+    assert _offered_factions(engine, opened) == FACTIONS
+    done = apply_whole(engine, opened, _choose_faction("spacing_guild")).state
+    assert done.players[0].influence == Influence(
+        emperor=2, spacing_guild=5, bene_gesserit=5, fremen=1
+    )
+    # The one pick left nothing to name: the card is played and the window is
+    # back.
+    assert done.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    assert done.players[0].intrigue_cards == ()
+
+    nearly = apply_whole(engine, state, _play(DEMAND, 1)).state
+    nearly = apply_whole(engine, nearly, _choose_faction("bene_gesserit")).state
+    assert nearly.players[0].influence.bene_gesserit == 6
+
+    capped = _window(
+        NO_SPICE_CONFLICT,
+        cards=(DEMAND,),
+        resources=spice,
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    assert _plays(capped) == ((DEMAND, 0),)

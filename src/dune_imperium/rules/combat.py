@@ -489,7 +489,8 @@ COMBAT_REWARD_ICON_KINDS: Final = (
     # Not a reward icon either: the sole winner's close of the window once
     # every other row is resolved, the press that says "no more winning
     # Intrigue" (OQ-121 decision 6: "안 내도 창이 닫힌다"). Only the original
-    # game's catalog holds its row (``winning_intrigue_in_the_deck``).
+    # game's catalog holds its row (``action_codec``): only its Intrigue deck
+    # holds a winning Intrigue (``winning_intrigue_is_hidden``).
     "winning_intrigue",
     # The original game's (docs/rules/imperium-base.md 9, 10): the Mentat
     # [DI p. 16], two Influence with one Faction [DI p. 16] (Grand Vision),
