@@ -420,6 +420,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "choose_leader_signet_influence": _row(
         _V.GAIN_INFLUENCE, _S.LEADER, _T.FACTION, tag=_BOX
     ),
+    # The original game's Helena Richese: Manipulate's set-aside Row card.
+    "set_aside_leader_imperium": _row(
+        _V.SET_ASIDE, _S.LEADER, _T.IMPERIUM_CARD, tag=_BOX
+    ),
     # The original game's Earl Memnon Thorvald: Connections' Influence.
     "choose_connections_influence": _row(
         _V.GAIN_INFLUENCE, _S.LEADER, _T.FACTION, variant="connections"

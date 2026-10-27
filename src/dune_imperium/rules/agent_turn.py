@@ -512,6 +512,15 @@ def _placements_for_card(
             if candidate.player_id != player
             and space.space_id in candidate.agent_locations
         )
+        if owner.leader_id == "helena_richese" and space.agent_icon in (
+            AgentIcon.LANDSRAAD,
+            AgentIcon.CITY,
+        ):
+            # Eyes Everywhere: "상대 Agent가 Landsraad·City 칸에서 내 Agent를
+            # 막지 않는다" (docs/rules/imperium-base.md 12); her own Agent
+            # still blocks (above), as do requirements and once-per-game
+            # limits (P0 sweep L8).
+            occupying_opponents = ()
         infiltrator_partner_fits = True
         if usurp:
             # The partner choice must have something to offer: a partner

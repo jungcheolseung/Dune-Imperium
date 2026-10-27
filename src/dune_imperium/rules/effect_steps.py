@@ -456,6 +456,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "choose_leader_signet_influence": _spec(
         _V.GAIN_INFLUENCE, _S.LEADER, _LEADER, targets=_FACTION
     ),
+    # The original game's Helena Richese: Manipulate's Row card.
+    "set_aside_leader_imperium": _spec(
+        _V.SET_ASIDE, _S.LEADER, _LEADER, targets=_IMPERIUM
+    ),
     # The original game's Earl Memnon Thorvald: Connections' Influence, an
     # icon of the visit that took the High Council seat.
     "choose_connections_influence": _spec(

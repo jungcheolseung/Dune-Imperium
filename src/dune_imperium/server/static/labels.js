@@ -111,6 +111,7 @@ const ACTION_LABELS = {
   keep_contract_reveal_spice: "{spice} 유지",
   keep_shield_wall: "{shield_wall} 유지",
   manipulate_imperium_row: "{imperium_row} 카드 따로 빼두기",
+  set_aside_leader_imperium: "{imperium_row} 카드 따로 빼두기 ({signet_ring})",
   match_endgame_wild_icon: "와일드 {battle_icon} 매칭",
   pass_combat_intrigue: "패스",
   pass_endgame_intrigue: "패스",

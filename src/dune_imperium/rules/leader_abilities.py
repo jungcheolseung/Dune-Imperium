@@ -86,6 +86,7 @@ from dune_imperium.rules.acquisition import (
     acquire_imperium_for_intrigue,
     acquire_reserve_for_intrigue,
     open_acquisition_frames,
+    take_imperium_row_card,
 )
 from dune_imperium.rules.box_events import (
     BoxNeedsRows,
@@ -181,6 +182,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "earl_memnon_thorvald",
         "countess_ariana_thorvald",
         "duke_leto_atreides",
+        "helena_richese",
     }
 )
 
@@ -586,6 +588,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         "gaius_helen_mohiam",
         "kota_odax_of_ix",
         "duke_leto_atreides",
+        "helena_richese",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
@@ -785,8 +788,9 @@ SIGNET_HOOKS: Final = frozenset(
         "esmar_smuggle_spice",
         "listeners",
         "reverse_engineering",
-        # The original game's Duke Leto Atreides.
+        # The original game's Duke Leto Atreides and Helena Richese.
         "prudent_diplomacy",
+        "manipulate",
     }
 )
 
@@ -1403,6 +1407,19 @@ def legal_leader_signet_actions(
                 else ()
             ),
         )
+
+    if owner.leader_id == "helena_richese":
+        # Manipulate: set a Row card aside (refilled from the deck), or, with
+        # the Row empty, confirm it fizzles (OQ-113 (C), as the Intrigue
+        # card's; [FAQ p. 3]).
+        return tuple(
+            DomainAction(
+                action_id="set_aside_leader_imperium",
+                actor=player,
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in state.imperium_row
+        ) or (DomainAction(action_id=SIGNET_NO_OPTION, actor=player),)
 
     if owner.leader_id == "duke_leto_atreides":
         # Prudent Diplomacy: pay 1 spice for Influence with a Faction where an
@@ -2182,6 +2199,44 @@ def _apply_staban_bonus_payment(
         events=(
             resources_paid_event(source, player, solari=2),
             *intrigue_draw.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
+    )
+
+
+def apply_manipulate_signet(state: GameState, action: DomainAction) -> RuleResult:
+    """Helena Richese's Manipulate: the chosen Row card is set aside for her,
+    the Row refilled; this round's Reveal turn may acquire it for 1
+    Persuasion less, as the Uprising Intrigue card's ([FAQ p. 3];
+    ``acquisition``)."""
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Leader Signet choice")
+    context = _signet_context(state)
+    player = action.actor
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    instance_id = str(dict(action.arguments)["instance_id"])
+    imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
+    owner = state.players[player]
+    keeper = replace(owner, imperium_set_aside=(*owner.imperium_set_aside, instance_id))
+    context["pending_agent_effect"] = False
+    next_state = _store_signet(
+        replace(state, imperium_row=imperium_row, imperium_deck=imperium_deck),
+        context,
+        replace_player(state.players, keeper),
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:set_aside:{instance_id}",
+                kind="imperium_row_card_set_aside",
+                payload=(
+                    ("card_id", imperium_card_for_instance(instance_id).card.card_id),
+                    ("instance_id", instance_id),
+                    ("player", player),
+                ),
+            ),
             _signet_box(source, context, player, BoxOutcome.RESOLVED),
         ),
     )

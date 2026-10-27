@@ -64,6 +64,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RevealSwords,
     Reward,
     SandwormsInConflictAtLeast,
+    SetAsideImperiumRowCard,
     StrengthInConflictAtLeast,
     Trigger,
     TroopToMemory,
@@ -248,6 +249,14 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         # 많은 진영에 Influence 1" -- an arrow, so never forced; the Faction is
         # judged as it resolves (OQ-028) and none at the top is offered
         # (OQ-060, P0 sweep L5).
+        # Manipulate (stage P2b): set a Row card aside and refill the Row;
+        # this round's Reveal turn may acquire it for 1 Persuasion less --
+        # "Uprising Intrigue Manipulate와 같은 판정 [FAQ p. 3]".
+        "helena_richese": _hook(
+            "manipulate",
+            AbilityMark.MANDATORY,
+            EffectSection(rewards=(SetAsideImperiumRowCard(),)),
+        ),
         "duke_leto_atreides": _hook(
             "prudent_diplomacy",
             AbilityMark.OPTIONAL,
@@ -434,6 +443,9 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         # Landsraad Popularity (stage P2b): a Landsraad space's Solari cost
         # is 1 less, never optional (P0 sweep L5).
         "duke_leto_atreides": (_standing("landsraad_popularity"),),
+        # Eyes Everywhere (stage P2b): opponents' Agents do not block her on
+        # Landsraad and City spaces (P0 sweep L8).
+        "helena_richese": (_standing("eyes_everywhere"),),
     }
 )
 

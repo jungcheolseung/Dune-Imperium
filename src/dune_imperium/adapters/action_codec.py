@@ -1415,6 +1415,16 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for instance_id in imperium_instances
     )
+    # The original game's Manipulate (Helena Richese): only in its catalog,
+    # so Uprising's rows stay what they were.
+    if content.base_game is BaseGame.IMPERIUM:
+        templates.extend(
+            ActionTemplate(
+                action_id="set_aside_leader_imperium",
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in imperium_instances
+        )
     templates.extend(
         ActionTemplate(
             action_id="acquire_leader_reserve",
@@ -2205,8 +2215,16 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
         }
     ),
     "resolve_leader_signet_without_option": frozenset(
-        {"count_hasimir_fenring", "esmar_tuek", "gaius_helen_mohiam"}
+        {
+            "count_hasimir_fenring",
+            "esmar_tuek",
+            "gaius_helen_mohiam",
+            # The original game's Manipulate with an empty Row.
+            "helena_richese",
+        }
     ),
+    # The original game's Manipulate.
+    "set_aside_leader_imperium": frozenset({"helena_richese"}),
     "recall_spy_for_leader_placement": frozenset(
         {
             "feyd_rautha_harkonnen",

@@ -76,6 +76,7 @@ const LABELS_EN = {
     "keep_contract_reveal_spice": "Keep {spice}",
     "keep_shield_wall": "Keep {shield_wall}",
     "manipulate_imperium_row": "Set aside {imperium_row} card",
+    "set_aside_leader_imperium": "Set aside {imperium_row} card ({signet_ring})",
     "match_endgame_wild_icon": "Match wild {battle_icon}",
     "pass_combat_intrigue": "Pass",
     "pass_endgame_intrigue": "Pass",

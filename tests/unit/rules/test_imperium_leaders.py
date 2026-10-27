@@ -3,7 +3,7 @@
 docs/rules/imperium-base.md 12 (and its 13.2 FAQ rows) and
 docs/base-game-and-ix-plan.md 15.1: Glossu Rabban, Count Ilban Richese, Earl
 Memnon Thorvald and Countess Ariana Thorvald (P2a), then Duke Leto Atreides
-(P2b). Each is seated at seat 0.
+and Helena Richese (P2b). Each is seated at seat 0.
 """
 
 from dataclasses import replace
@@ -11,6 +11,7 @@ from typing import Any
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
+from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.core import (
     ChanceDecision,
     ChanceResolver,
@@ -326,3 +327,67 @@ def test_prudent_diplomacy_without_spice_offers_nothing_and_lapses() -> None:
     placed = _do(engine, placed, "resolve_board_effect", effect="resources")
     assert "choose_leader_signet_influence" not in _ids(engine, placed)
     assert legal_agent_turn_finish_actions(placed, 0)
+
+
+# --- Helena Richese (P2b) -----------------------------------------------------
+
+
+def test_eyes_everywhere_ignores_opponents_on_landsraad_and_city_spaces() -> None:
+    # "상대 Agent가 Landsraad·City 칸에서 내 Agent를 막지 않는다"
+    # (imperium-base.md 12); her own Agent and other icons still block (P0
+    # sweep L8).
+    engine, state = _start("helena_richese")
+    for card_id in ("reconnaissance", "dagger", "diplomacy"):
+        state = _with_card(state, card_id)
+    state = _seat(state, resources=Resources(solari=4))
+    state = _seat(
+        state, 1, agent_locations=("carthag", "rally_troops"), agents_available=0
+    )
+    state = _seat(state, 2, agent_locations=("stillsuits",), agents_available=1)
+    spaces = {
+        dict(placement.arguments)["space_id"]
+        for placement in executable_placements(state, 0)
+    }
+    assert {"carthag", "rally_troops"} <= spaces
+    assert "stillsuits" not in spaces
+    own = _seat(state, agent_locations=("carthag",), agents_available=1)
+    assert "carthag" not in {
+        dict(placement.arguments)["space_id"]
+        for placement in executable_placements(own, 0)
+    }
+
+
+def test_manipulate_with_an_empty_row_is_confirmed() -> None:
+    # The original game's Row is empty until stage P3: the set-aside fizzles
+    # and is confirmed, as the Intrigue card's (OQ-113 (C), [FAQ p. 3]).
+    engine, state = _start("helena_richese")
+    state = _with_card(state, "signet_ring")
+    placed = _place(engine, state, "secure_contract", "signet_ring")
+    assert "set_aside_leader_imperium" not in _ids(engine, placed)
+    confirmed = _do(engine, placed, "resolve_leader_signet_without_option")
+    assert confirmed.players[0].imperium_set_aside == ()
+
+
+def test_manipulate_sets_a_row_card_aside_and_refills_the_row() -> None:
+    # "Imperium Row 카드 하나를 치우고 채움" (imperium-base.md 12); the card
+    # waits for her Reveal turn at 1 Persuasion less, as the Uprising
+    # Intrigue card's [FAQ p. 3]. A test Row (Uprising cards) stands in for
+    # the original deck of stage P3.
+    engine, state = _start("helena_richese")
+    cards = imperium_deck_instance_ids(False)[:6]
+    state = replace(
+        _with_card(state, "signet_ring"),
+        imperium_row=cards[:5],
+        imperium_deck=cards[5:],
+    )
+    placed = _place(engine, state, "secure_contract", "signet_ring")
+    offered = {
+        dict(action.arguments)["instance_id"]
+        for action in _wholes(engine, placed)
+        if action.action_id == "set_aside_leader_imperium"
+    }
+    assert offered == set(cards[:5])
+    taken = _do(engine, placed, "set_aside_leader_imperium", instance_id=cards[2])
+    assert taken.players[0].imperium_set_aside == (cards[2],)
+    assert taken.imperium_row == (*cards[:2], cards[5], *cards[3:5])
+    assert taken.imperium_deck == ()
