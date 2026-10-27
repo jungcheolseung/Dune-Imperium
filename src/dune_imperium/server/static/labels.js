@@ -199,6 +199,7 @@ const ACTION_LABELS = {
   place_leader_bonus_spice: "튜엑의 시치에 보너스 {spice} 놓기 ({signet_ring})",
   take_leader_bonus_spice: "{maker} 장소의 보너스 {spice} 가져오기 ({signet_ring})",
   lose_intrigue_troop: "{troop} 잃기 ({intrigue_card})",
+  choose_opponent_troop_loss: "{conflict}에서 {troop} 잃을 상대 고르기 ({intrigue_card})",
   give_intrigue_card: "상대에게 {intrigue_card} 주기",
   trash_intrigue_hand_card: "{trash_intrigue}",
   skip_intrigue_acquisition: "획득할 카드 없음 (건너뛰기)",
@@ -211,6 +212,10 @@ const ACTION_LABELS = {
   put_back_top_card: "{deck} 맨 위 카드 그대로 두기",
   discard_top_card: "{deck} 맨 위 카드 버리기",
   draw_top_card_for_solari: "{solari} 1 지불 → {deck} 맨 위 카드 뽑기",
+  draw_top_card: "{deck} 맨 위 카드 뽑기",
+  pass_turn_intrigue: "차례 넘기기",
+  keep_turn_intrigue: "차례를 그대로 진행",
+  trash_top_card: "{deck} 맨 위 카드 폐기",
   place_navigation_card: "{navigation} 슬롯에 놓기",
   play_navigation: "{navigation} 사용",
   decline_navigation: "{navigation} 효과 없이 사용",
@@ -599,6 +604,8 @@ const EVENT_LABELS = {
   spies_recalled: "{recall_spy}",
   top_card_discarded: "{deck} 맨 위 카드 버리기",
   top_card_drawn: "{deck} 맨 위 카드 뽑기 ({solari} 1 지불)",
+  top_card_drawn_free: "{deck} 맨 위 카드 뽑기",
+  intrigue_turn_kept: "{intrigue_card}: 차례를 넘기지 않고 진행",
 };
 /* Korean labels for the printed icon a keyed resolve_board_effect /
    resolve_agent_card_effect action resolves (OQ-027). A legal action carries

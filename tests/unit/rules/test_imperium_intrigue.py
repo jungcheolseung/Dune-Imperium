@@ -7,6 +7,7 @@ card text is the Steam app's (docs/base-game-and-ix-plan.md 16.3). Seat 0
 holds the card, in an original-game ``RulesetConfig``.
 """
 
+import random
 from dataclasses import replace
 from typing import Any
 
@@ -15,6 +16,7 @@ import pytest
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.agents.determinize import determinize
 from dune_imperium.content.imperium.conflict_abilities import _line, _one_of
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.conflict_abilities import (
@@ -34,6 +36,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseTroops,
     MoreSpiceMustFlowThanEachOpponent,
     OnConflictWon,
+    OpponentHasTroopInConflict,
     PayResources,
     SpiceMustFlowCardsAtLeast,
 )
@@ -51,6 +54,12 @@ from dune_imperium.core import (
     Influence,
     PlayerState,
     Resources,
+)
+from dune_imperium.core.chance import ChanceOutcome
+from dune_imperium.core.observation import (
+    known_card_seats,
+    observe_state,
+    peeked_card_id,
 )
 from dune_imperium.display import intrigue_card_text
 from dune_imperium.display.actions import effect_action_text, effect_action_text_ko
@@ -70,6 +79,12 @@ from dune_imperium.rules.intrigue import (
     apply_intrigue_play,
     legal_intrigue_play_actions,
 )
+from dune_imperium.rules.unit_loss import (
+    legal_unit_loss_actions,
+    opponent_unit_loss_frames,
+    opponents_with_conflict_troop,
+)
+from dune_imperium.simulation.invariants import check_observation_privacy
 
 CONFIG = RulesetConfig(base_game=BaseGame.IMPERIUM, first_player_seat_zero=True)
 LEADERS = (
@@ -81,11 +96,13 @@ LEADERS = (
 FACTIONS = {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
 
 
-def _start(seed: int = 3) -> tuple[UprisingRulesEngine, GameState]:
+def _start(
+    seed: int = 3, config: RulesetConfig = CONFIG
+) -> tuple[UprisingRulesEngine, GameState]:
     """Round 1 of the original game at seat 0's first turn."""
 
     engine = UprisingRulesEngine(leader_ids=LEADERS)
-    state = engine.reset(CONFIG, seed)
+    state = engine.reset(config, seed)
     chance = ChanceResolver(seed=seed)
     while isinstance(decision := engine.current_decision(state), ChanceDecision):
         state = engine.apply(state, chance.resolve(decision)).state
@@ -3582,3 +3599,1204 @@ def test_demand_respect_two_influence_go_to_one_faction() -> None:
         influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
     )
     assert _plays(capped) == ((DEMAND, 0),)
+
+
+# --- Refocus (Plot, stage P3c) ----------------------------------------------
+
+REFOCUS = _intrigue("refocus")
+
+
+def _refocus_hand(
+    *, deck: int = 4, discard: int = 3
+) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 with Refocus and ``deck`` / ``discard`` of its ten starter cards
+    left in those piles (the rest stay in hand)."""
+
+    engine, state = _start()
+    owner = state.players[0]
+    cards = (*owner.deck, *owner.hand)
+    return engine, _seat(
+        state,
+        intrigue_cards=(REFOCUS,),
+        deck=cards[:deck],
+        discard_pile=cards[deck : deck + discard],
+        hand=cards[deck + discard :],
+    )
+
+
+def _shuffle_outcome(
+    engine: UprisingRulesEngine, state: GameState, order: tuple[int, ...]
+) -> ChanceOutcome:
+    """The recorded permutation of the pending shuffle: its options in
+    ``order``."""
+
+    decision = engine.current_decision(state)
+    assert isinstance(decision, ChanceDecision)
+    return ChanceOutcome(
+        decision_id=decision.decision_id,
+        values=tuple(decision.options[index] for index in order),
+    )
+
+
+def test_refocus_is_one_cost_free_plot_with_one_copy() -> None:
+    # "Shuffle your discard pile into your deck, then: [draw 1]" [Refocus
+    # card, Steam app text]; 1 copy [DI p. 3]. No cost and no condition.
+    entry = intrigue_card_for_instance(REFOCUS)
+    assert entry.card.name == "Refocus"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert not entry.options[0].sections[0].costs
+    assert intrigue_card_text(entry) == [
+        "Plot — Shuffle your discard pile into your deck, then draw 1 card"
+    ]
+    assert "refocus" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_refocus_shuffles_the_discard_pile_into_the_deck_then_draws_one() -> None:
+    # "Shuffle your discard pile into your deck, then: [draw 1]" [Refocus
+    # card]: the deck and the discard pile become one shuffled deck -- a chance
+    # step, imperium-base.md 14 ("Refocus | 아무도 | — | 섞기") -- and the top
+    # card of it is drawn.
+    engine, state = _refocus_hand(deck=4, discard=3)
+    before = state.players[0]
+    assert legal_intrigue_play_actions(state, 0) == (_play(REFOCUS),)
+
+    opened = apply_whole(engine, state, _play(REFOCUS)).state
+    frame = opened.decision_stack[-1]
+    assert frame.kind == "personal_draw_reshuffle"
+    decision = frame.decision
+    assert isinstance(decision, ChanceDecision)
+    # Every card of the deck and of the discard pile is shuffled, no other.
+    assert set(decision.options) == set(before.deck + before.discard_pile)
+    assert decision.count == 7
+    # Nothing of the seat's piles moved before the shuffle; the played card
+    # has already left the hand for the Intrigue discard pile.
+    assert opened.players[0].deck == before.deck
+    assert opened.players[0].discard_pile == before.discard_pile
+    assert opened.players[0].intrigue_cards == ()
+    assert opened.intrigue_discard == (REFOCUS,)
+
+    reversed_order = tuple(reversed(range(7)))
+    settled = engine.apply(opened, _shuffle_outcome(engine, opened, reversed_order))
+    done = settled.state.players[0]
+    new_deck = tuple(reversed(before.deck + before.discard_pile))
+    assert done.hand == (*before.hand, new_deck[0])
+    assert done.deck == new_deck[1:]
+    assert done.discard_pile == ()
+    assert done.intrigue_cards == ()
+    assert settled.state.intrigue_discard == (REFOCUS,)
+    # The turn goes on: the Plot did not end it.
+    assert settled.state.decision_stack[-1].kind == "turn"
+
+
+def test_refocus_with_an_empty_discard_pile_shuffles_the_deck() -> None:
+    # "Refocus | discard가 비었으면 덱을 섞는다" `[FAQ p. 3]` (imperium-base.md
+    # 13.2): the deck is shuffled along with the discard pile, so an empty
+    # discard pile still shuffles it, in the order the chance gives.
+    engine, state = _refocus_hand(deck=5, discard=0)
+    before = state.players[0]
+
+    opened = apply_whole(engine, state, _play(REFOCUS)).state
+    decision = engine.current_decision(opened)
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == before.deck
+
+    order = (3, 1, 4, 0, 2)
+    done = engine.apply(opened, _shuffle_outcome(engine, opened, order)).state
+    shuffled = tuple(before.deck[index] for index in order)
+    assert done.players[0].hand == (*before.hand, shuffled[0])
+    assert done.players[0].deck == shuffled[1:]
+    assert done.players[0].discard_pile == ()
+
+
+def test_refocus_with_an_empty_deck_shuffles_the_discard_pile_into_it() -> None:
+    # The same shuffle with the deck used up: the discard pile alone is the
+    # new deck (the shuffle a draw makes with an empty deck).
+    engine, state = _refocus_hand(deck=0, discard=4)
+    before = state.players[0]
+    assert legal_intrigue_play_actions(state, 0) == (_play(REFOCUS),)
+
+    opened = apply_whole(engine, state, _play(REFOCUS)).state
+    decision = engine.current_decision(opened)
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == before.discard_pile
+
+    done = _settle(engine, opened).players[0]
+    assert len(done.hand) == len(before.hand) + 1
+    assert len(done.deck) == 3
+    assert done.discard_pile == ()
+    assert set(done.hand + done.deck) == set(before.hand + before.discard_pile)
+
+
+def test_refocus_is_played_with_both_piles_empty_and_fizzles() -> None:
+    # A cost-free effect is played even when every reward fizzles
+    # (OQ-113 (C) (1)): there is nothing to shuffle or draw, so no chance step
+    # opens, nothing moves, and the play is logged as one without effect
+    # (OQ-113 (5)).
+    engine, state = _refocus_hand(deck=0, discard=0)
+    assert legal_intrigue_play_actions(state, 0) == (_play(REFOCUS),)
+    before = state.players[0]
+
+    result = apply_whole(engine, state, _play(REFOCUS))
+
+    assert result.state.decision_stack[-1].kind == "turn"
+    done = result.state.players[0]
+    assert (done.deck, done.hand, done.discard_pile) == (
+        before.deck,
+        before.hand,
+        before.discard_pile,
+    )
+    assert done.intrigue_cards == ()
+    assert result.state.intrigue_discard == (REFOCUS,)
+    assert "intrigue_without_effect" in [event.kind for event in result.events]
+
+
+def test_refocus_logs_the_shuffle_without_its_order() -> None:
+    # "Public: everyone sees the discard pile become the new deck", never the
+    # order (OQ-010): the event carries the seat and the number of discarded
+    # cards shuffled in, and no card id.
+    engine, state = _refocus_hand(deck=4, discard=3)
+    opened = apply_whole(engine, state, _play(REFOCUS)).state
+    result = engine.apply(
+        opened, _shuffle_outcome(engine, opened, (6, 5, 4, 3, 2, 1, 0))
+    )
+
+    shuffled = [e for e in result.events if e.kind == "personal_discard_shuffled"]
+    assert len(shuffled) == 1
+    assert dict(shuffled[0].payload) == {"count": 3, "player": 0}
+
+
+def test_refocus_cards_are_revealed_at_once_in_the_reveal_turn() -> None:
+    # "Reveal turn에 뽑으면 바로 공개해 이번 turn에 쓴다" `[FAQ p. 3]`
+    # (imperium-base.md 13.2): the card drawn after the shuffle goes straight
+    # into play in the Reveal turn.
+    engine, state = _refocus_hand(deck=5, discard=3)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    before = revealed.players[0]
+    assert _play(REFOCUS) in engine.whole_actions(revealed, 0)
+
+    opened = apply_whole(engine, revealed, _play(REFOCUS)).state
+    result = engine.apply(opened, _shuffle_outcome(engine, opened, tuple(range(8))))
+    done = result.state.players[0]
+
+    assert done.hand == before.hand == ()
+    assert len(done.in_play) == len(before.in_play) + 1
+    assert done.in_play[-1] == (before.deck + before.discard_pile)[0]
+    assert [e.kind for e in result.events].count("personal_card_late_revealed") == 1
+    assert done.discard_pile == ()
+
+
+def test_refocus_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _refocus_hand()
+    actions = engine.whole_actions(state, 0)
+    assert _play(REFOCUS) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (REFOCUS,)
+    assert placed.players[0].discard_pile == state.players[0].discard_pile
+
+
+def test_refocus_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _refocus_hand()
+    state = _seat(state, 1, intrigue_cards=(REFOCUS,))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_refocus_shuffle_shows_no_seat_the_order_it_chose() -> None:
+    # Hidden information (imperium-base.md 14: nobody learns an order): two
+    # different shuffles of the same piles leave every other seat's view and
+    # the privacy invariant the same.
+    engine, state = _refocus_hand(deck=4, discard=3)
+    opened = apply_whole(engine, state, _play(REFOCUS)).state
+    first = engine.apply(
+        opened, _shuffle_outcome(engine, opened, tuple(range(7)))
+    ).state
+    second = engine.apply(
+        opened, _shuffle_outcome(engine, opened, tuple(reversed(range(7))))
+    ).state
+
+    assert first.players[0].hand != second.players[0].hand
+    for seat in (1, 2, 3):
+        assert observe_state(first, seat) == observe_state(second, seat)
+    check_observation_privacy(first)
+    check_observation_privacy(second)
+
+
+def test_refocus_shows_paul_atreides_the_new_top_card() -> None:
+    # Paul Atreides "can look at the top card of your deck at any time"
+    # (imperium-base.md 12, 14): after the shuffle his seat is told the new
+    # top card, and nobody else is (``known_card_seats``).
+    engine, state = _refocus_hand(deck=4, discard=3)
+    state = _seat(state, leader_id="paul_atreides")
+    opened = apply_whole(engine, state, _play(REFOCUS)).state
+    done = engine.apply(opened, _shuffle_outcome(engine, opened, tuple(range(7)))).state
+
+    top = done.players[0].deck[0]
+    assert peeked_card_id(done, 0) == top
+    assert known_card_seats(done)[top] == frozenset({0})
+    assert peeked_card_id(done, 1) == ""
+
+
+# --- Poison Snooper (Plot, stage P3c) -----------------------------------------
+
+SNOOPER = _intrigue("poison_snooper")
+
+
+def _snooper_hand(
+    *, deck: int = 4, discard: int = 3
+) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 with Poison Snooper and ``deck`` / ``discard`` of its ten starter
+    cards left in those piles (the rest stay in hand)."""
+
+    engine, state = _start()
+    owner = state.players[0]
+    cards = (*owner.deck, *owner.hand)
+    return engine, _seat(
+        state,
+        intrigue_cards=(SNOOPER,),
+        deck=cards[:deck],
+        discard_pile=cards[deck : deck + discard],
+        hand=cards[deck + discard :],
+    )
+
+
+def _snooper_choice(
+    engine: UprisingRulesEngine, state: GameState
+) -> GameState:
+    """``state`` with the Poison Snooper played and its choice open."""
+
+    opened = apply_whole(engine, state, _play(SNOOPER)).state
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    return opened
+
+
+def _look_action(action_id: str) -> DomainAction:
+    return DomainAction(action_id=action_id, actor=0)
+
+
+def test_poison_snooper_is_one_cost_free_plot_with_two_copies() -> None:
+    # "Look at the top card of your deck. Draw or trash it." [Poison Snooper
+    # card, Steam app text]; 2 copies [DI p. 3]. No cost, no condition.
+    entry = intrigue_card_for_instance(SNOOPER)
+    assert entry.card.name == "Poison Snooper"
+    assert entry.copies == 2
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert not entry.options[0].sections[0].costs
+    assert intrigue_card_text(entry) == [
+        "Plot — Look at the top card of your deck: draw it or trash it"
+    ]
+    assert "poison_snooper" not in {card.card.card_id for card in INTRIGUE_CARDS}
+    # Both copies are in the original Intrigue deck.
+    deck = content_for(CONFIG).intrigue_deck_instance_ids
+    assert [card for card in deck if "poison_snooper" in card] == [
+        _intrigue("poison_snooper", 0),
+        _intrigue("poison_snooper", 1),
+    ]
+
+
+def test_poison_snooper_offers_only_to_draw_or_to_trash_the_top_card() -> None:
+    # "Draw or trash it": the two answers of the look, free, and nothing else
+    # -- no "may", so neither putting the card back nor a refusal is offered
+    # (P0 sheet: "must either draw it or trash it"; imperium-base.md 15).
+    engine, state = _snooper_hand()
+    assert legal_intrigue_play_actions(state, 0) == (_play(SNOOPER),)
+
+    opened = _snooper_choice(engine, state)
+
+    assert {action.action_id for action in engine.whole_actions(opened, 0)} == {
+        "draw_top_card",
+        "trash_top_card",
+    }
+    assert engine.whole_actions(opened, 1) == ()
+    # Nothing moved while the choice is open, and the card is still held.
+    assert opened.players[0].deck == state.players[0].deck
+    assert opened.players[0].intrigue_cards == (SNOOPER,)
+
+
+def test_poison_snooper_draws_the_top_card_into_the_hand_for_free() -> None:
+    engine, state = _snooper_hand(deck=4, discard=3)
+    before = state.players[0]
+    opened = _snooper_choice(engine, state)
+
+    result = apply_whole(engine, opened, _look_action("draw_top_card"))
+    done = result.state.players[0]
+
+    assert done.hand == (*before.hand, before.deck[0])
+    assert done.deck == before.deck[1:]
+    assert done.discard_pile == before.discard_pile
+    assert done.trashed == before.trashed
+    assert done.resources == before.resources
+    assert done.intrigue_cards == ()
+    assert result.state.intrigue_discard == (SNOOPER,)
+    # Public: that the seat drew, never which card (it sits in a hidden hand).
+    drawn = [event for event in result.events if event.kind == "top_card_drawn_free"]
+    assert len(drawn) == 1
+    assert dict(drawn[0].payload) == {"player": 0}
+    # The turn goes on: the Plot did not end it.
+    assert result.state.decision_stack[-1].kind == "turn"
+
+
+def test_poison_snooper_trashes_the_top_card_and_shows_it() -> None:
+    # "trash하면 공개" (imperium-base.md 14): the trashed card is face up in
+    # the trash and the event names it.
+    engine, state = _snooper_hand(deck=4, discard=3)
+    before = state.players[0]
+    opened = _snooper_choice(engine, state)
+
+    result = apply_whole(engine, opened, _look_action("trash_top_card"))
+    done = result.state.players[0]
+
+    assert done.trashed == (*before.trashed, before.deck[0])
+    assert done.deck == before.deck[1:]
+    assert done.hand == before.hand
+    assert done.intrigue_cards == ()
+    assert result.state.intrigue_discard == (SNOOPER,)
+    trashed = [event for event in result.events if event.kind == "card_trashed"]
+    assert len(trashed) == 1
+    assert dict(trashed[0].payload) == {"card_id": before.deck[0], "player": 0}
+    assert known_card_seats(result.state).get(before.deck[0]) is None
+
+
+def test_poison_snooper_returns_a_trashed_reserve_card_to_its_pile() -> None:
+    # "A trashed Reserve card returns to its pile" [DI p. 16] (P0 sheet).
+    engine, state = _snooper_hand(deck=4, discard=3)
+    reserve_card = "reserve:imperium_the_spice_must_flow:9"
+    owner = state.players[0]
+    state = _seat(state, deck=(reserve_card, *owner.deck[1:]))
+    pile = dict(state.reserve_stacks)["imperium_the_spice_must_flow"]
+    opened = _snooper_choice(engine, state)
+
+    done = apply_whole(engine, opened, _look_action("trash_top_card")).state
+
+    assert reserve_card not in done.players[0].trashed
+    assert dict(done.reserve_stacks)["imperium_the_spice_must_flow"] == pile + 1
+
+
+def test_poison_snooper_tells_only_its_owner_the_top_card() -> None:
+    # "낸 좌석이 자기 덱 맨 위" (imperium-base.md 14): while the choice is open
+    # the playing seat's view carries the top card (``peeked_card_id``) and
+    # ``known_card_seats`` lists it for that seat alone; every other seat's
+    # view is the same whatever the card is.
+    engine, state = _snooper_hand(deck=4, discard=3)
+    before = state.players[0]
+    opened = _snooper_choice(engine, state)
+
+    top = before.deck[0]
+    assert peeked_card_id(opened, 0) == top
+    own = observe_state(opened, 0).private
+    assert own is not None
+    assert own.peeked_card_id == top
+    assert known_card_seats(opened)[top] == frozenset({0})
+    for seat in (1, 2, 3):
+        assert peeked_card_id(opened, seat) == ""
+        private = observe_state(opened, seat).private
+        assert private is not None
+        assert private.peeked_card_id == ""
+    # Nothing a seat without the choice sees depends on which card lies there.
+    swapped = _seat(opened, deck=(before.deck[1], before.deck[0], *before.deck[2:]))
+    for seat in (1, 2, 3):
+        assert observe_state(swapped, seat) == observe_state(opened, seat)
+    check_observation_privacy(opened)
+    # The look ends with the choice: the next top card is not told.
+    drawn = apply_whole(engine, opened, _look_action("draw_top_card")).state
+    assert peeked_card_id(drawn, 0) == ""
+    assert before.deck[1] not in {
+        card for card, seats in known_card_seats(drawn).items() if seats
+    } or known_card_seats(drawn)[before.deck[1]] == frozenset()
+
+
+def test_poison_snooper_look_survives_the_ai_determinizer() -> None:
+    # A sampled world for the seat that looks keeps the card it saw on top, or
+    # the open choice would have no card to draw or trash; for any other
+    # observer the card is unknown and is dealt again.
+    engine, state = _snooper_hand(deck=4, discard=3)
+    opened = _snooper_choice(engine, state)
+    top = opened.players[0].deck[0]
+
+    for seed in range(8):
+        own = determinize(opened, 0, random.Random(seed))
+        assert own.players[0].deck[0] == top
+        assert {action.action_id for action in engine.whole_actions(own, 0)} == {
+            "draw_top_card",
+            "trash_top_card",
+        }
+        other = determinize(opened, 1, random.Random(seed))
+        assert {action.action_id for action in engine.whole_actions(other, 0)} == {
+            "draw_top_card",
+            "trash_top_card",
+        }
+
+
+def test_poison_snooper_cannot_look_at_an_empty_deck_and_does_not_shuffle() -> None:
+    # "덱이 비면 맨 위를 볼 수 없다(discard를 섞어 덱을 만드는 것은 뽑아야 할
+    # 때뿐)" (imperium-base.md 13.1): with the deck empty the discard pile is
+    # not shuffled for the look. A cost-free effect is played even when it
+    # fizzles (OQ-113 (C) (1)), so the card is played and the empty look is
+    # confirmed, as the empty-deck Controlled's.
+    engine, state = _snooper_hand(deck=0, discard=4)
+    before = state.players[0]
+    assert legal_intrigue_play_actions(state, 0) == (_play(SNOOPER),)
+
+    result = apply_whole(engine, state, _play(SNOOPER))
+    opened = result.state
+    assert "intrigue_without_effect" in [event.kind for event in result.events]
+    assert [action.action_id for action in engine.whole_actions(opened, 0)] == [
+        "skip_intrigue_top_card"
+    ]
+
+    done = apply_whole(engine, opened, _look_action("skip_intrigue_top_card"))
+
+    assert done.state.decision_stack[-1].kind == "turn"
+    assert done.state.players[0].deck == ()
+    assert done.state.players[0].discard_pile == before.discard_pile
+    assert done.state.players[0].hand == before.hand
+    assert done.state.intrigue_discard == (SNOOPER,)
+    assert peeked_card_id(opened, 0) == ""
+
+
+def test_poison_snooper_cards_are_revealed_at_once_in_the_reveal_turn() -> None:
+    # "Reveal turn에 뽑으면 바로 공개해 이번 turn에 쓴다" `[FAQ p. 3]`
+    # (imperium-base.md 13.2 "Poison Snooper → Reveal turn"): the drawn card
+    # goes straight into play.
+    engine, state = _snooper_hand(deck=5, discard=3)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    before = revealed.players[0]
+    opened = _snooper_choice(engine, revealed)
+
+    result = apply_whole(engine, opened, _look_action("draw_top_card"))
+    done = result.state.players[0]
+
+    assert done.hand == before.hand == ()
+    assert done.in_play == (*before.in_play, before.deck[0])
+    assert done.deck == before.deck[1:]
+    assert [e.kind for e in result.events].count("personal_card_late_revealed") == 1
+
+
+def test_poison_snooper_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _snooper_hand()
+    actions = engine.whole_actions(state, 0)
+    assert _play(SNOOPER) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (SNOOPER,)
+    assert placed.players[0].deck == state.players[0].deck
+
+
+def test_poison_snooper_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _snooper_hand()
+    state = _seat(state, 1, intrigue_cards=(SNOOPER,))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_poison_snooper_rows_have_catalog_templates_and_step_rows() -> None:
+    # The original game's catalog lists the rows of the look -- draw, trash and
+    # the empty deck's confirmation, each naming Poison Snooper as the card
+    # that prints it -- and the codec round-trips what the seat is offered;
+    # Uprising's catalog has none of them.
+    engine, state = _snooper_hand()
+    codec = ActionCodec(CONFIG)
+    for held in (state, _seat(state, deck=())):
+        opened = _snooper_choice(engine, held)
+        offered = engine.legal_actions(opened, 0)
+        assert offered
+        for action in offered:
+            assert codec.decode(codec.encode(action), 0) == action
+
+    def rows(config: RulesetConfig) -> set[str]:
+        return {
+            template.action_id
+            for template in ActionCodec(config).catalog
+            if dict(template.arguments).get("printed") == "poison_snooper"
+        }
+
+    assert rows(CONFIG) == {"draw", "trash", "confirm_empty"}
+    assert not rows(RulesetConfig())
+    assert not rows(RulesetConfig(bloodlines=True, tech_module=True))
+
+
+# --- Bindu Suspension (Plot at the start of the turn, stage P3c) --------------
+
+BINDU = _intrigue("bindu_suspension")
+# A Twisted card that also reads "At the start of your turn" (Withdrawn).
+WITHDRAWN = "intrigue:twisted_withdrawn:0"
+
+
+def _bindu_hand(
+    *, deck: int = 4, discard: int = 3, **changes: Any
+) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 at the start of its turn with Bindu Suspension, ``deck`` /
+    ``discard`` of its ten starter cards left in those piles."""
+
+    engine, state = _start()
+    owner = state.players[0]
+    cards = (*owner.deck, *owner.hand)
+    return engine, _seat(
+        state,
+        intrigue_cards=(BINDU,),
+        deck=cards[:deck],
+        discard_pile=cards[deck : deck + discard],
+        hand=cards[deck + discard :],
+        **changes,
+    )
+
+
+def _pass_action(action_id: str) -> DomainAction:
+    return DomainAction(action_id=action_id, actor=0)
+
+
+def test_bindu_suspension_is_one_turn_start_plot_that_draws_and_may_pass() -> None:
+    # "At the start of your turn: [draw 1]. You may pass your turn." [Bindu
+    # Suspension card, app text]; 1 copy [DI p. 3]. Played only as the turn's
+    # first action (OQ-117, imperium-base.md 13.1).
+    entry = intrigue_card_for_instance(BINDU)
+    assert entry.card.name == "Bindu Suspension"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert entry.options[0].turn_start_only
+    assert not entry.options[0].sections[0].costs
+    assert intrigue_card_text(entry) == [
+        "Plot — At the start of your turn: Draw 1 card, you may pass your turn"
+    ]
+    assert "bindu_suspension" not in {card.card.card_id for card in INTRIGUE_CARDS}
+
+
+def test_bindu_suspension_draws_a_card_then_offers_to_pass_or_play_on() -> None:
+    # OQ-117 (user ruling C, 2026-10-22): after the draw the owner "may choose
+    # to pass your turn or play your turn normally" (imperium-base.md 13.3):
+    # the draw comes first and the pass is a choice of its own, never forced.
+    engine, state = _bindu_hand()
+    before = state.players[0]
+    assert legal_intrigue_play_actions(state, 0) == (_play(BINDU),)
+
+    opened = apply_whole(engine, state, _play(BINDU)).state
+
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    assert opened.players[0].hand == (*before.hand, before.deck[0])
+    assert opened.players[0].deck == before.deck[1:]
+    # The card stays held while its choice is open.
+    assert opened.players[0].intrigue_cards == (BINDU,)
+    assert {action.action_id for action in engine.whole_actions(opened, 0)} == {
+        "pass_turn_intrigue",
+        "keep_turn_intrigue",
+    }
+    assert engine.whole_actions(opened, 1) == ()
+
+
+def test_bindu_suspension_pass_ends_the_turn_and_the_seat_stays_unrevealed() -> None:
+    # "pass your turn": the next unrevealed seat's turn opens, this seat has
+    # not revealed and comes around again ([Main p. 8], as Withdrawn).
+    engine, state = _bindu_hand()
+    opened = apply_whole(engine, state, _play(BINDU)).state
+
+    result = apply_whole(engine, opened, _pass_action("pass_turn_intrigue"))
+
+    frame = result.state.decision_stack[-1]
+    assert frame.kind == "turn"
+    assert dict(frame.context)["turn_owner"] == 1
+    assert result.state.players[0].has_revealed is False
+    assert result.state.players[0].intrigue_cards == ()
+    assert result.state.intrigue_discard == (BINDU,)
+    assert [event.kind for event in result.events].count("turn_passed") == 1
+    # The Agent that was not sent is still there: nothing was used up.
+    assert result.state.players[0].agents_available == 2
+    assert result.state.players[0].agent_locations == ()
+
+
+def test_bindu_suspension_play_on_keeps_the_turn_without_forcing_the_pass() -> None:
+    # "or play your turn normally": the pass is the owner's choice, not a
+    # forced end (OQ-117: "강제 종료하지 않는다").
+    engine, state = _bindu_hand()
+    opened = apply_whole(engine, state, _play(BINDU)).state
+
+    result = apply_whole(engine, opened, _pass_action("keep_turn_intrigue"))
+
+    frame = result.state.decision_stack[-1]
+    assert frame.kind == "turn"
+    assert dict(frame.context)["turn_owner"] == 0
+    assert result.state.intrigue_discard == (BINDU,)
+    assert result.state.players[0].intrigue_cards == ()
+    assert "turn_passed" not in [event.kind for event in result.events]
+    # The turn goes on: an Agent or a Reveal turn is offered as usual.
+    kinds = {action.action_id for action in engine.whole_actions(result.state, 0)}
+    assert "reveal_turn" in kinds
+    assert "choose_agent_card" in kinds or "agent_turn" in kinds
+    assert [event.kind for event in result.events] == ["intrigue_turn_kept"]
+
+
+def test_bindu_suspension_is_played_only_as_the_turns_first_action() -> None:
+    # "차례 시작의 첫 행동으로만 낸다. 다른 행동을 하면 사용할 수 없다"
+    # (imperium-base.md 13.1, OQ-095 (6)): not after a Plot, nor after an
+    # Agent is sent, nor in a Reveal turn.
+    engine, state = _bindu_hand()
+    windfall = _intrigue("windfall")
+    state = _seat(state, intrigue_cards=(BINDU, windfall))
+    assert _play(BINDU) in engine.whole_actions(state, 0)
+
+    plotted = apply_whole(engine, state, _play(windfall)).state
+    assert plotted.decision_stack[-1].kind == "turn"
+    assert _play(BINDU) not in engine.whole_actions(plotted, 0)
+
+    placed = apply_whole(
+        engine,
+        state,
+        next(
+            action
+            for action in engine.whole_actions(state, 0)
+            if action.action_id == "choose_agent_card"
+        ),
+    ).state
+    assert _play(BINDU) not in engine.whole_actions(placed, 0)
+
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    assert _play(BINDU) not in engine.whole_actions(revealed, 0)
+
+
+def test_bindu_suspension_is_also_played_in_a_turn_the_seat_must_reveal() -> None:
+    # "Agent가 없어 공개해야 하는 차례도 시작에 사용할 수 있고, 이미 공개를
+    # 시작한 뒤에는 못 쓴다" (OQ-117, imperium-base.md 13.1).
+    engine, state = _bindu_hand(
+        agents_available=0, agent_locations=("arrakeen", "carthag")
+    )
+    kinds = {action.action_id for action in engine.whole_actions(state, 0)}
+    assert "reveal_turn" in kinds
+    assert not {"choose_agent_card", "agent_turn"} & kinds
+    assert _play(BINDU) in engine.whole_actions(state, 0)
+
+    opened = apply_whole(engine, state, _play(BINDU)).state
+    passed = apply_whole(engine, opened, _pass_action("pass_turn_intrigue")).state
+
+    assert dict(passed.decision_stack[-1].context)["turn_owner"] == 1
+    assert passed.players[0].agent_locations == ("arrakeen", "carthag")
+
+
+def test_bindu_suspension_draw_shuffles_the_discard_pile_for_an_empty_deck() -> None:
+    # The draw is an ordinary draw (``card_draw``): with the deck empty the
+    # discard pile is shuffled for it, and the choice to pass waits for the
+    # shuffle.
+    engine, state = _bindu_hand(deck=0, discard=4)
+    before = state.players[0]
+
+    opened = apply_whole(engine, state, _play(BINDU)).state
+    assert opened.decision_stack[-1].kind == "personal_draw_reshuffle"
+    settled = _settle(engine, opened)
+
+    assert settled.decision_stack[-1].kind == "intrigue_choice"
+    done = settled.players[0]
+    assert len(done.hand) == len(before.hand) + 1
+    assert len(done.deck) == 3
+    assert done.discard_pile == ()
+    assert {action.action_id for action in engine.whole_actions(settled, 0)} == {
+        "pass_turn_intrigue",
+        "keep_turn_intrigue",
+    }
+
+
+def test_bindu_suspension_is_played_with_nothing_to_draw_and_the_pass_stays() -> None:
+    # A cost-free effect is played even when its draw fizzles (OQ-113 (C)):
+    # with both piles empty the pass is still the owner's choice.
+    engine, state = _bindu_hand(deck=0, discard=0)
+    assert legal_intrigue_play_actions(state, 0) == (_play(BINDU),)
+    before = state.players[0]
+
+    opened = apply_whole(engine, state, _play(BINDU)).state
+
+    assert opened.players[0].hand == before.hand
+    assert {action.action_id for action in engine.whole_actions(opened, 0)} == {
+        "pass_turn_intrigue",
+        "keep_turn_intrigue",
+    }
+
+
+def test_bindu_suspension_passed_back_to_the_seat_opens_a_fresh_turn_start() -> None:
+    # With every other seat revealed the pass hands the turn straight back
+    # ([Main p. 8], OQ-113 (C) (2) 4's Withdrawn): that new turn is a fresh one
+    # with its start open again, so a turn-start card can still be played.
+    engine, state = _bindu_hand()
+    state = _seat(state, intrigue_cards=(BINDU, WITHDRAWN))
+    for seat in (1, 2, 3):
+        state = _seat(state, seat, has_revealed=True)
+    opened = apply_whole(engine, state, _play(BINDU)).state
+
+    passed = apply_whole(engine, opened, _pass_action("pass_turn_intrigue")).state
+
+    assert passed.decision_stack[-1].kind == "turn"
+    assert dict(passed.decision_stack[-1].context)["turn_owner"] == 0
+    assert _play(WITHDRAWN) in engine.whole_actions(passed, 0)
+
+
+def test_bindu_suspension_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _bindu_hand()
+    state = _seat(state, 1, intrigue_cards=(BINDU,))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_bindu_suspension_is_greyed_out_once_the_turn_has_started() -> None:
+    # The page shows why the card cannot be played now (the turn-start rule).
+    engine, state = _bindu_hand()
+    windfall = _intrigue("windfall")
+    state = _seat(state, intrigue_cards=(BINDU, windfall))
+    plotted = apply_whole(engine, state, _play(windfall)).state
+    found = unavailable_choices(plotted, 0, engine.whole_actions(plotted, 0))
+    assert found is not None
+    assert found["refs"][BINDU] == {  # type: ignore[index]
+        "reason": "Only at the start of your turn: you already acted this turn",
+        "reason_ko": "차례를 시작할 때만 사용 — 이번 차례에 이미 다른 행동을 했음",
+        "code": "turn_started",
+    }
+
+
+def test_bindu_suspension_rows_have_catalog_templates_and_step_rows() -> None:
+    engine, state = _bindu_hand()
+    codec = ActionCodec(CONFIG)
+    opened = apply_whole(engine, state, _play(BINDU)).state
+    offered = engine.legal_actions(opened, 0)
+    assert {action.action_id for action in offered} == {"pass", "decline"}
+    for action in offered:
+        assert codec.decode(codec.encode(action), 0) == action
+
+    def rows(config: RulesetConfig) -> set[str]:
+        return {
+            template.action_id
+            for template in ActionCodec(config).catalog
+            if dict(template.arguments).get("printed") == "bindu_suspension"
+        }
+
+    assert rows(CONFIG) == {"pass", "decline"}
+    assert not rows(RulesetConfig())
+    assert not rows(RulesetConfig(bloodlines=True, tech_module=True))
+
+
+# --- Double Cross (Plot, stage P3c) -------------------------------------------
+
+CROSS = _intrigue("double_cross")
+
+
+def _cross_state(
+    *,
+    solari: int = 3,
+    supply: int = 11,
+    conflict: int = 1,
+    rivals: dict[int, dict[str, Any]] | None = None,
+    config: RulesetConfig = CONFIG,
+) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 holding Double Cross with ``conflict`` troops in the Conflict and
+    ``supply`` in its supply (the rest at home); ``rivals`` maps a seat to its
+    own changes (default: seat 2 with two troops in the Conflict)."""
+
+    engine, state = _start(config=config)
+    state = _seat(
+        state,
+        intrigue_cards=(CROSS,),
+        resources=Resources(solari=solari),
+        troops_supply=supply,
+        troops_conflict=conflict,
+        troops_garrison=12 - supply - conflict,
+        combat_strength=2 * conflict,
+    )
+    for seat, changes in (rivals or {2: {"troops": 2}}).items():
+        troops = changes.get("troops", 0)
+        state = _seat(
+            state,
+            seat,
+            troops_conflict=troops,
+            troops_supply=12 - troops - changes.get("garrison", 0),
+            troops_garrison=changes.get("garrison", 0),
+            combat_strength=2 * troops,
+        )
+    return engine, state
+
+
+def _name_opponent(seat: int) -> DomainAction:
+    return DomainAction(
+        action_id="choose_opponent_troop_loss",
+        actor=0,
+        arguments=(("player", seat),),
+    )
+
+
+def _rewards_row() -> DomainAction:
+    return DomainAction(action_id="resolve_intrigue_rewards", actor=0)
+
+
+def _lose_in_conflict(seat: int, *, commander: bool = False) -> DomainAction:
+    return DomainAction(
+        action_id="lose_unit",
+        actor=seat,
+        arguments=(*((("commanders", 1),) if commander else ()), ("zone", "conflict")),
+    )
+
+
+def test_double_cross_is_one_plot_cost_line_with_one_copy() -> None:
+    # "1 Solari -> An opponent of your choice loses one troop in the Conflict
+    # and you deploy one troop from your supply to the Conflict." [Double
+    # Cross card, Steam app text]; 1 copy [DI p. 3]. A cost arrow line
+    # [DI p. 16], with the card's one official condition (below).
+    entry = intrigue_card_for_instance(CROSS)
+    assert entry.card.name == "Double Cross"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    section = entry.options[0].sections[0]
+    assert section.costs == (PayResources(solari=1),)
+    assert section.condition == OpponentHasTroopInConflict()
+    assert intrigue_card_text(entry) == [
+        "Plot — If an opponent has a troop in the Conflict: Pay 1 solari →"
+        " An opponent of your choice loses one troop in the Conflict,"
+        " Deploy 1 troop from your supply to the Conflict"
+    ]
+    assert "double_cross" not in {card.card.card_id for card in INTRIGUE_CARDS}
+
+
+def test_double_cross_is_played_only_when_an_opponent_has_a_troop_in_the_conflict() -> (
+    None
+):
+    # "Double Cross | 상대 하나 이상이 Conflict에 troop이 있어야 낸다`[FAQ p. 2]`
+    # (imperium-base.md 13.2, 16): an official condition, not a case of a
+    # reward that cannot change anything (OQ-113 (C)). The seat's own troops
+    # in the Conflict do not count, and neither does an opponent's garrison.
+    engine, state = _cross_state(rivals={2: {"troops": 0, "garrison": 3}})
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert _play(CROSS) not in engine.whole_actions(state, 0)
+
+    _, with_troop = _cross_state(rivals={2: {"troops": 1}})
+    assert legal_intrigue_play_actions(with_troop, 0) == (_play(CROSS),)
+    assert with_troop.players[0].resources.solari == 3
+
+
+
+def test_double_cross_needs_the_one_solari() -> None:
+    # "1 Solari ->": the arrow's cost is paid once played [FAQ p. 2].
+    engine, state = _cross_state(solari=0)
+    assert legal_intrigue_play_actions(state, 0) == ()
+    _, exact = _cross_state(solari=1)
+    assert legal_intrigue_play_actions(exact, 0) == (_play(CROSS),)
+    opened = apply_whole(engine, exact, _play(CROSS)).state
+    assert opened.players[0].resources.solari == 0
+
+
+def test_double_cross_names_an_opponent_then_both_effects_happen() -> None:
+    # "An opponent of your choice loses one troop in the Conflict and you
+    # deploy one troop from your supply to the Conflict": the owner names the
+    # opponent, the opponent chooses the troop it loses (OQ-036 (a)), the lost
+    # troop returns to that seat's supply [DI p. 16], and the owner's troop
+    # moves from its supply to the Conflict; both strength markers follow
+    # [Main p. 12].
+    engine, state = _cross_state(solari=3, supply=11, conflict=1)
+    opened = apply_whole(engine, state, _play(CROSS)).state
+    assert opened.players[0].resources.solari == 2
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    assert {action.action_id for action in engine.whole_actions(opened, 0)} == {
+        "choose_opponent_troop_loss",
+        "resolve_intrigue_rewards",
+    }
+    assert engine.whole_actions(opened, 1) == ()
+
+    named = apply_whole(engine, opened, _name_opponent(2))
+    # The card is played out; the named opponent decides alone.
+    assert named.state.intrigue_discard == (CROSS,)
+    assert named.state.players[0].intrigue_cards == ()
+    frame = named.state.decision_stack[-1]
+    assert frame.kind == FrameKind.OPPONENT_UNIT_LOSS
+    assert frame.decision.owner == 2  # type: ignore[union-attr]
+    assert engine.whole_actions(named.state, 0) == ()
+    # The owner's troop is already in the Conflict, from its supply.
+    mine = named.state.players[0]
+    assert (mine.troops_supply, mine.troops_conflict) == (10, 2)
+    assert mine.combat_strength == 4
+    assert mine.units_deployed_turn == 1
+    assert [e.kind for e in named.events].count("troops_deployed") == 1
+    # The opponent's loss is still to come.
+    assert named.state.players[2].troops_conflict == 2
+
+    lost = apply_whole(engine, named.state, _lose_in_conflict(2))
+    rival = lost.state.players[2]
+    assert (rival.troops_conflict, rival.troops_supply) == (1, 11)
+    assert rival.combat_strength == 2
+    assert lost.state.decision_stack[-1].kind == "turn"
+    assert "unit_lost" in [event.kind for event in lost.events]
+    # The turn goes on: the Plot did not end it.
+    assert dict(lost.state.decision_stack[-1].context)["turn_owner"] == 0
+
+
+def test_double_cross_effects_may_be_taken_in_either_order() -> None:
+    # The two icons are independent effects in the owner's order (OQ-015):
+    # deploying first, then naming the opponent, gives the same outcome.
+    engine, state = _cross_state()
+    opened = apply_whole(engine, state, _play(CROSS)).state
+
+    deployed = apply_whole(engine, opened, _rewards_row()).state
+    assert (deployed.players[0].troops_supply, deployed.players[0].troops_conflict) == (
+        10,
+        2,
+    )
+    assert deployed.decision_stack[-1].kind == "intrigue_choice"
+    assert {action.action_id for action in engine.whole_actions(deployed, 0)} == {
+        "choose_opponent_troop_loss"
+    }
+
+    named = apply_whole(engine, deployed, _name_opponent(2)).state
+    assert named.decision_stack[-1].kind == FrameKind.OPPONENT_UNIT_LOSS
+    assert named.intrigue_discard == (CROSS,)
+    assert (named.players[0].troops_supply, named.players[0].troops_conflict) == (
+        10,
+        2,
+    )
+
+
+def test_double_cross_names_only_opponents_with_a_troop_in_the_conflict() -> None:
+    # The condition is an opponent's troop in the Conflict, so only such an
+    # opponent is named, clockwise from the next seat.
+    engine, state = _cross_state(
+        rivals={1: {"troops": 1}, 2: {"troops": 0, "garrison": 2}, 3: {"troops": 3}}
+    )
+    opened = apply_whole(engine, state, _play(CROSS)).state
+
+    named = [
+        action
+        for action in engine.whole_actions(opened, 0)
+        if action.action_id == "choose_opponent_troop_loss"
+    ]
+    assert named == [_name_opponent(1), _name_opponent(3)]
+    assert _name_opponent(2) not in engine.whole_actions(opened, 0)
+
+
+def test_double_cross_the_named_opponent_chooses_among_its_conflict_units() -> None:
+    # "loses one troop in the Conflict": the choice is limited to the Conflict
+    # (its garrison is no option) (OQ-036 (a)).
+    engine, state = _cross_state(rivals={2: {"troops": 3, "garrison": 4}})
+    opened = apply_whole(engine, state, _play(CROSS)).state
+    named = apply_whole(engine, opened, _name_opponent(2)).state
+
+    assert engine.whole_actions(named, 2) == (_lose_in_conflict(2),)
+    gone = apply_whole(engine, named, _lose_in_conflict(2)).state
+    assert gone.players[2].troops_conflict == 2
+    assert gone.players[2].troops_garrison == 4
+
+
+def test_a_sardaukar_commander_is_a_troop_for_double_cross_s_condition_and_loss() -> (
+    None
+):
+    # "A Sardaukar Commander is a 'troop'" [Bloodlines p. 4] and the loser
+    # chooses the unit it loses (OQ-036 (a)). The original game takes
+    # Bloodlines only from stage P7, so the rule is read on an Uprising game
+    # with Bloodlines: the condition holds for a Commander alone in the
+    # Conflict, and the named seat's window offers the Commander and the troop
+    # of the Conflict, never its garrison.
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(bloodlines=True, first_player_seat_zero=True), 3)
+    chance = ChanceResolver(seed=3)
+    while isinstance(decision := engine.current_decision(state), ChanceDecision):
+        state = engine.apply(state, chance.resolve(decision)).state
+    assert not condition_holds(state, 0, OpponentHasTroopInConflict())
+
+    alone = _seat(state, 2, commanders_conflict=1, commanders_supply=0)
+    assert condition_holds(alone, 0, OpponentHasTroopInConflict())
+    assert opponents_with_conflict_troop(alone, 0) == (2,)
+
+    both = _seat(
+        alone, 2, troops_conflict=1, troops_supply=7, troops_garrison=4
+    )
+    window = opponent_unit_loss_frames(
+        both, 0, source="test", printer="intrigue|double_cross",
+        conflict_only=True, seats=(2,),
+    ).state
+    assert {
+        tuple(sorted(dict(action.arguments).items()))
+        for action in legal_unit_loss_actions(window, 2)
+    } == {(("zone", "conflict"),), (("commanders", 1), ("zone", "conflict"))}
+    # Only the named seat is asked.
+    assert [frame.decision.owner for frame in window.decision_stack[-1:]] == [2]  # type: ignore[union-attr]
+    assert window.decision_stack[-2:-1] == both.decision_stack[-1:]
+
+
+def test_double_cross_with_an_empty_supply_is_played_and_deploys_nothing() -> None:
+    # "내 supply는 비어도 된다" `[FAQ p. 2]` (imperium-base.md 13.2): the empty
+    # supply is no bar to playing it; nothing deploys. The opponent still
+    # loses its troop. The troop owed is recorded as Suspensor Suits' are
+    # (OQ-042 ruling (2): Double Cross "같은 기록을 쓴다").
+    engine, state = _cross_state(supply=0, conflict=1)
+    state = _seat(state, troops_garrison=11)
+    assert legal_intrigue_play_actions(state, 0) == (_play(CROSS),)
+    opened = apply_whole(engine, state, _play(CROSS)).state
+
+    named = apply_whole(engine, opened, _name_opponent(2))
+
+    mine = named.state.players[0]
+    assert (mine.troops_supply, mine.troops_conflict, mine.troops_garrison) == (
+        0,
+        1,
+        11,
+    )
+    assert mine.units_deployed_turn == 0
+    assert mine.ungained_conflict_troops == 1
+    assert "troops_deployed" not in [event.kind for event in named.events]
+    lost = apply_whole(engine, named.state, _lose_in_conflict(2)).state
+    assert lost.players[2].troops_conflict == 1
+
+
+def test_double_cross_owed_troop_is_made_up_when_a_troop_returns_this_turn() -> None:
+    # The recorded troop goes to the Conflict as soon as the seat's supply
+    # holds one again in the same turn (``rules.shortfall``).
+    from dune_imperium.rules.shortfall import refill_shortfall, shortfall_refill_seat
+
+    engine, state = _cross_state(supply=0, conflict=1)
+    state = _seat(state, troops_garrison=11)
+    opened = apply_whole(engine, state, _play(CROSS)).state
+    named = apply_whole(engine, opened, _name_opponent(2)).state
+    done = apply_whole(engine, named, _lose_in_conflict(2)).state
+    assert shortfall_refill_seat(done) is None
+
+    # A troop returns to the seat's supply (a loss of its own, say).
+    returned = _seat(
+        done, troops_supply=1, troops_garrison=done.players[0].troops_garrison - 1
+    )
+    assert shortfall_refill_seat(returned) == 0
+    refilled = refill_shortfall(returned, 0).state.players[0]
+    assert (refilled.troops_supply, refilled.troops_conflict) == (0, 2)
+    assert refilled.ungained_conflict_troops == 0
+
+
+def test_double_cross_deploys_nothing_while_deployment_is_banned() -> None:
+    # Emperor of the Known Universe: "units can't be deployed to the Conflict"
+    # for the whole turn [Main p. 17]. The card is still played and the
+    # opponent still loses its troop; the deployment does nothing and owes
+    # nothing.
+    engine, state = _cross_state()
+    frame = state.decision_stack[-1]
+    banned = replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(
+                frame,
+                context=tuple(
+                    sorted((*frame.context, ("units_deploy_blocked", True)))
+                ),
+            ),
+        ),
+    )
+    assert legal_intrigue_play_actions(banned, 0) == (_play(CROSS),)
+    opened = apply_whole(engine, banned, _play(CROSS)).state
+
+    named = apply_whole(engine, opened, _name_opponent(2))
+
+    mine = named.state.players[0]
+    assert (mine.troops_supply, mine.troops_conflict) == (11, 1)
+    assert mine.ungained_conflict_troops == 0
+    assert named.state.decision_stack[-1].kind == FrameKind.OPPONENT_UNIT_LOSS
+
+
+def test_double_cross_in_the_reveal_turn_adds_the_troop_to_the_reveal() -> None:
+    # The deployed troop joins the Reveal's strength like any troop sent to
+    # the Conflict in the owner's Reveal turn [Main p. 13]; the opponent's loss
+    # takes its own strength off at once [Main p. 12].
+    engine, state = _cross_state(supply=11, conflict=1)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    before = revealed.players[0]
+    assert _play(CROSS) in engine.whole_actions(revealed, 0)
+
+    opened = apply_whole(engine, revealed, _play(CROSS)).state
+    named = apply_whole(engine, opened, _name_opponent(2)).state
+
+    mine = named.players[0]
+    assert mine.troops_conflict == before.troops_conflict + 1
+    assert mine.combat_strength == before.combat_strength + 2
+    lost = apply_whole(engine, named, _lose_in_conflict(2)).state
+    assert lost.players[2].combat_strength == 2
+    assert lost.decision_stack[-1].kind == "reveal"
+
+
+def test_double_cross_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _cross_state()
+    actions = engine.whole_actions(state, 0)
+    assert _play(CROSS) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (CROSS,)
+    assert placed.players[0].resources.solari == 3
+
+
+def test_double_cross_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5), and
+    # never in Combat: it is a Plot card.
+    _, state = _cross_state()
+    state = _seat(state, 1, intrigue_cards=(CROSS,), resources=Resources(solari=3))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_double_cross_is_greyed_out_and_says_why_without_an_opponent_troop() -> None:
+    engine, state = _cross_state(rivals={2: {"troops": 0}})
+    found = unavailable_choices(state, 0, engine.whole_actions(state, 0))
+    assert found is not None
+    reason = found["refs"][CROSS]  # type: ignore[index]
+    assert reason["code"] == "condition"
+    assert reason["reason"] == "Only if an opponent has a troop in the Conflict"
+
+
+def test_double_cross_rows_have_catalog_templates_and_step_rows() -> None:
+    # The original game's catalog lists the opponent pick (a seat row) and the
+    # card's automatic rewards; the codec round-trips what each seat is
+    # offered; Uprising's catalog has none of them.
+    engine, state = _cross_state()
+    codec = ActionCodec(CONFIG)
+    opened = apply_whole(engine, state, _play(CROSS)).state
+    named = apply_whole(engine, opened, _name_opponent(2)).state
+    for held, seat in ((opened, 0), (named, 2)):
+        offered = engine.legal_actions(held, seat)
+        assert offered
+        for action in offered:
+            assert codec.decode(codec.encode(action), seat) == action
+
+    def rows(config: RulesetConfig) -> set[str]:
+        return {
+            template.action_id
+            for template in ActionCodec(config).catalog
+            if dict(template.arguments).get("printed") == "double_cross"
+        }
+
+    # The card's automatic rewards, and the confirmation of the named
+    # opponent's window (never needed with a troop to lose, but always legal).
+    assert rows(CONFIG) == {"resolve", "confirm_empty"}
+    assert not rows(RulesetConfig())
+    assert not rows(RulesetConfig(bloodlines=True, tech_module=True))
+    # The seat pick is shown as ``choose_seat`` rows, one per seat; the whole
+    # id ``choose_opponent_troop_loss`` is no catalog row of its own.
+    assert not any(
+        template.action_id == "choose_opponent_troop_loss"
+        for template in ActionCodec(CONFIG).catalog
+    )
+    assert {
+        dict(template.arguments)["player"]
+        for template in ActionCodec(CONFIG).catalog
+        if template.action_id == "choose_seat"
+    } == {0, 1, 2, 3}

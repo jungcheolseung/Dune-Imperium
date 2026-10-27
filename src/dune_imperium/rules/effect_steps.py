@@ -822,6 +822,13 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "put_back_top_card": _spec(_V.KEEP, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "discard_top_card": _spec(_V.DISCARD, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "draw_top_card_for_solari": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    "draw_top_card": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    # Bindu Suspension: pass the turn after the draw, or keep playing it.
+    "pass_turn_intrigue": _spec(_V.PASS, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    "keep_turn_intrigue": _spec(
+        _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.PASS
+    ),
+    "trash_top_card": _spec(_V.TRASH, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     # Cost-free choices with nothing to act on (OQ-113 (C)).
     "skip_intrigue_top_card": _spec(
         _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.KEEP
@@ -1075,6 +1082,8 @@ TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxy
     "deploy_intrigue_troops": _COUNT,
     "retreat_intrigue_troops": _COUNT,
     "lose_intrigue_troop": _UNIT,
+    # Double Cross: the opponent whose troop in the Conflict is lost.
+    "choose_opponent_troop_loss": (("player", _C.SEAT),),
     "acquire_intrigue_imperium": _IMPERIUM,
     "acquire_intrigue_reserve": _RESERVE,
     "manipulate_imperium_row": _IMPERIUM,

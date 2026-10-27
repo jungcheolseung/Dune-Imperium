@@ -65,6 +65,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ContractTaken,
     Cost,
     DeployFromGarrison,
+    DeployFromSupply,
     DeployTheseTroops,
     DestroyShieldWall,
     DiscardedCardHasFaction,
@@ -134,6 +135,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnSpiceGainedInTurnAtLeast,
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
+    OpponentHasTroopInConflict,
+    OpponentLosesTroop,
     OpponentPlayedCombatIntrigue,
     OpponentSandwormInConflict,
     OpponentsMoveSpiesFromVisitedSpace,
@@ -164,6 +167,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
+    ShuffleDiscardIntoDeck,
     SolariAtLeast,
     SpendSpecimens,
     SpiceAtLeast,
@@ -233,6 +237,8 @@ _AGENT_ICON_NAMES_KO: dict[AgentIcon, str] = {
     AgentIcon.SPICE_TRADE: "스파이스 거래",
     AgentIcon.SPY: "스파이",
 }
+
+_TURN_START_KO = "차례 시작 시"
 
 _TIMING_LABELS_KO: dict[IntrigueTiming, str] = {
     # PLOT/COMBAT/ENDGAME timing headers | 음모/전투/종료 단계
@@ -597,6 +603,8 @@ def condition_text_ko(condition: Condition) -> str:
         case OpponentSandwormInConflict():
             # Quotes ``display/bloodlines.py``'s Fierce line.
             return "다른 플레이어 중 누군가 {conflict}에 {sandworm}를 가지고 있다면"
+        case OpponentHasTroopInConflict():
+            return "다른 플레이어 중 누군가 {conflict}에 {troop}이 있다면"
         case CommandReached():
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return "{command} ({persuasion} 6 이상)이면"
@@ -767,6 +775,8 @@ def reward_text_ko(reward: Reward) -> str:
             return f"{{troop:{count}}}"
         case DrawPersonalCards(count=count):
             return f"{{draw:{count}}}"
+        case ShuffleDiscardIntoDeck(draw=draw):
+            return f"{{discard_pile}}을 {{deck}}에 섞은 뒤 {{draw:{draw}}}"
         case DrawIntrigueCards(count=count):
             return f"{{intrigue:{count}}}"
         case GainCombatStrength(amount=amount):
@@ -841,6 +851,10 @@ def reward_text_ko(reward: Reward) -> str:
             return "{combat} (전투 장소에 보낸 것처럼 배치 가능)"
         case GainSolariPerUnitType():
             return "{conflict}에 있는 부대 종류마다 {solari:1}"
+        case PeekTopCard(draw_or_trash=True):
+            # The look as in the next case's print, then the plain word
+            # "뽑기" and the trash icon (the original game's Poison Snooper).
+            return "{deck} 맨 위 카드 확인: 뽑거나 {trash}하기"
         case PeekTopCard():
             # "언제든지 당신의 카드덱 맨 위 카드 1장 확인 가능." — Glowglobes'
             # own Korean print (`[KO card: Glowglobes]`, docs/rules/korean-card-style.md
@@ -857,6 +871,8 @@ def reward_text_ko(reward: Reward) -> str:
         case GrantAgentIconsThisTurn(icons=icons):
             names = ", ".join(_AGENT_ICON_NAMES_KO[icon] for icon in icons)
             return f"이번 차례에 당신이 플레이하는 카드는 {names} 아이콘 보유"
+        case PassTurn(optional=True):
+            return "차례를 넘길 수 있음"
         case PassTurn():
             return "차례 시작 시: 차례 넘기기"
         case PermanentRevealPersuasion(amount=amount):
@@ -979,6 +995,11 @@ def reward_text_ko(reward: Reward) -> str:
                 if garrison_only
                 else "다른 플레이어 각자 {troop} 하나 잃음"
             )
+        case OpponentLosesTroop():
+            # The choice of the opponent is the owner's (Double Cross).
+            return "원하는 다른 플레이어 하나가 {conflict}에서 {troop} 하나 잃음"
+        case DeployFromSupply(count=count):
+            return f"{{supply}}의 {{troop:{count}}}을 {{conflict}}에 배치"
         case OpponentsMoveSpiesFromVisitedSpace():
             # Quotes ``tokens_ko.py``'s Holy War line.
             return (
@@ -1157,6 +1178,10 @@ def option_text_ko(option: IntrigueOption, *, show_timing: bool = True) -> str:
     body = "; ".join(section_text_ko(section) for section in option.sections)
     if option.trigger is not None:
         body = f"{trigger_text_ko(option.trigger)}: {body}"
+    if option.turn_start_only and not body.startswith(_TURN_START_KO):
+        # A card that names its moment in no effect of its own (Bindu
+        # Suspension's draw and optional pass).
+        body = f"{_TURN_START_KO}: {body}"
     if not show_timing:
         return body
     return f"{_TIMING_LABELS_KO[option.timing]} — {body}"

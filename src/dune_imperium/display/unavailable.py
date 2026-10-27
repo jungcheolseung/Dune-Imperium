@@ -98,6 +98,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CommanderDiscountThisTurn,
     Cost,
     DeployFromGarrison,
+    DeployFromSupply,
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
@@ -117,6 +118,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     OnTroopsLostAtConflictEnd,
+    OpponentLosesTroop,
     PassTurn,
     PayResources,
     PeekTopCard,
@@ -129,6 +131,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RevealContractsTakeOne,
     Reward,
     SetAsideImperiumRowCard,
+    ShuffleDiscardIntoDeck,
     SummonSandworm,
     TakeContract,
     TrashDiscardPileCard,
@@ -325,6 +328,7 @@ from dune_imperium.rules.tleilaxu_row import (
 from dune_imperium.rules.turn_rows import tech_influence_blocked
 from dune_imperium.rules.unit_loss import (
     UnitLossBlock,
+    frame_conflict_only,
     frame_garrison_only,
     unit_loss_block,
     unit_loss_candidates,
@@ -829,8 +833,20 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
     match reward:
         case DeployFromGarrison():
             return _deploy_reason(state, seat)
-        case DrawPersonalCards():
+        case DrawPersonalCards() | ShuffleDiscardIntoDeck():
             return _NO_CARD_TO_DRAW
+        case OpponentLosesTroop():
+            return (
+                "No opponent has a troop in the Conflict",
+                "{conflict}에 {troop}이 있는 상대 없음",
+                "reward",
+            )
+        case DeployFromSupply():
+            return (
+                "No troop in your supply to deploy, or deployment is banned",
+                "{supply}에 배치할 {troop}이 없거나 배치가 금지됨",
+                "reward",
+            )
         case Research():
             return (
                 "Past the second genetic marker Research draws a card,"
@@ -2196,8 +2212,14 @@ def _unit_loss(state: GameState, seat: int, found: _Found) -> None:
     # Gun Thopter's loss lists the garrison alone: the Conflict is no option
     # there, so no greyed row names it.
     garrison_only = frame_garrison_only(state.decision_stack[-1])
-    nothing = not unit_loss_options(state, seat, garrison_only=garrison_only)
-    for zone, commander in unit_loss_candidates(garrison_only=garrison_only):
+    # Double Cross's loss lists the Conflict alone, the garrison no option.
+    conflict_only = frame_conflict_only(state.decision_stack[-1])
+    nothing = not unit_loss_options(
+        state, seat, garrison_only=garrison_only, conflict_only=conflict_only
+    )
+    for zone, commander in unit_loss_candidates(
+        garrison_only=garrison_only, conflict_only=conflict_only
+    ):
         if commander and owner.commanders_total == 0:
             continue
         block = unit_loss_block(owner, zone, commander=commander)

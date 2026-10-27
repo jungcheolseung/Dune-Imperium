@@ -1226,7 +1226,7 @@ def suspensor_can_deploy(state: GameState, player: int) -> bool:
 
 
 def suspensor_troops_to_conflict(
-    state: GameState, player: int, count: int, *, source: str
+    state: GameState, player: int, count: int, *, source: str, origin: str = "tech"
 ) -> RuleResult:
     """Recruit ``count`` troops from ``player``'s supply for Suspensor Suits.
 
@@ -1235,7 +1235,8 @@ def suspensor_troops_to_conflict(
     as this turn's recruits and ``suspensor_deployment_unavailable`` says so
     (OQ-042). The caller checks the supply holds ``count`` troops; the
     shortfall refill (``rules.shortfall``) uses this for the troops it makes
-    up.
+    up, and Double Cross's deployment (``deploy_troops_from_supply``, whose
+    ``origin`` is "intrigue") for the troops it deploys.
     """
 
     seat = state.players[player]
@@ -1276,10 +1277,47 @@ def suspensor_troops_to_conflict(
         GameEvent(
             event_id=f"{source}:deployed",
             kind="troops_deployed",
-            payload=(("count", count), ("player", player), ("source", "tech")),
+            payload=(("count", count), ("player", player), ("source", origin)),
         )
     )
     return RuleResult(state=state, events=tuple(events))
+
+
+def deploy_troops_from_supply(
+    state: GameState, player: int, count: int, *, source: str
+) -> RuleResult:
+    """Deploy ``count`` troops from ``player``'s supply to the Conflict.
+
+    "you deploy one troop from your supply to the Conflict" [Double Cross
+    card, app text]: a deployment by a card, needing no Combat icon, joined to
+    the Reveal bookkeeping in the owner's Reveal turn and counted as a unit
+    deployed this turn (``suspensor_troops_to_conflict``). Nothing deploys
+    while deployment is banned (Emperor of the Known Universe, [Main p. 17]).
+    A supply that holds fewer deploys what it has, and "my supply may be
+    empty" [FAQ p. 2] (imperium-base.md 13.2): the rest is recorded as the
+    troops owed to the Conflict (``ungained_conflict_troops``), made up if
+    troops return to the supply later in the same player turn
+    (``rules.shortfall``, OQ-042 ruling (2): "원판·Ix의 Double Cross·Treachery
+    (supply에서 Conflict로 배치)도 같은 기록을 쓴다").
+    """
+
+    if count < 1:
+        raise ValueError("a deployment moves at least one troop")
+    if not suspensor_can_deploy(state, player):
+        return RuleResult(state=state)
+    seat = state.players[player]
+    deployed = min(count, seat.troops_supply)
+    short = count - deployed
+    if short:
+        seat = replace(
+            seat, ungained_conflict_troops=seat.ungained_conflict_troops + short
+        )
+        state = replace(state, players=replace_player(state.players, seat))
+    if not deployed:
+        return RuleResult(state=state)
+    return suspensor_troops_to_conflict(
+        state, player, deployed, source=source, origin="intrigue"
+    )
 
 
 def _suspensor_garrison_event(source: str, player: int, troops: int) -> GameEvent:

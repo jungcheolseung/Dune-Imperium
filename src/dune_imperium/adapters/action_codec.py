@@ -44,7 +44,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     EachOpponentLosesTroop,
     GrantAgentIconsThisTurn,
     OnTroopsLostAtConflictEnd,
+    OpponentLosesTroop,
     OpponentsMoveSpiesFromVisitedSpace,
+    PeekTopCard,
     PrintedRevealValue,
     RedirectSpiesOnTurnSpace,
     TrashPersonalCard,
@@ -116,7 +118,11 @@ from dune_imperium.rules.contracts import (
     CONTRACT_REWARD_ICON_KINDS,
     contract_reward_icons,
 )
-from dune_imperium.rules.effect_interpreter import automatic_rewards, choice_slots
+from dune_imperium.rules.effect_interpreter import (
+    automatic_rewards,
+    choice_slots,
+    rewards_come_first,
+)
 from dune_imperium.rules.effect_steps import (
     AGENT_ICON_VERBS,
     INTRIGUE_WINDOWS,
@@ -1023,6 +1029,21 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             ActionTemplate(action_id=action_id, arguments=(("commanders", 1),))
             for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
         )
+    if content.base_game is BaseGame.IMPERIUM:
+        # The original game's Poison Snooper: draw the card it looked at or
+        # trash it, or confirm an empty deck (stage P3); only in its catalog,
+        # so Uprising's rows stay what they were.
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in (*_DRAW_OR_TRASH_EFFECTS, *_OPTIONAL_PASS_EFFECTS)
+        )
+        # Double Cross: the opponent whose Conflict troop is lost.
+        templates.extend(
+            ActionTemplate(
+                action_id="choose_opponent_troop_loss", arguments=(("player", seat),)
+            )
+            for seat in range(config.players)
+        )
     if config.tech_module:
         templates.extend(_tech_templates(config))
     if config.immortality:
@@ -1835,6 +1856,9 @@ def _visited_spaces(
 # The effects an Intrigue card's choice slot offers beside its own, by the
 # slot (``ability_executor.piece_rows``): recalling a Spy first, the Shield
 # Wall, the look at the deck's top card.
+# Bindu Suspension's optional pass of the turn after its draw: pass, or play
+# the turn normally (OQ-117).
+_OPTIONAL_PASS_EFFECTS: Final = ("pass_turn_intrigue", "keep_turn_intrigue")
 _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
     "PlaceSpy": ("recall_spy_for_intrigue", "decline_intrigue_spy"),
     "DestroyShieldWall": ("detonate_shield_wall", "keep_shield_wall"),
@@ -1845,17 +1869,27 @@ _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
         "skip_intrigue_top_card",
     ),
     # The slots' refusals and empty confirmations (B3d-3; OQ-113 (C)), a
-    # mandatory trash's own below (``_MANDATORY_TRASH_EFFECTS``).
+    # mandatory trash's own below (``_MANDATORY_TRASH_EFFECTS``), Poison
+    # Snooper's draw-or-trash look at the deck's top card
+    # (``_DRAW_OR_TRASH_EFFECTS``).
     "TrashPersonalCard": ("decline_intrigue_trash",),
     "SetAsideImperiumRowCard": ("skip_intrigue_set_aside",),
     "TrashDiscardPileCard": ("decline_intrigue_trash",),
     "AcquireTleilaxuCard": ("decline_intrigue_tleilaxu",),
     "AcquireCardUpTo": ("skip_intrigue_acquisition",),
     "GainInfluence": ("resolve_intrigue_influence_without_faction",),
+    "PassTurn": _OPTIONAL_PASS_EFFECTS,
 }
 # A mandatory personal-card trash (Twisted Devious) is confirmed with an empty
 # hand instead of refused (OQ-113 (C)).
 _MANDATORY_TRASH_EFFECTS: Final = ("skip_intrigue_trash",)
+# Poison Snooper's look at the deck's top card (``PeekTopCard.draw_or_trash``):
+# draw it or trash it, free, and confirmed when the deck is empty (OQ-113 (C)).
+_DRAW_OR_TRASH_EFFECTS: Final = (
+    "draw_top_card",
+    "trash_top_card",
+    "skip_intrigue_top_card",
+)
 # A Conflict reward window's refusal or empty confirmation by the icons
 # whose window offers it (``effect_steps.window_icon``, B3d-3).
 _REWARD_WINDOW_REFUSALS: Final[Mapping[str, tuple[str, ...]]] = {
@@ -1898,7 +1932,11 @@ def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
                 effect
                 for slot in slots
                 for effect in (
-                    *_INTRIGUE_SLOT_EFFECTS.get(type(slot).__name__, ()),
+                    *(
+                        _DRAW_OR_TRASH_EFFECTS
+                        if isinstance(slot, PeekTopCard) and slot.draw_or_trash
+                        else _INTRIGUE_SLOT_EFFECTS.get(type(slot).__name__, ())
+                    ),
                     *(
                         _MANDATORY_TRASH_EFFECTS
                         if isinstance(slot, TrashPersonalCard) and slot.mandatory
@@ -1906,7 +1944,9 @@ def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
                     ),
                 )
             }
-            if automatic_rewards(option.sections):
+            if automatic_rewards(option.sections) and not rewards_come_first(
+                option.sections
+            ):
                 effects.add("resolve_intrigue_rewards")
             for effect in effects:
                 cards.setdefault(effect, {})[card.card.card_id] = None
@@ -2147,9 +2187,17 @@ def _window_printers(
             )
         )
     if action_id == "resolve_unit_loss_without_unit":
-        return tuple(
-            (Source.AGENT_CARD, card)
-            for card in _box_reward_cards(config, EachOpponentLosesTroop)
+        return (
+            *(
+                (Source.AGENT_CARD, card)
+                for card in _box_reward_cards(config, EachOpponentLosesTroop)
+            ),
+            # Double Cross's chosen opponent (never without a troop to lose
+            # in the Conflict, but the window can always be confirmed).
+            *(
+                (Source.INTRIGUE, card)
+                for card in _intrigue_reward_cards(config, OpponentLosesTroop)
+            ),
         )
     if action_id == "lose_moved_spy":
         return (

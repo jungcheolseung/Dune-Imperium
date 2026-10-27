@@ -71,6 +71,7 @@ from dune_imperium.rules.effect_interpreter import (
     pay_cost,
     play_changes_nothing,
     resource_cost,
+    rewards_come_first,
     section_is_usable,
 )
 from dune_imperium.rules.frames import (
@@ -438,6 +439,7 @@ def _resolve_paid_option(
 
     state = played_state
     paid_owner = played_state.players[player]
+    rewards_first = rewards_first or rewards_come_first(sections)
     if choice_slots(sections, shield_wall_present=state.shield_wall_present):
         entry = PendingAbility(
             Source.INTRIGUE,

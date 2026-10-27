@@ -30,6 +30,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ContractCompletedThisTurn,
     Cost,
     DeployFromGarrison,
+    DeployFromSupply,
     DeployTheseTroops,
     DestroyShieldWall,
     DiscardedCardHasFaction,
@@ -59,6 +60,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     MoreSpiceMustFlowThanEachOpponent,
     OnConflictWon,
     OpponentAllianceInfluenceAtLeast,
+    OpponentHasTroopInConflict,
+    OpponentLosesTroop,
     OpponentPlayedCombatIntrigue,
     PassTurn,
     PayResources,
@@ -74,6 +77,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RevealPersuasionThisRound,
     Reward,
     SetAsideImperiumRowCard,
+    ShuffleDiscardIntoDeck,
     SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
@@ -94,7 +98,10 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_bonds import trashable_cards
-from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.card_draw import (
+    draw_or_request_personal_cards,
+    shuffle_discard_into_deck,
+)
 from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.conditions import (
     owner_condition_holds,
@@ -143,6 +150,7 @@ from dune_imperium.rules.spy_placement import (
     spy_placement_allowed_post_ids,
     spy_placement_posts,
 )
+from dune_imperium.rules.unit_loss import opponents_with_conflict_troop
 
 type ChoiceSlot = (
     LoseInfluence
@@ -164,6 +172,8 @@ type ChoiceSlot = (
     | TrashIntrigueCard
     | PeekTopCard
     | AcquireTleilaxuCard
+    | PassTurn
+    | OpponentLosesTroop
 )
 
 
@@ -264,6 +274,10 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             return any(
                 seat != player for seat in state.combat_intrigue_players
             )
+        case OpponentHasTroopInConflict():
+            # Double Cross: "상대 하나 이상이 Conflict에 troop이 있어야 낸다"
+            # `[FAQ p. 2]` (imperium-base.md 13.2).
+            return bool(opponents_with_conflict_troop(state, player))
         case AllConditions(conditions=conditions):
             return all(condition_holds(state, player, item) for item in conditions)
         case MoreSpiceMustFlowThanEachOpponent():
@@ -423,6 +437,13 @@ def choice_slots(
                     | PeekTopCard()
                     | AcquireTleilaxuCard()
                 ):
+                    slots.append(reward)
+                case PassTurn(optional=True):
+                    # Bindu Suspension: "You may pass your turn" is the
+                    # owner's choice, after the line's draw.
+                    slots.append(reward)
+                case OpponentLosesTroop():
+                    # Double Cross: the owner names the opponent.
                     slots.append(reward)
                 case _:
                     pass
@@ -838,6 +859,11 @@ def reward_can_change_something(
             return gather_intelligence_draw_available(state, player) or any(
                 isinstance(cost, DiscardFromHand) for cost in costs
             )
+        case ShuffleDiscardIntoDeck():
+            # The deck is shuffled along with the discard pile, so a card in
+            # either pile gives the shuffle (and its draw) something to do
+            # [FAQ p. 3].
+            return gather_intelligence_draw_available(state, player)
         case Research():
             # Past the second genetic marker Research draws a card instead
             # [Immortality p. 6]; before it the token always has a space to
@@ -934,6 +960,14 @@ def reward_can_change_something(
             )
         case GainSolariPerUnitType():
             return owner.units_in_conflict > 0
+        case OpponentLosesTroop():
+            return bool(opponents_with_conflict_troop(state, player))
+        case DeployFromSupply():
+            # Nothing deploys with an empty supply [FAQ p. 2] or while
+            # deployment is banned (Emperor of the Known Universe).
+            return owner_after.troops_supply > 0 and not units_deployment_blocked(
+                state, player
+            )
         case PassTurn():
             # With every other seat revealed, the pass hands the turn
             # straight back [Main p. 8] (``effects.next_unrevealed_player``).
@@ -1247,6 +1281,25 @@ class RewardOutcome:
     reserve_acquisitions: tuple[str, ...] = ()
     # Acquire Tech icons to open, one discount per icon (Tech Module).
     tech_acquisitions: tuple[int, ...] = ()
+    # Troops to deploy from the supply to the Conflict (Double Cross; the
+    # caller moves them, ``tech.deploy_troops_from_supply``).
+    supply_deployments: int = 0
+
+
+def rewards_come_first(sections: tuple[EffectSection, ...]) -> bool:
+    """Whether the automatic rewards of ``sections`` resolve before its choices.
+
+    "[draw 1]. You may pass your turn." [Bindu Suspension card]: a pass the
+    owner may take ends the turn, so what the line printed before it resolves
+    first and only the choice to pass is left (OQ-117, "카드 한 장을 뽑은 뒤
+    pass 또는 정상 진행을 고른다").
+    """
+
+    return any(
+        isinstance(reward, PassTurn) and reward.optional
+        for section in sections
+        for reward in section.rewards
+    )
 
 
 def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]:
@@ -1257,6 +1310,7 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
         for section in sections
         for reward in section.rewards
         if not (isinstance(reward, GainInfluence) and reward.requires_choice)
+        and not (isinstance(reward, PassTurn) and reward.optional)
         and not isinstance(
             reward,
             DestroyShieldWall
@@ -1268,6 +1322,7 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | SetAsideImperiumRowCard
             | PeekTopCard
             | AcquireTleilaxuCard
+            | OpponentLosesTroop
             | RevealContractsTakeOne,
         )
     )
@@ -1297,7 +1352,9 @@ def apply_rewards(
     passes_turn = False
     reserve_acquisitions: list[str] = []
     tech_acquisitions: list[int] = []
+    supply_deployments = 0
     personal_draws = 0
+    shuffle_draws: list[int] = []
     intrigue_draws = 0
     contracts = 0
     fixed_influence: list[GainInfluence] = []
@@ -1353,6 +1410,8 @@ def apply_rewards(
                 )
             case DrawPersonalCards(count=count):
                 personal_draws += count
+            case ShuffleDiscardIntoDeck(draw=draw):
+                shuffle_draws.append(draw)
             case DrawIntrigueCards(count=count):
                 intrigue_draws += count
             case GainInfluence() if not reward.requires_choice:
@@ -1446,6 +1505,8 @@ def apply_rewards(
                     gains["solari"] += kinds
             case PassTurn():
                 passes_turn = True
+            case DeployFromSupply(count=count):
+                supply_deployments += count
             case PermanentRevealPersuasion(amount=amount):
                 owner = replace(
                     owner,
@@ -1517,6 +1578,14 @@ def apply_rewards(
         )
         next_state = researched.state
         events.extend(researched.events)
+    for index, draw in enumerate(shuffle_draws):
+        # Refocus: the shuffle is a chance frame on top, and its draw waits in
+        # it until the permutation is applied.
+        shuffled = shuffle_discard_into_deck(
+            next_state, player, draw, source=f"{source}:refocus:{index}"
+        )
+        next_state = shuffled.state
+        events.extend(shuffled.events)
     if personal_draws:
         drawn = draw_or_request_personal_cards(
             next_state, player, personal_draws, source=source
@@ -1540,4 +1609,5 @@ def apply_rewards(
         passes_turn=passes_turn,
         reserve_acquisitions=tuple(reserve_acquisitions),
         tech_acquisitions=tuple(tech_acquisitions),
+        supply_deployments=supply_deployments,
     )

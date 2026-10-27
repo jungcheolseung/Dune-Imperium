@@ -55,6 +55,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     GiveIntrigueToOpponent,
     LoseInfluence,
     LoseTroops,
+    OpponentLosesTroop,
+    PassTurn,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
@@ -151,14 +153,18 @@ from dune_imperium.rules.spy_placement import (
 )
 from dune_imperium.rules.strength import reveal_in_progress
 from dune_imperium.rules.tactics import advance_tactics_token
-from dune_imperium.rules.tech import push_tech_acquisition
+from dune_imperium.rules.tech import deploy_troops_from_supply, push_tech_acquisition
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
     acquire_reclaimed_forces,
     acquire_tleilaxu_card,
     reclaimed_forces_block,
 )
-from dune_imperium.rules.unit_loss import lose_unit
+from dune_imperium.rules.unit_loss import (
+    lose_unit,
+    opponent_unit_loss_frames,
+    opponents_with_conflict_troop,
+)
 from dune_imperium.rules.units import retreat_units, unit_count_arguments, unit_counts
 
 # --- Pending entries ---------------------------------------------------------
@@ -508,6 +514,19 @@ def piece_rows(
                 for held in owner.intrigue_cards
                 if held != played_card_id
             )
+        case OpponentLosesTroop():
+            # Double Cross: the opponent whose troop goes, one that has a
+            # troop in the Conflict to lose (the card's official condition,
+            # [FAQ p. 2]), clockwise from the next seat.
+            rows.extend(
+                row(
+                    Verb.LOSE_UNIT,
+                    Target.UNITS,
+                    (("player", seat),),
+                    variant="opponent",
+                )
+                for seat in opponents_with_conflict_troop(state, player)
+            )
         case AcquireTleilaxuCard():
             # "You may also acquire a Tleilaxu card (paying its normal
             # cost)"; Reclaimed Forces is one too (OQ-066).
@@ -536,6 +555,16 @@ def piece_rows(
             )
             if refusals:
                 rows.append(row(Verb.DECLINE, of=Verb.ACQUIRE))
+        case PeekTopCard(draw_or_trash=True):
+            # Poison Snooper: draw the card it looked at, or trash it; both
+            # are free and it is neither put back nor discarded.
+            if owner.deck:
+                rows.append(row(Verb.DRAW, variant="deck_top_free"))
+                rows.append(row(Verb.TRASH, variant="deck_top"))
+            elif empty_confirm:
+                # "덱이 비면 맨 위를 볼 수 없다" (imperium-base.md 13.1): the
+                # look fizzles and is confirmed (OQ-113 (C), like Controlled).
+                rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.KEEP, variant="deck_top"))
         case PeekTopCard():
             if owner.deck:
                 rows.append(row(Verb.KEEP, variant="deck_top"))
@@ -605,6 +634,12 @@ def piece_rows(
                 # Nothing within the cap: the acquisition alone fizzles
                 # (designer ruling, Impress; OQ-057).
                 rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.ACQUIRE))
+        case PassTurn(optional=True):
+            # Bindu Suspension: after the draw, "you may pass your turn" or
+            # play it normally (OQ-117); the refusal is the normal turn.
+            rows.append(row(Verb.PASS, variant="turn"))
+            if refusals:
+                rows.append(row(Verb.DECLINE, of=Verb.PASS))
         case PlaceSpy():
             # Placing is mandatory while a Spy and a post are free (the
             # designer's erratum to [Main p. 11], OQ-057); the placement is
@@ -735,6 +770,8 @@ _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
         "intrigue_set_aside_unavailable",
     ),
     "skip_intrigue_trash": ("trash_unavailable", "intrigue_trash_unavailable"),
+    # Bindu Suspension's pass refused: the turn is played normally (OQ-117).
+    "keep_turn_intrigue": ("turn_kept", "intrigue_turn_kept"),
 }
 # The event a Faction named for a later step announces (``held``), by source.
 _HELD_FACTION_EVENTS: Final[Mapping[Source, str]] = {
@@ -1082,8 +1119,43 @@ def apply_piece(
             result = _trash_intrigue_hand_card(
                 state, player, str(arguments["card_id"]), troops_bonus, step_source
             )
+        case OpponentLosesTroop():
+            # The named opponent chooses the troop it loses, in a window of
+            # its own above this frame (OQ-036 (a)); the card's own
+            # deployment waits for its automatic rewards.
+            printed = intrigue_card_for_instance(
+                split_intrigue_ref(entry.ref)[0]
+            ).card.card_id
+            chosen = arguments["player"]
+            assert isinstance(chosen, int) and not isinstance(chosen, bool)
+            result = opponent_unit_loss_frames(
+                state,
+                player,
+                source=step_source,
+                printer=printer_value(Source.INTRIGUE, printed),
+                conflict_only=True,
+                seats=(chosen,),
+            )
+        case PassTurn(optional=True) if shape.verb is Verb.DECLINE:
+            result = _passed(state, player, action, step_source)
+        case PassTurn(optional=True):
+            # The turn ends at once and the seat stays unrevealed, as
+            # Withdrawn's pass (``apply_automatic_rewards``); the seat took
+            # no Agent, so nothing it blocks is used up (OQ-116).
+            result = RuleResult(
+                state=open_next_turn(state, player),
+                events=(
+                    GameEvent(
+                        event_id=f"{step_source}:turn_passed",
+                        kind="turn_passed",
+                        payload=(("player", player),),
+                    ),
+                ),
+            )
         case PeekTopCard() if shape.verb is Verb.CONFIRM_EMPTY:
             result = _passed(state, player, action, step_source)
+        case PeekTopCard(draw_or_trash=True):
+            result = _resolve_look(state, player, shape.verb, step_source)
         case PeekTopCard():
             result = _resolve_peek(state, player, shape.verb, step_source)
         case PlaceSpy() if shape.verb is Verb.DECLINE:
@@ -1285,6 +1357,49 @@ def _trash_intrigue_hand_card(
     if recruited and turn_owner_of(next_state) == player:
         next_state = update_turn_recruits(next_state, troops_recruited=recruited)
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _resolve_look(
+    state: GameState,
+    player: int,
+    verb: Verb,
+    step_source: str,
+) -> RuleResult:
+    """Poison Snooper: draw the top card it looked at, or trash it.
+
+    "Look at the top card of your deck. Draw or trash it." [Poison Snooper
+    card, app text]. The drawn card goes to the hand and stays hidden from
+    the others (``top_card_drawn_free`` names no card); in the owner's Reveal
+    turn it is revealed at once and used this turn [FAQ p. 3]
+    (imperium-base.md 13.2). The trashed card becomes public (imperium-base.md
+    14: "trash하면 공개"): it is trashed from the deck like Long Live the
+    Fighters' (``trash_personal_card`` with ``allow_deck``), so a Reserve card
+    returns to its pile [DI p. 16] and the card's own trash trigger fires.
+    """
+
+    owner = state.players[player]
+    if not owner.deck:
+        raise RuntimeError("Poison Snooper needs a card on top of the deck")
+    top = owner.deck[0]
+    if verb is Verb.TRASH:
+        trashed = trash_personal_card(
+            state, player, top, source=step_source, allow_deck=True
+        )
+        # A troop the card's own trash box recruits is this turn's recruit
+        # [Main p. 10] [FAQ p. 4], as for the discard-pile trash above.
+        return credit_trash_recruits(trashed, player)
+    next_owner = replace(owner, deck=owner.deck[1:], hand=(*owner.hand, top))
+    drawn = replace(state, players=replace_player(state.players, next_owner))
+    event = GameEvent(
+        event_id=f"{step_source}:top_card_drawn_free",
+        kind="top_card_drawn_free",
+        payload=(("player", player),),
+    )
+    if reveal_is_open_for(drawn, player):
+        # "Reveal turn에 뽑으면 바로 공개해 이번 turn에 쓴다" [FAQ p. 3].
+        late = reveal_late_arrivals(drawn, player, (top,))
+        return RuleResult(state=late.state, events=(event, *late.events))
+    return RuleResult(state=drawn, events=(event,))
 
 
 def _resolve_peek(
@@ -1508,6 +1623,16 @@ def apply_automatic_rewards(
         )
     if outcome.combat_icons:
         next_state = grant_combat_icon(next_state, player)
+    if outcome.supply_deployments:
+        # Double Cross: its troop goes from the supply to the Conflict.
+        deployed = deploy_troops_from_supply(
+            next_state,
+            player,
+            outcome.supply_deployments,
+            source=f"{source}:supply",
+        )
+        next_state = deployed.state
+        events.extend(deployed.events)
     if outcome.deployable_recruits:
         next_state = grant_recruit_deployment(
             next_state, player, outcome.deployable_recruits

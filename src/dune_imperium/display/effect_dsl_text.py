@@ -38,6 +38,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ContractTaken,
     Cost,
     DeployFromGarrison,
+    DeployFromSupply,
     DeployTheseTroops,
     DestroyShieldWall,
     DiscardedCardHasFaction,
@@ -107,6 +108,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnSpiceGainedInTurnAtLeast,
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
+    OpponentHasTroopInConflict,
+    OpponentLosesTroop,
     OpponentPlayedCombatIntrigue,
     OpponentSandwormInConflict,
     OpponentsMoveSpiesFromVisitedSpace,
@@ -137,6 +140,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
+    ShuffleDiscardIntoDeck,
     SolariAtLeast,
     SpendSpecimens,
     SpiceAtLeast,
@@ -185,6 +189,8 @@ _BATTLE_ICON_NAMES: dict[BattleIcon, str] = {
     BattleIcon.ORNITHOPTER: "Ornithopter",
     BattleIcon.WILD: "Wild",
 }
+
+_TURN_START = "At the start of your turn"
 
 _TIMING_LABELS: dict[IntrigueTiming, str] = {
     IntrigueTiming.PLOT: "Plot",
@@ -412,6 +418,8 @@ def condition_text(condition: Condition) -> str:
         case OpponentSandwormInConflict():
             # Quotes ``display/bloodlines.py``'s Fierce line.
             return "any opponent has a sandworm in the Conflict"
+        case OpponentHasTroopInConflict():
+            return "an opponent has a troop in the Conflict"
         case CommandReached():
             return "Command (6+ Persuasion)"
         case AtBoardSpace(space_id=space_id):
@@ -538,6 +546,11 @@ def reward_text(reward: Reward) -> str:
             return f"Recruit {count} {_plural(count, 'troop')}"
         case DrawPersonalCards(count=count):
             return f"Draw {count} {_plural(count, 'card')}"
+        case ShuffleDiscardIntoDeck(draw=draw):
+            return (
+                "Shuffle your discard pile into your deck, then draw "
+                f"{draw} {_plural(draw, 'card')}"
+            )
         case DrawIntrigueCards(count=count):
             return f"Draw {count} Intrigue {_plural(count, 'card')}"
         case GainCombatStrength(amount=amount):
@@ -611,6 +624,8 @@ def reward_text(reward: Reward) -> str:
             return "In your Reveal turn, you may deploy these troops to the Conflict"
         case GainSolariPerUnitType():
             return "Gain 1 solari for each type of unit you have in the Conflict"
+        case PeekTopCard(draw_or_trash=True):
+            return "Look at the top card of your deck: draw it or trash it"
         case PeekTopCard():
             return (
                 "Look at the top card of your deck: put it back, discard it, or"
@@ -619,6 +634,8 @@ def reward_text(reward: Reward) -> str:
         case GrantAgentIconsThisTurn(icons=icons):
             names = ", ".join(icon.value for icon in icons)
             return f"The card you play this turn has the {names} icons"
+        case PassTurn(optional=True):
+            return "you may pass your turn"
         case PassTurn():
             return "At the start of your turn: pass your turn"
         case PermanentRevealPersuasion(amount=amount):
@@ -701,6 +718,13 @@ def reward_text(reward: Reward) -> str:
                 "Each opponent loses one garrisoned troop"
                 if garrison_only
                 else "Each opponent loses one troop"
+            )
+        case OpponentLosesTroop():
+            return "An opponent of your choice loses one troop in the Conflict"
+        case DeployFromSupply(count=count):
+            return (
+                f"Deploy {count} {_plural(count, 'troop')} from your supply to the"
+                " Conflict"
             )
         case OpponentsMoveSpiesFromVisitedSpace():
             return (
@@ -854,6 +878,10 @@ def option_text(option: IntrigueOption, *, show_timing: bool = True) -> str:
     body = "; ".join(section_text(section) for section in option.sections)
     if option.trigger is not None:
         body = f"{trigger_text(option.trigger)}: {body}"
+    if option.turn_start_only and not body.startswith(_TURN_START):
+        # A card that names its moment in no effect of its own (Bindu
+        # Suspension's draw and optional pass).
+        body = f"{_TURN_START}: {body}"
     if not show_timing:
         return body
     return f"{_TIMING_LABELS[option.timing]} — {body}"

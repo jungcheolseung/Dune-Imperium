@@ -19,6 +19,7 @@ from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceR
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     DeployFromGarrison,
+    DeployFromSupply,
     DeployTheseTroops,
     DrawPersonalCards,
     EffectSection,
@@ -30,13 +31,20 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     HasHighCouncil,
     InfluenceAtLeastOnTracks,
+    IntrigueOption,
+    IntrigueTiming,
     LoseTroops,
     MoreSpiceMustFlowThanEachOpponent,
     OnConflictWon,
+    OpponentHasTroopInConflict,
+    OpponentLosesTroop,
+    PassTurn,
     PayResources,
+    PeekTopCard,
     RecruitTroops,
     RetreatTroops,
     RevealPersuasionThisRound,
+    ShuffleDiscardIntoDeck,
     SpiceMustFlowCardsAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import (
@@ -117,6 +125,28 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("bindu_suspension", "Bindu Suspension"),
         copies=1,
+        # "At the start of your turn: [draw 1]. You may pass your turn.
+        # (Instead of taking an Agent or Reveal turn.)" [Bindu Suspension
+        # card, app text]: OQ-117 (user ruling C, 2026-10-22). It is played
+        # only as the first action of the turn, before anything else is done
+        # (imperium-base.md 13.1: "차례 시작의 첫 행동으로만 낸다. 다른 행동을
+        # 하면 사용할 수 없다", the OQ-095 (6) turn-start rule Withdrawn
+        # shares: ``turn_start_only``), also in a turn the seat must reveal.
+        # The card draws, then "you may choose to pass your turn or play your
+        # turn normally" (13.3): the pass is the owner's choice after the draw
+        # (``PassTurn.optional``) and is not forced. A pass sends no Agent, so
+        # it uses up no block of The Voice (OQ-116).
+        options=(
+            IntrigueOption(
+                timing=IntrigueTiming.PLOT,
+                sections=(
+                    EffectSection(
+                        rewards=(DrawPersonalCards(1), PassTurn(optional=True))
+                    ),
+                ),
+                turn_start_only=True,
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("bypass_protocol", "Bypass Protocol"),
@@ -242,6 +272,25 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("double_cross", "Double Cross"),
         copies=1,
+        # "1 Solari -> An opponent of your choice loses one troop in the
+        # Conflict and you deploy one troop from your supply to the
+        # Conflict." [Double Cross card, app text]: a cost arrow line [DI
+        # p. 16], paid once played [FAQ p. 2]. "상대 하나 이상이 Conflict에
+        # troop이 있어야 낸다; 내 supply는 비어도 된다" `[FAQ p. 2]`
+        # (imperium-base.md 13.2, 16): the opponent's troop is an official
+        # condition of the card, the empty supply is not one (the deployment
+        # then deploys nothing). The lost troop returns to its owner's supply
+        # [DI p. 16]; the two icons are independent effects in the owner's
+        # order (OQ-015).
+        options=(
+            _plot(
+                EffectSection(
+                    condition=OpponentHasTroopInConflict(),
+                    costs=(PayResources(solari=1),),
+                    rewards=(OpponentLosesTroop(), DeployFromSupply(1)),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("favored_subject", "Favored Subject"),
@@ -312,6 +361,18 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("poison_snooper", "Poison Snooper"),
         copies=2,
+        # "Look at the top card of your deck. Draw or trash it." [Poison
+        # Snooper card, app text]: a cost-free Plot whose one choice is
+        # mandatory -- no "may", and the black trash icon is not printed,
+        # the card says "trash it" in words (P0 sheet; imperium-base.md 15
+        # "Poison Snooper | 낸 좌석 | 뽑기 -OR- trash"). Only the playing seat
+        # is told the card (imperium-base.md 14), through the same private
+        # ``peeked_card_id`` Controlled uses; "덱이 비면 맨 위를 볼 수 없다"
+        # (13.1), so with an empty deck the cost-free look is played and
+        # fizzles (OQ-113 (C) (1), the empty-deck Controlled's ruling (2) 7).
+        # A card drawn in the Reveal turn is revealed at once [FAQ p. 3]
+        # (13.2 "Poison Snooper → Reveal turn").
+        options=(_plot(EffectSection(rewards=(PeekTopCard(draw_or_trash=True),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("private_army", "Private Army"),
@@ -344,6 +405,14 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("refocus", "Refocus"),
         copies=1,
+        # "Shuffle your discard pile into your deck, then: [draw 1]" [Refocus
+        # card, app text]: a cost-free Plot, so it is played even with both
+        # piles empty and then fizzles (OQ-113 (C)). The deck is shuffled
+        # along with the discard pile -- "discard가 비었으면 덱을 섞는다"
+        # [FAQ p. 3] (imperium-base.md 13.2) -- and nobody learns an order:
+        # the shuffle is a chance step (imperium-base.md 14, "Refocus |
+        # 아무도 | — | 섞기").
+        options=(_plot(EffectSection(rewards=(ShuffleDiscardIntoDeck(1),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("reinforcements", "Reinforcements"),

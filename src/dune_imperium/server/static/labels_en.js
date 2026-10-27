@@ -159,6 +159,7 @@ const LABELS_EN = {
     "place_leader_bonus_spice": "Place bonus {spice} on Tuek's Sietch ({signet_ring})",
     "take_leader_bonus_spice": "Take bonus {spice} from {maker} space ({signet_ring})",
     "lose_intrigue_troop": "Lose {troop} ({intrigue_card})",
+    "choose_opponent_troop_loss": "Choose the opponent who loses a {troop} in the {conflict} ({intrigue_card})",
     "give_intrigue_card": "Give {intrigue_card} to opponent",
     "trash_intrigue_hand_card": "{trash_intrigue}",
     "skip_intrigue_acquisition": "No card to acquire (skip)",
@@ -171,6 +172,10 @@ const LABELS_EN = {
     "put_back_top_card": "Leave top card of {deck} on top",
     "discard_top_card": "Discard top card of {deck}",
     "draw_top_card_for_solari": "Pay 1 {solari} -> Draw top card of {deck}",
+    "draw_top_card": "Draw top card of {deck}",
+    "pass_turn_intrigue": "Pass your turn",
+    "keep_turn_intrigue": "Play your turn normally",
+    "trash_top_card": "Trash top card of {deck}",
     "place_navigation_card": "Place {navigation} in slot",
     "play_navigation": "Play {navigation}",
     "decline_navigation": "Spend {navigation} without effect",
@@ -665,7 +670,9 @@ const LABELS_EN = {
     "control_defense_deployed": "{control} Defense Deployed",
     "spies_recalled": "{recall_spy}",
     "top_card_discarded": "Discard: Top Card of {deck}",
-    "top_card_drawn": "Draw: Top Card of {deck} (1 {solari} Paid)"
+    "top_card_drawn": "Draw: Top Card of {deck} (1 {solari} Paid)",
+    "top_card_drawn_free": "Draw: Top Card of {deck}",
+    "intrigue_turn_kept": "{intrigue_card}: Turn Played Normally"
   },
   "PAYLOAD_KEY_LABELS": {
     "action_id": "Action",

@@ -445,6 +445,14 @@ class OpponentSandwormInConflict:
 
 
 @dataclass(frozen=True, slots=True)
+class OpponentHasTroopInConflict:
+    """An opponent has a troop in the Conflict: "Double Cross | 상대 하나
+    이상이 Conflict에 troop이 있어야 낸다" `[FAQ p. 2]` (imperium-base.md
+    13.2), an official condition of playing the card. A Sardaukar Commander
+    is a troop for a card effect [Bloodlines p. 4] (OQ-036 (a))."""
+
+
+@dataclass(frozen=True, slots=True)
 class StrengthInConflictAtLeast:
     """The player has ``amount`` or more strength in the Conflict ("If you
     have 6 or more strength in the Conflict" [Gurney Halleck card])."""
@@ -532,6 +540,7 @@ type Condition = (
     | StrengthInConflictAtLeast
     | AgentOnSpaceWithIcon
     | OpponentSandwormInConflict
+    | OpponentHasTroopInConflict
 )
 
 
@@ -873,6 +882,25 @@ class DrawPersonalCards:
 
 
 @dataclass(frozen=True, slots=True)
+class ShuffleDiscardIntoDeck:
+    """Refocus (the original game): shuffle the discard pile into the deck,
+    then draw ``draw`` cards "Shuffle your discard pile into your deck, then:
+    [draw 1]" [Refocus card, app text].
+
+    The deck is shuffled along with the discard pile, so an empty discard
+    pile still shuffles the deck [FAQ p. 3]; with both empty there is nothing
+    to shuffle or draw. Nobody learns an order: the shuffle is a chance step
+    (docs/rules/imperium-base.md 14).
+    """
+
+    draw: int = 1
+
+    def __post_init__(self) -> None:
+        if self.draw < 1:
+            raise ValueError("a shuffle then draws at least one card")
+
+
+@dataclass(frozen=True, slots=True)
 class DrawIntrigueCards:
     """Draw from the shared Intrigue deck, reshuffling if required."""
 
@@ -1209,7 +1237,14 @@ class GainSolariPerUnitType:
 @dataclass(frozen=True, slots=True)
 class PeekTopCard:
     """Controlled (Twisted Intrigue): look at the top card of the deck and
-    put it back, discard it, or pay one Solari to draw it (player choice)."""
+    put it back, discard it, or pay one Solari to draw it (player choice).
+
+    ``draw_or_trash``: Poison Snooper (the original game), "Look at the top
+    card of your deck. Draw or trash it." [Poison Snooper card, app text]:
+    the look is the same, but the card is drawn (free) or trashed, never put
+    back or discarded; it is mandatory once the card is played."""
+
+    draw_or_trash: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1229,7 +1264,14 @@ class GrantAgentIconsThisTurn:
 @dataclass(frozen=True, slots=True)
 class PassTurn:
     """Withdrawn (Twisted Intrigue): "At the start of your turn: pass your
-    turn" — the option is playable only from the turn frame."""
+    turn" — the option is playable only from the turn frame.
+
+    ``optional``: Bindu Suspension (the original game), "[draw 1]. You may
+    pass your turn." [Bindu Suspension card, app text] -- after the draw the
+    owner chooses to pass or to play the turn normally (OQ-117), so it is a
+    choice of the card's frame, taken after the rest of the line resolved."""
+
+    optional: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1360,6 +1402,38 @@ class EachOpponentDiscardsCard:
         """How many cards each opponent discards."""
 
         return self.count or 1
+
+
+@dataclass(frozen=True, slots=True)
+class OpponentLosesTroop:
+    """An opponent of the owner's choice loses one troop in the Conflict
+    ("An opponent of your choice loses one troop in the Conflict" [Double
+    Cross card, app text]; the troop goes back to its supply [DI p. 16]).
+
+    The owner names the opponent -- only one with a troop in the Conflict
+    (``OpponentHasTroopInConflict``, the card's official condition) -- and
+    that seat chooses the troop it loses in the same window Holy War opens,
+    limited to the Conflict (OQ-036 (a): the loser chooses the unit, a
+    Sardaukar Commander being a troop for a card effect [Bloodlines p. 4]).
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class DeployFromSupply:
+    """Deploy ``count`` troops from the owner's supply to the Conflict
+    ("you deploy one troop from your supply to the Conflict" [Double Cross
+    card, app text]): a deployment, not a recruit, so it needs no Combat icon.
+    With an empty supply nothing deploys [FAQ p. 2] and the shortfall is
+    recorded as Suspensor Suits' is (OQ-042 ruling (2): "Double Cross ...
+    같은 기록을 쓴다"); while deployment is banned (Emperor of the Known
+    Universe, [Main p. 17]) nothing deploys.
+    """
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("a deployment moves at least one troop")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1718,6 +1792,7 @@ type Reward = (
     | GainVictoryPoints
     | RecruitTroops
     | DrawPersonalCards
+    | ShuffleDiscardIntoDeck
     | DrawIntrigueCards
     | GainCombatStrength
     | GainInfluence
@@ -1762,6 +1837,8 @@ type Reward = (
     | EachOpponentDiscardsCard
     | EachOpponentLosesTroop
     | EachOpponentDiscardsOrLosesDeployedTroop
+    | OpponentLosesTroop
+    | DeployFromSupply
     | OpponentsMoveSpiesFromVisitedSpace
     | ReturnOtherGraftedCardAtRevealStart
     | GainSolariPerPartnerAgentIcon
