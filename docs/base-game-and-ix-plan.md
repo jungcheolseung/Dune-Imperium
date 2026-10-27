@@ -789,10 +789,11 @@ Orca 작업자가 멈춘 P2a(커밋 안 된 30파일)를 이어 받아 끝냈다
 
 ### 16.2 id (4.2절 7)
 
-- 원판에만 있는 이름은 이름 그대로(`arrakis_recruiter`, `gurney_halleck`, `bribery` …). 지금 Uprising·Bloodlines·Immortality·프로모 id와 이름이 겹치는
-  것은 **Crysknife 하나**(개인 카드; Intrigue는 겹침 0, 2026-10-28 스크립트). 인쇄가 같으면 같은 id, 다르면 `imperium_crysknife` — P3a에서 두 정의를
-  능력 기록으로 대조해 정하고 테스트로 고정한다(15.2와 같은 규칙).
-- 종류 사이 겹침을 새로 만들지 않는다(`test_content_ids.py`). 원판 Intrigue 이름이 원판 보드 칸·Conflict 이름과 겹치면 15.2의 Foldspace처럼 접미사.
+- 원판 Imperium·Intrigue 80장의 이름은 지금 어느 Imperium·Intrigue 카드 id와도 같은 종류 안에서 겹치지 않는다(2026-10-28 스크립트) — 모두 이름
+  그대로(`arrakis_recruiter`, `bribery` …).
+- **종류 사이 겹침을 새로 만들지 않는다**(15.2의 `foldspace_card`): 다른 종류가 쓰는 이름 일곱은 `_card`를 붙인다 — Uprising Intrigue `crysknife`와
+  겹치는 `crysknife_card`, Uprising·Bloodlines 지도자와 겹치는 `chani_card`, `duncan_idaho_card`, `gurney_halleck_card`, `lady_jessica_card`, `liet_kynes_card`,
+  `piter_de_vries_card`. 생성기(`scripts/dwgr/imperium_entries.py`의 `ID_OVERRIDES`)가 정하고, 덱이 연결되면 `test_content_ids.py`가 지킨다.
 
 ### 16.3 출처 (D1·D2, 2.4절)
 
