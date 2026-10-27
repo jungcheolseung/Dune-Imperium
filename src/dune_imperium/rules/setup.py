@@ -18,22 +18,13 @@ from dune_imperium.content.immortality.board import (
     TLEILAXU_SETUP_SPICE,
 )
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_deck_instance_ids
-from dune_imperium.content.uprising.conflicts import conflicts_by_tier
-from dune_imperium.content.uprising.contracts import contract_instance_ids
-from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.intrigue import (
-    intrigue_deck_instance_ids,
     navigation_card_instance_ids,
     twisted_intrigue_instance_ids,
 )
-from dune_imperium.content.uprising.leaders import LEADERS_BY_ID, leaders_for_choam
-from dune_imperium.content.uprising.objectives import objectives_for_players
-from dune_imperium.content.uprising.reserve import RESERVE_STACKS
-from dune_imperium.content.uprising.starting_cards import (
-    starting_card_for_instance,
-    starting_deck_instance_ids,
-    starting_discard_instance_ids,
-)
+from dune_imperium.content.uprising.leaders import LEADERS_BY_ID
+from dune_imperium.content.uprising.starting_cards import starting_card_for_instance
 from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core.chance import (
     ChanceOutcome,
@@ -92,37 +83,32 @@ class SetupResult:
 
 
 def create_unshuffled_players(
-    *,
-    immortality: bool = False,
-    victory_points: int = 1,
-    epic_game: bool = False,
-    garrison_troops: int = 3,
+    config: RulesetConfig | None = None,
 ) -> tuple[PlayerState, ...]:
     """Create four players before leader, objective, and shuffle decisions.
 
     With Immortality the two Dune, the Desert Planet become Experimentation
     [Immortality p. 5]; the Bene Tleilax tokens and Family Atomics are
     placed by ``_with_immortality``. Every Score marker starts on
-    ``victory_points``: ``RulesetConfig.starting_victory_points``.
+    ``RulesetConfig.starting_victory_points``.
 
     Epic Game Mode swaps one Dune, the Desert Planet for Control the Spice
     [Rise of Ix p. 10]; with Immortality the deck keeps its ten cards and
     Control the Spice starts in the discard pile [Immortality p. 12]. Each
-    garrison starts with ``garrison_troops`` of the 12 troops
-    (``RulesetConfig.starting_garrison_troops``: 3 [Main p. 5], 5 in Epic
-    Game Mode [Rise of Ix p. 10]) and the rest wait in the supply.
+    garrison starts with ``RulesetConfig.starting_garrison_troops`` of the
+    12 troops (3 [Main p. 5], 5 in Epic Game Mode [Rise of Ix p. 10]) and
+    the rest wait in the supply.
     """
 
+    config = config or RulesetConfig()
+    content = content_for(config)
+    garrison_troops = config.starting_garrison_troops
     return tuple(
         PlayerState(
             player_id=player,
-            deck=starting_deck_instance_ids(
-                player, immortality=immortality, epic_game=epic_game
-            ),
-            discard_pile=starting_discard_instance_ids(
-                player, immortality=immortality, epic_game=epic_game
-            ),
-            victory_points=victory_points,
+            deck=content.starting_deck_instance_ids(player),
+            discard_pile=content.starting_discard_instance_ids(player),
+            victory_points=config.starting_victory_points,
             troops_supply=_TROOPS_PER_PLAYER - garrison_troops,
             troops_garrison=garrison_troops,
         )
@@ -145,7 +131,7 @@ _EPIC_CONFLICT_TIER_COUNTS: Final = (
 
 
 def conflict_setup_decisions(
-    *, bloodlines: bool = False, epic_game: bool = False
+    config: RulesetConfig | None = None,
 ) -> tuple[ChanceDecision, ...]:
     """Return tier shuffles in the order prescribed by setup.
 
@@ -155,16 +141,15 @@ def conflict_setup_decisions(
     among them [Rise of Ix p. 10] [Main p. 18].
     """
 
-    counts = _EPIC_CONFLICT_TIER_COUNTS if epic_game else _CONFLICT_TIER_COUNTS
+    config = config or RulesetConfig()
+    content = content_for(config)
+    counts = _EPIC_CONFLICT_TIER_COUNTS if config.epic_game else _CONFLICT_TIER_COUNTS
     return tuple(
         ChanceDecision(
             decision_id=f"setup:conflict:tier:{tier.value}",
             prompt=f"Shuffle and select Conflict tier {tier.value}",
             options=tuple(
-                conflict.card.card_id
-                for conflict in conflicts_by_tier(
-                    tier, bloodlines=bloodlines, epic_game=epic_game
-                )
+                conflict.card.card_id for conflict in content.conflicts_by_tier(tier)
             ),
             count=count,
         )
@@ -174,16 +159,16 @@ def conflict_setup_decisions(
 
 def build_conflict_setup(
     outcomes: tuple[ChanceOutcome, ...],
-    *,
-    bloodlines: bool = False,
-    epic_game: bool = False,
+    config: RulesetConfig | None = None,
 ) -> ConflictSetup:
     """Build the top-to-bottom deck from the recorded tier outcomes.
 
     In Epic Game Mode every Conflict I card goes back to the box unseen.
     """
 
-    decisions = conflict_setup_decisions(bloodlines=bloodlines, epic_game=epic_game)
+    config = config or RulesetConfig()
+    epic_game = config.epic_game
+    decisions = conflict_setup_decisions(config)
     if len(outcomes) != len(decisions):
         raise ValueError("Conflict setup requires one outcome for each tier")
 
@@ -206,7 +191,7 @@ def build_conflict_setup(
     if epic_game:
         unused.extend(
             conflict.card.card_id
-            for conflict in conflicts_by_tier(ConflictTier.ONE, bloodlines=bloodlines)
+            for conflict in content_for(config).conflicts_by_tier(ConflictTier.ONE)
         )
 
     return ConflictSetup(
@@ -231,7 +216,7 @@ def objective_setup_decision(
     three are dealt, to seats 1-3.
     """
 
-    objectives = objectives_for_players(4)
+    objectives = content_for(config or RulesetConfig()).objectives
     prompt = "Shuffle and deal the four-player Objective cards"
     if config is not None and config.first_player_seat_zero:
         objectives = tuple(
@@ -250,9 +235,8 @@ SARDAUKAR_CONTRACT_IDS: Final = ("contract:sardaukar_i", "contract:sardaukar_ii"
 
 
 def contract_setup_decision(
+    config: RulesetConfig,
     set_aside_ids: tuple[str, ...] = (),
-    *,
-    bloodlines: bool = False,
 ) -> ChanceDecision:
     """Return the setup shuffle for the Contract tiles.
 
@@ -264,7 +248,7 @@ def contract_setup_decision(
 
     contracts = tuple(
         instance_id
-        for instance_id in contract_instance_ids(bloodlines=bloodlines)
+        for instance_id in content_for(config).contract_instance_ids
         if instance_id not in set_aside_ids
     )
     return _shuffle_decision(
@@ -295,7 +279,8 @@ def assign_objectives(
     validate_chance_outcome(decision, outcome)
 
     definitions = {
-        objective.objective_id: objective for objective in objectives_for_players(4)
+        objective.objective_id: objective
+        for objective in content_for(config or RulesetConfig()).objectives
     }
     dealt = outcome.values
     if config is not None and config.first_player_seat_zero:
@@ -609,25 +594,14 @@ def create_initial_state(
         _shuffle_decision(
             "setup:imperium_deck",
             "Shuffle the Imperium deck",
-            imperium_deck_instance_ids(
-                config.choam_module,
-                config.promo_cards,
-                bloodlines=config.bloodlines,
-                tech_module=config.tech_module,
-                immortality=config.immortality,
-            ),
+            content_for(config).imperium_deck_instance_ids,
         )
     ).values
     intrigue = resolver.resolve(
         _shuffle_decision(
             "setup:intrigue_deck",
             "Shuffle the Intrigue deck",
-            intrigue_deck_instance_ids(
-                config.choam_module,
-                bloodlines=config.bloodlines,
-                tech_module=config.tech_module,
-                immortality=config.immortality,
-            ),
+            content_for(config).intrigue_deck_instance_ids,
         )
     ).values
     # Sardaukar Commander sets aside both Sardaukar Contracts before the
@@ -639,7 +613,7 @@ def create_initial_state(
     )
     contracts = (
         resolver.resolve(
-            contract_setup_decision(sardaukar_set_aside, bloodlines=config.bloodlines)
+            contract_setup_decision(config, sardaukar_set_aside)
         ).values
         if config.choam_module
         else ()
@@ -664,7 +638,7 @@ def create_initial_state(
         phase=GamePhase.ROUND_START,
         first_player=first_player,
         players=players,
-        maker_bonus_spice=maker_bonus_spice_for(leader_ids),
+        maker_bonus_spice=content_for(config).maker_bonus_spice_for(leader_ids),
         conflict_deck=conflict.deck,
         unused_conflict_ids=conflict.unused,
         imperium_deck=imperium[5:],
@@ -674,7 +648,8 @@ def create_initial_state(
         face_up_contract_ids=contracts[:2],
         sardaukar_contract_ids=sardaukar_set_aside,
         reserve_stacks=tuple(
-            (stack.card.card_id, stack.copies) for stack in RESERVE_STACKS
+            (stack.card.card_id, stack.copies)
+            for stack in content_for(config).reserve_stacks
         ),
     )
     state = _with_immortality(_with_bloodlines(state, bloodlines), immortality)
@@ -684,25 +659,16 @@ def create_initial_state(
 def _conflict_setup(config: RulesetConfig, resolver: ChanceResolver) -> ConflictSetup:
     """Resolve the Conflict tier decisions of ``config`` and build the deck."""
 
-    decisions = conflict_setup_decisions(
-        bloodlines=config.bloodlines, epic_game=config.epic_game
-    )
+    decisions = conflict_setup_decisions(config)
     return build_conflict_setup(
-        tuple(resolver.resolve(decision) for decision in decisions),
-        bloodlines=config.bloodlines,
-        epic_game=config.epic_game,
+        tuple(resolver.resolve(decision) for decision in decisions), config
     )
 
 
 def _unshuffled_players(config: RulesetConfig) -> tuple[PlayerState, ...]:
     """The four players of ``config`` before any setup decision."""
 
-    return create_unshuffled_players(
-        immortality=config.immortality,
-        victory_points=config.starting_victory_points,
-        epic_game=config.epic_game,
-        garrison_troops=config.starting_garrison_troops,
-    )
+    return create_unshuffled_players(config)
 
 
 def deal_setup_intrigue(
@@ -755,14 +721,7 @@ def leader_draft_pool_decision(config: RulesetConfig) -> ChanceDecision:
     return ChanceDecision(
         decision_id="setup:leader_draft_pool",
         prompt="Deal six face-up Leaders for the draft",
-        options=tuple(
-            leader.leader_id
-            for leader in leaders_for_choam(
-                config.choam_module,
-                bloodlines=config.bloodlines,
-                tech_module=config.tech_module,
-            )
-        ),
+        options=tuple(leader.leader_id for leader in content_for(config).leaders),
         count=LEADER_DRAFT_POOL_SIZE,
     )
 
@@ -803,31 +762,20 @@ def create_draft_initial_state(
         _shuffle_decision(
             "setup:imperium_deck",
             "Shuffle the Imperium deck",
-            imperium_deck_instance_ids(
-                config.choam_module,
-                config.promo_cards,
-                bloodlines=config.bloodlines,
-                tech_module=config.tech_module,
-                immortality=config.immortality,
-            ),
+            content_for(config).imperium_deck_instance_ids,
         )
     ).values
     intrigue = resolver.resolve(
         _shuffle_decision(
             "setup:intrigue_deck",
             "Shuffle the Intrigue deck",
-            intrigue_deck_instance_ids(
-                config.choam_module,
-                bloodlines=config.bloodlines,
-                tech_module=config.tech_module,
-                immortality=config.immortality,
-            ),
+            content_for(config).intrigue_deck_instance_ids,
         )
     ).values
     # The full Contract order is drawn now; whether the Sardaukar Contracts
     # leave it is only known after the picks, so the market is dealt then.
     contracts = (
-        resolver.resolve(contract_setup_decision(bloodlines=config.bloodlines)).values
+        resolver.resolve(contract_setup_decision(config)).values
         if config.choam_module
         else ()
     )
@@ -859,7 +807,8 @@ def create_draft_initial_state(
         contract_bank=contracts,
         leader_draft_pool=pool,
         reserve_stacks=tuple(
-            (stack.card.card_id, stack.copies) for stack in RESERVE_STACKS
+            (stack.card.card_id, stack.copies)
+            for stack in content_for(config).reserve_stacks
         ),
         decision_stack=(
             DecisionFrame(
@@ -883,17 +832,6 @@ def create_draft_initial_state(
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 
-def maker_bonus_spice_for(leader_ids: tuple[str, ...]) -> tuple[tuple[str, int], ...]:
-    """Return the Maker spice ledger, with Tuek's Sietch while Esmar plays."""
-
-    spaces = ["deep_desert", "hagga_basin", "imperial_basin"]
-    if "esmar_tuek" in leader_ids:
-        # "During setup, place the Tuek's Sietch board space near the game
-        # board. It is a Maker board space" [Bloodlines p. 12].
-        spaces.append("tuek_sietch")
-    return tuple((space_id, 0) for space_id in spaces)
-
-
 def _validate_leader_selection(
     config: RulesetConfig,
     leader_ids: tuple[str, ...],
@@ -903,14 +841,7 @@ def _validate_leader_selection(
     if len(leader_ids) != len(set(leader_ids)):
         raise ValueError("selected Leaders must be unique physical cards")
 
-    available = {
-        leader.leader_id
-        for leader in leaders_for_choam(
-            config.choam_module,
-            bloodlines=config.bloodlines,
-            tech_module=config.tech_module,
-        )
-    }
+    available = {leader.leader_id for leader in content_for(config).leaders}
     unavailable = tuple(
         leader_id for leader_id in leader_ids if leader_id not in available
     )

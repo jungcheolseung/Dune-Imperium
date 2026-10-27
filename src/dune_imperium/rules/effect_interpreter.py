@@ -12,10 +12,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
-from dune_imperium.content.uprising.board import (
-    BOARD_SPACES,
-    Faction,
-)
+from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
@@ -730,7 +728,7 @@ def _unmet_influence_requirement(state: GameState, player: int) -> bool:
     owner = state.players[player]
     return any(
         influence_requirement_unmet(state, owner, space)
-        for space in BOARD_SPACES
+        for space in content_for(state.config).board_spaces
         # Tuek's Sietch is on the table only with Esmar Tuek.
         if space.required_leader_id is None
         or any(seat.leader_id == space.required_leader_id for seat in state.players)

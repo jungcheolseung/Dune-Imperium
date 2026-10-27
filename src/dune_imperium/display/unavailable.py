@@ -88,6 +88,7 @@ from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
     tleilaxu_card_for_instance,
 )
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
@@ -196,7 +197,6 @@ from dune_imperium.rules.agent_turn import turn_start_cards
 from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
     BOARD_ICON_TRASH,
-    MAKER_SANDWORM_SPACE_IDS,
     desert_riding_block,
     desert_riding_offered_at,
     desert_tactics_block,
@@ -1688,7 +1688,7 @@ def _maker_space(state: GameState, seat: int, found: _Found) -> None:
     space_id = pending_maker_space(state, seat)
     if space_id is None:
         return
-    if space_id in MAKER_SANDWORM_SPACE_IDS:
+    if space_id in content_for(state.config).sandworm_space_ids:
         block = maker_sandworm_block(state, seat)
         if block is not None:
             found.row(

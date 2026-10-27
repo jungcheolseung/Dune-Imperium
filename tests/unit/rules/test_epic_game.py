@@ -64,7 +64,8 @@ def test_the_epic_conflict_deck_is_five_ii_over_five_iii(bloodlines: bool) -> No
     # Conflict III 5장 위에 놓는다" [Rise of Ix p. 10], the fifth III being
     # Economic Supremacy [Main p. 18]; Bloodlines only widens the II pool
     # [Bloodlines p. 3] (docs/rules/epic-game-mode.md section 3).
-    decisions = conflict_setup_decisions(bloodlines=bloodlines, epic_game=True)
+    config = RulesetConfig(bloodlines=bloodlines, epic_game=True)
+    decisions = conflict_setup_decisions(config)
     assert [(d.decision_id, d.count) for d in decisions] == [
         ("setup:conflict:tier:3", 5),
         ("setup:conflict:tier:2", 5),
@@ -75,9 +76,7 @@ def test_the_epic_conflict_deck_is_five_ii_over_five_iii(bloodlines: bool) -> No
     resolver = ChanceResolver(seed=17)
 
     setup = build_conflict_setup(
-        tuple(resolver.resolve(decision) for decision in decisions),
-        bloodlines=bloodlines,
-        epic_game=True,
+        tuple(resolver.resolve(decision) for decision in decisions), config
     )
 
     tiers = tuple(CONFLICTS_BY_ID[card_id].tier for card_id in setup.deck)
@@ -103,7 +102,7 @@ def test_the_epic_tier_outcomes_do_not_build_a_standard_deck() -> None:
     resolver = ChanceResolver(seed=17)
     outcomes = tuple(
         resolver.resolve(decision)
-        for decision in conflict_setup_decisions(epic_game=True)
+        for decision in conflict_setup_decisions(RulesetConfig(epic_game=True))
     )
     with pytest.raises(ValueError):
         build_conflict_setup(outcomes)

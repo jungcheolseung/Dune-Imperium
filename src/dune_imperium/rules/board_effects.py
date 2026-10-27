@@ -13,6 +13,7 @@ from copy import replace
 from typing import Final, assert_never
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.abilities import Ability, AbilityMark
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.board_abilities import (
@@ -1681,10 +1682,6 @@ def apply_tuek_sietch_action(
 
 # The Maker spaces [Main p. 15]; Imperial Basin's printed row is spice alone
 # [Board Guide p. 2], so only the other two print a sandworm choice.
-MAKER_SPACE_IDS: Final = ("deep_desert", "hagga_basin", "imperial_basin")
-MAKER_SANDWORM_SPACE_IDS: Final = ("deep_desert", "hagga_basin")
-
-
 def pending_maker_space(state: GameState, player: int) -> str | None:
     """The Maker space whose spice-or-sandworm choice ``player`` has pending.
 
@@ -1701,7 +1698,7 @@ def pending_maker_space(state: GameState, player: int) -> str | None:
     space_id = context.get("space_id")
     if (
         isinstance(space_id, str)
-        and space_id in MAKER_SPACE_IDS
+        and space_id in content_for(state.config).maker_space_ids
         and board_icon_is_pending(context, BOARD_ICON_MAKER)
     ):
         return space_id
@@ -1786,7 +1783,7 @@ def legal_maker_space_actions(
             )
         )
     if (
-        space_id in MAKER_SANDWORM_SPACE_IDS
+        space_id in content_for(state.config).sandworm_space_ids
         and maker_sandworm_block(state, player) is None
     ):
         actions.append(

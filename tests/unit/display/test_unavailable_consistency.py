@@ -77,6 +77,7 @@ from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
     tleilaxu_card_for_instance,
 )
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
@@ -161,7 +162,6 @@ from dune_imperium.rules.board_effects import (
     BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
     BOARD_ICON_MAKER,
     BOARD_ICON_SIETCH_TABR,
-    MAKER_SANDWORM_SPACE_IDS,
     desert_riding_block,
     desert_riding_offered_at,
     desert_tactics_block,
@@ -2734,7 +2734,8 @@ def test_the_maker_space_blocks_are_the_old_conditions() -> None:
         sandworm = maker_sandworm_block(state, 0)
         riding = desert_riding_block(state, 0)
         assert ("summon_maker_sandworms" in ids) == (
-            space_id in MAKER_SANDWORM_SPACE_IDS and sandworm is None
+            space_id in content_for(state.config).sandworm_space_ids
+            and sandworm is None
         )
         assert ("take_desert_riding_hooks" in ids) == (
             desert_riding_offered_at(state, space_id) and riding is None
