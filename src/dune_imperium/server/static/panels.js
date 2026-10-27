@@ -321,6 +321,12 @@ function renderSeats() {
       statNode("agent", t("panels.agent_remaining"), player.agents_available),
       statNode("spy", t("panels.supply_spy"), player.spies_supply),
     );
+    if (player.track_spies_owed > 0) {
+      const owed = document.createElement("span");
+      owed.className = "stat";
+      owed.appendChild(tNode("panels.track_spies_owed", { count: player.track_spies_owed }));
+      pieces.appendChild(owed);
+    }
     /* Commanders in the supply: the board draws the ones in the garrison
        and the Conflict, but nothing on it shows the ones that went home
        after a Combat [Bloodlines p. 4], and the supply is public

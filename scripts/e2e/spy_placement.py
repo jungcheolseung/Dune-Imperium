@@ -178,6 +178,20 @@ def fixtures(page) -> None:
         page.evaluate("window.spyClicks") == [904],
         "two placement sources focus their choices without submitting one",
     )
+    # Emperor-track Spies a seat still owes are public (the track is), so its
+    # panel counts them beside its Spy supply, and only while it owes any.
+    owed_text = """() => [...document.querySelectorAll('.stat')]
+      .map((node) => node.textContent)
+      .filter((text) => text.includes('빚짐') || text.includes('owed'))"""
+    page.evaluate("state.busy = false; state.view.players[1].track_spies_owed = 2; render()")
+    owed = page.evaluate(owed_text)
+    check.ok(
+        len(owed) == 1 and "2" in owed[0],
+        "a seat's owed Emperor-track Spies show on its panel",
+        owed,
+    )
+    page.evaluate("state.view.players[1].track_spies_owed = 0; render()")
+    check.ok(page.evaluate(owed_text) == [], "no owed Spies, no owed count")
     page.evaluate("state.busy = false; state.review = {}")
     check.ok(
         page.evaluate("legalSpyPostActions", posts[0]) == [],
