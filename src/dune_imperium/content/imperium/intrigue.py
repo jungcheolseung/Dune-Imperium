@@ -29,11 +29,14 @@ from dune_imperium.content.uprising.effect_dsl import (
     GrantAgentIconsThisTurn,
     HasAlliance,
     HasHighCouncil,
+    InfluenceAtLeastOnTracks,
     LoseTroops,
+    MoreSpiceMustFlowThanEachOpponent,
     PayResources,
     RecruitTroops,
     RetreatTroops,
     RevealPersuasionThisRound,
+    SpiceMustFlowCardsAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
@@ -149,6 +152,25 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("corner_the_market", "Corner the Market"),
         copies=1,
+        # "If you have at least two The Spice Must Flow: 1 VP" and "If you have
+        # more The Spice Must Flow than each opponent: 1 VP" [Corner the Market
+        # card, app text]: two stacked Endgame lines, each its own 1 VP
+        # (imperium-base.md 13.2: "두 조건은 따로 1 VP씩"; OQ-058). The copies
+        # are every one the seat owns, deck, hand, discard pile and play area
+        # (OQ-123), and an opponent with as many fails the second line
+        # (`[FAQ p. 2]`: each opponent separately).
+        options=(
+            _endgame(
+                EffectSection(
+                    condition=SpiceMustFlowCardsAtLeast(2),
+                    rewards=(GainVictoryPoints(1),),
+                ),
+                EffectSection(
+                    condition=MoreSpiceMustFlowThanEachOpponent(),
+                    rewards=(GainVictoryPoints(1),),
+                ),
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("councilors_dispensation", "Councilor's Dispensation"),
@@ -246,6 +268,25 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("plans_within_plans", "Plans Within Plans"),
         copies=1,
+        # "3 Influence (or more) on three Faction tracks: 1 VP -OR- ... on four
+        # Faction tracks: 2 VP" [Plans Within Plans card, app text]: two
+        # exclusive Endgame options, each carrying its own condition
+        # (OQ-058: "—OR—로 나뉜 카드는 그대로 배타 option", imperium-base.md
+        # 16, so at most 2 VP). "Influence 3 = VP 칸 바로 위 칸" (13.2).
+        options=(
+            _endgame(
+                EffectSection(
+                    condition=InfluenceAtLeastOnTracks(3, 3),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+            _endgame(
+                EffectSection(
+                    condition=InfluenceAtLeastOnTracks(3, 4),
+                    rewards=(GainVictoryPoints(2),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("poison_snooper", "Poison Snooper"),

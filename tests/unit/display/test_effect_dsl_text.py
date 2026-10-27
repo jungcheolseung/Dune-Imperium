@@ -15,9 +15,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluence,
     GainResources,
     InfluenceAtLeast,
+    InfluenceAtLeastOnTracks,
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    MoreSpiceMustFlowThanEachOpponent,
     OnRevealAcquisitionThisRound,
     PayResources,
     PlaceSpy,
@@ -69,6 +71,32 @@ def test_condition_text_renders_completed_contracts() -> None:
     assert (
         condition_text(CompletedContractsAtLeast(2))
         == "you have completed 2 or more Contracts"
+    )
+
+
+def test_condition_text_renders_influence_on_a_number_of_tracks() -> None:
+    # "3 Influence (or more) on three Faction tracks" [Plans Within Plans
+    # card]: the count is "at least", as the amount is.
+    assert (
+        condition_text(InfluenceAtLeastOnTracks(3, 3))
+        == "you have 3 or more Influence on at least 3 Faction tracks"
+    )
+    assert (
+        condition_text(InfluenceAtLeastOnTracks(3, 4))
+        == "you have 3 or more Influence on at least 4 Faction tracks"
+    )
+    assert (
+        condition_text(InfluenceAtLeastOnTracks(2, 1))
+        == "you have 2 or more Influence on at least 1 Faction track"
+    )
+
+
+def test_condition_text_renders_more_spice_must_flow_than_each_opponent() -> None:
+    # "If you have more The Spice Must Flow than each opponent" [Corner the
+    # Market card]; the at-least-N condition's own wording.
+    assert (
+        condition_text(MoreSpiceMustFlowThanEachOpponent())
+        == "you own more copies of The Spice Must Flow than each opponent"
     )
 
 
@@ -382,6 +410,33 @@ def test_condition_text_ko_renders_a_faction_influence_threshold() -> None:
         condition_text_ko(InfluenceAtLeast(Faction.EMPEROR, 3))
         == "{influence_emperor} 3 이상이면"
     )
+
+
+def test_condition_text_ko_renders_influence_on_a_number_of_tracks() -> None:
+    """Navigation Card 1's "당신의 영향력이 2 이상인 다른 팩션" with the
+    "N개 이상이면" threshold of the Tech tile count (korean-card-style.md)."""
+
+    text = condition_text_ko(InfluenceAtLeastOnTracks(3, 3))
+    assert text == "당신의 영향력이 3 이상인 팩션이 3개 이상이면"
+    assert condition_text_ko(InfluenceAtLeastOnTracks(3, 4)) == (
+        "당신의 영향력이 3 이상인 팩션이 4개 이상이면"
+    )
+    assert_placeholders_are_terms(text)
+    assert_no_stray_latin(text)
+
+
+def test_condition_text_ko_renders_more_spice_must_flow_than_each_opponent() -> None:
+    """The at-least-N line's wording, with the glossary's "다른 플레이어"
+    (``docs/rules/glossary-ko.md``: opponent is not "상대") and "각각" for
+    each opponent compared separately."""
+
+    text = condition_text_ko(MoreSpiceMustFlowThanEachOpponent())
+    assert text == (
+        "당신이 스파이스는 흘러야 한다를 다른 플레이어 각각보다 더 많이 보유했다면"
+    )
+    assert "상대" not in text
+    assert_placeholders_are_terms(text)
+    assert_no_stray_latin(text)
 
 
 def test_condition_text_ko_renders_completed_contracts_with_a_native_numeral() -> None:

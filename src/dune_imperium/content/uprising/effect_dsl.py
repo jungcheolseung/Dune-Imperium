@@ -40,6 +40,23 @@ class InfluenceAtLeast:
 
 
 @dataclass(frozen=True, slots=True)
+class InfluenceAtLeastOnTracks:
+    """The player has at least ``influence`` Influence on at least ``tracks``
+    of the four Faction tracks (Plans Within Plans: "3 Influence (or more)
+    on three Faction tracks", imperium-base.md 13.2: Influence 3 is the space
+    just above the Victory Point space)."""
+
+    influence: int
+    tracks: int
+
+    def __post_init__(self) -> None:
+        if self.influence < 1:
+            raise ValueError("Influence condition amount must be positive")
+        if not 1 <= self.tracks <= len(Faction):
+            raise ValueError("Influence tracks must be between one and the four")
+
+
+@dataclass(frozen=True, slots=True)
 class HasHighCouncil:
     """The player holds a High Council seat."""
 
@@ -154,7 +171,8 @@ class SpiceMustFlowCardsAtLeast:
     """The player owns at least ``count`` copies of The Spice Must Flow.
 
     Copies in the deck, hand, discard pile and play area count; a trashed
-    copy has left the game.
+    copy has left the game. Uprising's card and the original game's both
+    count.
     """
 
     count: int = 2
@@ -162,6 +180,17 @@ class SpiceMustFlowCardsAtLeast:
     def __post_init__(self) -> None:
         if self.count < 1:
             raise ValueError("The Spice Must Flow count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class MoreSpiceMustFlowThanEachOpponent:
+    """The player owns more copies of The Spice Must Flow than each opponent.
+
+    Each opponent is compared separately and an opponent with as many
+    copies fails the condition (Corner the Market, imperium-base.md 13.2,
+    ``[FAQ p. 2]``). The copies counted are those of
+    ``SpiceMustFlowCardsAtLeast`` (OQ-123).
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -459,6 +488,7 @@ class AllConditions:
 
 type Condition = (
     InfluenceAtLeast
+    | InfluenceAtLeastOnTracks
     | HasHighCouncil
     | HasAlliance
     | InNavigationSlot
@@ -469,6 +499,7 @@ type Condition = (
     | GainedSpiceThisTurn
     | UnitsDeployedThisTurnAtLeast
     | SpiceMustFlowCardsAtLeast
+    | MoreSpiceMustFlowThanEachOpponent
     | OpponentAllianceInfluenceAtLeast
     | WaterAtLeast
     | CommandersInConflictAtLeast

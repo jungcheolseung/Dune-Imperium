@@ -79,6 +79,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasSwordmaster,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
+    InfluenceAtLeastOnTracks,
     InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
@@ -89,6 +90,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseHighestInfluence,
     LoseInfluence,
     LoseTroops,
+    MoreSpiceMustFlowThanEachOpponent,
     OnAgentSentTo,
     OnBoardSpaceSolariPaid,
     OnCardTrashed,
@@ -287,6 +289,14 @@ def condition_text(condition: Condition) -> str:
     match condition:
         case InfluenceAtLeast(faction=faction, amount=amount):
             return f"you have {amount} or more {_faction_name(faction)} Influence"
+        case InfluenceAtLeastOnTracks(influence=influence, tracks=tracks):
+            # "3 Influence (or more) on three Faction tracks" [Plans Within
+            # Plans card, app text]; the card's own "or more" is the count's.
+            noun = "track" if tracks == 1 else "tracks"
+            return (
+                f"you have {influence} or more Influence on at least {tracks}"
+                f" Faction {noun}"
+            )
         case HasHighCouncil():
             return "you hold a High Council seat"
         case HasAlliance(faction=faction):
@@ -320,6 +330,10 @@ def condition_text(condition: Condition) -> str:
             return f"you have deployed {count} or more units to the Conflict this turn"
         case SpiceMustFlowCardsAtLeast(count=count):
             return f"you own {count} or more copies of The Spice Must Flow"
+        case MoreSpiceMustFlowThanEachOpponent():
+            # "If you have more The Spice Must Flow than each opponent"
+            # [Corner the Market card, app text]; a tie with any opponent fails.
+            return "you own more copies of The Spice Must Flow than each opponent"
         case OpponentAllianceInfluenceAtLeast(amount=amount):
             return (
                 f"you have {amount} or more Influence on a Faction track whose "
