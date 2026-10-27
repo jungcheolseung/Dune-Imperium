@@ -1,6 +1,7 @@
 """Tests for the versioned flat observation encoding."""
 
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -1091,7 +1092,7 @@ _GOLDEN_DIGESTS = {
         3136,
     ),
 }
-_GOLDEN_CONFIGS = {
+_GOLDEN_CONFIGS: dict[str, dict[str, Any]] = {
     "base": {},
     "choam": {"choam_module": True},
     "promo_bloodlines_tech": {

@@ -7,7 +7,7 @@ from numbers import Integral
 from typing import Final
 
 from dune_imperium.adapters.observation_encoding import MAKER_SPACE_IDS
-from dune_imperium.config import RulesetConfig
+from dune_imperium.config import BaseGame, RulesetConfig
 from dune_imperium.content.arrakeen_scouts import (
     AUCTIONS,
     EVENTS,
@@ -30,7 +30,7 @@ from dune_imperium.content.immortality.tleilaxu import (
     tleilaxu_cards_for,
     tleilaxu_deck_instance_ids,
 )
-from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.rulesets import RulesetContent, content_for
 from dune_imperium.content.uprising.abilities import AbilityStructure
 from dune_imperium.content.uprising.agent_abilities import agent_box_ability
 from dune_imperium.content.uprising.board import (
@@ -38,7 +38,6 @@ from dune_imperium.content.uprising.board import (
     Faction,
     ObservationPost,
 )
-from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireTech,
     EachOpponentDiscardsCard,
@@ -739,8 +738,58 @@ def _catalog_of(
     return catalog, indices
 
 
+# The fixed rows of the Uprising board's own systems (docs/base-game-and-ix-
+# plan.md 4.2 item 3), which a catalog holds only while its base game prints
+# that system: Spies need observation posts, sandworms a space that summons
+# them, and Sietch Tabr's choice (with the Shield Wall) that space.
+_SPY_ROWS: Final = frozenset(
+    {
+        "decline_combat_reward_spy",
+        "decline_leader_spy_placement",
+        "decline_gather_intelligence",
+        "decline_reveal_spy_recall",
+        "resolve_espionage_without_spy",
+        "decline_spy_placement",
+        "place_track_spy",
+        "decline_acquisition_spy",
+        "decline_agent_card_spy",
+    }
+)
+_SANDWORM_ROWS: Final = frozenset(
+    {
+        "decline_reveal_sandworm",
+        "pay_agent_card_spice_for_sandworm",
+        "pay_agent_card_spice_for_sandworm_and_shield_wall",
+        "pay_reveal_water_for_sandworm",
+    }
+)
+_SIETCH_TABR_ROWS: Final = frozenset(
+    {
+        "take_sietch_tabr_supplies",
+        "take_sietch_tabr_water",
+        "take_sietch_tabr_water_and_destroy_wall",
+    }
+)
+# The Conflict reward icons that place or recall Spies.
+_SPY_REWARD_ICONS: Final = frozenset({"spy", "optional_recall_spies"})
+
+
+def _withheld_rows(content: RulesetContent) -> frozenset[str]:
+    """The Uprising system rows ``content``'s board does not print."""
+
+    withheld: set[str] = set()
+    if not content.observation_posts:
+        withheld |= _SPY_ROWS
+    if not content.sandworm_space_ids:
+        withheld |= _SANDWORM_ROWS
+    if all(space.space_id != "sietch_tabr" for space in content.board_spaces):
+        withheld |= _SIETCH_TABR_ROWS
+    return frozenset(withheld)
+
+
 def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     content = content_for(config)
+    withheld = _withheld_rows(content)
     # The OQ-007 Leader draft picks are part of every catalog so the
     # leader_draft ruleset option never changes the action space; the mask
     # simply keeps them illegal outside a draft setup.
@@ -840,6 +889,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "take_sietch_tabr_water_and_destroy_wall",
             "use_other_memories",
         )
+        if action_id not in withheld
     )
     # A Conflict reward recipient resolves its reward icon by icon (stage B2,
     # OQ-112); a Deep Cover Spy is printed only on Bloodlines Conflicts.
@@ -849,6 +899,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for kind in COMBAT_REWARD_ICON_KINDS
         if (kind != "deep_cover_spy" or config.bloodlines)
+        and (kind not in _SPY_REWARD_ICONS or content.observation_posts)
+        and (kind != "contract" or content.contract_instance_ids)
         # Planetary Array's row of the winner's window (OQ-121).
         and (kind != "planetary_array" or config.tech_module)
     )
@@ -869,14 +921,16 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for key in AUTOMATIC_AGENT_ICONS
     )
-    # Bringing back one kind of deferred Reveal choice [Main p. 12].
+    # Bringing back one kind of deferred Reveal choice [Main p. 12]: the
+    # kinds the Uprising family's cards print.
     templates.extend(
         ActionTemplate(
             action_id="resume_reveal_choice",
             arguments=(("effect", effect.value),),
         )
         for effect in PersonalCardRevealChoiceEffect
-        if (config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS)
+        if content.base_game is BaseGame.UPRISING
+        and (config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS)
         and (config.immortality or effect not in IMMORTALITY_REVEAL_CHOICE_EFFECTS)
     )
     if config.choam_module:
@@ -1070,10 +1124,13 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
     # Separate printed lines (OQ-058): one template per line index.
     line_count = max(
-        len(option.sections)
-        for instance_id in intrigue_instances
-        for option in intrigue_card_for_instance(instance_id).options
-        if option.separate
+        (
+            len(option.sections)
+            for instance_id in intrigue_instances
+            for option in intrigue_card_for_instance(instance_id).options
+            if option.separate
+        ),
+        default=0,
     )
     templates.extend(
         ActionTemplate(action_id="use_intrigue_effect", arguments=(("section", index),))
@@ -1186,7 +1243,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 arguments=(("space_id", space_id),),
             )
         )
-    for space_id in ("deep_desert", "hagga_basin"):
+    for space_id in content.sandworm_space_ids:
         templates.append(
             ActionTemplate(
                 action_id="summon_maker_sandworms",
@@ -1428,7 +1485,7 @@ def _effect_step_templates(
         elif spec.printed == Printed.VISITED_SPACE:
             named = tuple(
                 (None, space)
-                for space in _VISITED_SPACES.get(template.action_id, spaces)
+                for space in _visited_spaces(config, template.action_id, spaces)
             )
         elif spec.printed == Printed.INTRIGUE_WINDOW:
             named = tuple((None, window) for window in INTRIGUE_WINDOWS)
@@ -1600,6 +1657,14 @@ def _effect_step_templates(
                 for row in steps_for(boxed, entity, printer):
                     rows.setdefault(ActionTemplate(row.action_id, row.arguments), None)
             continue
+        elif (
+            spec.source in _CARD_SOURCES
+            and not isinstance(spec.printed, Printed)
+            and spec.printed.startswith("=")
+            and spec.printed.removeprefix("=") not in content_for(config).card_ids
+        ):
+            # A row one card prints, in another base game's catalog.
+            continue
         else:
             named = ((None, None),)
         for source, printed in named:
@@ -1618,23 +1683,37 @@ _WINDOW_REWARD_ICONS: Final[Mapping[str, tuple[str, ...]]] = {
     "decline_contract_spy": ("spy", "deep_cover_spy"),
     "resolve_contract_without_recall": ("recall_agent",),
 }
-# A controlled space's defending troop (B3d-2a): a space a Conflict card's
-# control reward names.
-_CONTROL_SPACES: Final = tuple(
-    dict.fromkeys(
-        conflict.control_space_id
-        for conflict in CONFLICTS
-        if conflict.control_space_id is not None
-    )
-)
+# The sources whose ``=<entity>`` printer is a personal card.
+_CARD_SOURCES: Final = frozenset({Source.REVEAL_CARD, Source.AGENT_CARD})
+# The one space printing the effect an empty confirmation answers
+# (``board_effects``; B3d-3).
 _VISITED_SPACES: Final[Mapping[str, tuple[str, ...]]] = {
-    "deploy_control_defense": _CONTROL_SPACES,
-    "decline_control_defense": _CONTROL_SPACES,
-    # The one space printing the effect an empty confirmation answers
-    # (``board_effects``; B3d-3).
     "resolve_espionage_without_spy": ("espionage",),
     "resolve_imperial_privilege_without_recall": ("imperial_privilege",),
 }
+# A controlled space's defending troop (B3d-2a): a space a Conflict card's
+# control reward names.
+_CONTROL_DEFENSE_IDS: Final = frozenset(
+    {"deploy_control_defense", "decline_control_defense"}
+)
+
+
+def _visited_spaces(
+    config: RulesetConfig, action_id: str, spaces: tuple[str, ...]
+) -> tuple[str, ...]:
+    """The catalog's spaces whose visit may print ``action_id``'s effect."""
+
+    if action_id in _CONTROL_DEFENSE_IDS:
+        visited: tuple[str, ...] = tuple(
+            dict.fromkeys(
+                conflict.control_space_id
+                for conflict in content_for(config).conflicts
+                if conflict.control_space_id is not None
+            )
+        )
+    else:
+        visited = _VISITED_SPACES.get(action_id, spaces)
+    return tuple(space for space in visited if space in spaces)
 # The effects an Intrigue card's choice slot offers beside its own, by the
 # slot (``ability_executor.piece_rows``): recalling a Spy first, the Shield
 # Wall, the look at the deck's top card.

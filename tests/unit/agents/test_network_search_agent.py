@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -771,7 +772,8 @@ def test_a_retraced_search_seat_answers_like_the_one_that_searched(
     keeps or spends.
     """
 
-    config = RulesetConfig(**({expansion: True} if expansion else {}))
+    options: dict[str, Any] = {expansion: True} if expansion else {}
+    config = RulesetConfig(**options)
     path = _base_checkpoint_with_templates(tmp_path)
 
     def seat_agent() -> NetworkSearchAgent:

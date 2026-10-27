@@ -11,6 +11,7 @@ import random
 from collections import Counter
 from collections.abc import Callable
 from functools import cache
+from typing import Any
 
 import pytest
 
@@ -547,7 +548,7 @@ def test_harvest_cells_recorded_no_acquire_declines() -> None:
     ],
 )
 def test_option_games_never_fall_back_in_the_intrigue_windows(
-    monkeypatch: pytest.MonkeyPatch, options: dict[str, bool]
+    monkeypatch: pytest.MonkeyPatch, options: dict[str, Any]
 ) -> None:
     """Four app_ai seats with only this module's handlers installed (every
     other window answers at random): no ``intrigue_choice`` /

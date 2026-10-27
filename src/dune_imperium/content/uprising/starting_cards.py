@@ -236,19 +236,27 @@ def starting_card_for_instance(instance_id: str) -> StartingCardEntry:
     return entry
 
 
-def starting_deck_instance_ids(
-    player: int, *, immortality: bool = False, epic_game: bool = False
+def starting_instance_ids(
+    player: int, entries: tuple[StartingCardEntry, ...]
 ) -> tuple[str, ...]:
-    """Create stable IDs for one player's unshuffled starting cards."""
+    """Create stable IDs for one player's copies of ``entries``."""
 
     if player < 0:
         raise ValueError("player must not be negative")
     return tuple(
         f"player:{player}:starter:{entry.card.card_id}:{copy}"
-        for entry in starting_deck_entries(
-            immortality=immortality, epic_game=epic_game
-        )
+        for entry in entries
         for copy in range(entry.copies)
+    )
+
+
+def starting_deck_instance_ids(
+    player: int, *, immortality: bool = False, epic_game: bool = False
+) -> tuple[str, ...]:
+    """Create stable IDs for one player's unshuffled starting cards."""
+
+    return starting_instance_ids(
+        player, starting_deck_entries(immortality=immortality, epic_game=epic_game)
     )
 
 
@@ -257,12 +265,6 @@ def starting_discard_instance_ids(
 ) -> tuple[str, ...]:
     """Create stable IDs for one player's starting discard pile."""
 
-    if player < 0:
-        raise ValueError("player must not be negative")
-    return tuple(
-        f"player:{player}:starter:{entry.card.card_id}:{copy}"
-        for entry in starting_discard_entries(
-            immortality=immortality, epic_game=epic_game
-        )
-        for copy in range(entry.copies)
+    return starting_instance_ids(
+        player, starting_discard_entries(immortality=immortality, epic_game=epic_game)
     )

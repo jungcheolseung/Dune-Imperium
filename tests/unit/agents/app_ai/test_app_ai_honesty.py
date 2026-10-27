@@ -10,6 +10,7 @@ level seated.
 
 import copy
 import random
+from typing import Any
 
 import pytest
 
@@ -22,7 +23,7 @@ from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.engine import UprisingRulesEngine
 
 #: The rule options the play UI's setup screen starts with checked.
-UI_DEFAULT_OPTIONS = {
+UI_DEFAULT_OPTIONS: dict[str, Any] = {
     "choam_module": True,
     "leader_draft": True,
     "promo_cards": True,

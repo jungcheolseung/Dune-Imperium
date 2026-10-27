@@ -1,5 +1,7 @@
 """Tests for the rule-based heuristic baseline agent."""
 
+from typing import Any
+
 import pytest
 
 from dune_imperium.agents import HeuristicAgent
@@ -438,7 +440,7 @@ def test_the_untuned_variant_reproduces_the_earlier_ranking() -> None:
     assert score_action(sietch) != score_action(fremkit)
 
 
-def _view_for(**options: bool) -> PlayerView:
+def _view_for(**options: Any) -> PlayerView:
     from dune_imperium import RulesetConfig
     from dune_imperium.core.observation import observe_state
     from dune_imperium.rules import UprisingRulesEngine

@@ -28,6 +28,7 @@ from dataclasses import replace
 from functools import cache
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -802,7 +803,7 @@ def test_tueks_sietch() -> None:
 # Every id our Bloodlines content deals maps
 # ---------------------------------------------------------------------------
 
-OPTION_SETS = [
+OPTION_SETS: list[dict[str, Any]] = [
     {"bloodlines": True},
     {"bloodlines": True, "tech_module": True},
     {"bloodlines": True, "tech_module": True, "promo_cards": True},
@@ -811,7 +812,7 @@ OPTION_SETS = [
 
 @pytest.mark.parametrize("choam", [False, True])
 @pytest.mark.parametrize("options", OPTION_SETS, ids=["bl", "bl_tech", "bl_promo"])
-def test_every_dealt_bloodlines_id_maps(choam: bool, options: dict[str, bool]) -> None:
+def test_every_dealt_bloodlines_id_maps(choam: bool, options: dict[str, Any]) -> None:
     tech = options.get("tech_module", False)
     for instance in imperium_deck_instance_ids(
         choam,

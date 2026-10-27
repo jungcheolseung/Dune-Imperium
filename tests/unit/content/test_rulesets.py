@@ -1,10 +1,11 @@
 """The ruleset content lookup (docs/base-game-and-ix-plan.md 4.2 item 2)."""
 
 import itertools
+from typing import Any
 
 import pytest
 
-from dune_imperium import RulesetConfig
+from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
@@ -32,6 +33,7 @@ from dune_imperium.content.uprising.starting_cards import (
     starting_discard_entries,
 )
 from dune_imperium.content.uprising.types import ConflictTier
+from dune_imperium.rules import UprisingRulesEngine
 
 _OPTIONS = (
     "choam_module",
@@ -49,7 +51,8 @@ def _configs() -> list[RulesetConfig]:
     configs = []
     for values in itertools.product((False, True), repeat=len(_OPTIONS)):
         try:
-            configs.append(RulesetConfig(**dict(zip(_OPTIONS, values, strict=True))))
+            options: dict[str, Any] = dict(zip(_OPTIONS, values, strict=True))
+            configs.append(RulesetConfig(**options))
         except ValueError:
             continue
     return configs
@@ -125,3 +128,45 @@ def test_uprising_board_values() -> None:
         ("imperial_basin", 0),
         ("tuek_sietch", 0),
     )
+
+
+def test_the_original_game_has_no_content_but_its_starting_deck_yet() -> None:
+    # Stage P1: the axis is in, the original game's boards, Conflicts,
+    # Leaders, Reserve and decks arrive in P2-P4. Its starting deck is
+    # Uprising's printing [DI p. 3] (docs/rules/imperium-base.md 2); it
+    # prints no Objective, observation post, Contract or sandworm.
+    for config in (
+        RulesetConfig(base_game=BaseGame.IMPERIUM),
+        RulesetConfig(base_game=BaseGame.IMPERIUM, rise_of_ix=True, epic_game=True),
+    ):
+        content = content_for(config)
+        assert content.base_game is BaseGame.IMPERIUM
+        for table in (
+            content.board_spaces,
+            content.observation_posts,
+            content.conflicts,
+            content.reserve_stacks,
+            content.leaders,
+            content.imperium_deck_instance_ids,
+            content.intrigue_deck_instance_ids,
+            content.contract_instance_ids,
+            content.objectives,
+        ):
+            assert table == ()
+        assert content.maker_space_ids == content.sandworm_space_ids == ()
+        assert not content.control_visit_bonuses
+        assert not content.influence_four_bonuses
+        assert all(
+            content.conflicts_by_tier(tier) == () for tier in ConflictTier
+        )
+        assert content.starting_deck_entries == starting_deck_entries()
+        assert content.starting_discard_entries == ()
+        assert content.starting_deck_instance_ids(1) == starting_deck_instance_ids(1)
+        assert content.card_ids == {
+            entry.card.card_id for entry in starting_deck_entries()
+        }
+
+
+def test_a_base_game_without_a_board_cannot_be_set_up() -> None:
+    with pytest.raises(NotImplementedError, match="imperium base game has no board"):
+        UprisingRulesEngine().reset(RulesetConfig(base_game=BaseGame.IMPERIUM), 0)

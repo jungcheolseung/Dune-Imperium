@@ -1,7 +1,58 @@
 """Ruleset configuration for supported games."""
 
 from dataclasses import dataclass
-from typing import ClassVar
+from enum import StrEnum
+from typing import ClassVar, Final
+
+
+class BaseGame(StrEnum):
+    """The base game a ruleset is built on (docs/base-game-and-ix-plan.md 4.2).
+
+    ``UPRISING`` is Dune: Imperium - Uprising; ``IMPERIUM`` the original Dune:
+    Imperium (2020), whose boards, cards and Leaders arrive in stages P2-P4
+    of that plan.
+    """
+
+    UPRISING = "uprising"
+    IMPERIUM = "imperium"
+
+
+# The expansion options each base game may combine with (plan 4.2 item 1,
+# 9 items 8-9). CHOAM, Bloodlines and Arrakeen Scouts are Uprising's; Rise
+# of Ix is the original game's for now (Uprising + Ix is stage P7, the
+# original game's Scouts P8, Immortality with the original game P7), and
+# its Epic Game Mode needs Rise of Ix there [Rise of Ix p. 10].
+_OPTIONS_BY_BASE_GAME: Final = {
+    BaseGame.UPRISING: frozenset(
+        {
+            "choam_module",
+            "promo_cards",
+            "bloodlines",
+            "tech_module",
+            "immortality",
+            "go_to_11",
+            "epic_game",
+            "arrakeen_scouts",
+        }
+    ),
+    BaseGame.IMPERIUM: frozenset({"promo_cards", "rise_of_ix", "epic_game"}),
+}
+_EXPANSION_OPTIONS: Final = frozenset().union(*_OPTIONS_BY_BASE_GAME.values())
+_IDENTIFIER_PREFIXES: Final = {
+    BaseGame.UPRISING: "uprising-4p-",
+    BaseGame.IMPERIUM: "imperium-4p-",
+}
+# Option tokens of an identifier, in the order they are written.
+_IDENTIFIER_TOKENS: Final = (
+    ("promo", "promo_cards"),
+    ("ix", "rise_of_ix"),
+    ("bloodlines", "bloodlines"),
+    ("tech", "tech_module"),
+    ("immortality", "immortality"),
+    ("go11", "go_to_11"),
+    ("epic", "epic_game"),
+    ("scouts", "arrakeen_scouts"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -10,10 +61,13 @@ class RulesetConfig:
 
     The first implementation target is specifically the four-player Uprising
     ruleset.  Keeping this restriction explicit prevents unsupported player
-    counts from silently entering engine state.
+    counts from silently entering engine state. ``base_game`` selects the
+    original Dune: Imperium instead (docs/base-game-and-ix-plan.md); each
+    base game allows its own expansion options.
     """
 
     players: int = 4
+    base_game: BaseGame = BaseGame.UPRISING
     choam_module: bool = False
     # OQ-007 project convention (not an official rule): deal six random
     # Leaders face up after First Player is known, then pick in reverse
@@ -68,18 +122,34 @@ class RulesetConfig:
     # themselves assigned at random the odds are the same. Off by default
     # (the engine, CLIs and training keep the printed deal).
     first_player_seat_zero: bool = False
+    # The Rise of Ix expansion (docs/rules/rise-of-ix.md) on the original
+    # base game: its board overlay, Tech tiles, Dreadnoughts, Shipping
+    # track and cards (stage P4). Off by default.
+    rise_of_ix: bool = False
 
     # Options added after saves and records already held state hashes: the
     # canonical state hash leaves each one out while it holds its default,
     # so every game without it keeps the hash it was saved with
     # (core.state.canonical_state_hash).
     HASH_OMITTED_AT_DEFAULT: ClassVar[frozenset[str]] = frozenset(
-        {"first_player_seat_zero"}
+        {"first_player_seat_zero", "base_game", "rise_of_ix"}
     )
 
     def __post_init__(self) -> None:
         if self.players != 4:
-            message = "only four-player Uprising is currently supported"
+            message = "only four-player games are currently supported"
+            raise ValueError(message)
+        base_game = BaseGame(self.base_game)
+        if base_game is not self.base_game:
+            # A plain string names its base game too (a save or a CLI).
+            object.__setattr__(self, "base_game", base_game)
+        allowed = _OPTIONS_BY_BASE_GAME[base_game]
+        for option in sorted(_EXPANSION_OPTIONS - allowed):
+            if getattr(self, option):
+                message = f"{option} is not offered with the {base_game} base game"
+                raise ValueError(message)
+        if base_game is BaseGame.IMPERIUM and self.epic_game and not self.rise_of_ix:
+            message = "Epic Game Mode on the original game requires Rise of Ix"
             raise ValueError(message)
         if self.tech_module and not self.bloodlines:
             message = "the Tech Module requires the Bloodlines expansion"
@@ -123,20 +193,14 @@ class RulesetConfig:
         """Return a stable, human-readable ruleset identifier."""
 
         module = "choam" if self.choam_module else "base"
-        promo = "+promo" if self.promo_cards else ""
-        bloodlines = "+bloodlines" if self.bloodlines else ""
-        tech = "+tech" if self.tech_module else ""
-        immortality = "+immortality" if self.immortality else ""
-        go_to_11 = "+go11" if self.go_to_11 else ""
-        epic = "+epic" if self.epic_game else ""
-        scouts = "+scouts" if self.arrakeen_scouts else ""
+        options = "".join(
+            f"+{token}" for token, option in _IDENTIFIER_TOKENS if getattr(self, option)
+        )
         # Like the Leader draft, ``first_player_seat_zero`` changes only who
         # gets which Objective, not the cards or the action catalog, so it
-        # is left out: a trained network answers for either deal.
-        return (
-            f"uprising-4p-{module}{promo}{bloodlines}{tech}{immortality}"
-            f"{go_to_11}{epic}{scouts}"
-        )
+        # is left out: a trained network answers for either deal. An Uprising
+        # identifier is unchanged by the base-game axis (``uprising-4p-``).
+        return f"{_IDENTIFIER_PREFIXES[self.base_game]}{module}{options}"
 
     @classmethod
     def from_identifier(cls, identifier: str) -> RulesetConfig:
@@ -148,32 +212,24 @@ class RulesetConfig:
         identifier and stay off.
         """
 
-        prefix = "uprising-4p-"
-        if not identifier.startswith(prefix):
+        games = [
+            (base_game, prefix)
+            for base_game, prefix in _IDENTIFIER_PREFIXES.items()
+            if identifier.startswith(prefix)
+        ]
+        if not games:
             raise ValueError(f"unknown ruleset identifier: {identifier!r}")
+        ((base_game, prefix),) = games
         module, *options = identifier.removeprefix(prefix).split("+")
         if module not in ("base", "choam"):
             raise ValueError(f"unknown ruleset identifier: {identifier!r}")
-        order = (
-            "promo",
-            "bloodlines",
-            "tech",
-            "immortality",
-            "go11",
-            "epic",
-            "scouts",
-        )
+        order = tuple(token for token, _ in _IDENTIFIER_TOKENS)
         if len(set(options)) != len(options) or any(o not in order for o in options):
             raise ValueError(f"unknown ruleset identifier: {identifier!r}")
         if options != [o for o in order if o in options]:
             raise ValueError(f"unknown ruleset identifier: {identifier!r}")
         return cls(
+            base_game=base_game,
             choam_module=module == "choam",
-            promo_cards="promo" in options,
-            bloodlines="bloodlines" in options,
-            tech_module="tech" in options,
-            immortality="immortality" in options,
-            go_to_11="go11" in options,
-            epic_game="epic" in options,
-            arrakeen_scouts="scouts" in options,
+            **{option: token in options for token, option in _IDENTIFIER_TOKENS},
         )

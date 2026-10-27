@@ -5,6 +5,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -40,7 +41,11 @@ def test_the_null_heuristic_variant_equals_the_committed_agent(
     hvariants: ModuleType,
 ) -> None:
     engine = UprisingRulesEngine()
-    for flags in ({}, {"choam_module": True, "bloodlines": True, "immortality": True}):
+    option_sets: tuple[dict[str, Any], ...] = (
+        {},
+        {"choam_module": True, "bloodlines": True, "immortality": True},
+    )
+    for flags in option_sets:
         config = RulesetConfig(**flags)
         committed = run_policy_game(
             engine, config, 4, [HeuristicAgent(seed=900 + s) for s in range(4)]

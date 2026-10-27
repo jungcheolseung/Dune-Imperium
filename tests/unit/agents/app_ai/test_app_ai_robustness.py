@@ -9,6 +9,7 @@ window failing (``error:<kind>``) or left unmirrored.
 """
 
 import logging
+from typing import Any
 
 import pytest
 
@@ -26,7 +27,7 @@ from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.simulation.runner import run_policy_game
 
-UI_DEFAULT_OPTIONS = {
+UI_DEFAULT_OPTIONS: dict[str, Any] = {
     "choam_module": True,
     "leader_draft": True,
     "promo_cards": True,

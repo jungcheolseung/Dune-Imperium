@@ -1,8 +1,11 @@
 """Tests for the supported ruleset boundary."""
 
+from typing import Any
+
 import pytest
 
-from dune_imperium import RulesetConfig
+from dune_imperium import BaseGame, RulesetConfig
+from dune_imperium.core.state import _canonicalize
 
 
 def test_default_config_selects_four_player_base_uprising() -> None:
@@ -23,7 +26,7 @@ def test_choam_module_has_a_distinct_identifier() -> None:
 def test_unsupported_player_count_is_rejected(players: int) -> None:
     with pytest.raises(
         ValueError,
-        match="only four-player Uprising is currently supported",
+        match="only four-player games are currently supported",
     ):
         RulesetConfig(players=players)
 
@@ -123,7 +126,12 @@ def test_epic_game_plays_to_twelve_with_five_garrison_troops() -> None:
 def test_go_to_11_requires_immortality() -> None:
     # OQ-091 (user decision, not a rulebook rule): the variant is offered
     # only with the Immortality expansion.
-    for flags in ({}, {"bloodlines": True}, {"arrakeen_scouts": True}):
+    option_sets: tuple[dict[str, Any], ...] = (
+        {},
+        {"bloodlines": True},
+        {"arrakeen_scouts": True},
+    )
+    for flags in option_sets:
         with pytest.raises(
             ValueError,
             match="the Go to 11 variant requires the Immortality expansion",
@@ -212,3 +220,105 @@ def test_the_first_player_option_keeps_the_ruleset_identifier() -> None:
     )
     assert seat_zero.identifier == printed.identifier
     assert RulesetConfig.from_identifier(seat_zero.identifier) == printed
+
+
+# -- The base-game axis (docs/base-game-and-ix-plan.md 4.2 item 1) -------------
+
+
+def test_the_base_game_defaults_to_uprising_and_keeps_its_identifiers() -> None:
+    # Every Uprising identifier stays byte for byte what it was: saves,
+    # checkpoints and records rebuild their codec from it.
+    assert RulesetConfig().base_game is BaseGame.UPRISING
+    assert RulesetConfig(base_game=BaseGame.UPRISING) == RulesetConfig()
+    assert RulesetConfig(choam_module=True).identifier == "uprising-4p-choam"
+
+
+def test_the_original_game_has_its_own_identifier_prefix() -> None:
+    imperium = RulesetConfig(base_game=BaseGame.IMPERIUM)
+    assert imperium.identifier == "imperium-4p-base"
+    assert (
+        RulesetConfig(base_game=BaseGame.IMPERIUM, rise_of_ix=True).identifier
+        == "imperium-4p-base+ix"
+    )
+    assert (
+        RulesetConfig(
+            base_game=BaseGame.IMPERIUM,
+            promo_cards=True,
+            rise_of_ix=True,
+            epic_game=True,
+        ).identifier
+        == "imperium-4p-base+promo+ix+epic"
+    )
+    # A save or a command line may name the base game by its string.
+    assert RulesetConfig(base_game="imperium") == imperium  # type: ignore[arg-type]
+    assert RulesetConfig(base_game="imperium").base_game is BaseGame.IMPERIUM  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "option",
+    ["choam_module", "bloodlines", "immortality", "arrakeen_scouts"],
+)
+def test_uprising_expansions_are_not_offered_with_the_original_game(
+    option: str,
+) -> None:
+    # Plan 4.2 item 1: CHOAM, Bloodlines and Scouts are Uprising's;
+    # Immortality with the original game is stage P7, its Scouts P8.
+    with pytest.raises(ValueError, match=f"{option} is not offered with the imperium"):
+        RulesetConfig(base_game=BaseGame.IMPERIUM, **{option: True})
+
+
+def test_rise_of_ix_is_offered_with_the_original_game_only() -> None:
+    # Uprising + Rise of Ix [Main p. 18] is stage P7.
+    with pytest.raises(ValueError, match="rise_of_ix is not offered with the uprising"):
+        RulesetConfig(rise_of_ix=True)
+
+
+def test_epic_game_on_the_original_game_needs_rise_of_ix() -> None:
+    # Plan 9 item 9: Epic Game Mode belongs to Rise of Ix [Rise of Ix p. 10]
+    # there; on Uprising it needs no other option (OQ-092).
+    with pytest.raises(ValueError, match="requires Rise of Ix"):
+        RulesetConfig(base_game=BaseGame.IMPERIUM, epic_game=True)
+    assert RulesetConfig(epic_game=True).epic_game is True
+
+
+def test_from_identifier_rebuilds_every_original_game_combination() -> None:
+    from itertools import product
+
+    seen = 0
+    for promo, ix, epic in product((False, True), repeat=3):
+        if epic and not ix:
+            continue
+        config = RulesetConfig(
+            base_game=BaseGame.IMPERIUM,
+            promo_cards=promo,
+            rise_of_ix=ix,
+            epic_game=epic,
+        )
+        assert RulesetConfig.from_identifier(config.identifier) == config
+        seen += 1
+    assert seen == 6
+    for bad in (
+        "imperium-3p-base",
+        "imperium-4p-ix",
+        "imperium-4p-base+ix+promo",
+        "imperium-4p-base+epic+ix",
+    ):
+        with pytest.raises(ValueError, match="unknown ruleset identifier"):
+            RulesetConfig.from_identifier(bad)
+    # The identifier parses; the configuration itself rejects the option.
+    for refused in ("imperium-4p-choam", "imperium-4p-base+bloodlines"):
+        with pytest.raises(ValueError, match="is not offered with the imperium"):
+            RulesetConfig.from_identifier(refused)
+    with pytest.raises(ValueError, match="is not offered with the uprising"):
+        RulesetConfig.from_identifier("uprising-4p-base+ix")
+
+
+def test_the_axis_leaves_uprising_state_hashes_alone() -> None:
+    # The new fields are left out of the canonical state hash at their
+    # defaults, so every Uprising save keeps its hash
+    # (RulesetConfig.HASH_OMITTED_AT_DEFAULT).
+    canonical = _canonicalize(RulesetConfig())
+    assert "base_game" not in canonical
+    assert "rise_of_ix" not in canonical
+    imperium = _canonicalize(RulesetConfig(base_game=BaseGame.IMPERIUM))
+    assert imperium["base_game"] == "imperium"

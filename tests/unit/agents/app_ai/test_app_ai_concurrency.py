@@ -20,6 +20,7 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import cached_property
+from typing import Any
 
 import pytest
 
@@ -31,7 +32,7 @@ from dune_imperium.core.state import GamePhase, canonical_state_hash
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.simulation.runner import run_policy_game
 
-UI_DEFAULT_OPTIONS = {
+UI_DEFAULT_OPTIONS: dict[str, Any] = {
     "choam_module": True,
     "leader_draft": True,
     "promo_cards": True,

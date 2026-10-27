@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Final, TypeGuard
 
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
-from dune_imperium.config import RulesetConfig
+from dune_imperium.config import BaseGame, RulesetConfig
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.replay import GameReplay, ReplayStep
@@ -262,6 +262,9 @@ def build_save_document(
         "format_version": SAVE_FORMAT_VERSION,
         "ruleset": {
             "players": config.players,
+            # The base game (docs/base-game-and-ix-plan.md 10.2); a document
+            # without it is an Uprising game.
+            "base_game": config.base_game.value,
             "choam_module": config.choam_module,
             "leader_draft": config.leader_draft,
             "promo_cards": config.promo_cards,
@@ -272,6 +275,7 @@ def build_save_document(
             "epic_game": config.epic_game,
             "arrakeen_scouts": config.arrakeen_scouts,
             "first_player_seat_zero": config.first_player_seat_zero,
+            "rise_of_ix": config.rise_of_ix,
         },
         "game_seed": replay.seed,
         "policy_seed": policy_seed,
@@ -352,14 +356,19 @@ def parse_save_document(
         "epic_game",
         "arrakeen_scouts",
         "first_player_seat_zero",
+        "rise_of_ix",
     ):
         flag = ruleset_value.get(key, False)
         if not isinstance(flag, bool):
             raise SaveError(f"the save ruleset {key} must be a boolean")
         modules[key] = flag
+    base_game = ruleset_value.get("base_game", BaseGame.UPRISING.value)
+    if base_game not in tuple(BaseGame):
+        raise SaveError(f"unknown save base game {base_game!r}")
     try:
         config = RulesetConfig(
             players=players,
+            base_game=BaseGame(base_game),
             choam_module=choam_module,
             leader_draft=leader_draft,
             **modules,
