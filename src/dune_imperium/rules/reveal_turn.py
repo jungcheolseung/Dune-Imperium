@@ -251,6 +251,9 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _TROOP_MOVE_ACTIONS,
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _TROOP_MOVE_ACTIONS,
     _Choice.MAY_DEPLOY_ONE_TROOP: frozenset({"deploy_reveal_card_troop"}),
+    _Choice.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: frozenset(
+        {"gain_two_reveal_persuasion", "gain_two_reveal_swords"}
+    ),
     _Choice.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: frozenset(
         {"lose_reveal_troops_for_specimens"}
     ),
@@ -979,13 +982,15 @@ def _spy_icons(ability: Ability) -> int:
 
 
 # The printed "-OR-" lines whose row each is (Corrinth City, Delivery
-# Logistics), by the line's reward.
+# Logistics, Bene Gesserit Sister), by the line's reward.
 _PRINTED_OR_LINE_ACTIONS: Final[Mapping[Reward, str]] = MappingProxyType(
     {
         GainResources(solari=5): "gain_five_reveal_solari",
         TakeHighCouncilSeat(): "take_high_council_from_reveal",
         RevealPersuasion(1): "gain_reveal_persuasion",
         TakeContract(1): "take_reveal_contract",
+        RevealPersuasion(2): "gain_two_reveal_persuasion",
+        RevealSwords(2): "gain_two_reveal_swords",
     }
 )
 
@@ -1045,6 +1050,48 @@ def printed_or_rows(
         DomainAction(action_id=_PRINTED_OR_LINE_ACTIONS[line.rewards[0]], actor=player)
         for line in ability.sections
         if _printed_or_line_open(owner, line)
+    )
+
+
+def _gain_reveal_swords(
+    state: GameState,
+    player: int,
+    card_id: str,
+    amount: int,
+    remaining: tuple[DecisionFrame, ...],
+    source: str,
+) -> RuleResult:
+    """Take a printed Reveal swords line (Undercover Asset's "+2 swords",
+    Bene Gesserit Sister's "[2 swords]"): the swords count at once with a
+    unit in the Conflict, and are kept for the one that arrives later in the
+    Reveal turn; ``remaining`` is the stack without the choice's frame."""
+
+    owner = state.players[player]
+    counted_strength = amount if owner.units_in_conflict else 0
+    next_owner = replace(
+        owner,
+        combat_strength=owner.combat_strength + counted_strength,
+    )
+    remaining = add_reveal_optional_sword_strength(remaining, amount, card_id=card_id)
+    if counted_strength:
+        remaining = add_reveal_strength(remaining, counted_strength)
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(state.players, next_owner),
+            decision_stack=remaining,
+        ),
+        events=(
+            GameEvent(
+                event_id=f"{source}:strength",
+                kind="reveal_strength_gained",
+                payload=(
+                    ("amount", amount),
+                    ("card_id", card_id),
+                    ("player", player),
+                ),
+            ),
+        ),
     )
 
 
@@ -1124,6 +1171,12 @@ def resolve_printed_or(state: GameState, action: DomainAction) -> RuleResult:
                         ),
                     ),
                 ),
+            )
+        case RevealSwords(amount=amount):
+            # Bene Gesserit Sister's swords, counted once a unit stands in
+            # the Conflict, like Undercover Asset's.
+            return _gain_reveal_swords(
+                state, player, card_id, amount, remaining, source
             )
         case TakeContract(count=count):
             from dune_imperium.rules.contracts import begin_contract_gain
@@ -1359,7 +1412,8 @@ def legal_reveal_persuasion_or_contract_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Delivery Logistics: "1 Persuasion OR a contract"."""
+    """Delivery Logistics: "1 Persuasion OR a contract"; Bene Gesserit Sister:
+    "2 Persuasion OR 2 swords"."""
 
     pending = pending_choice_rows(
         state, player, legal_reveal_persuasion_or_contract_actions
@@ -1367,9 +1421,9 @@ def legal_reveal_persuasion_or_contract_actions(
     if pending is not None:
         return pending
     opened = _choice_frame_effect(state, player)
-    if (
-        opened is None
-        or opened[1] is not PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT
+    if opened is None or opened[1] not in (
+        PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT,
+        PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
     ):
         return ()
     # Its record's lines (composed A4f).
@@ -1380,7 +1434,8 @@ def apply_reveal_persuasion_or_contract(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Add one Persuasion to the Reveal, or open the Contract market."""
+    """Add the Persuasion (or the swords) to the Reveal, or open the Contract
+    market."""
 
     state = _open_pending(state, action, legal_reveal_persuasion_or_contract_actions)
     if action not in legal_reveal_persuasion_or_contract_actions(state, action.actor):
@@ -2524,36 +2579,13 @@ def apply_reveal_spy_action(
         alternative = _spy_alternative(reveal_choice_ability(effect))
         if alternative is None:
             raise RuntimeError("Reveal Spy choice has no swords line")
-        amount = alternative.amount
-        owner = state.players[action.actor]
-        counted_strength = amount if owner.units_in_conflict else 0
-        next_owner = replace(
-            owner,
-            combat_strength=owner.combat_strength + counted_strength,
-        )
-        remaining = state.decision_stack[:-1]
-        remaining = add_reveal_optional_sword_strength(
-            remaining, amount, card_id=card_id
-        )
-        if counted_strength:
-            remaining = add_reveal_strength(remaining, counted_strength)
-        return RuleResult(
-            state=replace(
-                state,
-                players=replace_player(state.players, next_owner),
-                decision_stack=remaining,
-            ),
-            events=(
-                GameEvent(
-                    event_id=f"{source}:strength",
-                    kind="reveal_strength_gained",
-                    payload=(
-                        ("amount", amount),
-                        ("card_id", card_id),
-                        ("player", action.actor),
-                    ),
-                ),
-            ),
+        return _gain_reveal_swords(
+            state,
+            action.actor,
+            card_id,
+            alternative.amount,
+            state.decision_stack[:-1],
+            source,
         )
     if action.action_id == "recall_spy_for_reveal_placement":
         post_id = arguments.get("post_id")
@@ -3971,6 +4003,9 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         )
         else "Choose one Persuasion or a Contract"
         if effect is PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT
+        else "Choose two Persuasion or two swords"
+        if effect
+        is PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH
         else "You may recall a Spy for three swords"
         if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH
         else "Command: you may trash this card to acquire an Imperium Row card"

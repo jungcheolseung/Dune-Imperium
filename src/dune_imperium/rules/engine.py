@@ -878,6 +878,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "command_acquire_row_card": apply_reveal_command_acquisition,
     "gain_reveal_persuasion": apply_reveal_persuasion_or_contract,
     "take_reveal_contract": apply_reveal_persuasion_or_contract,
+    # Bene Gesserit Sister (original game): "2 Persuasion OR 2 swords".
+    "gain_two_reveal_persuasion": apply_reveal_persuasion_or_contract,
+    "gain_two_reveal_swords": apply_reveal_persuasion_or_contract,
     "play_turn_start_card": apply_turn_start_card,
     "complete_contract_by_card": apply_agent_card_contract_completion,
     "choose_skill": apply_skill_choice,

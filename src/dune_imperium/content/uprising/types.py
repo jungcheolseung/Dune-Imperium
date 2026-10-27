@@ -472,6 +472,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # deploy a troop from your garrison to the Conflict" -- the deploy half of
     # Shadout Mapes' "deploy or retreat".
     MAY_DEPLOY_ONE_TROOP = "may_deploy_one_troop"
+    # Bene Gesserit Sister: "[2 Persuasion] -OR- [2 swords]", a printed -OR-
+    # the owner must settle (a mandatory choice, like Delivery Logistics').
+    CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH = "choose_two_persuasion_or_two_strength"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -495,7 +498,10 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
 # outside every Uprising catalog, whose resume templates list one per choice
 # effect of the Uprising family only.
 IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = frozenset(
-    {PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP}
+    {
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,
+        PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
+    }
 )
 
 # Choice effects added by Immortality; like the Bloodlines set their

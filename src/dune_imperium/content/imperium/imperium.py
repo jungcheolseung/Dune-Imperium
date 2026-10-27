@@ -108,10 +108,19 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
+    # App table: cost 3, 3 copies, Bene Gesserit, Bene Gesserit and Landsraad,
+    # no fixed Reveal values. Agent: no box (the icons only). Reveal: "[2
+    # Persuasion] -OR- [2 swords]", a printed -OR- the owner must settle.
     ImperiumCardEntry(
         card=imperium_card("bene_gesserit_sister", "Bene Gesserit Sister"),
         copies=3,
         acquisition_cost=3,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.LANDSRAAD),
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("choam_directorship", "CHOAM Directorship"),

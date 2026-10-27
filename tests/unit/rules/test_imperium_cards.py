@@ -542,3 +542,110 @@ def test_bene_gesserit_initiate_reveals_one_persuasion() -> None:
     frame = _reveal(engine, state)
     assert frame["persuasion"] == 1
     assert frame["sword_strength"] == 0
+
+
+# --- Bene Gesserit Sister ---------------------------------------------------------
+
+
+def test_bene_gesserit_sister_matches_the_app_table() -> None:
+    # App attribute table: cost 3, 3 copies, Bene Gesserit, Bene Gesserit and
+    # Landsraad, no fixed Reveal values (tag ConditionalStrength).
+    entry = IMPERIUM_CARDS_BY_ID["bene_gesserit_sister"]
+    assert entry.card.name == "Bene Gesserit Sister"
+    assert entry.acquisition_cost == 3
+    assert entry.copies == 3
+    assert entry.factions == (Faction.BENE_GESSERIT,)
+    assert entry.agent_icons == (AgentIcon.BENE_GESSERIT, AgentIcon.LANDSRAAD)
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:bene_gesserit_sister:2") is entry
+
+
+def test_bene_gesserit_sister_agent_box_is_empty() -> None:
+    # P0 sweep: "AGENT: none"; the icons only send the Agent to a Bene
+    # Gesserit or Landsraad space.
+    engine, state = _start()
+    state, _ = _with_card(state, "bene_gesserit_sister")
+    placed = _place(engine, state, "secrets", "bene_gesserit_sister")
+    assert "resolve_agent_card_effect" not in _ids(engine, placed)
+    assert _place(engine, state, "hall_of_oratory", "bene_gesserit_sister")
+
+
+def _sister_revealed(
+    engine: UprisingRulesEngine, state: GameState, *, conflict: int = 0
+) -> GameState:
+    """Seat 0 reveals Bene Gesserit Sister alone, with ``conflict`` troops
+    already in the Conflict."""
+
+    state, _ = _with_card(state, "bene_gesserit_sister", alone=True)
+    state = _with_troops(state, 0, garrison=0, conflict=conflict)
+    return _do(engine, state, "reveal_turn")
+
+
+def test_bene_gesserit_sister_must_pick_persuasion_or_swords() -> None:
+    """"-OR-" is a must-pick-one choice (P0 sweep; imperium-base.md 16, OQ-058
+    for the same shape on Intrigue): both rows are offered, nothing else holds
+    the Reveal open, and the turn cannot finish before one is taken."""
+
+    engine, state = _start()
+    revealed = _sister_revealed(engine, state)
+    assert _ids(engine, revealed) == {
+        "gain_two_reveal_persuasion",
+        "gain_two_reveal_swords",
+    }
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (0, 0)
+
+
+def test_bene_gesserit_sister_two_persuasion_branch() -> None:
+    engine, state = _start()
+    revealed = _sister_revealed(engine, state, conflict=1)
+    chosen = _do(engine, revealed, "gain_two_reveal_persuasion")
+    frame = dict(chosen.decision_stack[-1].context)
+    assert frame["persuasion"] == 2
+    # The other alternative is gone and the Reveal can end.
+    assert "gain_two_reveal_swords" not in _ids(engine, chosen)
+    assert "gain_two_reveal_persuasion" not in _ids(engine, chosen)
+    assert "finish_reveal" in _ids(engine, chosen)
+    # Only the troop's 2 count: the swords branch was not taken.
+    assert _do(engine, chosen, "finish_reveal").players[0].combat_strength == 2
+
+
+def test_bene_gesserit_sister_two_swords_branch() -> None:
+    """The swords count once a troop stands in the Conflict ("Conflict에 troop이
+    하나도 없으면 0" [DI p. 11]): with one there, 2 for the troop and 2 swords."""
+
+    engine, state = _start()
+    revealed = _sister_revealed(engine, state, conflict=1)
+    chosen = _do(engine, revealed, "gain_two_reveal_swords")
+    assert dict(chosen.decision_stack[-1].context)["persuasion"] == 0
+    assert "gain_two_reveal_persuasion" not in _ids(engine, chosen)
+    assert _do(engine, chosen, "finish_reveal").players[0].combat_strength == 2 + 2
+
+
+def test_bene_gesserit_sister_swords_need_a_troop_in_the_conflict() -> None:
+    engine, state = _start()
+    revealed = _sister_revealed(engine, state, conflict=0)
+    chosen = _do(engine, revealed, "gain_two_reveal_swords")
+    finished = _do(engine, chosen, "finish_reveal")
+    assert finished.players[0].combat_strength == 0
+
+
+def test_two_bene_gesserit_sisters_each_settle_their_own_choice() -> None:
+    engine, state = _start()
+    both = _seat(
+        state,
+        hand=("imperium:bene_gesserit_sister:0", "imperium:bene_gesserit_sister:1"),
+    )
+    both = _with_troops(both, 0, garrison=0, conflict=1)
+    revealed = _do(engine, both, "reveal_turn")
+    first = _do(engine, revealed, "gain_two_reveal_persuasion")
+    # The second copy still waits: its choice is its own.
+    assert "finish_reveal" not in _ids(engine, first)
+    second = _do(engine, first, "gain_two_reveal_swords")
+    assert dict(second.decision_stack[-1].context)["persuasion"] == 2
+    assert _do(engine, second, "finish_reveal").players[0].combat_strength == 2 + 2

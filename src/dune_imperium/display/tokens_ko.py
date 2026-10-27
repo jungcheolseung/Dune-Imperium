@@ -630,6 +630,9 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP: (
         "{garrison}의 {troop:1}을 {conflict}에 배치 가능"
     ),
+    PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: (
+        "하나 선택: {persuasion:2} / {sword:2}"
+    ),
     PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
         "하나 선택: {solari:5} / {solari:5} 지불 {arrow_right} 원로회 자리 차지"
     ),

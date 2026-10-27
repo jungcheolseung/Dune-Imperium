@@ -232,6 +232,8 @@ const ACTION_LABELS = {
   retreat_opponent_troop: "상대 {troop} 강제 {retreat}",
   command_acquire_row_card: "{command}: 이 카드 폐기 후 {imperium_row} 카드 획득",
   gain_reveal_persuasion: "{persuasion} 1 선택",
+  gain_two_reveal_persuasion: "{persuasion} 2 선택",
+  gain_two_reveal_swords: "{sword} 2 선택",
   take_reveal_contract: "{contract} 선택",
   play_turn_start_card: "턴 시작: 카드 사용 후 {draw} 1, 턴 넘기기",
   complete_contract_by_card: "카드 효과로 {contract} 완료",

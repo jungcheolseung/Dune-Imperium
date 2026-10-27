@@ -656,6 +656,13 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _V.TAKE, _S.REVEAL_CARD, "=corrinth_city"
     ),
     "gain_reveal_persuasion": _spec(_V.GAIN, _S.REVEAL_CARD, "=delivery_logistics"),
+    # Bene Gesserit Sister's "-OR-": two alternatives sharing a verb.
+    "gain_two_reveal_persuasion": _spec(
+        _V.GAIN, _S.REVEAL_CARD, "=bene_gesserit_sister", option="persuasion"
+    ),
+    "gain_two_reveal_swords": _spec(
+        _V.GAIN, _S.REVEAL_CARD, "=bene_gesserit_sister", option="swords"
+    ),
     "take_reveal_contract": _spec(_V.TAKE, _S.REVEAL_CARD, "=delivery_logistics"),
     "keep_contract_reveal_spice": _spec(_V.KEEP, _S.REVEAL_CARD, "source"),
     "trash_contract_reveal_for_vp": _spec(_V.TRASH, _S.REVEAL_CARD, "source"),

@@ -188,6 +188,8 @@ const LABELS_EN = {
     "retreat_opponent_troop": "Force {retreat} of opponent's {troop}",
     "command_acquire_row_card": "{command}: Trash this card, then acquire {imperium_row} card",
     "gain_reveal_persuasion": "Choose 1 {persuasion}",
+    "gain_two_reveal_persuasion": "Choose 2 {persuasion}",
+    "gain_two_reveal_swords": "Choose 2 {sword}",
     "take_reveal_contract": "Choose {contract}",
     "play_turn_start_card": "Turn start: use card, then {draw} 1, pass turn",
     "complete_contract_by_card": "Complete {contract} by card effect",

@@ -24,6 +24,7 @@ const PROMPT_KO = {
   "Choose an empty Observation Post for your Spy": "내 {spy}를 배치할 빈 {observation_post} 선택",
   "Choose an Observation Post for your Spy with Deep Cover": "내 잠복 {spy}를 배치할 {observation_post} 선택",
   "Choose one Persuasion or a Contract": "{persuasion} 1 또는 {contract} 중 선택",
+  "Choose two Persuasion or two swords": "{persuasion} 2 또는 {sword} 2 중 선택",
   "Choose one of your other Agents to recall": "소환할 다른 {agent} 선택",
   "No other Agent to recall": "소환할 다른 {agent} 없음",
   "Choose the Skill for the acquired Sardaukar Commander": "획득한 {commander}의 기술 토큰 선택",

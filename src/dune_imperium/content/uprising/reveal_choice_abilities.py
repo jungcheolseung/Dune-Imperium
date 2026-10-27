@@ -285,6 +285,17 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.COMMAND_GAIN_CHOSEN_INFLUENCE: _choice(
                 _line(GainInfluence(), condition=_COMMAND), mark=_MANDATORY
             ),
+            # Bene Gesserit Sister (original game): "[2 Persuasion] -OR- [2
+            # swords]" -- a printed -OR- the owner must settle ("-OR-" is a
+            # must-pick-one choice, P0 sweep); the swords count once a unit
+            # stands in the Conflict ("Conflict에 troop이 하나도 없으면 0"
+            # [DI p. 11]).
+            _CHOICE.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: _choice(
+                _line(RevealPersuasion(2)),
+                _line(RevealSwords(2)),
+                mark=_MANDATORY,
+                structure=AbilityStructure.ONE_OF,
+            ),
             # Ixian Ambassador: "If you have 2 or more Tech tiles: Gain 1
             # Influence with a chosen Faction".
             _CHOICE.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: _choice(
