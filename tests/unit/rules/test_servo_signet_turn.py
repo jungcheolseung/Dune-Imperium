@@ -31,6 +31,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitTroops,
 )
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.leaders import LEADERS
 from dune_imperium.core import (
     DecisionFrame,
     DomainAction,
@@ -186,8 +187,16 @@ def _servo_before_placement(owner: PlayerState, pick: str = "") -> GameState:
     return state
 
 
+# Servo-Receivers is a Bloodlines Tech tile: the original game's Leaders
+# meet it only in the combinations of stage P7 (setup refuses them now), and
+# their Signet rows are in the original catalog alone.
+_UPRISING_SIGNETS = IMPLEMENTED_ABILITY_LEADER_IDS & {
+    leader.leader_id for leader in LEADERS
+}
+
+
 @pytest.mark.parametrize("spies_supply", [3, 0])
-@pytest.mark.parametrize("leader_id", sorted(IMPLEMENTED_ABILITY_LEADER_IDS))
+@pytest.mark.parametrize("leader_id", sorted(_UPRISING_SIGNETS))
 def test_every_servo_signet_choice_before_placement_returns_to_the_turn(
     leader_id: str, spies_supply: int
 ) -> None:

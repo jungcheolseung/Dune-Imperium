@@ -830,7 +830,10 @@ def test_a_retraced_search_seat_answers_like_the_one_that_searched(
     # seed 3 ended after the seat's 49th decision and the Scouts game of
     # seed 0 met no untrained-only one; base seed 0 makes 66, and Scouts
     # seed 2 is the first that meets one, at the 21st, between the splits.
-    game_seed = {"arrakeen_scouts": 2, "immortality": 3}.get(expansion or "", 0)
+    # Observation v36 (stage P2b of docs/base-game-and-ix-plan.md) widened the
+    # network's input and its slot table, so the seeded test network moved
+    # again: Scouts seed 2 meets none in 66 decisions, seed 0 does.
+    game_seed = {"arrakeen_scouts": 0, "immortality": 3}.get(expansion or "", 0)
     decided = _search_seat_game(
         seat_agent(), config, seed=game_seed, seat=1, count=66
     )

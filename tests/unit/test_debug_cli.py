@@ -34,6 +34,8 @@ def test_snapshot_contains_current_players_view_and_legal_actions() -> None:
         "agent_card_pick_graft": False,
         # Stage B3: the rows the seat picked toward one waiting effect.
         "effect_pick": (),
+        # The original game's Baron Harkonnen: his secret Masterstroke Factions.
+        "masterstroke_factions": (),
     }
     actions = snapshot["legal_actions"]
     assert isinstance(actions, list)
