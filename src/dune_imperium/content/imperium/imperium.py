@@ -371,10 +371,18 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=2,
         acquisition_cost=2,
     ),
+    # App table: cost 5, 1 copy, Fremen, Fremen, City and Spice Trade, Reveal 2
+    # Persuasion and 3 swords, AgentWater 1. Agent: "1 water", a plain gain.
     ImperiumCardEntry(
         card=imperium_card("stilgar", "Stilgar"),
         copies=1,
         acquisition_cost=5,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.GAIN_WATER,
+        reveal_persuasion=2,
+        reveal_strength=3,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("test_of_humanity", "Test of Humanity"),

@@ -1418,3 +1418,48 @@ def test_space_travel_reveals_two_persuasion() -> None:
     assert frame["persuasion"] == 2
     assert frame["sword_strength"] == 0
 
+
+# --- Stilgar ----------------------------------------------------------------------
+
+
+def test_stilgar_matches_the_app_table() -> None:
+    # App attribute table: cost 5, 1 copy, Fremen, Fremen, City and Spice
+    # Trade, Reveal 2 Persuasion and 3 swords; AgentWater 1.
+    entry = IMPERIUM_CARDS_BY_ID["stilgar"]
+    assert entry.card.name == "Stilgar"
+    assert entry.acquisition_cost == 5
+    assert entry.copies == 1
+    assert entry.factions == (Faction.FREMEN,)
+    assert entry.agent_icons == (
+        AgentIcon.FREMEN,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert entry.agent_effect is PersonalCardAgentEffect.GAIN_WATER
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 3)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:stilgar:0") is entry
+
+
+def test_stilgar_agent_box_gains_one_water() -> None:
+    """P0 sweep: "AGENT: 1 water"; a plain, mandatory gain."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "stilgar")
+    state = _seat(state, resources=Resources(water=2))
+    placed = _place(engine, state, "imperium_research_station", "stilgar")
+    before = placed.players[0].resources
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    assert resolved.players[0].resources.water == before.water + 1
+
+
+def test_stilgar_reveals_two_persuasion_and_three_swords() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "stilgar", alone=True)
+    state = _with_troops(state, 0, garrison=0, conflict=1)
+    revealed = _do(engine, state, "reveal_turn")
+    frame = dict(revealed.decision_stack[-1].context)
+    assert frame["persuasion"] == 2
+    assert frame["sword_strength"] == 3
+    assert _do(engine, revealed, "finish_reveal").players[0].combat_strength == 2 + 3
