@@ -89,9 +89,12 @@ def _place(
 
 
 def _with_card(state: GameState, card_id: str) -> GameState:
-    """Seat 0 with its starting ``card_id`` moved from its deck into hand."""
+    """Seat 0 with its starting ``card_id`` in hand (from its deck if the
+    setup did not deal it; the deal moves as stage P3 fills the decks)."""
 
     owner = state.players[0]
+    if any(f":{card_id}:" in card for card in owner.hand):
+        return state
     instance = next(card for card in owner.deck if f":{card_id}:" in card)
     return _seat(
         state,

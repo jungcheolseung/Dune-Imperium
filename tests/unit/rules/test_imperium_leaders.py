@@ -185,7 +185,7 @@ def test_connections_gives_a_chosen_influence_with_the_high_council_seat() -> No
     # of the owner's choice (imperium-base.md 12).
     engine, state = _start("earl_memnon_thorvald")
     state = _seat(_with_card(state, "dagger"), resources=Resources(solari=5))
-    placed = _place(engine, state, "imperium_high_council")
+    placed = _place(engine, state, "imperium_high_council", "dagger")
     seated = _do(engine, placed, "resolve_board_effect", effect="high_council")
     assert seated.players[0].high_council is True
     factions = {
@@ -210,7 +210,7 @@ def test_connections_with_every_faction_at_the_top_lapses() -> None:
         resources=Resources(solari=5),
         influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
     )
-    placed = _place(engine, state, "imperium_high_council")
+    placed = _place(engine, state, "imperium_high_council", "dagger")
     seated = _do(engine, placed, "resolve_board_effect", effect="high_council")
     assert "choose_connections_influence" not in _ids(engine, seated)
     assert legal_agent_turn_finish_actions(seated, 0)

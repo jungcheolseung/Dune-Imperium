@@ -10,6 +10,7 @@ from dataclasses import replace
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
@@ -128,8 +129,9 @@ def test_arrakis_recruiter_matches_the_app_table() -> None:
     assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 1)
     assert entry.play_data_complete
     assert personal_card_for_instance("imperium:arrakis_recruiter:1") is entry
-    # The deck lists no original card until stage P3a (plan 16.1).
-    assert not any("arrakis_recruiter" in card for card in _start()[1].imperium_deck)
+    # From stage P3a the original deck holds it (plan 16.1).
+    deck = content_for(CONFIG).imperium_deck_instance_ids
+    assert "imperium:arrakis_recruiter:1" in deck
 
 
 def test_arrakis_recruiter_recruits_one_troop() -> None:
