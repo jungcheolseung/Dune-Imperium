@@ -315,10 +315,18 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=6,
     ),
+    # App table: cost 1, 2 copies, Emperor, no Agent icons, Reveal 1 Persuasion
+    # and 2 swords. A card with no Agent icon is a Reveal-only card [DI p. 9]:
+    # no Agent box either.
     ImperiumCardEntry(
         card=imperium_card("sardaukar_infantry", "Sardaukar Infantry"),
         copies=2,
         acquisition_cost=1,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(),
+        reveal_persuasion=1,
+        reveal_strength=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("sardaukar_legion", "Sardaukar Legion"),

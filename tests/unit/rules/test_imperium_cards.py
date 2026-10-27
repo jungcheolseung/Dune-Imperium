@@ -1333,3 +1333,47 @@ def test_opulence_payment_opens_once_a_later_gain_makes_six_solari() -> None:
     paid = _do(engine, gained, "pay_reveal_solari_for_vp")
     assert paid.players[0].resources.solari == 0
     assert paid.players[0].victory_points == revealed.players[0].victory_points + 1
+
+
+# --- Sardaukar Infantry -----------------------------------------------------------
+
+
+def test_sardaukar_infantry_matches_the_app_table() -> None:
+    # App attribute table: cost 1, 2 copies, Emperor, no Agent icon, Reveal 1
+    # Persuasion and 2 swords.
+    entry = IMPERIUM_CARDS_BY_ID["sardaukar_infantry"]
+    assert entry.card.name == "Sardaukar Infantry"
+    assert entry.acquisition_cost == 1
+    assert entry.copies == 2
+    assert entry.factions == (Faction.EMPEROR,)
+    assert entry.agent_icons == ()
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 2)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:sardaukar_infantry:1") is entry
+
+
+def test_sardaukar_infantry_cannot_be_sent_as_an_agent() -> None:
+    """"Agent 아이콘이 없는 카드는 Agent turn에 낼 수 없다" [DI p. 9]
+    (imperium-base.md 5): the card is Reveal-only."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "sardaukar_infantry")
+    assert not [
+        placement
+        for placement in executable_placements(state, 0)
+        if ":sardaukar_infantry:" in str(dict(placement.arguments)["card_id"])
+    ]
+
+
+def test_sardaukar_infantry_reveals_one_persuasion_and_two_swords() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "sardaukar_infantry", alone=True)
+    state = _with_troops(state, 0, garrison=0, conflict=1)
+    revealed = _do(engine, state, "reveal_turn")
+    frame = dict(revealed.decision_stack[-1].context)
+    assert frame["persuasion"] == 1
+    assert frame["sword_strength"] == 2
+    # Nothing else holds the Reveal open; the troop's 2 and the card's 2 swords.
+    assert _do(engine, revealed, "finish_reveal").players[0].combat_strength == 2 + 2
