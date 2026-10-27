@@ -767,3 +767,109 @@ Orca 작업자가 멈춘 P2a(커밋 안 된 30파일)를 이어 받아 끝냈다
 - **P3에 넘기는 것:** 원판 Imperium·Intrigue 덱(빈 덱 동안 Helena의 Manipulate는 빈 확인, Baron의 Scheme은 내지 않음), OQ-139(Kwisatz Haderach·Urgent
   Mission에서 Mentat 말 구분), Masterstroke의 병력 셈(P4·P7), 화면(P5)의 Mentat·Masterstroke 표시와 공개의 되돌리기 경계, AI(P6)의 원판 판 점수.
 
+
+## 16. P3 계획 초안 (2026-10-28, 브랜치 `claude/base-ix-p3`, master `60c2fcfb`에서)
+
+**상태: 초안.** 사용자 지시(조정자 경유, 2026-10-28 00:5x) "P3는 계획 초안·도구 시범·시범 전사 5장까지만". 이 절의 결정은 모두 추천이고 16.8의
+질문에 사용자가 답하기 전에는 카드 묶음 전사를 시작하지 않는다. 범위는 8절 표의 P3: 원판 Imperium 43종 67장, Intrigue 34종 40장, 프로모 3장
+(Duncan, Loyal Blade·Jessica of Arrakis·Thumper, `promo_cards` 뒤, 9절 8). 끝의 모습: 원판 판이 두 덱으로 끝까지 돌고(소크), 앱 속성 표와 기계 대조
+0 차이, P3 끝 앱 행동 대조(10.4절 1)의 차이를 모두 판정.
+
+### 16.1 하위 단계
+
+| 단계 | 내용 | codec | 관측 |
+| --- | --- | --- | --- |
+| **P3a 틀** | 80장(Imperium 43·프로모 3·Intrigue 34)의 정의를 앱 속성 표에서 생성(도구 1: 이름·장수·비용·진영·Agent 아이콘·Reveal 값·획득 보너스), id, 덱 연결(`play_data_complete`인 카드만 덱에 — 정의는 다 있어도 효과가 없는 카드는 덱에 안 넣는다), `archetypes.py`와 기계 대조 pytest(9절 4), 화면 조각과 P0 카드면 읽기의 한 번 대조(D2), 시범 5장(16.7) | v155 그대로(원판 카탈로그만 늘어남, 15.4와 같은 이유) | **v37 한 번**: 개인 카드 +46, Intrigue +34를 구간 끝에(P2a의 지도자처럼 정의를 한 번에 넣어 어휘가 한 번만 바뀌게) |
+| **P3b Imperium** | 나머지 Imperium 41장 + 프로모 3. 갈래 둘(16.7 측정으로 정함)에 card-implementer, 합친 뒤 관문 | 그대로 | 그대로(숨은 정보 칸이 새로 필요하면 v38, 16.4) |
+| **P3c Intrigue** | 나머지 Intrigue 32장. Endgame 셋·Combat 창·Plot 시점 | 그대로 | 그대로 |
+| **P3d 끝** | 원판 두 덱 소크, 원판 전부의 앱 행동 대조(10.4절 1; 디컴파일러는 그 전에 다시 묻는다, D4-3 (나)), P2에서 넘어온 확인(16.5) | – | – |
+
+단계마다 엔진 관문 전체를 돈다(2026-10-20 사용자 결정, 15.6과 같은 묶음). E7b 같은 학습이 CPU를 잡는 동안은 표적 테스트만 `-n 2`로 돌리고
+관문은 게시판에 예약한다(2026-10-28 조정자 제한).
+
+### 16.2 id (4.2절 7)
+
+- 원판에만 있는 이름은 이름 그대로(`arrakis_recruiter`, `gurney_halleck`, `bribery` …). 지금 Uprising·Bloodlines·Immortality·프로모 id와 이름이 겹치는
+  것은 **Crysknife 하나**(개인 카드; Intrigue는 겹침 0, 2026-10-28 스크립트). 인쇄가 같으면 같은 id, 다르면 `imperium_crysknife` — P3a에서 두 정의를
+  능력 기록으로 대조해 정하고 테스트로 고정한다(15.2와 같은 규칙).
+- 종류 사이 겹침을 새로 만들지 않는다(`test_content_ids.py`). 원판 Intrigue 이름이 원판 보드 칸·Conflict 이름과 겹치면 15.2의 Foldspace처럼 접미사.
+
+### 16.3 출처 (D1·D2, 2.4절)
+
+- **앱 자료만.** 숫자·아이콘·장수·진영은 속성 표(도구 1, 생성), 효과는 카드별 화면 조각(2.2 4)과 영어 문구. 카드면 스캔은 새로 읽지 않는다.
+  화면 조각을 초안으로 바꾸는 변환기(D4-2)를 16.6에서 시범했다.
+- **화면 조각이 없는 카드:** 원판 프로모 셋은 카드 전용 prefab이 없다(일반 `UI_crd_Imperium` 틀이 문구로 그린다). 셋은 속성 표 + 영어 문구로 쓴다.
+  Intrigue는 34장 모두 전용 prefab이 있다.
+- **D2 한 번 대조:** 화면 조각을 P0 블라인드 읽기(에셋 `…/p0-readings/faces/`)와 스크립트로 한 번 대조하고 다른 카드만 사람이 본다. 변환기 시범의
+  나란히 표(16.6)가 그 대조의 첫 판이다: 아이콘·숫자가 다른 카드 0장(Duncan Idaho의 검은 P0가 이미 앱 쪽 2로 고쳐 둠).
+- **규칙 근거는 공식 문서.** 순서·may/must·시점이 화면 조각과 문구로 정해지지 않을 때만 능력 클래스를 읽고, 공식 문서가 답하지 않으면 OQ-140부터.
+  P0 sweep(`…/p0-readings/sweep/base-imperium.md`, `intrigue.md`)이 카드마다 근거를 단 "merged effect"를 이미 갖고 있어 전사 agent의 입력이 된다.
+- **한국어:** 공식 한글판 카드 사진이 있는 카드만(9절 6, 찾기는 미룸). 없으면 영어 이름·영어 앞면.
+
+### 16.4 엔진·codec·관측
+
+- **콘텐츠:** `content/imperium/imperium.py`(Imperium·프로모 정의), `content/imperium/intrigue.py`, 능력 기록은 Uprising과 같은 표(`agent_abilities`·
+  `reveal_abilities`·`trigger_abilities`·Intrigue의 `IntrigueOption`)에 원판 항목을 더한다. `rulesets._imperium_content`가 `imperium_cards`·
+  `imperium_deck_instance_ids`·`intrigue_deck_instance_ids`를 채운다(지금 빈 튜플).
+- **P0 분류(dsl-coverage):** 원판 Imperium 86칸 중 기존 모양 74(값만 19), 새 조각 12(변형 5), hook 0; 원판 Intrigue 41절 중 기존 24, 새 17(변형 5).
+  hook이 될 위험 칸(The Voice, Kwisatz Haderach, Mentat, harvest 조정, 적 Agent 무시)은 P2에서 엔진 쪽 일부가 이미 생겼다(Mentat, Helena의 막힘 예외).
+  새 조각 후보: 버려질 때 trigger(Assassination Mission), harvest 두 배(Carryall 기본·Thumper 보너스), "다른 Bene Gesserit 카드가 in play"(Bond와 같은지
+  P3a에서 대조), Fremen 카드 수만큼 Persuasion(Liet Kynes), TSMF 할인(Guild Bankers), 상대마다 고르기(Test of Humanity), Endgame 셋(Corner the Market은
+  OQ-123, Plans Within Plans, Tiebreaker의 Combat/Endgame 나뉜 카드), 덱 맨 위 보고 뽑거나 버리기(Poison Snooper, 숨은 정보), 버림 더미를 덱에 섞고 뽑기
+  (Refocus, chance).
+- **codec v155 그대로:** 원판 카탈로그만 늘어난다(15.4의 이유 그대로: 원판 저장·기보·체크포인트가 아직 없음). Uprising 144개 조합 행은 바이트까지 같다.
+- **관측 v37 한 번(P3a):** 개인 카드·Intrigue 구간 끝에 원판 id. Uprising 열은 그대로(늘어난 열 0), 형식 2 이관으로 옮긴 망이 Uprising 판에서 같은 수
+  (P2처럼 `same_moves.py`). 엔티티 특성은 Uprising 개체로 척도를 고정해 Uprising 405행이 그대로(P2a의 `entity_features._table`). 숨은 정보가 새로
+  생기는 카드(Poison Snooper의 엿보기)는 `known_card_seats`·scramble·결정 표본에 함께 넣는다(10.1).
+- **같음 확인:** 상태에 새 칸이 생기면 선언 차이 파일(`scripts/ab/differences/`). Uprising 판의 그 밖의 차이는 0.
+- **휴리스틱:** 새 효과의 점수는 원판 콘텐츠에서만 닿는 가지(15.4와 같은 방식). 앱 AI는 P6.
+
+### 16.5 P2에서 넘어온 것 (15.9)
+
+- **Helena의 Manipulate:** 덱이 비어 있던 동안은 빈 확인이었다. Row가 차면 Row 카드 따로 두기·나중에 사기를 확인하는 테스트를 더한다.
+- **Baron의 Scheme:** Intrigue 덱이 비면 내지 않았다(16절, OQ-071). 덱이 생기면 Solari 1 → Intrigue 1 지급과 버림 더미 섞기 경로를 테스트한다.
+- **OQ-139(Mentat 말 구분 없음):** Kwisatz Haderach(Agent 하나를 아무 칸으로), Urgent Mission(Agent recall), Calculated Hire(Mentat 가져오기)에서 다시
+  연다. 엔진은 Mentat을 따로 세지 않으므로 "Mentat을 옮기거나 recall할 수 있는가"를 사용자에게 묻는다(16.8 4).
+- **Masterstroke의 병력 셈:** P4(dreadnought)·P7(모래벌레·Commander) 몫. P3 카드(Gun Thopter·Sardaukar Legion·Rapid Mobilization·Reinforcements의 garrison에서
+  배치, Double Cross의 공급에서 배치)가 "이번 turn 배치"에 드는지만 확인한다(OQ-115: 배치한 병력을 셈).
+- **화면(P5)·AI(P6)** 몫은 그대로 넘긴다.
+
+### 16.6 도구 시범: 화면 조각 → 능력 기록 초안 (D4-2, 2026-10-28)
+
+`scripts/dwgr/app_pieces.py`: 카드 prefab의 활성 노드에서 칸(Agent·Reveal·획득·버려질 때·Intrigue 본문)마다 아이콘 스프라이트·숫자·화살표·글을
+읽어 우리 DSL 이름으로 초안을 쓴다. 모르는 조각과 문장은 `TEXT(...)`로 넘긴다(추측하지 않음). 앱이 실행 중에 문구에 넣는 아이콘(Gene Manipulation의
+"in play: {Spice_2}")은 영어 문구에서 채운다. 출력은 git 밖(`tmp/`).
+
+**정확도(P0 카드별 전사 자료의 face·merged effect와 한 장씩 대조, 80장):**
+
+| | 그대로 맞음 | 문장이 남음(TEXT, 사람·agent 몫) | 고쳐야 함 | prefab 없음 |
+| --- | --- | --- | --- | --- |
+| 첫 판 Imperium 43 | 21 | 16 | 6 | – |
+| 첫 판 Intrigue 34 | 12 | 21 | 1 | – |
+| 둘째 판 Imperium 43 | 25 | 18 | 0 | – |
+| 둘째 판 Intrigue 34 | 12 | 21 | 1 | – |
+| 프로모 3 | – | – | – | 3 |
+
+- 첫 판의 "고쳐야 함" 7장은 모두 구조였다: 맨 진영 아이콘을 Alliance로만 읽음(Smuggler's Thopter·Worm Riders의 "2 Influence :"), "Alliance :" 글이
+  남음(Firm Grip·Guild Ambassador), 실행 중에 문구에 들어가는 아이콘이 빠짐(Gene Manipulation의 spice 2, Guild Bankers의 Persuasion 3), Combat/Endgame으로
+  나뉜 카드를 고르기로 읽음(Tiebreaker). **아이콘·숫자를 잘못 읽은 것은 0.** 둘째 판에서 앞의 셋을 고쳤고 Tiebreaker만 남았다. 둘째 판은 같은 80장으로
+  고친 것이라 과적합일 수 있다 — P4의 Ix 카드가 처음 보는 시험이 된다.
+- "그대로 맞음"은 초안이 P0 기록과 같은 조각·숫자·구조(비용 화살표, -OR-, 조건)를 가진다는 뜻이다. may/must·별도 단계·OQ 같은 규칙 쪽 표시는 초안이
+  아니라 기록 helper(`_pay`·`_trash`·`_icons`)와 전사 agent가 붙인다.
+- 문장이 남는 카드는 대부분 새 조각 후보(16.4)와 같은 카드다: 초안이 덮는 것은 아이콘 칸이고, 새 규칙은 어차피 사람이 쓴다.
+- 들인 것: 만들기·두 판 고치기·대조 약 50분(00:59~01:50쯤), 대조 표 읽기 약 2.4만 토큰.
+- **추천:** 채택. 전사 agent에게 그 카드의 초안 줄을 P0 merged effect와 함께 준다. 고친 수를 16.7에서 잰다.
+
+### 16.7 시범 전사 5장과 갈래 나누기 (D5, 11절 4)
+
+(진행 중 — 결과를 여기에 적는다.)
+
+### 16.8 사용자에게 묻는 것
+
+1. **하위 단계(16.1):** P3a 틀(80장 정의 생성·관측 v37 한 번·덱은 효과가 들어간 카드만) → P3b Imperium → P3c Intrigue → P3d 끝.
+2. **codec v155 그대로·관측 v37 한 번(16.4).** v37은 플레이 서버의 망·어댑터 좌석이 Uprising 판에서 같은 수를 두는지 P2처럼 확인한 뒤 병합한다.
+3. **프로모 셋은 prefab이 없어 속성 표 + 영어 문구로 전사(16.3).** D1(앱 자료만) 안이지만 화면 조각 확인이 없는 카드라 따로 묻는다.
+4. **OQ-139 다시 열기(16.5):** Kwisatz Haderach·Urgent Mission·Calculated Hire에서 Mentat을 옮기기·recall할 수 있는가. 공식 문장과 앱 처리를 붙여 OQ로 묻는다.
+5. **변환기 채택(16.6)과 갈래 나누기(16.7의 측정 뒤).**
+6. **P3d의 앱 행동 대조 전에 디컴파일러(D4-3 (나)) 내려받기를 다시 묻는다.**
+7. **관문 일정:** E7b 같은 학습이 끝난 뒤 P3a 관문을 돈다(게시판 예약).
