@@ -159,6 +159,8 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.DRAW_ONE_AND_RECALL_AGENT: (
             "Draw 1 card, Recall 1 Agent"
         ),
+        # The original game's Foldspace (Reserve).
+        PersonalCardAgentEffect.DRAW_ONE_AND_TRASH_SELF: "Draw 1 card, Trash this card",
         PersonalCardAgentEffect.DRAW_PERSONAL_CARD: "Draw 1 card",
         PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT: (
             "Draw 1 card per sandworm in the Conflict"

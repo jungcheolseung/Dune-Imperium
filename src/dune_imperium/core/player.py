@@ -1,6 +1,7 @@
 """Authoritative per-player state and component invariants."""
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 from dune_imperium.core.dataclass_copy import positional_dataclass_replace
 
@@ -65,6 +66,11 @@ class PlayerState:
     agents_available: int = 2
     agent_locations: tuple[str, ...] = ()
     swordmaster_acquired: bool = False
+    # The original game's Mentat, taken this round: "this round, you may use
+    # it as one of your Agents" [DI p. 18], one Agent more until Recall
+    # returns it to its space [DI p. 13]. Which placed Agent is the Mentat is
+    # not told apart (OQ-139).
+    mentat: bool = False
     troops_supply: int = 9
     troops_garrison: int = 3
     troops_conflict: int = 0
@@ -242,6 +248,11 @@ class PlayerState:
     active_contract_ids: tuple[str, ...] = ()
     completed_contract_ids: tuple[str, ...] = ()
 
+    # Fields added after saves and records already held state hashes, left
+    # out of the canonical state hash at their default
+    # (``core.state.canonical_state_hash``).
+    HASH_OMITTED_AT_DEFAULT: ClassVar[frozenset[str]] = frozenset({"mentat"})
+
     @property
     def units_in_conflict(self) -> int:
         """Return every unit in the Conflict: troops, sandworms, Commanders."""
@@ -318,7 +329,7 @@ class PlayerState:
             ) != len(set(self.tech_flipped)):
                 raise ValueError("flipped Tech tiles must be held tiles")
 
-        active_agents = 3 if self.swordmaster_acquired else 2
+        active_agents = (3 if self.swordmaster_acquired else 2) + self.mentat
         if (
             self.agents_available + len(self.agent_locations) + self.agent_in_conflict
             != active_agents

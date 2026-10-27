@@ -400,7 +400,9 @@ def _agent_card_acquisition_targets(
             arguments=(("card_id", card_id),),
         )
         for card_id, count in state.reserve_stacks
-        if count > 0 and reserve_cost(state, card_id) <= solari
+        if count > 0
+        and not RESERVE_STACKS_BY_ID[card_id].icon_only
+        and reserve_cost(state, card_id) <= solari
     )
     # The owner's own Manipulate set-aside card is offered too, for its
     # printed cost in Solari [FAQ p. 3].
@@ -793,6 +795,11 @@ def reserve_acquisition_block(
 
     if count <= 0:
         return AcquireBlock.EMPTY
+    if RESERVE_STACKS_BY_ID[card_id].icon_only:
+        # The original game's Foldspace: "(Foldspace is acquired at the board
+        # space of the same name ...)" [DI p. 11], only through its icon
+        # [FAQ p. 2] (docs/rules/open-questions.md OQ-125).
+        return AcquireBlock.NO_COST
     if reserve_cost(state, card_id) > persuasion:
         return AcquireBlock.PERSUASION
     return None
@@ -1476,7 +1483,10 @@ def acquirable_reserve_card_ids(
     return tuple(
         card_id
         for card_id, count in state.reserve_stacks
-        if count > 0 and reserve_cost(state, card_id) <= max_cost
+        if count > 0
+        # Foldspace is never one (OQ-125).
+        and not RESERVE_STACKS_BY_ID[card_id].icon_only
+        and reserve_cost(state, card_id) <= max_cost
     )
 
 

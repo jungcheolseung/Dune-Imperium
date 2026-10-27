@@ -251,6 +251,9 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "control_the_spice": _reveal(_line(GainResources(spice=1))),
         # The Spice Must Flow.
         "the_spice_must_flow": _reveal(_line(GainResources(spice=1))),
+        # The original game's The Spice Must Flow (Reserve): 1 spice
+        # (``ImperiumArchetypes.BaseSet``, docs/base-game-and-ix-plan.md 15.3).
+        "imperium_the_spice_must_flow": _reveal(_line(GainResources(spice=1))),
         # Twisted Mentat.
         "twisted_mentat": _reveal(_line(GenerateSpecimens(1))),
         # Usurp.

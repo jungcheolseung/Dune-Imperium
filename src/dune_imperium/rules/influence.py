@@ -10,6 +10,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     OnReachInfluence,
     PlaceSpy,
+    RecruitTroops,
 )
 from dune_imperium.content.uprising.leader_abilities import (
     LEADER_ABILITIES,
@@ -603,6 +604,20 @@ def _apply_track_bonus(
                 intrigue_deck = intrigue_deck[1:]
             else:
                 intrigue_shortfall = 1
+        case RecruitTroops(count=count):
+            # The original board's Emperor track: two troops to the garrison
+            # [DI p. 7] (docs/base-game-and-ix-plan.md 15.3); what the supply
+            # cannot cover waits as on any recruit (OQ-030).
+            # (``effects.recruit_troops``'s move, written here: that module
+            # imports this one.)
+            recruited = min(owner.troops_supply, count)
+            owner = replace(
+                owner,
+                troops_supply=owner.troops_supply - recruited,
+                troops_garrison=owner.troops_garrison + recruited,
+                ungained_troops=owner.ungained_troops + count - recruited,
+            )
+            payload = (("troops", recruited),)
         case _:
             raise ValueError(f"no such Influence 4 bonus: {bonus!r}")
     return (

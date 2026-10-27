@@ -61,6 +61,7 @@ from dune_imperium.adapters.observation_encoding import (
     CONFLICT_IDS,
     CONTRACT_IDS,
     FACTION_IDS,
+    IMPERIUM_IDENTITIES,
     INTRIGUE_IDS,
     LEADER_IDS,
     PERSONAL_CARD_IDS,
@@ -105,7 +106,7 @@ from dune_imperium.content.uprising.leader_abilities import (
 from dune_imperium.content.uprising.leaders import LEADERS_BY_ID
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.reserve import RESERVE_STACKS
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.reveal_abilities import REVEAL_GAIN_ABILITIES
 from dune_imperium.content.uprising.reveal_choice_abilities import (
     reveal_choice_ability,
@@ -182,6 +183,13 @@ class Vocabulary:
         return len(self.ids)
 
 
+# A column some Uprising entity uses keeps the scale Uprising's entities give
+# it, so every Uprising row reads exactly as before the original game's own
+# entities joined (observation v35, ``IMPERIUM_IDENTITIES``; user approval
+# 2026-10-27: Uprising rows byte-identical, scales included); an original
+# entity may then read past 1 in such a column.
+
+
 def _table(name: str, ids: tuple[str, ...], rows: list[dict[str, float]]) -> Vocabulary:
     columns = sorted({key for row in rows for key, amount in row.items() if amount})
     matrix = np.zeros((len(ids), len(columns)), dtype=np.float32)
@@ -191,6 +199,12 @@ def _table(name: str, ids: tuple[str, ...], rows: list[dict[str, float]]) -> Voc
             if key in position:
                 matrix[index, position[key]] = amount
     scale = np.abs(matrix).max(axis=0)
+    uprising = [
+        index for index, entity in enumerate(ids) if entity not in IMPERIUM_IDENTITIES
+    ]
+    if len(uprising) < len(ids):
+        own = np.abs(matrix[uprising]).max(axis=0) if uprising else np.zeros_like(scale)
+        scale = np.where(own > 0, own, scale)
     keep = scale > 0
     matrix = matrix[:, keep] / scale[keep]
     kept = tuple(column for column, used in zip(columns, keep, strict=True) if used)
@@ -209,7 +223,8 @@ def _personal_entry(card_id: str) -> object:
     for table in (STARTING_CARDS_BY_ID, IMPERIUM_CARDS_BY_ID, TLEILAXU_CARDS_BY_ID):
         if card_id in table:
             return table[card_id]
-    return next(stack for stack in RESERVE_STACKS if stack.card.card_id == card_id)
+    # Both base games' Reserve stacks (one id, one printing).
+    return RESERVE_STACKS_BY_ID[card_id]
 
 
 def _kind(card_id: str) -> dict[str, float]:

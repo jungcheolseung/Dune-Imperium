@@ -18,6 +18,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     GainResources,
     PlaceSpy,
+    RecruitTroops,
 )
 from dune_imperium.content.uprising.imperium import (
     imperium_cards_for_choam,
@@ -130,48 +131,96 @@ def test_uprising_board_values() -> None:
     )
 
 
-def test_the_original_game_has_no_content_but_its_starting_deck_yet() -> None:
-    # Stage P1: the axis is in, the original game's boards, Conflicts,
-    # Leaders, Reserve and decks arrive in P2-P4. Its starting deck is
-    # Uprising's printing [DI p. 3] (docs/rules/imperium-base.md 2); it
-    # prints no Objective, observation post, Contract or sandworm.
-    for config in (
-        RulesetConfig(base_game=BaseGame.IMPERIUM),
-        RulesetConfig(base_game=BaseGame.IMPERIUM, rise_of_ix=True, epic_game=True),
+def test_the_original_game_plays_its_own_board_and_no_deck_yet() -> None:
+    # Stage P2 (docs/base-game-and-ix-plan.md 15): the original board's 22
+    # spaces [DI pp. 17-18], its 18 Conflicts (I 4, II 10, III 4 [DI p. 3]),
+    # its three Reserve stacks [DI p. 3] and the Leaders the engine plays
+    # (four in P2a); its Imperium and Intrigue decks arrive in P3. Its starting
+    # deck is Uprising's printing [DI p. 3]; it prints no Objective,
+    # observation post, Contract or sandworm.
+    config = RulesetConfig(base_game=BaseGame.IMPERIUM)
+    content = content_for(config)
+    assert content.base_game is BaseGame.IMPERIUM
+    assert len(content.board_spaces) == 22
+    assert {"arrakeen", "imperial_basin", "secrets"} <= {
+        space.space_id for space in content.board_spaces
+    }
+    assert [len(content.conflicts_by_tier(tier)) for tier in ConflictTier] == [
+        4,
+        10,
+        4,
+    ]
+    assert content.conflicts == content.conflict_pool
+    assert {stack.card.card_id: stack.copies for stack in content.reserve_stacks} == {
+        "arrakis_liaison": 8,
+        "imperium_the_spice_must_flow": 10,
+        "foldspace_card": 6,
+    }
+    assert [leader.leader_id for leader in content.leaders] == [
+        "glossu_rabban",
+        "count_ilban_richese",
+        "earl_memnon_thorvald",
+        "countess_ariana_thorvald",
+    ]
+    for table in (
+        content.observation_posts,
+        content.imperium_deck_instance_ids,
+        content.intrigue_deck_instance_ids,
+        content.contract_instance_ids,
+        content.objectives,
+        content.sandworm_space_ids,
     ):
-        content = content_for(config)
-        assert content.base_game is BaseGame.IMPERIUM
-        for table in (
-            content.board_spaces,
-            content.observation_posts,
-            content.conflicts,
-            content.reserve_stacks,
-            content.leaders,
-            content.imperium_deck_instance_ids,
-            content.intrigue_deck_instance_ids,
-            content.contract_instance_ids,
-            content.objectives,
-        ):
-            assert table == ()
-        assert content.maker_space_ids == content.sandworm_space_ids == ()
-        assert not content.control_visit_bonuses
-        assert not content.influence_four_bonuses
-        assert all(
-            content.conflicts_by_tier(tier) == () for tier in ConflictTier
-        )
-        assert content.starting_deck_entries == starting_deck_entries()
-        assert content.starting_discard_entries == ()
-        assert content.starting_deck_instance_ids(1) == starting_deck_instance_ids(1)
-        assert content.card_ids == {
-            entry.card.card_id for entry in starting_deck_entries()
-        }
+        assert table == ()
+    # The Maker spaces [DI p. 13] [FAQ p. 2] and the Control bonuses: 1
+    # Solari at Arrakeen and Carthag, 1 spice at Imperial Basin [DI p. 10].
+    assert content.maker_space_ids == (
+        "the_great_flat",
+        "imperium_hagga_basin",
+        "imperial_basin",
+    )
+    assert dict(content.control_visit_bonuses) == {
+        "arrakeen": "solari",
+        "carthag": "solari",
+        "imperial_basin": "spice",
+    }
+    # The Influence 4 bonuses, read off the Steam app (user decision D3,
+    # plan 15.3).
+    assert dict(content.influence_four_bonuses) == {
+        Faction.EMPEROR: RecruitTroops(2),
+        Faction.SPACING_GUILD: GainResources(solari=3),
+        Faction.BENE_GESSERIT: DrawIntrigueCards(1),
+        Faction.FREMEN: GainResources(water=1),
+    }
+    assert content.starting_deck_entries == starting_deck_entries()
+    assert content.starting_discard_entries == ()
+    assert content.starting_deck_instance_ids(1) == starting_deck_instance_ids(1)
+    assert content.card_ids == {
+        *(entry.card.card_id for entry in starting_deck_entries()),
+        "arrakis_liaison",
+        "imperium_the_spice_must_flow",
+        "foldspace_card",
+    }
 
 
 def test_a_combination_without_its_content_cannot_be_set_up() -> None:
     # Every expansion combines with either base game (user decision
-    # 2026-10-27), but the engine plays only what it holds: no original
-    # board before stage P2, no Rise of Ix before P4 (P7 with Uprising).
-    with pytest.raises(NotImplementedError, match="imperium base game has no board"):
-        UprisingRulesEngine().reset(RulesetConfig(base_game=BaseGame.IMPERIUM), 0)
+    # 2026-10-27), but the engine plays only what it holds: no Rise of Ix
+    # before P4 (P7 with Uprising), and the original game with no option
+    # before the stage that brings it (plan 15.4).
     with pytest.raises(NotImplementedError, match="Rise of Ix has no content"):
         UprisingRulesEngine().reset(RulesetConfig(rise_of_ix=True), 0)
+    for option, stage in (
+        ("choam_module", "P7"),
+        ("promo_cards", "P3"),
+        ("bloodlines", "P7"),
+        ("immortality", "P7"),
+        ("epic_game", "P4"),
+        ("arrakeen_scouts", "P8"),
+        ("rise_of_ix", "P4"),
+        ("leader_draft", "P2b"),
+    ):
+        config = RulesetConfig(base_game=BaseGame.IMPERIUM, **{option: True})
+        with pytest.raises(NotImplementedError, match=f"{option} from stage {stage}"):
+            UprisingRulesEngine().reset(config, 0)
+    state = UprisingRulesEngine().reset(RulesetConfig(base_game=BaseGame.IMPERIUM), 0)
+    assert len(state.players) == 4

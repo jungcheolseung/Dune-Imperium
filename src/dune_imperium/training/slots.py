@@ -96,8 +96,13 @@ SLOT_VERSION: Final = 1
 # field, so every older key keeps its index (checkpoints re-link by key,
 # SLOT_VERSION kept). v33 (stage B1) appends the seat's own picked Agent card,
 # read as a count zone, not a slot: no key changes. v34 (the base-game axis)
-# appends the base-game flag, read raw: no key changes.
-SLOT_OBSERVATION_VERSION: Final = 34
+# appends the base-game flag, read raw: no key changes. v35 (stage P2a) adds
+# the original game's identities at the end of each universe, so the
+# identity fields gain keys after their Uprising ones (checkpoints re-link
+# by key; a new key starts at zero), gives each seat a fourth Agent location
+# slot (0, the pad, in every Uprising game) and appends the Mentat's two
+# seat references after every older field.
+SLOT_OBSERVATION_VERSION: Final = 35
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).
@@ -327,6 +332,10 @@ def _build_fields() -> tuple[SlotField, ...]:
                 _columns("agent_boxes")[:2],
                 PERSONAL_CARD_IDS,
             ),
+            # v35: the original game's Mentat holder and the seat owed it;
+            # the middle column (it rests on its space) is read raw.
+            _relative_seat("mentat_holder", "mentat", _columns("mentat")[:1]),
+            _relative_seat("mentat_owed", "mentat", _columns("mentat")[2:]),
         )
     )
     return tuple(fields)

@@ -71,7 +71,11 @@ from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
     TLEILAXU_CARDS_BY_ID,
 )
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, OBSERVATION_POSTS
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES,
+    BOARD_SPACES_BY_ID,
+    OBSERVATION_POSTS,
+)
 from dune_imperium.content.uprising.conflicts import CONFLICTS, ConflictDefinition
 from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
@@ -468,9 +472,11 @@ def build_catalog(
             for conflict in CONFLICTS
         },
         "leaders": leaders,
+        # Uprising's board: the original game's has no page yet (stage P5 of
+        # docs/base-game-and-ix-plan.md).
         "spaces": {
-            space_id: _space(space_id, image_files, tile_files)
-            for space_id in BOARD_SPACES_BY_ID
+            space.space_id: _space(space.space_id, image_files, tile_files)
+            for space in BOARD_SPACES
         },
         "objectives": {
             objective.objective_id: {

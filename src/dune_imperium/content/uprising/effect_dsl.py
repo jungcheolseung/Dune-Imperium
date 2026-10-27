@@ -889,10 +889,16 @@ class GainInfluence:
     # (docs/rules/player-turns.md).
     visited_space: bool = False
     replaces_space: bool = False
+    # "Gain two Influence with one Faction of your choice" (the original
+    # game's two-chevron icon [DI p. 16], Grand Vision): one Faction chosen
+    # once, gaining all ``times``.
+    one_faction: bool = False
 
     def __post_init__(self) -> None:
         if self.times < 1:
             raise ValueError("Influence gain times must be positive")
+        if self.one_faction and (self.distinct or self.times < 2):
+            raise ValueError("a one-Faction gain repeats on that Faction")
         if self.visited_space and self.factions is not None:
             raise ValueError("the visited Faction is the only one a visited gain names")
         if self.replaces_space and not self.visited_space:
@@ -1425,6 +1431,14 @@ class TakeControl:
 
 
 @dataclass(frozen=True, slots=True)
+class TakeMentat:
+    """The Mentat icon: "Take the Mentat from its space on the board (if it's
+    there; you can't take it from another player or another space)" [DI p. 16]
+    -- used as one of the taker's Agents for the round [DI p. 18] (the
+    original game; docs/rules/imperium-base.md 9)."""
+
+
+@dataclass(frozen=True, slots=True)
 class TakeSwordmaster:
     """Once per game, take the player's third Agent [Main p. 20], usable from
     this round [Board Guide p. 2] (the Swordmaster space)."""
@@ -1629,6 +1643,7 @@ type Reward = (
     | TakeHighCouncilSeat
     | TakeControl
     | TakeSwordmaster
+    | TakeMentat
     | UseSignetAbility
     | GainInfluenceWhereAtMost
     | RecruitUndeployableTroops
@@ -1743,6 +1758,26 @@ class OnConflictWon:
     Tech tile]."""
 
 
+@dataclass(frozen=True, slots=True)
+class OnBoardSpaceSolariPaid:
+    """Whenever the player pays Solari for the printed cost of a board space
+    (the original game's Count Ilban Richese [FAQ p. 2];
+    docs/rules/imperium-base.md 12)."""
+
+
+@dataclass(frozen=True, slots=True)
+class OnHighCouncilSeatTaken:
+    """When the player takes a seat on the High Council (the original game's
+    Earl Memnon Thorvald; docs/rules/imperium-base.md 12)."""
+
+
+@dataclass(frozen=True, slots=True)
+class OnMakerSpiceHarvested:
+    """Whenever the player harvests spice at a Maker board space, and only
+    there (the original game's Countess Ariana Thorvald [FAQ p. 2];
+    docs/rules/imperium-base.md 12)."""
+
+
 type Trigger = (
     OnRevealAcquisitionThisRound
     | OnTroopsLostAtConflictEnd
@@ -1754,6 +1789,9 @@ type Trigger = (
     | OnSpiceGainedInTurnAtLeast
     | OnContractCompleted
     | OnConflictWon
+    | OnBoardSpaceSolariPaid
+    | OnHighCouncilSeatTaken
+    | OnMakerSpiceHarvested
 )
 
 

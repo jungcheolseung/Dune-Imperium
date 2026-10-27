@@ -18,6 +18,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     GainResources,
     OnAgentSentTo,
+    OnBoardSpaceSolariPaid,
 )
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.leader_abilities import leader_triggers
@@ -72,8 +73,10 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
+    OWED_CARD,
     TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
+    hold_draw,
     owned_top_frame,
     recruited_commander_count,
     replace_player,
@@ -486,7 +489,13 @@ def _placements_for_card(
             continue
         if space.space_id in owner.agent_locations:
             continue
-        if space.space_id == "swordmaster" and owner.swordmaster_acquired:
+        if (
+            space.space_id in ("swordmaster", "imperium_swordmaster")
+            and owner.swordmaster_acquired
+        ):
+            continue
+        if space.space_id == "imperium_high_council" and owner.high_council:
+            # The original High Council: "only once per game" [DI p. 17].
             continue
         requirement_unmet = not card_ignores_influence_requirements(
             card
@@ -695,6 +704,27 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         hand=tuple(card_id for card_id in owner.hand if card_id != card_instance_id),
         in_play=(*owner.in_play, card_instance_id),
     )
+    negotiator_events: tuple[GameEvent, ...] = ()
+    if cost.solari > 0 and leader_triggers(
+        owner.leader_face_id or owner.leader_id, OnBoardSpaceSolariPaid
+    ):
+        # Ruthless Negotiator: a card whenever Solari pay a board space's
+        # printed cost [FAQ p. 2] (docs/rules/imperium-base.md 12), drawn as
+        # its own step after the public placement (OQ-106).
+        source = (
+            f"round:{state.round_number}:player:{action.actor}:ruthless_negotiator"
+        )
+        next_owner = hold_draw(next_owner, OWED_CARD, "ruthless_negotiator", source)
+        negotiator_events = (
+            GameEvent(
+                event_id=f"{source}:{space_id}",
+                kind="leader_ability_resolved",
+                payload=(
+                    ("leader_id", "count_ilban_richese"),
+                    ("player", action.actor),
+                ),
+            ),
+        )
     players = tuple(
         next_owner if player.player_id == action.actor else player
         for player in state.players
@@ -948,6 +978,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     events = (
         placement_event,
         *infiltration_events,
+        *negotiator_events,
         *(() if control_event is None else (control_event,)),
         *smuggle_events,
     )

@@ -7,7 +7,7 @@ from collections.abc import Callable, KeysView
 from copy import replace
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Final
+from typing import Any, ClassVar, Final
 
 from dune_imperium.config import RulesetConfig
 from dune_imperium.content.rulesets import TUEK_SIETCH, content_for
@@ -185,8 +185,16 @@ class GameState:
     scouts_bids: tuple[tuple[int, int, bool], ...] = ()
     scouts_market_cards: tuple[str, ...] = ()
     scouts_calls: tuple[tuple[int, int], ...] = ()
+    # The original game's Sort Through the Chaos: its winner takes the
+    # Mentat "at the start of the next round" [FAQ p. 4]; the seat, until
+    # then (docs/rules/imperium-base.md 9).
+    mentat_owed_to: int | None = None
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
+
+    # Fields added after saves and records already held state hashes, left
+    # out of the canonical state hash at their default (``canonical_state_hash``).
+    HASH_OMITTED_AT_DEFAULT: ClassVar[frozenset[str]] = frozenset({"mentat_owed_to"})
 
     def __post_init__(self) -> None:
         # Only the checks: copy.replace builds copies without the constructor
@@ -273,6 +281,16 @@ def _check_seats(state: GameState) -> None:
         range(state.config.players)
     ):
         raise ValueError("players must be stored in seat order")
+
+
+def _check_mentat(state: GameState) -> None:
+    """One Mentat (the original game, docs/rules/imperium-base.md 9)."""
+
+    seats = state.config.players
+    if state.mentat_owed_to is not None and not 0 <= state.mentat_owed_to < seats:
+        raise ValueError("the Mentat is owed to a configured player")
+    if sum(player.mentat for player in state.players) > 1:
+        raise ValueError("only one player can hold the Mentat")
 
 
 def _check_markets(state: GameState) -> None:
@@ -562,6 +580,9 @@ STATE_CHECKS: Final[tuple[StateCheck, ...]] = (
         _check_seats, frozenset({"config", "players"}), frozenset({"player_id"})
     ),
     StateCheck(_check_markets, frozenset({"imperium_row", "face_up_contract_ids"})),
+    StateCheck(
+        _check_mentat, frozenset({"config", "mentat_owed_to"}), frozenset({"mentat"})
+    ),
     StateCheck(
         _check_contracts,
         frozenset(

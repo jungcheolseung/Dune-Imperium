@@ -555,6 +555,14 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ("cards", _line(DrawPersonalCards(1))),
                 ("combat", _line(GrantCombatDeployment())),
             ),
+            # Foldspace (the original game's Reserve): "Draw 1 card" and "Trash
+            # this card", separate effects (designer ruling, BGG Forum;
+            # docs/rules/imperium-base.md 13.3); trashed by its own effect it
+            # keeps the draw (OQ-022's designer follow-up).
+            _BOX.DRAW_ONE_AND_TRASH_SELF: _icons(
+                ("cards", _line(DrawPersonalCards(1))),
+                ("trash_self", _line(TrashThisCard())),
+            ),
             # Steersman: "Draw 1 card, Recall 1 Agent".
             _BOX.DRAW_ONE_AND_RECALL_AGENT: _icons(
                 ("cards", _line(DrawPersonalCards(1))),

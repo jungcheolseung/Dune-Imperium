@@ -9,20 +9,27 @@ module constants. A definition is still found by its id in its kind's table
 and the like): an id names one printing, so a space or card printed alike in
 two base games shares its id and one printed differently takes its own.
 
-The original Dune: Imperium (``BaseGame.IMPERIUM``) has no content yet:
-its boards, Conflicts, Leaders, Reserve and decks arrive in stages P2-P4 of
-the plan, so its tables are empty but for the starting deck, which is
-Uprising's printing [DI p. 3] (docs/rules/imperium-base.md 2).
+The original Dune: Imperium (``BaseGame.IMPERIUM``) plays on its own board,
+Conflicts, Reserve and Leaders (stage P2, ``content.imperium``); its
+Imperium and Intrigue decks arrive in stage P3 and are empty until then. Its
+starting deck is Uprising's printing [DI p. 3] (docs/rules/imperium-base.md
+2).
 """
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Final
 
 from dune_imperium.config import BaseGame, RulesetConfig
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS
+from dune_imperium.content.imperium.board import (
+    IMPERIUM_BOARD_SPACES,
+    IMPERIUM_MAKER_SPACE_IDS,
+)
+from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
+from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
@@ -40,6 +47,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     GainResources,
     PlaceSpy,
+    RecruitTroops,
 )
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS,
@@ -48,7 +56,11 @@ from dune_imperium.content.uprising.imperium import (
     imperium_deck_instance_ids,
 )
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
-from dune_imperium.content.uprising.leaders import LeaderDefinition, leaders_for_choam
+from dune_imperium.content.uprising.leaders import (
+    LEADERS_BY_ID,
+    LeaderDefinition,
+    leaders_for_choam,
+)
 from dune_imperium.content.uprising.objectives import (
     ObjectiveDefinition,
     objectives_for_players,
@@ -72,11 +84,28 @@ from dune_imperium.content.uprising.types import ConflictTier
 # a 3 on the Solari coin (Spacing Guild), the Intrigue card (Bene Gesserit)
 # and the water drop (Fremen) -- read off the board scan against the
 # rulebook icons on 2026-09-19 (docs/lessons.md).
-InfluenceFourBonus = PlaceSpy | GainResources | DrawIntrigueCards
+InfluenceFourBonus = PlaceSpy | GainResources | DrawIntrigueCards | RecruitTroops
 UPRISING_INFLUENCE_FOUR_BONUSES: Final[Mapping[Faction, InfluenceFourBonus]] = (
     MappingProxyType(
         {
             Faction.EMPEROR: PlaceSpy(),
+            Faction.SPACING_GUILD: GainResources(solari=3),
+            Faction.BENE_GESSERIT: DrawIntrigueCards(1),
+            Faction.FREMEN: GainResources(water=1),
+        }
+    )
+)
+
+# The original board's Influence 4 bonuses [DI p. 7], which only its picture
+# prints: two troops (Emperor), 3 Solari (Spacing Guild), an Intrigue card
+# (Bene Gesserit) and a water (Fremen) -- the Steam app's
+# ``WormFactionTrack::FactionTrackBonusAction``, whose Emperor case places a
+# Spy only while the Uprising set is in play (user decision D3, 2026-10-23;
+# docs/base-game-and-ix-plan.md 15.3).
+IMPERIUM_INFLUENCE_FOUR_BONUSES: Final[Mapping[Faction, InfluenceFourBonus]] = (
+    MappingProxyType(
+        {
+            Faction.EMPEROR: RecruitTroops(2),
             Faction.SPACING_GUILD: GainResources(solari=3),
             Faction.BENE_GESSERIT: DrawIntrigueCards(1),
             Faction.FREMEN: GainResources(water=1),
@@ -96,6 +125,20 @@ TUEK_SIETCH: Final = "tuek_sietch"
 # resource each controlled space pays, by space.
 UPRISING_CONTROL_VISIT_BONUSES: Final[Mapping[str, str]] = MappingProxyType(
     {"arrakeen": "solari", "spice_refinery": "solari", "imperial_basin": "spice"}
+)
+# The original game's: Arrakeen and Carthag 1 Solari, Imperial Basin 1 spice
+# [DI p. 10] (docs/rules/imperium-base.md 7).
+IMPERIUM_CONTROL_VISIT_BONUSES: Final[Mapping[str, str]] = MappingProxyType(
+    {"arrakeen": "solari", "carthag": "solari", "imperial_basin": "spice"}
+)
+# The original game's Leaders whose abilities the engine plays, in printed
+# order (docs/base-game-and-ix-plan.md 15.1: stage P2a has four, P2b the
+# other four).
+IMPERIUM_LEADER_IDS: Final = (
+    "glossu_rabban",
+    "count_ilban_richese",
+    "earl_memnon_thorvald",
+    "countess_ariana_thorvald",
 )
 
 
@@ -232,7 +275,6 @@ def _uprising_content(config: RulesetConfig) -> RulesetContent:
     )
 
 
-_NOTHING: Final[Mapping[Any, Any]] = MappingProxyType({})
 _UPRISING_CARD_IDS: Final = frozenset(
     {
         *STARTING_CARDS_BY_ID,
@@ -244,24 +286,25 @@ _UPRISING_CARD_IDS: Final = frozenset(
 
 
 def _imperium_content(config: RulesetConfig) -> RulesetContent:
-    """The original game's content so far (module docstring): no board,
-    Conflicts, Leaders, Reserve or decks yet, and none of the Objectives,
-    observation posts, Contracts or sandworms Uprising prints."""
+    """The original game's content (module docstring): its board, Conflicts,
+    Reserve and Leaders, none of the Objectives, observation posts,
+    Contracts or sandworms Uprising prints, and no Imperium or Intrigue deck
+    until stage P3."""
 
     return RulesetContent(
         config=config,
         base_game=BaseGame.IMPERIUM,
-        board_spaces=(),
+        board_spaces=IMPERIUM_BOARD_SPACES,
         observation_posts=(),
-        conflicts=(),
-        conflict_pool=(),
-        reserve_stacks=(),
-        maker_space_ids=(),
+        conflicts=IMPERIUM_CONFLICTS,
+        conflict_pool=IMPERIUM_CONFLICTS,
+        reserve_stacks=IMPERIUM_RESERVE_STACKS,
+        maker_space_ids=IMPERIUM_MAKER_SPACE_IDS,
         sandworm_space_ids=(),
-        control_visit_bonuses=_NOTHING,
-        influence_four_bonuses=_NOTHING,
-        card_ids=frozenset(entry.card.card_id for entry in starting_deck_entries()),
-        leaders=(),
+        control_visit_bonuses=IMPERIUM_CONTROL_VISIT_BONUSES,
+        influence_four_bonuses=IMPERIUM_INFLUENCE_FOUR_BONUSES,
+        card_ids=_IMPERIUM_CARD_IDS,
+        leaders=tuple(LEADERS_BY_ID[leader_id] for leader_id in IMPERIUM_LEADER_IDS),
         imperium_cards=(),
         imperium_deck_instance_ids=(),
         intrigue_deck_instance_ids=(),
@@ -270,3 +313,11 @@ def _imperium_content(config: RulesetConfig) -> RulesetContent:
         starting_deck_entries=starting_deck_entries(),
         starting_discard_entries=(),
     )
+
+
+_IMPERIUM_CARD_IDS: Final = frozenset(
+    {
+        *(entry.card.card_id for entry in starting_deck_entries()),
+        *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
+    }
+)

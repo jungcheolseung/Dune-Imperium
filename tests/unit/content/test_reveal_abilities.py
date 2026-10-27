@@ -3,6 +3,7 @@
 import pytest
 
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS
+from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
 from dune_imperium.content.uprising.abilities import AbilityMark, AbilityTiming
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
@@ -61,10 +62,13 @@ def test_every_record_names_a_card_with_its_play_data() -> None:
     }
     for entry in (CONTROL_THE_SPICE, EXPERIMENTATION, *STARTING_DECK, *RESERVE_STACKS):
         cards[entry.card.card_id] = True
+    for stack in IMPERIUM_RESERVE_STACKS:
+        cards[stack.card.card_id] = True
     assert set(REVEAL_GAIN_ABILITIES) <= set(cards)
     assert all(cards[card_id] for card_id in REVEAL_GAIN_ABILITIES)
-    assert len(REVEAL_GAIN_ABILITIES) == 51
-    assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == 55
+    # 51 Uprising-family records and the original game's The Spice Must Flow.
+    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1
+    assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == 55 + 1
 
 
 def test_reveal_gain_records_are_automatic_lines() -> None:

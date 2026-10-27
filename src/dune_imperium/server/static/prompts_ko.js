@@ -110,5 +110,9 @@ const PROMPT_KO_PATTERNS = [
   [
     "^Recall (\\d+) placed Spies to gain (\\d+) Victory Point$",
     "배치된 {spy} $1 소환 → {victory_point} $2 획득"
+  ],
+  [
+    "^Choose a faction to gain (\\d+) Influence$",
+    "{influence_any} $1을 얻을 {faction} 선택"
   ]
 ];

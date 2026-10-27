@@ -12,18 +12,20 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from tests.support.observation_growth import V35_SEGMENTS, v35_growth
 
 torch = pytest.importorskip("torch")
 
 from torch import Tensor  # noqa: E402
 
-from dune_imperium import RulesetConfig  # noqa: E402
+from dune_imperium import BaseGame, RulesetConfig  # noqa: E402
 from dune_imperium.adapters.action_codec import ActionCodec  # noqa: E402
 from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     BATTLE_CARD_IDS,
     CONFLICT_IDS,
     CONTRACT_IDS,
     FACTION_IDS,
+    IMPERIUM_IDENTITIES,
     INTRIGUE_IDS,
     LEADER_IDS,
     OBSERVATION_SEGMENTS,
@@ -39,6 +41,8 @@ from dune_imperium.agents import StateAgent  # noqa: E402
 from dune_imperium.agents.network_search_agent import NetworkSearchAgent  # noqa: E402
 from dune_imperium.agents.registry import CHECKPOINT_PREFIX, make_agent  # noqa: E402
 from dune_imperium.content.bloodlines.tech import TECH_IDS  # noqa: E402
+from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS  # noqa: E402
+from dune_imperium.content.rulesets import content_for  # noqa: E402
 from dune_imperium.core.chance import ChanceResolver  # noqa: E402
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision  # noqa: E402
 from dune_imperium.core.state import GamePhase  # noqa: E402
@@ -95,7 +99,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Stage B3d-3: a refusal's ``of`` is a label. Engine audit 2026-10-22, P4:
 # Interstellar Conspiracy's record is two icons; P6: Guild Envoy's draw is
 # an armed icon; OQ-128: Overthrow gains two Influence instead of one.
-_GOLDEN_DIGEST = "59761de584e0dd1afd48ae418b975b274f59036ccc6065ffb8b9b4bca2ac4296"
+# Observation v35 (stage P2a, user approval 2026-10-27): the original game's
+# entities join the personal, Conflict, space and Leader vocabularies at
+# their end, with the columns only they use; every Uprising row and the
+# scale of every column an Uprising entity uses stay those of 12294215
+# (405 rows compared; ``entity_features._table``).
+_GOLDEN_DIGEST = "3ba825f5b3f4c8b383b7d1569d5e78dbb94dac72bbf2e1b36d05027ad88f7467"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -186,7 +195,14 @@ def test_feature_tables_follow_the_observation_and_are_pinned() -> None:
     for name, table in tables.items():
         assert table.features.shape == (table.size, len(table.columns)), name
         assert np.all(np.isfinite(table.features)), name
-        assert np.abs(table.features).max() <= 1.0, name
+        # Uprising's entities set the scales (v35): an original entity may
+        # read past 1 in a column an Uprising one uses.
+        uprising = [
+            index
+            for index, entity in enumerate(table.ids)
+            if entity not in IMPERIUM_IDENTITIES
+        ]
+        assert np.abs(table.features[uprising]).max() <= 1.0, name
         # A column no member uses is dropped.
         assert np.all(np.abs(table.features).max(axis=0) > 0), name
     # Costs, effects and kinds are features (two cards share what they share).
@@ -217,10 +233,23 @@ def test_what_an_entity_does_is_read_from_its_records() -> None:
     )
     assert not any(c.startswith("ability=") for c in tables["tech"].columns)
     assert not any(c.startswith("bonus=") for c in tables["research"].columns)
-    # The records tell every card, Leader and tile apart (copies aside).
+    # The records tell every card, Leader and tile apart (copies aside), but
+    # the original game's Leaders whose records stage P2b brings (plan 15.1).
+    pending = {
+        leader.leader_id for leader in IMPERIUM_LEADERS
+    } - {
+        leader.leader_id
+        for leader in content_for(RulesetConfig(base_game=BaseGame.IMPERIUM)).leaders
+    }
+    assert len(pending) == 4
     for name in ("personal", "leader", "tech", "space", "conflict"):
         table = tables[name]
-        assert len({row.tobytes() for row in table.features}) == table.size, name
+        rows = [
+            row.tobytes()
+            for entity, row in zip(table.ids, table.features, strict=True)
+            if entity not in pending
+        ]
+        assert len(set(rows)) == len(rows), name
 
 
 def test_an_action_is_built_from_its_shape() -> None:
@@ -818,6 +847,7 @@ def _after_v31(segment: str) -> bool:
         segment.endswith("_deck_pool")
         or segment.startswith(("private_agent_card_pick", "private_effect_pick"))
         or segment == "base_game"
+        or segment in V35_SEGMENTS
     )
 
 
@@ -829,7 +859,13 @@ def test_the_v31_input_names_are_pinned() -> None:
     input and the 1,140 slot keys identical, in order); the keys' digest is
     the v31 slot table's own golden digest."""
 
-    layout = [row for row in observation_layout() if not _after_v31(row[0])]
+    # Today's layout without the later segments and v35's columns.
+    grown = {segment.name: v35_growth(segment) for segment in OBSERVATION_SEGMENTS}
+    layout = [
+        (name, offset, length - grown[name])
+        for name, offset, length in observation_layout()
+        if not _after_v31(name)
+    ]
     names, keys = legacy_inputs(31, layout, 64)
 
     def digest(rows: Sequence[str]) -> str:
@@ -870,10 +906,14 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     network = _network(_FULL)
     path = _saved(tmp_path, _FULL)
     document = checkpoint_module._read(path)
-    # Cut the file down to what v31 code wrote.
-    old_layout = [
-        row for row in document["observation_layout"] if not _after_v31(row[0])
-    ]
+    # Cut the file down to what v31 code wrote (without v35's columns).
+    grown = {segment.name: v35_growth(segment) for segment in OBSERVATION_SEGMENTS}
+    old_layout = []
+    offset = 0
+    for name, _, length in document["observation_layout"]:
+        if not _after_v31(name):
+            old_layout.append((name, offset, length - grown[name]))
+            offset += length - grown[name]
     old_names, old_keys = legacy_inputs(31, old_layout, network.entity_width)
     state = dict(document["state_dict"])
     for encoder, key in (
@@ -904,14 +944,16 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     # Four deck-pool zones (v32), the picked Agent card's zone and graft
     # flag (v33, stage B1), the picked effect's card zone, verb, source,
     # box and target count (v33, stage B3) and the seven zones of its picked
-    # targets (v33, the B3c-1 review; a personal card, the B3d-2a review)
-    # and the base-game flag (v34, a raw board input) are the inputs the
-    # file never had.
+    # targets (v33, the B3c-1 review; a personal card, the B3d-2a review),
+    # the base-game flag (v34, a raw board input), and v35's raw columns
+    # (Carthag's Control in the seat encoder; three Reserve stacks, two Maker
+    # spaces and the Mentat's resting flag on the board) and its two Mentat
+    # seat fields are the inputs the file never had.
     assert info.migration.observation_new == network.entity_width * (1 + 3) + (
         network.entity_width + 1
     ) + network.entity_width + len(Verb) + len(Source) + 2 + 7 * (
         network.entity_width
-    ) + 1
+    ) + 1 + (1 + 3 + 2 + 1) + 2 * network.entity_width
     assert info.migration.observation_dropped == 0
     observations = _observations(recorded).clone()
     pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)

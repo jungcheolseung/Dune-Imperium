@@ -140,6 +140,9 @@ class PublicPlayerView:
     # its own turn each waits for the owner's ``place_track_spy`` and holds
     # the turn end back (user ruling 2026-10-04). Public: the track is.
     track_spies_owed: int = 0
+    # The original game's Mentat on this seat's Leader, one of its Agents
+    # this round [DI p. 18]; public, like every Agent.
+    mentat: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,6 +294,9 @@ class PlayerView:
     # The base game (``RulesetConfig.base_game``), public like every setup
     # option (docs/base-game-and-ix-plan.md 4.2 item 8).
     base_game: BaseGame = BaseGame.UPRISING
+    # The original game's Sort Through the Chaos winner, who takes the
+    # Mentat at the next round's start [FAQ p. 4]; public, like the reward.
+    mentat_owed_to: int | None = None
     # The open Agent turn's Agent boxes, as (card instance, still pending):
     # box 0 the placed card, then box 1 its graft partner (Immortality);
     # empty outside an Agent turn. Both cards lie face up in play and each
@@ -643,6 +649,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         scouts_calls=state.scouts_calls,
         epic_game=state.config.epic_game,
         base_game=state.config.base_game,
+        mentat_owed_to=state.mentat_owed_to,
         agent_boxes=agent_box_cards(state),
     )
 
@@ -951,4 +958,5 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         face_down_battle_card_ids=player.face_down_battle_card_ids,
         active_contract_ids=player.active_contract_ids,
         completed_contract_ids=player.completed_contract_ids,
+        mentat=player.mentat,
     )

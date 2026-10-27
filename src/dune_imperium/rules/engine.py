@@ -11,7 +11,8 @@ from collections.abc import Callable, Mapping
 from copy import replace
 from typing import Final
 
-from dune_imperium.config import RulesetConfig
+from dune_imperium.config import BaseGame, RulesetConfig
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import PlayerDecision
@@ -66,6 +67,7 @@ from dune_imperium.rules.agent_turn import (
     legal_turn_start_card_actions,
 )
 from dune_imperium.rules.board_effects import (
+    apply_connections_action,
     apply_desert_tactics_action,
     apply_espionage_action,
     apply_imperial_privilege_action,
@@ -735,6 +737,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "take_desert_riding_hooks": apply_maker_space_action,
     "summon_maker_sandworms": apply_maker_space_action,
     "choose_shipping_influence": apply_shipping_action,
+    "choose_connections_influence": apply_connections_action,
     "trash_card_for_desert_tactics": apply_desert_tactics_action,
     "trash_intrigue_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_agent_for_imperial_privilege": apply_imperial_privilege_action,
@@ -939,7 +942,9 @@ class UprisingRulesEngine(RulesEngine):
     # they existed would load (2026-10-08).
     report_only_event_kinds = frozenset({"combat_standing", "cards_revealed"})
 
-    def __init__(self, leader_ids: tuple[str, ...] = DEFAULT_LEADER_IDS) -> None:
+    def __init__(self, leader_ids: tuple[str, ...] | None = None) -> None:
+        # None: ``DEFAULT_LEADER_IDS`` in Uprising, the original game's first
+        # four Leaders there (``content_for(config).leaders``).
         self._leader_ids = leader_ids
 
     def _initial_state(self, config: RulesetConfig, seed: int) -> GameState:
@@ -947,7 +952,16 @@ class UprisingRulesEngine(RulesEngine):
             # The OQ-007 draft pauses in SETUP on the pick frames; the
             # engine's fixed leader_ids only serve the non-draft path.
             return create_draft_initial_state(config, seed).state
-        setup = create_initial_state(config, seed, self._leader_ids)
+        leader_ids = self._leader_ids
+        if leader_ids is None:
+            leader_ids = (
+                DEFAULT_LEADER_IDS
+                if config.base_game is BaseGame.UPRISING
+                else tuple(
+                    leader.leader_id for leader in content_for(config).leaders[:4]
+                )
+            )
+        setup = create_initial_state(config, seed, leader_ids)
         if setup.state.phase is GamePhase.SETUP:
             # Steersman Y'rkoon's Navigation picks pause the game in SETUP
             # like the draft; Round Start follows once they are made.

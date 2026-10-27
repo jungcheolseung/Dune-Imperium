@@ -295,9 +295,6 @@ BOARD_SPACES: Final = (
     ),
 )
 
-BOARD_SPACES_BY_ID: Final[Mapping[str, BoardSpace]] = MappingProxyType(
-    {space.space_id: space for space in BOARD_SPACES}
-)
 
 OBSERVATION_POSTS: Final = (
     ObservationPost(
@@ -343,4 +340,15 @@ OBSERVATION_POSTS: Final = (
         "fremen-desert-tactics-fremkit",
         ("desert_tactics", "fremkit"),
     ),
+)
+
+# One table for both base games (docs/base-game-and-ix-plan.md 4.2 item 7): the
+# original Dune: Imperium's own spaces follow Uprising's. Imported last, as
+# they are built from the types above (``content.imperium``).
+from dune_imperium.content.imperium.board import (  # noqa: E402
+    IMPERIUM_ONLY_BOARD_SPACES,
+)
+
+BOARD_SPACES_BY_ID: Final[Mapping[str, BoardSpace]] = MappingProxyType(
+    {space.space_id: space for space in (*BOARD_SPACES, *IMPERIUM_ONLY_BOARD_SPACES)}
 )

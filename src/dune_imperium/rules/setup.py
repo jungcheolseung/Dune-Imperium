@@ -4,7 +4,7 @@ from copy import replace
 from dataclasses import dataclass
 from typing import Final
 
-from dune_imperium.config import RulesetConfig
+from dune_imperium.config import BaseGame, RulesetConfig
 from dune_imperium.content.bloodlines.sardaukar import (
     COMMANDER_BANK_AT_SETUP,
     COMMANDER_SETUP_SPACE_IDS,
@@ -553,7 +553,13 @@ def apply_leader_setup(player: PlayerState, leader_id: str) -> PlayerState:
         ),
         # Strange Form: "You start the game with no [water]" [Steersman
         # Y'rkoon card].
-        resources=replace(player.resources, water=definition.starting_water),
+        # Arrakis Fiefdom: 1 spice and 1 Solari more [Rabban card].
+        resources=replace(
+            player.resources,
+            water=definition.starting_water,
+            spice=player.resources.spice + definition.extra_starting_spice,
+            solari=player.resources.solari + definition.extra_starting_solari,
+        ),
         # Tactician: the Tactics token starts on the four-player space
         # [Bloodlines p. 12].
         tactics_track_space=(
@@ -580,31 +586,25 @@ def create_initial_state(
     resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
 
     conflict = _conflict_setup(config, resolver)
-    players, first_player = assign_objectives(
-        _unshuffled_players(config),
-        resolver.resolve(objective_setup_decision(config)),
-        config,
-    )
+    players, first_player = _first_player_setup(config, resolver)
     # The shuffle decision below then covers the reduced decks.
     players = tuple(
         apply_leader_setup(player, leader_id)
         for player, leader_id in zip(players, leader_ids, strict=True)
     )
 
-    imperium = resolver.resolve(
-        _shuffle_decision(
-            "setup:imperium_deck",
-            "Shuffle the Imperium deck",
-            content_for(config).imperium_deck_instance_ids,
-        )
-    ).values
-    intrigue = resolver.resolve(
-        _shuffle_decision(
-            "setup:intrigue_deck",
-            "Shuffle the Intrigue deck",
-            content_for(config).intrigue_deck_instance_ids,
-        )
-    ).values
+    imperium = _shuffled(
+        resolver,
+        "setup:imperium_deck",
+        "Shuffle the Imperium deck",
+        content_for(config).imperium_deck_instance_ids,
+    )
+    intrigue = _shuffled(
+        resolver,
+        "setup:intrigue_deck",
+        "Shuffle the Intrigue deck",
+        content_for(config).intrigue_deck_instance_ids,
+    )
     # Sardaukar Commander sets aside both Sardaukar Contracts before the
     # shuffle; only Shaddam can acquire them [Shaddam Corrino IV card].
     sardaukar_set_aside = (
@@ -640,6 +640,9 @@ def create_initial_state(
         first_player=first_player,
         players=players,
         maker_bonus_spice=content_for(config).maker_bonus_spice_for(leader_ids),
+        # The original game prints no Shield Wall [Main p. 5]
+        # (docs/rules/imperium-base.md 2).
+        shield_wall_present=config.base_game is BaseGame.UPRISING,
         conflict_deck=conflict.deck,
         unused_conflict_ids=conflict.unused,
         imperium_deck=imperium[5:],
@@ -754,26 +757,20 @@ def create_draft_initial_state(
     resolver = ChanceResolver(seed=seed, recorded=recorded_outcomes)
 
     conflict = _conflict_setup(config, resolver)
-    players, first_player = assign_objectives(
-        _unshuffled_players(config),
-        resolver.resolve(objective_setup_decision(config)),
-        config,
-    )
+    players, first_player = _first_player_setup(config, resolver)
     pool = resolver.resolve(leader_draft_pool_decision(config)).values
-    imperium = resolver.resolve(
-        _shuffle_decision(
-            "setup:imperium_deck",
-            "Shuffle the Imperium deck",
-            content_for(config).imperium_deck_instance_ids,
-        )
-    ).values
-    intrigue = resolver.resolve(
-        _shuffle_decision(
-            "setup:intrigue_deck",
-            "Shuffle the Intrigue deck",
-            content_for(config).intrigue_deck_instance_ids,
-        )
-    ).values
+    imperium = _shuffled(
+        resolver,
+        "setup:imperium_deck",
+        "Shuffle the Imperium deck",
+        content_for(config).imperium_deck_instance_ids,
+    )
+    intrigue = _shuffled(
+        resolver,
+        "setup:intrigue_deck",
+        "Shuffle the Intrigue deck",
+        content_for(config).intrigue_deck_instance_ids,
+    )
     # The full Contract order is drawn now; whether the Sardaukar Contracts
     # leave it is only known after the picks, so the market is dealt then.
     contracts = (
@@ -799,6 +796,7 @@ def create_draft_initial_state(
         config=config,
         seed=seed,
         phase=GamePhase.SETUP,
+        shield_wall_present=config.base_game is BaseGame.UPRISING,
         first_player=first_player,
         players=players,
         conflict_deck=conflict.deck,
@@ -834,18 +832,85 @@ def create_draft_initial_state(
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 
+# The options the original game cannot be played with yet, and the stage of
+# docs/base-game-and-ix-plan.md that brings each (15.4): its own promo cards
+# arrive with its decks (P3), Rise of Ix and its Epic Game Mode in P4, the
+# Uprising expansions with it in P7 and Arrakeen Scouts in P8; the Leader
+# draft deals six of its eight Leaders once P2b has them all.
+_IMPERIUM_PENDING_OPTIONS: Final = (
+    ("choam_module", "P7"),
+    ("promo_cards", "P3"),
+    ("bloodlines", "P7"),
+    ("tech_module", "P7"),
+    ("immortality", "P7"),
+    ("go_to_11", "P7"),
+    ("epic_game", "P4"),
+    ("arrakeen_scouts", "P8"),
+    ("rise_of_ix", "P4"),
+    ("leader_draft", "P2b"),
+)
+
+
 def _require_content(config: RulesetConfig) -> None:
     """Refuse a combination whose content is not in the engine yet, rather
-    than play it without: the original Dune: Imperium's board arrives in
-    stage P2 of docs/base-game-and-ix-plan.md, Rise of Ix in P4 (P7 with
-    Uprising)."""
+    than play it without: Rise of Ix arrives in stage P4 of
+    docs/base-game-and-ix-plan.md (P7 with Uprising), and the original game
+    takes no option yet (``_IMPERIUM_PENDING_OPTIONS``)."""
 
     if not content_for(config).board_spaces:
         message = f"the {config.base_game} base game has no board in the engine yet"
         raise NotImplementedError(message)
+    if config.base_game is BaseGame.IMPERIUM:
+        for option, stage in _IMPERIUM_PENDING_OPTIONS:
+            if getattr(config, option):
+                message = (
+                    f"the original game takes {option} from stage {stage} of "
+                    "the base game plan"
+                )
+                raise NotImplementedError(message)
     if config.rise_of_ix:
         message = "Rise of Ix has no content in the engine yet"
         raise NotImplementedError(message)
+
+
+def _first_player_setup(
+    config: RulesetConfig, resolver: ChanceResolver
+) -> tuple[tuple[PlayerState, ...], int]:
+    """The seats and the First Player: by the Objectives in Uprising
+    [Main p. 5]; at random in the original game, which prints no Objective
+    ("Determine a first player randomly" [DI p. 5], docs/rules/imperium-base.md
+    4 H) -- seat 0 with ``first_player_seat_zero`` (OQ-132)."""
+
+    players = _unshuffled_players(config)
+    if config.base_game is BaseGame.UPRISING:
+        return assign_objectives(
+            players, resolver.resolve(objective_setup_decision(config)), config
+        )
+    if config.first_player_seat_zero:
+        return players, 0
+    (seat,) = resolver.resolve(first_player_decision()).values
+    return players, int(seat)
+
+
+def first_player_decision() -> ChanceDecision:
+    """The original game's random First Player [DI p. 5]."""
+
+    return ChanceDecision(
+        decision_id="setup:first_player",
+        prompt="Randomly determine the First Player",
+        options=("0", "1", "2", "3"),
+    )
+
+
+def _shuffled(
+    resolver: ChanceResolver, decision_id: str, prompt: str, cards: tuple[str, ...]
+) -> tuple[str, ...]:
+    """A shuffle of ``cards``; none while the deck is empty (the original
+    game's Imperium and Intrigue decks until stage P3)."""
+
+    if not cards:
+        return ()
+    return resolver.resolve(_shuffle_decision(decision_id, prompt, cards)).values
 
 
 def _validate_leader_selection(

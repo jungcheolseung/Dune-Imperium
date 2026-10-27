@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from numbers import Integral
 from typing import Final
 
-from dune_imperium.adapters.observation_encoding import MAKER_SPACE_IDS
 from dune_imperium.config import BaseGame, RulesetConfig
 from dune_imperium.content.arrakeen_scouts import (
     AUCTIONS,
@@ -30,7 +29,7 @@ from dune_imperium.content.immortality.tleilaxu import (
     tleilaxu_cards_for,
     tleilaxu_deck_instance_ids,
 )
-from dune_imperium.content.rulesets import RulesetContent, content_for
+from dune_imperium.content.rulesets import TUEK_SIETCH, RulesetContent, content_for
 from dune_imperium.content.uprising.abilities import AbilityStructure
 from dune_imperium.content.uprising.agent_abilities import agent_box_ability
 from dune_imperium.content.uprising.board import (
@@ -94,9 +93,14 @@ from dune_imperium.rules.acquisition import (
 )
 from dune_imperium.rules.action_shapes import ACTION_SHAPES, Source
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
-from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
+from dune_imperium.rules.board_effects import (
+    AUTOMATIC_BOARD_ICONS,
+    IMPERIUM_BOARD_ICONS,
+    IMPERIUM_ONLY_BOARD_ICONS,
+)
 from dune_imperium.rules.combat import (
     COMBAT_REWARD_ICON_KINDS,
+    IMPERIUM_REWARD_ICON_KINDS,
     conflict_reward_icon_kinds,
 )
 from dune_imperium.rules.contracts import (
@@ -893,12 +897,19 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
     # A Conflict reward recipient resolves its reward icon by icon (stage B2,
     # OQ-112); a Deep Cover Spy is printed only on Bloodlines Conflicts.
+    printed_reward_kinds = {
+        kind
+        for conflict in content.conflicts
+        for kind in conflict_reward_icon_kinds(conflict.card.card_id)
+    }
     templates.extend(
         ActionTemplate(
             action_id="resolve_combat_reward_icon", arguments=(("effect", kind),)
         )
         for kind in COMBAT_REWARD_ICON_KINDS
-        if (kind != "deep_cover_spy" or config.bloodlines)
+        # The original game's kinds only where its Conflicts print them.
+        if (kind not in IMPERIUM_REWARD_ICON_KINDS or kind in printed_reward_kinds)
+        and (kind != "deep_cover_spy" or config.bloodlines)
         and (kind not in _SPY_REWARD_ICONS or content.observation_posts)
         and (kind != "contract" or content.contract_instance_ids)
         # Planetary Array's row of the winner's window (OQ-121).
@@ -911,6 +922,12 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("effect", key),),
         )
         for key in AUTOMATIC_BOARD_ICONS
+        # Each board's own icons (plan 15.4): Uprising's rows as they were.
+        if (
+            key in IMPERIUM_BOARD_ICONS
+            if content.base_game is BaseGame.IMPERIUM
+            else key not in IMPERIUM_ONLY_BOARD_ICONS
+        )
     )
     # One Agent-box resolution per printed automatic icon of a multi-icon
     # card (OQ-027); single-effect boxes keep the argument-less template.
@@ -1001,13 +1018,17 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             arguments=(("space_id", space.space_id),),
         )
         for space in catalog_spaces(config)
+        # Imperial Privilege is an Uprising space (the original board has none).
+        if any(space.space_id == "imperial_privilege" for space in content.board_spaces)
     )
+    # A Reserve card bought with Persuasion; Foldspace is not (OQ-125).
     templates.extend(
         ActionTemplate(
             action_id="acquire_reserve",
             arguments=(("card_id", stack.card.card_id),),
         )
         for stack in content.reserve_stacks
+        if not stack.icon_only
     )
     imperium_instances = content.imperium_deck_instance_ids
     intrigue_instances = content.intrigue_deck_instance_ids
@@ -1333,6 +1354,13 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         "choose_distinct_combat_reward_influence",
         "choose_leader_signet_influence",
         "choose_shipping_influence",
+        # The original game's Connections (Earl Memnon Thorvald): only in
+        # its catalog, so Uprising's rows stay what they were.
+        *(
+            ("choose_connections_influence",)
+            if content.base_game is BaseGame.IMPERIUM
+            else ()
+        ),
     ):
         templates.extend(
             ActionTemplate(
@@ -1917,7 +1945,12 @@ def _owed_draw_printers(
     if config.tech_module:
         printers.append((Source.TECH, "choam_transports"))
     printers.extend(
-        (Source.LEADER, face) for face in faces if face == "steersman_y_rkoon"
+        (Source.LEADER, face)
+        for face in faces
+        # Hungry for Spice; the original game's Ruthless Negotiator and
+        # Spice Addict.
+        if face
+        in ("steersman_y_rkoon", "count_ilban_richese", "countess_ariana_thorvald")
     )
     return tuple(printers)
 
@@ -2145,6 +2178,8 @@ _LEADER_SPY_FACES: Final = frozenset(
 # rules tell the leaders apart by id (``leader_abilities``).
 _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "advance_feyd_track": frozenset({"feyd_rautha_harkonnen"}),
+    # The original game's Connections.
+    "choose_connections_influence": frozenset({"earl_memnon_thorvald"}),
     # The Reveal leader abilities (``leader_abilities._leader_reveal_ability``).
     "recall_spy_for_leader": frozenset({"feyd_rautha_harkonnen"}),
     "retreat_leader_troop": frozenset({"lady_amber_metulli"}),
@@ -2488,11 +2523,13 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for card_id in all_intrigue
         for seat in range(config.players)
     )
+    # Esmar Tuek's Smuggle Spice: the board's Maker spaces and his own Tuek's
+    # Sietch (rows of his face only, ``_LEADER_ROW_FACES``).
     templates.extend(
         ActionTemplate(
             action_id="take_leader_bonus_spice", arguments=(("space_id", space_id),)
         )
-        for space_id in MAKER_SPACE_IDS
+        for space_id in (*content_for(config).maker_space_ids, TUEK_SIETCH)
     )
     templates.extend(_trash_templates(config, "trash_optional_card"))
     # Fedaykin Maneuver retreats any number, Commanders included: ``count``

@@ -5,6 +5,7 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
+from dune_imperium.config import BaseGame
 from dune_imperium.simulation.coverage import Census, merge_coverage, zero_coverage
 from dune_imperium.simulation.sweep import (
     POLICIES,
@@ -160,6 +161,15 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--base-game",
+        choices=[game.value for game in BaseGame],
+        default=BaseGame.UPRISING.value,
+        help=(
+            "the base game: Uprising, or the original Dune: Imperium "
+            "(default: uprising)"
+        ),
+    )
+    parser.add_argument(
         "--max-steps",
         type=int,
         default=30_000,
@@ -241,6 +251,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         arrakeen_scouts=arguments.arrakeen_scouts,
         rotate_leaders=arguments.rotate_leaders,
         collect_coverage=arguments.coverage_json is not None,
+        base_game=BaseGame(arguments.base_game),
     )
     report = run_sweep(specs, workers=arguments.workers)
 

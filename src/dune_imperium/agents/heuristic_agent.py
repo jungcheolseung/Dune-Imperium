@@ -110,6 +110,7 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # confirm is the Skill choice window's only action.
     "resolve_commander_without_skill": 0.0,
     "choose_leader_signet_influence": 2.0,
+    "choose_connections_influence": 2.0,
     "choose_intrigue_faction": 2.0,
     # Resource pickups.
     "harvest_maker_spice": 2.0,
@@ -748,6 +749,8 @@ _FACTION_CHOICE_FAMILIES: Final = frozenset(
         "choose_distinct_combat_reward_influence",
         "choose_leader_signet_influence",
         "choose_shipping_influence",
+        # The original game's Earl Memnon Thorvald.
+        "choose_connections_influence",
         "pay_reveal_spice_influence",
         "choose_research_influence",
         "gain_reveal_faction_influence",

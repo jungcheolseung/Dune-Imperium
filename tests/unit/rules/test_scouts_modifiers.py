@@ -13,7 +13,11 @@ from typing import Any
 from tests.support.reward_windows import settle_reward_window
 
 from dune_imperium import RulesetConfig
-from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES,
+    BOARD_SPACES_BY_ID,
+    Faction,
+)
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.player import Influence, PlayerState
@@ -82,7 +86,8 @@ def test_unlikely_allies_waives_influence_requirements_for_the_round() -> None:
 
 def test_eyes_on_arrakis_makes_faction_spaces_combat_spaces() -> None:
     state = _state(_owner(), EYES_ON_ARRAKIS)
-    faction_spaces = [s for s in BOARD_SPACES_BY_ID.values() if s.faction is not None]
+    # Uprising's board (the id table holds the original game's spaces too).
+    faction_spaces = [s for s in BOARD_SPACES if s.faction is not None]
     assert len(faction_spaces) == 8
     assert all(space_is_combat(state, space) for space in faction_spaces)
     assert not space_is_combat(state, BOARD_SPACES_BY_ID["high_council"])

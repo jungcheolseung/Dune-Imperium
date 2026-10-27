@@ -116,9 +116,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     OnAgentSentTo,
+    OnBoardSpaceSolariPaid,
     OnCardTrashed,
     OnConflictWon,
     OnContractCompleted,
+    OnHighCouncilSeatTaken,
+    OnMakerSpiceHarvested,
     OnOpponentAgentAtSpiedMakerSpace,
     OnReachInfluence,
     OnRevealAcquisitionThisRound,
@@ -167,6 +170,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TakeContract,
     TakeControl,
     TakeHighCouncilSeat,
+    TakeMentat,
     TakeSetupSpice,
     TakeSwordmaster,
     TechTilesAtLeast,
@@ -971,6 +975,10 @@ def reward_text_ko(reward: Reward) -> str:
         case TakeSwordmaster():
             # Quotes ``display/spaces.py``'s Swordmaster line.
             return "세 번째 {agent} 가져옴 (이번 라운드부터 사용 가능)"
+        case TakeMentat():
+            # The original game's Mentat: no Korean source names it yet, so
+            # the term stays English (module docstring).
+            return "장소에서 Mentat 가져옴"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "당신 {leader}의 {signet_ring} 능력 사용"
@@ -1047,6 +1055,13 @@ def trigger_text_ko(trigger: Trigger) -> str:
             return "계약을 완수할 때마다"
         case OnConflictWon():
             return "{conflict}에서 승리할 때마다"
+        case OnBoardSpaceSolariPaid():
+            return "게임판 장소의 비용으로 {solari}를 낼 때마다"
+        case OnHighCouncilSeatTaken():
+            # Quotes ``TakeHighCouncilSeat``'s "원로회 자리".
+            return "원로회 자리를 차지할 때"
+        case OnMakerSpiceHarvested():
+            return "메이커 장소에서 {spice}를 얻을 때마다"
         case _:
             assert_never(trigger)
 

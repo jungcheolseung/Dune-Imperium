@@ -2,6 +2,7 @@
 
 import pytest
 
+from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
 from dune_imperium.content.uprising.abilities import AbilityTiming
 from dune_imperium.content.uprising.conflict_abilities import CONFLICT_REWARD_ABILITIES
 from dune_imperium.content.uprising.conflicts import CONFLICTS
@@ -45,10 +46,13 @@ def test_every_contract_tile_takes_its_terms_from_its_record() -> None:
 
 
 def test_every_conflict_takes_its_three_rows_from_its_records() -> None:
+    # The original game's cards share the table (docs/base-game-and-ix-plan.md
+    # 4.2 item 7).
+    conflicts = (*CONFLICTS, *IMPERIUM_CONFLICTS)
     assert {
-        conflict.card.card_id for conflict in CONFLICTS if conflict.reward_rows
+        conflict.card.card_id for conflict in conflicts if conflict.reward_rows
     } == set(CONFLICT_REWARD_ABILITIES)
-    for conflict in CONFLICTS:
+    for conflict in conflicts:
         # The definition holds the records themselves (no compiled copy).
         rows = CONFLICT_REWARD_ABILITIES[conflict.card.card_id]
         assert conflict.reward_rows is not None

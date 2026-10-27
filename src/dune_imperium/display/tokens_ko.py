@@ -217,6 +217,8 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     ),
     PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE: "{influence_any:1} 선택",
     PersonalCardAgentEffect.DRAW_ONE_AND_RECALL_AGENT: "{draw:1}, {agent} 소환",
+    # The original game's Foldspace (Reserve); TRASH_SELF's wording.
+    PersonalCardAgentEffect.DRAW_ONE_AND_TRASH_SELF: "{draw:1}, 이 카드 {trash}",
     PersonalCardAgentEffect.DRAW_PERSONAL_CARD: "{draw:1}",
     PersonalCardAgentEffect.DRAW_PER_SANDWORM_IN_CONFLICT: (
         "{conflict}의 {sandworm}마다 {draw:1}"

@@ -16,6 +16,7 @@ from typing import Final
 from dune_imperium.content.uprising.abilities import (
     Ability,
     AbilityMark,
+    AbilityStructure,
     AbilityTiming,
 )
 from dune_imperium.content.uprising.board import (
@@ -29,11 +30,15 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
     EffectSection,
+    GainInfluence,
     GainResources,
     HasAlliance,
     InfluenceAtLeast,
     OnAgentSentTo,
+    OnBoardSpaceSolariPaid,
     OnCardTrashed,
+    OnHighCouncilSeatTaken,
+    OnMakerSpiceHarvested,
     OnOpponentAgentAtSpiedMakerSpace,
     OnReachInfluence,
     OnRoundStart,
@@ -170,6 +175,11 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "steersman_y_rkoon",
         # Tech Module (card face, 2026-09-07).
         "kota_odax_of_ix",
+        # The original game's (docs/rules/imperium-base.md 12; stage P2a).
+        "glossu_rabban",
+        "count_ilban_richese",
+        "earl_memnon_thorvald",
+        "countess_ariana_thorvald",
     }
 )
 
@@ -616,7 +626,19 @@ def _resolve_automatic_signet(
     next_owner = owner
     gained: dict[str, int] = {"solari": 0, "spice": 0, "water": 0}
     recruit_shortfall: tuple[GameEvent, ...] = ()
-    for line in record.sections:
+    lines = record.sections
+    if record.structure is AbilityStructure.ONE_OF:
+        # Brutality's "-OR-" is no choice: the first line whose condition
+        # holds now (``content.uprising.leader_abilities``).
+        lines = (
+            next(
+                line
+                for line in lines
+                if line.condition is None
+                or _signet_condition_holds(line.condition, owner, context)
+            ),
+        )
+    for line in lines:
         holds = line.condition is None or _signet_condition_holds(
             line.condition, owner, context
         )
@@ -783,7 +805,17 @@ def _check_signet_records() -> None:
             if draws and (len(rewards) > 1 or record.sections[0].condition):
                 raise ValueError(f"{face_id}: a Signet draw resolves alone")
             recruits = (RecruitTroops, RecruitUndeployableTroops)
-            if sum(isinstance(reward, recruits) for reward in rewards) > 1:
+            # An automatic "-OR-" (Brutality) pays one line, the first whose
+            # condition holds; its last line holds always.
+            one_of = record.structure is AbilityStructure.ONE_OF
+            if one_of and record.sections[-1].condition is not None:
+                raise ValueError(f"{face_id}: an automatic -OR- ends unconditioned")
+            if any(
+                sum(isinstance(reward, recruits) for reward in paid) > 1
+                for paid in (
+                    [line.rewards for line in record.sections] if one_of else [rewards]
+                )
+            ):
                 raise ValueError(f"{face_id}: a Signet recruits once")
             if record.icons and face_id not in LEADERS_BY_ID:
                 # ``_SIGNET_ICONS`` is read by the Leader's id.
@@ -800,7 +832,8 @@ def _check_signet_records() -> None:
                 if record.icons and not gains_only:
                     raise ValueError(f"{face_id}: a Signet icon pays resources")
                 if line.condition is not None and not (
-                    gains_only and _signet_condition_supported(line.condition)
+                    (gains_only or one_of)
+                    and _signet_condition_supported(line.condition)
                 ):
                     # Only a resource line is judged (0 when it fails).
                     raise ValueError(f"{face_id}: no such automatic Signet condition")
@@ -3222,6 +3255,15 @@ def _leader_trigger_supported(
             return face_id == "piter_de_vries"
         case OnSpiceGainedInTurnAtLeast(), DrawPersonalCards(count=1):
             return True
+        # The original game's: Ruthless Negotiator's card (``agent_turn``),
+        # Spice Addict's (``board_effects``), both held draws; Connections'
+        # chosen Influence (``board_effects``, its own icon of the visit).
+        case OnBoardSpaceSolariPaid(), DrawPersonalCards(count=1):
+            return face_id == "count_ilban_richese"
+        case OnMakerSpiceHarvested(), DrawPersonalCards(count=1):
+            return face_id == "countess_ariana_thorvald"
+        case OnHighCouncilSeatTaken(), GainInfluence() if reward == GainInfluence():
+            return face_id == "earl_memnon_thorvald"
     return False
 
 

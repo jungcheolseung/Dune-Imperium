@@ -69,6 +69,9 @@ class PersonalCardAgentEffect(StrEnum):
     )
     GAIN_CHOSEN_INFLUENCE = "gain_chosen_influence"
     DRAW_ONE_AND_RECALL_AGENT = "draw_one_and_recall_agent"
+    # Foldspace (the original game's Reserve): "Draw 1 card" and "Trash this
+    # card", two effects (designer ruling, docs/rules/imperium-base.md 13.3).
+    DRAW_ONE_AND_TRASH_SELF = "draw_one_and_trash_self"
     DRAW_PERSONAL_CARD = "draw_personal_card"
     DRAW_PER_SANDWORM_IN_CONFLICT = "draw_per_sandworm_in_conflict"
     DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD = (

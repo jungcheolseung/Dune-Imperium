@@ -16,6 +16,9 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
 
+from dune_imperium.content.imperium.conflict_abilities import (
+    IMPERIUM_CONFLICT_REWARD_ABILITIES,
+)
 from dune_imperium.content.uprising.abilities import (
     Ability,
     AbilityTiming,
@@ -56,6 +59,9 @@ def _row(*lines: EffectSection) -> Ability:
 CONFLICT_REWARD_ABILITIES: Final[Mapping[str, tuple[Ability, Ability, Ability]]] = (
     MappingProxyType(
         {
+            # The original game's cards share the table (one id, one
+            # printing; docs/base-game-and-ix-plan.md 4.2 item 7).
+            **IMPERIUM_CONFLICT_REWARD_ABILITIES,
             # Skirmish (Crysknife).
             "skirmish_crysknife": (
                 _row(_line(GainInfluence())),

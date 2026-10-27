@@ -10,8 +10,10 @@ dedicated actions further down this module.
 """
 
 from copy import replace
+from types import MappingProxyType
 from typing import Final, assert_never
 
+from dune_imperium.config import BaseGame
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.abilities import Ability, AbilityMark
@@ -22,21 +24,27 @@ from dune_imperium.content.uprising.board_abilities import (
     board_space_ability,
 )
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireReserveCard,
     DrawIntrigueCards,
     DrawPersonalCards,
     EffectSection,
     GainInfluence,
     GainResources,
+    OnHighCouncilSeatTaken,
+    OnMakerSpiceHarvested,
     PlaceSpy,
     RecallAgent,
     RecruitTroops,
     Research,
     TakeContract,
     TakeHighCouncilSeat,
+    TakeMentat,
     TakeSwordmaster,
+    TrashCard,
     TrashIntrigueCard,
     TrashPersonalCard,
 )
+from dune_imperium.content.uprising.leader_abilities import leader_triggers
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.chance import ChanceOutcome
@@ -45,6 +53,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState, Resources
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.acquisition import acquire_reserve_for_intrigue
 from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import keep_trash_recruits, trash_personal_card
@@ -71,9 +80,11 @@ from dune_imperium.rules.effects import (
     turn_agent_in_conflict,
 )
 from dune_imperium.rules.frames import (
+    OWED_CARD,
     FrameKind,
     context_int,
     context_str,
+    hold_draw,
     replace_player,
     top_frame_of_kind,
 )
@@ -104,13 +115,20 @@ from dune_imperium.rules.spy_placement import (
 )
 
 _FRAME_LABEL = "Agent-turn effect frame"
+# The original game's Foldspace Reserve card (``content.imperium.reserve``).
+FOLDSPACE_CARD: Final = "foldspace_card"
 
 # Icon keys resolved by the generic ``resolve_board_effect`` action with
 # ``effect=<key>``. Kept sorted: the action codec enumerates them.
 BOARD_ICON_CARDS: Final = "cards"
 BOARD_ICON_CONTRACT: Final = "contract"
 BOARD_ICON_HIGH_COUNCIL: Final = "high_council"
+BOARD_ICON_FOLDSPACE: Final = "foldspace"
 BOARD_ICON_INTRIGUE: Final = "intrigue"
+BOARD_ICON_MENTAT: Final = "mentat"
+# Earl Memnon Thorvald's Connections: the seat just taken's chosen Influence
+# (``choose_connections_influence``), one more effect of the visit.
+BOARD_ICON_CONNECTIONS: Final = "connections"
 BOARD_ICON_RESOURCES: Final = "resources"
 BOARD_ICON_SWORDMASTER: Final = "swordmaster"
 BOARD_ICON_TROOPS: Final = "troops"
@@ -120,12 +138,32 @@ BOARD_ICON_RESEARCH: Final = "research"
 AUTOMATIC_BOARD_ICONS: Final = (
     BOARD_ICON_CARDS,
     BOARD_ICON_CONTRACT,
+    BOARD_ICON_FOLDSPACE,
     BOARD_ICON_HIGH_COUNCIL,
     BOARD_ICON_INTRIGUE,
+    BOARD_ICON_MENTAT,
     BOARD_ICON_RESEARCH,
     BOARD_ICON_RESOURCES,
     BOARD_ICON_SWORDMASTER,
     BOARD_ICON_TROOPS,
+)
+# The automatic icons only the original game's board prints: the Mentat
+# space's take [DI p. 18] and the Foldspace space's acquisition [DI p. 17].
+# A catalog holds their rows only with a board that prints them, so
+# Uprising's rows stay what they were (docs/base-game-and-ix-plan.md 15.4).
+IMPERIUM_ONLY_BOARD_ICONS: Final = frozenset({BOARD_ICON_FOLDSPACE, BOARD_ICON_MENTAT})
+# The automatic icons the original board prints [DI pp. 17-18]: no Contract
+# and no research (Uprising systems, docs/rules/imperium-base.md 2).
+IMPERIUM_BOARD_ICONS: Final = frozenset(
+    {
+        BOARD_ICON_CARDS,
+        BOARD_ICON_HIGH_COUNCIL,
+        BOARD_ICON_INTRIGUE,
+        BOARD_ICON_RESOURCES,
+        BOARD_ICON_SWORDMASTER,
+        BOARD_ICON_TROOPS,
+        *IMPERIUM_ONLY_BOARD_ICONS,
+    }
 )
 
 # Icon keys resolved through a space's dedicated choice actions.
@@ -174,6 +212,13 @@ def _check_board_choice_records() -> None:
                 TrashPersonalCard(mandatory=False, bonus_spice=0),
             ), AbilityMark.OPTIONAL:
                 pass
+            case (
+                (TrashCard() as trash,),
+                (DrawPersonalCards(),),
+                AbilityMark.OPTIONAL,
+            ) if trash == TrashCard():
+                # Selective Breeding: any card's trash buys the draw it arms.
+                pass
             case (), (
                 GainInfluence(
                     times=1,
@@ -196,6 +241,22 @@ def _check_board_choice_records() -> None:
 
 
 _check_board_choice_records()
+
+
+type _RecordedTrash = tuple[
+    dict[str, ActionValue], str, TrashPersonalCard | TrashCard, EffectSection
+]
+
+
+def _recorded_trash(state: GameState, player: int) -> _RecordedTrash | None:
+    """The visited space's pending optional trash (``_recorded_choice``):
+    Desert Tactics' trash icon, or the arrow of the original game's Selective
+    Breeding, "Trash one card to draw two cards" [DI p. 18]."""
+
+    found = _recorded_choice(state, player, TrashPersonalCard)
+    if found is not None:
+        return found
+    return _recorded_choice(state, player, TrashCard)
 
 
 def _recorded_choice[P](
@@ -236,6 +297,10 @@ CHOICE_DRIVEN_SPACE_IDS = frozenset(
         "desert_tactics",
         "imperial_privilege",
         "tuek_sietch",
+        # The original game's.
+        "imperium_hagga_basin",
+        "the_great_flat",
+        "selective_breeding",
     }
 )
 
@@ -322,7 +387,13 @@ def _gains(ability: Ability) -> tuple[AutomaticEffect, ...]:
                     | Research()
                 ):
                     effects.append(reward)
-                case TakeHighCouncilSeat() | TakeSwordmaster() | TakeContract():
+                case (
+                    TakeHighCouncilSeat()
+                    | TakeSwordmaster()
+                    | TakeContract()
+                    | TakeMentat()
+                    | AcquireReserveCard()
+                ):
                     pass
                 case _:
                     raise TypeError(f"{reward!r} is not a board space icon")
@@ -375,6 +446,18 @@ def board_icon_for_effect(effect: AutomaticEffect) -> str:
             assert_never(effect)
 
 
+def mentat_rests(state: GameState) -> bool:
+    """Whether the Mentat rests on its space: no seat took it this round and
+    no Sort Through the Chaos winner waits for it [FAQ p. 4]
+    (docs/rules/imperium-base.md 9). Only an original game sets it out."""
+
+    return (
+        state.config.base_game is BaseGame.IMPERIUM
+        and state.mentat_owed_to is None
+        and not any(player.mentat for player in state.players)
+    )
+
+
 def board_icons_for(
     state: GameState,
     player: int,
@@ -405,12 +488,26 @@ def board_icons_for(
     match space_id:
         case "high_council" if not owner.high_council:
             icons = [BOARD_ICON_HIGH_COUNCIL]
-        case "swordmaster":
+        case "imperium_high_council":
+            # Once per game [DI p. 17]: a seated seat cannot come back.
+            icons = [BOARD_ICON_HIGH_COUNCIL]
+        case "swordmaster" | "imperium_swordmaster":
             icons = [BOARD_ICON_SWORDMASTER]
         case "sietch_tabr":
             icons = [BOARD_ICON_SIETCH_TABR]
-        case "deep_desert" | "hagga_basin" | "imperial_basin":
+        case (
+            "deep_desert"
+            | "hagga_basin"
+            | "imperial_basin"
+            | "imperium_hagga_basin"
+            | "the_great_flat"
+        ):
             icons = [BOARD_ICON_MAKER]
+        case "selective_breeding":
+            # The two cards wait for the trash that buys them (OQ-106).
+            icons = [BOARD_ICON_TRASH]
+        case "foldspace":
+            icons = [BOARD_ICON_FOLDSPACE]
         case "imperial_privilege":
             icons = [
                 BOARD_ICON_IMPERIAL_PRIVILEGE_INTRIGUE,
@@ -440,6 +537,9 @@ def board_icons_for(
                 )
             ]
             match space_id:
+                case "mentat" if mentat_rests(state):
+                    # "If the Mentat is here, take it" [DI p. 18].
+                    icons.append(BOARD_ICON_MENTAT)
                 case "espionage":
                     icons.append(BOARD_ICON_SPY)
                 case "desert_tactics":
@@ -680,6 +780,16 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
             )
         case None if key == BOARD_ICON_CONTRACT:
             pass
+        case None if key == BOARD_ICON_MENTAT:
+            # "take it and place it on your Leader; this round, you may use it
+            # as one of your Agents" [DI p. 18].
+            if not mentat_rests(state):
+                raise RuntimeError("the Mentat is not on its space")
+            next_owner = replace(
+                owner, mentat=True, agents_available=owner.agents_available + 1
+            )
+        case None if key == BOARD_ICON_FOLDSPACE:
+            pass
         case _:
             raise RuntimeError(f"board icon {key} has no effect on {space_id}")
 
@@ -699,6 +809,17 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
         # OQ-076 (c)): "결정 창 없이 자동으로 넘어가는 곳도 모두 결정 창을
         # 연다" (user ruling 2026-09-30).
         add_board_icon(context, BOARD_ICON_SUBCOMMITTEE)
+    if (
+        key == BOARD_ICON_HIGH_COUNCIL
+        and not owner.high_council
+        and leader_triggers(
+            owner.leader_face_id or owner.leader_id, OnHighCouncilSeatTaken
+        )
+    ):
+        # Connections: on taking a High Council seat, Influence with a
+        # Faction of the owner's choice (docs/rules/imperium-base.md 12), one
+        # more effect of the visit in any order with the others [DI p. 9].
+        add_board_icon(context, BOARD_ICON_CONNECTIONS)
     intrigue_events: tuple[GameEvent, ...] = ()
     if intrigue_draw_count:
         intrigue_draw = draw_or_queue_intrigue_cards(
@@ -721,6 +842,15 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
         next_state = draw.state
         draw_events = draw.events
     contract_events: tuple[GameEvent, ...] = ()
+    if key == BOARD_ICON_FOLDSPACE:
+        # "Acquire a Foldspace card from the Reserve" [DI p. 17]; with the
+        # stack empty there is nothing to take.
+        if dict(next_state.reserve_stacks).get(FOLDSPACE_CARD, 0) > 0:
+            acquired = acquire_reserve_for_intrigue(
+                next_state, player, FOLDSPACE_CARD, to_hand=False, source=source
+            )
+            next_state = acquired.result.state
+            contract_events = acquired.result.events
     if key == BOARD_ICON_CONTRACT:
         contracts = begin_contract_gain(next_state, player, 1, source=source)
         next_state = contracts.state
@@ -1153,6 +1283,71 @@ def apply_shipping_action(
     return RuleResult(state=next_state, events=(*gained.events, event))
 
 
+def connections_influence_pending(state: GameState, player: int) -> bool:
+    """Whether ``player``'s own Agent turn still owes Connections' Influence
+    (Earl Memnon Thorvald, ``BOARD_ICON_CONNECTIONS``)."""
+
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return False
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return False
+    return board_icon_is_pending(context, BOARD_ICON_CONNECTIONS)
+
+
+def legal_connections_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Connections' Faction choices: never one at the top, where the gain is
+    lost (OQ-060); with every cube there the icon waits and lapses at the
+    turn's end (``effects.blocked_board_icons``)."""
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    if not connections_influence_pending(state, player):
+        return ()
+    owner = state.players[player]
+    return tuple(
+        DomainAction(
+            action_id="choose_connections_influence",
+            actor=player,
+            arguments=(("faction", faction.value),),
+        )
+        for faction in Faction
+        if influence_can_rise(owner, faction)
+    )
+
+
+def apply_connections_action(state: GameState, action: DomainAction) -> RuleResult:
+    """Grant Connections' Influence with the chosen Faction."""
+
+    if action not in legal_connections_actions(state, action.actor):
+        raise ValueError("action is not a legal Connections choice")
+    _, context = current_agent_effect_context(state)
+    faction_value = dict(action.arguments).get("faction")
+    if not isinstance(faction_value, str):
+        raise RuntimeError("Connections' Influence choice has invalid Faction")
+    faction = Faction(faction_value)
+    source = f"round:{state.round_number}:player:{action.actor}:connections"
+    gained = gain_faction_influence(
+        state,
+        action.actor,
+        faction,
+        1,
+        event_prefix=f"{source}:influence:{faction.value}",
+    )
+    finish_board_icon(context, BOARD_ICON_CONNECTIONS)
+    next_state = advance_after_effect(gained.state, context, gained.state.players)
+    event = GameEvent(
+        event_id=f"{source}:resolved",
+        kind="leader_ability_resolved",
+        payload=(("leader_id", "earl_memnon_thorvald"), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(*gained.events, event))
+
+
 def lapse_optional_board_effects(state: GameState, player: int) -> RuleResult:
     """Lapse the visit's optional effects left unused when the turn ends.
 
@@ -1222,7 +1417,7 @@ def legal_desert_tactics_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    found = _recorded_choice(state, player, TrashPersonalCard)
+    found = _recorded_trash(state, player)
     if found is None:
         return ()
     _, _, piece, _ = found
@@ -1245,7 +1440,7 @@ def desert_tactics_block(state: GameState, player: int) -> OptionalEffectBlock |
     out with this (``display.unavailable``, OQ-095 (2)).
     """
 
-    found = _recorded_choice(state, player, TrashPersonalCard)
+    found = _recorded_trash(state, player)
     if found is None:
         return None
     _, _, piece, _ = found
@@ -1262,7 +1457,14 @@ def apply_desert_tactics_action(
 
     if action not in legal_desert_tactics_actions(state, action.actor):
         raise ValueError("action is not a legal Desert Tactics choice")
+    found = _recorded_trash(state, action.actor)
+    if found is None:
+        raise RuntimeError("no optional board trash waits for this seat")
+    _, _, _, line = found
     _, context = current_agent_effect_context(state)
+    # Desert Tactics, or the original game's Selective Breeding, whose trash
+    # buys its two cards: "Trash one card to draw two cards" [DI p. 18].
+    space_id = context_str(context, "space_id", owner=_FRAME_LABEL)
     # The printed troop is a separate icon with its own
     # ``resolve_board_effect`` action, ordered by the owner (OQ-027).
     card_value = dict(action.arguments)["card_id"]
@@ -1272,9 +1474,7 @@ def apply_desert_tactics_action(
         state,
         action.actor,
         card_value,
-        source=(
-            f"round:{state.round_number}:player:{action.actor}:board:desert_tactics"
-        ),
+        source=(f"round:{state.round_number}:player:{action.actor}:board:{space_id}"),
     )
     # Eliminate Allies' "2 troops" lands in this AGENT_EFFECTS frame's own
     # context (``_with_recruited_troops``), which the write-back below would
@@ -1285,19 +1485,23 @@ def apply_desert_tactics_action(
     events: list[GameEvent] = list(trashed.events)
 
     finish_board_icon(context, BOARD_ICON_TRASH)
+    if line.costs:
+        # Selective Breeding: the cards the trash bought are a step of their
+        # own, the public trash first, then the hidden draw (OQ-106).
+        add_board_icon(context, BOARD_ICON_CARDS)
     next_state = advance_after_effect(effect_state, context, effect_state.players)
     events.append(
         GameEvent(
             event_id=(
                 f"round:{state.round_number}:player:{action.actor}:board:"
-                f"desert_tactics:{BOARD_ICON_TRASH}"
+                f"{space_id}:{BOARD_ICON_TRASH}"
             ),
             kind="board_effect_resolved",
             payload=(
                 ("action_id", action.action_id),
                 ("effect", BOARD_ICON_TRASH),
                 ("player", action.actor),
-                ("space_id", "desert_tactics"),
+                ("space_id", space_id),
             ),
         )
     )
@@ -1680,6 +1884,34 @@ def apply_tuek_sietch_action(
     return RuleResult(state=drawn.state, events=(*gains, *drawn.events, event))
 
 
+def _printed_maker_spice(space_id: str) -> int:
+    """The spice an original Maker space's record prints beside its bonus."""
+
+    return sum(
+        reward.spice
+        for line in BOARD_CHOICE_ABILITIES[(space_id, BOARD_ICON_MAKER)].sections
+        for reward in line.rewards
+        if isinstance(reward, GainResources)
+    )
+
+
+# The spice each Maker space prints beside its bonus spice: Uprising's
+# [Board Guide pp. 1-2] (Imperial Basin's 1 is the original board's too), and
+# the original game's Hagga Basin and The Great Flat from their records
+# [DI p. 17] [FAQ p. 1].
+MAKER_BASE_SPICE: Final = MappingProxyType(
+    {
+        "deep_desert": 4,
+        "hagga_basin": 2,
+        "imperial_basin": 1,
+        **{
+            space_id: _printed_maker_spice(space_id)
+            for space_id in ("imperium_hagga_basin", "the_great_flat")
+        },
+    }
+)
+
+
 # The Maker spaces [Main p. 15]; Imperial Basin's printed row is spice alone
 # [Board Guide p. 2], so only the other two print a sandworm choice.
 def pending_maker_space(state: GameState, player: int) -> str | None:
@@ -1805,7 +2037,7 @@ def apply_maker_space_action(
     if action not in legal_maker_space_actions(state, action.actor):
         raise ValueError("action is not a legal Maker-space choice")
     space_id = dict(action.arguments).get("space_id")
-    if space_id not in ("deep_desert", "hagga_basin", "imperial_basin"):
+    if not isinstance(space_id, str) or space_id not in MAKER_BASE_SPICE:
         raise RuntimeError("Maker-space action has invalid space ID")
     bonus_by_space = dict(state.maker_bonus_spice)
     bonus_spice = bonus_by_space[space_id]
@@ -1813,6 +2045,7 @@ def apply_maker_space_action(
     base_spice = 0
     sandworms = 0
     replaced = 0
+    addict = False
     token_events: tuple[GameEvent, ...] = ()
     if action.action_id == "take_desert_riding_hooks":
         # The token replaces the base spice; the bonus spice still comes
@@ -1834,11 +2067,16 @@ def apply_maker_space_action(
             ),
         )
     elif action.action_id == "harvest_maker_spice":
-        base_spice = {
-            "deep_desert": 4,
-            "hagga_basin": 2,
-            "imperial_basin": 1,
-        }[space_id]
+        base_spice = MAKER_BASE_SPICE[space_id]
+        face = owner.leader_face_id or owner.leader_id
+        addict = bool(leader_triggers(face, OnMakerSpiceHarvested))
+        if addict:
+            # Spice Addict: a Maker space's harvest -- only there, never
+            # optional [FAQ p. 2] -- yields 1 spice less and a card
+            # (docs/rules/imperium-base.md 12); every original Maker space
+            # prints at least 1 spice [FAQ p. 1]. The card is its own step
+            # after the public harvest (OQ-106).
+            base_spice -= 1
         owner = replace(
             owner,
             resources=replace(
@@ -1846,6 +2084,13 @@ def apply_maker_space_action(
                 spice=owner.resources.spice + bonus_spice + base_spice,
             ),
         )
+        if addict:
+            owner = hold_draw(
+                owner,
+                OWED_CARD,
+                "spice_addict",
+                f"round:{state.round_number}:player:{action.actor}:spice_addict",
+            )
     elif replaces_sandworms(owner):
         replaced = 2 if space_id == "deep_desert" else 1
         owner = replace(
@@ -1901,6 +2146,18 @@ def apply_maker_space_action(
             ("space_id", space_id),
         ),
     )
+    if addict:
+        gains = (
+            *gains,
+            GameEvent(
+                event_id=f"{source}:spice_addict",
+                kind="leader_ability_resolved",
+                payload=(
+                    ("leader_id", "countess_ariana_thorvald"),
+                    ("player", action.actor),
+                ),
+            ),
+        )
     if replaced:
         replacement = replace_sandworms(
             next_state, action.actor, replaced, source=source

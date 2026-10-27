@@ -4931,6 +4931,10 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             total += 2
         if "assembly_hall" in owner.agent_locations:
             total += 1
+        # The original game's Hall of Oratory: "During your Reveal turn, gain
+        # 1 Persuasion if you have an Agent here." [DI p. 17]
+        if "hall_of_oratory" in owner.agent_locations:
+            total += 1
         # Persuasion generated in this Reveal turn from outside the cards
         # counts toward "Command (6+)" too [Bloodlines p. 5]: Charismatic,
         # Navigation card 3 from slot 4 ("during each of your Reveal turns,

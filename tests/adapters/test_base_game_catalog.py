@@ -58,11 +58,33 @@ def _uprising_ids() -> frozenset[str]:
             if not part.isdigit()
         ),
     }
-    return frozenset(ids - starting - {"intrigue", "contract", ""})
+    # The spaces printed alike on both boards are one definition (plan 4.2
+    # item 7, 15.2): Arrakeen, Imperial Basin and Secrets.
+    return frozenset(ids - starting - _original_ids() - {"intrigue", "contract", ""})
+
+
+def _original_ids() -> frozenset[str]:
+    """Every id the original game's ruleset prints."""
+
+    content = content_for(RulesetConfig(base_game=BaseGame.IMPERIUM))
+    return frozenset(
+        {
+            *(space.space_id for space in content.board_spaces),
+            *(conflict.card.card_id for conflict in content.conflicts),
+            *(leader.leader_id for leader in content.leaders),
+            *(stack.card.card_id for stack in content.reserve_stacks),
+        }
+    )
+
+
+# The original board's High Council and Swordmaster print the icons of the
+# same names [DI pp. 17-18], whose keys are Uprising's space ids.
+_ORIGINAL_ICONS = frozenset({"high_council", "swordmaster"})
 
 
 def test_the_original_game_catalog_holds_no_uprising_content() -> None:
     uprising = _uprising_ids()
+    original = _original_ids()
     for config in (
         RulesetConfig(base_game=BaseGame.IMPERIUM),
         RulesetConfig(
@@ -79,10 +101,13 @@ def test_the_original_game_catalog_holds_no_uprising_content() -> None:
                 for template in catalog
                 for name, value in template.arguments
                 if isinstance(value, str)
+                and not (name in ("icon", "effect") and value in _ORIGINAL_ICONS)
                 and any(part in uprising for part in value.split(":"))
             }
         )
         assert leaks == [], leaks[:20]
+        # The original board's own Sietch Tabr (``imperium_sietch_tabr``) is
+        # no Uprising system.
         systems = sorted(
             {
                 template.action_id
@@ -90,6 +115,7 @@ def test_the_original_game_catalog_holds_no_uprising_content() -> None:
                 if any(word in template.action_id for word in _UPRISING_SYSTEM_WORDS)
                 or any(
                     isinstance(value, str)
+                    and value not in original
                     and any(word in value for word in _UPRISING_SYSTEM_WORDS)
                     for _, value in template.arguments
                 )

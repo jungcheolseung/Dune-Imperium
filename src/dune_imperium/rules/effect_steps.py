@@ -260,8 +260,11 @@ _RECIPIENT = ("alliance_recipient", _C.SEAT)
 _BOARD_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "cards": _V.DRAW,
     "contract": _V.TAKE,
+    # The original game's Foldspace and Mentat spaces [DI pp. 17-18].
+    "foldspace": _V.ACQUIRE,
     "high_council": _V.TAKE,
     "intrigue": _V.DRAW,
+    "mentat": _V.TAKE,
     "research": _V.ADVANCE,
     "resources": _V.GAIN,
     "swordmaster": _V.TAKE,
@@ -310,6 +313,13 @@ _COMBAT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "deep_cover_spy": _V.PLACE_SPY,
     # Planetary Array's card, a row of the winner's window (OQ-121).
     "planetary_array": _V.DRAW,
+    # The original game's: the Mentat, one Faction's two Influence, and the
+    # lines of a row of alternatives.
+    "mentat": _V.TAKE,
+    "one_faction_influence": _V.GAIN_INFLUENCE,
+    "line_0": _V.CHOOSE,
+    "line_1": _V.CHOOSE,
+    "line_2": _V.CHOOSE,
 })
 # What a completed Contract's icon does (``contracts.CONTRACT_REWARD_ICON_KINDS``).
 _CONTRACT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
@@ -445,6 +455,11 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "gain_leader_signet_troop": _spec(_V.RECRUIT, _S.LEADER, _LEADER),
     "choose_leader_signet_influence": _spec(
         _V.GAIN_INFLUENCE, _S.LEADER, _LEADER, targets=_FACTION
+    ),
+    # The original game's Earl Memnon Thorvald: Connections' Influence, an
+    # icon of the visit that took the High Council seat.
+    "choose_connections_influence": _spec(
+        _V.GAIN_INFLUENCE, _S.LEADER, _LEADER, icon="connections", targets=_FACTION
     ),
     "acquire_leader_imperium": _spec(
         _V.ACQUIRE, _S.LEADER, _LEADER, targets=_IMPERIUM
@@ -1285,7 +1300,16 @@ _OWED_ORIGINS: Final[Mapping[str, tuple[Source, str]]] = MappingProxyType({
     "bene_gesserit_4": (Source.INFLUENCE_TRACK, "bene_gesserit"),
     "choam_transports": (Source.TECH, "choam_transports"),
 })
-_LEADER_ORIGINS: Final = frozenset({"imperial_birthright", "hungry_for_spice"})
+_LEADER_ORIGINS: Final = frozenset(
+    {
+        "imperial_birthright",
+        "hungry_for_spice",
+        # The original game's Count Ilban Richese and Countess Ariana
+        # Thorvald (docs/rules/imperium-base.md 12).
+        "ruthless_negotiator",
+        "spice_addict",
+    }
+)
 # An acquired card's acquire box, and a card's "when trashed" (by its type).
 _ACQUIRE_ORIGIN: Final = "acquire:"
 _TRASH_ORIGIN: Final = "card:"

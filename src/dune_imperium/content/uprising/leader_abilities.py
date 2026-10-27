@@ -41,11 +41,15 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
     EffectSection,
+    GainInfluence,
     GainResources,
     HasAlliance,
     InfluenceAtLeast,
     OnAgentSentTo,
+    OnBoardSpaceSolariPaid,
     OnCardTrashed,
+    OnHighCouncilSeatTaken,
+    OnMakerSpiceHarvested,
     OnOpponentAgentAtSpiedMakerSpace,
     OnReachInfluence,
     OnRoundStart,
@@ -214,6 +218,32 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         # Reverse Engineering: "Gain 1 spice -or- trash one of your Tech tiles
         # -> Draw 1 Intrigue card, Draw 1 card" (OQ-106).
         "kota_odax_of_ix": _hook("reverse_engineering", AbilityMark.MANDATORY),
+        # The original game's (docs/rules/imperium-base.md 12). Brutality:
+        # one troop, or two with a Faction Alliance -- its "-OR-" is no
+        # choice (two are never worse; the Steam app offers none, P0 sweep
+        # L7), so the first line whose condition holds when it resolves is
+        # paid (OQ-028).
+        "glossu_rabban": Ability(
+            timing=AbilityTiming.AGENT_BOX,
+            sections=(
+                EffectSection(rewards=(RecruitTroops(2),), condition=HasAlliance()),
+                EffectSection(rewards=(RecruitTroops(1),)),
+            ),
+            mark=AbilityMark.AUTOMATIC,
+            structure=AbilityStructure.ONE_OF,
+        ),
+        # Manufacturing: 1 Solari.
+        "count_ilban_richese": _automatic(
+            EffectSection(rewards=(GainResources(solari=1),))
+        ),
+        # Spice Hoard: 1 spice.
+        "earl_memnon_thorvald": _automatic(
+            EffectSection(rewards=(GainResources(spice=1),))
+        ),
+        # Hidden Reservoir: 1 water.
+        "countess_ariana_thorvald": _automatic(
+            EffectSection(rewards=(GainResources(water=1),))
+        ),
     }
 )
 
@@ -370,6 +400,25 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         # Secret Project: a Tech tile chosen at game start, acquirable at 1
         # spice less (OQ-041).
         "kota_odax_of_ix": (_standing("secret_project"),),
+        # The original game's (docs/rules/imperium-base.md 12; Glossu
+        # Rabban's Arrakis Fiefdom is setup, ``LeaderDefinition`` fields).
+        # Ruthless Negotiator: a card whenever Solari pay a board space's
+        # printed cost [FAQ p. 2], drawn as its own step (OQ-106).
+        "count_ilban_richese": (
+            _triggered(OnBoardSpaceSolariPaid(), DrawPersonalCards(1)),
+        ),
+        # Connections: Influence with a Faction of the owner's choice on
+        # taking a High Council seat (none at the top, OQ-060).
+        "earl_memnon_thorvald": (
+            _triggered(OnHighCouncilSeatTaken(), GainInfluence()),
+        ),
+        # Spice Addict: harvesting at a Maker space -- only there, and not
+        # optional [FAQ p. 2] -- yields 1 spice less (the standing record)
+        # and a card, drawn as its own step (OQ-106).
+        "countess_ariana_thorvald": (
+            _standing("spice_addict"),
+            _triggered(OnMakerSpiceHarvested(), DrawPersonalCards(1)),
+        ),
     }
 )
 

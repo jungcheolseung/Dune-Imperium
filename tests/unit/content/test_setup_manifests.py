@@ -478,11 +478,19 @@ def test_reserve_stacks_are_finite_and_have_no_foldspace() -> None:
         "the_spice_must_flow": 10,
     }
     assert {
-        card_id: (stack.acquisition_cost, stack.acquisition_vp)
-        for card_id, stack in RESERVE_STACKS_BY_ID.items()
+        stack.card.card_id: (stack.acquisition_cost, stack.acquisition_vp)
+        for stack in RESERVE_STACKS
     } == {
         "prepare_the_way": (2, 0),
         "the_spice_must_flow": (9, 1),
+    }
+    # The id table holds the original game's stacks too (plan 4.2 item 7).
+    assert set(RESERVE_STACKS_BY_ID) == {
+        "prepare_the_way",
+        "the_spice_must_flow",
+        "arrakis_liaison",
+        "imperium_the_spice_must_flow",
+        "foldspace_card",
     }
 
 
