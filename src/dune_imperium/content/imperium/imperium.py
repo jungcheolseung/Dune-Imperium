@@ -68,8 +68,7 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         factions=(Faction.SPACING_GUILD,),
         agent_icons=(AgentIcon.CITY,),
         agent_effect=(
-            PersonalCardAgentEffect
-            .MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+            PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
         ),
         reveal_persuasion=1,
         reveal_strength=1,
@@ -87,5 +86,226 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_strength=3,
         reveal_choice_effects=(PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,),
         play_data_complete=True,
+    ),
+    # --- Identities only (stage P3a, plan 16.1): name, copies and cost from the
+    # app's attribute table (scripts/dwgr/imperium_entries.py skeleton); each
+    # card's play data replaces its entry when it is transcribed. ---
+    ImperiumCardEntry(
+        card=imperium_card("assassination_mission", "Assassination Mission"),
+        copies=2,
+        acquisition_cost=1,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("bene_gesserit_initiate", "Bene Gesserit Initiate"),
+        copies=2,
+        acquisition_cost=3,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("bene_gesserit_sister", "Bene Gesserit Sister"),
+        copies=3,
+        acquisition_cost=3,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("choam_directorship", "CHOAM Directorship"),
+        copies=1,
+        acquisition_cost=8,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("carryall", "Carryall"),
+        copies=1,
+        acquisition_cost=5,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("chani_card", "Chani"),
+        copies=1,
+        acquisition_cost=5,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("crysknife_card", "Crysknife"),
+        copies=1,
+        acquisition_cost=3,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("dr_yueh", "Dr. Yueh"),
+        copies=1,
+        acquisition_cost=1,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("duncan_idaho_card", "Duncan Idaho"),
+        copies=1,
+        acquisition_cost=4,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("fedaykin_death_commando", "Fedaykin Death Commando"),
+        copies=2,
+        acquisition_cost=3,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("firm_grip", "Firm Grip"),
+        copies=1,
+        acquisition_cost=4,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("fremen_camp", "Fremen Camp"),
+        copies=2,
+        acquisition_cost=4,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("gene_manipulation", "Gene Manipulation"),
+        copies=2,
+        acquisition_cost=3,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("guild_administrator", "Guild Administrator"),
+        copies=2,
+        acquisition_cost=2,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("guild_ambassador", "Guild Ambassador"),
+        copies=1,
+        acquisition_cost=4,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("guild_bankers", "Guild Bankers"),
+        copies=1,
+        acquisition_cost=3,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("gurney_halleck_card", "Gurney Halleck"),
+        copies=1,
+        acquisition_cost=6,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("imperial_spy", "Imperial Spy"),
+        copies=2,
+        acquisition_cost=2,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("kwisatz_haderach", "Kwisatz Haderach"),
+        copies=1,
+        acquisition_cost=8,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("lady_jessica_card", "Lady Jessica"),
+        copies=1,
+        acquisition_cost=7,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("liet_kynes_card", "Liet Kynes"),
+        copies=1,
+        acquisition_cost=5,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("missionaria_protectiva", "Missionaria Protectiva"),
+        copies=2,
+        acquisition_cost=1,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("opulence", "Opulence"),
+        copies=1,
+        acquisition_cost=6,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("other_memory", "Other Memory"),
+        copies=1,
+        acquisition_cost=4,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("piter_de_vries_card", "Piter De Vries"),
+        copies=1,
+        acquisition_cost=5,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("power_play", "Power Play"),
+        copies=3,
+        acquisition_cost=5,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("reverend_mother_mohiam", "Reverend Mother Mohiam"),
+        copies=1,
+        acquisition_cost=6,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("sardaukar_infantry", "Sardaukar Infantry"),
+        copies=2,
+        acquisition_cost=1,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("sardaukar_legion", "Sardaukar Legion"),
+        copies=2,
+        acquisition_cost=5,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("scout", "Scout"),
+        copies=2,
+        acquisition_cost=1,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("shifting_allegiances", "Shifting Allegiances"),
+        copies=2,
+        acquisition_cost=3,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("sietch_reverend_mother", "Sietch Reverend Mother"),
+        copies=1,
+        acquisition_cost=4,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("smugglers_thopter", "Smuggler's Thopter"),
+        copies=2,
+        acquisition_cost=4,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("space_travel", "Space Travel"),
+        copies=2,
+        acquisition_cost=3,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("spice_hunter", "Spice Hunter"),
+        copies=2,
+        acquisition_cost=2,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("stilgar", "Stilgar"),
+        copies=1,
+        acquisition_cost=5,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("test_of_humanity", "Test of Humanity"),
+        copies=1,
+        acquisition_cost=3,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("the_voice", "The Voice"),
+        copies=2,
+        acquisition_cost=2,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("thufir_hawat", "Thufir Hawat"),
+        copies=1,
+        acquisition_cost=5,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("worm_riders", "Worm Riders"),
+        copies=2,
+        acquisition_cost=6,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("duncan_loyal_blade", "Duncan, Loyal Blade"),
+        copies=1,
+        acquisition_cost=5,
+        promo=True,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("jessica_of_arrakis", "Jessica of Arrakis"),
+        copies=1,
+        acquisition_cost=3,
+        promo=True,
+    ),
+    ImperiumCardEntry(
+        card=imperium_card("thumper", "Thumper"),
+        copies=1,
+        acquisition_cost=3,
+        promo=True,
     ),
 )

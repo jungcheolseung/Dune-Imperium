@@ -36,9 +36,7 @@ IMPERIUM_INTRIGUE_SOURCES: Final = (
 def intrigue_card(card_id: str, name: str) -> CardDefinition:
     """The identity of an original Intrigue card."""
 
-    return CardDefinition(
-        card_id=card_id, name=name, sources=IMPERIUM_INTRIGUE_SOURCES
-    )
+    return CardDefinition(card_id=card_id, name=name, sources=IMPERIUM_INTRIGUE_SOURCES)
 
 
 # Typed: ``content.uprising.intrigue`` reads it while both modules load.
@@ -69,5 +67,136 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
             _combat(EffectSection(rewards=(GainCombatStrength(3),))),
             _combat(EffectSection(rewards=(RetreatTroops(0, 3),))),
         ),
+    ),
+    # --- Identities only (stage P3a, plan 16.1): name, copies and cost from the
+    # app's attribute table (scripts/dwgr/imperium_entries.py skeleton); each
+    # card's play data replaces its entry when it is transcribed. ---
+    IntrigueCardEntry(
+        card=intrigue_card("allied_armada", "Allied Armada"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("ambush", "Ambush"),
+        copies=2,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("bindu_suspension", "Bindu Suspension"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("bypass_protocol", "Bypass Protocol"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("choam_shares", "CHOAM Shares"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("calculated_hire", "Calculated Hire"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("charisma", "Charisma"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("corner_the_market", "Corner the Market"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("councilors_dispensation", "Councilor's Dispensation"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("demand_respect", "Demand Respect"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("dispatch_an_envoy", "Dispatch an Envoy"),
+        copies=2,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("double_cross", "Double Cross"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("favored_subject", "Favored Subject"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("guild_authorization", "Guild Authorization"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("infiltrate", "Infiltrate"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("know_their_ways", "Know Their Ways"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("plans_within_plans", "Plans Within Plans"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("poison_snooper", "Poison Snooper"),
+        copies=2,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("private_army", "Private Army"),
+        copies=2,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("rapid_mobilization", "Rapid Mobilization"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("recruitment_mission", "Recruitment Mission"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("refocus", "Refocus"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("reinforcements", "Reinforcements"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("secret_of_the_sisterhood", "Secret of the Sisterhood"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("staged_incident", "Staged Incident"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("the_sleeper_must_awaken", "The Sleeper Must Awaken"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("tiebreaker", "Tiebreaker"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("to_the_victor", "To the Victor..."),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("urgent_mission", "Urgent Mission"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("water_peddlers_union", "Water Peddlers Union"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("water_of_life", "Water of Life"),
+        copies=1,
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("windfall", "Windfall"),
+        copies=1,
     ),
 )
