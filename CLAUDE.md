@@ -72,9 +72,28 @@ took 47% of about 20 agent-hours (running the tests themselves took only about
   it does with the admin key are high risk.
 - Fix a review finding directly, either the reviewer or the main session.
   Send it back for re-review only when the fix changes the design.
-- For each item, run only the tests that cover it. Run the full pytest, ruff,
-  mypy and every e2e script once per batch, before a merge or a handoff:
-  `scripts/e2e/run_all.py` runs the e2e scripts 4 at a time (see its README).
+- For each item, run only the tests that cover it. Before a merge or a
+  handoff, run the checks in "Checks before a merge" below once per batch.
+
+## Checks before a merge: scale them to what changed
+
+User decision, 2026-10-27 ("엔진 변화 없으면 안 돌아도 되는거 아닌가"): what a
+merge needs depends on what the branch changed. Unless it changes only
+documentation, run the full pytest, ruff and mypy on the merged tree (a few
+minutes). Then add, by the widest tier the branch touches:
+
+1. **The engine** (rules, cards and other content, codec, observation, engine
+   events): the full engine gate at every engine sub-stage (identity check,
+   records corpus, soak, saves and problem set) and every e2e script.
+   `scripts/e2e/run_all.py` runs them 4 at a time (see its README).
+2. **Code the play server runs, outside the engine** (AI seats and the
+   `training/` modules they import — `torch_policy`, `older_teacher`,
+   `policy`, `network` — the server, the UI): only the e2e scripts that cover
+   the changed code, e.g. `scripts/e2e/search_seats.py` for the search seat. A
+   change to an AI seat also shows that the seat plays the same moves on the
+   same seeds, unless changing them is the point (then it is measured).
+3. **Training, measurement and docs only** (`scripts/train`, `scripts/ab`,
+   `training/` modules no seat or server imports, `docs/`): nothing more.
 
 ## Rule changes: verify before you act
 
