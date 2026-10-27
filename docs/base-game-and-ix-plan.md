@@ -918,11 +918,11 @@ card-implementer는 기존 조각으로 안 되는 카드를 건너뛰고 빠진
 | 획득 상자 아이콘 줄(아이콘마다 차례의 줄, 순서는 소유자) | CHOAM Directorship(고정 진영 넷), Lady Jessica(고른 진영 하나) | OQ-027·OQ-112 원칙의 확장 — OQ-141 | 구현(`rules/acquire_icons.py`, 행동 `resolve_acquire_icon`): 자기 차례 안에서는 차례의 줄(OQ-112 (4) 선례), 고를 진영이 모두 6이면 회색으로 기다리다 누름에 사라짐(차례 안 선례), 고정 진영 6은 얻는 것 없는 의무 줄. 자기 차례 밖 획득(원판 + Scouts의 Critical Moment, P7)은 아직 `NotImplementedError` |
 | 승자의 창에서 내는 Intrigue("When you win a Conflict:") | To the Victor..., Demand Respect | OQ-121 판정 6("쥐고 있고 조건·비용을 갖췄을 때 낼 수 있는 줄이다. 안 내도 창이 닫힌다"), `[DI p. 13]`(보상 spice로 낼 수 있음) | 구현; 닫기 줄의 숨은 정보 처리는 OQ-142(사용자 확인 대기). 휴리스틱·앱 AI는 이 카드를 내지 않는다(P6) |
 | 덱 맨 위로 획득 | Bypass Protocol(B), Recruitment Mission(획득마다 위/버림) | 카드 문구, `[FAQ p. 3]`, imperium-base.md 14(덱 맨 위가 공개되는 숨은 정보) | 미설계 |
-| 상대 하나 지정 Conflict 손실 + supply에서 배치 | Double Cross | 카드 문구, `[FAQ p. 2]`(상대 troop이 있어야 낸다) | 미설계 |
-| 덱 맨 위 보고 뽑기·trash | Poison Snooper | 카드 문구, `[FAQ p. 3]`, imperium-base.md 14 | 미설계(숨은 정보) |
-| 버림 더미를 덱에 섞고 뽑기 | Refocus | 카드 문구, `[FAQ p. 3]` | 미설계(chance) |
+| 상대 하나 지정 Conflict 손실 + supply에서 배치 | Double Cross | 카드 문구, `[FAQ p. 2]`(상대 troop이 있어야 낸다) | 구현(`OpponentHasTroopInConflict`, `OpponentLosesTroop`, `DeployFromSupply`; 빈 supply는 OQ-042 (2)의 부족분 기록) |
+| 덱 맨 위 보고 뽑기·trash | Poison Snooper | 카드 문구, `[FAQ p. 3]`, imperium-base.md 14 | 구현(`PeekTopCard(draw_or_trash=True)`, Controlled의 `peeked_card_id` 길) |
+| 버림 더미를 덱에 섞고 뽑기 | Refocus | 카드 문구, `[FAQ p. 3]` | 구현(`ShuffleDiscardIntoDeck`, 뽑기 섞기 frame을 다시 씀) |
 | 이번 turn 적 Agent가 막지 않음 | Infiltrate | 카드 문구, OQ-113 (C) | 미설계(좌석 상태, 관측) |
-| turn 시작 뽑기 + 선택형 pass | Bindu Suspension | OQ-117 | 미설계 |
+| turn 시작 뽑기 + 선택형 pass | Bindu Suspension | OQ-117 | 구현(`PassTurn(optional=True)`); 이어 가기 뒤 다른 시작 카드는 OQ-143(사용자 확인 대기) |
 | Mentat 셋 | Kwisatz Haderach, Urgent Mission, Calculated Hire | OQ-139 재검토 | 사용자 답 대기(16.8 4) |
 | 프로모 셋 | Duncan, Loyal Blade·Jessica of Arrakis·Thumper | 16.3 | 사용자 답 대기(16.8 3) |
 
