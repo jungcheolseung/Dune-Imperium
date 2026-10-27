@@ -16,6 +16,7 @@ tests pin.
 import random
 from dataclasses import replace
 
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
@@ -151,6 +152,19 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
             card for card in player.intrigue_cards if card not in resolving
         )
         players[seat] = replace(player, hand=hand, deck=deck)
+        if player.masterstroke_factions and not player.masterstroke_revealed:
+            # The original game's Baron: his unrevealed Masterstroke Factions
+            # are his alone (docs/rules/imperium-base.md 14). Only such a seat
+            # draws, so no other game's sampling moves.
+            players[seat] = replace(
+                players[seat],
+                masterstroke_factions=tuple(
+                    rng.sample(
+                        [faction.value for faction in Faction],
+                        len(player.masterstroke_factions),
+                    )
+                ),
+            )
 
     # Arrakeen Scouts: the board's face-down cards are unknown to every seat,
     # so they are dealt from the same pools as the deck and the bank.

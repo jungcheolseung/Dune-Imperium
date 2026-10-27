@@ -1,10 +1,10 @@
 """Uprising Conflict identities and tiers used to build the ten-card deck."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
-from dune_imperium.content.uprising.abilities import Ability
+from dune_imperium.content.uprising.abilities import Ability, AbilityStructure
 from dune_imperium.content.uprising.conflict_abilities import (
     CONFLICT_REWARD_ABILITIES,
 )
@@ -19,6 +19,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitTroops,
     TakeContract,
     TakeControl,
+    TakeMentat,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.types import BattleIcon, ConflictTier
@@ -83,8 +84,26 @@ def check_conflict_reward_row(row: Ability) -> None:
     Spies, trashes and chosen Influence, which may repeat. A row gives
     something. (The checks the compiled ``ConflictReward`` ran until the
     reward totals cleanup, 2026-10-21.)
+
+    The original game adds the Mentat icon, one Faction's two Influence and
+    rows of alternatives: a printed "-OR-" (``ONE_OF``) or "Choose two:"
+    (``CHOOSE_TWO``) row's lines are each checked as a row of their own, with
+    no arrow, and offer at least as many lines as are taken.
     """
 
+    if row.structure in (AbilityStructure.ONE_OF, AbilityStructure.CHOOSE_TWO):
+        taken = 2 if row.structure is AbilityStructure.CHOOSE_TWO else 1
+        if len(row.sections) <= taken:
+            raise ValueError("a Conflict reward row of alternatives offers too few")
+        for line in row.sections:
+            if line.costs:
+                raise ValueError("a Conflict reward alternative prints no arrow")
+            check_conflict_reward_row(
+                replace(row, sections=(line,), structure=AbilityStructure.SEQUENCE)
+            )
+        return
+    if row.structure is not AbilityStructure.SEQUENCE:
+        raise ValueError(f"a Conflict reward row is not {row.structure}")
     printed: set[str] = set()
 
     def once(key: str) -> None:
@@ -134,10 +153,16 @@ def check_conflict_reward_row(row: Ability) -> None:
                     pass
                 case GainVictoryPoints():
                     once("victory_points")
+                case GainInfluence(one_faction=True) if reward == replace(
+                    reward, factions=None, distinct=False
+                ) and reward.times > 1 and not reward.where_opponent_leads:
+                    once("one_faction_influence")
                 case GainInfluence() if reward == GainInfluence(
                     times=reward.times, distinct=True
                 ):
                     once("choose_distinct_influence")
+                case TakeMentat():
+                    once("mentat")
                 case GainInfluence(times=times, factions=(faction,)) if (
                     reward == GainInfluence(times=times, factions=(faction,))
                 ):
@@ -393,4 +418,13 @@ def conflicts_by_tier(
     )
 
 
-CONFLICTS_BY_ID: Final = {conflict.card.card_id: conflict for conflict in CONFLICTS}
+# One table for both base games (docs/base-game-and-ix-plan.md 4.2 item 7):
+# the original game's cards follow Uprising's. Imported last, as they are
+# built from ``ConflictDefinition`` (``content.imperium``).
+from dune_imperium.content.imperium.conflicts import (  # noqa: E402
+    IMPERIUM_CONFLICTS,
+)
+
+CONFLICTS_BY_ID: Final = {
+    conflict.card.card_id: conflict for conflict in (*CONFLICTS, *IMPERIUM_CONFLICTS)
+}

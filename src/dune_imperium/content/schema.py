@@ -20,6 +20,10 @@ class SourceDocument(StrEnum):
     # ``rise-of-ix``); only its Epic Game Mode is used, cited as
     # ``[Rise of Ix p. N]`` with PDF page numbers.
     RISE_OF_IX_RULEBOOK = "rise_of_ix_rulebook"
+    # The original Dune: Imperium rulebook (``official-rule-sources.json``
+    # key ``imperium``); cited as ``[DI p. N]`` with PDF page numbers. Its
+    # Player Aid prints the same text as pp. 16-18.
+    IMPERIUM_RULEBOOK = "imperium_rulebook"
     # A card that no official document describes (the Uprising promo cards):
     # the printed card face itself is the source, cited as page 1.
     CARD_FACE = "card_face"

@@ -52,6 +52,7 @@ from torch import Tensor, nn
 from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.adapters.observation_encoding import (
     CONTRACT_SEGMENTS,
+    IMPERIUM_IDENTITIES,
     OBSERVATION_SEGMENTS,
     OBSERVATION_SIZE,
 )
@@ -201,11 +202,30 @@ def action_vocabulary(templates: Iterable[TemplateKey]) -> ActionVocabulary:
 # computes the same function: its new inputs start at zero.
 FIELDS_KEPT_RAW: Final = frozenset({"decision_owner", "leader_draft_pool", "agent_box"})
 # Slot keys a later observation version added to a field a v31 file already
-# embedded: the decision kinds of stage B2's reward windows (v33).
+# embedded: the decision kinds of stage B2's reward windows (v33) and of the
+# Baron's Masterstroke choice (v36), and every key naming one of the original
+# game's identities (v35).
 _KEYS_SINCE_V31: Final = frozenset(
-    f"decision_kind:{kind.value}"
-    for kind in (FrameKind.COMBAT_REWARD_ICONS, FrameKind.CONTRACT_REWARD_ICONS)
+    {
+        *(
+            f"decision_kind:{kind.value}"
+            for kind in (
+                FrameKind.COMBAT_REWARD_ICONS,
+                FrameKind.CONTRACT_REWARD_ICONS,
+                FrameKind.MASTERSTROKE_SETUP,
+            )
+        ),
+        *(
+            key
+            for field in SLOT_FIELDS
+            for key in field.keys
+            if key.rsplit(":", 1)[-1] in IMPERIUM_IDENTITIES
+        ),
+    }
 )
+# The slot fields a v31 file never had: v32's (read raw, above) and v35's
+# Mentat seats.
+_FIELDS_SINCE_V31: Final = FIELDS_KEPT_RAW | {"mentat_holder", "mentat_owed"}
 # Encoder inputs by name, for moving a file's first-layer columns.
 _ENCODER_WEIGHTS: Final = {
     "seat": "seat_encoder.0.weight",
@@ -309,7 +329,9 @@ def legacy_inputs(
             f"an entity checkpoint of observation v{observation_version} carries no "
             "input names to move by"
         )
-    places = [place for place in field_places() if place.name not in FIELDS_KEPT_RAW]
+    places = [
+        place for place in field_places() if place.name not in _FIELDS_SINCE_V31
+    ]
     keys = tuple(
         key
         for place in places

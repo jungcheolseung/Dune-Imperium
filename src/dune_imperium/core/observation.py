@@ -140,6 +140,14 @@ class PublicPlayerView:
     # its own turn each waits for the owner's ``place_track_spy`` and holds
     # the turn end back (user ruling 2026-10-04). Public: the track is.
     track_spies_owed: int = 0
+    # The original game's Mentat on this seat's Leader, one of its Agents
+    # this round [DI p. 18]; public, like every Agent.
+    mentat: bool = False
+    # The original game's Baron Harkonnen: whether he holds Masterstroke
+    # Factions not yet revealed (that he chose is public, which is his alone,
+    # docs/rules/imperium-base.md 14), and the Factions once revealed.
+    masterstroke_secret: bool = False
+    masterstroke_revealed_factions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +183,9 @@ class PrivatePlayerView:
     # effect and has not finished (seen by no other seat), as (action id,
     # arguments) -- the effect row first (``rules.effect_steps``).
     effect_pick: tuple[tuple[str, tuple[tuple[str, ActionValue], ...]], ...] = ()
+    # The original game's Baron Harkonnen: his own Masterstroke Factions,
+    # chosen in secret before the first round [FAQ p. 1] (section 14).
+    masterstroke_factions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,6 +302,9 @@ class PlayerView:
     # The base game (``RulesetConfig.base_game``), public like every setup
     # option (docs/base-game-and-ix-plan.md 4.2 item 8).
     base_game: BaseGame = BaseGame.UPRISING
+    # The original game's Sort Through the Chaos winner, who takes the
+    # Mentat at the next round's start [FAQ p. 4]; public, like the reward.
+    mentat_owed_to: int | None = None
     # The open Agent turn's Agent boxes, as (card instance, still pending):
     # box 0 the placed card, then box 1 its graft partner (Immortality);
     # empty outside an Agent turn. Both cards lie face up in play and each
@@ -349,7 +363,7 @@ def resolving_intrigue_ids(state: GameState) -> tuple[str, ...]:
     return tuple(resolving)
 
 
-_SEALED_VALUE_PREFIXES: Final = ("scouts_pick:", "scouts_bid:")
+_SEALED_VALUE_PREFIXES: Final = ("scouts_pick:", "scouts_bid:", "masterstroke:")
 
 
 def secret_pick_id(event_round: int, seat: int) -> str:
@@ -362,6 +376,12 @@ def secret_bid_id(round_number: int, seat: int) -> str:
     """The registry id of ``seat``'s Arrakeen Scouts sealed bid."""
 
     return f"{_SEALED_VALUE_PREFIXES[1]}{round_number}:{seat}"
+
+
+def masterstroke_id(seat: int) -> str:
+    """The registry id of the Baron at ``seat``'s two Masterstroke Factions."""
+
+    return f"{_SEALED_VALUE_PREFIXES[2]}{seat}"
 
 
 def is_sealed_value_id(value: str) -> bool:
@@ -392,7 +412,9 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     Ceremony's two Intrigue cards, Kota Odax's bottom Tech tiles and Secret
     Project. An Arrakeen Scouts secret pick is listed under
     ``secret_pick_id`` for its seat until it is due, and a sealed bid under
-    ``secret_bid_id`` until every seat has confirmed. This is the single source the
+    ``secret_bid_id`` until every seat has confirmed, and the original
+    game's Baron Harkonnen's Masterstroke Factions under ``masterstroke_id``
+    until he reveals them. This is the single source the
     server uses to decide what an event log may show and which steps an undo
     may take back, so every hidden zone and every private glimpse belongs
     here (``tests/unit/test_known_card_seats.py`` checks it against
@@ -463,6 +485,11 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     for seat, _, _ in state.scouts_bids:
         # A sealed bid likewise, until the last seat confirms.
         known[secret_bid_id(state.round_number, seat)] = frozenset({seat})
+    for player in state.players:
+        # The Baron's two Factions are his alone until his deployment
+        # reveals them (docs/rules/imperium-base.md 14).
+        if player.masterstroke_factions and not player.masterstroke_revealed:
+            known[masterstroke_id(player.player_id)] = frozenset({player.player_id})
     return known
 
 
@@ -575,6 +602,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             effect_pick=effect_pick_of(state, player),
             navigation_slots=owner.navigation_slots,
             secret_project_tech_id=owner.secret_project_tech_id,
+            masterstroke_factions=owner.masterstroke_factions,
             scouts_secret_picks=tuple(
                 (event_round, event_id, pick)
                 for event_round, event_id, seat, pick in state.scouts_secret_picks
@@ -643,6 +671,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         scouts_calls=state.scouts_calls,
         epic_game=state.config.epic_game,
         base_game=state.config.base_game,
+        mentat_owed_to=state.mentat_owed_to,
         agent_boxes=agent_box_cards(state),
     )
 
@@ -711,15 +740,22 @@ def effect_pick_of(
 
 
 def peeked_card_id(state: GameState, player: int) -> str:
-    """Return the deck card the owner may see: Controlled's peek, or Glowglobes.
+    """Return the deck card the owner may see: Controlled's peek, Glowglobes,
+    or Paul Atreides' Prescience.
 
     Controlled shows the top card while its choice is up; Glowglobes lets
     the owner "look at the top card of your deck at any time" [Glowglobes
-    Tech tile].
+    Tech tile], as Prescience lets the original game's Paul Atreides: "자기
+    덱 맨 위 카드를 언제든 볼 수 있다", never while the deck is empty (the
+    discard pile is not shuffled for it) [DI p. 13] (docs/rules/
+    imperium-base.md 12, 14).
     """
 
     owner = state.players[player]
-    if owner.deck and has_tech(owner.tech_ids, TechAbility.PEEK_TOP_CARD):
+    if owner.deck and (
+        has_tech(owner.tech_ids, TechAbility.PEEK_TOP_CARD)
+        or owner.leader_id == "paul_atreides"
+    ):
         return owner.deck[0]
     if not state.decision_stack:
         return ""
@@ -951,4 +987,10 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         face_down_battle_card_ids=player.face_down_battle_card_ids,
         active_contract_ids=player.active_contract_ids,
         completed_contract_ids=player.completed_contract_ids,
+        mentat=player.mentat,
+        masterstroke_secret=bool(player.masterstroke_factions)
+        and not player.masterstroke_revealed,
+        masterstroke_revealed_factions=(
+            player.masterstroke_factions if player.masterstroke_revealed else ()
+        ),
     )

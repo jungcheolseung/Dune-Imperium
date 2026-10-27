@@ -21,6 +21,10 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
 
+from dune_imperium.content.imperium.board_abilities import (
+    IMPERIUM_BOARD_CHOICE_ABILITIES,
+    IMPERIUM_BOARD_SPACE_ABILITIES,
+)
 from dune_imperium.content.uprising.abilities import (
     Ability,
     AbilityMark,
@@ -61,6 +65,9 @@ def _icons(*rewards: Reward) -> Ability:
 
 BOARD_SPACE_ABILITIES: Final[Mapping[tuple[str, int, str], Ability]] = MappingProxyType(
     {
+        # The original game's spaces share the table (one id, one printing;
+        # docs/base-game-and-ix-plan.md 4.2 item 7).
+        **IMPERIUM_BOARD_SPACE_ABILITIES,
         # Dutiful Service: the Contract icon, 2 Solari without CHOAM.
         ("dutiful_service", 0, ""): _icons(TakeContract(1)),
         ("dutiful_service", 0, "no_choam"): _icons(GainResources(solari=2)),
@@ -124,6 +131,7 @@ def _choice(
 # ``effects.OPTIONAL_BOARD_ICONS``.
 BOARD_CHOICE_ABILITIES: Final[Mapping[tuple[str, str], Ability]] = MappingProxyType(
     {
+        **IMPERIUM_BOARD_CHOICE_ABILITIES,
         # Espionage: "Place a Spy" -- mandatory with a Spy in supply,
         # recall-first otherwise (OQ-057 (14)).
         ("espionage", "spy"): _choice(

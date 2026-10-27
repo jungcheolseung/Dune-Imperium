@@ -89,9 +89,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     OnAgentSentTo,
+    OnBoardSpaceSolariPaid,
     OnCardTrashed,
     OnConflictWon,
     OnContractCompleted,
+    OnHighCouncilSeatTaken,
+    OnMakerSpiceHarvested,
     OnOpponentAgentAtSpiedMakerSpace,
     OnReachInfluence,
     OnRevealAcquisitionThisRound,
@@ -140,6 +143,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TakeContract,
     TakeControl,
     TakeHighCouncilSeat,
+    TakeMentat,
     TakeSetupSpice,
     TakeSwordmaster,
     TechTilesAtLeast,
@@ -241,6 +245,10 @@ def _gain_influence_text(gain: GainInfluence) -> str:
             choice += f" where you have {gain.minimum_own}+ Influence"
     if gain.times == 1:
         return f"Gain 1 Influence (choose {choice})"
+    if gain.one_faction:
+        # The original game's two-chevron icon: one Faction, both Influence
+        # [DI p. 16] (Grand Vision).
+        return f"Gain {gain.times} Influence (choose {choice} once)"
     suffix = ", distinct" if gain.distinct else ""
     return f"Gain {gain.times} Influence (choose {choice} each time{suffix})"
 
@@ -686,6 +694,9 @@ def reward_text(reward: Reward) -> str:
             return f"Take control of {BOARD_SPACES_BY_ID[space_id].name}"
         case TakeSwordmaster():
             return "Take your third Agent, usable from this round"
+        case TakeMentat():
+            # The original game's Mentat icon [DI p. 16].
+            return "Take the Mentat from its space"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "Use your Leader's Signet Ring ability"
@@ -763,6 +774,12 @@ def trigger_text(trigger: Trigger) -> str:
             return "When you complete a contract"
         case OnConflictWon():
             return "When you win a Conflict"
+        case OnBoardSpaceSolariPaid():
+            return "Whenever you pay Solari for a board space's cost"
+        case OnHighCouncilSeatTaken():
+            return "When you take a seat on the High Council"
+        case OnMakerSpiceHarvested():
+            return "Whenever you harvest spice at a Maker space"
         case _:
             assert_never(trigger)
 

@@ -41,11 +41,15 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
     EffectSection,
+    GainInfluence,
     GainResources,
     HasAlliance,
     InfluenceAtLeast,
     OnAgentSentTo,
+    OnBoardSpaceSolariPaid,
     OnCardTrashed,
+    OnHighCouncilSeatTaken,
+    OnMakerSpiceHarvested,
     OnOpponentAgentAtSpiedMakerSpace,
     OnReachInfluence,
     OnRoundStart,
@@ -60,6 +64,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RevealSwords,
     Reward,
     SandwormsInConflictAtLeast,
+    SetAsideImperiumRowCard,
     StrengthInConflictAtLeast,
     Trigger,
     TroopToMemory,
@@ -214,6 +219,63 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         # Reverse Engineering: "Gain 1 spice -or- trash one of your Tech tiles
         # -> Draw 1 Intrigue card, Draw 1 card" (OQ-106).
         "kota_odax_of_ix": _hook("reverse_engineering", AbilityMark.MANDATORY),
+        # The original game's (docs/rules/imperium-base.md 12). Brutality:
+        # one troop, or two with a Faction Alliance -- its "-OR-" is no
+        # choice (two are never worse; the Steam app offers none, P0 sweep
+        # L7), so the first line whose condition holds when it resolves is
+        # paid (OQ-028).
+        "glossu_rabban": Ability(
+            timing=AbilityTiming.AGENT_BOX,
+            sections=(
+                EffectSection(rewards=(RecruitTroops(2),), condition=HasAlliance()),
+                EffectSection(rewards=(RecruitTroops(1),)),
+            ),
+            mark=AbilityMark.AUTOMATIC,
+            structure=AbilityStructure.ONE_OF,
+        ),
+        # Manufacturing: 1 Solari.
+        "count_ilban_richese": _automatic(
+            EffectSection(rewards=(GainResources(solari=1),))
+        ),
+        # Spice Hoard: 1 spice.
+        "earl_memnon_thorvald": _automatic(
+            EffectSection(rewards=(GainResources(spice=1),))
+        ),
+        # Hidden Reservoir: 1 water.
+        "countess_ariana_thorvald": _automatic(
+            EffectSection(rewards=(GainResources(water=1),))
+        ),
+        # Prudent Diplomacy (stage P2b): "spice 1 → 상대가 나보다 Influence가
+        # 많은 진영에 Influence 1" -- an arrow, so never forced; the Faction is
+        # judged as it resolves (OQ-028) and none at the top is offered
+        # (OQ-060, P0 sweep L5).
+        # Scheme (stage P2b): "1 Solari → Intrigue 1", an arrow, once per
+        # play [FAQ p. 3] (docs/rules/imperium-base.md 12).
+        "baron_vladimir_harkonnen": _hook(
+            "scheme",
+            AbilityMark.OPTIONAL,
+            EffectSection(
+                rewards=(DrawIntrigueCards(1),), costs=(PayResources(solari=1),)
+            ),
+        ),
+        # Discipline (stage P2b): draw a card.
+        "paul_atreides": _automatic(EffectSection(rewards=(DrawPersonalCards(1),))),
+        # Manipulate (stage P2b): set a Row card aside and refill the Row;
+        # this round's Reveal turn may acquire it for 1 Persuasion less --
+        # "Uprising Intrigue Manipulate와 같은 판정 [FAQ p. 3]".
+        "helena_richese": _hook(
+            "manipulate",
+            AbilityMark.MANDATORY,
+            EffectSection(rewards=(SetAsideImperiumRowCard(),)),
+        ),
+        "duke_leto_atreides": _hook(
+            "prudent_diplomacy",
+            AbilityMark.OPTIONAL,
+            EffectSection(
+                rewards=(GainInfluence(where_opponent_leads=True),),
+                costs=(PayResources(spice=1),),
+            ),
+        ),
     }
 )
 
@@ -370,6 +432,38 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         # Secret Project: a Tech tile chosen at game start, acquirable at 1
         # spice less (OQ-041).
         "kota_odax_of_ix": (_standing("secret_project"),),
+        # The original game's (docs/rules/imperium-base.md 12; Glossu
+        # Rabban's Arrakis Fiefdom is setup, ``LeaderDefinition`` fields).
+        # Ruthless Negotiator: a card whenever Solari pay a board space's
+        # printed cost [FAQ p. 2], drawn as its own step (OQ-106).
+        "count_ilban_richese": (
+            _triggered(OnBoardSpaceSolariPaid(), DrawPersonalCards(1)),
+        ),
+        # Connections: Influence with a Faction of the owner's choice on
+        # taking a High Council seat (none at the top, OQ-060).
+        "earl_memnon_thorvald": (
+            _triggered(OnHighCouncilSeatTaken(), GainInfluence()),
+        ),
+        # Spice Addict: harvesting at a Maker space -- only there, and not
+        # optional [FAQ p. 2] -- yields 1 spice less (the standing record)
+        # and a card, drawn as its own step (OQ-106).
+        "countess_ariana_thorvald": (
+            _standing("spice_addict"),
+            _triggered(OnMakerSpiceHarvested(), DrawPersonalCards(1)),
+        ),
+        # Landsraad Popularity (stage P2b): a Landsraad space's Solari cost
+        # is 1 less, never optional (P0 sweep L5).
+        "duke_leto_atreides": (_standing("landsraad_popularity"),),
+        # Eyes Everywhere (stage P2b): opponents' Agents do not block her on
+        # Landsraad and City spaces (P0 sweep L8).
+        "helena_richese": (_standing("eyes_everywhere"),),
+        # Masterstroke (stage P2b): two Factions chosen in secret before the
+        # first round, revealed for an Influence each the first time his
+        # turn's deployed troops reach four (OQ-115; ``rules.masterstroke``).
+        "baron_vladimir_harkonnen": (_standing("masterstroke"),),
+        # Prescience (stage P2b): he sees his deck's top card at any time,
+        # none while the deck is empty [DI p. 13] (``core.observation``).
+        "paul_atreides": (_standing("prescience"),),
     }
 )
 

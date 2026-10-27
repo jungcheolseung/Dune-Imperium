@@ -396,7 +396,9 @@ def test_sealed_scouts_choices_never_score() -> None:
         if not isinstance(entry.step, ChanceOutcome)
         and (entry.whole or entry.step).action_id in SEALED_ACTION_IDS
     }
-    assert set(sealed.values()) == SEALED_ACTION_IDS, "seed 0 picks and bids"
+    # The original game's Masterstroke has no Uprising game to be in.
+    uprising_sealed = SEALED_ACTION_IDS - {"choose_masterstroke_faction"}
+    assert set(sealed.values()) == uprising_sealed, "seed 0 picks and bids"
     payload = manager.vp_ledger(game_id)
     assert set(payload) == PAYLOAD_KEYS
     assert not set(sealed) & set(_by_index(payload))

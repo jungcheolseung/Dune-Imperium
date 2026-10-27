@@ -32,6 +32,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
 from dune_imperium.rules.effects import (
@@ -274,6 +275,8 @@ def _deployment_context(
     recruited = context["troops_recruited"]
     if isinstance(recruited, bool) or not isinstance(recruited, int):
         raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+    # And the troops an Influence track bonus recruited this turn.
+    recruited += state.players[player].track_troops_recruited_turn
     existing_limit = context.get("existing_troop_deployment_limit")
     if isinstance(existing_limit, bool) or not isinstance(existing_limit, int):
         raise RuntimeError("Agent-turn effect frame has invalid deployment limit")
@@ -916,7 +919,9 @@ def apply_agent_turn_finish(
     context["pending_combat_deployment"] = False
     context[FINISHING_KEY] = True
     context[FINISH_DEPLOYMENT_KEY] = deployment_window
-    context[FINISH_RECRUITS_KEY] = _recruited_units(context)
+    context[FINISH_RECRUITS_KEY] = _recruited_units(
+        context, working.players[player]
+    )
     working = replace(
         working,
         decision_stack=(*working.decision_stack[:-1], with_context(frame, context)),
@@ -930,11 +935,15 @@ def apply_agent_turn_finish(
 
 
 
-def _recruited_units(context: dict[str, ActionValue]) -> int:
+def _recruited_units(context: dict[str, ActionValue], owner: PlayerState) -> int:
     troops = context["troops_recruited"]
     if isinstance(troops, bool) or not isinstance(troops, int):
         raise RuntimeError("Agent-turn effect frame has invalid recruit count")
-    return troops + recruited_commander_count(context, COMMANDERS_RECRUITED_KEY)
+    return (
+        troops
+        + owner.track_troops_recruited_turn
+        + recruited_commander_count(context, COMMANDERS_RECRUITED_KEY)
+    )
 
 
 def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
@@ -978,7 +987,9 @@ def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
         state,
         decision_stack=(*state.decision_stack[:-1], with_context(frame, reopened)),
     )
-    recruited_more = _recruited_units(context) > recruited_at_press
+    recruited_more = (
+        _recruited_units(context, state.players[owner]) > recruited_at_press
+    )
     if (
         agent_turn_has_other_pending_effects(reopened, state.players)
         # An effect the press's own steps queued on the turn (a Contract an

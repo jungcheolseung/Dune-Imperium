@@ -29,6 +29,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, replace
 from typing import Final
 
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
 from dune_imperium.content.uprising.types import ConflictTier
@@ -579,6 +580,22 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
             index = alternatives.index(row[3])
             row = (*row[:3], alternatives[(index + 1) % len(alternatives)])
         secret_picks.append(row)
+    # The original game's Baron: another seat's unrevealed Masterstroke
+    # Factions become Factions it did not choose (docs/rules/imperium-base.md
+    # 14).
+    for seat, player in enumerate(players):
+        if seat != observer and player.masterstroke_factions and not (
+            player.masterstroke_revealed
+        ):
+            others = tuple(
+                faction.value
+                for faction in Faction
+                if faction.value not in player.masterstroke_factions
+            )
+            players[seat] = replace(
+                player,
+                masterstroke_factions=others[: len(player.masterstroke_factions)],
+            )
     # A sealed bid moves to another amount its seat could have bid.
     bids = tuple(
         (seat, (amount + 1) % (bid_cap(state, seat) + 1), confirmed)

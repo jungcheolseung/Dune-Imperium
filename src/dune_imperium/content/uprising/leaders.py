@@ -39,6 +39,11 @@ class LeaderDefinition:
     # Printed setup deviations: Steersman Y'rkoon starts with no water;
     # Chani's Tactics token starts on the four-player space of her track.
     starting_water: int = 1
+    # Glossu Rabban's Arrakis Fiefdom (the original game): he starts with 1
+    # spice and 1 Solari more [Rabban card] (docs/rules/imperium-base.md 4;
+    # the app's ``ArrakisFiefdomAbility`` gains both at game start).
+    extra_starting_spice: int = 0
+    extra_starting_solari: int = 0
     uses_tactics_track: bool = False
     # Piter De Vries deals himself the Twisted Intrigue deck.
     uses_twisted_intrigue: bool = False
@@ -260,8 +265,6 @@ LEADERS: Final = (
 )
 
 
-LEADERS_BY_ID: Final = {leader.leader_id: leader for leader in LEADERS}
-
 
 class FeydTrackReward(StrEnum):
     """Printed reward of one Personal Training track space."""
@@ -335,3 +338,15 @@ def leaders_for_choam(
         and (bloodlines or not leader.bloodlines_only)
         and (tech_module or not leader.tech_only)
     )
+
+
+# One table for both base games (docs/base-game-and-ix-plan.md 4.2 item 7):
+# the original game's Leaders follow Uprising's. Imported last, as they are
+# built from ``LeaderDefinition`` (``content.imperium``).
+from dune_imperium.content.imperium.leaders import (  # noqa: E402
+    IMPERIUM_LEADERS,
+)
+
+LEADERS_BY_ID: Final = {
+    leader.leader_id: leader for leader in (*LEADERS, *IMPERIUM_LEADERS)
+}

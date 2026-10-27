@@ -16,6 +16,7 @@ from typing import Final
 from dune_imperium.content.uprising.abilities import (
     Ability,
     AbilityMark,
+    AbilityStructure,
     AbilityTiming,
 )
 from dune_imperium.content.uprising.board import (
@@ -29,11 +30,15 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
     EffectSection,
+    GainInfluence,
     GainResources,
     HasAlliance,
     InfluenceAtLeast,
     OnAgentSentTo,
+    OnBoardSpaceSolariPaid,
     OnCardTrashed,
+    OnHighCouncilSeatTaken,
+    OnMakerSpiceHarvested,
     OnOpponentAgentAtSpiedMakerSpace,
     OnReachInfluence,
     OnRoundStart,
@@ -81,6 +86,7 @@ from dune_imperium.rules.acquisition import (
     acquire_imperium_for_intrigue,
     acquire_reserve_for_intrigue,
     open_acquisition_frames,
+    take_imperium_row_card,
 )
 from dune_imperium.rules.box_events import (
     BoxNeedsRows,
@@ -127,7 +133,10 @@ from dune_imperium.rules.influence import (
     influence_amount,
     influence_can_rise,
 )
-from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.intrigue_deck import (
+    draw_or_queue_intrigue_cards,
+    shufflable_intrigue_discard,
+)
 from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
     add_reveal_persuasion,
@@ -170,6 +179,15 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "steersman_y_rkoon",
         # Tech Module (card face, 2026-09-07).
         "kota_odax_of_ix",
+        # The original game's (docs/rules/imperium-base.md 12; stage P2a).
+        "glossu_rabban",
+        "count_ilban_richese",
+        "earl_memnon_thorvald",
+        "countess_ariana_thorvald",
+        "duke_leto_atreides",
+        "helena_richese",
+        "paul_atreides",
+        "baron_vladimir_harkonnen",
     }
 )
 
@@ -574,6 +592,9 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         "esmar_tuek",
         "gaius_helen_mohiam",
         "kota_odax_of_ix",
+        "duke_leto_atreides",
+        "helena_richese",
+        "baron_vladimir_harkonnen",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
@@ -616,7 +637,19 @@ def _resolve_automatic_signet(
     next_owner = owner
     gained: dict[str, int] = {"solari": 0, "spice": 0, "water": 0}
     recruit_shortfall: tuple[GameEvent, ...] = ()
-    for line in record.sections:
+    lines = record.sections
+    if record.structure is AbilityStructure.ONE_OF:
+        # Brutality's "-OR-" is no choice: the first line whose condition
+        # holds now (``content.uprising.leader_abilities``).
+        lines = (
+            next(
+                line
+                for line in lines
+                if line.condition is None
+                or _signet_condition_holds(line.condition, owner, context)
+            ),
+        )
+    for line in lines:
         holds = line.condition is None or _signet_condition_holds(
             line.condition, owner, context
         )
@@ -761,6 +794,10 @@ SIGNET_HOOKS: Final = frozenset(
         "esmar_smuggle_spice",
         "listeners",
         "reverse_engineering",
+        # The original game's Duke Leto Atreides and Helena Richese.
+        "prudent_diplomacy",
+        "manipulate",
+        "scheme",
     }
 )
 
@@ -783,7 +820,17 @@ def _check_signet_records() -> None:
             if draws and (len(rewards) > 1 or record.sections[0].condition):
                 raise ValueError(f"{face_id}: a Signet draw resolves alone")
             recruits = (RecruitTroops, RecruitUndeployableTroops)
-            if sum(isinstance(reward, recruits) for reward in rewards) > 1:
+            # An automatic "-OR-" (Brutality) pays one line, the first whose
+            # condition holds; its last line holds always.
+            one_of = record.structure is AbilityStructure.ONE_OF
+            if one_of and record.sections[-1].condition is not None:
+                raise ValueError(f"{face_id}: an automatic -OR- ends unconditioned")
+            if any(
+                sum(isinstance(reward, recruits) for reward in paid) > 1
+                for paid in (
+                    [line.rewards for line in record.sections] if one_of else [rewards]
+                )
+            ):
                 raise ValueError(f"{face_id}: a Signet recruits once")
             if record.icons and face_id not in LEADERS_BY_ID:
                 # ``_SIGNET_ICONS`` is read by the Leader's id.
@@ -800,7 +847,8 @@ def _check_signet_records() -> None:
                 if record.icons and not gains_only:
                     raise ValueError(f"{face_id}: a Signet icon pays resources")
                 if line.condition is not None and not (
-                    gains_only and _signet_condition_supported(line.condition)
+                    (gains_only or one_of)
+                    and _signet_condition_supported(line.condition)
                 ):
                     # Only a resource line is judged (0 when it fails).
                     raise ValueError(f"{face_id}: no such automatic Signet condition")
@@ -1367,6 +1415,52 @@ def legal_leader_signet_actions(
             ),
         )
 
+    if owner.leader_id == "helena_richese":
+        # Manipulate: set a Row card aside (refilled from the deck), or, with
+        # the Row empty, confirm it fizzles (OQ-113 (C), as the Intrigue
+        # card's; [FAQ p. 3]).
+        return tuple(
+            DomainAction(
+                action_id="set_aside_leader_imperium",
+                actor=player,
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in state.imperium_row
+        ) or (DomainAction(action_id=SIGNET_NO_OPTION, actor=player),)
+
+    if owner.leader_id == "baron_vladimir_harkonnen":
+        # Scheme: pay 1 Solari for an Intrigue card, an arrow (declined
+        # freely; once per play [FAQ p. 3]; docs/rules/imperium-base.md 12),
+        # never paid for nothing: "비용만 내고 보상을 받을 수 없는 화살표 줄은
+        # 내지 않는다" (section 16, OQ-071) -- not while no Intrigue card can
+        # be drawn (the original game's deck is empty until stage P3).
+        drawable = bool(state.intrigue_deck or shufflable_intrigue_discard(state))
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                (DomainAction(action_id="pay_leader_signet_solari", actor=player),)
+                if owner.resources.solari >= 1 and drawable
+                else ()
+            ),
+        )
+
+    if owner.leader_id == "duke_leto_atreides":
+        # Prudent Diplomacy: pay 1 spice for Influence with a Faction where an
+        # opponent has more than Leto (docs/rules/imperium-base.md 12); an
+        # arrow, so declined freely, and judged now (OQ-028): no Faction at
+        # the top (OQ-060), none without a spice to pay.
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                DomainAction(
+                    action_id="choose_leader_signet_influence",
+                    actor=player,
+                    arguments=(("faction", faction.value),),
+                )
+                for faction in prudent_diplomacy_factions(state, player)
+            ),
+        )
+
     if owner.leader_id == "princess_irulan":
         # Chronicler's Insight: acquire a card that costs one to hand, or
         # trash a hand card (two Spice if it costs one or more), or neither
@@ -1796,6 +1890,8 @@ def apply_leader_signet_payment(
 
     if owner.leader_id == "staban_tuek":
         return _apply_staban_bonus_payment(state, context, action)
+    if owner.leader_id == "baron_vladimir_harkonnen":
+        return _apply_scheme_payment(state, context, player, source)
 
     cost, line = _signet_payment(owner)
     if owner.resources.spice < cost.spice:
@@ -1854,6 +1950,33 @@ def apply_leader_signet_payment(
         state=next_state,
         events=(
             *events,
+            *intrigue_draw.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
+    )
+
+
+def _apply_scheme_payment(
+    state: GameState, context: dict[str, ActionValue], player: int, source: str
+) -> RuleResult:
+    """Scheme: 1 Solari buys an Intrigue card, an arrow paid once per play
+    (docs/rules/imperium-base.md 12, [FAQ p. 3])."""
+
+    owner = state.players[player]
+    if owner.resources.solari < 1:
+        raise RuntimeError("Scheme's payment requires one Solari")
+    paid = replace(
+        owner, resources=replace(owner.resources, solari=owner.resources.solari - 1)
+    )
+    working = replace(state, players=replace_player(state.players, paid))
+    intrigue_draw = draw_or_queue_intrigue_cards(working, player, 1, source=source)
+    next_state = _store_signet(
+        intrigue_draw.state, context, intrigue_draw.state.players
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            resources_paid_event(source, player, solari=1),
             *intrigue_draw.events,
             _signet_box(source, context, player, BoxOutcome.RESOLVED),
         ),
@@ -2133,6 +2256,99 @@ def _apply_staban_bonus_payment(
     )
 
 
+def apply_manipulate_signet(state: GameState, action: DomainAction) -> RuleResult:
+    """Helena Richese's Manipulate: the chosen Row card is set aside for her,
+    the Row refilled; this round's Reveal turn may acquire it for 1
+    Persuasion less, as the Uprising Intrigue card's ([FAQ p. 3];
+    ``acquisition``)."""
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Leader Signet choice")
+    context = _signet_context(state)
+    player = action.actor
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    instance_id = str(dict(action.arguments)["instance_id"])
+    imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
+    owner = state.players[player]
+    keeper = replace(owner, imperium_set_aside=(*owner.imperium_set_aside, instance_id))
+    context["pending_agent_effect"] = False
+    next_state = _store_signet(
+        replace(state, imperium_row=imperium_row, imperium_deck=imperium_deck),
+        context,
+        replace_player(state.players, keeper),
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:set_aside:{instance_id}",
+                kind="imperium_row_card_set_aside",
+                payload=(
+                    ("card_id", imperium_card_for_instance(instance_id).card.card_id),
+                    ("instance_id", instance_id),
+                    ("player", player),
+                ),
+            ),
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
+    )
+
+
+def prudent_diplomacy_factions(state: GameState, player: int) -> tuple[Faction, ...]:
+    """The Factions Prudent Diplomacy offers now: an opponent has more
+    Influence there than the owner, who is below the top (OQ-060) and holds a
+    spice to pay; none otherwise."""
+
+    owner = state.players[player]
+    if owner.resources.spice < 1:
+        return ()
+    return tuple(
+        faction
+        for faction in Faction
+        if influence_can_rise(owner, faction)
+        and any(
+            influence_amount(seat.influence, faction)
+            > influence_amount(owner.influence, faction)
+            for seat in state.players
+            if seat.player_id != player
+        )
+    )
+
+
+def _apply_prudent_diplomacy(
+    state: GameState,
+    context: dict[str, ActionValue],
+    player: int,
+    faction: Faction,
+) -> RuleResult:
+    """Pay Prudent Diplomacy's spice, then gain the chosen Influence."""
+
+    owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    next_owner = replace(
+        owner,
+        resources=replace(owner.resources, spice=owner.resources.spice - 1),
+        spice_spent_turn=owner.spice_spent_turn + 1,
+    )
+    paid = replace(state, players=replace_player(state.players, next_owner))
+    gained = gain_faction_influence(
+        paid,
+        player,
+        faction,
+        1,
+        event_prefix=f"{source}:influence:{faction.value}",
+    )
+    next_state = _store_signet(gained.state, context, gained.state.players)
+    return RuleResult(
+        state=next_state,
+        events=(
+            resources_paid_event(source, player, spice=1),
+            *gained.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
+    )
+
+
 def apply_shaddam_signet_choice(
     state: GameState,
     action: DomainAction,
@@ -2181,6 +2397,9 @@ def apply_shaddam_signet_choice(
     faction_value = dict(action.arguments).get("faction")
     if not isinstance(faction_value, str):
         raise RuntimeError("Leader Signet Influence choice has invalid Faction")
+    if owner.leader_id == "duke_leto_atreides":
+        # Prudent Diplomacy's 1 spice (``legal_leader_signet_actions``).
+        return _apply_prudent_diplomacy(state, context, player, Faction(faction_value))
     if owner.resources.solari < 3:
         raise RuntimeError("the Signet Ring Influence choice requires three Solari")
     next_owner = replace(
@@ -3222,6 +3441,15 @@ def _leader_trigger_supported(
             return face_id == "piter_de_vries"
         case OnSpiceGainedInTurnAtLeast(), DrawPersonalCards(count=1):
             return True
+        # The original game's: Ruthless Negotiator's card (``agent_turn``),
+        # Spice Addict's (``board_effects``), both held draws; Connections'
+        # chosen Influence (``board_effects``, its own icon of the visit).
+        case OnBoardSpaceSolariPaid(), DrawPersonalCards(count=1):
+            return face_id == "count_ilban_richese"
+        case OnMakerSpiceHarvested(), DrawPersonalCards(count=1):
+            return face_id == "countess_ariana_thorvald"
+        case OnHighCouncilSeatTaken(), GainInfluence() if reward == GainInfluence():
+            return face_id == "earl_memnon_thorvald"
     return False
 
 

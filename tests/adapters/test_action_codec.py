@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from dune_imperium import RulesetConfig
+from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters import ACTION_CODEC_VERSION, ActionCodec
 from dune_imperium.adapters.action_codec import (
     ActionTemplate,
@@ -23,7 +23,10 @@ from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core import DomainAction, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
-from dune_imperium.rules.board_effects import AUTOMATIC_BOARD_ICONS
+from dune_imperium.rules.board_effects import (
+    AUTOMATIC_BOARD_ICONS,
+    IMPERIUM_ONLY_BOARD_ICONS,
+)
 from dune_imperium.rules.effect_steps import (
     STEP_SPECS,
     TARGET_SPECS,
@@ -1095,9 +1098,15 @@ def test_spy_recall_first_choices_round_trip_in_every_catalog() -> None:
 def test_board_effect_icons_round_trip_and_the_bare_action_is_gone() -> None:
     # One template per printed automatic icon (OQ-027); the old argument-less
     # "resolve everything at once" action left the catalog with codec v86.
-    codec = ActionCodec(RulesetConfig())
     assert AUTOMATIC_BOARD_ICONS == tuple(sorted(AUTOMATIC_BOARD_ICONS))
     for key in AUTOMATIC_BOARD_ICONS:
+        # The original board's own icons are only in its catalog
+        # (docs/base-game-and-ix-plan.md 15.4).
+        codec = ActionCodec(
+            RulesetConfig(base_game=BaseGame.IMPERIUM)
+            if key in IMPERIUM_ONLY_BOARD_ICONS
+            else RulesetConfig()
+        )
         action = DomainAction(
             action_id="resolve_board_effect",
             actor=1,

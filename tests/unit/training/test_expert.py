@@ -294,7 +294,9 @@ def test_labelling_seats_at_a_mixed_full_table_choose_like_checkpoint_seats(
     the plain seat's, while it records rows (each with the frame of its
     decision) and the ``app_ai`` seats record nothing. (The first 240 since
     stage B2: the Conflict reward windows' rows are decisions too, and seat
-    1 decided only 19 times in the first 200.)
+    1 decided only 19 times in the first 200. The first 320 since observation
+    v35: its wider input draws the tiny network other weights, and seat 1
+    decided only 16 times in the first 240.)
     """
 
     teacher = _checkpoint(tmp_path, FULL)
@@ -322,7 +324,7 @@ def test_labelling_seats_at_a_mixed_full_table_choose_like_checkpoint_seats(
     chance = ChanceResolver(seed=17)
     decisions = compared = 0
     seen_rows = dict.fromkeys(labelling, 0)
-    while decisions < 240 and state.phase is not GamePhase.FINISHED:
+    while decisions < 320 and state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
             state = engine.apply(state, chance.resolve(decision)).state

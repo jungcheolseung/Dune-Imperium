@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 from typing import TYPE_CHECKING, Final
 
+from dune_imperium.config import BaseGame
 from dune_imperium.content.bloodlines.tech_abilities import tech_draws_on
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
-from dune_imperium.content.uprising.abilities import Ability
+from dune_imperium.content.uprising.abilities import Ability, AbilityStructure
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflict_abilities import (
     CONFLICT_REWARD_ABILITIES,
@@ -31,6 +32,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Reward,
     TakeContract,
     TakeControl,
+    TakeMentat,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
@@ -483,6 +485,22 @@ COMBAT_REWARD_ICON_KINDS: Final = (
     # card", a row of the sole winner's window (OQ-121, user ruling
     # 2026-10-25, "PA는 승자의 창 (추천)").
     "planetary_array",
+    # The original game's (docs/rules/imperium-base.md 9, 10): the Mentat
+    # [DI p. 16], two Influence with one Faction [DI p. 16] (Grand Vision),
+    # and the lines of a "-OR-" or "Choose two:" row, one row each
+    # (``REWARD_LINE_KINDS``; OQ-114).
+    "mentat",
+    "one_faction_influence",
+    "line_0",
+    "line_1",
+    "line_2",
+)
+# The kinds only the original game's Conflicts print: a catalog holds their
+# rows only when one of its Conflicts prints them (docs/base-game-and-ix-plan.md
+# 15.4), so Uprising's rows stay what they were.
+REWARD_LINE_KINDS: Final = ("line_0", "line_1", "line_2")
+IMPERIUM_REWARD_ICON_KINDS: Final = frozenset(
+    {"mentat", "one_faction_influence", *REWARD_LINE_KINDS}
 )
 # Frame context keys of the window: the icons still to resolve, in the order
 # the engine paid them before stage B2 (``LEGACY_ICON_ORDER``: an older
@@ -491,6 +509,10 @@ COMBAT_REWARD_ICON_KINDS: Final = (
 # opened (their ``choice_index``, which their events carry).
 _ICONS_KEY: Final = "icons"
 _PRINTED_KEY: Final = "printed"
+# The lines picked so far of a row of alternatives (comma-separated
+# indexes), and how many it takes: 1 for "-OR-", 2 for "Choose two:".
+_CHOSEN_KEY: Final = "chosen_lines"
+_TAKES_KEY: Final = "lines_taken"
 _RANK_KEY: Final = "rank"
 _MULTIPLIER_KEY: Final = "multiplier"
 _CHOICE_INDEX_KEY: Final = "choice_index"
@@ -528,6 +550,17 @@ def _arrow_kind(cost: object) -> str:
     raise TypeError(f"{cost!r} is not a Conflict reward arrow's cost")
 
 
+def _row_takes(row: Ability) -> int:
+    """How many lines a row of alternatives takes (0: a plain row)."""
+
+    match row.structure:
+        case AbilityStructure.ONE_OF:
+            return 1
+        case AbilityStructure.CHOOSE_TWO:
+            return 2
+    return 0
+
+
 def _icon_kind(piece: Reward) -> str:
     """The icon a free reward piece of a Conflict row is (``CONFLICT_REWARD``
     records, ``conflict_abilities``)."""
@@ -547,12 +580,16 @@ def _icon_kind(piece: Reward) -> str:
             return "contract"
         case TrashPersonalCard():
             return "trash"
+        case TakeMentat():
+            return "mentat"
         case PlaceSpy(shared_post=True):
             return "deep_cover_spy"
         case PlaceSpy():
             return "spy"
         case GainInfluence(distinct=True):
             return "distinct_influence"
+        case GainInfluence(one_faction=True):
+            return "one_faction_influence"
         case GainInfluence(factions=(_,)):
             return "faction_influence"
         case GainInfluence():
@@ -560,10 +597,35 @@ def _icon_kind(piece: Reward) -> str:
     raise TypeError(f"{piece!r} is not a Conflict reward icon")
 
 
-def _row_icons(row: Ability) -> tuple[tuple[str, Reward | EffectSection], ...]:
+def _row_icons(
+    row: Ability, chosen: tuple[int, ...] = ()
+) -> tuple[tuple[str, Reward | EffectSection], ...]:
     """Each icon of a reward row with the piece (an arrow: its line) that
-    prints it, in printed order."""
+    prints it, in printed order.
 
+    A row of alternatives ("-OR-", "Choose two:") is one row per line
+    (``line_<index>``) until its lines are ``chosen``; then it is the chosen
+    lines' icons, their resources one row (OQ-112 (3))."""
+
+    if _row_takes(row):
+        if len(chosen) < _row_takes(row):
+            return tuple(
+                (f"line_{index}", line) for index, line in enumerate(row.sections)
+            )
+        solari = spice = water = 0
+        icons_of_lines: list[tuple[str, Reward | EffectSection]] = []
+        for index in sorted(chosen):
+            for piece in row.sections[index].rewards:
+                if isinstance(piece, GainResources):
+                    solari += piece.solari
+                    spice += piece.spice
+                    water += piece.water
+                else:
+                    icons_of_lines.append((_icon_kind(piece), piece))
+        if solari or spice or water:
+            resources = GainResources(solari=solari, spice=spice, water=water)
+            icons_of_lines.insert(0, ("resources", resources))
+        return tuple(icons_of_lines)
     icons: list[tuple[str, Reward | EffectSection]] = []
     for line in row.sections:
         if line.costs:
@@ -588,14 +650,23 @@ def conflict_reward_icon_kinds(conflict_id: str) -> tuple[str, ...]:
 
 
 def reward_icon_piece(
-    conflict_id: str, rank: int, kind: str
+    conflict_id: str, rank: int, kind: str, chosen: tuple[int, ...] = ()
 ) -> Reward | EffectSection | None:
     """The first piece of a Conflict's ``rank`` row that prints ``kind``
     (an arrow's line), or None (Pivotal Gambit's Influence, which no record
-    prints)."""
+    prints); a row of alternatives reads its ``chosen`` lines."""
 
     row = CONFLICT_REWARD_ABILITIES[conflict_id][rank - 1]
-    return next((piece for icon, piece in _row_icons(row) if icon == kind), None)
+    return next(
+        (piece for icon, piece in _row_icons(row, chosen) if icon == kind), None
+    )
+
+
+def chosen_reward_lines(frame: DecisionFrame) -> tuple[int, ...]:
+    """The lines a reward window's row of alternatives has picked."""
+
+    text = str(dict(frame.context).get(_CHOSEN_KEY, ""))
+    return tuple(int(index) for index in text.split(",") if index)
 
 
 def _reward_window(
@@ -635,6 +706,10 @@ def _reward_window(
             icons.extend([kind] * counts.get(kind, 0))
     for kind in _LEGACY_LATER_CHOICES:
         icons.extend([kind] * (counts.get(kind, 0) * multiplier))
+    # The original game's kinds, after every older one (no sandworm doubles
+    # them: that board has none).
+    for kind in ("mentat", "one_faction_influence", *REWARD_LINE_KINDS):
+        icons.extend([kind] * counts.get(kind, 0))
     if assignment.rank is RewardRank.FIRST:
         # The first-place reward goes to a sole winner only (a tie for first
         # takes second place's [Main p. 14]), and its window holds what the
@@ -654,6 +729,9 @@ def _reward_window(
         _MULTIPLIER_KEY: multiplier,
         _CHOICE_INDEX_KEY: 0,
     }
+    if _row_takes(row):
+        context[_TAKES_KEY] = _row_takes(row)
+        context[_CHOSEN_KEY] = ""
     return DecisionFrame(
         kind=FrameKind.COMBAT_REWARD_ICONS,
         frame_id=(
@@ -716,6 +794,10 @@ def legal_combat_reward_icon_actions(
         return ()
     remaining = set(_window_icons(frame))
     printed = str(dict(frame.context)[_PRINTED_KEY]).split(",")
+    if remaining & set(REWARD_LINE_KINDS) and chosen_reward_lines(frame):
+        # "Choose two": both lines are named before either is paid (OQ-114,
+        # OQ-057 (4)), so the second pick comes first.
+        remaining &= set(REWARD_LINE_KINDS)
     return tuple(
         DomainAction(
             action_id=REWARD_ICON_ACTION, actor=player, arguments=(("effect", kind),)
@@ -759,7 +841,11 @@ def apply_combat_reward_icon(state: GameState, action: DomainAction) -> RuleResu
     multiplier = context_int(context, _MULTIPLIER_KEY, owner="reward window")
     index = context_int(context, _CHOICE_INDEX_KEY, owner="reward window")
     conflict_id = state.current_conflict_ids[-1]
-    piece = reward_icon_piece(conflict_id, rank.value, kind)
+    if kind in REWARD_LINE_KINDS:
+        return _choose_reward_line(state, frame, player, kind, rank, icons)
+    piece = reward_icon_piece(
+        conflict_id, rank.value, kind, chosen_reward_lines(frame)
+    )
     source = f"round:{state.round_number}:combat_reward:{player}:{rank.value}"
 
     # The choice frames this icon opens, in the order they are answered.
@@ -767,6 +853,11 @@ def apply_combat_reward_icon(state: GameState, action: DomainAction) -> RuleResu
     match kind:
         case "choose_influence":
             opened.append(_influence_choice_frame(state, player, index))
+        case "one_faction_influence":
+            assert isinstance(piece, GainInfluence)
+            opened.append(
+                _influence_choice_frame(state, player, index, times=piece.times)
+            )
         case "optional_solari" | "optional_spice":
             assert isinstance(piece, EffectSection)
             (cost,) = piece.costs
@@ -861,6 +952,56 @@ def apply_combat_reward_icon(state: GameState, action: DomainAction) -> RuleResu
             state, combat_rewards_resolved=combat_rewards_done(state, ())
         )
     return RuleResult(state=state, events=tuple(events))
+
+
+def _choose_reward_line(
+    state: GameState,
+    frame: DecisionFrame,
+    player: int,
+    kind: str,
+    rank: RewardRank,
+    icons: list[str],
+) -> RuleResult:
+    """Pick one line of the window's row of alternatives.
+
+    The original game prints "-OR-" (one line) and "Choose two:" (two
+    different lines, both named before either is paid: OQ-114, OQ-057 (4))
+    on some Conflicts [DI p. 12]. Once the row has its lines, they become the
+    window's icons, each resolved on its own (OQ-112): a public choice before
+    the hidden Intrigue draw it may name (OQ-106). ``icons`` is the window's
+    remaining icons, ``kind`` already removed.
+    """
+
+    context = dict(frame.context)
+    chosen = (*chosen_reward_lines(frame), int(kind.removeprefix("line_")))
+    takes = context_int(context, _TAKES_KEY, owner="reward window")
+    if len(chosen) >= takes:
+        icons = [icon for icon in icons if icon not in REWARD_LINE_KINDS]
+        conflict_id = state.current_conflict_ids[-1]
+        row = CONFLICT_REWARD_ABILITIES[conflict_id][rank.value - 1]
+        added = [icon for icon, _piece in _row_icons(row, chosen)]
+        icons.extend(added)
+        printed = [
+            icon
+            for icon in str(context[_PRINTED_KEY]).split(",")
+            if icon not in REWARD_LINE_KINDS
+        ]
+        context[_PRINTED_KEY] = ",".join((*printed, *dict.fromkeys(added)))
+    context[_CHOSEN_KEY] = ",".join(str(index) for index in chosen)
+    context[_ICONS_KEY] = ",".join(icons)
+    stack = (*state.decision_stack[:-1], with_context(frame, context))
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:combat_reward:{player}:{rank.value}:{kind}"
+        ),
+        kind="combat_reward_line_chosen",
+        payload=(
+            ("line", int(kind.removeprefix("line_"))),
+            ("player", player),
+            ("rank", rank.value),
+        ),
+    )
+    return RuleResult(state=replace(state, decision_stack=stack), events=(event,))
 
 
 def _icon_details(
@@ -983,6 +1124,20 @@ def _resolve_automatic_icon(
                 owner, victory_points=owner.victory_points + amount * multiplier
             )
             return RuleResult(state=_with_owner(state, next_owner))
+        case "mentat", TakeMentat():
+            # Sort Through the Chaos: the winner takes the Mentat "at the
+            # start of the next round" [FAQ p. 4] and keeps it as an Agent
+            # for that round [DI p. 16] (``phases.begin_round``).
+            return RuleResult(
+                state=replace(state, mentat_owed_to=player),
+                events=(
+                    GameEvent(
+                        event_id=f"{source}:mentat",
+                        kind="mentat_won",
+                        payload=(("player", player),),
+                    ),
+                ),
+            )
         case "planetary_array", None:
             # "When you win a Conflict: draw a card" [Planetary Array Tech
             # tile], drawn as this row resolves, before the next place is
@@ -1710,11 +1865,14 @@ def apply_combat_reward_influence(
     faction = Faction(faction_value)
     frame = state.decision_stack[-1]
     choice_index = context_int(dict(frame.context), "choice_index")
+    # Two Influence with one Faction gain both there; a track tops out at 6
+    # (OQ-060).
+    times = frame_context_int(frame, "times") or 1
     gained = gain_faction_influence(
         state,
         action.actor,
         faction,
-        1,
+        times,
         event_prefix=(
             f"round:{state.round_number}:combat_reward:influence:"
             f"{choice_index}:{action.actor}:{faction.value}"
@@ -2245,6 +2403,23 @@ def _award_conflict(state: GameState) -> RuleResult:
     ranking = rank_combat(state.players)
     if ranking.winner is None:
         return RuleResult(state=state)
+    if state.config.base_game is BaseGame.IMPERIUM:
+        # The original game's Conflict cards stay where they were revealed,
+        # the next one "on top of any Conflict cards from previous rounds"
+        # [DI p. 8]: no winner takes one, and none prints a battle icon
+        # (docs/rules/imperium-base.md 2, 10).
+        return RuleResult(
+            state=state,
+            events=(
+                GameEvent(
+                    event_id=(
+                        f"round:{state.round_number}:conflict_won:{ranking.winner}"
+                    ),
+                    kind="conflict_won",
+                    payload=(("conflict_id", conflict_id), ("player", ranking.winner)),
+                ),
+            ),
+        )
     players = state.players
     winner = players[ranking.winner]
     fleet = has_ornithopter_fleet(winner)
@@ -2434,7 +2609,12 @@ def _influence_choice_frame(
     state: GameState,
     player: int,
     index: int,
+    *,
+    times: int = 1,
 ) -> DecisionFrame:
+    """A chosen Faction's Influence; ``times`` more than once with that one
+    Faction (Grand Vision's two-chevron icon [DI p. 16])."""
+
     return DecisionFrame(
         kind=FrameKind.COMBAT_REWARD_INFLUENCE,
         frame_id=(
@@ -2442,9 +2622,17 @@ def _influence_choice_frame(
         ),
         decision=PlayerDecision(
             owner=player,
-            prompt="Choose a faction to gain one Influence",
+            prompt=(
+                "Choose a faction to gain one Influence"
+                if times == 1
+                else f"Choose a faction to gain {times} Influence"
+            ),
         ),
-        context=(("choice_index", index), ("player", player)),
+        context=(
+            ("choice_index", index),
+            ("player", player),
+            *((("times", times),) if times > 1 else ()),
+        ),
     )
 
 

@@ -10,7 +10,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from dune_imperium import RulesetConfig  # noqa: E402
+from dune_imperium import BaseGame, RulesetConfig  # noqa: E402
 from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     _AGENT_ICONS,
     _FRAME_KIND_INDEX,
@@ -87,7 +87,12 @@ from dune_imperium.training.slots import (  # noqa: E402
 # Re-pinned for observation v33 (stage B2): the two reward windows' decision
 # kinds end the ``decision_kind`` field, so the keys after it move by two;
 # SLOT_VERSION stays and an older slot file re-links its rows by key.
-_GOLDEN_DIGEST = "7277e962c9c2f9c5ca2c27ffbdf14a44e3d5a0b31330f01bd583c95cf2305c9c"
+# Re-pinned for observation v35 (stage P2a): the original game's identities
+# end their fields (Conflicts, spaces, Leaders, Reserve cards) and the
+# Mentat's two seat fields end the table; every older key keeps its name, so
+# an older slot file re-links its rows by key. Observation v36 (stage P2b):
+# the Masterstroke choice's frame kind ends ``decision_kind``.
+_GOLDEN_DIGEST = "0c13db1bb9da99185e3df3e8f063a4fc25037eebc9cfec10bd23785fbe7c284b"
 _FULL = RulesetConfig(
     choam_module=True,
     promo_cards=True,
@@ -240,6 +245,12 @@ def _expected_keys(view: PlayerView) -> Counter[str]:
             f"seat{k}:set_aside:{card(instance)}"
             for instance in player.imperium_set_aside
         )
+    # v35: the original game's Mentat.
+    holder = next((seat.player for seat in view.players if seat.mentat), None)
+    if holder is not None:
+        keys[f"mentat_holder:seat{relative(holder)}"] += 1
+    if view.mentat_owed_to is not None:
+        keys[f"mentat_owed:seat{relative(view.mentat_owed_to)}"] += 1
     return keys
 
 
@@ -287,6 +298,9 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
         "decision_owner": 4,
         "leader_draft_pool": len(LEADER_IDS),
         "agent_box": len(PERSONAL_CARD_IDS),
+        # v35: the original game's Mentat holder and the seat owed it.
+        "mentat_holder": 4,
+        "mentat_owed": 4,
     }
     for seat in range(4):
         expected |= {
@@ -302,15 +316,23 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
     assert {field.name: len(field.keys) for field in SLOT_FIELDS} == expected
     # v28: 1_139 -> 1_140 (conflict:economic_supremacy). v32: + 4 + 18 + 139.
     # Stage B2 (v33): + 2, the Conflict and Contract reward windows' kinds.
-    assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_303
+    # v35 (stage P2a): the original game's 18 Conflicts, 19 spaces (occupancy
+    # and four seats' locations), 8 Leaders (four seats and the draft pool),
+    # 3 Reserve cards (Agent boxes) and the Mentat's 4 + 4.
+    # v36: + 1, the Masterstroke choice's decision kind.
+    assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_303 + (
+        18 + 19 * 5 + 8 * 5 + 3 + 8
+    ) + 1
     assert "conflict:economic_supremacy" in SLOT_KEYS
     assert len(set(SLOT_KEYS)) == len(SLOT_KEYS)
     assert len(navigation) == 10
 
     columns, table = lookup_tables()
-    # v32: + 1 decision owner + 6 draft-pool slots + 2 Agent boxes.
-    assert columns.shape == (108 + 9,)
-    assert table.shape == ((108 + 9) * VALUE_RANGE,)
+    # v32: + 1 decision owner + 6 draft-pool slots + 2 Agent boxes. v35: a
+    # fourth Agent location per seat (read twice: occupancy and the seat's
+    # own field) and the Mentat's two seats.
+    assert columns.shape == (108 + 9 + 4 * 2 + 2,)
+    assert table.shape == ((108 + 9 + 4 * 2 + 2) * VALUE_RANGE,)
     assert int(table.max()) == PAD_ROW
     # Every trainable row is reachable from exactly the values its field lists.
     assert set(table.tolist()) == set(range(PAD_ROW + 1))
@@ -324,7 +346,7 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
     assert _field("imperium_row").columns == tuple(
         range(*segment_slice("imperium_row").indices(OBSERVATION_SIZE))
     )
-    assert len(_field("occupancy").columns) == 12
+    assert len(_field("occupancy").columns) == 16
 
 
 def test_slot_keys_are_pinned_by_a_golden_digest() -> None:
@@ -352,10 +374,13 @@ def test_slot_rows_name_what_the_view_shows() -> None:
     # OQ-095 (2), 2026-10-14) moved it: seats 2 and 3 no longer gain an
     # Agent icon there; seed 51 is the first from 40 that covers every row.
     # The opening of a Leader draft game covers the draft pool (v32).
+    # An original game (v35) covers the Mentat's holder and the seat owed it
+    # (seed 1: the Mentat is taken and Sort Through the Chaos is won).
     views = (
         _game_views(21, _FORCED_LEADERS)
         + _game_views(51, _FORCED_LEADERS, agent="app_ai")
         + _game_views(21, (), config=replace(_FULL, leader_draft=True), limit=40)
+        + _game_views(1, (), config=RulesetConfig(base_game=BaseGame.IMPERIUM))
     )
     observations = np.stack(
         [np.asarray(encode_player_view(view), dtype=np.int32) for view in views]

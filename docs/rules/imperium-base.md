@@ -86,7 +86,7 @@ Cards Hub 스캔 3). 사용자가 다른 실물 스캔(duneimperiumassets.com, �
 - **E~G.** 시작 덱 10장, water 1, bank(무제한), Agent 둘은 Leader 위·셋째(Swordmaster)는 보드 옆, Score 1칸(4인), Combat marker 0, Influence
   cube 넷, troop 3개를 가장 가까운 garrison에. `[DI p. 5]`
 - **H.** 시작 플레이어는 **무작위**로 정한다. `[DI p. 5]`
-- **Leader setup.** Glossu "Beast" Rabban은 spice 1·Solari 1을 더 받고 시작한다 `[Rabban card]`. Baron Vladimir Harkonnen은 모든 setup을 마친
+- **Leader setup.** Glossu "Beast" Rabban(앱 이름; 카드면은 GLOSSU "THE BEAST" RABBAN)은 spice 1·Solari 1을 더 받고 시작한다 `[Rabban card]`. Baron Vladimir Harkonnen은 모든 setup을 마친
   뒤 첫 라운드 전에 진영 둘을 비밀로 고른다 `[FAQ p. 1]`(4개 token 가운데 둘을 진영 면이 아래로 가게 Leader 위에 두고, 나머지 둘은 상대가
   못 보게 상자로 `[DI p. 13]`).
 
@@ -199,6 +199,34 @@ Uprising과 같은 틀이다([setup-and-game-flow.md](setup-and-game-flow.md), [
   플레이어 marker를 시계 방향으로 넘긴다. `[DI p. 13]`
 - **Endgame.** Endgame Intrigue를 내고 해결한 뒤 VP가 가장 많은 플레이어가 이긴다. 동률은 spice → Solari → water → garrison의 troop 순 `[DI p. 13]`,
   그래도 같으면 가장 최근에 Reveal turn을 한 플레이어 `[FAQ p. 2]`. Uprising과 같다.
+
+### 10.1 Conflict 18장의 보상 (P2a 구현 대조용)
+
+카드마다 단계와 1·2·3위 보상. 값은 Steam 앱 `ConflictAbilities.BaseSet.*`의 인자이고, 2026-10-22 블라인드 카드면 읽기(P0 sweep, 에셋 로컬
+`analysis/base-ix-2026-10-22/p0-readings/sweep/conflict-leader-board.md`)와 모든 카드에서 같았다. 문구는 엔진 기록(`content/imperium/conflict_abilities.py`)을
+우리 표시 문구(`display/effect_dsl_text.py`)로 옮긴 것이다. "-OR-"는 하나, "Choose two"는 서로 다른 둘을 먼저 정한다(OQ-114). Skirmish A~D와 카드면 파일
+이름의 짝은 P0 sweep에 있다. 지배(Take control) 보상은 7절, Mentat은 9절.
+
+| Conflict (id) | 단계 | 1위 | 2위 | 3위 |
+| --- | --- | --- | --- | --- |
+| Skirmish (`skirmish_a`) | I | Gain 1 VP | Gain 1 water | Gain 1 spice |
+| Skirmish (`skirmish_b`) | I | Gain 1 VP | Gain 2 solari, Draw 1 Intrigue card | Gain 2 solari |
+| Skirmish (`skirmish_c`) | I | Gain 1 Influence (choose any Faction), Gain 1 spice | Gain 2 spice | Gain 1 spice |
+| Skirmish (`skirmish_d`) | I | Gain 1 Influence (choose any Faction), Gain 2 solari | Gain 3 solari | Gain 2 solari |
+| Cloak and Dagger (`cloak_and_dagger`) | II | Gain 1 Influence (choose any Faction), Draw 2 Intrigue cards | Gain 1 spice, Draw 1 Intrigue card | Draw 1 Intrigue card -OR- Gain 1 spice |
+| Desert Power (`desert_power_conflict`) | II | Gain 1 VP, Gain 1 water | Gain 1 spice, 1 water | Gain 1 spice |
+| Guild Bank Raid (`guild_bank_raid`) | II | Gain 6 solari | Gain 4 solari | Gain 2 solari |
+| Machinations (`machinations`) | II | Gain 2 Influence (choose any Faction each time, distinct) | Gain 2 solari, 1 water | Gain 1 water |
+| Raid Stockpiles (`raid_stockpiles`) | II | Gain 3 spice, Draw 1 Intrigue card | Gain 2 spice | Gain 1 spice |
+| Secure Imperial Basin (`imperium_secure_imperial_basin`) | II | Gain 1 VP, Take control of Imperial Basin | Gain 2 water | Gain 1 water |
+| Siege of Arrakeen (`imperium_siege_of_arrakeen`) | II | Gain 1 VP, Take control of Arrakeen | Gain 4 solari | Gain 2 solari |
+| Siege of Carthag (`siege_of_carthag`) | II | Gain 1 VP, Take control of Carthag | Gain 1 spice, Draw 1 Intrigue card | Gain 1 spice |
+| Sort Through the Chaos (`sort_through_the_chaos`) | II | Take the Mentat from its space, Gain 2 solari, Draw 1 Intrigue card | Gain 2 solari, Draw 1 Intrigue card | Gain 2 solari |
+| Terrible Purpose (`terrible_purpose`) | II | Gain 1 VP, Trash a card | Gain 1 spice, 1 water | Gain 1 spice |
+| Battle for Arrakeen (`imperium_battle_for_arrakeen`) | III | Gain 2 VP, Take control of Arrakeen | Choose two: Draw 1 Intrigue card / Gain 2 spice / Gain 3 solari | Gain 2 solari, Draw 1 Intrigue card |
+| Battle for Carthag (`battle_for_carthag`) | III | Gain 2 VP, Take control of Carthag | Gain 3 spice, Draw 1 Intrigue card | Gain 3 spice |
+| Battle for Imperial Basin (`imperium_battle_for_imperial_basin`) | III | Gain 2 VP, Take control of Imperial Basin | Gain 5 spice | Gain 3 spice |
+| Grand Vision (`grand_vision`) | III | Gain 2 Influence (choose any Faction once), Draw 1 Intrigue card | Gain 3 spice, Draw 1 Intrigue card | Gain 3 spice |
 
 ## 11. 아이콘과 용어 (`[DI p. 16]`)
 

@@ -420,6 +420,18 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "choose_leader_signet_influence": _row(
         _V.GAIN_INFLUENCE, _S.LEADER, _T.FACTION, tag=_BOX
     ),
+    # The original game's Baron Harkonnen: a secret Masterstroke Faction.
+    "choose_masterstroke_faction": _row(
+        _V.CHOOSE, _S.LEADER, _T.FACTION, variant="masterstroke"
+    ),
+    # The original game's Helena Richese: Manipulate's set-aside Row card.
+    "set_aside_leader_imperium": _row(
+        _V.SET_ASIDE, _S.LEADER, _T.IMPERIUM_CARD, tag=_BOX
+    ),
+    # The original game's Earl Memnon Thorvald: Connections' Influence.
+    "choose_connections_influence": _row(
+        _V.GAIN_INFLUENCE, _S.LEADER, _T.FACTION, variant="connections"
+    ),
     "decline_leader_card_trash": _row(_V.DECLINE, _S.LEADER, of=_V.TRASH, tag=_BOX),
     "decline_leader_signet_payment": _row(_V.DECLINE, _S.LEADER, of=_V.PAY, tag=_BOX),
     "resolve_leader_signet_without_option": _row(

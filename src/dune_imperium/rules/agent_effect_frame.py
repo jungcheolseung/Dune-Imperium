@@ -46,6 +46,7 @@ from dune_imperium.rules.agent_effects import (
 )
 from dune_imperium.rules.board_effects import (
     legal_board_effect_actions,
+    legal_connections_actions,
     legal_desert_tactics_actions,
     legal_espionage_actions,
     legal_imperial_privilege_actions,
@@ -167,6 +168,8 @@ def legal_agent_effect_frame_actions(
         *legal_sietch_tabr_actions(state, player),
         *legal_tuek_sietch_actions(state, player),
         *legal_shipping_actions(state, player),
+        # Earl Memnon Thorvald's Connections, after the High Council seat.
+        *legal_connections_actions(state, player),
         *legal_desert_tactics_actions(state, player),
         *legal_imperial_privilege_actions(state, player),
         *legal_maker_space_actions(state, player),

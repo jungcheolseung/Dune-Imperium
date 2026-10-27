@@ -116,6 +116,9 @@ class FrameKind(StrEnum):
     # A completed Contract's reward icons, one row each in any order (stage
     # B2, OQ-112; ``rules/contracts.py``).
     CONTRACT_REWARD_ICONS = "contract_reward_icons"
+    # The original game's Baron Harkonnen chooses his two Masterstroke
+    # Factions in secret before the first round (``rules/masterstroke.py``).
+    MASTERSTROKE_SETUP = "masterstroke_setup"
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:
@@ -283,6 +286,7 @@ def reset_turn_counters(
         replace(
             owner,
             units_deployed_turn=0,
+            track_troops_recruited_turn=0,
             units_deployed_peak=0,
             units_deployed_committed=0,
             spice_at_turn_start=owner.resources.spice,

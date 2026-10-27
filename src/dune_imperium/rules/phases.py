@@ -16,7 +16,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.frames import FrameKind, reset_turn_counters
+from dune_imperium.rules.frames import FrameKind, replace_player, reset_turn_counters
 from dune_imperium.rules.pauses import ROUND_DRAW, push_pause
 from dune_imperium.rules.tech import apply_endgame_tech_effects
 
@@ -70,6 +70,24 @@ def begin_round(state: GameState) -> RuleResult:
 
     round_number = state.round_number + 1
     conflict_id = state.conflict_deck[0]
+    players = state.players
+    mentat_events: tuple[GameEvent, ...] = ()
+    if state.mentat_owed_to is not None:
+        # Sort Through the Chaos: "you take the Mentat at the start of the
+        # next round" [FAQ p. 4], "keep it as an Agent for next round"
+        # [DI p. 16]. Where in Round Start is unobservable (P0 sweep C7).
+        taker = players[state.mentat_owed_to]
+        players = replace_player(
+            players,
+            replace(taker, mentat=True, agents_available=taker.agents_available + 1),
+        )
+        mentat_events = (
+            GameEvent(
+                event_id=f"round:{round_number}:mentat_taken",
+                kind="mentat_taken",
+                payload=(("player", taker.player_id),),
+            ),
+        )
     defense = _control_defense_frame(
         state.players,
         conflict_id,
@@ -83,6 +101,8 @@ def begin_round(state: GameState) -> RuleResult:
         scouts_discount_used=False,
         round_number=round_number,
         reveal_order=(),
+        players=players,
+        mentat_owed_to=None,
         conflict_deck=state.conflict_deck[1:],
         current_conflict_ids=(*state.current_conflict_ids, conflict_id),
         conflict_first_place_influence_bonus=0,
@@ -99,9 +119,9 @@ def begin_round(state: GameState) -> RuleResult:
         payload=(("conflict_id", conflict_id), ("round", round_number)),
     )
     if defense is not None:
-        return RuleResult(state=revealed, events=(event,))
+        return RuleResult(state=revealed, events=(event, *mentat_events))
     drawn = draw_round_hands(revealed)
-    return RuleResult(state=drawn.state, events=(event, *drawn.events))
+    return RuleResult(state=drawn.state, events=(event, *mentat_events, *drawn.events))
 
 
 def draw_round_hands(state: GameState) -> RuleResult:
@@ -500,12 +520,15 @@ def resolve_recall_or_endgame(state: GameState) -> RuleResult:
         tech = apply_endgame_tech_effects(next_state)
         return RuleResult(state=tech.state, events=(event, *tech.events))
 
+    # The original game: "Return the Mentat to its designated space in the
+    # Landsraad (if it's not already there)", then the Agents [DI p. 13].
     players = tuple(
         replace(
             player,
             agents_available=3 if player.swordmaster_acquired else 2,
             agent_locations=(),
             has_revealed=False,
+            mentat=False,
         )
         for player in state.players
     )

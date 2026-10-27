@@ -32,6 +32,7 @@ from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_ID,
     intrigue_deck_instance_ids,
 )
+from dune_imperium.content.uprising.leaders import LEADERS as UPRISING_LEADERS
 from dune_imperium.content.uprising.starting_cards import starting_deck_instance_ids
 from dune_imperium.core import (
     ChanceOutcome,
@@ -1038,9 +1039,17 @@ _SERVO_SPY_SETUPS: dict[str, dict[str, object]] = {
 }
 
 
+# Servo-Receivers is a Bloodlines Tech tile: the original game's Leaders
+# meet it only in the combinations of stage P7 (setup refuses them now), and
+# their Signet rows are in the original catalog alone.
+_UPRISING_SIGNETS = IMPLEMENTED_ABILITY_LEADER_IDS & {
+    leader.leader_id for leader in UPRISING_LEADERS
+}
+
+
 @pytest.mark.parametrize("spies", sorted(_SERVO_SPY_SETUPS))
 @pytest.mark.parametrize("host", ["landsraad", "reveal"])
-@pytest.mark.parametrize("leader_id", sorted(IMPLEMENTED_ABILITY_LEADER_IDS))
+@pytest.mark.parametrize("leader_id", sorted(_UPRISING_SIGNETS))
 def test_every_servo_receivers_signet_choice_closes_its_own_frame(
     leader_id: str, host: str, spies: str
 ) -> None:

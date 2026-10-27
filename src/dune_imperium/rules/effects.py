@@ -667,6 +667,8 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
 # and ``board_effects.BOARD_ICON_INFLUENCE``, spelled here like the ids
 # above).
 _SHIPPING_INFLUENCE: Final = ("shipping", "influence")
+# Earl Memnon Thorvald's Connections (``board_effects.BOARD_ICON_CONNECTIONS``).
+_CONNECTIONS: Final = "connections"
 
 
 def blocked_board_icons(
@@ -683,11 +685,18 @@ def blocked_board_icons(
     """
 
     space, icon = _SHIPPING_INFLUENCE
-    if context.get("space_id") != space or not board_icon_is_pending(context, icon):
+    waiting = {
+        key
+        for key in (
+            icon if context.get("space_id") == space else None,
+            # Earl Memnon Thorvald's Connections, the same (OQ-060).
+            _CONNECTIONS,
+        )
+        if key is not None and board_icon_is_pending(context, key)
+    }
+    if not waiting or any(influence_can_rise(owner, faction) for faction in Faction):
         return frozenset()
-    if any(influence_can_rise(owner, faction) for faction in Faction):
-        return frozenset()
-    return frozenset({icon})
+    return frozenset(waiting)
 
 
 def mandatory_board_icons_pending(

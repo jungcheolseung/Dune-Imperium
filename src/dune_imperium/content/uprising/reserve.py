@@ -31,6 +31,10 @@ class ReserveStackDefinition:
     reveal_persuasion: int = 0
     reveal_strength: int = 0
     reveal_choice_effects: tuple[PersonalCardRevealChoiceEffect, ...] = ()
+    # Gained only through its own icon, never bought with Persuasion or
+    # Solari nor taken by a "card that costs N or less" effect: the original
+    # game's Foldspace [DI pp. 11, 16] [FAQ p. 2] (OQ-125).
+    icon_only: bool = False
 
     def __post_init__(self) -> None:
         if self.copies < 1:
@@ -96,8 +100,15 @@ RESERVE_STACKS: Final = (
     ),
 )
 
+# One table for both base games (docs/base-game-and-ix-plan.md 4.2 item 7):
+# the original game's stacks follow Uprising's. Imported last, as they are
+# built from ``ReserveStackDefinition`` (``content.imperium``).
+from dune_imperium.content.imperium.reserve import (  # noqa: E402
+    IMPERIUM_RESERVE_STACKS,
+)
+
 RESERVE_STACKS_BY_ID: Final = {
-    stack.card.card_id: stack for stack in RESERVE_STACKS
+    stack.card.card_id: stack for stack in (*RESERVE_STACKS, *IMPERIUM_RESERVE_STACKS)
 }
 
 

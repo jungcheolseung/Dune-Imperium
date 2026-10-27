@@ -598,3 +598,172 @@ P2가 할 일(이 축 위에서): `content/imperium/`에 보드 22칸·Conflict 
 돌려주게 한다. 보드에 인쇄된 원판 값(영향력 4칸 보너스, Maker 칸 셋, 지배 칸 Arrakeen·Carthag·Imperial Basin의 방문 보너스)은 D3대로
 앱 자료에서 읽어 같은 자리에 채운다. 영향력 보너스에 새 모양(예: 병력)이 있으면 `_apply_track_bonus`에 그 기록을 더한다. 이름이 같아도
 인쇄가 다른 칸·카드는 새 id(4.2절 7)로 하고, id 테스트의 겹침 목록이 그것을 지킨다.
+
+## 15. P2 계획과 결과 (2026-10-27, 브랜치 `jungcheolseung/base-ix-p2`, master `12294215`에서; 결과는 15.8·15.9)
+
+**승인(2026-10-27, 조정자 경유 사용자 확인):** 15.7의 1~6 모두. 4는 조건을 더했다: Uprising 개체의 `feature_tables()` 행은 열 척도까지
+시작 커밋 `12294215`와 바이트로 같아야 한다(척도가 원판 값으로 바뀌면 이관 보정에 기대지 않고 Uprising 값으로 고정하거나 먼저 묻는다). 5는
+사용자 판정 (가)로 OQ-139 `DECIDED`.
+
+8절 표의 P2(원판 보드·흐름)를 두 하위 단계로 나눈다. 끝의 모습은 원판 4인 판(확장 없음)이 휴리스틱 좌석으로 끝까지 도는 소크이고,
+그동안 Uprising은 바이트까지 그대로다(14절의 관문). 규칙 근거는 [rules/imperium-base.md](rules/imperium-base.md)의 절과 인용,
+보드에만 인쇄된 값은 D3대로 앱 자료(로컬 `reference/dune-steam-app/dad97e20…/`)에서 읽는다.
+
+### 15.1 하위 단계
+
+| 단계 | 내용 | codec | 관측 |
+| --- | --- | --- | --- |
+| **P2a 보드와 흐름** | 22칸(능력 기록과 고르기 흐름), Mentat 말, 지배 칸 셋, Maker 칸 셋, Reserve 셋(Arrakis Liaison, 원판 The Spice Must Flow, Foldspace 카드와 Foldspace 칸의 획득), 영향력 4칸 보너스, Conflict 18장(보상 줄), 원판 판 흐름(무작위 시작 플레이어, Objective·Shield Wall·Spy·모래벌레 없음, Conflict 카드는 보드에 쌓임), 지도자 8명의 정의(이름·가문·셋업 값)와 그 가운데 **넷**(Glossu Rabban, Count Ilban Richese, Earl Memnon Thorvald, Countess Ariana Thorvald)의 능력 | v155 그대로(15.4) | **v35**(합집합 끝에 붙임, 15.4) |
+| **P2b 지도자 넷** | Duke Leto Atreides, Helena Richese, Paul Atreides, Baron Vladimir Harkonnen의 능력. 지도자마다 커밋 하나와 그 회귀 테스트, 지도자마다 든 시간·hook 수를 잰다(13.4절) | v155 그대로 | Paul(덱 맨 위)·Baron(비밀 진영)의 숨은 정보 칸이 필요하면 v36 |
+
+P2a에 지도자 넷을 넣는 까닭: 4인 판을 차리려면 서로 다른 지도자 넷이 필요하다(`_validate_leader_selection`). 넷은 hook이 적고(셋업 자원,
+비용 뒤 뽑기, 원로회 trigger, harvest 조정) 숨은 정보가 없다. 나머지 넷은 막힘 예외(Helena), 비용 할인(Leto), 계속되는 숨은 정보(Paul),
+비밀 셋업 결정과 배치 trigger(Baron)라 따로 잰다. P2a 동안 원판 판의 지도자 목록(`content_for(...).leaders`)은 능력이 들어간 넷이고, P2b가
+하나씩 더한다. 정의 여덟은 P2a에 모두 넣어 관측의 지도자 어휘가 한 번만 바뀌게 한다.
+
+### 15.2 id (4.2절 7: 같은 인쇄는 같은 id, 다른 인쇄는 새 id)
+
+- **Uprising과 같은 인쇄(같은 정의를 그대로 쓴다):** 칸 `arrakeen`, `imperial_basin`, `secrets`(앱도 두 판이 한 정의를 쓴다, imperium-base.md 8절),
+  스타터 덱 10장(P1).
+- **이름은 같고 인쇄가 다른 것 → `imperium_` 접두사:** 칸 `imperium_heighliner`, `imperium_hagga_basin`, `imperium_sietch_tabr`,
+  `imperium_research_station`, `imperium_high_council`, `imperium_swordmaster`; Conflict `imperium_battle_for_arrakeen`,
+  `imperium_battle_for_imperial_basin`, `imperium_secure_imperial_basin`, `imperium_siege_of_arrakeen`; Reserve `imperium_the_spice_must_flow`.
+- **원판에만 있는 이름 → 이름 그대로:** 칸 `conspire`, `wealth`, `foldspace`, `selective_breeding`, `hardy_warriors`, `stillsuits`,
+  `hall_of_oratory`, `rally_troops`, `mentat`, `carthag`, `the_great_flat`, `secure_contract`, `sell_melange`; Conflict `battle_for_carthag`,
+  `cloak_and_dagger`, `desert_power_conflict`(`desert_power`는 Uprising 카드 id라 종류 사이 겹침을 피함), `grand_vision`, `guild_bank_raid`, `machinations`, `raid_stockpiles`, `siege_of_carthag`,
+  `skirmish_a`~`skirmish_d`(앱 `SkirmishA`~`D`, 카드면 파일 이름과의 짝은 P0 sweep), `sort_through_the_chaos`, `terrible_purpose`; Reserve
+  `arrakis_liaison`; 지도자 `paul_atreides`, `duke_leto_atreides`, `glossu_rabban`, `baron_vladimir_harkonnen`, `count_ilban_richese`,
+  `helena_richese`, `earl_memnon_thorvald`, `countess_ariana_thorvald`.
+- **종류 사이 겹침을 새로 만들지 않는다:** Foldspace는 칸 `foldspace`, 카드 `foldspace_card`(2026-09-27 사례; `CROSS_KIND_IDS`는 그대로
+  `deliver_supplies` 하나).
+- 테스트: P1의 `test_content_ids.py`(종류 안 유일·종류 사이 겹침 목록)가 원판 표까지 읽고, 원판 카탈로그에 Uprising 전용 id가 새지 않는다는
+  `test_base_game_catalog.py`는 같은 인쇄 셋을 예외로 둔다(`sietch_tabr` 낱말 검사는 Uprising의 고르기 줄 이름으로 좁힌다).
+
+### 15.3 앱에서 읽은 보드 값 (D3)
+
+| 값 | 앱 출처 (로컬) | 값 |
+| --- | --- | --- |
+| 영향력 4칸 보너스 | `WormFactionTrack::FactionTrackBonusAction`(진영 enum 1~4로 갈림; Emperor는 Uprising 판이 켜져 있으면 Spy, 아니면 `GainUnits<WormTroop>(2)`) | Emperor: troop 2 recruit, Spacing Guild: 3 Solari, Bene Gesserit: Intrigue 1, Fremen: water 1 |
+| Alliance token VP | `WormPlayerMatchInitData::.ctor`(`AllianceTokenVP` = 1) | 1 VP(Uprising과 같다) |
+| Sell Melange 교환표 | `SellMelangeSpaceAbility`(`2 × spice + 2`, P0 sweep) | spice 2·3·4·5 → 6·8·10·12 Solari |
+| Reserve 셋 | `ImperiumArchetypes.BaseSet.*`(`cards-compact.md`) | Arrakis Liaison: 비용 2, Fremen, 아이콘 Landsraad·City, Reveal Persuasion 2, 8장. 원판 The Spice Must Flow: 비용 9, 획득 1 VP, Reveal spice 1, 10장. Foldspace: 아이콘 7개 모두, Agent box 카드 1장 뽑기 + 이 카드 trash, 6장, Persuasion으로 사지 않음 `[FAQ p. 2]` |
+| 22칸 값 | `SpaceArchetypes.BaseSet.*` | imperium-base.md 8절 표와 같다(P0 대조) |
+
+카드 셋의 칸 배치는 D1대로 화면 조각(`UI_crd_Imperium_*` prefab)과 한 번 맞춰 본다. 고화질 보드 그림(9절 7, 미룸)을 찾으면 이 표를 그림과
+대조한다.
+
+### 15.4 엔진·codec·관측
+
+- **콘텐츠:** `content/imperium/`(보드·보드 능력 기록·Conflict와 보상 기록·Reserve·지도자 정의와 능력 기록). `rulesets._imperium_content`가
+  돌려주고, id로 찾는 표(`BOARD_SPACES_BY_ID` 등)는 두 판을 하나로 둔다(14절 1).
+- **새 상태(기본값이면 상태 해시에서 빠짐, 옛 저장·기보 그대로):** 좌석의 Mentat 보유(`PlayerState`; 그 라운드 Agent 하나 더 —
+  "this round, you may use it as one of your Agents" `[DI p. 18]`), Sort Through the Chaos 승자가 다음 라운드 시작에 받을 Mentat `[FAQ p. 4]`.
+  Recall은 Mentat을 먼저 제 칸으로 돌린다 `[DI p. 13]`. Conflict 카드는 승자가 가져가지 않고 보드에 쌓인다 `[DI pp. 8, 12]`(Uprising의 동률과 같은
+  자리, OQ-137).
+- **새 흐름:** Conflict 보상의 고르기 줄 — "-OR-"(Cloak and Dagger 3위)와 "Choose two"(Battle for Arrakeen 2위, Machinations 1위; 서로 다른 둘을
+  먼저 정하고 해결, OQ-114). 지금 지급기는 SEQUENCE만 준다(13.4절). Mentat 보상 아이콘(Sort Through the Chaos). 칸: Mentat(뽑기 + 있으면 가져오기,
+  OQ-124), Hall of Oratory(Reveal turn에 그 칸에 Agent가 있으면 Persuasion 1 `[DI p. 17]`), 원판 High Council·Swordmaster(게임에 한 번
+  `[DI pp. 17-18]`), Sell Melange(비용 넷), Selective Breeding(trash 비용 → 2장, 공개 선택과 숨은 뽑기는 별개 단계 OQ-106), Foldspace 칸(Foldspace
+  카드 획득, 더미가 비면 불발), 원판 Maker 칸(모래벌레 고르기 없음), 무작위 시작 플레이어 `[DI p. 5]`(`first_player_seat_zero`면 좌석 0, OQ-132).
+- **원판 + 확장은 P2에서 아직 거절한다:** CHOAM·Bloodlines·Tech·Immortality·Go to 11·Epic·Scouts·Rise of Ix·프로모(P3~P8 몫)를 켠 원판 설정은
+  setup이 지금처럼 `NotImplementedError`로 거절한다. 지도자 draft(OQ-007의 6장 풀)는 지도자 여덟이 다 들어오는 P2b 끝부터 연다.
+- **codec: v155 그대로.** Uprising 144개 조합의 행 목록은 바이트까지 같다(관문에서 P1의 `catalog_digest.py`로 확인). 원판 카탈로그(지금 73줄)는
+  늘어난다. P1이 원판 카탈로그를 만들 때도 번호를 올리지 않았고, 원판 판은 P2 전에 setup이 거절했으므로 원판 저장·기보·체크포인트가 없다. 번호를
+  올리면 Uprising 저장(플레이 서버의 진행 중인 판 포함)을 서버가 못 열고 기보에 다리가 필요해 비용만 생긴다. 원판 저장은 화면(P5) 전에는 만들지
+  않는다는 전제다(15.7 질문 3).
+- **관측: v35 한 번(P2a).** 두 판의 합집합 배치(4.2절 5, 사용자 결정 2026-10-21)에 원판 id를 각 구간 **끝에** 붙인다: 개인 카드(+3), 칸(+19), Conflict
+  (+18), 지도자(+8), Reserve 더미(+3), Maker 칸(+2: `imperium_hagga_basin`, `the_great_flat`), 지배 칸(+1: `carthag`), 좌석의 Agent 자리 칸 3 → 4
+  (Swordmaster + Mentat), 새 구간 `mentat`(쥔 좌석·제 칸에 있음·다음 라운드에 받을 좌석). Uprising 판의 벡터는 길어지지만 늘어난 열은 0이다.
+  형식 2 체크포인트 이관이 (구간, offset)으로 옮기고 새 열은 0에서 시작하므로 옮긴 망은 Uprising 판에서 같은 수를 둬야 한다 — P1과 같은
+  방법(`same_moves.py`: older 어댑터·MLP X·엔티티·탐색 좌석)으로 확인한다.
+- **`FEATURE_DIGEST`는 바뀐다(지시와 다른 점).** 엔티티 망 어휘가 합집합(`SPACE_IDS`·`PERSONAL_CARD_IDS`·`CONFLICT_IDS`·`LEADER_IDS`)이라 원판 개체가
+  들어오면 지문이 반드시 바뀐다. 지킬 것은 "Uprising 개체 하나하나의 특성 행이 그대로이고(열 척도 포함) 옮긴 엔티티 망이 Uprising 판에서 같은 수를
+  둔다"이다. 열 척도(열마다 최댓값으로 나눔)가 원판 값으로 바뀌는 열이 있으면(예: 칸 비용 spice 6) 그 열의 Uprising 값이 달라지므로, 관문 전에
+  `feature_tables()`의 Uprising 행을 시작 커밋과 대조하고 이관(`retarget_entities`)이 척도 차이를 보정하는지 같은 수 확인으로 본다.
+- **같음 확인(200판):** 상태에 새 칸이 기본값으로 생기고 보기(`PlayerView`)에 Mentat 칸이 생기면 P1처럼 선언 차이 파일
+  (`scripts/ab/differences/imperium_board.py`)로 적는다. 그 밖의 차이는 0이어야 한다.
+- **휴리스틱:** 새 보상(Mentat, Foldspace 획득, Sell Melange 등)의 점수는 원판 콘텐츠에서만 닿는 가지로 두어 Uprising 판의 수가 바뀌지 않게 한다.
+  앱 AI는 P6이다(원판 판에서는 쓰지 않음).
+
+### 15.5 규칙 출처와 남은 질문
+
+규칙 동작은 imperium-base.md의 문장으로 정한다: 칸(8절 `[DI pp. 17-18]`), Mentat(9절 `[DI pp. 6, 13, 16, 18]`, OQ-124), 지배(7절 `[DI pp. 10, 16]`),
+Combat·Makers·Recall(10절 `[DI pp. 11-13]`), 영향력(6절 `[DI p. 7]`, 값은 15.3), setup(4절 `[DI pp. 4-5]`), 결정 단위(15절), 숨은 정보(14절),
+지도자(12절, 판정은 OQ-115·116 등). 커밋 메시지와 테스트에 그 줄을 인용한다.
+
+- **OQ-139(새, 엔진 이유) — Mentat이 어느 말인가.** 쥔 좌석이 Agent를 보낼 때 "Mentat을 보냈는지, 자기 Agent를 보냈는지"를 엔진이 가르지 않고
+  그 라운드 Agent 수만 하나 늘린다. P2의 칸·Conflict·지도자에는 이 구분이 드러나는 곳이 없다(Recall은 Mentat부터 제 칸으로 돌리고 나머지를 거둔다;
+  Mentat을 제 칸에 보내도 OQ-124대로 뽑기만 한다; 막힘·Maker 보너스는 어느 말이든 같은 그 좌석의 Agent다). 구분이 드러나는 것은 P3 카드
+  (Kwisatz Haderach의 Agent 옮기기, Urgent Mission의 Agent recall)이고 그때 이 OQ를 다시 연다. 공식 문장이 정하지 않는 엔진 모델이라 OQ로
+  적는다(lessons "엔진 이유").
+- 그 밖에 P0 sweep이 "정한 점"으로 남긴 것(Control 보상 marker 부족 C13·OQ-116, Sort Through the Chaos의 Round Start 안 자리 C7, Ariana의 −1 L4,
+  Rabban의 "-OR-" L7 등)은 그 근거대로 구현하고 테스트에 적는다. 구현 중 문서가 정하지 않는 것이 나오면 OQ-140부터 적고 묻는다.
+
+### 15.6 소크와 관문
+
+- **원판 소크(P3 전):** 원판 Imperium·Intrigue 덱은 P3 몫이라 비어 있다. 추천은 **빈 덱 그대로** 돌리는 것이다: Imperium Row가 비어 Persuasion은
+  Reserve(Arrakis Liaison, The Spice Must Flow)에만 쓰이고, Intrigue 뽑기는 빈 덱·빈 버림 더미에서 아무것도 주지 않는다. 판은 Conflict 덱(10장)이
+  다하거나 10점에서 끝난다. 시험 전용 임시 덱은 원판에 없는 카드를 원판 판에 넣는 일이라(스타터·Reserve 복제는 Row 채우기만 시험하고, Uprising
+  카드는 Spy·계약 아이콘을 들여온다) 쓰지 않는다. 판 수: 휴리스틱 150 + 무작위 150(지도자 돌려 앉기, codec 왕복 25수마다), 실패 0.
+  `dune-imperium-sweep`에 `--base-game imperium`을 더한다.
+- **관문(하위 단계마다, AGENTS.md 1층):** pytest `-n 8`·ruff·mypy, 같음 확인 200판 check·record·compare(시작 커밋 `12294215` 기록), 소크 Uprising
+  900판(P1과 같은 세 묶음) + 원판(위), 기보 v155 2,000판 exact, 저장본·문제집, tips-v1 재채굴(같은 파일), E2E 전부(메인 체크아웃의
+  `scripts/e2e`, `E2E_REPO`), Uprising 144개 조합 codec 행 목록 대조, AI 좌석 같은 수(older·MLP·엔티티·탐색). P1의 `gates_snap.sh`를 이 worktree의
+  `tmp/claude/6eb14265/`로 옮겨 쓴다.
+
+### 15.7 조정자에게 묻는 것
+
+1. 15.1의 나눔(P2a에 지도자 넷, P2b에 넷)과 15.2의 id 규칙.
+2. 원판 소크를 빈 덱으로 돌리기(15.6).
+3. codec v155 그대로 두기(원판 카탈로그만 늘어남, 원판 저장은 P5 전에 만들지 않음).
+4. `FEATURE_DIGEST`가 바뀌는 것(지시의 "그대로" 대신 "Uprising 행 그대로 + 같은 수", 15.4).
+5. OQ-139(Mentat 말 구분 없음, 엔진 이유, P3에서 다시 엶).
+6. P2 동안 원판 + 확장 설정은 거절(15.4).
+
+### 15.8 P2a 결과와 P2b 진행 (2026-10-27, Claude Desktop 세션 `local_7d968935`)
+
+Orca 작업자가 멈춘 P2a(커밋 안 된 30파일)를 이어 받아 끝냈다. 커밋은 브랜치 `jungcheolseung/base-ix-p2`에 있다.
+
+- **P2a `56c8e8c9`:** 15.1의 P2a 행 전부. 원판 4인 판(확장 없음)이 보드 22칸, Mentat, Conflict 18장, Reserve 셋, 지도자 넷(Rabban·Ilban·Memnon·
+  Ariana)으로 끝까지 돈다. 이어 받으며 고친 것: codec 카탈로그가 원판 칸에 Uprising 아이콘(계약·연구)을 붙이던 것, Selective Breeding의 trash가
+  화살표 비용이 아니던 것(Desert Tactics에 엉뚱한 뽑기를 붙일 뻔함), Foldspace 카드가 엔진의 Reveal 구매에 남아 있던 것(`[DI p. 11]`·`[FAQ p. 2]`,
+  OQ-125), 합친 id 표를 도는 Uprising 코드(서버 카탈로그, 관측 id, Esmar Tuek의 codec 행)가 원판을 읽던 것, Reserve 정의의 새 필드가 Uprising
+  특성 행을 바꾸던 것(기본값 `False`인 `icon_only`로).
+- **지도자 넷의 능력:** Rabban의 Brutality는 "-OR-"가 고르기가 아니다(동맹이 있으면 2, P0 L7) — 자동 Signet의 `ONE_OF`는 조건이 맞는 첫 줄. Ilban의
+  Ruthless Negotiator와 Ariana의 Spice Addict는 빚진 뽑기(OQ-106). Memnon의 Connections는 원로회 자리를 얻은 방문의 아이콘 하나(새 행동
+  `choose_connections_influence`, 6칸 진영 제외 OQ-060).
+- **codec v155 그대로:** Uprising 144개 조합 행이 `12294215`와 바이트까지 같다. 원판 `imperium-4p-base` 카탈로그 580줄(P2b 셋 뒤; P2b 끝 599줄).
+- **관측 v35(5,827 int):** 15.4대로. Uprising 판에서 새 열은 모두 0이고, 골든 다이제스트 여섯은 v34 열에서 그대로다. slot 열쇠 1,467(열쇠로 다시
+  잇는다), v31 엔티티 파일의 이름은 v35 열쇠·필드를 뺀다. 엔티티 특성의 열 척도는 Uprising 개체로 정한다(`entity_features._table`) — Uprising 405행이
+  `12294215`와 열 척도까지 같다(승인 조건). `FEATURE_DIGEST`는 바뀐다(P2b 지도자마다 다시).
+- **P2a 관문(15.6, `56c8e8c9` 스냅숏, 2026-10-27 22:05~):** pytest 8,667·ruff·mypy 585, 같음 확인 200판 check(선언한 차이 `imperium_board.py`의
+  Mentat 칸만)·compare 200 같음, 소크 Uprising 900 + 원판 300(휴리스틱 150·무작위 150, 지도자 돌려 앉기, codec 왕복 25수마다) 실패 0, Uprising 카탈로그
+  144/144, 특성 행 405 차이 0, 기보 v155 2,000판, 저장본 11, 문제집 281·3, tips-v1 재채굴 118곳 같음(머리말의 판 번호만 다름), E2E 70/70(`-j 4`),
+  같은 수(시작 커밋 대 `56c8e8c9`) older 12/12·MLP X 12/12·엔티티 12/12·탐색 좌석 4/4. 22:38에 모두 끝.
+- **P2b(지도자마다 커밋, 13.4의 측정 — 앞 커밋에서 그 커밋까지의 벽시계; 커밋 메시지의 분 어림은 틀렸다):** Duke Leto `cc5e1962`(약 7분, Signet
+  hook 하나·standing 하나), Helena Richese `99dd5ced`(약 6분, Signet hook 하나·standing 하나·행동 하나; P3 전에는 Row가 비어 Manipulate는 빈 확인),
+  Paul Atreides `a05a2789`(약 2분, hook 없음; Prescience는 Glowglobes의 덱 맨 위 보기와 같은 경로라 관측 v36이 필요 없다). 독립 리뷰(조정자의 Codex)가 찾은 결함 하나를 `83cf2b1d`에서 고쳤다: 원판 Emperor 4칸의 병력 둘이
+  그 turn의 recruit에 들지 않았다(7절 "이번 turn에 recruit한 troop 전부", `[FAQ p. 4]`). 남은 것: Baron Harkonnen(비밀 진영 결정, 의무 공개 OQ-115,
+  관측 칸), 지도자 draft(여덟이 모이면), P2b 관문, 문서의 "P2 결과".
+
+### 15.9 P2b 결과 (2026-10-27)
+
+- **Baron Harkonnen `efb1784c`(관측 v36):** Masterstroke — 모든 setup 뒤(draft 뒤에도) 첫 라운드 전에 SETUP에서 멈추고(새 frame `MASTERSTROKE_SETUP`,
+  Kota Odax의 Secret Project와 같은 틀) 서로 다른 진영 둘을 비밀로 고른다(`[FAQ p. 1]`, `[DI p. 13]`). 고른 수는 공개, 정체는 본인만(14절). 매 전이 뒤
+  배치 최고치를 적은 다음, 자기 turn에 이번 turn 배치한 병력이 동시에 넷 이상이면(Distraction과 같은 최고치, OQ-016; turn 밖은 세지 않음, OQ-063)
+  의무 공개, 게임에 한 번, 각 진영 Influence 1(6칸은 불발, OQ-060), 그 뒤 회수는 넷 아래로 못 함(OQ-029) — OQ-115. P2의 원판 판에는 모래벌레·dreadnought가
+  없어 그 turn의 유닛 최고치가 곧 병력 수다. **P4(Rise of Ix의 dreadnought)·P7(조합의 모래벌레·Commander)에서 병력·Commander만 따로 세야 한다**(모듈
+  `rules/masterstroke.py`에 적음). Scheme은 Solari 1 → Intrigue 1, 뽑을 Intrigue가 없으면 내지 않는다(16절, OQ-071; P3 전 원판 Intrigue 덱은 빔). 숨은
+  정보: 보기는 "비밀을 쥠"과 공개 뒤의 진영만, 본인 보기에 진영; 숨은 정보 검사(scramble)는 다른 좌석의 미공개 진영을 바꾸고, AI 정보 표본은 다시 뽑는다
+  (그런 좌석만 난수를 써서 다른 판의 표본은 그대로). 관측 v36(5,835): 좌석별 미공개 비밀 4칸, 본인의 진영 4칸, 맨 끝; 새 frame 종류는 `decision_kind`
+  slot 필드 끝. 걸린 시간: 앞 문서 커밋에서 약 58분(사용자 답을 기다린 시간 포함; 커밋 메시지의 35분 어림은 틀림).
+- **지도자 draft `04f4f0f5`:** 원판 판에서 draft를 연다(여덟 가운데 여섯, OQ-007). draft 전 상태가 그 판의 Maker 장부를 갖게 했다(Uprising은 기본값과 같은
+  튜플이라 그대로).
+- **지도자 목록:** 원판 판이 여덟 모두를 인쇄 순서로 둔다(Paul, Leto, Rabban, Baron, Ilban, Helena, Memnon, Ariana). 관측의 지도자 어휘는 P2a에서 한 번
+  바뀌었고, 특성 지문은 지도자 기록이 들어올 때마다 바뀌었다(Uprising 405행은 늘 그대로).
+- **P2b 관문(15.6 + draft한 원판 소크 150, `04f4f0f5` 스냅숏):** pytest를 뺀 모든 단계 통과(같음 확인 200, 소크 Uprising 900·원판 450, 카탈로그
+  144/144, 특성 405행, 기보 2,000, 저장본·문제집, tips, E2E 70/70, 같은 수 4종). pytest 20개 실패는 모두 테스트 쪽이라 `4885be0f`에서 고쳤다(worklog).
+  병합 후보는 그 뒤의 HEAD다.
+- **P3에 넘기는 것:** 원판 Imperium·Intrigue 덱(빈 덱 동안 Helena의 Manipulate는 빈 확인, Baron의 Scheme은 내지 않음), OQ-139(Kwisatz Haderach·Urgent
+  Mission에서 Mentat 말 구분), Masterstroke의 병력 셈(P4·P7), 화면(P5)의 Mentat·Masterstroke 표시와 공개의 되돌리기 경계, AI(P6)의 원판 판 점수.
+

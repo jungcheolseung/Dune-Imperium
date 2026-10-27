@@ -4,6 +4,7 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
+from tests.support.observation_growth import V35_SEGMENTS, v35_growth
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.observation_encoding import (
@@ -37,21 +38,29 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 34
+    assert OBSERVATION_VERSION == 36
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
-    # Game Mode's Control the Spice; 39 Uprising Intrigue identities plus 18
-    # Bloodlines, 12 Twisted, 10 Navigation, and 11 Immortality.
-    assert len(PERSONAL_CARD_IDS) == 66 + 26 + 1 + 25 + 1 + 19 + 1
-    assert PERSONAL_CARD_IDS[-1] == "control_the_spice"
+    # Game Mode's Control the Spice, then (v35) the original game's three
+    # Reserve cards; 39 Uprising Intrigue identities plus 18 Bloodlines, 12
+    # Twisted, 10 Navigation, and 11 Immortality.
+    assert len(PERSONAL_CARD_IDS) == 66 + 26 + 1 + 25 + 1 + 19 + 1 + 3
+    assert PERSONAL_CARD_IDS[-4] == "control_the_spice"
+    assert PERSONAL_CARD_IDS[-3:] == (
+        "arrakis_liaison",
+        "imperium_the_spice_must_flow",
+        "foldspace_card",
+    )
     assert len(INTRIGUE_IDS) == 39 + 18 + 12 + 10 + 11
     # 16 Uprising Conflicts, the two Bloodlines cards and Epic Game Mode's
-    # Economic Supremacy (identity universe); the battle cards add the four
-    # Objectives before Economic Supremacy, so the older ones keep their
-    # columns.
-    assert len(CONFLICT_IDS) == 19
-    assert CONFLICT_IDS[-1] == "economic_supremacy"
+    # Economic Supremacy (identity universe), then (v35) the original game's
+    # 18; the battle cards add the four Objectives before Economic
+    # Supremacy, so the older ones keep their columns (no original Conflict
+    # is won as a card [DI p. 8]).
+    assert len(CONFLICT_IDS) == 19 + 18
+    assert CONFLICT_IDS[18] == "economic_supremacy"
+    assert CONFLICT_IDS[-1] == "grand_vision"
     assert len(BATTLE_CARD_IDS) == 24
     assert BATTLE_CARD_IDS[-1] == "economic_supremacy"
     # v9: Tech Module segments (24 global, 21 per seat, 1 private).
@@ -149,9 +158,25 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 139
         # v34 (the base-game axis): the base-game flag.
         + 1
+        # v35 (stage P2a): the original game's three Reserve cards in the 26
+        # personal-card segments, its three Reserve stacks, two Maker spaces,
+        # Carthag's Control per seat, a fourth Agent location per seat and
+        # the Mentat segment.
+        + 26 * 3
+        + 3
+        + 2
+        + 4
+        + 4
+        + 3
+        # v36 (stage P2b): the Masterstroke segments, four seats and four
+        # Factions.
+        + 4
+        + 4
     )
-    assert OBSERVATION_SIZE == 5_733
-    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment("base_game", 5_732, 1)
+    assert OBSERVATION_SIZE == 5_835
+    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment(
+        "private_masterstroke", 5_831, 4
+    )
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -169,7 +194,7 @@ def test_layout_is_versioned_and_contiguous() -> None:
         == segment_slice("imperium_removed").start
     )
     seat0_in_play = segment_slice("seat0_in_play")
-    assert seat0_in_play.stop - seat0_in_play.start == 66 + 26 + 1 + 25 + 20 + 1
+    assert seat0_in_play.stop - seat0_in_play.start == 66 + 26 + 1 + 25 + 20 + 1 + 3
     private_secret_project = segment_slice("private_secret_project")
     # v22 appends the Arrakeen Scouts segments after the private ones.
     assert private_secret_project.stop == segment_slice("scouts_items").start
@@ -217,7 +242,10 @@ def test_layout_is_versioned_and_contiguous() -> None:
         segment_slice("private_effect_pick_personal").stop
         == segment_slice("base_game").start
     )
-    assert segment_slice("base_game").stop == OBSERVATION_SIZE
+    # v35 appends the Mentat after the base-game flag.
+    assert segment_slice("base_game").stop == segment_slice("mentat").start
+    assert segment_slice("mentat").stop == segment_slice("masterstroke_secret").start
+    assert segment_slice("private_masterstroke").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -467,12 +495,13 @@ def test_the_recipient_step_shows_which_faction_was_lost_and_which_gained() -> N
 def test_epic_game_flag_and_cards_use_the_appended_columns() -> None:
     # v28: the flag says the Endgame opens at 12 [Rise of Ix p. 10]; Control
     # the Spice and Economic Supremacy take the last column of their
-    # segments, so every older identity keeps its column.
+    # segments, so every older identity keeps its column (v35 appends the
+    # original game's three Reserve cards after Control the Spice).
     engine = UprisingRulesEngine()
     plain = engine.reset(RulesetConfig(immortality=True), seed=5)
     epic = engine.reset(RulesetConfig(immortality=True, epic_game=True), seed=5)
     flag = segment_slice("epic_game")
-    control_the_spice = len(PERSONAL_CARD_IDS) - 1
+    control_the_spice = PERSONAL_CARD_IDS.index("control_the_spice")
     for observer in range(4):
         assert encode_player_view(engine.observe(plain, observer))[flag] == (0,)
         encoded = encode_player_view(engine.observe(epic, observer))
@@ -1159,12 +1188,24 @@ def _encoding_digest(config: RulesetConfig, seed: int) -> tuple[str, int]:
 def _pinned_columns(vector: tuple[int, ...]) -> bytes:
     """The v33 columns the golden digests pin. v34 appended only the
     base-game flag (the base-game axis), 0 in every Uprising game: an
-    Uprising observation is the v33 one with a 0 after it."""
+    Uprising observation is the v33 one with a 0 after it. v35 (stage P2a)
+    grew segments at their end (``v35_growth``) and appended the Mentat,
+    all 0 in every Uprising game: each segment's older columns, in order,
+    are the v34 vector."""
 
     import numpy as np
 
-    assert vector[_V33_SIZE:] == (0,)
-    return np.asarray(vector[:_V33_SIZE], dtype=np.int32).tobytes()
+    older: list[int] = []
+    for segment in OBSERVATION_SEGMENTS:
+        part = vector[segment.offset : segment.offset + segment.length]
+        if segment.name in ("base_game", *V35_SEGMENTS):
+            assert not any(part)
+            continue
+        grown = v35_growth(segment)
+        assert not any(part[segment.length - grown :])
+        older.extend(part[: segment.length - grown])
+    assert len(older) == _V33_SIZE
+    return np.asarray(older, dtype=np.int32).tobytes()
 
 
 _V33_SIZE = 5_732

@@ -21,7 +21,7 @@ from typing import Final
 
 from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.agents import Agent, HeuristicAgent, RandomAgent, StateAgent
-from dune_imperium.config import RulesetConfig
+from dune_imperium.config import BaseGame, RulesetConfig
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
@@ -276,10 +276,13 @@ class _GameSpec:
     # roster. Unused (and meaningless) alongside leader_draft, whose picks
     # bypass the engine's fixed leader_ids entirely.
     leader_ids: tuple[str, ...] | None = None
+    # The original Dune: Imperium (docs/base-game-and-ix-plan.md 15.6).
+    base_game: BaseGame = BaseGame.UPRISING
 
 
 def _run_spec(spec: _GameSpec) -> GameCheckReport | SweepFailure:
     config = RulesetConfig(
+        base_game=spec.base_game,
         choam_module=spec.choam_module,
         leader_draft=spec.leader_draft,
         promo_cards=spec.promo_cards,
@@ -361,6 +364,7 @@ def sweep_specs(
     arrakeen_scouts: bool = False,
     rotate_leaders: bool = False,
     collect_coverage: bool = False,
+    base_game: BaseGame = BaseGame.UPRISING,
 ) -> tuple[_GameSpec, ...]:
     """Build the seeded per-game specs for a sweep."""
 
@@ -376,6 +380,7 @@ def sweep_specs(
     # Reject an invalid option mix here: _run_spec builds its config outside
     # its try block, so it would crash the whole sweep instead.
     config = RulesetConfig(
+        base_game=base_game,
         bloodlines=bloodlines,
         tech_module=tech_module,
         immortality=immortality,
@@ -401,6 +406,7 @@ def sweep_specs(
             epic_game=epic_game,
             arrakeen_scouts=arrakeen_scouts,
             collect_coverage=collect_coverage,
+            base_game=base_game,
             leader_ids=(
                 tuple(
                     random.Random(seed).sample(

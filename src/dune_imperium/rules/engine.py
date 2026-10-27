@@ -11,7 +11,8 @@ from collections.abc import Callable, Mapping
 from copy import replace
 from typing import Final
 
-from dune_imperium.config import RulesetConfig
+from dune_imperium.config import BaseGame, RulesetConfig
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import PlayerDecision
@@ -66,6 +67,7 @@ from dune_imperium.rules.agent_turn import (
     legal_turn_start_card_actions,
 )
 from dune_imperium.rules.board_effects import (
+    apply_connections_action,
     apply_desert_tactics_action,
     apply_espionage_action,
     apply_imperial_privilege_action,
@@ -218,6 +220,7 @@ from dune_imperium.rules.leader_abilities import (
     apply_leader_signet_payment,
     apply_leader_spy_action,
     apply_leader_troop_retreat,
+    apply_manipulate_signet,
     apply_shaddam_signet_choice,
     grant_hungry_for_spice,
     grant_leader_reveal_passives,
@@ -229,6 +232,11 @@ from dune_imperium.rules.leader_draft import (
     apply_leader_draft_pick,
     finish_leader_draft,
     legal_leader_draft_actions,
+)
+from dune_imperium.rules.masterstroke import (
+    apply_masterstroke_choice,
+    legal_masterstroke_actions,
+    reveal_masterstroke,
 )
 from dune_imperium.rules.navigation import (
     apply_navigation_play,
@@ -597,6 +605,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_tech_acquire_effect_actions,
     ),
     FrameKind.TECH_SECRET_PROJECT: (legal_secret_project_actions,),
+    FrameKind.MASTERSTROKE_SETUP: (legal_masterstroke_actions,),
     FrameKind.RESEARCH_ADVANCE: (
         legal_research_advance_actions,
         legal_scouts_rewards_first_actions,
@@ -735,6 +744,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "take_desert_riding_hooks": apply_maker_space_action,
     "summon_maker_sandworms": apply_maker_space_action,
     "choose_shipping_influence": apply_shipping_action,
+    "choose_connections_influence": apply_connections_action,
     "trash_card_for_desert_tactics": apply_desert_tactics_action,
     "trash_intrigue_for_imperial_privilege": apply_imperial_privilege_action,
     "recall_agent_for_imperial_privilege": apply_imperial_privilege_action,
@@ -833,6 +843,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_leader_signet_solari": apply_leader_signet_payment,
     "decline_leader_signet_payment": apply_leader_signet_payment,
     "resolve_leader_signet_without_option": apply_leader_signet_payment,
+    "set_aside_leader_imperium": apply_manipulate_signet,
+    "choose_masterstroke_faction": apply_masterstroke_choice,
     "acquire_leader_imperium": apply_leader_signet_acquire,
     "acquire_leader_reserve": apply_leader_signet_acquire,
     "gain_leader_signet_troop": apply_shaddam_signet_choice,
@@ -928,6 +940,17 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
 }
 
 
+def _reveal_masterstroke(result: RuleResult) -> RuleResult:
+    """Record the turn's deployment peak, then reveal a Masterstroke it made
+    due (the original game's Baron, ``rules.masterstroke``) and advance past
+    what the reveal's Influence queued; a transition that reveals nothing is
+    left as it was."""
+
+    peaked = record_deployment_peak(result)
+    revealed = reveal_masterstroke(peaked)
+    return peaked if revealed is peaked else _advance_automatic(revealed)
+
+
 class UprisingRulesEngine(RulesEngine):
     """Connect the implemented rule modules into one multi-round state machine."""
 
@@ -939,7 +962,9 @@ class UprisingRulesEngine(RulesEngine):
     # they existed would load (2026-10-08).
     report_only_event_kinds = frozenset({"combat_standing", "cards_revealed"})
 
-    def __init__(self, leader_ids: tuple[str, ...] = DEFAULT_LEADER_IDS) -> None:
+    def __init__(self, leader_ids: tuple[str, ...] | None = None) -> None:
+        # None: ``DEFAULT_LEADER_IDS`` in Uprising, the original game's first
+        # four Leaders there (``content_for(config).leaders``).
         self._leader_ids = leader_ids
 
     def _initial_state(self, config: RulesetConfig, seed: int) -> GameState:
@@ -947,7 +972,16 @@ class UprisingRulesEngine(RulesEngine):
             # The OQ-007 draft pauses in SETUP on the pick frames; the
             # engine's fixed leader_ids only serve the non-draft path.
             return create_draft_initial_state(config, seed).state
-        setup = create_initial_state(config, seed, self._leader_ids)
+        leader_ids = self._leader_ids
+        if leader_ids is None:
+            leader_ids = (
+                DEFAULT_LEADER_IDS
+                if config.base_game is BaseGame.UPRISING
+                else tuple(
+                    leader.leader_id for leader in content_for(config).leaders[:4]
+                )
+            )
+        setup = create_initial_state(config, seed, leader_ids)
         if setup.state.phase is GamePhase.SETUP:
             # Steersman Y'rkoon's Navigation picks pause the game in SETUP
             # like the draft; Round Start follows once they are made.
@@ -993,7 +1027,7 @@ class UprisingRulesEngine(RulesEngine):
             )
         )
         return refresh_pre_reveal_strength(
-            _settle_finishing(record_deployment_peak(_advance_automatic(result)))
+            _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
         )
 
     def legal_actions(
@@ -1105,7 +1139,7 @@ class UprisingRulesEngine(RulesEngine):
             )
         )
         return refresh_pre_reveal_strength(
-            _settle_finishing(record_deployment_peak(_advance_automatic(result)))
+            _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
         )
 
     def observe(self, state: GameState, player: int) -> PlayerView:

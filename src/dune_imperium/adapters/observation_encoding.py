@@ -40,8 +40,12 @@ from dune_imperium.content.immortality.board import (
     TLEILAXU_ROW_SIZE,
 )
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
+from dune_imperium.content.imperium.board import IMPERIUM_ONLY_BOARD_SPACES
+from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
+from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
+from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
 from dune_imperium.content.uprising.board import (
-    BOARD_SPACES_BY_ID,
+    BOARD_SPACES,
     OBSERVATION_POSTS,
     Faction,
 )
@@ -55,7 +59,7 @@ from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_ID,
     INTRIGUE_CARDS_BY_INSTANCE,
 )
-from dune_imperium.content.uprising.leaders import FEYD_TRACK_BY_ID, LEADERS_BY_ID
+from dune_imperium.content.uprising.leaders import FEYD_TRACK_BY_ID, LEADERS
 from dune_imperium.content.uprising.objectives import OBJECTIVES
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
@@ -166,7 +170,22 @@ from dune_imperium.rules.frames import FrameKind
 # its offset; a v33 checkpoint migrates by segment and starts the flag at 0,
 # which is its value in every Uprising game, so a migrated network plays as
 # it did.
-OBSERVATION_VERSION: Final = 34
+# v35 (stage P2a of docs/base-game-and-ix-plan.md, 15.4): the original
+# game's board, Conflicts, Leaders and Reserve join each identity universe
+# at its end -- three personal cards (its Reserve), nineteen spaces of its
+# own, eighteen Conflicts, eight Leaders, three Reserve stacks, two Maker
+# spaces and Carthag's Control -- so every Uprising identity keeps its index
+# and its column. A seat's Agent locations take four slots (the Swordmaster
+# and the Mentat), and ``mentat`` is appended after every other segment: the
+# relative seat holding the Mentat this round, whether it rests on its
+# space, and the relative seat owed it at the next round's start (Sort
+# Through the Chaos [FAQ p. 4]). In an Uprising game every new column is 0,
+# so a v34 checkpoint migrated by segment plays as it did.
+# v36 (stage P2b): the original game's Baron Harkonnen -- per relative seat,
+# whether it holds Masterstroke Factions not yet revealed, and the
+# observer's own secret Factions (docs/rules/imperium-base.md 14), appended
+# after every other segment; 0 in every Uprising game.
+OBSERVATION_VERSION: Final = 36
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -183,6 +202,8 @@ PERSONAL_CARD_IDS: Final = (
     # v28, Epic Game Mode: Control the Spice, after every older identity so
     # a migrated checkpoint keeps each segment's old columns.
     CONTROL_THE_SPICE.card.card_id,
+    # v35: the original game's Reserve cards.
+    *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
 )
 RESEARCH_SPACE_IDS: Final = tuple(RESEARCH_SPACES_BY_ID)
 INTRIGUE_IDS: Final = tuple(INTRIGUE_CARDS_BY_ID)
@@ -197,7 +218,10 @@ CONTRACT_SEGMENTS: Final = frozenset(
         for kind in ("active", "completed")
     }
 )
-CONFLICT_IDS: Final = tuple(conflict.card.card_id for conflict in CONFLICTS)
+# v35: the original game's Conflicts follow Uprising's.
+CONFLICT_IDS: Final = tuple(
+    conflict.card.card_id for conflict in (*CONFLICTS, *IMPERIUM_CONFLICTS)
+)
 # v28: Epic Game Mode's Economic Supremacy follows the Objectives, so the
 # older battle cards keep their columns.
 BATTLE_CARD_IDS: Final = (
@@ -205,14 +229,42 @@ BATTLE_CARD_IDS: Final = (
     *(objective.objective_id for objective in OBJECTIVES),
     *(conflict.card.card_id for conflict in CONFLICTS if conflict.epic_only),
 )
-LEADER_IDS: Final = tuple(LEADERS_BY_ID)
-SPACE_IDS: Final = tuple(BOARD_SPACES_BY_ID)
+# v35: the original game's Leaders and spaces of its own follow Uprising's
+# (its Arrakeen, Imperial Basin and Secrets are Uprising's, plan 15.2).
+LEADER_IDS: Final = tuple(
+    leader.leader_id for leader in (*LEADERS, *IMPERIUM_LEADERS)
+)
+SPACE_IDS: Final = tuple(
+    space.space_id for space in (*BOARD_SPACES, *IMPERIUM_ONLY_BOARD_SPACES)
+)
+# The identities v35 added: the original game's own spaces, Conflicts,
+# Leaders and Reserve cards (its Arrakeen, Imperial Basin and Secrets, and
+# its starting deck, are Uprising's).
+IMPERIUM_IDENTITIES: Final = frozenset(
+    {
+        *(space.space_id for space in IMPERIUM_ONLY_BOARD_SPACES),
+        *(conflict.card.card_id for conflict in IMPERIUM_CONFLICTS),
+        *(leader.leader_id for leader in IMPERIUM_LEADERS),
+        *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
+    }
+)
 POST_IDS: Final = tuple(post.post_id for post in OBSERVATION_POSTS)
 FEYD_TRACK_IDS: Final = tuple(FEYD_TRACK_BY_ID)
 FACTION_IDS: Final = tuple(faction.value for faction in Faction)
-CONTROL_SPACE_IDS: Final = ("arrakeen", "spice_refinery", "imperial_basin")
-MAKER_SPACE_IDS: Final = ("deep_desert", "hagga_basin", "imperial_basin", "tuek_sietch")
-RESERVE_STACK_IDS: Final = tuple(stack.card.card_id for stack in RESERVE_STACKS)
+# v35: the original game's Carthag, Hagga Basin and The Great Flat, and its
+# Reserve stacks, after Uprising's.
+CONTROL_SPACE_IDS: Final = ("arrakeen", "spice_refinery", "imperial_basin", "carthag")
+MAKER_SPACE_IDS: Final = (
+    "deep_desert",
+    "hagga_basin",
+    "imperial_basin",
+    "tuek_sietch",
+    "imperium_hagga_basin",
+    "the_great_flat",
+)
+RESERVE_STACK_IDS: Final = tuple(
+    stack.card.card_id for stack in (*RESERVE_STACKS, *IMPERIUM_RESERVE_STACKS)
+)
 SKILL_IDS: Final = tuple(skill.skill_id for skill in SKILLS)
 COMMANDER_SPACE_IDS: Final = COMMANDER_SETUP_SPACE_IDS
 # Arrakeen Scouts: every subcommittee, mission, event, auction and sale, in
@@ -243,7 +295,8 @@ _SOURCE_INDEX: Final = {source.value: index for index, source in enumerate(Sourc
 # The sources whose printed entity is a personal card (stage B3).
 _CARD_SOURCES: Final = frozenset({Source.AGENT_CARD.value, Source.REVEAL_CARD.value})
 _INTRIGUE_INDEX: Final = {card_id: index for index, card_id in enumerate(INTRIGUE_IDS)}
-_AGENT_LOCATION_SLOTS: Final = 3
+# Two Agents, the Swordmaster and (v35) the original game's Mentat.
+_AGENT_LOCATION_SLOTS: Final = 4
 _SET_ASIDE_SLOTS: Final = 2
 _IMPERIUM_ROW_SLOTS: Final = 5
 _LEADER_DRAFT_SLOTS: Final = 6
@@ -443,6 +496,14 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             ("private_effect_pick_personal", len(PERSONAL_CARD_IDS)),
             # v34: 1 in an original Dune: Imperium game.
             ("base_game", 1),
+            # v35: the original game's Mentat -- the relative seat holding
+            # it + 1, whether it rests on its space, the relative seat owed
+            # it at the next round's start + 1 (0: nobody).
+            ("mentat", 3),
+            # v36: the original game's Masterstroke -- per relative seat, an
+            # unrevealed secret; the observer's own secret Factions.
+            ("masterstroke_secret", _SEATS),
+            ("private_masterstroke", len(FACTION_IDS)),
         )
     )
     return tuple(lengths)
@@ -659,6 +720,27 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     _write_scouts(values, view, relative)
     values[_OFFSET["epic_game"]] = int(view.epic_game)
     values[_OFFSET["base_game"]] = int(view.base_game is BaseGame.IMPERIUM)
+    holder = next(
+        (seat_view.player for seat_view in view.players if seat_view.mentat), None
+    )
+    offset = _OFFSET["mentat"]
+    values[offset : offset + 3] = [
+        relative(holder),
+        int(
+            view.base_game is BaseGame.IMPERIUM
+            and holder is None
+            and view.mentat_owed_to is None
+        ),
+        relative(view.mentat_owed_to),
+    ]
+    offset = _OFFSET["masterstroke_secret"]
+    for seat_view in view.players:
+        values[offset + relative(seat_view.player) - 1] = int(
+            seat_view.masterstroke_secret
+        )
+    offset = _OFFSET["private_masterstroke"]
+    for faction in view.private.masterstroke_factions:
+        values[offset + _FACTION_INDEX[faction]] = 1
     offset = _OFFSET["shortfall"]
     for seat_view in view.players:
         index = offset + (relative(seat_view.player) - 1) * 2
@@ -861,7 +943,7 @@ def _write_seat(values: list[int], seat_offset: int, player: PublicPlayerView) -
     )
     location_slots = [_SPACE_INDEX[space_id] + 1 for space_id in player.agent_locations]
     if len(location_slots) > _AGENT_LOCATION_SLOTS:
-        raise RuntimeError("a player cannot have more than three placed Agents")
+        raise RuntimeError("a player cannot have more than four placed Agents")
     offset = offsets["agent_locations"]
     values[offset : offset + _AGENT_LOCATION_SLOTS] = location_slots + [0] * (
         _AGENT_LOCATION_SLOTS - len(location_slots)

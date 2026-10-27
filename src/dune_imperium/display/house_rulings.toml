@@ -2007,3 +2007,12 @@ title = "Treachery's Unload opened during Combat"
 ruling_ko = "전투를 해결하는 중에 Treachery가 폐기되거나 버려져 처분이 열리면 그 병력 둘을 교전 칸에 배치하고, 바로 다음 단계(병력 반환)에서 다른 병력과 함께 개인 공급처로 돌아간다."
 ruling = "If Treachery is trashed or discarded while Combat is resolved and its Unload opens, its two troops deploy to the Conflict and go back to the supply with the rest in the very next step."
 names = ["Treachery"]
+
+[[ruling]]
+oq = "OQ-139"
+group = "project"
+game = "base_ix"
+title_ko = "멘타트와 자기 에이전트는 가르지 않는다"
+title = "The Mentat and your own Agents are not told apart"
+ruling_ko = "멘타트를 가진 라운드에는 에이전트를 하나 더 쓸 수 있을 뿐, 어느 칸에 멘타트를 놓았는지는 따로 고르지도 기록하지도 않는다. 회수 때 멘타트는 먼저 제자리로 돌아간다. 놓인 말이 멘타트인지가 결과를 바꾸는 카드가 들어오면 다시 정한다."
+ruling = "In a round you hold the Mentat you simply have one more Agent; which space the Mentat itself went to is neither chosen nor recorded. At Recall it returns to its space first. This is revisited once a card makes it matter which piece is where."
