@@ -163,8 +163,8 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # original Imperium cards' new boxes (stage P3: Arrakis Recruiter, Spice
     # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence,
     # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
-    # Imperial Spy, Missionaria Protectiva).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 13
+    # Imperial Spy, Missionaria Protectiva, Gene Manipulation).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 14
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -210,6 +210,8 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         _BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: ("cards", "cards_second"),
         # Gurney Halleck: the two troops and the card, separate icons.
         _BOX.RECRUIT_TWO_AND_DRAW_ONE: ("troops", "cards"),
+        # Gene Manipulation: a black trash icon and the Bond's spice icon.
+        _BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: ("trash", "spice"),
     }
     for effect, ability in AGENT_BOX_ABILITIES.items():
         if not ability.icons:

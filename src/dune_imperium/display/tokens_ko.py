@@ -526,6 +526,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: (
         "베네 게세리트의 유대감이면: {influence_any:1} 선택"
     ),
+    PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: (
+        "카드 1장 {trash} 가능, 베네 게세리트의 유대감이면: {spice:2}"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box

@@ -2605,3 +2605,122 @@ def test_missionaria_protectiva_reveals_one_persuasion() -> None:
     frame = _reveal(engine, state)
     assert frame["persuasion"] == 1
     assert frame["sword_strength"] == 0
+
+
+# --- Gene Manipulation ------------------------------------------------------------
+
+
+def test_gene_manipulation_matches_the_app_table() -> None:
+    # App attribute table: cost 3, 2 copies, Bene Gesserit, Landsraad and City,
+    # Reveal 2 Persuasion and no swords (tag WantBG).
+    entry = IMPERIUM_CARDS_BY_ID["gene_manipulation"]
+    assert entry.card.name == "Gene Manipulation"
+    assert entry.acquisition_cost == 3
+    assert entry.copies == 2
+    assert entry.factions == (Faction.BENE_GESSERIT,)
+    assert entry.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.CITY)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:gene_manipulation:1") is entry
+
+
+def _manipulation_placed(
+    engine: UprisingRulesEngine, state: GameState, *, bene_gesserit: bool
+) -> GameState:
+    """Seat 0 sends Gene Manipulation to Research Station (a City space; its
+    two water are paid) with, or without, another Bene Gesserit card (Bene
+    Gesserit Initiate) already in play, and no spice."""
+
+    held, _ = _with_card(state, "gene_manipulation")
+    seated = _seat(
+        held,
+        in_play=("imperium:bene_gesserit_initiate:0",) if bene_gesserit else (),
+        resources=Resources(water=2),
+    )
+    return _place(engine, seated, "imperium_research_station", "gene_manipulation")
+
+
+def _spice_icon(engine: UprisingRulesEngine, state: GameState) -> bool:
+    return any(
+        action.action_id == "resolve_agent_card_effect"
+        and dict(action.arguments).get("effect") == "spice"
+        for action in _wholes(engine, state)
+    )
+
+
+def test_gene_manipulation_trashes_and_gains_two_spice_apart() -> None:
+    """"[trash] AND ...[2 spice]": two printed icons, one action each in any
+    order (OQ-027, imperium-base.md 15). The black trash icon is optional
+    ([DI p. 16], [FAQ p. 3]); the spice icon is mandatory and needs another
+    Bene Gesserit card in play (OQ-028)."""
+
+    engine, state = _start()
+    placed = _manipulation_placed(engine, state, bene_gesserit=True)
+    assert _spice_icon(engine, placed)
+    owner = placed.players[0]
+    assert _trash_rows(engine, placed) >= {
+        *owner.hand,
+        "imperium:gene_manipulation:0",
+        "imperium:bene_gesserit_initiate:0",
+    }
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    # Spice first, then the trash: neither waits for the other.
+    gained = _do(engine, placed, "resolve_agent_card_effect", effect="spice")
+    assert gained.players[0].resources.spice == owner.resources.spice + 2
+    victim = owner.hand[0]
+    trashed = _do(engine, gained, "trash_agent_card", card_id=victim)
+    assert victim in trashed.players[0].trashed
+    assert trashed.players[0].resources.spice == owner.resources.spice + 2
+    assert not _trash_rows(engine, trashed)
+    assert not _spice_icon(engine, trashed)
+
+
+def test_gene_manipulation_without_another_bene_gesserit_gains_no_spice() -> None:
+    engine, state = _start()
+    placed = _manipulation_placed(engine, state, bene_gesserit=False)
+    assert not _spice_icon(engine, placed)
+    assert _trash_rows(engine, placed)
+    # The trash is optional: the box is done once it is left unused.
+    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    finished = _do(engine, resolved, "finish_agent_turn")
+    assert finished.players[0].trashed == placed.players[0].trashed
+    assert finished.players[0].resources.spice == placed.players[0].resources.spice
+
+
+def test_gene_manipulation_trashing_the_other_card_first_loses_the_spice() -> None:
+    """"조건은 해결할 때 판정한다(OQ-028)" (imperium-base.md 16, P0 sweep:
+    "trashing the other BG card first loses the spice"): the Bond is read when
+    the spice icon resolves, so the trash icon may break it first."""
+
+    engine, state = _start()
+    placed = _manipulation_placed(engine, state, bene_gesserit=True)
+    trashed = _do(
+        engine, placed, "trash_agent_card", card_id="imperium:bene_gesserit_initiate:0"
+    )
+    assert not _spice_icon(engine, trashed)
+
+
+def test_gene_manipulation_may_trash_itself_and_still_gain_the_spice() -> None:
+    """The card trashes itself by its own printed icon, so the other icon still
+    pays out (imperium-base.md 16, OQ-022's own-effect case, OQ-027); the Bond
+    asks for *another* Bene Gesserit card, which is still in play."""
+
+    engine, state = _start()
+    placed = _manipulation_placed(engine, state, bene_gesserit=True)
+    me = "imperium:gene_manipulation:0"
+    trashed = _do(engine, placed, "trash_agent_card", card_id=me)
+    assert me in trashed.players[0].trashed
+    assert _spice_icon(engine, trashed)
+    gained = _do(engine, trashed, "resolve_agent_card_effect", effect="spice")
+    assert gained.players[0].resources.spice == placed.players[0].resources.spice + 2
+
+
+def test_gene_manipulation_reveals_two_persuasion() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "gene_manipulation", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 2
+    assert frame["sword_strength"] == 0

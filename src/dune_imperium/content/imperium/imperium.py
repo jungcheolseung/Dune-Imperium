@@ -223,10 +223,22 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_strength=1,
         play_data_complete=True,
     ),
+    # App table: cost 3, 2 copies, Bene Gesserit, Landsraad and City, Reveal 2
+    # Persuasion (tag WantBG). Agent: "[trash] AND If you have another Bene
+    # Gesserit card in play: [2 spice]" -- two separate icons (OQ-027), the black
+    # trash icon optional [DI p. 16] [FAQ p. 3], the Bond judged when the spice
+    # resolves (OQ-028).
     ImperiumCardEntry(
         card=imperium_card("gene_manipulation", "Gene Manipulation"),
         copies=2,
         acquisition_cost=3,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND
+        ),
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     # App table: cost 2, 2 copies, Spacing Guild, Spacing Guild and Spice
     # Trade, Reveal 1 Persuasion. Agent: the black trash icon, "You may trash

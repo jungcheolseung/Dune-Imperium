@@ -241,6 +241,13 @@ AGENT_ICON_TRASH_SELF: Final = "trash_self"
 _TRASH_TO_DRAW_IF_BOND: Final = (
     PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
 )
+# Gene Manipulation (the original game): the black trash icon beside a spice
+# icon under the Bond, apart from each other (OQ-027).
+_TRASH_AND_SPICE_IF_BOND: Final = (
+    PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND
+)
+# The boxes whose black trash icon is one of several icons.
+_TRASH_ICON_BOXES: Final = (_TRASH_TO_DRAW_IF_BOND, _TRASH_AND_SPICE_IF_BOND)
 AGENT_ICON_TROOPS: Final = "troops"
 AGENT_ICON_WATER: Final = "water"
 AUTOMATIC_AGENT_ICONS: Final = (
@@ -1390,9 +1397,12 @@ def legal_agent_card_trash_actions(
         return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = active_agent_card(context)
-    if source_card.agent_effect is _TRASH_TO_DRAW_IF_BOND and not (
+    if source_card.agent_effect in _TRASH_ICON_BOXES and not (
         agent_icon_condition_holds(
-            state.players[player], context, _TRASH_TO_DRAW_IF_BOND, AGENT_ICON_TRASH
+            state.players[player],
+            context,
+            source_card.agent_effect,
+            AGENT_ICON_TRASH,
         )
     ):
         # Tread in Darkness's trash icon without the Bond, judged now
@@ -1403,7 +1413,7 @@ def legal_agent_card_trash_actions(
         # A trash box, from its record (composed A3e).
         return trash_rows(state, player, recorded)
     if source_card.agent_effect not in (
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
+        *_TRASH_ICON_BOXES,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
     ):
         return ()
@@ -3022,6 +3032,7 @@ OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = 
     MappingProxyType(
         {
             _TRASH_TO_DRAW_IF_BOND: frozenset({AGENT_ICON_TRASH}),
+            _TRASH_AND_SPICE_IF_BOND: frozenset({AGENT_ICON_TRASH}),
             PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: frozenset(
                 {AGENT_ICON_RECALL}
             ),
@@ -3089,7 +3100,23 @@ def box_is_optional(state: GameState) -> bool:
             if effect is None
             else OPTIONAL_AGENT_ICONS.get(effect, frozenset())
         )
-        return set(icons) <= optional_icons
+        if set(icons) <= optional_icons:
+            return True
+        # A conditioned icon that is not offered now waits for the turn's end
+        # (OQ-057 (1)): the box is then optional when an optional icon is all
+        # it still offers (Gene Manipulation's black trash icon beside the
+        # spice its Bond has to meet).
+        offered = {
+            dict(row.arguments).get("effect")
+            for row in legal_agent_card_icon_actions(
+                state, context_int(context, "turn_owner")
+            )
+        }
+        return any(key in optional_icons for key in icons) and all(
+            key in optional_icons
+            or (key in AUTOMATIC_AGENT_ICONS and key not in offered)
+            for key in icons
+        )
     if context.get("agent_card_spy_pending") is True:
         return False
     if "trashes_remaining" in context:

@@ -966,6 +966,16 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: _box(
                 GainInfluence(), condition=_BG_BOND, requirement=_BG_BOND
             ),
+            # Gene Manipulation (original game): "[trash] AND If you have
+            # another Bene Gesserit card in play: [2 spice]" -- two printed
+            # icons, each its own step in the owner's order (OQ-027), the Bond
+            # judged when the spice icon resolves (OQ-028: trashing the other
+            # Bene Gesserit card first loses the spice); the black trash icon is
+            # optional [DI p. 16] [FAQ p. 3].
+            _BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: _icons(
+                ("trash", _line(TrashPersonalCard())),
+                ("spice", _line(GainResources(spice=2), condition=_BG_BOND)),
+            ),
         }
     )
 )

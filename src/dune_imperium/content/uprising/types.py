@@ -356,6 +356,11 @@ class PersonalCardAgentEffect(StrEnum):
     GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND = (
         "gain_chosen_influence_if_bene_gesserit_bond"
     )
+    # Gene Manipulation: "[trash] AND If you have another Bene Gesserit card in
+    # play: [2 spice]", two separate icons (OQ-027).
+    MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND = (
+        "may_trash_and_gain_two_spice_if_bene_gesserit_bond"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

@@ -100,6 +100,12 @@ _SHIGAWIRE = "Urgent Shigawire"
 # its card draw draws two and its Research generates no specimen.
 _PITER = _BOX.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
 _SHIGAWIRE_KO = KOREAN_CARD_NAMES["cards"]["urgent_shigawire"]
+# The boxes whose ``spice`` icon pays 2 (the others pay 1): Branching Path's
+# and the original game's Gene Manipulation's.
+_TWO_SPICE_ICON_BOXES = (
+    _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE,
+    _BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND,
+)
 
 # Printed conditions of the multi-icon Agent boxes, judged when the icon
 # resolves (OQ-027); shown after the icon's effect.
@@ -141,6 +147,9 @@ _ICON_CONDITIONS: dict[tuple[PersonalCardAgentEffect, str], str] = {
         "if you have completed 4 or more contracts"
     ),
     (_BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND, "cards"): (
+        "if you have another Bene Gesserit card in play"
+    ),
+    (_BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND, "spice"): (
         "if you have another Bene Gesserit card in play"
     ),
     (_BOX.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED, "research"): "if grafted",
@@ -202,6 +211,9 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
     ),
     # Tread in Darkness, in tokens_ko.py's words for the same box.
     (_BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND, "cards"): (
+        "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
+    ),
+    (_BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND, "spice"): (
         "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
     ),
     (_BOX.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED, "research"): "{graft}했다면",
@@ -283,11 +295,7 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
         case "spice":
             base = (
                 "Gain 2 spice"
-                if effect
-                is (
-                    _BOX
-                    .MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
-                )
+                if effect in _TWO_SPICE_ICON_BOXES
                 else "Gain 1 spice"
             )
         case "water":
@@ -348,13 +356,7 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
             base = "{solari:1}" if effect is _BOX.LEADER_SIGNET else "{solari:2}"
         case "spice":
             base = (
-                "{spice:2}"
-                if effect
-                is (
-                    _BOX
-                    .MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
-                )
-                else "{spice:1}"
+                "{spice:2}" if effect in _TWO_SPICE_ICON_BOXES else "{spice:1}"
             )
         case "water":
             base = "{water:1}"

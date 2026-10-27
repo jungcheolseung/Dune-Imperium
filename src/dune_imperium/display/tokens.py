@@ -473,6 +473,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: (
             "If Bene Gesserit Bond: Gain 1 Influence with a chosen Faction"
         ),
+        PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: (
+            "You may trash a card, If Bene Gesserit Bond: Gain 2 spice"
+        ),
     }
 )
 
