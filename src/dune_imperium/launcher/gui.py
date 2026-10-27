@@ -339,7 +339,7 @@ class LauncherWindow:
         self.autosave_box.grid(row=1, column=1, columnspan=2, sticky="w")
         self._edit_widgets.append(self.autosave_box)
         self._path_row(game, 2, "탐색 AI 망", self.search_checkpoint, directory=False)
-        ttk.Label(game, text="비우면 checkpoints/play/search.pt").grid(
+        ttk.Label(game, text="비우면 프로젝트의 기본 탐색 AI 망").grid(
             row=3, column=1, columnspan=2, sticky="w"
         )
         ttk.Label(game, text="AI 속도").grid(row=4, column=0, sticky="w", pady=(6, 0))
@@ -353,7 +353,7 @@ class LauncherWindow:
         pace.grid(row=4, column=1, sticky="w", pady=(6, 0))
         self._edit_widgets.append(pace)
         self._path_row(game, 5, "그림 폴더", self.assets_dir, directory=True)
-        ttk.Label(game, text="비우면 프로젝트의 assets").grid(
+        ttk.Label(game, text="비우면 프로젝트의 그림 폴더").grid(
             row=6, column=1, columnspan=2, sticky="w"
         )
 
@@ -794,7 +794,7 @@ class LauncherWindow:
                 self.address.set(pick.label)
         hints = []
         if found.tailscale is None:
-            hints.append("Tailscale CLI 없음")
+            hints.append("Tailscale 명령 도구 없음")
         elif not found.tailscale.running:
             hints.append("Tailscale 꺼짐")
         if not found.internet_route:

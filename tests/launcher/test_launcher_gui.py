@@ -356,7 +356,7 @@ def test_found_addresses_fill_the_list_and_pick_the_best(
         assert window.read_form().host == "100.87.236.12"
         values = window.address_box.cget("values")
         assert "같은 네트워크(LAN) — 192.168.0.64" in values
-        assert "Tailscale CLI 없음" in window.address_hint.get()
+        assert "Tailscale 명령 도구 없음" in window.address_hint.get()
     finally:
         window.root.destroy()
 
