@@ -54,7 +54,8 @@ IMPERIUM_LEADERS: Final[tuple[LeaderDefinition, ...]] = (
     ),
     _leader(
         "glossu_rabban",
-        'Glossu "The Beast" Rabban',
+        # The app's title; the card face prints GLOSSU "THE BEAST" RABBAN.
+        'Glossu "Beast" Rabban',
         "Arrakis Fiefdom",
         "Brutality",
         extra_starting_spice=1,

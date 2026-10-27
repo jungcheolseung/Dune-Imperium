@@ -394,6 +394,9 @@ def _gain_influence_text_ko(gain: GainInfluence) -> str:
             choice += f" (당신이 영향력 {gain.minimum_own} 이상 보유)"
     if gain.times == 1:
         return f"{{influence_any:1}} ({choice} 선택)"
+    if gain.one_faction:
+        # The original game's two-chevron icon: one Faction, both Influence.
+        return f"{{influence_any:{gain.times}}} ({choice} 한 번 선택)"
     return f"{{influence_any:{gain.times}}} (매번 {choice} 선택)"
 
 

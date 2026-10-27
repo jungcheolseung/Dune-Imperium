@@ -245,6 +245,10 @@ def _gain_influence_text(gain: GainInfluence) -> str:
             choice += f" where you have {gain.minimum_own}+ Influence"
     if gain.times == 1:
         return f"Gain 1 Influence (choose {choice})"
+    if gain.one_faction:
+        # The original game's two-chevron icon: one Faction, both Influence
+        # [DI p. 16] (Grand Vision).
+        return f"Gain {gain.times} Influence (choose {choice} once)"
     suffix = ", distinct" if gain.distinct else ""
     return f"Gain {gain.times} Influence (choose {choice} each time{suffix})"
 
