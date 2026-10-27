@@ -2872,3 +2872,17 @@
 - 판정(2026-10-27 사용자, P2 설계 승인과 함께): **(가)**. P2에서는 Mentat과 자기 Agent를 가리지 않고 그 라운드 Agent 수만 하나 늘린다.
   공식 규칙이 아닌 project convention(엔진 이유)이고, 놓인 말이 Mentat인지가 결과를 바꾸는 P3 카드(Kwisatz Haderach, Urgent Mission)에서 다시
   연다. 테스트는 P2a 구현 커밋에서 이 OQ를 인용한다.
+- **P3 재검토(2026-10-28, 사용자 확인 대기).** 다시 열기로 한 카드 셋의 공식 문장과 앱 처리:
+  - Kwisatz Haderach: "Send one of your Agents from anywhere to ANY board space (even if occupied)" + 카드 1장(앱 문구). 룰북: 보드나 Leader 위의 자기
+    Agent 하나를 옮기고, 방금 떠난 칸으로도 보낼 수 있다 `[DI p. 13]`.
+  - Urgent Mission: "Recall one of your Agents"(앱 문구). 앱의 `UrgentMissionAbility`는 보드에 Agent가 하나 이상 있어야 내고(`HasDeployedAgents(1)`),
+    대상은 그 좌석의 Agent 가운데 막히지 않은 것 전부다(P0 sweep, 로컬 `…/p0-readings/sweep/intrigue.md`).
+  - Calculated Hire: "1 spice → Take the Mentat from its designated space in the Landsraad"(앱 문구). 룰북: Mentat이 제 칸에 있을 때만 `[DI p. 13]`.
+  - 디자이너 판정: 가져간 Mentat은 그 라운드 끝까지 그 플레이어의 Agent로 모든 목적에 친다 — Urgent Mission이 되돌릴 수 있고 Kwisatz Haderach가
+    옮길 수 있다([imperium-base.md](imperium-base.md) 9절, BGG Forum).
+  - 분석: 디자이너 판정대로 Mentat이 모든 목적에 그 좌석의 Agent라면, 세 카드의 결과는 어느 말을 옮기거나 거뒀는지에 달려 있지 않다. 옮긴 말은
+    어느 쪽이든 그 좌석의 Agent로 새 칸에 서고, 거둔 말은 어느 쪽이든 Leader로 돌아와 이번 라운드에 다시 보낼 수 있으며(Mentat도 쥔 좌석의 말로
+    남음), Recall은 Mentat을 어디에 있든 제 칸으로 돌린다 `[DI p. 13]`. Calculated Hire는 이미 있는 상태(`mentat`·`mentat_owed_to`, Mentat이 제 칸에
+    있는지)만 읽는다. 차이가 생길 수 있는 곳은 "그 말이 Mentat인가"를 읽는 효과뿐인데 원판 카드·지도자에는 없다(Rise of Ix·조합은 P4·P7에서 다시 본다).
+  - 추천: **(가) 유지** — 세 카드를 "자기 Agent 하나"로 구현하고 말을 가리지 않는다. 사용자가 확인하기 전에는 세 카드를 전사하지 않는다(조정자 경유
+    사용자 지시 2026-10-28 01:3x, 계획 16.8 4).
