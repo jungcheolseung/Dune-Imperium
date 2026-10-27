@@ -951,9 +951,13 @@ def _opponents_decide(
                 ),
                 events=(),
             )
-        case EachOpponentLosesTroop():
+        case EachOpponentLosesTroop(garrison_only=garrison_only):
             return opponent_unit_loss_frames(
-                state, player, source=source, printer=_card_printer(card_id)
+                state,
+                player,
+                source=source,
+                printer=_card_printer(card_id),
+                garrison_only=garrison_only,
             )
         case OpponentsMoveSpiesFromVisitedSpace():
             space_id = context.get("space_id")
@@ -1090,7 +1094,23 @@ _PAYMENT_REWARDS = (
     AdvanceTleilaxu,
     RecruitTroops,
     TrashPersonalCard,
+    GainInfluence,
 )
+
+
+def _paid_influence(reward: object) -> Faction | None:
+    """The one Faction a paid arrow's Influence reward names, or None when
+    the reward is not a gain of one fixed Faction's Influence (a choice or the
+    visited space's keeps its own code)."""
+
+    if (
+        isinstance(reward, GainInfluence)
+        and not reward.requires_choice
+        and not reward.visited_space
+        and reward.factions is not None
+    ):
+        return reward.factions[0]
+    return None
 
 
 def payment_box(ability: Ability | None) -> bool:
@@ -1106,7 +1126,9 @@ def payment_box(ability: Ability | None) -> bool:
         return False
     (section,) = ability.sections
     if len(section.costs) != 1 or not all(
-        isinstance(reward, _PAYMENT_REWARDS) for reward in section.rewards
+        isinstance(reward, _PAYMENT_REWARDS)
+        and (not isinstance(reward, GainInfluence) or _paid_influence(reward))
+        for reward in section.rewards
     ):
         return False
     try:
@@ -1271,6 +1293,16 @@ def apply_payment(
             case DrawPersonalCards(count=count):
                 step = draw_or_request_personal_cards(
                     next_state, player, count, source=source
+                )
+            case GainInfluence(times=times) if faction := _paid_influence(reward):
+                # A fixed Faction's Influence (Spice Smugglers), prefix
+                # ``<box>:influence:<f>`` as the box's other gains name it.
+                step = gain_faction_influence(
+                    next_state,
+                    player,
+                    faction,
+                    times,
+                    event_prefix=f"{source}:influence:{faction.value}",
                 )
         if step is not None:
             next_state = step.state

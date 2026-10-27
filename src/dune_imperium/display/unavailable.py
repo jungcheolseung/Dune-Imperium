@@ -321,9 +321,10 @@ from dune_imperium.rules.tleilaxu_row import (
 )
 from dune_imperium.rules.turn_rows import tech_influence_blocked
 from dune_imperium.rules.unit_loss import (
-    UNIT_LOSS_CANDIDATES,
     UnitLossBlock,
+    frame_garrison_only,
     unit_loss_block,
+    unit_loss_candidates,
     unit_loss_options,
 )
 
@@ -2165,8 +2166,11 @@ def _unit_loss(state: GameState, seat: int, found: _Found) -> None:
     """
 
     owner = state.players[seat]
-    nothing = not unit_loss_options(state, seat)
-    for zone, commander in UNIT_LOSS_CANDIDATES:
+    # Gun Thopter's loss lists the garrison alone: the Conflict is no option
+    # there, so no greyed row names it.
+    garrison_only = frame_garrison_only(state.decision_stack[-1])
+    nothing = not unit_loss_options(state, seat, garrison_only=garrison_only)
+    for zone, commander in unit_loss_candidates(garrison_only=garrison_only):
         if commander and owner.commanders_total == 0:
             continue
         block = unit_loss_block(owner, zone, commander=commander)

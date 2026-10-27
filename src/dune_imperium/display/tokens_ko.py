@@ -494,6 +494,16 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "하나 선택: {influence_any:1} 선택 / {troop:2}; "
         "베네 게세리트의 유대감이면 둘 다 얻음"
     ),
+    # The original game's Imperium cards (stage P3): the effect text the
+    # engine generates, glossary words only (no Korean card source yet).
+    PersonalCardAgentEffect.RECRUIT_ONE_TROOP: "{troop:1}",
+    (
+        PersonalCardAgentEffect
+        .MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+    ): "{spice:2} 지불 가능 {arrow_right} {influence_spacing_guild:1}, {solari:3}",
+    PersonalCardAgentEffect.EACH_OPPONENT_LOSES_GARRISON_TROOP: (
+        "다른 플레이어 각자 {garrison}의 {troop} 하나 잃음"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box
@@ -615,6 +625,10 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     ): "프레멘의 유대감: {troop:1} 배치 또는 {retreat} 가능",
     PersonalCardRevealChoiceEffect.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: (
         "{troop:2} 잃기 가능 {arrow_right} 표본 2개 생성"
+    ),
+    # The original game's Imperium cards (stage P3): glossary words only.
+    PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP: (
+        "{garrison}의 {troop:1}을 {conflict}에 배치 가능"
     ),
     PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
         "하나 선택: {solari:5} / {solari:5} 지불 {arrow_right} 원로회 자리 차지"

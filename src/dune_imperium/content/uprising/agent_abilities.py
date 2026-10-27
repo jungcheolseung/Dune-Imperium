@@ -220,6 +220,9 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.GAIN_ONE_SPICE: _box(GainResources(spice=1)),
             _BOX.GAIN_WATER: _box(GainResources(water=1)),
             _BOX.RECRUIT_TWO_TROOPS: _box(RecruitTroops(2)),
+            # Arrakis Recruiter (original game): one troop; a Combat space
+            # lets the owner deploy it [DI p. 10] [FAQ p. 4].
+            _BOX.RECRUIT_ONE_TROOP: _box(RecruitTroops(1)),
             _BOX.BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND: _box(
                 BoostNextBeneGesseritCard()
             ),
@@ -617,10 +620,25 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: _pay(
                 SpendSpecimens(2), AdvanceTleilaxu(2)
             ),
+            # Spice Smugglers (original game): "[2 spice] -> [Spacing Guild
+            # Influence] [3 Solari]" -- a paid arrow whose first reward is a
+            # fixed Faction's Influence (no choice) and whose Solari keep it
+            # worth paying at the top of the track (OQ-060, OQ-071).
+            _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI: _pay(
+                PayResources(spice=2),
+                GainInfluence(factions=(Faction.SPACING_GUILD,)),
+                GainResources(solari=3),
+            ),
             # --- One action with follow-ups for the opponents (composed A3g) -----
             # Covert Operation: "Each opponent discards a card" -- one frame per
             # opponent holding a card, named ``<box>:opponent:<seat>``.
             _BOX.EACH_OPPONENT_DISCARDS_PERSONAL_CARD: _box(EachOpponentDiscardsCard()),
+            # Gun Thopter (original game): "Each opponent loses one garrisoned
+            # troop" -- Holy War's window, each loss limited to the garrison;
+            # an opponent with none is unaffected [FAQ p. 2].
+            _BOX.EACH_OPPONENT_LOSES_GARRISON_TROOP: _box(
+                EachOpponentLosesTroop(garrison_only=True)
+            ),
             # Holy War: "Each opponent loses one troop. Each opponent spying on
             # the board space where you sent an Agent this turn must move that
             # Spy" -- every loss first, then the Spy moves (OQ-036).

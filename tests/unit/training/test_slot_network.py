@@ -34,7 +34,10 @@ from dune_imperium.content.immortality.board import TLEILAXU_TRACK_END  # noqa: 
 from dune_imperium.content.immortality.tleilaxu import (  # noqa: E402
     TLEILAXU_CARDS_BY_ID,
 )
-from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID  # noqa: E402
+from dune_imperium.content.uprising.imperium import (  # noqa: E402
+    IMPERIUM_CARDS,
+    IMPERIUM_CARDS_BY_ID,
+)
 from dune_imperium.content.uprising.intrigue import (  # noqa: E402
     INTRIGUE_CARDS_BY_ID,
     INTRIGUE_CARDS_BY_INSTANCE,
@@ -287,7 +290,7 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
         # Less the engine's pause, which no observation shows (slots.py).
         "decision_kind": len(_FRAME_KINDS) - 1,
         "conflict": len(CONFLICT_IDS),
-        "imperium_row": len(IMPERIUM_CARDS_BY_ID),
+        "imperium_row": len(IMPERIUM_CARDS),
         "tech_face_up": len(TECH_IDS),
         "tleilaxu_row": len(TLEILAXU_CARDS_BY_ID),
         "secret_project": len(TECH_IDS),
@@ -311,7 +314,7 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
             f"seat{seat}_tactics": TACTICS_TRACK_END - TACTICS_TRACK_START,
             f"seat{seat}_tleilaxu": TLEILAXU_TRACK_END,
             f"seat{seat}_agent_locations": len(SPACE_IDS),
-            f"seat{seat}_set_aside": len(IMPERIUM_CARDS_BY_ID),
+            f"seat{seat}_set_aside": len(IMPERIUM_CARDS),
         }
     assert {field.name: len(field.keys) for field in SLOT_FIELDS} == expected
     # v28: 1_139 -> 1_140 (conflict:economic_supremacy). v32: + 4 + 18 + 139.

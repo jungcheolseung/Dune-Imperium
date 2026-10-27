@@ -159,8 +159,10 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    # 103 Uprising-family boxes and the original game's Foldspace.
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1
+    # 103 Uprising-family boxes, the original game's Foldspace and the
+    # original Imperium cards' new boxes (stage P3: Arrakis Recruiter, Spice
+    # Smugglers, Gun Thopter).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 3
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -608,9 +610,11 @@ def test_a_payment_that_buys_nothing_is_withheld() -> None:
 
 
 def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
-    """The payment shape takes the five records it was written for (Control
-    the Spice since cleanup-2d), and refuses a record it would pay wrongly
-    (a reward it does not give, a cost no row names): such a box keeps its
+    """The payment shape takes the six records it was written for (Control
+    the Spice since cleanup-2d, the original game's Spice Smugglers since
+    stage P3, whose reward is one fixed Faction's Influence), and refuses a
+    record it would pay wrongly (a reward it does not give -- a chosen or the
+    visited Faction's Influence --, a cost no row names): such a box keeps its
     own code."""
 
     payments = {
@@ -624,9 +628,11 @@ def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
         _BOX.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI,
         _BOX.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
         _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
+        _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI,
     }
     for cost, rewards in (
         (PayResources(spice=1), (GainInfluence(),)),
+        (PayResources(spice=1), (GainInfluence(visited_space=True),)),
         (PayResources(solari=5), (AdvanceTleilaxu(1),)),
     ):
         optional = Ability(

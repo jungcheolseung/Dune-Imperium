@@ -207,6 +207,12 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                 mark=_OPTIONAL,
                 structure=AbilityStructure.ONE_OF,
             ),
+            # Gun Thopter (original game): "You may deploy a troop from your
+            # garrison to the Conflict" -- the deploy line of Shadout Mapes'
+            # choice alone; a Commander is a troop [Bloodlines p. 4].
+            _CHOICE.MAY_DEPLOY_ONE_TROOP: _choice(
+                _line(DeployFromGarrison(1)), mark=_OPTIONAL
+            ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
             _CHOICE.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: _choice(

@@ -1,0 +1,489 @@
+"""The original Dune: Imperium's Imperium cards (stage P3, trial transcription).
+
+docs/rules/imperium-base.md 7, 11, 13.2 and docs/base-game-and-ix-plan.md 16.
+The cards are not in the original game's deck yet (plan 16.1), so each test
+puts the card instance into seat 0's hand of an original-game round; the
+printed values are the Steam app's attribute table (plan 2.4, D1).
+"""
+
+from dataclasses import replace
+
+from dune_imperium import BaseGame, RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAgentEffect,
+    PersonalCardRevealChoiceEffect,
+)
+from dune_imperium.core import (
+    ChanceDecision,
+    ChanceResolver,
+    DomainAction,
+    GamePhase,
+    GameState,
+    Influence,
+    PlayerDecision,
+    Resources,
+)
+from dune_imperium.display.unavailable import unavailable_choices
+from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import executable_placements
+from dune_imperium.rules.combat_deployment import legal_combat_deployments
+from dune_imperium.rules.frames import FrameKind
+
+CONFIG = RulesetConfig(base_game=BaseGame.IMPERIUM, first_player_seat_zero=True)
+LEADERS = (
+    "earl_memnon_thorvald",
+    "glossu_rabban",
+    "count_ilban_richese",
+    "countess_ariana_thorvald",
+)
+
+
+def _start(seed: int = 3) -> tuple[UprisingRulesEngine, GameState]:
+    """Round 1 of an original game at seat 0's first turn."""
+
+    engine = UprisingRulesEngine(leader_ids=LEADERS)
+    state = engine.reset(CONFIG, seed)
+    chance = ChanceResolver(seed=seed)
+    while isinstance(decision := engine.current_decision(state), ChanceDecision):
+        state = engine.apply(state, chance.resolve(decision)).state
+    assert state.phase is GamePhase.PLAYER_TURNS
+    return engine, state
+
+
+def _seat(state: GameState, seat: int = 0, **changes: object) -> GameState:
+    players = list(state.players)
+    players[seat] = replace(players[seat], **changes)  # type: ignore[arg-type]
+    return replace(state, players=tuple(players))
+
+
+def _with_card(
+    state: GameState, card_id: str, *, alone: bool = False
+) -> tuple[GameState, str]:
+    """Seat 0 with copy 0 of the Imperium card ``card_id`` in hand (the only
+    card when ``alone``); returns the instance id too."""
+
+    instance = f"imperium:{card_id}:0"
+    owner = state.players[0]
+    hand = (instance,) if alone else (*owner.hand, instance)
+    return _seat(state, hand=hand), instance
+
+
+def _place(
+    engine: UprisingRulesEngine, state: GameState, space_id: str, card_id: str
+) -> GameState:
+    placement = next(
+        placement
+        for placement in executable_placements(state, 0)
+        if dict(placement.arguments)["space_id"] == space_id
+        and f":{card_id}:" in str(dict(placement.arguments)["card_id"])
+    )
+    return apply_placement(engine, state, placement).state
+
+
+def _wholes(engine: UprisingRulesEngine, state: GameState) -> tuple[DomainAction, ...]:
+    return engine.whole_actions(state, 0)
+
+
+def _ids(engine: UprisingRulesEngine, state: GameState) -> set[str]:
+    return {action.action_id for action in _wholes(engine, state)}
+
+
+def _do(
+    engine: UprisingRulesEngine, state: GameState, action_id: str, **arguments: object
+) -> GameState:
+    action = next(
+        action
+        for action in _wholes(engine, state)
+        if action.action_id == action_id
+        and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+    )
+    return apply_whole(engine, state, action).state
+
+
+def _reveal(engine: UprisingRulesEngine, state: GameState) -> dict[str, object]:
+    """The Reveal frame's context after seat 0 reveals its hand."""
+
+    revealed = _do(engine, state, "reveal_turn")
+    return dict(revealed.decision_stack[-1].context)
+
+
+# --- Arrakis Recruiter ------------------------------------------------------------
+
+
+def test_arrakis_recruiter_matches_the_app_table() -> None:
+    # App attribute table: cost 2, 2 copies, City, no Faction, Reveal 1
+    # Persuasion and 1 sword; AgentTroops 1.
+    entry = IMPERIUM_CARDS_BY_ID["arrakis_recruiter"]
+    assert entry.card.name == "Arrakis Recruiter"
+    assert entry.acquisition_cost == 2
+    assert entry.copies == 2
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.CITY,)
+    assert entry.agent_effect is PersonalCardAgentEffect.RECRUIT_ONE_TROOP
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 1)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:arrakis_recruiter:1") is entry
+    # The deck lists no original card until stage P3a (plan 16.1).
+    assert not any("arrakis_recruiter" in card for card in _start()[1].imperium_deck)
+
+
+def test_arrakis_recruiter_recruits_one_troop() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "arrakis_recruiter")
+    state = _seat(state, resources=Resources(water=2))
+    owner = state.players[0]
+    placed = _place(engine, state, "imperium_research_station", "arrakis_recruiter")
+    assert placed.players[0].troops_garrison == owner.troops_garrison
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    after = resolved.players[0]
+    assert after.troops_garrison == owner.troops_garrison + 1
+    assert after.troops_supply == owner.troops_supply - 1
+
+
+def test_arrakis_recruiter_troop_deploys_at_a_combat_space() -> None:
+    """"Combat 칸(사막 그림과 교차한 칼)에 Agent를 보내면 이번 turn에 recruit한
+    troop 전부와 garrison의 troop 둘까지를 Conflict에 배치할 수 있다."
+    [DI pp. 10, 17-18] (imperium-base.md 7); Research Station is a Combat
+    space. The card prints no deployment of its own, so the recruited troop
+    joins the garrison's two: three in all."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "arrakis_recruiter")
+    state = _seat(state, resources=Resources(water=2))
+    placed = _place(engine, state, "imperium_research_station", "arrakis_recruiter")
+    before = {
+        int(dict(action.arguments)["count"])
+        for action in legal_combat_deployments(placed, 0)
+    }
+    assert max(before) == 2
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    after = {
+        int(dict(action.arguments)["count"])
+        for action in legal_combat_deployments(resolved, 0)
+    }
+    assert max(after) == 3
+    deployed = _do(engine, resolved, "deploy_troops", count=3)
+    assert deployed.players[0].troops_conflict == 3
+
+
+def test_arrakis_recruiter_reveals_one_persuasion_and_one_sword() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "arrakis_recruiter", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 1
+    assert frame["sword_strength"] == 1
+
+
+# --- Spice Smugglers --------------------------------------------------------------
+
+
+def _smugglers_placed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    influence: Influence | None = None,
+) -> GameState:
+    """Seat 0 sends Spice Smugglers to Research Station (a City space; its
+    two water are paid) with 3 spice, 1 Solari and the given Influence."""
+
+    held, _ = _with_card(state, "spice_smugglers")
+    seated = _seat(
+        held,
+        resources=Resources(water=2, spice=3, solari=1),
+        influence=influence or Influence(),
+    )
+    return _place(engine, seated, "imperium_research_station", "spice_smugglers")
+
+
+def test_spice_smugglers_matches_the_app_table() -> None:
+    # App attribute table: cost 2, 2 copies, Spacing Guild, City, Reveal 1
+    # Persuasion and 1 sword.
+    entry = IMPERIUM_CARDS_BY_ID["spice_smugglers"]
+    assert entry.card.name == "Spice Smugglers"
+    assert entry.acquisition_cost == 2
+    assert entry.copies == 2
+    assert entry.factions == (Faction.SPACING_GUILD,)
+    assert entry.agent_icons == (AgentIcon.CITY,)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 1)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:spice_smugglers:1") is entry
+
+
+def test_spice_smugglers_pays_two_spice_for_influence_and_three_solari() -> None:
+    """"비용 화살표" [DI p. 16]: the arrow's cost is paid for its reward. Two
+    spice buy one Spacing Guild Influence and 3 Solari."""
+
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state)
+    before = placed.players[0]
+    assert "pay_agent_card_spice" in _ids(engine, placed)
+    paid = _do(engine, placed, "pay_agent_card_spice")
+    after = paid.players[0]
+    assert after.resources.spice == before.resources.spice - 2
+    assert after.resources.solari == before.resources.solari + 3
+    assert after.influence.spacing_guild == before.influence.spacing_guild + 1
+    assert after.influence == replace(before.influence, spacing_guild=1)
+    assert after.spice_spent_turn == before.spice_spent_turn + 2
+
+
+def test_spice_smugglers_arrow_is_paid_once() -> None:
+    """"An arrow cost is optional [DI p. 9] and paid once [FAQ p. 3]": with
+    spice for a second payment the arrow is no longer offered."""
+
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state)
+    rich = _seat(placed, resources=replace(placed.players[0].resources, spice=6))
+    paid = _do(engine, rich, "pay_agent_card_spice")
+    assert paid.players[0].resources.spice == 4
+    assert "pay_agent_card_spice" not in _ids(engine, paid)
+
+
+def test_spice_smugglers_arrow_is_optional() -> None:
+    """The arrow cost is optional [DI p. 9]: the owner who does not pay ends
+    the turn with spice, Solari and Influence as they were."""
+
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state)
+    before = placed.players[0]
+    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    assert "pay_agent_card_spice" in _ids(engine, resolved)
+    finished = _do(engine, resolved, "finish_agent_turn")
+    after = finished.players[0]
+    assert after.resources.spice == before.resources.spice
+    assert after.resources.solari == before.resources.solari
+    assert after.influence == before.influence
+
+
+def test_spice_smugglers_needs_two_spice_to_pay() -> None:
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state)
+    poor = _seat(placed, resources=replace(placed.players[0].resources, spice=1))
+    assert "pay_agent_card_spice" not in _ids(engine, poor)
+    exact = _seat(placed, resources=replace(placed.players[0].resources, spice=2))
+    paid = _do(engine, exact, "pay_agent_card_spice")
+    assert paid.players[0].resources.spice == 0
+
+
+def test_spice_smugglers_at_the_top_of_the_track_still_pays_its_solari() -> None:
+    """"비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다" (imperium-base.md
+    16, OQ-071): the 3 Solari are a reward, so the arrow is offered with the
+    Spacing Guild cube at 6. The Influence gain there is dropped: "엔진은 처음부터
+    6에 있는 cube에 대한 Influence 획득을 버린다" (OQ-060)."""
+
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state, Influence(spacing_guild=6))
+    before = placed.players[0]
+    assert "pay_agent_card_spice" in _ids(engine, placed)
+    after = _do(engine, placed, "pay_agent_card_spice").players[0]
+    assert after.influence.spacing_guild == 6
+    assert after.resources.solari == before.resources.solari + 3
+    assert after.resources.spice == before.resources.spice - 2
+
+
+def test_spice_smugglers_influence_takes_the_normal_influence_path() -> None:
+    # "처음 4에 도달한 플레이어가 Alliance token과 그 VP를 얻고" [DI p. 7]
+    # (imperium-base.md 6): the paid Influence is an ordinary Faction gain.
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state, Influence(spacing_guild=3))
+    assert placed.players[0].alliance_faction_ids == ()
+    paid = _do(engine, placed, "pay_agent_card_spice")
+    assert paid.players[0].influence.spacing_guild == 4
+    assert paid.players[0].alliance_faction_ids == ("spacing_guild",)
+
+
+def test_spice_smugglers_reveals_one_persuasion_and_one_sword() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "spice_smugglers", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 1
+    assert frame["sword_strength"] == 1
+
+
+# --- Gun Thopter ------------------------------------------------------------------
+
+
+def _with_troops(
+    state: GameState, seat: int, garrison: int, conflict: int = 0
+) -> GameState:
+    """``seat`` with that many troops in the garrison and the Conflict (the
+    rest in its supply)."""
+
+    return _seat(
+        state,
+        seat,
+        troops_garrison=garrison,
+        troops_conflict=conflict,
+        troops_supply=12 - garrison - conflict,
+    )
+
+
+def _thopter_resolved(
+    engine: UprisingRulesEngine, state: GameState
+) -> tuple[GameState, GameState]:
+    """The state before and after seat 0 plays Gun Thopter's Agent box at
+    Secure Contract (a Spice Trade space), the opponents' windows open."""
+
+    held, _ = _with_card(state, "gun_thopter")
+    placed = _place(engine, held, "secure_contract", "gun_thopter")
+    return placed, _do(engine, placed, "resolve_agent_card_effect")
+
+
+def _answer(
+    engine: UprisingRulesEngine, state: GameState, seat: int, action_id: str
+) -> GameState:
+    action = next(
+        action
+        for action in engine.whole_actions(state, seat)
+        if action.action_id == action_id
+    )
+    return apply_whole(engine, state, action).state
+
+
+def test_gun_thopter_matches_the_app_table() -> None:
+    # App attribute table: cost 4, 2 copies, City and Spice Trade, no Faction,
+    # Reveal 3 swords and no Persuasion.
+    entry = IMPERIUM_CARDS_BY_ID["gun_thopter"]
+    assert entry.card.name == "Gun Thopter"
+    assert entry.acquisition_cost == 4
+    assert entry.copies == 2
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.EACH_OPPONENT_LOSES_GARRISON_TROOP
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 3)
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:gun_thopter:1") is entry
+
+
+def test_gun_thopter_takes_one_garrisoned_troop_from_each_opponent() -> None:
+    """"| Gun Thopter | 2 | garrison troop이 없는 상대는 영향 없음 |" [FAQ p. 2]
+    (imperium-base.md 13.2); the lost troop goes to its owner's supply ("troop
+    잃기(supply로)" [DI p. 16]); "\"each opponent\"는 다음 좌석부터 시계 방향"
+    (imperium-base.md 16, OQ-036). The Conflict's troops are not touched."""
+
+    engine, state = _start()
+    for seat in (1, 2, 3):
+        state = _with_troops(state, seat, garrison=2, conflict=1)
+    _, resolved = _thopter_resolved(engine, state)
+    # Seat 1, the next seat clockwise, answers first; each window is its own
+    # seat's and the card's owner has none.
+    assert resolved.decision_stack[-1].kind == FrameKind.OPPONENT_UNIT_LOSS
+    owners = [
+        frame.decision.owner
+        for frame in resolved.decision_stack
+        if frame.kind == FrameKind.OPPONENT_UNIT_LOSS
+        and isinstance(frame.decision, PlayerDecision)
+    ]
+    assert owners == [3, 2, 1]
+    for seat in (1, 2, 3):
+        # Only the seat whose window is on top has anything to answer.
+        assert [
+            (action.action_id, dict(action.arguments))
+            for action in engine.whole_actions(resolved, seat)
+        ] == [("lose_unit", {"zone": "garrison"})]
+        assert not engine.whole_actions(resolved, 0)
+        resolved = _answer(engine, resolved, seat, "lose_unit")
+        loser = resolved.players[seat]
+        assert (loser.troops_garrison, loser.troops_conflict) == (1, 1)
+        assert loser.troops_supply == 12 - 1 - 1
+    assert resolved.players[0].troops_garrison == state.players[0].troops_garrison
+    assert not any(
+        frame.kind == FrameKind.OPPONENT_UNIT_LOSS for frame in resolved.decision_stack
+    )
+
+
+def test_gun_thopter_leaves_an_opponent_with_no_garrisoned_troop_alone() -> None:
+    """"garrison troop이 없는 상대는 영향 없음" [FAQ p. 2]: its Conflict troops
+    stay. The window still opens (OQ-036 (a), user ruling 2026-09-30: "선택지가 단
+    하나여도 어쨌든 확인을 거치는 걸로"), offering the one confirmation."""
+
+    engine, state = _start()
+    state = _with_troops(state, 1, garrison=0, conflict=2)
+    state = _with_troops(state, 2, garrison=0, conflict=0)
+    state = _with_troops(state, 3, garrison=1)
+    _, resolved = _thopter_resolved(engine, state)
+    for seat in (1, 2):
+        assert [
+            action.action_id for action in engine.whole_actions(resolved, seat)
+        ] == ["resolve_unit_loss_without_unit"]
+        resolved = _answer(engine, resolved, seat, "resolve_unit_loss_without_unit")
+    after = resolved.players
+    assert (after[1].troops_garrison, after[1].troops_conflict) == (0, 2)
+    assert after[1].troops_supply == state.players[1].troops_supply
+    assert after[2].troops_supply == state.players[2].troops_supply
+    resolved = _answer(engine, resolved, 3, "lose_unit")
+    assert resolved.players[3].troops_garrison == 0
+    assert resolved.players[3].troops_supply == 12
+
+
+def test_gun_thopter_window_lists_the_garrison_alone() -> None:
+    """The window lists the garrison's troop only: a seat with no Conflict
+    troop gets no greyed Conflict row (Holy War's window would grey one; the
+    Conflict is no option here), and a seat with no garrisoned troop gets the
+    garrison row greyed with the window's "no unit" reason."""
+
+    engine, state = _start()
+    state = _with_troops(state, 1, garrison=3, conflict=0)
+    state = _with_troops(state, 2, garrison=0, conflict=3)
+    _, resolved = _thopter_resolved(engine, state)
+
+    def rows(at: GameState, seat: int) -> dict[str, str]:
+        found = unavailable_choices(at, seat, engine.whole_actions(at, seat))
+        return (
+            {}
+            if found is None
+            else {
+                str(row["key"]): str(row["reason"])
+                for row in found["rows"]  # type: ignore[attr-defined]
+                if str(row["key"]).startswith("choice:lose_unit:")
+            }
+        )
+
+    assert rows(resolved, 1) == {}
+    after_one = _answer(engine, resolved, 1, "lose_unit")
+    assert rows(after_one, 2) == {"choice:lose_unit:garrison:0": "No unit to lose"}
+
+
+def test_gun_thopter_reveals_three_swords_and_may_deploy_a_garrison_troop() -> None:
+    """The Reveal's swords count once a troop stands in the Conflict ("Conflict에
+    troop이 하나도 없으면 0" [DI p. 11]); "You may deploy a troop from your
+    garrison to the Conflict" [Gun Thopter card], optional, one troop (P0 sweep
+    S14). Deploying it makes 2 for the troop and 3 swords: 5."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "gun_thopter", alone=True)
+    garrison = state.players[0].troops_garrison
+    revealed = _do(engine, state, "reveal_turn")
+    assert dict(revealed.decision_stack[-1].context)["sword_strength"] == 3
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 0
+    assert "deploy_reveal_card_troop" in _ids(engine, revealed)
+    # Optional: the owner who does not deploy has no troop to fight with.
+    declined = _do(engine, revealed, "finish_reveal")
+    assert declined.players[0].combat_strength == 0
+    deployed = _do(engine, revealed, "deploy_reveal_card_troop")
+    assert deployed.players[0].troops_garrison == garrison - 1
+    assert deployed.players[0].troops_conflict == 1
+    # One troop only: the choice is used up.
+    assert "deploy_reveal_card_troop" not in _ids(engine, deployed)
+    finished = _do(engine, deployed, "finish_reveal")
+    assert finished.players[0].combat_strength == 2 + 3
+
+
+def test_gun_thopter_cannot_deploy_from_an_empty_garrison() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "gun_thopter", alone=True)
+    state = _with_troops(state, 0, garrison=0)
+    revealed = _do(engine, state, "reveal_turn")
+    assert "deploy_reveal_card_troop" not in _ids(engine, revealed)
+    assert "finish_reveal" in _ids(engine, revealed)
