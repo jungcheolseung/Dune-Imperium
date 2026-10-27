@@ -657,3 +657,100 @@ def test_choam_shares_is_not_offered_to_a_seat_outside_its_own_turn() -> None:
         state, 1, intrigue_cards=(SHARES,), resources=Resources(solari=9)
     )
     assert legal_intrigue_play_actions(state, 1) == ()
+
+
+# --- Private Army (Combat) --------------------------------------------------
+
+ARMY = _intrigue("private_army")
+
+
+def test_private_army_is_one_combat_cost_line_with_two_copies() -> None:
+    # "Combat: 2 spice -> +5 swords" [Private Army card, Steam app text];
+    # 2 copies [DI p. 3].
+    entry = intrigue_card_for_instance(_intrigue("private_army", 1))
+    assert entry.card.name == "Private Army"
+    assert entry.copies == 2
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["combat"]
+    assert intrigue_card_text(entry) == ["Combat — Pay 2 spice → Gain 5 swords"]
+    assert "private_army" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_private_army_is_not_a_plot() -> None:
+    # Combat Intrigue is played in the Combat phase only [DI p. 12]
+    # (imperium-base.md 10).
+    _, state = _start()
+    state = _seat(state, intrigue_cards=(ARMY,), resources=Resources(spice=5))
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+def test_private_army_pays_two_spice_for_five_swords() -> None:
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." `[FAQ p. 2]`; the arrow cost is required once the card is
+    # played `[FAQ p. 3]`; strength is troops x 2 plus swords `[DI p. 11]`.
+    state = _combat_state(
+        _fighter(0, 2, intrigue_cards=(ARMY,), resources=Resources(spice=3)),
+        _fighter(1, 1),
+    )
+    assert legal_intrigue_play_actions(state, 0) == (_play(ARMY),)
+
+    result = apply_whole(UprisingRulesEngine(), state, _play(ARMY))
+    done = result.state
+
+    assert done.players[0].resources == Resources(spice=1)
+    assert done.players[0].combat_strength == 4 + 5
+    assert done.players[0].troops_conflict == 2
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (ARMY,)
+    kinds = [event.kind for event in result.events]
+    assert kinds.index("resources_paid") < kinds.index("combat_strength_gained")
+    frame = done.decision_stack[-1]
+    assert frame.kind == "combat_intrigue"
+    assert dict(frame.context)["consecutive_passes"] == 0
+
+
+def test_private_army_needs_two_spice() -> None:
+    # One spice does not pay the cost: the card is not offered and nothing is
+    # paid (FAQ p. 2).
+    state = _combat_state(
+        _fighter(0, 2, intrigue_cards=(ARMY,), resources=Resources(spice=1, solari=9)),
+        _fighter(1, 1),
+    )
+    engine = UprisingRulesEngine()
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert _play(ARMY) not in engine.whole_actions(state, 0)
+    # Solari are no substitute for the spice.
+    assert state.players[0].resources == Resources(solari=9, spice=1)
+
+
+def test_private_army_may_be_declined_by_passing() -> None:
+    # Playing is a choice, never forced: the seat passes and keeps the card
+    # and the spice `[DI p. 12]` (imperium-base.md 10).
+    state = _combat_state(
+        _fighter(0, 2, intrigue_cards=(ARMY,), resources=Resources(spice=2)),
+        _fighter(1, 1),
+    )
+    engine = UprisingRulesEngine()
+    assert _pass(0) in engine.whole_actions(state, 0)
+
+    passed = apply_whole(engine, state, _pass(0)).state
+
+    assert passed.players[0].intrigue_cards == (ARMY,)
+    assert passed.players[0].resources == Resources(spice=2)
+    assert passed.players[0].combat_strength == 4
+
+
+def test_private_army_needs_a_unit_in_the_conflict() -> None:
+    # "Conflict에 troop이 있는 플레이어가 Combat Intrigue를 내거나 pass한다"
+    # `[DI p. 12]` (imperium-base.md 10): a seat with no troop in the Conflict
+    # takes no part, so it is never offered the card, whatever it can pay.
+    state = _combat_state(
+        PlayerState(
+            player_id=0,
+            intrigue_cards=(ARMY,),
+            troops_garrison=3,
+            resources=Resources(spice=5),
+        ),
+        _fighter(1, 2),
+    )
+    assert legal_intrigue_play_actions(state, 0) == ()

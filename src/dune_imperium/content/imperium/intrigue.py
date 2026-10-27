@@ -160,6 +160,17 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("private_army", "Private Army"),
         copies=2,
+        # "2 spice -> +5 swords" [Private Army card, app text]: a Combat cost
+        # line, paid once the card is played [FAQ p. 3] (imperium-base.md
+        # 13.3's Allied Armada row, the same shape).
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(PayResources(spice=2),),
+                    rewards=(GainCombatStrength(5),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("rapid_mobilization", "Rapid Mobilization"),
