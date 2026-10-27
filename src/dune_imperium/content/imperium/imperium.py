@@ -137,10 +137,19 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=5,
     ),
+    # App table: cost 3, 1 copy, Fremen, Fremen and Spice Trade, Reveal 1 sword,
+    # AgentSolari 1. Agent: "1 Solari". Reveal: "Fremen Bond: 1 Fremen
+    # Influence" -- another Fremen card in play [DI p. 16], judged at
+    # resolution (OQ-028).
     ImperiumCardEntry(
         card=imperium_card("crysknife_card", "Crysknife"),
         copies=1,
         acquisition_cost=3,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.GAIN_ONE_SOLARI,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("dr_yueh", "Dr. Yueh"),

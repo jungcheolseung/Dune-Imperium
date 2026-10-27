@@ -447,6 +447,7 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.EACH_OPPONENT_LOSES_GARRISON_TROOP: (
             "Each opponent loses one garrisoned troop"
         ),
+        PersonalCardAgentEffect.GAIN_ONE_SOLARI: "Gain 1 solari",
     }
 )
 

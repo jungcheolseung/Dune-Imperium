@@ -322,6 +322,8 @@ class PersonalCardAgentEffect(StrEnum):
     )
     # Gun Thopter: "Each opponent loses one garrisoned troop."
     EACH_OPPONENT_LOSES_GARRISON_TROOP = "each_opponent_loses_garrison_troop"
+    # Crysknife: the Solari icon alone, "Gain 1 Solari".
+    GAIN_ONE_SOLARI = "gain_one_solari"
 
 
 class PersonalCardTrashEffect(StrEnum):

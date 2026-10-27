@@ -3,6 +3,7 @@
 import pytest
 
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS
+from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
 from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
 from dune_imperium.content.uprising.abilities import AbilityMark, AbilityTiming
 from dune_imperium.content.uprising.board import Faction
@@ -64,11 +65,15 @@ def test_every_record_names_a_card_with_its_play_data() -> None:
         cards[entry.card.card_id] = True
     for stack in IMPERIUM_RESERVE_STACKS:
         cards[stack.card.card_id] = True
+    # The original game's Imperium cards (stage P3).
+    for base_entry in IMPERIUM_BASE_CARDS:
+        cards[base_entry.card.card_id] = base_entry.play_data_complete
     assert set(REVEAL_GAIN_ABILITIES) <= set(cards)
     assert all(cards[card_id] for card_id in REVEAL_GAIN_ABILITIES)
-    # 51 Uprising-family records and the original game's The Spice Must Flow.
-    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1
-    assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == 55 + 1
+    # 51 Uprising-family records, the original game's The Spice Must Flow and
+    # the original Imperium cards' own (stage P3: Crysknife).
+    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 1
+    assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == 55 + 1 + 1
 
 
 def test_reveal_gain_records_are_automatic_lines() -> None:

@@ -109,6 +109,13 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "interstellar_trade": _reveal(
             _line(RevealPersuasion(1, per=_PER_COMPLETED_CONTRACT))
         ),
+        # Crysknife (original game): "Fremen Bond: 1 Fremen Influence".
+        "crysknife_card": _reveal(
+            _line(
+                GainInfluence(factions=(Faction.FREMEN,)),
+                condition=FactionBond(Faction.FREMEN),
+            )
+        ),
         # Junction Headquarters.
         "junction_headquarters": _reveal(
             _line(GainResources(water=1), RecruitTroops(1))

@@ -217,6 +217,8 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
         {
             # --- One action: gains -------------------------------------------
             _BOX.GAIN_TWO_SOLARI: _box(GainResources(solari=2)),
+            # Crysknife (original game): one Solari.
+            _BOX.GAIN_ONE_SOLARI: _box(GainResources(solari=1)),
             _BOX.GAIN_ONE_SPICE: _box(GainResources(spice=1)),
             _BOX.GAIN_WATER: _box(GainResources(water=1)),
             _BOX.RECRUIT_TWO_TROOPS: _box(RecruitTroops(2)),

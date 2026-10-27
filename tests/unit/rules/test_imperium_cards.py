@@ -649,3 +649,77 @@ def test_two_bene_gesserit_sisters_each_settle_their_own_choice() -> None:
     second = _do(engine, first, "gain_two_reveal_swords")
     assert dict(second.decision_stack[-1].context)["persuasion"] == 2
     assert _do(engine, second, "finish_reveal").players[0].combat_strength == 2 + 2
+
+
+# --- Crysknife --------------------------------------------------------------------
+
+
+def test_crysknife_matches_the_app_table() -> None:
+    # App attribute table: cost 3, 1 copy, Fremen, Fremen and Spice Trade,
+    # Reveal 1 sword and no Persuasion; AgentSolari 1.
+    entry = IMPERIUM_CARDS_BY_ID["crysknife_card"]
+    assert entry.card.name == "Crysknife"
+    assert entry.acquisition_cost == 3
+    assert entry.copies == 1
+    assert entry.factions == (Faction.FREMEN,)
+    assert entry.agent_icons == (AgentIcon.FREMEN, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is PersonalCardAgentEffect.GAIN_ONE_SOLARI
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 1)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:crysknife_card:0") is entry
+
+
+def test_crysknife_agent_box_gains_one_solari() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "crysknife_card")
+    state = _seat(state, resources=Resources(water=2, solari=4))
+    placed = _place(engine, state, "hardy_warriors", "crysknife_card")
+    before = placed.players[0].resources
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    assert resolved.players[0].resources.solari == before.solari + 1
+    assert resolved.players[0].resources.spice == before.spice
+
+
+def _crysknife_revealed(
+    engine: UprisingRulesEngine, state: GameState, *others: str
+) -> GameState:
+    """Seat 0 reveals Crysknife with the given other cards (instance ids)."""
+
+    held, instance = _with_card(state, "crysknife_card", alone=True)
+    held = _seat(held, hand=(instance, *others), influence=Influence(fremen=2))
+    return _do(engine, held, "reveal_turn")
+
+
+def test_crysknife_reveals_one_sword_and_no_persuasion() -> None:
+    engine, state = _start()
+    frame = dict(_crysknife_revealed(engine, state).decision_stack[-1].context)
+    assert frame["persuasion"] == 0
+    assert frame["sword_strength"] == 1
+
+
+def test_crysknife_fremen_bond_gains_one_fremen_influence() -> None:
+    """"Fremen Bond = another Fremen card in play" [DI p. 16] (imperium-base.md
+    11); Influence is gained as an ordinary Faction gain ("Influence 얻기"
+    [DI p. 16], 11): Fremen 2 becomes 3. Fedaykin Stilltent is another Fremen
+    card."""
+
+    engine, state = _start()
+    revealed = _crysknife_revealed(engine, state, "imperium:fedaykin_stilltent:0")
+    assert "gain_reveal_faction_influence" in _ids(engine, revealed)
+    gained = _do(engine, revealed, "gain_reveal_faction_influence", faction="fremen")
+    assert gained.players[0].influence.fremen == 3
+    assert gained.players[0].influence == Influence(fremen=3)
+
+
+def test_crysknife_without_a_bond_gains_no_influence() -> None:
+    """Crysknife alone is no "another Fremen card"; a card of another Faction
+    does not make the Bond either."""
+
+    engine, state = _start()
+    starter = state.players[0].hand[0]
+    for others in ((), (starter,)):
+        revealed = _crysknife_revealed(engine, state, *others)
+        assert "gain_reveal_faction_influence" not in _ids(engine, revealed)
+        assert _do(engine, revealed, "finish_reveal").players[0].influence == Influence(
+            fremen=2
+        )

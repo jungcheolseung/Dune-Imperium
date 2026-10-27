@@ -504,6 +504,7 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.EACH_OPPONENT_LOSES_GARRISON_TROOP: (
         "다른 플레이어 각자 {garrison}의 {troop} 하나 잃음"
     ),
+    PersonalCardAgentEffect.GAIN_ONE_SOLARI: "{solari:1}",
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box
