@@ -810,11 +810,14 @@ def test_an_entity_file_without_its_feature_table_is_refused_under_another(
 
 
 def _after_v31(segment: str) -> bool:
-    """Whether an observation segment was appended after v31: v32's deck pools
-    and v33's picked Agent card (stage B1) and picked effect (stage B3)."""
+    """Whether an observation segment was appended after v31: v32's deck pools,
+    v33's picked Agent card (stage B1) and picked effect (stage B3), and v34's
+    base-game flag."""
 
-    return segment.endswith("_deck_pool") or segment.startswith(
-        ("private_agent_card_pick", "private_effect_pick")
+    return (
+        segment.endswith("_deck_pool")
+        or segment.startswith(("private_agent_card_pick", "private_effect_pick"))
+        or segment == "base_game"
     )
 
 
@@ -902,12 +905,13 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     # flag (v33, stage B1), the picked effect's card zone, verb, source,
     # box and target count (v33, stage B3) and the seven zones of its picked
     # targets (v33, the B3c-1 review; a personal card, the B3d-2a review)
-    # are the inputs the file never had.
+    # and the base-game flag (v34, a raw board input) are the inputs the
+    # file never had.
     assert info.migration.observation_new == network.entity_width * (1 + 3) + (
         network.entity_width + 1
     ) + network.entity_width + len(Verb) + len(Source) + 2 + 7 * (
         network.entity_width
-    )
+    ) + 1
     assert info.migration.observation_dropped == 0
     observations = _observations(recorded).clone()
     pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)

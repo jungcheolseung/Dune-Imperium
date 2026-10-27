@@ -95,8 +95,9 @@ SLOT_VERSION: Final = 1
 # box cards (``agent_boxes``). Their fields are appended after every older
 # field, so every older key keeps its index (checkpoints re-link by key,
 # SLOT_VERSION kept). v33 (stage B1) appends the seat's own picked Agent card,
-# read as a count zone, not a slot: no key changes.
-SLOT_OBSERVATION_VERSION: Final = 33
+# read as a count zone, not a slot: no key changes. v34 (the base-game axis)
+# appends the base-game flag, read raw: no key changes.
+SLOT_OBSERVATION_VERSION: Final = 34
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).
