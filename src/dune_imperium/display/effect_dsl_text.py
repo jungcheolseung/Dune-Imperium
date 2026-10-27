@@ -122,6 +122,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitUndeployableTroops,
     RedirectSpiesOnTurnSpace,
     Research,
+    ReserveCostDiscount,
     RetreatTroops,
     ReturnOtherGraftedCardAtRevealStart,
     ReturnThisCardToHand,
@@ -771,6 +772,10 @@ def reward_text(reward: Reward) -> str:
             return f"Gain {spice} spice ({helix} once you reach the Helix)"
         case CompleteContract():
             return "Complete one of your contracts"
+        case ReserveCostDiscount(card_ids=card_ids, amount=amount):
+            # Guild Bankers' printed sentence; one name for the printings.
+            name = RESERVE_STACKS_BY_ID[card_ids[0]].card.name
+            return f"{name} costs {amount} Persuasion less to acquire this turn"
         case _:
             assert_never(reward)
 

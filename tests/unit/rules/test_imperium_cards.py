@@ -2974,3 +2974,148 @@ def test_liet_kynes_acquisition_gains_one_emperor_influence() -> None:
     assert liet in after.discard_pile
     assert after.influence.emperor == before.influence.emperor + 1
     assert after.influence.fremen == before.influence.fremen
+
+
+# --- Guild Bankers ----------------------------------------------------------------
+
+TSMF = "imperium_the_spice_must_flow"
+
+
+def test_guild_bankers_matches_the_app_table() -> None:
+    # App attribute table: cost 3, 1 copy, Spacing Guild, Emperor, Spacing
+    # Guild and Landsraad, no fixed Reveal values; no Agent effect.
+    entry = IMPERIUM_CARDS_BY_ID["guild_bankers"]
+    assert entry.card.name == "Guild Bankers"
+    assert entry.acquisition_cost == 3
+    assert entry.copies == 1
+    assert entry.factions == (Faction.SPACING_GUILD,)
+    assert entry.agent_icons == (
+        AgentIcon.EMPEROR,
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.LANDSRAAD,
+    )
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:guild_bankers:0") is entry
+
+
+def test_guild_bankers_agent_box_is_empty() -> None:
+    # P0 sweep: "AGENT: none"; the icons only send the Agent to an Emperor,
+    # Spacing Guild or Landsraad space.
+    engine, state = _start()
+    state, _ = _with_card(state, "guild_bankers")
+    placed = _place(engine, state, "wealth", "guild_bankers")
+    assert "resolve_agent_card_effect" not in _ids(engine, placed)
+
+
+# Persuasion 12 beside the card: Piter De Vries 3, Stilgar 2, Space Travel 2
+# twice, Dr. Yueh 1, Bene Gesserit Initiate 1, Opulence 1 (the printed values;
+# none of them gains anything that must be taken before the Reveal ends).
+_BANKERS_HAND = (
+    "imperium:guild_bankers:0",
+    "imperium:piter_de_vries_card:0",
+    "imperium:stilgar:0",
+    "imperium:space_travel:0",
+    "imperium:space_travel:1",
+    "imperium:dr_yueh:0",
+    "imperium:bene_gesserit_initiate:0",
+    "imperium:opulence:0",
+)
+
+
+def _bankers_revealed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    hand: tuple[str, ...] = _BANKERS_HAND,
+    in_play: tuple[str, ...] = (),
+) -> GameState:
+    """Seat 0 reveals ``hand`` (the bankers and 12 Persuasion by default)."""
+
+    held = _seat(state, hand=hand, resources=Resources(), in_play=in_play)
+    return _do(engine, held, "reveal_turn")
+
+
+def _reserve_cost(state: GameState) -> int:
+    from dune_imperium.rules.acquisition import reserve_cost
+
+    return reserve_cost(state, TSMF)
+
+
+def test_guild_bankers_reveal_lowers_the_spice_must_flow_by_three() -> None:
+    """"Guild Bankers | 2 | 이번 turn에 얻는 The Spice Must Flow마다 할인"
+    (imperium-base.md 13.2, [FAQ p. 2]); the card prints "The Spice Must Flow
+    costs 3 Persuasion less to acquire this turn", and the Reserve card costs 9
+    (``imperium.reserve``): 6 in the Reveal turn."""
+
+    engine, state = _start()
+    assert _reserve_cost(state) == 9
+    revealed = _bankers_revealed(engine, state)
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 12
+    assert _reserve_cost(revealed) == 6
+    # Not a cost it keeps: the Reveal over, the card costs 9 again.
+    finished = _do(engine, revealed, "finish_reveal")
+    assert _reserve_cost(finished) == 9
+
+
+def test_guild_bankers_discount_makes_the_card_buyable_with_six() -> None:
+    """With 6 Persuasion the card is offered only beside Guild Bankers (9
+    Persuasion otherwise); the payment is the lowered cost."""
+
+    engine, state = _start()
+    six = ("imperium:piter_de_vries_card:0", "imperium:stilgar:0", "imperium:dr_yueh:0")
+    plain = _bankers_revealed(engine, state, six)
+    assert dict(plain.decision_stack[-1].context)["persuasion"] == 6
+    assert ("acquire_reserve", TSMF) not in {
+        (action.action_id, dict(action.arguments).get("card_id"))
+        for action in _wholes(engine, plain)
+    }
+    with_bankers = _bankers_revealed(engine, state, ("imperium:guild_bankers:0", *six))
+    assert dict(with_bankers.decision_stack[-1].context)["persuasion"] == 6
+    bought = _do(engine, with_bankers, "acquire_reserve", card_id=TSMF)
+    assert dict(bought.decision_stack[-1].context)["persuasion"] == 0
+    discard = bought.players[0].discard_pile
+    assert any(card.startswith(f"reserve:{TSMF}:") for card in discard)
+    # The Victory Point the card gives when acquired ([FAQ p. 4]) is unchanged.
+    gained = bought.players[0].victory_points - with_bankers.players[0].victory_points
+    assert gained == 1
+    # Market Opening's once-a-round flag is not the bankers' to set.
+    assert not bought.scouts_discount_used
+
+
+def test_guild_bankers_discount_holds_for_each_copy_bought() -> None:
+    """"마다": every copy acquired this turn costs 3 less, not the first only:
+    12 Persuasion buys two at 6 each."""
+
+    engine, state = _start()
+    revealed = _bankers_revealed(engine, state)
+    first = _do(engine, revealed, "acquire_reserve", card_id=TSMF)
+    assert dict(first.decision_stack[-1].context)["persuasion"] == 6
+    second = _do(engine, first, "acquire_reserve", card_id=TSMF)
+    assert dict(second.decision_stack[-1].context)["persuasion"] == 0
+    discard = second.players[0].discard_pile
+    assert len([card for card in discard if f":{TSMF}:" in card]) == 2
+
+
+def test_guild_bankers_played_as_an_agent_gives_no_discount() -> None:
+    """The discount is the card's Reveal effect: the card in play from an
+    earlier Agent turn does not lower the cost (its Agent box is empty)."""
+
+    engine, state = _start()
+    rest = _BANKERS_HAND[1:]
+    revealed = _bankers_revealed(
+        engine, state, rest, in_play=("imperium:guild_bankers:0",)
+    )
+    assert _reserve_cost(revealed) == 9
+
+
+def test_guild_bankers_reveal_text_names_the_discount() -> None:
+    line = reveal_lines(IMPERIUM_CARDS_BY_ID["guild_bankers"])[0]
+    assert reveal_effect_text(line) == (
+        "The Spice Must Flow costs 3 Persuasion less to acquire this turn"
+    )
+    korean = reveal_effect_text_ko(line)
+    assert "{persuasion:3}" in korean
+    assert "스파이스는 흘러야 한다" in korean
+

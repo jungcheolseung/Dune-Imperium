@@ -3916,6 +3916,32 @@ def _late_skill_bonuses(
     )
 
 
+def reveal_reserve_discount(state: GameState, reserve_card_id: str) -> int:
+    """What this Reveal turn's cards take off the Reserve card ``reserve_card_id``.
+
+    Guild Bankers: "The Spice Must Flow costs 3 Persuasion less to acquire
+    this turn" -- "이번 turn에 얻는 The Spice Must Flow마다 할인"
+    (imperium-base.md 13.2, [FAQ p. 2]), so every copy bought in the turn
+    costs less. A Reveal line "pays" when the card is revealed (the frame's
+    granted-lines record, ``begin_reveal_turn``); the discount lasts as long
+    as the Reveal frame does, whatever happens to the card after. It is read
+    wherever a Reserve cost is (``scouts_modifiers.reserve_discount``), so
+    the cost check and the payment agree; with no Reveal frame open (an Agent
+    turn, Combat) it is 0.
+    """
+
+    for frame in reversed(state.decision_stack):
+        if frame.kind != FrameKind.REVEAL:
+            continue
+        discount = 0
+        for key in _granted_reveal_lines(frame_context(frame)):
+            instance_id, _, index = key.rpartition("#")
+            lines = reveal_lines(personal_card_for_instance(instance_id))
+            discount += lines[int(index)].reserve_discount(reserve_card_id)
+        return discount
+    return 0
+
+
 def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     """Pay out revealed cards' automatic effects whose condition came true later.
 

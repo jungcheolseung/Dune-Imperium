@@ -34,7 +34,7 @@ SPICE_MUST_FLOW: Final = "the_spice_must_flow"
 MARKET_OPENING_DISCOUNT: Final = 2
 
 
-def reserve_discount(state: GameState, card_id: str) -> int:
+def _market_opening_discount(state: GameState, card_id: str) -> int:
     """Market Opening: the round's first The Spice Must Flow costs 2 less.
 
     [Scouts event: Market Opening] (docs/rules/arrakeen-scouts.md 6.1): the
@@ -49,10 +49,27 @@ def reserve_discount(state: GameState, card_id: str) -> int:
     return MARKET_OPENING_DISCOUNT
 
 
-def discount_used_after(state: GameState, card_id: str) -> bool:
-    """``scouts_discount_used`` once ``card_id`` has been acquired now."""
+def reserve_discount(state: GameState, card_id: str) -> int:
+    """What a Reserve card costs less now: Market Opening's, plus a revealed
+    card's discount for this Reveal turn (Guild Bankers, [FAQ p. 2])."""
 
-    return state.scouts_discount_used or reserve_discount(state, card_id) > 0
+    # Read at call time: ``rules.reveal_turn`` imports acquisition, which
+    # imports this module.
+    from dune_imperium.rules.reveal_turn import reveal_reserve_discount
+
+    return _market_opening_discount(state, card_id) + reveal_reserve_discount(
+        state, card_id
+    )
+
+
+def discount_used_after(state: GameState, card_id: str) -> bool:
+    """``scouts_discount_used`` once ``card_id`` has been acquired now.
+
+    Only Market Opening's once-a-round discount is used up; a Reveal card's
+    discount holds for every copy of the turn.
+    """
+
+    return state.scouts_discount_used or _market_opening_discount(state, card_id) > 0
 
 
 def space_is_combat(state: GameState, space: BoardSpace) -> bool:

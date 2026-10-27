@@ -1658,6 +1658,29 @@ class GainSpiceWithHelixBonus:
             raise ValueError("the Helix amount must beat the plain amount")
 
 
+@dataclass(frozen=True, slots=True)
+class ReserveCostDiscount:
+    """Every copy of the named Reserve card acquired during this Reveal turn
+    costs ``amount`` less ("The Spice Must Flow costs {Persuasion_3} less to
+    acquire this turn" [Guild Bankers card]).
+
+    ``card_ids`` lists the printings the sentence names: the Reserve card's
+    id in each game ("the_spice_must_flow", the original game's
+    "imperium_the_spice_must_flow"). It holds for each copy, not the first
+    only ("마다 할인", [FAQ p. 2]); it is read as the card's cost anywhere
+    (``reserve_cost``), so the cost check and the payment agree.
+    """
+
+    card_ids: tuple[str, ...]
+    amount: int
+
+    def __post_init__(self) -> None:
+        if not self.card_ids:
+            raise ValueError("a Reserve discount names a Reserve card")
+        if self.amount < 1:
+            raise ValueError("a Reserve discount must be positive")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -1728,6 +1751,7 @@ type Reward = (
     | AcquireReserveCardToHand
     | GainLowestInfluence
     | GainSpiceWithHelixBonus
+    | ReserveCostDiscount
 )
 
 

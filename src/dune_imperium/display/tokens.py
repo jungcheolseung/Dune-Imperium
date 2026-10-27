@@ -40,6 +40,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeast,
     RecruitTroops,
     Research,
+    ReserveCostDiscount,
     RevealCountKind,
     RevealPersuasion,
     RevealSwords,
@@ -47,6 +48,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyingOnMakerSpace,
     TrashThisCard,
 )
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
@@ -736,6 +738,7 @@ HANDLED_REVEAL_REWARDS: Final[frozenset[type]] = frozenset(
         GenerateSpecimens,
         AdvanceTleilaxu,
         Research,
+        ReserveCostDiscount,
     }
 )
 
@@ -889,6 +892,13 @@ def reveal_effect_text(line: RevealLine) -> str:
             "Research (advance your research token)"
             if line.research == 1
             else f"Research ×{line.research} (advance your research token twice)"
+        )
+    for discount in line.reserve_discounts:
+        # Guild Bankers: the card's printed sentence (``effect_dsl_text``'s
+        # ``ReserveCostDiscount``).
+        name = RESERVE_STACKS_BY_ID[discount.card_ids[0]].card.name
+        gains.append(
+            f"{name} costs {discount.amount} Persuasion less to acquire this turn"
         )
 
     text = ", ".join(gains)

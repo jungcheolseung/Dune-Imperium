@@ -126,6 +126,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
+from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.tokens import reveal_line_conditions
 from dune_imperium.rules.reveal_lines import RevealLine
 
@@ -822,6 +823,16 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
             "{research} (연구 트랙 전진)"
             if line.research == 1
             else f"{{research}} ×{line.research} (연구 트랙 {line.research}회 전진)"
+        )
+    for discount in line.reserve_discounts:
+        # Guild Bankers: ``effect_dsl_text_ko``'s ``ReserveCostDiscount``
+        # line (the Reserve card's Korean print name, no card text of its own).
+        name = KOREAN_CARD_NAMES["cards"].get(
+            discount.card_ids[0], discount.card_ids[0]
+        )
+        gains.append(
+            f"이번 {{reveal_turn}}에 {name}의 {{acquire}} 비용 "
+            f"{{persuasion:{discount.amount}}} 감소"
         )
 
     text = ", ".join(gains)

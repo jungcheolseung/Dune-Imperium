@@ -272,10 +272,17 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         ),
         play_data_complete=True,
     ),
+    # App table: cost 3, 1 copy, Spacing Guild, Emperor, Spacing Guild and
+    # Landsraad, no fixed Reveal values. Agent: no box (the icons only).
+    # Reveal: "The Spice Must Flow costs [P3] less to acquire this turn" -- each
+    # copy bought this turn costs less [FAQ p. 2] (``ReserveCostDiscount``).
     ImperiumCardEntry(
         card=imperium_card("guild_bankers", "Guild Bankers"),
         copies=1,
         acquisition_cost=3,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.SPACING_GUILD, AgentIcon.LANDSRAAD),
+        play_data_complete=True,
     ),
     # App table: cost 6, 1 copy, no Faction, City, Reveal 2 Persuasion, AgentTroops
     # 2. Agent: "[2 troops] [draw 1 card]" -- separate icons (OQ-027), the draw

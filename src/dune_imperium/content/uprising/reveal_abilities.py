@@ -49,6 +49,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeast,
     RecruitTroops,
     Research,
+    ReserveCostDiscount,
     RevealCount,
     RevealCountKind,
     RevealPersuasion,
@@ -156,6 +157,15 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "assassination_mission": _reveal(_line(GainResources(solari=1))),
         # Thufir Hawat (original game): "[Intrigue card]" beside its Persuasion.
         "thufir_hawat": _reveal(_line(DrawIntrigueCards(1))),
+        # Guild Bankers (original game): "The Spice Must Flow costs 3 Persuasion
+        # less to acquire this turn" -- each copy, both printings of the card.
+        "guild_bankers": _reveal(
+            _line(
+                ReserveCostDiscount(
+                    ("the_spice_must_flow", "imperium_the_spice_must_flow"), 3
+                )
+            )
+        ),
         # Junction Headquarters.
         "junction_headquarters": _reveal(
             _line(GainResources(water=1), RecruitTroops(1))
@@ -339,6 +349,7 @@ REVEAL_LINE_REWARDS: Final[frozenset[type]] = frozenset(
         GenerateSpecimens,
         AdvanceTleilaxu,
         Research,
+        ReserveCostDiscount,
     }
 )
 
@@ -414,6 +425,9 @@ def check_reveal_gain_line(line: EffectSection) -> None:
             case Research():
                 # One Research icon each (Tleilaxu Master prints two).
                 gains += 1
+            case ReserveCostDiscount(amount=amount):
+                once("Reserve cost discount")
+                gains += amount
             case TrashThisCard() | GrantCombatDeployment():
                 once(type(reward).__name__)
     if gains <= 0 and not any(
