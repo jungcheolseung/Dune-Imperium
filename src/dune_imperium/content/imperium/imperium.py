@@ -12,9 +12,10 @@ one printed otherwise takes the ``imperium_`` prefix (plan 4.2 7, 16.2).
 Their ability records sit in the same tables as Uprising's
 (``agent_abilities``, ``reveal_abilities``, ...).
 
-While stage P3 is a trial (plan 16.7) these cards are not in the original
-game's deck (``rulesets._imperium_content``) and not in the observation:
-both come with stage P3a's single observation change (plan 16.1, 16.8 2).
+Every card has an entry from stage P3a on; one not yet transcribed holds
+only its identity (name, copies, cost: ``play_data_complete`` False). The
+original game's deck takes the transcribed ones (``rulesets``), and the
+observation lists them all from v37 (plan 16.1, 16.4).
 ``content.uprising.imperium.IMPERIUM_CARDS_BY_ID`` resolves them; code that
 lists Uprising's own cards iterates ``IMPERIUM_CARDS`` instead.
 """

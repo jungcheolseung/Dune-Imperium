@@ -4,7 +4,7 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
-from tests.support.observation_growth import V35_SEGMENTS, v35_growth
+from tests.support.observation_growth import NEW_SEGMENTS, growth_since_v34
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.observation_encoding import (
@@ -38,21 +38,24 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 36
+    assert OBSERVATION_VERSION == 37
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
     # Game Mode's Control the Spice, then (v35) the original game's three
-    # Reserve cards; 39 Uprising Intrigue identities plus 18 Bloodlines, 12
-    # Twisted, 10 Navigation, and 11 Immortality.
-    assert len(PERSONAL_CARD_IDS) == 66 + 26 + 1 + 25 + 1 + 19 + 1 + 3
-    assert PERSONAL_CARD_IDS[-4] == "control_the_spice"
-    assert PERSONAL_CARD_IDS[-3:] == (
+    # Reserve cards and (v37) its 43 Imperium cards and three promos; 39
+    # Uprising Intrigue identities plus 18 Bloodlines, 12 Twisted, 10
+    # Navigation, 11 Immortality and (v37) the original game's 34.
+    assert len(PERSONAL_CARD_IDS) == 66 + 26 + 1 + 25 + 1 + 19 + 1 + 3 + 46
+    assert PERSONAL_CARD_IDS[-50] == "control_the_spice"
+    assert PERSONAL_CARD_IDS[-49:-46] == (
         "arrakis_liaison",
         "imperium_the_spice_must_flow",
         "foldspace_card",
     )
-    assert len(INTRIGUE_IDS) == 39 + 18 + 12 + 10 + 11
+    assert PERSONAL_CARD_IDS[-46] == "arrakis_recruiter"
+    assert len(INTRIGUE_IDS) == 39 + 18 + 12 + 10 + 11 + 34
+    assert INTRIGUE_IDS[-34] == "bribery"
     # 16 Uprising Conflicts, the two Bloodlines cards and Epic Game Mode's
     # Economic Supremacy (identity universe), then (v35) the original game's
     # 18; the battle cards add the four Objectives before Economic
@@ -172,10 +175,15 @@ def test_layout_is_versioned_and_contiguous() -> None:
         # Factions.
         + 4
         + 4
+        # v37 (stage P3a): the original game's 46 Imperium cards in the 26
+        # personal-card segments and its 34 Intrigue cards in the nine
+        # Intrigue segments.
+        + 26 * 46
+        + 9 * 34
     )
-    assert OBSERVATION_SIZE == 5_835
+    assert OBSERVATION_SIZE == 7_337
     assert OBSERVATION_SEGMENTS[-1] == ObservationSegment(
-        "private_masterstroke", 5_831, 4
+        "private_masterstroke", 7_333, 4
     )
 
     offset = 0
@@ -194,7 +202,10 @@ def test_layout_is_versioned_and_contiguous() -> None:
         == segment_slice("imperium_removed").start
     )
     seat0_in_play = segment_slice("seat0_in_play")
-    assert seat0_in_play.stop - seat0_in_play.start == 66 + 26 + 1 + 25 + 20 + 1 + 3
+    assert (
+        seat0_in_play.stop - seat0_in_play.start
+        == 66 + 26 + 1 + 25 + 20 + 1 + 3 + 46
+    )
     private_secret_project = segment_slice("private_secret_project")
     # v22 appends the Arrakeen Scouts segments after the private ones.
     assert private_secret_project.stop == segment_slice("scouts_items").start
@@ -1189,7 +1200,7 @@ def _pinned_columns(vector: tuple[int, ...]) -> bytes:
     """The v33 columns the golden digests pin. v34 appended only the
     base-game flag (the base-game axis), 0 in every Uprising game: an
     Uprising observation is the v33 one with a 0 after it. v35 (stage P2a)
-    grew segments at their end (``v35_growth``) and appended the Mentat,
+    grew segments at their end (``growth_since_v34``) and appended the Mentat,
     all 0 in every Uprising game: each segment's older columns, in order,
     are the v34 vector."""
 
@@ -1198,10 +1209,10 @@ def _pinned_columns(vector: tuple[int, ...]) -> bytes:
     older: list[int] = []
     for segment in OBSERVATION_SEGMENTS:
         part = vector[segment.offset : segment.offset + segment.length]
-        if segment.name in ("base_game", *V35_SEGMENTS):
+        if segment.name in ("base_game", *NEW_SEGMENTS):
             assert not any(part)
             continue
-        grown = v35_growth(segment)
+        grown = growth_since_v34(segment)
         assert not any(part[segment.length - grown :])
         older.extend(part[: segment.length - grown])
     assert len(older) == _V33_SIZE

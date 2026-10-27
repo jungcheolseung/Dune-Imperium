@@ -29,6 +29,8 @@ from dune_imperium.content.imperium.board import (
     IMPERIUM_MAKER_SPACE_IDS,
 )
 from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
+from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
+from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
 from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
@@ -292,8 +294,8 @@ _UPRISING_CARD_IDS: Final = frozenset(
 def _imperium_content(config: RulesetConfig) -> RulesetContent:
     """The original game's content (module docstring): its board, Conflicts,
     Reserve and Leaders, none of the Objectives, observation posts,
-    Contracts or sandworms Uprising prints, and no Imperium or Intrigue deck
-    until stage P3."""
+    Contracts or sandworms Uprising prints; its Imperium and Intrigue decks
+    hold the cards transcribed so far (stage P3)."""
 
     return RulesetContent(
         config=config,
@@ -309,9 +311,18 @@ def _imperium_content(config: RulesetConfig) -> RulesetContent:
         influence_four_bonuses=IMPERIUM_INFLUENCE_FOUR_BONUSES,
         card_ids=_IMPERIUM_CARD_IDS,
         leaders=tuple(LEADERS_BY_ID[leader_id] for leader_id in IMPERIUM_LEADER_IDS),
-        imperium_cards=(),
-        imperium_deck_instance_ids=(),
-        intrigue_deck_instance_ids=(),
+        imperium_cards=_IMPERIUM_DECK_CARDS,
+        imperium_deck_instance_ids=tuple(
+            f"imperium:{entry.card.card_id}:{copy}"
+            for entry in _IMPERIUM_DECK_CARDS
+            for copy in range(entry.copies)
+        ),
+        intrigue_deck_instance_ids=tuple(
+            f"intrigue:{entry.card.card_id}:{copy}"
+            for entry in IMPERIUM_INTRIGUE_CARDS
+            if entry.play_data_complete
+            for copy in range(entry.copies)
+        ),
         contract_instance_ids=(),
         objectives=(),
         starting_deck_entries=starting_deck_entries(),
@@ -319,9 +330,18 @@ def _imperium_content(config: RulesetConfig) -> RulesetContent:
     )
 
 
+# Stage P3 (plan 16.1): the original decks hold the cards transcribed so far,
+# so a soak plays each one as it lands; the promos wait for ``promo_cards``,
+# which the original game does not take yet (``rules.setup``).
+_IMPERIUM_DECK_CARDS: Final = tuple(
+    entry
+    for entry in IMPERIUM_BASE_CARDS
+    if entry.play_data_complete and not entry.promo
+)
 _IMPERIUM_CARD_IDS: Final = frozenset(
     {
         *(entry.card.card_id for entry in starting_deck_entries()),
         *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
+        *(entry.card.card_id for entry in _IMPERIUM_DECK_CARDS),
     }
 )

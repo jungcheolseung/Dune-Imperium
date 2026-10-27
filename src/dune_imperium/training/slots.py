@@ -55,6 +55,7 @@ from dune_imperium.adapters.observation_encoding import (
 from dune_imperium.content.bloodlines.tech import TECH_IDS
 from dune_imperium.content.immortality.board import TLEILAXU_TRACK_END
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
+from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS
 from dune_imperium.core.state import GamePhase
@@ -103,7 +104,10 @@ SLOT_VERSION: Final = 1
 # slot (0, the pad, in every Uprising game) and appends the Mentat's two
 # seat references after every older field. v36 appends two raw Masterstroke
 # segments (no field reads them); its frame kind joins ``decision_kind`` last.
-SLOT_OBSERVATION_VERSION: Final = 36
+# v37 lists the original game's Imperium cards after Uprising's in every
+# Imperium-card field (stage P3a, plan 16.4); their keys are new, so a
+# migrated network starts them at 0.
+SLOT_OBSERVATION_VERSION: Final = 37
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).
@@ -210,9 +214,10 @@ def _relative_seat(name: str, segment: str, columns: tuple[int, ...]) -> SlotFie
 
 
 def _build_fields() -> tuple[SlotField, ...]:
-    # Uprising's own cards; the merged lookup tables also hold the original
-    # game's (stage P3, plan 16.4).
-    imperium = tuple(entry.card.card_id for entry in IMPERIUM_CARDS)
+    # Uprising's own cards, then (observation v37) the original game's.
+    imperium = tuple(
+        entry.card.card_id for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS)
+    )
     tleilaxu = tuple(TLEILAXU_CARDS_BY_ID)
     navigation = tuple(
         entry.card.card_id for entry in INTRIGUE_CARDS if entry.navigation

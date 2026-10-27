@@ -940,19 +940,26 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for key in AUTOMATIC_AGENT_ICONS
     )
     # Bringing back one kind of deferred Reveal choice [Main p. 12]: the
-    # kinds the Uprising family's cards print.
+    # kinds the Uprising family's cards print, or those the original game's
+    # deck cards print (stage P3: the cards transcribed so far).
+    original_choices = frozenset(
+        effect
+        for card in content.imperium_cards
+        for effect in card.reveal_choice_effects
+    )
     templates.extend(
         ActionTemplate(
             action_id="resume_reveal_choice",
             arguments=(("effect", effect.value),),
         )
         for effect in PersonalCardRevealChoiceEffect
-        if content.base_game is BaseGame.UPRISING
-        and (config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS)
-        and (config.immortality or effect not in IMMORTALITY_REVEAL_CHOICE_EFFECTS)
-        # The original game's cards (stage P3): its catalog lists no resume
-        # row until the stage that puts them in its deck.
-        and effect not in IMPERIUM_REVEAL_CHOICE_EFFECTS
+        if (
+            content.base_game is BaseGame.UPRISING
+            and (config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS)
+            and (config.immortality or effect not in IMMORTALITY_REVEAL_CHOICE_EFFECTS)
+            and effect not in IMPERIUM_REVEAL_CHOICE_EFFECTS
+        )
+        or (content.base_game is BaseGame.IMPERIUM and effect in original_choices)
     )
     if config.choam_module:
         templates.extend(
@@ -989,6 +996,12 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.append(ActionTemplate(action_id="finish_agent_turn"))
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
+    elif content.base_game is BaseGame.IMPERIUM:
+        # The original game's Gun Thopter asks each opponent to lose a
+        # garrisoned troop (stage P3), in the window Holy War opens; a seat
+        # with none confirms it (OQ-036 (a)).
+        templates.extend(_unit_loss_templates())
+        templates.append(ActionTemplate("resolve_unit_loss_without_unit"))
         # Unswerving Loyalty (every ruleset) and Shadout Mapes (Immortality)
         # may move a Sardaukar Commander: it "is a 'troop'" [Bloodlines p. 4].
         templates.extend(
@@ -2380,6 +2393,21 @@ def _leader_faces(config: RulesetConfig) -> tuple[str, ...]:
     return tuple(faces)
 
 
+def _unit_loss_templates() -> tuple[ActionTemplate, ...]:
+    """The unit-loss window's rows: the loser picks the zone and the unit
+    kind (OQ-036); ``commanders`` marks a Sardaukar Commander like the
+    retreat argument does."""
+
+    return tuple(
+        ActionTemplate(action_id="lose_unit", arguments=arguments)
+        for zone in ("garrison", "conflict")
+        for arguments in (
+            (("zone", zone),),
+            (("commanders", 1), ("zone", zone)),
+        )
+    )
+
+
 def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     """Sardaukar Commander choices [Bloodlines p. 4] (``rules.sardaukar``)."""
 
@@ -2593,16 +2621,7 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             min(count, MAX_COMMANDER_DEPLOYMENT) + 1,
         )
     )
-    # The loser picks the zone and the unit kind (OQ-036); ``commanders``
-    # marks a Sardaukar Commander like the retreat argument does.
-    templates.extend(
-        ActionTemplate(action_id="lose_unit", arguments=arguments)
-        for zone in ("garrison", "conflict")
-        for arguments in (
-            (("zone", zone),),
-            (("commanders", 1), ("zone", zone)),
-        )
-    )
+    templates.extend(_unit_loss_templates())
     # "Gain one Influence of your choice" as a Reveal choice (Pointing the Way).
     templates.extend(
         ActionTemplate(

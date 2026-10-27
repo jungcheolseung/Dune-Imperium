@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from tests.support.observation_growth import V35_SEGMENTS, v35_growth
+from tests.support.observation_growth import NEW_SEGMENTS, growth_since_v34
 
 torch = pytest.importorskip("torch")
 
@@ -41,6 +41,7 @@ from dune_imperium.agents import StateAgent  # noqa: E402
 from dune_imperium.agents.network_search_agent import NetworkSearchAgent  # noqa: E402
 from dune_imperium.agents.registry import CHECKPOINT_PREFIX, make_agent  # noqa: E402
 from dune_imperium.content.bloodlines.tech import TECH_IDS  # noqa: E402
+from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS  # noqa: E402
 from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS  # noqa: E402
 from dune_imperium.content.rulesets import content_for  # noqa: E402
 from dune_imperium.core.chance import ChanceResolver  # noqa: E402
@@ -105,8 +106,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # scale of every column an Uprising entity uses stay those of 12294215
 # (405 rows compared; ``entity_features._table``). Stage P2b: each original
 # Leader's records join its row as the stage brings them (Duke Leto, Helena
-# Richese, Paul Atreides, Baron Harkonnen).
-_GOLDEN_DIGEST = "61b70c15449848e6140de88b0975c75f3270d63b1fbf0eff754854008b7a5957"
+# Richese, Paul Atreides, Baron Harkonnen). Observation v37 (stage P3a): the
+# original game's 46 Imperium cards join the personal vocabulary and its 34
+# Intrigue cards the Intrigue one, each card's records as it is transcribed;
+# Uprising's 405 rows unchanged (compared 2026-10-28). The digest moves with
+# every original card transcribed in stage P3.
+_GOLDEN_DIGEST = "ef0ef341aaf4adeb0c0b77070c95de0813636bb781d1a45991f4b7aa7de29466"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -241,9 +246,21 @@ def test_what_an_entity_does_is_read_from_its_records() -> None:
         leader.leader_id
         for leader in content_for(RulesetConfig(base_game=BaseGame.IMPERIUM)).leaders
     }
+    # An original card not yet transcribed (stage P3) has only its identity
+    # entry, no record to tell it apart.
+    untranscribed = {
+        entry.card.card_id
+        for entry in IMPERIUM_BASE_CARDS
+        if not entry.play_data_complete
+    }
     for name in ("personal", "leader", "tech", "space", "conflict"):
         table = tables[name]
-        assert len({row.tobytes() for row in table.features}) == table.size, name
+        rows = [
+            row.tobytes()
+            for entity, row in zip(table.ids, table.features, strict=True)
+            if entity not in untranscribed
+        ]
+        assert len(set(rows)) == len(rows), name
 
 
 def test_an_action_is_built_from_its_shape() -> None:
@@ -841,7 +858,7 @@ def _after_v31(segment: str) -> bool:
         segment.endswith("_deck_pool")
         or segment.startswith(("private_agent_card_pick", "private_effect_pick"))
         or segment == "base_game"
-        or segment in V35_SEGMENTS
+        or segment in NEW_SEGMENTS
     )
 
 
@@ -854,7 +871,9 @@ def test_the_v31_input_names_are_pinned() -> None:
     the v31 slot table's own golden digest."""
 
     # Today's layout without the later segments and v35's columns.
-    grown = {segment.name: v35_growth(segment) for segment in OBSERVATION_SEGMENTS}
+    grown = {
+        segment.name: growth_since_v34(segment) for segment in OBSERVATION_SEGMENTS
+    }
     layout = [
         (name, offset, length - grown[name])
         for name, offset, length in observation_layout()
@@ -901,7 +920,9 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     path = _saved(tmp_path, _FULL)
     document = checkpoint_module._read(path)
     # Cut the file down to what v31 code wrote (without v35's columns).
-    grown = {segment.name: v35_growth(segment) for segment in OBSERVATION_SEGMENTS}
+    grown = {
+        segment.name: growth_since_v34(segment) for segment in OBSERVATION_SEGMENTS
+    }
     old_layout = []
     offset = 0
     for name, _, length in document["observation_layout"]:

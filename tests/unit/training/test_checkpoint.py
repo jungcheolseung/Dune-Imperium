@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 from tests.support.observation_growth import (
-    V35_COLUMNS,
-    V35_SEGMENTS,
-    v35_growth,
+    GROWN_COLUMNS,
+    NEW_SEGMENTS,
+    growth_since_v34,
 )
 
 torch = pytest.importorskip("torch")
@@ -496,9 +496,9 @@ _EFFECT_PICK_SEGMENTS = tuple(
     for segment in OBSERVATION_SEGMENTS
     if segment.name.startswith("private_effect_pick")
 )
-# Their columns before v35 (``V35_COLUMNS`` counts v35's).
+# Their columns before v35 (``GROWN_COLUMNS`` counts v35's).
 _EFFECT_PICK_COLUMNS = sum(
-    segment.length - v35_growth(segment)
+    segment.length - growth_since_v34(segment)
     for segment in OBSERVATION_SEGMENTS
     if segment.name in _EFFECT_PICK_SEGMENTS
 )
@@ -520,7 +520,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
     # nor the v29 shortfall segment, nor v30's owed Emperor track Spies, nor
     # v31's Agent boxes, nor v32's deck pools, nor v33's picked Agent card
     # (139 + 1 columns), nor v34's base-game flag, nor v35's columns
-    # (``V35_COLUMNS``), and still has the 90-column
+    # (``GROWN_COLUMNS``), and still has the 90-column
     # intrigue_trash segment v30 removed (OQ-061): each v27 segment's columns
     # keep their place at its start, the 24 + 8 + 4 + 4 + 556 + 140 + 1 new
     # columns start at zero, the
@@ -553,13 +553,13 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
             "private_agent_card_pick_graft",
             *_EFFECT_PICK_SEGMENTS,
             "base_game",
-            *V35_SEGMENTS,
+            *NEW_SEGMENTS,
         ):
             continue
         length = (
             segment.length
             - int(segment.name in _V28_GROWN_SEGMENTS)
-            - v35_growth(segment)
+            - growth_since_v34(segment)
         )
         kept.extend(range(segment.offset, segment.offset + length))
         columns.append(weight[:, segment.offset : segment.offset + length])
@@ -583,7 +583,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
         - 1
         + 90
         - _EFFECT_PICK_COLUMNS
-        - V35_COLUMNS
+        - GROWN_COLUMNS
     )
     state["body.0.weight"] = torch.cat(columns, dim=1)
     older = tmp_path / "v27.pt"
@@ -613,7 +613,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
         report.observation_dropped,
     ) == (
         4_587 - 90,
-        24 + 8 + 4 + 4 + 556 + 140 + 1 + _EFFECT_PICK_COLUMNS + V35_COLUMNS,
+        24 + 8 + 4 + 4 + 556 + 140 + 1 + _EFFECT_PICK_COLUMNS + GROWN_COLUMNS,
         90,
     )
     assert (report.actions_kept, report.actions_new, report.actions_dropped) == (

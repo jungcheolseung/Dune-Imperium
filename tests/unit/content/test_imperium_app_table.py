@@ -11,6 +11,7 @@ not hold in that field is listed in ``EXCEPTIONS`` with its ground.
 
 import re
 from collections import Counter
+from collections.abc import Mapping
 
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
@@ -62,6 +63,14 @@ def _id(archetype: Archetype) -> str:
     return f"{slug}_card" if title in _SUFFIXED else slug
 
 
+def _names(attributes: Mapping[str, object], key: str) -> tuple[str, ...]:
+    """An attribute that lists names (Factions, icons, Intrigue types)."""
+
+    value = attributes.get(key, ())
+    assert isinstance(value, tuple), key
+    return tuple(str(name) for name in value)
+
+
 def _imperium_archetypes() -> dict[str, Archetype]:
     return {
         _id(archetype): archetype
@@ -110,10 +119,10 @@ def test_names_copies_and_costs_match_the_app() -> None:
         ), entry.card.card_id
         assert entry.promo == (".Promo." in archetype.short), entry.card.card_id
     intrigue = _intrigue_archetypes()
-    for entry in IMPERIUM_INTRIGUE_CARDS:
-        archetype = intrigue[entry.card.card_id]
-        assert entry.card.name == _title(archetype), entry.card.card_id
-        assert entry.copies == archetype.attributes["CardCount"], entry.card.card_id
+    for card in IMPERIUM_INTRIGUE_CARDS:
+        archetype = intrigue[card.card.card_id]
+        assert card.card.name == _title(archetype), card.card.card_id
+        assert card.copies == archetype.attributes["CardCount"], card.card.card_id
 
 
 def test_transcribed_cards_match_the_app_attributes() -> None:
@@ -124,8 +133,8 @@ def test_transcribed_cards_match_the_app_attributes() -> None:
         card_id = entry.card.card_id
         attributes = table[card_id].attributes
         expected = {
-            "factions": tuple(_FACTIONS[f] for f in attributes.get("FactionList", ())),
-            "agent_icons": Counter(_ICONS[i] for i in attributes.get("IconList", ())),
+            "factions": tuple(_FACTIONS[f] for f in _names(attributes, "FactionList")),
+            "agent_icons": Counter(_ICONS[i] for i in _names(attributes, "IconList")),
             "reveal_persuasion": attributes.get("Persuasion", 0),
             "reveal_strength": attributes.get("Strength", 0),
         }
@@ -146,8 +155,6 @@ def test_intrigue_types_match_the_app() -> None:
     for entry in IMPERIUM_INTRIGUE_CARDS:
         if not entry.play_data_complete:
             continue
-        printed = {
-            str(t).lower()
-            for t in table[entry.card.card_id].attributes["IntrigueTypeList"]
-        }
+        attributes = table[entry.card.card_id].attributes
+        printed = {t.lower() for t in _names(attributes, "IntrigueTypeList")}
         assert {timing.value for timing in entry.timings} == printed, entry.card.card_id

@@ -6,6 +6,8 @@ from typing import Any
 import pytest
 
 from dune_imperium import BaseGame, RulesetConfig
+from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
+from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
@@ -131,14 +133,15 @@ def test_uprising_board_values() -> None:
     )
 
 
-def test_the_original_game_plays_its_own_board_and_no_deck_yet() -> None:
+def test_the_original_game_plays_its_own_board_and_its_transcribed_cards() -> None:
     # Stage P2 (docs/base-game-and-ix-plan.md 15): the original board's 22
     # spaces [DI pp. 17-18], its 18 Conflicts (I 4, II 10, III 4 [DI p. 3]),
     # its three Reserve stacks [DI p. 3] and the Leaders the engine plays
     # (four in P2a, one more per P2b Leader); its Imperium and Intrigue decks
-    # arrive in P3. Its starting
-    # deck is Uprising's printing [DI p. 3]; it prints no Objective,
-    # observation post, Contract or sandworm.
+    # hold the cards stage P3 has transcribed so far (plan 16.1), the promos
+    # waiting for ``promo_cards``. Its starting deck is Uprising's printing
+    # [DI p. 3]; it prints no Objective, observation post, Contract or
+    # sandworm.
     config = RulesetConfig(base_game=BaseGame.IMPERIUM)
     content = content_for(config)
     assert content.base_game is BaseGame.IMPERIUM
@@ -167,10 +170,26 @@ def test_the_original_game_plays_its_own_board_and_no_deck_yet() -> None:
         "earl_memnon_thorvald",
         "countess_ariana_thorvald",
     ]
+    imperium = [
+        e for e in IMPERIUM_BASE_CARDS if e.play_data_complete and not e.promo
+    ]
+    assert content.imperium_cards == tuple(imperium)
+    assert content.imperium_deck_instance_ids == tuple(
+        f"imperium:{e.card.card_id}:{copy}"
+        for e in imperium
+        for copy in range(e.copies)
+    )
+    assert content.intrigue_deck_instance_ids == tuple(
+        f"intrigue:{e.card.card_id}:{copy}"
+        for e in IMPERIUM_INTRIGUE_CARDS
+        if e.play_data_complete
+        for copy in range(e.copies)
+    )
+    assert {"arrakis_recruiter", "gun_thopter"} <= {
+        e.card.card_id for e in content.imperium_cards
+    }
     for table in (
         content.observation_posts,
-        content.imperium_deck_instance_ids,
-        content.intrigue_deck_instance_ids,
         content.contract_instance_ids,
         content.objectives,
         content.sandworm_space_ids,
@@ -204,6 +223,7 @@ def test_the_original_game_plays_its_own_board_and_no_deck_yet() -> None:
         "arrakis_liaison",
         "imperium_the_spice_must_flow",
         "foldspace_card",
+        *(entry.card.card_id for entry in imperium),
     }
 
 

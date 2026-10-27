@@ -42,6 +42,8 @@ from dune_imperium.content.immortality.board import (
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
 from dune_imperium.content.imperium.board import IMPERIUM_ONLY_BOARD_SPACES
 from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
+from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
+from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
 from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
 from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
 from dune_imperium.content.uprising.board import (
@@ -185,7 +187,12 @@ from dune_imperium.rules.frames import FrameKind
 # whether it holds Masterstroke Factions not yet revealed, and the
 # observer's own secret Factions (docs/rules/imperium-base.md 14), appended
 # after every other segment; 0 in every Uprising game.
-OBSERVATION_VERSION: Final = 36
+# v37 (stage P3a, plan 16.1 and 16.4): the original game's 46 Imperium cards
+# (its three promos included) join the personal-card universe and its 34
+# Intrigue cards the Intrigue universe, each at its end, so every older
+# identity keeps its index and column; 0 in every Uprising game. They are
+# listed whole, transcribed or not, so the layout changes once in stage P3.
+OBSERVATION_VERSION: Final = 37
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -195,7 +202,7 @@ PERSONAL_CARD_IDS: Final = (
         if card_id != CONTROL_THE_SPICE.card.card_id
     ),
     *(stack.card.card_id for stack in RESERVE_STACKS),
-    # Uprising's own cards: the original game's join at stage P3a (plan 16.4).
+    # Uprising's own cards; the original game's follow every older identity.
     *(entry.card.card_id for entry in IMPERIUM_CARDS),
     # Immortality: the Tleilaxu deck (its promo included) joins the
     # personal-card universe; Reclaimed Forces never enters a deck.
@@ -205,9 +212,14 @@ PERSONAL_CARD_IDS: Final = (
     CONTROL_THE_SPICE.card.card_id,
     # v35: the original game's Reserve cards.
     *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
+    # v37: the original game's Imperium cards and promos.
+    *(entry.card.card_id for entry in IMPERIUM_BASE_CARDS),
 )
 RESEARCH_SPACE_IDS: Final = tuple(RESEARCH_SPACES_BY_ID)
-INTRIGUE_IDS: Final = tuple(entry.card.card_id for entry in INTRIGUE_CARDS)
+# v37: the original game's Intrigue cards follow Uprising's.
+INTRIGUE_IDS: Final = tuple(
+    entry.card.card_id for entry in (*INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS)
+)
 CONTRACT_IDS: Final = tuple(CONTRACTS_BY_ID)
 # The segments with one column per CONTRACT_IDS identity, in that order
 # (checkpoint migration re-links them by identity across versions).
@@ -238,15 +250,18 @@ LEADER_IDS: Final = tuple(
 SPACE_IDS: Final = tuple(
     space.space_id for space in (*BOARD_SPACES, *IMPERIUM_ONLY_BOARD_SPACES)
 )
-# The identities v35 added: the original game's own spaces, Conflicts,
-# Leaders and Reserve cards (its Arrakeen, Imperial Basin and Secrets, and
-# its starting deck, are Uprising's).
+# The identities v35 and v37 added: the original game's own spaces,
+# Conflicts, Leaders, Reserve cards, Imperium and Intrigue cards (its
+# Arrakeen, Imperial Basin and Secrets, and its starting deck, are
+# Uprising's).
 IMPERIUM_IDENTITIES: Final = frozenset(
     {
         *(space.space_id for space in IMPERIUM_ONLY_BOARD_SPACES),
         *(conflict.card.card_id for conflict in IMPERIUM_CONFLICTS),
         *(leader.leader_id for leader in IMPERIUM_LEADERS),
         *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
+        *(entry.card.card_id for entry in IMPERIUM_BASE_CARDS),
+        *(entry.card.card_id for entry in IMPERIUM_INTRIGUE_CARDS),
     }
 )
 POST_IDS: Final = tuple(post.post_id for post in OBSERVATION_POSTS)

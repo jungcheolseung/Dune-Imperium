@@ -34,6 +34,7 @@ from dune_imperium.content.immortality.board import TLEILAXU_TRACK_END  # noqa: 
 from dune_imperium.content.immortality.tleilaxu import (  # noqa: E402
     TLEILAXU_CARDS_BY_ID,
 )
+from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS  # noqa: E402
 from dune_imperium.content.uprising.imperium import (  # noqa: E402
     IMPERIUM_CARDS,
     IMPERIUM_CARDS_BY_ID,
@@ -94,8 +95,11 @@ from dune_imperium.training.slots import (  # noqa: E402
 # end their fields (Conflicts, spaces, Leaders, Reserve cards) and the
 # Mentat's two seat fields end the table; every older key keeps its name, so
 # an older slot file re-links its rows by key. Observation v36 (stage P2b):
-# the Masterstroke choice's frame kind ends ``decision_kind``.
-_GOLDEN_DIGEST = "0c13db1bb9da99185e3df3e8f063a4fc25037eebc9cfec10bd23785fbe7c284b"
+# the Masterstroke choice's frame kind ends ``decision_kind``. Observation
+# v37 (stage P3a): the original game's 46 Imperium cards end the Imperium Row,
+# set-aside and Agent box fields; every older key keeps its place (checked
+# against v36's table on 2026-10-28).
+_GOLDEN_DIGEST = "f48440ae121d6719611e9d6000478a994055e84f6a5ca83fd14829523c8a9f22"
 _FULL = RulesetConfig(
     choam_module=True,
     promo_cards=True,
@@ -290,7 +294,7 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
         # Less the engine's pause, which no observation shows (slots.py).
         "decision_kind": len(_FRAME_KINDS) - 1,
         "conflict": len(CONFLICT_IDS),
-        "imperium_row": len(IMPERIUM_CARDS),
+        "imperium_row": len(IMPERIUM_CARDS) + len(IMPERIUM_BASE_CARDS),
         "tech_face_up": len(TECH_IDS),
         "tleilaxu_row": len(TLEILAXU_CARDS_BY_ID),
         "secret_project": len(TECH_IDS),
@@ -314,7 +318,7 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
             f"seat{seat}_tactics": TACTICS_TRACK_END - TACTICS_TRACK_START,
             f"seat{seat}_tleilaxu": TLEILAXU_TRACK_END,
             f"seat{seat}_agent_locations": len(SPACE_IDS),
-            f"seat{seat}_set_aside": len(IMPERIUM_CARDS),
+            f"seat{seat}_set_aside": len(IMPERIUM_CARDS) + len(IMPERIUM_BASE_CARDS),
         }
     assert {field.name: len(field.keys) for field in SLOT_FIELDS} == expected
     # v28: 1_139 -> 1_140 (conflict:economic_supremacy). v32: + 4 + 18 + 139.
@@ -322,10 +326,12 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
     # v35 (stage P2a): the original game's 18 Conflicts, 19 spaces (occupancy
     # and four seats' locations), 8 Leaders (four seats and the draft pool),
     # 3 Reserve cards (Agent boxes) and the Mentat's 4 + 4.
-    # v36: + 1, the Masterstroke choice's decision kind.
+    # v36: + 1, the Masterstroke choice's decision kind. v37 (stage P3a): the
+    # original game's 46 Imperium cards in the Imperium Row, the four seats'
+    # set-aside fields and the Agent boxes.
     assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_303 + (
         18 + 19 * 5 + 8 * 5 + 3 + 8
-    ) + 1
+    ) + 1 + 46 * 6
     assert "conflict:economic_supremacy" in SLOT_KEYS
     assert len(set(SLOT_KEYS)) == len(SLOT_KEYS)
     assert len(navigation) == 10
@@ -363,6 +369,22 @@ def test_slot_keys_are_pinned_by_a_golden_digest() -> None:
 
 
 # -- T2: semantics on real views ---------------------------------------------------
+def _original_views() -> list[PlayerView]:
+    """An original game's views where the Mentat is held and is owed.
+
+    The first seed from 1 whose random game wins Sort Through the Chaos: a
+    fixed seed moved whenever stage P3 put another original card in the
+    decks (seed 1 until 2026-10-28).
+    """
+
+    config = RulesetConfig(base_game=BaseGame.IMPERIUM)
+    for seed in range(1, 60):
+        views = _game_views(seed, (), config=config)
+        if any(view.mentat_owed_to is not None for view in views):
+            return views
+    raise AssertionError("no original game from seeds 1-59 wins Sort Through the Chaos")
+
+
 def test_slot_rows_name_what_the_view_shows() -> None:
     network = MlpSlotsNetwork(8, hidden=(16,))
     # The app AI game (seed 58) grants Agent icons and sets Imperium cards
@@ -378,12 +400,12 @@ def test_slot_rows_name_what_the_view_shows() -> None:
     # Agent icon there; seed 51 is the first from 40 that covers every row.
     # The opening of a Leader draft game covers the draft pool (v32).
     # An original game (v35) covers the Mentat's holder and the seat owed it
-    # (seed 1: the Mentat is taken and Sort Through the Chaos is won).
+    # (``_original_views``: the first seed where Sort Through the Chaos is won).
     views = (
         _game_views(21, _FORCED_LEADERS)
         + _game_views(51, _FORCED_LEADERS, agent="app_ai")
         + _game_views(21, (), config=replace(_FULL, leader_draft=True), limit=40)
-        + _game_views(1, (), config=RulesetConfig(base_game=BaseGame.IMPERIUM))
+        + _original_views()
     )
     observations = np.stack(
         [np.asarray(encode_player_view(view), dtype=np.int32) for view in views]

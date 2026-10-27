@@ -364,10 +364,11 @@ def test_eyes_everywhere_ignores_opponents_on_landsraad_and_city_spaces() -> Non
 
 
 def test_manipulate_with_an_empty_row_is_confirmed() -> None:
-    # The original game's Row is empty until stage P3: the set-aside fizzles
-    # and is confirmed, as the Intrigue card's (OQ-113 (C), [FAQ p. 3]).
+    # With an empty Row (the original game's was until stage P3 put cards in
+    # its deck) the set-aside fizzles and is confirmed, as the Intrigue
+    # card's (OQ-113 (C), [FAQ p. 3]).
     engine, state = _start("helena_richese")
-    state = _with_card(state, "signet_ring")
+    state = replace(_with_card(state, "signet_ring"), imperium_row=(), imperium_deck=())
     placed = _place(engine, state, "secure_contract", "signet_ring")
     assert "set_aside_leader_imperium" not in _ids(engine, placed)
     confirmed = _do(engine, placed, "resolve_leader_signet_without_option")
@@ -563,9 +564,11 @@ def test_masterstroke_gains_nothing_with_a_faction_at_the_top() -> None:
 def test_scheme_buys_an_intrigue_card_only_when_one_can_be_drawn() -> None:
     # "Scheme: 1 Solari → Intrigue 1" (imperium-base.md 12), an arrow [FAQ
     # p. 3]; "비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다" (section
-    # 16, OQ-071): the original Intrigue deck is empty until stage P3.
+    # 16, OQ-071): with no Intrigue card to draw it is not offered (the
+    # original deck was empty until stage P3 put cards in it).
     engine, state = _start_baron()
     state = _seat(_with_card(state, "signet_ring"), resources=Resources(solari=1))
+    state = replace(state, intrigue_deck=(), intrigue_discard=())
     placed = _place(engine, state, "secure_contract", "signet_ring")
     assert "pay_leader_signet_solari" not in _ids(engine, placed)
     stocked = replace(placed, intrigue_deck=("intrigue:0",))
