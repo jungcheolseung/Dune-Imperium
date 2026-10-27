@@ -386,6 +386,11 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE = (
         "may_lose_influence_and_pay_two_spice_for_two_influence"
     )
+    # Other Memory: "[draw 1] -OR- Draw a Bene Gesserit card from your discard
+    # pile" -- a printed -OR- the owner must settle.
+    DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD = (
+        "draw_one_or_bene_gesserit_card_from_discard"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

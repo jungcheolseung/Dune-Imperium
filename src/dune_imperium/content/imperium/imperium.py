@@ -445,10 +445,21 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         ),
         play_data_complete=True,
     ),
+    # App table: cost 4, 1 copy, Bene Gesserit, City and Spice Trade, Reveal 2
+    # Persuasion. Agent: "[draw 1] -OR- Draw a Bene Gesserit card from your
+    # discard pile" -- a printed -OR- the owner must settle (P0 sweep, imperium-
+    # base.md 15); the draw is a hidden step of its own (OQ-106) and the card
+    # taken from the discard pile reaches the hand publicly (imperium-base.md 14,
+    # OQ-010). Reveal: "[P2]".
     ImperiumCardEntry(
         card=imperium_card("other_memory", "Other Memory"),
         copies=1,
         acquisition_cost=4,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD,
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     # App table: cost 5, 1 copy, no Faction, Landsraad and City, Reveal 3
     # Persuasion and 1 sword. Agent: "Draw 1 Intrigue card" (the Intrigue-draw

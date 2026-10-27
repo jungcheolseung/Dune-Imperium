@@ -28,6 +28,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GrantCombatDeployment,
     PlaceSpy,
+    TakeCardFromDiscard,
 )
 from dune_imperium.content.uprising.leader_abilities import (
     SIGNET_ABILITIES,
@@ -58,6 +59,7 @@ from dune_imperium.rules.agent_box_abilities import (
     apply_chosen_reward,
     apply_discard,
     apply_discard_pay,
+    apply_discard_take,
     apply_either_influence,
     apply_influence_loss,
     apply_intrigue_payment,
@@ -1817,10 +1819,13 @@ def legal_agent_card_payment_actions(
     if (
         recorded is not None
         and either_box(recorded)
-        and isinstance(either_choice(recorded), GrantCombatDeployment)
+        and isinstance(
+            either_choice(recorded), GrantCombatDeployment | TakeCardFromDiscard
+        )
     ):
         # High Priority Travel: "[Guild] 2 Influence: draw a card —OR—
-        # Combat" [card face], from its record (composed A3f).
+        # Combat" [card face], from its record (composed A3f); Other Memory's
+        # card from the discard pile beside its draw (stage P3b).
         return either_rows(state, player, recorded)
     combat = _combat_icon_rows(state, player, context, recorded)
     if combat is not None:
@@ -2065,6 +2070,9 @@ def _apply_payment_choice(
         # High Priority Travel's Combat half [Bloodlines p. 5].
         open_combat_deployment(context)
         return RuleResult(state=advance_after_effect(state, context), events=())
+    if action.action_id == "take_agent_card_from_discard":
+        # Other Memory's card from the discard pile (stage P3b).
+        return apply_discard_take(state, action)
     if action.action_id == "trash_agent_card_self_for_vp":
         # Scientific Breakthrough: the card trashes itself as its own cost,
         # so its Research still pays out (OQ-022) unless it already did. The

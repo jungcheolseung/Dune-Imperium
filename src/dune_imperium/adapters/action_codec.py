@@ -1492,6 +1492,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             for faction in Faction
             for recipient in range(config.players)
         )
+        # Other Memory's Bene Gesserit card taken from the discard pile (an
+        # Agent-box choice).
+        templates.extend(_trash_templates(config, "take_agent_card_from_discard"))
         templates.extend(
             ActionTemplate(
                 action_id="set_aside_leader_imperium",
@@ -2387,6 +2390,8 @@ _PIECE_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "LoseTroops": (("lose_unit", ""),),
     # Shifting Allegiances' cost (no Uprising box prints one).
     "LoseInfluence": (("lose_influence", ""),),
+    # Other Memory's card from the discard pile.
+    "TakeCardFromDiscard": (("take", ""),),
     "AcquireCardForSolari": (("acquire", ""),),
     "AcquireCardUpTo": (("acquire", ""),),
     "GrantCombatDeployment": (("gain", "combat"),),

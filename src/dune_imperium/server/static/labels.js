@@ -71,6 +71,7 @@ const ACTION_LABELS = {
     "2 {spice} 지불 → {shield_wall} 제거 + {sandworm} 부르기",
   pay_agent_card_spice: "{spice} 지불 (카드 효과 비용)",
   pay_agent_card_solari: "{solari} 지불 (카드 효과 비용)",
+  take_agent_card_from_discard: "{discard_pile}에서 카드를 {hand}로",
   lose_agent_card_influence:
     "{influence_any:1} 잃기 · 2 {spice} 지불 → {influence_any:2} 선택",
   pay_agent_card_water: "2 {water} 지불 → {draw:2}",

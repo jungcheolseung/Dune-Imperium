@@ -35,6 +35,7 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.observation import known_card_seats
 from dune_imperium.display.tokens import REVEAL_CHOICE_EFFECT_TEXT, reveal_effect_text
 from dune_imperium.display.tokens_ko import (
     REVEAL_CHOICE_EFFECT_TEXT_KO,
@@ -4761,3 +4762,236 @@ def test_shifting_allegiances_text_names_the_arrow() -> None:
     assert "Gain 2 Influence with one chosen Faction" in AGENT_EFFECT_TEXT[effect]
     assert "{spice:2}" in AGENT_EFFECT_TEXT_KO[effect]
     assert "{influence_any:2}" in AGENT_EFFECT_TEXT_KO[effect]
+
+
+# --- Other Memory -----------------------------------------------------------------
+
+
+def test_other_memory_matches_the_app_table() -> None:
+    # App attribute table: cost 4, 1 copy, Bene Gesserit, City and Spice Trade,
+    # Reveal 2 Persuasion.
+    entry = IMPERIUM_CARDS_BY_ID["other_memory"]
+    assert entry.card.name == "Other Memory"
+    assert entry.acquisition_cost == 4
+    assert entry.copies == 1
+    assert entry.factions == (Faction.BENE_GESSERIT,)
+    assert entry.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:other_memory:0") is entry
+    deck = content_for(CONFIG).imperium_deck_instance_ids
+    assert "imperium:other_memory:0" in deck
+
+
+# Bene Gesserit cards (Test of Humanity, Gene Manipulation) and one that is
+# not (Arrakis Recruiter) to sit in the discard pile.
+_BG_CARDS = ("imperium:test_of_humanity:0", "imperium:gene_manipulation:0")
+_OTHER_CARD = "imperium:arrakis_recruiter:0"
+
+
+def _memory_placed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    discard: tuple[str, ...],
+) -> GameState:
+    """Seat 0 sends Other Memory to Carthag (a City space, no cost) with
+    ``discard`` in its discard pile and a deck of three cards."""
+
+    held, instance = _with_card(state, "other_memory")
+    # The cards held here are out of the Imperium deck and row.
+    gone = {instance, *discard}
+    held = replace(
+        held,
+        imperium_deck=tuple(card for card in held.imperium_deck if card not in gone),
+        imperium_row=tuple(card for card in held.imperium_row if card not in gone),
+    )
+    held = _seat(
+        held,
+        deck=("starter:a:0", "starter:b:0", "starter:c:0"),
+        discard_pile=discard,
+    )
+    return _place(engine, held, "carthag", "other_memory")
+
+
+def _take_rows(
+    engine: UprisingRulesEngine, state: GameState
+) -> list[object]:
+    return [
+        dict(action.arguments)["card_id"]
+        for action in _wholes(engine, state)
+        if action.action_id == "take_agent_card_from_discard"
+    ]
+
+
+def test_other_memory_must_pick_the_draw_or_a_bene_gesserit_card() -> None:
+    """ "-OR-" is a must-pick-one choice (P0 sweep: "choose one (must)";
+    imperium-base.md 15: "카드 1장 -OR- discard의 Bene Gesserit 카드 1장"): the
+    draw and a row per Bene Gesserit card of the discard pile are offered,
+    none for a card of another Faction, and the turn cannot finish before one
+    is taken."""
+
+    engine, state = _start()
+    placed = _memory_placed(engine, state, (_BG_CARDS[0], _OTHER_CARD, _BG_CARDS[1]))
+    ids = _ids(engine, placed)
+    assert {"resolve_agent_card_effect", "take_agent_card_from_discard"} <= ids
+    assert "finish_agent_turn" not in ids
+    assert _take_rows(engine, placed) == list(_BG_CARDS)
+
+
+def test_other_memory_takes_the_card_into_the_hand_in_public() -> None:
+    """The card leaves the discard pile for the hand and, the pile being face
+    up, every seat knows it there ("discard는 공개라 뽑은 카드도 누구나 안다",
+    imperium-base.md 14; OQ-010: ``hand_public``); the draw is the other
+    alternative, so nothing is drawn."""
+
+    engine, state = _start()
+    placed = _memory_placed(engine, state, (_BG_CARDS[0], _OTHER_CARD))
+    before = placed.players[0]
+    assert _BG_CARDS[0] not in known_card_seats(placed)
+    chosen = _do(
+        engine, placed, "take_agent_card_from_discard", card_id=_BG_CARDS[0]
+    )
+    after = chosen.players[0]
+    assert after.discard_pile == (_OTHER_CARD,)
+    assert after.hand == (*before.hand, _BG_CARDS[0])
+    assert after.hand_public == (*before.hand_public, _BG_CARDS[0])
+    assert after.deck == before.deck
+    # Public to every seat: not among the cards some seats cannot identify.
+    assert _BG_CARDS[0] not in known_card_seats(chosen)
+    # Held without that record it would be the owner's secret alone.
+    hidden = _seat(
+        chosen,
+        hand_public=tuple(c for c in after.hand_public if c != _BG_CARDS[0]),
+    )
+    assert known_card_seats(hidden)[_BG_CARDS[0]] == frozenset({0})
+    # The other alternative is gone.
+    assert "resolve_agent_card_effect" not in _ids(engine, chosen)
+    assert "take_agent_card_from_discard" not in _ids(engine, chosen)
+
+
+def test_other_memory_draw_is_the_hidden_alternative() -> None:
+    """Drawing is the other half of the "-OR-": one card off the deck, the
+    discard pile left alone, and the card drawn stays hidden."""
+
+    engine, state = _start()
+    placed = _memory_placed(engine, state, (_BG_CARDS[0],))
+    before = placed.players[0]
+    chosen = _do(engine, placed, "resolve_agent_card_effect")
+    after = chosen.players[0]
+    assert after.discard_pile == (_BG_CARDS[0],)
+    assert len(after.hand) == len(before.hand) + 1
+    assert after.hand_public == before.hand_public
+    assert "take_agent_card_from_discard" not in _ids(engine, chosen)
+    assert "resolve_agent_card_effect" not in _ids(engine, chosen)
+
+
+def test_other_memory_offers_the_discard_only_with_a_bene_gesserit_card() -> None:
+    """ "only if one is there" (P0 sweep): with an empty pile or none of that
+    Faction, the draw is the one alternative left."""
+
+    engine, state = _start()
+    for discard in ((), (_OTHER_CARD,)):
+        placed = _memory_placed(engine, state, discard)
+        ids = _ids(engine, placed)
+        assert "resolve_agent_card_effect" in ids
+        assert "take_agent_card_from_discard" not in ids
+        assert "finish_agent_turn" not in ids
+
+
+def test_other_memory_reveals_two_persuasion() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "other_memory", alone=True)
+    assert _reveal(engine, state)["persuasion"] == 2
+
+
+def test_other_memory_text_names_both_alternatives() -> None:
+    from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
+    from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
+
+    effect = PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD
+    assert AGENT_EFFECT_TEXT[effect] == (
+        "Choose one: Draw 1 card / Draw a Bene Gesserit card from your discard pile"
+    )
+    assert "{draw:1}" in AGENT_EFFECT_TEXT_KO[effect]
+    assert "{discard_pile}" in AGENT_EFFECT_TEXT_KO[effect]
+    assert "베네 게세리트" in AGENT_EFFECT_TEXT_KO[effect]
+
+
+def _walk_staged(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    steps: tuple[tuple[str, dict[str, object]], ...],
+) -> GameState:
+    """Apply each (action id, arguments) step among the rows offered, every
+    row offered on the way encoding and decoding in the original catalog."""
+
+    from dune_imperium.adapters import ActionCodec
+
+    codec = ActionCodec(CONFIG)
+    for action_id, arguments in steps:
+        rows = engine.legal_actions(state, 0)
+        for row in rows:
+            assert codec.decode(codec.encode(row), 0) == row
+        chosen = next(
+            row
+            for row in rows
+            if row.action_id == action_id
+            and all(dict(row.arguments).get(k) == v for k, v in arguments.items())
+        )
+        state = engine.apply(state, chosen).state
+    return state
+
+
+def test_shifting_allegiances_is_a_staged_path_of_the_original_catalog() -> None:
+    """The effect is one row (``lose_influence``), then the Faction lost and,
+    where several tied seats could take its Alliance, the recipient; the +2 is
+    the armed icon's row (``gain_influence``), then the one Faction. Every row
+    encodes and decodes in the original game's catalog."""
+
+    engine, state = _start()
+    state = _seat(state, 1, influence=Influence(emperor=4))
+    state = _seat(state, 2, influence=Influence(emperor=4))
+    placed = _shifting_placed(
+        engine,
+        state,
+        influence=Influence(emperor=4, fremen=3),
+        alliances=("emperor",),
+    )
+    done = _walk_staged(
+        engine,
+        placed,
+        (
+            ("lose_influence", {"printed": "shifting_allegiances"}),
+            ("choose_faction", {"faction": "emperor"}),
+            ("choose_seat", {"player": 2}),
+            ("gain_influence", {"printed": "shifting_allegiances"}),
+            ("choose_faction", {"faction": "spacing_guild"}),
+        ),
+    )
+    after = done.players[0]
+    assert (after.influence.emperor, after.influence.spacing_guild) == (3, 2)
+    assert after.resources.spice == 0
+    assert after.alliance_faction_ids == ()
+    assert "emperor" in done.players[2].alliance_faction_ids
+
+
+def test_other_memory_is_a_staged_path_of_the_original_catalog() -> None:
+    """The card taken from the discard pile is one row (``take``) and the
+    card's pick (``choose_personal_card``), both in the original catalog."""
+
+    engine, state = _start()
+    placed = _memory_placed(engine, state, (_BG_CARDS[0], _OTHER_CARD))
+    done = _walk_staged(
+        engine,
+        placed,
+        (
+            ("take", {"printed": "other_memory"}),
+            ("choose_personal_card", {"card_id": _BG_CARDS[0]}),
+        ),
+    )
+    assert _BG_CARDS[0] in done.players[0].hand_public
+    assert done.players[0].discard_pile == (_OTHER_CARD,)

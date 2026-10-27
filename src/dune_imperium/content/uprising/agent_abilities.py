@@ -94,6 +94,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpendSpecimens,
     SpyRecalledThisTurn,
     SummonSandworm,
+    TakeCardFromDiscard,
     TakeContract,
     TrashCard,
     TrashedCardHasFaction,
@@ -940,6 +941,20 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 sections=(
                     _line(GainResources(spice=2)),
                     _line(GainInfluence(factions=(Faction.SPACING_GUILD,))),
+                ),
+                structure=AbilityStructure.ONE_OF,
+            ),
+            # Other Memory (original game): "[draw 1] -OR- Draw a Bene Gesserit
+            # card from your discard pile" -- a printed -OR- the owner must
+            # settle (the P0 sweep's "choose one (must)"; Guild Ambassador's
+            # plain-beside-choice shape). The draw is the plain line, its own
+            # hidden step (OQ-106); the card taken from the discard pile is the
+            # choice line, offered only with a Bene Gesserit card there.
+            _BOX.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(DrawPersonalCards(1)),
+                    _line(TakeCardFromDiscard(Faction.BENE_GESSERIT)),
                 ),
                 structure=AbilityStructure.ONE_OF,
             ),

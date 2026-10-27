@@ -1395,6 +1395,24 @@ class EachOpponentDiscardsOrLosesDeployedTroop:
 
 
 @dataclass(frozen=True, slots=True)
+class TakeCardFromDiscard:
+    """Put a card of ``faction``'s affiliation of the player's choice from
+    their own discard pile into their hand ("Draw a Bene Gesserit card from
+    your discard pile" [Other Memory card]).
+
+    Only a card there can be taken: the choice is not offered with none
+    (imperium-base.md 15). The pile is face up, so the card reaches the hand
+    by a public path and every seat knows it (imperium-base.md 14, OQ-010).
+    """
+
+    faction: Faction
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.faction, Faction):
+            raise TypeError("a discard-pile card is taken by a Faction")
+
+
+@dataclass(frozen=True, slots=True)
 class OpponentsMoveSpiesFromVisitedSpace:
     """Each opponent spying on the board space where the player sent an
     Agent this turn must move that Spy [Holy War card] (OQ-036 (b))."""
@@ -1762,6 +1780,7 @@ type Reward = (
     | EachOpponentDiscardsCard
     | EachOpponentLosesTroop
     | EachOpponentDiscardsOrLosesDeployedTroop
+    | TakeCardFromDiscard
     | OpponentsMoveSpiesFromVisitedSpace
     | ReturnOtherGraftedCardAtRevealStart
     | GainSolariPerPartnerAgentIcon

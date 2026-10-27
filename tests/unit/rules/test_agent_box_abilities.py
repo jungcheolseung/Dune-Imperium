@@ -168,8 +168,9 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence,
     # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
     # Imperial Spy, Missionaria Protectiva, Gene Manipulation, Reverend Mother
-    # Mohiam, Carryall, Test of Humanity, Firm Grip, Shifting Allegiances).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 19
+    # Mohiam, Carryall, Test of Humanity, Firm Grip, Shifting Allegiances,
+    # Other Memory).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 20
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -1202,7 +1203,7 @@ def test_control_the_spice_is_a_payment_box() -> None:
 
 def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
     """Composed A3f: Southern Faith and High Priority Travel ("Choose one"), and
-    Guild Ambassador's "-OR-" (stage P3).
+    Guild Ambassador's and Other Memory's "-OR-" (stages P3, P3b).
     The plain line resolves as one action; Possible Futures, whose Bond
     turns its choice into both, is a hook. Interstellar Conspiracy, a plain
     line then a conditioned choice that once paid both, resolves icon by
@@ -1223,6 +1224,9 @@ def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
         # Guild Ambassador (the original game, stage P3): the 2 spice beside a
         # fixed Faction's Influence, the choice line printed under no condition.
         _BOX.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: AbilityStructure.ONE_OF,
+        # Other Memory (stage P3b): the draw beside a Bene Gesserit card taken
+        # from the discard pile, the choice line offered only with one there.
+        _BOX.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD: AbilityStructure.ONE_OF,
     }
     assert AGENT_BOX_ABILITIES[conspiracy].icons == ("spice", "influence")
     futures = AGENT_BOX_ABILITIES[_BOX.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND]

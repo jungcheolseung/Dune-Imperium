@@ -420,6 +420,9 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "lose_agent_card_influence": _spec(
         _V.LOSE_INFLUENCE, _S.AGENT_CARD, _BOX, targets=(*_FACTION, _RECIPIENT)
     ),
+    "take_agent_card_from_discard": _spec(
+        _V.TAKE, _S.AGENT_CARD, _BOX, targets=_CARD
+    ),
     "pay_agent_card_intrigue_and_spice": _spec(
         _V.PAY, _S.AGENT_CARD, _BOX, targets=_INTRIGUE
     ),

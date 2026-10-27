@@ -466,6 +466,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: (
             "Choose one: Gain 1 Spacing Guild Influence / Gain 2 spice"
         ),
+        PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD: (
+            "Choose one: Draw 1 card / Draw a Bene Gesserit card from your "
+            "discard pile"
+        ),
         PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE: (
             "Recruit 2 troops, Draw 1 card"
         ),

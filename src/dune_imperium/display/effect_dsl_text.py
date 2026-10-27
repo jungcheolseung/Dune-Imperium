@@ -146,6 +146,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     StrengthInConflictAtLeast,
     SummonSandworm,
+    TakeCardFromDiscard,
     TakeContract,
     TakeControl,
     TakeHighCouncilSeat,
@@ -538,6 +539,9 @@ def reward_text(reward: Reward) -> str:
             return f"Recruit {count} {_plural(count, 'troop')}"
         case DrawPersonalCards(count=count):
             return f"Draw {count} {_plural(count, 'card')}"
+        case TakeCardFromDiscard(faction=faction):
+            # Other Memory's printed sentence.
+            return f"Draw a {_faction_name(faction)} card from your discard pile"
         case DrawIntrigueCards(count=count):
             return f"Draw {count} Intrigue {_plural(count, 'card')}"
         case GainCombatStrength(amount=amount):

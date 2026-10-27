@@ -362,6 +362,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "lose_agent_card_influence": _row(
         _V.LOSE_INFLUENCE, _S.AGENT_CARD, _T.FACTION, tag=_BOX
     ),
+    "take_agent_card_from_discard": _row(
+        _V.TAKE, _S.AGENT_CARD, _T.PERSONAL_CARD, tag=_BOX
+    ),
     "pay_agent_card_five_solari_for_tleilaxu": _row(
         _V.PAY, _S.AGENT_CARD, variant="five_solari_for_tleilaxu", tag=_BOX
     ),

@@ -111,6 +111,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpendSpecimens,
     SpyRecalledThisTurn,
     SummonSandworm,
+    TakeCardFromDiscard,
     TakeContract,
     TrashCard,
     TrashedCardHasFaction,
@@ -3336,7 +3337,11 @@ def either_box(ability: Ability | None) -> bool:
         # Two lines both paid resolve icon by icon (OQ-027 extension 3).
         return False
     match choice.rewards[0]:
-        case GainInfluence(times=1, distinct=False) | GrantCombatDeployment():
+        case (
+            GainInfluence(times=1, distinct=False)
+            | GrantCombatDeployment()
+            | TakeCardFromDiscard()
+        ):
             pass
         case _:
             return False
@@ -3346,11 +3351,15 @@ def either_box(ability: Ability | None) -> bool:
     )
 
 
-def either_choice(ability: Ability) -> GainInfluence | GrantCombatDeployment:
+def either_choice(
+    ability: Ability,
+) -> GainInfluence | GrantCombatDeployment | TakeCardFromDiscard:
     """The choice line's one reward."""
 
     piece = ability.sections[1].rewards[0]
-    assert isinstance(piece, (GainInfluence, GrantCombatDeployment))
+    assert isinstance(
+        piece, (GainInfluence, GrantCombatDeployment, TakeCardFromDiscard)
+    )
     return piece
 
 
@@ -3374,6 +3383,8 @@ def either_rows(
             refusals=False,
             empty_confirm=False,
         )
+    elif isinstance(piece, TakeCardFromDiscard):
+        rows = discard_take_rows(state.players[player], piece, player)
     else:
         rows = (DomainAction(action_id="take_agent_card_combat_icon", actor=player),)
     if not rows:
@@ -3381,6 +3392,61 @@ def either_rows(
     if _line_holds(ability.sections[0], state.players[player], context):
         return (DomainAction(action_id=_PLAIN_ROW, actor=player), *rows)
     return rows
+
+
+def discard_take_rows(
+    owner: PlayerState, piece: TakeCardFromDiscard, player: int
+) -> tuple[DomainAction, ...]:
+    """One row per card of the owner's discard pile that has the piece's
+    Faction ("only if one is there", imperium-base.md 15), in pile order."""
+
+    return tuple(
+        DomainAction(
+            action_id="take_agent_card_from_discard",
+            actor=player,
+            arguments=(("card_id", card_id),),
+        )
+        for card_id in owner.discard_pile
+        if piece.faction in personal_card_for_instance(card_id).factions
+    )
+
+
+def apply_discard_take(state: GameState, action: DomainAction) -> RuleResult:
+    """Put the chosen discard-pile card into the owner's hand (the "-OR-"
+    line taken, so the draw is gone). The pile is face up, so the card is a
+    publicly acquired hand card, known to every seat (imperium-base.md 14,
+    OQ-010: ``PlayerState.hand_public``)."""
+
+    _, context = current_agent_effect_context(state)
+    _, card_id = _subject(context)
+    player = action.actor
+    taken = dict(action.arguments)["card_id"]
+    if not isinstance(taken, str):
+        raise RuntimeError("Agent-card discard take has an invalid card")
+    source = agent_card_source(state.round_number, player, card_id)
+    owner = state.players[player]
+    pile = list(owner.discard_pile)
+    pile.remove(taken)
+    next_owner = replace(
+        owner,
+        discard_pile=tuple(pile),
+        hand=(*owner.hand, taken),
+        hand_public=(*owner.hand_public, taken),
+    )
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(
+        state, context, replace_player(state.players, next_owner)
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:discard_pile:{taken}",
+                kind="card_returned_to_hand",
+                payload=(("card_id", taken), ("player", player)),
+            ),
+        ),
+    )
 
 
 def apply_either_influence(
