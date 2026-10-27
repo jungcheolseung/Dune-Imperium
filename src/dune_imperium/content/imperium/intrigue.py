@@ -17,11 +17,18 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.effect_dsl import (
+    DrawPersonalCards,
     EffectSection,
     GainCombatStrength,
     GainInfluence,
+    GainResources,
+    GainVictoryPoints,
+    HasAlliance,
+    HasHighCouncil,
+    LoseTroops,
     PayResources,
     RetreatTroops,
+    RevealPersuasionThisRound,
 )
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
@@ -75,10 +82,25 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("allied_armada", "Allied Armada"),
         copies=1,
+        # "If you have a Faction Alliance: 2 spice -> +7 swords" [Allied
+        # Armada card, app text]: a Combat cost line under a condition; an
+        # Alliance with any Faction counts and both the Alliance and the two
+        # spice are needed to play it (imperium-base.md 13.3, FAQ p. 2).
+        options=(
+            _combat(
+                EffectSection(
+                    condition=HasAlliance(),
+                    costs=(PayResources(spice=2),),
+                    rewards=(GainCombatStrength(7),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("ambush", "Ambush"),
         copies=2,
+        # "+4 swords" [Ambush card, app text]: a cost-free Combat line.
+        options=(_combat(EffectSection(rewards=(GainCombatStrength(4),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("bindu_suspension", "Bindu Suspension"),
@@ -91,6 +113,17 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("choam_shares", "CHOAM Shares"),
         copies=1,
+        # "7 Solari -> 1 Victory Point" [CHOAM Shares card, app text]: a cost
+        # arrow line, required once the card is played [FAQ p. 3]; "pay its
+        # costs" [FAQ p. 2] (imperium-base.md 13.3).
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(solari=7),),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("calculated_hire", "Calculated Hire"),
@@ -99,6 +132,12 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("charisma", "Charisma"),
         copies=1,
+        # "Gain 2 Persuasion during your Reveal turn this round" [Charisma
+        # card, app text]: Persuasion that waits for the owner's Reveal turn,
+        # so the played card stays face up until that turn ends [FAQ p. 2]
+        # (the shape of Immortality's Tleilaxu Puppet). It is played without
+        # spending the Persuasion (imperium-base.md 13.3).
+        options=(_plot(EffectSection(rewards=(RevealPersuasionThisRound(2),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("corner_the_market", "Corner the Market"),
@@ -107,6 +146,18 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("councilors_dispensation", "Councilor's Dispensation"),
         copies=1,
+        # "If you have a seat on the High Council: +2 spice" [Councilor's
+        # Dispensation card, app text]: the seat is a condition the official
+        # documents set (FAQ p. 2's example), so without it the card is not
+        # played (OQ-113 (C); Uprising's Councilor's Ambition has this shape).
+        options=(
+            _plot(
+                EffectSection(
+                    condition=HasHighCouncil(),
+                    rewards=(GainResources(spice=2),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("demand_respect", "Demand Respect"),
@@ -147,6 +198,17 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("private_army", "Private Army"),
         copies=2,
+        # "2 spice -> +5 swords" [Private Army card, app text]: a Combat cost
+        # line, paid once the card is played [FAQ p. 3] (imperium-base.md
+        # 13.3's Allied Armada row, the same shape).
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(PayResources(spice=2),),
+                    rewards=(GainCombatStrength(5),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("rapid_mobilization", "Rapid Mobilization"),
@@ -171,10 +233,32 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("staged_incident", "Staged Incident"),
         copies=1,
+        # "Lose three of your troops in the Conflict -> 1 Victory Point"
+        # [Staged Incident card, app text]: the loss is the cost, so all
+        # three must be in the Conflict to play it [FAQ p. 2]; the strength
+        # marker moves down with them [FAQ p. 4] (imperium-base.md 13.2).
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(LoseTroops(3, from_conflict=True),),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("the_sleeper_must_awaken", "The Sleeper Must Awaken"),
         copies=1,
+        # "4 spice -> 1 Victory Point" [The Sleeper Must Awaken card, app
+        # text]: a cost arrow line, required once played [FAQ p. 3].
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(spice=4),),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("tiebreaker", "Tiebreaker"),
@@ -191,13 +275,29 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("water_peddlers_union", "Water Peddlers Union"),
         copies=1,
+        # "+1 water" [Water Peddlers Union card, app text]: a cost-free Plot.
+        options=(_plot(EffectSection(rewards=(GainResources(water=1),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("water_of_life", "Water of Life"),
         copies=1,
+        # "1 water + 1 spice -> draw 3 cards" [Water of Life card, app text]:
+        # one cost line paying both resources, so a draw with both piles
+        # empty is a cost with no live reward and the card is not played
+        # (OQ-113 (C), imperium-base.md 13.3).
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(water=1, spice=1),),
+                    rewards=(DrawPersonalCards(3),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("windfall", "Windfall"),
         copies=1,
+        # "+2 Solari" [Windfall card, app text]: a cost-free Plot.
+        options=(_plot(EffectSection(rewards=(GainResources(solari=2),))),),
     ),
 )
