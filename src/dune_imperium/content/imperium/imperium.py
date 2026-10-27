@@ -343,10 +343,19 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=2,
         acquisition_cost=3,
     ),
+    # App table: cost 4, 1 copy, Bene Gesserit and Fremen, Bene Gesserit and
+    # Fremen, no fixed Reveal values (tag FremenBond). Agent: the black trash
+    # icon, "You may trash a card" (an optional icon, [DI p. 16] [FAQ p. 3]).
+    # Reveal: "Fremen Bond: [P3] [1 spice]" -- another Fremen card in play
+    # [DI p. 16], judged at resolution (OQ-028); nothing unconditional.
     ImperiumCardEntry(
         card=imperium_card("sietch_reverend_mother", "Sietch Reverend Mother"),
         copies=1,
         acquisition_cost=4,
+        factions=(Faction.BENE_GESSERIT, Faction.FREMEN),
+        agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.FREMEN),
+        agent_effect=PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("smugglers_thopter", "Smuggler's Thopter"),

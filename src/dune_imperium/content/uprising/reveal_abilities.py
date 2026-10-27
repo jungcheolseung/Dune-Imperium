@@ -122,6 +122,15 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         ),
         # Duncan Idaho (original game): "1 water" beside its printed swords.
         "duncan_idaho_card": _reveal(_line(GainResources(water=1))),
+        # Sietch Reverend Mother (original game): "Fremen Bond: 3 Persuasion, 1
+        # spice" -- nothing unconditional, the card's printed Persuasion is 0.
+        "sietch_reverend_mother": _reveal(
+            _line(
+                RevealPersuasion(3),
+                GainResources(spice=1),
+                condition=FactionBond(Faction.FREMEN),
+            )
+        ),
         # Spice Hunter (original game): "Fremen Bond: 1 spice".
         "spice_hunter": _reveal(
             _line(GainResources(spice=1), condition=FactionBond(Faction.FREMEN))

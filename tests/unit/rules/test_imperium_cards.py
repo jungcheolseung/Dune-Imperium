@@ -1621,3 +1621,93 @@ def test_spice_hunter_fremen_bond_gains_one_spice() -> None:
     gained = _do(engine, revealed, "gain_reveal_resources", printed="spice_hunter")
     assert gained.players[0].resources.spice == before.spice + 1
     assert gained.players[0].resources.water == before.water
+
+
+# --- Sietch Reverend Mother -------------------------------------------------------
+
+
+def test_sietch_reverend_mother_matches_the_app_table() -> None:
+    # App attribute table: cost 4, 1 copy, Bene Gesserit and Fremen, Bene
+    # Gesserit and Fremen, no fixed Reveal values (tag FremenBond).
+    entry = IMPERIUM_CARDS_BY_ID["sietch_reverend_mother"]
+    assert entry.card.name == "Sietch Reverend Mother"
+    assert entry.acquisition_cost == 4
+    assert entry.copies == 1
+    assert entry.factions == (Faction.BENE_GESSERIT, Faction.FREMEN)
+    assert entry.agent_icons == (AgentIcon.BENE_GESSERIT, AgentIcon.FREMEN)
+    assert entry.agent_effect is PersonalCardAgentEffect.TRASH_PERSONAL_CARD
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:sietch_reverend_mother:0") is entry
+
+
+def _mother_placed(engine: UprisingRulesEngine, state: GameState) -> GameState:
+    held, _ = _with_card(state, "sietch_reverend_mother")
+    return _place(engine, held, "stillsuits", "sietch_reverend_mother")
+
+
+def test_sietch_reverend_mother_may_trash_a_card() -> None:
+    """"Trash(...비용이거나 카드가 자기를 trash하라고 할 때만 의무)" (imperium-base.md
+    11, [DI p. 16]): the black trash icon is optional ([FAQ p. 3]); its rows
+    are the hand's cards and the card itself in play."""
+
+    engine, state = _start()
+    placed = _mother_placed(engine, state)
+    owner = placed.players[0]
+    me = "imperium:sietch_reverend_mother:0"
+    assert _trash_rows(engine, placed) == {*owner.hand, me}
+    victim = owner.hand[0]
+    trashed = _do(engine, placed, "trash_agent_card", card_id=victim)
+    assert victim in trashed.players[0].trashed
+    assert victim not in trashed.players[0].hand
+    assert not _trash_rows(engine, trashed)
+
+
+def test_sietch_reverend_mother_trash_is_optional() -> None:
+    engine, state = _start()
+    placed = _mother_placed(engine, state)
+    before = placed.players[0]
+    assert _trash_rows(engine, placed)
+    resolved = _do(engine, placed, "resolve_board_effect", effect="resources")
+    resolved = _do(engine, resolved, "resolve_faction_influence")
+    finished = _do(engine, resolved, "finish_agent_turn")
+    assert finished.players[0].trashed == before.trashed
+
+
+def _mother_revealed(
+    engine: UprisingRulesEngine, state: GameState, *others: str
+) -> GameState:
+    held, instance = _with_card(state, "sietch_reverend_mother", alone=True)
+    held = _seat(held, hand=(instance, *others), resources=Resources())
+    return _do(engine, held, "reveal_turn")
+
+
+def test_sietch_reverend_mother_without_a_bond_reveals_nothing() -> None:
+    """Everything of its Reveal box is behind "Fremen Bond" [DI p. 16]
+    (imperium-base.md 11): alone the card has no Bond, so no Persuasion and no
+    spice."""
+
+    engine, state = _start()
+    revealed = _mother_revealed(engine, state)
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (0, 0)
+    assert "gain_reveal_resources" not in _ids(engine, revealed)
+    assert _do(engine, revealed, "finish_reveal").players[0].resources.spice == 0
+
+
+def test_sietch_reverend_mother_fremen_bond_gives_three_persuasion_and_a_spice() -> (
+    None
+):
+    """The Bond is judged when the line resolves (imperium-base.md 16,
+    OQ-028): with Spice Hunter (Fremen) also revealed, the card's 3 Persuasion
+    join the hunter's 1, and 1 spice is gained."""
+
+    engine, state = _start()
+    revealed = _mother_revealed(engine, state, "imperium:spice_hunter:0")
+    frame = dict(revealed.decision_stack[-1].context)
+    assert frame["persuasion"] == 3 + 1
+    before = revealed.players[0].resources
+    gained = _do(
+        engine, revealed, "gain_reveal_resources", printed="sietch_reverend_mother"
+    )
+    assert gained.players[0].resources.spice == before.spice + 1
