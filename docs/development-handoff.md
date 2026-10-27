@@ -29,7 +29,7 @@
 | 항목 | 값 |
 | --- | --- |
 | master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`)·2026-10-22 `search-adapter` 병합 `bc466f23`(탐색 좌석이 옛 codec 파일을 어댑터로)·2026-10-23 `search-parts` 병합 `79bdcb5b`(탐색 좌석 옵션, 서버 탐색 AI에 E1 뒤집기 문턱)·같은 날 `restore-lost-problems` 병합(문제집의 없어진 거절 정리, 사람 판 281곳 모두 풀림)·2026-10-25 `claude/base-ix-p0-57d7eb` 병합(원판·Ix P0 문서와 판정, 판정 공지 도움말 창; codec 그대로)·같은 날 `claude/engine-audit-fixes-16a6cc` 병합(엔진 감사 2026-10-22 수정, OQ-128~131, codec v152)·2026-10-26 `claude/play-feedback-2026-10-25-808f13` 병합 `f1de07c4`(플레이 피드백: 원격 대기실, OQ-132 첫 플레이어 옵션, 앱 좌석 색 순서 등; codec 그대로)·같은 날 `claude/rules-audit-fixes` 병합 `55265b73`(일반 규칙 감사의 남은 결함 5개, codec v153)·`claude/uprising-rulings-v154` 병합 `e9e992eb`(Uprising 판정 묶음 OQ-113 (C)·OQ-121·OQ-042, codec v154)·`search-draft`·`e5-student-distill` 병합 `5cef7268`·`78d86d29`(탐색 좌석 측정 옵션과 증류 도구, codec 그대로)·`e5-student-distill` 다시 병합 `d22f4392`·`abecbf43`(증류 `--keep`, codec 그대로)·`claude/play-feedback-2026-10-26` 병합 `ad54fb72`(시에치 타브르 문구, 로그 카드 그림과 까닭, 좌석 패널 정리와 자세히 창; codec 그대로)·2026-10-27 `claude/ai-speedup-1e9ed9` 병합 `39477e34`(AI 실험 속도: 같은 판 그대로 탐색 −13~14%, 증류 `--compact`, 가치 망 선별 도구; codec 그대로)·같은 날 `claude/base-ix-p1-6a418f` 병합 `dda6ddb0`(원판·Ix P1 판 축: 콘텐츠 조회 `content_for(config)`, `RulesetConfig.base_game`·`rise_of_ix`, 관측 v34; codec 그대로) |
-| pytest | 8,594개 통과(2026-10-27 원판·Ix P1의 합친 트리, codec v155, `-n 8`)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
+| pytest | 8,609개 통과(2026-10-27 e6-kickstart 병합 `57721c5f`의 합친 트리, codec v155, `-n 8`)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
 | Ruff · mypy | `src tests` 통과, mypy 573파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 70종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-27 원판·Ix P1 관문 4회차(`-j 4`, 69 통과; 나머지 `server_errors`는 묶음 안에서 시간 초과, 따로 3회 통과) |
 | action codec | **v155** (2026-10-26 OQ-138: Covert Operation의 손이 빈 상대도 창을 열고 확인 줄 `resolve_opponent_discard_without_card` 하나를 받는다 — 모든 카탈로그 +1, Immortality는 Ghola 사본 줄까지 +2; 옛 기보 다리 `opponent_discard_alone`). 그 앞 **v154** (2026-10-26 Uprising 판정 묶음). Planetary Array의 승자 창 줄(Tech 카탈로그), 비용 없는 책략 선택의 확인 줄 셋(Manipulate는 모든 카탈로그, Twisted 둘은 Bloodlines 카탈로그)이 늘었고, 비용 없는 책략 줄은 불발해도 낸다(OQ-113 (C)); 옛 기보는 다리로([`human-records.md`](human-records.md)). v153 저장은 서버가 열지 않는다 |
@@ -139,7 +139,7 @@
      뒤집는 결정 44% 가운데 평균 차 0.005 미만이 41%(m10-2026-09-22 15절), SPARTA·Ataraxos. 같은 시드 400판, 1 대 앱 AI 어려움 3과
      1 대 플레이 망 3. 통과: 승률 차 하한 > 0, 또는 승률 차 > −2%p이면서 순위·점수 차 확정 개선. 아래 "탐색 AI의 이상한 수 후보"의 잡음 선택도 겨냥한다.
   2. **E3 후보 배분:** Gumbel-Top-k로 후보 8개를 뽑고 rollout 40개를 sequential halving으로 나눈다. 통과는 E1과 같다.
-     - **E1·E3 구현(2026-10-22, 브랜치 `search-parts` `567d165b`, 미병합):** 좌석 옵션 `::flip=`, `::prior=`, `::halving=`(기본 꺼짐, 꺼지면 선택이
+     - **E1·E3 구현(2026-10-22, 브랜치 `search-parts` `567d165b`, master 병합 `79bdcb5b`):** 좌석 옵션 `::flip=`, `::prior=`, `::halving=`(기본 꺼짐, 꺼지면 선택이
        예전과 같음; 표 좌석은 옵션을 거부). 첫 측정 E1 `flip=0.01`·E3 `halving=8`, 대조는 위 0번의 셀 A(`checkpoints/2026-10-22/search-parts/`).
      - **첫 측정 기준 미달(2026-10-22, 1 대 앱 AI 어려움 3, 400판):** E1 82.5% 대 81.8%, +0.7%p [−5.2, +7.0], VP 차 +0.39 [−0.01, +0.80]로
        확정 개선이 아니다. E3 78.2%, −3.5%p [−9.2, +2.0]. 두 옵션 모두 꺼 둔다.
@@ -176,7 +176,7 @@
        이 크기에서는 자료 분포가 격차의 원인이 아니고, 학생이 선생 분포를 맞추는 정도(적합)가 한계다. 다음 지렛대는 E8 구조 탐침이나 자료·학습량이다.
   5. **E6 kickstarting:** 가장 나은 학생에서 REINFORCE + β·KL(선생‖학생), β를 400회에 걸쳐 1 → 0, 모두 800회. 통과: 2:2 1,400판에서 선생 대비
      점추정 ≥ 0, 하한 > −3%p(B-800은 −7.0 [−12.1, −1.7]). 통과한 망만 탐색 좌석 관문(아래 판정 주의)으로 간다. 실패하면 증류 계보는 보류하고 어댑터를 쓴다.
-     - **구현(2026-10-22, 브랜치 `e6-kickstart` `5adf2d43`, 미병합):** `dune-imperium-train --kickstart-teacher <v147> --kickstart-weight 1
+     - **구현(2026-10-22, 브랜치 `e6-kickstart` `5adf2d43`, 2026-10-27 master 병합 `57721c5f`):** `dune-imperium-train --kickstart-teacher <v147> --kickstart-weight 1
        --kickstart-iterations 400`(β는 이 실행의 첫 iteration부터 선형으로 0; 꺼지면 학습기가 비트까지 같음; 켠 iteration은 수집 약 +45%).
      - **완료·기준 미달(2026-10-22 18:29):** `checkpoints/2026-10-22/e6-kickstart/`. E5 2차 학생에서 B-800과 같은 학습 인자에 kickstart 세 인자만 더해
        800회(β 1 → 0을 400회, `training.jsonl`로 확인). 선생과 2:2 1,400판(시드 8300000~): 승률 −7.6%p [−12.6, −2.6], 순위 +0.11 [+0.04, +0.17],
