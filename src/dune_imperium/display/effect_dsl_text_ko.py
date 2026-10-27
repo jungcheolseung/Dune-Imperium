@@ -106,6 +106,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasSwordmaster,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
+    InfluenceAtLeastOnTracks,
     InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
@@ -413,6 +414,12 @@ def condition_text_ko(condition: Condition) -> str:
     match condition:
         case InfluenceAtLeast(faction=faction, amount=amount):
             return f"{{influence_{faction.value}}} {amount} 이상이면"
+        case InfluenceAtLeastOnTracks(influence=influence, tracks=tracks):
+            # "당신의 영향력이 2 이상인 다른 팩션 하나" (Navigation Card 1's
+            # print, korean-card-style.md) with the "N개 이상이면" threshold
+            # of "당신이 가진 기술 타일이 3개 이상이면"; glossary-ko.md: 팩션,
+            # 영향력.
+            return f"당신의 영향력이 {influence} 이상인 팩션이 {tracks}개 이상이면"
         case HasHighCouncil():
             # Quotes ``display/tokens_ko.py``'s ``reveal_effect_text_ko``
             # ("High Council" clause), itself sourced from the glossary's

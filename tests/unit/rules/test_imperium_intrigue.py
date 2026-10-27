@@ -21,6 +21,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainVictoryPoints,
     GrantAgentIconsThisTurn,
     HasAlliance,
+    InfluenceAtLeastOnTracks,
     LoseTroops,
     MoreSpiceMustFlowThanEachOpponent,
     PayResources,
@@ -2824,3 +2825,173 @@ def test_corner_the_market_changes_the_final_standings() -> None:
 
     assert [s.player for s in final_standings(done)[:2]] == [0, 1]
     assert done.players[0].victory_points == 10
+
+
+# --- Plans Within Plans (Endgame) -------------------------------------------
+
+PLANS = _intrigue("plans_within_plans")
+
+
+def _plans_window(influence: Influence) -> GameState:
+    """The Endgame window with seat 0 holding Plans Within Plans."""
+
+    return _endgame_window(
+        PlayerState(player_id=0, intrigue_cards=(PLANS,), influence=influence)
+    )
+
+
+def _plans_options(state: GameState) -> tuple[int, ...]:
+    """The options of Plans Within Plans seat 0 is offered."""
+
+    return tuple(
+        int(dict(action.arguments)["option"])
+        for action in legal_intrigue_play_actions(state, 0)
+    )
+
+
+def test_plans_within_plans_is_two_exclusive_endgame_options() -> None:
+    # "3 Influence (or more) on three Faction tracks: 1 VP -OR- ... on four
+    # Faction tracks: 2 VP" [Plans Within Plans card, Steam app text]; 1 copy
+    # [DI p. 3]. Two exclusive options (OQ-058: "—OR—로 나뉜 카드는 그대로
+    # 배타 option", imperium-base.md 16), each carrying its condition.
+    entry = intrigue_card_for_instance(PLANS)
+    assert entry.card.name == "Plans Within Plans"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["endgame"] * 2
+    assert [
+        (option.sections[0].condition, option.sections[0].rewards)
+        for option in entry.options
+    ] == [
+        (InfluenceAtLeastOnTracks(3, 3), (GainVictoryPoints(1),)),
+        (InfluenceAtLeastOnTracks(3, 4), (GainVictoryPoints(2),)),
+    ]
+    assert all(
+        len(option.sections) == 1 and option.sections[0].costs == ()
+        for option in entry.options
+    )
+    assert intrigue_card_text(entry) == [
+        "Endgame — If you have 3 or more Influence on at least 3 Faction tracks:"
+        " Gain 1 VP",
+        "Endgame — If you have 3 or more Influence on at least 4 Faction tracks:"
+        " Gain 2 VP",
+    ]
+    assert "plans_within_plans" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_influence_on_tracks_counts_the_tracks_at_or_above_the_amount() -> None:
+    # "Influence 3 = VP 칸 바로 위 칸" (imperium-base.md 13.2): a track counts
+    # from 3 up, and 2, the Victory Point space itself, does not.
+    state = _plans_window(Influence())
+
+    def holds(influence: Influence, amount: int, tracks: int) -> bool:
+        return condition_holds(
+            _seat(state, 0, influence=influence),
+            0,
+            InfluenceAtLeastOnTracks(amount, tracks),
+        )
+
+    three_tracks = Influence(emperor=3, spacing_guild=6, bene_gesserit=4, fremen=2)
+    assert holds(three_tracks, 3, 3)
+    assert not holds(three_tracks, 3, 4)
+    assert holds(three_tracks, 2, 4)
+    assert holds(three_tracks, 3, 1)
+    # A track at 2 is below 3.
+    assert not holds(Influence(emperor=2, spacing_guild=2, bene_gesserit=2), 3, 1)
+    # Every track at 3, and at the top of the track.
+    assert holds(Influence(3, 3, 3, 3), 3, 4)
+    assert holds(Influence(6, 6, 6, 6), 3, 4)
+    # Two tracks are not three.
+    assert not holds(Influence(emperor=6, fremen=5), 3, 3)
+    # Another seat's Influence does not count.
+    other = _seat(state, 1, influence=Influence(3, 3, 3, 3))
+    assert not condition_holds(other, 0, InfluenceAtLeastOnTracks(3, 1))
+    assert condition_holds(other, 1, InfluenceAtLeastOnTracks(3, 4))
+
+
+def test_influence_on_tracks_condition_rejects_a_track_count_off_the_four() -> None:
+    with pytest.raises(ValueError):
+        InfluenceAtLeastOnTracks(3, 0)
+    with pytest.raises(ValueError):
+        InfluenceAtLeastOnTracks(3, 5)
+    with pytest.raises(ValueError):
+        InfluenceAtLeastOnTracks(0, 3)
+
+
+def test_plans_within_plans_offers_only_the_options_whose_condition_holds() -> None:
+    # "조건은 해결할 때 판정한다" (imperium-base.md 16, OQ-028): three tracks
+    # at 3 or more offer only the 1 VP option, all four both of them, fewer
+    # than three none (a condition the card sets, ``OptionBlock.CONDITION``).
+    assert _plans_options(_plans_window(Influence(3, 3, 3, 2))) == (0,)
+    assert _plans_options(_plans_window(Influence(3, 6, 4, 3))) == (0, 1)
+    assert _plans_options(_plans_window(Influence(3, 3, 2, 2))) == ()
+    assert _plans_options(_plans_window(Influence())) == ()
+    # No option is offered when it cannot be played, whichever the list.
+    state = _plans_window(Influence(3, 3, 2, 2))
+    assert _play(PLANS, 0) not in UprisingRulesEngine().whole_actions(state, 0)
+    assert _play(PLANS, 1) not in UprisingRulesEngine().whole_actions(state, 0)
+
+
+def test_plans_within_plans_on_three_tracks_gains_one_victory_point() -> None:
+    # "3 Influence (or more) on three Faction tracks: 1 VP" [Plans Within
+    # Plans card] at the Endgame `[DI p. 13]` (imperium-base.md 10).
+    state = _plans_window(Influence(3, 4, 5, 1))
+    assert _plans_options(state) == (0,)
+
+    result = apply_whole(UprisingRulesEngine(), state, _play(PLANS, 0))
+    done = result.state
+
+    assert done.players[0].victory_points == state.players[0].victory_points + 1
+    assert done.players[0].influence == state.players[0].influence
+    assert done.players[0].resources == state.players[0].resources
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (PLANS,)
+    # The window stays open: other cards or the pass may follow.
+    assert done.decision_stack[-1].kind == "endgame_intrigue"
+
+
+def test_plans_within_plans_on_four_tracks_gains_two_victory_points() -> None:
+    # "... on four Faction tracks: 2 VP" [Plans Within Plans card].
+    state = _plans_window(Influence(3, 3, 3, 3))
+    assert _plans_options(state) == (0, 1)
+
+    done = apply_whole(UprisingRulesEngine(), state, _play(PLANS, 1)).state
+
+    assert done.players[0].victory_points == state.players[0].victory_points + 2
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (PLANS,)
+
+
+def test_plans_within_plans_options_are_exclusive() -> None:
+    # "-OR-": one option is played and the card is gone, so four tracks never
+    # give 1 VP and 2 VP together (imperium-base.md 16, at most 2 VP).
+    state = _plans_window(Influence(6, 6, 6, 6))
+    done = apply_whole(UprisingRulesEngine(), state, _play(PLANS, 1)).state
+    assert done.players[0].victory_points == state.players[0].victory_points + 2
+    assert done.players[0].intrigue_cards == ()
+    assert legal_intrigue_play_actions(done, 0) == ()
+    # Choosing the 1 VP option with four tracks is allowed and scores 1.
+    one = apply_whole(UprisingRulesEngine(), state, _play(PLANS, 0)).state
+    assert one.players[0].victory_points == state.players[0].victory_points + 1
+
+
+def test_plans_within_plans_is_an_endgame_card_only() -> None:
+    # Endgame Intrigue is played in the Endgame window only `[DI p. 13]`
+    # (imperium-base.md 10): never in an Agent or Reveal turn.
+    _, state = _start()
+    state = _seat(
+        state, intrigue_cards=(PLANS,), influence=Influence(3, 3, 3, 3)
+    )
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+def test_plans_within_plans_may_be_declined_in_the_window() -> None:
+    # Playing is a choice: the seat passes and keeps the card `[DI p. 13]`.
+    state = _plans_window(Influence(3, 3, 3, 3))
+    skipped = apply_whole(
+        UprisingRulesEngine(),
+        state,
+        DomainAction(action_id="pass_endgame_intrigue", actor=0),
+    ).state
+    assert skipped.players[0].intrigue_cards == (PLANS,)
+    assert skipped.players[0].victory_points == state.players[0].victory_points

@@ -15,6 +15,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluence,
     GainResources,
     InfluenceAtLeast,
+    InfluenceAtLeastOnTracks,
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
@@ -70,6 +71,23 @@ def test_condition_text_renders_completed_contracts() -> None:
     assert (
         condition_text(CompletedContractsAtLeast(2))
         == "you have completed 2 or more Contracts"
+    )
+
+
+def test_condition_text_renders_influence_on_a_number_of_tracks() -> None:
+    # "3 Influence (or more) on three Faction tracks" [Plans Within Plans
+    # card]: the count is "at least", as the amount is.
+    assert (
+        condition_text(InfluenceAtLeastOnTracks(3, 3))
+        == "you have 3 or more Influence on at least 3 Faction tracks"
+    )
+    assert (
+        condition_text(InfluenceAtLeastOnTracks(3, 4))
+        == "you have 3 or more Influence on at least 4 Faction tracks"
+    )
+    assert (
+        condition_text(InfluenceAtLeastOnTracks(2, 1))
+        == "you have 2 or more Influence on at least 1 Faction track"
     )
 
 
@@ -392,6 +410,19 @@ def test_condition_text_ko_renders_a_faction_influence_threshold() -> None:
         condition_text_ko(InfluenceAtLeast(Faction.EMPEROR, 3))
         == "{influence_emperor} 3 이상이면"
     )
+
+
+def test_condition_text_ko_renders_influence_on_a_number_of_tracks() -> None:
+    """Navigation Card 1's "당신의 영향력이 2 이상인 다른 팩션" with the
+    "N개 이상이면" threshold of the Tech tile count (korean-card-style.md)."""
+
+    text = condition_text_ko(InfluenceAtLeastOnTracks(3, 3))
+    assert text == "당신의 영향력이 3 이상인 팩션이 3개 이상이면"
+    assert condition_text_ko(InfluenceAtLeastOnTracks(3, 4)) == (
+        "당신의 영향력이 3 이상인 팩션이 4개 이상이면"
+    )
+    assert_placeholders_are_terms(text)
+    assert_no_stray_latin(text)
 
 
 def test_condition_text_ko_renders_more_spice_must_flow_than_each_opponent() -> None:

@@ -40,6 +40,23 @@ class InfluenceAtLeast:
 
 
 @dataclass(frozen=True, slots=True)
+class InfluenceAtLeastOnTracks:
+    """The player has at least ``influence`` Influence on at least ``tracks``
+    of the four Faction tracks (Plans Within Plans: "3 Influence (or more)
+    on three Faction tracks", imperium-base.md 13.2: Influence 3 is the space
+    just above the Victory Point space)."""
+
+    influence: int
+    tracks: int
+
+    def __post_init__(self) -> None:
+        if self.influence < 1:
+            raise ValueError("Influence condition amount must be positive")
+        if not 1 <= self.tracks <= len(Faction):
+            raise ValueError("Influence tracks must be between one and the four")
+
+
+@dataclass(frozen=True, slots=True)
 class HasHighCouncil:
     """The player holds a High Council seat."""
 
@@ -471,6 +488,7 @@ class AllConditions:
 
 type Condition = (
     InfluenceAtLeast
+    | InfluenceAtLeastOnTracks
     | HasHighCouncil
     | HasAlliance
     | InNavigationSlot

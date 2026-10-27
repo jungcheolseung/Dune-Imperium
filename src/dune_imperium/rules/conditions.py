@@ -13,6 +13,7 @@ Persuasion (Command) -- is its caller's.
 from typing import Final
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
@@ -24,6 +25,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasHighCouncil,
     HasSwordmaster,
     InfluenceAtLeast,
+    InfluenceAtLeastOnTracks,
     InNavigationSlot,
     SandwormsInConflictAtLeast,
     SolariAtLeast,
@@ -87,6 +89,15 @@ def owner_condition_holds(owner: PlayerState, condition: Condition) -> bool | No
             )
         case InfluenceAtLeast(faction=faction, amount=amount):
             return influence_amount(owner.influence, faction) >= amount
+        case InfluenceAtLeastOnTracks(influence=influence, tracks=tracks):
+            return (
+                sum(
+                    1
+                    for faction in Faction
+                    if influence_amount(owner.influence, faction) >= influence
+                )
+                >= tracks
+            )
         case HasHighCouncil():
             return owner.high_council
         case HasAlliance(faction=None):
