@@ -89,6 +89,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseHighestInfluence,
     LoseInfluence,
     LoseTroops,
+    MoreSpiceMustFlowThanEachOpponent,
     OnAgentSentTo,
     OnBoardSpaceSolariPaid,
     OnCardTrashed,
@@ -320,6 +321,10 @@ def condition_text(condition: Condition) -> str:
             return f"you have deployed {count} or more units to the Conflict this turn"
         case SpiceMustFlowCardsAtLeast(count=count):
             return f"you own {count} or more copies of The Spice Must Flow"
+        case MoreSpiceMustFlowThanEachOpponent():
+            # "If you have more The Spice Must Flow than each opponent"
+            # [Corner the Market card, app text]; a tie with any opponent fails.
+            return "you own more copies of The Spice Must Flow than each opponent"
         case OpponentAllianceInfluenceAtLeast(amount=amount):
             return (
                 f"you have {amount} or more Influence on a Faction track whose "

@@ -10,6 +10,8 @@ other seats, the card that prints it (a Faction Bond), the Reveal's
 Persuasion (Command) -- is its caller's.
 """
 
+from typing import Final
+
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.uprising.effect_dsl import (
     CommandersInConflictAtLeast,
@@ -37,6 +39,31 @@ from dune_imperium.content.uprising.effect_dsl import (
 from dune_imperium.core.player import PlayerState
 from dune_imperium.rules.influence import influence_amount
 from dune_imperium.rules.spy_placement import is_spying_on_maker_space
+
+# Both printings of the Reserve card: Uprising's and the original game's
+# (``content.imperium.reserve``), whichever Reserve the game was set up with.
+_SPICE_MUST_FLOW_PREFIXES: Final = (
+    "reserve:the_spice_must_flow:",
+    "reserve:imperium_the_spice_must_flow:",
+)
+
+
+def spice_must_flow_copies(player: PlayerState) -> int:
+    """The copies of The Spice Must Flow ``player`` owns.
+
+    Every copy in the deck, hand, discard pile and play area counts and a
+    trashed one has left the game (OQ-123, user ruling 2026-10-22: "전체 보유
+    The Spice Must Flow(덱·손·discard·in play, trash 제외)를 센다",
+    imperium-base.md 13.2). A seat's total is public: acquisitions and
+    trashings are open, so reading an opponent's does not read hidden cards.
+    """
+
+    return sum(
+        1
+        for zone in (player.deck, player.hand, player.discard_pile, player.in_play)
+        for instance_id in zone
+        if instance_id.startswith(_SPICE_MUST_FLOW_PREFIXES)
+    )
 
 
 def owner_condition_holds(owner: PlayerState, condition: Condition) -> bool | None:
@@ -90,14 +117,7 @@ def owner_condition_holds(owner: PlayerState, condition: Condition) -> bool | No
             # a retreat leaves standing (OQ-016).
             return max(owner.units_deployed_turn, owner.units_deployed_peak) >= count
         case SpiceMustFlowCardsAtLeast(count=count):
-            prefix = "reserve:the_spice_must_flow:"
-            copies = sum(
-                1
-                for zone in (owner.deck, owner.hand, owner.discard_pile, owner.in_play)
-                for instance_id in zone
-                if instance_id.startswith(prefix)
-            )
-            return copies >= count
+            return spice_must_flow_copies(owner) >= count
         # Stage B3e-2: a Reveal line's own conditions [card faces].
         case HasSwordmaster():
             return owner.swordmaster_acquired

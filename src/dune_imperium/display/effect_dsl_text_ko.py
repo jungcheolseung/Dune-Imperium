@@ -116,6 +116,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseHighestInfluence,
     LoseInfluence,
     LoseTroops,
+    MoreSpiceMustFlowThanEachOpponent,
     OnAgentSentTo,
     OnBoardSpaceSolariPaid,
     OnCardTrashed,
@@ -487,6 +488,15 @@ def condition_text_ko(condition: Condition) -> str:
         case SpiceMustFlowCardsAtLeast(count=count):
             name = _reserve_card_name_ko("the_spice_must_flow")
             return f"당신이 {name}{_object_particle(name)} {count} 이상 보유했다면"
+        case MoreSpiceMustFlowThanEachOpponent():
+            # The at-least-N line's wording ("당신이 … 보유했다면") with
+            # "다른 플레이어" for opponent (glossary-ko.md: "상대"가 아님) and
+            # "각각" (each, compared separately; a tie fails).
+            name = _reserve_card_name_ko("the_spice_must_flow")
+            return (
+                f"당신이 {name}{_object_particle(name)} "
+                "다른 플레이어 각각보다 더 많이 보유했다면"
+            )
         case OpponentAllianceInfluenceAtLeast(amount=amount):
             # No adjacent digit+"Influence" in English's own text ("N or
             # more Influence on a..."), so ICON_RULES draws no icon there

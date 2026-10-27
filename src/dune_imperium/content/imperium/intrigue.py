@@ -30,10 +30,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     HasHighCouncil,
     LoseTroops,
+    MoreSpiceMustFlowThanEachOpponent,
     PayResources,
     RecruitTroops,
     RetreatTroops,
     RevealPersuasionThisRound,
+    SpiceMustFlowCardsAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
@@ -149,6 +151,25 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("corner_the_market", "Corner the Market"),
         copies=1,
+        # "If you have at least two The Spice Must Flow: 1 VP" and "If you have
+        # more The Spice Must Flow than each opponent: 1 VP" [Corner the Market
+        # card, app text]: two stacked Endgame lines, each its own 1 VP
+        # (imperium-base.md 13.2: "두 조건은 따로 1 VP씩"; OQ-058). The copies
+        # are every one the seat owns, deck, hand, discard pile and play area
+        # (OQ-123), and an opponent with as many fails the second line
+        # (`[FAQ p. 2]`: each opponent separately).
+        options=(
+            _endgame(
+                EffectSection(
+                    condition=SpiceMustFlowCardsAtLeast(2),
+                    rewards=(GainVictoryPoints(1),),
+                ),
+                EffectSection(
+                    condition=MoreSpiceMustFlowThanEachOpponent(),
+                    rewards=(GainVictoryPoints(1),),
+                ),
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("councilors_dispensation", "Councilor's Dispensation"),

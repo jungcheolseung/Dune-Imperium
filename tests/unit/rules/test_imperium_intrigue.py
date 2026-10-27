@@ -16,11 +16,15 @@ from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.effect_dsl import (
+    Condition,
     DeployFromGarrison,
+    GainVictoryPoints,
     GrantAgentIconsThisTurn,
     HasAlliance,
     LoseTroops,
+    MoreSpiceMustFlowThanEachOpponent,
     PayResources,
+    SpiceMustFlowCardsAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS,
@@ -41,6 +45,7 @@ from dune_imperium.display import intrigue_card_text
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_turn import legal_agent_actions
 from dune_imperium.rules.combat import begin_combat_intrigue
+from dune_imperium.rules.effect_interpreter import condition_holds
 from dune_imperium.rules.endgame import begin_endgame_intrigue, final_standings
 from dune_imperium.rules.frames import reset_turn_counters
 from dune_imperium.rules.intrigue import (
@@ -2510,3 +2515,312 @@ def test_tiebreaker_may_be_declined_in_either_window() -> None:
     ).state
     assert skipped.players[0].intrigue_cards == (TIEBREAKER,)
     assert skipped.players[0].resources == Resources()
+
+
+# --- Corner the Market (Endgame) --------------------------------------------
+
+CORNER = _intrigue("corner_the_market")
+ORIGINAL_TSMF = "imperium_the_spice_must_flow"
+UPRISING_TSMF = "the_spice_must_flow"
+
+
+def _tsmf(copy: int, printing: str = ORIGINAL_TSMF) -> str:
+    """One copy of the Reserve card The Spice Must Flow."""
+
+    return f"reserve:{printing}:{copy}"
+
+
+def _tsmf_seat(seat: int, copies: int, **zones: tuple[str, ...]) -> PlayerState:
+    """A seat whose deck holds ``copies`` of the original's card, with any
+    other zone given (an instance id there is a plain string)."""
+
+    deck = zones.pop("deck", ())
+    return PlayerState(
+        player_id=seat,
+        deck=(*(_tsmf(copy) for copy in range(copies)), *deck),
+        **zones,  # type: ignore[arg-type]
+    )
+
+
+def _holds(state: GameState, condition: Condition, seat: int = 0) -> bool:
+    return condition_holds(state, seat, condition)
+
+
+def test_corner_the_market_is_one_endgame_option_of_two_one_vp_lines() -> None:
+    # "If you have at least two The Spice Must Flow: 1 VP" and "If you have
+    # more The Spice Must Flow than each opponent: 1 VP" [Corner the Market
+    # card, Steam app text]; 1 copy [DI p. 3]. Two stacked cost-free Endgame
+    # lines in one option, "두 조건은 따로 1 VP씩" (imperium-base.md 13.2).
+    entry = intrigue_card_for_instance(CORNER)
+    assert entry.card.name == "Corner the Market"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["endgame"]
+    (option,) = entry.options
+    assert [section.condition for section in option.sections] == [
+        SpiceMustFlowCardsAtLeast(2),
+        MoreSpiceMustFlowThanEachOpponent(),
+    ]
+    assert all(section.costs == () for section in option.sections)
+    assert all(
+        section.rewards == (GainVictoryPoints(1),) for section in option.sections
+    )
+    assert intrigue_card_text(entry) == [
+        "Endgame — If you own 2 or more copies of The Spice Must Flow: Gain 1 VP;"
+        " If you own more copies of The Spice Must Flow than each opponent:"
+        " Gain 1 VP"
+    ]
+    assert "corner_the_market" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+# The first condition and the one it shares its count with.
+
+
+def test_the_spice_must_flow_count_takes_every_owned_zone_but_the_trash() -> None:
+    # "전체 보유 The Spice Must Flow(덱·손·discard·in play, trash 제외)를 센다"
+    # (imperium-base.md 13.2, OQ-123 user ruling 2026-10-22).
+    base = _endgame_window(PlayerState(player_id=0))
+    for zone in ("deck", "hand", "discard_pile", "in_play"):
+        state = _seat(base, 0, **{zone: (_tsmf(0), _tsmf(1))})
+        assert _holds(state, SpiceMustFlowCardsAtLeast(2)), zone
+        assert not _holds(state, SpiceMustFlowCardsAtLeast(3)), zone
+    spread = _seat(
+        base,
+        0,
+        deck=(_tsmf(0),),
+        hand=(_tsmf(1),),
+        discard_pile=(_tsmf(2),),
+        in_play=(_tsmf(3),),
+    )
+    assert _holds(spread, SpiceMustFlowCardsAtLeast(4))
+    assert not _holds(spread, SpiceMustFlowCardsAtLeast(5))
+    # A trashed copy has left the game.
+    trashed = _seat(base, 0, deck=(_tsmf(0),), trashed=(_tsmf(1), _tsmf(2)))
+    assert _holds(trashed, SpiceMustFlowCardsAtLeast(1))
+    assert not _holds(trashed, SpiceMustFlowCardsAtLeast(2))
+
+
+def test_the_spice_must_flow_count_takes_both_printings() -> None:
+    # Uprising's Reserve card and the original game's are the same card to a
+    # printed "The Spice Must Flow" (each ruleset sets up one of them; a
+    # seat of a mixed game may own either).
+    base = _endgame_window(PlayerState(player_id=0))
+    mixed = _seat(base, 0, deck=(_tsmf(0, UPRISING_TSMF), _tsmf(0, ORIGINAL_TSMF)))
+    assert _holds(mixed, SpiceMustFlowCardsAtLeast(2))
+    assert not _holds(mixed, SpiceMustFlowCardsAtLeast(3))
+    # Another card whose name merely contains the words is not one.
+    other = _seat(base, 0, deck=("reserve:arrakis_liaison:0", "imperium:x:0"))
+    assert not _holds(other, SpiceMustFlowCardsAtLeast(1))
+
+
+# The new condition.
+
+
+def test_more_spice_must_flow_holds_only_above_every_opponent() -> None:
+    # "상대 하나라도 같거나 많으면 둘째 조건 실패" (imperium-base.md 13.2,
+    # `[FAQ p. 2]`): each opponent is compared separately.
+    ahead = _endgame_window(
+        _tsmf_seat(0, 3), _tsmf_seat(1, 2), _tsmf_seat(2, 1), _tsmf_seat(3, 0)
+    )
+    assert _holds(ahead, MoreSpiceMustFlowThanEachOpponent())
+    # Seat 3 is as far ahead of the others, but not of seat 0.
+    behind_one = _endgame_window(
+        _tsmf_seat(0, 3), _tsmf_seat(1, 2), _tsmf_seat(2, 1), _tsmf_seat(3, 4)
+    )
+    assert not _holds(behind_one, MoreSpiceMustFlowThanEachOpponent())
+    assert _holds(behind_one, MoreSpiceMustFlowThanEachOpponent(), seat=3)
+
+
+def test_more_spice_must_flow_fails_on_a_tie_with_any_one_opponent() -> None:
+    # "같거나 많으면 ... 실패": a tie fails, even when every other opponent
+    # is behind.
+    tied = _endgame_window(
+        _tsmf_seat(0, 3), _tsmf_seat(1, 3), _tsmf_seat(2, 0), _tsmf_seat(3, 0)
+    )
+    assert not _holds(tied, MoreSpiceMustFlowThanEachOpponent())
+    assert not _holds(tied, MoreSpiceMustFlowThanEachOpponent(), seat=1)
+    # Nobody owns one: 0 is not more than 0.
+    none = _endgame_window(*(PlayerState(player_id=seat) for seat in range(4)))
+    assert not _holds(none, MoreSpiceMustFlowThanEachOpponent())
+    # One copy against no copy is more.
+    one = _endgame_window(_tsmf_seat(0, 1))
+    assert _holds(one, MoreSpiceMustFlowThanEachOpponent())
+
+
+def test_more_spice_must_flow_counts_every_owned_zone_but_the_trash() -> None:
+    # The same copies as ``SpiceMustFlowCardsAtLeast`` counts (OQ-123): the
+    # hand and the play area of either seat count, a trashed copy does not.
+    state = _endgame_window(
+        PlayerState(player_id=0, deck=(_tsmf(0),), hand=(_tsmf(1),)),
+        PlayerState(player_id=1, discard_pile=(_tsmf(2),), in_play=(_tsmf(3),)),
+    )
+    assert not _holds(state, MoreSpiceMustFlowThanEachOpponent())  # 2 against 2
+    # A third copy in seat 0's play area tips it ...
+    state = _seat(state, 0, in_play=(_tsmf(4),))
+    assert _holds(state, MoreSpiceMustFlowThanEachOpponent())
+    # ... and a copy trashed from there, instead of in play, does not.
+    state = _seat(state, 0, in_play=(), trashed=(_tsmf(4),))
+    assert not _holds(state, MoreSpiceMustFlowThanEachOpponent())
+    # A trashed opponent copy leaves that opponent behind again.
+    state = _seat(state, 1, in_play=(), trashed=(_tsmf(3),))
+    assert _holds(state, MoreSpiceMustFlowThanEachOpponent())
+
+
+def test_more_spice_must_flow_counts_both_printings() -> None:
+    # Uprising's and the original's card count alike, for the seat and for
+    # each opponent.
+    state = _endgame_window(
+        PlayerState(
+            player_id=0, deck=(_tsmf(0, UPRISING_TSMF), _tsmf(0, ORIGINAL_TSMF))
+        ),
+        PlayerState(player_id=1, deck=(_tsmf(1, UPRISING_TSMF),)),
+    )
+    assert _holds(state, MoreSpiceMustFlowThanEachOpponent())
+    state = _seat(state, 1, hand=(_tsmf(2, ORIGINAL_TSMF),))
+    assert not _holds(state, MoreSpiceMustFlowThanEachOpponent())
+
+
+# The card at the Endgame.
+
+
+def _corner_window(
+    owner_copies: int, *opponent_copies: int, **zones: tuple[str, ...]
+) -> GameState:
+    """The Endgame window with seat 0 holding Corner the Market and
+    ``owner_copies`` of the original's card, the next seats the given ones."""
+
+    owner = _tsmf_seat(0, owner_copies, intrigue_cards=(CORNER,), **zones)
+    return _endgame_window(
+        owner,
+        *(_tsmf_seat(seat, copies) for seat, copies in enumerate(opponent_copies, 1)),
+    )
+
+
+def _corner_vp(state: GameState) -> int:
+    """The Victory Points seat 0 gains by playing the card, 0 if it is not
+    offered."""
+
+    if legal_intrigue_play_actions(state, 0) != (_play(CORNER),):
+        assert legal_intrigue_play_actions(state, 0) == ()
+        return 0
+    done = apply_whole(UprisingRulesEngine(), state, _play(CORNER)).state
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (CORNER,)
+    return done.players[0].victory_points - state.players[0].victory_points
+
+
+def test_corner_the_market_scores_both_lines_when_both_hold() -> None:
+    # Three copies against at most two: at least two AND more than each
+    # opponent, so "두 조건은 따로 1 VP씩" gives 2 VP (imperium-base.md 13.2;
+    # "You'll need three yourself to get 2 Victory Points" [DI p. 20]).
+    state = _corner_window(3, 2, 1, 0)
+    assert legal_intrigue_play_actions(state, 0) == (_play(CORNER),)
+    result = apply_whole(UprisingRulesEngine(), state, _play(CORNER))
+    done = result.state
+    assert done.players[0].victory_points == state.players[0].victory_points + 2
+    assert done.players[0].resources == state.players[0].resources
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (CORNER,)
+    # The window stays open: other cards or the pass may follow.
+    assert done.decision_stack[-1].kind == "endgame_intrigue"
+    assert [event.kind for event in result.events].count("intrigue_played") == 1
+
+
+def test_corner_the_market_scores_only_the_lines_that_hold() -> None:
+    # Two copies, an opponent also with two: "at least two" holds, "more than
+    # each opponent" does not (the tie fails).
+    assert _corner_vp(_corner_window(2, 2, 0, 0)) == 1
+    # One copy against none: only "more than each opponent" holds.
+    assert _corner_vp(_corner_window(1, 0, 0, 0)) == 1
+    # Four copies against five somewhere: only "at least two" holds.
+    assert _corner_vp(_corner_window(4, 1, 5, 0)) == 1
+    # Two copies against one: both hold.
+    assert _corner_vp(_corner_window(2, 1, 0, 0)) == 2
+
+
+def test_corner_the_market_is_not_offered_when_neither_line_holds() -> None:
+    # No conditioned line applies, so the card is not played (imperium-base.md
+    # 16: a condition the card sets is a condition, ``OptionBlock.CONDITION``).
+    # One copy tied with an opponent's, and none at all.
+    for state in (_corner_window(1, 1, 0, 0), _corner_window(0, 0, 0, 0)):
+        assert legal_intrigue_play_actions(state, 0) == ()
+        assert _play(CORNER) not in UprisingRulesEngine().whole_actions(state, 0)
+
+
+def test_corner_the_market_does_not_count_trashed_copies() -> None:
+    # "trash 제외" (imperium-base.md 13.2): three copies of which two were
+    # trashed are one copy, against an opponent with one.
+    state = _corner_window(1, 1, 0, 0, trashed=(_tsmf(10), _tsmf(11)))
+    assert legal_intrigue_play_actions(state, 0) == ()
+    # Two kept copies against that opponent: both lines hold again.
+    state = _corner_window(2, 1, 0, 0, trashed=(_tsmf(10),))
+    assert _corner_vp(state) == 2
+
+
+def test_corner_the_market_counts_the_hand_and_the_play_area() -> None:
+    # OQ-123: a copy in the hand or the play area is owned; the opponents'
+    # counts include theirs.
+    state = _endgame_window(
+        PlayerState(
+            player_id=0,
+            intrigue_cards=(CORNER,),
+            hand=(_tsmf(0),),
+            in_play=(_tsmf(1),),
+            deck=(_tsmf(2),),
+        ),
+        PlayerState(player_id=1, discard_pile=(_tsmf(3),), hand=(_tsmf(4),)),
+    )
+    assert _corner_vp(state) == 2
+    # An opponent's third copy, in its play area, ties the count.
+    tied = _seat(state, 1, in_play=(_tsmf(5),))
+    assert _corner_vp(tied) == 1
+
+
+def test_corner_the_market_follows_the_counts_when_it_is_played() -> None:
+    # "조건은 해결할 때 판정한다" (imperium-base.md 16, OQ-028): the card is
+    # offered only while a line holds at the moment of playing.
+    state = _corner_window(1, 0, 0, 0)
+    assert legal_intrigue_play_actions(state, 0) == (_play(CORNER),)
+    tied = _seat(state, 2, deck=(_tsmf(20),))
+    assert legal_intrigue_play_actions(tied, 0) == ()
+
+
+def test_corner_the_market_is_an_endgame_card_only() -> None:
+    # Endgame Intrigue is played in the Endgame window only `[DI p. 13]`
+    # (imperium-base.md 10): never in an Agent or Reveal turn.
+    _, state = _start()
+    state = _seat(
+        state, intrigue_cards=(CORNER,), deck=(_tsmf(0), _tsmf(1), _tsmf(2))
+    )
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+def test_corner_the_market_may_be_declined_in_the_window() -> None:
+    # Playing is a choice: the seat passes and keeps the card `[DI p. 13]`.
+    state = _corner_window(3, 0, 0, 0)
+    skipped = apply_whole(
+        UprisingRulesEngine(),
+        state,
+        DomainAction(action_id="pass_endgame_intrigue", actor=0),
+    ).state
+    assert skipped.players[0].intrigue_cards == (CORNER,)
+    assert skipped.players[0].victory_points == state.players[0].victory_points
+
+
+def test_corner_the_market_changes_the_final_standings() -> None:
+    # The Victory Points it scores count in the final ranking
+    # (``final_standings``): seat 0 trails seat 1 by one point and passes it.
+    holder = PlayerState(
+        player_id=0,
+        victory_points=8,
+        intrigue_cards=(CORNER,),
+        deck=(_tsmf(0), _tsmf(1)),
+    )
+    rival = PlayerState(player_id=1, victory_points=9)
+    state = _endgame_window(holder, rival)
+    assert [s.player for s in final_standings(state)[:2]] == [1, 0]
+
+    done = apply_whole(UprisingRulesEngine(), state, _play(CORNER)).state
+
+    assert [s.player for s in final_standings(done)[:2]] == [0, 1]
+    assert done.players[0].victory_points == 10

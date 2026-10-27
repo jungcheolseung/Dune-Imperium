@@ -56,6 +56,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueOption,
     LoseInfluence,
     LoseTroops,
+    MoreSpiceMustFlowThanEachOpponent,
     OpponentAllianceInfluenceAtLeast,
     OpponentPlayedCombatIntrigue,
     PassTurn,
@@ -94,7 +95,10 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
-from dune_imperium.rules.conditions import owner_condition_holds
+from dune_imperium.rules.conditions import (
+    owner_condition_holds,
+    spice_must_flow_copies,
+)
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
@@ -261,6 +265,16 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             )
         case AllConditions(conditions=conditions):
             return all(condition_holds(state, player, item) for item in conditions)
+        case MoreSpiceMustFlowThanEachOpponent():
+            # Corner the Market: "상대 하나라도 같거나 많으면 둘째 조건 실패"
+            # (imperium-base.md 13.2, ``[FAQ p. 2]``): each opponent is
+            # compared on its own, so a tie with any one of them fails.
+            copies = spice_must_flow_copies(owner)
+            return all(
+                copies > spice_must_flow_copies(candidate)
+                for candidate in state.players
+                if candidate.player_id != player
+            )
         case OpponentAllianceInfluenceAtLeast(amount=amount):
             return any(
                 influence_amount(owner.influence, faction) >= amount
