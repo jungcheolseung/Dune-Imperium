@@ -394,10 +394,25 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=2,
         acquisition_cost=2,
     ),
+    # App table: cost 5, 1 copy, no Faction, six Agent icons (every one but
+    # Landsraad), Reveal 1 Persuasion. Agent: "Draw 1 card" (its own step,
+    # OQ-106). Reveal: "[P1] [Intrigue card]" -- the Intrigue draw is a step of
+    # the owner's own (OQ-045, OQ-106).
     ImperiumCardEntry(
         card=imperium_card("thufir_hawat", "Thufir Hawat"),
         copies=1,
         acquisition_cost=5,
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+            AgentIcon.CITY,
+            AgentIcon.SPICE_TRADE,
+        ),
+        agent_effect=PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("worm_riders", "Worm Riders"),

@@ -1463,3 +1463,96 @@ def test_stilgar_reveals_two_persuasion_and_three_swords() -> None:
     assert frame["persuasion"] == 2
     assert frame["sword_strength"] == 3
     assert _do(engine, revealed, "finish_reveal").players[0].combat_strength == 2 + 3
+
+
+# --- Thufir Hawat -----------------------------------------------------------------
+
+
+def test_thufir_hawat_matches_the_app_table() -> None:
+    # App attribute table: cost 5, 1 copy, no Faction, Emperor, Spacing Guild,
+    # Bene Gesserit, Fremen, City and Spice Trade (no Landsraad), Reveal 1
+    # Persuasion and no swords.
+    entry = IMPERIUM_CARDS_BY_ID["thufir_hawat"]
+    assert entry.card.name == "Thufir Hawat"
+    assert entry.acquisition_cost == 5
+    assert entry.copies == 1
+    assert entry.factions == ()
+    assert entry.agent_icons == (
+        AgentIcon.EMPEROR,
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.FREMEN,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert entry.agent_effect is PersonalCardAgentEffect.DRAW_PERSONAL_CARD
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:thufir_hawat:0") is entry
+
+
+def test_thufir_hawat_draws_one_card() -> None:
+    """P0 sweep: "AGENT: draw 1"; the draw icon is mandatory and a hidden draw
+    is its own step ([FAQ p. 3], imperium-base.md 16, OQ-106)."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "thufir_hawat")
+    top = state.players[0].deck[0]
+    placed = _place(engine, state, "wealth", "thufir_hawat")
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    assert resolved.players[0].hand == (*placed.players[0].hand, top)
+    assert resolved.players[0].deck == placed.players[0].deck[1:]
+
+
+def test_thufir_hawat_has_no_landsraad_icon() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "thufir_hawat")
+    spaces = {
+        dict(placement.arguments)["space_id"]
+        for placement in executable_placements(state, 0)
+        if ":thufir_hawat:" in str(dict(placement.arguments)["card_id"])
+    }
+    assert {"wealth", "foldspace", "stillsuits", "carthag"} <= spaces
+    assert not {"hall_of_oratory", "rally_troops"} & spaces
+
+
+def _thufir_revealed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    intrigue_deck: tuple[str, ...] = ("intrigue:bribery:0", "intrigue:bribery:1"),
+) -> GameState:
+    held, _ = _with_card(state, "thufir_hawat", alone=True)
+    return _do(engine, replace(held, intrigue_deck=intrigue_deck), "reveal_turn")
+
+
+def test_thufir_hawat_reveals_one_persuasion_and_an_intrigue_card() -> None:
+    """P0 sweep: "REVEAL: P1; draw 1 Intrigue (the owner's own step, OQ-045)":
+    the draw is a row of the Reveal turn (a hidden draw, OQ-106), taken in any
+    order, and it takes the Intrigue deck's top card."""
+
+    engine, state = _start()
+    revealed = _thufir_revealed(engine, state)
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (1, 0)
+    assert "draw_reveal_intrigue" in _ids(engine, revealed)
+    drawn = _do(engine, revealed, "draw_reveal_intrigue")
+    assert drawn.players[0].intrigue_cards == (
+        *revealed.players[0].intrigue_cards,
+        "intrigue:bribery:0",
+    )
+    assert drawn.intrigue_deck == ("intrigue:bribery:1",)
+    assert "draw_reveal_intrigue" not in _ids(engine, drawn)
+
+
+def test_thufir_hawat_with_no_intrigue_card_left_draws_nothing() -> None:
+    """With the Intrigue deck and its discard pile both empty the draw row
+    still settles (the engine's Intrigue draw, shared with every Reveal
+    Intrigue draw) and the owner's Intrigue cards are unchanged."""
+
+    engine, state = _start()
+    revealed = _thufir_revealed(engine, state, intrigue_deck=())
+    drawn = _do(engine, revealed, "draw_reveal_intrigue")
+    assert drawn.players[0].intrigue_cards == revealed.players[0].intrigue_cards
+    assert drawn.intrigue_deck == ()
+    assert "draw_reveal_intrigue" not in _ids(engine, drawn)
