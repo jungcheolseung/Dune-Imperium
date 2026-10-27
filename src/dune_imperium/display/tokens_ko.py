@@ -497,6 +497,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     # The original game's Imperium cards (stage P3): the effect text the
     # engine generates, glossary words only (no Korean card source yet).
     PersonalCardAgentEffect.RECRUIT_ONE_TROOP: "{troop:1}",
+    (
+        PersonalCardAgentEffect
+        .MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+    ): "{spice:2} 지불 가능 {arrow_right} {influence_spacing_guild:1}, {solari:3}",
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box

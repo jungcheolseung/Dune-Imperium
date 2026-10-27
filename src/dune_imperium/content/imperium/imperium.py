@@ -22,6 +22,7 @@ lists Uprising's own cards iterates ``IMPERIUM_CARDS`` instead.
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
 
@@ -49,6 +50,23 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         acquisition_cost=2,
         agent_icons=(AgentIcon.CITY,),
         agent_effect=PersonalCardAgentEffect.RECRUIT_ONE_TROOP,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
+    # App table: cost 2, 2 copies, Spacing Guild, City, Reveal 1 Persuasion and
+    # 1 sword. Agent: "[2 spice] -> [Spacing Guild Influence] [3 Solari]", an
+    # optional arrow cost paid once [DI p. 9] [FAQ p. 3].
+    ImperiumCardEntry(
+        card=imperium_card("spice_smugglers", "Spice Smugglers"),
+        copies=2,
+        acquisition_cost=2,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=(
+            PersonalCardAgentEffect
+            .MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+        ),
         reveal_persuasion=1,
         reveal_strength=1,
         play_data_complete=True,

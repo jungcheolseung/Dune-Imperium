@@ -440,6 +440,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         ),
         # The original game's Imperium cards (stage P3).
         PersonalCardAgentEffect.RECRUIT_ONE_TROOP: "Recruit 1 troop",
+        (
+            PersonalCardAgentEffect
+            .MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+        ): "You may pay 2 spice → Gain 1 Spacing Guild Influence, Gain 3 Solari",
     }
 )
 

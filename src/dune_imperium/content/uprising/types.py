@@ -315,6 +315,11 @@ class PersonalCardAgentEffect(StrEnum):
     # The original game's Imperium cards (stage P3).
     # Arrakis Recruiter: the troop icon alone, "Recruit 1 troop".
     RECRUIT_ONE_TROOP = "recruit_one_troop"
+    # Spice Smugglers: "[2 spice] -> [Spacing Guild Influence] [3 Solari]"; the
+    # arrow cost is optional and paid once [DI p. 9] [FAQ p. 3].
+    MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI = (
+        "may_pay_two_spice_for_spacing_guild_influence_and_three_solari"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

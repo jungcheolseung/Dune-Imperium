@@ -10,6 +10,7 @@ from dataclasses import replace
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
@@ -19,6 +20,7 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    Influence,
     Resources,
 )
 from dune_imperium.rules import UprisingRulesEngine
@@ -165,6 +167,133 @@ def test_arrakis_recruiter_troop_deploys_at_a_combat_space() -> None:
 def test_arrakis_recruiter_reveals_one_persuasion_and_one_sword() -> None:
     engine, state = _start()
     state, _ = _with_card(state, "arrakis_recruiter", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 1
+    assert frame["sword_strength"] == 1
+
+
+# --- Spice Smugglers --------------------------------------------------------------
+
+
+def _smugglers_placed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    influence: Influence | None = None,
+) -> GameState:
+    """Seat 0 sends Spice Smugglers to Research Station (a City space; its
+    two water are paid) with 3 spice, 1 Solari and the given Influence."""
+
+    held, _ = _with_card(state, "spice_smugglers")
+    seated = _seat(
+        held,
+        resources=Resources(water=2, spice=3, solari=1),
+        influence=influence or Influence(),
+    )
+    return _place(engine, seated, "imperium_research_station", "spice_smugglers")
+
+
+def test_spice_smugglers_matches_the_app_table() -> None:
+    # App attribute table: cost 2, 2 copies, Spacing Guild, City, Reveal 1
+    # Persuasion and 1 sword.
+    entry = IMPERIUM_CARDS_BY_ID["spice_smugglers"]
+    assert entry.card.name == "Spice Smugglers"
+    assert entry.acquisition_cost == 2
+    assert entry.copies == 2
+    assert entry.factions == (Faction.SPACING_GUILD,)
+    assert entry.agent_icons == (AgentIcon.CITY,)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 1)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:spice_smugglers:1") is entry
+
+
+def test_spice_smugglers_pays_two_spice_for_influence_and_three_solari() -> None:
+    """"비용 화살표" [DI p. 16]: the arrow's cost is paid for its reward. Two
+    spice buy one Spacing Guild Influence and 3 Solari."""
+
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state)
+    before = placed.players[0]
+    assert "pay_agent_card_spice" in _ids(engine, placed)
+    paid = _do(engine, placed, "pay_agent_card_spice")
+    after = paid.players[0]
+    assert after.resources.spice == before.resources.spice - 2
+    assert after.resources.solari == before.resources.solari + 3
+    assert after.influence.spacing_guild == before.influence.spacing_guild + 1
+    assert after.influence == replace(before.influence, spacing_guild=1)
+    assert after.spice_spent_turn == before.spice_spent_turn + 2
+
+
+def test_spice_smugglers_arrow_is_paid_once() -> None:
+    """"An arrow cost is optional [DI p. 9] and paid once [FAQ p. 3]": with
+    spice for a second payment the arrow is no longer offered."""
+
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state)
+    rich = _seat(placed, resources=replace(placed.players[0].resources, spice=6))
+    paid = _do(engine, rich, "pay_agent_card_spice")
+    assert paid.players[0].resources.spice == 4
+    assert "pay_agent_card_spice" not in _ids(engine, paid)
+
+
+def test_spice_smugglers_arrow_is_optional() -> None:
+    """The arrow cost is optional [DI p. 9]: the owner who does not pay ends
+    the turn with spice, Solari and Influence as they were."""
+
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state)
+    before = placed.players[0]
+    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    assert "pay_agent_card_spice" in _ids(engine, resolved)
+    finished = _do(engine, resolved, "finish_agent_turn")
+    after = finished.players[0]
+    assert after.resources.spice == before.resources.spice
+    assert after.resources.solari == before.resources.solari
+    assert after.influence == before.influence
+
+
+def test_spice_smugglers_needs_two_spice_to_pay() -> None:
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state)
+    poor = _seat(placed, resources=replace(placed.players[0].resources, spice=1))
+    assert "pay_agent_card_spice" not in _ids(engine, poor)
+    exact = _seat(placed, resources=replace(placed.players[0].resources, spice=2))
+    paid = _do(engine, exact, "pay_agent_card_spice")
+    assert paid.players[0].resources.spice == 0
+
+
+def test_spice_smugglers_at_the_top_of_the_track_still_pays_its_solari() -> None:
+    """"비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다" (imperium-base.md
+    16, OQ-071): the 3 Solari are a reward, so the arrow is offered with the
+    Spacing Guild cube at 6. The Influence gain there is dropped: "엔진은 처음부터
+    6에 있는 cube에 대한 Influence 획득을 버린다" (OQ-060)."""
+
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state, Influence(spacing_guild=6))
+    before = placed.players[0]
+    assert "pay_agent_card_spice" in _ids(engine, placed)
+    after = _do(engine, placed, "pay_agent_card_spice").players[0]
+    assert after.influence.spacing_guild == 6
+    assert after.resources.solari == before.resources.solari + 3
+    assert after.resources.spice == before.resources.spice - 2
+
+
+def test_spice_smugglers_influence_takes_the_normal_influence_path() -> None:
+    # "처음 4에 도달한 플레이어가 Alliance token과 그 VP를 얻고" [DI p. 7]
+    # (imperium-base.md 6): the paid Influence is an ordinary Faction gain.
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state, Influence(spacing_guild=3))
+    assert placed.players[0].alliance_faction_ids == ()
+    paid = _do(engine, placed, "pay_agent_card_spice")
+    assert paid.players[0].influence.spacing_guild == 4
+    assert paid.players[0].alliance_faction_ids == ("spacing_guild",)
+
+
+def test_spice_smugglers_reveals_one_persuasion_and_one_sword() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "spice_smugglers", alone=True)
     frame = _reveal(engine, state)
     assert frame["persuasion"] == 1
     assert frame["sword_strength"] == 1
