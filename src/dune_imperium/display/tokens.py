@@ -461,6 +461,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If you have 2 or more Spacing Guild Influence: Draw 2 cards"
         ),
         PersonalCardAgentEffect.GAIN_TWO_SPICE: "Gain 2 spice",
+        PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: (
+            "Choose one: Gain 1 Spacing Guild Influence / Gain 2 spice"
+        ),
     }
 )
 
@@ -620,6 +623,12 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             ),
             PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
                 "You may pay 6 solari → Gain 1 Victory Point"
+            ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE
+            ): (
+                "Spacing Guild Alliance: You may pay 3 spice → Gain 1 Victory Point"
             ),
             PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
                 "Choose one: Gain 5 solari / "

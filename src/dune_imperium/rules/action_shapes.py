@@ -689,6 +689,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "pay_reveal_spice_influence": _row(_V.PAY, _S.REVEAL_CARD, _T.FACTION),
     "pay_reveal_solari_for_vp": _row(_V.PAY, _S.REVEAL_CARD, variant="solari_for_vp"),
+    "pay_reveal_spice_for_vp": _row(_V.PAY, _S.REVEAL_CARD, variant="spice_for_vp"),
     "pay_reveal_water_for_sandworm": _row(
         _V.PAY, _S.REVEAL_CARD, variant="water_for_sandworm"
     ),

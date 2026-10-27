@@ -231,10 +231,23 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
+    # App table: cost 4, 1 copy, Spacing Guild, Landsraad, no fixed Reveal
+    # values (tag SpacingGuildAlliance). Agent: "[Spacing Guild Influence] -OR-
+    # [2 spice]", a printed -OR- the owner must settle (P0 sweep). Reveal:
+    # "Spacing Guild Alliance: [3 spice] -> [1 Victory Point]" -- an optional
+    # arrow paid once [DI p. 9] [FAQ p. 3], the Alliance judged at resolution
+    # (OQ-028).
     ImperiumCardEntry(
         card=imperium_card("guild_ambassador", "Guild Ambassador"),
         copies=1,
         acquisition_cost=4,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        agent_effect=PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("guild_bankers", "Guild Bankers"),

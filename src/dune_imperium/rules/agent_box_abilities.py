@@ -3095,9 +3095,7 @@ def either_box(ability: Ability | None) -> bool:
     ):
         return False
     plain, choice = ability.sections
-    if len(choice.rewards) != 1 or choice.condition is None:
-        # The choice line is printed under a condition of its own; two plain
-        # lines resolve as one action.
+    if len(choice.rewards) != 1:
         return False
     if ability.structure is not AbilityStructure.ONE_OF:
         # Two lines both paid resolve icon by icon (OQ-027 extension 3).

@@ -220,6 +220,19 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                 _line(GainVictoryPoints(1), costs=(PayResources(solari=6),)),
                 mark=_OPTIONAL,
             ),
+            # Guild Ambassador (original game): "Spacing Guild Alliance: [3
+            # spice] -> [1 Victory Point]" -- an optional arrow paid once, the
+            # Alliance judged whenever its row is asked (OQ-028).
+            _CHOICE.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE: (
+                _choice(
+                    _line(
+                        GainVictoryPoints(1),
+                        costs=(PayResources(spice=3),),
+                        condition=HasAlliance(Faction.SPACING_GUILD),
+                    ),
+                    mark=_OPTIONAL,
+                )
+            ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
             _CHOICE.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: _choice(

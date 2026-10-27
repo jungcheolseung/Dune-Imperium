@@ -516,6 +516,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "{influence_spacing_guild} 2 이상이면: {draw:2}"
     ),
     PersonalCardAgentEffect.GAIN_TWO_SPICE: "{spice:2}",
+    PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: (
+        "하나 선택: {influence_spacing_guild:1} / {spice:2}"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box
@@ -647,6 +650,13 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     ),
     PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
         "{solari:6} 지불 가능 {arrow_right} {victory_point:1}"
+    ),
+    (
+        PersonalCardRevealChoiceEffect
+        .MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE
+    ): (
+        "우주 항행 길드 {alliance}: {spice:3} 지불 가능 {arrow_right} "
+        "{victory_point:1}"
     ),
     PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
         "하나 선택: {solari:5} / {solari:5} 지불 {arrow_right} 원로회 자리 차지"

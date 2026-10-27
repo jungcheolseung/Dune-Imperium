@@ -338,9 +338,14 @@ class PersonalCardAgentEffect(StrEnum):
     # Smuggler's Thopter: "[Spacing Guild] 2 Influence: [draw 1] [draw 1]", two
     # draw icons each judged when it resolves (OQ-027, OQ-028).
     DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO = "draw_two_if_spacing_guild_influence_two"
-
     # Worm Riders: the spice icon with a 2, "Gain 2 spice".
     GAIN_TWO_SPICE = "gain_two_spice"
+    # Guild Ambassador: "[Spacing Guild Influence] -OR- [2 spice]", a printed
+    # -OR- the owner must settle.
+    GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE = (
+        "gain_spacing_guild_influence_or_two_spice"
+    )
+
 
 class PersonalCardTrashEffect(StrEnum):
     """Typed effects triggered when a personal card is trashed."""
@@ -496,6 +501,11 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # Opulence: "[6 Solari] -> [1 Victory Point]", an optional arrow paid once
     # [DI p. 9] [FAQ p. 3].
     MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT = "may_pay_six_solari_for_victory_point"
+    # Guild Ambassador: "Spacing Guild Alliance: [3 spice] -> [1 Victory
+    # Point]", an optional arrow paid once [DI p. 9] [FAQ p. 3].
+    MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE = (
+        "may_pay_three_spice_for_victory_point_if_spacing_guild_alliance"
+    )
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -523,6 +533,7 @@ IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = froz
         PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,
         PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
         PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT,
+        PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE,
     }
 )
 

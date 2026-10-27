@@ -162,8 +162,8 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # 103 Uprising-family boxes, the original game's Foldspace and the
     # original Imperium cards' new boxes (stage P3: Arrakis Recruiter, Spice
     # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence,
-    # Smuggler's Thopter, Worm Riders).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 9
+    # Smuggler's Thopter, Worm Riders, Guild Ambassador).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 10
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -1136,7 +1136,8 @@ def test_control_the_spice_is_a_payment_box() -> None:
 
 
 def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
-    """Composed A3f: Southern Faith and High Priority Travel ("Choose one").
+    """Composed A3f: Southern Faith and High Priority Travel ("Choose one"), and
+    Guild Ambassador's "-OR-" (stage P3).
     The plain line resolves as one action; Possible Futures, whose Bond
     turns its choice into both, is a hook. Interstellar Conspiracy, a plain
     line then a conditioned choice that once paid both, resolves icon by
@@ -1154,6 +1155,9 @@ def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
         _BOX.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO: (
             AbilityStructure.ONE_OF
         ),
+        # Guild Ambassador (the original game, stage P3): the 2 spice beside a
+        # fixed Faction's Influence, the choice line printed under no condition.
+        _BOX.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: AbilityStructure.ONE_OF,
     }
     assert AGENT_BOX_ABILITIES[conspiracy].icons == ("spice", "influence")
     futures = AGENT_BOX_ABILITIES[_BOX.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND]

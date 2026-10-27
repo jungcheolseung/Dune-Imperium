@@ -88,6 +88,7 @@ const LABELS_EN = {
     "pay_leader_signet_spice": "Pay {spice} ({signet_ring})",
     "pay_reveal_spice_influence": "3 {spice} -> {influence_any}",
     "pay_reveal_solari_for_vp": "6 {solari} -> 1 {victory_point}",
+    "pay_reveal_spice_for_vp": "3 {spice} -> 1 {victory_point}",
     "pay_reveal_water_for_sandworm": "1 {water} -> {sandworm}",
     "pick_leader": "Choose {leader}",
     "finish_leader_draft": "Confirm Leader choice",

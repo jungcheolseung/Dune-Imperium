@@ -131,8 +131,11 @@ def test_arrakis_recruiter_matches_the_app_table() -> None:
     assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 1)
     assert entry.play_data_complete
     assert personal_card_for_instance("imperium:arrakis_recruiter:1") is entry
-    # The deck lists no original card until stage P3a (plan 16.1).
-    assert not any("arrakis_recruiter" in card for card in _start()[1].imperium_deck)
+    # A finished card is in the original game's deck or Row (plan 16.1); which
+    # of the two depends on the setup shuffle.
+    start = _start()[1]
+    held = (*start.imperium_deck, *start.imperium_row)
+    assert any("arrakis_recruiter" in card for card in held)
 
 
 def test_arrakis_recruiter_recruits_one_troop() -> None:
@@ -1927,3 +1930,172 @@ def test_worm_riders_reveal_text_names_its_two_conditions() -> None:
         "{influence_fremen} 2 이상이면: +{sword:4}",
         "프레멘 {alliance}이면: +{sword:2}",
     ]
+
+
+# --- Guild Ambassador -------------------------------------------------------------
+
+
+def test_guild_ambassador_matches_the_app_table() -> None:
+    # App attribute table: cost 4, 1 copy, Spacing Guild, Landsraad, no fixed
+    # Reveal values (tag SpacingGuildAlliance).
+    entry = IMPERIUM_CARDS_BY_ID["guild_ambassador"]
+    assert entry.card.name == "Guild Ambassador"
+    assert entry.acquisition_cost == 4
+    assert entry.copies == 1
+    assert entry.factions == (Faction.SPACING_GUILD,)
+    assert entry.agent_icons == (AgentIcon.LANDSRAAD,)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE,
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:guild_ambassador:0") is entry
+
+
+def _ambassador_placed(
+    engine: UprisingRulesEngine, state: GameState, guild: int = 0
+) -> GameState:
+    """Seat 0 sends Guild Ambassador to Hall of Oratory (a Landsraad space, no
+    cost) holding ``guild`` Spacing Guild Influence and no spice."""
+
+    held, _ = _with_card(state, "guild_ambassador")
+    seated = _seat(
+        held, resources=Resources(), influence=Influence(spacing_guild=guild)
+    )
+    return _place(engine, seated, "hall_of_oratory", "guild_ambassador")
+
+
+def test_guild_ambassador_must_pick_influence_or_two_spice() -> None:
+    """"-OR-" is a must-pick-one choice (P0 sweep: "choose one (must)";
+    imperium-base.md 16, OQ-058 for the same shape on Intrigue): both the
+    Spacing Guild Influence and the 2 spice are offered, and the turn cannot
+    finish before one is taken."""
+
+    engine, state = _start()
+    placed = _ambassador_placed(engine, state, guild=1)
+    ids = _ids(engine, placed)
+    assert {"resolve_agent_card_effect", "choose_agent_card_influence"} <= ids
+    assert "finish_agent_turn" not in ids
+    influence_rows = [
+        dict(action.arguments)["faction"]
+        for action in _wholes(engine, placed)
+        if action.action_id == "choose_agent_card_influence"
+    ]
+    assert influence_rows == ["spacing_guild"]
+
+
+def test_guild_ambassador_two_spice_branch() -> None:
+    engine, state = _start()
+    placed = _ambassador_placed(engine, state, guild=1)
+    before = placed.players[0]
+    chosen = _do(engine, placed, "resolve_agent_card_effect")
+    after = chosen.players[0]
+    assert after.resources.spice == before.resources.spice + 2
+    assert after.influence.spacing_guild == before.influence.spacing_guild
+    # The other alternative is gone.
+    assert "choose_agent_card_influence" not in _ids(engine, chosen)
+    assert "resolve_agent_card_effect" not in _ids(engine, chosen)
+
+
+def test_guild_ambassador_influence_branch() -> None:
+    engine, state = _start()
+    placed = _ambassador_placed(engine, state, guild=1)
+    before = placed.players[0]
+    chosen = _do(
+        engine, placed, "choose_agent_card_influence", faction="spacing_guild"
+    )
+    after = chosen.players[0]
+    assert after.influence.spacing_guild == before.influence.spacing_guild + 1
+    assert after.resources.spice == before.resources.spice
+    assert "resolve_agent_card_effect" not in _ids(engine, chosen)
+    assert "choose_agent_card_influence" not in _ids(engine, chosen)
+
+
+def test_guild_ambassador_at_the_top_of_the_track_offers_the_spice_alone() -> None:
+    """"6칸 진영은 Influence를 내지 않는다(OQ-060)" (imperium-base.md 16): at 6
+    the Influence option gains nothing, so only the 2 spice remain."""
+
+    engine, state = _start()
+    placed = _ambassador_placed(engine, state, guild=6)
+    ids = _ids(engine, placed)
+    assert "choose_agent_card_influence" not in ids
+    assert "resolve_agent_card_effect" in ids
+    chosen = _do(engine, placed, "resolve_agent_card_effect")
+    assert chosen.players[0].resources.spice == 2
+    assert chosen.players[0].influence.spacing_guild == 6
+
+
+def _ambassador_revealed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    spice: int,
+    *,
+    alliance: bool,
+) -> GameState:
+    """Seat 0 reveals Guild Ambassador alone holding ``spice`` spice, with or
+    without the Spacing Guild Alliance."""
+
+    held, instance = _with_card(state, "guild_ambassador", alone=True)
+    held = _seat(
+        held,
+        resources=Resources(spice=spice),
+        alliance_faction_ids=("spacing_guild",) if alliance else (),
+    )
+    return _do(engine, held, "reveal_turn")
+
+
+def test_guild_ambassador_reveals_no_persuasion_or_swords() -> None:
+    engine, state = _start()
+    revealed = _ambassador_revealed(engine, state, 3, alliance=True)
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (0, 0)
+
+
+def test_guild_ambassador_pays_three_spice_for_a_victory_point() -> None:
+    """"비용 화살표" [DI p. 16] (imperium-base.md 11): with the Spacing Guild
+    Alliance three spice buy one Victory Point, once (the choice is used up)."""
+
+    engine, state = _start()
+    revealed = _ambassador_revealed(engine, state, 3, alliance=True)
+    before = revealed.players[0]
+    assert "pay_reveal_spice_for_vp" in _ids(engine, revealed)
+    paid = _do(engine, revealed, "pay_reveal_spice_for_vp")
+    after = paid.players[0]
+    assert after.resources.spice == before.resources.spice - 3
+    assert after.victory_points == before.victory_points + 1
+    assert "pay_reveal_spice_for_vp" not in _ids(engine, paid)
+
+
+def test_guild_ambassador_needs_the_alliance() -> None:
+    """"Alliance 조건" [DI p. 16] (11): without the Spacing Guild Alliance
+    the payment is not offered, however much spice is held."""
+
+    engine, state = _start()
+    revealed = _ambassador_revealed(engine, state, 9, alliance=False)
+    assert "pay_reveal_spice_for_vp" not in _ids(engine, revealed)
+    finished = _do(engine, revealed, "finish_reveal")
+    assert finished.players[0].resources.spice == 9
+
+
+def test_guild_ambassador_needs_three_spice_to_pay() -> None:
+    engine, state = _start()
+    revealed = _ambassador_revealed(engine, state, 2, alliance=True)
+    assert "pay_reveal_spice_for_vp" not in _ids(engine, revealed)
+    assert _do(engine, revealed, "finish_reveal").players[0].victory_points == (
+        revealed.players[0].victory_points
+    )
+
+
+def test_guild_ambassador_arrow_is_optional() -> None:
+    """The arrow cost is optional [DI p. 9] ("You do not have to pay such a
+    cost on a card" [Main p. 20]): the Reveal ends with no refusal needed."""
+
+    engine, state = _start()
+    revealed = _ambassador_revealed(engine, state, 3, alliance=True)
+    before = revealed.players[0]
+    finished = _do(engine, revealed, "finish_reveal")
+    assert finished.players[0].resources.spice == 3
+    assert finished.players[0].victory_points == before.victory_points

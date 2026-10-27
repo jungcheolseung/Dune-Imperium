@@ -926,6 +926,20 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             # Worm Riders (original game): two spice.
             _BOX.GAIN_TWO_SPICE: _box(GainResources(spice=2)),
+            # Guild Ambassador (original game): "[Spacing Guild Influence] -OR-
+            # [2 spice]" -- a printed -OR- the owner must settle (the P0
+            # sweep's "choose one (must)"; Southern Faith's plain-beside-choice
+            # shape). The 2 spice is the plain line, the Influence the choice
+            # line; a track at 6 gains nothing (OQ-060), so only the spice is
+            # then offered.
+            _BOX.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(GainResources(spice=2)),
+                    _line(GainInfluence(factions=(Faction.SPACING_GUILD,))),
+                ),
+                structure=AbilityStructure.ONE_OF,
+            ),
         }
     )
 )
