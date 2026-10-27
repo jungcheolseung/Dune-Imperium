@@ -55,8 +55,8 @@ from dune_imperium.adapters.observation_encoding import (
 from dune_imperium.content.bloodlines.tech import TECH_IDS
 from dune_imperium.content.immortality.board import TLEILAXU_TRACK_END
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
-from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
-from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
+from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
+from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.tactics import TACTICS_TRACK_END, TACTICS_TRACK_START
@@ -210,10 +210,12 @@ def _relative_seat(name: str, segment: str, columns: tuple[int, ...]) -> SlotFie
 
 
 def _build_fields() -> tuple[SlotField, ...]:
-    imperium = tuple(IMPERIUM_CARDS_BY_ID)
+    # Uprising's own cards; the merged lookup tables also hold the original
+    # game's (stage P3, plan 16.4).
+    imperium = tuple(entry.card.card_id for entry in IMPERIUM_CARDS)
     tleilaxu = tuple(TLEILAXU_CARDS_BY_ID)
     navigation = tuple(
-        card_id for card_id, entry in INTRIGUE_CARDS_BY_ID.items() if entry.navigation
+        entry.card.card_id for entry in INTRIGUE_CARDS if entry.navigation
     )
     phase_levels = tuple(
         (index, phase)

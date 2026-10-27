@@ -54,9 +54,9 @@ from dune_imperium.content.uprising.contracts import (
     CONTRACTS_BY_ID,
     contract_for_instance,
 )
-from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
+from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.intrigue import (
-    INTRIGUE_CARDS_BY_ID,
+    INTRIGUE_CARDS,
     INTRIGUE_CARDS_BY_INSTANCE,
 )
 from dune_imperium.content.uprising.leaders import FEYD_TRACK_BY_ID, LEADERS
@@ -195,7 +195,8 @@ PERSONAL_CARD_IDS: Final = (
         if card_id != CONTROL_THE_SPICE.card.card_id
     ),
     *(stack.card.card_id for stack in RESERVE_STACKS),
-    *IMPERIUM_CARDS_BY_ID,
+    # Uprising's own cards: the original game's join at stage P3a (plan 16.4).
+    *(entry.card.card_id for entry in IMPERIUM_CARDS),
     # Immortality: the Tleilaxu deck (its promo included) joins the
     # personal-card universe; Reclaimed Forces never enters a deck.
     *TLEILAXU_CARDS_BY_ID,
@@ -206,7 +207,7 @@ PERSONAL_CARD_IDS: Final = (
     *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
 )
 RESEARCH_SPACE_IDS: Final = tuple(RESEARCH_SPACES_BY_ID)
-INTRIGUE_IDS: Final = tuple(INTRIGUE_CARDS_BY_ID)
+INTRIGUE_IDS: Final = tuple(entry.card.card_id for entry in INTRIGUE_CARDS)
 CONTRACT_IDS: Final = tuple(CONTRACTS_BY_ID)
 # The segments with one column per CONTRACT_IDS identity, in that order
 # (checkpoint migration re-links them by identity across versions).

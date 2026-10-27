@@ -1552,11 +1552,21 @@ def intrigue_deck_instance_ids(
     )
 
 
-INTRIGUE_CARDS_BY_ID: Final = {entry.card.card_id: entry for entry in INTRIGUE_CARDS}
+# The original game's cards resolve here too (stage P3, plan 16): these are
+# lookup tables across both base games; code that lists Uprising's own cards
+# iterates ``INTRIGUE_CARDS``.
+from dune_imperium.content.imperium.intrigue import (  # noqa: E402
+    IMPERIUM_INTRIGUE_CARDS,
+)
+
+INTRIGUE_CARDS_BY_ID: Final = {
+    entry.card.card_id: entry
+    for entry in (*INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS)
+}
 # Every physical copy of every identity, whatever the setup includes.
 INTRIGUE_CARDS_BY_INSTANCE: Final = {
     f"intrigue:{entry.card.card_id}:{copy}": entry
-    for entry in INTRIGUE_CARDS
+    for entry in (*INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS)
     for copy in range(entry.copies)
 }
 

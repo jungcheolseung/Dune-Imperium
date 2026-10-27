@@ -1863,7 +1863,16 @@ IMPERIUM_CARDS: Final = (
     ),
 )
 
-IMPERIUM_CARDS_BY_ID: Final = {entry.card.card_id: entry for entry in IMPERIUM_CARDS}
+# The original game's cards resolve here too (stage P3, plan 16): this is a
+# lookup table across both base games, as ``BOARD_SPACES_BY_ID`` is; code that
+# lists Uprising's own cards iterates ``IMPERIUM_CARDS``.
+from dune_imperium.content.imperium.imperium import (  # noqa: E402
+    IMPERIUM_BASE_CARDS,
+)
+
+IMPERIUM_CARDS_BY_ID: Final = {
+    entry.card.card_id: entry for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS)
+}
 
 
 def imperium_cards_for_choam(
