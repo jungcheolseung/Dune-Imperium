@@ -864,9 +864,37 @@ Orca 작업자가 멈춘 P2a(커밋 안 된 30파일)를 이어 받아 끝냈다
 - 들인 것: 벽시계로 약 7분(00:59 worktree 준비 ~ 01:06, 계획 읽기 포함 — 도구 호출이 빠른 일), 대조 표 읽기 약 2.4만 토큰.
 - **추천:** 채택. 전사 agent에게 그 카드의 초안 줄을 P0 merged effect와 함께 준다. 고친 수를 16.7에서 잰다.
 
-### 16.7 시범 전사 5장과 갈래 나누기 (D5, 11절 4)
+### 16.7 시범 전사 5장과 갈래 나누기 (D5, 11절 4; 2026-10-28 01:15~01:44)
 
-(진행 중 — 결과를 여기에 적는다.)
+틀(`5cbfcca1`: 빈 원판 카드 표, 합친 조회 표, 관측·덱은 그대로)에서 card-implementer(Sonnet) 둘을 갈래마다 worktree 하나씩 동시에 돌렸다.
+갈래는 종류로 나눴다: Imperium 셋(`claude/base-ix-p3-imperium`), Intrigue 둘(`claude/base-ix-p3-intrigue`). agent마다 그 카드의 변환기 초안 줄,
+P0 merged effect의 자리, 규칙 인용을 줬다.
+
+| 카드 | 벽시계 | 변환기 초안과의 차이 |
+| --- | --- | --- |
+| Arrakis Recruiter | 11.4분(첫 카드, 틀 읽기 포함) | 조각·숫자 그대로. Agent box 효과 값 하나(`RECRUIT_ONE_TROOP`)를 enum 끝에 더함 |
+| Spice Smugglers | 5.4분 | 조각 그대로 + 화살표의 OPTIONAL 표시. 지불 실행기가 Influence 보상을 몰라 `apply_payment`에 더함(공유 코드) |
+| Gun Thopter | 10.5분 | TEXT 둘을 기존 조각의 변형으로: `EachOpponentLosesTroop(garrison_only=True)`(손실 창이 garrison만 보임, garrison이 빈 상대는 영향 없음 `[FAQ p. 2]`)과 Reveal 고르기 `MAY_DEPLOY_ONE_TROOP`(Shadout Mapes 기록의 배치 반쪽). 손실 창·Reveal 고르기·codec 행(원판 카탈로그에서 아직 뺌)을 고침 |
+| Bribery | 8.5분(첫 카드) | 그대로(감싸기만) |
+| Master Tactician | 3.8분 | ONE_OF → 배타 option 둘(OQ-058), TEXT → `RetreatTroops(0, 3)`("up to"는 0 허용 `[FAQ p. 3]`), 표시 문구 "Retreat up to 3 troops" |
+
+- **토큰:** Imperium agent 39.2만(도구 162번, 28.7분), Intrigue agent 19.1만(64번, 12.7분). 카드당 평균 약 11.7만(Imperium 약 13만, Intrigue 약
+  9.5만). 계정 주간 사용량은 시범 앞뒤로 58% 그대로(5시간 창 2→4%) — Sonnet agent 토큰은 주간 한도에 거의 닿지 않았다.
+- **변환기 초안을 고친 횟수:** 5장 가운데 아이콘·숫자를 고친 것 0. 초안을 그대로 쓴 것 3(감싸기·표시만), TEXT를 조각으로 바꾼 것 2(Gun Thopter 둘,
+  Master Tactician 하나). 구조를 바꾼 것 1(Master Tactician의 ONE_OF를 배타 option으로 — 같은 뜻).
+- **갈래 합치기(11절 4):** 충돌 **0**. Imperium 갈래 19파일, Intrigue 갈래 3파일, 둘 다 고친 파일은 `display/effect_dsl_text.py` 하나(다른 자리라 자동
+  합침). Imperium agent가 미리 짚은 위험: 같은 종류 갈래 둘이면 enum 끝과 기록 수를 고정한 테스트(`test_agent_box_abilities.py`)에서 충돌한다 — 그래서
+  갈래는 종류로 나누고 같은 종류 둘을 동시에 돌리지 않는다.
+- **합친 뒤 내가 본 것:** Uprising codec 카탈로그 144개 차이 0, Uprising 특성 405행 차이 0, 관측 구간·`FEATURE_DIGEST`가 P2 끝과 같음(`catalog_digest.py`·
+  `compare_features.py`). 표적 테스트 1,404개 통과(`-n 2`). 실수로 전체 테스트를 `-n 2`로 돌려(10분, 8,704개) agent가 못 본 실패 둘을 찾았다: 서버 카탈로그
+  테스트가 합친 표를 돌던 것, Gun Thopter의 새 안내 문구 둘에 한국어가 없던 것(`de488de7`). 교훈: agent의 표적 테스트에 `tests/server`의 카탈로그·i18n을
+  넣는다.
+- **리뷰에서 남긴 것:** Spice Smugglers의 지불이 Solari 사건을 Influence 사건보다 먼저 낸다(인쇄는 Influence 먼저). 결과는 서로 기대지 않으나 원칙대로라면
+  인쇄 순서다 — 다음 묶음 전에 실행기를 인쇄 순서로 고칠지 본다. Gun Thopter의 Reveal 배치 "may"는 카드 문구(앱)가 근거이고 규칙 문서에 따로 줄이 없다.
+- **어림(남은 69장: 80 − 시범 5 − 프로모 3 − OQ-139 셋):** 카드당 약 7분·12만 토큰이면 agent 둘로 약 4~5시간, agent 토큰 약 800만. 새 조각이 필요한
+  카드(16.4)는 이보다 길다.
+- **추천:** 변환기 채택(초안 줄을 agent 입력에), 갈래 나누기 채택(종류별 둘), 첫 카드의 틀 읽기 비용을 줄이려고 agent 하나가 같은 종류 카드 여러 장을
+  이어서 맡는다.
 
 ### 16.8 사용자에게 묻는 것
 
