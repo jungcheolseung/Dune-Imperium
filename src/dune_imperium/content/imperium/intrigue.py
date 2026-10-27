@@ -16,6 +16,7 @@ cards iterates ``INTRIGUE_CARDS`` instead.
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     EffectSection,
@@ -174,6 +175,13 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("favored_subject", "Favored Subject"),
         copies=1,
+        # "+1 Emperor Influence" [Favored Subject card, app text]: a cost-free
+        # Plot naming its Faction, so it is played even with the Emperor track
+        # at the top and then gains nothing (OQ-113 (C), imperium-base.md
+        # 13.3's Know Their Ways row).
+        options=(
+            _plot(EffectSection(rewards=(GainInfluence(factions=(Faction.EMPEROR,)),))),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("guild_authorization", "Guild Authorization"),

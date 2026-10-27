@@ -10,6 +10,8 @@ holds the card, in an original-game ``RulesetConfig``.
 from dataclasses import replace
 from typing import Any
 
+import pytest
+
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.rulesets import content_for
@@ -1830,4 +1832,138 @@ def test_charisma_is_not_offered_outside_the_seats_turn() -> None:
     # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
     _, state = _plot_hand(CHARISMA)
     state = _seat(state, 1, intrigue_cards=(CHARISMA,))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+# --- The four Faction Plots: Favored Subject, ... ----------------------------
+#
+# "+1 <Faction> Influence" [app text of each card]: a cost-free Plot naming
+# its Faction. Each card adds its row to this table.
+
+# card id, printed name, Faction, the Influence field of that Faction
+FACTION_PLOTS = (("favored_subject", "Favored Subject", "emperor", "Emperor"),)
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_is_one_cost_free_plot_of_one_influence(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # "Plot: 1 <Faction> Influence" [app text]; 1 copy [DI p. 3]. No arrow:
+    # a cost-free Plot (OQ-113 (C)).
+    entry = intrigue_card_for_instance(_intrigue(card_id))
+    assert entry.card.name == name
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert entry.options[0].sections[0].costs == ()
+    assert entry.options[0].sections[0].condition is None
+    assert intrigue_card_text(entry) == [f"Plot — Gain 1 {label} Influence"]
+    assert card_id not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_gains_one_influence_with_its_own_faction(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서 아무 때나 낸다. `[DI pp.
+    # 7-8]`" (imperium-base.md 5); the card names its Faction, so there is no
+    # choice to open and the Influence is gained at once (imperium-base.md 6,
+    # `[DI p. 7]`: Influence goes through the track rules).
+    card = _intrigue(card_id)
+    engine, state = _plot_hand(card, influence=Influence())
+    assert legal_intrigue_play_actions(state, 0) == (_play(card),)
+
+    result = apply_whole(engine, state, _play(card))
+    done = result.state
+
+    assert done.players[0].influence == Influence(**{faction: 1})
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (card,)
+    assert [e.kind for e in result.events if e.kind == "intrigue_without_effect"] == []
+    # No choice frame opened and the turn goes on: the Plot did not end it.
+    assert done.decision_stack[-1].kind == "turn"
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_influence_goes_through_the_track_rules(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # "Influence 2 도달 → 1 VP" `[DI p. 7]` (imperium-base.md 6): reaching
+    # 2 scores the point, like a Faction space's Influence.
+    card = _intrigue(card_id)
+    engine, state = _plot_hand(card, influence=Influence(**{faction: 1}))
+    before = state.players[0].victory_points
+
+    done = apply_whole(engine, state, _play(card)).state
+
+    assert getattr(done.players[0].influence, faction) == 2
+    assert done.players[0].victory_points == before + 1
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_is_played_with_its_track_at_the_top(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # "Know Their Ways는 Fremen track 맨 위에서도 낸다(불발)" (imperium-base.md
+    # 13.3, OQ-113 (C): "비용이 없는 효과는 모두 불발해도 낸다"; the designer
+    # ruling names Know Their Ways, its three siblings have the same shape).
+    # OQ-060: the Influence on a track already at 6 is lost, so nothing moves.
+    card = _intrigue(card_id)
+    engine, state = _plot_hand(card, influence=Influence(**{faction: 6}))
+    assert legal_intrigue_play_actions(state, 0) == (_play(card),)
+    before = state.players[0]
+
+    done = apply_whole(engine, state, _play(card)).state
+
+    assert done.players[0].influence == before.influence
+    assert done.players[0].victory_points == before.victory_points
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (card,)
+    assert done.decision_stack[-1].kind == "turn"
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_may_be_declined_by_not_playing_it(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    card = _intrigue(card_id)
+    engine, state = _plot_hand(card)
+    actions = engine.whole_actions(state, 0)
+    assert _play(card) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (card,)
+    assert placed.players[0].influence == state.players[0].influence
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_is_played_in_the_reveal_turn_too(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # "아무 때나" within the seat's own Agent or Reveal turn (imperium-base.md
+    # 5, `[DI pp. 7-8]`).
+    card = _intrigue(card_id)
+    engine, state = _plot_hand(card)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _play(card) in engine.whole_actions(revealed, 0)
+
+    done = apply_whole(engine, revealed, _play(card)).state
+
+    assert getattr(done.players[0].influence, faction) == 1
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_is_not_offered_outside_the_seats_turn(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    card = _intrigue(card_id)
+    _, state = _plot_hand(card)
+    state = _seat(state, 1, intrigue_cards=(card,))
     assert legal_intrigue_play_actions(state, 1) == ()
