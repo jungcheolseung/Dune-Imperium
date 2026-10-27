@@ -54,6 +54,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
+    DoubleBaseHarvestSpice,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
@@ -983,6 +984,16 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # seat, as many as the hand holds (OQ-118, [FAQ p. 3]).
             _BOX.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: _box(
                 EachOpponentDiscardsCard(2), condition=_BG_BOND, requirement=_BG_BOND
+            ),
+            # Carryall (original game): "Double the base (not bonus) spice you
+            # harvest with this Agent" -- the harvest reads this record
+            # (``board_effects.apply_maker_space_action``); there is nothing to
+            # resolve, so the box never opens (``AbilityMark.AUTOMATIC``,
+            # ``agent_box_abilities.opens_at_placement``).
+            _BOX.DOUBLE_BASE_HARVEST_SPICE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(_line(DoubleBaseHarvestSpice()),),
+                mark=AbilityMark.AUTOMATIC,
             ),
         }
     )

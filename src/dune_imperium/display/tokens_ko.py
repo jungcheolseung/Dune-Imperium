@@ -533,6 +533,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: (
         "베네 게세리트의 유대감이면: 다른 플레이어 각자 카드 2장 버리기"
     ),
+    # Quotes ``effect_dsl_text_ko.py``'s DoubleBaseHarvestSpice line.
+    PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE: (
+        "이 {agent}로 수확하는 기본 {spice} 두 배 (보너스 제외)"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box

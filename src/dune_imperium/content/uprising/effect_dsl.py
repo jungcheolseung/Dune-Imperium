@@ -1659,6 +1659,21 @@ class GainSpiceWithHelixBonus:
 
 
 @dataclass(frozen=True, slots=True)
+class DoubleBaseHarvestSpice:
+    """Double the base (not bonus) spice the Agent harvests this turn
+    ("Double the base (not bonus) spice you harvest with this Agent"
+    [Carryall card]).
+
+    A modifier of the Maker space's harvest, not a step of its own: the box
+    never opens (``AbilityMark.AUTOMATIC``), the harvest reads it. The base
+    is the spice the space prints beside its bonus -- 1, 2 or 3 at Imperial
+    Basin, Hagga Basin and The Great Flat [FAQ p. 1]; nothing at a space that
+    is not a harvest (Secure Contract, Sell Melange, Imperial Basin's control
+    bonus).
+    """
+
+
+@dataclass(frozen=True, slots=True)
 class ReserveCostDiscount:
     """Every copy of the named Reserve card acquired during this Reveal turn
     costs ``amount`` less ("The Spice Must Flow costs {Persuasion_3} less to
@@ -1752,6 +1767,7 @@ type Reward = (
     | GainLowestInfluence
     | GainSpiceWithHelixBonus
     | ReserveCostDiscount
+    | DoubleBaseHarvestSpice
 )
 
 

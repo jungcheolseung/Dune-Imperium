@@ -157,6 +157,8 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "assassination_mission": _reveal(_line(GainResources(solari=1))),
         # Thufir Hawat (original game): "[Intrigue card]" beside its Persuasion.
         "thufir_hawat": _reveal(_line(DrawIntrigueCards(1))),
+        # Carryall (original game): "1 spice" beside its Persuasion.
+        "carryall": _reveal(_line(GainResources(spice=1))),
         # Guild Bankers (original game): "The Spice Must Flow costs 3 Persuasion
         # less to acquire this turn" -- each copy, both printings of the card.
         "guild_bankers": _reveal(

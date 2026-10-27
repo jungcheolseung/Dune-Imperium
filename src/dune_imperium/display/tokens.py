@@ -481,6 +481,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: (
             "If Bene Gesserit Bond: Each opponent discards 2 cards"
         ),
+        PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE: (
+            "Double the base (not bonus) spice you harvest with this Agent"
+        ),
     }
 )
 

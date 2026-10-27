@@ -3119,3 +3119,147 @@ def test_guild_bankers_reveal_text_names_the_discount() -> None:
     assert "{persuasion:3}" in korean
     assert "스파이스는 흘러야 한다" in korean
 
+
+# --- Carryall ---------------------------------------------------------------------
+
+
+def test_carryall_matches_the_app_table() -> None:
+    # App attribute table: cost 5, 1 copy, no Faction, Spice Trade, Reveal 1
+    # Persuasion and 1 spice.
+    entry = IMPERIUM_CARDS_BY_ID["carryall"]
+    assert entry.card.name == "Carryall"
+    assert entry.acquisition_cost == 5
+    assert entry.copies == 1
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert entry.agent_effect is PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:carryall:0") is entry
+
+
+def _carryall_harvest(
+    space_id: str,
+    water: int,
+    *,
+    bonus: int = 2,
+    carryall: bool = True,
+    leader: str | None = None,
+) -> tuple[GameState, GameState]:
+    """Seat 0 sends Carryall (or Spice Hunter, a Spice Trade card with no box) to
+    the Maker space with ``bonus`` spice on it and harvests; returns the
+    state before the harvest and after."""
+
+    engine, state = _start()
+    card = "carryall" if carryall else "spice_hunter"
+    state, _ = _with_card(state, card)
+    state = _seat(state, resources=Resources(water=water))
+    if leader is not None:
+        state = _seat(state, leader_id=leader, leader_face_id=leader)
+    state = replace(
+        state,
+        maker_bonus_spice=tuple(
+            (maker, bonus if maker == space_id else other)
+            for maker, other in state.maker_bonus_spice
+        ),
+    )
+    placed = _place(engine, state, space_id, card)
+    return placed, _do(engine, placed, "harvest_maker_spice")
+
+
+def _spice_gained(placed: GameState, harvested: GameState) -> int:
+    return harvested.players[0].resources.spice - placed.players[0].resources.spice
+
+
+def test_carryall_has_no_box_to_resolve() -> None:
+    """The doubling is a modifier of the harvest, not a step of its own: the
+    box never opens, so nothing waits for the owner (``AbilityMark.AUTOMATIC``)
+    and the turn can end once the harvest is taken."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "carryall")
+    placed = _place(engine, state, "imperial_basin", "carryall")
+    assert "resolve_agent_card_effect" not in _ids(engine, placed)
+    assert "harvest_maker_spice" in _ids(engine, placed)
+
+
+def test_carryall_doubles_the_base_spice_not_the_bonus() -> None:
+    """"Carryall | 1 | 기본 spice: Imperial Basin 1, Hagga Basin 2, The Great Flat
+    3" (imperium-base.md 13.2, [FAQ p. 1]); the card doubles the base, never the
+    bonus spice the space has gathered: base 1/2/3 doubled to 2/4/6, beside a
+    bonus of 2."""
+
+    for space_id, water, base in (
+        ("imperial_basin", 0, 1),
+        ("imperium_hagga_basin", 1, 2),
+        ("the_great_flat", 2, 3),
+    ):
+        placed, harvested = _carryall_harvest(space_id, water)
+        assert _spice_gained(placed, harvested) == 2 * base + 2, space_id
+        # The bonus is collected whatever the doubling.
+        assert dict(harvested.maker_bonus_spice)[space_id] == 0
+
+
+def test_a_plain_spice_trade_card_harvests_the_printed_base() -> None:
+    """The control for the doubling: any other Spice Trade card at the same
+    spaces takes the printed base and the bonus (here Hagga Basin: 2 + 2)."""
+
+    placed, harvested = _carryall_harvest("imperium_hagga_basin", 1, carryall=False)
+    assert _spice_gained(placed, harvested) == 2 + 2
+
+
+def test_carryall_does_nothing_off_a_harvest() -> None:
+    """"Nothing at Secure Contract or Sell Melange" (P0 sweep, merged
+    effect): the card at Secure Contract gains its 3 Solari and no spice."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "carryall")
+    state = _seat(state, resources=Resources())
+    placed = _place(engine, state, "secure_contract", "carryall")
+    resolved = _do(engine, placed, "resolve_board_effect", effect="resources")
+    assert resolved.players[0].resources == Resources(solari=3)
+
+
+def test_carryall_leaves_the_control_bonus_alone() -> None:
+    """The Imperial Basin control bonus is not a harvest (P0 sweep): its
+    controller takes the printed 1 spice [DI p. 10], not a doubled one."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "carryall")
+    state = _seat(state, 1, control_space_ids=("imperial_basin",))
+    spice = state.players[1].resources.spice
+    placed = _place(engine, state, "imperial_basin", "carryall")
+    assert placed.players[1].resources.spice == spice + 1
+
+
+def test_carryall_doubles_before_spice_addict_takes_one_less() -> None:
+    """"Countess Ariana의 −1은 Carryall·Thumper로 두 배를 한 뒤 harvest 전체에서
+    한 번 뺀다" (imperium-base.md 16): Hagga Basin's base 2 doubled to 4, less 1,
+    plus the bonus 2 -- 5, not 2*(2-1)+2 = 4."""
+
+    placed, harvested = _carryall_harvest(
+        "imperium_hagga_basin", 1, leader="countess_ariana_thorvald"
+    )
+    assert _spice_gained(placed, harvested) == (2 * 2 - 1) + 2
+
+
+def test_carryall_reveal_gains_one_persuasion_and_one_spice() -> None:
+    engine, state = _start()
+    held, instance = _with_card(state, "carryall", alone=True)
+    held = _seat(held, hand=(instance,), resources=Resources())
+    revealed = _do(engine, held, "reveal_turn")
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 1
+    gained = _do(engine, revealed, "gain_reveal_resources", printed="carryall")
+    assert gained.players[0].resources.spice == 1
+
+
+def test_carryall_text_names_the_doubling() -> None:
+    from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
+    from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
+
+    effect = PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE
+    assert AGENT_EFFECT_TEXT[effect] == (
+        "Double the base (not bonus) spice you harvest with this Agent"
+    )
+    assert "{spice}" in AGENT_EFFECT_TEXT_KO[effect]

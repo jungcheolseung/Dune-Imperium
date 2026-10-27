@@ -164,8 +164,8 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence,
     # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
     # Imperial Spy, Missionaria Protectiva, Gene Manipulation, Reverend Mother
-    # Mohiam).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 15
+    # Mohiam, Carryall).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 16
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 

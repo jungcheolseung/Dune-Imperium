@@ -17,6 +17,7 @@ from dune_imperium.config import BaseGame
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.abilities import Ability, AbilityMark
+from dune_imperium.content.uprising.agent_abilities import agent_box_ability
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.board_abilities import (
     BOARD_CHOICE_ABILITIES,
@@ -25,6 +26,7 @@ from dune_imperium.content.uprising.board_abilities import (
 )
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireReserveCard,
+    DoubleBaseHarvestSpice,
     DrawIntrigueCards,
     DrawPersonalCards,
     EffectSection,
@@ -45,6 +47,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.leader_abilities import leader_triggers
+from dune_imperium.content.uprising.personal_cards import PersonalCardDefinition
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.chance import ChanceOutcome
@@ -65,6 +68,7 @@ from dune_imperium.rules.effects import (
     AutomaticEffect,
     OptionalBlockKind,
     OptionalEffectBlock,
+    active_agent_card,
     add_board_icon,
     advance_after_effect,
     blocked_board_icons,
@@ -2028,6 +2032,17 @@ def legal_maker_space_actions(
     return tuple(actions)
 
 
+def _doubles_base_harvest(card: PersonalCardDefinition) -> bool:
+    """Whether the card's Agent box doubles the base spice of its harvest."""
+
+    ability = agent_box_ability(card.agent_effect)
+    return ability is not None and any(
+        isinstance(reward, DoubleBaseHarvestSpice)
+        for line in ability.sections
+        for reward in line.rewards
+    )
+
+
 def apply_maker_space_action(
     state: GameState,
     action: DomainAction,
@@ -2042,6 +2057,10 @@ def apply_maker_space_action(
     bonus_by_space = dict(state.maker_bonus_spice)
     bonus_spice = bonus_by_space[space_id]
     owner = state.players[action.actor]
+    # The card whose Agent made this visit: a box that is a modifier of the
+    # harvest rather than a step (Carryall) is read off it. A grafted
+    # partner's own modifier is for the combinations stage (P7).
+    context_card = active_agent_card(current_agent_effect_context(state)[1])
     base_spice = 0
     sandworms = 0
     replaced = 0
@@ -2068,6 +2087,12 @@ def apply_maker_space_action(
         )
     elif action.action_id == "harvest_maker_spice":
         base_spice = MAKER_BASE_SPICE[space_id]
+        if _doubles_base_harvest(context_card):
+            # Carryall: "Double the base (not bonus) spice you harvest with
+            # this Agent" -- the printed base only [FAQ p. 1]; the bonus spice
+            # below stays as it is. Doubled before Spice Addict's one less
+            # (imperium-base.md 16: Countess Ariana's -1 comes off the total).
+            base_spice *= 2
         face = owner.leader_face_id or owner.leader_id
         addict = bool(leader_triggers(face, OnMakerSpiceHarvested))
         if addict:

@@ -293,8 +293,14 @@ def _requirement_holds(
 def opens_at_placement(
     ability: Ability, owner: PlayerState, space: BoardSpace, card_id: str
 ) -> bool:
-    """Whether the box is pending once ``card_id`` is played on ``space``."""
+    """Whether the box is pending once ``card_id`` is played on ``space``.
 
+    An automatic box has nothing to resolve and never opens: it modifies a
+    step another effect takes (Carryall's doubled harvest).
+    """
+
+    if ability.mark is AbilityMark.AUTOMATIC:
+        return False
     if ability.requirement is None:
         return True
     return _requirement_holds(ability.requirement, owner, space, card_id)

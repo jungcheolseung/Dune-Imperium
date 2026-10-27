@@ -139,10 +139,19 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=8,
     ),
+    # App table: cost 5, 1 copy, no Faction, Spice Trade, Reveal 1 Persuasion
+    # and 1 spice. Agent: "Double the base (not bonus) spice you harvest with
+    # this Agent" -- base 1, 2 or 3 at Imperial Basin, Hagga Basin and The Great
+    # Flat [FAQ p. 1] (imperium-base.md 13.2); a modifier of the harvest, so its
+    # box never opens (``DoubleBaseHarvestSpice``). Reveal: "[P1] [1 spice]".
     ImperiumCardEntry(
         card=imperium_card("carryall", "Carryall"),
         copies=1,
         acquisition_cost=5,
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE,
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("chani_card", "Chani"),

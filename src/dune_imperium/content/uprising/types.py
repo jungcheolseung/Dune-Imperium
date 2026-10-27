@@ -366,6 +366,9 @@ class PersonalCardAgentEffect(StrEnum):
     EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND = (
         "each_opponent_discards_two_if_bene_gesserit_bond"
     )
+    # Carryall: "Double the base (not bonus) spice you harvest with this
+    # Agent" -- a modifier of the harvest, never a box to resolve.
+    DOUBLE_BASE_HARVEST_SPICE = "double_base_harvest_spice"
 
 
 class PersonalCardTrashEffect(StrEnum):
