@@ -312,6 +312,9 @@ class PersonalCardAgentEffect(StrEnum):
     # a card] [troop]". The arrow cost is optional and once [Main p. 9]
     # [FAQ p. 3]; the black-X trash stays optional after paying [FAQ p. 3].
     MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT = "may_pay_spice_to_trash_and_recruit"
+    # The original game's Imperium cards (stage P3).
+    # Arrakis Recruiter: the troop icon alone, "Recruit 1 troop".
+    RECRUIT_ONE_TROOP = "recruit_one_troop"
 
 
 class PersonalCardTrashEffect(StrEnum):

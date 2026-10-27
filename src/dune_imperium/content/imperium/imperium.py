@@ -23,6 +23,7 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
+from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
 
 # The rulebook lists the deck [DI p. 3]; the printed values are the app's
 # (plan 2.4, D1).
@@ -37,4 +38,19 @@ def imperium_card(card_id: str, name: str) -> CardDefinition:
 
 
 # Typed: ``content.uprising.imperium`` reads it while both modules load.
-IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = ()
+IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
+    # App table: cost 2, 2 copies, City, Reveal 1 Persuasion and 1 sword.
+    # Agent: the troop icon alone; a Combat space lets the owner deploy the
+    # recruited troop and up to two from the garrison [DI pp. 10, 17-18]
+    # [FAQ p. 4] -- no card text grants it, so the card sets nothing.
+    ImperiumCardEntry(
+        card=imperium_card("arrakis_recruiter", "Arrakis Recruiter"),
+        copies=2,
+        acquisition_cost=2,
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_ONE_TROOP,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
+    ),
+)

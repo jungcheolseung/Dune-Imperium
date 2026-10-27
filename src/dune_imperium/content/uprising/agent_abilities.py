@@ -220,6 +220,9 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.GAIN_ONE_SPICE: _box(GainResources(spice=1)),
             _BOX.GAIN_WATER: _box(GainResources(water=1)),
             _BOX.RECRUIT_TWO_TROOPS: _box(RecruitTroops(2)),
+            # Arrakis Recruiter (original game): one troop; a Combat space
+            # lets the owner deploy it [DI p. 10] [FAQ p. 4].
+            _BOX.RECRUIT_ONE_TROOP: _box(RecruitTroops(1)),
             _BOX.BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND: _box(
                 BoostNextBeneGesseritCard()
             ),

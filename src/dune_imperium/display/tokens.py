@@ -438,6 +438,8 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "Choose one: Gain 1 Influence with a chosen Faction / Recruit 2 troops; "
             "if Bene Gesserit Bond: get both"
         ),
+        # The original game's Imperium cards (stage P3).
+        PersonalCardAgentEffect.RECRUIT_ONE_TROOP: "Recruit 1 troop",
     }
 )
 

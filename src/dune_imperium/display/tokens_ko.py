@@ -494,6 +494,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "하나 선택: {influence_any:1} 선택 / {troop:2}; "
         "베네 게세리트의 유대감이면 둘 다 얻음"
     ),
+    # The original game's Imperium cards (stage P3): the effect text the
+    # engine generates, glossary words only (no Korean card source yet).
+    PersonalCardAgentEffect.RECRUIT_ONE_TROOP: "{troop:1}",
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box
