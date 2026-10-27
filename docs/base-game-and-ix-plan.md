@@ -905,3 +905,26 @@ P0 merged effect의 자리, 규칙 인용을 줬다.
 5. **변환기 채택(16.6)과 갈래 나누기(16.7의 측정 뒤).**
 6. **P3d의 앱 행동 대조 전에 디컴파일러(D4-3 (나)) 내려받기를 다시 묻는다.**
 7. **관문 일정:** E7b 같은 학습이 끝난 뒤 P3a 관문을 돈다(게시판 예약).
+
+### 16.9 카드 묶음이 멈춘 곳: 새 엔진 조각 (2026-10-28 밤, 조정자 경유 "설계하고 OQ마다 적고 16에 기록")
+
+card-implementer는 기존 조각으로 안 되는 카드를 건너뛰고 빠진 것을 보고한다(멈춤 규칙). 조각마다 근거와 상태:
+
+| 조각 | 카드 | 근거 | 상태 |
+| --- | --- | --- | --- |
+| `DeployTheseTroops`(Reveal turn에 이 줄이 recruit한 병력 배치) | Reinforcements, Gurney Halleck | 카드 문구, `[DI p. 10]` `[FAQ p. 4]`, OQ-030 | 구현 `ce6deec6`; 가장자리 OQ-140(사용자 확인 대기) |
+| `DeployFromGarrison(up_to=None)`("any number") | Rapid Mobilization | 카드 문구, `[FAQ p. 3]` | 구현(Intrigue 묶음 2) |
+| 조건 `MoreSpiceMustFlowThanEachOpponent`, `InfluenceAtLeastOnTracks` | Corner the Market, Plans Within Plans | imperium-base.md 13.2, OQ-123, `[FAQ p. 2]` | agent 진행 중(명세는 내가) |
+| 획득 상자 아이콘 창(아이콘마다 줄, 순서는 소유자) | CHOAM Directorship(고정 진영 넷), Lady Jessica(고른 진영 하나) | OQ-027·OQ-112 원칙의 확장 — OQ-141 | 설계 끝, 구현 대기 |
+| 승자의 창에서 내는 Intrigue("When you win a Conflict:") | To the Victor..., Demand Respect | OQ-121 판정 6("쥐고 있고 조건·비용을 갖췄을 때 낼 수 있는 줄이다. 안 내도 창이 닫힌다"), `[DI p. 13]`(보상 spice로 낼 수 있음) | 설계 끝, 구현 대기 |
+| 덱 맨 위로 획득 | Bypass Protocol(B), Recruitment Mission(획득마다 위/버림) | 카드 문구, `[FAQ p. 3]`, imperium-base.md 14(덱 맨 위가 공개되는 숨은 정보) | 미설계 |
+| 상대 하나 지정 Conflict 손실 + supply에서 배치 | Double Cross | 카드 문구, `[FAQ p. 2]`(상대 troop이 있어야 낸다) | 미설계 |
+| 덱 맨 위 보고 뽑기·trash | Poison Snooper | 카드 문구, `[FAQ p. 3]`, imperium-base.md 14 | 미설계(숨은 정보) |
+| 버림 더미를 덱에 섞고 뽑기 | Refocus | 카드 문구, `[FAQ p. 3]` | 미설계(chance) |
+| 이번 turn 적 Agent가 막지 않음 | Infiltrate | 카드 문구, OQ-113 (C) | 미설계(좌석 상태, 관측) |
+| turn 시작 뽑기 + 선택형 pass | Bindu Suspension | OQ-117 | 미설계 |
+| Mentat 셋 | Kwisatz Haderach, Urgent Mission, Calculated Hire | OQ-139 재검토 | 사용자 답 대기(16.8 4) |
+| 프로모 셋 | Duncan, Loyal Blade·Jessica of Arrakis·Thumper | 16.3 | 사용자 답 대기(16.8 3) |
+
+Imperium 묶음에서 아직 멈추지 않은 새 모양 후보(16.4): harvest 두 배(Carryall), Power Play, Test of Humanity, The Voice(OQ-116), Guild Bankers.
+

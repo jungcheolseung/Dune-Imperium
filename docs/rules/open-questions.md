@@ -166,6 +166,7 @@
 | [OQ-138](#oq-138--covert-operation에서-손이-빈-상대와-결정-창) | Covert Operation에서 손이 빈 상대와 결정 창 | `DECIDED` |
 | [OQ-139](#oq-139--mentat이-어느-말인가-원판) | Mentat이 어느 말인가 (원판) | `DECIDED` |
 | [OQ-140](#oq-140--이-병력을-배치할-수-있다의-이-병력-원판) | "이 병력을 배치할 수 있다"의 이 병력 (원판) | `OPEN` |
+| [OQ-141](#oq-141--획득-상자의-아이콘-여럿과-진영-고르기-원판) | 획득 상자의 아이콘 여럿과 진영 고르기 (원판) | `OPEN` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -2900,4 +2901,17 @@
 - 구현(추천): 줄을 해결할 때 recruit한 수만 연다(`effect_interpreter.RewardOutcome.deployable_recruits`, `combat_deployment.grant_recruit_deployment`).
   Combat 아이콘의 배치 몫이 함께 열리면 그 몫(이번 turn의 recruit 전부 + garrison 둘)이 이 병력을 이미 포함한다. 조각 자체는 무언가를 바꾸지 않으므로
   줄을 낼 수 있는지는 recruit가 정한다(OQ-071 — supply가 비면 Reinforcements를 내지 않는다).
+
+## OQ-141 — 획득 상자의 아이콘 여럿과 진영 고르기 (원판)
+
+- 상태: `OPEN` (2026-10-28, P3 밤 작업; 원칙의 확장을 추천, 사용자 확인 대기)
+- 계기: 원판 CHOAM Directorship의 획득 상자 — Emperor·Spacing Guild·Bene Gesserit·Fremen Influence 아이콘 넷 — 과 Lady Jessica의 획득 상자 —
+  "Influence 1, 고른 진영" (앱 화면 조각, P0 sweep). 지금 엔진의 획득 보너스는 고정 진영 하나만 즉시 준다
+  (`rules/acquisition._acquisition_influence_faction`, Steersman·Imperial Throneship).
+- 공식 문장: 획득 상자는 카드를 얻을 때 한 번 받는다 `[DI p. 16]`. 인쇄된 아이콘의 순서는 말하지 않는다.
+- 이미 정한 원칙: 인쇄된 아이콘은 각각 독립된 효과이고 소유자가 순서를 고른다 — Agent box(OQ-027), Conflict·계약 보상 한 줄(OQ-112). 진영을 고르는
+  Influence는 6칸 진영을 내놓지 않는다(OQ-060).
+- 추천: 같은 원칙을 획득 상자에 넓힌다. 아이콘이 둘 이상이거나 고를 것이 있는 획득 상자는 계약 보상의 아이콘 창(`contracts.CONTRACT_REWARD_ICONS`)과
+  같은 꼴의 창을 열어 아이콘마다 줄 하나를 내고, 소유자가 원하는 순서로 받는다. 아이콘 하나에 고를 것이 없는 지금의 획득 보너스는 그대로 즉시
+  받는다(Uprising 동작 그대로). 순서는 원판 카드에서 결과를 바꾸지 않지만(진영마다 따로 오르므로), 2026-10-19 상시 지시("원칙대로")를 따른다.
 
