@@ -17,10 +17,16 @@ from typing import Final
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
+    GainCombatStrength,
     GainInfluence,
     PayResources,
+    RetreatTroops,
 )
-from dune_imperium.content.uprising.intrigue import IntrigueCardEntry, _plot
+from dune_imperium.content.uprising.intrigue import (
+    IntrigueCardEntry,
+    _combat,
+    _plot,
+)
 
 IMPERIUM_INTRIGUE_SOURCES: Final = (
     SourceRef(SourceDocument.IMPERIUM_RULEBOOK, (3, 13, 14)),
@@ -50,6 +56,18 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
                     rewards=(GainInfluence(),),
                 )
             ),
+        ),
+    ),
+    IntrigueCardEntry(
+        card=intrigue_card("master_tactician", "Master Tactician"),
+        copies=3,
+        # "+3 swords -OR- Retreat up to three of your troops." [Master
+        # Tactician card, app text]: two exclusive Combat options like
+        # Tactical Option (OQ-058). "Up to" allows zero [FAQ p. 3]
+        # (imperium-base.md 13.2, the Chani and Rapid Mobilization rows).
+        options=(
+            _combat(EffectSection(rewards=(GainCombatStrength(3),))),
+            _combat(EffectSection(rewards=(RetreatTroops(0, 3),))),
         ),
     ),
 )

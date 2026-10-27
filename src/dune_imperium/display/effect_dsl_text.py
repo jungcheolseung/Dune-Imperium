@@ -217,6 +217,10 @@ def _retreat_troops_text(troops: RetreatTroops) -> str:
         return f"Retreat any number of troops (at least {troops.minimum})"
     if troops.minimum == troops.maximum:
         return f"Retreat {troops.minimum} {_plural(troops.minimum, 'troop')}"
+    if troops.minimum == 0:
+        # "Retreat up to three of your troops" [Master Tactician card]: zero
+        # is a legal choice of an "up to" retreat [FAQ p. 3].
+        return f"Retreat up to {troops.maximum} {_plural(troops.maximum, 'troop')}"
     return f"Retreat {troops.minimum}-{troops.maximum} troops"
 
 
