@@ -96,6 +96,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    OnConflictWon,
     OnTroopsLostAtConflictEnd,
     PlaceSpy,
     RecallSpy,
@@ -802,6 +803,11 @@ def _old_intrigue_plays(state: GameState, player: int) -> tuple[DomainAction, ..
             # 2026-10-06, OQ-057 (11)): a rule change made on purpose after
             # the copy.
             if isinstance(option.trigger, OnTroopsLostAtConflictEnd):
+                continue
+            # A winning Intrigue only in the sole winner's reward window
+            # (stage P3c, OQ-121 decision 6): a rule change made on purpose
+            # after the copy, whose rounds are the only Combat window it knew.
+            if isinstance(option.trigger, OnConflictWon):
                 continue
             if option.timing is not timing:
                 continue

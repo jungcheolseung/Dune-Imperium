@@ -32,6 +32,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeastOnTracks,
     LoseTroops,
     MoreSpiceMustFlowThanEachOpponent,
+    OnConflictWon,
     PayResources,
     RecruitTroops,
     RetreatTroops,
@@ -41,6 +42,7 @@ from dune_imperium.content.uprising.effect_dsl import (
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
     _combat,
+    _combat_trigger,
     _endgame,
     _plot,
 )
@@ -401,6 +403,16 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("to_the_victor", "To the Victor..."),
         copies=1,
+        # "When you win a Conflict: 3 spice" [To the Victor... card, app
+        # text]: a cost-free winning Intrigue, played from the hand in the
+        # sole winner's reward window [DI p. 12] (OQ-121); it may be played
+        # at once when the Conflict reward drew it [FAQ p. 4] and its spice
+        # may pay Demand Respect (imperium-base.md 13.1).
+        options=(
+            _combat_trigger(
+                OnConflictWon(), EffectSection(rewards=(GainResources(spice=3),))
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("urgent_mission", "Urgent Mission"),

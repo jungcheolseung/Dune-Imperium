@@ -313,6 +313,10 @@ _COMBAT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "deep_cover_spy": _V.PLACE_SPY,
     # Planetary Array's card, a row of the winner's window (OQ-121).
     "planetary_array": _V.DRAW,
+    # The sole winner's close of its window: no more winning Intrigue
+    # (OQ-121 decision 6; the original game's To the Victor... and Demand
+    # Respect). Nothing is gained, so it only resolves the row.
+    "winning_intrigue": _V.RESOLVE,
     # The original game's: the Mentat, one Faction's two Influence, and the
     # lines of a row of alternatives.
     "mentat": _V.TAKE,
@@ -1442,6 +1446,9 @@ _INTRIGUE_WINDOWS: Final[Mapping[str, str]] = MappingProxyType({
     FrameKind.AGENT_EFFECTS: "plot",
     FrameKind.REVEAL: "plot",
     FrameKind.COMBAT_INTRIGUE: "combat",
+    # The sole winner's reward window: a winning Intrigue is played there
+    # (``intrigue.intrigue_window``).
+    FrameKind.COMBAT_REWARD_ICONS: "combat",
     FrameKind.ENDGAME_INTRIGUE: "endgame",
 })
 INTRIGUE_WINDOWS: Final = tuple(dict.fromkeys(_INTRIGUE_WINDOWS.values()))

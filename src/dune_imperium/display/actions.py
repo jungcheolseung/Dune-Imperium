@@ -68,7 +68,11 @@ from dune_imperium.rules.agent_effects import (
     resolves_boost_draw,
 )
 from dune_imperium.rules.agent_turn import CARD_PICK_ACTION, executable_placements
-from dune_imperium.rules.combat import REWARD_ICON_ACTION, reward_icon_piece
+from dune_imperium.rules.combat import (
+    REWARD_ICON_ACTION,
+    WINNING_INTRIGUE,
+    reward_icon_piece,
+)
 from dune_imperium.rules.contracts import (
     CONTRACT_REWARD_ICON_ACTION,
     contract_icon_piece,
@@ -666,6 +670,14 @@ def combat_reward_icon_action_text(
         return (
             f"{_PLANETARY_ARRAY}: {reward_text(draw)}",
             f"{_PLANETARY_ARRAY_KO}: {reward_text_ko(draw)}",
+        )
+    if kind == WINNING_INTRIGUE:
+        # The sole winner's close of its window once every other row is
+        # resolved: no more "When you win a Conflict" Intrigue (OQ-121
+        # decision 6, "안 내도 창이 닫힌다").
+        return (
+            "Finish: no more winning Intrigue",
+            "승리 {intrigue} 끝내기",
         )
     piece = reward_icon_piece(state.current_conflict_ids[-1], rank, kind)
     match piece:

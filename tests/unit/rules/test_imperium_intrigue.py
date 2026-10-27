@@ -13,17 +13,26 @@ from typing import Any
 import pytest
 
 from dune_imperium import BaseGame, RulesetConfig
+from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.content.imperium.conflict_abilities import _line, _one_of
 from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.uprising.conflict_abilities import (
+    CONFLICT_REWARD_ABILITIES,
+)
 from dune_imperium.content.uprising.effect_dsl import (
     Condition,
     DeployFromGarrison,
+    EffectSection,
+    GainResources,
     GainVictoryPoints,
     GrantAgentIconsThisTurn,
     HasAlliance,
     InfluenceAtLeastOnTracks,
+    IntrigueTiming,
     LoseTroops,
     MoreSpiceMustFlowThanEachOpponent,
+    OnConflictWon,
     PayResources,
     SpiceMustFlowCardsAtLeast,
 )
@@ -43,12 +52,18 @@ from dune_imperium.core import (
     Resources,
 )
 from dune_imperium.display import intrigue_card_text
-from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.display.actions import effect_action_text, effect_action_text_ko
+from dune_imperium.display.unavailable import unavailable_choices
+from dune_imperium.rules import UprisingRulesEngine, combat
 from dune_imperium.rules.agent_turn import legal_agent_actions
-from dune_imperium.rules.combat import begin_combat_intrigue
+from dune_imperium.rules.combat import (
+    begin_combat_intrigue,
+    legacy_combat_reward_icon,
+    winning_intrigue_is_hidden,
+)
 from dune_imperium.rules.effect_interpreter import condition_holds
 from dune_imperium.rules.endgame import begin_endgame_intrigue, final_standings
-from dune_imperium.rules.frames import reset_turn_counters
+from dune_imperium.rules.frames import FrameKind, reset_turn_counters
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
     apply_intrigue_play,
@@ -2995,3 +3010,358 @@ def test_plans_within_plans_may_be_declined_in_the_window() -> None:
     ).state
     assert skipped.players[0].intrigue_cards == (PLANS,)
     assert skipped.players[0].victory_points == state.players[0].victory_points
+
+
+# --- To the Victor... (winning Intrigue, stage P3c) --------------------------
+#
+# "'When you win a Conflict' 카드는 이긴 뒤 낸다. `[DI p. 12]` … 승리 책략은
+# **승자의 창**(1위 보상과 같은 창)에서만, 보상 아이콘과 원하는 순서로 낸다.
+# 보상 spice로 Demand Respect를 내는 것 `[DI p. 13]`, 보상으로 받은 승리 책략을
+# 곧바로 내는 것 `[FAQ p. 4]`이 여기서 된다(2026-10-25 사용자, OQ-121 판정
+# 3·6)." (imperium-base.md 10); "To the Victor…·Demand Respect는 쥐고 있고
+# 조건·비용을 갖췄을 때 낼 수 있는 줄이다. 안 내도 창이 닫힌다." (OQ-121
+# 판정 6). A tie for first has no winning row (``[FAQ p. 4]``).
+
+VICTOR = _intrigue("to_the_victor")
+NO_SPICE_CONFLICT = "guild_bank_raid"  # 6 Solari for first place
+SPICE_CONFLICT = "raid_stockpiles"  # first place: 3 spice and an Intrigue card
+
+
+def _icon(kind: str, actor: int = 0) -> DomainAction:
+    return DomainAction(
+        action_id="resolve_combat_reward_icon",
+        actor=actor,
+        arguments=(("effect", kind),),
+    )
+
+
+def _continue(state: GameState) -> GameState:
+    """Answer the pause between two recipients' windows."""
+
+    engine = UprisingRulesEngine()
+    decision = engine.current_decision(state)
+    assert isinstance(decision, ChanceDecision)
+    return engine.apply(state, ChanceResolver(seed=1).resolve(decision)).state
+
+
+def _window(
+    conflict: str,
+    *,
+    cards: tuple[str, ...] = (),
+    first: int = 3,
+    second: int = 1,
+    others: tuple[str, ...] = (),
+    deck: tuple[str, ...] = (),
+    **owner_fields: Any,
+) -> GameState:
+    """Seat 0, the sole winner of ``conflict``, in its reward window.
+
+    Seat 0 holds ``cards`` and seat 1, second, holds ``others``; ``deck`` is
+    the Intrigue deck. Both seats passed in Combat Intrigue."""
+
+    engine = UprisingRulesEngine()
+    state = _combat_state(
+        _fighter(0, first, intrigue_cards=cards, **owner_fields),
+        _fighter(1, second, intrigue_cards=others),
+    )
+    state = replace(state, current_conflict_ids=(conflict,), intrigue_deck=deck)
+    state = apply_whole(engine, state, _pass(0)).state
+    state = apply_whole(engine, state, _pass(1)).state
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.COMBAT_REWARD_ICONS
+    assert dict(frame.context)["rank"] == 1
+    return state
+
+
+def _wholes(state: GameState, seat: int = 0) -> tuple[DomainAction, ...]:
+    return UprisingRulesEngine().whole_actions(state, seat)
+
+
+def _plays(state: GameState, seat: int = 0) -> tuple[tuple[str, int], ...]:
+    return tuple(
+        (
+            str(dict(action.arguments)["card_id"]),
+            int(dict(action.arguments)["option"]),
+        )
+        for action in _wholes(state, seat)
+        if action.action_id == "play_intrigue"
+    )
+
+
+def _icons(state: GameState) -> list[str]:
+    text = str(dict(state.decision_stack[-1].context)["icons"])
+    return text.split(",") if text else []
+
+
+def test_to_the_victor_is_one_cost_free_winning_combat_option() -> None:
+    # "When you win a Conflict: 3 spice" [To the Victor... card, Steam app
+    # text]; 1 copy [DI p. 3]: a cost-free line played from the hand in the
+    # winner's window, not a card waiting face up.
+    entry = intrigue_card_for_instance(VICTOR)
+    assert entry.card.name == "To the Victor..."
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    (option,) = entry.options
+    assert option.timing is IntrigueTiming.COMBAT
+    assert option.trigger == OnConflictWon()
+    assert option.sections == (EffectSection(rewards=(GainResources(spice=3),)),)
+    assert intrigue_card_text(entry) == [
+        "Combat — When you win a Conflict: Gain 3 spice"
+    ]
+    assert "to_the_victor" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_winning_intrigue_is_not_offered_in_the_combat_intrigue_rounds() -> None:
+    # "'When you win a Conflict' 카드는 이긴 뒤 낸다" `[DI p. 12]`: not in a
+    # Combat Intrigue round, where the Conflict is not won yet.
+    state = _combat_state(
+        _fighter(0, 3, intrigue_cards=(VICTOR,)),
+        _fighter(1, 1),
+    )
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert [action.action_id for action in _wholes(state)] == ["pass_combat_intrigue"]
+    # Nor is it a Plot.
+    _, turn = _start()
+    turn = _seat(turn, intrigue_cards=(VICTOR,))
+    assert legal_intrigue_play_actions(turn, 0) == ()
+
+
+def test_the_winner_plays_a_winning_intrigue_beside_the_reward_icons() -> None:
+    # The winning Intrigue is a row of the winner's window with the icons
+    # (OQ-121 decision 6).
+    state = _window(NO_SPICE_CONFLICT, cards=(VICTOR,))
+    assert set(_wholes(state)) == {_icon("resources"), _play(VICTOR)}
+    # A Combat card of the rounds is over by now (no strength is bought).
+    ambushed = _window(NO_SPICE_CONFLICT, cards=(AMBUSH, VICTOR))
+    assert _plays(ambushed) == ((VICTOR, 0),)
+
+
+def test_the_winning_intrigue_is_played_before_or_after_the_icons() -> None:
+    # "보상 아이콘과 원하는 순서로 낸다" (imperium-base.md 10, OQ-121 decision
+    # 6): the same spice and discard either way.
+    engine = UprisingRulesEngine()
+    state = _window(SPICE_CONFLICT, cards=(VICTOR,), deck=(AMBUSH,))
+
+    played = apply_whole(engine, state, _play(VICTOR))
+    assert played.state.players[0].resources.spice == 3
+    assert played.state.players[0].intrigue_cards == ()
+    assert played.state.intrigue_discard == (VICTOR,)
+    assert [e.kind for e in played.events if e.kind == "intrigue_played"] == [
+        "intrigue_played"
+    ]
+    # The window stays for the icons the card left.
+    assert played.state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    assert _icons(played.state) == ["intrigue", "resources", "winning_intrigue"]
+    before = played.state
+    for kind in ("resources", "intrigue"):
+        before = apply_whole(engine, before, _icon(kind)).state
+    assert before.players[0].resources.spice == 3 + 3
+
+    # Icons first, then the card.
+    after = state
+    for kind in ("resources", "intrigue"):
+        after = apply_whole(engine, after, _icon(kind)).state
+    assert _plays(after) == ((VICTOR, 0),)
+    after = apply_whole(engine, after, _play(VICTOR)).state
+    assert after.players[0].resources.spice == 3 + 3
+    assert after.intrigue_discard == (VICTOR,)
+    assert after.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    assert _icons(after) == ["winning_intrigue"]
+
+
+def test_the_closing_row_comes_last_and_the_window_closes_without_a_play() -> None:
+    # "안 내도 창이 닫힌다" (OQ-121 decision 6): the seat may play nothing and
+    # keeps its card; the close is offered once every other row is resolved,
+    # so a winning Intrigue the reward draws can still be played.
+    engine = UprisingRulesEngine()
+    state = _window(SPICE_CONFLICT, cards=(VICTOR,), deck=(AMBUSH,))
+    assert _icon("winning_intrigue") not in _wholes(state)
+    state = apply_whole(engine, state, _icon("resources")).state
+    assert _icon("winning_intrigue") not in _wholes(state)
+    state = apply_whole(engine, state, _icon("intrigue")).state
+    assert _icon("winning_intrigue") in _wholes(state)
+
+    closed = apply_whole(engine, state, _icon("winning_intrigue"))
+    assert closed.state.players[0].intrigue_cards == (VICTOR, AMBUSH)
+    assert closed.state.intrigue_discard == ()
+    # The window is gone: the next recipient's pause follows.
+    assert closed.state.decision_stack[-1].kind == FrameKind.PAUSE
+    assert dict(closed.state.decision_stack[-1].context) == {"point": "rewards"}
+    # The close is no reward: it logs no "reward resolved" line.
+    assert "combat_reward_icon_resolved" not in [e.kind for e in closed.events]
+
+
+def test_the_winners_window_closes_on_public_facts_alone() -> None:
+    # The window is always open for the winner's rewards, and whether it also
+    # holds a winning Intrigue is not shown (OQ-121 decision 6; the Conflict-
+    # end window opens on public facts, OQ-103): the closing row is there
+    # while a copy is in a deck or a hand, held or not, and gone once the copy
+    # is in the discard pile.
+    engine = UprisingRulesEngine()
+    empty_handed = _window(NO_SPICE_CONFLICT, deck=(VICTOR,))
+    assert winning_intrigue_is_hidden(empty_handed)
+    assert _icons(empty_handed) == ["resources", "winning_intrigue"]
+    assert _plays(empty_handed) == ()
+    after = apply_whole(engine, empty_handed, _icon("resources")).state
+    assert _icon("winning_intrigue") in _wholes(after)
+
+    in_another_hand = _window(NO_SPICE_CONFLICT, cards=(AMBUSH,), others=(VICTOR,))
+    assert _icons(in_another_hand)[-1] == "winning_intrigue"
+
+    # The copy was played earlier: nothing is left to wait for.
+    spent = _window(NO_SPICE_CONFLICT, cards=(AMBUSH,))
+    assert not winning_intrigue_is_hidden(spent)
+    assert _icons(spent) == ["resources"]
+    discarded = replace(
+        _window(NO_SPICE_CONFLICT, cards=(AMBUSH,)),
+        intrigue_discard=(VICTOR,),
+    )
+    assert not winning_intrigue_is_hidden(discarded)
+
+
+def test_only_the_sole_winner_is_offered_a_winning_intrigue() -> None:
+    # "승리 책략은 승자의 창에서만" (OQ-121 decision 6): the second place holds
+    # the card and its window has no such row.
+    engine = UprisingRulesEngine()
+    state = _window(
+        SPICE_CONFLICT,
+        cards=(AMBUSH,),
+        others=(VICTOR,),
+        deck=(_intrigue("ambush", 1),),
+    )
+    assert _plays(state, 1) == ()
+    for kind in ("resources", "intrigue", "winning_intrigue"):
+        state = apply_whole(engine, state, _icon(kind)).state
+    state = _continue(state)
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.COMBAT_REWARD_ICONS
+    assert frame.decision.owner == 1  # type: ignore[union-attr]
+    assert dict(frame.context)["rank"] == 2
+    assert _icons(state) == ["resources"]
+    assert [action.action_id for action in _wholes(state, 1)] == [
+        "resolve_combat_reward_icon"
+    ]
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_a_tie_for_first_has_no_winning_intrigue_row() -> None:
+    # "공동 1위면 승리 효과 줄이 없다" `[FAQ p. 4]` (OQ-121 decision 6): both
+    # take the second place's reward and neither may play the card.
+    state = _combat_state(
+        _fighter(0, 2, intrigue_cards=(VICTOR,)),
+        _fighter(1, 2),
+    )
+    state = replace(state, current_conflict_ids=(NO_SPICE_CONFLICT,))
+    engine = UprisingRulesEngine()
+    state = apply_whole(engine, state, _pass(0)).state
+    state = apply_whole(engine, state, _pass(1)).state
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    assert dict(state.decision_stack[-1].context)["rank"] == 2
+    assert _plays(state, 0) == ()
+    assert _icons(state) == ["resources"]
+
+
+def test_a_winning_intrigue_the_reward_drew_is_played_at_once() -> None:
+    # "보상으로 받은 승리 책략을 곧바로 내는 것 `[FAQ p. 4]`" (imperium-base.md
+    # 10): the Intrigue icon draws it as the row resolves, and its play is a
+    # row of the same window.
+    engine = UprisingRulesEngine()
+    state = _window(SPICE_CONFLICT, cards=(AMBUSH,), deck=(VICTOR,))
+    assert _plays(state) == ()
+
+    state = apply_whole(engine, state, _icon("intrigue")).state
+    assert state.players[0].intrigue_cards == (AMBUSH, VICTOR)
+    assert _plays(state) == ((VICTOR, 0),)
+    state = apply_whole(engine, state, _play(VICTOR)).state
+    assert state.players[0].resources.spice == 3
+    assert state.intrigue_discard == (VICTOR,)
+    assert state.decision_stack[-1].kind == FrameKind.COMBAT_REWARD_ICONS
+    assert _icons(state) == ["resources", "winning_intrigue"]
+
+
+def test_the_window_greys_out_what_the_seat_cannot_play_and_says_why() -> None:
+    # The page dims a Combat card of the rounds that is over, and in the
+    # rounds a winning card is dimmed with where it is played instead
+    # (``display.unavailable``).
+    engine = UprisingRulesEngine()
+    state = _window(NO_SPICE_CONFLICT, cards=(AMBUSH, VICTOR))
+    found = unavailable_choices(state, 0, engine.whole_actions(state, 0))
+    assert found is not None
+    assert found["rows"] == []
+    assert found["refs"][AMBUSH] == {  # type: ignore[index]
+        "reason": "Combat Intrigue: its rounds are over",
+        "reason_ko": "전투 책략 카드: 전투 책략 단계가 끝남",
+        "code": "timing",
+    }
+    assert VICTOR not in found["refs"]  # type: ignore[operator]
+
+    rounds = _combat_state(_fighter(0, 3, intrigue_cards=(VICTOR,)), _fighter(1, 1))
+    dimmed = unavailable_choices(rounds, 0, engine.whole_actions(rounds, 0))
+    assert dimmed is not None
+    assert dimmed["rows"] == []
+    assert dimmed["refs"][VICTOR] == {  # type: ignore[index]
+        "reason": "Played in your reward window when you win the Conflict",
+        "reason_ko": "{conflict}에서 승리했을 때 보상 창에서 사용",
+        "code": "timing",
+    }
+
+
+def test_the_closing_row_reads_in_both_languages() -> None:
+    state = _window(NO_SPICE_CONFLICT, cards=(VICTOR,))
+    state = apply_whole(UprisingRulesEngine(), state, _icon("resources")).state
+    close = _icon("winning_intrigue")
+    assert close in _wholes(state)
+    assert effect_action_text(state, close) == "Finish: no more winning Intrigue"
+    assert effect_action_text_ko(state, close) == "승리 {intrigue} 끝내기"
+
+
+def test_the_closing_row_stays_last_when_a_first_row_of_alternatives_is_chosen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No original Conflict prints "-OR-" in its first place, but a chosen line
+    # puts its icons at the end of the window: the close must stay behind
+    # them, because the scripted seats answer the window's first icon.
+    rows = dict(CONFLICT_REWARD_ABILITIES)
+    first, second, third = rows[NO_SPICE_CONFLICT]
+    alternatives = _one_of(
+        _line(GainResources(spice=1)), _line(GainResources(solari=2))
+    )
+    monkeypatch.setattr(
+        combat,
+        "CONFLICT_REWARD_ABILITIES",
+        {**rows, NO_SPICE_CONFLICT: (alternatives, second, third)},
+    )
+    assert first != alternatives
+    engine = UprisingRulesEngine()
+    state = _window(NO_SPICE_CONFLICT, cards=(VICTOR,))
+    assert _icons(state) == ["line_0", "line_1", "winning_intrigue"]
+    assert _plays(state) == ((VICTOR, 0),)
+
+    chosen = apply_whole(engine, state, _icon("line_1")).state
+    assert _icons(chosen) == ["resources", "winning_intrigue"]
+    assert legacy_combat_reward_icon(chosen, 0) == _icon("resources")
+    assert _icon("winning_intrigue") not in _wholes(chosen)
+    done = apply_whole(engine, chosen, _icon("resources")).state
+    assert done.players[0].resources.solari == 2
+    assert _icon("winning_intrigue") in _wholes(done)
+
+
+def test_the_original_game_alone_has_the_winning_intrigue_row() -> None:
+    # Uprising has no such card: its decks hold none, its windows get no
+    # closing row and its catalogs keep their rows (plan 15.4, 16.4).
+    # The window's close is a step row per Conflict that may print the window
+    # (``resolve{icon: winning_intrigue, printed: <conflict>}``).
+
+    def has_row(config: RulesetConfig) -> bool:
+        return any(
+            dict(template.arguments).get("icon") == "winning_intrigue"
+            for template in ActionCodec(config).catalog
+        )
+
+    assert has_row(CONFIG)
+    assert not has_row(RulesetConfig())
+    assert not has_row(RulesetConfig(bloodlines=True, tech_module=True))
+    uprising = UprisingRulesEngine().reset(RulesetConfig(), 3)
+    assert not winning_intrigue_is_hidden(uprising)
+    _, original = _start()
+    assert winning_intrigue_is_hidden(original)

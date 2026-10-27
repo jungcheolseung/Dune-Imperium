@@ -3,6 +3,7 @@
 from copy import replace
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
+from functools import cache
 from typing import TYPE_CHECKING, Final
 
 from dune_imperium.config import BaseGame
@@ -485,6 +486,11 @@ COMBAT_REWARD_ICON_KINDS: Final = (
     # card", a row of the sole winner's window (OQ-121, user ruling
     # 2026-10-25, "PA는 승자의 창 (추천)").
     "planetary_array",
+    # Not a reward icon either: the sole winner's close of the window once
+    # every other row is resolved, the press that says "no more winning
+    # Intrigue" (OQ-121 decision 6: "안 내도 창이 닫힌다"). Only the original
+    # game's catalog holds its row (``winning_intrigue_in_the_deck``).
+    "winning_intrigue",
     # The original game's (docs/rules/imperium-base.md 9, 10): the Mentat
     # [DI p. 16], two Influence with one Faction [DI p. 16] (Grand Vision),
     # and the lines of a "-OR-" or "Choose two:" row, one row each
@@ -499,6 +505,9 @@ COMBAT_REWARD_ICON_KINDS: Final = (
 # rows only when one of its Conflicts prints them (docs/base-game-and-ix-plan.md
 # 15.4), so Uprising's rows stay what they were.
 REWARD_LINE_KINDS: Final = ("line_0", "line_1", "line_2")
+# The window's own closing row (see ``COMBAT_REWARD_ICON_KINDS``); always the
+# last of the window's icons, offered when it is the only one left.
+WINNING_INTRIGUE: Final = "winning_intrigue"
 IMPERIUM_REWARD_ICON_KINDS: Final = frozenset(
     {"mentat", "one_faction_influence", *REWARD_LINE_KINDS}
 )
@@ -722,6 +731,16 @@ def _reward_window(
         if draws:
             icons.extend(["planetary_array"] * draws)
             printed.append("planetary_array")
+        if winning_intrigue_is_hidden(state):
+            # "When you win a Conflict" Intrigue (To the Victor..., Demand
+            # Respect) is played in this window, in the winner's order with
+            # the icons, and "안 내도 창이 닫힌다" (OQ-121 decision 6): the
+            # window stays open for the plays until the seat closes it, last.
+            # Whether the winner holds one is not shown: the closing row is
+            # there on public facts alone (some copy is still in a deck or a
+            # hand), as the Conflict-end window opens (OQ-103).
+            icons.append(WINNING_INTRIGUE)
+            printed.append(WINNING_INTRIGUE)
     context: dict[str, ActionValue] = {
         _ICONS_KEY: ",".join(icons),
         _PRINTED_KEY: ",".join(printed),
@@ -784,6 +803,42 @@ def _window_icons(frame: DecisionFrame) -> tuple[str, ...]:
     return tuple(str(text).split(",")) if text else ()
 
 
+@cache
+def _winning_intrigue_instances() -> frozenset[str]:
+    """Every Intrigue instance with a "When you win a Conflict" option (the
+    original game's To the Victor... and Demand Respect)."""
+
+    return frozenset(
+        instance_id
+        for instance_id, entry in INTRIGUE_CARDS_BY_INSTANCE.items()
+        if any(isinstance(option.trigger, OnConflictWon) for option in entry.options)
+    )
+
+
+def winning_intrigue_is_hidden(state: GameState) -> bool:
+    """Whether a winning Intrigue card is still in a deck or a hand.
+
+    A fact every seat can work out: the discard pile and the cards face up
+    are public, so the copies not in them are in the deck or a hand. It
+    decides whether the sole winner's window carries the winning Intrigue row
+    and its closing (``WINNING_INTRIGUE``) without telling the table whether
+    the winner holds one (OQ-121, OQ-103). Uprising's Intrigue deck has none.
+    """
+
+    winning = _winning_intrigue_instances()
+    return any(card in winning for card in state.intrigue_deck) or any(
+        card in winning for seat in state.players for card in seat.intrigue_cards
+    )
+
+
+def winning_intrigue_window_is_open(state: GameState, player: int) -> bool:
+    """Whether ``player``'s reward window is on top and still open for its
+    winning Intrigue (its closing row is not pressed yet)."""
+
+    frame = owned_top_frame(state, FrameKind.COMBAT_REWARD_ICONS, player)
+    return frame is not None and WINNING_INTRIGUE in _window_icons(frame)
+
+
 def legal_combat_reward_icon_actions(
     state: GameState, player: int
 ) -> tuple[DomainAction, ...]:
@@ -798,6 +853,10 @@ def legal_combat_reward_icon_actions(
         # "Choose two": both lines are named before either is paid (OQ-114,
         # OQ-057 (4)), so the second pick comes first.
         remaining &= set(REWARD_LINE_KINDS)
+    if remaining != {WINNING_INTRIGUE}:
+        # The winning Intrigue's close comes last: until then the seat may
+        # still play one (also one a reward row draws, [FAQ p. 4]).
+        remaining.discard(WINNING_INTRIGUE)
     return tuple(
         DomainAction(
             action_id=REWARD_ICON_ACTION, actor=player, arguments=(("effect", kind),)
@@ -926,22 +985,25 @@ def apply_combat_reward_icon(state: GameState, action: DomainAction) -> RuleResu
         # The Contract market takes the Contracts; the row says how many,
         # for the Combat result line (``render.js``).
         details.extend(_icon_details(state, kind, piece, multiplier))
-    events.append(
-        GameEvent(
-            event_id=f"{source}:icon:{len(icons)}",
-            kind="combat_reward_icon_resolved",
-            payload=tuple(
-                sorted(
-                    (
-                        ("effect", kind),
-                        ("player", player),
-                        ("rank", rank.value),
-                        *details,
+    if kind != WINNING_INTRIGUE:
+        # The window's own close is no reward: its seat gained nothing, so
+        # the Combat result line has nothing to say for it.
+        events.append(
+            GameEvent(
+                event_id=f"{source}:icon:{len(icons)}",
+                kind="combat_reward_icon_resolved",
+                payload=tuple(
+                    sorted(
+                        (
+                            ("effect", kind),
+                            ("player", player),
+                            ("rank", rank.value),
+                            *details,
+                        )
                     )
-                )
-            ),
+                ),
+            )
         )
-    )
     remaining = tuple(reversed(opened))
     state = replace(
         state,
@@ -980,13 +1042,19 @@ def _choose_reward_line(
         conflict_id = state.current_conflict_ids[-1]
         row = CONFLICT_REWARD_ABILITIES[conflict_id][rank.value - 1]
         added = [icon for icon, _piece in _row_icons(row, chosen)]
+        # The winning Intrigue's close stays the last icon of the window.
+        closing = [icon for icon in icons if icon == WINNING_INTRIGUE]
+        icons = [icon for icon in icons if icon != WINNING_INTRIGUE]
         icons.extend(added)
+        icons.extend(closing)
         printed = [
             icon
             for icon in str(context[_PRINTED_KEY]).split(",")
-            if icon not in REWARD_LINE_KINDS
+            if icon not in REWARD_LINE_KINDS and icon != WINNING_INTRIGUE
         ]
-        context[_PRINTED_KEY] = ",".join((*printed, *dict.fromkeys(added)))
+        context[_PRINTED_KEY] = ",".join(
+            (*printed, *dict.fromkeys(added), *closing)
+        )
     context[_CHOSEN_KEY] = ",".join(str(index) for index in chosen)
     context[_ICONS_KEY] = ",".join(icons)
     stack = (*state.decision_stack[:-1], with_context(frame, context))
@@ -1138,6 +1206,10 @@ def _resolve_automatic_icon(
                     ),
                 ),
             )
+        case "winning_intrigue", None:
+            # The window's own close: nothing is gained (the plays it ends
+            # were cards of their own, ``intrigue.apply_intrigue_play``).
+            return RuleResult(state=state)
         case "planetary_array", None:
             # "When you win a Conflict: draw a card" [Planetary Array Tech
             # tile], drawn as this row resolves, before the next place is

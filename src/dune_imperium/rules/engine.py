@@ -565,7 +565,13 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.COMBAT_REWARD_TRASH: (legal_combat_reward_trash_actions,),
     FrameKind.CONFLICT_END_TRIGGER: (legal_conflict_end_trigger_actions,),
     FrameKind.COMBAT_REWARD_SPY: (legal_combat_reward_spy_actions,),
-    FrameKind.COMBAT_REWARD_ICONS: (legal_combat_reward_icon_actions,),
+    FrameKind.COMBAT_REWARD_ICONS: (
+        legal_combat_reward_icon_actions,
+        # The sole winner's "When you win a Conflict" Intrigue, a row of its
+        # window in any order with the icons (OQ-121, user ruling
+        # 2026-10-25); none for any other recipient's window.
+        legal_intrigue_play_actions,
+    ),
     FrameKind.COMBAT_REWARD_INFLUENCE: (legal_combat_reward_influence_actions,),
     FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE: (
         legal_distinct_combat_reward_influence_actions,

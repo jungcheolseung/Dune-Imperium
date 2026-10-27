@@ -24,6 +24,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     IntrigueOption,
     IntrigueTiming,
+    OnConflictWon,
     OnTroopsLostAtConflictEnd,
     PeekTopCard,
     RevealContractsTakeOne,
@@ -58,6 +59,7 @@ from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.combat import (
     COMBAT_INTRIGUE_PLAYED_KEY,
     refresh_combat_participants,
+    winning_intrigue_window_is_open,
 )
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
@@ -118,6 +120,10 @@ class IntriguePlayBlock(StrEnum):
     # rewards resolved, never in an Intrigue window (user ruling 2026-10-06,
     # OQ-057 (11): "This card is played after combat resolves.").
     CONFLICT_END = "conflict_end"
+    # "When you win a Conflict:" [To the Victor... card, Demand Respect card]:
+    # played only in the sole winner's reward window, after the win, never in
+    # a Combat Intrigue round [DI p. 12] (OQ-121, user ruling 2026-10-25).
+    CONFLICT_WON = "conflict_won"
     # "At the start of your turn" (Withdrawn) on the turn frame after the
     # seat already acted in the turn (OQ-095 (6), user ruling 2026-10-04).
     TURN_STARTED = "turn_started"
@@ -142,6 +148,12 @@ def intrigue_window(state: GameState, player: int) -> IntrigueTiming | None:
     if state.phase is GamePhase.COMBAT and frame.kind == FrameKind.COMBAT_INTRIGUE:
         # Only the participant whose priority it is may play [Main p. 14].
         return IntrigueTiming.COMBAT
+    if winning_intrigue_window_is_open(state, player):
+        # The sole winner's reward window: "When you win a Conflict" cards
+        # are played here among the reward's icons, in the winner's order
+        # (OQ-121, user ruling 2026-10-25; ``intrigue_play_block`` keeps every
+        # other Combat card out of it).
+        return IntrigueTiming.COMBAT
     if state.phase is GamePhase.ENDGAME and frame.kind == FrameKind.ENDGAME_INTRIGUE:
         # Endgame Intrigue resolves in the owner's Endgame window
         # [Main pp. 7, 15].
@@ -165,6 +177,14 @@ def intrigue_play_block(
         # the rewards (``combat.offer_conflict_end_triggers``) instead of
         # going face up in Combat Intrigue (user ruling 2026-10-06).
         return IntriguePlayBlock.CONFLICT_END
+    winning = isinstance(option.trigger, OnConflictWon)
+    if frame_kind == FrameKind.COMBAT_REWARD_ICONS:
+        # The winner's window holds the winning Intrigue and nothing else of
+        # Combat (OQ-121 decision 6): a Combat card of the rounds is over.
+        if not winning:
+            return IntriguePlayBlock.TIMING
+    elif winning:
+        return IntriguePlayBlock.CONFLICT_WON
     if option.timing is not timing:
         return IntriguePlayBlock.TIMING
     if option.turn_start_only and frame_kind != FrameKind.TURN:
@@ -290,13 +310,16 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     # it resolves and reaches the discard pile only at the end, so a draw it
     # causes cannot reshuffle the card itself and no card leaves every zone.
     played_state = replace(state, players=replace_player(state.players, paid_owner))
+    winning = isinstance(option.trigger, OnConflictWon)
     if (
         option.timing is IntrigueTiming.COMBAT
         and state.phase is GamePhase.COMBAT
+        and not winning
         and player not in played_state.combat_intrigue_players
     ):
         # Counterattack (Immortality): "If an opponent played a Combat
-        # Intrigue card in this Conflict".
+        # Intrigue card in this Conflict" (the rounds' cards; a winning
+        # Intrigue is played after them, in the reward window).
         played_state = replace(
             played_state,
             combat_intrigue_players=(*played_state.combat_intrigue_players, player),
@@ -328,7 +351,7 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     ):
         events.append(without_effect_event(source, card_id, player))
 
-    if option.trigger is not None:
+    if option.trigger is not None and not winning:
         # The effect does not apply yet: the card waits face up in front of
         # its owner until the trigger fires [FAQ p. 2] (Call to Arms; Harvest
         # Cells is never played here, ``IntriguePlayBlock.CONFLICT_END``).

@@ -154,6 +154,15 @@ def _combat(*sections: EffectSection) -> IntrigueOption:
     return IntrigueOption(timing=IntrigueTiming.COMBAT, sections=sections)
 
 
+def _combat_trigger(trigger: Trigger, *sections: EffectSection) -> IntrigueOption:
+    """A Combat card played at its trigger, not in the Combat Intrigue rounds
+    (a winning Intrigue, ``OnConflictWon``: the winner's reward window)."""
+
+    return IntrigueOption(
+        timing=IntrigueTiming.COMBAT, sections=sections, trigger=trigger
+    )
+
+
 def _endgame(*sections: EffectSection) -> IntrigueOption:
     return IntrigueOption(timing=IntrigueTiming.ENDGAME, sections=sections)
 

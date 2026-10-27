@@ -915,6 +915,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         and (kind != "contract" or content.contract_instance_ids)
         # Planetary Array's row of the winner's window (OQ-121).
         and (kind != "planetary_array" or config.tech_module)
+        # The original game's winning Intrigue closes the winner's window
+        # (OQ-121 decision 6); Uprising's catalogs hold no such row.
+        and (kind != "winning_intrigue" or content.base_game is BaseGame.IMPERIUM)
     )
     # One board-effect resolution per printed automatic icon (OQ-027).
     templates.extend(
@@ -1608,7 +1611,7 @@ def _effect_step_templates(
                         for printed in kinds
                     )
                     or (kind == "choose_influence" and config.promo_cards)
-                    or kind == "planetary_array"
+                    or kind in ("planetary_array", "winning_intrigue")
                 )
             )
         elif spec.printed == Printed.CONTRACT:

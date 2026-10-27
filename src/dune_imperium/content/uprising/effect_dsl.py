@@ -1877,7 +1877,11 @@ class IntrigueOption:
     """One way to play an Intrigue card (the halves of an ``—OR—`` card).
 
     An option with a ``trigger`` does nothing when played; the card waits
-    face up and its sections resolve each time the trigger fires.
+    face up and its sections resolve each time the trigger fires. Two
+    triggers name the moment the card is *played* instead, so the card is
+    played from the hand then and resolves at once (``OnTroopsLostAtConflictEnd``,
+    Harvest Cells' Conflict-end window; ``OnConflictWon``, a winning Intrigue
+    in the winner's reward window).
     """
 
     timing: IntrigueTiming
@@ -1899,15 +1903,18 @@ class IntrigueOption:
         if not self.sections:
             raise ValueError("an Intrigue option needs at least one section")
         if self.trigger is not None:
-            # A Conflict-end loss trigger is played during Combat (Harvest
-            # Cells); every other trigger card is a Plot card.
+            # A Conflict-end loss trigger and a Conflict win are played during
+            # Combat (Harvest Cells; To the Victor..., Demand Respect); every
+            # other trigger card is a Plot card.
             expected = (
                 IntrigueTiming.COMBAT
-                if isinstance(self.trigger, OnTroopsLostAtConflictEnd)
+                if isinstance(self.trigger, OnTroopsLostAtConflictEnd | OnConflictWon)
                 else IntrigueTiming.PLOT
             )
             if self.timing is not expected:
-                raise ValueError("triggered Intrigue options must use Plot timing")
+                raise ValueError(
+                    f"this trigger's Intrigue options must use {expected.value} timing"
+                )
             for section in self.sections:
                 if section.costs or section.condition is not None:
                     raise ValueError(
