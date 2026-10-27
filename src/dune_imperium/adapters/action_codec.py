@@ -80,6 +80,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import (
     BLOODLINES_REVEAL_CHOICE_EFFECTS,
     IMMORTALITY_REVEAL_CHOICE_EFFECTS,
+    IMPERIUM_REVEAL_CHOICE_EFFECTS,
     AgentIcon,
     BattleIcon,
     PersonalCardAgentEffect,
@@ -949,6 +950,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         if content.base_game is BaseGame.UPRISING
         and (config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS)
         and (config.immortality or effect not in IMMORTALITY_REVEAL_CHOICE_EFFECTS)
+        # The original game's cards (stage P3): its catalog lists no resume
+        # row until the stage that puts them in its deck.
+        and effect not in IMPERIUM_REVEAL_CHOICE_EFFECTS
     )
     if config.choam_module:
         templates.extend(
@@ -3491,6 +3495,7 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: ("gain_reveal_influence",),
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _SOURCED_TROOP_MOVE,
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _SOURCED_TROOP_MOVE,
+    _Choice.MAY_DEPLOY_ONE_TROOP: ("deploy_reveal_card_troop",),
     _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED: (
         "recall_spy_for_reveal",
     ),

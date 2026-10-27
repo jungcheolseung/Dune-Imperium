@@ -1302,7 +1302,15 @@ class EachOpponentDiscardsCard:
 class EachOpponentLosesTroop:
     """Each opponent loses one troop [Holy War card]: every opponent is
     asked, clockwise from the next seat, even with nothing to lose (OQ-036
-    (a))."""
+    (a)).
+
+    ``garrison_only``: "Each opponent loses one garrisoned troop" [Gun
+    Thopter card] -- the loser's choice is limited to its garrison; one with
+    no garrisoned troop is unaffected [FAQ p. 2] (and still confirms it,
+    OQ-036 (a)).
+    """
+
+    garrison_only: bool = False
 
 
 @dataclass(frozen=True, slots=True)

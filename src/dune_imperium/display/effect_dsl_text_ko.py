@@ -939,9 +939,13 @@ def reward_text_ko(reward: Reward) -> str:
         case EachOpponentDiscardsCard():
             # Quotes ``tokens_ko.py``'s Covert Operation line.
             return "다른 플레이어 각자 카드 1장 버리기"
-        case EachOpponentLosesTroop():
-            # Quotes ``tokens_ko.py``'s Holy War line.
-            return "다른 플레이어 각자 {troop} 하나 잃음"
+        case EachOpponentLosesTroop(garrison_only=garrison_only):
+            # Quotes ``tokens_ko.py``'s Holy War and Gun Thopter lines.
+            return (
+                "다른 플레이어 각자 {garrison}의 {troop} 하나 잃음"
+                if garrison_only
+                else "다른 플레이어 각자 {troop} 하나 잃음"
+            )
         case OpponentsMoveSpiesFromVisitedSpace():
             # Quotes ``tokens_ko.py``'s Holy War line.
             return (

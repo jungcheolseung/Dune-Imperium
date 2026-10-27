@@ -24,7 +24,11 @@ from typing import Final
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
-from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAgentEffect,
+    PersonalCardRevealChoiceEffect,
+)
 
 # The rulebook lists the deck [DI p. 3]; the printed values are the app's
 # (plan 2.4, D1).
@@ -69,6 +73,19 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         ),
         reveal_persuasion=1,
         reveal_strength=1,
+        play_data_complete=True,
+    ),
+    # App table: cost 4, 2 copies, City and Spice Trade, Reveal 3 swords (no
+    # Persuasion). Agent: "Each opponent loses one garrisoned troop"; Reveal:
+    # "You may deploy a troop from your garrison to the Conflict".
+    ImperiumCardEntry(
+        card=imperium_card("gun_thopter", "Gun Thopter"),
+        copies=2,
+        acquisition_cost=4,
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.EACH_OPPONENT_LOSES_GARRISON_TROOP,
+        reveal_strength=3,
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,),
         play_data_complete=True,
     ),
 )

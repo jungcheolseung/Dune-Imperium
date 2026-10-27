@@ -145,7 +145,8 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
         if ability.mark is AbilityMark.MANDATORY
     }
     assert optional | mandatory == set(PersonalCardRevealChoiceEffect)
-    assert len(optional) == 16
+    # Sixteen of the Uprising family's and Gun Thopter's deploy (stage P3).
+    assert len(optional) == 16 + 1
     assert len(mandatory) == 10
     assert set(REVEAL_CHOICE_EFFECT_ACTIONS) == set(PersonalCardRevealChoiceEffect)
     # A printed "-OR-" choice and a gain are mandatory; the Spy icons too

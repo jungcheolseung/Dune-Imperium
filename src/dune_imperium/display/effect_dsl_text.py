@@ -663,8 +663,12 @@ def reward_text(reward: Reward) -> str:
             return "Recall 1 Agent"
         case EachOpponentDiscardsCard():
             return "Each opponent discards a card"
-        case EachOpponentLosesTroop():
-            return "Each opponent loses one troop"
+        case EachOpponentLosesTroop(garrison_only=garrison_only):
+            return (
+                "Each opponent loses one garrisoned troop"
+                if garrison_only
+                else "Each opponent loses one troop"
+            )
         case OpponentsMoveSpiesFromVisitedSpace():
             return (
                 "Each opponent spying on the board space where you sent an"

@@ -13,7 +13,11 @@ from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
-from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAgentEffect,
+    PersonalCardRevealChoiceEffect,
+)
 from dune_imperium.core import (
     ChanceDecision,
     ChanceResolver,
@@ -21,11 +25,14 @@ from dune_imperium.core import (
     GamePhase,
     GameState,
     Influence,
+    PlayerDecision,
     Resources,
 )
+from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
+from dune_imperium.rules.frames import FrameKind
 
 CONFIG = RulesetConfig(base_game=BaseGame.IMPERIUM, first_player_seat_zero=True)
 LEADERS = (
@@ -297,3 +304,186 @@ def test_spice_smugglers_reveals_one_persuasion_and_one_sword() -> None:
     frame = _reveal(engine, state)
     assert frame["persuasion"] == 1
     assert frame["sword_strength"] == 1
+
+
+# --- Gun Thopter ------------------------------------------------------------------
+
+
+def _with_troops(
+    state: GameState, seat: int, garrison: int, conflict: int = 0
+) -> GameState:
+    """``seat`` with that many troops in the garrison and the Conflict (the
+    rest in its supply)."""
+
+    return _seat(
+        state,
+        seat,
+        troops_garrison=garrison,
+        troops_conflict=conflict,
+        troops_supply=12 - garrison - conflict,
+    )
+
+
+def _thopter_resolved(
+    engine: UprisingRulesEngine, state: GameState
+) -> tuple[GameState, GameState]:
+    """The state before and after seat 0 plays Gun Thopter's Agent box at
+    Secure Contract (a Spice Trade space), the opponents' windows open."""
+
+    held, _ = _with_card(state, "gun_thopter")
+    placed = _place(engine, held, "secure_contract", "gun_thopter")
+    return placed, _do(engine, placed, "resolve_agent_card_effect")
+
+
+def _answer(
+    engine: UprisingRulesEngine, state: GameState, seat: int, action_id: str
+) -> GameState:
+    action = next(
+        action
+        for action in engine.whole_actions(state, seat)
+        if action.action_id == action_id
+    )
+    return apply_whole(engine, state, action).state
+
+
+def test_gun_thopter_matches_the_app_table() -> None:
+    # App attribute table: cost 4, 2 copies, City and Spice Trade, no Faction,
+    # Reveal 3 swords and no Persuasion.
+    entry = IMPERIUM_CARDS_BY_ID["gun_thopter"]
+    assert entry.card.name == "Gun Thopter"
+    assert entry.acquisition_cost == 4
+    assert entry.copies == 2
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.EACH_OPPONENT_LOSES_GARRISON_TROOP
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 3)
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:gun_thopter:1") is entry
+
+
+def test_gun_thopter_takes_one_garrisoned_troop_from_each_opponent() -> None:
+    """"| Gun Thopter | 2 | garrison troop이 없는 상대는 영향 없음 |" [FAQ p. 2]
+    (imperium-base.md 13.2); the lost troop goes to its owner's supply ("troop
+    잃기(supply로)" [DI p. 16]); "\"each opponent\"는 다음 좌석부터 시계 방향"
+    (imperium-base.md 16, OQ-036). The Conflict's troops are not touched."""
+
+    engine, state = _start()
+    for seat in (1, 2, 3):
+        state = _with_troops(state, seat, garrison=2, conflict=1)
+    _, resolved = _thopter_resolved(engine, state)
+    # Seat 1, the next seat clockwise, answers first; each window is its own
+    # seat's and the card's owner has none.
+    assert resolved.decision_stack[-1].kind == FrameKind.OPPONENT_UNIT_LOSS
+    owners = [
+        frame.decision.owner
+        for frame in resolved.decision_stack
+        if frame.kind == FrameKind.OPPONENT_UNIT_LOSS
+        and isinstance(frame.decision, PlayerDecision)
+    ]
+    assert owners == [3, 2, 1]
+    for seat in (1, 2, 3):
+        # Only the seat whose window is on top has anything to answer.
+        assert [
+            (action.action_id, dict(action.arguments))
+            for action in engine.whole_actions(resolved, seat)
+        ] == [("lose_unit", {"zone": "garrison"})]
+        assert not engine.whole_actions(resolved, 0)
+        resolved = _answer(engine, resolved, seat, "lose_unit")
+        loser = resolved.players[seat]
+        assert (loser.troops_garrison, loser.troops_conflict) == (1, 1)
+        assert loser.troops_supply == 12 - 1 - 1
+    assert resolved.players[0].troops_garrison == state.players[0].troops_garrison
+    assert not any(
+        frame.kind == FrameKind.OPPONENT_UNIT_LOSS for frame in resolved.decision_stack
+    )
+
+
+def test_gun_thopter_leaves_an_opponent_with_no_garrisoned_troop_alone() -> None:
+    """"garrison troop이 없는 상대는 영향 없음" [FAQ p. 2]: its Conflict troops
+    stay. The window still opens (OQ-036 (a), user ruling 2026-09-30: "선택지가 단
+    하나여도 어쨌든 확인을 거치는 걸로"), offering the one confirmation."""
+
+    engine, state = _start()
+    state = _with_troops(state, 1, garrison=0, conflict=2)
+    state = _with_troops(state, 2, garrison=0, conflict=0)
+    state = _with_troops(state, 3, garrison=1)
+    _, resolved = _thopter_resolved(engine, state)
+    for seat in (1, 2):
+        assert [
+            action.action_id for action in engine.whole_actions(resolved, seat)
+        ] == ["resolve_unit_loss_without_unit"]
+        resolved = _answer(engine, resolved, seat, "resolve_unit_loss_without_unit")
+    after = resolved.players
+    assert (after[1].troops_garrison, after[1].troops_conflict) == (0, 2)
+    assert after[1].troops_supply == state.players[1].troops_supply
+    assert after[2].troops_supply == state.players[2].troops_supply
+    resolved = _answer(engine, resolved, 3, "lose_unit")
+    assert resolved.players[3].troops_garrison == 0
+    assert resolved.players[3].troops_supply == 12
+
+
+def test_gun_thopter_window_lists_the_garrison_alone() -> None:
+    """The window lists the garrison's troop only: a seat with no Conflict
+    troop gets no greyed Conflict row (Holy War's window would grey one; the
+    Conflict is no option here), and a seat with no garrisoned troop gets the
+    garrison row greyed with the window's "no unit" reason."""
+
+    engine, state = _start()
+    state = _with_troops(state, 1, garrison=3, conflict=0)
+    state = _with_troops(state, 2, garrison=0, conflict=3)
+    _, resolved = _thopter_resolved(engine, state)
+
+    def rows(at: GameState, seat: int) -> dict[str, str]:
+        found = unavailable_choices(at, seat, engine.whole_actions(at, seat))
+        return (
+            {}
+            if found is None
+            else {
+                str(row["key"]): str(row["reason"])
+                for row in found["rows"]  # type: ignore[attr-defined]
+                if str(row["key"]).startswith("choice:lose_unit:")
+            }
+        )
+
+    assert rows(resolved, 1) == {}
+    after_one = _answer(engine, resolved, 1, "lose_unit")
+    assert rows(after_one, 2) == {"choice:lose_unit:garrison:0": "No unit to lose"}
+
+
+def test_gun_thopter_reveals_three_swords_and_may_deploy_a_garrison_troop() -> None:
+    """The Reveal's swords count once a troop stands in the Conflict ("Conflict에
+    troop이 하나도 없으면 0" [DI p. 11]); "You may deploy a troop from your
+    garrison to the Conflict" [Gun Thopter card], optional, one troop (P0 sweep
+    S14). Deploying it makes 2 for the troop and 3 swords: 5."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "gun_thopter", alone=True)
+    garrison = state.players[0].troops_garrison
+    revealed = _do(engine, state, "reveal_turn")
+    assert dict(revealed.decision_stack[-1].context)["sword_strength"] == 3
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 0
+    assert "deploy_reveal_card_troop" in _ids(engine, revealed)
+    # Optional: the owner who does not deploy has no troop to fight with.
+    declined = _do(engine, revealed, "finish_reveal")
+    assert declined.players[0].combat_strength == 0
+    deployed = _do(engine, revealed, "deploy_reveal_card_troop")
+    assert deployed.players[0].troops_garrison == garrison - 1
+    assert deployed.players[0].troops_conflict == 1
+    # One troop only: the choice is used up.
+    assert "deploy_reveal_card_troop" not in _ids(engine, deployed)
+    finished = _do(engine, deployed, "finish_reveal")
+    assert finished.players[0].combat_strength == 2 + 3
+
+
+def test_gun_thopter_cannot_deploy_from_an_empty_garrison() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "gun_thopter", alone=True)
+    state = _with_troops(state, 0, garrison=0)
+    revealed = _do(engine, state, "reveal_turn")
+    assert "deploy_reveal_card_troop" not in _ids(engine, revealed)
+    assert "finish_reveal" in _ids(engine, revealed)

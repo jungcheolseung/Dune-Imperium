@@ -320,6 +320,8 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI = (
         "may_pay_two_spice_for_spacing_guild_influence_and_three_solari"
     )
+    # Gun Thopter: "Each opponent loses one garrisoned troop."
+    EACH_OPPONENT_LOSES_GARRISON_TROOP = "each_opponent_loses_garrison_troop"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -466,6 +468,10 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     )
     # Tleilaxu Surgeon: "Lose two troops -> two specimens".
     MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS = "may_lose_two_troops_for_two_specimens"
+    # The original game's Imperium cards (stage P3). Gun Thopter: "You may
+    # deploy a troop from your garrison to the Conflict" -- the deploy half of
+    # Shadout Mapes' "deploy or retreat".
+    MAY_DEPLOY_ONE_TROOP = "may_deploy_one_troop"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -483,6 +489,13 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
         PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT,
         PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
     }
+)
+
+# Choice effects added by the original game's Imperium cards (stage P3):
+# outside every Uprising catalog, whose resume templates list one per choice
+# effect of the Uprising family only.
+IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = frozenset(
+    {PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP}
 )
 
 # Choice effects added by Immortality; like the Bloodlines set their

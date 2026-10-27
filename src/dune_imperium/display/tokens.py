@@ -444,6 +444,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             PersonalCardAgentEffect
             .MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
         ): "You may pay 2 spice → Gain 1 Spacing Guild Influence, Gain 3 Solari",
+        PersonalCardAgentEffect.EACH_OPPONENT_LOSES_GARRISON_TROOP: (
+            "Each opponent loses one garrisoned troop"
+        ),
     }
 )
 
@@ -593,6 +596,10 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             ): "Fremen Bond: You may deploy or retreat 1 troop",
             PersonalCardRevealChoiceEffect.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: (
                 "You may lose 2 troops → Generate 2 specimens"
+            ),
+            # The original game's Imperium cards (stage P3).
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP: (
+                "You may deploy 1 troop from your garrison to the Conflict"
             ),
             PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
                 "Choose one: Gain 5 solari / "

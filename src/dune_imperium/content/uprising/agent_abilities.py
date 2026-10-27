@@ -633,6 +633,12 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # Covert Operation: "Each opponent discards a card" -- one frame per
             # opponent holding a card, named ``<box>:opponent:<seat>``.
             _BOX.EACH_OPPONENT_DISCARDS_PERSONAL_CARD: _box(EachOpponentDiscardsCard()),
+            # Gun Thopter (original game): "Each opponent loses one garrisoned
+            # troop" -- Holy War's window, each loss limited to the garrison;
+            # an opponent with none is unaffected [FAQ p. 2].
+            _BOX.EACH_OPPONENT_LOSES_GARRISON_TROOP: _box(
+                EachOpponentLosesTroop(garrison_only=True)
+            ),
             # Holy War: "Each opponent loses one troop. Each opponent spying on
             # the board space where you sent an Agent this turn must move that
             # Spy" -- every loss first, then the Spy moves (OQ-036).

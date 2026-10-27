@@ -250,6 +250,7 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     ),
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _TROOP_MOVE_ACTIONS,
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _TROOP_MOVE_ACTIONS,
+    _Choice.MAY_DEPLOY_ONE_TROOP: frozenset({"deploy_reveal_card_troop"}),
     _Choice.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: frozenset(
         {"lose_reveal_troops_for_specimens"}
     ),
@@ -492,22 +493,43 @@ def troop_loss_specimens(
 
 def troop_move_choice(effect: PersonalCardRevealChoiceEffect | str | None) -> bool:
     """"You may deploy or retreat 1 troop" [Shadout Mapes card], maybe under a
-    Bond [Unswerving Loyalty card]."""
+    Bond [Unswerving Loyalty card]; or its deploy half alone, "You may deploy
+    a troop from your garrison to the Conflict" [Gun Thopter card]."""
 
     if effect is None:
         return False
     ability = reveal_choice_ability(PersonalCardRevealChoiceEffect(effect))
+    if (
+        ability is None
+        or ability.hook is not None
+        or ability.mark is not AbilityMark.OPTIONAL
+    ):
+        return False
+    rewards = [line.rewards for line in ability.sections]
     return (
-        ability is not None
-        and ability.hook is None
-        and ability.mark is AbilityMark.OPTIONAL
-        and ability.structure is AbilityStructure.ONE_OF
-        and [line.rewards for line in ability.sections]
-        == [(DeployFromGarrison(1),), (RetreatTroops(1, 1),)]
-        and all(
-            line.condition is None or isinstance(line.condition, FactionBond)
-            for line in ability.sections
+        (
+            ability.structure is AbilityStructure.ONE_OF
+            and rewards == [(DeployFromGarrison(1),), (RetreatTroops(1, 1),)]
         )
+        or (
+            ability.structure is AbilityStructure.SEQUENCE
+            and rewards == [(DeployFromGarrison(1),)]
+        )
+    ) and all(
+        line.condition is None or isinstance(line.condition, FactionBond)
+        for line in ability.sections
+    )
+
+
+def troop_move_retreats(effect: PersonalCardRevealChoiceEffect | str | None) -> bool:
+    """Whether a troop-move choice also offers the retreat (Shadout Mapes,
+    Unswerving Loyalty); Gun Thopter's deploy stands alone."""
+
+    return (
+        effect is not None
+        and troop_move_choice(effect)
+        and len(reveal_choice_ability(PersonalCardRevealChoiceEffect(effect)).sections)
+        == 2
     )
 
 
@@ -2200,6 +2222,7 @@ def legal_reveal_troop_move_actions(
         return ()
     card_id, _ = _reveal_choice_card_source(state, player, context, "troop_move")
     owner = state.players[player]
+    retreats = troop_move_retreats(_effect_value(context))
     return tuple(
         _sourced(
             action_id,
@@ -2213,10 +2236,16 @@ def legal_reveal_troop_move_actions(
                 _deployable_garrison_troops(state, player),
                 owner.commanders_garrison,
             ),
-            (
-                "retreat_reveal_card_troop",
-                owner.troops_conflict,
-                owner.commanders_conflict,
+            *(
+                (
+                    (
+                        "retreat_reveal_card_troop",
+                        owner.troops_conflict,
+                        owner.commanders_conflict,
+                    ),
+                )
+                if retreats
+                else ()
             ),
         )
         for commander, available in ((False, troops), (True, commanders))
@@ -3931,6 +3960,8 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         is _LOSE_INFLUENCE_FOR_VP
         else "You may deploy or retreat one troop"
         if effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
+        else "You may deploy one troop from your garrison to the Conflict"
+        if effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP
         else "You may lose two troops for two specimens"
         if effect is _LOSE_TROOPS_FOR_SPECIMENS
         else "You may trash this card for one Influence with each Faction"
@@ -4080,8 +4111,11 @@ def _reveal_choice_effect_is_available(
             )
             and _deployable_garrison_troops(state, player)
             + owner.commanders_garrison
-            + owner.troops_conflict
-            + owner.commanders_conflict
+            + (
+                owner.troops_conflict + owner.commanders_conflict
+                if troop_move_retreats(effect)
+                else 0
+            )
             >= 1
         )
         or (

@@ -951,9 +951,13 @@ def _opponents_decide(
                 ),
                 events=(),
             )
-        case EachOpponentLosesTroop():
+        case EachOpponentLosesTroop(garrison_only=garrison_only):
             return opponent_unit_loss_frames(
-                state, player, source=source, printer=_card_printer(card_id)
+                state,
+                player,
+                source=source,
+                printer=_card_printer(card_id),
+                garrison_only=garrison_only,
             )
         case OpponentsMoveSpiesFromVisitedSpace():
             space_id = context.get("space_id")
