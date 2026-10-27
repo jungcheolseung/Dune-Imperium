@@ -4122,3 +4122,260 @@ def test_poison_snooper_rows_have_catalog_templates_and_step_rows() -> None:
     assert rows(CONFIG) == {"draw", "trash", "confirm_empty"}
     assert not rows(RulesetConfig())
     assert not rows(RulesetConfig(bloodlines=True, tech_module=True))
+
+
+# --- Bindu Suspension (Plot at the start of the turn, stage P3c) --------------
+
+BINDU = _intrigue("bindu_suspension")
+# A Twisted card that also reads "At the start of your turn" (Withdrawn).
+WITHDRAWN = "intrigue:twisted_withdrawn:0"
+
+
+def _bindu_hand(
+    *, deck: int = 4, discard: int = 3, **changes: Any
+) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 at the start of its turn with Bindu Suspension, ``deck`` /
+    ``discard`` of its ten starter cards left in those piles."""
+
+    engine, state = _start()
+    owner = state.players[0]
+    cards = (*owner.deck, *owner.hand)
+    return engine, _seat(
+        state,
+        intrigue_cards=(BINDU,),
+        deck=cards[:deck],
+        discard_pile=cards[deck : deck + discard],
+        hand=cards[deck + discard :],
+        **changes,
+    )
+
+
+def _pass_action(action_id: str) -> DomainAction:
+    return DomainAction(action_id=action_id, actor=0)
+
+
+def test_bindu_suspension_is_one_turn_start_plot_that_draws_and_may_pass() -> None:
+    # "At the start of your turn: [draw 1]. You may pass your turn." [Bindu
+    # Suspension card, app text]; 1 copy [DI p. 3]. Played only as the turn's
+    # first action (OQ-117, imperium-base.md 13.1).
+    entry = intrigue_card_for_instance(BINDU)
+    assert entry.card.name == "Bindu Suspension"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert entry.options[0].turn_start_only
+    assert not entry.options[0].sections[0].costs
+    assert intrigue_card_text(entry) == [
+        "Plot — At the start of your turn: Draw 1 card, you may pass your turn"
+    ]
+    assert "bindu_suspension" not in {card.card.card_id for card in INTRIGUE_CARDS}
+
+
+def test_bindu_suspension_draws_a_card_then_offers_to_pass_or_play_on() -> None:
+    # OQ-117 (user ruling C, 2026-10-22): after the draw the owner "may choose
+    # to pass your turn or play your turn normally" (imperium-base.md 13.3):
+    # the draw comes first and the pass is a choice of its own, never forced.
+    engine, state = _bindu_hand()
+    before = state.players[0]
+    assert legal_intrigue_play_actions(state, 0) == (_play(BINDU),)
+
+    opened = apply_whole(engine, state, _play(BINDU)).state
+
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    assert opened.players[0].hand == (*before.hand, before.deck[0])
+    assert opened.players[0].deck == before.deck[1:]
+    # The card stays held while its choice is open.
+    assert opened.players[0].intrigue_cards == (BINDU,)
+    assert {action.action_id for action in engine.whole_actions(opened, 0)} == {
+        "pass_turn_intrigue",
+        "keep_turn_intrigue",
+    }
+    assert engine.whole_actions(opened, 1) == ()
+
+
+def test_bindu_suspension_pass_ends_the_turn_and_the_seat_stays_unrevealed() -> None:
+    # "pass your turn": the next unrevealed seat's turn opens, this seat has
+    # not revealed and comes around again ([Main p. 8], as Withdrawn).
+    engine, state = _bindu_hand()
+    opened = apply_whole(engine, state, _play(BINDU)).state
+
+    result = apply_whole(engine, opened, _pass_action("pass_turn_intrigue"))
+
+    frame = result.state.decision_stack[-1]
+    assert frame.kind == "turn"
+    assert dict(frame.context)["turn_owner"] == 1
+    assert result.state.players[0].has_revealed is False
+    assert result.state.players[0].intrigue_cards == ()
+    assert result.state.intrigue_discard == (BINDU,)
+    assert [event.kind for event in result.events].count("turn_passed") == 1
+    # The Agent that was not sent is still there: nothing was used up.
+    assert result.state.players[0].agents_available == 2
+    assert result.state.players[0].agent_locations == ()
+
+
+def test_bindu_suspension_play_on_keeps_the_turn_without_forcing_the_pass() -> None:
+    # "or play your turn normally": the pass is the owner's choice, not a
+    # forced end (OQ-117: "강제 종료하지 않는다").
+    engine, state = _bindu_hand()
+    opened = apply_whole(engine, state, _play(BINDU)).state
+
+    result = apply_whole(engine, opened, _pass_action("keep_turn_intrigue"))
+
+    frame = result.state.decision_stack[-1]
+    assert frame.kind == "turn"
+    assert dict(frame.context)["turn_owner"] == 0
+    assert result.state.intrigue_discard == (BINDU,)
+    assert result.state.players[0].intrigue_cards == ()
+    assert "turn_passed" not in [event.kind for event in result.events]
+    # The turn goes on: an Agent or a Reveal turn is offered as usual.
+    kinds = {action.action_id for action in engine.whole_actions(result.state, 0)}
+    assert "reveal_turn" in kinds
+    assert "choose_agent_card" in kinds or "agent_turn" in kinds
+    assert [event.kind for event in result.events] == ["intrigue_turn_kept"]
+
+
+def test_bindu_suspension_is_played_only_as_the_turns_first_action() -> None:
+    # "차례 시작의 첫 행동으로만 낸다. 다른 행동을 하면 사용할 수 없다"
+    # (imperium-base.md 13.1, OQ-095 (6)): not after a Plot, nor after an
+    # Agent is sent, nor in a Reveal turn.
+    engine, state = _bindu_hand()
+    windfall = _intrigue("windfall")
+    state = _seat(state, intrigue_cards=(BINDU, windfall))
+    assert _play(BINDU) in engine.whole_actions(state, 0)
+
+    plotted = apply_whole(engine, state, _play(windfall)).state
+    assert plotted.decision_stack[-1].kind == "turn"
+    assert _play(BINDU) not in engine.whole_actions(plotted, 0)
+
+    placed = apply_whole(
+        engine,
+        state,
+        next(
+            action
+            for action in engine.whole_actions(state, 0)
+            if action.action_id == "choose_agent_card"
+        ),
+    ).state
+    assert _play(BINDU) not in engine.whole_actions(placed, 0)
+
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    assert _play(BINDU) not in engine.whole_actions(revealed, 0)
+
+
+def test_bindu_suspension_is_also_played_in_a_turn_the_seat_must_reveal() -> None:
+    # "Agent가 없어 공개해야 하는 차례도 시작에 사용할 수 있고, 이미 공개를
+    # 시작한 뒤에는 못 쓴다" (OQ-117, imperium-base.md 13.1).
+    engine, state = _bindu_hand(
+        agents_available=0, agent_locations=("arrakeen", "carthag")
+    )
+    kinds = {action.action_id for action in engine.whole_actions(state, 0)}
+    assert "reveal_turn" in kinds
+    assert not {"choose_agent_card", "agent_turn"} & kinds
+    assert _play(BINDU) in engine.whole_actions(state, 0)
+
+    opened = apply_whole(engine, state, _play(BINDU)).state
+    passed = apply_whole(engine, opened, _pass_action("pass_turn_intrigue")).state
+
+    assert dict(passed.decision_stack[-1].context)["turn_owner"] == 1
+    assert passed.players[0].agent_locations == ("arrakeen", "carthag")
+
+
+def test_bindu_suspension_draw_shuffles_the_discard_pile_for_an_empty_deck() -> None:
+    # The draw is an ordinary draw (``card_draw``): with the deck empty the
+    # discard pile is shuffled for it, and the choice to pass waits for the
+    # shuffle.
+    engine, state = _bindu_hand(deck=0, discard=4)
+    before = state.players[0]
+
+    opened = apply_whole(engine, state, _play(BINDU)).state
+    assert opened.decision_stack[-1].kind == "personal_draw_reshuffle"
+    settled = _settle(engine, opened)
+
+    assert settled.decision_stack[-1].kind == "intrigue_choice"
+    done = settled.players[0]
+    assert len(done.hand) == len(before.hand) + 1
+    assert len(done.deck) == 3
+    assert done.discard_pile == ()
+    assert {action.action_id for action in engine.whole_actions(settled, 0)} == {
+        "pass_turn_intrigue",
+        "keep_turn_intrigue",
+    }
+
+
+def test_bindu_suspension_is_played_with_nothing_to_draw_and_the_pass_stays() -> None:
+    # A cost-free effect is played even when its draw fizzles (OQ-113 (C)):
+    # with both piles empty the pass is still the owner's choice.
+    engine, state = _bindu_hand(deck=0, discard=0)
+    assert legal_intrigue_play_actions(state, 0) == (_play(BINDU),)
+    before = state.players[0]
+
+    opened = apply_whole(engine, state, _play(BINDU)).state
+
+    assert opened.players[0].hand == before.hand
+    assert {action.action_id for action in engine.whole_actions(opened, 0)} == {
+        "pass_turn_intrigue",
+        "keep_turn_intrigue",
+    }
+
+
+def test_bindu_suspension_passed_back_to_the_seat_opens_a_fresh_turn_start() -> None:
+    # With every other seat revealed the pass hands the turn straight back
+    # ([Main p. 8], OQ-113 (C) (2) 4's Withdrawn): that new turn is a fresh one
+    # with its start open again, so a turn-start card can still be played.
+    engine, state = _bindu_hand()
+    state = _seat(state, intrigue_cards=(BINDU, WITHDRAWN))
+    for seat in (1, 2, 3):
+        state = _seat(state, seat, has_revealed=True)
+    opened = apply_whole(engine, state, _play(BINDU)).state
+
+    passed = apply_whole(engine, opened, _pass_action("pass_turn_intrigue")).state
+
+    assert passed.decision_stack[-1].kind == "turn"
+    assert dict(passed.decision_stack[-1].context)["turn_owner"] == 0
+    assert _play(WITHDRAWN) in engine.whole_actions(passed, 0)
+
+
+def test_bindu_suspension_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _bindu_hand()
+    state = _seat(state, 1, intrigue_cards=(BINDU,))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_bindu_suspension_is_greyed_out_once_the_turn_has_started() -> None:
+    # The page shows why the card cannot be played now (the turn-start rule).
+    engine, state = _bindu_hand()
+    windfall = _intrigue("windfall")
+    state = _seat(state, intrigue_cards=(BINDU, windfall))
+    plotted = apply_whole(engine, state, _play(windfall)).state
+    found = unavailable_choices(plotted, 0, engine.whole_actions(plotted, 0))
+    assert found is not None
+    assert found["refs"][BINDU] == {  # type: ignore[index]
+        "reason": "Only at the start of your turn: you already acted this turn",
+        "reason_ko": "차례를 시작할 때만 사용 — 이번 차례에 이미 다른 행동을 했음",
+        "code": "turn_started",
+    }
+
+
+def test_bindu_suspension_rows_have_catalog_templates_and_step_rows() -> None:
+    engine, state = _bindu_hand()
+    codec = ActionCodec(CONFIG)
+    opened = apply_whole(engine, state, _play(BINDU)).state
+    offered = engine.legal_actions(opened, 0)
+    assert {action.action_id for action in offered} == {"pass", "decline"}
+    for action in offered:
+        assert codec.decode(codec.encode(action), 0) == action
+
+    def rows(config: RulesetConfig) -> set[str]:
+        return {
+            template.action_id
+            for template in ActionCodec(config).catalog
+            if dict(template.arguments).get("printed") == "bindu_suspension"
+        }
+
+    assert rows(CONFIG) == {"pass", "decline"}
+    assert not rows(RulesetConfig())
+    assert not rows(RulesetConfig(bloodlines=True, tech_module=True))

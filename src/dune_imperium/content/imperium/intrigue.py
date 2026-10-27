@@ -30,9 +30,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     HasHighCouncil,
     InfluenceAtLeastOnTracks,
+    IntrigueOption,
+    IntrigueTiming,
     LoseTroops,
     MoreSpiceMustFlowThanEachOpponent,
     OnConflictWon,
+    PassTurn,
     PayResources,
     PeekTopCard,
     RecruitTroops,
@@ -119,6 +122,28 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("bindu_suspension", "Bindu Suspension"),
         copies=1,
+        # "At the start of your turn: [draw 1]. You may pass your turn.
+        # (Instead of taking an Agent or Reveal turn.)" [Bindu Suspension
+        # card, app text]: OQ-117 (user ruling C, 2026-10-22). It is played
+        # only as the first action of the turn, before anything else is done
+        # (imperium-base.md 13.1: "차례 시작의 첫 행동으로만 낸다. 다른 행동을
+        # 하면 사용할 수 없다", the OQ-095 (6) turn-start rule Withdrawn
+        # shares: ``turn_start_only``), also in a turn the seat must reveal.
+        # The card draws, then "you may choose to pass your turn or play your
+        # turn normally" (13.3): the pass is the owner's choice after the draw
+        # (``PassTurn.optional``) and is not forced. A pass sends no Agent, so
+        # it uses up no block of The Voice (OQ-116).
+        options=(
+            IntrigueOption(
+                timing=IntrigueTiming.PLOT,
+                sections=(
+                    EffectSection(
+                        rewards=(DrawPersonalCards(1), PassTurn(optional=True))
+                    ),
+                ),
+                turn_start_only=True,
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("bypass_protocol", "Bypass Protocol"),

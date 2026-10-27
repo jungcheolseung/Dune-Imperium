@@ -232,6 +232,8 @@ _AGENT_ICON_NAMES_KO: dict[AgentIcon, str] = {
     AgentIcon.SPY: "스파이",
 }
 
+_TURN_START_KO = "차례 시작 시"
+
 _TIMING_LABELS_KO: dict[IntrigueTiming, str] = {
     # PLOT/COMBAT/ENDGAME timing headers | 음모/전투/종료 단계
     # (`docs/rules/glossary-ko.md`: "Plot / Combat / Endgame Intrigue | 음모 /
@@ -861,6 +863,8 @@ def reward_text_ko(reward: Reward) -> str:
         case GrantAgentIconsThisTurn(icons=icons):
             names = ", ".join(_AGENT_ICON_NAMES_KO[icon] for icon in icons)
             return f"이번 차례에 당신이 플레이하는 카드는 {names} 아이콘 보유"
+        case PassTurn(optional=True):
+            return "차례를 넘길 수 있음"
         case PassTurn():
             return "차례 시작 시: 차례 넘기기"
         case PermanentRevealPersuasion(amount=amount):
@@ -1142,6 +1146,10 @@ def option_text_ko(option: IntrigueOption, *, show_timing: bool = True) -> str:
     body = "; ".join(section_text_ko(section) for section in option.sections)
     if option.trigger is not None:
         body = f"{trigger_text_ko(option.trigger)}: {body}"
+    if option.turn_start_only and not body.startswith(_TURN_START_KO):
+        # A card that names its moment in no effect of its own (Bindu
+        # Suspension's draw and optional pass).
+        body = f"{_TURN_START_KO}: {body}"
     if not show_timing:
         return body
     return f"{_TIMING_LABELS_KO[option.timing]} — {body}"

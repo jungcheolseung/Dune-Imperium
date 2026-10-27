@@ -1255,7 +1255,14 @@ class GrantAgentIconsThisTurn:
 @dataclass(frozen=True, slots=True)
 class PassTurn:
     """Withdrawn (Twisted Intrigue): "At the start of your turn: pass your
-    turn" — the option is playable only from the turn frame."""
+    turn" — the option is playable only from the turn frame.
+
+    ``optional``: Bindu Suspension (the original game), "[draw 1]. You may
+    pass your turn." [Bindu Suspension card, app text] -- after the draw the
+    owner chooses to pass or to play the turn normally (OQ-117), so it is a
+    choice of the card's frame, taken after the rest of the line resolved."""
+
+    optional: bool = False
 
 
 @dataclass(frozen=True, slots=True)

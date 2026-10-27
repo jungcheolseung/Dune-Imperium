@@ -184,6 +184,8 @@ _BATTLE_ICON_NAMES: dict[BattleIcon, str] = {
     BattleIcon.WILD: "Wild",
 }
 
+_TURN_START = "At the start of your turn"
+
 _TIMING_LABELS: dict[IntrigueTiming, str] = {
     IntrigueTiming.PLOT: "Plot",
     IntrigueTiming.COMBAT: "Combat",
@@ -624,6 +626,8 @@ def reward_text(reward: Reward) -> str:
         case GrantAgentIconsThisTurn(icons=icons):
             names = ", ".join(icon.value for icon in icons)
             return f"The card you play this turn has the {names} icons"
+        case PassTurn(optional=True):
+            return "you may pass your turn"
         case PassTurn():
             return "At the start of your turn: pass your turn"
         case PermanentRevealPersuasion(amount=amount):
@@ -850,6 +854,10 @@ def option_text(option: IntrigueOption, *, show_timing: bool = True) -> str:
     body = "; ".join(section_text(section) for section in option.sections)
     if option.trigger is not None:
         body = f"{trigger_text(option.trigger)}: {body}"
+    if option.turn_start_only and not body.startswith(_TURN_START):
+        # A card that names its moment in no effect of its own (Bindu
+        # Suspension's draw and optional pass).
+        body = f"{_TURN_START}: {body}"
     if not show_timing:
         return body
     return f"{_TIMING_LABELS[option.timing]} — {body}"

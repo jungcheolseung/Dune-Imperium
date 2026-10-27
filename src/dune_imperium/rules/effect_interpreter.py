@@ -168,6 +168,7 @@ type ChoiceSlot = (
     | TrashIntrigueCard
     | PeekTopCard
     | AcquireTleilaxuCard
+    | PassTurn
 )
 
 
@@ -427,6 +428,10 @@ def choice_slots(
                     | PeekTopCard()
                     | AcquireTleilaxuCard()
                 ):
+                    slots.append(reward)
+                case PassTurn(optional=True):
+                    # Bindu Suspension: "You may pass your turn" is the
+                    # owner's choice, after the line's draw.
                     slots.append(reward)
                 case _:
                     pass
@@ -1258,6 +1263,22 @@ class RewardOutcome:
     tech_acquisitions: tuple[int, ...] = ()
 
 
+def rewards_come_first(sections: tuple[EffectSection, ...]) -> bool:
+    """Whether the automatic rewards of ``sections`` resolve before its choices.
+
+    "[draw 1]. You may pass your turn." [Bindu Suspension card]: a pass the
+    owner may take ends the turn, so what the line printed before it resolves
+    first and only the choice to pass is left (OQ-117, "카드 한 장을 뽑은 뒤
+    pass 또는 정상 진행을 고른다").
+    """
+
+    return any(
+        isinstance(reward, PassTurn) and reward.optional
+        for section in sections
+        for reward in section.rewards
+    )
+
+
 def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]:
     """Return the rewards that resolve without a player choice."""
 
@@ -1266,6 +1287,7 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
         for section in sections
         for reward in section.rewards
         if not (isinstance(reward, GainInfluence) and reward.requires_choice)
+        and not (isinstance(reward, PassTurn) and reward.optional)
         and not isinstance(
             reward,
             DestroyShieldWall

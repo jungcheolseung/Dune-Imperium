@@ -814,6 +814,11 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "discard_top_card": _spec(_V.DISCARD, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "draw_top_card_for_solari": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "draw_top_card": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    # Bindu Suspension: pass the turn after the draw, or keep playing it.
+    "pass_turn_intrigue": _spec(_V.PASS, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    "keep_turn_intrigue": _spec(
+        _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.PASS
+    ),
     "trash_top_card": _spec(_V.TRASH, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     # Cost-free choices with nothing to act on (OQ-113 (C)).
     "skip_intrigue_top_card": _spec(

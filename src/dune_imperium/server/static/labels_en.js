@@ -171,6 +171,8 @@ const LABELS_EN = {
     "discard_top_card": "Discard top card of {deck}",
     "draw_top_card_for_solari": "Pay 1 {solari} -> Draw top card of {deck}",
     "draw_top_card": "Draw top card of {deck}",
+    "pass_turn_intrigue": "Pass your turn",
+    "keep_turn_intrigue": "Play your turn normally",
     "trash_top_card": "Trash top card of {deck}",
     "place_navigation_card": "Place {navigation} in slot",
     "play_navigation": "Play {navigation}",
@@ -665,7 +667,8 @@ const LABELS_EN = {
     "spies_recalled": "{recall_spy}",
     "top_card_discarded": "Discard: Top Card of {deck}",
     "top_card_drawn": "Draw: Top Card of {deck} (1 {solari} Paid)",
-    "top_card_drawn_free": "Draw: Top Card of {deck}"
+    "top_card_drawn_free": "Draw: Top Card of {deck}",
+    "intrigue_turn_kept": "{intrigue_card}: Turn Played Normally"
   },
   "PAYLOAD_KEY_LABELS": {
     "action_id": "Action",

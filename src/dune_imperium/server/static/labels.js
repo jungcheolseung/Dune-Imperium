@@ -211,6 +211,8 @@ const ACTION_LABELS = {
   discard_top_card: "{deck} 맨 위 카드 버리기",
   draw_top_card_for_solari: "{solari} 1 지불 → {deck} 맨 위 카드 뽑기",
   draw_top_card: "{deck} 맨 위 카드 뽑기",
+  pass_turn_intrigue: "차례 넘기기",
+  keep_turn_intrigue: "차례를 그대로 진행",
   trash_top_card: "{deck} 맨 위 카드 폐기",
   place_navigation_card: "{navigation} 슬롯에 놓기",
   play_navigation: "{navigation} 사용",
@@ -599,6 +601,7 @@ const EVENT_LABELS = {
   top_card_discarded: "{deck} 맨 위 카드 버리기",
   top_card_drawn: "{deck} 맨 위 카드 뽑기 ({solari} 1 지불)",
   top_card_drawn_free: "{deck} 맨 위 카드 뽑기",
+  intrigue_turn_kept: "{intrigue_card}: 차례를 넘기지 않고 진행",
 };
 /* Korean labels for the printed icon a keyed resolve_board_effect /
    resolve_agent_card_effect action resolves (OQ-027). A legal action carries

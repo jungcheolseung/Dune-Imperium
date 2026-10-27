@@ -724,6 +724,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "discard_top_card": apply_intrigue_choice,
     "draw_top_card_for_solari": apply_intrigue_choice,
     "draw_top_card": apply_intrigue_choice,
+    "pass_turn_intrigue": apply_intrigue_choice,
+    "keep_turn_intrigue": apply_intrigue_choice,
     "trash_top_card": apply_intrigue_choice,
     "recall_spy_for_intrigue": apply_intrigue_choice,
     "retreat_intrigue_troops": apply_intrigue_choice,
@@ -1194,8 +1196,14 @@ def _end_turn_start(
     automatic steps, so a turn those steps open is a fresh one.
     """
 
-    if not turn_start_is_open(state, action.actor) or (
-        action.action_id == "play_turn_start_card" or plays_turn_start_option(action)
+    if (
+        not turn_start_is_open(state, action.actor)
+        or action.action_id == "play_turn_start_card"
+        or plays_turn_start_option(action)
+        # An answer that passes the turn (Bindu Suspension's pass, after its
+        # draw) opens the next turn, the seat's own again when every other seat
+        # has revealed: that turn is a fresh one, its start still open.
+        or any(event.kind == "turn_passed" for event in handled.events)
     ):
         return handled
     return RuleResult(

@@ -55,6 +55,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GiveIntrigueToOpponent,
     LoseInfluence,
     LoseTroops,
+    PassTurn,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
@@ -615,6 +616,12 @@ def piece_rows(
                 # Nothing within the cap: the acquisition alone fizzles
                 # (designer ruling, Impress; OQ-057).
                 rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.ACQUIRE))
+        case PassTurn(optional=True):
+            # Bindu Suspension: after the draw, "you may pass your turn" or
+            # play it normally (OQ-117); the refusal is the normal turn.
+            rows.append(row(Verb.PASS, variant="turn"))
+            if refusals:
+                rows.append(row(Verb.DECLINE, of=Verb.PASS))
         case PlaceSpy():
             # Placing is mandatory while a Spy and a post are free (the
             # designer's erratum to [Main p. 11], OQ-057); the placement is
@@ -745,6 +752,8 @@ _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
         "intrigue_set_aside_unavailable",
     ),
     "skip_intrigue_trash": ("trash_unavailable", "intrigue_trash_unavailable"),
+    # Bindu Suspension's pass refused: the turn is played normally (OQ-117).
+    "keep_turn_intrigue": ("turn_kept", "intrigue_turn_kept"),
 }
 # The event a Faction named for a later step announces (``held``), by source.
 _HELD_FACTION_EVENTS: Final[Mapping[Source, str]] = {
@@ -1091,6 +1100,22 @@ def apply_piece(
         case TrashIntrigueCard(troops_if_not_twisted=troops_bonus):
             result = _trash_intrigue_hand_card(
                 state, player, str(arguments["card_id"]), troops_bonus, step_source
+            )
+        case PassTurn(optional=True) if shape.verb is Verb.DECLINE:
+            result = _passed(state, player, action, step_source)
+        case PassTurn(optional=True):
+            # The turn ends at once and the seat stays unrevealed, as
+            # Withdrawn's pass (``apply_automatic_rewards``); the seat took
+            # no Agent, so nothing it blocks is used up (OQ-116).
+            result = RuleResult(
+                state=open_next_turn(state, player),
+                events=(
+                    GameEvent(
+                        event_id=f"{step_source}:turn_passed",
+                        kind="turn_passed",
+                        payload=(("player", player),),
+                    ),
+                ),
             )
         case PeekTopCard() if shape.verb is Verb.CONFIRM_EMPTY:
             result = _passed(state, player, action, step_source)
