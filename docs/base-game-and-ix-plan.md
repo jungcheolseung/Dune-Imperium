@@ -139,8 +139,11 @@ Dune Cards Hub 카드면과 모두 맞고, 장수(`CardCount`)가 룰북의 구�
 ### 4.2 판 축의 모양 (추천)
 
 1. **식별자:** `RulesetConfig`에 기본 판 칸(`uprising`·`imperium`)을 더하고 원판은 새 접두사 `imperium-4p-…`. Uprising 식별자는 한
-   글자도 바꾸지 않는다(옛 저장본·체크포인트·기보가 그대로). 확장 옵션은 판마다 허용 목록을 둔다(CHOAM·Bloodlines·Scouts는 Uprising만,
-   Rise of Ix는 우선 원판만; Uprising + Ix는 P7, 원판의 Scouts는 P8 — 10.4절 3).
+   글자도 바꾸지 않는다(옛 저장본·체크포인트·기보가 그대로). **확장은 판을 가리지 않는다(사용자 결정 2026-10-27, P1 중):** "모든 확장은
+   서로 서로 다양한 조합으로 결합될 수 있어야해. 다만 base나 uprising 둘 중 하나는 꼭 있어야 하고". 그래서 설정은 어느 기본 판에든 어느
+   확장 조합이든 받는다(확장 안의 부속만 제 확장을 요구한다: Tech Module은 Bloodlines, Go to 11은 Immortality). 처음 추천한 "판마다 허용
+   목록"(CHOAM·Bloodlines·Scouts는 Uprising만, Rise of Ix는 원판만)은 버렸다. 콘텐츠가 아직 없는 조합은 엔진이 setup에서 거절한다(원판 보드는
+   P2, Ix는 P4, Uprising + Ix는 P7, 원판의 Scouts는 P8 — 10.4절 3).
 2. **콘텐츠 조회:** 모듈 상수 import를 판에서 고르는 조회(`content_for(config).board` 같은 꼴)로 바꾼다. 먼저 Uprising 표만 돌려주는
    순수 리팩터로 넣어 같음 관문을 통과시키고, 그 뒤에 `content/imperium/`·`content/rise_of_ix/`를 더한다.
 3. **Uprising 전용 체계는 지우지 않는다.** 원판에서는 Spy 아이콘·초소·계약·Maker Hooks가 없어서 그 길에 닿지 않는다. 손볼 곳은
@@ -386,8 +389,8 @@ Uprising·Bloodlines·Immortality·Epic·Scouts와 효과 조각 엔진 전환�
 2. **새 OQ는 P0에서 한꺼번에 — 정함(2026-10-21 사용자, "추천대로"):** P0 명세를 쓰며 나온 질문을 모두 모아 한 번에 정한 뒤 P1에
    들어간다(10.3 절차대로 공식 원문·앱 처리·기존 원칙을 함께 보이고 묻는다). 뒤 단계에서 새로 나오는 질문은 그때 묻되, 엔진 기본값으로
    먼저 정해 두지 않는다.
-3. **원판의 Arrakeen Scouts — 정함(2026-10-21 사용자): 나중 단계(P8)로 넣는다.** 4.2절 1의 "Scouts는 Uprising만"은 P1~P7 동안의
-   허용 목록이다. 원판에는 관측 초소가 없어 초소를 쓰는 Scouts 항목(OQ-080 등)은 뜻을 잃는다. 지금 Scouts 설계가 범위 밖으로 둔 일정
+3. **원판의 Arrakeen Scouts — 정함(2026-10-21 사용자): 나중 단계(P8)로 넣는다.** (설정은 2026-10-27 사용자 결정으로 처음부터 원판 + Scouts를
+   받는다, 4.2절 1; 그 콘텐츠·판정이 P8이다.) 원판에는 관측 초소가 없어 초소를 쓰는 Scouts 항목(OQ-080 등)은 뜻을 잃는다. 지금 Scouts 설계가 범위 밖으로 둔 일정
    풀(`arrakeen-scouts-design.md` 1절: Rise of Ix 보드가 필요한 풀 — Uprising+Ix, 기본판 풀 넷)이 출처다. 어느 풀을 넣을지는 P8에서
    Game Room 앱 추출(Mac mini)을 다시 읽고 정한다.
 
@@ -577,14 +580,15 @@ v155 2,000판, 저장본·문제집, tips-v1 재채굴, E2E)를 돌렸다.
    **id로 찾는 표는 하나로 둔다**(`BOARD_SPACES_BY_ID`, `personal_card_for_instance` 등): 4.2절 7대로 id 하나가 인쇄 하나라, 두 판의
    것을 한 표에 넣어도 섞이지 않는다(관측·엔티티 망 어휘도 이미 합집합이다). Uprising에만 있는 체계의 속(Spy·모래벌레·계약의 모듈 표)은
    그대로 두었다 — 원판은 그 길에 닿지 않는다(4.2절 3).
-2. **판 축(`4729b583`):** `RulesetConfig.base_game`(`BaseGame.UPRISING` 기본 / `IMPERIUM`)과 `rise_of_ix`. 판마다 허용 확장 목록:
-   Uprising은 지금 그대로, 원판은 프로모·Rise of Ix·Epic(Rise of Ix와 함께, 9절 9). 원판 식별자 `imperium-4p-base+promo+ix+epic`,
-   Uprising 식별자는 한 글자도 그대로. 새 칸 둘은 기본값일 때 상태 해시에서 빠져(`HASH_OMITTED_AT_DEFAULT`) 옛 저장·기보·체크포인트가
+2. **판 축(`4729b583`, 확장 조합 열기 뒤에 이어짐):** `RulesetConfig.base_game`(`BaseGame.UPRISING` 기본 / `IMPERIUM`)과 `rise_of_ix`.
+   처음에는 판마다 허용 확장 목록을 두었으나 사용자가 고쳤다(4.2절 1, 2026-10-27): 모든 확장이 어느 기본 판과도, 서로와도 결합된다(두 판 ×
+   288 조합). 원판 식별자 `imperium-4p-…`(예: `imperium-4p-choam+promo+ix+epic`), Uprising + Ix는 `uprising-4p-base+ix…`, Ix 없는 Uprising
+   식별자는 한 글자도 그대로. 새 칸 둘은 기본값일 때 상태 해시에서 빠져(`HASH_OMITTED_AT_DEFAULT`) 옛 저장·기보·체크포인트가
    그대로 읽힌다. 저장 문서는 `base_game`·`rise_of_ix`를 싣고, 없으면 Uprising이다. 원판 콘텐츠는 아직 비어 있고(스타터 덱만 Uprising과
-   같은 인쇄, `[DI p. 3]`), 보드가 없는 판의 setup은 `NotImplementedError`(P2에서 풀린다). codec은 원판 카탈로그(지금 73줄)를 그 콘텐츠로
+   같은 인쇄, `[DI p. 3]`), 콘텐츠가 없는 조합의 setup은 `NotImplementedError`(보드가 없는 판은 P2, Rise of Ix는 P4·P7에서 풀린다). codec은 원판 카탈로그(지금 73줄)를 그 콘텐츠로
    만들고, 보드가 인쇄하지 않는 Uprising 체계의 줄(Spy·모래벌레·Sietch Tabr 고르기, Uprising 카드 한 장이 인쇄한 Reveal 줄, Uprising
    Conflict의 지배 칸, Uprising 카드의 미룬 Reveal 고르기)은 넣지 않는다. Uprising 144개 조합의 행 목록은 시작 커밋과 바이트까지 같다.
-   테스트: 판마다 허용 목록·식별자 왕복, 원판 카탈로그에 Uprising id·체계가 새지 않음, **종류 안에서 id 유일·종류 사이 겹침은 목록으로**
+   테스트: 두 판 × 288 조합의 식별자 왕복, 576 카탈로그가 모두 만들어짐(Uprising + Ix는 Ix 콘텐츠 전이라 Ix 없는 것과 같다), 원판 카탈로그에 Uprising id·체계가 새지 않음, **종류 안에서 id 유일·종류 사이 겹침은 목록으로**
    (10.1절 3; 지금 겹침은 `deliver_supplies` 하나 — 보드 칸과 계약).
 3. **관측 v34(`6bb72629`):** `PlayerView.base_game`과 맨 끝의 `base_game` 1칸(원판이면 1). Uprising 관측은 v33 벡터 뒤에 0 하나다.
    형식 2 이관은 새 열을 0에서 시작하므로(MLP 구간 이름, `mlp_slots` 행 열쇠, 엔티티 입력 이름 `raw:base_game:0`) 옮긴 망이 Uprising
