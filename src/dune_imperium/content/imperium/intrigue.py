@@ -236,5 +236,7 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("windfall", "Windfall"),
         copies=1,
+        # "+2 Solari" [Windfall card, app text]: a cost-free Plot.
+        options=(_plot(EffectSection(rewards=(GainResources(solari=2),))),),
     ),
 )

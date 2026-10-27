@@ -937,3 +937,86 @@ def test_water_peddlers_union_is_not_offered_outside_the_seats_turn() -> None:
     _, state = _plot_hand(PEDDLERS)
     state = _seat(state, 1, intrigue_cards=(PEDDLERS,))
     assert legal_intrigue_play_actions(state, 1) == ()
+
+
+# --- Windfall (Plot) --------------------------------------------------------
+
+WINDFALL = _intrigue("windfall")
+
+
+def test_windfall_is_one_cost_free_plot() -> None:
+    # "Plot: +2 Solari" [Windfall card, Steam app text]; 1 copy [DI p. 3].
+    entry = intrigue_card_for_instance(WINDFALL)
+    assert entry.card.name == "Windfall"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert entry.options[0].sections[0].costs == ()
+    assert intrigue_card_text(entry) == ["Plot — Gain 2 solari"]
+    assert "windfall" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_windfall_gains_two_solari() -> None:
+    # A Plot Intrigue may be played at any time in the seat's own turn
+    # `[DI pp. 7-8]` (imperium-base.md 5); with no arrow there is no cost.
+    _, state = _plot_hand(WINDFALL, resources=Resources(solari=1, spice=2, water=1))
+    assert legal_intrigue_play_actions(state, 0) == (_play(WINDFALL),)
+
+    result = apply_intrigue_play(state, _play(WINDFALL))
+    done = result.state
+
+    assert done.players[0].resources == Resources(solari=3, spice=2, water=1)
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (WINDFALL,)
+    assert [event.kind for event in result.events] == [
+        "intrigue_played",
+        "resources_gained",
+    ]
+    assert dict(result.events[1].payload)["solari"] == 2
+    assert done.decision_stack[-1].kind == "turn"
+
+
+def test_windfall_is_played_holding_no_resource_at_all() -> None:
+    # OQ-113 (C): a cost-free effect is played; nothing to pay, nothing to
+    # wait for.
+    engine, state = _plot_hand(WINDFALL, resources=Resources(water=0))
+    assert legal_intrigue_play_actions(state, 0) == (_play(WINDFALL),)
+
+    done = apply_whole(engine, state, _play(WINDFALL)).state
+
+    assert done.players[0].resources == Resources(solari=2, water=0)
+
+
+def test_windfall_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _plot_hand(WINDFALL)
+    actions = engine.whole_actions(state, 0)
+    assert _play(WINDFALL) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (WINDFALL,)
+    assert placed.players[0].resources == state.players[0].resources
+
+
+def test_windfall_is_played_in_the_reveal_turn_too() -> None:
+    # "아무 때나" within the seat's own Agent or Reveal turn (imperium-base.md
+    # 5, `[DI pp. 7-8]`).
+    engine, state = _plot_hand(WINDFALL)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _play(WINDFALL) in engine.whole_actions(revealed, 0)
+
+    done = apply_whole(engine, revealed, _play(WINDFALL)).state
+
+    assert done.players[0].resources.solari == state.players[0].resources.solari + 2
+
+
+def test_windfall_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _plot_hand(WINDFALL)
+    state = _seat(state, 1, intrigue_cards=(WINDFALL,))
+    assert legal_intrigue_play_actions(state, 1) == ()
