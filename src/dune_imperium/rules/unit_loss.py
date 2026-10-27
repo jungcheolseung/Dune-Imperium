@@ -279,6 +279,15 @@ def apply_unit_loss(state: GameState, action: DomainAction) -> RuleResult:
     """Lose one unit from the chosen zone, or confirm there is none, and close
     the frame."""
 
+    if state.decision_stack and (
+        state.decision_stack[-1].kind == FrameKind.OPPONENT_CARD_DISCARD
+    ):
+        # Test of Humanity's window offers the loss of a deployed troop beside
+        # the discard; the window's own handler closes it, as for a discard.
+        # Read at call time: ``rules.agent_effects`` imports this module.
+        from dune_imperium.rules.agent_effects import apply_opponent_card_discard
+
+        return apply_opponent_card_discard(state, action)
     if action not in legal_unit_loss_actions(state, action.actor):
         raise ValueError("action is not a legal unit loss choice")
     frame = state.decision_stack[-1]

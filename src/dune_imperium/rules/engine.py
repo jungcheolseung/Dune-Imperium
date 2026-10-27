@@ -295,6 +295,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_troop_purchase,
     apply_reveal_troop_retreat,
     apply_reveal_troop_sacrifice,
+    apply_reveal_troops_move,
     apply_reveal_vp_payment,
     begin_reveal_turn,
     finish_reveal_turn,
@@ -814,6 +815,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_agent_card_spice_for_sandworm": apply_agent_card_payment,
     "pay_agent_card_spice_for_sandworm_and_shield_wall": apply_agent_card_payment,
     "pay_agent_card_spice": apply_agent_card_payment,
+    # Firm Grip (original game): "2 Solari -> Choose one Influence".
+    "pay_agent_card_solari": apply_agent_card_payment,
     "decline_agent_card_payment": apply_agent_card_payment,
     "pay_corrinth_city": apply_corrinth_city_payment,
     "select_corrinth_city_discard": apply_corrinth_city_payment,
@@ -924,6 +927,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "lose_reveal_influence_for_vp": apply_reveal_influence_loss,
     "deploy_reveal_card_troop": apply_reveal_troop_move,
     "retreat_reveal_card_troop": apply_reveal_troop_move,
+    # Sardaukar Legion, Scout, Chani (original game): a chosen number of troops.
+    "deploy_reveal_card_troops": apply_reveal_troops_move,
+    "retreat_reveal_card_troops": apply_reveal_troops_move,
     "lose_reveal_troops_for_specimens": apply_reveal_troop_sacrifice,
     # Contracts
     "take_contract": apply_contract_action,

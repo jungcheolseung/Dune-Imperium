@@ -74,9 +74,10 @@ def test_every_record_names_a_card_with_its_play_data() -> None:
     # the original Imperium cards' own (stage P3: Crysknife, Duncan Idaho,
     # Fedaykin Death Commando, Thufir Hawat, Spice Hunter, Sietch Reverend
     # Mother, Smuggler's Thopter, Worm Riders' two lines, Assassination
-    # Mission, Reverend Mother Mohiam, Liet Kynes, CHOAM Directorship).
-    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 12
-    assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == 55 + 1 + 13
+    # Mission, Reverend Mother Mohiam, Liet Kynes, CHOAM Directorship, Guild
+    # Bankers, Carryall, Firm Grip).
+    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 15
+    assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == 55 + 1 + 16
 
 
 def test_reveal_gain_records_are_automatic_lines() -> None:

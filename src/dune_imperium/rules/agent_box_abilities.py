@@ -77,6 +77,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
@@ -256,6 +257,10 @@ class AgentPaymentBlock(StrEnum):
     # Tleilaxu Surgeon's and Slig Farmer's advance: the token is on the
     # track's last space, where it does nothing (OQ-048).
     TLEILAXU_TRACK_END = "tleilaxu_track_end"
+    # Firm Grip's chosen Influence: every Faction it may raise is at the top
+    # of its track, where a gain is lost (OQ-060), so the 2 Solari would buy
+    # nothing ("the cost line is not offered if all three are at 6", OQ-071).
+    NO_FACTION_TO_RAISE = "no_faction_to_raise"
 
 
 def box_ability(effect: PersonalCardAgentEffect | None) -> Ability | None:
@@ -293,8 +298,14 @@ def _requirement_holds(
 def opens_at_placement(
     ability: Ability, owner: PlayerState, space: BoardSpace, card_id: str
 ) -> bool:
-    """Whether the box is pending once ``card_id`` is played on ``space``."""
+    """Whether the box is pending once ``card_id`` is played on ``space``.
 
+    An automatic box has nothing to resolve and never opens: it modifies a
+    step another effect takes (Carryall's doubled harvest).
+    """
+
+    if ability.mark is AbilityMark.AUTOMATIC:
+        return False
     if ability.requirement is None:
         return True
     return _requirement_holds(ability.requirement, owner, space, card_id)
@@ -443,9 +454,10 @@ def box_icon_block(
 ) -> AgentIconBlock | None:
     """Why the box's icon ``key`` is not offered now, or None when it is."""
 
-    if key not in ability.icons:
+    keys = ability.icons or ability.armed_icons
+    if key not in keys:
         return NOT_PRINTED_BLOCK
-    return _line_block(ability.sections[ability.icons.index(key)], owner, context)
+    return _line_block(ability.sections[keys.index(key)], owner, context)
 
 
 # --- Resolution --------------------------------------------------------------------
@@ -915,8 +927,11 @@ def _opponents_decide(
     player, card_id = _subject(dict(context))
     source = agent_card_source(state.round_number, player, card_id)
     match reward:
-        case EachOpponentDiscardsCard() as discard:
-            count = discard.cards
+        case EachOpponentDiscardsCard() | EachOpponentDiscardsOrLosesDeployedTroop():
+            count = (
+                reward.cards if isinstance(reward, EachOpponentDiscardsCard) else 1
+            )
+            or_lose = isinstance(reward, EachOpponentDiscardsOrLosesDeployedTroop)
             # Every opponent is asked, the next seat first (OQ-138, user
             # ruling 2026-10-26, as OQ-131 and Holy War's unit loss): a seat
             # with an empty hand gets the window too and confirms that it
@@ -934,7 +949,9 @@ def _opponents_decide(
                     decision=PlayerDecision(
                         owner=target,
                         prompt=(
-                            "Choose a card to discard for Covert Operation"
+                            _test_of_humanity_prompt(state, target)
+                            if or_lose
+                            else "Choose a card to discard for Covert Operation"
                             if state.players[target].hand and is_covert_operation
                             else "Choose a card to discard for Reverend Mother Mohiam"
                             if state.players[target].hand
@@ -952,6 +969,9 @@ def _opponents_decide(
                             if count > 1
                             else ()
                         ),
+                        # Test of Humanity: the same window also offers the
+                        # loss of a deployed troop; no other frame has the key.
+                        *((("or_lose_deployed_troop", True),) if or_lose else ()),
                         (PRINTER_KEY, _card_printer(card_id)),
                     ),
                 )
@@ -981,6 +1001,20 @@ def _opponents_decide(
     return None
 
 
+def _test_of_humanity_prompt(state: GameState, seat: int) -> str:
+    """The prompt of Test of Humanity's window for ``seat``: what it can do,
+    a card to discard or a deployed troop to lose (``rules.agent_effects``)."""
+
+    owner = state.players[seat]
+    if owner.hand and owner.troops_conflict:
+        return "Choose a card to discard or a deployed troop to lose"
+    if owner.hand:
+        return "Choose a card to discard for Test of Humanity"
+    if owner.troops_conflict:
+        return "Choose a deployed troop to lose for Test of Humanity"
+    return "No card to discard and no deployed troop to lose"
+
+
 def icon_line[P](
     context: Mapping[str, ActionValue], ability: Ability | None, piece: type[P]
 ) -> tuple[str, P] | None:
@@ -993,10 +1027,16 @@ def icon_line[P](
     recall and the trash by theirs.
     """
 
-    if ability is None or not ability.icons:
+    if ability is None:
+        return None
+    # An arrow's armed icons are looked up like printed ones (Firm Grip's
+    # chosen Influence once its 2 Solari are paid); a line after the keyed
+    # ones is paid with the cost and has no icon.
+    keys = ability.icons or ability.armed_icons
+    if not keys:
         return None
     pending = pending_agent_icons(context)
-    for key, line in zip(ability.icons, ability.sections, strict=True):
+    for key, line in zip(keys, ability.sections, strict=bool(ability.icons)):
         if key in pending:
             for reward in line.rewards:
                 if isinstance(reward, piece):
@@ -1191,6 +1231,10 @@ def _paid_resource(cost: object) -> tuple[str, int]:
             return "water", water
         case PayResources(solari=0, spice=spice, water=0) if spice:
             return "spice", spice
+        case PayResources(solari=solari, spice=0, water=0) if solari:
+            # Firm Grip's 2 Solari: an arrow cost, not a board space's printed
+            # cost, so no Count Ilban card [FAQ p. 2].
+            return "solari", solari
     raise ValueError(f"no payment row pays {cost!r}")
 
 
@@ -1233,6 +1277,23 @@ def payment_reward_block(
     if ability.armed_icons:
         # Rewards waiting as icons: the arrow is dead only when none of them
         # can pay (a troop is always a live reward, like Control the Spice's).
+        if any(
+            isinstance(reward, GainInfluence)
+            for line in ability.sections
+            for reward in line.rewards
+        ):
+            # A chosen Faction's Influence pays while one of its Factions can
+            # rise (OQ-060, OQ-071).
+            owner = state.players[player]
+            if any(
+                influence_can_rise(owner, faction)
+                for line in ability.sections
+                for reward in line.rewards
+                if isinstance(reward, GainInfluence)
+                for faction in (reward.factions or tuple(Faction))
+            ):
+                return None
+            return AgentPaymentBlock.NO_FACTION_TO_RAISE
         if any(
             not isinstance(reward, DrawPersonalCards)
             or gather_intelligence_draw_available(state, player)
@@ -1701,7 +1762,19 @@ _ARMED_REWARDS: Final[Mapping[str, tuple[Reward, ...]]] = {
 def _armed_line(key: str, line: EffectSection) -> bool:
     """Whether ``line`` is the one reward the icon path pays for ``key``."""
 
+    if key == "influence":
+        # Firm Grip's "choose one: Spacing Guild / Bene Gesserit / Fremen
+        # Influence": a chosen Faction's Influence, answered by
+        # ``choose_agent_card_influence`` (never a track at the top, OQ-060).
+        return (
+            len(line.rewards) == 1
+            and isinstance(line.rewards[0], GainInfluence)
+            and line.rewards[0].requires_choice
+            and not line.rewards[0].distinct
+            and line.rewards[0].times == 1
+        )
     return len(line.rewards) == 1 and line.rewards[0] in _ARMED_REWARDS.get(key, ())
+
 
 
 def discard_box(ability: Ability | None) -> bool:

@@ -69,12 +69,14 @@ from dune_imperium.content.uprising.effect_dsl import (
     DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
+    DoubleBaseHarvestSpice,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
     DuringAgentTurn,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
@@ -149,6 +151,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitUndeployableTroops,
     RedirectSpiesOnTurnSpace,
     Research,
+    ReserveCostDiscount,
     RetreatTroops,
     ReturnOtherGraftedCardAtRevealStart,
     ReturnThisCardToHand,
@@ -963,6 +966,12 @@ def reward_text_ko(reward: Reward) -> str:
         case EachOpponentDiscardsCard() as discard:
             # Quotes ``tokens_ko.py``'s Covert Operation line.
             return f"다른 플레이어 각자 카드 {discard.cards}장 버리기"
+        case EachOpponentDiscardsOrLosesDeployedTroop():
+            # Quotes ``tokens_ko.py``'s Test of Humanity line.
+            return (
+                "다른 플레이어 각자 하나 선택: 카드 1장 {discard} 또는 "
+                "{conflict}에 배치된 {troop} 하나 잃음"
+            )
         case EachOpponentLosesTroop(garrison_only=garrison_only):
             # Quotes ``tokens_ko.py``'s Holy War and Gun Thopter lines.
             return (
@@ -1046,6 +1055,19 @@ def reward_text_ko(reward: Reward) -> str:
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"
+        case DoubleBaseHarvestSpice():
+            # Bare ``{agent}`` and ``{spice}`` (the English line has one each);
+            # "수확" is ``static/labels.js``'s ``harvest_maker_spice`` verb.
+            return "이 {agent}로 수확하는 기본 {spice} 두 배 (보너스 제외)"
+        case ReserveCostDiscount(card_ids=card_ids, amount=amount):
+            # The Reserve card's Korean print name (``_reserve_card_name_ko``,
+            # as the Corner the Market conditions above); one name for the
+            # printings. The possessive "의" needs no final-consonant particle.
+            name = _reserve_card_name_ko(card_ids[0])
+            return (
+                f"이번 {{reveal_turn}}에 {name}의 {{acquire}} 비용 "
+                f"{{persuasion:{amount}}} 감소"
+            )
         case _:
             assert_never(reward)
 

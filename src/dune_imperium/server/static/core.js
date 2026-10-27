@@ -1402,6 +1402,8 @@ const REVEAL_SOURCE_ACTIONS = new Set([
   "gain_reveal_influence",
   "deploy_reveal_card_troop",
   "retreat_reveal_card_troop",
+  "deploy_reveal_card_troops",
+  "retreat_reveal_card_troops",
   "decline_reveal_spy_recall",
 ]);
 

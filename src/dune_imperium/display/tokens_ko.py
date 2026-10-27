@@ -126,6 +126,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
+from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.tokens import reveal_line_conditions
 from dune_imperium.rules.reveal_lines import RevealLine
 
@@ -532,6 +533,19 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: (
         "베네 게세리트의 유대감이면: 다른 플레이어 각자 카드 2장 버리기"
     ),
+    # Quotes ``effect_dsl_text_ko.py``'s DoubleBaseHarvestSpice line.
+    PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE: (
+        "이 {agent}로 수확하는 기본 {spice} 두 배 (보너스 제외)"
+    ),
+    PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP: (
+        "다른 플레이어 각자 하나 선택: 카드 1장 {discard} 또는 "
+        "{conflict}에 배치된 {troop} 하나 잃음"
+    ),
+    PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: (
+        "{solari:2} 지불 가능 {arrow_right} 하나 선택: "
+        "{influence_spacing_guild:1} / {influence_bene_gesserit:1} / "
+        "{influence_fremen:1}"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box
@@ -668,6 +682,15 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     ),
     PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: (
         "하나 선택: {persuasion:2} / {sword:2}"
+    ),
+    PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS: (
+        "{garrison}의 {troop:3}까지 {conflict}에 배치 가능"
+    ),
+    PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS: (
+        "{troop:2}까지 {retreat} 가능"
+    ),
+    PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
+        "원하는 수의 {troop} {retreat} 가능"
     ),
     PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
         "{solari:6} 지불 가능 {arrow_right} {victory_point:1}"
@@ -829,6 +852,16 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
             "{research} (연구 트랙 전진)"
             if line.research == 1
             else f"{{research}} ×{line.research} (연구 트랙 {line.research}회 전진)"
+        )
+    for discount in line.reserve_discounts:
+        # Guild Bankers: ``effect_dsl_text_ko``'s ``ReserveCostDiscount``
+        # line (the Reserve card's Korean print name, no card text of its own).
+        name = KOREAN_CARD_NAMES["cards"].get(
+            discount.card_ids[0], discount.card_ids[0]
+        )
+        gains.append(
+            f"이번 {{reveal_turn}}에 {name}의 {{acquire}} 비용 "
+            f"{{persuasion:{discount.amount}}} 감소"
         )
 
     text = ", ".join(gains)

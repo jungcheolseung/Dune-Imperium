@@ -186,6 +186,7 @@ from dune_imperium.rules.agent_effect_frame import (
 from dune_imperium.rules.agent_effects import (
     AGENT_ICON_TRASH,
     AUTOMATIC_AGENT_ICONS,
+    OR_LOSE_DEPLOYED_TROOP_KEY,
     agent_box_influence_blocked,
     agent_card_cost_block,
     agent_card_payment_block,
@@ -2228,7 +2229,34 @@ def _opponent_card_discard(state: GameState, seat: int, found: _Found) -> None:
     seat's own hand is its own to see.
     """
 
-    if state.players[seat].hand:
+    frame = state.decision_stack[-1]
+    owner = state.players[seat]
+    if dict(frame.context).get(OR_LOSE_DEPLOYED_TROOP_KEY) is True:
+        # Test of Humanity: each half is greyed while it cannot be done
+        # (imperium-base.md 13.1); with neither, both read the one reason.
+        neither = not owner.hand and not owner.troops_conflict
+        if not owner.hand:
+            found.row(
+                "choice",
+                "discard_opponent_card",
+                DomainAction(action_id="discard_opponent_card", actor=seat),
+                _NO_CARD_TO_DISCARD,
+            )
+        if not owner.troops_conflict:
+            found.row(
+                "choice",
+                "lose_unit:conflict:0",
+                DomainAction(
+                    action_id="lose_unit",
+                    actor=seat,
+                    arguments=(("zone", "conflict"),),
+                ),
+                _NO_UNIT_TO_LOSE if neither else _unit_loss_reason(
+                    "conflict", UnitLossBlock.NO_TROOP
+                ),
+            )
+        return
+    if owner.hand:
         return
     found.row(
         "choice",
@@ -2612,9 +2640,13 @@ _CHOICE_ICON_ROWS: Final[Mapping[str, str]] = {
 _PAYMENT_BLOCK_REASONS: Final[Mapping[AgentPaymentBlock, Reason]] = {
     AgentPaymentBlock.NO_CARD_TO_DRAW: _NO_CARD_TO_DRAW,
     AgentPaymentBlock.TLEILAXU_TRACK_END: _TLEILAXU_TRACK_END,
+    AgentPaymentBlock.NO_FACTION_TO_RAISE: _ALL_AT_THE_TOP,
 }
 # The payment an ``AgentPaymentBlock`` withholds, by the box's effect.
 _WITHHELD_PAYMENTS: Final[Mapping[PersonalCardAgentEffect, str]] = {
+    PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: (
+        "pay_agent_card_solari"
+    ),
     PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO: "pay_agent_card_water",
     PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: (
         "pay_agent_card_two_specimens"

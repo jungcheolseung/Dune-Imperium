@@ -54,10 +54,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
+    DoubleBaseHarvestSpice,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
@@ -983,6 +985,47 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # seat, as many as the hand holds (OQ-118, [FAQ p. 3]).
             _BOX.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: _box(
                 EachOpponentDiscardsCard(2), condition=_BG_BOND, requirement=_BG_BOND
+            ),
+            # Firm Grip (original game): "[2 Solari] -> Choose one: [Spacing Guild
+            # Influence] / [Bene Gesserit Influence] / [Fremen Influence]" -- an
+            # optional arrow paid once [DI p. 9] [FAQ p. 3]; paid, its reward waits
+            # as an icon and the owner picks the Faction (never a track at 6,
+            # OQ-060). No Emperor choice.
+            _BOX.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(
+                            GainInfluence(
+                                factions=(
+                                    Faction.SPACING_GUILD,
+                                    Faction.BENE_GESSERIT,
+                                    Faction.FREMEN,
+                                )
+                            ),
+                        ),
+                        costs=(PayResources(solari=2),),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("influence",),
+            ),
+            # Test of Humanity (original game): "Each opponent chooses: Discard a
+            # card -OR- Lose a deployed troop" -- one frame per opponent, the
+            # next seat first, named ``<box>:opponent:<seat>`` as Covert
+            # Operation's; each offers what it can do (imperium-base.md 13.1).
+            _BOX.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP: _box(
+                EachOpponentDiscardsOrLosesDeployedTroop()
+            ),
+            # Carryall (original game): "Double the base (not bonus) spice you
+            # harvest with this Agent" -- the harvest reads this record
+            # (``board_effects.apply_maker_space_action``); there is nothing to
+            # resolve, so the box never opens (``AbilityMark.AUTOMATIC``,
+            # ``agent_box_abilities.opens_at_placement``).
+            _BOX.DOUBLE_BASE_HARVEST_SPICE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(_line(DoubleBaseHarvestSpice()),),
+                mark=AbilityMark.AUTOMATIC,
             ),
         }
     )

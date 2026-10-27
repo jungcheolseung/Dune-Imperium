@@ -40,6 +40,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     InfluenceAtLeast,
     RecruitTroops,
     Research,
+    ReserveCostDiscount,
     RevealCountKind,
     RevealPersuasion,
     RevealSwords,
@@ -47,6 +48,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyingOnMakerSpace,
     TrashThisCard,
 )
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
@@ -479,6 +481,16 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: (
             "If Bene Gesserit Bond: Each opponent discards 2 cards"
         ),
+        PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE: (
+            "Double the base (not bonus) spice you harvest with this Agent"
+        ),
+        PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP: (
+            "Each opponent chooses: Discard a card -OR- Lose a deployed troop"
+        ),
+        PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: (
+            "You may pay 2 solari → Choose one: Gain 1 Spacing Guild Influence / "
+            "Gain 1 Bene Gesserit Influence / Gain 1 Fremen Influence"
+        ),
     }
 )
 
@@ -646,6 +658,15 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: (
                 "Choose one: 2 Persuasion / 2 swords"
             ),
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS: (
+                "You may deploy up to 3 troops from your garrison to the Conflict"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS: (
+                "You may retreat up to 2 troops"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
+                "You may retreat any number of troops"
+            ),
             PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
                 "You may pay 6 solari → Gain 1 Victory Point"
             ),
@@ -745,6 +766,7 @@ HANDLED_REVEAL_REWARDS: Final[frozenset[type]] = frozenset(
         GenerateSpecimens,
         AdvanceTleilaxu,
         Research,
+        ReserveCostDiscount,
     }
 )
 
@@ -898,6 +920,13 @@ def reveal_effect_text(line: RevealLine) -> str:
             "Research (advance your research token)"
             if line.research == 1
             else f"Research ×{line.research} (advance your research token twice)"
+        )
+    for discount in line.reserve_discounts:
+        # Guild Bankers: the card's printed sentence (``effect_dsl_text``'s
+        # ``ReserveCostDiscount``).
+        name = RESERVE_STACKS_BY_ID[discount.card_ids[0]].card.name
+        gains.append(
+            f"{name} costs {discount.amount} Persuasion less to acquire this turn"
         )
 
     text = ", ".join(gains)

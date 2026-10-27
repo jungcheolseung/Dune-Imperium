@@ -7,6 +7,7 @@ printed values are the Steam app's attribute table (plan 2.4, D1).
 """
 
 from dataclasses import replace
+from typing import Any, cast
 
 import pytest
 
@@ -33,12 +34,17 @@ from dune_imperium.core import (
     PlayerDecision,
     Resources,
 )
-from dune_imperium.display.tokens import reveal_effect_text
-from dune_imperium.display.tokens_ko import reveal_effect_text_ko
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.display.tokens import REVEAL_CHOICE_EFFECT_TEXT, reveal_effect_text
+from dune_imperium.display.tokens_ko import (
+    REVEAL_CHOICE_EFFECT_TEXT_KO,
+    reveal_effect_text_ko,
+)
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.acquire_icons import acquire_box_icons
 from dune_imperium.rules.acquisition import acquire_imperium_for_intrigue
+from dune_imperium.rules.agent_effects import expire_trashed_card_effects
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.frames import FrameKind
@@ -3407,3 +3413,1109 @@ def test_lady_jessica_and_choam_directorship_icons_share_a_turn() -> None:
         dict(row.arguments)["effect"] for row in _acquire_rows(engine, chosen)
     }
     assert "finish_reveal" not in _ids(engine, chosen)
+
+
+# --- Guild Bankers ----------------------------------------------------------------
+
+TSMF = "imperium_the_spice_must_flow"
+
+
+def test_guild_bankers_matches_the_app_table() -> None:
+    # App attribute table: cost 3, 1 copy, Spacing Guild, Emperor, Spacing
+    # Guild and Landsraad, no fixed Reveal values; no Agent effect.
+    entry = IMPERIUM_CARDS_BY_ID["guild_bankers"]
+    assert entry.card.name == "Guild Bankers"
+    assert entry.acquisition_cost == 3
+    assert entry.copies == 1
+    assert entry.factions == (Faction.SPACING_GUILD,)
+    assert entry.agent_icons == (
+        AgentIcon.EMPEROR,
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.LANDSRAAD,
+    )
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:guild_bankers:0") is entry
+
+
+def test_guild_bankers_agent_box_is_empty() -> None:
+    # P0 sweep: "AGENT: none"; the icons only send the Agent to an Emperor,
+    # Spacing Guild or Landsraad space.
+    engine, state = _start()
+    state, _ = _with_card(state, "guild_bankers")
+    placed = _place(engine, state, "wealth", "guild_bankers")
+    assert "resolve_agent_card_effect" not in _ids(engine, placed)
+
+
+# Persuasion 12 beside the card: Piter De Vries 3, Stilgar 2, Space Travel 2
+# twice, Dr. Yueh 1, Bene Gesserit Initiate 1, Opulence 1 (the printed values;
+# none of them gains anything that must be taken before the Reveal ends).
+_BANKERS_HAND = (
+    "imperium:guild_bankers:0",
+    "imperium:piter_de_vries_card:0",
+    "imperium:stilgar:0",
+    "imperium:space_travel:0",
+    "imperium:space_travel:1",
+    "imperium:dr_yueh:0",
+    "imperium:bene_gesserit_initiate:0",
+    "imperium:opulence:0",
+)
+
+
+def _bankers_revealed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    hand: tuple[str, ...] = _BANKERS_HAND,
+    in_play: tuple[str, ...] = (),
+) -> GameState:
+    """Seat 0 reveals ``hand`` (the bankers and 12 Persuasion by default)."""
+
+    held = _seat(state, hand=hand, resources=Resources(), in_play=in_play)
+    return _do(engine, held, "reveal_turn")
+
+
+def _reserve_cost(state: GameState) -> int:
+    from dune_imperium.rules.acquisition import reserve_cost
+
+    return reserve_cost(state, TSMF)
+
+
+def test_guild_bankers_reveal_lowers_the_spice_must_flow_by_three() -> None:
+    """ "Guild Bankers | 2 | 이번 turn에 얻는 The Spice Must Flow마다 할인"
+    (imperium-base.md 13.2, [FAQ p. 2]); the card prints "The Spice Must Flow
+    costs 3 Persuasion less to acquire this turn", and the Reserve card costs 9
+    (``imperium.reserve``): 6 in the Reveal turn."""
+
+    engine, state = _start()
+    assert _reserve_cost(state) == 9
+    revealed = _bankers_revealed(engine, state)
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 12
+    assert _reserve_cost(revealed) == 6
+    # Not a cost it keeps: the Reveal over, the card costs 9 again.
+    finished = _do(engine, revealed, "finish_reveal")
+    assert _reserve_cost(finished) == 9
+
+
+def test_guild_bankers_discount_makes_the_card_buyable_with_six() -> None:
+    """With 6 Persuasion the card is offered only beside Guild Bankers (9
+    Persuasion otherwise); the payment is the lowered cost."""
+
+    engine, state = _start()
+    six = ("imperium:piter_de_vries_card:0", "imperium:stilgar:0", "imperium:dr_yueh:0")
+    plain = _bankers_revealed(engine, state, six)
+    assert dict(plain.decision_stack[-1].context)["persuasion"] == 6
+    assert ("acquire_reserve", TSMF) not in {
+        (action.action_id, dict(action.arguments).get("card_id"))
+        for action in _wholes(engine, plain)
+    }
+    with_bankers = _bankers_revealed(engine, state, ("imperium:guild_bankers:0", *six))
+    assert dict(with_bankers.decision_stack[-1].context)["persuasion"] == 6
+    bought = _do(engine, with_bankers, "acquire_reserve", card_id=TSMF)
+    assert dict(bought.decision_stack[-1].context)["persuasion"] == 0
+    discard = bought.players[0].discard_pile
+    assert any(card.startswith(f"reserve:{TSMF}:") for card in discard)
+    # The Victory Point the card gives when acquired ([FAQ p. 4]) is unchanged.
+    gained = bought.players[0].victory_points - with_bankers.players[0].victory_points
+    assert gained == 1
+    # Market Opening's once-a-round flag is not the bankers' to set.
+    assert not bought.scouts_discount_used
+
+
+def test_guild_bankers_discount_holds_for_each_copy_bought() -> None:
+    """ "마다": every copy acquired this turn costs 3 less, not the first only:
+    12 Persuasion buys two at 6 each."""
+
+    engine, state = _start()
+    revealed = _bankers_revealed(engine, state)
+    first = _do(engine, revealed, "acquire_reserve", card_id=TSMF)
+    assert dict(first.decision_stack[-1].context)["persuasion"] == 6
+    second = _do(engine, first, "acquire_reserve", card_id=TSMF)
+    assert dict(second.decision_stack[-1].context)["persuasion"] == 0
+    discard = second.players[0].discard_pile
+    assert len([card for card in discard if f":{TSMF}:" in card]) == 2
+
+
+def test_guild_bankers_played_as_an_agent_gives_no_discount() -> None:
+    """The discount is the card's Reveal effect: the card in play from an
+    earlier Agent turn does not lower the cost (its Agent box is empty)."""
+
+    engine, state = _start()
+    rest = _BANKERS_HAND[1:]
+    revealed = _bankers_revealed(
+        engine, state, rest, in_play=("imperium:guild_bankers:0",)
+    )
+    assert _reserve_cost(revealed) == 9
+
+
+def test_guild_bankers_reveal_text_names_the_discount() -> None:
+    line = reveal_lines(IMPERIUM_CARDS_BY_ID["guild_bankers"])[0]
+    assert reveal_effect_text(line) == (
+        "The Spice Must Flow costs 3 Persuasion less to acquire this turn"
+    )
+    korean = reveal_effect_text_ko(line)
+    assert "{persuasion:3}" in korean
+    assert "스파이스는 흘러야 한다" in korean
+
+
+# --- Carryall ---------------------------------------------------------------------
+
+
+def test_carryall_matches_the_app_table() -> None:
+    # App attribute table: cost 5, 1 copy, no Faction, Spice Trade, Reveal 1
+    # Persuasion and 1 spice.
+    entry = IMPERIUM_CARDS_BY_ID["carryall"]
+    assert entry.card.name == "Carryall"
+    assert entry.acquisition_cost == 5
+    assert entry.copies == 1
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert entry.agent_effect is PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:carryall:0") is entry
+
+
+def _carryall_harvest(
+    space_id: str,
+    water: int,
+    *,
+    bonus: int = 2,
+    carryall: bool = True,
+    leader: str | None = None,
+) -> tuple[GameState, GameState]:
+    """Seat 0 sends Carryall (or Spice Hunter, a Spice Trade card with no box) to
+    the Maker space with ``bonus`` spice on it and harvests; returns the
+    state before the harvest and after."""
+
+    engine, state = _start()
+    card = "carryall" if carryall else "spice_hunter"
+    state, _ = _with_card(state, card)
+    state = _seat(state, resources=Resources(water=water))
+    if leader is not None:
+        state = _seat(state, leader_id=leader, leader_face_id=leader)
+    state = replace(
+        state,
+        maker_bonus_spice=tuple(
+            (maker, bonus if maker == space_id else other)
+            for maker, other in state.maker_bonus_spice
+        ),
+    )
+    placed = _place(engine, state, space_id, card)
+    return placed, _do(engine, placed, "harvest_maker_spice")
+
+
+def _spice_gained(placed: GameState, harvested: GameState) -> int:
+    return harvested.players[0].resources.spice - placed.players[0].resources.spice
+
+
+def test_carryall_has_no_box_to_resolve() -> None:
+    """The doubling is a modifier of the harvest, not a step of its own: the
+    box never opens, so nothing waits for the owner (``AbilityMark.AUTOMATIC``)
+    and the turn can end once the harvest is taken."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "carryall")
+    placed = _place(engine, state, "imperial_basin", "carryall")
+    assert "resolve_agent_card_effect" not in _ids(engine, placed)
+    assert "harvest_maker_spice" in _ids(engine, placed)
+
+
+def test_carryall_doubles_the_base_spice_not_the_bonus() -> None:
+    """ "Carryall | 1 | 기본 spice: Imperial Basin 1, Hagga Basin 2, The Great Flat
+    3" (imperium-base.md 13.2, [FAQ p. 1]); the card doubles the base, never the
+    bonus spice the space has gathered: base 1/2/3 doubled to 2/4/6, beside a
+    bonus of 2."""
+
+    for space_id, water, base in (
+        ("imperial_basin", 0, 1),
+        ("imperium_hagga_basin", 1, 2),
+        ("the_great_flat", 2, 3),
+    ):
+        placed, harvested = _carryall_harvest(space_id, water)
+        assert _spice_gained(placed, harvested) == 2 * base + 2, space_id
+        # The bonus is collected whatever the doubling.
+        assert dict(harvested.maker_bonus_spice)[space_id] == 0
+
+
+def test_a_plain_spice_trade_card_harvests_the_printed_base() -> None:
+    """The control for the doubling: any other Spice Trade card at the same
+    spaces takes the printed base and the bonus (here Hagga Basin: 2 + 2)."""
+
+    placed, harvested = _carryall_harvest("imperium_hagga_basin", 1, carryall=False)
+    assert _spice_gained(placed, harvested) == 2 + 2
+
+
+def test_carryall_does_nothing_off_a_harvest() -> None:
+    """ "Nothing at Secure Contract or Sell Melange" (P0 sweep, merged
+    effect): the card at Secure Contract gains its 3 Solari and no spice."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "carryall")
+    state = _seat(state, resources=Resources())
+    placed = _place(engine, state, "secure_contract", "carryall")
+    resolved = _do(engine, placed, "resolve_board_effect", effect="resources")
+    assert resolved.players[0].resources == Resources(solari=3)
+
+
+def test_carryall_leaves_the_control_bonus_alone() -> None:
+    """The Imperial Basin control bonus is not a harvest (P0 sweep): its
+    controller takes the printed 1 spice [DI p. 10], not a doubled one."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "carryall")
+    state = _seat(state, 1, control_space_ids=("imperial_basin",))
+    spice = state.players[1].resources.spice
+    placed = _place(engine, state, "imperial_basin", "carryall")
+    assert placed.players[1].resources.spice == spice + 1
+
+
+def test_carryall_doubles_before_spice_addict_takes_one_less() -> None:
+    """ "Countess Ariana의 −1은 Carryall·Thumper로 두 배를 한 뒤 harvest 전체에서
+    한 번 뺀다" (imperium-base.md 16): Hagga Basin's base 2 doubled to 4, less 1,
+    plus the bonus 2 -- 5, not 2*(2-1)+2 = 4."""
+
+    placed, harvested = _carryall_harvest(
+        "imperium_hagga_basin", 1, leader="countess_ariana_thorvald"
+    )
+    assert _spice_gained(placed, harvested) == (2 * 2 - 1) + 2
+
+
+def test_carryall_reveal_gains_one_persuasion_and_one_spice() -> None:
+    engine, state = _start()
+    held, instance = _with_card(state, "carryall", alone=True)
+    held = _seat(held, hand=(instance,), resources=Resources())
+    revealed = _do(engine, held, "reveal_turn")
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 1
+    gained = _do(engine, revealed, "gain_reveal_resources", printed="carryall")
+    assert gained.players[0].resources.spice == 1
+
+
+def test_carryall_text_names_the_doubling() -> None:
+    from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
+    from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
+
+    effect = PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE
+    assert AGENT_EFFECT_TEXT[effect] == (
+        "Double the base (not bonus) spice you harvest with this Agent"
+    )
+    assert "{spice}" in AGENT_EFFECT_TEXT_KO[effect]
+
+
+# --- Power Play -------------------------------------------------------------------
+
+
+def test_power_play_matches_the_app_table() -> None:
+    # App attribute table: cost 5, 3 copies, no Faction, the four Faction
+    # icons, no Reveal values.
+    entry = IMPERIUM_CARDS_BY_ID["power_play"]
+    assert entry.card.name == "Power Play"
+    assert entry.acquisition_cost == 5
+    assert entry.copies == 3
+    assert entry.factions == ()
+    assert entry.agent_icons == (
+        AgentIcon.EMPEROR,
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.FREMEN,
+    )
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:power_play:2") is entry
+
+
+def _power_play_placed(
+    engine: UprisingRulesEngine, state: GameState, space_id: str = "wealth"
+) -> GameState:
+    held, _ = _with_card(state, "power_play")
+    held = _seat(held, influence=Influence(), resources=Resources(water=1, spice=2))
+    return _place(engine, held, space_id, "power_play")
+
+
+def test_power_play_gives_two_influence_instead_of_the_spaces_one() -> None:
+    """ "Gain two Influence instead of one." (card); "Power Play의 두 문장은 별개
+    효과; Agent box는 Faction 칸에 보냈을 때만" and the box takes the shape of
+    Subversive Advisor's (imperium-base.md 13.3, OQ-022's 2026-10-06
+    reinforcement): the waiting box holds the space's own 1, so the space gives
+    2 in all, never 3. One step of the owner's: the two Influence, then the
+    card trashes itself."""
+
+    engine, state = _start()
+    for space_id, faction in (
+        ("wealth", "emperor"),
+        ("foldspace", "spacing_guild"),
+        ("secrets", "bene_gesserit"),
+        ("stillsuits", "fremen"),
+    ):
+        placed = _power_play_placed(engine, state, space_id)
+        ids = _ids(engine, placed)
+        assert "resolve_agent_card_effect" in ids, space_id
+        assert "resolve_faction_influence" not in ids, space_id
+        resolved = _do(engine, placed, "resolve_agent_card_effect")
+        after = resolved.players[0]
+        assert getattr(after.influence, faction) == 2, space_id
+        # The space's own Influence was the box's to give; it does not come
+        # again (a third point).
+        assert "resolve_faction_influence" not in _ids(engine, resolved), space_id
+        me = "imperium:power_play:0"
+        assert me in after.trashed and me not in after.in_play, space_id
+
+
+def test_power_play_trash_is_not_a_choice() -> None:
+    """ "Trash this card" is mandatory [FAQ p. 3] (imperium-base.md 11): the
+    box has no refusal, and the turn cannot end with the card still waiting."""
+
+    engine, state = _start()
+    placed = _power_play_placed(engine, state)
+    ids = _ids(engine, placed)
+    assert not {action_id for action_id in ids if action_id.startswith("decline_")}
+    assert "finish_agent_turn" not in ids
+
+
+def test_power_play_two_influence_pass_the_victory_point_once() -> None:
+    """Both points are one effect that cannot be cut ("두 진영 Influence를 한꺼번에
+    올리는 효과는 끊을 수 없는 한 효과", imperium-base.md 13.3): from 1 to 3
+    Emperor Influence the 2-Influence Victory Point is gained once [DI p. 7]."""
+
+    engine, state = _start()
+    held, _ = _with_card(state, "power_play")
+    held = _seat(
+        held, influence=Influence(emperor=1), resources=Resources(water=1, spice=2)
+    )
+    placed = _place(engine, held, "wealth", "power_play")
+    before = placed.players[0].victory_points
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    assert resolved.players[0].influence.emperor == 3
+    assert resolved.players[0].victory_points == before + 1
+
+
+def test_power_play_trashed_by_another_effect_leaves_the_spaces_influence() -> None:
+    """ "다른 수단으로 먼저 trash하면 남은 효과는 없다" (imperium-base.md 16,
+    OQ-022): another effect trashed the card before its box resolved, so the
+    box expires; only the card's "instead" lapses, the space's own Influence
+    is the board's rule and comes back ([Main p. 7])."""
+
+    engine, state = _start()
+    placed = _power_play_placed(engine, state)
+    me = "imperium:power_play:0"
+    owner = placed.players[0]
+    lowered = _seat(
+        placed,
+        in_play=tuple(card for card in owner.in_play if card != me),
+        trashed=(*owner.trashed, me),
+    )
+    expired = expire_trashed_card_effects(RuleResult(state=lowered)).state
+    assert "resolve_agent_card_effect" not in _ids(engine, expired)
+    assert "resolve_faction_influence" in _ids(engine, expired)
+    gained = _do(engine, expired, "resolve_faction_influence")
+    assert gained.players[0].influence.emperor == 1
+
+
+def test_power_play_text_is_the_printed_pair_of_effects() -> None:
+    from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
+
+    assert (
+        AGENT_EFFECT_TEXT[
+            PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+        ]
+        == "Gain 2 Influence with the visited Faction, Trash this card"
+    )
+
+
+# --- Test of Humanity -------------------------------------------------------------
+
+
+def test_test_of_humanity_matches_the_app_table() -> None:
+    # App attribute table: cost 3, 1 copy, Bene Gesserit, Bene Gesserit,
+    # Landsraad and City, Reveal 2 Persuasion.
+    entry = IMPERIUM_CARDS_BY_ID["test_of_humanity"]
+    assert entry.card.name == "Test of Humanity"
+    assert entry.acquisition_cost == 3
+    assert entry.copies == 1
+    assert entry.factions == (Faction.BENE_GESSERIT,)
+    assert entry.agent_icons == (
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.LANDSRAAD,
+        AgentIcon.CITY,
+    )
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:test_of_humanity:0") is entry
+
+
+def _humanity_played(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    seats: dict[int, tuple[tuple[str, ...], int]],
+) -> GameState:
+    """Seat 0 sends Test of Humanity to Hall of Oratory (a Landsraad space, no
+    cost) and resolves its box; ``seats`` gives each opponent's hand and
+    number of troops in the Conflict (the strength they make is its 2 each)."""
+
+    held, _ = _with_card(state, "test_of_humanity")
+    for seat, (hand, deployed) in seats.items():
+        held = _seat(
+            held,
+            seat,
+            hand=hand,
+            troops_garrison=3 - deployed,
+            troops_conflict=deployed,
+            combat_strength=2 * deployed,
+        )
+    placed = _place(engine, held, "hall_of_oratory", "test_of_humanity")
+    return _do(engine, placed, "resolve_agent_card_effect")
+
+
+def _window_rows(
+    engine: UprisingRulesEngine, state: GameState, seat: int
+) -> set[tuple[str, tuple[tuple[str, object], ...]]]:
+    return {
+        (action.action_id, action.arguments)
+        for action in engine.whole_actions(state, seat)
+    }
+
+
+def test_test_of_humanity_each_opponent_chooses_what_it_can_do() -> None:
+    """ "상대는 내 왼쪽부터 시계 방향으로 고른다. 각자 할 수 있는 것을 골라야 한다
+    (손이 비면 버리기 불가, 배치한 troop이 없으면 잃기 불가). 버리는 상대가 카드를
+    고른다(무작위 아님)" (imperium-base.md 13.1, [DI p. 13]); "discard ...는 손의
+    카드" ([FAQ p. 4], 13.2). Seat 1 holds cards and a deployed troop: both
+    halves are offered; seat 2 a hand only: the discard alone; seat 3 a
+    deployed troop only: the loss alone."""
+
+    engine, state = _start()
+    hand = ("imperium:dr_yueh:0", "imperium:stilgar:0")
+    resolved = _humanity_played(
+        engine,
+        state,
+        {1: (hand, 1), 2: (("imperium:space_travel:0",), 0), 3: ((), 2)},
+    )
+    top = resolved.decision_stack[-1]
+    assert top.kind is FrameKind.OPPONENT_CARD_DISCARD
+    assert top.decision.owner == 1  # type: ignore[union-attr]
+    rows = _window_rows(engine, resolved, 1)
+    assert rows == {
+        ("discard_opponent_card", (("card_id", hand[0]),)),
+        ("discard_opponent_card", (("card_id", hand[1]),)),
+        ("lose_unit", (("zone", "conflict"),)),
+    }
+    # Seat 1 discards a card of its own choosing; its troop stays.
+    first = _do_for(engine, resolved, 1, "discard_opponent_card", card_id=hand[1])
+    assert first.players[1].hand == (hand[0],)
+    assert hand[1] in first.players[1].discard_pile
+    assert first.players[1].troops_conflict == 1
+    # Seat 2 has no deployed troop: only its discard.
+    assert first.decision_stack[-1].decision.owner == 2  # type: ignore[union-attr]
+    assert _window_rows(engine, first, 2) == {
+        ("discard_opponent_card", (("card_id", "imperium:space_travel:0"),))
+    }
+    second = _do_for(
+        engine, first, 2, "discard_opponent_card", card_id="imperium:space_travel:0"
+    )
+    assert second.players[2].hand == ()
+    # Seat 3 has no card: only the loss of a deployed troop, to the supply.
+    assert second.decision_stack[-1].decision.owner == 3  # type: ignore[union-attr]
+    assert _window_rows(engine, second, 3) == {("lose_unit", (("zone", "conflict"),))}
+    third = _do_for(engine, second, 3, "lose_unit", zone="conflict")
+    seat3 = third.players[3]
+    assert (seat3.troops_conflict, seat3.troops_garrison, seat3.troops_supply) == (
+        1,
+        1,
+        second.players[3].troops_supply + 1,
+    )
+    # Its strength follows the troop out of the Conflict.
+    assert seat3.combat_strength == 2
+    assert third.decision_stack[-1].kind is not FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_test_of_humanity_loses_a_troop_instead_of_discarding() -> None:
+    """An opponent holding both may take the loss instead: the card stays in
+    hand, the troop leaves the Conflict for the supply."""
+
+    engine, state = _start()
+    hand = ("imperium:dr_yueh:0",)
+    resolved = _humanity_played(engine, state, {1: (hand, 2), 2: ((), 0), 3: ((), 0)})
+    lost = _do_for(engine, resolved, 1, "lose_unit", zone="conflict")
+    seat = lost.players[1]
+    assert seat.hand == hand and seat.discard_pile == ()
+    assert (seat.troops_conflict, seat.combat_strength) == (1, 2)
+    assert seat.troops_supply == resolved.players[1].troops_supply + 1
+
+
+def test_test_of_humanity_never_offers_a_garrisoned_troop() -> None:
+    """Only a deployed troop is lost ("Lose a deployed troop"): an opponent
+    with troops in the garrison alone and no cards has nothing to choose and
+    confirms it ("with neither possible, nothing", P0 sweep, [DI p. 13])."""
+
+    engine, state = _start()
+    resolved = _humanity_played(engine, state, {1: ((), 0), 2: ((), 0), 3: ((), 0)})
+    assert resolved.players[1].troops_garrison == 3
+    assert _window_rows(engine, resolved, 1) == {
+        ("resolve_opponent_discard_without_card", ())
+    }
+    done = _do_for(engine, resolved, 1, "resolve_opponent_discard_without_card")
+    assert done.players[1].troops_garrison == 3
+    assert done.players[1].troops_supply == resolved.players[1].troops_supply
+    assert done.decision_stack[-1].decision.owner == 2  # type: ignore[union-attr]
+
+
+def _greyed(
+    engine: UprisingRulesEngine, state: GameState, seat: int
+) -> set[tuple[str, str]]:
+    """The (action id, reason code) of each row the page greys out for ``seat``."""
+
+    found = unavailable_choices(state, seat, engine.whole_actions(state, seat))
+    if found is None:
+        return set()
+    rows = cast("list[dict[str, Any]]", found["rows"])
+    return {(row["action"]["action_id"], row["code"]) for row in rows}
+
+
+def test_test_of_humanity_window_greys_out_what_cannot_be_done() -> None:
+    """The page shows each half that cannot be done greyed out, with its reason
+    (``display.unavailable``); the confirm is the only legal row of a seat with
+    neither."""
+
+    engine, state = _start()
+    hand = ("imperium:dr_yueh:0",)
+    resolved = _humanity_played(engine, state, {1: (hand, 0), 2: ((), 1), 3: ((), 0)})
+    assert _greyed(engine, resolved, 1) == {("lose_unit", "no_unit")}
+    after = _do_for(engine, resolved, 1, "discard_opponent_card", card_id=hand[0])
+    assert _greyed(engine, after, 2) == {("discard_opponent_card", "no_card")}
+    both_missing = _do_for(engine, after, 2, "lose_unit", zone="conflict")
+    assert _greyed(engine, both_missing, 3) == {
+        ("discard_opponent_card", "no_card"),
+        ("lose_unit", "no_unit"),
+    }
+    assert _window_rows(engine, both_missing, 3) == {
+        ("resolve_opponent_discard_without_card", ())
+    }
+
+
+def test_test_of_humanity_reveals_two_persuasion() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "test_of_humanity", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 2
+    assert frame["sword_strength"] == 0
+
+
+def test_test_of_humanity_text_names_the_choice() -> None:
+    from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
+    from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
+
+    effect = PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP
+    assert AGENT_EFFECT_TEXT[effect] == (
+        "Each opponent chooses: Discard a card -OR- Lose a deployed troop"
+    )
+    assert "{discard}" in AGENT_EFFECT_TEXT_KO[effect]
+
+
+# --- Sardaukar Legion, Scout and Chani: troops moved by count ---------------------
+#
+# "Deploy up to three troops from your garrison to the Conflict" (Legion),
+# "Retreat up to two of your troops" (Scout), "Retreat any number of your
+# troops" (Chani): the owner picks the count, and "up to" / "any number" allow
+# 0 [FAQ p. 3] (imperium-base.md 13.2: "Chani (Imperium) -> Retreat | 'any
+# number'는 0 가능"); a retreat goes to the garrison [DI p. 16]; troops only (the
+# original game has no Sardaukar Commander, P7 decides whether one counts).
+
+
+def _counts(engine: UprisingRulesEngine, state: GameState, action_id: str) -> set[int]:
+    """The counts the Reveal frame offers as ``action_id``."""
+
+    return {
+        int(dict(action.arguments)["count"])
+        for action in _wholes(engine, state)
+        if action.action_id == action_id
+    }
+
+
+def _revealed_alone(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    card_id: str,
+    *,
+    garrison: int,
+    conflict: int = 0,
+    copies: int = 1,
+) -> GameState:
+    """Seat 0 reveals ``copies`` of ``card_id`` and nothing else, holding that
+    many troops in the garrison and the Conflict."""
+
+    held = _with_troops(state, 0, garrison, conflict)
+    hand = tuple(f"imperium:{card_id}:{copy}" for copy in range(copies))
+    held = _seat(held, hand=hand, resources=Resources())
+    return _do(engine, held, "reveal_turn")
+
+
+# --- Sardaukar Legion
+
+
+def test_sardaukar_legion_matches_the_app_table() -> None:
+    # App attribute table: cost 5, 2 copies, Emperor, Emperor and Landsraad,
+    # Reveal 1 Persuasion; AgentTroops 2.
+    entry = IMPERIUM_CARDS_BY_ID["sardaukar_legion"]
+    assert entry.card.name == "Sardaukar Legion"
+    assert entry.acquisition_cost == 5
+    assert entry.copies == 2
+    assert entry.factions == (Faction.EMPEROR,)
+    assert entry.agent_icons == (AgentIcon.EMPEROR, AgentIcon.LANDSRAAD)
+    assert entry.agent_effect is PersonalCardAgentEffect.RECRUIT_TWO_TROOPS
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS,
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:sardaukar_legion:1") is entry
+
+
+def test_sardaukar_legion_recruits_two_troops_that_stay_in_the_garrison() -> None:
+    """Agent "[2 troops]"; "Emperor and Landsraad spaces are not Combat spaces"
+    (P0 sweep, imperium-base.md 7): the two stay in the garrison."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "sardaukar_legion")
+    garrison = state.players[0].troops_garrison
+    placed = _place(engine, state, "wealth", "sardaukar_legion")
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    after = resolved.players[0]
+    assert after.troops_garrison == garrison + 2
+    assert after.troops_conflict == 0
+    assert not legal_combat_deployments(resolved, 0)
+
+
+def test_sardaukar_legion_deploys_up_to_three_troops_by_count() -> None:
+    """ "Deploy up to three troops from your garrison to the Conflict" [Sardaukar
+    Legion card]: one row for each count the garrison allows, 1 to 3; three
+    troops make 6 strength and the printed Persuasion is 1."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "sardaukar_legion", garrison=5)
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 1
+    assert _counts(engine, revealed, "deploy_reveal_card_troops") == {1, 2, 3}
+    deployed = _do(engine, revealed, "deploy_reveal_card_troops", count=3)
+    after = deployed.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (2, 3)
+    assert after.combat_strength == 6
+    # The choice is used up.
+    assert "deploy_reveal_card_troops" not in _ids(engine, deployed)
+    finished = _do(engine, deployed, "finish_reveal")
+    assert finished.players[0].combat_strength == 6
+
+
+def test_sardaukar_legion_deploys_only_what_the_garrison_holds() -> None:
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "sardaukar_legion", garrison=2)
+    assert _counts(engine, revealed, "deploy_reveal_card_troops") == {1, 2}
+    one = _do(engine, revealed, "deploy_reveal_card_troops", count=1)
+    assert (one.players[0].troops_garrison, one.players[0].troops_conflict) == (1, 1)
+    empty = _revealed_alone(engine, state, "sardaukar_legion", garrison=0)
+    assert _counts(engine, empty, "deploy_reveal_card_troops") == set()
+    assert "finish_reveal" in _ids(engine, empty)
+
+
+def test_sardaukar_legion_may_deploy_none() -> None:
+    """ "Up to" allows none [FAQ p. 3]: no refusal is offered (OQ-095 (7)); the
+    owner who deploys nothing ends the Reveal and the choice lapses."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "sardaukar_legion", garrison=3)
+    assert not {a for a in _ids(engine, revealed) if a.startswith("decline_")}
+    finished = _do(engine, revealed, "finish_reveal")
+    after = finished.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (3, 0)
+    assert after.combat_strength == 0
+
+
+def test_sardaukar_legion_deployed_troops_count_for_the_turn() -> None:
+    """Troops deployed by a Reveal card are deployed this turn (OQ-115: the
+    Baron's Masterstroke counts them)."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "sardaukar_legion", garrison=4)
+    deployed = _do(engine, revealed, "deploy_reveal_card_troops", count=3)
+    assert deployed.players[0].units_deployed_turn == 3
+
+
+def test_sardaukar_legion_text_names_the_count() -> None:
+    effect = PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS
+    assert REVEAL_CHOICE_EFFECT_TEXT[effect] == (
+        "You may deploy up to 3 troops from your garrison to the Conflict"
+    )
+    assert "{troop:3}" in REVEAL_CHOICE_EFFECT_TEXT_KO[effect]
+
+
+# --- Scout
+
+
+def test_scout_matches_the_app_table() -> None:
+    # App attribute table: cost 1, 2 copies, no Faction, City and Spice Trade,
+    # Reveal 1 Persuasion and 1 sword.
+    entry = IMPERIUM_CARDS_BY_ID["scout"]
+    assert entry.card.name == "Scout"
+    assert entry.acquisition_cost == 1
+    assert entry.copies == 2
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 1)
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:scout:1") is entry
+
+
+def test_scout_agent_box_is_empty() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "scout")
+    placed = _place(engine, state, "secure_contract", "scout")
+    assert "resolve_agent_card_effect" not in _ids(engine, placed)
+
+
+def test_scout_retreats_up_to_two_troops_to_the_garrison() -> None:
+    """ "Retreat up to two of your troops" [Scout card]; the retreat goes to the
+    garrison [DI p. 16]. Three troops stand in the Conflict: 6 strength and the
+    sword make 7; retreating two leaves one troop, 2 and the sword, 3."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "scout", garrison=0, conflict=3)
+    context = dict(revealed.decision_stack[-1].context)
+    assert (context["persuasion"], context["sword_strength"]) == (1, 1)
+    assert revealed.players[0].combat_strength == 6 + 1
+    assert _counts(engine, revealed, "retreat_reveal_card_troops") == {1, 2}
+    retreated = _do(engine, revealed, "retreat_reveal_card_troops", count=2)
+    after = retreated.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (2, 1)
+    assert after.troops_supply == revealed.players[0].troops_supply
+    assert after.combat_strength == 2 + 1
+    assert "retreat_reveal_card_troops" not in _ids(engine, retreated)
+
+
+def test_scout_retreats_only_the_troops_in_the_conflict() -> None:
+    engine, state = _start()
+    one = _revealed_alone(engine, state, "scout", garrison=2, conflict=1)
+    assert _counts(engine, one, "retreat_reveal_card_troops") == {1}
+    none = _revealed_alone(engine, state, "scout", garrison=3, conflict=0)
+    assert _counts(engine, none, "retreat_reveal_card_troops") == set()
+    # With no troop left in the Conflict the sword counts for nothing
+    # ("Conflict에 troop이 하나도 없으면 0" [DI p. 11]).
+    alone = _do(engine, one, "retreat_reveal_card_troops", count=1)
+    assert alone.players[0].troops_conflict == 0
+    assert alone.players[0].combat_strength == 0
+
+
+def test_scout_may_retreat_none() -> None:
+    """ "Up to" allows none [FAQ p. 3]: the troops stay and no refusal exists."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "scout", garrison=0, conflict=3)
+    assert not {a for a in _ids(engine, revealed) if a.startswith("decline_")}
+    finished = _do(engine, revealed, "finish_reveal")
+    assert finished.players[0].troops_conflict == 3
+    assert finished.players[0].combat_strength == 6 + 1
+
+
+def test_two_scouts_retreat_two_troops_each() -> None:
+    """Each Scout is its own choice: the same row of both is offered once, and
+    taking it uses one Scout up; the other still retreats two more."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "scout", garrison=0, conflict=5, copies=2)
+    assert _counts(engine, revealed, "retreat_reveal_card_troops") == {1, 2}
+    first = _do(engine, revealed, "retreat_reveal_card_troops", count=2)
+    assert _counts(engine, first, "retreat_reveal_card_troops") == {1, 2}
+    second = _do(engine, first, "retreat_reveal_card_troops", count=2)
+    after = second.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (4, 1)
+    assert "retreat_reveal_card_troops" not in _ids(engine, second)
+
+
+# --- Chani
+
+
+def test_chani_matches_the_app_table() -> None:
+    # App attribute table: cost 5, 1 copy, Fremen, Fremen / City / Spice Trade,
+    # Reveal 2 Persuasion, AcquireEffect Water.
+    entry = IMPERIUM_CARDS_BY_ID["chani_card"]
+    assert entry.card.name == "Chani"
+    assert entry.acquisition_cost == 5
+    assert entry.copies == 1
+    assert entry.factions == (Faction.FREMEN,)
+    assert entry.agent_icons == (
+        AgentIcon.FREMEN,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.has_acquisition_bonus
+    assert entry.acquisition_effect is PersonalCardAcquisitionEffect.GAIN_ONE_WATER
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS,
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:chani_card:0") is entry
+
+
+def test_chani_retreats_any_number_of_troops() -> None:
+    """ "Retreat any number of your troops" [Chani card]; "'any number'는 0
+    가능" (imperium-base.md 13.2, [FAQ pp. 1, 3]): every count from 1 to the
+    troops in the Conflict is a row, and the card's 2 Persuasion are printed."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "chani_card", garrison=0, conflict=5)
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2
+    assert _counts(engine, revealed, "retreat_reveal_card_troops") == {1, 2, 3, 4, 5}
+    retreated = _do(engine, revealed, "retreat_reveal_card_troops", count=5)
+    after = retreated.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (5, 0)
+    assert after.combat_strength == 0
+
+
+def test_chani_may_retreat_none() -> None:
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "chani_card", garrison=0, conflict=4)
+    assert not {a for a in _ids(engine, revealed) if a.startswith("decline_")}
+    finished = _do(engine, revealed, "finish_reveal")
+    assert finished.players[0].troops_conflict == 4
+    assert finished.players[0].combat_strength == 8
+
+
+def test_chani_offers_no_retreat_without_a_deployed_troop() -> None:
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "chani_card", garrison=3, conflict=0)
+    assert _counts(engine, revealed, "retreat_reveal_card_troops") == set()
+    assert "finish_reveal" in _ids(engine, revealed)
+
+
+def test_chani_acquisition_gains_one_water() -> None:
+    """ "AcquireEffect Water" (app table): buying the card gives 1 water, once."""
+
+    engine, state = _start()
+    chani = "imperium:chani_card:0"
+    others = tuple(card for card in state.imperium_row if card != chani)
+    row = (chani, *others[:4])
+    stocked = replace(
+        state,
+        imperium_row=row,
+        imperium_deck=tuple(card for card in state.imperium_deck if card != chani),
+    )
+    hand = (
+        "imperium:space_travel:0",
+        "imperium:stilgar:0",
+        "imperium:dr_yueh:0",
+    )
+    held = _seat(stocked, hand=hand, resources=Resources())
+    revealed = _do(engine, held, "reveal_turn")
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2 + 2 + 1
+    water = revealed.players[0].resources.water
+    bought = _do(engine, revealed, "acquire_imperium", instance_id=chani)
+    after = bought.players[0]
+    assert chani in after.discard_pile
+    assert after.resources.water == water + 1
+
+
+def test_the_counted_troop_moves_are_staged_rows_of_the_original_catalog() -> None:
+    """The effect is one row, then the owner picks the count (``choose_count``,
+    stage B3); every row encodes and decodes in the original game's catalog and
+    the picked count moves that many troops. Legion 1-3, Scout 1-2, Chani every
+    count up to the troops in the Conflict."""
+
+    from dune_imperium.adapters import ActionCodec
+
+    codec = ActionCodec(CONFIG)
+    engine, state = _start()
+    for card_id, verb, garrison, conflict, counts in (
+        ("sardaukar_legion", "deploy", 5, 0, {1, 2, 3}),
+        ("scout", "retreat", 0, 3, {1, 2}),
+        ("chani_card", "retreat", 0, 5, {1, 2, 3, 4, 5}),
+    ):
+        revealed = _revealed_alone(
+            engine, state, card_id, garrison=garrison, conflict=conflict
+        )
+        rows = engine.legal_actions(revealed, 0)
+        for action in rows:
+            assert codec.decode(codec.encode(action), 0) == action
+        effect = next(
+            action
+            for action in rows
+            if action.action_id == verb and dict(action.arguments)["printed"] == card_id
+        )
+        picked = engine.apply(revealed, effect).state
+        offered = engine.legal_actions(picked, 0)
+        assert {dict(a.arguments)["count"] for a in offered} == counts
+        for action in offered:
+            assert action.action_id == "choose_count"
+            assert codec.decode(codec.encode(action), 0) == action
+        moved = engine.apply(picked, offered[0]).state
+        after = moved.players[0]
+        # The first row is count 1: one troop crossed.
+        assert abs(after.troops_conflict - conflict) == 1, card_id
+
+
+# --- Firm Grip --------------------------------------------------------------------
+
+
+def test_firm_grip_matches_the_app_table() -> None:
+    # App attribute table: cost 4, 1 copy, Emperor, Emperor and Landsraad, no
+    # fixed Reveal values (tag EmperorAlliance).
+    entry = IMPERIUM_CARDS_BY_ID["firm_grip"]
+    assert entry.card.name == "Firm Grip"
+    assert entry.acquisition_cost == 4
+    assert entry.copies == 1
+    assert entry.factions == (Faction.EMPEROR,)
+    assert entry.agent_icons == (AgentIcon.EMPEROR, AgentIcon.LANDSRAAD)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:firm_grip:0") is entry
+
+
+def _grip_placed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    *,
+    solari: int = 3,
+    influence: Influence | None = None,
+    leader: str | None = None,
+) -> GameState:
+    """Seat 0 sends Firm Grip to Hall of Oratory (a Landsraad space, no cost,
+    one troop) holding ``solari`` Solari."""
+
+    held, _ = _with_card(state, "firm_grip")
+    held = _seat(
+        held, resources=Resources(solari=solari), influence=influence or Influence()
+    )
+    if leader is not None:
+        held = _seat(held, leader_id=leader, leader_face_id=leader)
+    return _place(engine, held, "hall_of_oratory", "firm_grip")
+
+
+def test_firm_grip_pays_two_solari_for_one_influence_of_three_factions() -> None:
+    """ "[2 Solari] -> Choose one: +1 Spacing Guild / +1 Bene Gesserit / +1
+    Fremen Influence" (the card; P0 sweep): an arrow cost, optional [DI p. 9]
+    and paid once [FAQ p. 3]. Paying leaves the choice of the three Factions --
+    never the Emperor -- and the turn cannot end before it is made."""
+
+    engine, state = _start()
+    placed = _grip_placed(engine, state)
+    assert "pay_agent_card_solari" in _ids(engine, placed)
+    paid = _do(engine, placed, "pay_agent_card_solari")
+    assert paid.players[0].resources.solari == 3 - 2
+    assert paid.players[0].influence == placed.players[0].influence
+    assert sorted(str(f) for f in _influence_rows(engine, paid)) == [
+        "bene_gesserit",
+        "fremen",
+        "spacing_guild",
+    ]
+    assert "finish_agent_turn" not in _ids(engine, paid)
+    chosen = _do(engine, paid, "choose_agent_card_influence", faction="bene_gesserit")
+    after = chosen.players[0].influence
+    assert after.bene_gesserit == placed.players[0].influence.bene_gesserit + 1
+    assert after.emperor == placed.players[0].influence.emperor
+    assert not _influence_rows(engine, chosen)
+
+
+def test_firm_grip_arrow_is_paid_once() -> None:
+    engine, state = _start()
+    placed = _grip_placed(engine, state, solari=9)
+    paid = _do(engine, placed, "pay_agent_card_solari")
+    chosen = _do(engine, paid, "choose_agent_card_influence", faction="fremen")
+    assert chosen.players[0].resources.solari == 7
+    assert "pay_agent_card_solari" not in _ids(engine, paid)
+    assert "pay_agent_card_solari" not in _ids(engine, chosen)
+
+
+def test_firm_grip_arrow_is_optional_and_needs_two_solari() -> None:
+    """The owner who does not pay keeps the Solari and gains nothing; one
+    Solari is too few to offer the arrow."""
+
+    engine, state = _start()
+    placed = _grip_placed(engine, state)
+    resolved = _do(engine, placed, "resolve_board_effect", effect="troops")
+    finished = _do(engine, resolved, "finish_agent_turn")
+    assert finished.players[0].resources.solari == 3
+    assert finished.players[0].influence == placed.players[0].influence
+    poor = _grip_placed(engine, state, solari=1)
+    assert "pay_agent_card_solari" not in _ids(engine, poor)
+
+
+def test_firm_grip_does_not_offer_a_faction_at_the_top() -> None:
+    """ "6칸 진영은 Influence를 내지 않는다(OQ-060)" (imperium-base.md 16): with the
+    Fremen track at 6 the choice is the other two."""
+
+    engine, state = _start()
+    placed = _grip_placed(engine, state, influence=Influence(fremen=6))
+    paid = _do(engine, placed, "pay_agent_card_solari")
+    assert sorted(str(f) for f in _influence_rows(engine, paid)) == [
+        "bene_gesserit",
+        "spacing_guild",
+    ]
+
+
+def test_firm_grip_arrow_is_not_offered_when_all_three_are_at_the_top() -> None:
+    """ "비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다(OQ-071)"
+    (imperium-base.md 16): with all three Factions at 6 the 2 Solari would buy
+    nothing, so the arrow is withheld (the Emperor is no option of the card);
+    the page greys it out with the reason."""
+
+    engine, state = _start()
+    top = Influence(spacing_guild=6, bene_gesserit=6, fremen=6)
+    placed = _grip_placed(engine, state, influence=top)
+    assert "pay_agent_card_solari" not in _ids(engine, placed)
+    found = unavailable_choices(placed, 0, engine.whole_actions(placed, 0))
+    assert found is not None
+    rows = cast("list[dict[str, Any]]", found["rows"])
+    assert {"top"} <= {row["code"] for row in rows}
+
+
+def test_firm_grip_solari_are_not_a_board_spaces_cost() -> None:
+    """ "The 2 Solari is not a board-space cost for Count Ilban [FAQ p. 2]":
+    paying the arrow draws no card for a Count Ilban Richese seat."""
+
+    engine, state = _start()
+    placed = _grip_placed(engine, state, leader="count_ilban_richese")
+    before = placed.players[0]
+    paid = _do(engine, placed, "pay_agent_card_solari")
+    after = paid.players[0]
+    assert after.owed_draws == before.owed_draws
+    assert after.hand == before.hand
+
+
+def test_firm_grip_reveals_four_persuasion_with_the_emperor_alliance() -> None:
+    """ "Emperor Alliance: [P4]" judged when the line resolves (OQ-028); the
+    card prints no Persuasion of its own."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "firm_grip", alone=True)
+    without = _reveal(engine, state)
+    assert without["persuasion"] == 0
+    allied = _seat(state, alliance_faction_ids=("emperor",))
+    assert _reveal(engine, allied)["persuasion"] == 4
+
+
+def test_firm_grip_text_names_the_arrow_and_the_alliance_line() -> None:
+    from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
+    from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
+
+    effect = PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE
+    assert "Spacing Guild" in AGENT_EFFECT_TEXT[effect]
+    assert "Emperor" not in AGENT_EFFECT_TEXT[effect]
+    assert "{solari:2}" in AGENT_EFFECT_TEXT_KO[effect]
+    line = reveal_lines(IMPERIUM_CARDS_BY_ID["firm_grip"])[0]
+    assert reveal_effect_text(line) == "If you have the Emperor Alliance: +4 Persuasion"

@@ -70,6 +70,7 @@ const ACTION_LABELS = {
   pay_agent_card_spice_for_sandworm_and_shield_wall:
     "2 {spice} 지불 → {shield_wall} 제거 + {sandworm} 부르기",
   pay_agent_card_spice: "{spice} 지불 (카드 효과 비용)",
+  pay_agent_card_solari: "{solari} 지불 (카드 효과 비용)",
   pay_agent_card_water: "2 {water} 지불 → {draw:2}",
   pay_corrinth_city: "카드 선택 ({discard}, 2/2) · 5 {solari} 지불 → {victory_point} 1",
   select_corrinth_city_discard: "카드 선택 ({discard}, 1/2)",
@@ -266,6 +267,8 @@ const ACTION_LABELS = {
   lose_reveal_influence_for_vp: "{influence_any} 2 잃기 → {victory_point} 1",
   deploy_reveal_card_troop: "{troop} 1 배치",
   retreat_reveal_card_troop: "{troop} 1 후퇴",
+  deploy_reveal_card_troops: "{troop} 배치",
+  retreat_reveal_card_troops: "{troop} 후퇴",
   lose_reveal_troops_for_specimens: "{troop} 2 잃기 (존 선택) → {specimen} 2",
   trash_agent_card_self_for_vp: "이 카드 폐기 → {victory_point} 1",
   pay_agent_card_five_solari_for_tleilaxu: "{solari} 5 지불 → {tleilaxu}",

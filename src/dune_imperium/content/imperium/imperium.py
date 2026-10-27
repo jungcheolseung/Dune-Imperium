@@ -150,15 +150,39 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         ),
         play_data_complete=True,
     ),
+    # App table: cost 5, 1 copy, no Faction, Spice Trade, Reveal 1 Persuasion
+    # and 1 spice. Agent: "Double the base (not bonus) spice you harvest with
+    # this Agent" -- base 1, 2 or 3 at Imperial Basin, Hagga Basin and The Great
+    # Flat [FAQ p. 1] (imperium-base.md 13.2); a modifier of the harvest, so its
+    # box never opens (``DoubleBaseHarvestSpice``). Reveal: "[P1] [1 spice]".
     ImperiumCardEntry(
         card=imperium_card("carryall", "Carryall"),
         copies=1,
         acquisition_cost=5,
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE,
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
+    # App table: cost 5, 1 copy, Fremen, Fremen, City and Spice Trade, Reveal 2
+    # Persuasion, AcquireEffect Water. Acquire: "1 water". Reveal: "[P2]" and
+    # "Retreat any number of your troops" -- from the Conflict to the garrison
+    # [DI p. 16], none included ("any number" [FAQ p. 3], imperium-base.md 13.2
+    # "Chani (Imperium) -> Retreat"); troops only (a Commander's share is for
+    # the combinations stage, P7).
     ImperiumCardEntry(
         card=imperium_card("chani_card", "Chani"),
         copies=1,
         acquisition_cost=5,
+        has_acquisition_bonus=True,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        acquisition_effect=PersonalCardAcquisitionEffect.GAIN_ONE_WATER,
+        reveal_persuasion=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS,
+        ),
+        play_data_complete=True,
     ),
     # App table: cost 3, 1 copy, Fremen, Fremen and Spice Trade, Reveal 1 sword,
     # AgentSolari 1. Agent: "1 Solari". Reveal: "Fremen Bond: 1 Fremen
@@ -216,10 +240,23 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
+    # App table: cost 4, 1 copy, Emperor, Emperor and Landsraad, no fixed Reveal
+    # values (tag EmperorAlliance). Agent: "[2 Solari] -> Choose one: [Spacing
+    # Guild Influence] / [Bene Gesserit Influence] / [Fremen Influence]" (no
+    # Emperor) -- an optional arrow paid once [DI p. 9] [FAQ p. 3]; the Faction
+    # is chosen once the Solari are paid, never a track at 6 (OQ-060), and the
+    # arrow is not offered when all three are at 6 (OQ-071). The 2 Solari are
+    # not a board space's printed cost, so no Count Ilban card [FAQ p. 2].
+    # Reveal: "Emperor Alliance: [P4]", judged at resolution (OQ-028); nothing
+    # unconditional.
     ImperiumCardEntry(
         card=imperium_card("firm_grip", "Firm Grip"),
         copies=1,
         acquisition_cost=4,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.LANDSRAAD),
+        agent_effect=PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE,
+        play_data_complete=True,
     ),
     # App table: cost 4, 2 copies, Fremen, Spice Trade, Reveal 2 Persuasion and
     # 1 sword. Agent: "[2 spice] -> [3 troops]", an optional arrow paid once
@@ -283,10 +320,17 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         ),
         play_data_complete=True,
     ),
+    # App table: cost 3, 1 copy, Spacing Guild, Emperor, Spacing Guild and
+    # Landsraad, no fixed Reveal values. Agent: no box (the icons only).
+    # Reveal: "The Spice Must Flow costs [P3] less to acquire this turn" -- each
+    # copy bought this turn costs less [FAQ p. 2] (``ReserveCostDiscount``).
     ImperiumCardEntry(
         card=imperium_card("guild_bankers", "Guild Bankers"),
         copies=1,
         acquisition_cost=3,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.SPACING_GUILD, AgentIcon.LANDSRAAD),
+        play_data_complete=True,
     ),
     # App table: cost 6, 1 copy, no Faction, City, Reveal 2 Persuasion, AgentTroops
     # 2. Agent: "[2 troops] [draw 1 card]" -- separate icons (OQ-027), the draw
@@ -419,10 +463,28 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_strength=1,
         play_data_complete=True,
     ),
+    # App table: cost 5, 3 copies, no Faction, the four Faction icons (Emperor,
+    # Spacing Guild, Bene Gesserit, Fremen), no Reveal values. Agent: "Gain two
+    # Influence instead of one. Trash this card." -- the 2 replace the visited
+    # Faction space's own 1, never 2 + 1 (OQ-022's Subversive Advisor model,
+    # imperium-base.md 13.3, [Immortality p. 14]), nothing off a Faction space;
+    # "Trash this card" is mandatory [FAQ p. 3] and, done by the card's own
+    # effect, leaves the Influence (imperium-base.md 16). Resolved as Subversive
+    # Advisor's box is: one step, the gain and then the trash.
     ImperiumCardEntry(
         card=imperium_card("power_play", "Power Play"),
         copies=3,
         acquisition_cost=5,
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        ),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+        ),
+        play_data_complete=True,
     ),
     # App table: cost 6, 1 copy, Emperor and Bene Gesserit, Emperor and Bene
     # Gesserit, Reveal 2 Persuasion and 2 spice (tags NamedCharacter, WantBG).
@@ -455,15 +517,40 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_strength=2,
         play_data_complete=True,
     ),
+    # App table: cost 5, 2 copies, Emperor, Emperor and Landsraad, Reveal 1
+    # Persuasion, AgentTroops 2. Agent: "[2 troops]" (neither space is a Combat
+    # space, so they stay in the garrison). Reveal: "[P1]" and "Deploy up to
+    # three troops from your garrison to the Conflict" -- 0 to 3 ("up to"
+    # [FAQ p. 3], P0 sweep); troops only (a Commander's share is for the
+    # combinations stage, P7); the card prints no Combat icon.
     ImperiumCardEntry(
         card=imperium_card("sardaukar_legion", "Sardaukar Legion"),
         copies=2,
         acquisition_cost=5,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.LANDSRAAD),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
+        reveal_persuasion=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS,
+        ),
+        play_data_complete=True,
     ),
+    # App table: cost 1, 2 copies, no Faction, City and Spice Trade, Reveal 1
+    # Persuasion and 1 sword. Agent: no box (the icons only). Reveal: "[P1][S1]"
+    # and "Retreat up to two of your troops" -- from the Conflict to the garrison
+    # [DI p. 16], 0 to 2 ("up to" [FAQ p. 3], P0 sweep); troops only (P7).
     ImperiumCardEntry(
         card=imperium_card("scout", "Scout"),
         copies=2,
         acquisition_cost=1,
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("shifting_allegiances", "Shifting Allegiances"),
@@ -539,10 +626,22 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_strength=3,
         play_data_complete=True,
     ),
+    # App table: cost 3, 1 copy, Bene Gesserit, Bene Gesserit, Landsraad and City,
+    # Reveal 2 Persuasion. Agent: "Each opponent chooses: Discard a card -OR-
+    # Lose a deployed troop" -- clockwise from the player's left, each opponent
+    # choosing what it can do, the discarder picking the card (imperium-base.md
+    # 13.1, 13.2 [FAQ p. 4], 15; [DI p. 13]). Reveal: "[P2]".
     ImperiumCardEntry(
         card=imperium_card("test_of_humanity", "Test of Humanity"),
         copies=1,
         acquisition_cost=3,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.LANDSRAAD, AgentIcon.CITY),
+        agent_effect=(
+            PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP
+        ),
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("the_voice", "The Voice"),

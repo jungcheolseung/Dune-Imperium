@@ -42,12 +42,14 @@ from dune_imperium.content.uprising.effect_dsl import (
     DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
+    DoubleBaseHarvestSpice,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
     DuringAgentTurn,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
@@ -122,6 +124,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitUndeployableTroops,
     RedirectSpiesOnTurnSpace,
     Research,
+    ReserveCostDiscount,
     RetreatTroops,
     ReturnOtherGraftedCardAtRevealStart,
     ReturnThisCardToHand,
@@ -690,6 +693,9 @@ def reward_text(reward: Reward) -> str:
             return "Each opponent discards a card"
         case EachOpponentDiscardsCard(count=count):
             return f"Each opponent discards {count} cards"
+        case EachOpponentDiscardsOrLosesDeployedTroop():
+            # Test of Humanity's printed sentence.
+            return "Each opponent chooses: Discard a card -OR- Lose a deployed troop"
         case EachOpponentLosesTroop(garrison_only=garrison_only):
             return (
                 "Each opponent loses one garrisoned troop"
@@ -771,6 +777,12 @@ def reward_text(reward: Reward) -> str:
             return f"Gain {spice} spice ({helix} once you reach the Helix)"
         case CompleteContract():
             return "Complete one of your contracts"
+        case DoubleBaseHarvestSpice():
+            return "Double the base (not bonus) spice you harvest with this Agent"
+        case ReserveCostDiscount(card_ids=card_ids, amount=amount):
+            # Guild Bankers' printed sentence; one name for the printings.
+            name = RESERVE_STACKS_BY_ID[card_ids[0]].card.name
+            return f"{name} costs {amount} Persuasion less to acquire this turn"
         case _:
             assert_never(reward)
 

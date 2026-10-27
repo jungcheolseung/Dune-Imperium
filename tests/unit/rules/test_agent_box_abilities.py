@@ -108,6 +108,7 @@ from dune_imperium.rules.agent_box_abilities import (
 )
 from dune_imperium.rules.agent_effects import (
     AGENT_ICON_CARDS,
+    AGENT_ICON_INFLUENCE,
     AGENT_ICON_INTRIGUE,
     AGENT_ICON_PLEDGE,
     AGENT_ICON_RESEARCH,
@@ -164,8 +165,8 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence,
     # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
     # Imperial Spy, Missionaria Protectiva, Gene Manipulation, Reverend Mother
-    # Mohiam).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 15
+    # Mohiam, Carryall, Test of Humanity, Firm Grip).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 18
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -619,11 +620,12 @@ def test_a_payment_that_buys_nothing_is_withheld() -> None:
 
 
 def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
-    """The payment shape takes the eight records it was written for (Control
+    """The payment shape takes the nine records it was written for (Control
     the Spice since cleanup-2d, the original game's Spice Smugglers since
     stage P3, whose reward is one fixed Faction's Influence, its Duncan
-    Idaho, whose troop and draw wait as armed icons, and its Fremen Camp),
-    and refuses a
+    Idaho, whose troop and draw wait as armed icons, its Fremen Camp, and its
+    Firm Grip, whose Influence of three named Factions waits as an armed
+    icon), and refuses a
     record it would pay wrongly (a reward it does not give -- a chosen or the
     visited Faction's Influence --, a cost no row names): such a box keeps its
     own code."""
@@ -642,11 +644,13 @@ def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
         _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI,
         _BOX.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE,
         _BOX.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS,
+        _BOX.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE,
     }
     for cost, rewards in (
         (PayResources(spice=1), (GainInfluence(),)),
         (PayResources(spice=1), (GainInfluence(visited_space=True),)),
-        (PayResources(solari=5), (AdvanceTleilaxu(1),)),
+        # Solari alone has a row since Firm Grip (stage P3); a mixed cost has none.
+        (PayResources(solari=1, spice=1), (AdvanceTleilaxu(1),)),
     ):
         optional = Ability(
             AbilityTiming.AGENT_BOX,
@@ -1044,6 +1048,9 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     duncan = _BOX.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE
     # Imperial Spy: the card trashes itself, then the armed Intrigue draw.
     spy = _BOX.MAY_TRASH_SELF_TO_DRAW_INTRIGUE
+    # The original game's Firm Grip: a paid arrow arming a chosen Faction's
+    # Influence, answered by ``choose_agent_card_influence``.
+    grip = _BOX.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE
     assert users == {
         AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy},
         AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy, duncan},
@@ -1051,6 +1058,7 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
         AGENT_ICON_TROOPS: {gambit, elite, duncan},
         AGENT_ICON_PLEDGE: {gambit},
         AGENT_ICON_RESEARCH: {piter},
+        AGENT_ICON_INFLUENCE: {grip},
     }
 
 

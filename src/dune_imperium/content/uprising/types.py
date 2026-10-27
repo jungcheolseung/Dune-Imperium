@@ -366,6 +366,20 @@ class PersonalCardAgentEffect(StrEnum):
     EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND = (
         "each_opponent_discards_two_if_bene_gesserit_bond"
     )
+    # Carryall: "Double the base (not bonus) spice you harvest with this
+    # Agent" -- a modifier of the harvest, never a box to resolve.
+    DOUBLE_BASE_HARVEST_SPICE = "double_base_harvest_spice"
+    # Test of Humanity: "Each opponent chooses: Discard a card -OR- Lose a
+    # deployed troop."
+    EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP = (
+        "each_opponent_discards_or_loses_deployed_troop"
+    )
+    # Firm Grip: "[2 Solari] -> Choose one: [Spacing Guild Influence] / [Bene
+    # Gesserit Influence] / [Fremen Influence]", an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3].
+    MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE = (
+        "may_pay_two_solari_for_chosen_influence"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -541,6 +555,14 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY = (
         "may_pay_three_solari_for_two_troops_and_deploy"
     )
+    # Sardaukar Legion: "Deploy up to three troops from your garrison to the
+    # Conflict" ("up to" allows none [FAQ p. 3]).
+    MAY_DEPLOY_UP_TO_THREE_TROOPS = "may_deploy_up_to_three_troops"
+    # Scout: "Retreat up to two of your troops" [DI p. 16].
+    MAY_RETREAT_UP_TO_TWO_TROOPS = "may_retreat_up_to_two_troops"
+    # Chani: "Retreat any number of your troops" ("any number" allows none
+    # [FAQ p. 3]).
+    MAY_RETREAT_ANY_NUMBER_OF_TROOPS = "may_retreat_any_number_of_troops"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -570,6 +592,9 @@ IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = froz
         PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT,
         PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE,
         PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY,
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS,
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS,
     }
 )
 

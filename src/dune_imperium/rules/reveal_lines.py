@@ -39,6 +39,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GrantCombatDeployment,
     RecruitTroops,
     Research,
+    ReserveCostDiscount,
     RevealCount,
     RevealCountKind,
     RevealPersuasion,
@@ -162,6 +163,27 @@ class RevealLine:
         # Holy War: "Fremen Bond: Combat icon" [Bloodlines p. 5].
         return any(
             isinstance(reward, GrantCombatDeployment) for reward in self.section.rewards
+        )
+
+    def reserve_discount(self, reserve_card_id: str) -> int:
+        """What the line takes off the cost of the Reserve card
+        ``reserve_card_id`` this turn (Guild Bankers)."""
+
+        return sum(
+            reward.amount
+            for reward in self.section.rewards
+            if isinstance(reward, ReserveCostDiscount)
+            and reserve_card_id in reward.card_ids
+        )
+
+    @property
+    def reserve_discounts(self) -> tuple[ReserveCostDiscount, ...]:
+        """The line's Reserve cost discounts (the card text names them)."""
+
+        return tuple(
+            reward
+            for reward in self.section.rewards
+            if isinstance(reward, ReserveCostDiscount)
         )
 
     @property
