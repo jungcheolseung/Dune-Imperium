@@ -537,6 +537,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE: (
         "이 {agent}로 수확하는 기본 {spice} 두 배 (보너스 제외)"
     ),
+    PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP: (
+        "다른 플레이어 각자 하나 선택: 카드 1장 {discard} 또는 "
+        "{conflict}에 배치된 {troop} 하나 잃음"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box

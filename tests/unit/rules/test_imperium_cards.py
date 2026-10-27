@@ -7,6 +7,7 @@ printed values are the Steam app's attribute table (plan 2.4, D1).
 """
 
 from dataclasses import replace
+from typing import Any, cast
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
@@ -3386,3 +3387,196 @@ def test_power_play_text_is_the_printed_pair_of_effects() -> None:
     assert AGENT_EFFECT_TEXT[
         PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
     ] == "Gain 2 Influence with the visited Faction, Trash this card"
+
+
+# --- Test of Humanity -------------------------------------------------------------
+
+
+def test_test_of_humanity_matches_the_app_table() -> None:
+    # App attribute table: cost 3, 1 copy, Bene Gesserit, Bene Gesserit,
+    # Landsraad and City, Reveal 2 Persuasion.
+    entry = IMPERIUM_CARDS_BY_ID["test_of_humanity"]
+    assert entry.card.name == "Test of Humanity"
+    assert entry.acquisition_cost == 3
+    assert entry.copies == 1
+    assert entry.factions == (Faction.BENE_GESSERIT,)
+    assert entry.agent_icons == (
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.LANDSRAAD,
+        AgentIcon.CITY,
+    )
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:test_of_humanity:0") is entry
+
+
+def _humanity_played(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    seats: dict[int, tuple[tuple[str, ...], int]],
+) -> GameState:
+    """Seat 0 sends Test of Humanity to Hall of Oratory (a Landsraad space, no
+    cost) and resolves its box; ``seats`` gives each opponent's hand and
+    number of troops in the Conflict (the strength they make is its 2 each)."""
+
+    held, _ = _with_card(state, "test_of_humanity")
+    for seat, (hand, deployed) in seats.items():
+        held = _seat(
+            held,
+            seat,
+            hand=hand,
+            troops_garrison=3 - deployed,
+            troops_conflict=deployed,
+            combat_strength=2 * deployed,
+        )
+    placed = _place(engine, held, "hall_of_oratory", "test_of_humanity")
+    return _do(engine, placed, "resolve_agent_card_effect")
+
+
+def _window_rows(
+    engine: UprisingRulesEngine, state: GameState, seat: int
+) -> set[tuple[str, tuple[tuple[str, object], ...]]]:
+    return {
+        (action.action_id, action.arguments)
+        for action in engine.whole_actions(state, seat)
+    }
+
+
+def test_test_of_humanity_each_opponent_chooses_what_it_can_do() -> None:
+    """"상대는 내 왼쪽부터 시계 방향으로 고른다. 각자 할 수 있는 것을 골라야 한다
+    (손이 비면 버리기 불가, 배치한 troop이 없으면 잃기 불가). 버리는 상대가 카드를
+    고른다(무작위 아님)" (imperium-base.md 13.1, [DI p. 13]); "discard ...는 손의
+    카드" ([FAQ p. 4], 13.2). Seat 1 holds cards and a deployed troop: both
+    halves are offered; seat 2 a hand only: the discard alone; seat 3 a
+    deployed troop only: the loss alone."""
+
+    engine, state = _start()
+    hand = ("imperium:dr_yueh:0", "imperium:stilgar:0")
+    resolved = _humanity_played(
+        engine,
+        state,
+        {1: (hand, 1), 2: (("imperium:space_travel:0",), 0), 3: ((), 2)},
+    )
+    top = resolved.decision_stack[-1]
+    assert top.kind is FrameKind.OPPONENT_CARD_DISCARD
+    assert top.decision.owner == 1  # type: ignore[union-attr]
+    rows = _window_rows(engine, resolved, 1)
+    assert rows == {
+        ("discard_opponent_card", (("card_id", hand[0]),)),
+        ("discard_opponent_card", (("card_id", hand[1]),)),
+        ("lose_unit", (("zone", "conflict"),)),
+    }
+    # Seat 1 discards a card of its own choosing; its troop stays.
+    first = _do_for(engine, resolved, 1, "discard_opponent_card", card_id=hand[1])
+    assert first.players[1].hand == (hand[0],)
+    assert hand[1] in first.players[1].discard_pile
+    assert first.players[1].troops_conflict == 1
+    # Seat 2 has no deployed troop: only its discard.
+    assert first.decision_stack[-1].decision.owner == 2  # type: ignore[union-attr]
+    assert _window_rows(engine, first, 2) == {
+        ("discard_opponent_card", (("card_id", "imperium:space_travel:0"),))
+    }
+    second = _do_for(
+        engine, first, 2, "discard_opponent_card", card_id="imperium:space_travel:0"
+    )
+    assert second.players[2].hand == ()
+    # Seat 3 has no card: only the loss of a deployed troop, to the supply.
+    assert second.decision_stack[-1].decision.owner == 3  # type: ignore[union-attr]
+    assert _window_rows(engine, second, 3) == {("lose_unit", (("zone", "conflict"),))}
+    third = _do_for(engine, second, 3, "lose_unit", zone="conflict")
+    seat3 = third.players[3]
+    assert (seat3.troops_conflict, seat3.troops_garrison, seat3.troops_supply) == (
+        1,
+        1,
+        second.players[3].troops_supply + 1,
+    )
+    # Its strength follows the troop out of the Conflict.
+    assert seat3.combat_strength == 2
+    assert third.decision_stack[-1].kind is not FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_test_of_humanity_loses_a_troop_instead_of_discarding() -> None:
+    """An opponent holding both may take the loss instead: the card stays in
+    hand, the troop leaves the Conflict for the supply."""
+
+    engine, state = _start()
+    hand = ("imperium:dr_yueh:0",)
+    resolved = _humanity_played(engine, state, {1: (hand, 2), 2: ((), 0), 3: ((), 0)})
+    lost = _do_for(engine, resolved, 1, "lose_unit", zone="conflict")
+    seat = lost.players[1]
+    assert seat.hand == hand and seat.discard_pile == ()
+    assert (seat.troops_conflict, seat.combat_strength) == (1, 2)
+    assert seat.troops_supply == resolved.players[1].troops_supply + 1
+
+
+def test_test_of_humanity_never_offers_a_garrisoned_troop() -> None:
+    """Only a deployed troop is lost ("Lose a deployed troop"): an opponent
+    with troops in the garrison alone and no cards has nothing to choose and
+    confirms it ("with neither possible, nothing", P0 sweep, [DI p. 13])."""
+
+    engine, state = _start()
+    resolved = _humanity_played(engine, state, {1: ((), 0), 2: ((), 0), 3: ((), 0)})
+    assert resolved.players[1].troops_garrison == 3
+    assert _window_rows(engine, resolved, 1) == {
+        ("resolve_opponent_discard_without_card", ())
+    }
+    done = _do_for(engine, resolved, 1, "resolve_opponent_discard_without_card")
+    assert done.players[1].troops_garrison == 3
+    assert done.players[1].troops_supply == resolved.players[1].troops_supply
+    assert done.decision_stack[-1].decision.owner == 2  # type: ignore[union-attr]
+
+
+def _greyed(
+    engine: UprisingRulesEngine, state: GameState, seat: int
+) -> set[tuple[str, str]]:
+    """The (action id, reason code) of each row the page greys out for ``seat``."""
+
+    found = unavailable_choices(state, seat, engine.whole_actions(state, seat))
+    if found is None:
+        return set()
+    rows = cast("list[dict[str, Any]]", found["rows"])
+    return {(row["action"]["action_id"], row["code"]) for row in rows}
+
+
+def test_test_of_humanity_window_greys_out_what_cannot_be_done() -> None:
+    """The page shows each half that cannot be done greyed out, with its reason
+    (``display.unavailable``); the confirm is the only legal row of a seat with
+    neither."""
+
+    engine, state = _start()
+    hand = ("imperium:dr_yueh:0",)
+    resolved = _humanity_played(engine, state, {1: (hand, 0), 2: ((), 1), 3: ((), 0)})
+    assert _greyed(engine, resolved, 1) == {("lose_unit", "no_unit")}
+    after = _do_for(engine, resolved, 1, "discard_opponent_card", card_id=hand[0])
+    assert _greyed(engine, after, 2) == {("discard_opponent_card", "no_card")}
+    both_missing = _do_for(engine, after, 2, "lose_unit", zone="conflict")
+    assert _greyed(engine, both_missing, 3) == {
+        ("discard_opponent_card", "no_card"),
+        ("lose_unit", "no_unit"),
+    }
+    assert _window_rows(engine, both_missing, 3) == {
+        ("resolve_opponent_discard_without_card", ())
+    }
+
+
+def test_test_of_humanity_reveals_two_persuasion() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "test_of_humanity", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 2
+    assert frame["sword_strength"] == 0
+
+
+def test_test_of_humanity_text_names_the_choice() -> None:
+    from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
+    from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
+
+    effect = PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP
+    assert AGENT_EFFECT_TEXT[effect] == (
+        "Each opponent chooses: Discard a card -OR- Lose a deployed troop"
+    )
+    assert "{discard}" in AGENT_EFFECT_TEXT_KO[effect]

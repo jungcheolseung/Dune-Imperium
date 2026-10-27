@@ -40,6 +40,7 @@ from dune_imperium.content.uprising.board import (
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireTech,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
     GrantAgentIconsThisTurn,
     OnTroopsLostAtConflictEnd,
@@ -2094,9 +2095,17 @@ def _window_printers(
             for card in _intrigue_reward_cards(config, AcquireTech)
         )
     if action_id == "resolve_opponent_discard_without_card":
+        # Covert Operation's, Reverend Mother Mohiam's and Test of Humanity's
+        # (an opponent with neither a card nor a deployed troop).
         return tuple(
-            (Source.AGENT_CARD, card)
-            for card in _box_reward_cards(config, EachOpponentDiscardsCard)
+            dict.fromkeys(
+                (Source.AGENT_CARD, card)
+                for reward in (
+                    EachOpponentDiscardsCard,
+                    EachOpponentDiscardsOrLosesDeployedTroop,
+                )
+                for card in _box_reward_cards(config, reward)
+            )
         )
     if action_id == "resolve_unit_loss_without_unit":
         return tuple(

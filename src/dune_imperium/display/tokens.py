@@ -484,6 +484,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE: (
             "Double the base (not bonus) spice you harvest with this Agent"
         ),
+        PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP: (
+            "Each opponent chooses: Discard a card -OR- Lose a deployed troop"
+        ),
     }
 )
 

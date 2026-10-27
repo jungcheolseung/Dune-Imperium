@@ -49,6 +49,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawTwistedIntrigueCards,
     DuringAgentTurn,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
@@ -692,6 +693,9 @@ def reward_text(reward: Reward) -> str:
             return "Each opponent discards a card"
         case EachOpponentDiscardsCard(count=count):
             return f"Each opponent discards {count} cards"
+        case EachOpponentDiscardsOrLosesDeployedTroop():
+            # Test of Humanity's printed sentence.
+            return "Each opponent chooses: Discard a card -OR- Lose a deployed troop"
         case EachOpponentLosesTroop(garrison_only=garrison_only):
             return (
                 "Each opponent loses one garrisoned troop"

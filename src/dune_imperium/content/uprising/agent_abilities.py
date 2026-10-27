@@ -59,6 +59,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
@@ -984,6 +985,13 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # seat, as many as the hand holds (OQ-118, [FAQ p. 3]).
             _BOX.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: _box(
                 EachOpponentDiscardsCard(2), condition=_BG_BOND, requirement=_BG_BOND
+            ),
+            # Test of Humanity (original game): "Each opponent chooses: Discard a
+            # card -OR- Lose a deployed troop" -- one frame per opponent, the
+            # next seat first, named ``<box>:opponent:<seat>`` as Covert
+            # Operation's; each offers what it can do (imperium-base.md 13.1).
+            _BOX.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP: _box(
+                EachOpponentDiscardsOrLosesDeployedTroop()
             ),
             # Carryall (original game): "Double the base (not bonus) spice you
             # harvest with this Agent" -- the harvest reads this record

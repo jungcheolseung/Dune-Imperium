@@ -198,6 +198,7 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
+from dune_imperium.rules.unit_loss import lose_unit
 from dune_imperium.rules.units import retreat_units
 
 # Immortality boxes whose enum names do not fit a comparison line.
@@ -537,6 +538,9 @@ def apply_agent_card_long_live_action(
 
 # Covert Operation's confirm of a seat with an empty hand (OQ-138).
 OPPONENT_DISCARD_WITHOUT_CARD: Final = "resolve_opponent_discard_without_card"
+# The context key of Test of Humanity's window, which offers a deployed troop's
+# loss beside the discard (absent from every other discard window).
+OR_LOSE_DEPLOYED_TROOP_KEY: Final = "or_lose_deployed_troop"
 
 
 def legal_opponent_card_discard_actions(
@@ -561,16 +565,34 @@ def legal_opponent_card_discard_actions(
         or "covert_operation_owner" not in context
     ):
         return ()
-    if not state.players[player].hand:
-        return (DomainAction(action_id=OPPONENT_DISCARD_WITHOUT_CARD, actor=player),)
-    return tuple(
+    owner = state.players[player]
+    # Test of Humanity: "Each opponent chooses: Discard a card -OR- Lose a
+    # deployed troop" -- each must choose what it can (imperium-base.md 13.1),
+    # so each half is offered while it can be done. A Sardaukar Commander is
+    # no option here: whether one is a "deployed troop" is for the
+    # combinations stage (P7).
+    loses = (
+        (
+            DomainAction(
+                action_id="lose_unit",
+                actor=player,
+                arguments=(("zone", "conflict"),),
+            ),
+        )
+        if context.get(OR_LOSE_DEPLOYED_TROOP_KEY) is True and owner.troops_conflict
+        else ()
+    )
+    discards = tuple(
         DomainAction(
             action_id="discard_opponent_card",
             actor=player,
             arguments=(("card_id", card_id),),
         )
-        for card_id in state.players[player].hand
+        for card_id in owner.hand
     )
+    if not discards and not loses:
+        return (DomainAction(action_id=OPPONENT_DISCARD_WITHOUT_CARD, actor=player),)
+    return (*discards, *loses)
 
 
 def apply_opponent_card_discard(
@@ -587,18 +609,23 @@ def apply_opponent_card_discard(
     source_owner = context["covert_operation_owner"]
     card_id = dict(action.arguments).get("card_id")
     confirmed = action.action_id == OPPONENT_DISCARD_WITHOUT_CARD
+    loses_troop = action.action_id == "lose_unit"
     if (
         not isinstance(source_card_id, str)
         or isinstance(source_owner, bool)
         or not isinstance(source_owner, int)
-        or not (confirmed or isinstance(card_id, str))
+        or not (confirmed or loses_troop or isinstance(card_id, str))
     ):
         raise RuntimeError("Covert Operation frame has invalid context")
     source = (
         f"round:{state.round_number}:player:{source_owner}:"
         f"agent_card:{source_card_id}:opponent:{action.actor}"
     )
-    if confirmed:
+    if loses_troop:
+        # Test of Humanity's other half: the opponent loses a deployed troop
+        # (to the supply [DI p. 16]) instead of discarding.
+        discarded = lose_unit(state, action.actor, "conflict", source=source)
+    elif confirmed:
         # Nothing to discard: the seat's own confirm leaves a public event,
         # as Holy War's confirm with no unit does (``unit_loss_unavailable``).
         discarded = RuleResult(

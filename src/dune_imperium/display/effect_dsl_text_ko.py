@@ -76,6 +76,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawTwistedIntrigueCards,
     DuringAgentTurn,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
@@ -965,6 +966,12 @@ def reward_text_ko(reward: Reward) -> str:
         case EachOpponentDiscardsCard() as discard:
             # Quotes ``tokens_ko.py``'s Covert Operation line.
             return f"다른 플레이어 각자 카드 {discard.cards}장 버리기"
+        case EachOpponentDiscardsOrLosesDeployedTroop():
+            # Quotes ``tokens_ko.py``'s Test of Humanity line.
+            return (
+                "다른 플레이어 각자 하나 선택: 카드 1장 {discard} 또는 "
+                "{conflict}에 배치된 {troop} 하나 잃음"
+            )
         case EachOpponentLosesTroop(garrison_only=garrison_only):
             # Quotes ``tokens_ko.py``'s Holy War and Gun Thopter lines.
             return (

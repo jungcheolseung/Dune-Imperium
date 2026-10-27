@@ -77,6 +77,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
@@ -921,8 +922,11 @@ def _opponents_decide(
     player, card_id = _subject(dict(context))
     source = agent_card_source(state.round_number, player, card_id)
     match reward:
-        case EachOpponentDiscardsCard() as discard:
-            count = discard.cards
+        case EachOpponentDiscardsCard() | EachOpponentDiscardsOrLosesDeployedTroop():
+            count = (
+                reward.cards if isinstance(reward, EachOpponentDiscardsCard) else 1
+            )
+            or_lose = isinstance(reward, EachOpponentDiscardsOrLosesDeployedTroop)
             # Every opponent is asked, the next seat first (OQ-138, user
             # ruling 2026-10-26, as OQ-131 and Holy War's unit loss): a seat
             # with an empty hand gets the window too and confirms that it
@@ -940,7 +944,9 @@ def _opponents_decide(
                     decision=PlayerDecision(
                         owner=target,
                         prompt=(
-                            "Choose a card to discard for Covert Operation"
+                            _test_of_humanity_prompt(state, target)
+                            if or_lose
+                            else "Choose a card to discard for Covert Operation"
                             if state.players[target].hand and is_covert_operation
                             else "Choose a card to discard for Reverend Mother Mohiam"
                             if state.players[target].hand
@@ -958,6 +964,9 @@ def _opponents_decide(
                             if count > 1
                             else ()
                         ),
+                        # Test of Humanity: the same window also offers the
+                        # loss of a deployed troop; no other frame has the key.
+                        *((("or_lose_deployed_troop", True),) if or_lose else ()),
                         (PRINTER_KEY, _card_printer(card_id)),
                     ),
                 )
@@ -985,6 +994,20 @@ def _opponents_decide(
                 state, player, space_id, source=source, printer=_card_printer(card_id)
             )
     return None
+
+
+def _test_of_humanity_prompt(state: GameState, seat: int) -> str:
+    """The prompt of Test of Humanity's window for ``seat``: what it can do,
+    a card to discard or a deployed troop to lose (``rules.agent_effects``)."""
+
+    owner = state.players[seat]
+    if owner.hand and owner.troops_conflict:
+        return "Choose a card to discard or a deployed troop to lose"
+    if owner.hand:
+        return "Choose a card to discard for Test of Humanity"
+    if owner.troops_conflict:
+        return "Choose a deployed troop to lose for Test of Humanity"
+    return "No card to discard and no deployed troop to lose"
 
 
 def icon_line[P](

@@ -541,10 +541,22 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_strength=3,
         play_data_complete=True,
     ),
+    # App table: cost 3, 1 copy, Bene Gesserit, Bene Gesserit, Landsraad and City,
+    # Reveal 2 Persuasion. Agent: "Each opponent chooses: Discard a card -OR-
+    # Lose a deployed troop" -- clockwise from the player's left, each opponent
+    # choosing what it can do, the discarder picking the card (imperium-base.md
+    # 13.1, 13.2 [FAQ p. 4], 15; [DI p. 13]). Reveal: "[P2]".
     ImperiumCardEntry(
         card=imperium_card("test_of_humanity", "Test of Humanity"),
         copies=1,
         acquisition_cost=3,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.LANDSRAAD, AgentIcon.CITY),
+        agent_effect=(
+            PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP
+        ),
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("the_voice", "The Voice"),

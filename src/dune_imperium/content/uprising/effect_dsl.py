@@ -1378,6 +1378,23 @@ class EachOpponentLosesTroop:
 
 
 @dataclass(frozen=True, slots=True)
+class EachOpponentDiscardsOrLosesDeployedTroop:
+    """Each opponent chooses: discard a card -OR- lose a deployed troop
+    ("Each opponent chooses: Discard a card -OR- Lose a deployed troop" [Test
+    of Humanity card]).
+
+    Every opponent is asked, clockwise from the next seat; each must choose
+    what it can -- the discard needs a card in hand, the loss a troop in the
+    Conflict ("손이 비면 버리기 불가, 배치한 troop이 없으면 잃기 불가"
+    [DI p. 13], imperium-base.md 13.1) -- and the discarder picks the card.
+    One with neither is unaffected and confirms it (OQ-138). A lost troop
+    goes to the supply [DI p. 16]. A Sardaukar Commander is not offered: the
+    original game has none, and whether one is a "deployed troop" here is
+    for the combinations stage (P7).
+    """
+
+
+@dataclass(frozen=True, slots=True)
 class OpponentsMoveSpiesFromVisitedSpace:
     """Each opponent spying on the board space where the player sent an
     Agent this turn must move that Spy [Holy War card] (OQ-036 (b))."""
@@ -1744,6 +1761,7 @@ type Reward = (
     | RecallAgent
     | EachOpponentDiscardsCard
     | EachOpponentLosesTroop
+    | EachOpponentDiscardsOrLosesDeployedTroop
     | OpponentsMoveSpiesFromVisitedSpace
     | ReturnOtherGraftedCardAtRevealStart
     | GainSolariPerPartnerAgentIcon

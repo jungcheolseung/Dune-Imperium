@@ -117,6 +117,7 @@ OTHER_FRAME_KEYS = frozenset(
         "opponent_discards_remaining",
         "option",
         "optional_sword_strength",
+        "or_lose_deployed_troop",
         "partner_waives_influence",
         "pending_ability",
         "pending_lines",

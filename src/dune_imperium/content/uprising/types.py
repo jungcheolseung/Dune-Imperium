@@ -369,6 +369,11 @@ class PersonalCardAgentEffect(StrEnum):
     # Carryall: "Double the base (not bonus) spice you harvest with this
     # Agent" -- a modifier of the harvest, never a box to resolve.
     DOUBLE_BASE_HARVEST_SPICE = "double_base_harvest_spice"
+    # Test of Humanity: "Each opponent chooses: Discard a card -OR- Lose a
+    # deployed troop."
+    EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP = (
+        "each_opponent_discards_or_loses_deployed_troop"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):
