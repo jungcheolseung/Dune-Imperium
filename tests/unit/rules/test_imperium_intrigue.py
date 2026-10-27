@@ -41,6 +41,7 @@ from dune_imperium.display import intrigue_card_text
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_turn import legal_agent_actions
 from dune_imperium.rules.combat import begin_combat_intrigue
+from dune_imperium.rules.endgame import begin_endgame_intrigue, final_standings
 from dune_imperium.rules.frames import reset_turn_counters
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
@@ -2361,3 +2362,151 @@ def test_dispatch_an_envoy_is_not_offered_outside_the_seats_turn() -> None:
     _, state = _envoy_hand(ARGUMENT)
     state = _seat(state, 1, intrigue_cards=(ENVOY,))
     assert legal_intrigue_play_actions(state, 1) == ()
+
+
+# --- Tiebreaker (Combat / Endgame) ------------------------------------------
+
+TIEBREAKER = _intrigue("tiebreaker")
+
+
+def _endgame_window(*seats: PlayerState) -> GameState:
+    """The original game's Endgame window, seat 0 (the First Player) first."""
+
+    players = list(seats)
+    players.extend(PlayerState(player_id=seat) for seat in range(len(players), 4))
+    content = content_for(CONFIG)
+    state = GameState(
+        config=CONFIG,
+        seed=1,
+        phase=GamePhase.ENDGAME,
+        first_player=0,
+        reveal_order=(0, 1, 2, 3),
+        maker_bonus_spice=tuple((space, 0) for space in content.maker_space_ids),
+        players=tuple(players),
+    )
+    return begin_endgame_intrigue(state).state
+
+
+def test_tiebreaker_is_one_card_of_a_combat_and_an_endgame_option() -> None:
+    # "Combat: +2 swords -OR- Endgame: +10 spice" [Tiebreaker card, Steam app
+    # text]; 1 copy [DI p. 3]. Two exclusive options like Master Tactician
+    # (OQ-058: "—OR—로 나뉜 카드 ... 그대로 배타 option"; imperium-base.md 16
+    # lists Tiebreaker's Combat face and Endgame face), neither with a cost.
+    entry = intrigue_card_for_instance(TIEBREAKER)
+    assert entry.card.name == "Tiebreaker"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["combat", "endgame"]
+    assert all(option.sections[0].costs == () for option in entry.options)
+    assert intrigue_card_text(entry) == [
+        "Combat — Gain 2 swords",
+        "Endgame — Gain 10 spice",
+    ]
+    assert "tiebreaker" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_tiebreaker_is_neither_a_plot_nor_offered_in_the_agent_turn() -> None:
+    # Combat and Endgame Intrigue are played in their own windows only
+    # (imperium-base.md 10), never in the seat's Agent or Reveal turn.
+    _, state = _start()
+    state = _seat(state, intrigue_cards=(TIEBREAKER,))
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+def test_tiebreaker_combat_face_gains_two_swords() -> None:
+    # "Combat: +2 swords": the Combat Intrigue window `[DI p. 12]`
+    # (imperium-base.md 10); only the Combat option is offered there.
+    state = _combat_state(
+        _fighter(0, 2, intrigue_cards=(TIEBREAKER,)), _fighter(1, 1)
+    )
+    assert legal_intrigue_play_actions(state, 0) == (_play(TIEBREAKER, 0),)
+
+    result = apply_whole(UprisingRulesEngine(), state, _play(TIEBREAKER, 0))
+    done = result.state
+
+    assert done.players[0].combat_strength == 4 + 2
+    assert done.players[0].resources == state.players[0].resources
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (TIEBREAKER,)
+    assert done.decision_stack[-1].kind == "combat_intrigue"
+
+
+def test_tiebreaker_combat_face_needs_a_unit_in_the_conflict() -> None:
+    # "Conflict에 troop이 있는 플레이어가 Combat Intrigue를 내거나 pass한다"
+    # `[DI p. 12]` (imperium-base.md 10).
+    state = _combat_state(
+        PlayerState(player_id=0, intrigue_cards=(TIEBREAKER,), troops_garrison=3),
+        _fighter(1, 2),
+    )
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+def test_tiebreaker_endgame_face_gains_ten_spice() -> None:
+    # "Endgame: +10 spice" [Tiebreaker card]: played in the owner's Endgame
+    # window `[DI p. 13]`, where only the Endgame option is offered.
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(TIEBREAKER,), resources=Resources(spice=3)
+    )
+    state = _endgame_window(owner)
+    assert legal_intrigue_play_actions(state, 0) == (_play(TIEBREAKER, 1),)
+
+    result = apply_whole(UprisingRulesEngine(), state, _play(TIEBREAKER, 1))
+    done = result.state
+
+    assert done.players[0].resources == Resources(spice=13)
+    assert done.players[0].victory_points == state.players[0].victory_points
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (TIEBREAKER,)
+    # The window stays open: other cards or the pass may follow.
+    assert done.decision_stack[-1].kind == "endgame_intrigue"
+
+
+def test_tiebreaker_endgame_face_wins_the_spice_tiebreak() -> None:
+    # "동률은 spice → Solari → water → garrison의 troop 순 `[DI p. 13]`"
+    # (imperium-base.md 10): two seats tied on Victory Points, the one with
+    # Tiebreaker gains 10 spice and so outranks the other, which held more
+    # spice before.
+    holder = PlayerState(
+        player_id=0,
+        victory_points=9,
+        intrigue_cards=(TIEBREAKER,),
+        resources=Resources(spice=2),
+    )
+    rival = PlayerState(player_id=1, victory_points=9, resources=Resources(spice=8))
+    state = _endgame_window(holder, rival)
+    assert [s.player for s in final_standings(state)[:2]] == [1, 0]
+
+    done = apply_whole(UprisingRulesEngine(), state, _play(TIEBREAKER, 1)).state
+
+    assert [s.player for s in final_standings(done)[:2]] == [0, 1]
+
+
+def test_tiebreaker_endgame_face_is_not_a_combat_play() -> None:
+    # The Endgame option is for the Endgame window only: in Combat the card
+    # offers its Combat face, never the 10 spice.
+    state = _combat_state(
+        _fighter(0, 1, intrigue_cards=(TIEBREAKER,)), _fighter(1, 1)
+    )
+    assert _play(TIEBREAKER, 1) not in legal_intrigue_play_actions(state, 0)
+    assert _play(TIEBREAKER, 1) not in UprisingRulesEngine().whole_actions(state, 0)
+
+
+def test_tiebreaker_may_be_declined_in_either_window() -> None:
+    # Playing is a choice, never forced: the seat passes and keeps the card
+    # `[DI pp. 12-13]`.
+    engine = UprisingRulesEngine()
+    combat = _combat_state(
+        _fighter(0, 1, intrigue_cards=(TIEBREAKER,)), _fighter(1, 1)
+    )
+    passed = apply_whole(engine, combat, _pass(0)).state
+    assert passed.players[0].intrigue_cards == (TIEBREAKER,)
+    assert passed.players[0].combat_strength == 2
+
+    endgame = _endgame_window(PlayerState(player_id=0, intrigue_cards=(TIEBREAKER,)))
+    skipped = apply_whole(
+        engine,
+        endgame,
+        DomainAction(action_id="pass_endgame_intrigue", actor=0),
+    ).state
+    assert skipped.players[0].intrigue_cards == (TIEBREAKER,)
+    assert skipped.players[0].resources == Resources()

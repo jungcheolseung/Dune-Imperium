@@ -36,6 +36,7 @@ from dune_imperium.content.uprising.effect_dsl import (
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
     _combat,
+    _endgame,
     _plot,
 )
 from dune_imperium.content.uprising.types import AgentIcon
@@ -332,6 +333,14 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("tiebreaker", "Tiebreaker"),
         copies=1,
+        # "Combat: +2 swords -OR- Endgame: +10 spice" [Tiebreaker card, app
+        # text]: one card, two exclusive options (OQ-058), a Combat face and
+        # an Endgame face, neither with a cost. Spice is the first Endgame
+        # tiebreaker [DI p. 13] (imperium-base.md 10, 16).
+        options=(
+            _combat(EffectSection(rewards=(GainCombatStrength(2),))),
+            _endgame(EffectSection(rewards=(GainResources(spice=10),))),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("to_the_victor", "To the Victor..."),
