@@ -138,6 +138,7 @@ IMPERIUM_LEADER_IDS: Final = (
     "paul_atreides",
     "duke_leto_atreides",
     "glossu_rabban",
+    "baron_vladimir_harkonnen",
     "count_ilban_richese",
     "helena_richese",
     "earl_memnon_thorvald",

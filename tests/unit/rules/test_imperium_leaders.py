@@ -3,7 +3,8 @@
 docs/rules/imperium-base.md 12 (and its 13.2 FAQ rows) and
 docs/base-game-and-ix-plan.md 15.1: Glossu Rabban, Count Ilban Richese, Earl
 Memnon Thorvald and Countess Ariana Thorvald (P2a), then Duke Leto Atreides,
-Helena Richese and Paul Atreides (P2b). Each is seated at seat 0.
+Helena Richese, Paul Atreides and Baron Vladimir Harkonnen (P2b). Each is
+seated at seat 0.
 """
 
 from dataclasses import replace
@@ -20,6 +21,7 @@ from dune_imperium.core import (
     GameState,
     Influence,
     Resources,
+    RuleResult,
 )
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_turn import executable_placements
@@ -28,6 +30,7 @@ from dune_imperium.rules.combat_deployment import (
     legal_agent_turn_finish_actions,
     legal_combat_deployments,
 )
+from dune_imperium.rules.masterstroke import reveal_masterstroke
 
 CONFIG = RulesetConfig(base_game=BaseGame.IMPERIUM, first_player_seat_zero=True)
 LEADERS = (
@@ -456,3 +459,117 @@ def test_track_bonus_troops_deploy_with_the_turn_s_recruits() -> None:
     }
     # The two track troops and two more from the garrison.
     assert max(counts) == 2 + 2
+
+
+# --- Baron Vladimir Harkonnen (P2b) -------------------------------------------
+
+BARON = "baron_vladimir_harkonnen"
+
+
+def _start_baron(
+    picks: tuple[str, str] = ("emperor", "fremen"), seed: int = 3
+) -> tuple[UprisingRulesEngine, GameState]:
+    """The Baron at seat 0 chooses ``picks`` before the first round."""
+
+    seats = (BARON, *LEADERS[:3])
+    engine = UprisingRulesEngine(leader_ids=seats)
+    state = engine.reset(CONFIG, seed)
+    for faction in picks:
+        state = engine.apply(
+            state,
+            DomainAction("choose_masterstroke_faction", 0, (("faction", faction),)),
+        ).state
+    chance = ChanceResolver(seed=seed)
+    while isinstance(decision := engine.current_decision(state), ChanceDecision):
+        state = engine.apply(state, chance.resolve(decision)).state
+    assert state.phase is GamePhase.PLAYER_TURNS
+    return engine, state
+
+
+def test_masterstroke_factions_are_chosen_in_secret_before_the_first_round() -> None:
+    # "진영은 모든 setup 뒤 첫 라운드 전에 고르고" [FAQ p. 1]; four tokens, so
+    # two different Factions [DI p. 13]; the Baron's alone (imperium-base.md
+    # 14).
+    engine = UprisingRulesEngine(leader_ids=(BARON, *LEADERS[:3]))
+    state = engine.reset(CONFIG, 3)
+    assert state.phase is GamePhase.SETUP
+    first = {
+        dict(action.arguments)["faction"] for action in engine.legal_actions(state, 0)
+    }
+    assert first == {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
+    state = engine.apply(
+        state, DomainAction("choose_masterstroke_faction", 0, (("faction", "fremen"),))
+    ).state
+    second = {
+        dict(action.arguments)["faction"] for action in engine.legal_actions(state, 0)
+    }
+    assert second == first - {"fremen"}
+
+    engine, chosen = _start_baron(("emperor", "fremen"))
+    private = engine.observe(chosen, 0).private
+    assert private is not None
+    assert private.masterstroke_factions == ("emperor", "fremen")
+    assert engine.observe(chosen, 1).players[0].masterstroke_secret is True
+    _, other = _start_baron(("spacing_guild", "bene_gesserit"))
+    for seat in range(1, 4):
+        assert engine.observe(chosen, seat) == engine.observe(other, seat)
+
+
+def test_masterstroke_reveals_once_when_four_deployed_troops_stand() -> None:
+    # OQ-115 (user ruling 2026-10-22): mandatory the first time this turn's
+    # deployed troops stand four together (the peak Distraction reads,
+    # OQ-016), once per game; a withdrawal may not drop below four (OQ-029).
+    engine, state = _start_baron(("emperor", "fremen"))
+    three = _seat(state, units_deployed_turn=3, units_deployed_peak=3)
+    assert reveal_masterstroke(RuleResult(state=three)).state is three
+    four = _seat(state, units_deployed_turn=4, units_deployed_peak=4)
+    result = reveal_masterstroke(RuleResult(state=four))
+    baron = result.state.players[0]
+    assert baron.masterstroke_revealed is True
+    assert baron.influence.emperor == 1 and baron.influence.fremen == 1
+    assert baron.units_deployed_committed == 4
+    (event,) = (e for e in result.events if e.kind == "masterstroke_revealed")
+    assert event.visible_to is None
+    assert dict(event.payload)["factions"] == ("emperor", "fremen")
+    assert engine.observe(result.state, 1).players[0].masterstroke_secret is False
+    again = reveal_masterstroke(RuleResult(state=result.state))
+    assert again.state is result.state
+
+
+def test_masterstroke_waits_for_the_baron_s_own_turn() -> None:
+    # Only "in a turn" of his: deployments outside it do not count (OQ-063).
+    _, state = _start_baron()
+    elsewhere = replace(
+        _seat(state, units_deployed_turn=4, units_deployed_peak=4),
+        decision_stack=(),
+        phase=GamePhase.COMBAT,
+    )
+    assert reveal_masterstroke(RuleResult(state=elsewhere)).state is elsewhere
+
+
+def test_masterstroke_gains_nothing_with_a_faction_at_the_top() -> None:
+    # A Faction at 6 gains nothing (OQ-060).
+    _, state = _start_baron(("emperor", "fremen"))
+    state = _seat(
+        state,
+        units_deployed_turn=4,
+        units_deployed_peak=4,
+        influence=Influence(emperor=6),
+    )
+    baron = reveal_masterstroke(RuleResult(state=state)).state.players[0]
+    assert baron.influence.emperor == 6 and baron.influence.fremen == 1
+
+
+def test_scheme_buys_an_intrigue_card_only_when_one_can_be_drawn() -> None:
+    # "Scheme: 1 Solari → Intrigue 1" (imperium-base.md 12), an arrow [FAQ
+    # p. 3]; "비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다" (section
+    # 16, OQ-071): the original Intrigue deck is empty until stage P3.
+    engine, state = _start_baron()
+    state = _seat(_with_card(state, "signet_ring"), resources=Resources(solari=1))
+    placed = _place(engine, state, "secure_contract", "signet_ring")
+    assert "pay_leader_signet_solari" not in _ids(engine, placed)
+    stocked = replace(placed, intrigue_deck=("intrigue:0",))
+    assert "pay_leader_signet_solari" in _ids(engine, stocked)
+    paid = _do(engine, stocked, "pay_leader_signet_solari")
+    assert paid.players[0].resources.solari == 0
+    assert paid.players[0].intrigue_cards == ("intrigue:0",)

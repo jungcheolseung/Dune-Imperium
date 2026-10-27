@@ -10,7 +10,7 @@ from functools import cache
 
 import pytest
 
-from dune_imperium import RulesetConfig
+from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.rules.action_shapes import (
     ACTION_SHAPES,
@@ -40,10 +40,12 @@ _FULL = RulesetConfig(
 
 @cache
 def _catalog_arguments() -> dict[str, frozenset[str]]:
-    """Each catalog id's argument names, every option enabled."""
+    """Each catalog id's argument names, every option enabled, and the
+    original Dune: Imperium's (its own ids, plan 15.4)."""
 
     names: dict[str, set[str]] = {}
-    for template in ActionCodec(_FULL).catalog:
+    catalogs = (_FULL, RulesetConfig(base_game=BaseGame.IMPERIUM))
+    for template in (t for config in catalogs for t in ActionCodec(config).catalog):
         names.setdefault(template.action_id, set()).update(
             key for key, _ in template.arguments
         )

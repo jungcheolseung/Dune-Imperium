@@ -37,6 +37,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.masterstroke import assign_masterstroke
 from dune_imperium.rules.navigation import assign_navigation_deck
 from dune_imperium.rules.tactics import TACTICS_TRACK_START
 from dune_imperium.rules.tech import assign_secret_project
@@ -657,6 +658,9 @@ def create_initial_state(
         ),
     )
     state = _with_immortality(_with_bloodlines(state, bloodlines), immortality)
+    # The original game's Baron chooses his Factions after every other setup
+    # step [FAQ p. 1] (``rules.masterstroke``).
+    state = assign_masterstroke(state)
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 

@@ -202,13 +202,18 @@ def action_vocabulary(templates: Iterable[TemplateKey]) -> ActionVocabulary:
 # computes the same function: its new inputs start at zero.
 FIELDS_KEPT_RAW: Final = frozenset({"decision_owner", "leader_draft_pool", "agent_box"})
 # Slot keys a later observation version added to a field a v31 file already
-# embedded: the decision kinds of stage B2's reward windows (v33) and every
-# key naming one of the original game's identities (v35).
+# embedded: the decision kinds of stage B2's reward windows (v33) and of the
+# Baron's Masterstroke choice (v36), and every key naming one of the original
+# game's identities (v35).
 _KEYS_SINCE_V31: Final = frozenset(
     {
         *(
             f"decision_kind:{kind.value}"
-            for kind in (FrameKind.COMBAT_REWARD_ICONS, FrameKind.CONTRACT_REWARD_ICONS)
+            for kind in (
+                FrameKind.COMBAT_REWARD_ICONS,
+                FrameKind.CONTRACT_REWARD_ICONS,
+                FrameKind.MASTERSTROKE_SETUP,
+            )
         ),
         *(
             key

@@ -105,8 +105,8 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # scale of every column an Uprising entity uses stay those of 12294215
 # (405 rows compared; ``entity_features._table``). Stage P2b: each original
 # Leader's records join its row as the stage brings them (Duke Leto, Helena
-# Richese, Paul Atreides).
-_GOLDEN_DIGEST = "36f8ae8b874667570b4b71cac7809855a6161ba30a739cd56764e2521d8e40d9"
+# Richese, Paul Atreides, Baron Harkonnen).
+_GOLDEN_DIGEST = "61b70c15449848e6140de88b0975c75f3270d63b1fbf0eff754854008b7a5957"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -235,23 +235,15 @@ def test_what_an_entity_does_is_read_from_its_records() -> None:
     )
     assert not any(c.startswith("ability=") for c in tables["tech"].columns)
     assert not any(c.startswith("bonus=") for c in tables["research"].columns)
-    # The records tell every card, Leader and tile apart (copies aside), but
-    # the original game's Leaders whose records stage P2b brings (plan 15.1).
-    pending = {
-        leader.leader_id for leader in IMPERIUM_LEADERS
-    } - {
+    # The records tell every card, Leader and tile apart (copies aside),
+    # the original game's eight Leaders too (stage P2b).
+    assert {leader.leader_id for leader in IMPERIUM_LEADERS} == {
         leader.leader_id
         for leader in content_for(RulesetConfig(base_game=BaseGame.IMPERIUM)).leaders
     }
-    assert len(pending) == 1
     for name in ("personal", "leader", "tech", "space", "conflict"):
         table = tables[name]
-        rows = [
-            row.tobytes()
-            for entity, row in zip(table.ids, table.features, strict=True)
-            if entity not in pending
-        ]
-        assert len(set(rows)) == len(rows), name
+        assert len({row.tobytes() for row in table.features}) == table.size, name
 
 
 def test_an_action_is_built_from_its_shape() -> None:
@@ -950,12 +942,13 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     # the base-game flag (v34, a raw board input), and v35's raw columns
     # (Carthag's Control in the seat encoder; three Reserve stacks, two Maker
     # spaces and the Mentat's resting flag on the board) and its two Mentat
-    # seat fields are the inputs the file never had.
+    # seat fields, and v36's raw Masterstroke columns (four seats on the
+    # board, four Factions private) are the inputs the file never had.
     assert info.migration.observation_new == network.entity_width * (1 + 3) + (
         network.entity_width + 1
     ) + network.entity_width + len(Verb) + len(Source) + 2 + 7 * (
         network.entity_width
-    ) + 1 + (1 + 3 + 2 + 1) + 2 * network.entity_width
+    ) + 1 + (1 + 3 + 2 + 1) + 2 * network.entity_width + (4 + 4)
     assert info.migration.observation_dropped == 0
     observations = _observations(recorded).clone()
     pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)

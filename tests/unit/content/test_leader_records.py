@@ -101,8 +101,9 @@ def test_the_records_say_which_signets_are_optional_and_which_print_icons() -> N
         "princess_irulan",
         "chani",
         "duncan_idaho",
-        # The original game's Prudent Diplomacy (an arrow).
+        # The original game's Prudent Diplomacy and Scheme (arrows).
         "duke_leto_atreides",
+        "baron_vladimir_harkonnen",
     }
     assert dict(_SIGNET_ICONS) == {"lady_amber_metulli": ("solari", "spice")}
     assert {
@@ -116,8 +117,12 @@ def test_the_records_say_which_signets_are_optional_and_which_print_icons() -> N
         "piter_de_vries",
         "liet_kynes",
         # The original game's: Brutality (its "-OR-" is no choice), and the
-        # three single gains (Prudent Diplomacy and Manipulate are hooks).
-        *(_IMPERIUM_PLAYED - {"duke_leto_atreides", "helena_richese"}),
+        # three single gains, and Discipline (Prudent Diplomacy, Manipulate
+        # and Scheme are hooks).
+        *(
+            _IMPERIUM_PLAYED
+            - {"duke_leto_atreides", "helena_richese", "baron_vladimir_harkonnen"}
+        ),
     }
 
 
@@ -250,8 +255,8 @@ def test_every_leader_face_prints_its_left_box_as_records() -> None:
     ]
     # The original game's: Ruthless Negotiator, Connections, Spice Addict's
     # standing record and its draw, and the standing Landsraad Popularity,
-    # Eyes Everywhere and Prescience.
-    assert len(records) == 21 + 7
+    # Eyes Everywhere, Prescience and Masterstroke.
+    assert len(records) == 21 + 8
     assert {
         record.hook
         for record in records
@@ -272,6 +277,7 @@ def test_every_leader_face_prints_its_left_box_as_records() -> None:
         "duke_leto_atreides",
         "helena_richese",
         "paul_atreides",
+        "baron_vladimir_harkonnen",
     }
     triggered = [record for record in records if record.trigger is not None]
     assert len(triggered) == 8 + 3

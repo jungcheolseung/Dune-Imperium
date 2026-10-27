@@ -181,7 +181,11 @@ from dune_imperium.rules.frames import FrameKind
 # space, and the relative seat owed it at the next round's start (Sort
 # Through the Chaos [FAQ p. 4]). In an Uprising game every new column is 0,
 # so a v34 checkpoint migrated by segment plays as it did.
-OBSERVATION_VERSION: Final = 35
+# v36 (stage P2b): the original game's Baron Harkonnen -- per relative seat,
+# whether it holds Masterstroke Factions not yet revealed, and the
+# observer's own secret Factions (docs/rules/imperium-base.md 14), appended
+# after every other segment; 0 in every Uprising game.
+OBSERVATION_VERSION: Final = 36
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -496,6 +500,10 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             # it + 1, whether it rests on its space, the relative seat owed
             # it at the next round's start + 1 (0: nobody).
             ("mentat", 3),
+            # v36: the original game's Masterstroke -- per relative seat, an
+            # unrevealed secret; the observer's own secret Factions.
+            ("masterstroke_secret", _SEATS),
+            ("private_masterstroke", len(FACTION_IDS)),
         )
     )
     return tuple(lengths)
@@ -725,6 +733,14 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         ),
         relative(view.mentat_owed_to),
     ]
+    offset = _OFFSET["masterstroke_secret"]
+    for seat_view in view.players:
+        values[offset + relative(seat_view.player) - 1] = int(
+            seat_view.masterstroke_secret
+        )
+    offset = _OFFSET["private_masterstroke"]
+    for faction in view.private.masterstroke_factions:
+        values[offset + _FACTION_INDEX[faction]] = 1
     offset = _OFFSET["shortfall"]
     for seat_view in view.players:
         index = offset + (relative(seat_view.player) - 1) * 2

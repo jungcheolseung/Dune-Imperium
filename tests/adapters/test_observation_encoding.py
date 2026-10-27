@@ -38,7 +38,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 35
+    assert OBSERVATION_VERSION == 36
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
@@ -168,9 +168,15 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 4
         + 4
         + 3
+        # v36 (stage P2b): the Masterstroke segments, four seats and four
+        # Factions.
+        + 4
+        + 4
     )
-    assert OBSERVATION_SIZE == 5_827
-    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment("mentat", 5_824, 3)
+    assert OBSERVATION_SIZE == 5_835
+    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment(
+        "private_masterstroke", 5_831, 4
+    )
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -238,7 +244,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
     )
     # v35 appends the Mentat after the base-game flag.
     assert segment_slice("base_game").stop == segment_slice("mentat").start
-    assert segment_slice("mentat").stop == OBSERVATION_SIZE
+    assert segment_slice("mentat").stop == segment_slice("masterstroke_secret").start
+    assert segment_slice("private_masterstroke").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:

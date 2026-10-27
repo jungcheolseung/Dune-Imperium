@@ -1415,9 +1415,17 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for instance_id in imperium_instances
     )
-    # The original game's Manipulate (Helena Richese): only in its catalog,
-    # so Uprising's rows stay what they were.
+    # The original game's Manipulate (Helena Richese) and Masterstroke (the
+    # Baron's secret Factions): only in its catalog, so Uprising's rows stay
+    # what they were.
     if content.base_game is BaseGame.IMPERIUM:
+        templates.extend(
+            ActionTemplate(
+                action_id="choose_masterstroke_faction",
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        )
         templates.extend(
             ActionTemplate(
                 action_id="set_aside_leader_imperium",
@@ -2210,8 +2218,9 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
             "count_hasimir_fenring",
             "duncan_idaho",
             "gaius_helen_mohiam",
-            # The original game's Prudent Diplomacy.
+            # The original game's Prudent Diplomacy and Scheme.
             "duke_leto_atreides",
+            "baron_vladimir_harkonnen",
         }
     ),
     "resolve_leader_signet_without_option": frozenset(
@@ -2237,7 +2246,10 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "pay_leader_signet_spice": frozenset(
         {"lady_jessica", "reverend_mother_jessica", "staban_tuek", "gaius_helen_mohiam"}
     ),
-    "pay_leader_signet_solari": frozenset({"staban_tuek"}),
+    # Unseen Network's Solari; the original game's Scheme.
+    "pay_leader_signet_solari": frozenset(
+        {"staban_tuek", "baron_vladimir_harkonnen"}
+    ),
     "pay_leader_signet_water": frozenset({"chani"}),
     "gain_leader_signet_troop": frozenset({"shaddam_corrino_iv"}),
     # Shaddam's three Solari; the original game's Prudent Diplomacy.

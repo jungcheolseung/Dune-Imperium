@@ -249,6 +249,15 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         # 많은 진영에 Influence 1" -- an arrow, so never forced; the Faction is
         # judged as it resolves (OQ-028) and none at the top is offered
         # (OQ-060, P0 sweep L5).
+        # Scheme (stage P2b): "1 Solari → Intrigue 1", an arrow, once per
+        # play [FAQ p. 3] (docs/rules/imperium-base.md 12).
+        "baron_vladimir_harkonnen": _hook(
+            "scheme",
+            AbilityMark.OPTIONAL,
+            EffectSection(
+                rewards=(DrawIntrigueCards(1),), costs=(PayResources(solari=1),)
+            ),
+        ),
         # Discipline (stage P2b): draw a card.
         "paul_atreides": _automatic(EffectSection(rewards=(DrawPersonalCards(1),))),
         # Manipulate (stage P2b): set a Row card aside and refill the Row;
@@ -448,6 +457,10 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         # Eyes Everywhere (stage P2b): opponents' Agents do not block her on
         # Landsraad and City spaces (P0 sweep L8).
         "helena_richese": (_standing("eyes_everywhere"),),
+        # Masterstroke (stage P2b): two Factions chosen in secret before the
+        # first round, revealed for an Influence each the first time his
+        # turn's deployed troops reach four (OQ-115; ``rules.masterstroke``).
+        "baron_vladimir_harkonnen": (_standing("masterstroke"),),
         # Prescience (stage P2b): he sees his deck's top card at any time,
         # none while the deck is empty [DI p. 13] (``core.observation``).
         "paul_atreides": (_standing("prescience"),),

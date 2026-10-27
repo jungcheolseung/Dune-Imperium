@@ -143,6 +143,11 @@ class PublicPlayerView:
     # The original game's Mentat on this seat's Leader, one of its Agents
     # this round [DI p. 18]; public, like every Agent.
     mentat: bool = False
+    # The original game's Baron Harkonnen: whether he holds Masterstroke
+    # Factions not yet revealed (that he chose is public, which is his alone,
+    # docs/rules/imperium-base.md 14), and the Factions once revealed.
+    masterstroke_secret: bool = False
+    masterstroke_revealed_factions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,6 +183,9 @@ class PrivatePlayerView:
     # effect and has not finished (seen by no other seat), as (action id,
     # arguments) -- the effect row first (``rules.effect_steps``).
     effect_pick: tuple[tuple[str, tuple[tuple[str, ActionValue], ...]], ...] = ()
+    # The original game's Baron Harkonnen: his own Masterstroke Factions,
+    # chosen in secret before the first round [FAQ p. 1] (section 14).
+    masterstroke_factions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -581,6 +589,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             effect_pick=effect_pick_of(state, player),
             navigation_slots=owner.navigation_slots,
             secret_project_tech_id=owner.secret_project_tech_id,
+            masterstroke_factions=owner.masterstroke_factions,
             scouts_secret_picks=tuple(
                 (event_round, event_id, pick)
                 for event_round, event_id, seat, pick in state.scouts_secret_picks
@@ -966,4 +975,9 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         active_contract_ids=player.active_contract_ids,
         completed_contract_ids=player.completed_contract_ids,
         mentat=player.mentat,
+        masterstroke_secret=bool(player.masterstroke_factions)
+        and not player.masterstroke_revealed,
+        masterstroke_revealed_factions=(
+            player.masterstroke_factions if player.masterstroke_revealed else ()
+        ),
     )

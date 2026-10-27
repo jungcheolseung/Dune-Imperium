@@ -161,6 +161,7 @@ def test_the_original_game_plays_its_own_board_and_no_deck_yet() -> None:
         "paul_atreides",
         "duke_leto_atreides",
         "glossu_rabban",
+        "baron_vladimir_harkonnen",
         "count_ilban_richese",
         "helena_richese",
         "earl_memnon_thorvald",

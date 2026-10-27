@@ -133,7 +133,10 @@ from dune_imperium.rules.influence import (
     influence_amount,
     influence_can_rise,
 )
-from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
+from dune_imperium.rules.intrigue_deck import (
+    draw_or_queue_intrigue_cards,
+    shufflable_intrigue_discard,
+)
 from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
     add_reveal_persuasion,
@@ -184,6 +187,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "duke_leto_atreides",
         "helena_richese",
         "paul_atreides",
+        "baron_vladimir_harkonnen",
     }
 )
 
@@ -590,6 +594,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         "kota_odax_of_ix",
         "duke_leto_atreides",
         "helena_richese",
+        "baron_vladimir_harkonnen",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
@@ -792,6 +797,7 @@ SIGNET_HOOKS: Final = frozenset(
         # The original game's Duke Leto Atreides and Helena Richese.
         "prudent_diplomacy",
         "manipulate",
+        "scheme",
     }
 )
 
@@ -1422,6 +1428,22 @@ def legal_leader_signet_actions(
             for instance_id in state.imperium_row
         ) or (DomainAction(action_id=SIGNET_NO_OPTION, actor=player),)
 
+    if owner.leader_id == "baron_vladimir_harkonnen":
+        # Scheme: pay 1 Solari for an Intrigue card, an arrow (declined
+        # freely; once per play [FAQ p. 3]; docs/rules/imperium-base.md 12),
+        # never paid for nothing: "비용만 내고 보상을 받을 수 없는 화살표 줄은
+        # 내지 않는다" (section 16, OQ-071) -- not while no Intrigue card can
+        # be drawn (the original game's deck is empty until stage P3).
+        drawable = bool(state.intrigue_deck or shufflable_intrigue_discard(state))
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                (DomainAction(action_id="pay_leader_signet_solari", actor=player),)
+                if owner.resources.solari >= 1 and drawable
+                else ()
+            ),
+        )
+
     if owner.leader_id == "duke_leto_atreides":
         # Prudent Diplomacy: pay 1 spice for Influence with a Faction where an
         # opponent has more than Leto (docs/rules/imperium-base.md 12); an
@@ -1868,6 +1890,8 @@ def apply_leader_signet_payment(
 
     if owner.leader_id == "staban_tuek":
         return _apply_staban_bonus_payment(state, context, action)
+    if owner.leader_id == "baron_vladimir_harkonnen":
+        return _apply_scheme_payment(state, context, player, source)
 
     cost, line = _signet_payment(owner)
     if owner.resources.spice < cost.spice:
@@ -1926,6 +1950,33 @@ def apply_leader_signet_payment(
         state=next_state,
         events=(
             *events,
+            *intrigue_draw.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
+    )
+
+
+def _apply_scheme_payment(
+    state: GameState, context: dict[str, ActionValue], player: int, source: str
+) -> RuleResult:
+    """Scheme: 1 Solari buys an Intrigue card, an arrow paid once per play
+    (docs/rules/imperium-base.md 12, [FAQ p. 3])."""
+
+    owner = state.players[player]
+    if owner.resources.solari < 1:
+        raise RuntimeError("Scheme's payment requires one Solari")
+    paid = replace(
+        owner, resources=replace(owner.resources, solari=owner.resources.solari - 1)
+    )
+    working = replace(state, players=replace_player(state.players, paid))
+    intrigue_draw = draw_or_queue_intrigue_cards(working, player, 1, source=source)
+    next_state = _store_signet(
+        intrigue_draw.state, context, intrigue_draw.state.players
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            resources_paid_event(source, player, solari=1),
             *intrigue_draw.events,
             _signet_box(source, context, player, BoxOutcome.RESOLVED),
         ),

@@ -13,6 +13,11 @@ Uprising value, where an Uprising game has no Mentat:
 - Every seat's ``PlayerView`` shows each seat's ``mentat`` and the
   ``mentat_owed_to`` seat, which the observation's ``mentat`` segment reads;
   in an Uprising game they are ``False`` and ``None``.
+- Stage P2b's Baron Harkonnen (Masterstroke): ``PlayerState`` gains
+  ``masterstroke_factions`` and ``masterstroke_revealed`` (hash-omitted at
+  their defaults); each seat's view shows ``masterstroke_secret`` and
+  ``masterstroke_revealed_factions``, and the private view the seat's own
+  ``masterstroke_factions`` -- ``False``, ``[]`` and ``[]`` in Uprising.
 
 Nothing else a player, an agent or a save sees changes. Checked with
 ``engine_equivalence.py check --differences
@@ -31,10 +36,19 @@ def _show_no_mentat(step: Step) -> bool:
         if "mentat_owed_to" not in view:
             view["mentat_owed_to"] = None
             shown = True
+        private = view.get("private")
+        if isinstance(private, dict) and "masterstroke_factions" not in private:
+            private["masterstroke_factions"] = []
+            shown = True
         for seat in view["players"]:
-            if "mentat" not in seat:
-                seat["mentat"] = False
-                shown = True
+            for name, default in (
+                ("mentat", False),
+                ("masterstroke_secret", False),
+                ("masterstroke_revealed_factions", []),
+            ):
+                if name not in seat:
+                    seat[name] = default
+                    shown = True
     return shown
 
 
@@ -51,6 +65,8 @@ STATE_HOLDS_THE_MENTAT = Rule(
         {
             "PlayerState.mentat",
             "PlayerState.track_troops_recruited_turn",
+            "PlayerState.masterstroke_factions",
+            "PlayerState.masterstroke_revealed",
             "GameState.mentat_owed_to",
         }
     ),

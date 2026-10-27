@@ -101,8 +101,9 @@ SLOT_VERSION: Final = 1
 # identity fields gain keys after their Uprising ones (checkpoints re-link
 # by key; a new key starts at zero), gives each seat a fourth Agent location
 # slot (0, the pad, in every Uprising game) and appends the Mentat's two
-# seat references after every older field.
-SLOT_OBSERVATION_VERSION: Final = 35
+# seat references after every older field. v36 appends two raw Masterstroke
+# segments (no field reads them); its frame kind joins ``decision_kind`` last.
+SLOT_OBSERVATION_VERSION: Final = 36
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).

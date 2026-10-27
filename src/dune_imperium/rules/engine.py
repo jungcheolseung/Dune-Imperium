@@ -233,6 +233,11 @@ from dune_imperium.rules.leader_draft import (
     finish_leader_draft,
     legal_leader_draft_actions,
 )
+from dune_imperium.rules.masterstroke import (
+    apply_masterstroke_choice,
+    legal_masterstroke_actions,
+    reveal_masterstroke,
+)
 from dune_imperium.rules.navigation import (
     apply_navigation_play,
     apply_navigation_setup_action,
@@ -600,6 +605,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_tech_acquire_effect_actions,
     ),
     FrameKind.TECH_SECRET_PROJECT: (legal_secret_project_actions,),
+    FrameKind.MASTERSTROKE_SETUP: (legal_masterstroke_actions,),
     FrameKind.RESEARCH_ADVANCE: (
         legal_research_advance_actions,
         legal_scouts_rewards_first_actions,
@@ -838,6 +844,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_leader_signet_payment": apply_leader_signet_payment,
     "resolve_leader_signet_without_option": apply_leader_signet_payment,
     "set_aside_leader_imperium": apply_manipulate_signet,
+    "choose_masterstroke_faction": apply_masterstroke_choice,
     "acquire_leader_imperium": apply_leader_signet_acquire,
     "acquire_leader_reserve": apply_leader_signet_acquire,
     "gain_leader_signet_troop": apply_shaddam_signet_choice,
@@ -933,6 +940,17 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
 }
 
 
+def _reveal_masterstroke(result: RuleResult) -> RuleResult:
+    """Record the turn's deployment peak, then reveal a Masterstroke it made
+    due (the original game's Baron, ``rules.masterstroke``) and advance past
+    what the reveal's Influence queued; a transition that reveals nothing is
+    left as it was."""
+
+    peaked = record_deployment_peak(result)
+    revealed = reveal_masterstroke(peaked)
+    return peaked if revealed is peaked else _advance_automatic(revealed)
+
+
 class UprisingRulesEngine(RulesEngine):
     """Connect the implemented rule modules into one multi-round state machine."""
 
@@ -1009,7 +1027,7 @@ class UprisingRulesEngine(RulesEngine):
             )
         )
         return refresh_pre_reveal_strength(
-            _settle_finishing(record_deployment_peak(_advance_automatic(result)))
+            _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
         )
 
     def legal_actions(
@@ -1121,7 +1139,7 @@ class UprisingRulesEngine(RulesEngine):
             )
         )
         return refresh_pre_reveal_strength(
-            _settle_finishing(record_deployment_peak(_advance_automatic(result)))
+            _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
         )
 
     def observe(self, state: GameState, player: int) -> PlayerView:

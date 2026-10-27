@@ -90,8 +90,9 @@ from dune_imperium.training.slots import (  # noqa: E402
 # Re-pinned for observation v35 (stage P2a): the original game's identities
 # end their fields (Conflicts, spaces, Leaders, Reserve cards) and the
 # Mentat's two seat fields end the table; every older key keeps its name, so
-# an older slot file re-links its rows by key.
-_GOLDEN_DIGEST = "9b75967d0be4cf4740000c0cd737074901e76b10c9910f06b3404e288e1f6e98"
+# an older slot file re-links its rows by key. Observation v36 (stage P2b):
+# the Masterstroke choice's frame kind ends ``decision_kind``.
+_GOLDEN_DIGEST = "0c13db1bb9da99185e3df3e8f063a4fc25037eebc9cfec10bd23785fbe7c284b"
 _FULL = RulesetConfig(
     choam_module=True,
     promo_cards=True,
@@ -318,9 +319,10 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
     # v35 (stage P2a): the original game's 18 Conflicts, 19 spaces (occupancy
     # and four seats' locations), 8 Leaders (four seats and the draft pool),
     # 3 Reserve cards (Agent boxes) and the Mentat's 4 + 4.
+    # v36: + 1, the Masterstroke choice's decision kind.
     assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_303 + (
         18 + 19 * 5 + 8 * 5 + 3 + 8
-    )
+    ) + 1
     assert "conflict:economic_supremacy" in SLOT_KEYS
     assert len(set(SLOT_KEYS)) == len(SLOT_KEYS)
     assert len(navigation) == 10
