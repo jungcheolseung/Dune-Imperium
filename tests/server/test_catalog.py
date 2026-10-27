@@ -5,8 +5,8 @@ import re
 import sys
 from pathlib import Path
 
-from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
-from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
+from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
+from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS, INTRIGUE_CARDS_BY_ID
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
 from dune_imperium.display.board_layout import LEADER_TILE_BOXES, SPACE_BOXES
@@ -31,11 +31,13 @@ def test_catalog_is_json_serializable_and_covers_every_card() -> None:
 
     cards = catalog["cards"]
     assert isinstance(cards, dict)
-    for card_id in (*STARTING_CARDS_BY_ID, "prepare_the_way", *IMPERIUM_CARDS_BY_ID):
+    # Uprising's own cards: the original game's join with its screen (P5).
+    uprising_imperium = (entry.card.card_id for entry in IMPERIUM_CARDS)
+    for card_id in (*STARTING_CARDS_BY_ID, "prepare_the_way", *uprising_imperium):
         assert card_id in cards
     intrigue = catalog["intrigue"]
     assert isinstance(intrigue, dict)
-    assert set(intrigue) == set(INTRIGUE_CARDS_BY_ID)
+    assert set(intrigue) == {entry.card.card_id for entry in INTRIGUE_CARDS}
 
 
 def test_objective_images_follow_language_and_versioned_asset_mapping() -> None:
@@ -1162,7 +1164,7 @@ def test_catalog_card_pools_share_no_id() -> None:
     pools = {
         "starting": set(STARTING_CARDS_BY_ID),
         "reserve": {stack.card.card_id for stack in RESERVE_STACKS},
-        "imperium": set(IMPERIUM_CARDS_BY_ID),
+        "imperium": {entry.card.card_id for entry in IMPERIUM_CARDS},
         "tleilaxu": {*TLEILAXU_CARDS_BY_ID, RECLAIMED_FORCES.card.card_id},
     }
     names = list(pools)
