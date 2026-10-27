@@ -1109,6 +1109,16 @@ class GrantCombatDeployment:
 
 
 @dataclass(frozen=True, slots=True)
+class DeployTheseTroops:
+    """"You may deploy these troops to the Conflict" after a recruit in the
+    same line (the original game's Gurney Halleck Reveal box, Reinforcements:
+    "If it's your Reveal turn, you may deploy any of these troops"). In a
+    Reveal turn the troops the line recruited may be deployed, any of them;
+    in an Agent turn it adds nothing, as troops recruited then deploy by the
+    Combat space rule [DI p. 10] [FAQ p. 4]."""
+
+
+@dataclass(frozen=True, slots=True)
 class GrantAgentIconThisTurn:
     """The card the owner plays this turn has ``icon`` as well (Emperor's
     Invitation, Bloodlines)."""
@@ -1615,6 +1625,7 @@ type Reward = (
     | IgnoreInfluenceRequirementsThisTurn
     | GrantAgentIconThisTurn
     | GrantCombatDeployment
+    | DeployTheseTroops
     | RedirectSpiesOnTurnSpace
     | RevealContractsTakeOne
     | GainSolariPerUnitType

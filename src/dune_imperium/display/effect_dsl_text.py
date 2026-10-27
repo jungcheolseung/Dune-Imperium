@@ -38,6 +38,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ContractTaken,
     Cost,
     DeployFromGarrison,
+    DeployTheseTroops,
     DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
@@ -585,6 +586,8 @@ def reward_text(reward: Reward) -> str:
             return f"The card you play this turn has the {icon.value} icon"
         case GrantCombatDeployment():
             return "Combat: deploy this turn as though at a Combat space"
+        case DeployTheseTroops():
+            return "In your Reveal turn, you may deploy these troops to the Conflict"
         case GainSolariPerUnitType():
             return "Gain 1 solari for each type of unit you have in the Conflict"
         case PeekTopCard():

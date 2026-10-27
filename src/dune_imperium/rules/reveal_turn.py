@@ -103,6 +103,7 @@ from dune_imperium.rules.combat_deployment import (
     deployment_rooms,
     grant_combat_icon,
     reconcile_deployment_after_retreat,
+    recruits_deployable,
     undeployable_troops,
     undeployable_troops_this_turn,
     ungained_undeployable_troops,
@@ -1439,20 +1440,29 @@ def legal_reveal_deployments(
     if frame is None:
         return ()
     context = dict(frame.context)
-    if context.get("combat_deployment") is not True:
+    deployable = recruits_deployable(context)
+    combat = context.get("combat_deployment") is True
+    if not combat and not deployable:
         return ()
     recruited = context_int(context, "reveal_troops_recruited", owner="Reveal frame")
     deployed = context_int(context, "reveal_units_deployed", owner="Reveal frame")
     commanders_deployed = _reveal_commanders_deployed(context)
-    troop_room, commander_room = deployment_rooms(
-        troops_recruited=recruited,
-        commanders_recruited=recruited_commander_count(
-            context, REVEAL_COMMANDERS_RECRUITED_KEY
-        ),
-        existing_limit=2,
-        troops_deployed=max(0, deployed - commanders_deployed),
-        commanders_deployed=commanders_deployed,
-    )
+    if combat:
+        # The Combat icon's room holds every recruit of the turn, so it
+        # holds the troops a ``DeployTheseTroops`` line opened too.
+        troop_room, commander_room = deployment_rooms(
+            troops_recruited=recruited,
+            commanders_recruited=recruited_commander_count(
+                context, REVEAL_COMMANDERS_RECRUITED_KEY
+            ),
+            existing_limit=2,
+            troops_deployed=max(0, deployed - commanders_deployed),
+            commanders_deployed=commanders_deployed,
+        )
+    else:
+        # Only "these troops" (the original game's Gurney Halleck,
+        # Reinforcements): no garrison share, no Commander.
+        troop_room, commander_room = max(0, deployable - deployed), 0
     owner = state.players[player]
     actions: list[DomainAction] = []
     for action_id, garrison, room in (

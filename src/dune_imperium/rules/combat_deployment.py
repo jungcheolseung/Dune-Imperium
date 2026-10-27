@@ -24,6 +24,7 @@ troop's only by a troop, and the garrison extra (normally two) is shared by
 both kinds on top of those (user ruling OQ-070, ``deployment_rooms``).
 """
 
+from collections.abc import Mapping
 from copy import replace
 from dataclasses import dataclass
 from typing import Final
@@ -748,6 +749,49 @@ def open_combat_deployment(context: dict[str, ActionValue]) -> None:
     if isinstance(limit, bool) or not isinstance(limit, int):
         raise RuntimeError("Agent-turn effect frame has invalid deployment limit")
     context["existing_troop_deployment_limit"] = max(limit, 2)
+
+
+RECRUITS_DEPLOYABLE_KEY = "reveal_recruits_deployable"
+"""Troops a ``DeployTheseTroops`` line recruited in the owner's Reveal turn
+(the original game's Gurney Halleck, Reinforcements): that many may be
+deployed from the garrison (absent means none)."""
+
+
+def grant_recruit_deployment(state: GameState, player: int, count: int) -> GameState:
+    """Let ``player`` deploy ``count`` troops a line just recruited, "You may
+    deploy these troops to the Conflict", when it is their Reveal turn; in
+    their Agent turn the troops deploy by the Combat space rule [DI p. 10]
+    [FAQ p. 4] and nothing opens here."""
+
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if not isinstance(frame.decision, PlayerDecision) or (
+            frame.decision.owner != player
+        ):
+            continue
+        if frame.kind == FrameKind.REVEAL:
+            context = dict(frame.context)
+            context[RECRUITS_DEPLOYABLE_KEY] = recruits_deployable(context) + count
+            return replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:index],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                    *state.decision_stack[index + 1 :],
+                ),
+            )
+        if frame.kind in (FrameKind.TURN, FrameKind.AGENT_EFFECTS):
+            break
+    return state
+
+
+def recruits_deployable(context: Mapping[str, object]) -> int:
+    """The troops ``DeployTheseTroops`` lines opened in a Reveal frame."""
+
+    value = context.get(RECRUITS_DEPLOYABLE_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"Reveal frame has invalid {RECRUITS_DEPLOYABLE_KEY}")
+    return value
 
 
 def grant_combat_icon(state: GameState, player: int) -> GameState:

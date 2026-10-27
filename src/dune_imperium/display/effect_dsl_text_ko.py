@@ -65,6 +65,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ContractTaken,
     Cost,
     DeployFromGarrison,
+    DeployTheseTroops,
     DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
@@ -807,6 +808,8 @@ def reward_text_ko(reward: Reward) -> str:
             # Invitation]`, docs/rules/korean-card-style.md row 44).
             name = _AGENT_ICON_NAMES_KO[icon]
             return f"이번 차례에 당신이 플레이하는 카드는 {name} 아이콘 보유"
+        case DeployTheseTroops():
+            return "{reveal_turn}에 이 병력을 {conflict}에 배치 가능"
         case GrantCombatDeployment():
             # Quotes ``tokens_ko.py``'s established "{combat} (전투 장소에
             # 보낸 것처럼 배치 가능)" (its own ``reveal_effect_text_ko``,

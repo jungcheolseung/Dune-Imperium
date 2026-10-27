@@ -30,6 +30,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     ContractCompletedThisTurn,
     Cost,
     DeployFromGarrison,
+    DeployTheseTroops,
     DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
@@ -936,6 +937,10 @@ def reward_can_change_something(
             return _commander_purchase_ahead(state, player)
         case GrantCombatDeployment():
             return _combat_deployment_ahead(state, player)
+        case DeployTheseTroops():
+            # It only lets the line's own recruit deploy: whether the line
+            # changes anything is the recruit's to say (OQ-071).
+            return False
         case SetAsideImperiumRowCard():
             return bool(state.imperium_row)
         case PeekTopCard():
@@ -1216,6 +1221,9 @@ class RewardOutcome:
     troops_recruited: int = 0
     sandworms_deployed: int = 0
     combat_icons: int = 0
+    # Troops a ``DeployTheseTroops`` line recruited: deployable in a Reveal
+    # turn (the caller opens them, ``combat_deployment.grant_recruit_deployment``).
+    deployable_recruits: int = 0
     redirects_turn_space_spies: bool = False
     sandworms_replaced: int = 0
     passes_turn: bool = False
@@ -1264,6 +1272,7 @@ def apply_rewards(
     owner = state.players[player]
     events: list[GameEvent] = []
     troops_recruited = 0
+    deploy_these = False
     sandworms_deployed = 0
     combat_icons = 0
     redirects_turn_space_spies = False
@@ -1431,6 +1440,8 @@ def apply_rewards(
                 tech_acquisitions.append(discount)
             case GrantCombatDeployment():
                 combat_icons += 1
+            case DeployTheseTroops():
+                deploy_these = True
             case RedirectSpiesOnTurnSpace():
                 redirects_turn_space_spies = True
             case RevealContractsTakeOne():
@@ -1506,6 +1517,7 @@ def apply_rewards(
         troops_recruited=troops_recruited,
         sandworms_deployed=sandworms_deployed,
         combat_icons=combat_icons,
+        deployable_recruits=troops_recruited if deploy_these else 0,
         redirects_turn_space_spies=redirects_turn_space_spies,
         sandworms_replaced=sandworms_replaced,
         passes_turn=passes_turn,

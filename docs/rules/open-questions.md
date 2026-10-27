@@ -165,6 +165,7 @@
 | [OQ-137](#oq-137--공동-1위로-남은-conflict-카드) | 공동 1위로 남은 Conflict 카드 | `DECIDED` |
 | [OQ-138](#oq-138--covert-operation에서-손이-빈-상대와-결정-창) | Covert Operation에서 손이 빈 상대와 결정 창 | `DECIDED` |
 | [OQ-139](#oq-139--mentat이-어느-말인가-원판) | Mentat이 어느 말인가 (원판) | `DECIDED` |
+| [OQ-140](#oq-140--이-병력을-배치할-수-있다의-이-병력-원판) | "이 병력을 배치할 수 있다"의 이 병력 (원판) | `OPEN` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -2886,3 +2887,17 @@
     있는지)만 읽는다. 차이가 생길 수 있는 곳은 "그 말이 Mentat인가"를 읽는 효과뿐인데 원판 카드·지도자에는 없다(Rise of Ix·조합은 P4·P7에서 다시 본다).
   - 추천: **(가) 유지** — 세 카드를 "자기 Agent 하나"로 구현하고 말을 가리지 않는다. 사용자가 확인하기 전에는 세 카드를 전사하지 않는다(조정자 경유
     사용자 지시 2026-10-28 01:3x, 계획 16.8 4).
+
+## OQ-140 — "이 병력을 배치할 수 있다"의 이 병력 (원판)
+
+- 상태: `OPEN` (2026-10-28, P3 밤 작업; 추천대로 구현, 사용자 확인 대기)
+- 계기: 원판 Reinforcements "3 Solari → 3 troops. If it's your Reveal turn, you may deploy any of these troops to the Conflict."와 Gurney Halleck의
+  Reveal "… → 2 troops. You may deploy these troops to the Conflict."(앱 문구). 엔진 조각 `DeployTheseTroops`(계획 16.4).
+- 공식 문장이 정한 것: Reveal turn이면 그 줄이 recruit한 병력은 아무 수나 배치할 수 있다(카드 문구). Agent turn에는 Combat 칸 규칙대로 어느 출처로
+  recruit했든 배치한다 `[DI p. 10]` `[FAQ p. 4]`. recruit는 supply에 있는 만큼이다(OQ-030).
+- 정하지 않은 것: supply가 모자라 못 한 recruit가 OQ-030 재판정(2026-10-04)대로 같은 turn 뒤에 채워질 때, 그 병력도 "이 병력"인가. 원판 단독 판에서는
+  자기 Reveal turn 중에 자기 병력이 supply로 돌아오는 효과가 없어 닿지 않는다(조합 P7에서 닿을 수 있다).
+- 구현(추천): 줄을 해결할 때 recruit한 수만 연다(`effect_interpreter.RewardOutcome.deployable_recruits`, `combat_deployment.grant_recruit_deployment`).
+  Combat 아이콘의 배치 몫이 함께 열리면 그 몫(이번 turn의 recruit 전부 + garrison 둘)이 이 병력을 이미 포함한다. 조각 자체는 무언가를 바꾸지 않으므로
+  줄을 낼 수 있는지는 recruit가 정한다(OQ-071 — supply가 비면 Reinforcements를 내지 않는다).
+

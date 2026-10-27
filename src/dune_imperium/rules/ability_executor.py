@@ -95,6 +95,7 @@ from dune_imperium.rules.card_discard import (
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
     grant_combat_icon,
+    grant_recruit_deployment,
     reconcile_deployment_after_retreat,
 )
 from dune_imperium.rules.effect_interpreter import (
@@ -1495,6 +1496,10 @@ def apply_automatic_rewards(
         )
     if outcome.combat_icons:
         next_state = grant_combat_icon(next_state, player)
+    if outcome.deployable_recruits:
+        next_state = grant_recruit_deployment(
+            next_state, player, outcome.deployable_recruits
+        )
     if outcome.sandworms_replaced:
         replacement = replace_sandworms(
             next_state, player, outcome.sandworms_replaced, source=source

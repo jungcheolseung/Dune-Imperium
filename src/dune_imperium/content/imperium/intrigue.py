@@ -17,6 +17,7 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.effect_dsl import (
+    DeployTheseTroops,
     DrawPersonalCards,
     EffectSection,
     GainCombatStrength,
@@ -27,6 +28,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasHighCouncil,
     LoseTroops,
     PayResources,
+    RecruitTroops,
     RetreatTroops,
     RevealPersuasionThisRound,
 )
@@ -225,6 +227,19 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("reinforcements", "Reinforcements"),
         copies=1,
+        # "3 Solari -> 3 troops. If it's your Reveal turn, you may deploy any
+        # of these troops to the Conflict." [Reinforcements card, app text]: a
+        # cost arrow line [DI p. 16] whose recruit is as many as the supply
+        # holds (OQ-030); in an Agent turn the troops deploy by the Combat
+        # space rule [FAQ p. 4] (``DeployTheseTroops``).
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(solari=3),),
+                    rewards=(RecruitTroops(3), DeployTheseTroops()),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("secret_of_the_sisterhood", "Secret of the Sisterhood"),
