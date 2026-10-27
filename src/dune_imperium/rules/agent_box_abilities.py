@@ -96,6 +96,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
+    LoseInfluence,
     LoseTroops,
     OpponentsMoveSpiesFromVisitedSpace,
     PayResources,
@@ -178,9 +179,11 @@ from dune_imperium.rules.immortality import (
 )
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
+    alliance_recipients_after_influence_loss,
     gain_faction_influence,
     influence_amount,
     influence_can_rise,
+    lose_faction_influence,
 )
 from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
@@ -726,10 +729,15 @@ def resolve_box(state: GameState) -> RuleResult:
     line = ability.sections[0]
     owner = state.players[player]
     source = agent_card_source(state.round_number, player, card_id)
-    if lose_box(ability) or agent_box_acquisition(ability) is not None:
-        # Piter's optional arrow and Tleilaxu Master's optional acquisition
-        # resolve through their rows only; an optional box is never dry-run
-        # (cleanup-2c-2) and lapses at the turn's end.
+    if (
+        lose_box(ability)
+        or influence_loss_box(ability)
+        or agent_box_acquisition(ability) is not None
+    ):
+        # Piter's and Shifting Allegiances' optional arrows and Tleilaxu
+        # Master's optional acquisition resolve through their rows only; an
+        # optional box is never dry-run (cleanup-2c-2) and lapses at the
+        # turn's end.
         raise BoxNeedsRows("an optional Agent box resolves through its rows")
     elif trash_box(ability):
         # Ruthless Leadership: its Commander condition is judged now
@@ -1766,15 +1774,16 @@ def _armed_line(key: str, line: EffectSection) -> bool:
         # Firm Grip's "choose one: Spacing Guild / Bene Gesserit / Fremen
         # Influence": a chosen Faction's Influence, answered by
         # ``choose_agent_card_influence`` (never a track at the top, OQ-060).
+        # Shifting Allegiances' two Influence with one chosen Faction is the
+        # same row, one pick for both ([DI p. 16], imperium-base.md 13.3).
         return (
             len(line.rewards) == 1
             and isinstance(line.rewards[0], GainInfluence)
             and line.rewards[0].requires_choice
             and not line.rewards[0].distinct
-            and line.rewards[0].times == 1
+            and (line.rewards[0].times == 1 or line.rewards[0].one_faction)
         )
     return len(line.rewards) == 1 and line.rewards[0] in _ARMED_REWARDS.get(key, ())
-
 
 
 def discard_box(ability: Ability | None) -> bool:
@@ -3147,6 +3156,147 @@ def apply_lose(
             commanders=int(commander),
         )
     return RuleResult(state=next_state, events=lost.events)
+
+
+# --- Influence-loss arrows (stage P3b) -------------------------------------------
+#
+# "[lose 1 Influence with a chosen Faction] [2 spice] -> [2 Influence with one
+# chosen Faction]" (Shifting Allegiances): an optional arrow paid once [DI p. 9]
+# [FAQ p. 3]. The whole cost is judged whenever the box resolves, in the owner's
+# order [Main pp. 9, 20] (OQ-028): the spice and a Faction the owner has
+# Influence with ("Influence가 없는 진영은 잃을 수 없다", imperium-base.md 13.2). The
+# refusal, then one ``lose_agent_card_influence`` row per such Faction -- and
+# per recipient where its Alliance token could go to several seats, as every
+# Influence loss offers it -- answers the cost: the spice is paid, the Influence
+# lost through the common loss path (the Alliance and the Victory Point move as
+# the Reveal exchange's do), and the +2 is armed as an "influence" icon, whose
+# one Faction the owner picks next (``choose_agent_card_influence``, one pick for
+# both: an unbreakable effect, imperium-base.md 13.3). The same Faction may be
+# lost and gained again ("같은 진영을 잃고 얻을 수 있다", 13.2, [FAQ p. 4]); as the
+# Faction just lowered is below the top, the +2 always has a Faction to raise, so
+# no payment buys nothing (OQ-071).
+
+
+def influence_loss_box(ability: Ability | None) -> bool:
+    """Whether ``ability`` is an optional arrow paid by losing one Influence
+    and a Resource payment, for one chosen Faction's Influence."""
+
+    if (
+        ability is None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.icons
+        or ability.hook is not None
+        or len(ability.sections) != 1
+        or ability.armed_icons != ("influence",)
+    ):
+        return False
+    (line,) = ability.sections
+    return (
+        line.condition is None
+        and len(line.costs) == 2
+        and line.costs[0] == LoseInfluence(1)
+        and isinstance(line.costs[1], PayResources)
+        and line.costs[1].solari == line.costs[1].water == 0
+        and line.costs[1].spice > 0
+        and _armed_line("influence", line)
+    )
+
+
+def influence_loss_spice(ability: Ability) -> int:
+    """The spice the arrow's cost pays beside the Influence."""
+
+    cost = ability.sections[0].costs[1]
+    assert isinstance(cost, PayResources)
+    return cost.spice
+
+
+def influence_loss_block(
+    owner: PlayerState, ability: Ability
+) -> OptionalEffectBlock | None:
+    """Why the whole cost cannot be paid now: the spice, then an Influence
+    to lose."""
+
+    spice = short_of(
+        OptionalBlockKind.SPICE, influence_loss_spice(ability), owner.resources.spice
+    )
+    if spice is not None:
+        return spice
+    if any(influence_amount(owner.influence, faction) >= 1 for faction in Faction):
+        return None
+    return OptionalEffectBlock(OptionalBlockKind.NO_INFLUENCE_TO_LOSE)
+
+
+def influence_loss_rows(
+    state: GameState, player: int, ability: Ability
+) -> tuple[DomainAction, ...]:
+    """The refusal, then each Faction the owner has Influence with to lose,
+    and where its Alliance token may go to several seats, each recipient."""
+
+    owner = state.players[player]
+    rows = [DomainAction(action_id="decline_agent_card_payment", actor=player)]
+    if influence_loss_block(owner, ability) is not None:
+        return tuple(rows)
+    for faction in Faction:
+        if influence_amount(owner.influence, faction) < 1:
+            continue
+        recipients = alliance_recipients_after_influence_loss(state, player, faction)
+        for recipient in tuple(recipients) if len(recipients) > 1 else (None,):
+            arguments: tuple[tuple[str, ActionValue], ...] = (
+                ("faction", faction.value),
+            )
+            if recipient is not None:
+                arguments = (("alliance_recipient", recipient), *arguments)
+            rows.append(
+                DomainAction(
+                    action_id="lose_agent_card_influence",
+                    actor=player,
+                    arguments=arguments,
+                )
+            )
+    return tuple(rows)
+
+
+def apply_influence_loss(
+    state: GameState,
+    action: DomainAction,
+    ability: Ability,
+    context: dict[str, ActionValue],
+    source: str,
+) -> RuleResult:
+    """Pay the spice, lose the chosen Faction's Influence and arm the arrow's
+    reward (the refusal is the payment handler's). The frame is written back
+    first, with the spice paid, so what the loss records there stays."""
+
+    arguments = dict(action.arguments)
+    faction = Faction(str(arguments["faction"]))
+    recipient = arguments.get("alliance_recipient")
+    if recipient is not None and (
+        isinstance(recipient, bool) or not isinstance(recipient, int)
+    ):
+        raise RuntimeError("Influence loss has an invalid Alliance recipient")
+    spice = influence_loss_spice(ability)
+    owner = state.players[action.actor]
+    paid_owner = replace(
+        owner,
+        resources=replace(owner.resources, spice=owner.resources.spice - spice),
+        spice_spent_turn=owner.spice_spent_turn + spice,
+    )
+    arm_agent_icons(context, ability.armed_icons)
+    settled = advance_after_effect(
+        state, context, replace_player(state.players, paid_owner)
+    )
+    lost = lose_faction_influence(
+        settled,
+        action.actor,
+        faction,
+        1,
+        event_prefix=f"{source}:lost:{faction.value}",
+        alliance_recipient=recipient,
+    )
+    return RuleResult(
+        state=lost.state,
+        events=(resources_paid_event(source, action.actor, spice=spice), *lost.events),
+    )
 
 
 # --- A plain line beside a choice line (stage A3f) --------------------------------

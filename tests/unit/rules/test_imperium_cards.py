@@ -4519,3 +4519,245 @@ def test_firm_grip_text_names_the_arrow_and_the_alliance_line() -> None:
     assert "{solari:2}" in AGENT_EFFECT_TEXT_KO[effect]
     line = reveal_lines(IMPERIUM_CARDS_BY_ID["firm_grip"])[0]
     assert reveal_effect_text(line) == "If you have the Emperor Alliance: +4 Persuasion"
+
+
+# --- Shifting Allegiances ---------------------------------------------------------
+
+
+def test_shifting_allegiances_matches_the_app_table() -> None:
+    # App attribute table: cost 3, 2 copies, no Faction, Landsraad and Spice
+    # Trade, Reveal 2 Persuasion.
+    entry = IMPERIUM_CARDS_BY_ID["shifting_allegiances"]
+    assert entry.card.name == "Shifting Allegiances"
+    assert entry.acquisition_cost == 3
+    assert entry.copies == 2
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:shifting_allegiances:1") is entry
+    deck = content_for(CONFIG).imperium_deck_instance_ids
+    assert "imperium:shifting_allegiances:1" in deck
+
+
+def _shifting_placed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    *,
+    spice: int = 2,
+    influence: Influence | None = None,
+    alliances: tuple[str, ...] = (),
+) -> GameState:
+    """Seat 0 sends Shifting Allegiances to Hall of Oratory (a Landsraad space,
+    no cost, one troop) holding ``spice`` spice and ``influence``."""
+
+    held, _ = _with_card(state, "shifting_allegiances")
+    held = _seat(
+        held,
+        resources=Resources(spice=spice),
+        influence=influence or Influence(fremen=3),
+        alliance_faction_ids=alliances,
+    )
+    return _place(engine, held, "hall_of_oratory", "shifting_allegiances")
+
+
+def _loss_rows(
+    engine: UprisingRulesEngine, state: GameState
+) -> list[dict[str, object]]:
+    return [
+        dict(action.arguments)
+        for action in _wholes(engine, state)
+        if action.action_id == "lose_agent_card_influence"
+    ]
+
+
+def test_shifting_allegiances_loses_one_and_pays_spice_for_two_on_one_faction() -> None:
+    """ "[lose 1 Influence with a chosen Faction] [2 spice] -> [2 Influence with
+    one chosen Faction]" (the card; P0 sweep): an arrow cost, optional [DI
+    p. 9] and paid once [FAQ p. 3]. The cost is the Faction lost and the 2
+    spice; paying leaves one pick of a Faction for both Influence ("두 진영
+    Influence를 한꺼번에 올리는 효과(Power Play, Shifting Allegiances)는 끊을
+    수 없는 한 효과", imperium-base.md 13.3), and the turn cannot end before it
+    is made."""
+
+    engine, state = _start()
+    placed = _shifting_placed(engine, state, influence=Influence(fremen=3))
+    assert _loss_rows(engine, placed) == [{"faction": "fremen"}]
+    paid = _do(engine, placed, "lose_agent_card_influence", faction="fremen")
+    owner = paid.players[0]
+    assert owner.resources.spice == 0
+    assert owner.spice_spent_turn == placed.players[0].spice_spent_turn + 2
+    assert owner.influence.fremen == 2
+    assert sorted(str(f) for f in _influence_rows(engine, paid)) == [
+        "bene_gesserit",
+        "emperor",
+        "fremen",
+        "spacing_guild",
+    ]
+    assert "finish_agent_turn" not in _ids(engine, paid)
+    chosen = _do(engine, paid, "choose_agent_card_influence", faction="emperor")
+    after = chosen.players[0].influence
+    assert after.emperor == placed.players[0].influence.emperor + 2
+    assert after.fremen == 2
+    # One pick paid both Influence: nothing more is chosen.
+    assert not _influence_rows(engine, chosen)
+    settled = _do(engine, chosen, "resolve_board_effect", effect="troops")
+    assert "finish_agent_turn" in _ids(engine, settled)
+
+
+def test_shifting_allegiances_may_lose_and_gain_the_same_faction() -> None:
+    """ "같은 진영을 잃고 얻을 수 있다(결과 +1)" (imperium-base.md 13.2, [FAQ p. 4]):
+    losing Fremen and gaining on Fremen again nets one Influence."""
+
+    engine, state = _start()
+    placed = _shifting_placed(engine, state, influence=Influence(fremen=3))
+    paid = _do(engine, placed, "lose_agent_card_influence", faction="fremen")
+    assert "fremen" in {str(f) for f in _influence_rows(engine, paid)}
+    chosen = _do(engine, paid, "choose_agent_card_influence", faction="fremen")
+    assert chosen.players[0].influence.fremen == 3 + 1
+    assert chosen.players[0].resources.spice == 0
+
+
+def test_shifting_allegiances_at_the_top_regains_what_it_lost() -> None:
+    """A track at 6 is not offered to gain (OQ-060), but the Influence just
+    lost makes room for one: the Faction is offered again, and the second
+    Influence on a cube at 5 is lost."""
+
+    engine, state = _start()
+    placed = _shifting_placed(engine, state, influence=Influence(fremen=6))
+    paid = _do(engine, placed, "lose_agent_card_influence", faction="fremen")
+    assert paid.players[0].influence.fremen == 5
+    chosen = _do(engine, paid, "choose_agent_card_influence", faction="fremen")
+    assert chosen.players[0].influence.fremen == 6
+
+
+def test_shifting_allegiances_cannot_lose_a_faction_without_influence() -> None:
+    """ "Influence가 없는 진영은 잃을 수 없다" (imperium-base.md 13.2): only the
+    Factions the owner has Influence with are offered to lose."""
+
+    engine, state = _start()
+    placed = _shifting_placed(
+        engine, state, influence=Influence(emperor=1, bene_gesserit=2)
+    )
+    assert [row["faction"] for row in _loss_rows(engine, placed)] == [
+        "emperor",
+        "bene_gesserit",
+    ]
+
+
+def test_shifting_allegiances_with_no_influence_is_not_offered() -> None:
+    """With no Influence anywhere the cost cannot be paid: the arrow is not
+    offered and the page greys it out with the reason."""
+
+    engine, state = _start()
+    placed = _shifting_placed(engine, state, influence=Influence())
+    assert "lose_agent_card_influence" not in _ids(engine, placed)
+    found = unavailable_choices(placed, 0, engine.whole_actions(placed, 0))
+    assert found is not None
+    rows = cast("list[dict[str, Any]]", found["rows"])
+    assert {"cost"} <= {row["code"] for row in rows}
+
+
+def test_shifting_allegiances_needs_two_spice() -> None:
+    engine, state = _start()
+    poor = _shifting_placed(engine, state, spice=1)
+    assert "lose_agent_card_influence" not in _ids(engine, poor)
+    rich = _shifting_placed(engine, state, spice=2)
+    assert "lose_agent_card_influence" in _ids(engine, rich)
+
+
+def test_shifting_allegiances_arrow_is_optional_and_paid_once() -> None:
+    """Unused, the owner keeps the spice and the Influence [DI p. 9]; paid, the
+    arrow is gone ([FAQ p. 3])."""
+
+    engine, state = _start()
+    placed = _shifting_placed(engine, state, spice=9)
+    resolved = _do(engine, placed, "resolve_board_effect", effect="troops")
+    finished = _do(engine, resolved, "finish_agent_turn")
+    assert finished.players[0].resources.spice == 9
+    assert finished.players[0].influence == placed.players[0].influence
+    paid = _do(engine, placed, "lose_agent_card_influence", faction="fremen")
+    chosen = _do(engine, paid, "choose_agent_card_influence", faction="bene_gesserit")
+    assert chosen.players[0].resources.spice == 7
+    assert "lose_agent_card_influence" not in _ids(engine, paid)
+    assert "lose_agent_card_influence" not in _ids(engine, chosen)
+
+
+def test_shifting_allegiances_victory_points_follow_the_tracks() -> None:
+    """Dropping to 1 loses the Victory Point of the 2 space and reaching 2 on
+    another track earns one (Influence passes its Victory Point space as in
+    every loss and gain)."""
+
+    engine, state = _start()
+    placed = _shifting_placed(
+        engine, state, influence=Influence(fremen=2, bene_gesserit=0)
+    )
+    paid = _do(engine, placed, "lose_agent_card_influence", faction="fremen")
+    assert paid.players[0].victory_points == placed.players[0].victory_points - 1
+    chosen = _do(engine, paid, "choose_agent_card_influence", faction="bene_gesserit")
+    assert chosen.players[0].victory_points == placed.players[0].victory_points
+
+
+def test_shifting_allegiances_loses_an_alliance_to_the_tied_seat() -> None:
+    """Losing Influence can lose an Alliance (imperium-base.md 6, [FAQ p. 1]):
+    where several tied seats could take the token the owner names one, as every
+    Influence loss asks."""
+
+    engine, state = _start()
+    state = _seat(state, 1, influence=Influence(emperor=4))
+    state = _seat(state, 2, influence=Influence(emperor=4))
+    placed = _shifting_placed(
+        engine,
+        state,
+        influence=Influence(emperor=4),
+        alliances=("emperor",),
+    )
+    rows = _loss_rows(engine, placed)
+    assert rows == [
+        {"alliance_recipient": 1, "faction": "emperor"},
+        {"alliance_recipient": 2, "faction": "emperor"},
+    ]
+    paid = _do(
+        engine, placed, "lose_agent_card_influence", faction="emperor",
+        alliance_recipient=2,
+    )
+    assert paid.players[0].influence.emperor == 3
+    assert paid.players[0].alliance_faction_ids == ()
+    assert "emperor" in paid.players[2].alliance_faction_ids
+
+
+def test_shifting_allegiances_returns_an_unclaimed_alliance() -> None:
+    """With nobody else at 4 the Alliance token goes back to the board."""
+
+    engine, state = _start()
+    placed = _shifting_placed(
+        engine, state, influence=Influence(emperor=4), alliances=("emperor",)
+    )
+    assert _loss_rows(engine, placed) == [{"faction": "emperor"}]
+    paid = _do(engine, placed, "lose_agent_card_influence", faction="emperor")
+    assert paid.players[0].influence.emperor == 3
+    assert paid.players[0].alliance_faction_ids == ()
+
+
+def test_shifting_allegiances_reveals_two_persuasion() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "shifting_allegiances", alone=True)
+    assert _reveal(engine, state)["persuasion"] == 2
+
+
+def test_shifting_allegiances_text_names_the_arrow() -> None:
+    from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
+    from dune_imperium.display.tokens_ko import AGENT_EFFECT_TEXT_KO
+
+    effect = (
+        PersonalCardAgentEffect.MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE
+    )
+    assert "lose 1 Influence" in AGENT_EFFECT_TEXT[effect]
+    assert "2 spice" in AGENT_EFFECT_TEXT[effect]
+    assert "Gain 2 Influence with one chosen Faction" in AGENT_EFFECT_TEXT[effect]
+    assert "{spice:2}" in AGENT_EFFECT_TEXT_KO[effect]
+    assert "{influence_any:2}" in AGENT_EFFECT_TEXT_KO[effect]

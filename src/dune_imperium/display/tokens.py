@@ -491,6 +491,13 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "You may pay 2 solari → Choose one: Gain 1 Spacing Guild Influence / "
             "Gain 1 Bene Gesserit Influence / Gain 1 Fremen Influence"
         ),
+        (
+            PersonalCardAgentEffect
+            .MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE
+        ): (
+            "You may lose 1 Influence with a chosen Faction and pay 2 spice → "
+            "Gain 2 Influence with one chosen Faction"
+        ),
     }
 )
 

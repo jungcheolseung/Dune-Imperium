@@ -380,6 +380,12 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE = (
         "may_pay_two_solari_for_chosen_influence"
     )
+    # Shifting Allegiances: "[lose 1 Influence with a chosen Faction] [2 spice]
+    # -> [2 Influence with one chosen Faction]", an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3]; the same Faction may be lost and gained [FAQ p. 4].
+    MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE = (
+        "may_lose_influence_and_pay_two_spice_for_two_influence"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

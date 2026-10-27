@@ -546,6 +546,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "{influence_spacing_guild:1} / {influence_bene_gesserit:1} / "
         "{influence_fremen:1}"
     ),
+    PersonalCardAgentEffect.MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE: (
+        "{influence_any:1} 선택 잃기·{spice:2} 지불 가능 {arrow_right} "
+        "{influence_any:2} 한 번 선택"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box

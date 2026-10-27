@@ -237,6 +237,7 @@ BOX_ACTION_IDS: Final = frozenset(
         "trash_agent_card_self_for_vp",
         "take_agent_card_combat_icon",
         "lose_agent_card_troop",
+        "lose_agent_card_influence",
         "choose_agent_card_reward",
         "decline_agent_card_payment",
         "pay_corrinth_city",

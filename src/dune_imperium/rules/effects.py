@@ -450,6 +450,8 @@ class OptionalBlockKind(StrEnum):
     TECH_STACKS_EMPTY = "tech_stacks_empty"
     # Waits for the visit's mandatory effects (Reverend Mother's repeat).
     AFTER_THE_SPACE = "after_the_space"
+    # No Faction the owner has Influence with, to lose (Shifting Allegiances).
+    NO_INFLUENCE_TO_LOSE = "no_influence_to_lose"
 
 
 @dataclass(frozen=True, slots=True)

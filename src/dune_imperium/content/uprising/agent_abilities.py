@@ -78,6 +78,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
+    LoseInfluence,
     LoseTroops,
     OpponentsMoveSpiesFromVisitedSpace,
     PayResources,
@@ -1009,6 +1010,26 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ),
                 mark=AbilityMark.OPTIONAL,
                 armed_icons=("influence",),
+            ),
+            # Shifting Allegiances (original game): "[lose 1 Influence with a
+            # chosen Faction] [2 spice] -> [2 Influence with one chosen
+            # Faction]" -- an optional arrow paid once [DI p. 9] [FAQ p. 3]; the
+            # loss and the spice are its cost, and paid, the +2 waits as an
+            # armed "influence" icon whose Faction the owner picks (the same
+            # one may be lost and gained again [FAQ p. 4]; one unbreakable
+            # gain, imperium-base.md 13.3).
+            _BOX.MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE: (
+                Ability(
+                    timing=AbilityTiming.AGENT_BOX,
+                    sections=(
+                        EffectSection(
+                            rewards=(GainInfluence(times=2, one_faction=True),),
+                            costs=(LoseInfluence(1), PayResources(spice=2)),
+                        ),
+                    ),
+                    mark=AbilityMark.OPTIONAL,
+                    armed_icons=("influence",),
+                )
             ),
             # Test of Humanity (original game): "Each opponent chooses: Discard a
             # card -OR- Lose a deployed troop" -- one frame per opponent, the
