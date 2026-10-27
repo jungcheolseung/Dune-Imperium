@@ -134,6 +134,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
+    ShuffleDiscardIntoDeck,
     SolariAtLeast,
     SpendSpecimens,
     SpiceAtLeast,
@@ -535,6 +536,11 @@ def reward_text(reward: Reward) -> str:
             return f"Recruit {count} {_plural(count, 'troop')}"
         case DrawPersonalCards(count=count):
             return f"Draw {count} {_plural(count, 'card')}"
+        case ShuffleDiscardIntoDeck(draw=draw):
+            return (
+                "Shuffle your discard pile into your deck, then draw "
+                f"{draw} {_plural(draw, 'card')}"
+            )
         case DrawIntrigueCards(count=count):
             return f"Draw {count} Intrigue {_plural(count, 'card')}"
         case GainCombatStrength(amount=amount):

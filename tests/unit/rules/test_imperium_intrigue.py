@@ -52,6 +52,12 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.core.chance import ChanceOutcome
+from dune_imperium.core.observation import (
+    known_card_seats,
+    observe_state,
+    peeked_card_id,
+)
 from dune_imperium.display import intrigue_card_text
 from dune_imperium.display.actions import effect_action_text, effect_action_text_ko
 from dune_imperium.display.unavailable import unavailable_choices
@@ -70,6 +76,7 @@ from dune_imperium.rules.intrigue import (
     apply_intrigue_play,
     legal_intrigue_play_actions,
 )
+from dune_imperium.simulation.invariants import check_observation_privacy
 
 CONFIG = RulesetConfig(base_game=BaseGame.IMPERIUM, first_player_seat_zero=True)
 LEADERS = (
@@ -3582,3 +3589,248 @@ def test_demand_respect_two_influence_go_to_one_faction() -> None:
         influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
     )
     assert _plays(capped) == ((DEMAND, 0),)
+
+
+# --- Refocus (Plot, stage P3c) ----------------------------------------------
+
+REFOCUS = _intrigue("refocus")
+
+
+def _refocus_hand(
+    *, deck: int = 4, discard: int = 3
+) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 with Refocus and ``deck`` / ``discard`` of its ten starter cards
+    left in those piles (the rest stay in hand)."""
+
+    engine, state = _start()
+    owner = state.players[0]
+    cards = (*owner.deck, *owner.hand)
+    return engine, _seat(
+        state,
+        intrigue_cards=(REFOCUS,),
+        deck=cards[:deck],
+        discard_pile=cards[deck : deck + discard],
+        hand=cards[deck + discard :],
+    )
+
+
+def _shuffle_outcome(
+    engine: UprisingRulesEngine, state: GameState, order: tuple[int, ...]
+) -> ChanceOutcome:
+    """The recorded permutation of the pending shuffle: its options in
+    ``order``."""
+
+    decision = engine.current_decision(state)
+    assert isinstance(decision, ChanceDecision)
+    return ChanceOutcome(
+        decision_id=decision.decision_id,
+        values=tuple(decision.options[index] for index in order),
+    )
+
+
+def test_refocus_is_one_cost_free_plot_with_one_copy() -> None:
+    # "Shuffle your discard pile into your deck, then: [draw 1]" [Refocus
+    # card, Steam app text]; 1 copy [DI p. 3]. No cost and no condition.
+    entry = intrigue_card_for_instance(REFOCUS)
+    assert entry.card.name == "Refocus"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert not entry.options[0].sections[0].costs
+    assert intrigue_card_text(entry) == [
+        "Plot — Shuffle your discard pile into your deck, then draw 1 card"
+    ]
+    assert "refocus" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_refocus_shuffles_the_discard_pile_into_the_deck_then_draws_one() -> None:
+    # "Shuffle your discard pile into your deck, then: [draw 1]" [Refocus
+    # card]: the deck and the discard pile become one shuffled deck -- a chance
+    # step, imperium-base.md 14 ("Refocus | 아무도 | — | 섞기") -- and the top
+    # card of it is drawn.
+    engine, state = _refocus_hand(deck=4, discard=3)
+    before = state.players[0]
+    assert legal_intrigue_play_actions(state, 0) == (_play(REFOCUS),)
+
+    opened = apply_whole(engine, state, _play(REFOCUS)).state
+    frame = opened.decision_stack[-1]
+    assert frame.kind == "personal_draw_reshuffle"
+    decision = frame.decision
+    assert isinstance(decision, ChanceDecision)
+    # Every card of the deck and of the discard pile is shuffled, no other.
+    assert set(decision.options) == set(before.deck + before.discard_pile)
+    assert decision.count == 7
+    # Nothing of the seat's piles moved before the shuffle; the played card
+    # has already left the hand for the Intrigue discard pile.
+    assert opened.players[0].deck == before.deck
+    assert opened.players[0].discard_pile == before.discard_pile
+    assert opened.players[0].intrigue_cards == ()
+    assert opened.intrigue_discard == (REFOCUS,)
+
+    reversed_order = tuple(reversed(range(7)))
+    settled = engine.apply(opened, _shuffle_outcome(engine, opened, reversed_order))
+    done = settled.state.players[0]
+    new_deck = tuple(reversed(before.deck + before.discard_pile))
+    assert done.hand == (*before.hand, new_deck[0])
+    assert done.deck == new_deck[1:]
+    assert done.discard_pile == ()
+    assert done.intrigue_cards == ()
+    assert settled.state.intrigue_discard == (REFOCUS,)
+    # The turn goes on: the Plot did not end it.
+    assert settled.state.decision_stack[-1].kind == "turn"
+
+
+def test_refocus_with_an_empty_discard_pile_shuffles_the_deck() -> None:
+    # "Refocus | discard가 비었으면 덱을 섞는다" `[FAQ p. 3]` (imperium-base.md
+    # 13.2): the deck is shuffled along with the discard pile, so an empty
+    # discard pile still shuffles it, in the order the chance gives.
+    engine, state = _refocus_hand(deck=5, discard=0)
+    before = state.players[0]
+
+    opened = apply_whole(engine, state, _play(REFOCUS)).state
+    decision = engine.current_decision(opened)
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == before.deck
+
+    order = (3, 1, 4, 0, 2)
+    done = engine.apply(opened, _shuffle_outcome(engine, opened, order)).state
+    shuffled = tuple(before.deck[index] for index in order)
+    assert done.players[0].hand == (*before.hand, shuffled[0])
+    assert done.players[0].deck == shuffled[1:]
+    assert done.players[0].discard_pile == ()
+
+
+def test_refocus_with_an_empty_deck_shuffles_the_discard_pile_into_it() -> None:
+    # The same shuffle with the deck used up: the discard pile alone is the
+    # new deck (the shuffle a draw makes with an empty deck).
+    engine, state = _refocus_hand(deck=0, discard=4)
+    before = state.players[0]
+    assert legal_intrigue_play_actions(state, 0) == (_play(REFOCUS),)
+
+    opened = apply_whole(engine, state, _play(REFOCUS)).state
+    decision = engine.current_decision(opened)
+    assert isinstance(decision, ChanceDecision)
+    assert decision.options == before.discard_pile
+
+    done = _settle(engine, opened).players[0]
+    assert len(done.hand) == len(before.hand) + 1
+    assert len(done.deck) == 3
+    assert done.discard_pile == ()
+    assert set(done.hand + done.deck) == set(before.hand + before.discard_pile)
+
+
+def test_refocus_is_played_with_both_piles_empty_and_fizzles() -> None:
+    # A cost-free effect is played even when every reward fizzles
+    # (OQ-113 (C) (1)): there is nothing to shuffle or draw, so no chance step
+    # opens, nothing moves, and the play is logged as one without effect
+    # (OQ-113 (5)).
+    engine, state = _refocus_hand(deck=0, discard=0)
+    assert legal_intrigue_play_actions(state, 0) == (_play(REFOCUS),)
+    before = state.players[0]
+
+    result = apply_whole(engine, state, _play(REFOCUS))
+
+    assert result.state.decision_stack[-1].kind == "turn"
+    done = result.state.players[0]
+    assert (done.deck, done.hand, done.discard_pile) == (
+        before.deck,
+        before.hand,
+        before.discard_pile,
+    )
+    assert done.intrigue_cards == ()
+    assert result.state.intrigue_discard == (REFOCUS,)
+    assert "intrigue_without_effect" in [event.kind for event in result.events]
+
+
+def test_refocus_logs_the_shuffle_without_its_order() -> None:
+    # "Public: everyone sees the discard pile become the new deck", never the
+    # order (OQ-010): the event carries the seat and the number of discarded
+    # cards shuffled in, and no card id.
+    engine, state = _refocus_hand(deck=4, discard=3)
+    opened = apply_whole(engine, state, _play(REFOCUS)).state
+    result = engine.apply(
+        opened, _shuffle_outcome(engine, opened, (6, 5, 4, 3, 2, 1, 0))
+    )
+
+    shuffled = [e for e in result.events if e.kind == "personal_discard_shuffled"]
+    assert len(shuffled) == 1
+    assert dict(shuffled[0].payload) == {"count": 3, "player": 0}
+
+
+def test_refocus_cards_are_revealed_at_once_in_the_reveal_turn() -> None:
+    # "Reveal turn에 뽑으면 바로 공개해 이번 turn에 쓴다" `[FAQ p. 3]`
+    # (imperium-base.md 13.2): the card drawn after the shuffle goes straight
+    # into play in the Reveal turn.
+    engine, state = _refocus_hand(deck=5, discard=3)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    before = revealed.players[0]
+    assert _play(REFOCUS) in engine.whole_actions(revealed, 0)
+
+    opened = apply_whole(engine, revealed, _play(REFOCUS)).state
+    result = engine.apply(opened, _shuffle_outcome(engine, opened, tuple(range(8))))
+    done = result.state.players[0]
+
+    assert done.hand == before.hand == ()
+    assert len(done.in_play) == len(before.in_play) + 1
+    assert done.in_play[-1] == (before.deck + before.discard_pile)[0]
+    assert [e.kind for e in result.events].count("personal_card_late_revealed") == 1
+    assert done.discard_pile == ()
+
+
+def test_refocus_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _refocus_hand()
+    actions = engine.whole_actions(state, 0)
+    assert _play(REFOCUS) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (REFOCUS,)
+    assert placed.players[0].discard_pile == state.players[0].discard_pile
+
+
+def test_refocus_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _refocus_hand()
+    state = _seat(state, 1, intrigue_cards=(REFOCUS,))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_refocus_shuffle_shows_no_seat_the_order_it_chose() -> None:
+    # Hidden information (imperium-base.md 14: nobody learns an order): two
+    # different shuffles of the same piles leave every other seat's view and
+    # the privacy invariant the same.
+    engine, state = _refocus_hand(deck=4, discard=3)
+    opened = apply_whole(engine, state, _play(REFOCUS)).state
+    first = engine.apply(
+        opened, _shuffle_outcome(engine, opened, tuple(range(7)))
+    ).state
+    second = engine.apply(
+        opened, _shuffle_outcome(engine, opened, tuple(reversed(range(7))))
+    ).state
+
+    assert first.players[0].hand != second.players[0].hand
+    for seat in (1, 2, 3):
+        assert observe_state(first, seat) == observe_state(second, seat)
+    check_observation_privacy(first)
+    check_observation_privacy(second)
+
+
+def test_refocus_shows_paul_atreides_the_new_top_card() -> None:
+    # Paul Atreides "can look at the top card of your deck at any time"
+    # (imperium-base.md 12, 14): after the shuffle his seat is told the new
+    # top card, and nobody else is (``known_card_seats``).
+    engine, state = _refocus_hand(deck=4, discard=3)
+    state = _seat(state, leader_id="paul_atreides")
+    opened = apply_whole(engine, state, _play(REFOCUS)).state
+    done = engine.apply(opened, _shuffle_outcome(engine, opened, tuple(range(7)))).state
+
+    top = done.players[0].deck[0]
+    assert peeked_card_id(done, 0) == top
+    assert known_card_seats(done)[top] == frozenset({0})
+    assert peeked_card_id(done, 1) == ""

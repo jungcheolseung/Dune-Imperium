@@ -37,6 +37,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitTroops,
     RetreatTroops,
     RevealPersuasionThisRound,
+    ShuffleDiscardIntoDeck,
     SpiceMustFlowCardsAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import (
@@ -344,6 +345,14 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("refocus", "Refocus"),
         copies=1,
+        # "Shuffle your discard pile into your deck, then: [draw 1]" [Refocus
+        # card, app text]: a cost-free Plot, so it is played even with both
+        # piles empty and then fizzles (OQ-113 (C)). The deck is shuffled
+        # along with the discard pile -- "discard가 비었으면 덱을 섞는다"
+        # [FAQ p. 3] (imperium-base.md 13.2) -- and nobody learns an order:
+        # the shuffle is a chance step (imperium-base.md 14, "Refocus |
+        # 아무도 | — | 섞기").
+        options=(_plot(EffectSection(rewards=(ShuffleDiscardIntoDeck(1),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("reinforcements", "Reinforcements"),

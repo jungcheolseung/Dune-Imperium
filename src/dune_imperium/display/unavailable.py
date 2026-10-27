@@ -129,6 +129,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RevealContractsTakeOne,
     Reward,
     SetAsideImperiumRowCard,
+    ShuffleDiscardIntoDeck,
     SummonSandworm,
     TakeContract,
     TrashDiscardPileCard,
@@ -828,7 +829,7 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
     match reward:
         case DeployFromGarrison():
             return _deploy_reason(state, seat)
-        case DrawPersonalCards():
+        case DrawPersonalCards() | ShuffleDiscardIntoDeck():
             return _NO_CARD_TO_DRAW
         case Research():
             return (

@@ -161,6 +161,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
+    ShuffleDiscardIntoDeck,
     SolariAtLeast,
     SpendSpecimens,
     SpiceAtLeast,
@@ -764,6 +765,8 @@ def reward_text_ko(reward: Reward) -> str:
             return f"{{troop:{count}}}"
         case DrawPersonalCards(count=count):
             return f"{{draw:{count}}}"
+        case ShuffleDiscardIntoDeck(draw=draw):
+            return f"{{discard_pile}}을 {{deck}}에 섞은 뒤 {{draw:{draw}}}"
         case DrawIntrigueCards(count=count):
             return f"{{intrigue:{count}}}"
         case GainCombatStrength(amount=amount):

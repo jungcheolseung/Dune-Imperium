@@ -74,6 +74,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RevealPersuasionThisRound,
     Reward,
     SetAsideImperiumRowCard,
+    ShuffleDiscardIntoDeck,
     SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
@@ -94,7 +95,10 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_bonds import trashable_cards
-from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.card_draw import (
+    draw_or_request_personal_cards,
+    shuffle_discard_into_deck,
+)
 from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.conditions import (
     owner_condition_holds,
@@ -838,6 +842,11 @@ def reward_can_change_something(
             return gather_intelligence_draw_available(state, player) or any(
                 isinstance(cost, DiscardFromHand) for cost in costs
             )
+        case ShuffleDiscardIntoDeck():
+            # The deck is shuffled along with the discard pile, so a card in
+            # either pile gives the shuffle (and its draw) something to do
+            # [FAQ p. 3].
+            return gather_intelligence_draw_available(state, player)
         case Research():
             # Past the second genetic marker Research draws a card instead
             # [Immortality p. 6]; before it the token always has a space to
@@ -1298,6 +1307,7 @@ def apply_rewards(
     reserve_acquisitions: list[str] = []
     tech_acquisitions: list[int] = []
     personal_draws = 0
+    shuffle_draws: list[int] = []
     intrigue_draws = 0
     contracts = 0
     fixed_influence: list[GainInfluence] = []
@@ -1353,6 +1363,8 @@ def apply_rewards(
                 )
             case DrawPersonalCards(count=count):
                 personal_draws += count
+            case ShuffleDiscardIntoDeck(draw=draw):
+                shuffle_draws.append(draw)
             case DrawIntrigueCards(count=count):
                 intrigue_draws += count
             case GainInfluence() if not reward.requires_choice:
@@ -1517,6 +1529,14 @@ def apply_rewards(
         )
         next_state = researched.state
         events.extend(researched.events)
+    for index, draw in enumerate(shuffle_draws):
+        # Refocus: the shuffle is a chance frame on top, and its draw waits in
+        # it until the permutation is applied.
+        shuffled = shuffle_discard_into_deck(
+            next_state, player, draw, source=f"{source}:refocus:{index}"
+        )
+        next_state = shuffled.state
+        events.extend(shuffled.events)
     if personal_draws:
         drawn = draw_or_request_personal_cards(
             next_state, player, personal_draws, source=source

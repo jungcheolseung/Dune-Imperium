@@ -873,6 +873,25 @@ class DrawPersonalCards:
 
 
 @dataclass(frozen=True, slots=True)
+class ShuffleDiscardIntoDeck:
+    """Refocus (the original game): shuffle the discard pile into the deck,
+    then draw ``draw`` cards "Shuffle your discard pile into your deck, then:
+    [draw 1]" [Refocus card, app text].
+
+    The deck is shuffled along with the discard pile, so an empty discard
+    pile still shuffles the deck [FAQ p. 3]; with both empty there is nothing
+    to shuffle or draw. Nobody learns an order: the shuffle is a chance step
+    (docs/rules/imperium-base.md 14).
+    """
+
+    draw: int = 1
+
+    def __post_init__(self) -> None:
+        if self.draw < 1:
+            raise ValueError("a shuffle then draws at least one card")
+
+
+@dataclass(frozen=True, slots=True)
 class DrawIntrigueCards:
     """Draw from the shared Intrigue deck, reshuffling if required."""
 
@@ -1663,6 +1682,7 @@ type Reward = (
     | GainVictoryPoints
     | RecruitTroops
     | DrawPersonalCards
+    | ShuffleDiscardIntoDeck
     | DrawIntrigueCards
     | GainCombatStrength
     | GainInfluence
