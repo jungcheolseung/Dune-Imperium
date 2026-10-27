@@ -46,8 +46,16 @@ from dune_imperium.rules.effect_steps import completed_whole, presents_steps
 # (1): only its seat sees it until the space pick plays the card): its card
 # may be one the table already knows in hand, and its graft choice is no
 # card at all, so redacting the hidden card ids alone would leave them.
+# The original game's Baron Harkonnen chooses his two Masterstroke Factions
+# in secret too (docs/rules/imperium-base.md 14), until his deployment
+# reveals them.
 SEALED_ACTION_IDS: Final = frozenset(
-    {"scouts_secret_pick", "scouts_bid", "choose_agent_card"}
+    {
+        "scouts_secret_pick",
+        "scouts_bid",
+        "choose_agent_card",
+        "choose_masterstroke_faction",
+    }
 )
 # The argument keys a sealed step shows other seats, redacted, when only
 # some of its choices carry the rest: a card pick with ``graft`` would say
@@ -58,7 +66,11 @@ EFFECT_PICKED_EVENT: Final = "effect_picked"
 # The whole actions a step ends come from the rules' providers alone, so any
 # engine instance gives them.
 _ENGINE: Final = UprisingRulesEngine()
-# Events of the step that reveals sealed choices when they fall due.
+# Events of the step that reveals sealed choices when they fall due. The
+# Masterstroke reveal (``masterstroke_revealed``) is not one: it falls due
+# only on the Baron's own turn, by his own deployment, so the one seat whose
+# step runs into it already knows both Factions, and its preview (the
+# Conflict strength of that very deployment) shows nothing he does not.
 SEALED_REVEAL_EVENTS: Final = frozenset(
     {"scouts_secret_revealed", "scouts_bid_revealed"}
 )

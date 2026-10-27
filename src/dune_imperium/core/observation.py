@@ -363,7 +363,7 @@ def resolving_intrigue_ids(state: GameState) -> tuple[str, ...]:
     return tuple(resolving)
 
 
-_SEALED_VALUE_PREFIXES: Final = ("scouts_pick:", "scouts_bid:")
+_SEALED_VALUE_PREFIXES: Final = ("scouts_pick:", "scouts_bid:", "masterstroke:")
 
 
 def secret_pick_id(event_round: int, seat: int) -> str:
@@ -376,6 +376,12 @@ def secret_bid_id(round_number: int, seat: int) -> str:
     """The registry id of ``seat``'s Arrakeen Scouts sealed bid."""
 
     return f"{_SEALED_VALUE_PREFIXES[1]}{round_number}:{seat}"
+
+
+def masterstroke_id(seat: int) -> str:
+    """The registry id of the Baron at ``seat``'s two Masterstroke Factions."""
+
+    return f"{_SEALED_VALUE_PREFIXES[2]}{seat}"
 
 
 def is_sealed_value_id(value: str) -> bool:
@@ -406,7 +412,9 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     Ceremony's two Intrigue cards, Kota Odax's bottom Tech tiles and Secret
     Project. An Arrakeen Scouts secret pick is listed under
     ``secret_pick_id`` for its seat until it is due, and a sealed bid under
-    ``secret_bid_id`` until every seat has confirmed. This is the single source the
+    ``secret_bid_id`` until every seat has confirmed, and the original
+    game's Baron Harkonnen's Masterstroke Factions under ``masterstroke_id``
+    until he reveals them. This is the single source the
     server uses to decide what an event log may show and which steps an undo
     may take back, so every hidden zone and every private glimpse belongs
     here (``tests/unit/test_known_card_seats.py`` checks it against
@@ -477,6 +485,11 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     for seat, _, _ in state.scouts_bids:
         # A sealed bid likewise, until the last seat confirms.
         known[secret_bid_id(state.round_number, seat)] = frozenset({seat})
+    for player in state.players:
+        # The Baron's two Factions are his alone until his deployment
+        # reveals them (docs/rules/imperium-base.md 14).
+        if player.masterstroke_factions and not player.masterstroke_revealed:
+            known[masterstroke_id(player.player_id)] = frozenset({player.player_id})
     return known
 
 

@@ -5,7 +5,9 @@ secretly choose 2 Factions. When you deploy 4+ troops to the Conflict in a
 turn, reveal your choices and gain one Influence with each." [Baron
 Vladimir Harkonnen card]. The two Factions are chosen after every other
 setup step, before the first round [FAQ p. 1], from four different tokens
-[DI p. 13]; they are the Baron's alone until revealed (section 14). The
+[DI p. 13]; they are the Baron's alone until revealed (section 14:
+``core.observation.masterstroke_id`` in ``known_card_seats``, and the
+server's log seals each pick from the other seats). The
 reveal is mandatory the first time it is due and happens once per game
 (OQ-115, user ruling 2026-10-22): due when the troops deployed in his own
 turn stand in the Conflict four together -- the turn's deployment peak that
