@@ -59,6 +59,99 @@ workflow, not an import into Codex's account-level memory.
   that is outside the current task.
 - Do not rewrite, amend, squash, or otherwise alter existing commits unless the
   user explicitly asks for that history operation.
+- Push only when the user asks.
+
+## Worktrees
+
+- Do branch work in a worktree inside the project directory, never outside it
+  (user decision 2026-10-06): Claude Code's live in `.claude/worktrees/`,
+  Orca's in `.worktrees/` (Orca's worktree base path for this project).
+- Keep the main checkout on `master`. Other sessions use it too, so do not
+  switch its branch, and never use a bare `git stash` (every worktree shares
+  the stash).
+- Prepare a new worktree with `scripts/setup_worktree.sh`; Orca runs it from
+  `orca.yaml`. It links `assets` by absolute path, because the main checkout's
+  relative `../Dune-Imperium-assets` does not resolve from a nested worktree.
+  It also runs `uv sync --extra rl --extra ui --extra train`.
+- A worktree has no `scripts/e2e/.venv`. Run the main checkout's `scripts/e2e`
+  with `E2E_REPO=<worktree path>` instead; this is right only while master has
+  not moved past the branch point.
+- Once a branch is merged and pushed, remove its worktree and delete the
+  branch.
+
+## Merging to master
+
+- Merge from master's side, in the main checkout after checking that
+  `git branch --show-current` prints `master`: run
+  `git merge --no-ff --no-commit <branch>`, check the merged tree as below, and
+  only then commit. Never merge master into the branch first: its merge commit
+  would show master's unrelated commits as the branch's content.
+- Record the merge at the top of the month's worklog; touch the handoff only
+  as "Work log and handoff" says.
+
+### Checks before a merge: scale them to what changed
+
+User decision, 2026-10-27 ("엔진 변화 없으면 안 돌아도 되는거 아닌가"): what a
+merge needs depends on what the branch changed. Unless it changes only
+documentation, run the full pytest, ruff and mypy on the merged tree (a few
+minutes). Then add, by the widest tier the branch touches:
+
+1. **The engine** (rules, cards and other content, codec, observation, engine
+   events): the full engine gate at every engine sub-stage (identity check,
+   records corpus, soak, saves and problem set) and every e2e script.
+   `scripts/e2e/run_all.py` runs them 4 at a time (see its README).
+2. **Code the play server runs, outside the engine** (AI seats and the
+   `training/` modules they import — `torch_policy`, `older_teacher`,
+   `policy`, `network` — the server, the UI): only the e2e scripts that cover
+   the changed code, e.g. `scripts/e2e/search_seats.py` for the search seat. A
+   change to an AI seat also shows that the seat plays the same moves on the
+   same seeds, unless changing them is the point (then it is measured).
+3. **Training, measurement and docs only** (`scripts/train`, `scripts/ab`,
+   `training/` modules no seat or server imports, `docs/`): nothing more.
+
+## Coordinating sessions and agents
+
+- One coordinator session sets CPU priorities and the order of work across
+  sessions and agents (user decision 2026-10-25). Its board is the git-ignored
+  `tmp/coordination/cpu-board.md` on the machine that runs the work; read it
+  before starting anything heavy.
+- Book heavy work on the board before starting it: the full pytest, the e2e
+  batch, training, measurement tournaments, soaks, and multi-agent fan-outs.
+  Give the owner, the job, its size (workers, memory, time) and the start.
+  Then tell the coordinator and wait for its go. When the user ordered the job
+  directly, a notice is enough. Write the end on the board when it finishes.
+- Follow the board's priorities and any freeze it announces. The user's live
+  game on the play server comes first. A freeze is, for example, no engine
+  change while another session reworks the engine.
+- Never touch the running play server or `checkpoints/play/`.
+- Before a run of more than about an hour, ask the user which candidate to
+  run and for how long.
+- Before a fan-out to several agents, tell the user how many agents and
+  roughly how many tokens it will take. Get approval, and do not grow the
+  fan-out past what was approved.
+
+## Long-running jobs and temporary files
+
+- Detach any job longer than a few minutes from the agent that starts it: an
+  agent's exit (a login, a restart) sends SIGTERM to its background jobs
+  (2026-10-26). Use its own session under `nohup`; macOS has no `setsid`
+  command, so use
+  `nohup python3 -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' <command> &`.
+  Note its pid on the board.
+- Wait on a sentinel file or a status file, never on process presence:
+  `pgrep -f <pattern>` matches the waiting shell itself.
+- Stop a job as soon as it stops being useful. Before wrapping up, and before
+  launching anything memory-hungry, check for orphaned worker pools:
+  `ps -A -o pid,ppid,pgid,etime,command | grep '[m]ultiprocessing'`. Lines
+  with ppid 1 are orphans.
+- No file of this project lives outside the project directory (user decision
+  2026-10-06). Temporary files (official-rule working copies, scratch scripts,
+  logs, task ledgers) go under the git-ignored `tmp/`, a session's own under
+  `tmp/<tool>/<session id>/` (for example `tmp/claude/…`, `tmp/codex/…`).
+  They never go in the system `/tmp` or into tracked files. Saves default to
+  `saves/`, and the search AI's network to `checkpoints/play/search.pt`
+  (`dune_imperium.paths`). The one exception is the sibling private assets
+  checkout `../Dune-Imperium-assets` behind the `assets` link.
 
 ## Rule sources
 

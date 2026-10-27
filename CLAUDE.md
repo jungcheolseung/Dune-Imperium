@@ -73,27 +73,11 @@ took 47% of about 20 agent-hours (running the tests themselves took only about
 - Fix a review finding directly, either the reviewer or the main session.
   Send it back for re-review only when the fix changes the design.
 - For each item, run only the tests that cover it. Before a merge or a
-  handoff, run the checks in "Checks before a merge" below once per batch.
+  handoff, run the checks in AGENTS.md "Checks before a merge" once per batch.
 
-## Checks before a merge: scale them to what changed
-
-User decision, 2026-10-27 ("엔진 변화 없으면 안 돌아도 되는거 아닌가"): what a
-merge needs depends on what the branch changed. Unless it changes only
-documentation, run the full pytest, ruff and mypy on the merged tree (a few
-minutes). Then add, by the widest tier the branch touches:
-
-1. **The engine** (rules, cards and other content, codec, observation, engine
-   events): the full engine gate at every engine sub-stage (identity check,
-   records corpus, soak, saves and problem set) and every e2e script.
-   `scripts/e2e/run_all.py` runs them 4 at a time (see its README).
-2. **Code the play server runs, outside the engine** (AI seats and the
-   `training/` modules they import — `torch_policy`, `older_teacher`,
-   `policy`, `network` — the server, the UI): only the e2e scripts that cover
-   the changed code, e.g. `scripts/e2e/search_seats.py` for the search seat. A
-   change to an AI seat also shows that the seat plays the same moves on the
-   same seeds, unless changing them is the point (then it is measured).
-3. **Training, measurement and docs only** (`scripts/train`, `scripts/ab`,
-   `training/` modules no seat or server imports, `docs/`): nothing more.
+Merging, worktrees, the coordination board, detaching long jobs and temporary
+files are shared with every tool, so they live in AGENTS.md (moved there
+2026-10-27 for Orca's Codex and Claude workers).
 
 ## Rule changes: verify before you act
 
@@ -109,23 +93,21 @@ read its "지금 지키는 규칙" summary at session start.
 Soaks, sweeps, tournaments and the full test suite take minutes. Run them with
 `run_in_background: true` and then **do other work** -- a completion
 notification arrives on its own. Do not write a shell loop to wait for them.
+AGENTS.md "Long-running jobs and temporary files" covers detaching, waiting
+and orphaned workers for every tool; the points below are Claude Code's own.
 
 - To block on a task deliberately, use `TaskOutput` with `block: true`. To end
   one, use `TaskStop` with its task id; `pkill` on the id does not deregister
   it.
-- If a shell wait is unavoidable, wait on a file or a sentinel string, never on
-  process presence. `pgrep -f <pattern>` matches full command lines
-  **including the waiting shell itself**, so `until ! pgrep -f "pytest"` never
-  exits. Use `pgrep -x`, or `pgrep -f pat | grep -vw $$`.
+- If a shell wait is unavoidable, wait on a file or a sentinel string. Since
+  `pgrep -f` matches the waiting shell, `until ! pgrep -f "pytest"` never
+  exits; use `pgrep -x`, or `pgrep -f pat | grep -vw $$`.
 - Stop a task as soon as it stops being useful, and sweep for leftovers before
   wrapping up. When reporting what is running, check the task list, not `ps` --
   they are tracked separately (`docs/lessons.md`, 2026-09-10).
 - A finished task can still leave processes: a worker pool whose parent died
-  (`BrokenProcessPool`, a killed run) never exits by itself. Before wrapping
-  up, and before launching anything memory-hungry, run
-  `ps -A -o pid,ppid,pgid,etime,command | grep '[m]ultiprocessing'`; lines with
-  **ppid 1** are orphans (36 of them held 947 MiB here for 2.7 days,
-  `docs/lessons.md` 2026-09-19).
+  (`BrokenProcessPool`, a killed run) never exits by itself (36 orphans held
+  947 MiB here for 2.7 days, `docs/lessons.md` 2026-09-19).
 
 ### Background-task ledger (mandatory; broken three times, see `docs/lessons.md` 2026-09-11)
 
@@ -156,14 +138,8 @@ The harness has no "list tasks" tool, so the task list is one you keep yourself:
 - Card slices follow the `Play <Card>` / `Document <Card>` commit pairing; keep
   code and its tests in the `Play` commit and roadmap/audit updates in the
   `Document` commit.
-- No file of this project lives outside the project directory (user decision,
-  2026-10-06). Temporary files (official-rule working copies, scratch scripts,
-  logs, the task ledger) go under the git-ignored `tmp/` at the project root —
-  e.g. `tmp/claude/<session id>/` for a session's scratch work — not the
-  session scratchpad or `/tmp`, and never into tracked files. Saves default to
-  `saves/` and the search AI's network to `checkpoints/play/search.pt`
-  (`dune_imperium.paths`). The one exception is the sibling private assets
-  checkout `../Dune-Imperium-assets` behind the `assets` symlink.
+- Temporary files follow AGENTS.md: a session's scratch work and its task
+  ledger go under `tmp/claude/<session id>/`, not the session scratchpad.
 - `assets/rulebooks/*.pdf` are the user's local reading copies; use
   `scripts/prepare_official_rules.py` and the official URLs instead unless the
   user explicitly asks you to open a local PDF.
