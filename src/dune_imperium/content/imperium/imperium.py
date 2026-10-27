@@ -476,10 +476,21 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         ),
         play_data_complete=True,
     ),
+    # App table: cost 1, 2 copies, no Faction, City and Spice Trade, Reveal 1
+    # Persuasion and 1 sword. Agent: no box (the icons only). Reveal: "[P1][S1]"
+    # and "Retreat up to two of your troops" -- from the Conflict to the garrison
+    # [DI p. 16], 0 to 2 ("up to" [FAQ p. 3], P0 sweep); troops only (P7).
     ImperiumCardEntry(
         card=imperium_card("scout", "Scout"),
         copies=2,
         acquisition_cost=1,
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("shifting_allegiances", "Shifting Allegiances"),

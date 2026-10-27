@@ -256,6 +256,7 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _TROOP_MOVE_ACTIONS,
     _Choice.MAY_DEPLOY_ONE_TROOP: frozenset({"deploy_reveal_card_troop"}),
     _Choice.MAY_DEPLOY_UP_TO_THREE_TROOPS: frozenset({"deploy_reveal_card_troops"}),
+    _Choice.MAY_RETREAT_UP_TO_TWO_TROOPS: frozenset({"retreat_reveal_card_troops"}),
     _Choice.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: frozenset(
         {"gain_two_reveal_persuasion", "gain_two_reveal_swords"}
     ),
@@ -4385,6 +4386,8 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP
         else "You may deploy up to three troops from your garrison to the Conflict"
         if effect is PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS
+        else "You may retreat up to two of your troops"
+        if effect is PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS
         else "You may lose two troops for two specimens"
         if effect is _LOSE_TROOPS_FOR_SPECIMENS
         else "You may trash this card for one Influence with each Faction"

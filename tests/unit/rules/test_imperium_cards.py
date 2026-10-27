@@ -3720,6 +3720,94 @@ def test_sardaukar_legion_text_names_the_count() -> None:
     assert "{troop:3}" in REVEAL_CHOICE_EFFECT_TEXT_KO[effect]
 
 
+# --- Scout
+
+
+def test_scout_matches_the_app_table() -> None:
+    # App attribute table: cost 1, 2 copies, no Faction, City and Spice Trade,
+    # Reveal 1 Persuasion and 1 sword.
+    entry = IMPERIUM_CARDS_BY_ID["scout"]
+    assert entry.card.name == "Scout"
+    assert entry.acquisition_cost == 1
+    assert entry.copies == 2
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 1)
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:scout:1") is entry
+
+
+def test_scout_agent_box_is_empty() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "scout")
+    placed = _place(engine, state, "secure_contract", "scout")
+    assert "resolve_agent_card_effect" not in _ids(engine, placed)
+
+
+def test_scout_retreats_up_to_two_troops_to_the_garrison() -> None:
+    """"Retreat up to two of your troops" [Scout card]; the retreat goes to the
+    garrison [DI p. 16]. Three troops stand in the Conflict: 6 strength and the
+    sword make 7; retreating two leaves one troop, 2 and the sword, 3."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "scout", garrison=0, conflict=3)
+    context = dict(revealed.decision_stack[-1].context)
+    assert (context["persuasion"], context["sword_strength"]) == (1, 1)
+    assert revealed.players[0].combat_strength == 6 + 1
+    assert _counts(engine, revealed, "retreat_reveal_card_troops") == {1, 2}
+    retreated = _do(engine, revealed, "retreat_reveal_card_troops", count=2)
+    after = retreated.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (2, 1)
+    assert after.troops_supply == revealed.players[0].troops_supply
+    assert after.combat_strength == 2 + 1
+    assert "retreat_reveal_card_troops" not in _ids(engine, retreated)
+
+
+def test_scout_retreats_only_the_troops_in_the_conflict() -> None:
+    engine, state = _start()
+    one = _revealed_alone(engine, state, "scout", garrison=2, conflict=1)
+    assert _counts(engine, one, "retreat_reveal_card_troops") == {1}
+    none = _revealed_alone(engine, state, "scout", garrison=3, conflict=0)
+    assert _counts(engine, none, "retreat_reveal_card_troops") == set()
+    # With no troop left in the Conflict the sword counts for nothing
+    # ("Conflict에 troop이 하나도 없으면 0" [DI p. 11]).
+    alone = _do(engine, one, "retreat_reveal_card_troops", count=1)
+    assert alone.players[0].troops_conflict == 0
+    assert alone.players[0].combat_strength == 0
+
+
+def test_scout_may_retreat_none() -> None:
+    """"Up to" allows none [FAQ p. 3]: the troops stay and no refusal exists."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "scout", garrison=0, conflict=3)
+    assert not {a for a in _ids(engine, revealed) if a.startswith("decline_")}
+    finished = _do(engine, revealed, "finish_reveal")
+    assert finished.players[0].troops_conflict == 3
+    assert finished.players[0].combat_strength == 6 + 1
+
+
+def test_two_scouts_retreat_two_troops_each() -> None:
+    """Each Scout is its own choice: the same row of both is offered once, and
+    taking it uses one Scout up; the other still retreats two more."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(
+        engine, state, "scout", garrison=0, conflict=5, copies=2
+    )
+    assert _counts(engine, revealed, "retreat_reveal_card_troops") == {1, 2}
+    first = _do(engine, revealed, "retreat_reveal_card_troops", count=2)
+    assert _counts(engine, first, "retreat_reveal_card_troops") == {1, 2}
+    second = _do(engine, first, "retreat_reveal_card_troops", count=2)
+    after = second.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (4, 1)
+    assert "retreat_reveal_card_troops" not in _ids(engine, second)
+
+
 
 
 def test_the_counted_troop_moves_are_staged_rows_of_the_original_catalog() -> None:
@@ -3734,6 +3822,7 @@ def test_the_counted_troop_moves_are_staged_rows_of_the_original_catalog() -> No
     engine, state = _start()
     for card_id, verb, garrison, conflict, counts in (
         ("sardaukar_legion", "deploy", 5, 0, {1, 2, 3}),
+        ("scout", "retreat", 0, 3, {1, 2}),
     ):
         revealed = _revealed_alone(
             engine, state, card_id, garrison=garrison, conflict=conflict

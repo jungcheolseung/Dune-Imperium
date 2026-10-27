@@ -254,6 +254,11 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.MAY_DEPLOY_UP_TO_THREE_TROOPS: _choice(
                 _line(DeployFromGarrison(3)), mark=_OPTIONAL
             ),
+            # Scout (original game): "Retreat up to two of your troops" to the
+            # garrison [DI p. 16], none included.
+            _CHOICE.MAY_RETREAT_UP_TO_TWO_TROOPS: _choice(
+                _line(RetreatTroops(0, 2)), mark=_OPTIONAL
+            ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
             _CHOICE.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: _choice(

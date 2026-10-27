@@ -546,6 +546,8 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # Sardaukar Legion: "Deploy up to three troops from your garrison to the
     # Conflict" ("up to" allows none [FAQ p. 3]).
     MAY_DEPLOY_UP_TO_THREE_TROOPS = "may_deploy_up_to_three_troops"
+    # Scout: "Retreat up to two of your troops" [DI p. 16].
+    MAY_RETREAT_UP_TO_TWO_TROOPS = "may_retreat_up_to_two_troops"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -576,6 +578,7 @@ IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = froz
         PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE,
         PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY,
         PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS,
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
     }
 )
 
