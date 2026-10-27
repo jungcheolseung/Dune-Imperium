@@ -246,6 +246,9 @@ _TRASH_TO_DRAW_IF_BOND: Final = (
 _TRASH_AND_SPICE_IF_BOND: Final = (
     PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND
 )
+# The boxes whose conditioned icon waits for the turn's end while an
+# optional icon is all they still offer (``box_is_optional``).
+_WAITING_ICON_BOXES: Final = (_TRASH_AND_SPICE_IF_BOND,)
 # The boxes whose black trash icon is one of several icons.
 _TRASH_ICON_BOXES: Final = (_TRASH_TO_DRAW_IF_BOND, _TRASH_AND_SPICE_IF_BOND)
 AGENT_ICON_TROOPS: Final = "troops"
@@ -3120,10 +3123,14 @@ def box_is_optional(state: GameState) -> bool:
         )
         if set(icons) <= optional_icons:
             return True
+        if effect not in _WAITING_ICON_BOXES:
+            return False
         # A conditioned icon that is not offered now waits for the turn's end
         # (OQ-057 (1)): the box is then optional when an optional icon is all
         # it still offers (Gene Manipulation's black trash icon beside the
-        # spice its Bond has to meet).
+        # spice its Bond has to meet). Only the original game's box for now:
+        # Uprising's Tread in Darkness keeps its behaviour until the same
+        # reading is confirmed for it (plan 16.9).
         offered = {
             dict(row.arguments).get("effect")
             for row in legal_agent_card_icon_actions(
