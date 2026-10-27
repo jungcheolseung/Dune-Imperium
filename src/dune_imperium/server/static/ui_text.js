@@ -1077,8 +1077,8 @@ const UI_TEXT = {
     "en": "{spy} back in the box: {{count}}"
   },
   "panels.track_spies_owed": {
-    "ko": "{spy} {{count}} 빚짐",
-    "en": "{{count}} {spy} owed"
+    "ko": "놓을 {spy} {{count}}",
+    "en": "{{count}} {spy} to place"
   },
   "panels.standings_garrison_header": {
     "ko": "{garrison} {troop}",

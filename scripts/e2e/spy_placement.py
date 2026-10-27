@@ -182,7 +182,7 @@ def fixtures(page) -> None:
     # panel counts them beside its Spy supply, and only while it owes any.
     owed_text = """() => [...document.querySelectorAll('.stat')]
       .map((node) => node.textContent)
-      .filter((text) => text.includes('빚짐') || text.includes('owed'))"""
+      .filter((text) => text.includes('놓을') || text.includes('to place'))"""
     page.evaluate("state.busy = false; state.view.players[1].track_spies_owed = 2; render()")
     owed = page.evaluate(owed_text)
     check.ok(
