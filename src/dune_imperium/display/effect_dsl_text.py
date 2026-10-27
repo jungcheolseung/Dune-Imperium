@@ -538,6 +538,10 @@ def reward_text(reward: Reward) -> str:
             # "Deploy up to N troops from your garrison to the Conflict"
             # [Detonation card face] [Counterattack card face] [Twisted
             # Devious card face] — the player may deploy fewer.
+            if up_to is None:
+                # "Deploy any number of your garrisoned troops to the
+                # Conflict" [Rapid Mobilization card].
+                return "Deploy any number of troops from your garrison to the Conflict"
             return (
                 f"Deploy up to {up_to} {_plural(up_to, 'troop')} from your"
                 " garrison to the Conflict"

@@ -769,6 +769,10 @@ def reward_text_ko(reward: Reward) -> str:
             # Devious card face] — the player may deploy fewer; "Deploy (to
             # the Conflict) | 배치" [Main p. 10], [Main p. 20], "garrison |
             # 주둔지" [Bloodlines glossary row].
+            if up_to is None:
+                # "any number" [Rapid Mobilization card]: the bare troop icon
+                # and "원하는 수만큼" as for the unlimited retreat.
+                return "{garrison}에서 {troop} 원하는 수만큼 {conflict}에 배치"
             return f"{{garrison}}에서 {{troop:{up_to}}} 이하를 {{conflict}}에 배치"
         case TrashPersonalCard(
             hand_only=hand_only,

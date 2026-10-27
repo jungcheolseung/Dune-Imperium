@@ -16,7 +16,9 @@ cards iterates ``INTRIGUE_CARDS`` instead.
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    DeployFromGarrison,
     DeployTheseTroops,
     DrawPersonalCards,
     EffectSection,
@@ -24,6 +26,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluence,
     GainResources,
     GainVictoryPoints,
+    GrantAgentIconsThisTurn,
     HasAlliance,
     HasHighCouncil,
     LoseTroops,
@@ -35,8 +38,10 @@ from dune_imperium.content.uprising.effect_dsl import (
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
     _combat,
+    _endgame,
     _plot,
 )
+from dune_imperium.content.uprising.types import AgentIcon
 
 IMPERIUM_INTRIGUE_SOURCES: Final = (
     SourceRef(SourceDocument.IMPERIUM_RULEBOOK, (3, 13, 14)),
@@ -168,6 +173,28 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("dispatch_an_envoy", "Dispatch an Envoy"),
         copies=2,
+        # "The card you play this turn has the following icons: Emperor,
+        # Spacing Guild, Bene Gesserit, Fremen" [Dispatch an Envoy card, app
+        # text]: the four Faction Agent icons added to the card, none
+        # removed and none repeated [FAQ p. 2] -- Resourceful's shape with
+        # other icons. A cost-free Plot, played even after the Agent is sent
+        # or in the Reveal turn (OQ-113 (C), (3); imperium-base.md 13.3).
+        options=(
+            _plot(
+                EffectSection(
+                    rewards=(
+                        GrantAgentIconsThisTurn(
+                            (
+                                AgentIcon.EMPEROR,
+                                AgentIcon.SPACING_GUILD,
+                                AgentIcon.BENE_GESSERIT,
+                                AgentIcon.FREMEN,
+                            )
+                        ),
+                    )
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("double_cross", "Double Cross"),
@@ -176,10 +203,28 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("favored_subject", "Favored Subject"),
         copies=1,
+        # "+1 Emperor Influence" [Favored Subject card, app text]: a cost-free
+        # Plot naming its Faction, so it is played even with the Emperor track
+        # at the top and then gains nothing (OQ-113 (C), imperium-base.md
+        # 13.3's Know Their Ways row).
+        options=(
+            _plot(EffectSection(rewards=(GainInfluence(factions=(Faction.EMPEROR,)),))),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("guild_authorization", "Guild Authorization"),
         copies=1,
+        # "+1 Spacing Guild Influence" [Guild Authorization card, app text]:
+        # a cost-free Plot naming its Faction, played even with the Spacing
+        # Guild track at the top and then gaining nothing (OQ-113 (C),
+        # imperium-base.md 13.3).
+        options=(
+            _plot(
+                EffectSection(
+                    rewards=(GainInfluence(factions=(Faction.SPACING_GUILD,)),)
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("infiltrate", "Infiltrate"),
@@ -188,6 +233,15 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("know_their_ways", "Know Their Ways"),
         copies=1,
+        # "+1 Fremen Influence" [Know Their Ways card, app text]: a cost-free
+        # Plot naming its Faction. The designer ruling that it is played with
+        # the Fremen track at the top (the effect then fizzles) is OQ-113
+        # (3), imperium-base.md 13.3.
+        options=(
+            _plot(
+                EffectSection(rewards=(GainInfluence(factions=(Faction.FREMEN,)),))
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("plans_within_plans", "Plans Within Plans"),
@@ -215,6 +269,11 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("rapid_mobilization", "Rapid Mobilization"),
         copies=1,
+        # "Deploy any number of your garrisoned troops to the Conflict"
+        # [Rapid Mobilization card, app text]: a cost-free Plot. "Any number"
+        # allows zero [FAQ p. 3], and a cost-free effect is played even with
+        # an empty garrison (OQ-113 (C), (2) 1; imperium-base.md 13.3).
+        options=(_plot(EffectSection(rewards=(DeployFromGarrison(up_to=None),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("recruitment_mission", "Recruitment Mission"),
@@ -244,6 +303,17 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("secret_of_the_sisterhood", "Secret of the Sisterhood"),
         copies=1,
+        # "+1 Bene Gesserit Influence" [Secret of the Sisterhood card, app
+        # text]: a cost-free Plot naming its Faction, played even with the
+        # Bene Gesserit track at the top and then gaining nothing (OQ-113
+        # (C), imperium-base.md 13.3).
+        options=(
+            _plot(
+                EffectSection(
+                    rewards=(GainInfluence(factions=(Faction.BENE_GESSERIT,)),)
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("staged_incident", "Staged Incident"),
@@ -278,6 +348,14 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("tiebreaker", "Tiebreaker"),
         copies=1,
+        # "Combat: +2 swords -OR- Endgame: +10 spice" [Tiebreaker card, app
+        # text]: one card, two exclusive options (OQ-058), a Combat face and
+        # an Endgame face, neither with a cost. Spice is the first Endgame
+        # tiebreaker [DI p. 13] (imperium-base.md 10, 16).
+        options=(
+            _combat(EffectSection(rewards=(GainCombatStrength(2),))),
+            _endgame(EffectSection(rewards=(GainResources(spice=10),))),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("to_the_victor", "To the Victor..."),

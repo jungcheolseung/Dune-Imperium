@@ -10,10 +10,14 @@ holds the card, in an original-game ``RulesetConfig``.
 from dataclasses import replace
 from typing import Any
 
+import pytest
+
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.effect_dsl import (
+    DeployFromGarrison,
+    GrantAgentIconsThisTurn,
     HasAlliance,
     LoseTroops,
     PayResources,
@@ -22,6 +26,7 @@ from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS,
     intrigue_card_for_instance,
 )
+from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core import (
     ChanceDecision,
     ChanceResolver,
@@ -34,7 +39,10 @@ from dune_imperium.core import (
 )
 from dune_imperium.display import intrigue_card_text
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_turn import legal_agent_actions
 from dune_imperium.rules.combat import begin_combat_intrigue
+from dune_imperium.rules.endgame import begin_endgame_intrigue, final_standings
+from dune_imperium.rules.frames import reset_turn_counters
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
     apply_intrigue_play,
@@ -1831,3 +1839,674 @@ def test_charisma_is_not_offered_outside_the_seats_turn() -> None:
     _, state = _plot_hand(CHARISMA)
     state = _seat(state, 1, intrigue_cards=(CHARISMA,))
     assert legal_intrigue_play_actions(state, 1) == ()
+
+
+# --- The four Faction Plots: Favored Subject, ... ----------------------------
+#
+# "+1 <Faction> Influence" [app text of each card]: a cost-free Plot naming
+# its Faction. Each card adds its row to this table.
+
+# card id, printed name, Faction, the Influence field of that Faction
+FACTION_PLOTS = (
+    ("favored_subject", "Favored Subject", "emperor", "Emperor"),
+    ("guild_authorization", "Guild Authorization", "spacing_guild", "Spacing Guild"),
+    ("know_their_ways", "Know Their Ways", "fremen", "Fremen"),
+    (
+        "secret_of_the_sisterhood",
+        "Secret of the Sisterhood",
+        "bene_gesserit",
+        "Bene Gesserit",
+    ),
+)
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_is_one_cost_free_plot_of_one_influence(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # "Plot: 1 <Faction> Influence" [app text]; 1 copy [DI p. 3]. No arrow:
+    # a cost-free Plot (OQ-113 (C)).
+    entry = intrigue_card_for_instance(_intrigue(card_id))
+    assert entry.card.name == name
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert entry.options[0].sections[0].costs == ()
+    assert entry.options[0].sections[0].condition is None
+    assert intrigue_card_text(entry) == [f"Plot — Gain 1 {label} Influence"]
+    assert card_id not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_gains_one_influence_with_its_own_faction(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서 아무 때나 낸다. `[DI pp.
+    # 7-8]`" (imperium-base.md 5); the card names its Faction, so there is no
+    # choice to open and the Influence is gained at once (imperium-base.md 6,
+    # `[DI p. 7]`: Influence goes through the track rules).
+    card = _intrigue(card_id)
+    engine, state = _plot_hand(card, influence=Influence())
+    assert legal_intrigue_play_actions(state, 0) == (_play(card),)
+
+    result = apply_whole(engine, state, _play(card))
+    done = result.state
+
+    assert done.players[0].influence == Influence(**{faction: 1})
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (card,)
+    assert [e.kind for e in result.events if e.kind == "intrigue_without_effect"] == []
+    # No choice frame opened and the turn goes on: the Plot did not end it.
+    assert done.decision_stack[-1].kind == "turn"
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_influence_goes_through_the_track_rules(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # "Influence 2 도달 → 1 VP" `[DI p. 7]` (imperium-base.md 6): reaching
+    # 2 scores the point, like a Faction space's Influence.
+    card = _intrigue(card_id)
+    engine, state = _plot_hand(card, influence=Influence(**{faction: 1}))
+    before = state.players[0].victory_points
+
+    done = apply_whole(engine, state, _play(card)).state
+
+    assert getattr(done.players[0].influence, faction) == 2
+    assert done.players[0].victory_points == before + 1
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_is_played_with_its_track_at_the_top(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # "Know Their Ways는 Fremen track 맨 위에서도 낸다(불발)" (imperium-base.md
+    # 13.3, OQ-113 (C): "비용이 없는 효과는 모두 불발해도 낸다"; the designer
+    # ruling names Know Their Ways, its three siblings have the same shape).
+    # OQ-060: the Influence on a track already at 6 is lost, so nothing moves.
+    card = _intrigue(card_id)
+    engine, state = _plot_hand(card, influence=Influence(**{faction: 6}))
+    assert legal_intrigue_play_actions(state, 0) == (_play(card),)
+    before = state.players[0]
+
+    done = apply_whole(engine, state, _play(card)).state
+
+    assert done.players[0].influence == before.influence
+    assert done.players[0].victory_points == before.victory_points
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (card,)
+    assert done.decision_stack[-1].kind == "turn"
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_may_be_declined_by_not_playing_it(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    card = _intrigue(card_id)
+    engine, state = _plot_hand(card)
+    actions = engine.whole_actions(state, 0)
+    assert _play(card) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (card,)
+    assert placed.players[0].influence == state.players[0].influence
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_is_played_in_the_reveal_turn_too(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # "아무 때나" within the seat's own Agent or Reveal turn (imperium-base.md
+    # 5, `[DI pp. 7-8]`).
+    card = _intrigue(card_id)
+    engine, state = _plot_hand(card)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _play(card) in engine.whole_actions(revealed, 0)
+
+    done = apply_whole(engine, revealed, _play(card)).state
+
+    assert getattr(done.players[0].influence, faction) == 1
+
+
+@pytest.mark.parametrize(("card_id", "name", "faction", "label"), FACTION_PLOTS)
+def test_a_faction_plot_is_not_offered_outside_the_seats_turn(
+    card_id: str, name: str, faction: str, label: str
+) -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    card = _intrigue(card_id)
+    _, state = _plot_hand(card)
+    state = _seat(state, 1, intrigue_cards=(card,))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_know_their_ways_at_the_top_of_the_fremen_track_fizzles() -> None:
+    # "Know Their Ways는 Fremen track 맨 위에서도 낸다(불발)" (imperium-base.md
+    # 13.3; OQ-113 (3): "Know Their Ways(Fremen 맨 위) 낸다"): the designer
+    # ruling the project adopted by (C). The other tracks are untouched.
+    card = _intrigue("know_their_ways")
+    engine, state = _plot_hand(
+        card, influence=Influence(emperor=2, fremen=6, bene_gesserit=3)
+    )
+
+    done = apply_whole(engine, state, _play(card)).state
+
+    assert done.players[0].influence == Influence(emperor=2, fremen=6, bene_gesserit=3)
+    assert done.intrigue_discard == (card,)
+
+
+# --- Rapid Mobilization (Plot) ----------------------------------------------
+
+MOBILIZATION = _intrigue("rapid_mobilization")
+
+
+def _deploy_troops(count: int) -> DomainAction:
+    return DomainAction(
+        action_id="deploy_intrigue_troops", actor=0, arguments=(("count", count),)
+    )
+
+
+def _mobilization_hand(garrison: int) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 holding Rapid Mobilization with ``garrison`` troops at home."""
+
+    return _plot_hand(
+        MOBILIZATION,
+        troops_garrison=garrison,
+        troops_supply=12 - garrison,
+        troops_conflict=0,
+    )
+
+
+def test_rapid_mobilization_is_one_cost_free_plot_deploying_any_number() -> None:
+    # "Plot: Deploy any number of your garrisoned troops to the Conflict"
+    # [Rapid Mobilization card, Steam app text]; 1 copy [DI p. 3]. No arrow:
+    # a cost-free Plot.
+    entry = intrigue_card_for_instance(MOBILIZATION)
+    assert entry.card.name == "Rapid Mobilization"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert entry.options[0].sections[0].costs == ()
+    assert entry.options[0].sections[0].rewards == (DeployFromGarrison(up_to=None),)
+    assert intrigue_card_text(entry) == [
+        "Plot — Deploy any number of troops from your garrison to the Conflict"
+    ]
+    assert "rapid_mobilization" not in {
+        entry.card.card_id for entry in INTRIGUE_CARDS
+    }
+
+
+def test_rapid_mobilization_deploys_the_whole_garrison_past_two_troops() -> None:
+    # "any number of your garrisoned troops": the choice runs from none up to
+    # every troop at home, with no two-troop limit (the limit is the Agent
+    # turn's `[DI p. 10]`, the card is its own effect). A Plot is played at
+    # any time in the seat's own turn `[DI pp. 7-8]` (imperium-base.md 5).
+    engine, state = _mobilization_hand(5)
+    assert legal_intrigue_play_actions(state, 0) == (_play(MOBILIZATION),)
+
+    opened = apply_whole(engine, state, _play(MOBILIZATION)).state
+    # Nothing moves until the owner names the number; the card waits in hand.
+    assert opened.players[0].troops_garrison == 5
+    assert opened.players[0].intrigue_cards == (MOBILIZATION,)
+    assert engine.whole_actions(opened, 0) == tuple(_deploy_troops(n) for n in range(6))
+    assert engine.whole_actions(opened, 1) == ()
+
+    done = apply_whole(engine, opened, _deploy_troops(5)).state
+
+    player = done.players[0]
+    assert player.troops_garrison == 0
+    assert player.troops_conflict == 5
+    assert player.troops_supply == 7
+    assert player.intrigue_cards == ()
+    assert done.intrigue_discard == (MOBILIZATION,)
+    # The turn goes on: the Plot did not end it.
+    assert done.decision_stack[-1].kind == "turn"
+
+
+def test_rapid_mobilization_may_deploy_only_some_of_the_garrison() -> None:
+    # "any number" includes a part of the garrison; the rest stays home.
+    engine, state = _mobilization_hand(4)
+    opened = apply_whole(engine, state, _play(MOBILIZATION)).state
+
+    done = apply_whole(engine, opened, _deploy_troops(3)).state
+
+    assert done.players[0].troops_garrison == 1
+    assert done.players[0].troops_conflict == 3
+
+
+def test_rapid_mobilization_may_deploy_zero_troops() -> None:
+    # "'any number'는 0 가능" `[FAQ p. 3]` (imperium-base.md 13.2, the
+    # Retreat row the FAQ points Rapid Mobilization at; 13.3: "Rapid
+    # Mobilization은 0개를 배치하며 낼 수 있다"): zero is a number, the card is
+    # still played and discarded.
+    engine, state = _mobilization_hand(3)
+    opened = apply_whole(engine, state, _play(MOBILIZATION)).state
+
+    done = apply_whole(engine, opened, _deploy_troops(0)).state
+
+    assert done.players[0].troops_garrison == 3
+    assert done.players[0].troops_conflict == 0
+    assert done.intrigue_discard == (MOBILIZATION,)
+    assert done.decision_stack[-1].kind == "turn"
+
+
+def test_rapid_mobilization_is_played_with_an_empty_garrison() -> None:
+    # "garrison에 troop이 없어도 낸다(0개 배치; OQ-113 (2) 1)" (imperium-base.md
+    # 13.3, OQ-113 (C): "비용이 없는 효과는 모두 불발해도 낸다"): the card is
+    # offered, only the zero deployment is, and the play is logged as a play
+    # that changes nothing.
+    engine, state = _mobilization_hand(0)
+    assert legal_intrigue_play_actions(state, 0) == (_play(MOBILIZATION),)
+
+    played = apply_whole(engine, state, _play(MOBILIZATION))
+    assert engine.whole_actions(played.state, 0) == (_deploy_troops(0),)
+    assert "intrigue_without_effect" in [e.kind for e in played.events]
+
+    done = apply_whole(engine, played.state, _deploy_troops(0)).state
+    assert done.players[0].troops_conflict == 0
+    assert done.intrigue_discard == (MOBILIZATION,)
+
+
+def test_rapid_mobilization_counts_as_a_deployment_this_turn() -> None:
+    # "When you deploy 4+ troops to the Conflict in a turn" (Baron's
+    # Masterstroke, OQ-115: "그 turn에 배치한 troop"): troops deployed by an
+    # Intrigue are deployed this turn like Detonation's, so the seat's
+    # count of the turn's deployments rises with them.
+    engine, state = _mobilization_hand(4)
+    opened = apply_whole(engine, state, _play(MOBILIZATION)).state
+
+    done = apply_whole(engine, opened, _deploy_troops(4)).state
+
+    assert done.players[0].units_deployed_turn == 4
+    assert done.players[0].units_deployed_peak == 4
+
+
+def test_rapid_mobilization_in_the_reveal_turn_adds_troop_strength() -> None:
+    # "troop 2" strength `[DI p. 11]` (imperium-base.md 10): a Plot played in
+    # the Reveal turn puts its troops into the Conflict before the strength
+    # is set, so each adds 2.
+    engine, state = _mobilization_hand(3)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _play(MOBILIZATION) in engine.whole_actions(revealed, 0)
+    swords = dict(revealed.decision_stack[-1].context)["sword_strength"]
+    assert isinstance(swords, int)
+    opened = apply_whole(engine, revealed, _play(MOBILIZATION)).state
+
+    done = apply_whole(engine, opened, _deploy_troops(3)).state
+
+    assert done.players[0].troops_conflict == 3
+    assert done.players[0].combat_strength == 2 * 3 + swords
+
+
+def test_rapid_mobilization_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _mobilization_hand(3)
+    actions = engine.whole_actions(state, 0)
+    assert _play(MOBILIZATION) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (MOBILIZATION,)
+    assert placed.players[0].troops_garrison == 3
+
+
+def test_rapid_mobilization_is_not_a_combat_card_nor_offered_off_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _mobilization_hand(3)
+    other = _seat(state, 1, intrigue_cards=(MOBILIZATION,), troops_garrison=3)
+    assert legal_intrigue_play_actions(other, 1) == ()
+
+    fighting = _combat_state(
+        _fighter(0, 2, intrigue_cards=(MOBILIZATION,)), _fighter(1, 1)
+    )
+    assert legal_intrigue_play_actions(fighting, 0) == ()
+
+
+# --- Dispatch an Envoy (Plot) -----------------------------------------------
+
+ENVOY = _intrigue("dispatch_an_envoy")
+# A starter card with no Agent icon at all: it cannot be sent anywhere.
+ARGUMENT = "player:0:starter:convincing_argument:0"
+RECONNAISSANCE = "player:0:starter:reconnaissance:0"
+FACTION_ICONS = {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
+
+
+def _envoy_hand(*hand: str) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 holding Dispatch an Envoy and only ``hand`` to play.
+
+    The cards of ``hand`` leave the deck, whatever the shuffle dealt (each
+    Intrigue card added to the deck moves it).
+    """
+
+    engine, state = _start()
+    owner = state.players[0]
+    deck = tuple(card for card in owner.deck if card not in hand)
+    return engine, _seat(
+        state, intrigue_cards=(ENVOY,), hand=hand, deck=deck, discard_pile=()
+    )
+
+
+def _agent_spaces(state: GameState) -> set[str]:
+    return {
+        str(dict(action.arguments)["space_id"])
+        for action in legal_agent_actions(state, 0)
+    }
+
+
+def test_dispatch_an_envoy_is_one_cost_free_plot_with_two_copies() -> None:
+    # "Plot: The card you play this turn has the following icons: Emperor,
+    # Spacing Guild, Bene Gesserit, Fremen" [Dispatch an Envoy card, Steam
+    # app text]; 2 copies [DI p. 3]. No arrow: a cost-free Plot.
+    entry = intrigue_card_for_instance(_intrigue("dispatch_an_envoy", 1))
+    assert entry.card.name == "Dispatch an Envoy"
+    assert entry.copies == 2
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert entry.options[0].sections[0].costs == ()
+    assert entry.options[0].sections[0].rewards == (
+        GrantAgentIconsThisTurn(
+            (
+                AgentIcon.EMPEROR,
+                AgentIcon.SPACING_GUILD,
+                AgentIcon.BENE_GESSERIT,
+                AgentIcon.FREMEN,
+            )
+        ),
+    )
+    assert intrigue_card_text(entry) == [
+        "Plot — The card you play this turn has the"
+        " emperor, spacing_guild, bene_gesserit, fremen icons"
+    ]
+    assert "dispatch_an_envoy" not in {
+        entry.card.card_id for entry in INTRIGUE_CARDS
+    }
+
+
+def test_dispatch_an_envoy_gives_a_card_with_no_icon_the_four_faction_icons() -> None:
+    # "Agent 아이콘이 없는 카드는 Agent turn에 낼 수 없다 `[DI p. 9]`"
+    # (imperium-base.md 5) -- until Dispatch an Envoy gives the card the
+    # Emperor, Spacing Guild, Bene Gesserit and Fremen icons: then it may be
+    # sent to a space of any of those four, and to no other icon's.
+    engine, state = _envoy_hand(ARGUMENT)
+    assert _agent_spaces(state) == set()
+    assert legal_intrigue_play_actions(state, 0) == (_play(ENVOY),)
+
+    result = apply_whole(engine, state, _play(ENVOY))
+    played = result.state
+
+    assert set(played.players[0].granted_agent_icon_turn.split(",")) == FACTION_ICONS
+    assert played.players[0].intrigue_cards == ()
+    assert played.intrigue_discard == (ENVOY,)
+    assert "intrigue_without_effect" not in [e.kind for e in result.events]
+    spaces = _agent_spaces(played)
+    # An Emperor, a Spacing Guild, a Bene Gesserit and a Fremen space.
+    assert {"wealth", "foldspace", "secrets", "stillsuits"} <= spaces
+    # Landsraad, City and Spice Trade stay out of reach of this card.
+    assert not spaces & {
+        "hall_of_oratory",
+        "rally_troops",
+        "arrakeen",
+        "carthag",
+        "imperial_basin",
+        "secure_contract",
+    }
+    # The Plot did not end the turn.
+    assert played.decision_stack[-1].kind == "turn"
+
+
+def test_dispatch_an_envoy_removes_no_icon_the_card_already_has() -> None:
+    # "아이콘을 지우지 않고" `[FAQ p. 2]` (imperium-base.md 13.2, Dispatch an
+    # Envoy row): Reconnaissance keeps its City icon and gains the four.
+    engine, state = _envoy_hand(RECONNAISSANCE)
+    assert _agent_spaces(state) == {"arrakeen", "carthag"}
+
+    played = apply_whole(engine, state, _play(ENVOY)).state
+
+    spaces = _agent_spaces(played)
+    assert {"arrakeen", "carthag"} <= spaces
+    assert {"wealth", "foldspace", "secrets", "stillsuits"} <= spaces
+
+
+def test_dispatch_an_envoy_adds_no_icon_twice() -> None:
+    # "이미 있는 아이콘을 하나 더 주지 않는다" `[FAQ p. 2]` (imperium-base.md
+    # 13.2): a second copy played the same turn adds nothing, so each of the
+    # four icons is on the card once.
+    engine, state = _envoy_hand(ARGUMENT)
+    state = _seat(state, intrigue_cards=(ENVOY, _intrigue("dispatch_an_envoy", 1)))
+    other = _play(_intrigue("dispatch_an_envoy", 1))
+    assert {_play(ENVOY), other} <= set(legal_intrigue_play_actions(state, 0))
+
+    first = apply_whole(engine, state, _play(ENVOY)).state
+    second = apply_whole(engine, first, other).state
+
+    granted = second.players[0].granted_agent_icon_turn.split(",")
+    assert sorted(granted) == sorted(FACTION_ICONS)
+    assert second.intrigue_discard == (ENVOY, _intrigue("dispatch_an_envoy", 1))
+
+
+def test_dispatch_an_envoy_icons_are_for_this_turn_only() -> None:
+    # "The card you play this turn": the grant is cleared when the seat's
+    # next turn opens, with the other per-turn counters (OQ-055).
+    engine, state = _envoy_hand(ARGUMENT)
+    played = apply_whole(engine, state, _play(ENVOY)).state
+    assert played.players[0].granted_agent_icon_turn
+
+    reopened = reset_turn_counters(played.players, 0)
+
+    assert reopened[0].granted_agent_icon_turn == ""
+
+
+def test_dispatch_an_envoy_is_played_after_the_agent_is_sent_and_fizzles() -> None:
+    # "Dispatch an Envoy는 Reveal turn에도, Agent를 보낸 뒤에도 낸다(아이콘은
+    # 붙지 않는다)" (imperium-base.md 13.3, OQ-113 (3): "비용이 없는 효과는 모두
+    # 불발해도 낸다"): offered after the placement, logged as a play that
+    # changes nothing, and the card is discarded.
+    engine, state = _envoy_hand(RECONNAISSANCE)
+    to_arrakeen = next(
+        action
+        for action in legal_agent_actions(state, 0)
+        if dict(action.arguments)["space_id"] == "arrakeen"
+    )
+    placed = apply_whole(engine, state, to_arrakeen).state
+    assert _play(ENVOY) in engine.whole_actions(placed, 0)
+
+    result = apply_whole(engine, placed, _play(ENVOY))
+
+    assert "intrigue_without_effect" in [e.kind for e in result.events]
+    assert result.state.intrigue_discard == (ENVOY,)
+    assert result.state.players[0].intrigue_cards == ()
+
+
+def test_dispatch_an_envoy_is_played_in_the_reveal_turn_and_fizzles() -> None:
+    # OQ-113 (3), imperium-base.md 13.3: "Dispatch an Envoy는 Reveal turn에도
+    # ... 낸다(아이콘 없음)": there is no placement ahead, the play is logged
+    # as one that changes nothing.
+    engine, state = _envoy_hand(ARGUMENT)
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert _play(ENVOY) in engine.whole_actions(revealed, 0)
+
+    result = apply_whole(engine, revealed, _play(ENVOY))
+
+    assert "intrigue_without_effect" in [e.kind for e in result.events]
+    assert result.state.intrigue_discard == (ENVOY,)
+    assert result.state.decision_stack[-1].kind == "reveal"
+
+
+def test_dispatch_an_envoy_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`.
+    engine, state = _envoy_hand(RECONNAISSANCE)
+    actions = engine.whole_actions(state, 0)
+    assert _play(ENVOY) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (ENVOY,)
+    assert placed.players[0].granted_agent_icon_turn == ""
+
+
+def test_dispatch_an_envoy_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _envoy_hand(ARGUMENT)
+    state = _seat(state, 1, intrigue_cards=(ENVOY,))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+# --- Tiebreaker (Combat / Endgame) ------------------------------------------
+
+TIEBREAKER = _intrigue("tiebreaker")
+
+
+def _endgame_window(*seats: PlayerState) -> GameState:
+    """The original game's Endgame window, seat 0 (the First Player) first."""
+
+    players = list(seats)
+    players.extend(PlayerState(player_id=seat) for seat in range(len(players), 4))
+    content = content_for(CONFIG)
+    state = GameState(
+        config=CONFIG,
+        seed=1,
+        phase=GamePhase.ENDGAME,
+        first_player=0,
+        reveal_order=(0, 1, 2, 3),
+        maker_bonus_spice=tuple((space, 0) for space in content.maker_space_ids),
+        players=tuple(players),
+    )
+    return begin_endgame_intrigue(state).state
+
+
+def test_tiebreaker_is_one_card_of_a_combat_and_an_endgame_option() -> None:
+    # "Combat: +2 swords -OR- Endgame: +10 spice" [Tiebreaker card, Steam app
+    # text]; 1 copy [DI p. 3]. Two exclusive options like Master Tactician
+    # (OQ-058: "—OR—로 나뉜 카드 ... 그대로 배타 option"; imperium-base.md 16
+    # lists Tiebreaker's Combat face and Endgame face), neither with a cost.
+    entry = intrigue_card_for_instance(TIEBREAKER)
+    assert entry.card.name == "Tiebreaker"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["combat", "endgame"]
+    assert all(option.sections[0].costs == () for option in entry.options)
+    assert intrigue_card_text(entry) == [
+        "Combat — Gain 2 swords",
+        "Endgame — Gain 10 spice",
+    ]
+    assert "tiebreaker" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_tiebreaker_is_neither_a_plot_nor_offered_in_the_agent_turn() -> None:
+    # Combat and Endgame Intrigue are played in their own windows only
+    # (imperium-base.md 10), never in the seat's Agent or Reveal turn.
+    _, state = _start()
+    state = _seat(state, intrigue_cards=(TIEBREAKER,))
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+def test_tiebreaker_combat_face_gains_two_swords() -> None:
+    # "Combat: +2 swords": the Combat Intrigue window `[DI p. 12]`
+    # (imperium-base.md 10); only the Combat option is offered there.
+    state = _combat_state(
+        _fighter(0, 2, intrigue_cards=(TIEBREAKER,)), _fighter(1, 1)
+    )
+    assert legal_intrigue_play_actions(state, 0) == (_play(TIEBREAKER, 0),)
+
+    result = apply_whole(UprisingRulesEngine(), state, _play(TIEBREAKER, 0))
+    done = result.state
+
+    assert done.players[0].combat_strength == 4 + 2
+    assert done.players[0].resources == state.players[0].resources
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (TIEBREAKER,)
+    assert done.decision_stack[-1].kind == "combat_intrigue"
+
+
+def test_tiebreaker_combat_face_needs_a_unit_in_the_conflict() -> None:
+    # "Conflict에 troop이 있는 플레이어가 Combat Intrigue를 내거나 pass한다"
+    # `[DI p. 12]` (imperium-base.md 10).
+    state = _combat_state(
+        PlayerState(player_id=0, intrigue_cards=(TIEBREAKER,), troops_garrison=3),
+        _fighter(1, 2),
+    )
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+def test_tiebreaker_endgame_face_gains_ten_spice() -> None:
+    # "Endgame: +10 spice" [Tiebreaker card]: played in the owner's Endgame
+    # window `[DI p. 13]`, where only the Endgame option is offered.
+    owner = PlayerState(
+        player_id=0, intrigue_cards=(TIEBREAKER,), resources=Resources(spice=3)
+    )
+    state = _endgame_window(owner)
+    assert legal_intrigue_play_actions(state, 0) == (_play(TIEBREAKER, 1),)
+
+    result = apply_whole(UprisingRulesEngine(), state, _play(TIEBREAKER, 1))
+    done = result.state
+
+    assert done.players[0].resources == Resources(spice=13)
+    assert done.players[0].victory_points == state.players[0].victory_points
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (TIEBREAKER,)
+    # The window stays open: other cards or the pass may follow.
+    assert done.decision_stack[-1].kind == "endgame_intrigue"
+
+
+def test_tiebreaker_endgame_face_wins_the_spice_tiebreak() -> None:
+    # "동률은 spice → Solari → water → garrison의 troop 순 `[DI p. 13]`"
+    # (imperium-base.md 10): two seats tied on Victory Points, the one with
+    # Tiebreaker gains 10 spice and so outranks the other, which held more
+    # spice before.
+    holder = PlayerState(
+        player_id=0,
+        victory_points=9,
+        intrigue_cards=(TIEBREAKER,),
+        resources=Resources(spice=2),
+    )
+    rival = PlayerState(player_id=1, victory_points=9, resources=Resources(spice=8))
+    state = _endgame_window(holder, rival)
+    assert [s.player for s in final_standings(state)[:2]] == [1, 0]
+
+    done = apply_whole(UprisingRulesEngine(), state, _play(TIEBREAKER, 1)).state
+
+    assert [s.player for s in final_standings(done)[:2]] == [0, 1]
+
+
+def test_tiebreaker_endgame_face_is_not_a_combat_play() -> None:
+    # The Endgame option is for the Endgame window only: in Combat the card
+    # offers its Combat face, never the 10 spice.
+    state = _combat_state(
+        _fighter(0, 1, intrigue_cards=(TIEBREAKER,)), _fighter(1, 1)
+    )
+    assert _play(TIEBREAKER, 1) not in legal_intrigue_play_actions(state, 0)
+    assert _play(TIEBREAKER, 1) not in UprisingRulesEngine().whole_actions(state, 0)
+
+
+def test_tiebreaker_may_be_declined_in_either_window() -> None:
+    # Playing is a choice, never forced: the seat passes and keeps the card
+    # `[DI pp. 12-13]`.
+    engine = UprisingRulesEngine()
+    combat = _combat_state(
+        _fighter(0, 1, intrigue_cards=(TIEBREAKER,)), _fighter(1, 1)
+    )
+    passed = apply_whole(engine, combat, _pass(0)).state
+    assert passed.players[0].intrigue_cards == (TIEBREAKER,)
+    assert passed.players[0].combat_strength == 2
+
+    endgame = _endgame_window(PlayerState(player_id=0, intrigue_cards=(TIEBREAKER,)))
+    skipped = apply_whole(
+        engine,
+        endgame,
+        DomainAction(action_id="pass_endgame_intrigue", actor=0),
+    ).state
+    assert skipped.players[0].intrigue_cards == (TIEBREAKER,)
+    assert skipped.players[0].resources == Resources()
