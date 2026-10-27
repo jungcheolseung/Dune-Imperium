@@ -403,10 +403,28 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_strength=1,
         play_data_complete=True,
     ),
+    # App table: cost 5, 3 copies, no Faction, the four Faction icons (Emperor,
+    # Spacing Guild, Bene Gesserit, Fremen), no Reveal values. Agent: "Gain two
+    # Influence instead of one. Trash this card." -- the 2 replace the visited
+    # Faction space's own 1, never 2 + 1 (OQ-022's Subversive Advisor model,
+    # imperium-base.md 13.3, [Immortality p. 14]), nothing off a Faction space;
+    # "Trash this card" is mandatory [FAQ p. 3] and, done by the card's own
+    # effect, leaves the Influence (imperium-base.md 16). Resolved as Subversive
+    # Advisor's box is: one step, the gain and then the trash.
     ImperiumCardEntry(
         card=imperium_card("power_play", "Power Play"),
         copies=3,
         acquisition_cost=5,
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        ),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+        ),
+        play_data_complete=True,
     ),
     # App table: cost 6, 1 copy, Emperor and Bene Gesserit, Emperor and Bene
     # Gesserit, Reveal 2 Persuasion and 2 spice (tags NamedCharacter, WantBG).

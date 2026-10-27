@@ -31,10 +31,12 @@ from dune_imperium.core import (
     PlayerDecision,
     Resources,
 )
+from dune_imperium.core.engine import RuleResult
 from dune_imperium.display.tokens import reveal_effect_text
 from dune_imperium.display.tokens_ko import reveal_effect_text_ko
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_effects import expire_trashed_card_effects
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.frames import FrameKind
@@ -3263,3 +3265,124 @@ def test_carryall_text_names_the_doubling() -> None:
         "Double the base (not bonus) spice you harvest with this Agent"
     )
     assert "{spice}" in AGENT_EFFECT_TEXT_KO[effect]
+
+
+# --- Power Play -------------------------------------------------------------------
+
+
+def test_power_play_matches_the_app_table() -> None:
+    # App attribute table: cost 5, 3 copies, no Faction, the four Faction
+    # icons, no Reveal values.
+    entry = IMPERIUM_CARDS_BY_ID["power_play"]
+    assert entry.card.name == "Power Play"
+    assert entry.acquisition_cost == 5
+    assert entry.copies == 3
+    assert entry.factions == ()
+    assert entry.agent_icons == (
+        AgentIcon.EMPEROR,
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.FREMEN,
+    )
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:power_play:2") is entry
+
+
+def _power_play_placed(
+    engine: UprisingRulesEngine, state: GameState, space_id: str = "wealth"
+) -> GameState:
+    held, _ = _with_card(state, "power_play")
+    held = _seat(held, influence=Influence(), resources=Resources(water=1, spice=2))
+    return _place(engine, held, space_id, "power_play")
+
+
+def test_power_play_gives_two_influence_instead_of_the_spaces_one() -> None:
+    """"Gain two Influence instead of one." (card); "Power Play의 두 문장은 별개
+    효과; Agent box는 Faction 칸에 보냈을 때만" and the box takes the shape of
+    Subversive Advisor's (imperium-base.md 13.3, OQ-022's 2026-10-06
+    reinforcement): the waiting box holds the space's own 1, so the space gives
+    2 in all, never 3. One step of the owner's: the two Influence, then the
+    card trashes itself."""
+
+    engine, state = _start()
+    for space_id, faction in (
+        ("wealth", "emperor"),
+        ("foldspace", "spacing_guild"),
+        ("secrets", "bene_gesserit"),
+        ("stillsuits", "fremen"),
+    ):
+        placed = _power_play_placed(engine, state, space_id)
+        ids = _ids(engine, placed)
+        assert "resolve_agent_card_effect" in ids, space_id
+        assert "resolve_faction_influence" not in ids, space_id
+        resolved = _do(engine, placed, "resolve_agent_card_effect")
+        after = resolved.players[0]
+        assert getattr(after.influence, faction) == 2, space_id
+        # The space's own Influence was the box's to give; it does not come
+        # again (a third point).
+        assert "resolve_faction_influence" not in _ids(engine, resolved), space_id
+        me = "imperium:power_play:0"
+        assert me in after.trashed and me not in after.in_play, space_id
+
+
+def test_power_play_trash_is_not_a_choice() -> None:
+    """"Trash this card" is mandatory [FAQ p. 3] (imperium-base.md 11): the
+    box has no refusal, and the turn cannot end with the card still waiting."""
+
+    engine, state = _start()
+    placed = _power_play_placed(engine, state)
+    ids = _ids(engine, placed)
+    assert not {action_id for action_id in ids if action_id.startswith("decline_")}
+    assert "finish_agent_turn" not in ids
+
+
+def test_power_play_two_influence_pass_the_victory_point_once() -> None:
+    """Both points are one effect that cannot be cut ("두 진영 Influence를 한꺼번에
+    올리는 효과는 끊을 수 없는 한 효과", imperium-base.md 13.3): from 1 to 3
+    Emperor Influence the 2-Influence Victory Point is gained once [DI p. 7]."""
+
+    engine, state = _start()
+    held, _ = _with_card(state, "power_play")
+    held = _seat(
+        held, influence=Influence(emperor=1), resources=Resources(water=1, spice=2)
+    )
+    placed = _place(engine, held, "wealth", "power_play")
+    before = placed.players[0].victory_points
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    assert resolved.players[0].influence.emperor == 3
+    assert resolved.players[0].victory_points == before + 1
+
+
+def test_power_play_trashed_by_another_effect_leaves_the_spaces_influence() -> None:
+    """"다른 수단으로 먼저 trash하면 남은 효과는 없다" (imperium-base.md 16,
+    OQ-022): another effect trashed the card before its box resolved, so the
+    box expires; only the card's "instead" lapses, the space's own Influence
+    is the board's rule and comes back ([Main p. 7])."""
+
+    engine, state = _start()
+    placed = _power_play_placed(engine, state)
+    me = "imperium:power_play:0"
+    owner = placed.players[0]
+    lowered = _seat(
+        placed,
+        in_play=tuple(card for card in owner.in_play if card != me),
+        trashed=(*owner.trashed, me),
+    )
+    expired = expire_trashed_card_effects(RuleResult(state=lowered)).state
+    assert "resolve_agent_card_effect" not in _ids(engine, expired)
+    assert "resolve_faction_influence" in _ids(engine, expired)
+    gained = _do(engine, expired, "resolve_faction_influence")
+    assert gained.players[0].influence.emperor == 1
+
+
+def test_power_play_text_is_the_printed_pair_of_effects() -> None:
+    from dune_imperium.display.tokens import AGENT_EFFECT_TEXT
+
+    assert AGENT_EFFECT_TEXT[
+        PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+    ] == "Gain 2 Influence with the visited Faction, Trash this card"
