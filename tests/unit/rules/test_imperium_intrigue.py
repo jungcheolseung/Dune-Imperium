@@ -8,6 +8,7 @@ holds the card, in an original-game ``RulesetConfig``.
 """
 
 from dataclasses import replace
+from typing import Any
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_whole
@@ -562,7 +563,7 @@ def test_ambush_is_offered_only_to_the_seat_with_priority() -> None:
 SHARES = _intrigue("choam_shares")
 
 
-def _plot_hand(card: str, **changes: object) -> tuple[UprisingRulesEngine, GameState]:
+def _plot_hand(card: str, **changes: Any) -> tuple[UprisingRulesEngine, GameState]:
     """Seat 0 at its first turn holding ``card``, with ``changes`` applied."""
 
     engine, state = _start()
