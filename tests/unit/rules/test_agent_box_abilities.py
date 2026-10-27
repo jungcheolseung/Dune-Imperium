@@ -161,8 +161,11 @@ _BOX = PersonalCardAgentEffect
 def test_every_record_is_a_printed_agent_box() -> None:
     # 103 Uprising-family boxes, the original game's Foldspace and the
     # original Imperium cards' new boxes (stage P3: Arrakis Recruiter, Spice
-    # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 7
+    # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence,
+    # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
+    # Imperial Spy, Missionaria Protectiva, Gene Manipulation, Reverend Mother
+    # Mohiam).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 15
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -204,6 +207,12 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         # The original game's Foldspace: "Draw 1 card" and "Trash this card",
         # separate effects (imperium-base.md 13.3).
         _BOX.DRAW_ONE_AND_TRASH_SELF: ("cards", "trash_self"),
+        # Smuggler's Thopter: two draw icons behind one Influence line.
+        _BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: ("cards", "cards_second"),
+        # Gurney Halleck: the two troops and the card, separate icons.
+        _BOX.RECRUIT_TWO_AND_DRAW_ONE: ("troops", "cards"),
+        # Gene Manipulation: a black trash icon and the Bond's spice icon.
+        _BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: ("trash", "spice"),
     }
     for effect, ability in AGENT_BOX_ABILITIES.items():
         if not ability.icons:
@@ -724,6 +733,8 @@ def test_seven_boxes_choose_one_target_and_read_as_their_cards() -> None:
         _BOX.FORCE_OPPONENT_TROOP_RETREAT: ForceEnemyRetreat,
         _BOX.COMPLETE_ONE_CONTRACT: CompleteContract,
         _BOX.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE: GainInfluence,
+        # Missionaria Protectiva (the original game, stage P3).
+        _BOX.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: GainInfluence,
     }
     for effect in (
         _BOX.PLACE_SPY,
@@ -934,6 +945,9 @@ def test_six_trash_boxes_and_what_they_read_as() -> None:
         _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
         _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
+        # The original game's Imperial Spy (stage P3): Pivotal Gambit's shape
+        # with an armed Intrigue draw.
+        _BOX.MAY_TRASH_SELF_TO_DRAW_INTRIGUE,
     }
     treacherous = _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
     hand = TrashCard(hand_only=True, faction=Faction.EMPEROR)
@@ -1028,8 +1042,10 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     # The original game's Duncan Idaho (stage P3): a paid arrow arming the
     # same troop and card icons.
     duncan = _BOX.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE
+    # Imperial Spy: the card trashes itself, then the armed Intrigue draw.
+    spy = _BOX.MAY_TRASH_SELF_TO_DRAW_INTRIGUE
     assert users == {
-        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite},
+        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy},
         AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy, duncan},
         AGENT_ICON_SPICE: {branching},
         AGENT_ICON_TROOPS: {gambit, elite, duncan},
@@ -1133,7 +1149,8 @@ def test_control_the_spice_is_a_payment_box() -> None:
 
 
 def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
-    """Composed A3f: Southern Faith and High Priority Travel ("Choose one").
+    """Composed A3f: Southern Faith and High Priority Travel ("Choose one"), and
+    Guild Ambassador's "-OR-" (stage P3).
     The plain line resolves as one action; Possible Futures, whose Bond
     turns its choice into both, is a hook. Interstellar Conspiracy, a plain
     line then a conditioned choice that once paid both, resolves icon by
@@ -1151,6 +1168,9 @@ def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
         _BOX.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO: (
             AbilityStructure.ONE_OF
         ),
+        # Guild Ambassador (the original game, stage P3): the 2 spice beside a
+        # fixed Faction's Influence, the choice line printed under no condition.
+        _BOX.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: AbilityStructure.ONE_OF,
     }
     assert AGENT_BOX_ABILITIES[conspiracy].icons == ("spice", "influence")
     futures = AGENT_BOX_ABILITIES[_BOX.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND]

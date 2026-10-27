@@ -46,6 +46,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CommandReached,
     Condition,
     DeployFromGarrison,
+    DeployTheseTroops,
     DrawIntrigueCards,
     EffectSection,
     FactionBond,
@@ -62,6 +63,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     PrintedRevealValue,
     RecallSpy,
+    RecruitTroops,
     RetreatTroops,
     RevealPersuasion,
     RevealSwords,
@@ -102,6 +104,7 @@ from dune_imperium.rules.combat_deployment import (
     UNGAINED_UNDEPLOYABLE_KEY,
     deployment_rooms,
     grant_combat_icon,
+    grant_recruit_deployment,
     reconcile_deployment_after_retreat,
     recruits_deployable,
     undeployable_troops,
@@ -257,6 +260,12 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     ),
     _Choice.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: frozenset(
         {"pay_reveal_solari_for_vp"}
+    ),
+    _Choice.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE: (
+        frozenset({"pay_reveal_spice_for_vp"})
+    ),
+    _Choice.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY: frozenset(
+        {"pay_reveal_solari_for_troops"}
     ),
     _Choice.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: frozenset(
         {"lose_reveal_troops_for_specimens"}
@@ -416,25 +425,69 @@ def spice_influence_price(effect: PersonalCardRevealChoiceEffect | str | None) -
     return 0
 
 
-def solari_vp_payment(
+def vp_payment(
     effect: PersonalCardRevealChoiceEffect | str | None,
-) -> tuple[int, int] | None:
-    """"You may pay N Solari -> Gain M Victory Points" [Opulence card]: (N, M),
-    or None for another choice."""
+) -> tuple[str, int, int, Condition | None] | None:
+    """"[If <condition>:] You may pay N <Solari or spice> -> Gain M Victory
+    Points" [Opulence card, Guild Ambassador card]: (resource, N, M,
+    condition), or None for another choice."""
 
     line = _arrow_line(effect)
     if (
         line is None
-        or line.condition is not None
         or len(line.costs) != 1
         or len(line.rewards) != 1
         or not isinstance(line.rewards[0], GainVictoryPoints)
     ):
         return None
     cost = line.costs[0]
+    if not isinstance(cost, PayResources) or cost.water:
+        return None
+    if cost.solari and not cost.spice:
+        resource, price = "solari", cost.solari
+    elif cost.spice and not cost.solari:
+        resource, price = "spice", cost.spice
+    else:
+        return None
+    return resource, price, line.rewards[0].amount, line.condition
+
+
+def troop_purchase_payment(
+    effect: PersonalCardRevealChoiceEffect | str | None,
+) -> tuple[int, int] | None:
+    """"You may pay N Solari -> Recruit M troops, you may deploy these troops"
+    [Gurney Halleck card]: (N, M), or None for another choice."""
+
+    line = _arrow_line(effect)
+    if (
+        line is None
+        or line.condition is not None
+        or len(line.costs) != 1
+        or len(line.rewards) != 2
+        or not isinstance(line.rewards[0], RecruitTroops)
+        or not isinstance(line.rewards[1], DeployTheseTroops)
+    ):
+        return None
+    cost = line.costs[0]
     if not isinstance(cost, PayResources) or cost.spice or cost.water:
         return None
-    return (cost.solari, line.rewards[0].amount) if cost.solari else None
+    return (cost.solari, line.rewards[0].count) if cost.solari else None
+
+
+def vp_payment_affordable(
+    owner: PlayerState, effect: PersonalCardRevealChoiceEffect | str | None
+) -> bool:
+    """Whether the Victory Point arrow can be paid now: its cost is in hand
+    and its printed condition holds (judged whenever the rows are asked,
+    OQ-028)."""
+
+    payment = vp_payment(effect)
+    if payment is None:
+        return False
+    resource, price, _, condition = payment
+    if getattr(owner.resources, resource) < price:
+        return False
+    return condition is None or owner_condition_holds(owner, condition) is True
 
 
 def is_influence_exchange(effect: PersonalCardRevealChoiceEffect | str | None) -> bool:
@@ -1635,17 +1688,19 @@ def legal_reveal_spice_influence_actions(
     )
 
 
-def legal_reveal_solari_vp_actions(
+def legal_reveal_vp_payment_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """Return Opulence's optional Solari payment for a Victory Point.
+    """Return the optional payment for a Victory Point of Opulence (6 Solari)
+    and Guild Ambassador (3 spice with the Spacing Guild Alliance).
 
     An arrow cost: no refusal is offered, and the payment is offered while
-    the Solari are there (judged whenever the rows are asked, OQ-028).
+    the cost is there and the printed condition holds (judged whenever the
+    rows are asked, OQ-028).
     """
 
-    pending = pending_choice_rows(state, player, legal_reveal_solari_vp_actions)
+    pending = pending_choice_rows(state, player, legal_reveal_vp_payment_actions)
     if pending is not None:
         return pending
     if not 0 <= player < state.config.players or not state.decision_stack:
@@ -1654,37 +1709,44 @@ def legal_reveal_solari_vp_actions(
     context = dict(frame.context)
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
-    payment = solari_vp_payment(_effect_value(context))
-    if payment is None or state.players[player].resources.solari < payment[0]:
+    payment = vp_payment(_effect_value(context))
+    if payment is None or not vp_payment_affordable(
+        state.players[player], _effect_value(context)
+    ):
         return ()
-    return (DomainAction(action_id="pay_reveal_solari_for_vp", actor=player),)
+    return (
+        DomainAction(action_id=f"pay_reveal_{payment[0]}_for_vp", actor=player),
+    )
 
 
-def apply_reveal_solari_vp(
+def apply_reveal_vp_payment(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Pay Opulence's Solari and gain its Victory Point (once: the choice is
-    used up)."""
+    """Pay Opulence's Solari or Guild Ambassador's spice and gain the
+    Victory Point (once: the choice is used up)."""
 
-    state = _open_pending(state, action, legal_reveal_solari_vp_actions)
-    if action not in legal_reveal_solari_vp_actions(state, action.actor):
-        raise ValueError("action is not a legal Reveal Solari payment")
+    state = _open_pending(state, action, legal_reveal_vp_payment_actions)
+    if action not in legal_reveal_vp_payment_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal Victory Point payment")
     context = dict(state.decision_stack[-1].context)
     card_id = context.get("reveal_card_id")
     if not isinstance(card_id, str):
-        raise RuntimeError("Reveal Solari-payment frame has invalid card ID")
-    payment = solari_vp_payment(_effect_value(context))
+        raise RuntimeError("Reveal Victory Point payment frame has invalid card ID")
+    payment = vp_payment(_effect_value(context))
     assert payment is not None
-    price, points = payment
+    resource, price, points, _ = payment
     source = (
         f"round:{state.round_number}:player:{action.actor}:"
-        f"reveal_card:{card_id}:solari_vp"
+        f"reveal_card:{card_id}:{resource}_vp"
     )
     owner = state.players[action.actor]
     paid = replace(
         owner,
-        resources=replace(owner.resources, solari=owner.resources.solari - price),
+        resources=replace(
+            owner.resources, **{resource: getattr(owner.resources, resource) - price}
+        ),
+        spice_spent_turn=owner.spice_spent_turn + (price if resource == "spice" else 0),
         victory_points=owner.victory_points + points,
     )
     return RuleResult(
@@ -1692,8 +1754,93 @@ def apply_reveal_solari_vp(
             state.pop_decision(), players=replace_player(state.players, paid)
         ),
         events=(
-            resources_paid_event(source, action.actor, solari=price),
+            resources_paid_event(source, action.actor, **{resource: price}),
             resources_gained_event(source, action.actor, victory_points=points),
+        ),
+    )
+
+
+def legal_reveal_troop_purchase_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return Gurney Halleck's optional Solari payment for two troops.
+
+    An arrow cost: no refusal is offered, and the payment is offered while
+    the Solari are there (judged whenever the rows are asked, OQ-028). The
+    troops are a live reward whatever the supply holds, as a shortage can be
+    filled later in the turn (OQ-030).
+    """
+
+    pending = pending_choice_rows(state, player, legal_reveal_troop_purchase_actions)
+    if pending is not None:
+        return pending
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    payment = troop_purchase_payment(_effect_value(context))
+    if payment is None or state.players[player].resources.solari < payment[0]:
+        return ()
+    return (DomainAction(action_id="pay_reveal_solari_for_troops", actor=player),)
+
+
+def apply_reveal_troop_purchase(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Pay Gurney Halleck's Solari, recruit its troops and let the owner
+    deploy them (once: the choice is used up)."""
+
+    state = _open_pending(state, action, legal_reveal_troop_purchase_actions)
+    if action not in legal_reveal_troop_purchase_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal troop purchase")
+    context = dict(state.decision_stack[-1].context)
+    card_id = context.get("reveal_card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Reveal troop-purchase frame has invalid card ID")
+    payment = troop_purchase_payment(_effect_value(context))
+    assert payment is not None
+    price, count = payment
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{card_id}:troop_purchase"
+    )
+    owner = state.players[action.actor]
+    paid = replace(
+        owner,
+        resources=replace(owner.resources, solari=owner.resources.solari - price),
+    )
+    next_owner, recruited = recruit_troops(paid, count)
+    popped = replace(
+        state.pop_decision(), players=replace_player(state.players, next_owner)
+    )
+    # The recruits count toward the Reveal's Combat-icon room, and these
+    # troops may be deployed from the garrison [Gurney Halleck card].
+    frame = popped.decision_stack[-1]
+    reveal_context = dict(frame.context)
+    reveal_context["reveal_troops_recruited"] = (
+        context_int(reveal_context, "reveal_troops_recruited", owner="Reveal frame")
+        + recruited
+    )
+    counted = replace_top_frame(popped, with_context(frame, reveal_context))
+    next_state = grant_recruit_deployment(counted, action.actor, recruited)
+    return RuleResult(
+        state=next_state,
+        events=(
+            resources_paid_event(source, action.actor, solari=price),
+            GameEvent(
+                event_id=f"{source}:recruited",
+                kind="reveal_troops_recruited",
+                payload=(
+                    ("player", action.actor),
+                    ("source", card_id),
+                    ("troops", recruited),
+                ),
+            ),
+            *recruit_shortfall_events(source, action.actor, count, recruited),
         ),
     )
 
@@ -4105,6 +4252,15 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         is PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH
         else "You may pay six Solari for a Victory Point"
         if effect is PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT
+        else "You may pay three Solari for two troops"
+        if effect
+        is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY
+        else "You may pay three spice for a Victory Point"
+        if effect
+        is (
+            PersonalCardRevealChoiceEffect
+            .MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE
+        )
         else "You may recall a Spy for three swords"
         if effect is PersonalCardRevealChoiceEffect.MAY_RECALL_SPY_FOR_THREE_STRENGTH
         else "Command: you may trash this card to acquire an Imperium Row card"
@@ -4281,10 +4437,13 @@ def _reveal_choice_effect_is_available(
             and owner.resources.spice >= price
             and not reveal_influence_choice_blocked(owner, effect)
         )
-        # Opulence's Victory Point: the Solari are there when the choice opens.
+        # Opulence's and Guild Ambassador's Victory Point: the cost is there
+        # (and the Alliance held) when the choice opens.
+        or vp_payment_affordable(owner, effect)
+        # Gurney Halleck's troops: the Solari are there when the choice opens.
         or (
-            (vp_payment := solari_vp_payment(effect)) is not None
-            and owner.resources.solari >= vp_payment[0]
+            (troop_payment := troop_purchase_payment(effect)) is not None
+            and owner.resources.solari >= troop_payment[0]
         )
         # The Persuasion branch is always choosable, so the choice always
         # opens, with or without Maker Hooks (option (B), user ruling
@@ -4478,7 +4637,8 @@ def reveal_choice_providers() -> tuple[ChoiceProvider, ...]:
         legal_reveal_influence_gain_actions,
         legal_reveal_sandworm_actions,
         legal_reveal_spice_influence_actions,
-        legal_reveal_solari_vp_actions,
+        legal_reveal_vp_payment_actions,
+        legal_reveal_troop_purchase_actions,
         legal_reveal_troop_retreat_actions,
         legal_reveal_influence_loss_actions,
         legal_reveal_troop_move_actions,

@@ -37,6 +37,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Condition,
     Cost,
     DeployFromGarrison,
+    DeployTheseTroops,
     DrawIntrigueCards,
     EffectSection,
     FactionBond,
@@ -53,6 +54,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     PrintedRevealValue,
     RecallSpy,
+    RecruitTroops,
     RetreatTroops,
     RevealPersuasion,
     RevealSwords,
@@ -218,6 +220,31 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             # [Main p. 20]), paid once [FAQ p. 3].
             _CHOICE.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: _choice(
                 _line(GainVictoryPoints(1), costs=(PayResources(solari=6),)),
+                mark=_OPTIONAL,
+            ),
+            # Guild Ambassador (original game): "Spacing Guild Alliance: [3
+            # spice] -> [1 Victory Point]" -- an optional arrow paid once, the
+            # Alliance judged whenever its row is asked (OQ-028).
+            _CHOICE.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE: (
+                _choice(
+                    _line(
+                        GainVictoryPoints(1),
+                        costs=(PayResources(spice=3),),
+                        condition=HasAlliance(Faction.SPACING_GUILD),
+                    ),
+                    mark=_OPTIONAL,
+                )
+            ),
+            # Gurney Halleck (original game): "[3 Solari] -> [2 troops], you may
+            # deploy these troops to the Conflict" -- an optional arrow paid once;
+            # in a Reveal turn the two recruits may deploy ("these troops" only,
+            # no garrison share).
+            _CHOICE.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY: _choice(
+                _line(
+                    RecruitTroops(2),
+                    DeployTheseTroops(),
+                    costs=(PayResources(solari=3),),
+                ),
                 mark=_OPTIONAL,
             ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"

@@ -512,6 +512,26 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS: (
         "{spice:2} 지불 가능 {arrow_right} {troop:3}"
     ),
+    PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: (
+        "{influence_spacing_guild} 2 이상이면: {draw:2}"
+    ),
+    PersonalCardAgentEffect.GAIN_TWO_SPICE: "{spice:2}",
+    PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: (
+        "하나 선택: {influence_spacing_guild:1} / {spice:2}"
+    ),
+    PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE: "{troop:2}, {draw:1}",
+    PersonalCardAgentEffect.MAY_TRASH_SELF_TO_DRAW_INTRIGUE: (
+        "이 카드 {trash} 가능 {arrow_right} {intrigue:1}"
+    ),
+    PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: (
+        "베네 게세리트의 유대감이면: {influence_any:1} 선택"
+    ),
+    PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: (
+        "카드 1장 {trash} 가능, 베네 게세리트의 유대감이면: {spice:2}"
+    ),
+    PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: (
+        "베네 게세리트의 유대감이면: 다른 플레이어 각자 카드 2장 버리기"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box
@@ -535,6 +555,7 @@ TRASH_EFFECT_TEXT_KO: Final[dict[PersonalCardTrashEffect, str]] = {
         "은행의 {commander} {acquire} 후 {recruit}"
     ),
     PersonalCardTrashEffect.ADVANCE_TLEILAXU: "{tleilaxu} (트랙 전진)",
+    PersonalCardTrashEffect.GAIN_FOUR_SOLARI: "{solari:4}",
 }
 
 # The printed condition that turns a card's greyed Agent icons on; Korean
@@ -644,6 +665,20 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
         "{solari:6} 지불 가능 {arrow_right} {victory_point:1}"
     ),
+    (
+        PersonalCardRevealChoiceEffect
+        .MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY
+    ): (
+        "{solari:3} 지불 가능 {arrow_right} {troop:2}, "
+        "이 병력을 {conflict}에 배치 가능"
+    ),
+    (
+        PersonalCardRevealChoiceEffect
+        .MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE
+    ): (
+        "우주 항행 길드 {alliance}: {spice:3} 지불 가능 {arrow_right} "
+        "{victory_point:1}"
+    ),
     PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
         "하나 선택: {solari:5} / {solari:5} 지불 {arrow_right} 원로회 자리 차지"
     ),
@@ -734,6 +769,11 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
         conditions.append(f"{{garrison}}에 부대가 {held.garrison} 이상 있다면")
     if held.command:
         conditions.append("{command} ({persuasion} 6 이상)이면")
+    if held.influence is not None:
+        faction, amount = held.influence
+        conditions.append(f"{{influence_{faction.value}}} {amount} 이상이면")
+    if held.alliance is not None:
+        conditions.append(f"{_faction_name_ko(held.alliance)} {{alliance}}이면")
 
     count = line.faction_count
     per_faction = (

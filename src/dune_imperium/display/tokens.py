@@ -34,8 +34,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     GrantCombatDeployment,
+    HasAlliance,
     HasHighCouncil,
     HasSwordmaster,
+    InfluenceAtLeast,
     RecruitTroops,
     Research,
     RevealCountKind,
@@ -455,6 +457,28 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS: (
             "You may pay 2 spice → Recruit 3 troops"
         ),
+        PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: (
+            "If you have 2 or more Spacing Guild Influence: Draw 2 cards"
+        ),
+        PersonalCardAgentEffect.GAIN_TWO_SPICE: "Gain 2 spice",
+        PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: (
+            "Choose one: Gain 1 Spacing Guild Influence / Gain 2 spice"
+        ),
+        PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE: (
+            "Recruit 2 troops, Draw 1 card"
+        ),
+        PersonalCardAgentEffect.MAY_TRASH_SELF_TO_DRAW_INTRIGUE: (
+            "You may trash this card → Draw 1 Intrigue card"
+        ),
+        PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: Gain 1 Influence with a chosen Faction"
+        ),
+        PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: (
+            "You may trash a card, If Bene Gesserit Bond: Gain 2 spice"
+        ),
+        PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: Each opponent discards 2 cards"
+        ),
     }
 )
 
@@ -480,6 +504,7 @@ TRASH_EFFECT_TEXT: Final[Mapping[PersonalCardTrashEffect, str]] = MappingProxyTy
         PersonalCardTrashEffect.ADVANCE_TLEILAXU: (
             "Tleilaxu (advance your Tleilaxu token)"
         ),
+        PersonalCardTrashEffect.GAIN_FOUR_SOLARI: "Gain 4 solari",
     }
 )
 
@@ -615,6 +640,19 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
                 "You may pay 6 solari → Gain 1 Victory Point"
             ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY
+            ): (
+                "You may pay 3 solari → Recruit 2 troops, "
+                "you may deploy these troops to the Conflict"
+            ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE
+            ): (
+                "Spacing Guild Alliance: You may pay 3 spice → Gain 1 Victory Point"
+            ),
             PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
                 "Choose one: Gain 5 solari / "
                 "Pay 5 solari → Take the High Council seat"
@@ -681,6 +719,8 @@ HANDLED_REVEAL_CONDITIONS: Final[frozenset[type]] = frozenset(
         GeneticMarkersAtLeast,
         GarrisonedUnitsAtLeast,
         CommandReached,
+        InfluenceAtLeast,
+        HasAlliance,
     }
 )
 HANDLED_REVEAL_REWARDS: Final[frozenset[type]] = frozenset(
@@ -713,6 +753,10 @@ class RevealLineConditions:
     markers: int = 0
     garrison: int = 0
     command: bool = False
+    # "Fremen Influence 2" (Worm Riders): a Faction and the Influence it needs.
+    influence: tuple[Faction, int] | None = None
+    # "Fremen Alliance" (Worm Riders).
+    alliance: Faction | None = None
 
 
 def reveal_line_conditions(line: RevealLine) -> RevealLineConditions:
@@ -739,6 +783,10 @@ def reveal_line_conditions(line: RevealLine) -> RevealLineConditions:
                 found["garrison"] = count
             case CommandReached():
                 found["command"] = True
+            case InfluenceAtLeast(faction=faction, amount=amount):
+                found["influence"] = (faction, amount)
+            case HasAlliance(faction=faction) if faction is not None:
+                found["alliance"] = faction
             case _:
                 raise TypeError(f"{condition!r} is not a Reveal line condition")
     return RevealLineConditions(**found)  # type: ignore[arg-type]
@@ -779,6 +827,12 @@ def reveal_effect_text(line: RevealLine) -> str:
         conditions.append(f"you have {held.garrison} or more garrisoned units")
     if held.command:
         conditions.append("Command (6+ Persuasion)")
+    if held.influence is not None:
+        faction, amount = held.influence
+        name = _faction_name(faction)
+        conditions.append(f"you have {amount} or more {name} Influence")
+    if held.alliance is not None:
+        conditions.append(f"you have the {_faction_name(held.alliance)} Alliance")
 
     count = line.faction_count
     per_faction = (

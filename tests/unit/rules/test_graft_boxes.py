@@ -114,6 +114,7 @@ OTHER_FRAME_KEYS = frozenset(
         "long_live_fighters_draw_card_id",
         "occupied",
         "only_option",
+        "opponent_discards_remaining",
         "option",
         "optional_sword_strength",
         "partner_waives_influence",

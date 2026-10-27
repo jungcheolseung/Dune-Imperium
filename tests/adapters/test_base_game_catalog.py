@@ -77,6 +77,14 @@ def _original_ids() -> frozenset[str]:
     )
 
 
+def _original_card_ids() -> frozenset[str]:
+    """The original game's own Imperium cards (stage P3): Imperial Spy's id is
+    no Spy system, whatever its name says."""
+
+    content = content_for(RulesetConfig(base_game=BaseGame.IMPERIUM))
+    return frozenset(card.card.card_id for card in content.imperium_cards)
+
+
 # The original board's High Council and Swordmaster print the icons of the
 # same names [DI pp. 17-18], whose keys are Uprising's space ids.
 _ORIGINAL_ICONS = frozenset({"high_council", "swordmaster"})
@@ -85,6 +93,7 @@ _ORIGINAL_ICONS = frozenset({"high_council", "swordmaster"})
 def test_the_original_game_catalog_holds_no_uprising_content() -> None:
     uprising = _uprising_ids()
     original = _original_ids()
+    original_cards = _original_card_ids()
     for config in (
         RulesetConfig(base_game=BaseGame.IMPERIUM),
         RulesetConfig(
@@ -116,6 +125,7 @@ def test_the_original_game_catalog_holds_no_uprising_content() -> None:
                 or any(
                     isinstance(value, str)
                     and value not in original
+                    and not any(part in original_cards for part in value.split(":"))
                     and any(word in value for word in _UPRISING_SYSTEM_WORDS)
                     for _, value in template.arguments
                 )

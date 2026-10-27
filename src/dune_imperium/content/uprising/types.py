@@ -335,6 +335,37 @@ class PersonalCardAgentEffect(StrEnum):
     # Fremen Camp: "[2 spice] -> [3 troops]", an optional arrow paid once
     # [DI p. 9] [FAQ p. 3].
     MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS = "may_pay_two_spice_for_three_troops"
+    # Smuggler's Thopter: "[Spacing Guild] 2 Influence: [draw 1] [draw 1]", two
+    # draw icons each judged when it resolves (OQ-027, OQ-028).
+    DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO = "draw_two_if_spacing_guild_influence_two"
+    # Worm Riders: the spice icon with a 2, "Gain 2 spice".
+    GAIN_TWO_SPICE = "gain_two_spice"
+    # Guild Ambassador: "[Spacing Guild Influence] -OR- [2 spice]", a printed
+    # -OR- the owner must settle.
+    GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE = (
+        "gain_spacing_guild_influence_or_two_spice"
+    )
+    # Gurney Halleck: "[2 troops] [draw 1 card]", two icons each its own step
+    # (OQ-027, OQ-106).
+    RECRUIT_TWO_AND_DRAW_ONE = "recruit_two_and_draw_one"
+    # Imperial Spy: "Trash this card -> [Intrigue card]", an optional arrow
+    # paid once [DI p. 9] [FAQ p. 3].
+    MAY_TRASH_SELF_TO_DRAW_INTRIGUE = "may_trash_self_to_draw_intrigue"
+    # Missionaria Protectiva: "If you have another Bene Gesserit card in play:
+    # [Influence of your choice]".
+    GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND = (
+        "gain_chosen_influence_if_bene_gesserit_bond"
+    )
+    # Gene Manipulation: "[trash] AND If you have another Bene Gesserit card in
+    # play: [2 spice]", two separate icons (OQ-027).
+    MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND = (
+        "may_trash_and_gain_two_spice_if_bene_gesserit_bond"
+    )
+    # Reverend Mother Mohiam: "If you have another Bene Gesserit card in play,
+    # each opponent discards two cards."
+    EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND = (
+        "each_opponent_discards_two_if_bene_gesserit_bond"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -348,6 +379,9 @@ class PersonalCardTrashEffect(StrEnum):
     ACQUIRE_BANK_COMMANDER = "acquire_bank_commander"
     # Replacement Eyes (Immortality): "When this card is trashed: Tleilaxu".
     ADVANCE_TLEILAXU = "advance_tleilaxu"
+    # Assassination Mission (the original game): "When this card is trashed: 4
+    # Solari" -- whatever trashes it, never the card itself [FAQ p. 1].
+    GAIN_FOUR_SOLARI = "gain_four_solari"
 
 
 class PersonalCardIconCondition(StrEnum):
@@ -491,6 +525,16 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # Opulence: "[6 Solari] -> [1 Victory Point]", an optional arrow paid once
     # [DI p. 9] [FAQ p. 3].
     MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT = "may_pay_six_solari_for_victory_point"
+    # Guild Ambassador: "Spacing Guild Alliance: [3 spice] -> [1 Victory
+    # Point]", an optional arrow paid once [DI p. 9] [FAQ p. 3].
+    MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE = (
+        "may_pay_three_spice_for_victory_point_if_spacing_guild_alliance"
+    )
+    # Gurney Halleck: "[3 Solari] -> [2 troops], you may deploy these troops to
+    # the Conflict", an optional arrow paid once [DI p. 9] [FAQ p. 3].
+    MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY = (
+        "may_pay_three_solari_for_two_troops_and_deploy"
+    )
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -518,6 +562,8 @@ IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = froz
         PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,
         PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
         PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT,
+        PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE,
+        PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY,
     }
 )
 

@@ -960,9 +960,9 @@ def reward_text_ko(reward: Reward) -> str:
         case RecallAgent():
             # Quotes ``tokens_ko.py``'s Steersman line.
             return "{agent} 소환"
-        case EachOpponentDiscardsCard():
+        case EachOpponentDiscardsCard(count=count):
             # Quotes ``tokens_ko.py``'s Covert Operation line.
-            return "다른 플레이어 각자 카드 1장 버리기"
+            return f"다른 플레이어 각자 카드 {count}장 버리기"
         case EachOpponentLosesTroop(garrison_only=garrison_only):
             # Quotes ``tokens_ko.py``'s Holy War and Gun Thopter lines.
             return (

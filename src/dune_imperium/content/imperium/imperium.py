@@ -27,8 +27,10 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.types import (
     AgentIcon,
+    PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
+    PersonalCardTrashEffect,
 )
 
 # The rulebook lists the deck [DI p. 3]; the printed values are the app's
@@ -91,10 +93,19 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
     # --- Identities only (stage P3a, plan 16.1): name, copies and cost from the
     # app's attribute table (scripts/dwgr/imperium_entries.py skeleton); each
     # card's play data replaces its entry when it is transcribed. ---
+    # App table: cost 1, 2 copies, no Faction, no Agent icons, Reveal 1 sword
+    # (Solari 1 beside it). No Agent icon: a Reveal-only card [DI p. 9]. Reveal:
+    # "[1 Solari] [S1]". Trashed (banner "When this card is trashed: 4
+    # Solari"): whatever trashes it -- the card has no way to trash itself, so
+    # another effect must [FAQ p. 1].
     ImperiumCardEntry(
         card=imperium_card("assassination_mission", "Assassination Mission"),
         copies=2,
         acquisition_cost=1,
+        agent_icons=(),
+        reveal_strength=1,
+        trash_effect=PersonalCardTrashEffect.GAIN_FOUR_SOLARI,
+        play_data_complete=True,
     ),
     # App table: cost 3, 2 copies, Bene Gesserit, Landsraad, City and Spice
     # Trade, Reveal 1 Persuasion. Agent: "Draw 1 card" (the card-draw icon
@@ -213,10 +224,22 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_strength=1,
         play_data_complete=True,
     ),
+    # App table: cost 3, 2 copies, Bene Gesserit, Landsraad and City, Reveal 2
+    # Persuasion (tag WantBG). Agent: "[trash] AND If you have another Bene
+    # Gesserit card in play: [2 spice]" -- two separate icons (OQ-027), the black
+    # trash icon optional [DI p. 16] [FAQ p. 3], the Bond judged when the spice
+    # resolves (OQ-028).
     ImperiumCardEntry(
         card=imperium_card("gene_manipulation", "Gene Manipulation"),
         copies=2,
         acquisition_cost=3,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND
+        ),
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     # App table: cost 2, 2 copies, Spacing Guild, Spacing Guild and Spice
     # Trade, Reveal 1 Persuasion. Agent: the black trash icon, "You may trash
@@ -231,25 +254,62 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
+    # App table: cost 4, 1 copy, Spacing Guild, Landsraad, no fixed Reveal
+    # values (tag SpacingGuildAlliance). Agent: "[Spacing Guild Influence] -OR-
+    # [2 spice]", a printed -OR- the owner must settle (P0 sweep). Reveal:
+    # "Spacing Guild Alliance: [3 spice] -> [1 Victory Point]" -- an optional
+    # arrow paid once [DI p. 9] [FAQ p. 3], the Alliance judged at resolution
+    # (OQ-028).
     ImperiumCardEntry(
         card=imperium_card("guild_ambassador", "Guild Ambassador"),
         copies=1,
         acquisition_cost=4,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        agent_effect=PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("guild_bankers", "Guild Bankers"),
         copies=1,
         acquisition_cost=3,
     ),
+    # App table: cost 6, 1 copy, no Faction, City, Reveal 2 Persuasion, AgentTroops
+    # 2. Agent: "[2 troops] [draw 1 card]" -- separate icons (OQ-027), the draw
+    # a hidden step of its own (OQ-106). Reveal: "[P2] AND [3 Solari] -> [2
+    # troops] + may deploy these troops" -- an optional arrow paid once [DI p.
+    # 9] [FAQ p. 3]; in the Reveal turn the two recruits may deploy
+    # (``DeployTheseTroops``).
     ImperiumCardEntry(
         card=imperium_card("gurney_halleck_card", "Gurney Halleck"),
         copies=1,
         acquisition_cost=6,
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE,
+        reveal_persuasion=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY,
+        ),
+        play_data_complete=True,
     ),
+    # App table: cost 2, 2 copies, Emperor, Emperor, Reveal 1 Persuasion and 1
+    # sword. Agent: "Trash this card -> [Intrigue card]" -- an arrow cost, optional
+    # [DI p. 9] [FAQ p. 3]; the card must trash itself to draw [FAQ p. 2],
+    # and trashed by another effect it draws nothing. Reveal: "[P1][S1]" ([DI
+    # p. 11] example).
     ImperiumCardEntry(
         card=imperium_card("imperial_spy", "Imperial Spy"),
         copies=2,
         acquisition_cost=2,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR,),
+        agent_effect=PersonalCardAgentEffect.MAY_TRASH_SELF_TO_DRAW_INTRIGUE,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("kwisatz_haderach", "Kwisatz Haderach"),
@@ -261,15 +321,37 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=7,
     ),
+    # App table: cost 5, 1 copy, Emperor and Fremen, Fremen and City, no fixed
+    # Reveal values, AcquireEffect RankE. Acquire: "1 Emperor Influence".
+    # Reveal: "[P2] for each Fremen card you have in play (including this one)"
+    # -- the cards played on this round's Agent turns and this Reveal turn's
+    # [FAQ p. 2], counted when it resolves (OQ-028); it counts as a Fremen card
+    # itself.
     ImperiumCardEntry(
         card=imperium_card("liet_kynes_card", "Liet Kynes"),
         copies=1,
         acquisition_cost=5,
+        has_acquisition_bonus=True,
+        factions=(Faction.EMPEROR, Faction.FREMEN),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY),
+        acquisition_effect=PersonalCardAcquisitionEffect.GAIN_EMPEROR_INFLUENCE,
+        play_data_complete=True,
     ),
+    # App table: cost 1, 2 copies, Bene Gesserit (the errata's faction, [FAQ p.
+    # 1]), City, Reveal 1 Persuasion (tag WantBG). Agent: "If you have another
+    # Bene Gesserit card in play: [Influence of your choice]", judged at
+    # resolution (OQ-028); a track at 6 is not offered (OQ-060).
     ImperiumCardEntry(
         card=imperium_card("missionaria_protectiva", "Missionaria Protectiva"),
         copies=2,
         acquisition_cost=1,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND
+        ),
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
     # App table: cost 6, 1 copy, Emperor, Emperor, Reveal 1 Persuasion,
     # AgentSolari 3. Agent: "3 Solari". Reveal: "1 Persuasion AND [6 Solari]
@@ -310,15 +392,36 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=3,
         acquisition_cost=5,
     ),
+    # App table: cost 6, 1 copy, Emperor and Bene Gesserit, Emperor and Bene
+    # Gesserit, Reveal 2 Persuasion and 2 spice (tags NamedCharacter, WantBG).
+    # Agent: "If you have another Bene Gesserit card in play, each opponent
+    # discards two cards" -- judged at resolution (OQ-028); each opponent
+    # picks, clockwise from the player's left, as many as the hand holds
+    # [FAQ p. 3] (OQ-118). Reveal: "[P2] [2 spice]".
     ImperiumCardEntry(
         card=imperium_card("reverend_mother_mohiam", "Reverend Mother Mohiam"),
         copies=1,
         acquisition_cost=6,
+        factions=(Faction.EMPEROR, Faction.BENE_GESSERIT),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.BENE_GESSERIT),
+        agent_effect=(
+            PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND
+        ),
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
+    # App table: cost 1, 2 copies, Emperor, no Agent icons, Reveal 1 Persuasion
+    # and 2 swords. A card with no Agent icon is a Reveal-only card [DI p. 9]:
+    # no Agent box either.
     ImperiumCardEntry(
         card=imperium_card("sardaukar_infantry", "Sardaukar Infantry"),
         copies=2,
         acquisition_cost=1,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(),
+        reveal_persuasion=1,
+        reveal_strength=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("sardaukar_legion", "Sardaukar Legion"),
@@ -335,30 +438,74 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=2,
         acquisition_cost=3,
     ),
+    # App table: cost 4, 1 copy, Bene Gesserit and Fremen, Bene Gesserit and
+    # Fremen, no fixed Reveal values (tag FremenBond). Agent: the black trash
+    # icon, "You may trash a card" (an optional icon, [DI p. 16] [FAQ p. 3]).
+    # Reveal: "Fremen Bond: [P3] [1 spice]" -- another Fremen card in play
+    # [DI p. 16], judged at resolution (OQ-028); nothing unconditional.
     ImperiumCardEntry(
         card=imperium_card("sietch_reverend_mother", "Sietch Reverend Mother"),
         copies=1,
         acquisition_cost=4,
+        factions=(Faction.BENE_GESSERIT, Faction.FREMEN),
+        agent_icons=(AgentIcon.BENE_GESSERIT, AgentIcon.FREMEN),
+        agent_effect=PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
+        play_data_complete=True,
     ),
+    # App table: cost 4, 2 copies, Spacing Guild, Spice Trade, Reveal 1
+    # Persuasion and 1 spice (tag SpacingGuildInfluence). Agent: "Spacing
+    # Guild Influence 2: [draw] [draw]" -- two icons, each judged when it
+    # resolves (OQ-027, OQ-028; the P0 sweep's "two icons"). Reveal: "[P1]
+    # [1 spice]" ([DI p. 11] example).
     ImperiumCardEntry(
         card=imperium_card("smugglers_thopter", "Smuggler's Thopter"),
         copies=2,
         acquisition_cost=4,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO,
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
+    # App table: cost 3, 2 copies, Spacing Guild, Spacing Guild, Reveal 2
+    # Persuasion. Agent: "Draw 1 card" (the card-draw icon alone; its own step,
+    # OQ-106).
     ImperiumCardEntry(
         card=imperium_card("space_travel", "Space Travel"),
         copies=2,
         acquisition_cost=3,
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD,),
+        agent_effect=PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
+    # App table: cost 2, 2 copies, Fremen, Fremen and Spice Trade, Reveal 1
+    # Persuasion and 1 sword (tag FremenBond). Agent: no box (the icons only).
+    # Reveal: "Fremen Bond: 1 spice" -- another Fremen card in play [DI p. 16],
+    # judged at resolution (OQ-028).
     ImperiumCardEntry(
         card=imperium_card("spice_hunter", "Spice Hunter"),
         copies=2,
         acquisition_cost=2,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.SPICE_TRADE),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
+    # App table: cost 5, 1 copy, Fremen, Fremen, City and Spice Trade, Reveal 2
+    # Persuasion and 3 swords, AgentWater 1. Agent: "1 water", a plain gain.
     ImperiumCardEntry(
         card=imperium_card("stilgar", "Stilgar"),
         copies=1,
         acquisition_cost=5,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.GAIN_WATER,
+        reveal_persuasion=2,
+        reveal_strength=3,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("test_of_humanity", "Test of Humanity"),
@@ -370,15 +517,40 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=2,
         acquisition_cost=2,
     ),
+    # App table: cost 5, 1 copy, no Faction, six Agent icons (every one but
+    # Landsraad), Reveal 1 Persuasion. Agent: "Draw 1 card" (its own step,
+    # OQ-106). Reveal: "[P1] [Intrigue card]" -- the Intrigue draw is a step of
+    # the owner's own (OQ-045, OQ-106).
     ImperiumCardEntry(
         card=imperium_card("thufir_hawat", "Thufir Hawat"),
         copies=1,
         acquisition_cost=5,
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+            AgentIcon.CITY,
+            AgentIcon.SPICE_TRADE,
+        ),
+        agent_effect=PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
+    # App table: cost 6, 2 copies, Fremen, City and Spice Trade, no fixed Reveal
+    # values (tags FremenInfluence, FremenAlliance, ConditionalStrength),
+    # AgentSpice 2. Agent: "2 spice", a plain gain. Reveal: "Fremen Influence 2:
+    # [4 swords]" and, on its own line, "Fremen Alliance: [2 swords]" -- two
+    # independent lines, each judged when resolved (OQ-028); nothing
+    # unconditional.
     ImperiumCardEntry(
         card=imperium_card("worm_riders", "Worm Riders"),
         copies=2,
         acquisition_cost=6,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.GAIN_TWO_SPICE,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("duncan_loyal_blade", "Duncan, Loyal Blade"),

@@ -917,6 +917,73 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                     ),
                 ),
             ),
+            # Smuggler's Thopter (original game): "Spacing Guild Influence 2:
+            # [draw] [draw]" -- two printed draw icons, each its own step with
+            # the Influence judged when it resolves (OQ-027, OQ-028, OQ-106).
+            _BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: _icons(
+                ("cards", _line(DrawPersonalCards(1), condition=_GUILD_TWO)),
+                ("cards_second", _line(DrawPersonalCards(1), condition=_GUILD_TWO)),
+            ),
+            # Worm Riders (original game): two spice.
+            _BOX.GAIN_TWO_SPICE: _box(GainResources(spice=2)),
+            # Guild Ambassador (original game): "[Spacing Guild Influence] -OR-
+            # [2 spice]" -- a printed -OR- the owner must settle (the P0
+            # sweep's "choose one (must)"; Southern Faith's plain-beside-choice
+            # shape). The 2 spice is the plain line, the Influence the choice
+            # line; a track at 6 gains nothing (OQ-060), so only the spice is
+            # then offered.
+            _BOX.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(GainResources(spice=2)),
+                    _line(GainInfluence(factions=(Faction.SPACING_GUILD,))),
+                ),
+                structure=AbilityStructure.ONE_OF,
+            ),
+            # Gurney Halleck (original game): "[2 troops] [draw 1 card]" -- two
+            # printed icons, each its own step in the owner's order (OQ-027);
+            # the hidden draw is apart from the public recruit (OQ-106).
+            _BOX.RECRUIT_TWO_AND_DRAW_ONE: _icons(
+                ("troops", _line(RecruitTroops(2))),
+                ("cards", _line(DrawPersonalCards(1))),
+            ),
+            # Imperial Spy (original game): "Trash this card -> [Intrigue card]"
+            # -- the card trashes itself as the arrow's cost, then the Intrigue
+            # draw is armed as an icon of its own (OQ-022, OQ-106; Pivotal
+            # Gambit's shape). Trashed by anything else it draws nothing
+            # [FAQ p. 2].
+            _BOX.MAY_TRASH_SELF_TO_DRAW_INTRIGUE: _trash(
+                EffectSection(
+                    rewards=(DrawIntrigueCards(1),),
+                    costs=(TrashCard(this_card=True),),
+                ),
+                armed=("intrigue",),
+            ),
+            # Missionaria Protectiva (original game): "If you have another Bene
+            # Gesserit card in play: [Influence of your choice]" -- the Bond
+            # opens the box at the placement and is judged again when it
+            # resolves (OQ-028); a track at 6 is not offered (OQ-060).
+            _BOX.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: _box(
+                GainInfluence(), condition=_BG_BOND, requirement=_BG_BOND
+            ),
+            # Gene Manipulation (original game): "[trash] AND If you have
+            # another Bene Gesserit card in play: [2 spice]" -- two printed
+            # icons, each its own step in the owner's order (OQ-027), the Bond
+            # judged when the spice icon resolves (OQ-028: trashing the other
+            # Bene Gesserit card first loses the spice); the black trash icon is
+            # optional [DI p. 16] [FAQ p. 3].
+            _BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: _icons(
+                ("trash", _line(TrashPersonalCard())),
+                ("spice", _line(GainResources(spice=2), condition=_BG_BOND)),
+            ),
+            # Reverend Mother Mohiam (original game): "If you have another Bene
+            # Gesserit card in play, each opponent discards two cards" -- the
+            # Bond opens the box at the placement and is judged again when it
+            # resolves (OQ-028); each opponent picks, clockwise from the next
+            # seat, as many as the hand holds (OQ-118, [FAQ p. 3]).
+            _BOX.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: _box(
+                EachOpponentDiscardsCard(2), condition=_BG_BOND, requirement=_BG_BOND
+            ),
         }
     )
 )
