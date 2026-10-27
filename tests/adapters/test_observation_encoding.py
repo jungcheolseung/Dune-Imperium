@@ -1,10 +1,11 @@
 """Tests for the versioned flat observation encoding."""
 
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
-from dune_imperium import RulesetConfig
+from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.observation_encoding import (
     BATTLE_CARD_IDS,
     CONFLICT_IDS,
@@ -14,6 +15,7 @@ from dune_imperium.adapters.observation_encoding import (
     OBSERVATION_SIZE,
     OBSERVATION_VERSION,
     PERSONAL_CARD_IDS,
+    ObservationSegment,
     encode_player_view,
     segment_slice,
 )
@@ -26,6 +28,7 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
+from dune_imperium.core.observation import observe_state
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.action_shapes import Source, Verb
@@ -34,7 +37,7 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 33
+    assert OBSERVATION_VERSION == 34
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
@@ -144,8 +147,11 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 4
         # v33 (the B3d-2a review): a personal card picked before the last.
         + 139
+        # v34 (the base-game axis): the base-game flag.
+        + 1
     )
-    assert OBSERVATION_SIZE == 5_732
+    assert OBSERVATION_SIZE == 5_733
+    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment("base_game", 5_732, 1)
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -207,7 +213,11 @@ def test_layout_is_versioned_and_contiguous() -> None:
     )
     for before, after in zip(pick_segments, pick_segments[1:], strict=False):
         assert segment_slice(before).stop == segment_slice(after).start
-    assert segment_slice("private_effect_pick_personal").stop == OBSERVATION_SIZE
+    assert (
+        segment_slice("private_effect_pick_personal").stop
+        == segment_slice("base_game").start
+    )
+    assert segment_slice("base_game").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -1091,7 +1101,7 @@ _GOLDEN_DIGESTS = {
         3136,
     ),
 }
-_GOLDEN_CONFIGS = {
+_GOLDEN_CONFIGS: dict[str, dict[str, Any]] = {
     "base": {},
     "choam": {"choam_module": True},
     "promo_bloodlines_tech": {
@@ -1114,8 +1124,6 @@ _GOLDEN_CONFIGS = {
 def _encoding_digest(config: RulesetConfig, seed: int) -> tuple[str, int]:
     import hashlib
 
-    import numpy as np
-
     from dune_imperium.agents import RandomAgent
 
     engine = UprisingRulesEngine()
@@ -1134,7 +1142,7 @@ def _encoding_digest(config: RulesetConfig, seed: int) -> tuple[str, int]:
         assert isinstance(decision, PlayerDecision)
         for seat in range(4):
             vector = encode_player_view(engine.observe(state, seat))
-            hasher.update(np.asarray(vector, dtype=np.int32).tobytes())
+            hasher.update(_pinned_columns(vector))
             encoded += 1
         actions = engine.legal_actions(state, decision.owner)
         action = agents[decision.owner].choose_action(
@@ -1143,9 +1151,23 @@ def _encoding_digest(config: RulesetConfig, seed: int) -> tuple[str, int]:
         state = engine.apply(state, action, legal_actions=actions).state
     for seat in range(4):
         vector = encode_player_view(engine.observe(state, seat))
-        hasher.update(np.asarray(vector, dtype=np.int32).tobytes())
+        hasher.update(_pinned_columns(vector))
         encoded += 1
     return hasher.hexdigest(), encoded
+
+
+def _pinned_columns(vector: tuple[int, ...]) -> bytes:
+    """The v33 columns the golden digests pin. v34 appended only the
+    base-game flag (the base-game axis), 0 in every Uprising game: an
+    Uprising observation is the v33 one with a 0 after it."""
+
+    import numpy as np
+
+    assert vector[_V33_SIZE:] == (0,)
+    return np.asarray(vector[:_V33_SIZE], dtype=np.int32).tobytes()
+
+
+_V33_SIZE = 5_732
 
 
 @pytest.mark.parametrize("name", sorted(_GOLDEN_DIGESTS))
@@ -1154,3 +1176,15 @@ def test_encoding_matches_the_pinned_golden_digest(name: str) -> None:
         _encoding_digest(RulesetConfig(**_GOLDEN_CONFIGS[name]), 91)
         == (_GOLDEN_DIGESTS[name])
     )
+
+
+def test_the_base_game_flag_names_the_original_game() -> None:
+    # Plan 4.2 item 8: one layout for both base games, and a column that
+    # tells them apart where cards and spaces do not.
+    view = observe_state(UprisingRulesEngine().reset(RulesetConfig(), 4), 0)
+    assert view.base_game is BaseGame.UPRISING
+    flag = segment_slice("base_game")
+    assert encode_player_view(view)[flag] == (0,)
+    imperium = encode_player_view(replace(view, base_game=BaseGame.IMPERIUM))
+    assert imperium[flag] == (1,)
+    assert imperium[: flag.start] == encode_player_view(view)[: flag.start]

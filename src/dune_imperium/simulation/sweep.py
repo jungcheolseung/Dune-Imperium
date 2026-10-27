@@ -16,13 +16,13 @@ import random
 import time
 from collections.abc import Iterable
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.agents import Agent, HeuristicAgent, RandomAgent, StateAgent
 from dune_imperium.config import RulesetConfig
-from dune_imperium.content.uprising.leaders import leaders_for_choam
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
@@ -375,7 +375,7 @@ def sweep_specs(
         raise ValueError("rotate_leaders cannot be combined with leader_draft")
     # Reject an invalid option mix here: _run_spec builds its config outside
     # its try block, so it would crash the whole sweep instead.
-    RulesetConfig(
+    config = RulesetConfig(
         bloodlines=bloodlines,
         tech_module=tech_module,
         immortality=immortality,
@@ -406,11 +406,9 @@ def sweep_specs(
                     random.Random(seed).sample(
                         [
                             leader.leader_id
-                            for leader in leaders_for_choam(
-                                choam_module,
-                                bloodlines=bloodlines,
-                                tech_module=tech_module,
-                            )
+                            for leader in content_for(
+                                replace(config, choam_module=choam_module)
+                            ).leaders
                         ],
                         k=4,
                     )

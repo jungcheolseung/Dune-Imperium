@@ -14,6 +14,7 @@ supply, with the recall-first or its decline without one [Main pp. 11, 20].
 """
 
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -549,7 +550,7 @@ def test_the_owed_spies_are_public_per_seat() -> None:
         },
     ],
 )
-def test_place_track_spy_round_trips_in_every_catalog(options: dict[str, bool]) -> None:
+def test_place_track_spy_round_trips_in_every_catalog(options: dict[str, Any]) -> None:
     # The turn offers the placement by its effect row (stage B3d-4): the
     # Emperor track's Spy, not the bare ``place_track_spy`` template.
     codec = ActionCodec(RulesetConfig(**options))

@@ -105,12 +105,12 @@ def test_bloodlines_adds_its_two_conflicts_to_the_tier_pools() -> None:
     # One Conflict I and one Conflict II join the pools; the deck keeps its
     # 1/5/4 shape [Bloodlines p. 3].
     resolver = ChanceResolver(seed=123)
-    decisions = conflict_setup_decisions(bloodlines=True)
+    decisions = conflict_setup_decisions(RulesetConfig(bloodlines=True))
     assert "skirmish_wild" in decisions[2].options
     assert "storms_in_the_south" in decisions[1].options
     outcomes = tuple(resolver.resolve(decision) for decision in decisions)
 
-    setup = build_conflict_setup(outcomes, bloodlines=True)
+    setup = build_conflict_setup(outcomes, RulesetConfig(bloodlines=True))
     assert len(setup.deck) == 10
     assert len(set(setup.unused)) == 8
     assert set(setup.deck) | set(setup.unused) == {

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from functools import cache
 from typing import Final
 
+from dune_imperium.config import BaseGame
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.effect_dsl import RevealContractsTakeOne
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
@@ -287,6 +288,9 @@ class PlayerView:
     # Epic Game Mode (``RulesetConfig.epic_game``), public like every setup
     # option: the game ends at 12 instead of 10 [Rise of Ix p. 10].
     epic_game: bool = False
+    # The base game (``RulesetConfig.base_game``), public like every setup
+    # option (docs/base-game-and-ix-plan.md 4.2 item 8).
+    base_game: BaseGame = BaseGame.UPRISING
     # The open Agent turn's Agent boxes, as (card instance, still pending):
     # box 0 the placed card, then box 1 its graft partner (Immortality);
     # empty outside an Agent turn. Both cards lie face up in play and each
@@ -638,6 +642,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         scouts_market_cards=state.scouts_market_cards,
         scouts_calls=state.scouts_calls,
         epic_game=state.config.epic_game,
+        base_game=state.config.base_game,
         agent_boxes=agent_box_cards(state),
     )
 

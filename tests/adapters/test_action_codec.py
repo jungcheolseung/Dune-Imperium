@@ -1,6 +1,7 @@
 """Tests for the fixed integer Uprising action codec."""
 
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -402,7 +403,7 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
     # stage B3a, the effect rows that stand for the two Scouts ids the
     # Agent-effect frame offers only as steps and, since stage B3d-2b, the
     # target and effect rows that stand for the Scouts windows' whole ids.
-    for options in (
+    option_sets: tuple[dict[str, Any], ...] = (
         {},
         {
             "choam_module": True,
@@ -411,7 +412,8 @@ def test_arrakeen_scouts_templates_join_only_the_scouts_catalogs() -> None:
             "tech_module": True,
             "immortality": True,
         },
-    ):
+    )
+    for options in option_sets:
         without = ActionCodec(RulesetConfig(**options))
         scouts_config = RulesetConfig(arrakeen_scouts=True, **options)
         with_scouts = ActionCodec(scouts_config)

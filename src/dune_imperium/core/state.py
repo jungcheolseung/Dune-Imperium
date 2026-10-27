@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import Any, Final
 
 from dune_imperium.config import RulesetConfig
+from dune_imperium.content.rulesets import TUEK_SIETCH, content_for
 from dune_imperium.core.dataclass_copy import positional_dataclass_replace
 from dune_imperium.core.decisions import DecisionFrame
 from dune_imperium.core.events import GameEvent
@@ -508,11 +509,9 @@ def _check_scouts(state: GameState) -> None:
 
 def _check_makers(state: GameState) -> None:
     maker_ids = tuple(space_id for space_id, _ in state.maker_bonus_spice)
-    if maker_ids not in (
-        ("deep_desert", "hagga_basin", "imperial_basin"),
-        # Tuek's Sietch joins the Makers while Esmar Tuek plays.
-        ("deep_desert", "hagga_basin", "imperial_basin", "tuek_sietch"),
-    ):
+    makers = content_for(state.config).maker_space_ids
+    # Tuek's Sietch joins the Makers while Esmar Tuek plays.
+    if maker_ids not in (makers, (*makers, TUEK_SIETCH)):
         raise ValueError("Maker bonus spice must use the three spaces in rules order")
     if any(amount < 0 for _, amount in state.maker_bonus_spice):
         raise ValueError("Maker bonus spice must not be negative")
@@ -619,7 +618,7 @@ STATE_CHECKS: Final[tuple[StateCheck, ...]] = (
         frozenset({"config", *_SCOUTS_FIELDS}),
         frozenset({"player_id", "troops_parked", "control_space_ids"}),
     ),
-    StateCheck(_check_makers, frozenset({"maker_bonus_spice"})),
+    StateCheck(_check_makers, frozenset({"config", "maker_bonus_spice"})),
 )
 _SEAT_FIELDS: Final = frozenset().union(*(check.seat_fields for check in STATE_CHECKS))
 

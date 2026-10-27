@@ -25,13 +25,8 @@ from dune_imperium.config import RulesetConfig
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.bloodlines.tech import tech_tiles_for
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_deck_instance_ids
-from dune_imperium.content.uprising.board import BOARD_SPACES
-from dune_imperium.content.uprising.conflicts import CONFLICTS
-from dune_imperium.content.uprising.contracts import contract_instance_ids
-from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
-from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
-from dune_imperium.content.uprising.leaders import leaders_for_choam
-from dune_imperium.content.uprising.reserve import RESERVE_STACKS
+from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.uprising.board import BoardSpace
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.events import EventValue
@@ -187,9 +182,9 @@ def merge_coverage(a: Census, b: Census) -> Census:
     return merged
 
 
-def _agent_placement_catalog() -> frozenset[str]:
+def _agent_placement_catalog(spaces: tuple[BoardSpace, ...]) -> frozenset[str]:
     keys: set[str] = set()
-    for space in BOARD_SPACES:
+    for space in spaces:
         if space.dynamic_cost is None and len(space.cost_options) > 1:
             options: tuple[int, ...] = tuple(range(len(space.cost_options)))
         else:
@@ -228,6 +223,7 @@ def zero_coverage(
         arrakeen_scouts=arrakeen_scouts,
     )
     codec = ActionCodec(config)
+    content = content_for(config)
 
     zero: dict[str, list[str]] = {}
 
@@ -242,31 +238,20 @@ def zero_coverage(
     _report(
         "action_ids", {template.action_id for template in codec.catalog}
     )
-    _report("agent_placements", _agent_placement_catalog())
+    _report("agent_placements", _agent_placement_catalog(content.board_spaces))
     imperium_identities = {
         normalize_instance_id(instance_id)
-        for instance_id in imperium_deck_instance_ids(
-            choam_module,
-            promo_cards,
-            bloodlines=bloodlines,
-            tech_module=tech_module,
-            immortality=immortality,
-        )
+        for instance_id in content.imperium_deck_instance_ids
     }
-    reserve_identities = {stack.card.card_id for stack in RESERVE_STACKS}
+    reserve_identities = {stack.card.card_id for stack in content.reserve_stacks}
     _report("cards_acquired", imperium_identities | reserve_identities)
     intrigue_identities = {
         normalize_instance_id(instance_id)
-        for instance_id in intrigue_deck_instance_ids(
-            choam_module,
-            bloodlines=bloodlines,
-            tech_module=tech_module,
-            immortality=immortality,
-        )
+        for instance_id in content.intrigue_deck_instance_ids
     }
     _report_by_identity("intrigue_played", intrigue_identities)
-    _report("contracts", set(contract_instance_ids(bloodlines=bloodlines)))
-    _report("conflicts", {conflict.card.card_id for conflict in CONFLICTS})
+    _report("contracts", set(content.contract_instance_ids))
+    _report("conflicts", {conflict.card.card_id for conflict in content.conflicts})
     # Each expansion catalog is the one ``rules.setup`` actually deals: the
     # Tech stacks only hold CHOAM Transports with the CHOAM Module
     # [Bloodlines pp. 2, 6], and the Tleilaxu deck only holds the promo with
@@ -290,12 +275,7 @@ def zero_coverage(
     _report("skills_taken", {skill.skill_id for skill in SKILLS} if bloodlines else ())
     _report_by_identity(
         "leader_events",
-        {
-            leader.leader_id
-            for leader in leaders_for_choam(
-                choam_module, bloodlines=bloodlines, tech_module=tech_module
-            )
-        },
+        {leader.leader_id for leader in content.leaders},
     )
 
     return zero

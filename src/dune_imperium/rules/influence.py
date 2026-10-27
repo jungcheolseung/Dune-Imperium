@@ -3,11 +3,13 @@
 from copy import replace
 
 from dune_imperium.content.arrakeen_scouts import RoundModifier
+from dune_imperium.content.rulesets import InfluenceFourBonus, content_for
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     GainResources,
     OnReachInfluence,
+    PlaceSpy,
 )
 from dune_imperium.content.uprising.leader_abilities import (
     LEADER_ABILITIES,
@@ -203,11 +205,12 @@ def _grant_four_bonus(
     """
 
     deck_before = len(intrigue_deck)
+    bonus = content_for(state.config).influence_four_bonuses[faction]
     players, intrigue_deck, bonus_payload, shortfall = _apply_track_bonus(
         players,
         intrigue_deck,
         player,
-        faction,
+        bonus,
         hold=hold,
         source=source,
     )
@@ -220,7 +223,7 @@ def _grant_four_bonus(
     )
     if shortfall:
         pending_draws = (*pending_draws, (player, shortfall, source))
-    if faction is Faction.EMPEROR:
+    if isinstance(bonus, PlaceSpy):
         # The Emperor track prints the Spy icon: the placement is a
         # decision, so it is queued. Inside the seat's own turn it waits for
         # the owner's ``place_track_spy``, in any order before the turn
@@ -538,7 +541,7 @@ def _apply_track_bonus(
     players: tuple[PlayerState, ...],
     intrigue_deck: tuple[str, ...],
     player: int,
-    faction: Faction,
+    bonus: InfluenceFourBonus,
     *,
     hold: bool,
     source: str,
@@ -549,26 +552,35 @@ def _apply_track_bonus(
     int,
 ]:
     # "When you reach 4 Influence, you earn the bonus shown on that space of
-    # the track." [Main p. 7] The four strips print, on their Influence 4
-    # band: the Spy icon (Emperor), a 3 on the Solari coin (Spacing Guild),
-    # the Intrigue card (Bene Gesserit) and the water drop (Fremen) -- read
-    # off the board scan against the rulebook icons on 2026-09-19; the
-    # earlier transcription (2 troops, 3 water) misread the rulebook's small
-    # board picture (docs/lessons.md).
+    # the track." [Main p. 7] ``bonus`` is the icon the base game's board
+    # prints there (``RulesetContent.influence_four_bonuses``).
     owner = players[player]
     intrigue_shortfall = 0
-    match faction:
-        case Faction.EMPEROR:
+    match bonus:
+        case PlaceSpy():
             # The Spy is placed through the engine's queue (the caller adds
             # it to ``pending_track_spies``); nothing changes here.
             payload: tuple[tuple[str, int | str], ...] = (("spy", 1),)
-        case Faction.SPACING_GUILD:
+        case GainResources(solari=solari, spice=spice, water=water):
             owner = replace(
                 owner,
-                resources=replace(owner.resources, solari=owner.resources.solari + 3),
+                resources=replace(
+                    owner.resources,
+                    solari=owner.resources.solari + solari,
+                    spice=owner.resources.spice + spice,
+                    water=owner.resources.water + water,
+                ),
             )
-            payload = (("solari", 3),)
-        case Faction.BENE_GESSERIT:
+            payload = tuple(
+                (name, amount)
+                for name, amount in (
+                    ("solari", solari),
+                    ("spice", spice),
+                    ("water", water),
+                )
+                if amount
+            )
+        case DrawIntrigueCards(count=1):
             # Card identity stays hidden [Main p. 7]; only the count is public.
             payload = (("intrigue", 1),)
             if hold:
@@ -591,12 +603,8 @@ def _apply_track_bonus(
                 intrigue_deck = intrigue_deck[1:]
             else:
                 intrigue_shortfall = 1
-        case Faction.FREMEN:
-            owner = replace(
-                owner,
-                resources=replace(owner.resources, water=owner.resources.water + 1),
-            )
-            payload = (("water", 1),)
+        case _:
+            raise ValueError(f"no such Influence 4 bonus: {bonus!r}")
     return (
         replace_player(players, owner),
         intrigue_deck,

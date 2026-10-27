@@ -7,7 +7,7 @@ from numbers import Integral
 from typing import Final
 
 from dune_imperium.adapters.observation_encoding import MAKER_SPACE_IDS
-from dune_imperium.config import RulesetConfig
+from dune_imperium.config import BaseGame, RulesetConfig
 from dune_imperium.content.arrakeen_scouts import (
     AUCTIONS,
     EVENTS,
@@ -30,16 +30,14 @@ from dune_imperium.content.immortality.tleilaxu import (
     tleilaxu_cards_for,
     tleilaxu_deck_instance_ids,
 )
+from dune_imperium.content.rulesets import RulesetContent, content_for
 from dune_imperium.content.uprising.abilities import AbilityStructure
 from dune_imperium.content.uprising.agent_abilities import agent_box_ability
 from dune_imperium.content.uprising.board import (
-    BOARD_SPACES,
-    OBSERVATION_POSTS,
     BoardSpace,
     Faction,
+    ObservationPost,
 )
-from dune_imperium.content.uprising.conflicts import CONFLICTS
-from dune_imperium.content.uprising.contracts import contract_instance_ids
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireTech,
     EachOpponentDiscardsCard,
@@ -64,9 +62,7 @@ from dune_imperium.content.uprising.intrigue import (
 from dune_imperium.content.uprising.leaders import (
     FEYD_TRACK_START,
     FEYD_TRAINING_TRACK,
-    leaders_for_choam,
 )
-from dune_imperium.content.uprising.objectives import objectives_for_players
 from dune_imperium.content.uprising.personal_cards import (
     card_is_ghola,
     card_is_graft,
@@ -81,8 +77,6 @@ from dune_imperium.content.uprising.starting_cards import (
     CONTROL_THE_SPICE,
     STARTING_DECK,
     StartingCardEntry,
-    starting_deck_entries,
-    starting_discard_entries,
 )
 from dune_imperium.content.uprising.types import (
     BLOODLINES_REVEAL_CHOICE_EFFECTS,
@@ -744,7 +738,58 @@ def _catalog_of(
     return catalog, indices
 
 
+# The fixed rows of the Uprising board's own systems (docs/base-game-and-ix-
+# plan.md 4.2 item 3), which a catalog holds only while its base game prints
+# that system: Spies need observation posts, sandworms a space that summons
+# them, and Sietch Tabr's choice (with the Shield Wall) that space.
+_SPY_ROWS: Final = frozenset(
+    {
+        "decline_combat_reward_spy",
+        "decline_leader_spy_placement",
+        "decline_gather_intelligence",
+        "decline_reveal_spy_recall",
+        "resolve_espionage_without_spy",
+        "decline_spy_placement",
+        "place_track_spy",
+        "decline_acquisition_spy",
+        "decline_agent_card_spy",
+    }
+)
+_SANDWORM_ROWS: Final = frozenset(
+    {
+        "decline_reveal_sandworm",
+        "pay_agent_card_spice_for_sandworm",
+        "pay_agent_card_spice_for_sandworm_and_shield_wall",
+        "pay_reveal_water_for_sandworm",
+    }
+)
+_SIETCH_TABR_ROWS: Final = frozenset(
+    {
+        "take_sietch_tabr_supplies",
+        "take_sietch_tabr_water",
+        "take_sietch_tabr_water_and_destroy_wall",
+    }
+)
+# The Conflict reward icons that place or recall Spies.
+_SPY_REWARD_ICONS: Final = frozenset({"spy", "optional_recall_spies"})
+
+
+def _withheld_rows(content: RulesetContent) -> frozenset[str]:
+    """The Uprising system rows ``content``'s board does not print."""
+
+    withheld: set[str] = set()
+    if not content.observation_posts:
+        withheld |= _SPY_ROWS
+    if not content.sandworm_space_ids:
+        withheld |= _SANDWORM_ROWS
+    if all(space.space_id != "sietch_tabr" for space in content.board_spaces):
+        withheld |= _SIETCH_TABR_ROWS
+    return frozenset(withheld)
+
+
 def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    content = content_for(config)
+    withheld = _withheld_rows(content)
     # The OQ-007 Leader draft picks are part of every catalog so the
     # leader_draft ruleset option never changes the action space; the mask
     # simply keeps them illegal outside a draft setup.
@@ -753,11 +798,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="pick_leader",
             arguments=(("leader_id", leader.leader_id),),
         )
-        for leader in leaders_for_choam(
-            config.choam_module,
-            bloodlines=config.bloodlines,
-            tech_module=config.tech_module,
-        )
+        for leader in content.leaders
     ]
     templates.extend(
         ActionTemplate(action_id=action_id)
@@ -848,6 +889,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             "take_sietch_tabr_water_and_destroy_wall",
             "use_other_memories",
         )
+        if action_id not in withheld
     )
     # A Conflict reward recipient resolves its reward icon by icon (stage B2,
     # OQ-112); a Deep Cover Spy is printed only on Bloodlines Conflicts.
@@ -857,6 +899,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for kind in COMBAT_REWARD_ICON_KINDS
         if (kind != "deep_cover_spy" or config.bloodlines)
+        and (kind not in _SPY_REWARD_ICONS or content.observation_posts)
+        and (kind != "contract" or content.contract_instance_ids)
         # Planetary Array's row of the winner's window (OQ-121).
         and (kind != "planetary_array" or config.tech_module)
     )
@@ -877,14 +921,16 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         for key in AUTOMATIC_AGENT_ICONS
     )
-    # Bringing back one kind of deferred Reveal choice [Main p. 12].
+    # Bringing back one kind of deferred Reveal choice [Main p. 12]: the
+    # kinds the Uprising family's cards print.
     templates.extend(
         ActionTemplate(
             action_id="resume_reveal_choice",
             arguments=(("effect", effect.value),),
         )
         for effect in PersonalCardRevealChoiceEffect
-        if (config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS)
+        if content.base_game is BaseGame.UPRISING
+        and (config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS)
         and (config.immortality or effect not in IMMORTALITY_REVEAL_CHOICE_EFFECTS)
     )
     if config.choam_module:
@@ -961,21 +1007,10 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="acquire_reserve",
             arguments=(("card_id", stack.card.card_id),),
         )
-        for stack in RESERVE_STACKS
+        for stack in content.reserve_stacks
     )
-    imperium_instances = imperium_deck_instance_ids(
-        config.choam_module,
-        config.promo_cards,
-        bloodlines=config.bloodlines,
-        tech_module=config.tech_module,
-        immortality=config.immortality,
-    )
-    intrigue_instances = intrigue_deck_instance_ids(
-        config.choam_module,
-        bloodlines=config.bloodlines,
-        tech_module=config.tech_module,
-        immortality=config.immortality,
-    )
+    imperium_instances = content.imperium_deck_instance_ids
+    intrigue_instances = content.intrigue_deck_instance_ids
     if config.bloodlines:
         # Piter De Vries' Twisted Intrigue cards are held and played like
         # any Intrigue card once dealt.
@@ -1014,7 +1049,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                     arguments=(("instance_id", instance_id),),
                 )
                 for action_id in ("complete_contract_by_card", "take_trigger_contract")
-                for instance_id in contract_instance_ids(bloodlines=config.bloodlines)
+                for instance_id in content.contract_instance_ids
             )
     if config.choam_module:
         # A completed Contract's reward, icon by icon (stage B2, OQ-112).
@@ -1032,7 +1067,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                     action_id="resolve_contract_reward_icon",
                     arguments=(("contract_id", instance_id), ("effect", kind)),
                 )
-                for instance_id in contract_instance_ids(bloodlines=config.bloodlines)
+                for instance_id in content.contract_instance_ids
                 for kind, _piece in contract_reward_icons(instance_id)
             )
         )
@@ -1042,7 +1077,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                     action_id=action_id,
                     arguments=(("instance_id", instance_id),),
                 )
-                for instance_id in contract_instance_ids(bloodlines=config.bloodlines)
+                for instance_id in content.contract_instance_ids
             )
         templates.extend(
             ActionTemplate(
@@ -1089,10 +1124,13 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
     # Separate printed lines (OQ-058): one template per line index.
     line_count = max(
-        len(option.sections)
-        for instance_id in intrigue_instances
-        for option in intrigue_card_for_instance(instance_id).options
-        if option.separate
+        (
+            len(option.sections)
+            for instance_id in intrigue_instances
+            for option in intrigue_card_for_instance(instance_id).options
+            if option.separate
+        ),
+        default=0,
     )
     templates.extend(
         ActionTemplate(action_id="use_intrigue_effect", arguments=(("section", index),))
@@ -1156,14 +1194,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="acquire_intrigue_reserve",
             arguments=(("card_id", stack.card.card_id),),
         )
-        for stack in RESERVE_STACKS
+        for stack in content.reserve_stacks
     )
     templates.extend(
         ActionTemplate(
             action_id="flip_battle_card",
             arguments=(("card_id", conflict.card.card_id),),
         )
-        for conflict in CONFLICTS
+        for conflict in content.conflicts
         if (config.bloodlines or not conflict.bloodlines_only)
         and (config.epic_game or not conflict.epic_only)
     )
@@ -1174,7 +1212,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="flip_battle_card",
             arguments=(("card_id", objective.objective_id),),
         )
-        for objective in objectives_for_players(config.players)
+        for objective in content.objectives
     )
     for action_id in ("manipulate_imperium_row", "acquire_manipulated_imperium"):
         templates.extend(
@@ -1196,23 +1234,23 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="acquire_reserve_with_solari",
             arguments=(("card_id", stack.card.card_id),),
         )
-        for stack in RESERVE_STACKS
+        for stack in content.reserve_stacks
     )
-    for space_id in ("deep_desert", "hagga_basin", "imperial_basin"):
+    for space_id in content.maker_space_ids:
         templates.append(
             ActionTemplate(
                 action_id="harvest_maker_spice",
                 arguments=(("space_id", space_id),),
             )
         )
-    for space_id in ("deep_desert", "hagga_basin"):
+    for space_id in content.sandworm_space_ids:
         templates.append(
             ActionTemplate(
                 action_id="summon_maker_sandworms",
                 arguments=(("space_id", space_id),),
             )
         )
-    post_ids = tuple(post.post_id for post in OBSERVATION_POSTS)
+    post_ids = tuple(post.post_id for post in content.observation_posts)
     templates.extend(
         ActionTemplate(
             action_id="gather_intelligence",
@@ -1354,7 +1392,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="acquire_leader_reserve",
             arguments=(("card_id", stack.card.card_id),),
         )
-        for stack in RESERVE_STACKS
+        for stack in content.reserve_stacks
     )
     templates.extend(_trash_templates(config, "trash_leader_card"))
     templates.extend(_trash_templates(config, "trash_agent_card"))
@@ -1447,7 +1485,7 @@ def _effect_step_templates(
         elif spec.printed == Printed.VISITED_SPACE:
             named = tuple(
                 (None, space)
-                for space in _VISITED_SPACES.get(template.action_id, spaces)
+                for space in _visited_spaces(config, template.action_id, spaces)
             )
         elif spec.printed == Printed.INTRIGUE_WINDOW:
             named = tuple((None, window) for window in INTRIGUE_WINDOWS)
@@ -1465,7 +1503,7 @@ def _effect_step_templates(
             # (B3d-3), by each icon whose window offers it and each Conflict
             # printing that icon.
             for icon in _REWARD_WINDOW_REFUSALS[template.action_id]:
-                for conflict in CONFLICTS:
+                for conflict in content_for(config).conflicts:
                     if not (
                         (config.bloodlines or not conflict.bloodlines_only)
                         and (config.epic_game or not conflict.epic_only)
@@ -1489,7 +1527,7 @@ def _effect_step_templates(
             kinds = _WINDOW_REWARD_ICONS.get(template.action_id, (kind,))
             named = tuple(
                 (None, conflict.card.card_id)
-                for conflict in CONFLICTS
+                for conflict in content_for(config).conflicts
                 if (config.bloodlines or not conflict.bloodlines_only)
                 and (config.epic_game or not conflict.epic_only)
                 and (
@@ -1510,7 +1548,7 @@ def _effect_step_templates(
             if template.action_id in _WINDOW_REWARD_ICONS and config.choam_module:
                 named = tuple(
                     (None, instance)
-                    for instance in contract_instance_ids(bloodlines=config.bloodlines)
+                    for instance in content_for(config).contract_instance_ids
                     if any(
                         kind in _WINDOW_REWARD_ICONS[template.action_id]
                         for kind, _ in contract_reward_icons(instance)
@@ -1619,6 +1657,14 @@ def _effect_step_templates(
                 for row in steps_for(boxed, entity, printer):
                     rows.setdefault(ActionTemplate(row.action_id, row.arguments), None)
             continue
+        elif (
+            spec.source in _CARD_SOURCES
+            and not isinstance(spec.printed, Printed)
+            and spec.printed.startswith("=")
+            and spec.printed.removeprefix("=") not in content_for(config).card_ids
+        ):
+            # A row one card prints, in another base game's catalog.
+            continue
         else:
             named = ((None, None),)
         for source, printed in named:
@@ -1637,23 +1683,37 @@ _WINDOW_REWARD_ICONS: Final[Mapping[str, tuple[str, ...]]] = {
     "decline_contract_spy": ("spy", "deep_cover_spy"),
     "resolve_contract_without_recall": ("recall_agent",),
 }
-# A controlled space's defending troop (B3d-2a): a space a Conflict card's
-# control reward names.
-_CONTROL_SPACES: Final = tuple(
-    dict.fromkeys(
-        conflict.control_space_id
-        for conflict in CONFLICTS
-        if conflict.control_space_id is not None
-    )
-)
+# The sources whose ``=<entity>`` printer is a personal card.
+_CARD_SOURCES: Final = frozenset({Source.REVEAL_CARD, Source.AGENT_CARD})
+# The one space printing the effect an empty confirmation answers
+# (``board_effects``; B3d-3).
 _VISITED_SPACES: Final[Mapping[str, tuple[str, ...]]] = {
-    "deploy_control_defense": _CONTROL_SPACES,
-    "decline_control_defense": _CONTROL_SPACES,
-    # The one space printing the effect an empty confirmation answers
-    # (``board_effects``; B3d-3).
     "resolve_espionage_without_spy": ("espionage",),
     "resolve_imperial_privilege_without_recall": ("imperial_privilege",),
 }
+# A controlled space's defending troop (B3d-2a): a space a Conflict card's
+# control reward names.
+_CONTROL_DEFENSE_IDS: Final = frozenset(
+    {"deploy_control_defense", "decline_control_defense"}
+)
+
+
+def _visited_spaces(
+    config: RulesetConfig, action_id: str, spaces: tuple[str, ...]
+) -> tuple[str, ...]:
+    """The catalog's spaces whose visit may print ``action_id``'s effect."""
+
+    if action_id in _CONTROL_DEFENSE_IDS:
+        visited: tuple[str, ...] = tuple(
+            dict.fromkeys(
+                conflict.control_space_id
+                for conflict in content_for(config).conflicts
+                if conflict.control_space_id is not None
+            )
+        )
+    else:
+        visited = _VISITED_SPACES.get(action_id, spaces)
+    return tuple(space for space in visited if space in spaces)
 # The effects an Intrigue card's choice slot offers beside its own, by the
 # slot (``ability_executor.piece_rows``): recalling a Spy first, the Shield
 # Wall, the look at the deck's top card.
@@ -1776,14 +1836,8 @@ def _reveal_gain_printers(
         StartingCardEntry | ReserveStackDefinition | ImperiumCardEntry, ...
     ] = (
         *_starting_entries(config),
-        *RESERVE_STACKS,
-        *imperium_cards_for_choam(
-            config.choam_module,
-            config.promo_cards,
-            bloodlines=config.bloodlines,
-            tech_module=config.tech_module,
-            immortality=config.immortality,
-        ),
+        *content_for(config).reserve_stacks,
+        *content_for(config).imperium_cards,
         *(tleilaxu_cards_for(config.promo_cards) if config.immortality else ()),
     )
     printers: list[tuple[Source | None, ActionValue | None]] = [
@@ -1854,13 +1908,7 @@ def _owed_draw_printers(
         )
         printers.extend(
             (Source.TRIGGER, card.card.card_id)
-            for card in imperium_cards_for_choam(
-                config.choam_module,
-                config.promo_cards,
-                bloodlines=config.bloodlines,
-                tech_module=config.tech_module,
-                immortality=config.immortality,
-            )
+            for card in content_for(config).imperium_cards
             if card.trash_effect is PersonalCardTrashEffect.DRAW_INTRIGUE_CARD
         )
         return tuple(printers)
@@ -1886,13 +1934,7 @@ def _skill_window_givers(
     if config.bloodlines:
         givers.extend(
             (None, card.card.card_id)
-            for card in imperium_cards_for_choam(
-                config.choam_module,
-                config.promo_cards,
-                bloodlines=True,
-                tech_module=config.tech_module,
-                immortality=config.immortality,
-            )
+            for card in content_for(config).imperium_cards
             if card.trash_effect is PersonalCardTrashEffect.ACQUIRE_BANK_COMMANDER
         )
     return tuple(givers)
@@ -2257,11 +2299,7 @@ def _box_effect_cards(
 
 def _leader_faces(config: RulesetConfig) -> tuple[str, ...]:
     faces: dict[str, None] = {}
-    for leader in leaders_for_choam(
-        config.choam_module,
-        bloodlines=config.bloodlines,
-        tech_module=config.tech_module,
-    ):
+    for leader in content_for(config).leaders:
         faces.setdefault(leader.setup_face_id or leader.leader_id, None)
         if leader.alternate_face_id is not None:
             faces.setdefault(leader.alternate_face_id, None)
@@ -2539,7 +2577,7 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             ActionTemplate(
                 action_id="scouts_recall_spy", arguments=(("post_id", post.post_id),)
             )
-            for post in OBSERVATION_POSTS
+            for post in content_for(config).observation_posts
         ),
         *(
             ActionTemplate(
@@ -2624,7 +2662,7 @@ def _scouts_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             for t in (
                 "",
                 *(
-                    ("recruit", *contract_instance_ids(bloodlines=config.bloodlines))
+                    ("recruit", *content_for(config).contract_instance_ids)
                     if config.choam_module
                     else ()
                 ),
@@ -2708,12 +2746,7 @@ _MAX_SCOUTS_OPTIONS = max(
 def _held_intrigue_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
     """Every Intrigue card a seat can hold in this ruleset."""
 
-    held = intrigue_deck_instance_ids(
-        config.choam_module,
-        bloodlines=config.bloodlines,
-        tech_module=config.tech_module,
-        immortality=config.immortality,
-    )
+    held = content_for(config).intrigue_deck_instance_ids
     if config.bloodlines:
         # Piter De Vries' Twisted Intrigue cards are held once dealt.
         held = (*held, *twisted_intrigue_instance_ids())
@@ -2829,7 +2862,7 @@ def _immortality_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="acquire_reserve_by_card",
             arguments=(("card_id", stack.card.card_id),),
         )
-        for stack in RESERVE_STACKS
+        for stack in content_for(config).reserve_stacks
     )
     templates.extend(
         ActionTemplate(
@@ -2967,7 +3000,8 @@ def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         if tile.acquire_requires_spy_trash:
             # Advanced Data Analysis: the Spy trashed from the board.
             variants.extend(
-                (("post_id", post.post_id), *base) for post in OBSERVATION_POSTS
+                (("post_id", post.post_id), *base)
+                for post in content_for(config).observation_posts
             )
         else:
             variants.append(base)
@@ -3133,28 +3167,24 @@ def _agent_placement_templates(config: RulesetConfig) -> tuple[ActionTemplate, .
                 starting_card,
                 granted,
                 catalog_spaces(config),
+                content_for(config).observation_posts,
                 space_discounts=config.tech_module,
                 graft=config.immortality,
             )
         )
-    for reserve_card in RESERVE_STACKS:
+    for reserve_card in content_for(config).reserve_stacks:
         templates.extend(
             _agent_turn_templates_for_card(
                 "reserve",
                 reserve_card,
                 granted,
                 catalog_spaces(config),
+                content_for(config).observation_posts,
                 space_discounts=config.tech_module,
                 graft=config.immortality,
             )
         )
-    for imperium_card in imperium_cards_for_choam(
-        config.choam_module,
-        config.promo_cards,
-        bloodlines=config.bloodlines,
-        tech_module=config.tech_module,
-        immortality=config.immortality,
-    ):
+    for imperium_card in content_for(config).imperium_cards:
         if imperium_card.play_data_complete:
             card_granted = (
                 every_icon
@@ -3171,6 +3201,7 @@ def _agent_placement_templates(config: RulesetConfig) -> tuple[ActionTemplate, .
                     imperium_card,
                     card_granted,
                     catalog_spaces(config),
+                    content_for(config).observation_posts,
                     space_discounts=config.tech_module,
                     graft=config.immortality,
                 )
@@ -3183,6 +3214,7 @@ def _agent_placement_templates(config: RulesetConfig) -> tuple[ActionTemplate, .
                     tleilaxu_card,
                     granted,
                     catalog_spaces(config),
+                    content_for(config).observation_posts,
                     space_discounts=config.tech_module,
                     graft=config.immortality,
                 )
@@ -3195,7 +3227,7 @@ def catalog_spaces(config: RulesetConfig) -> tuple[BoardSpace, ...]:
 
     return tuple(
         space
-        for space in BOARD_SPACES
+        for space in content_for(config).board_spaces
         if space.required_leader_id is None or config.bloodlines
     )
 
@@ -3203,8 +3235,9 @@ def catalog_spaces(config: RulesetConfig) -> tuple[BoardSpace, ...]:
 def _agent_turn_templates_for_card(
     prefix: str,
     card: StartingCardEntry | ReserveStackDefinition | ImperiumCardEntry,
-    granted_icons: tuple[AgentIcon, ...] = (),
-    spaces: tuple[BoardSpace, ...] = BOARD_SPACES,
+    granted_icons: tuple[AgentIcon, ...],
+    spaces: tuple[BoardSpace, ...],
+    posts: tuple[ObservationPost, ...],
     *,
     space_discounts: bool = False,
     graft: bool = False,
@@ -3239,6 +3272,7 @@ def _agent_turn_templates_for_card(
                         card_id,
                         space,
                         (*granted_icons, *(grafted_icons if grafted else ())),
+                        posts,
                         space_discounts=space_discounts,
                         grafted=grafted,
                     )
@@ -3251,6 +3285,7 @@ def _placement_templates(
     card_id: str,
     space: BoardSpace,
     granted_icons: tuple[AgentIcon, ...],
+    posts: tuple[ObservationPost, ...],
     *,
     space_discounts: bool,
     grafted: bool,
@@ -3286,7 +3321,7 @@ def _placement_templates(
         None,
         *(
             post.post_id
-            for post in OBSERVATION_POSTS
+            for post in posts
             if space.space_id in post.connected_space_ids
         ),
     )
@@ -3322,13 +3357,13 @@ def _endgame_wild_templates(
     battle_cards = (
         *(
             (conflict.card.card_id, conflict.battle_icon)
-            for conflict in CONFLICTS
+            for conflict in content_for(config).conflicts
             if (config.bloodlines or not conflict.bloodlines_only)
             and (config.epic_game or not conflict.epic_only)
         ),
         *(
             (objective.objective_id, objective.battle_icon)
-            for objective in objectives_for_players(config.players)
+            for objective in content_for(config).objectives
         ),
     )
     wild_card_ids = tuple(
@@ -3425,7 +3460,7 @@ def _reveal_source_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...
     """
 
     personal = _personal_card_instance_ids(config)
-    post_ids = tuple(post.post_id for post in OBSERVATION_POSTS)
+    post_ids = tuple(post.post_id for post in content_for(config).observation_posts)
     shares: tuple[tuple[tuple[str, ActionValue], ...], ...] = (
         ((), (("commanders", 1),), (("commanders", 2),))
         if config.bloodlines
@@ -3436,13 +3471,7 @@ def _reveal_source_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...
         ((), (("commanders", 1),)) if config.bloodlines else ((),)
     )
     templates: dict[ActionTemplate, None] = {}
-    for entry in imperium_cards_for_choam(
-        config.choam_module,
-        config.promo_cards,
-        bloodlines=config.bloodlines,
-        tech_module=config.tech_module,
-        immortality=config.immortality,
-    ):
+    for entry in content_for(config).imperium_cards:
         source = entry.card.card_id
         own = tuple(
             instance_id
@@ -3525,14 +3554,8 @@ def _starting_entries(config: RulesetConfig) -> tuple[StartingCardEntry, ...]:
     """Every starting card a seat owns: its deck and, in Epic Game Mode with
     Immortality, the Control the Spice that starts in the discard pile."""
 
-    return (
-        *starting_deck_entries(
-            immortality=config.immortality, epic_game=config.epic_game
-        ),
-        *starting_discard_entries(
-            immortality=config.immortality, epic_game=config.epic_game
-        ),
-    )
+    content = content_for(config)
+    return (*content.starting_deck_entries, *content.starting_discard_entries)
 
 
 def _personal_card_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
@@ -3541,18 +3564,10 @@ def _personal_card_instance_ids(config: RulesetConfig) -> tuple[str, ...]:
         for card in _starting_entries(config)
         for copy in range(card.copies)
     ]
-    card_ids.extend(
-        imperium_deck_instance_ids(
-            config.choam_module,
-            config.promo_cards,
-            bloodlines=config.bloodlines,
-            tech_module=config.tech_module,
-            immortality=config.immortality,
-        )
-    )
+    card_ids.extend(content_for(config).imperium_deck_instance_ids)
     card_ids.extend(
         f"reserve:{stack.card.card_id}:{copy}"
-        for stack in RESERVE_STACKS
+        for stack in content_for(config).reserve_stacks
         for copy in range(stack.copies)
     )
     if config.immortality:

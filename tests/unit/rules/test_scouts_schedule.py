@@ -23,6 +23,7 @@ from dune_imperium.content.arrakeen_scouts import (
     ScoutsPool,
     subcommittees_for,
 )
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome, ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
@@ -33,7 +34,6 @@ from dune_imperium.rules.engine import _advance_automatic
 from dune_imperium.rules.frames import FrameKind, turn_owner_of
 from dune_imperium.rules.phases import apply_control_defense_action, begin_round
 from dune_imperium.rules.scouts import _next_draw, item_kind
-from dune_imperium.rules.setup import maker_bonus_spice_for
 from dune_imperium.simulation import run_random_game
 
 SCOUTS = RulesetConfig(arrakeen_scouts=True)
@@ -420,7 +420,7 @@ def test_mating_season_includes_tueks_sietch_with_bloodlines() -> None:
     # Esmar Tuek at the table brings Tuek's Sietch [Bloodlines p. 12].
     start = replace(
         engine.reset(config, 2),
-        maker_bonus_spice=maker_bonus_spice_for(("esmar_tuek",)),
+        maker_bonus_spice=content_for(config).maker_bonus_spice_for(("esmar_tuek",)),
     )
     state = _reveal(start, engine, "mating_season")
     assert dict(state.maker_bonus_spice) == {

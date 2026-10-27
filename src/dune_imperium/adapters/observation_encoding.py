@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from functools import cache
 from typing import Final
 
+from dune_imperium.config import BaseGame
 from dune_imperium.content.arrakeen_scouts import (
     AUCTIONS,
     EVENTS,
@@ -156,7 +157,16 @@ from dune_imperium.rules.frames import FrameKind
 # Long Live the Fighters picks the card to draw and then the card to discard
 # by the same target row, its first pick kept by its frame: appended as
 # ``private_effect_pick_personal``, a personal card picked before the last.
-OBSERVATION_VERSION: Final = 33
+# v34 (stage P1 of docs/base-game-and-ix-plan.md, 4.2 items 5 and 8; user
+# decision 2026-10-21): one layout serves both base games, so the network
+# must tell them apart where cards and spaces do not (Spies, the Influence 4
+# bonuses, the Control spaces): a ``base_game`` flag, 1 in an original Dune:
+# Imperium game, is appended after every other segment. The original game's
+# ids will join each identity universe at its end. Every older column keeps
+# its offset; a v33 checkpoint migrates by segment and starts the flag at 0,
+# which is its value in every Uprising game, so a migrated network plays as
+# it did.
+OBSERVATION_VERSION: Final = 34
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -431,6 +441,8 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             ("private_effect_pick_second_faction", len(FACTION_IDS)),
             # v33 (B3d-2a): a personal card picked before the last.
             ("private_effect_pick_personal", len(PERSONAL_CARD_IDS)),
+            # v34: 1 in an original Dune: Imperium game.
+            ("base_game", 1),
         )
     )
     return tuple(lengths)
@@ -646,6 +658,7 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     values[_OFFSET["private_secret_project"]] = _TECH_INDEX[secret] + 1 if secret else 0
     _write_scouts(values, view, relative)
     values[_OFFSET["epic_game"]] = int(view.epic_game)
+    values[_OFFSET["base_game"]] = int(view.base_game is BaseGame.IMPERIUM)
     offset = _OFFSET["shortfall"]
     for seat_view in view.players:
         index = offset + (relative(seat_view.player) - 1) * 2

@@ -11,6 +11,7 @@ import random
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -692,7 +693,7 @@ def test_immortality_choices_lapse_at_the_end_turn() -> None:
     ],
 )
 def test_option_games_never_fall_back_in_these_windows(
-    monkeypatch: pytest.MonkeyPatch, options: dict[str, bool]
+    monkeypatch: pytest.MonkeyPatch, options: dict[str, Any]
 ) -> None:
     """Four app_ai seats with only this module's handlers installed (every
     other window answers at random): no ``reveal``/``reveal_choice`` decision

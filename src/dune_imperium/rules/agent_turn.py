@@ -4,8 +4,8 @@ from copy import replace
 from typing import Final
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.board import (
-    BOARD_SPACES,
     BOARD_SPACES_BY_ID,
     OBSERVATION_POSTS,
     BoardSpace,
@@ -476,7 +476,7 @@ def _placements_for_card(
     any_icon = card_is_boosted(card, owner) or any(
         boosted for _, _, boosted in usurp_partners
     )
-    for space in BOARD_SPACES:
+    for space in content_for(state.config).board_spaces:
         if space.required_leader_id is not None and all(
             seat.leader_id != space.required_leader_id for seat in state.players
         ):
@@ -1395,11 +1395,7 @@ def _apply_control_visit_bonus(
     state: GameState,
     space_id: str,
 ) -> tuple[GameState, GameEvent | None]:
-    resource = {
-        "arrakeen": "solari",
-        "spice_refinery": "solari",
-        "imperial_basin": "spice",
-    }.get(space_id)
+    resource = content_for(state.config).control_visit_bonuses.get(space_id)
     if resource is None:
         return state, None
     controllers = tuple(

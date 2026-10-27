@@ -10,6 +10,7 @@ Leaders stay unused for the game.
 
 from copy import replace
 
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -23,7 +24,6 @@ from dune_imperium.rules.setup import (
     apply_leader_setup,
     assign_twisted_deck,
     deal_setup_intrigue,
-    maker_bonus_spice_for,
 )
 from dune_imperium.rules.tech import assign_secret_project
 
@@ -194,7 +194,9 @@ def _finish_draft_setup(
                         contract_bank=bank,
                         face_up_contract_ids=face_up,
                         sardaukar_contract_ids=sardaukar_set_aside,
-                        maker_bonus_spice=maker_bonus_spice_for(
+                        maker_bonus_spice=content_for(
+                            state.config
+                        ).maker_bonus_spice_for(
                             tuple(player.leader_id or "" for player in players)
                         ),
                         decision_stack=state.decision_stack[:-1],

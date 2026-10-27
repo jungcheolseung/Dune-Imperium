@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from dune_imperium.config import RulesetConfig
+from dune_imperium.config import BaseGame, RulesetConfig
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.events import GameEvent
@@ -186,8 +186,14 @@ def test_fingerprints_are_the_same_in_another_process() -> None:
 
 
 def _flags(config: RulesetConfig) -> dict[str, Any]:
+    """The config's fields as literals (the base game by its string)."""
+
     return {
-        field.name: getattr(config, field.name) for field in dataclasses.fields(config)
+        field.name: (
+            value.value if isinstance(value, BaseGame) else value
+        )
+        for field in dataclasses.fields(config)
+        for value in (getattr(config, field.name),)
     }
 
 

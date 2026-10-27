@@ -11,6 +11,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 from functools import cache
+from typing import Any
 
 import pytest
 from tests.support.reward_windows import answer_reward_windows
@@ -368,7 +369,7 @@ def test_control_defense_without_specimens_declines() -> None:
     ],
 )
 def test_option_games_never_fall_back_in_the_combat_windows(
-    monkeypatch: pytest.MonkeyPatch, options: dict[str, bool]
+    monkeypatch: pytest.MonkeyPatch, options: dict[str, Any]
 ) -> None:
     """Four app_ai seats with only this module's handlers installed (every
     other window answers at random): no combat decision falls back."""

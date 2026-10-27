@@ -35,7 +35,7 @@ const SERVER_ERROR_KO = {
   "replay review opens after the game finishes": "리플레이 검토는 게임이 끝난 뒤에 열립니다",
   "a player name must not be empty": "이름을 비워 둘 수 없습니다",
   "exactly one seat assignment per player is required": "플레이어마다 배정이 하나씩 있어야 합니다",
-  "only four-player Uprising is currently supported": "지금은 4인 봉기만 지원합니다",
+  "only four-player games are currently supported": "지금은 4인 게임만 지원합니다",
   "the Tech Module requires the Bloodlines expansion": "기술 모듈은 혈통 확장이 있어야 합니다",
   "the Go to 11 variant requires the Immortality expansion": "11점을 향해 옵션은 불멸 확장이 있어야 합니다",
   "unreadable save file": "읽을 수 없는 저장 파일",
@@ -48,6 +48,10 @@ const SERVER_ERROR_KO_PATTERNS = [
   [
     "^unknown AI pace (.+)$",
     "알 수 없는 AI 진행 속도입니다: $1"
+  ],
+  [
+    "^unknown save base game (.+)$",
+    "저장 파일의 기본 판을 알 수 없습니다: $1"
   ],
   [
     "^unknown game: (.+)$",

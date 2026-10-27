@@ -513,9 +513,10 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
     # A file written under v27 knows neither the v28 Epic card nor its flag,
     # nor the v29 shortfall segment, nor v30's owed Emperor track Spies, nor
     # v31's Agent boxes, nor v32's deck pools, nor v33's picked Agent card
-    # (139 + 1 columns), and still has the 90-column intrigue_trash segment
-    # v30 removed (OQ-061): each v27 segment's columns keep their place at
-    # its start, the 24 + 8 + 4 + 4 + 556 + 140 new columns start at zero, the
+    # (139 + 1 columns), nor v34's base-game flag, and still has the 90-column
+    # intrigue_trash segment v30 removed (OQ-061): each v27 segment's columns
+    # keep their place at its start, the 24 + 8 + 4 + 4 + 556 + 140 + 1 new
+    # columns start at zero, the
     # trash columns are dropped, and a game without the option, without a
     # waiting shortfall, without an owed track Spy, without an Intrigue trash
     # and without an open Agent turn or a picked Agent card at the compared
@@ -544,6 +545,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
             "private_agent_card_pick",
             "private_agent_card_pick_graft",
             *_EFFECT_PICK_SEGMENTS,
+            "base_game",
         ):
             continue
         length = segment.length - int(segment.name in _V28_GROWN_SEGMENTS)
@@ -559,7 +561,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
             offset += 90
     assert ("intrigue_trash", 289, 90) in layout
     assert offset == 4_587 == (
-        OBSERVATION_SIZE - 24 - 8 - 4 - 4 - 556 - 140 + 90 - _EFFECT_PICK_COLUMNS
+        OBSERVATION_SIZE - 24 - 8 - 4 - 4 - 556 - 140 - 1 + 90 - _EFFECT_PICK_COLUMNS
     )
     state["body.0.weight"] = torch.cat(columns, dim=1)
     older = tmp_path / "v27.pt"
@@ -587,7 +589,7 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
         report.observation_kept,
         report.observation_new,
         report.observation_dropped,
-    ) == (4_587 - 90, 24 + 8 + 4 + 4 + 556 + 140 + _EFFECT_PICK_COLUMNS, 90)
+    ) == (4_587 - 90, 24 + 8 + 4 + 4 + 556 + 140 + 1 + _EFFECT_PICK_COLUMNS, 90)
     assert (report.actions_kept, report.actions_new, report.actions_dropped) == (
         codec.size,
         0,

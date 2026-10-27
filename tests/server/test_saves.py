@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.agents.agent_turn_steps import steps_after
 from dune_imperium.core.actions import DomainAction
@@ -472,6 +473,42 @@ def test_saves_keep_the_expansion_and_module_flags() -> None:
         parse_save_document(
             {**legacy, "ruleset": {**legacy_ruleset, "bloodlines": "yes"}}
         )
+
+
+
+def test_saves_name_their_base_game() -> None:
+    # docs/base-game-and-ix-plan.md 10.2: a save carries its base game, and a
+    # document written before the base-game axis is an Uprising game.
+    manager = GameSessionManager()
+    created = manager.create_game(HUMAN_FIRST, game_seed=31)
+    original = _advance(manager, created, 3)
+    document = _obj(_roundtrip(manager.save_game(_text(original["game_id"]))))
+    ruleset = _obj(document["ruleset"])
+    assert (ruleset["base_game"], ruleset["rise_of_ix"]) == ("uprising", False)
+    assert parse_save_document(document).replay.ruleset == RulesetConfig()
+
+    legacy_ruleset = dict(ruleset)
+    del legacy_ruleset["base_game"]
+    del legacy_ruleset["rise_of_ix"]
+    legacy = parse_save_document({**document, "ruleset": legacy_ruleset})
+    assert legacy.replay.ruleset.base_game is BaseGame.UPRISING
+    assert legacy.replay.ruleset == RulesetConfig()
+
+    imperium = {**ruleset, "base_game": "imperium", "rise_of_ix": True}
+    parsed = parse_save_document(
+        {**document, "ruleset": imperium}, check_versions=False
+    )
+    assert parsed.replay.ruleset == RulesetConfig(
+        base_game=BaseGame.IMPERIUM, rise_of_ix=True
+    )
+    with pytest.raises(SaveError, match="base game"):
+        parse_save_document({**document, "ruleset": {**ruleset, "base_game": "dune"}})
+    # Every expansion combines with either base game (user decision
+    # 2026-10-27); Uprising with Rise of Ix reads back as such.
+    uprising_ix = parse_save_document(
+        {**document, "ruleset": {**ruleset, "rise_of_ix": True}}, check_versions=False
+    )
+    assert uprising_ix.replay.ruleset == RulesetConfig(rise_of_ix=True)
 
 
 # --- app_ai seats ------------------------------------------------------------
