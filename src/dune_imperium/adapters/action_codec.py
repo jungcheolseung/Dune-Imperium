@@ -1426,7 +1426,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # Bene Gesserit Sister's "2 Persuasion OR 2 swords" (stage P3).
         templates.extend(
             ActionTemplate(action_id=action_id)
-            for action_id in ("gain_two_reveal_persuasion", "gain_two_reveal_swords")
+            for action_id in (
+                "gain_two_reveal_persuasion",
+                "gain_two_reveal_swords",
+                "pay_reveal_solari_for_vp",
+            )
         )
         templates.extend(
             ActionTemplate(

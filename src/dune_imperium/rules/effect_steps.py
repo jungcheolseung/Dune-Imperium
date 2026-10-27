@@ -635,6 +635,7 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
             _RECIPIENT,
         ),
     ),
+    "pay_reveal_solari_for_vp": _spec(_V.PAY, _S.REVEAL_CARD, "=opulence"),
     "pay_reveal_spice_influence": _spec(
         _V.PAY, _S.REVEAL_CARD, "=spacing_guild_s_favor", targets=_FACTION
     ),

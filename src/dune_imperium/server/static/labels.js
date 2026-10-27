@@ -122,6 +122,7 @@ const ACTION_LABELS = {
   pay_leader_signet_solari: "{solari} 지불 ({signet_ring})",
   pay_leader_signet_spice: "{spice} 지불 ({signet_ring})",
   pay_reveal_spice_influence: "3 {spice} → {influence_any}",
+  pay_reveal_solari_for_vp: "6 {solari} → {victory_point} 1",
   pay_reveal_water_for_sandworm: "1 {water} → {sandworm}",
   pick_leader: "{leader} 선택",
   finish_leader_draft: "지도자 선택 확정",

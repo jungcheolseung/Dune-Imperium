@@ -213,6 +213,13 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.MAY_DEPLOY_ONE_TROOP: _choice(
                 _line(DeployFromGarrison(1)), mark=_OPTIONAL
             ),
+            # Opulence (original game): "[6 Solari] -> [1 Victory Point]" -- an
+            # optional arrow ("You do not have to pay such a cost on a card"
+            # [Main p. 20]), paid once [FAQ p. 3].
+            _CHOICE.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: _choice(
+                _line(GainVictoryPoints(1), costs=(PayResources(solari=6),)),
+                mark=_OPTIONAL,
+            ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
             _CHOICE.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: _choice(

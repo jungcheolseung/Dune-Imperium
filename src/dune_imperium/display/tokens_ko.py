@@ -505,6 +505,7 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "다른 플레이어 각자 {garrison}의 {troop} 하나 잃음"
     ),
     PersonalCardAgentEffect.GAIN_ONE_SOLARI: "{solari:1}",
+    PersonalCardAgentEffect.GAIN_THREE_SOLARI: "{solari:3}",
     PersonalCardAgentEffect.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE: (
         "{water:1} 지불 가능 {arrow_right} {troop:1}, {draw:1}"
     ),
@@ -639,6 +640,9 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     ),
     PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: (
         "하나 선택: {persuasion:2} / {sword:2}"
+    ),
+    PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
+        "{solari:6} 지불 가능 {arrow_right} {victory_point:1}"
     ),
     PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
         "하나 선택: {solari:5} / {solari:5} 지불 {arrow_right} 원로회 자리 차지"

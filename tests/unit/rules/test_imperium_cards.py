@@ -1232,3 +1232,104 @@ def test_piter_de_vries_reveals_three_persuasion_and_one_sword() -> None:
     frame = _reveal(engine, state)
     assert frame["persuasion"] == 3
     assert frame["sword_strength"] == 1
+
+
+# --- Opulence ---------------------------------------------------------------------
+
+
+def test_opulence_matches_the_app_table() -> None:
+    # App attribute table: cost 6, 1 copy, Emperor, Emperor, Reveal 1
+    # Persuasion and no swords; AgentSolari 3.
+    entry = IMPERIUM_CARDS_BY_ID["opulence"]
+    assert entry.card.name == "Opulence"
+    assert entry.acquisition_cost == 6
+    assert entry.copies == 1
+    assert entry.factions == (Faction.EMPEROR,)
+    assert entry.agent_icons == (AgentIcon.EMPEROR,)
+    assert entry.agent_effect is PersonalCardAgentEffect.GAIN_THREE_SOLARI
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT,
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:opulence:0") is entry
+
+
+def test_opulence_agent_box_gains_three_solari() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "opulence")
+    state = _seat(state, resources=Resources())
+    placed = _place(engine, state, "wealth", "opulence")
+    before = placed.players[0].resources
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    assert resolved.players[0].resources.solari == before.solari + 3
+
+
+def _opulence_revealed(
+    engine: UprisingRulesEngine, state: GameState, solari: int, *others: str
+) -> GameState:
+    """Seat 0 reveals Opulence (and the other cards) holding ``solari``."""
+
+    held, instance = _with_card(state, "opulence", alone=True)
+    held = _seat(
+        held, hand=(instance, *others), resources=Resources(solari=solari)
+    )
+    return _do(engine, held, "reveal_turn")
+
+
+def test_opulence_reveals_one_persuasion() -> None:
+    engine, state = _start()
+    frame = dict(_opulence_revealed(engine, state, 0).decision_stack[-1].context)
+    assert frame["persuasion"] == 1
+    assert frame["sword_strength"] == 0
+
+
+def test_opulence_pays_six_solari_for_one_victory_point() -> None:
+    """"비용 화살표" [DI p. 16] (imperium-base.md 11): the arrow's cost is paid
+    for its reward; six Solari buy one Victory Point, once (the choice is used
+    up)."""
+
+    engine, state = _start()
+    revealed = _opulence_revealed(engine, state, 6)
+    before = revealed.players[0]
+    assert "pay_reveal_solari_for_vp" in _ids(engine, revealed)
+    paid = _do(engine, revealed, "pay_reveal_solari_for_vp")
+    after = paid.players[0]
+    assert after.resources.solari == before.resources.solari - 6
+    assert after.victory_points == before.victory_points + 1
+    assert "pay_reveal_solari_for_vp" not in _ids(engine, paid)
+
+
+def test_opulence_arrow_is_optional() -> None:
+    """The arrow cost is optional [DI p. 9] ("You do not have to pay such a
+    cost on a card" [Main p. 20]): the Reveal ends with no refusal needed."""
+
+    engine, state = _start()
+    revealed = _opulence_revealed(engine, state, 9)
+    before = revealed.players[0]
+    finished = _do(engine, revealed, "finish_reveal")
+    assert finished.players[0].resources.solari == 9
+    assert finished.players[0].victory_points == before.victory_points
+
+
+def test_opulence_needs_six_solari_to_pay() -> None:
+    engine, state = _start()
+    revealed = _opulence_revealed(engine, state, 5)
+    assert "pay_reveal_solari_for_vp" not in _ids(engine, revealed)
+    assert _do(engine, revealed, "finish_reveal").players[0].victory_points == (
+        revealed.players[0].victory_points
+    )
+
+
+def test_opulence_payment_opens_once_a_later_gain_makes_six_solari() -> None:
+    """Reveal effects resolve in any order ([Main p. 12]; OQ-028: judged when
+    asked): Price is No Object's 2 Solari bring 4 to the 6 the arrow costs."""
+
+    engine, state = _start()
+    revealed = _opulence_revealed(engine, state, 4, "imperium:price_is_no_object:0")
+    assert "pay_reveal_solari_for_vp" not in _ids(engine, revealed)
+    gained = _do(engine, revealed, "gain_reveal_resources")
+    assert gained.players[0].resources.solari == 6
+    paid = _do(engine, gained, "pay_reveal_solari_for_vp")
+    assert paid.players[0].resources.solari == 0
+    assert paid.players[0].victory_points == revealed.players[0].victory_points + 1

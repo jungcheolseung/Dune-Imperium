@@ -270,10 +270,21 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=2,
         acquisition_cost=1,
     ),
+    # App table: cost 6, 1 copy, Emperor, Emperor, Reveal 1 Persuasion,
+    # AgentSolari 3. Agent: "3 Solari". Reveal: "1 Persuasion AND [6 Solari]
+    # -> [1 Victory Point]" -- an optional arrow, paid once [DI p. 9] [FAQ p. 3].
     ImperiumCardEntry(
         card=imperium_card("opulence", "Opulence"),
         copies=1,
         acquisition_cost=6,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR,),
+        agent_effect=PersonalCardAgentEffect.GAIN_THREE_SOLARI,
+        reveal_persuasion=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("other_memory", "Other Memory"),

@@ -161,8 +161,8 @@ _BOX = PersonalCardAgentEffect
 def test_every_record_is_a_printed_agent_box() -> None:
     # 103 Uprising-family boxes, the original game's Foldspace and the
     # original Imperium cards' new boxes (stage P3: Arrakis Recruiter, Spice
-    # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 6
+    # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 7
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
