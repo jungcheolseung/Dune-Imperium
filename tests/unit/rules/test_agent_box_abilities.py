@@ -162,8 +162,9 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # 103 Uprising-family boxes, the original game's Foldspace and the
     # original Imperium cards' new boxes (stage P3: Arrakis Recruiter, Spice
     # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence,
-    # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 11
+    # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
+    # Imperial Spy).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 12
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -939,6 +940,9 @@ def test_six_trash_boxes_and_what_they_read_as() -> None:
         _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
         _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
+        # The original game's Imperial Spy (stage P3): Pivotal Gambit's shape
+        # with an armed Intrigue draw.
+        _BOX.MAY_TRASH_SELF_TO_DRAW_INTRIGUE,
     }
     treacherous = _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
     hand = TrashCard(hand_only=True, faction=Faction.EMPEROR)
@@ -1033,8 +1037,10 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     # The original game's Duncan Idaho (stage P3): a paid arrow arming the
     # same troop and card icons.
     duncan = _BOX.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE
+    # Imperial Spy: the card trashes itself, then the armed Intrigue draw.
+    spy = _BOX.MAY_TRASH_SELF_TO_DRAW_INTRIGUE
     assert users == {
-        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite},
+        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy},
         AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy, duncan},
         AGENT_ICON_SPICE: {branching},
         AGENT_ICON_TROOPS: {gambit, elite, duncan},

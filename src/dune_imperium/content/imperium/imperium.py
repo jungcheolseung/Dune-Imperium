@@ -272,10 +272,21 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         ),
         play_data_complete=True,
     ),
+    # App table: cost 2, 2 copies, Emperor, Emperor, Reveal 1 Persuasion and 1
+    # sword. Agent: "Trash this card -> [Intrigue card]" -- an arrow cost, optional
+    # [DI p. 9] [FAQ p. 3]; the card must trash itself to draw [FAQ p. 2],
+    # and trashed by another effect it draws nothing. Reveal: "[P1][S1]" ([DI
+    # p. 11] example).
     ImperiumCardEntry(
         card=imperium_card("imperial_spy", "Imperial Spy"),
         copies=2,
         acquisition_cost=2,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR,),
+        agent_effect=PersonalCardAgentEffect.MAY_TRASH_SELF_TO_DRAW_INTRIGUE,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("kwisatz_haderach", "Kwisatz Haderach"),

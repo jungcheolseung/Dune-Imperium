@@ -467,6 +467,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE: (
             "Recruit 2 troops, Draw 1 card"
         ),
+        PersonalCardAgentEffect.MAY_TRASH_SELF_TO_DRAW_INTRIGUE: (
+            "You may trash this card → Draw 1 Intrigue card"
+        ),
     }
 )
 

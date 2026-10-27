@@ -348,6 +348,9 @@ class PersonalCardAgentEffect(StrEnum):
     # Gurney Halleck: "[2 troops] [draw 1 card]", two icons each its own step
     # (OQ-027, OQ-106).
     RECRUIT_TWO_AND_DRAW_ONE = "recruit_two_and_draw_one"
+    # Imperial Spy: "Trash this card -> [Intrigue card]", an optional arrow
+    # paid once [DI p. 9] [FAQ p. 3].
+    MAY_TRASH_SELF_TO_DRAW_INTRIGUE = "may_trash_self_to_draw_intrigue"
 
 
 class PersonalCardTrashEffect(StrEnum):

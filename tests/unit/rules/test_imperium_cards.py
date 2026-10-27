@@ -2260,3 +2260,98 @@ def test_gurney_halleck_payment_opens_once_a_later_gain_makes_three_solari() -> 
     assert gained.players[0].resources.solari == 3
     paid = _do(engine, gained, "pay_reveal_solari_for_troops")
     assert paid.players[0].resources.solari == 0
+
+
+# --- Imperial Spy -----------------------------------------------------------------
+
+
+def test_imperial_spy_matches_the_app_table() -> None:
+    # App attribute table: cost 2, 2 copies, Emperor, Emperor, Reveal 1
+    # Persuasion and 1 sword.
+    entry = IMPERIUM_CARDS_BY_ID["imperial_spy"]
+    assert entry.card.name == "Imperial Spy"
+    assert entry.acquisition_cost == 2
+    assert entry.copies == 2
+    assert entry.factions == (Faction.EMPEROR,)
+    assert entry.agent_icons == (AgentIcon.EMPEROR,)
+    assert entry.agent_effect is PersonalCardAgentEffect.MAY_TRASH_SELF_TO_DRAW_INTRIGUE
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 1)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:imperial_spy:1") is entry
+
+
+def _spy_placed(engine: UprisingRulesEngine, state: GameState) -> GameState:
+    """Seat 0 sends Imperial Spy to Wealth (an Emperor space, no cost) with a
+    known Intrigue deck."""
+
+    held, _ = _with_card(state, "imperial_spy")
+    seated = replace(
+        held, intrigue_deck=("intrigue:bribery:0", "intrigue:bribery:1")
+    )
+    return _place(engine, seated, "wealth", "imperial_spy")
+
+
+def test_imperial_spy_trashes_itself_to_draw_an_intrigue_card() -> None:
+    """"Trash this card -> [Intrigue card]": an arrow cost, optional [DI p. 9]
+    [FAQ p. 3]; the card trashes itself as its own cost, so its draw is still
+    paid (imperium-base.md 16, OQ-022's own-effect case) and, a hidden draw,
+    is a step of its own (OQ-106): the turn cannot end before it is taken."""
+
+    engine, state = _start()
+    placed = _spy_placed(engine, state)
+    me = "imperium:imperial_spy:0"
+    assert dict(next(
+        action.arguments
+        for action in _wholes(engine, placed)
+        if action.action_id == "trash_agent_card"
+    )) == {"card_id": me}
+    trashed = _do(engine, placed, "trash_agent_card", card_id=me)
+    assert me in trashed.players[0].trashed
+    assert me not in trashed.players[0].in_play
+    assert trashed.players[0].intrigue_cards == placed.players[0].intrigue_cards
+    assert "finish_agent_turn" not in _ids(engine, trashed)
+    drawn = _do(engine, trashed, "resolve_agent_card_effect", effect="intrigue")
+    assert drawn.players[0].intrigue_cards == (
+        *placed.players[0].intrigue_cards,
+        "intrigue:bribery:0",
+    )
+    assert drawn.intrigue_deck == ("intrigue:bribery:1",)
+
+
+def test_imperial_spy_arrow_is_optional() -> None:
+    engine, state = _start()
+    placed = _spy_placed(engine, state)
+    resolved = _do(engine, placed, "resolve_board_effect", effect="resources")
+    resolved = _do(engine, resolved, "resolve_faction_influence")
+    finished = _do(engine, resolved, "finish_agent_turn")
+    after = finished.players[0]
+    assert "imperium:imperial_spy:0" not in after.trashed
+    assert after.intrigue_cards == placed.players[0].intrigue_cards
+    assert finished.intrigue_deck == placed.intrigue_deck
+
+
+def test_imperial_spy_trashed_by_another_effect_draws_nothing() -> None:
+    """"이 카드로 자신을 trash해야 Intrigue; 다른 수단으로 trash되면 없음" (FAQ p.
+    2, imperium-base.md 13.2) and "다른 수단으로 먼저 trash하면 남은 효과는 없다"
+    (16, OQ-022): once the Spy has left play by another effect, its arrow
+    offers no trash."""
+
+    engine, state = _start()
+    placed = _spy_placed(engine, state)
+    me = "imperium:imperial_spy:0"
+    owner = placed.players[0]
+    gone = _seat(
+        placed,
+        in_play=tuple(card for card in owner.in_play if card != me),
+        trashed=(*owner.trashed, me),
+    )
+    assert "trash_agent_card" not in _ids(engine, gone)
+    assert gone.players[0].intrigue_cards == placed.players[0].intrigue_cards
+
+
+def test_imperial_spy_reveals_one_persuasion_and_one_sword() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "imperial_spy", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 1
+    assert frame["sword_strength"] == 1

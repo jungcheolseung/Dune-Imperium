@@ -947,6 +947,18 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ("troops", _line(RecruitTroops(2))),
                 ("cards", _line(DrawPersonalCards(1))),
             ),
+            # Imperial Spy (original game): "Trash this card -> [Intrigue card]"
+            # -- the card trashes itself as the arrow's cost, then the Intrigue
+            # draw is armed as an icon of its own (OQ-022, OQ-106; Pivotal
+            # Gambit's shape). Trashed by anything else it draws nothing
+            # [FAQ p. 2].
+            _BOX.MAY_TRASH_SELF_TO_DRAW_INTRIGUE: _trash(
+                EffectSection(
+                    rewards=(DrawIntrigueCards(1),),
+                    costs=(TrashCard(this_card=True),),
+                ),
+                armed=("intrigue",),
+            ),
         }
     )
 )

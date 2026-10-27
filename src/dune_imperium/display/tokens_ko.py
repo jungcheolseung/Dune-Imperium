@@ -520,6 +520,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "하나 선택: {influence_spacing_guild:1} / {spice:2}"
     ),
     PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE: "{troop:2}, {draw:1}",
+    PersonalCardAgentEffect.MAY_TRASH_SELF_TO_DRAW_INTRIGUE: (
+        "이 카드 {trash} 가능 {arrow_right} {intrigue:1}"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box
