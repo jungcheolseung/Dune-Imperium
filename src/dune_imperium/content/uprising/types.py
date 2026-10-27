@@ -364,6 +364,9 @@ class PersonalCardTrashEffect(StrEnum):
     ACQUIRE_BANK_COMMANDER = "acquire_bank_commander"
     # Replacement Eyes (Immortality): "When this card is trashed: Tleilaxu".
     ADVANCE_TLEILAXU = "advance_tleilaxu"
+    # Assassination Mission (the original game): "When this card is trashed: 4
+    # Solari" -- whatever trashes it, never the card itself [FAQ p. 1].
+    GAIN_FOUR_SOLARI = "gain_four_solari"
 
 
 class PersonalCardIconCondition(StrEnum):

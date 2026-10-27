@@ -495,6 +495,7 @@ TRASH_EFFECT_TEXT: Final[Mapping[PersonalCardTrashEffect, str]] = MappingProxyTy
         PersonalCardTrashEffect.ADVANCE_TLEILAXU: (
             "Tleilaxu (advance your Tleilaxu token)"
         ),
+        PersonalCardTrashEffect.GAIN_FOUR_SOLARI: "Gain 4 solari",
     }
 )
 

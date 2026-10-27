@@ -546,6 +546,7 @@ TRASH_EFFECT_TEXT_KO: Final[dict[PersonalCardTrashEffect, str]] = {
         "은행의 {commander} {acquire} 후 {recruit}"
     ),
     PersonalCardTrashEffect.ADVANCE_TLEILAXU: "{tleilaxu} (트랙 전진)",
+    PersonalCardTrashEffect.GAIN_FOUR_SOLARI: "{solari:4}",
 }
 
 # The printed condition that turns a card's greyed Agent icons on; Korean

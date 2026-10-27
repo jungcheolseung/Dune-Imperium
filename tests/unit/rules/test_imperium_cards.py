@@ -17,6 +17,7 @@ from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
+    PersonalCardTrashEffect,
 )
 from dune_imperium.core import (
     ChanceDecision,
@@ -2355,3 +2356,134 @@ def test_imperial_spy_reveals_one_persuasion_and_one_sword() -> None:
     frame = _reveal(engine, state)
     assert frame["persuasion"] == 1
     assert frame["sword_strength"] == 1
+
+
+# --- Assassination Mission --------------------------------------------------------
+
+
+def test_assassination_mission_matches_the_app_table() -> None:
+    # App attribute table: cost 1, 2 copies, no Faction, no Agent icon, Reveal
+    # 1 sword and 1 Solari (the Solari is its Reveal gain), no Persuasion.
+    entry = IMPERIUM_CARDS_BY_ID["assassination_mission"]
+    assert entry.card.name == "Assassination Mission"
+    assert entry.acquisition_cost == 1
+    assert entry.copies == 2
+    assert entry.factions == ()
+    assert entry.agent_icons == ()
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 1)
+    assert entry.trash_effect is PersonalCardTrashEffect.GAIN_FOUR_SOLARI
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:assassination_mission:1") is entry
+
+
+def test_assassination_mission_cannot_be_sent_as_an_agent() -> None:
+    """"Agent 아이콘이 없는 카드는 Agent turn에 낼 수 없다" [DI p. 9]
+    (imperium-base.md 5): the card is Reveal-only, and has no way to trash
+    itself [FAQ p. 1]."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "assassination_mission")
+    assert not [
+        placement
+        for placement in executable_placements(state, 0)
+        if ":assassination_mission:" in str(dict(placement.arguments)["card_id"])
+    ]
+
+
+def test_assassination_mission_reveals_one_solari_and_one_sword() -> None:
+    engine, state = _start()
+    held, _ = _with_card(state, "assassination_mission", alone=True)
+    held = _with_troops(_seat(held, resources=Resources()), 0, garrison=0, conflict=1)
+    revealed = _do(engine, held, "reveal_turn")
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (0, 1)
+    gained = _do(engine, revealed, "gain_reveal_resources")
+    assert gained.players[0].resources.solari == 1
+    assert _do(engine, gained, "finish_reveal").players[0].combat_strength == 2 + 1
+
+
+def _administrator_with_mission(
+    engine: UprisingRulesEngine, state: GameState, *, zone: str
+) -> GameState:
+    """Seat 0 sends Guild Administrator (a black trash icon) with Assassination
+    Mission in its ``zone`` and no Solari."""
+
+    held, _ = _with_card(state, "guild_administrator")
+    mission = "imperium:assassination_mission:0"
+    owner = held.players[0]
+    if zone == "hand":
+        seated = _seat(held, hand=(*owner.hand, mission), resources=Resources())
+    else:
+        seated = _seat(
+            held,
+            discard_pile=(*owner.discard_pile, mission),
+            resources=Resources(),
+        )
+    return _place(engine, seated, "secure_contract", "guild_administrator")
+
+
+def test_assassination_mission_trashed_from_the_hand_pays_four_solari() -> None:
+    """"다른 수단으로 trash해야 4 Solari" (imperium-base.md 13.2, [FAQ p. 1]): a
+    trash by another card's effect -- here Guild Administrator's black trash
+    icon, optional ([DI p. 16], [FAQ p. 3]) -- pays 4 Solari to the owner."""
+
+    engine, state = _start()
+    placed = _administrator_with_mission(engine, state, zone="hand")
+    mission = "imperium:assassination_mission:0"
+    assert mission in _trash_rows(engine, placed)
+    trashed = _do(engine, placed, "trash_agent_card", card_id=mission)
+    after = trashed.players[0]
+    assert mission in after.trashed
+    assert after.resources.solari == 4
+    # The gain survives the rest of the turn.
+    finished = _do(engine, trashed, "resolve_board_effect", effect="resources")
+    assert finished.players[0].resources.solari >= 4
+
+
+def test_assassination_mission_trashed_from_the_discard_pile_pays_too() -> None:
+    """The trigger fires "whenever this card is trashed (any zone, any effect)"
+    (P0 sweep)."""
+
+    engine, state = _start()
+    placed = _administrator_with_mission(engine, state, zone="discard")
+    mission = "imperium:assassination_mission:0"
+    trashed = _do(engine, placed, "trash_agent_card", card_id=mission)
+    assert trashed.players[0].resources.solari == 4
+    assert mission in trashed.players[0].trashed
+    assert mission not in trashed.players[0].discard_pile
+
+
+def test_assassination_mission_pays_nothing_unless_trashed() -> None:
+    engine, state = _start()
+    placed = _administrator_with_mission(engine, state, zone="hand")
+    resolved = _do(engine, placed, "resolve_board_effect", effect="resources")
+    finished = _do(engine, resolved, "finish_agent_turn")
+    assert "imperium:assassination_mission:0" not in finished.players[0].trashed
+    assert finished.players[0].resources.solari == resolved.players[0].resources.solari
+
+
+def test_assassination_mission_trashed_at_selective_breeding_pays_four_solari() -> None:
+    """The trash is any effect's, the board space's included: Selective
+    Breeding's paid trash ("trash a card" for the 2 spice, [DI p. 18]) takes
+    the Mission from the hand and the 4 Solari reach the owner."""
+
+    engine, state = _start()
+    held, _ = _with_card(state, "sietch_reverend_mother")
+    mission = "imperium:assassination_mission:0"
+    owner = held.players[0]
+    seated = _seat(
+        held, hand=(*owner.hand, mission), resources=Resources(spice=2)
+    )
+    placed = _place(engine, seated, "selective_breeding", "sietch_reverend_mother")
+    rows = [
+        action
+        for action in _wholes(engine, placed)
+        if action.action_id == "trash_card_for_desert_tactics"
+        and dict(action.arguments)["card_id"] == mission
+    ]
+    assert rows
+    trashed = apply_whole(engine, placed, rows[0]).state
+    assert mission in trashed.players[0].trashed
+    assert trashed.players[0].resources.spice == 0
+    assert trashed.players[0].resources.solari == placed.players[0].resources.solari + 4

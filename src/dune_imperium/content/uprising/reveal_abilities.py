@@ -145,6 +145,8 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "spice_hunter": _reveal(
             _line(GainResources(spice=1), condition=FactionBond(Faction.FREMEN))
         ),
+        # Assassination Mission (original game): "1 Solari" beside its sword.
+        "assassination_mission": _reveal(_line(GainResources(solari=1))),
         # Thufir Hawat (original game): "[Intrigue card]" beside its Persuasion.
         "thufir_hawat": _reveal(_line(DrawIntrigueCards(1))),
         # Junction Headquarters.

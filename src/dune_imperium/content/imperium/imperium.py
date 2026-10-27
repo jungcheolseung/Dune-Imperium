@@ -29,6 +29,7 @@ from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
+    PersonalCardTrashEffect,
 )
 
 # The rulebook lists the deck [DI p. 3]; the printed values are the app's
@@ -91,10 +92,19 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
     # --- Identities only (stage P3a, plan 16.1): name, copies and cost from the
     # app's attribute table (scripts/dwgr/imperium_entries.py skeleton); each
     # card's play data replaces its entry when it is transcribed. ---
+    # App table: cost 1, 2 copies, no Faction, no Agent icons, Reveal 1 sword
+    # (Solari 1 beside it). No Agent icon: a Reveal-only card [DI p. 9]. Reveal:
+    # "[1 Solari] [S1]". Trashed (banner "When this card is trashed: 4
+    # Solari"): whatever trashes it -- the card has no way to trash itself, so
+    # another effect must [FAQ p. 1].
     ImperiumCardEntry(
         card=imperium_card("assassination_mission", "Assassination Mission"),
         copies=2,
         acquisition_cost=1,
+        agent_icons=(),
+        reveal_strength=1,
+        trash_effect=PersonalCardTrashEffect.GAIN_FOUR_SOLARI,
+        play_data_complete=True,
     ),
     # App table: cost 3, 2 copies, Bene Gesserit, Landsraad, City and Spice
     # Trade, Reveal 1 Persuasion. Agent: "Draw 1 card" (the card-draw icon

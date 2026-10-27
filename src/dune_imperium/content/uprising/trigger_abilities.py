@@ -129,6 +129,8 @@ TRASH_ABILITIES: Final[Mapping[PersonalCardTrashEffect, Ability]] = MappingProxy
         ),
         # Replacement Eyes.
         _TRASH.ADVANCE_TLEILAXU: _when(AbilityTiming.TRASH, AdvanceTleilaxu(1)),
+        # Assassination Mission (original game): 4 Solari.
+        _TRASH.GAIN_FOUR_SOLARI: _when(AbilityTiming.TRASH, GainResources(solari=4)),
     }
 )
 
