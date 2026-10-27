@@ -3569,6 +3569,7 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     # Sardaukar Legion, Scout, Chani (original game): a count of troops.
     _Choice.MAY_DEPLOY_UP_TO_THREE_TROOPS: ("deploy_reveal_card_troops",),
     _Choice.MAY_RETREAT_UP_TO_TWO_TROOPS: ("retreat_reveal_card_troops",),
+    _Choice.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: ("retreat_reveal_card_troops",),
     _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED: (
         "recall_spy_for_reveal",
     ),

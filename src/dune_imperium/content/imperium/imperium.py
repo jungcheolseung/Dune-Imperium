@@ -153,10 +153,25 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
+    # App table: cost 5, 1 copy, Fremen, Fremen, City and Spice Trade, Reveal 2
+    # Persuasion, AcquireEffect Water. Acquire: "1 water". Reveal: "[P2]" and
+    # "Retreat any number of your troops" -- from the Conflict to the garrison
+    # [DI p. 16], none included ("any number" [FAQ p. 3], imperium-base.md 13.2
+    # "Chani (Imperium) -> Retreat"); troops only (a Commander's share is for
+    # the combinations stage, P7).
     ImperiumCardEntry(
         card=imperium_card("chani_card", "Chani"),
         copies=1,
         acquisition_cost=5,
+        has_acquisition_bonus=True,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        acquisition_effect=PersonalCardAcquisitionEffect.GAIN_ONE_WATER,
+        reveal_persuasion=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS,
+        ),
+        play_data_complete=True,
     ),
     # App table: cost 3, 1 copy, Fremen, Fremen and Spice Trade, Reveal 1 sword,
     # AgentSolari 1. Agent: "1 Solari". Reveal: "Fremen Bond: 1 Fremen

@@ -259,6 +259,11 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.MAY_RETREAT_UP_TO_TWO_TROOPS: _choice(
                 _line(RetreatTroops(0, 2)), mark=_OPTIONAL
             ),
+            # Chani (original game): "Retreat any number of your troops", none
+            # included [FAQ p. 3].
+            _CHOICE.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: _choice(
+                _line(RetreatTroops(0, None)), mark=_OPTIONAL
+            ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
             _CHOICE.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: _choice(

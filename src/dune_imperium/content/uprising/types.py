@@ -548,6 +548,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     MAY_DEPLOY_UP_TO_THREE_TROOPS = "may_deploy_up_to_three_troops"
     # Scout: "Retreat up to two of your troops" [DI p. 16].
     MAY_RETREAT_UP_TO_TWO_TROOPS = "may_retreat_up_to_two_troops"
+    # Chani: "Retreat any number of your troops" ("any number" allows none
+    # [FAQ p. 3]).
+    MAY_RETREAT_ANY_NUMBER_OF_TROOPS = "may_retreat_any_number_of_troops"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -579,6 +582,7 @@ IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = froz
         PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY,
         PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS,
         PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS,
     }
 )
 

@@ -3808,6 +3808,89 @@ def test_two_scouts_retreat_two_troops_each() -> None:
     assert "retreat_reveal_card_troops" not in _ids(engine, second)
 
 
+# --- Chani
+
+
+def test_chani_matches_the_app_table() -> None:
+    # App attribute table: cost 5, 1 copy, Fremen, Fremen / City / Spice Trade,
+    # Reveal 2 Persuasion, AcquireEffect Water.
+    entry = IMPERIUM_CARDS_BY_ID["chani_card"]
+    assert entry.card.name == "Chani"
+    assert entry.acquisition_cost == 5
+    assert entry.copies == 1
+    assert entry.factions == (Faction.FREMEN,)
+    assert entry.agent_icons == (
+        AgentIcon.FREMEN,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.has_acquisition_bonus
+    assert entry.acquisition_effect is PersonalCardAcquisitionEffect.GAIN_ONE_WATER
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS,
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:chani_card:0") is entry
+
+
+def test_chani_retreats_any_number_of_troops() -> None:
+    """"Retreat any number of your troops" [Chani card]; "'any number'는 0
+    가능" (imperium-base.md 13.2, [FAQ pp. 1, 3]): every count from 1 to the
+    troops in the Conflict is a row, and the card's 2 Persuasion are printed."""
+
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "chani_card", garrison=0, conflict=5)
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2
+    assert _counts(engine, revealed, "retreat_reveal_card_troops") == {1, 2, 3, 4, 5}
+    retreated = _do(engine, revealed, "retreat_reveal_card_troops", count=5)
+    after = retreated.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (5, 0)
+    assert after.combat_strength == 0
+
+
+def test_chani_may_retreat_none() -> None:
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "chani_card", garrison=0, conflict=4)
+    assert not {a for a in _ids(engine, revealed) if a.startswith("decline_")}
+    finished = _do(engine, revealed, "finish_reveal")
+    assert finished.players[0].troops_conflict == 4
+    assert finished.players[0].combat_strength == 8
+
+
+def test_chani_offers_no_retreat_without_a_deployed_troop() -> None:
+    engine, state = _start()
+    revealed = _revealed_alone(engine, state, "chani_card", garrison=3, conflict=0)
+    assert _counts(engine, revealed, "retreat_reveal_card_troops") == set()
+    assert "finish_reveal" in _ids(engine, revealed)
+
+
+def test_chani_acquisition_gains_one_water() -> None:
+    """"AcquireEffect Water" (app table): buying the card gives 1 water, once."""
+
+    engine, state = _start()
+    chani = "imperium:chani_card:0"
+    others = tuple(card for card in state.imperium_row if card != chani)
+    row = (chani, *others[:4])
+    stocked = replace(
+        state,
+        imperium_row=row,
+        imperium_deck=tuple(card for card in state.imperium_deck if card != chani),
+    )
+    hand = (
+        "imperium:space_travel:0",
+        "imperium:stilgar:0",
+        "imperium:dr_yueh:0",
+    )
+    held = _seat(stocked, hand=hand, resources=Resources())
+    revealed = _do(engine, held, "reveal_turn")
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2 + 2 + 1
+    water = revealed.players[0].resources.water
+    bought = _do(engine, revealed, "acquire_imperium", instance_id=chani)
+    after = bought.players[0]
+    assert chani in after.discard_pile
+    assert after.resources.water == water + 1
 
 
 def test_the_counted_troop_moves_are_staged_rows_of_the_original_catalog() -> None:
@@ -3823,6 +3906,7 @@ def test_the_counted_troop_moves_are_staged_rows_of_the_original_catalog() -> No
     for card_id, verb, garrison, conflict, counts in (
         ("sardaukar_legion", "deploy", 5, 0, {1, 2, 3}),
         ("scout", "retreat", 0, 3, {1, 2}),
+        ("chani_card", "retreat", 0, 5, {1, 2, 3, 4, 5}),
     ):
         revealed = _revealed_alone(
             engine, state, card_id, garrison=garrison, conflict=conflict

@@ -677,6 +677,9 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS: (
         "{troop:2}까지 {retreat} 가능"
     ),
+    PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
+        "원하는 수의 {troop} {retreat} 가능"
+    ),
     PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
         "{solari:6} 지불 가능 {arrow_right} {victory_point:1}"
     ),

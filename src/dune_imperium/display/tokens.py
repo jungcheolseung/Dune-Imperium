@@ -651,6 +651,9 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS: (
                 "You may retreat up to 2 troops"
             ),
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
+                "You may retreat any number of troops"
+            ),
             PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
                 "You may pay 6 solari → Gain 1 Victory Point"
             ),
