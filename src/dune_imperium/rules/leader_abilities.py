@@ -180,6 +180,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "count_ilban_richese",
         "earl_memnon_thorvald",
         "countess_ariana_thorvald",
+        "duke_leto_atreides",
     }
 )
 
@@ -584,6 +585,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         "esmar_tuek",
         "gaius_helen_mohiam",
         "kota_odax_of_ix",
+        "duke_leto_atreides",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
@@ -783,6 +785,8 @@ SIGNET_HOOKS: Final = frozenset(
         "esmar_smuggle_spice",
         "listeners",
         "reverse_engineering",
+        # The original game's Duke Leto Atreides.
+        "prudent_diplomacy",
     }
 )
 
@@ -1397,6 +1401,23 @@ def legal_leader_signet_actions(
                 )
                 if owner.resources.solari >= 3
                 else ()
+            ),
+        )
+
+    if owner.leader_id == "duke_leto_atreides":
+        # Prudent Diplomacy: pay 1 spice for Influence with a Faction where an
+        # opponent has more than Leto (docs/rules/imperium-base.md 12); an
+        # arrow, so declined freely, and judged now (OQ-028): no Faction at
+        # the top (OQ-060), none without a spice to pay.
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                DomainAction(
+                    action_id="choose_leader_signet_influence",
+                    actor=player,
+                    arguments=(("faction", faction.value),),
+                )
+                for faction in prudent_diplomacy_factions(state, player)
             ),
         )
 
@@ -2166,6 +2187,61 @@ def _apply_staban_bonus_payment(
     )
 
 
+def prudent_diplomacy_factions(state: GameState, player: int) -> tuple[Faction, ...]:
+    """The Factions Prudent Diplomacy offers now: an opponent has more
+    Influence there than the owner, who is below the top (OQ-060) and holds a
+    spice to pay; none otherwise."""
+
+    owner = state.players[player]
+    if owner.resources.spice < 1:
+        return ()
+    return tuple(
+        faction
+        for faction in Faction
+        if influence_can_rise(owner, faction)
+        and any(
+            influence_amount(seat.influence, faction)
+            > influence_amount(owner.influence, faction)
+            for seat in state.players
+            if seat.player_id != player
+        )
+    )
+
+
+def _apply_prudent_diplomacy(
+    state: GameState,
+    context: dict[str, ActionValue],
+    player: int,
+    faction: Faction,
+) -> RuleResult:
+    """Pay Prudent Diplomacy's spice, then gain the chosen Influence."""
+
+    owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    next_owner = replace(
+        owner,
+        resources=replace(owner.resources, spice=owner.resources.spice - 1),
+        spice_spent_turn=owner.spice_spent_turn + 1,
+    )
+    paid = replace(state, players=replace_player(state.players, next_owner))
+    gained = gain_faction_influence(
+        paid,
+        player,
+        faction,
+        1,
+        event_prefix=f"{source}:influence:{faction.value}",
+    )
+    next_state = _store_signet(gained.state, context, gained.state.players)
+    return RuleResult(
+        state=next_state,
+        events=(
+            resources_paid_event(source, player, spice=1),
+            *gained.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
+    )
+
+
 def apply_shaddam_signet_choice(
     state: GameState,
     action: DomainAction,
@@ -2214,6 +2290,9 @@ def apply_shaddam_signet_choice(
     faction_value = dict(action.arguments).get("faction")
     if not isinstance(faction_value, str):
         raise RuntimeError("Leader Signet Influence choice has invalid Faction")
+    if owner.leader_id == "duke_leto_atreides":
+        # Prudent Diplomacy's 1 spice (``legal_leader_signet_actions``).
+        return _apply_prudent_diplomacy(state, context, player, Faction(faction_value))
     if owner.resources.solari < 3:
         raise RuntimeError("the Signet Ring Influence choice requires three Solari")
     next_owner = replace(

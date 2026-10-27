@@ -2200,6 +2200,8 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
             "count_hasimir_fenring",
             "duncan_idaho",
             "gaius_helen_mohiam",
+            # The original game's Prudent Diplomacy.
+            "duke_leto_atreides",
         }
     ),
     "resolve_leader_signet_without_option": frozenset(
@@ -2220,7 +2222,10 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "pay_leader_signet_solari": frozenset({"staban_tuek"}),
     "pay_leader_signet_water": frozenset({"chani"}),
     "gain_leader_signet_troop": frozenset({"shaddam_corrino_iv"}),
-    "choose_leader_signet_influence": frozenset({"shaddam_corrino_iv"}),
+    # Shaddam's three Solari; the original game's Prudent Diplomacy.
+    "choose_leader_signet_influence": frozenset(
+        {"shaddam_corrino_iv", "duke_leto_atreides"}
+    ),
     "acquire_leader_imperium": frozenset({"princess_irulan"}),
     "acquire_leader_reserve": frozenset({"princess_irulan"}),
     "retreat_leader_troops": frozenset({"chani"}),

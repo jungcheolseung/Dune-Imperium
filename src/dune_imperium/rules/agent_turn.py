@@ -1320,6 +1320,17 @@ def _effective_costs(
             cost = replace(cost, solari=max(cost.solari - 2, 0))
         return ((option, cost),)
     costs = space.cost_options or (ResourceCost(),)
+    if (
+        state.players[player].leader_id == "duke_leto_atreides"
+        and space.agent_icon is AgentIcon.LANDSRAAD
+    ):
+        # Landsraad Popularity: a Landsraad space's Solari cost is 1 less,
+        # never optional (docs/rules/imperium-base.md 12, P0 sweep L5); a
+        # space with no Solari cost is unchanged.
+        costs = tuple(
+            replace(cost, solari=cost.solari - 1) if cost.solari else cost
+            for cost in costs
+        )
     return tuple(enumerate(costs))
 
 

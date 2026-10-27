@@ -46,7 +46,6 @@ from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.phases import begin_round, resolve_recall_or_endgame
 from dune_imperium.rules.setup import create_initial_state
 
-ENGINE = UprisingRulesEngine()
 CONFIG = RulesetConfig(base_game=BaseGame.IMPERIUM, first_player_seat_zero=True)
 LEADERS = (
     "glossu_rabban",
@@ -54,6 +53,8 @@ LEADERS = (
     "earl_memnon_thorvald",
     "countess_ariana_thorvald",
 )
+# Seated as named: no Leader at seat 0 changes a space's cost.
+ENGINE = UprisingRulesEngine(leader_ids=LEADERS)
 
 
 def _start(seed: int = 3) -> GameState:

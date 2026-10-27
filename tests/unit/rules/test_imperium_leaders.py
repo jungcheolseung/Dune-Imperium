@@ -1,8 +1,9 @@
-"""The original Dune: Imperium's first four Leaders (stage P2a).
+"""The original Dune: Imperium's Leaders (stages P2a and P2b).
 
 docs/rules/imperium-base.md 12 (and its 13.2 FAQ rows) and
 docs/base-game-and-ix-plan.md 15.1: Glossu Rabban, Count Ilban Richese, Earl
-Memnon Thorvald and Countess Ariana Thorvald. Each is seated at seat 0.
+Memnon Thorvald and Countess Ariana Thorvald (P2a), then Duke Leto Atreides
+(P2b). Each is seated at seat 0.
 """
 
 from dataclasses import replace
@@ -36,7 +37,7 @@ LEADERS = (
 def _start(leader: str, seed: int = 3) -> tuple[UprisingRulesEngine, GameState]:
     """Round 1 with ``leader`` at seat 0, at its first turn."""
 
-    seats = (leader, *(other for other in LEADERS if other != leader))
+    seats = (leader, *(other for other in LEADERS if other != leader))[:4]
     engine = UprisingRulesEngine(leader_ids=seats)
     state = engine.reset(CONFIG, seed)
     chance = ChanceResolver(seed=seed)
@@ -269,3 +270,59 @@ def test_spice_addict_leaves_the_control_bonus_whole() -> None:
     placed = _place(engine, state, "imperial_basin")
     assert placed.players[ariana].resources.spice == spice + 1
     assert placed.players[ariana].owed_draws == ()
+
+
+# --- Duke Leto Atreides (P2b) -------------------------------------------------
+
+
+def test_landsraad_popularity_takes_a_solari_off_landsraad_spaces() -> None:
+    # "Landsraad 칸에 보내는 비용 1 Solari 적게" (imperium-base.md 12), never
+    # optional (P0 sweep L5): the Mentat space for 1, Rally Troops for 3; a
+    # space with no Solari cost (Hall of Oratory) or another icon is unchanged.
+    engine, state = _start("duke_leto_atreides")
+    state = _seat(_with_card(state, "dagger"), resources=Resources(solari=1))
+    spaces = {
+        dict(placement.arguments)["space_id"]
+        for placement in executable_placements(state, 0)
+    }
+    assert {"mentat", "hall_of_oratory"} <= spaces
+    assert "rally_troops" not in spaces
+    placed = _place(engine, state, "mentat")
+    assert placed.players[0].resources.solari == 0
+
+
+def test_prudent_diplomacy_buys_influence_where_an_opponent_leads() -> None:
+    # "spice 1 → 상대가 나보다 Influence가 많은 진영에 Influence 1": an arrow,
+    # declined freely, judged as it resolves (OQ-028); never a Faction at the
+    # top (OQ-060, P0 sweep L5).
+    engine, state = _start("duke_leto_atreides")
+    state = _seat(
+        _with_card(state, "signet_ring"),
+        resources=Resources(spice=1),
+        influence=Influence(fremen=6),
+    )
+    state = _seat(state, 1, influence=Influence(emperor=2, fremen=6))
+    state = _seat(state, 2, influence=Influence(spacing_guild=1))
+    placed = _place(engine, state, "secure_contract", "signet_ring")
+    offered = {
+        dict(action.arguments)["faction"]
+        for action in _wholes(engine, placed)
+        if action.action_id == "choose_leader_signet_influence"
+    }
+    assert offered == {"emperor", "spacing_guild"}
+    gained = _do(engine, placed, "choose_leader_signet_influence", faction="emperor")
+    owner = gained.players[0]
+    assert owner.influence.emperor == 1
+    assert owner.resources.spice == 0
+
+
+def test_prudent_diplomacy_without_spice_offers_nothing_and_lapses() -> None:
+    # An unused optional effect offers no refusal in an Agent turn and lapses
+    # when the turn ends (OQ-095 (2)).
+    engine, state = _start("duke_leto_atreides")
+    state = _seat(_with_card(state, "signet_ring"), resources=Resources())
+    state = _seat(state, 1, influence=Influence(emperor=2))
+    placed = _place(engine, state, "secure_contract", "signet_ring")
+    placed = _do(engine, placed, "resolve_board_effect", effect="resources")
+    assert "choose_leader_signet_influence" not in _ids(engine, placed)
+    assert legal_agent_turn_finish_actions(placed, 0)

@@ -135,7 +135,8 @@ def test_the_original_game_plays_its_own_board_and_no_deck_yet() -> None:
     # Stage P2 (docs/base-game-and-ix-plan.md 15): the original board's 22
     # spaces [DI pp. 17-18], its 18 Conflicts (I 4, II 10, III 4 [DI p. 3]),
     # its three Reserve stacks [DI p. 3] and the Leaders the engine plays
-    # (four in P2a); its Imperium and Intrigue decks arrive in P3. Its starting
+    # (four in P2a, one more per P2b Leader); its Imperium and Intrigue decks
+    # arrive in P3. Its starting
     # deck is Uprising's printing [DI p. 3]; it prints no Objective,
     # observation post, Contract or sandworm.
     config = RulesetConfig(base_game=BaseGame.IMPERIUM)
@@ -157,6 +158,7 @@ def test_the_original_game_plays_its_own_board_and_no_deck_yet() -> None:
         "foldspace_card": 6,
     }
     assert [leader.leader_id for leader in content.leaders] == [
+        "duke_leto_atreides",
         "glossu_rabban",
         "count_ilban_richese",
         "earl_memnon_thorvald",

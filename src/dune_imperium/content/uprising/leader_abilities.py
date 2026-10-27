@@ -244,6 +244,18 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "countess_ariana_thorvald": _automatic(
             EffectSection(rewards=(GainResources(water=1),))
         ),
+        # Prudent Diplomacy (stage P2b): "spice 1 → 상대가 나보다 Influence가
+        # 많은 진영에 Influence 1" -- an arrow, so never forced; the Faction is
+        # judged as it resolves (OQ-028) and none at the top is offered
+        # (OQ-060, P0 sweep L5).
+        "duke_leto_atreides": _hook(
+            "prudent_diplomacy",
+            AbilityMark.OPTIONAL,
+            EffectSection(
+                rewards=(GainInfluence(where_opponent_leads=True),),
+                costs=(PayResources(spice=1),),
+            ),
+        ),
     }
 )
 
@@ -419,6 +431,9 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
             _standing("spice_addict"),
             _triggered(OnMakerSpiceHarvested(), DrawPersonalCards(1)),
         ),
+        # Landsraad Popularity (stage P2b): a Landsraad space's Solari cost
+        # is 1 less, never optional (P0 sweep L5).
+        "duke_leto_atreides": (_standing("landsraad_popularity"),),
     }
 )
 

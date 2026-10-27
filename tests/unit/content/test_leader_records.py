@@ -62,7 +62,7 @@ from dune_imperium.rules.agent_effects import _SIGNET_ICONS, _STAGED_SIGNETS
 from dune_imperium.rules.leader_abilities import LEADER_HOOKS, SIGNET_HOOKS
 
 # The original game's Leaders the engine plays (stage P2a of
-# docs/base-game-and-ix-plan.md; P2b adds the other four).
+# docs/base-game-and-ix-plan.md; P2b adds the other four, one at a time).
 _IMPERIUM_PLAYED = frozenset(
     leader.leader_id
     for leader in content_for(RulesetConfig(base_game=BaseGame.IMPERIUM)).leaders
@@ -77,7 +77,7 @@ def test_every_leader_face_but_the_steersman_prints_a_signet_record() -> None:
         if face is not None
     }
     assert set(SIGNET_ABILITIES) == faces - {"steersman_y_rkoon"} | _IMPERIUM_PLAYED
-    assert len(SIGNET_ABILITIES) == 18 + 4
+    assert len(SIGNET_ABILITIES) == 18 + len(_IMPERIUM_PLAYED)
     for record in SIGNET_ABILITIES.values():
         assert record.timing is AbilityTiming.AGENT_BOX
     assert {
@@ -101,6 +101,8 @@ def test_the_records_say_which_signets_are_optional_and_which_print_icons() -> N
         "princess_irulan",
         "chani",
         "duncan_idaho",
+        # The original game's Prudent Diplomacy (an arrow).
+        "duke_leto_atreides",
     }
     assert dict(_SIGNET_ICONS) == {"lady_amber_metulli": ("solari", "spice")}
     assert {
@@ -114,8 +116,8 @@ def test_the_records_say_which_signets_are_optional_and_which_print_icons() -> N
         "piter_de_vries",
         "liet_kynes",
         # The original game's: Brutality (its "-OR-" is no choice), and the
-        # three single gains.
-        *_IMPERIUM_PLAYED,
+        # three single gains (Prudent Diplomacy is an optional hook).
+        *(_IMPERIUM_PLAYED - {"duke_leto_atreides"}),
     }
 
 
@@ -246,9 +248,9 @@ def test_every_leader_face_prints_its_left_box_as_records() -> None:
     records = [
         record for abilities in LEADER_ABILITIES.values() for record in abilities
     ]
-    # The original game's: Ruthless Negotiator, Connections, and Spice
-    # Addict's standing record and its draw.
-    assert len(records) == 21 + 4
+    # The original game's: Ruthless Negotiator, Connections, Spice Addict's
+    # standing record and its draw, and Landsraad Popularity's standing one.
+    assert len(records) == 21 + 5
     assert {
         record.hook
         for record in records
@@ -266,6 +268,7 @@ def test_every_leader_face_prints_its_left_box_as_records() -> None:
         "liet_kynes",
         "kota_odax_of_ix",
         "countess_ariana_thorvald",
+        "duke_leto_atreides",
     }
     triggered = [record for record in records if record.trigger is not None]
     assert len(triggered) == 8 + 3
