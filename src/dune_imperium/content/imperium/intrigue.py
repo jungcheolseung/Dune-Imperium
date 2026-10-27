@@ -24,6 +24,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainVictoryPoints,
     HasAlliance,
     HasHighCouncil,
+    LoseTroops,
     PayResources,
     RetreatTroops,
 )
@@ -224,6 +225,18 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("staged_incident", "Staged Incident"),
         copies=1,
+        # "Lose three of your troops in the Conflict -> 1 Victory Point"
+        # [Staged Incident card, app text]: the loss is the cost, so all
+        # three must be in the Conflict to play it [FAQ p. 2]; the strength
+        # marker moves down with them [FAQ p. 4] (imperium-base.md 13.2).
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(LoseTroops(3, from_conflict=True),),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("the_sleeper_must_awaken", "The Sleeper Must Awaken"),

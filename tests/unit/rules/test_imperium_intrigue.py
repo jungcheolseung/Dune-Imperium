@@ -12,7 +12,11 @@ from dataclasses import replace
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.rulesets import content_for
-from dune_imperium.content.uprising.effect_dsl import HasAlliance, PayResources
+from dune_imperium.content.uprising.effect_dsl import (
+    HasAlliance,
+    LoseTroops,
+    PayResources,
+)
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS,
     intrigue_card_for_instance,
@@ -1488,5 +1492,202 @@ def test_allied_armada_needs_a_unit_in_the_conflict() -> None:
             resources=Resources(spice=5),
         ),
         _fighter(1, 2),
+    )
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+# --- Staged Incident (Combat) -----------------------------------------------
+
+INCIDENT = _intrigue("staged_incident")
+
+
+def _lose_conflict_troop() -> DomainAction:
+    return DomainAction(
+        action_id="lose_intrigue_troop",
+        actor=0,
+        arguments=(("zone", "conflict"),),
+    )
+
+
+def _lose_three(
+    engine: UprisingRulesEngine, state: GameState
+) -> tuple[GameState, list[str]]:
+    """Play Staged Incident and pay its three troops one by one."""
+
+    played = apply_whole(engine, state, _play(INCIDENT))
+    state = played.state
+    kinds = [event.kind for event in played.events]
+    for _ in range(3):
+        assert engine.whole_actions(state, 0) == (_lose_conflict_troop(),)
+        result = apply_whole(engine, state, _lose_conflict_troop())
+        state = result.state
+        kinds.extend(event.kind for event in result.events)
+    return state, kinds
+
+
+def test_staged_incident_is_one_combat_line_losing_three_troops() -> None:
+    # "Combat: Lose three of your troops in the Conflict -> 1 VP" [Staged
+    # Incident card, Steam app text]; 1 copy [DI p. 3].
+    entry = intrigue_card_for_instance(INCIDENT)
+    assert entry.card.name == "Staged Incident"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["combat"]
+    section = entry.options[0].sections[0]
+    assert section.costs == (LoseTroops(3, from_conflict=True),)
+    assert intrigue_card_text(entry) == [
+        "Combat — Lose 3 troops in the Conflict → Gain 1 VP"
+    ]
+    assert "staged_incident" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_staged_incident_is_not_a_plot() -> None:
+    # Combat Intrigue is played in the Combat phase only [DI p. 12]
+    # (imperium-base.md 10), never in the seat's Agent or Reveal turn.
+    _, state = _start()
+    state = _seat(
+        state,
+        intrigue_cards=(INCIDENT,),
+        troops_supply=7,
+        troops_garrison=0,
+        troops_conflict=5,
+    )
+    assert legal_intrigue_play_actions(state, 0) == ()
+
+
+def test_staged_incident_loses_three_conflict_troops_for_one_victory_point() -> None:
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." `[FAQ p. 2]`: the three lost troops are the cost, paid in full
+    # before the point is gained. A lost troop goes back to the supply
+    # `[DI p. 16]` (imperium-base.md 11, "troop 잃기(supply로)").
+    engine = UprisingRulesEngine()
+    state = _combat_state(
+        _fighter(0, 5, intrigue_cards=(INCIDENT,)), _fighter(1, 1)
+    )
+    points = state.players[0].victory_points
+    assert legal_intrigue_play_actions(state, 0) == (_play(INCIDENT),)
+
+    played = apply_whole(engine, state, _play(INCIDENT)).state
+    # Nothing is lost or gained until the owner names the troops.
+    assert played.players[0].troops_conflict == 5
+    assert played.players[0].victory_points == points
+    assert played.decision_stack[-1].kind == "intrigue_choice"
+
+    done, kinds = _lose_three(engine, state)
+
+    player = done.players[0]
+    assert player.troops_conflict == 2
+    assert player.troops_garrison == 0
+    assert player.troops_supply == 7 + 3
+    assert player.victory_points == points + 1
+    assert player.intrigue_cards == ()
+    assert done.intrigue_discard == (INCIDENT,)
+    assert kinds.count("unit_lost") == 3
+    assert kinds[-1] == "resources_gained"
+    # The card was played: the passes restart and the seat stays in.
+    frame = done.decision_stack[-1]
+    assert frame.kind == "combat_intrigue"
+    assert dict(frame.context)["consecutive_passes"] == 0
+    assert dict(frame.context)["participants_mask"] == 0b11
+
+
+def test_staged_incident_moves_the_strength_marker_down() -> None:
+    # "strength를 낮추는 조정으로 marker를 옮긴다" `[FAQ p. 4]`
+    # (imperium-base.md 13.2): each lost troop takes its 2 strength off the
+    # marker, and the swords already counted stay.
+    state = _combat_state(
+        PlayerState(
+            player_id=0,
+            intrigue_cards=(INCIDENT,),
+            troops_supply=8,
+            troops_garrison=0,
+            troops_conflict=4,
+            combat_strength=4 * 2 + 3,
+        ),
+        _fighter(1, 1),
+    )
+    done, _ = _lose_three(UprisingRulesEngine(), state)
+
+    assert done.players[0].troops_conflict == 1
+    assert done.players[0].combat_strength == 2 + 3
+
+
+def test_staged_incident_needs_three_troops_in_the_conflict() -> None:
+    # "pay its costs" `[FAQ p. 2]` in full: two troops in the Conflict do not
+    # pay a cost of three, and troops waiting in the garrison are not "in the
+    # Conflict", so the card is not offered.
+    two = _combat_state(
+        PlayerState(
+            player_id=0,
+            intrigue_cards=(INCIDENT,),
+            troops_supply=4,
+            troops_garrison=6,
+            troops_conflict=2,
+            combat_strength=4,
+        ),
+        _fighter(1, 1),
+    )
+    engine = UprisingRulesEngine()
+    assert legal_intrigue_play_actions(two, 0) == ()
+    assert _play(INCIDENT) not in engine.whole_actions(two, 0)
+
+    exact = _combat_state(
+        _fighter(0, 3, intrigue_cards=(INCIDENT,)), _fighter(1, 1)
+    )
+    assert legal_intrigue_play_actions(exact, 0) == (_play(INCIDENT),)
+
+
+def test_staged_incident_may_be_declined_by_passing() -> None:
+    # Playing is a choice, never forced: the seat passes and keeps the card
+    # and its troops `[DI p. 12]` (imperium-base.md 10).
+    state = _combat_state(
+        _fighter(0, 4, intrigue_cards=(INCIDENT,)), _fighter(1, 1)
+    )
+    engine = UprisingRulesEngine()
+    assert _pass(0) in engine.whole_actions(state, 0)
+
+    passed = apply_whole(engine, state, _pass(0)).state
+
+    assert passed.players[0].intrigue_cards == (INCIDENT,)
+    assert passed.players[0].troops_conflict == 4
+    assert passed.players[0].combat_strength == 8
+    assert passed.players[0].victory_points == state.players[0].victory_points
+
+
+def test_staged_incident_losing_the_last_troops_leaves_the_rotation() -> None:
+    # OQ-003 (a): a seat with no unit left in the Conflict drops out of the
+    # Combat Intrigue loop at once; with nobody left the stage ends. Three
+    # troops lost from three is the whole force (`[DI p. 12]`: only a seat
+    # with troops in the Conflict takes part).
+    engine = UprisingRulesEngine()
+    state = _combat_state(_fighter(0, 3, intrigue_cards=(INCIDENT,)))
+    points = state.players[0].victory_points
+
+    state = apply_whole(engine, state, _play(INCIDENT)).state
+    for _ in range(2):
+        state = apply_whole(engine, state, _lose_conflict_troop()).state
+    # Resolve the last slot without the dispatcher so the round does not run
+    # on into the Endgame of this minimal state.
+    done = apply_intrigue_choice(state, _lose_conflict_troop()).state
+
+    assert done.players[0].troops_conflict == 0
+    assert done.players[0].combat_strength == 0
+    assert done.players[0].victory_points == points + 1
+    assert done.intrigue_discard == (INCIDENT,)
+    assert done.combat_intrigue_complete is True
+    assert done.decision_stack == ()
+
+
+def test_staged_incident_needs_a_unit_in_the_conflict() -> None:
+    # "Conflict에 troop이 있는 플레이어가 Combat Intrigue를 내거나 pass한다"
+    # `[DI p. 12]`: a seat with no troop in the Conflict takes no part.
+    state = _combat_state(
+        PlayerState(
+            player_id=0,
+            intrigue_cards=(INCIDENT,),
+            troops_supply=6,
+            troops_garrison=6,
+        ),
+        _fighter(1, 3),
     )
     assert legal_intrigue_play_actions(state, 0) == ()
