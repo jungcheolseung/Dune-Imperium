@@ -801,6 +801,9 @@ def create_draft_initial_state(
         seed=seed,
         phase=GamePhase.SETUP,
         shield_wall_present=config.base_game is BaseGame.UPRISING,
+        # The base game's Maker spaces; the picks add Tuek's Sietch for Esmar
+        # (``leader_draft``).
+        maker_bonus_spice=content_for(config).maker_bonus_spice_for(()),
         first_player=first_player,
         players=players,
         conflict_deck=conflict.deck,
@@ -839,8 +842,9 @@ def create_draft_initial_state(
 # The options the original game cannot be played with yet, and the stage of
 # docs/base-game-and-ix-plan.md that brings each (15.4): its own promo cards
 # arrive with its decks (P3), Rise of Ix and its Epic Game Mode in P4, the
-# Uprising expansions with it in P7 and Arrakeen Scouts in P8; the Leader
-# draft deals six of its eight Leaders once P2b has them all.
+# Uprising expansions with it in P7 and Arrakeen Scouts in P8. The Leader
+# draft deals six of its eight Leaders (OQ-007), open since P2b brought them
+# all.
 _IMPERIUM_PENDING_OPTIONS: Final = (
     ("choam_module", "P7"),
     ("promo_cards", "P3"),
@@ -851,7 +855,6 @@ _IMPERIUM_PENDING_OPTIONS: Final = (
     ("epic_game", "P4"),
     ("arrakeen_scouts", "P8"),
     ("rise_of_ix", "P4"),
-    ("leader_draft", "P2b"),
 )
 
 

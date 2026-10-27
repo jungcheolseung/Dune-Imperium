@@ -44,7 +44,7 @@ from dune_imperium.rules.combat import (
 from dune_imperium.rules.frames import FrameKind, top_frame
 from dune_imperium.rules.influence import gain_faction_influence
 from dune_imperium.rules.phases import begin_round, resolve_recall_or_endgame
-from dune_imperium.rules.setup import create_initial_state
+from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
 
 CONFIG = RulesetConfig(base_game=BaseGame.IMPERIUM, first_player_seat_zero=True)
 LEADERS = (
@@ -515,3 +515,19 @@ def test_the_conflict_card_stays_on_the_board() -> None:
     assert all(seat.won_conflict_ids == () for seat in offered.state.players)
     assert offered.state.current_conflict_ids == ("guild_bank_raid",)
     assert [event.kind for event in offered.events].count("conflict_won") == 1
+
+
+def test_the_original_game_drafts_six_of_its_eight_leaders() -> None:
+    # The Leader draft (OQ-007) deals six of the original game's eight once
+    # stage P2b has them all (plan 15.4).
+    config = RulesetConfig(base_game=BaseGame.IMPERIUM, leader_draft=True)
+    state = create_draft_initial_state(config, 5).state
+    assert state.phase is GamePhase.SETUP
+    pool = set(state.leader_draft_pool)
+    assert len(pool) == 6
+    assert pool <= {leader.leader_id for leader in content_for(config).leaders}
+    assert dict(state.maker_bonus_spice) == {
+        "the_great_flat": 0,
+        "imperium_hagga_basin": 0,
+        "imperial_basin": 0,
+    }

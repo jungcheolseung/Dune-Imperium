@@ -222,7 +222,6 @@ def test_a_combination_without_its_content_cannot_be_set_up() -> None:
         ("epic_game", "P4"),
         ("arrakeen_scouts", "P8"),
         ("rise_of_ix", "P4"),
-        ("leader_draft", "P2b"),
     ):
         config = RulesetConfig(base_game=BaseGame.IMPERIUM, **{option: True})
         with pytest.raises(NotImplementedError, match=f"{option} from stage {stage}"):
