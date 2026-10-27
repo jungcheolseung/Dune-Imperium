@@ -120,8 +120,7 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     # there is no overflow spot on the emblem above 12.
     assert len(victory["levels"]) == 13
     assert "overflow_y" not in victory
-    assert len(layout["garrisons"]) == 4
-    assert len(layout["conflict_quadrants"]) == 4
+    assert not {"garrisons", "conflict_quadrants"} & layout.keys()
     # The units in the Conflict stand in the printed quadrants, one piece
     # per unit (test_conflict_quadrants_hold_the_units_as_pieces).
     units = layout["conflict_units"]
@@ -149,8 +148,7 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     assert all(inside(value) for value in victory["levels"])
     assert all(inside(value) for value in strength["cells"])
     assert all(inside(value) for value in strength["token_rows"])
-    for table in ("garrisons", "conflict_quadrants", "council_seats"):
-        assert all(inside(point[0]) and inside(point[1]) for point in layout[table])
+    assert all(inside(x) and inside(y) for x, y in layout["council_seats"])
     slots = (
         layout["conflict_deck_slot"],
         layout["conflict_slot"],
