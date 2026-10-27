@@ -27,6 +27,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.types import (
     AgentIcon,
+    PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardTrashEffect,
@@ -320,10 +321,21 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=7,
     ),
+    # App table: cost 5, 1 copy, Emperor and Fremen, Fremen and City, no fixed
+    # Reveal values, AcquireEffect RankE. Acquire: "1 Emperor Influence".
+    # Reveal: "[P2] for each Fremen card you have in play (including this one)"
+    # -- the cards played on this round's Agent turns and this Reveal turn's
+    # [FAQ p. 2], counted when it resolves (OQ-028); it counts as a Fremen card
+    # itself.
     ImperiumCardEntry(
         card=imperium_card("liet_kynes_card", "Liet Kynes"),
         copies=1,
         acquisition_cost=5,
+        has_acquisition_bonus=True,
+        factions=(Faction.EMPEROR, Faction.FREMEN),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY),
+        acquisition_effect=PersonalCardAcquisitionEffect.GAIN_EMPEROR_INFLUENCE,
+        play_data_complete=True,
     ),
     # App table: cost 1, 2 copies, Bene Gesserit (the errata's faction, [FAQ p.
     # 1]), City, Reveal 1 Persuasion (tag WantBG). Agent: "If you have another

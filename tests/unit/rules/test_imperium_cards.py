@@ -15,6 +15,7 @@ from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import (
     AgentIcon,
+    PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
     PersonalCardTrashEffect,
@@ -2873,3 +2874,104 @@ def test_reverend_mother_mohiam_reveals_two_persuasion_and_two_spice() -> None:
     assert (frame["persuasion"], frame["sword_strength"]) == (2, 0)
     gained = _do(engine, revealed, "gain_reveal_resources")
     assert gained.players[0].resources.spice == 2
+
+
+# --- Liet Kynes -------------------------------------------------------------------
+
+
+def test_liet_kynes_matches_the_app_table() -> None:
+    # App attribute table: cost 5, 1 copy, Emperor and Fremen, Fremen and City,
+    # no fixed Reveal values, AcquireEffect RankE (one Emperor Influence).
+    entry = IMPERIUM_CARDS_BY_ID["liet_kynes_card"]
+    assert entry.card.name == "Liet Kynes"
+    assert entry.acquisition_cost == 5
+    assert entry.copies == 1
+    assert entry.factions == (Faction.EMPEROR, Faction.FREMEN)
+    assert entry.agent_icons == (AgentIcon.FREMEN, AgentIcon.CITY)
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.has_acquisition_bonus
+    assert entry.acquisition_effect is (
+        PersonalCardAcquisitionEffect.GAIN_EMPEROR_INFLUENCE
+    )
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:liet_kynes_card:0") is entry
+
+
+def test_liet_kynes_agent_box_is_empty() -> None:
+    # P0 sweep: "AGENT: none"; the icons only send the Agent to a Fremen or City
+    # space.
+    engine, state = _start()
+    state, _ = _with_card(state, "liet_kynes_card")
+    state = _seat(state, resources=Resources(water=2))
+    placed = _place(engine, state, "imperium_research_station", "liet_kynes_card")
+    assert "resolve_agent_card_effect" not in _ids(engine, placed)
+
+
+def _liet_persuasion(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    *others: str,
+    in_play: tuple[str, ...] = (),
+) -> object:
+    """The Persuasion Liet Kynes and ``others`` reveal, with ``in_play`` the
+    cards played on this round's Agent turns."""
+
+    held, instance = _with_card(state, "liet_kynes_card", alone=True)
+    held = _seat(held, hand=(instance, *others), in_play=in_play)
+    return dict(_do(engine, held, "reveal_turn").decision_stack[-1].context)[
+        "persuasion"
+    ]
+
+
+def test_liet_kynes_counts_two_persuasion_for_each_fremen_card_in_play() -> None:
+    """"Liet Kynes | 이번 라운드 Agent turn의 카드와 지금 Reveal turn의 카드를 센다;
+    장마다 Persuasion 2" (imperium-base.md 13.2, [FAQ p. 2]); the card counts
+    itself ("including this one"): alone it is one Fremen card."""
+
+    engine, state = _start()
+    assert _liet_persuasion(engine, state) == 2
+
+
+def test_liet_kynes_counts_the_other_fremen_cards_revealed() -> None:
+    """Spice Hunter (Fremen) revealed beside it: two Fremen cards, 4
+    Persuasion, and the hunter's own 1."""
+
+    engine, state = _start()
+    assert _liet_persuasion(engine, state, "imperium:spice_hunter:0") == 4 + 1
+    # A card of another Faction adds nothing to the count.
+    assert _liet_persuasion(engine, state, "imperium:space_travel:0") == 2 + 2
+
+
+def test_liet_kynes_counts_this_rounds_agent_turn_cards() -> None:
+    """The card an Agent turn of this round played is in play for the count
+    ([FAQ p. 2])."""
+
+    engine, state = _start()
+    played = ("imperium:stilgar:0", "imperium:space_travel:0")
+    assert _liet_persuasion(engine, state, in_play=played) == 2 * 2
+
+
+def test_liet_kynes_acquisition_gains_one_emperor_influence() -> None:
+    """"AcquireEffect RankE" (app table): buying the card gives 1 Emperor
+    Influence, once."""
+
+    engine, state = _start()
+    liet = "imperium:liet_kynes_card:0"
+    others = tuple(card for card in state.imperium_row if card != liet)
+    row = (liet, *others[:4])
+    stocked = replace(
+        state,
+        imperium_row=row,
+        imperium_deck=tuple(card for card in state.imperium_deck if card != liet),
+    )
+    hand = ("imperium:space_travel:0", "imperium:stilgar:0", "imperium:dr_yueh:0")
+    held = _seat(stocked, hand=hand, resources=Resources())
+    revealed = _do(engine, held, "reveal_turn")
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 2 + 2 + 1
+    before = revealed.players[0]
+    bought = _do(engine, revealed, "acquire_imperium", instance_id=liet)
+    after = bought.players[0]
+    assert liet in after.discard_pile
+    assert after.influence.emperor == before.influence.emperor + 1
+    assert after.influence.fremen == before.influence.fremen
