@@ -19,6 +19,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     GainCombatStrength,
     GainInfluence,
+    GainVictoryPoints,
     PayResources,
     RetreatTroops,
 )
@@ -92,6 +93,17 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("choam_shares", "CHOAM Shares"),
         copies=1,
+        # "7 Solari -> 1 Victory Point" [CHOAM Shares card, app text]: a cost
+        # arrow line, required once the card is played [FAQ p. 3]; "pay its
+        # costs" [FAQ p. 2] (imperium-base.md 13.3).
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(solari=7),),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("calculated_hire", "Calculated Hire"),

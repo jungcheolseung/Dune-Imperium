@@ -31,6 +31,7 @@ from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.combat import begin_combat_intrigue
 from dune_imperium.rules.intrigue import (
     apply_intrigue_choice,
+    apply_intrigue_play,
     legal_intrigue_play_actions,
 )
 
@@ -549,3 +550,110 @@ def test_ambush_is_offered_only_to_the_seat_with_priority() -> None:
     assert legal_intrigue_play_actions(state, 1) == ()
     passed = apply_whole(UprisingRulesEngine(), state, _pass(0)).state
     assert legal_intrigue_play_actions(passed, 1) == (_play(AMBUSH, actor=1),)
+
+
+# --- CHOAM Shares (Plot) ----------------------------------------------------
+
+SHARES = _intrigue("choam_shares")
+
+
+def _plot_hand(card: str, **changes: object) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 at its first turn holding ``card``, with ``changes`` applied."""
+
+    engine, state = _start()
+    return engine, _seat(state, intrigue_cards=(card,), **changes)
+
+
+def test_choam_shares_is_one_plot_cost_line() -> None:
+    # "Plot: 7 Solari -> 1 VP" [CHOAM Shares card, Steam app text]; 1 copy
+    # [DI p. 3].
+    entry = intrigue_card_for_instance(SHARES)
+    assert entry.card.name == "CHOAM Shares"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert len(entry.options) == 1
+    assert intrigue_card_text(entry) == ["Plot — Pay 7 solari → Gain 1 VP"]
+    assert "choam_shares" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_choam_shares_pays_seven_solari_for_one_victory_point() -> None:
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." `[FAQ p. 2]`, and "CHOAM Shares는 7 Solari를 내야 낸다"
+    # (imperium-base.md 13.3); the arrow cost is required once the card is
+    # played `[FAQ p. 3]`.
+    engine, state = _plot_hand(SHARES, resources=Resources(solari=9, spice=1))
+    assert legal_intrigue_play_actions(state, 0) == (_play(SHARES),)
+    points = state.players[0].victory_points
+
+    result = apply_intrigue_play(state, _play(SHARES))
+    done = result.state
+
+    assert done.players[0].resources == Resources(solari=2, spice=1)
+    assert done.players[0].victory_points == points + 1
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (SHARES,)
+    assert [event.kind for event in result.events] == [
+        "intrigue_played",
+        "resources_paid",
+        "resources_gained",
+    ]
+    assert dict(result.events[1].payload)["solari"] == 7
+    assert dict(result.events[2].payload)["victory_points"] == 1
+    # The turn goes on: the Plot did not end it.
+    assert done.decision_stack[-1].kind == "turn"
+    # The dispatcher reaches the same seats.
+    assert apply_whole(engine, state, _play(SHARES)).state.players == done.players
+
+
+def test_choam_shares_needs_the_full_seven_solari() -> None:
+    # Six Solari do not pay the cost: the card is not offered, and nothing is
+    # paid for a partial price (imperium-base.md 13.3, FAQ p. 2).
+    engine, state = _plot_hand(SHARES, resources=Resources(solari=6, spice=9))
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert _play(SHARES) not in engine.whole_actions(state, 0)
+
+    exact = _seat(state, resources=Resources(solari=7))
+    assert legal_intrigue_play_actions(exact, 0) == (_play(SHARES),)
+    done = apply_whole(engine, exact, _play(SHARES)).state
+    assert done.players[0].resources.solari == 0
+
+
+def test_choam_shares_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`: the seat keeps
+    # the card and the Solari and takes another turn action.
+    engine, state = _plot_hand(SHARES, resources=Resources(solari=7))
+    actions = engine.whole_actions(state, 0)
+    assert _play(SHARES) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others, "the turn offers other actions beside the Plot"
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (SHARES,)
+    assert placed.players[0].resources.solari == 7
+    assert placed.players[0].victory_points == state.players[0].victory_points
+
+
+def test_choam_shares_is_also_played_during_the_reveal_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서 아무 때나 낸다"
+    # (imperium-base.md 5, `[DI pp. 7-8]`).
+    engine, state = _plot_hand(SHARES, resources=Resources(solari=7))
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    assert _play(SHARES) in engine.whole_actions(revealed, 0)
+
+    done = apply_whole(engine, revealed, _play(SHARES)).state
+
+    assert done.players[0].resources.solari == 0
+    assert done.players[0].victory_points == state.players[0].victory_points + 1
+
+
+def test_choam_shares_is_not_offered_to_a_seat_outside_its_own_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _plot_hand(SHARES)
+    state = _seat(
+        state, 1, intrigue_cards=(SHARES,), resources=Resources(solari=9)
+    )
+    assert legal_intrigue_play_actions(state, 1) == ()
