@@ -928,3 +928,12 @@ card-implementer는 기존 조각으로 안 되는 카드를 건너뛰고 빠진
 
 Imperium 묶음에서 아직 멈추지 않은 새 모양 후보(16.4): harvest 두 배(Carryall), Power Play, Test of Humanity, The Voice(OQ-116), Guild Bankers.
 
+Imperium 묶음 2(2026-10-28 03:09~04:2x)가 멈춘 곳:
+- **Firm Grip:** Agent box 화살표 비용이 Solari이고 보상이 세 진영 중 고르기 — Agent box 지불은 water·spice·specimen만, 무장 아이콘에 Influence 없음.
+- **Shifting Allegiances:** Agent box 화살표 비용 `LoseInfluence`(대상) + spice → 한 진영 Influence 2.
+- **Sardaukar Legion·Scout·Chani:** Reveal turn에 수를 고르는 병력 이동(garrison에서 셋까지 배치, 둘까지·몇이든 퇴각). 열린 질문: Commander도 "troop"인가
+  `[Bloodlines p. 4]`, Combat 아이콘의 garrison 둘과 어떻게 합치는가.
+- **Other Memory:** 버림 더미의 Bene Gesserit 카드를 손으로(공개 경로의 손 카드, OQ-010).
+- **Uprising Tread in Darkness(확인 필요):** 같은 차례에 Bond가 깨져 뽑기 아이콘이 안 나올 때 상자가 선택형이 되는가(OQ-057 (1)). Gene Manipulation에는
+  그렇게 했고(`_WAITING_ICON_BOXES`), Uprising 카드는 사용자 확인 전까지 그대로 둔다(`2a51da4c`).
+
