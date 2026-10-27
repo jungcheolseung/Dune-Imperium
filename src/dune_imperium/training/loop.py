@@ -12,6 +12,12 @@ Every ``eval_every`` iterations the latest checkpoint enters an in-process
 tournament against the evaluation opponent so progress is measured with
 the same tool as every other baseline. Training seeds start far above the
 tournament's default seeds so evaluation never replays a training game.
+
+With a kickstart teacher (``training.kickstart``) the update also pulls the
+learner toward the teacher with a weight that starts at
+``kickstart_weight`` on the run's first iteration (a resumed run's too) and
+falls linearly to 0 over ``kickstart_iterations``; only the iterations with
+a positive weight ask the teacher anything.
 """
 
 import json
@@ -37,8 +43,10 @@ from dune_imperium.evaluation import (
 from dune_imperium.evaluation.tournament import rotated_leader_ids
 from dune_imperium.training.checkpoint import load_checkpoint, save_checkpoint
 from dune_imperium.training.collect import Collector
+from dune_imperium.training.kickstart import kickstart_weight
 from dune_imperium.training.learner import Learner, LearnerConfig, UpdateStats
 from dune_imperium.training.network import DEFAULT_HIDDEN, PolicyValueNetwork
+from dune_imperium.training.older_teacher import cached_older_network
 from dune_imperium.training.selfplay import (
     Episode,
     SelfPlayRunner,
@@ -136,6 +144,13 @@ class TrainConfig:
     # template it never saw starts at zero (load_checkpoint's retarget).
     # Off by default, so a resume with mistyped options still fails loudly.
     retarget: bool = False
+    # Kickstarting (training.kickstart): an older-codec network read through
+    # training.older_teacher, the weight of KL(teacher || learner) at this
+    # run's first iteration, and the iterations over which it falls to 0.
+    # A weight of 0 (the default) turns it off.
+    kickstart_teacher: Path | None = None
+    kickstart_weight: float = 0.0
+    kickstart_iterations: int = 0
 
     @property
     def ruleset(self) -> RulesetConfig:
@@ -187,6 +202,15 @@ class TrainConfig:
             raise ValueError("rotate_leaders cannot be combined with leader_draft")
         if self.retarget and self.resume is None:
             raise ValueError("retarget needs a checkpoint to resume")
+        if self.kickstart_weight < 0.0 or self.kickstart_iterations < 0:
+            raise ValueError("kickstart options must not be negative")
+        if self.kickstart_weight > 0.0:
+            if self.kickstart_teacher is None:
+                raise ValueError("kickstart_weight needs a kickstart_teacher")
+            if self.kickstart_iterations < 1:
+                raise ValueError("kickstart_weight needs kickstart_iterations")
+        elif self.kickstart_teacher is not None or self.kickstart_iterations:
+            raise ValueError("a kickstart teacher needs a positive kickstart_weight")
         self.ruleset  # noqa: B018 - reject an invalid option mix here
 
 
@@ -429,6 +453,15 @@ def train(
             network = EntityNetwork(ruleset, hidden=config.hidden)
         else:
             network = PolicyValueNetwork(codec_size, hidden=config.hidden)
+    if config.kickstart_teacher is not None:
+        # Fail on an unreadable teacher before any game is played; a serial
+        # collection reuses this cached copy.
+        cached_older_network(config.kickstart_teacher)
+        print(
+            f"kickstarting from {config.kickstart_teacher}: weight "
+            f"{config.kickstart_weight:g} falling to 0 over "
+            f"{config.kickstart_iterations} iterations"
+        )
     learner = Learner(network, device, config.learner, seed=config.seed)
     if resumed_optimizer is not None:
         learner.restore_optimizer(resumed_optimizer)
@@ -445,6 +478,7 @@ def train(
         # defect) is kept here and ends truncated instead of ending the run;
         # its count shows in the record's ``truncated``.
         stall_dir=config.out_dir / "stalls",
+        kickstart_teacher=config.kickstart_teacher,
     )
 
     config.out_dir.mkdir(parents=True, exist_ok=True)
@@ -453,17 +487,25 @@ def train(
     records: list[IterationRecord] = []
     with log_path.open("a") as log, collector:
         for iteration in range(start_iteration, start_iteration + config.iterations):
+            weight = kickstart_weight(
+                config.kickstart_weight,
+                config.kickstart_iterations,
+                iteration - start_iteration,
+            )
             result = collector.collect(
                 learner.network,
                 device,
                 _iteration_specs(config, iteration),
                 policy_seed=config.seed + 1 + iteration * 1_000,
                 opponent_seed=config.seed + 2 + iteration * 1_000,
+                teacher=weight > 0.0,
             )
+            if weight > 0.0 and result.batch.teacher is None:
+                raise RuntimeError("a kickstarted iteration collected no teacher rows")
             collect_seconds = result.duration_seconds
             batch = apply_step_penalty(result.batch, config.step_penalty)
             started = time.perf_counter()
-            stats = learner.update(batch)
+            stats = learner.update(batch, kickstart_weight=weight)
             update_seconds = time.perf_counter() - started
             win_rate, mean_reward, opponent_win_rate = _learner_outcomes(
                 result.episodes
@@ -532,5 +574,8 @@ def _config_document(config: TrainConfig) -> dict[str, object]:
     document = asdict(config)
     document["out_dir"] = str(config.out_dir)
     document["resume"] = None if config.resume is None else str(config.resume)
+    document["kickstart_teacher"] = (
+        None if config.kickstart_teacher is None else str(config.kickstart_teacher)
+    )
     document["hidden"] = list(config.hidden)
     return document

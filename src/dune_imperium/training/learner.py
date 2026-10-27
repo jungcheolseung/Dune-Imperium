@@ -24,6 +24,15 @@ mask every other action had logit ``MASKED_LOGIT``, hence probability,
 entropy term and gradient exactly zero, and a head row no row can play gets
 a zero gradient either way. Losses and gradients agree with the dense
 computation up to float summation order.
+
+Kickstarting (Schmitt et al. 2018, ``training.kickstart``) adds
+``kickstart_weight * KL(teacher || student)`` over each step's legal
+actions when the batch carries a teacher's probabilities
+(``TrainingBatch.teacher``): the sum of ``p_T * (log p_T - log p_S)`` per
+step, averaged over the minibatch like the other terms, on the same local
+logits. Without a weight or without teacher rows the update runs exactly
+the operations it ran before, so its losses, gradients and statistics are
+bitwise the same.
 """
 
 from collections.abc import Mapping
@@ -71,6 +80,10 @@ class UpdateStats:
     # old-minus-new log-probability of the chosen actions.
     clip_fraction: float = 0.0
     approx_kl: float = 0.0
+    # Kickstarting (0.0 without it): the weight the update used and the
+    # mean KL(teacher || student) over its minibatch steps, before weighting.
+    kickstart_weight: float = 0.0
+    kickstart_kl: float = 0.0
 
 
 class Learner:
@@ -110,12 +123,21 @@ class Learner:
         for group in self.optimizer.param_groups:
             group["lr"] = self.config.learning_rate
 
-    def update(self, batch: TrainingBatch) -> UpdateStats:
-        """Run ``epochs`` passes of minibatch policy-gradient steps."""
+    def update(
+        self, batch: TrainingBatch, *, kickstart_weight: float = 0.0
+    ) -> UpdateStats:
+        """Run ``epochs`` passes of minibatch policy-gradient steps.
+
+        ``kickstart_weight`` scales the KL(teacher || student) term; it acts
+        only when the batch carries teacher probabilities.
+        """
 
         steps = int(batch.actions.shape[0])
         if steps == 0:
             raise ValueError("cannot update on an empty batch")
+        if kickstart_weight < 0.0:
+            raise ValueError("kickstart_weight must not be negative")
+        kickstart = kickstart_weight > 0.0 and batch.teacher is not None
         observations = torch.from_numpy(batch.observations).to(self.device)
         returns = torch.from_numpy(batch.returns).to(self.device)
 
@@ -127,25 +149,41 @@ class Learner:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         policy_total = value_total = entropy_total = 0.0
-        clipped_total = kl_total = 0.0
+        clipped_total = kl_total = kickstart_total = 0.0
         minibatches = 0
         for _ in range(self.config.epochs):
             order = torch.randperm(steps, generator=self._generator).to(self.device)
             for start in range(0, steps, self.config.minibatch_size):
                 index = order[start : start + self.config.minibatch_size]
-                policy_loss, value_loss, entropy, clipped, kl = self._losses(
-                    observations[index],
-                    batch,
-                    index,
-                    returns[index],
-                    advantages[index],
-                    None if old_chosen is None else old_chosen[index],
-                )
+                distance: Tensor | None = None
+                if kickstart:
+                    policy_loss, value_loss, entropy, clipped, kl, distance = (
+                        self._terms(
+                            observations[index],
+                            batch,
+                            index,
+                            returns[index],
+                            advantages[index],
+                            None if old_chosen is None else old_chosen[index],
+                            teacher=True,
+                        )
+                    )
+                else:
+                    policy_loss, value_loss, entropy, clipped, kl = self._losses(
+                        observations[index],
+                        batch,
+                        index,
+                        returns[index],
+                        advantages[index],
+                        None if old_chosen is None else old_chosen[index],
+                    )
                 loss = (
                     policy_loss
                     + self.config.value_coefficient * value_loss
                     - self.config.entropy_coefficient * entropy
                 )
+                if distance is not None:
+                    loss = loss + kickstart_weight * distance
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()  # type: ignore[no-untyped-call]
                 torch.nn.utils.clip_grad_norm_(
@@ -157,6 +195,8 @@ class Learner:
                 entropy_total += float(entropy.item())
                 clipped_total += clipped
                 kl_total += kl
+                if distance is not None:
+                    kickstart_total += float(distance.item())
                 minibatches += 1
 
         fitted, _ = self._behaviour(observations, batch)
@@ -172,18 +212,27 @@ class Learner:
             ),
             clip_fraction=clipped_total / minibatches,
             approx_kl=kl_total / minibatches,
+            kickstart_weight=kickstart_weight if kickstart else 0.0,
+            kickstart_kl=kickstart_total / minibatches,
         )
 
     def _local_logits(
-        self, observations: Tensor, batch: TrainingBatch, rows: Tensor
-    ) -> tuple[Tensor, Tensor, Tensor]:
-        """Masked logits over the minibatch's legal union, chosen positions, values.
+        self,
+        observations: Tensor,
+        batch: TrainingBatch,
+        rows: Tensor,
+        *,
+        teacher: bool = False,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor | None]:
+        """Masked logits over the minibatch's legal union, chosen positions,
+        values, and with ``teacher`` the teacher's probabilities over the
+        same columns (else None).
 
         The logits are ``[rows, K]`` over ``batch.local_legal(rows).catalog``
         instead of ``[rows, action_size]``; no dense mask is built.
         """
 
-        legal = batch.local_legal(rows.to("cpu").numpy())
+        legal = batch.local_legal(rows.to("cpu").numpy(), teacher=teacher)
         catalog = torch.from_numpy(legal.catalog).to(self.device)
         mask = torch.from_numpy(legal.mask).to(self.device)
         hidden = self.network.trunk(observations)
@@ -191,7 +240,12 @@ class Learner:
             ~mask, MASKED_LOGIT
         )
         values = self.network.value_head(hidden).squeeze(-1)
-        return logits, torch.from_numpy(legal.chosen).to(self.device), values
+        target = (
+            None
+            if legal.teacher is None
+            else torch.from_numpy(legal.teacher).to(self.device)
+        )
+        return logits, torch.from_numpy(legal.chosen).to(self.device), values, target
 
     def _behaviour(
         self, observations: Tensor, batch: TrainingBatch
@@ -209,7 +263,7 @@ class Learner:
         with torch.no_grad():
             for start in range(0, observations.shape[0], self.config.minibatch_size):
                 stop = start + self.config.minibatch_size
-                logits, positions, value = self._local_logits(
+                logits, positions, value, _ = self._local_logits(
                     observations[start:stop], batch, rows[start:stop]
                 )
                 log_probabilities = torch.log_softmax(logits, dim=-1)
@@ -228,7 +282,29 @@ class Learner:
         advantages: Tensor,
         old_chosen: Tensor | None,
     ) -> tuple[Tensor, Tensor, Tensor, float, float]:
-        logits, positions, values = self._local_logits(observations, batch, rows)
+        """The policy, value and entropy terms and the PPO diagnostics."""
+
+        policy_loss, value_loss, entropy, clipped, kl, _ = self._terms(
+            observations, batch, rows, returns, advantages, old_chosen, teacher=False
+        )
+        return policy_loss, value_loss, entropy, clipped, kl
+
+    def _terms(
+        self,
+        observations: Tensor,
+        batch: TrainingBatch,
+        rows: Tensor,
+        returns: Tensor,
+        advantages: Tensor,
+        old_chosen: Tensor | None,
+        *,
+        teacher: bool,
+    ) -> tuple[Tensor, Tensor, Tensor, float, float, Tensor | None]:
+        """``_losses``, plus with ``teacher`` the KL(teacher || student) term."""
+
+        logits, positions, values, target = self._local_logits(
+            observations, batch, rows, teacher=teacher
+        )
         log_probabilities = torch.log_softmax(logits, dim=-1)
         chosen = log_probabilities.gather(1, positions.unsqueeze(-1)).squeeze(-1)
         clipped = kl = 0.0
@@ -247,7 +323,16 @@ class Learner:
         probabilities = log_probabilities.exp()
         # Masked actions have probability exactly zero; 0 * (-1e9) stays 0.
         entropy = -(probabilities * log_probabilities).sum(dim=-1).mean()
-        return policy_loss, value_loss, entropy, clipped, kl
+        distance = None
+        if target is not None:
+            # xlogy keeps 0 * log 0 at 0; the teacher is zero on every masked
+            # column, whose log-probability is finite (MASKED_LOGIT).
+            distance = (
+                (torch.special.xlogy(target, target) - target * log_probabilities)
+                .sum(dim=-1)
+                .mean()
+            )
+        return policy_loss, value_loss, entropy, clipped, kl, distance
 
 
 def _explained_variance(predicted: np.ndarray, target: np.ndarray) -> float:

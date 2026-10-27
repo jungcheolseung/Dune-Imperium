@@ -64,6 +64,14 @@
   한 번 훑는다. `--clip`을 주면 PPO의 clip된 surrogate로 같은 판을 여러 epoch 쓸 수 있다. 2026-09-20 이후의 학습 실행은 모두
   REINFORCE다. PPO(clip 0.2·3 epoch)는 2026-09-18 A/B에서 무너져 기각했다([worklog/2026-09.md](worklog/2026-09.md) "M10 PPO
   슬라이스·A/B").
+- **kickstarting**(2026-10-22, E6, 기본 꺼짐, `training/kickstart.py`): `dune-imperium-train --kickstart-teacher <옛 codec MLP 파일>
+  --kickstart-weight β0 --kickstart-iterations N`은 손실에 β·KL(선생‖학생)을 더한다. 한 걸음의 항은 그 걸음 합법 행동 위
+  Σ p_T (log p_T − log p_S)이고, 다른 항처럼 미니배치 걸음 평균이며 같은 합법 합집합 logit으로 계산한다. β는 이 실행의 첫 iteration에 β0,
+  N iteration 뒤 0으로 곧게 줄고 그 뒤 0이다(이어 하기도 그 실행의 첫 iteration부터 다시 센다). 선생은 `training.older_teacher`로 읽고
+  (`OlderTeacher.answer`), β > 0인 iteration에만 수집 worker가 선생을 한 번 불러 학습자 걸음마다 학습자가 받은 합법 행동(되돌리기·가문 핵
+  제한 뒤) 위 분포를 `TrainingBatch.teacher`(합법 색인과 나란한 열)에 남긴다. 선생은 학습자 옆에서 답만 하므로 판은 선생이 없을 때와 같다.
+  β = 0이거나 선생 열이 없으면 손실·기울기·기록이 비트 단위로 전과 같다. `training.jsonl`의 `update`에 `kickstart_weight`·`kickstart_kl`을 적는다.
+  수집 비용은 self-play 2판(한 스레드)에서 약 +45%다(결정마다 선생 trunk 한 번과 온 행동 대응).
 
 ## 검증 기준
 

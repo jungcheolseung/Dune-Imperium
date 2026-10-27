@@ -14,6 +14,14 @@ from the iteration so a run is reproducible for a fixed worker count,
 and serial collection re-seeds the same way. Collection
 always withholds the pure-undo actions (``undo_actions=False``): a sampled
 policy that is offered deploy/withdraw learns to loop on it.
+
+A collector given a kickstart teacher (``training.kickstart``) also keeps,
+in an iteration collected with ``teacher=True``, the teacher's distribution
+over every learner step's legal actions (``TrainingBatch.teacher``). Each
+worker loads the teacher once (``cached_older_network``) and answers its
+own chunk's requests; the column travels in the chunk's ``.npz`` with the
+other arrays. Without ``teacher=True`` nothing of the teacher is loaded or
+asked.
 """
 
 import os
@@ -34,7 +42,9 @@ from dune_imperium.agents.app_ai.family_atomics import FAMILY_ATOMICS_DECIDERS
 from dune_imperium.agents.registry import CHECKPOINT_PREFIX
 from dune_imperium.config import RulesetConfig
 from dune_imperium.paths import TMP_DIR
+from dune_imperium.training.kickstart import TeacherRecordingPolicy, with_teacher
 from dune_imperium.training.network import PolicyValueNetwork, build_network
+from dune_imperium.training.older_teacher import OlderTeacher, cached_older_network
 from dune_imperium.training.policy import AgentBatchPolicy, BatchPolicy
 from dune_imperium.training.selfplay import (
     Episode,
@@ -77,6 +87,8 @@ class _ChunkJob:
     score_rewards: bool = False
     stall_dir: str | None = None
     family_atomics_rule: frozenset[str] = frozenset()
+    # The kickstart teacher's file when this iteration records its answers.
+    teacher_path: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +129,18 @@ def _policies(
     return policies
 
 
+def _recording(
+    policies: dict[str, BatchPolicy], teacher_path: str, seed: int
+) -> TeacherRecordingPolicy:
+    """Wrap the learner's policy so the teacher answers alongside it."""
+
+    recorder = TeacherRecordingPolicy(
+        policies[LEARNER], OlderTeacher(cached_older_network(teacher_path), seed=seed)
+    )
+    policies[LEARNER] = recorder
+    return recorder
+
+
 def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
     torch.set_num_threads(1)
     network = build_network(job.arch, job.action_size)
@@ -142,22 +166,32 @@ def _collect_chunk(job: _ChunkJob) -> _ChunkResult:
         job.opponent,
         job.opponent_seed,
     )
+    recorder = (
+        None
+        if job.teacher_path is None
+        else _recording(policies, job.teacher_path, job.policy_seed)
+    )
     result = runner.run(policies, job.specs)
     batch = select_policy_steps(
         result.episodes, LEARNER, action_size=runner.codec.size
     )
+    if recorder is not None:
+        batch = with_teacher(batch, recorder.answers)
     if batch.observations.max(initial=0) > np.iinfo(np.int16).max:
         raise RuntimeError("observation values exceed the int16 transport range")
-    np.savez(
-        job.out_path,
-        observations=batch.observations.astype(np.int16),
-        legal_indices=batch.legal_indices,
-        legal_offsets=batch.legal_offsets,
-        actions=batch.actions,
-        seats=batch.seats,
-        returns=batch.returns,
-        episode_ids=batch.episode_ids,
-    )
+    arrays: dict[str, np.ndarray] = {
+        "observations": batch.observations.astype(np.int16),
+        "legal_indices": batch.legal_indices,
+        "legal_offsets": batch.legal_offsets,
+        "actions": batch.actions,
+        "seats": batch.seats,
+        "returns": batch.returns,
+        "episode_ids": batch.episode_ids,
+    }
+    if batch.teacher is not None:
+        arrays["teacher"] = batch.teacher
+    # The stubs type savez's keywords as its allow_pickle flag.
+    np.savez(job.out_path, **arrays)  # type: ignore[arg-type]
     return _ChunkResult(
         episodes=tuple(replace(episode, steps=()) for episode in result.episodes),
         decisions=result.decisions,
@@ -207,9 +241,12 @@ class Collector:
         score_rewards: bool = False,
         stall_dir: Path | None = None,
         family_atomics: str = "network",
+        kickstart_teacher: Path | None = None,
     ) -> None:
         if workers < 1:
             raise ValueError("workers must be positive")
+        # The older-codec file whose answers ``collect(teacher=True)`` keeps.
+        self.kickstart_teacher = kickstart_teacher
         if family_atomics not in FAMILY_ATOMICS_DECIDERS:
             raise ValueError(f"family_atomics must be one of {FAMILY_ATOMICS_DECIDERS}")
         # See SelfPlayRunner.stall_dir.
@@ -264,9 +301,17 @@ class Collector:
         *,
         policy_seed: int,
         opponent_seed: int,
+        teacher: bool = False,
     ) -> CollectionResult:
-        """Play ``specs`` with ``network`` as the learner and return the batch."""
+        """Play ``specs`` with ``network`` as the learner and return the batch.
 
+        With ``teacher`` the batch also carries the kickstart teacher's
+        distribution over every learner step's legal actions.
+        """
+
+        if teacher and self.kickstart_teacher is None:
+            raise ValueError("teacher answers need a kickstart teacher")
+        teacher_path = str(self.kickstart_teacher) if teacher else None
         started = time.perf_counter()
         if self._pool is None or self._scratch is None:
             runner = SelfPlayRunner(
@@ -287,12 +332,20 @@ class Collector:
                 self.opponent,
                 opponent_seed,
             )
+            recorder = (
+                None
+                if teacher_path is None
+                else _recording(policies, teacher_path, policy_seed)
+            )
             result = runner.run(policies, specs)
+            batch = select_policy_steps(
+                result.episodes, LEARNER, action_size=runner.codec.size
+            )
+            if recorder is not None:
+                batch = with_teacher(batch, recorder.answers)
             return CollectionResult(
                 episodes=result.episodes,
-                batch=select_policy_steps(
-                    result.episodes, LEARNER, action_size=runner.codec.size
-                ),
+                batch=batch,
                 decisions=result.decisions,
                 duration_seconds=time.perf_counter() - started,
             )
@@ -323,6 +376,7 @@ class Collector:
                 out_path=str(self._scratch / f"chunk_{policy_seed}_{index}.npz"),
                 stall_dir=None if self.stall_dir is None else str(self.stall_dir),
                 family_atomics_rule=self.family_atomics_rule,
+                teacher_path=teacher_path,
             )
             for index, chunk in enumerate(chunks)
             if chunk
@@ -344,6 +398,7 @@ class Collector:
                         seats=arrays["seats"],
                         returns=arrays["returns"],
                         episode_ids=arrays["episode_ids"] + offset,
+                        teacher=arrays["teacher"] if "teacher" in arrays else None,
                     )
                 )
             os.remove(chunk_result.out_path)
@@ -369,6 +424,7 @@ class Collector:
             seats=np.concatenate([part.seats for part in parts]),
             returns=np.concatenate([part.returns for part in parts]),
             episode_ids=np.concatenate([part.episode_ids for part in parts]),
+            teacher=_teacher_column(parts),
         )
         return CollectionResult(
             episodes=tuple(episodes),
@@ -376,3 +432,14 @@ class Collector:
             decisions=sum(result.decisions for result in results),
             duration_seconds=time.perf_counter() - started,
         )
+
+
+def _teacher_column(parts: Sequence[TrainingBatch]) -> np.ndarray | None:
+    """The chunks' teacher columns end to end, like their legal indices."""
+
+    columns = [part.teacher for part in parts]
+    if all(column is None for column in columns):
+        return None
+    if any(column is None for column in columns):
+        raise RuntimeError("some chunks returned teacher answers and some did not")
+    return np.concatenate([column for column in columns if column is not None])
