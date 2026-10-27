@@ -89,6 +89,12 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.rules.acquire_icons import (
+    ACQUIRE_ICON_ACTION,
+    ACQUIRED_CARD_ARGUMENT,
+    acquire_box_icons,
+    acquire_icon_faction,
+)
 from dune_imperium.rules.acquisition import (
     acquire_box_draws_intrigue,
     acquire_box_places_spy,
@@ -1463,6 +1469,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for instance_id in imperium_instances
         )
+        # An acquire box paid icon by icon (OQ-141; CHOAM Directorship, Lady
+        # Jessica): a row per icon, the chosen Faction's once per Faction.
+        templates.extend(_acquire_icon_templates(content.imperium_cards))
     templates.extend(
         ActionTemplate(
             action_id="acquire_leader_reserve",
@@ -1511,6 +1520,30 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     ]
     templates.extend(_effect_step_templates(config, wholes))
     return tuple(sorted(dict.fromkeys(templates), key=_template_sort_key))
+
+
+def _acquire_icon_templates(
+    cards: tuple[ImperiumCardEntry, ...],
+) -> tuple[ActionTemplate, ...]:
+    """The rows of the Imperium cards' acquire boxes paid icon by icon
+    (``rules.acquire_icons``)."""
+
+    templates: list[ActionTemplate] = []
+    for card in cards:
+        icons = acquire_box_icons(card)
+        for icon in () if icons is None else dict.fromkeys(icons):
+            base: tuple[tuple[str, ActionValue], ...] = (
+                (ACQUIRED_CARD_ARGUMENT, card.card.card_id),
+                ("effect", icon),
+            )
+            if acquire_icon_faction(icon) is not None:
+                templates.append(ActionTemplate(ACQUIRE_ICON_ACTION, base))
+                continue
+            templates.extend(
+                ActionTemplate(ACQUIRE_ICON_ACTION, (*base, ("faction", faction.value)))
+                for faction in Faction
+            )
+    return tuple(templates)
 
 
 def _effect_step_templates(

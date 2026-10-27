@@ -177,6 +177,8 @@ class Tag(StrEnum):
     # Which completed Contract's icon, where several wait on one turn
     # (stage B3b, OQ-112 (4)).
     CONTRACT = "contract_id"
+    # Which acquired card's icon, where several wait on one turn (OQ-141).
+    ACQUIRED_CARD = "acquired_card_id"
     SOURCE = "source"
 
 
@@ -205,7 +207,7 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.SPACE: frozenset({"space_id"}),
     Target.TRACK_SPACE: frozenset({"space_id"}),
     Target.FACTION: frozenset(
-        {"alliance_recipient", "faction", "gained_faction", "lost_faction"}
+        {"alliance_recipient", "effect", "faction", "gained_faction", "lost_faction"}
     ),
     Target.UNITS: frozenset({"commanders", "count", "player", "zone", "zones"}),
     Target.RESOURCES: frozenset({"solari", "spice", "water"}),
@@ -617,6 +619,12 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     # OQ-112 (4)).
     "resolve_contract_reward_icon": _row(
         _V.RESOLVE, _S.CONTRACT, _T.OPTION, tag=Tag.CONTRACT
+    ),
+    # One icon of an acquired Imperium card's acquire box, waiting on its
+    # owner's turn: an Influence with a fixed Faction, or the chosen one
+    # (OQ-141).
+    "resolve_acquire_icon": _row(
+        _V.GAIN_INFLUENCE, _S.ACQUISITION, _T.FACTION, tag=Tag.ACQUIRED_CARD
     ),
     # Nothing in the market can be taken now: the icons wait, or fizzle
     # with an empty market (OQ-059).

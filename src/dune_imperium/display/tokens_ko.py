@@ -576,6 +576,13 @@ ACQUISITION_EFFECT_TEXT_KO: Final[dict[PersonalCardAcquisitionEffect, str]] = {
     PersonalCardAcquisitionEffect.ADVANCE_TLEILAXU: "{tleilaxu} (트랙 전진)",
     PersonalCardAcquisitionEffect.GAIN_ONE_SPICE: "{spice:1}",
     PersonalCardAcquisitionEffect.RECRUIT_THREE_TROOPS: "{troop:3}",
+    PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_EACH_FACTION: (
+        "{influence_emperor:1}, {influence_spacing_guild:1}, "
+        "{influence_bene_gesserit:1}, {influence_fremen:1}"
+    ),
+    PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_CHOSEN_FACTION: (
+        "{influence_any:1} (4개의 팩션 중 하나 선택)"
+    ),
 }
 
 # The one transcribed member is specific to The Spice Must Flow; cards.py

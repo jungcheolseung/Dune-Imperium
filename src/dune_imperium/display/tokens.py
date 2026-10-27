@@ -532,6 +532,15 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
             ),
             PersonalCardAcquisitionEffect.GAIN_ONE_SPICE: "Gain 1 spice",
             PersonalCardAcquisitionEffect.RECRUIT_THREE_TROOPS: "Recruit 3 troops",
+            # The original game's CHOAM Directorship and Lady Jessica
+            # (OQ-141): one text per printed icon, as the record renders.
+            PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_EACH_FACTION: (
+                "Gain 1 Emperor Influence, Gain 1 Spacing Guild Influence, "
+                "Gain 1 Bene Gesserit Influence, Gain 1 Fremen Influence"
+            ),
+            PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_CHOSEN_FACTION: (
+                "Gain 1 Influence (choose any Faction)"
+            ),
         }
     )
 )

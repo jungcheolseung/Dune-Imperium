@@ -8,6 +8,8 @@ printed values are the Steam app's attribute table (plan 2.4, D1).
 
 from dataclasses import replace
 
+import pytest
+
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.rulesets import content_for
@@ -16,6 +18,7 @@ from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import (
     AgentIcon,
+    PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
@@ -31,6 +34,8 @@ from dune_imperium.core import (
 )
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.acquire_icons import acquire_box_icons
+from dune_imperium.rules.acquisition import acquire_imperium_for_intrigue
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.frames import FrameKind
@@ -1335,3 +1340,276 @@ def test_opulence_payment_opens_once_a_later_gain_makes_six_solari() -> None:
     paid = _do(engine, gained, "pay_reveal_solari_for_vp")
     assert paid.players[0].resources.solari == 0
     assert paid.players[0].victory_points == revealed.players[0].victory_points + 1
+
+
+# --- CHOAM Directorship -----------------------------------------------------------
+
+_CHOAM = "imperium:choam_directorship:0"
+_CHOAM_ICONS = (
+    "influence_emperor",
+    "influence_spacing_guild",
+    "influence_bene_gesserit",
+    "influence_fremen",
+)
+
+
+def _buyer_revealed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    card_id: str,
+    *,
+    persuasion: int = 20,
+    influence: Influence | None = None,
+) -> GameState:
+    """Seat 0 mid-Reveal with ``persuasion`` to spend and the Imperium card
+    ``card_id`` first in the Row."""
+
+    held, _ = _with_card(state, "dr_yueh", alone=True)
+    if influence is not None:
+        held = _seat(held, influence=influence)
+    instance = f"imperium:{card_id}:0"
+    others = tuple(card for card in held.imperium_row if card != instance)
+    held = replace(
+        held,
+        imperium_row=(instance, *others[:4]),
+        imperium_deck=tuple(
+            card for card in held.imperium_deck if card != instance
+        ),
+    )
+    revealed = _do(engine, held, "reveal_turn")
+    frame = revealed.decision_stack[-1]
+    context = dict(frame.context)
+    context["persuasion"] = persuasion
+    frame = replace(frame, context=tuple(sorted(context.items())))
+    return replace(revealed, decision_stack=(*revealed.decision_stack[:-1], frame))
+
+
+def _acquire_rows(
+    engine: UprisingRulesEngine, state: GameState
+) -> tuple[DomainAction, ...]:
+    return tuple(
+        action
+        for action in _wholes(engine, state)
+        if action.action_id == "resolve_acquire_icon"
+    )
+
+
+def _take_icon(
+    engine: UprisingRulesEngine, state: GameState, effect: str, **arguments: object
+) -> GameState:
+    return _do(engine, state, "resolve_acquire_icon", effect=effect, **arguments)
+
+
+def test_choam_directorship_matches_the_app_table() -> None:
+    # App attribute table: cost 8, 1 copy, no Faction, no Agent icons and no
+    # fixed Reveal values (its Reveal is the "3 Solari" gain line); acquire
+    # box: Influence with each of the four Factions (AcquireEffectList RankE,
+    # RankSG, RankBG, RankF).
+    entry = IMPERIUM_CARDS_BY_ID["choam_directorship"]
+    assert entry.card.name == "CHOAM Directorship"
+    assert entry.acquisition_cost == 8
+    assert entry.copies == 1
+    assert entry.factions == ()
+    assert entry.agent_icons == ()
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.has_acquisition_bonus and entry.play_data_complete
+    assert entry.acquisition_effect is (
+        PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_EACH_FACTION
+    )
+    assert personal_card_for_instance("imperium:choam_directorship:0") is entry
+    # Four separate icons, one row each (OQ-141); the original deck holds it.
+    assert acquire_box_icons(entry) == _CHOAM_ICONS
+    assert _CHOAM in content_for(CONFIG).imperium_deck_instance_ids
+
+
+def test_choam_directorship_reveals_three_solari() -> None:
+    """Reveal: "3 Solari" (P0 sweep); with no Agent icon the card is Reveal
+    only [DI p. 9]."""
+
+    engine, state = _start()
+    held, _ = _with_card(state, "choam_directorship", alone=True)
+    solari = held.players[0].resources.solari
+    assert not any(
+        action.action_id == "agent_turn" or action.action_id == "place_agent"
+        for action in _wholes(engine, held)
+    )
+    revealed = _do(engine, held, "reveal_turn")
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (0, 0)
+    gained = _do(engine, revealed, "gain_reveal_resources")
+    assert gained.players[0].resources.solari == solari + 3
+
+
+def test_choam_directorship_bought_in_a_reveal_gives_four_rows_in_any_order() -> None:
+    """"The acquisition bonus is paid once, when acquired" [DI p. 16]; its four
+    printed icons are independent effects whose order the owner picks
+    (OQ-141, the principle of OQ-027 and OQ-112). They are rows of the Reveal
+    turn and hold its end until each is taken."""
+
+    engine, state = _start()
+    revealed = _buyer_revealed(engine, state, "choam_directorship")
+    before = revealed.players[0]
+    bought = _do(engine, revealed, "acquire_imperium", instance_id=_CHOAM)
+    # The purchase gains nothing at once; the card is in the discard pile.
+    assert bought.players[0].discard_pile[-1] == "imperium:choam_directorship:0"
+    assert bought.players[0].influence == before.influence
+    rows = _acquire_rows(engine, bought)
+    assert {dict(row.arguments)["effect"] for row in rows} == set(_CHOAM_ICONS)
+    assert {dict(row.arguments)["acquired_card_id"] for row in rows} == {
+        "choam_directorship"
+    }
+    assert "finish_reveal" not in _ids(engine, bought)
+    # The owner's order, not the printed one: Fremen, then the Emperor, ...
+    state_now = bought
+    expected = before.influence
+    for effect, field in (
+        ("influence_fremen", "fremen"),
+        ("influence_emperor", "emperor"),
+        ("influence_bene_gesserit", "bene_gesserit"),
+    ):
+        state_now = _take_icon(engine, state_now, effect)
+        expected = replace(expected, **{field: getattr(expected, field) + 1})
+        assert state_now.players[0].influence == expected
+        assert "finish_reveal" not in _ids(engine, state_now)
+    left = _acquire_rows(engine, state_now)
+    assert [dict(row.arguments)["effect"] for row in left] == [
+        "influence_spacing_guild"
+    ]
+    state_now = _take_icon(engine, state_now, "influence_spacing_guild")
+    assert _acquire_rows(engine, state_now) == ()
+    assert state_now.players[0].influence == Influence(
+        emperor=before.influence.emperor + 1,
+        spacing_guild=before.influence.spacing_guild + 1,
+        bene_gesserit=before.influence.bene_gesserit + 1,
+        fremen=before.influence.fremen + 1,
+    )
+    assert "finish_reveal" in _ids(engine, state_now)
+
+
+def test_choam_directorship_icons_wait_beside_other_acquisitions() -> None:
+    """The rows are the turn's, not a window: the Reveal still offers its other
+    purchases beside them."""
+
+    engine, state = _start()
+    revealed = _buyer_revealed(engine, state, "choam_directorship")
+    bought = _do(engine, revealed, "acquire_imperium", instance_id=_CHOAM)
+    assert bought.decision_stack[-1].kind == FrameKind.REVEAL
+    assert {"acquire_imperium", "resolve_acquire_icon"} <= _ids(engine, bought)
+
+
+def test_choam_directorship_bought_in_an_agent_turn_waits_on_the_turn() -> None:
+    """The same rows when an Agent turn took the card (Price is No Object:
+    "acquire a card for Solari to hand"): beside the turn's other effects,
+    holding its end."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "price_is_no_object", alone=True)
+    state = _seat(state, resources=Resources(solari=20))
+    instance = _CHOAM
+    others = tuple(card for card in state.imperium_row if card != instance)
+    state = replace(
+        state,
+        imperium_row=(instance, *others[:4]),
+        imperium_deck=tuple(card for card in state.imperium_deck if card != instance),
+    )
+    placed = _place(engine, state, "wealth", "price_is_no_object")
+    before = placed.players[0].influence
+    bought = _do(engine, placed, "acquire_imperium_with_solari", instance_id=instance)
+    assert bought.players[0].hand == (instance,)
+    assert bought.players[0].influence == before
+    assert bought.decision_stack[-1].kind == FrameKind.AGENT_EFFECTS
+    rows = _acquire_rows(engine, bought)
+    assert {dict(row.arguments)["effect"] for row in rows} == set(_CHOAM_ICONS)
+    # The turn's own effect is still offered beside the rows, and the turn
+    # cannot end until every icon is taken.
+    assert "resolve_board_effect" in _ids(engine, bought)
+    taken = bought
+    for effect in reversed(_CHOAM_ICONS):
+        assert "finish_agent_turn" not in _ids(engine, taken)
+        taken = _take_icon(engine, taken, effect)
+    assert taken.players[0].influence == Influence(
+        emperor=before.emperor + 1,
+        spacing_guild=before.spacing_guild + 1,
+        bene_gesserit=before.bene_gesserit + 1,
+        fremen=before.fremen + 1,
+    )
+    resolved = _do(engine, taken, "resolve_board_effect")
+    resolved = _do(engine, resolved, "resolve_faction_influence")
+    assert "finish_agent_turn" in _ids(engine, resolved)
+
+
+def test_choam_directorship_track_at_six_gains_nothing() -> None:
+    """A Faction already at 6 gains nothing (OQ-060: "엔진은 6에 있는 cube에
+    대한 Influence 획득을 버린다"): its icon is still a row, taking it changes
+    nothing, and the other three icons are paid."""
+
+    engine, state = _start()
+    revealed = _buyer_revealed(
+        engine,
+        state,
+        "choam_directorship",
+        influence=Influence(emperor=6, fremen=1),
+    )
+    bought = _do(engine, revealed, "acquire_imperium", instance_id=_CHOAM)
+    assert "influence_emperor" in {
+        dict(row.arguments)["effect"] for row in _acquire_rows(engine, bought)
+    }
+    taken = bought
+    for effect in _CHOAM_ICONS:
+        taken = _take_icon(engine, taken, effect)
+    assert taken.players[0].influence == Influence(
+        emperor=6, spacing_guild=1, bene_gesserit=1, fremen=2
+    )
+    assert "finish_reveal" in _ids(engine, taken)
+
+
+def test_an_uprising_one_icon_acquire_box_is_still_paid_at_once() -> None:
+    """A box of one icon with nothing to choose resolves at once, exactly as
+    before OQ-141 (Steersman: one Spacing Guild Influence): no row waits."""
+
+    engine, state = _start()
+    revealed = _buyer_revealed(engine, state, "steersman")
+    before = revealed.players[0].influence
+    bought = _do(
+        engine, revealed, "acquire_imperium", instance_id="imperium:steersman:0"
+    )
+    assert bought.players[0].influence == replace(
+        before, spacing_guild=before.spacing_guild + 1
+    )
+    assert _acquire_rows(engine, bought) == ()
+    assert "finish_reveal" in _ids(engine, bought)
+
+
+def test_choam_directorship_rows_come_from_every_acquisition_path() -> None:
+    """Every path that pays an acquire box routes the four icons to rows: the
+    Manipulate set-aside card bought in a Reveal and an Intrigue effect's
+    acquisition inside an Agent turn; outside its owner's turn the rows have
+    nowhere to wait and the acquisition refuses (OQ-141: no window yet)."""
+
+    engine, state = _start()
+    instance = _CHOAM
+    drawn_off = replace(
+        state, imperium_deck=tuple(c for c in state.imperium_deck if c != instance)
+    )
+    revealed = _buyer_revealed(engine, drawn_off, "dr_yueh")
+    revealed = _seat(revealed, imperium_set_aside=(instance,))
+    manipulated = _do(
+        engine, revealed, "acquire_manipulated_imperium", instance_id=instance
+    )
+    assert len(_acquire_rows(engine, manipulated)) == 4
+
+    held, _ = _with_card(drawn_off, "dr_yueh", alone=True)
+    others = tuple(card for card in held.imperium_row if card != instance)
+    held = replace(held, imperium_row=(instance, *others[:4]))
+    space = str(dict(executable_placements(held, 0)[0].arguments)["space_id"])
+    placed = _place(engine, held, space, "dr_yueh")
+    acquired = acquire_imperium_for_intrigue(
+        placed, 0, instance, to_hand=False, source="test"
+    )
+    assert len(_acquire_rows(engine, acquired.result.state)) == 4
+    with pytest.raises(NotImplementedError, match="outside its owner's turn"):
+        acquire_imperium_for_intrigue(
+            replace(held, decision_stack=()), 0, instance, to_hand=False, source="test"
+        )
+

@@ -406,6 +406,12 @@ class PersonalCardAcquisitionEffect(StrEnum):
     ADVANCE_TLEILAXU = "advance_tleilaxu"
     GAIN_ONE_SPICE = "gain_one_spice"
     RECRUIT_THREE_TROOPS = "recruit_three_troops"
+    # CHOAM Directorship (original game): four Influence icons, one with each
+    # Faction, each its own row in the owner's order (OQ-141).
+    GAIN_INFLUENCE_WITH_EACH_FACTION = "gain_influence_with_each_faction"
+    # Lady Jessica (original game): one Influence with a Faction of the
+    # owner's choice (OQ-141, OQ-060).
+    GAIN_INFLUENCE_WITH_CHOSEN_FACTION = "gain_influence_with_chosen_faction"
 
 
 class PersonalCardRevealChoiceEffect(StrEnum):

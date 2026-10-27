@@ -122,6 +122,8 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         ),
         # Duncan Idaho (original game): "1 water" beside its printed swords.
         "duncan_idaho_card": _reveal(_line(GainResources(water=1))),
+        # CHOAM Directorship (original game): "3 Solari".
+        "choam_directorship": _reveal(_line(GainResources(solari=3))),
         # Junction Headquarters.
         "junction_headquarters": _reveal(
             _line(GainResources(water=1), RecruitTroops(1))

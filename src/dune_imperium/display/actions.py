@@ -61,6 +61,7 @@ from dune_imperium.display.spaces import (
 )
 from dune_imperium.display.tokens import REVEAL_CHOICE_EFFECT_TEXT
 from dune_imperium.display.tokens_ko import REVEAL_CHOICE_EFFECT_TEXT_KO
+from dune_imperium.rules.acquire_icons import ACQUIRE_ICON_ACTION, acquire_icon_faction
 from dune_imperium.rules.agent_effect_frame import agent_box_rows, route_box_action
 from dune_imperium.rules.agent_effects import (
     boost_draw_card,
@@ -743,6 +744,19 @@ def _scaled_reward(piece: Reward, multiplier: int) -> Reward:
     return piece
 
 
+def acquire_icon_action_text(action: DomainAction) -> tuple[str, str] | None:
+    """Describe one icon of an acquired Imperium card's acquire box
+    (``resolve_acquire_icon``, OQ-141): an Influence with its Faction, or
+    with the one the row chooses."""
+
+    if action.action_id != ACQUIRE_ICON_ACTION:
+        return None
+    effect = str(dict(action.arguments)["effect"])
+    faction = acquire_icon_faction(effect)
+    piece = GainInfluence(factions=None if faction is None else (faction,))
+    return reward_text(piece), reward_text_ko(piece)
+
+
 def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
     """Describe one queued Tech reward and its currently chosen branch."""
 
@@ -924,7 +938,11 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     )
     if owed is not None:
         return owed[0]
-    tech = tech_acquire_action_text(action) or research_icon_action_text(action)
+    tech = (
+        tech_acquire_action_text(action)
+        or research_icon_action_text(action)
+        or acquire_icon_action_text(action)
+    )
     if tech is not None:
         return tech[0]
     icon = combat_reward_icon_action_text(
@@ -1000,7 +1018,11 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     )
     if owed is not None:
         return owed[1]
-    tech = tech_acquire_action_text(action) or research_icon_action_text(action)
+    tech = (
+        tech_acquire_action_text(action)
+        or research_icon_action_text(action)
+        or acquire_icon_action_text(action)
+    )
     if tech is not None:
         return tech[1]
     icon = combat_reward_icon_action_text(

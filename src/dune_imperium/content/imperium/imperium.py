@@ -27,6 +27,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.types import (
     AgentIcon,
+    PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
@@ -123,10 +124,21 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         ),
         play_data_complete=True,
     ),
+    # App table: cost 8, 1 copy, no Faction, no Agent icons, no fixed Reveal
+    # values. No Agent box and no icon: Reveal only [DI p. 9]. Acquire: four
+    # separate Influence icons, one with each of the four Factions, "once,
+    # when acquired" [DI p. 16], each a row in the owner's order (OQ-141, the
+    # principle of OQ-027 and OQ-112); a track at 6 gains nothing (OQ-060).
+    # Reveal: "3 Solari".
     ImperiumCardEntry(
         card=imperium_card("choam_directorship", "CHOAM Directorship"),
         copies=1,
         acquisition_cost=8,
+        has_acquisition_bonus=True,
+        acquisition_effect=(
+            PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_EACH_FACTION
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("carryall", "Carryall"),

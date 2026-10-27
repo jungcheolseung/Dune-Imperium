@@ -162,6 +162,8 @@ from dune_imperium.display.effect_dsl_text_ko import (
     reward_text_ko,
 )
 from dune_imperium.display.leaders_ko import LEADER_FACE_TEXTS_KO
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.acquire_icons import acquire_icon_row
 from dune_imperium.rules.acquisition import (
     AcquireBlock,
     agent_card_acquisition_block,
@@ -2371,6 +2373,45 @@ def _tech_acquire_influence(state: GameState, seat: int, found: _Found) -> None:
             )
 
 
+def _pending_acquire_icons(state: GameState, seat: int, found: _Found) -> None:
+    """An acquired card's "Influence with any Faction" icon waiting on the
+    seat's own turn (Lady Jessica, OQ-141): the Factions at the top greyed
+    out beside the ones offered, as a Tech tile's is (OQ-060); with every
+    cube at the top one row says it waits for the turn's end, which lapses
+    it."""
+
+    frame = turn_rows.rows_frame(state, seat)
+    if frame is None:
+        return
+    owner = state.players[seat]
+    reveal = frame.kind == FrameKind.REVEAL
+    for kind, _source, value in turn_rows.pending(frame):
+        if kind != turn_rows.ACQUIRE_ICON:
+            continue
+        card_id, icon = value.split("|")
+        if icon != turn_rows.CHOSEN_INFLUENCE_ICON:
+            continue
+        if turn_rows.acquire_icon_blocked(value, owner):
+            found.row(
+                "waiting",
+                f"acquire_icon:{card_id}",
+                acquire_icon_row(seat, card_id, icon),
+                _with_tail(_ALL_AT_THE_TOP, _REVEAL_LAPSES_UNMET, "waiting")
+                if reveal
+                else _ALL_AT_THE_TOP_WAITING,
+            )
+            continue
+        for faction in Faction:
+            if influence_can_rise(owner, faction):
+                continue
+            found.row(
+                "choice",
+                f"acquire_icon:{card_id}:{faction.value}",
+                acquire_icon_row(seat, card_id, icon, faction),
+                _AT_THE_TOP,
+            )
+
+
 def _skill_choice(state: GameState, seat: int, found: _Found) -> None:
     """A Skill choice's face-up Skills the seat already holds.
 
@@ -3236,6 +3277,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _subcommittee_choice,
         _pending_research,
         _tech_acquire_influence,
+        _pending_acquire_icons,
         _intrigue,
     ),
     FrameKind.AGENT_EFFECTS: (
@@ -3252,6 +3294,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _subcommittee_choice,
         _pending_research,
         _tech_acquire_influence,
+        _pending_acquire_icons,
         _intrigue,
     ),
     # Servo-Receivers' Signet Ring outside the Agent box (OQ-062 (b)).
@@ -3273,6 +3316,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _turn_start_card,
         _pending_research,
         _tech_acquire_influence,
+        _pending_acquire_icons,
         _intrigue,
     ),
     FrameKind.COMBAT_INTRIGUE: (_intrigue,),

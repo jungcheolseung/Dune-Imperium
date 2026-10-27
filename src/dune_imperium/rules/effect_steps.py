@@ -337,6 +337,15 @@ _CONTRACT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "spy": _V.PLACE_SPY,
     "troops": _V.RECRUIT,
 })
+# What an Imperium card's acquire icon does (``acquire_icons``, OQ-141): an
+# Influence with a fixed Faction, or with the one the owner chooses.
+_ACQUIRE_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
+    "influence_emperor": _V.GAIN_INFLUENCE,
+    "influence_spacing_guild": _V.GAIN_INFLUENCE,
+    "influence_bene_gesserit": _V.GAIN_INFLUENCE,
+    "influence_fremen": _V.GAIN_INFLUENCE,
+    "influence_any": _V.GAIN_INFLUENCE,
+})
 # What a Tech tile's acquire icon does (``TechTile.acquire_effect_keys``).
 _TECH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "cards": _V.DRAW,
@@ -581,6 +590,16 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     # the window names it).
     "resolve_contract_reward_icon": _spec(
         _CONTRACT_ICON_VERBS, _S.CONTRACT, Printed.CONTRACT, icon="arg:effect"
+    ),
+    # An icon of an acquired Imperium card's acquire box, waiting on its
+    # owner's turn (OQ-141): the card names it; a chosen Faction is the
+    # target row.
+    "resolve_acquire_icon": _spec(
+        _ACQUIRE_ICON_VERBS,
+        _S.ACQUISITION,
+        "acquired_card_id",
+        icon="arg:effect",
+        targets=_FACTION,
     ),
     "flip_tech": _spec(_V.FLIP, _S.TECH, "tech_id"),
     "resolve_tech_acquire_effect": _spec(
