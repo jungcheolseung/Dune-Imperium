@@ -582,8 +582,6 @@ def marker_layout() -> dict[str, Any]:
             "token_rows": list(STRENGTH_TOKEN_ROW_Y),
             "token_size": STRENGTH_TOKEN_SIZE,
         },
-        "garrisons": [list(point) for point in GARRISON_POINTS],
-        "conflict_quadrants": [list(point) for point in CONFLICT_QUADRANTS],
         "conflict_units": {
             "boxes": [list(box) for box in CONFLICT_UNIT_BOXES],
             "cross": list(CONFLICT_CROSS),
