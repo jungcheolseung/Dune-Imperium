@@ -164,6 +164,7 @@
 | [OQ-136](#oq-136--tleilaxu-덱-고갈) | Tleilaxu 덱 고갈 | `DECIDED` |
 | [OQ-137](#oq-137--공동-1위로-남은-conflict-카드) | 공동 1위로 남은 Conflict 카드 | `DECIDED` |
 | [OQ-138](#oq-138--covert-operation에서-손이-빈-상대와-결정-창) | Covert Operation에서 손이 빈 상대와 결정 창 | `DECIDED` |
+| [OQ-139](#oq-139--mentat이-어느-말인가-원판) | Mentat이 어느 말인가 (원판) | `OPEN` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -2850,3 +2851,20 @@
   `test_a_record_before_v155_skips_the_empty_hands_covert_operation_asks`), `tests/unit/test_heuristic_agent.py`,
   `tests/unit/agents/app_ai/test_app_ai_window_uprising.py`, `tests/server/test_turn_end.py`
   (`test_the_covert_operation_owner_waits_for_a_human_empty_hand_s_confirm`)로 고정한다.
+
+## OQ-139 — Mentat이 어느 말인가 (원판)
+
+- 상태: `OPEN` (2026-10-27 P2 설계에서 기록; 추천은 엔진 이유의 project convention)
+- 계기: 원판 P2(보드·흐름, [base-game-and-ix-plan.md](../base-game-and-ix-plan.md) 15절)의 Mentat 구현.
+- 질문: Mentat을 쥔 좌석이 Agent turn에 말을 보낼 때, 엔진이 "Mentat을 보냈는가, 자기 Agent를 보냈는가"를 가려 기록해야 하는가.
+- 공식 문장: Mentat 칸 "If the Mentat is here, take it and place it on your Leader; this round, you may use it as one of your Agents"
+  `[DI p. 18]`; Recall "return the Mentat to its space" 뒤 Agent recall `[DI p. 13]`; 디자이너 판정 "가져간 라운드 동안 그 플레이어의 Agent(모든
+  목적)"([imperium-base.md](imperium-base.md) 9절). 어느 말을 먼저 쓰는지는 말하지 않는다(실물에서는 플레이어가 고른 말을 놓는다).
+- P2에서 드러나는 곳: 없다. Recall은 Mentat부터 제 칸으로 돌리고 나머지 Agent를 거둔다. Mentat을 제 칸에 보내도 뽑기만 하고 Agent로 남는다
+  ([OQ-124](#oq-124--mentat을-mentat-칸에-보낼-때)). 막힘·Maker 보너스·Control 보너스·Helena의 Eyes Everywhere는 어느 말이든 그 좌석의 Agent다.
+  구분이 드러나는 것은 P3 카드다: Kwisatz Haderach("Move one of your Agents"), Urgent Mission("Recall one of your Agents") — 옮기거나 거둔 말이
+  Mentat이면 어디로 가는지.
+- 선택지: (가) P2에서는 가리지 않는다: 그 라운드 Agent 수만 하나 늘리고(엔진 이유: 드러나는 곳이 없는 고르기를 codec 줄로 만들지 않는다),
+  P3의 두 카드에서 이 OQ를 다시 연다. (나) 처음부터 말을 가린다: Agent turn마다 "Mentat으로 보내기"를 따로 고르게 하고, 놓인 Mentat의 칸을 상태에
+  둔다.
+- 추천: **(가)**. P3에서 다시 열 때 (나)로 바꾸면 그 단계의 codec·관측 변경으로 함께 낸다.
