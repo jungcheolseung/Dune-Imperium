@@ -41,6 +41,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireTech,
     EachOpponentDiscardsCard,
     EachOpponentLosesTroop,
+    GrantAgentIconsThisTurn,
     OnTroopsLostAtConflictEnd,
     OpponentsMoveSpiesFromVisitedSpace,
     PrintedRevealValue,
@@ -3254,6 +3255,20 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
 
 
+def _deck_granted_icons(config: RulesetConfig) -> tuple[AgentIcon, ...]:
+    """The Agent icons an Intrigue card of the game's deck gives the card
+    played this turn (``GrantAgentIconsThisTurn``), in printed order."""
+
+    icons: dict[AgentIcon, None] = {}
+    for instance_id in content_for(config).intrigue_deck_instance_ids:
+        for option in intrigue_card_for_instance(instance_id).options:
+            for section in option.sections:
+                for reward in section.rewards:
+                    if isinstance(reward, GrantAgentIconsThisTurn):
+                        icons.update(dict.fromkeys(reward.icons))
+    return tuple(icons)
+
+
 def _agent_placement_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     # Emperor's Invitation (Bloodlines) can give any card the Emperor icon
     # for a turn, so the option's catalogs also hold every card's Emperor
@@ -3266,6 +3281,10 @@ def _agent_placement_templates(config: RulesetConfig) -> tuple[ActionTemplate, .
     every_icon = tuple(AgentIcon) if config.bloodlines else ()
     if config.bloodlines:
         granted = every_icon
+    if content_for(config).base_game is BaseGame.IMPERIUM:
+        # The original game's Dispatch an Envoy gives the card played this
+        # turn the four Faction icons (stage P3): its deck's grants.
+        granted = tuple(dict.fromkeys((*granted, *_deck_granted_icons(config))))
     templates: list[ActionTemplate] = []
     for starting_card in _starting_entries(config):
         templates.extend(
