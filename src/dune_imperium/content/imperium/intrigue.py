@@ -22,6 +22,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainInfluence,
     GainResources,
     GainVictoryPoints,
+    HasAlliance,
     HasHighCouncil,
     PayResources,
     RetreatTroops,
@@ -78,6 +79,19 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("allied_armada", "Allied Armada"),
         copies=1,
+        # "If you have a Faction Alliance: 2 spice -> +7 swords" [Allied
+        # Armada card, app text]: a Combat cost line under a condition; an
+        # Alliance with any Faction counts and both the Alliance and the two
+        # spice are needed to play it (imperium-base.md 13.3, FAQ p. 2).
+        options=(
+            _combat(
+                EffectSection(
+                    condition=HasAlliance(),
+                    costs=(PayResources(spice=2),),
+                    rewards=(GainCombatStrength(7),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("ambush", "Ambush"),
