@@ -754,3 +754,100 @@ def test_private_army_needs_a_unit_in_the_conflict() -> None:
         _fighter(1, 2),
     )
     assert legal_intrigue_play_actions(state, 0) == ()
+
+
+# --- The Sleeper Must Awaken (Plot) -----------------------------------------
+
+SLEEPER = _intrigue("the_sleeper_must_awaken")
+
+
+def test_the_sleeper_must_awaken_is_one_plot_cost_line() -> None:
+    # "Plot: 4 spice -> 1 VP" [The Sleeper Must Awaken card, Steam app text];
+    # 1 copy [DI p. 3].
+    entry = intrigue_card_for_instance(SLEEPER)
+    assert entry.card.name == "The Sleeper Must Awaken"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert intrigue_card_text(entry) == ["Plot — Pay 4 spice → Gain 1 VP"]
+    assert "the_sleeper_must_awaken" not in {
+        entry.card.card_id for entry in INTRIGUE_CARDS
+    }
+
+
+def test_the_sleeper_must_awaken_pays_four_spice_for_one_victory_point() -> None:
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." `[FAQ p. 2]`; the arrow cost is required once the card is
+    # played `[FAQ p. 3]`; a Plot may be played at any time in the seat's own
+    # turn `[DI pp. 7-8]` (imperium-base.md 5).
+    _, state = _plot_hand(SLEEPER, resources=Resources(solari=2, spice=6))
+    assert legal_intrigue_play_actions(state, 0) == (_play(SLEEPER),)
+    points = state.players[0].victory_points
+
+    result = apply_intrigue_play(state, _play(SLEEPER))
+    done = result.state
+
+    assert done.players[0].resources == Resources(solari=2, spice=2)
+    assert done.players[0].victory_points == points + 1
+    assert done.players[0].intrigue_cards == ()
+    assert done.intrigue_discard == (SLEEPER,)
+    assert [event.kind for event in result.events] == [
+        "intrigue_played",
+        "resources_paid",
+        "resources_gained",
+    ]
+    assert dict(result.events[1].payload)["spice"] == 4
+    assert dict(result.events[2].payload)["victory_points"] == 1
+    assert done.decision_stack[-1].kind == "turn"
+
+
+def test_the_sleeper_must_awaken_needs_four_spice() -> None:
+    # Three spice do not pay the cost: the card is not offered (FAQ p. 2);
+    # Solari do not stand in for spice.
+    engine, state = _plot_hand(SLEEPER, resources=Resources(solari=9, spice=3))
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert _play(SLEEPER) not in engine.whole_actions(state, 0)
+
+    exact = _seat(state, resources=Resources(spice=4))
+    assert legal_intrigue_play_actions(exact, 0) == (_play(SLEEPER),)
+    done = apply_whole(engine, exact, _play(SLEEPER)).state
+    assert done.players[0].resources.spice == 0
+
+
+def test_the_sleeper_must_awaken_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`: the seat keeps
+    # the card and the spice and takes another turn action.
+    engine, state = _plot_hand(SLEEPER, resources=Resources(spice=4))
+    actions = engine.whole_actions(state, 0)
+    assert _play(SLEEPER) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (SLEEPER,)
+    assert placed.players[0].resources.spice == 4
+    assert placed.players[0].victory_points == state.players[0].victory_points
+
+
+def test_the_sleeper_must_awaken_is_played_in_the_reveal_turn_too() -> None:
+    # "아무 때나" within the seat's own Agent or Reveal turn (imperium-base.md
+    # 5, `[DI pp. 7-8]`).
+    engine, state = _plot_hand(SLEEPER, resources=Resources(spice=4))
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    assert _play(SLEEPER) in engine.whole_actions(revealed, 0)
+
+    done = apply_whole(engine, revealed, _play(SLEEPER)).state
+
+    assert done.players[0].resources.spice == 0
+    assert done.players[0].victory_points == state.players[0].victory_points + 1
+
+
+def test_the_sleeper_must_awaken_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _plot_hand(SLEEPER)
+    state = _seat(state, 1, intrigue_cards=(SLEEPER,), resources=Resources(spice=9))
+    assert legal_intrigue_play_actions(state, 1) == ()

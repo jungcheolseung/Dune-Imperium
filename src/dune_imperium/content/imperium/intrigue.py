@@ -199,6 +199,16 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("the_sleeper_must_awaken", "The Sleeper Must Awaken"),
         copies=1,
+        # "4 spice -> 1 Victory Point" [The Sleeper Must Awaken card, app
+        # text]: a cost arrow line, required once played [FAQ p. 3].
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(spice=4),),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("tiebreaker", "Tiebreaker"),
