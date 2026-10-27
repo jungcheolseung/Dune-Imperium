@@ -27,6 +27,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseTroops,
     PayResources,
     RetreatTroops,
+    RevealPersuasionThisRound,
 )
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
@@ -130,6 +131,12 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("charisma", "Charisma"),
         copies=1,
+        # "Gain 2 Persuasion during your Reveal turn this round" [Charisma
+        # card, app text]: Persuasion that waits for the owner's Reveal turn,
+        # so the played card stays face up until that turn ends [FAQ p. 2]
+        # (the shape of Immortality's Tleilaxu Puppet). It is played without
+        # spending the Persuasion (imperium-base.md 13.3).
+        options=(_plot(EffectSection(rewards=(RevealPersuasionThisRound(2),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("corner_the_market", "Corner the Market"),

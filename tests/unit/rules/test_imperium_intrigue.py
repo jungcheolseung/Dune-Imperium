@@ -1691,3 +1691,142 @@ def test_staged_incident_needs_a_unit_in_the_conflict() -> None:
         _fighter(1, 3),
     )
     assert legal_intrigue_play_actions(state, 0) == ()
+
+
+# --- Charisma (Plot) --------------------------------------------------------
+
+CHARISMA = _intrigue("charisma")
+REVEAL = DomainAction(action_id="reveal_turn", actor=0)
+FINISH_REVEAL = DomainAction(action_id="finish_reveal", actor=0)
+
+
+def _reveal_persuasion(state: GameState) -> int:
+    """The Persuasion the open Reveal frame of ``state`` holds."""
+
+    frame = state.decision_stack[-1]
+    assert frame.kind == "reveal"
+    persuasion = dict(frame.context)["persuasion"]
+    assert isinstance(persuasion, int)
+    return persuasion
+
+
+def test_charisma_is_one_plot_for_two_persuasion_this_round() -> None:
+    # "Plot: Gain 2 Persuasion during your Reveal turn this round" [Charisma
+    # card, Steam app text]; 1 copy [DI p. 3]. No arrow: a cost-free Plot.
+    entry = intrigue_card_for_instance(CHARISMA)
+    assert entry.card.name == "Charisma"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert entry.options[0].sections[0].costs == ()
+    assert intrigue_card_text(entry) == [
+        "Plot — Gain 2 Persuasion during your Reveal turn this round"
+    ]
+    assert "charisma" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_charisma_played_in_an_agent_turn_waits_face_up_for_the_reveal_turn() -> None:
+    # "If the card does something that won't apply until your next Reveal
+    # turn (for example: Charisma, Recruitment Mission), keep it face up in
+    # front of you until then, then use and discard it." `[FAQ p. 2]`
+    # (imperium-base.md 13.2, "Charisma -> Intrigue cards"): the card is not
+    # discarded when played, it pays its Persuasion when the Reveal turn
+    # begins and goes to the discard pile when that turn ends.
+    engine, state = _plot_hand(CHARISMA)
+    assert legal_intrigue_play_actions(state, 0) == (_play(CHARISMA),)
+    plain = _reveal_persuasion(engine.apply(state, REVEAL).state)
+
+    result = apply_whole(engine, state, _play(CHARISMA))
+    played = result.state
+
+    assert played.players[0].intrigue_cards == ()
+    assert played.players[0].intrigue_faceup == (CHARISMA,)
+    assert CHARISMA not in played.intrigue_discard
+    assert "intrigue_kept_faceup" in [event.kind for event in result.events]
+    # The turn goes on: the Plot did not end it.
+    assert played.decision_stack[-1].kind == "turn"
+
+    revealed = engine.apply(played, REVEAL).state
+    assert _reveal_persuasion(revealed) == plain + 2
+    assert revealed.players[0].intrigue_faceup == (CHARISMA,)
+
+    finished = engine.apply(revealed, FINISH_REVEAL)
+    after = finished.state
+    assert after.players[0].intrigue_faceup == ()
+    assert CHARISMA in after.intrigue_discard
+    expired = [e for e in finished.events if e.kind == "intrigue_expired"]
+    assert [dict(e.payload)["card_id"] for e in expired] == [CHARISMA]
+
+
+def test_charisma_played_in_the_reveal_turn_pays_that_reveal() -> None:
+    # "Gain 2 Persuasion during your Reveal turn this round": a Plot may be
+    # played at any time in the owner's Agent or Reveal turn `[DI pp. 7-8]`
+    # (imperium-base.md 5), so played after the Reveal began the Persuasion
+    # joins that Reveal at once, and the card is discarded as the turn ends
+    # `[FAQ p. 2]`.
+    engine, state = _plot_hand(CHARISMA)
+    revealed = engine.apply(state, REVEAL).state
+    persuasion = _reveal_persuasion(revealed)
+    assert _play(CHARISMA) in engine.whole_actions(revealed, 0)
+
+    played = apply_whole(engine, revealed, _play(CHARISMA)).state
+
+    assert played.decision_stack[-1].kind == "reveal"
+    assert _reveal_persuasion(played) == persuasion + 2
+    assert played.players[0].intrigue_faceup == (CHARISMA,)
+    assert CHARISMA not in played.intrigue_discard
+
+    finished = engine.apply(played, FINISH_REVEAL).state
+    assert finished.players[0].intrigue_faceup == ()
+    assert CHARISMA in finished.intrigue_discard
+
+
+def test_charisma_is_played_without_spending_the_persuasion() -> None:
+    # "Charisma는 Persuasion을 쓰지 않아도 낸다 | 채택(Persuasion을 얻는 것이
+    # 효과)" (imperium-base.md 13.3, OQ-113 (C)): the effect is the Persuasion
+    # itself, so the card is offered with no purchase in sight -- here a seat
+    # whose Imperium Row is empty and whose hand holds nothing to buy with.
+    engine, state = _plot_hand(CHARISMA, hand=())
+    state = replace(state, imperium_row=())
+    assert legal_intrigue_play_actions(state, 0) == (_play(CHARISMA),)
+
+    played = apply_whole(engine, state, _play(CHARISMA)).state
+
+    assert played.players[0].intrigue_faceup == (CHARISMA,)
+    assert played.players[0].reveal_persuasion_round_bonus == 2
+
+
+def test_charisma_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`: the seat
+    # keeps the card in hand and takes another turn action.
+    engine, state = _plot_hand(CHARISMA)
+    actions = engine.whole_actions(state, 0)
+    assert _play(CHARISMA) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (CHARISMA,)
+    assert placed.players[0].intrigue_faceup == ()
+    assert placed.players[0].reveal_persuasion_round_bonus == 0
+
+
+def test_charisma_gives_the_persuasion_to_its_owner_only() -> None:
+    # "your Reveal turn": a Charisma played by seat 0 adds nothing to another
+    # seat's Reveal (the bonus sits on the playing seat).
+    engine, state = _plot_hand(CHARISMA)
+    played = apply_whole(engine, state, _play(CHARISMA)).state
+    assert [seat.reveal_persuasion_round_bonus for seat in played.players] == [
+        2,
+        0,
+        0,
+        0,
+    ]
+
+
+def test_charisma_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _plot_hand(CHARISMA)
+    state = _seat(state, 1, intrigue_cards=(CHARISMA,))
+    assert legal_intrigue_play_actions(state, 1) == ()
