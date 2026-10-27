@@ -1556,3 +1556,68 @@ def test_thufir_hawat_with_no_intrigue_card_left_draws_nothing() -> None:
     assert drawn.players[0].intrigue_cards == revealed.players[0].intrigue_cards
     assert drawn.intrigue_deck == ()
     assert "draw_reveal_intrigue" not in _ids(engine, drawn)
+
+
+# --- Spice Hunter -----------------------------------------------------------------
+
+
+def test_spice_hunter_matches_the_app_table() -> None:
+    # App attribute table: cost 2, 2 copies, Fremen, Fremen and Spice Trade,
+    # Reveal 1 Persuasion and 1 sword (tag FremenBond); no Agent effect.
+    entry = IMPERIUM_CARDS_BY_ID["spice_hunter"]
+    assert entry.card.name == "Spice Hunter"
+    assert entry.acquisition_cost == 2
+    assert entry.copies == 2
+    assert entry.factions == (Faction.FREMEN,)
+    assert entry.agent_icons == (AgentIcon.FREMEN, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is None
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 1)
+    assert entry.reveal_choice_effects == ()
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:spice_hunter:1") is entry
+
+
+def test_spice_hunter_agent_box_is_empty() -> None:
+    # P0 sweep: "AGENT: none"; the icons only send the Agent to a Fremen or
+    # Spice Trade space.
+    engine, state = _start()
+    state, _ = _with_card(state, "spice_hunter")
+    placed = _place(engine, state, "stillsuits", "spice_hunter")
+    assert "resolve_agent_card_effect" not in _ids(engine, placed)
+
+
+def _spice_hunter_revealed(
+    engine: UprisingRulesEngine, state: GameState, *others: str
+) -> GameState:
+    """Seat 0 reveals Spice Hunter with the other cards, nothing in hand but
+    them."""
+
+    held, instance = _with_card(state, "spice_hunter", alone=True)
+    held = _seat(held, hand=(instance, *others), resources=Resources())
+    return _do(engine, held, "reveal_turn")
+
+
+def test_spice_hunter_without_a_bond_gains_no_spice() -> None:
+    """"Fremen Bond = another Fremen card in play" [DI p. 16] (imperium-base.md
+    11): alone, Spice Hunter has no Bond; it reveals its 1 Persuasion and 1
+    sword and no gain row opens."""
+
+    engine, state = _start()
+    revealed = _spice_hunter_revealed(engine, state)
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (1, 1)
+    assert "gain_reveal_resources" not in _ids(engine, revealed)
+    finished = _do(engine, revealed, "finish_reveal")
+    assert finished.players[0].resources.spice == 0
+
+
+def test_spice_hunter_fremen_bond_gains_one_spice() -> None:
+    """The Bond is judged when the line resolves (imperium-base.md 16,
+    OQ-028): with Fedaykin Stilltent also revealed the card gains 1 spice."""
+
+    engine, state = _start()
+    revealed = _spice_hunter_revealed(engine, state, "imperium:fedaykin_stilltent:0")
+    before = revealed.players[0].resources
+    gained = _do(engine, revealed, "gain_reveal_resources", printed="spice_hunter")
+    assert gained.players[0].resources.spice == before.spice + 1
+    assert gained.players[0].resources.water == before.water

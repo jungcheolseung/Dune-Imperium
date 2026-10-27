@@ -366,10 +366,19 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_persuasion=2,
         play_data_complete=True,
     ),
+    # App table: cost 2, 2 copies, Fremen, Fremen and Spice Trade, Reveal 1
+    # Persuasion and 1 sword (tag FremenBond). Agent: no box (the icons only).
+    # Reveal: "Fremen Bond: 1 spice" -- another Fremen card in play [DI p. 16],
+    # judged at resolution (OQ-028).
     ImperiumCardEntry(
         card=imperium_card("spice_hunter", "Spice Hunter"),
         copies=2,
         acquisition_cost=2,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.SPICE_TRADE),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     # App table: cost 5, 1 copy, Fremen, Fremen, City and Spice Trade, Reveal 2
     # Persuasion and 3 swords, AgentWater 1. Agent: "1 water", a plain gain.

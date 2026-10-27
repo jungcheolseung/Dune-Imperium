@@ -122,6 +122,10 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         ),
         # Duncan Idaho (original game): "1 water" beside its printed swords.
         "duncan_idaho_card": _reveal(_line(GainResources(water=1))),
+        # Spice Hunter (original game): "Fremen Bond: 1 spice".
+        "spice_hunter": _reveal(
+            _line(GainResources(spice=1), condition=FactionBond(Faction.FREMEN))
+        ),
         # Thufir Hawat (original game): "[Intrigue card]" beside its Persuasion.
         "thufir_hawat": _reveal(_line(DrawIntrigueCards(1))),
         # Junction Headquarters.
