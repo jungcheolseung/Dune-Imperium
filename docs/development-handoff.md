@@ -33,9 +33,9 @@
 | Ruff · mypy | `src tests` 통과, mypy 575파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
 | 브라우저 E2E | `scripts/e2e/` 70종(+ 이름으로만 도는 `rehearsal`). 마지막 전체 실행은 2026-10-27 원판·Ix P1 관문 4회차(`-j 4`, 69 통과; 나머지 `server_errors`는 묶음 안에서 시간 초과, 따로 3회 통과) |
 | action codec | **v155** (2026-10-26 OQ-138: Covert Operation의 손이 빈 상대도 창을 열고 확인 줄 `resolve_opponent_discard_without_card` 하나를 받는다 — 모든 카탈로그 +1, Immortality는 Ghola 사본 줄까지 +2; 옛 기보 다리 `opponent_discard_alone`). 그 앞 **v154** (2026-10-26 Uprising 판정 묶음). Planetary Array의 승자 창 줄(Tech 카탈로그), 비용 없는 책략 선택의 확인 줄 셋(Manipulate는 모든 카탈로그, Twisted 둘은 Bloodlines 카탈로그)이 늘었고, 비용 없는 책략 줄은 불발해도 낸다(OQ-113 (C)); 옛 기보는 다리로([`human-records.md`](human-records.md)). v153 저장은 서버가 열지 않는다 |
-| 관측 | v35, 5,827 int (원판·Ix P2a: 원판 id를 각 구간 끝에, Agent 자리 4칸, 맨 끝 `mentat` 3칸 — Uprising 판에서는 v34 열 뒤에 늘어난 열이 모두 0; v34는 `base_game` 1칸) |
-| action catalog | 기본 1,436 · CHOAM 1,557 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,338(v155). 원판 `imperium-4p-base` 580(P2a 보드·흐름 + P2b 지도자 셋; P1은 73); Uprising + Rise of Ix는 Ix 콘텐츠 전이라 Ix 없는 것과 같다 |
-| 엔티티 망 특성 | `FEATURE_VERSION` 2(능력 기록에서, 행동은 `ACTION_SHAPES` 부분), 지문 `36f8ae8b…`(원판 P2 개체가 붙음; Uprising 405행은 열 척도까지 그 앞 `59761de5…`와 같다); 특성 표가 바뀌어도 파일을 이름으로 옮긴다 |
+| 관측 | v36, 5,835 int (원판·Ix P2b: 맨 끝 Masterstroke 8칸; P2a v35: 원판 id를 각 구간 끝에, Agent 자리 4칸, `mentat` 3칸 — Uprising 판에서는 v34 열 뒤에 늘어난 열이 모두 0; v34는 `base_game` 1칸) |
+| action catalog | 기본 1,436 · CHOAM 1,557 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,338(v155). 원판 `imperium-4p-base` 599(P2 보드·흐름·지도자 여덟; P1은 73); Uprising + Rise of Ix는 Ix 콘텐츠 전이라 Ix 없는 것과 같다 |
+| 엔티티 망 특성 | `FEATURE_VERSION` 2(능력 기록에서, 행동은 `ACTION_SHAPES` 부분), 지문 `61b70c15…`(원판 P2 개체가 붙음; Uprising 405행은 열 척도까지 그 앞 `59761de5…`와 같다); 특성 표가 바뀌어도 파일을 이름으로 옮긴다 |
 | 로컬 서버 기본 AI | 앱 AI 어려움(`app_ai`). 원격 방의 좌석 기본값은 사람 |
 | 탐색 AI 망 | Mac mini의 `checkpoints/play/search.pt` → `readapt-v147-4400.pt`(레시피 MLP를 v147에서 재학습, 2026-10-15; 탐색 좌석 1 대 앱 AI 어려움 3에서 81.8%). v150 이후 엔진에서도 `search:`가 v150 이전 MLP 파일을 옛 codec 어댑터로 둔다(2026-10-22 병합 `bc466f23`; v151 좌석 81.8% 대 같은 파일의 v149 좌석 82.2%, 1 대 앱 AI 어려움 3 400판). 망 단독(`checkpoint:`)은 여전히 4,311줄 가운데 84줄만 학습한 줄. 되돌리기용 `recipe-mlp-1e5-800.pt`, X `mix-v139-10081.pt` |
 | 에셋 저장소 | `c4cf579` (2026-10-12 push) |
@@ -63,10 +63,10 @@
 
 **엔진**
 
-- **원판·Rise of Ix — P2 진행 중(2026-10-27, 브랜치 `jungcheolseung/base-ix-p2`, 미병합):** 계획 15절(15.8 결과). P2a `56c8e8c9`: 원판 4인 판이
-  보드 22칸·Mentat·Conflict 18·Reserve 셋·지도자 넷으로 끝까지 돈다(Imperium·Intrigue 덱은 P3까지 비어 있음), 관측 v35, codec v155 그대로(Uprising
-  144개 조합 행 바이트 같음). P2b: Leto `cc5e1962`·Helena `99dd5ced`·Paul `a05a2789`, 리뷰 결함 수정 `83cf2b1d`. **다음: Baron Harkonnen**(비밀 진영 결정,
-  OQ-115 의무 공개, 관측 칸), 그 뒤 지도자 draft·P2b 관문·"P2 결과" 문서. 병합은 조정자가 사용자 확인을 받아. [2026-10-27 원판 P2a]
+- **원판·Rise of Ix — P2 보드·흐름 끝(2026-10-27, 브랜치 `jungcheolseung/base-ix-p2`, 병합 대기):** 계획 15절(15.8·15.9 결과). 원판 4인 판이
+  보드 22칸·Mentat·Conflict 18·Reserve 셋·지도자 여덟(draft 포함)으로 끝까지 돈다(Imperium·Intrigue 덱은 P3까지 비어 있음). 관측 v36, codec v155 그대로
+  (Uprising 144개 조합 행·특성 405행이 `12294215`와 같다). 병합은 사용자 결정대로 P2b 관문 뒤 브랜치 전체를 한 번에(조정자가 사용자 확인을 받아).
+  **다음: P3(원판 Imperium·Intrigue 카드)** — 넘기는 것은 15.9 끝. [2026-10-27 원판 P2]
 - **원판·Rise of Ix — P1 판 축 끝(2026-10-27, `claude/base-ix-p1-6a418f` master 병합 `dda6ddb0`):** 계획 14절. `content_for(config)`(`content/rulesets.py`)가 그 판이 쓰는 칸·덱·지도자·Conflict와 보드 값(영향력 4칸 보너스, Maker·모래벌레 칸, 지배 칸 보너스)을 돌려주고, id로 찾는 표는 두 판이 하나를 같이 쓴다. `RulesetConfig.base_game`(`BaseGame`)·`rise_of_ix`, 원판 식별자 `imperium-4p-…`. 확장은 어느 기본 판과도, 서로와도 조합된다(사용자 결정 2026-10-27; Tech→Bloodlines, Go to 11→Immortality만 남음). 콘텐츠가 없는 조합(원판 보드, Rise of Ix)은 setup이 `NotImplementedError`로 거절한다. 관측 v34의 `base_game` 칸. **다음: P2(원판 보드·흐름)** — `content/imperium/`과 `rulesets._imperium_content`, D3대로 보드 값은 앱 자료에서. [2026-10-27 원판·Ix P1 판 축]
 - **원판·Rise of Ix — P0 판정 모두 끝(2026-10-25, `claude/base-ix-p0-57d7eb` master 병합):** 계획
   [base-game-and-ix-plan.md](base-game-and-ix-plan.md) 13절. 규칙 명세 [rules/imperium-base.md](rules/imperium-base.md)·

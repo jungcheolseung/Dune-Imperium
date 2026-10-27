@@ -599,7 +599,7 @@ P2가 할 일(이 축 위에서): `content/imperium/`에 보드 22칸·Conflict 
 앱 자료에서 읽어 같은 자리에 채운다. 영향력 보너스에 새 모양(예: 병력)이 있으면 `_apply_track_bonus`에 그 기록을 더한다. 이름이 같아도
 인쇄가 다른 칸·카드는 새 id(4.2절 7)로 하고, id 테스트의 겹침 목록이 그것을 지킨다.
 
-## 15. P2 계획 (2026-10-27 초안, 브랜치 `jungcheolseung/base-ix-p2`, master `12294215`에서)
+## 15. P2 계획과 결과 (2026-10-27, 브랜치 `jungcheolseung/base-ix-p2`, master `12294215`에서; 결과는 15.8·15.9)
 
 **승인(2026-10-27, 조정자 경유 사용자 확인):** 15.7의 1~6 모두. 4는 조건을 더했다: Uprising 개체의 `feature_tables()` 행은 열 척도까지
 시작 커밋 `12294215`와 바이트로 같아야 한다(척도가 원판 값으로 바뀌면 이관 보정에 기대지 않고 Uprising 값으로 고정하거나 먼저 묻는다). 5는
@@ -732,7 +732,7 @@ Orca 작업자가 멈춘 P2a(커밋 안 된 30파일)를 이어 받아 끝냈다
 - **지도자 넷의 능력:** Rabban의 Brutality는 "-OR-"가 고르기가 아니다(동맹이 있으면 2, P0 L7) — 자동 Signet의 `ONE_OF`는 조건이 맞는 첫 줄. Ilban의
   Ruthless Negotiator와 Ariana의 Spice Addict는 빚진 뽑기(OQ-106). Memnon의 Connections는 원로회 자리를 얻은 방문의 아이콘 하나(새 행동
   `choose_connections_influence`, 6칸 진영 제외 OQ-060).
-- **codec v155 그대로:** Uprising 144개 조합 행이 `12294215`와 바이트까지 같다. 원판 `imperium-4p-base` 카탈로그 580줄(P2b 셋 뒤).
+- **codec v155 그대로:** Uprising 144개 조합 행이 `12294215`와 바이트까지 같다. 원판 `imperium-4p-base` 카탈로그 580줄(P2b 셋 뒤; P2b 끝 599줄).
 - **관측 v35(5,827 int):** 15.4대로. Uprising 판에서 새 열은 모두 0이고, 골든 다이제스트 여섯은 v34 열에서 그대로다. slot 열쇠 1,467(열쇠로 다시
   잇는다), v31 엔티티 파일의 이름은 v35 열쇠·필드를 뺀다. 엔티티 특성의 열 척도는 Uprising 개체로 정한다(`entity_features._table`) — Uprising 405행이
   `12294215`와 열 척도까지 같다(승인 조건). `FEATURE_DIGEST`는 바뀐다(P2b 지도자마다 다시).
@@ -745,4 +745,25 @@ Orca 작업자가 멈춘 P2a(커밋 안 된 30파일)를 이어 받아 끝냈다
   Paul Atreides `a05a2789`(약 2분, hook 없음; Prescience는 Glowglobes의 덱 맨 위 보기와 같은 경로라 관측 v36이 필요 없다). 독립 리뷰(조정자의 Codex)가 찾은 결함 하나를 `83cf2b1d`에서 고쳤다: 원판 Emperor 4칸의 병력 둘이
   그 turn의 recruit에 들지 않았다(7절 "이번 turn에 recruit한 troop 전부", `[FAQ p. 4]`). 남은 것: Baron Harkonnen(비밀 진영 결정, 의무 공개 OQ-115,
   관측 칸), 지도자 draft(여덟이 모이면), P2b 관문, 문서의 "P2 결과".
+
+### 15.9 P2b 결과 (2026-10-27)
+
+- **Baron Harkonnen `efb1784c`(관측 v36):** Masterstroke — 모든 setup 뒤(draft 뒤에도) 첫 라운드 전에 SETUP에서 멈추고(새 frame `MASTERSTROKE_SETUP`,
+  Kota Odax의 Secret Project와 같은 틀) 서로 다른 진영 둘을 비밀로 고른다(`[FAQ p. 1]`, `[DI p. 13]`). 고른 수는 공개, 정체는 본인만(14절). 매 전이 뒤
+  배치 최고치를 적은 다음, 자기 turn에 이번 turn 배치한 병력이 동시에 넷 이상이면(Distraction과 같은 최고치, OQ-016; turn 밖은 세지 않음, OQ-063)
+  의무 공개, 게임에 한 번, 각 진영 Influence 1(6칸은 불발, OQ-060), 그 뒤 회수는 넷 아래로 못 함(OQ-029) — OQ-115. P2의 원판 판에는 모래벌레·dreadnought가
+  없어 그 turn의 유닛 최고치가 곧 병력 수다. **P4(Rise of Ix의 dreadnought)·P7(조합의 모래벌레·Commander)에서 병력·Commander만 따로 세야 한다**(모듈
+  `rules/masterstroke.py`에 적음). Scheme은 Solari 1 → Intrigue 1, 뽑을 Intrigue가 없으면 내지 않는다(16절, OQ-071; P3 전 원판 Intrigue 덱은 빔). 숨은
+  정보: 보기는 "비밀을 쥠"과 공개 뒤의 진영만, 본인 보기에 진영; 숨은 정보 검사(scramble)는 다른 좌석의 미공개 진영을 바꾸고, AI 정보 표본은 다시 뽑는다
+  (그런 좌석만 난수를 써서 다른 판의 표본은 그대로). 관측 v36(5,835): 좌석별 미공개 비밀 4칸, 본인의 진영 4칸, 맨 끝; 새 frame 종류는 `decision_kind`
+  slot 필드 끝. 걸린 시간: 앞 문서 커밋에서 약 58분(사용자 답을 기다린 시간 포함; 커밋 메시지의 35분 어림은 틀림).
+- **지도자 draft `04f4f0f5`:** 원판 판에서 draft를 연다(여덟 가운데 여섯, OQ-007). draft 전 상태가 그 판의 Maker 장부를 갖게 했다(Uprising은 기본값과 같은
+  튜플이라 그대로).
+- **지도자 목록:** 원판 판이 여덟 모두를 인쇄 순서로 둔다(Paul, Leto, Rabban, Baron, Ilban, Helena, Memnon, Ariana). 관측의 지도자 어휘는 P2a에서 한 번
+  바뀌었고, 특성 지문은 지도자 기록이 들어올 때마다 바뀌었다(Uprising 405행은 늘 그대로).
+- **P2b 관문(15.6 + draft한 원판 소크 150, `04f4f0f5` 스냅숏):** pytest를 뺀 모든 단계 통과(같음 확인 200, 소크 Uprising 900·원판 450, 카탈로그
+  144/144, 특성 405행, 기보 2,000, 저장본·문제집, tips, E2E 70/70, 같은 수 4종). pytest 20개 실패는 모두 테스트 쪽이라 `4885be0f`에서 고쳤다(worklog).
+  병합 후보는 그 뒤의 HEAD다.
+- **P3에 넘기는 것:** 원판 Imperium·Intrigue 덱(빈 덱 동안 Helena의 Manipulate는 빈 확인, Baron의 Scheme은 내지 않음), OQ-139(Kwisatz Haderach·Urgent
+  Mission에서 Mentat 말 구분), Masterstroke의 병력 셈(P4·P7), 화면(P5)의 Mentat·Masterstroke 표시와 공개의 되돌리기 경계, AI(P6)의 원판 판 점수.
 
