@@ -24,7 +24,10 @@ from dune_imperium.core import (
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.board_effects import legal_maker_space_actions
-from dune_imperium.rules.combat_deployment import legal_agent_turn_finish_actions
+from dune_imperium.rules.combat_deployment import (
+    legal_agent_turn_finish_actions,
+    legal_combat_deployments,
+)
 
 CONFIG = RulesetConfig(base_game=BaseGame.IMPERIUM, first_player_seat_zero=True)
 LEADERS = (
@@ -426,3 +429,30 @@ def test_discipline_draws_a_card() -> None:
     placed = _place(engine, state, "secure_contract", "signet_ring")
     drawn = _do(engine, placed, "resolve_agent_card_effect")
     assert len(drawn.players[0].hand) == hand - 1 + 1
+
+
+def test_track_bonus_troops_deploy_with_the_turn_s_recruits() -> None:
+    # The original Emperor track's two troops are recruited [DI p. 7] (plan
+    # 15.3): "Combat 칸 ... 이번 turn에 recruit한 troop 전부와 garrison의 troop
+    # 둘까지를 Conflict에 배치할 수 있다 [DI pp. 10, 17-18]", "어느 출처로
+    # recruit했든 배치 가능 [FAQ p. 4]" (imperium-base.md 7). Leto reaches
+    # Emperor 4 with Prudent Diplomacy at Carthag, a Combat space.
+    engine, state = _start("duke_leto_atreides")
+    state = _seat(
+        _with_card(state, "signet_ring"),
+        resources=Resources(spice=1),
+        influence=Influence(emperor=3),
+    )
+    state = _seat(state, 1, influence=Influence(emperor=5))
+    placed = _place(engine, state, "carthag", "signet_ring")
+    gained = _do(engine, placed, "choose_leader_signet_influence", faction="emperor")
+    owner = gained.players[0]
+    assert owner.influence.emperor == 4
+    assert owner.track_troops_recruited_turn == 2
+    counts = {
+        int(dict(action.arguments)["count"])
+        for action in legal_combat_deployments(gained, 0)
+        if action.action_id == "deploy_troops"
+    }
+    # The two track troops and two more from the garrison.
+    assert max(counts) == 2 + 2

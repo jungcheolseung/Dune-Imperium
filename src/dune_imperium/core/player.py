@@ -71,6 +71,12 @@ class PlayerState:
     # returns it to its space [DI p. 13]. Which placed Agent is the Mentat is
     # not told apart (OQ-139).
     mentat: bool = False
+    # Troops an Influence track bonus recruited this turn (the original
+    # board's Emperor track, docs/base-game-and-ix-plan.md 15.3): they deploy
+    # with the turn's other recruits ("이번 turn에 recruit한 troop 전부",
+    # docs/rules/imperium-base.md 7) and live on the seat, not the turn's
+    # frame, which the Influence gain's callers write back afterwards.
+    track_troops_recruited_turn: int = 0
     troops_supply: int = 9
     troops_garrison: int = 3
     troops_conflict: int = 0
@@ -251,7 +257,9 @@ class PlayerState:
     # Fields added after saves and records already held state hashes, left
     # out of the canonical state hash at their default
     # (``core.state.canonical_state_hash``).
-    HASH_OMITTED_AT_DEFAULT: ClassVar[frozenset[str]] = frozenset({"mentat"})
+    HASH_OMITTED_AT_DEFAULT: ClassVar[frozenset[str]] = frozenset(
+        {"mentat", "track_troops_recruited_turn"}
+    )
 
     @property
     def units_in_conflict(self) -> int:

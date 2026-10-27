@@ -607,7 +607,12 @@ def _apply_track_bonus(
         case RecruitTroops(count=count):
             # The original board's Emperor track: two troops to the garrison
             # [DI p. 7] (docs/base-game-and-ix-plan.md 15.3); what the supply
-            # cannot cover waits as on any recruit (OQ-030).
+            # cannot cover waits as on any recruit (OQ-030). They are this
+            # turn's recruits, deployable from a Combat space with the others
+            # ("이번 turn에 recruit한 troop 전부와 garrison의 troop 둘까지",
+            # "어느 출처로 recruit했든 배치 가능 [FAQ p. 4]",
+            # docs/rules/imperium-base.md 7), counted on the seat
+            # (``PlayerState.track_troops_recruited_turn``).
             # (``effects.recruit_troops``'s move, written here: that module
             # imports this one.)
             recruited = min(owner.troops_supply, count)
@@ -616,8 +621,14 @@ def _apply_track_bonus(
                 troops_supply=owner.troops_supply - recruited,
                 troops_garrison=owner.troops_garrison + recruited,
                 ungained_troops=owner.ungained_troops + count - recruited,
+                track_troops_recruited_turn=owner.track_troops_recruited_turn
+                + recruited,
             )
-            payload = (("troops", recruited),)
+            # A supply short of troops shows in the bonus's own event.
+            payload = (
+                ("troops", recruited),
+                *((("troops_short", count - recruited),) if count > recruited else ()),
+            )
         case _:
             raise ValueError(f"no such Influence 4 bonus: {bonus!r}")
     return (
