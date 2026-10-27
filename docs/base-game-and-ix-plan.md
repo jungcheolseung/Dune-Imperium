@@ -934,6 +934,11 @@ Imperium 묶음 2(2026-10-28 03:09~04:2x)가 멈춘 곳:
 - **Sardaukar Legion·Scout·Chani:** Reveal turn에 수를 고르는 병력 이동(garrison에서 셋까지 배치, 둘까지·몇이든 퇴각). 열린 질문: Commander도 "troop"인가
   `[Bloodlines p. 4]`, Combat 아이콘의 garrison 둘과 어떻게 합치는가.
 - **Other Memory:** 버림 더미의 Bene Gesserit 카드를 손으로(공개 경로의 손 카드, OQ-010).
+Imperium 묶음 3(04:41~06:12): Guild Bankers(`ReserveCostDiscount`), Carryall(`DoubleBaseHarvestSpice`), Power Play(Subversive Advisor의 상자),
+Test of Humanity(`EachOpponentDiscardsOrLosesDeployedTroop`, Covert Operation 창에 손실 줄), Sardaukar Legion·Scout·Chani(수를 고르는 Reveal 병력 이동,
+병력만 — Commander는 P7), Firm Grip(Solari 화살표 + 고른 진영) 구현. 멈춘 곳: Shifting Allegiances(Agent box의 대상 비용 + 한 진영 2), Other Memory(버림 더미의
+Bene Gesserit 카드를 손으로, OQ-010), The Voice(상대별 다음 배치 봉쇄 상태, 관측 변경). 문서가 말하지 않는 가장자리: 같은 Reveal에서 Guild Bankers를 나중에
+trash해도 이미 연 할인은 남는다(구현).
 - **Uprising Tread in Darkness(확인 필요):** 같은 차례에 Bond가 깨져 뽑기 아이콘이 안 나올 때 상자가 선택형이 되는가(OQ-057 (1)). Gene Manipulation에는
   그렇게 했고(`_WAITING_ICON_BOXES`), Uprising 카드는 사용자 확인 전까지 그대로 둔다(`2a51da4c`).
 
