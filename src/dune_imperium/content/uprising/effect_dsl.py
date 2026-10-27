@@ -1344,14 +1344,22 @@ class EachOpponentDiscardsCard:
 
     ``count``: "each opponent discards two cards" [Reverend Mother Mohiam
     card] -- each opponent picks that many, as many as the hand holds
-    (OQ-118), one opponent after the other.
+    (OQ-118), one opponent after the other. None is one card, so a record
+    printed with one (Covert Operation) carries no count (an entity feature
+    column only the original game's card fills).
     """
 
-    count: int = 1
+    count: int | None = None
 
     def __post_init__(self) -> None:
-        if self.count < 1:
-            raise ValueError("an opponent discards at least one card")
+        if self.count is not None and self.count < 2:
+            raise ValueError("a one-card discard carries no count")
+
+    @property
+    def cards(self) -> int:
+        """How many cards each opponent discards."""
+
+        return self.count or 1
 
 
 @dataclass(frozen=True, slots=True)

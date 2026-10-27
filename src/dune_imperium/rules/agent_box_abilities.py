@@ -915,7 +915,8 @@ def _opponents_decide(
     player, card_id = _subject(dict(context))
     source = agent_card_source(state.round_number, player, card_id)
     match reward:
-        case EachOpponentDiscardsCard(count=count):
+        case EachOpponentDiscardsCard() as discard:
+            count = discard.cards
             # Every opponent is asked, the next seat first (OQ-138, user
             # ruling 2026-10-26, as OQ-131 and Holy War's unit loss): a seat
             # with an empty hand gets the window too and confirms that it
