@@ -198,10 +198,19 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=4,
     ),
+    # App table: cost 4, 2 copies, Fremen, Spice Trade, Reveal 2 Persuasion and
+    # 1 sword. Agent: "[2 spice] -> [3 troops]", an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3] (the rulebook's own arrow example).
     ImperiumCardEntry(
         card=imperium_card("fremen_camp", "Fremen Camp"),
         copies=2,
         acquisition_cost=4,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS,
+        reveal_persuasion=2,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("gene_manipulation", "Gene Manipulation"),

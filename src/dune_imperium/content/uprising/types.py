@@ -330,6 +330,9 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE = (
         "may_pay_one_water_for_troop_and_draw_one"
     )
+    # Fremen Camp: "[2 spice] -> [3 troops]", an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3].
+    MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS = "may_pay_two_spice_for_three_troops"
 
 
 class PersonalCardTrashEffect(StrEnum):

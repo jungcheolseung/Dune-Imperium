@@ -631,6 +631,11 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 GainInfluence(factions=(Faction.SPACING_GUILD,)),
                 GainResources(solari=3),
             ),
+            # Fremen Camp (original game): "[2 spice] -> [3 troops]" -- a paid
+            # arrow, the troops recruited at once [DI p. 9] [FAQ p. 3].
+            _BOX.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS: _pay(
+                PayResources(spice=2), RecruitTroops(3)
+            ),
             # Duncan Idaho (original game): "[1 water] -> [troop] [draw 1
             # card]" -- a paid arrow whose two rewards wait as icons once the
             # water is paid, each its own step (OQ-027 (b), OQ-106).

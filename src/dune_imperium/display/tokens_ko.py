@@ -508,6 +508,9 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE: (
         "{water:1} 지불 가능 {arrow_right} {troop:1}, {draw:1}"
     ),
+    PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS: (
+        "{spice:2} 지불 가능 {arrow_right} {troop:3}"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box

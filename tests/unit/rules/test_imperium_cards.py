@@ -1011,3 +1011,86 @@ def test_fedaykin_death_commando_fremen_bond_gives_three_swords() -> None:
     assert (frame["persuasion"], frame["sword_strength"]) == (1, 3)
     gained = _do(engine, revealed, "gain_reveal_resources")
     assert _do(engine, gained, "finish_reveal").players[0].combat_strength == 2 + 3
+
+
+# --- Fremen Camp ------------------------------------------------------------------
+
+
+def _camp_placed(
+    engine: UprisingRulesEngine, state: GameState, spice: int = 3
+) -> GameState:
+    """Seat 0 sends Fremen Camp to Secure Contract (a Spice Trade space)
+    holding ``spice`` spice."""
+
+    held, _ = _with_card(state, "fremen_camp")
+    seated = _seat(held, resources=Resources(spice=spice))
+    return _place(engine, seated, "secure_contract", "fremen_camp")
+
+
+def test_fremen_camp_matches_the_app_table() -> None:
+    # App attribute table: cost 4, 2 copies, Fremen, Spice Trade, Reveal 2
+    # Persuasion and 1 sword.
+    entry = IMPERIUM_CARDS_BY_ID["fremen_camp"]
+    assert entry.card.name == "Fremen Camp"
+    assert entry.acquisition_cost == 4
+    assert entry.copies == 2
+    assert entry.factions == (Faction.FREMEN,)
+    assert entry.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 1)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:fremen_camp:1") is entry
+
+
+def test_fremen_camp_pays_two_spice_for_three_troops() -> None:
+    """"비용 화살표" [DI p. 16]: the arrow's cost is paid for its reward; two
+    spice buy 3 troops, recruited into the garrison."""
+
+    engine, state = _start()
+    placed = _camp_placed(engine, state)
+    before = placed.players[0]
+    assert "pay_agent_card_spice" in _ids(engine, placed)
+    paid = _do(engine, placed, "pay_agent_card_spice")
+    after = paid.players[0]
+    assert after.resources.spice == before.resources.spice - 2
+    assert after.troops_garrison == before.troops_garrison + 3
+    assert after.troops_supply == before.troops_supply - 3
+
+
+def test_fremen_camp_arrow_is_paid_once() -> None:
+    """"An arrow cost is optional [DI p. 9] and paid once [FAQ p. 3]": with
+    spice for a second payment the arrow is no longer offered."""
+
+    engine, state = _start()
+    placed = _camp_placed(engine, state, spice=6)
+    paid = _do(engine, placed, "pay_agent_card_spice")
+    assert paid.players[0].resources.spice == 4
+    assert "pay_agent_card_spice" not in _ids(engine, paid)
+
+
+def test_fremen_camp_arrow_is_optional() -> None:
+    engine, state = _start()
+    placed = _camp_placed(engine, state)
+    before = placed.players[0]
+    resolved = _do(engine, placed, "resolve_board_effect", effect="resources")
+    assert "pay_agent_card_spice" in _ids(engine, resolved)
+    after = _do(engine, resolved, "finish_agent_turn").players[0]
+    assert after.troops_garrison == before.troops_garrison
+    assert after.resources.spice == before.resources.spice
+
+
+def test_fremen_camp_needs_two_spice_to_pay() -> None:
+    engine, state = _start()
+    assert "pay_agent_card_spice" not in _ids(engine, _camp_placed(engine, state, 1))
+    exact = _camp_placed(engine, state, 2)
+    assert _do(engine, exact, "pay_agent_card_spice").players[0].resources.spice == 0
+
+
+def test_fremen_camp_reveals_two_persuasion_and_one_sword() -> None:
+    engine, state = _start()
+    state, _ = _with_card(state, "fremen_camp", alone=True)
+    frame = _reveal(engine, state)
+    assert frame["persuasion"] == 2
+    assert frame["sword_strength"] == 1

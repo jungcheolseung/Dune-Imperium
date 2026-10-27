@@ -451,6 +451,9 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE: (
             "You may pay 1 water → Recruit 1 troop, Draw 1 card"
         ),
+        PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS: (
+            "You may pay 2 spice → Recruit 3 troops"
+        ),
     }
 )
 
