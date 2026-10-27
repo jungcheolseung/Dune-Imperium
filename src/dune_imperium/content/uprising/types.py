@@ -339,6 +339,8 @@ class PersonalCardAgentEffect(StrEnum):
     # draw icons each judged when it resolves (OQ-027, OQ-028).
     DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO = "draw_two_if_spacing_guild_influence_two"
 
+    # Worm Riders: the spice icon with a 2, "Gain 2 spice".
+    GAIN_TWO_SPICE = "gain_two_spice"
 
 class PersonalCardTrashEffect(StrEnum):
     """Typed effects triggered when a personal card is trashed."""

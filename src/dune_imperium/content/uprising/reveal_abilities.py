@@ -43,8 +43,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     GrantCombatDeployment,
+    HasAlliance,
     HasHighCouncil,
     HasSwordmaster,
+    InfluenceAtLeast,
     RecruitTroops,
     Research,
     RevealCount,
@@ -133,6 +135,12 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         ),
         # Smuggler's Thopter (original game): "1 spice" beside its Persuasion.
         "smugglers_thopter": _reveal(_line(GainResources(spice=1))),
+        # Worm Riders (original game): "Fremen Influence 2: 4 swords" and, on a
+        # line of its own, "Fremen Alliance: 2 swords"; nothing unconditional.
+        "worm_riders": _reveal(
+            _line(RevealSwords(4), condition=InfluenceAtLeast(Faction.FREMEN, 2)),
+            _line(RevealSwords(2), condition=HasAlliance(Faction.FREMEN)),
+        ),
         # Spice Hunter (original game): "Fremen Bond: 1 spice".
         "spice_hunter": _reveal(
             _line(GainResources(spice=1), condition=FactionBond(Faction.FREMEN))
@@ -305,6 +313,8 @@ REVEAL_LINE_CONDITIONS: Final[frozenset[type]] = frozenset(
         GeneticMarkersAtLeast,
         GarrisonedUnitsAtLeast,
         CommandReached,
+        InfluenceAtLeast,
+        HasAlliance,
     }
 )
 REVEAL_LINE_REWARDS: Final[frozenset[type]] = frozenset(

@@ -442,10 +442,20 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_persuasion=1,
         play_data_complete=True,
     ),
+    # App table: cost 6, 2 copies, Fremen, City and Spice Trade, no fixed Reveal
+    # values (tags FremenInfluence, FremenAlliance, ConditionalStrength),
+    # AgentSpice 2. Agent: "2 spice", a plain gain. Reveal: "Fremen Influence 2:
+    # [4 swords]" and, on its own line, "Fremen Alliance: [2 swords]" -- two
+    # independent lines, each judged when resolved (OQ-028); nothing
+    # unconditional.
     ImperiumCardEntry(
         card=imperium_card("worm_riders", "Worm Riders"),
         copies=2,
         acquisition_cost=6,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.GAIN_TWO_SPICE,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("duncan_loyal_blade", "Duncan, Loyal Blade"),

@@ -924,6 +924,8 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ("cards", _line(DrawPersonalCards(1), condition=_GUILD_TWO)),
                 ("cards_second", _line(DrawPersonalCards(1), condition=_GUILD_TWO)),
             ),
+            # Worm Riders (original game): two spice.
+            _BOX.GAIN_TWO_SPICE: _box(GainResources(spice=2)),
         }
     )
 )

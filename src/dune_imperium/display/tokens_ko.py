@@ -515,6 +515,7 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: (
         "{influence_spacing_guild} 2 이상이면: {draw:2}"
     ),
+    PersonalCardAgentEffect.GAIN_TWO_SPICE: "{spice:2}",
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box
@@ -737,6 +738,11 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
         conditions.append(f"{{garrison}}에 부대가 {held.garrison} 이상 있다면")
     if held.command:
         conditions.append("{command} ({persuasion} 6 이상)이면")
+    if held.influence is not None:
+        faction, amount = held.influence
+        conditions.append(f"{{influence_{faction.value}}} {amount} 이상이면")
+    if held.alliance is not None:
+        conditions.append(f"{_faction_name_ko(held.alliance)} {{alliance}}이면")
 
     count = line.faction_count
     per_faction = (

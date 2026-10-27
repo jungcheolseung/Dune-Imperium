@@ -34,8 +34,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     GrantCombatDeployment,
+    HasAlliance,
     HasHighCouncil,
     HasSwordmaster,
+    InfluenceAtLeast,
     RecruitTroops,
     Research,
     RevealCountKind,
@@ -458,6 +460,7 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: (
             "If you have 2 or more Spacing Guild Influence: Draw 2 cards"
         ),
+        PersonalCardAgentEffect.GAIN_TWO_SPICE: "Gain 2 spice",
     }
 )
 
@@ -684,6 +687,8 @@ HANDLED_REVEAL_CONDITIONS: Final[frozenset[type]] = frozenset(
         GeneticMarkersAtLeast,
         GarrisonedUnitsAtLeast,
         CommandReached,
+        InfluenceAtLeast,
+        HasAlliance,
     }
 )
 HANDLED_REVEAL_REWARDS: Final[frozenset[type]] = frozenset(
@@ -716,6 +721,10 @@ class RevealLineConditions:
     markers: int = 0
     garrison: int = 0
     command: bool = False
+    # "Fremen Influence 2" (Worm Riders): a Faction and the Influence it needs.
+    influence: tuple[Faction, int] | None = None
+    # "Fremen Alliance" (Worm Riders).
+    alliance: Faction | None = None
 
 
 def reveal_line_conditions(line: RevealLine) -> RevealLineConditions:
@@ -742,6 +751,10 @@ def reveal_line_conditions(line: RevealLine) -> RevealLineConditions:
                 found["garrison"] = count
             case CommandReached():
                 found["command"] = True
+            case InfluenceAtLeast(faction=faction, amount=amount):
+                found["influence"] = (faction, amount)
+            case HasAlliance(faction=faction) if faction is not None:
+                found["alliance"] = faction
             case _:
                 raise TypeError(f"{condition!r} is not a Reveal line condition")
     return RevealLineConditions(**found)  # type: ignore[arg-type]
@@ -782,6 +795,12 @@ def reveal_effect_text(line: RevealLine) -> str:
         conditions.append(f"you have {held.garrison} or more garrisoned units")
     if held.command:
         conditions.append("Command (6+ Persuasion)")
+    if held.influence is not None:
+        faction, amount = held.influence
+        name = _faction_name(faction)
+        conditions.append(f"you have {amount} or more {name} Influence")
+    if held.alliance is not None:
+        conditions.append(f"you have the {_faction_name(held.alliance)} Alliance")
 
     count = line.faction_count
     per_faction = (

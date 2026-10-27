@@ -28,11 +28,14 @@ from dune_imperium.core import (
     PlayerDecision,
     Resources,
 )
+from dune_imperium.display.tokens import reveal_effect_text
+from dune_imperium.display.tokens_ko import reveal_effect_text_ko
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.reveal_lines import reveal_lines
 
 CONFIG = RulesetConfig(base_game=BaseGame.IMPERIUM, first_player_seat_zero=True)
 LEADERS = (
@@ -1814,3 +1817,113 @@ def test_smugglers_thopter_reveals_one_persuasion_and_one_spice() -> None:
     assert (frame["persuasion"], frame["sword_strength"]) == (1, 0)
     gained = _do(engine, revealed, "gain_reveal_resources")
     assert gained.players[0].resources.spice == 1
+
+
+# --- Worm Riders ------------------------------------------------------------------
+
+
+def test_worm_riders_matches_the_app_table() -> None:
+    # App attribute table: cost 6, 2 copies, Fremen, City and Spice Trade, no
+    # fixed Reveal values (tags FremenInfluence, FremenAlliance,
+    # ConditionalStrength); AgentSpice 2.
+    entry = IMPERIUM_CARDS_BY_ID["worm_riders"]
+    assert entry.card.name == "Worm Riders"
+    assert entry.acquisition_cost == 6
+    assert entry.copies == 2
+    assert entry.factions == (Faction.FREMEN,)
+    assert entry.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is PersonalCardAgentEffect.GAIN_TWO_SPICE
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:worm_riders:1") is entry
+
+
+def test_worm_riders_agent_box_gains_two_spice() -> None:
+    """P0 sweep: "AGENT: 2 spice"; a plain, mandatory gain."""
+
+    engine, state = _start()
+    state, _ = _with_card(state, "worm_riders")
+    state = _seat(state, resources=Resources(water=2))
+    placed = _place(engine, state, "imperium_research_station", "worm_riders")
+    before = placed.players[0].resources
+    assert "finish_agent_turn" not in _ids(engine, placed)
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    assert resolved.players[0].resources.spice == before.spice + 2
+
+
+def _riders_swords(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    *,
+    fremen: int = 0,
+    alliance: bool = False,
+) -> object:
+    """The sword strength Worm Riders reveals for a seat with ``fremen``
+    Fremen Influence (and the Fremen Alliance when ``alliance``)."""
+
+    held, _ = _with_card(state, "worm_riders", alone=True)
+    held = _seat(
+        held,
+        influence=Influence(fremen=fremen),
+        alliance_faction_ids=("fremen",) if alliance else (),
+    )
+    return dict(_do(engine, held, "reveal_turn").decision_stack[-1].context)[
+        "sword_strength"
+    ]
+
+
+def test_worm_riders_reveals_nothing_without_influence_or_alliance() -> None:
+    """Nothing of its Reveal box is unconditional (P0 sweep): with 1 Fremen
+    Influence and no Alliance the card reveals no Persuasion and no swords."""
+
+    engine, state = _start()
+    assert _riders_swords(engine, state, fremen=1) == 0
+    held, _ = _with_card(state, "worm_riders", alone=True)
+    frame = _reveal(engine, _seat(held, influence=Influence(fremen=1)))
+    assert frame["persuasion"] == 0
+
+
+def test_worm_riders_fremen_influence_two_gives_four_swords() -> None:
+    """"Influence 조건" [DI p. 16] (imperium-base.md 11): the first line holds
+    at 2 Fremen Influence, without the Alliance."""
+
+    engine, state = _start()
+    assert _riders_swords(engine, state, fremen=2) == 4
+    assert _riders_swords(engine, state, fremen=3) == 4
+
+
+def test_worm_riders_fremen_alliance_adds_two_swords() -> None:
+    """Two independent lines, each judged when resolved (OQ-028): the Alliance
+    line adds 2 to the Influence line's 4. A seat holds the Alliance only at 4
+    Influence or more, but each line is judged on its own."""
+
+    engine, state = _start()
+    assert _riders_swords(engine, state, fremen=4, alliance=True) == 4 + 2
+    assert _riders_swords(engine, state, fremen=1, alliance=True) == 2
+
+
+def test_worm_riders_swords_count_with_a_troop_in_the_conflict() -> None:
+    """"Conflict에 troop이 하나도 없으면 0" [DI p. 11]: the 4 swords join the
+    troop's 2 once a troop stands in the Conflict, and are worth nothing
+    without one."""
+
+    engine, state = _start()
+    for conflict, expected in ((1, 2 + 4), (0, 0)):
+        held, _ = _with_card(state, "worm_riders", alone=True)
+        held = _seat(held, influence=Influence(fremen=2))
+        held = _with_troops(held, 0, garrison=0, conflict=conflict)
+        revealed = _do(engine, held, "reveal_turn")
+        finished = _do(engine, revealed, "finish_reveal")
+        assert finished.players[0].combat_strength == expected
+
+
+def test_worm_riders_reveal_text_names_its_two_conditions() -> None:
+    lines = reveal_lines(IMPERIUM_CARDS_BY_ID["worm_riders"])
+    assert [reveal_effect_text(line) for line in lines] == [
+        "If you have 2 or more Fremen Influence: +4 swords",
+        "If you have the Fremen Alliance: +2 swords",
+    ]
+    assert [reveal_effect_text_ko(line) for line in lines] == [
+        "{influence_fremen} 2 이상이면: +{sword:4}",
+        "프레멘 {alliance}이면: +{sword:2}",
+    ]
