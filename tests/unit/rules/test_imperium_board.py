@@ -220,7 +220,8 @@ def test_the_spacing_guild_and_fremen_fourth_spaces() -> None:
 def test_the_mentat_space_draws_and_takes_the_resting_mentat() -> None:
     # "Draw a card. If the Mentat is here, take it" [DI p. 18]; "this round,
     # you may use it as one of your Agents".
-    state = _seat(_start(), resources=Resources(solari=2))
+    # A Dagger (Landsraad) in hand: the setup deal moves as the decks fill.
+    state = _seat(_with_card(_start(), "dagger"), resources=Resources(solari=2))
     placed = _place(state, "mentat")
     assert placed.players[0].resources.solari == 0
     assert _effects(placed) == {"cards", "mentat"}
@@ -236,7 +237,7 @@ def test_the_mentat_space_draws_and_takes_the_resting_mentat() -> None:
 def test_a_taken_mentat_leaves_only_the_draw_on_its_space() -> None:
     # The Mentat is taken only from its space (imperium-base.md 9); a seat
     # sending an Agent there while another holds it only draws (OQ-124).
-    state = _seat(_start(), resources=Resources(solari=2))
+    state = _seat(_with_card(_start(), "dagger"), resources=Resources(solari=2))
     state = _seat(state, 2, mentat=True, agents_available=3)
     placed = _place(state, "mentat")
     assert _effects(placed) == {"cards"}
@@ -325,7 +326,7 @@ def test_foldspace_is_never_bought_in_the_reveal_shop() -> None:
 
 def test_the_original_high_council_and_swordmaster_are_once_per_game() -> None:
     # "only once per game" [DI pp. 17-18].
-    state = _seat(_start(), resources=Resources(solari=20))
+    state = _seat(_with_card(_start(), "dagger"), resources=Resources(solari=20))
     spaces = {
         dict(placement.arguments)["space_id"]
         for placement in executable_placements(state, 0)
