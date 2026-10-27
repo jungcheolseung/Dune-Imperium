@@ -71,9 +71,10 @@ def test_every_record_names_a_card_with_its_play_data() -> None:
     assert set(REVEAL_GAIN_ABILITIES) <= set(cards)
     assert all(cards[card_id] for card_id in REVEAL_GAIN_ABILITIES)
     # 51 Uprising-family records, the original game's The Spice Must Flow and
-    # the original Imperium cards' own (stage P3: Crysknife, Duncan Idaho).
-    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 2
-    assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == 55 + 1 + 2
+    # the original Imperium cards' own (stage P3: Crysknife, Duncan Idaho,
+    # Fedaykin Death Commando).
+    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 3
+    assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == 55 + 1 + 3
 
 
 def test_reveal_gain_records_are_automatic_lines() -> None:

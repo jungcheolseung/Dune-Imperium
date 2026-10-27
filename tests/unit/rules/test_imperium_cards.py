@@ -890,3 +890,124 @@ def test_duncan_idaho_reveals_one_water_and_two_swords() -> None:
     assert gained.players[0].resources.water == water + 1
     finished = _do(engine, gained, "finish_reveal")
     assert finished.players[0].combat_strength == 2 + 2
+
+
+# --- Fedaykin Death Commando ------------------------------------------------------
+
+
+def test_fedaykin_death_commando_matches_the_app_table() -> None:
+    # App attribute table: cost 3, 2 copies, Fremen, City and Spice Trade,
+    # Reveal 1 Persuasion and no fixed swords (tags FremenBond,
+    # ConditionalStrength).
+    entry = IMPERIUM_CARDS_BY_ID["fedaykin_death_commando"]
+    assert entry.card.name == "Fedaykin Death Commando"
+    assert entry.acquisition_cost == 3
+    assert entry.copies == 2
+    assert entry.factions == (Faction.FREMEN,)
+    assert entry.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is PersonalCardAgentEffect.TRASH_PERSONAL_CARD
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.play_data_complete
+    assert personal_card_for_instance("imperium:fedaykin_death_commando:1") is entry
+
+
+def _commando_placed(engine: UprisingRulesEngine, state: GameState) -> GameState:
+    held, _ = _with_card(state, "fedaykin_death_commando")
+    seated = _seat(held, resources=Resources(water=2))
+    return _place(
+        engine, seated, "imperium_research_station", "fedaykin_death_commando"
+    )
+
+
+def _trash_rows(engine: UprisingRulesEngine, state: GameState) -> set[object]:
+    return {
+        dict(action.arguments)["card_id"]
+        for action in _wholes(engine, state)
+        if action.action_id == "trash_agent_card"
+    }
+
+
+def test_fedaykin_death_commando_may_trash_a_card_of_the_hand() -> None:
+    """"Trash(...비용이거나 카드가 자기를 trash하라고 할 때만 의무)" (imperium-base.md
+    11, [DI p. 16]): the black trash icon is optional. Its rows are the hand's
+    cards and the card itself in play."""
+
+    engine, state = _start()
+    placed = _commando_placed(engine, state)
+    owner = placed.players[0]
+    rows = _trash_rows(engine, placed)
+    assert rows == {*owner.hand, "imperium:fedaykin_death_commando:0"}
+    victim = owner.hand[0]
+    trashed = _do(engine, placed, "trash_agent_card", card_id=victim)
+    after = trashed.players[0]
+    assert victim not in after.hand
+    assert victim in after.trashed
+    assert "imperium:fedaykin_death_commando:0" in after.in_play
+    assert not _trash_rows(engine, trashed)
+
+
+def test_fedaykin_death_commando_may_trash_itself() -> None:
+    """The card may trash itself: it is the box's own icon, so nothing else of
+    its box is lost (imperium-base.md 16, OQ-022's own-effect case; OQ-027)."""
+
+    engine, state = _start()
+    placed = _commando_placed(engine, state)
+    me = "imperium:fedaykin_death_commando:0"
+    trashed = _do(engine, placed, "trash_agent_card", card_id=me)
+    after = trashed.players[0]
+    assert me in after.trashed
+    assert me not in after.in_play
+    assert not _trash_rows(engine, trashed)
+
+
+def test_fedaykin_death_commando_trash_is_optional() -> None:
+    engine, state = _start()
+    placed = _commando_placed(engine, state)
+    before = placed.players[0]
+    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    assert _trash_rows(engine, resolved)
+    finished = _do(engine, resolved, "finish_agent_turn")
+    assert finished.players[0].trashed == before.trashed
+
+
+def _commando_revealed(
+    engine: UprisingRulesEngine, state: GameState, *others: str
+) -> GameState:
+    """Seat 0 reveals Fedaykin Death Commando with the other cards, one troop
+    already in the Conflict."""
+
+    held, instance = _with_card(state, "fedaykin_death_commando", alone=True)
+    held = _seat(held, hand=(instance, *others))
+    held = _with_troops(held, 0, garrison=0, conflict=1)
+    return _do(engine, held, "reveal_turn")
+
+
+def test_fedaykin_death_commando_reveals_one_persuasion_and_no_bond_swords() -> None:
+    engine, state = _start()
+    # A starter card has no Faction, so it makes no Bond; its own Reveal
+    # values add to the card's.
+    starter = state.players[0].hand[0]
+    other = personal_card_for_instance(starter)
+    for others, persuasion, swords in (
+        ((), 1, 0),
+        ((starter,), 1 + other.reveal_persuasion, other.reveal_strength),
+    ):
+        revealed = _commando_revealed(engine, state, *others)
+        frame = dict(revealed.decision_stack[-1].context)
+        assert (frame["persuasion"], frame["sword_strength"]) == (persuasion, swords)
+        # No Bond: only the troop in the Conflict and the other card's swords.
+        finished = _do(engine, revealed, "finish_reveal")
+        assert finished.players[0].combat_strength == 2 + swords
+
+
+def test_fedaykin_death_commando_fremen_bond_gives_three_swords() -> None:
+    """"Fremen Bond = another Fremen card in play" [DI p. 16] (imperium-base.md
+    11), judged when the line resolves (OQ-028): with Fedaykin Stilltent also
+    revealed the card's 3 swords join the troop's 2."""
+
+    engine, state = _start()
+    revealed = _commando_revealed(engine, state, "imperium:fedaykin_stilltent:0")
+    frame = dict(revealed.decision_stack[-1].context)
+    assert (frame["persuasion"], frame["sword_strength"]) == (1, 3)
+    gained = _do(engine, revealed, "gain_reveal_resources")
+    assert _do(engine, gained, "finish_reveal").players[0].combat_strength == 2 + 3

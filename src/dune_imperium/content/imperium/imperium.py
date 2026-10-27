@@ -178,10 +178,20 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_strength=2,
         play_data_complete=True,
     ),
+    # App table: cost 3, 2 copies, Fremen, City and Spice Trade, Reveal 1
+    # Persuasion (tag ConditionalStrength). Agent: the black trash icon, "You
+    # may trash a card" (hand, discard pile or in play, itself included; an
+    # optional icon, [DI p. 16] [FAQ p. 3]). Reveal: "Fremen Bond: 3 swords" --
+    # another Fremen card in play [DI p. 16], judged at resolution (OQ-028).
     ImperiumCardEntry(
         card=imperium_card("fedaykin_death_commando", "Fedaykin Death Commando"),
         copies=2,
         acquisition_cost=3,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=imperium_card("firm_grip", "Firm Grip"),

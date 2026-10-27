@@ -116,6 +116,10 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
                 condition=FactionBond(Faction.FREMEN),
             )
         ),
+        # Fedaykin Death Commando (original game): "Fremen Bond: 3 swords".
+        "fedaykin_death_commando": _reveal(
+            _line(RevealSwords(3), condition=FactionBond(Faction.FREMEN))
+        ),
         # Duncan Idaho (original game): "1 water" beside its printed swords.
         "duncan_idaho_card": _reveal(_line(GainResources(water=1))),
         # Junction Headquarters.
