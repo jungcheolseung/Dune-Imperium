@@ -6,7 +6,7 @@ import pytest
 
 from dune_imperium.agents import HeuristicAgent
 from dune_imperium.agents.heuristic_agent import score_action, turn_end_as_decline
-from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
+from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.core import GamePhase
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.observation import PlayerView
@@ -30,7 +30,9 @@ def _imperium_instance_ids_by_cost() -> tuple[str, str]:
     priced = sorted(
         (
             entry
-            for entry in IMPERIUM_CARDS_BY_ID.values()
+            # Uprising's own cards (the merged table also lists the original
+            # game's, some with only their identity entry in stage P3).
+            for entry in IMPERIUM_CARDS
             if entry.acquisition_cost is not None
         ),
         key=lambda entry: (entry.acquisition_cost or 0, entry.card.card_id),

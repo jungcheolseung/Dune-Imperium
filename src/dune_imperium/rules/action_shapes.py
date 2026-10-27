@@ -842,6 +842,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
             # effect they answer (``of``).
             _V.DECLINE,
             _V.CONFIRM_EMPTY,
+            # Stage P3: the original game's Helena Richese's Manipulate
+            # (an Imperium Row card set aside), once its deck has cards.
+            _V.SET_ASIDE,
         )
     },
     # A target row picks one target of the effect its seat picked.
