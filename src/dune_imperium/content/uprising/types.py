@@ -322,6 +322,19 @@ class PersonalCardAgentEffect(StrEnum):
     )
     # Gun Thopter: "Each opponent loses one garrisoned troop."
     EACH_OPPONENT_LOSES_GARRISON_TROOP = "each_opponent_loses_garrison_troop"
+    # Crysknife: the Solari icon alone, "Gain 1 Solari".
+    GAIN_ONE_SOLARI = "gain_one_solari"
+    # Opulence: the Solari icon alone, "Gain 3 Solari".
+    GAIN_THREE_SOLARI = "gain_three_solari"
+    # Duncan Idaho: "[1 water] -> [troop] [draw 1 card]"; the arrow cost is
+    # optional and paid once [DI p. 9] [FAQ p. 3], and the troop and the
+    # hidden draw are separate steps (OQ-027, OQ-106).
+    MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE = (
+        "may_pay_one_water_for_troop_and_draw_one"
+    )
+    # Fremen Camp: "[2 spice] -> [3 troops]", an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3].
+    MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS = "may_pay_two_spice_for_three_troops"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -472,6 +485,12 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # deploy a troop from your garrison to the Conflict" -- the deploy half of
     # Shadout Mapes' "deploy or retreat".
     MAY_DEPLOY_ONE_TROOP = "may_deploy_one_troop"
+    # Bene Gesserit Sister: "[2 Persuasion] -OR- [2 swords]", a printed -OR-
+    # the owner must settle (a mandatory choice, like Delivery Logistics').
+    CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH = "choose_two_persuasion_or_two_strength"
+    # Opulence: "[6 Solari] -> [1 Victory Point]", an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3].
+    MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT = "may_pay_six_solari_for_victory_point"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -495,7 +514,11 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
 # outside every Uprising catalog, whose resume templates list one per choice
 # effect of the Uprising family only.
 IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = frozenset(
-    {PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP}
+    {
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,
+        PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
+        PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT,
+    }
 )
 
 # Choice effects added by Immortality; like the Bloodlines set their

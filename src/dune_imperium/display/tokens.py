@@ -447,6 +447,14 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.EACH_OPPONENT_LOSES_GARRISON_TROOP: (
             "Each opponent loses one garrisoned troop"
         ),
+        PersonalCardAgentEffect.GAIN_ONE_SOLARI: "Gain 1 solari",
+        PersonalCardAgentEffect.GAIN_THREE_SOLARI: "Gain 3 solari",
+        PersonalCardAgentEffect.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE: (
+            "You may pay 1 water → Recruit 1 troop, Draw 1 card"
+        ),
+        PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS: (
+            "You may pay 2 spice → Recruit 3 troops"
+        ),
     }
 )
 
@@ -600,6 +608,12 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             # The original game's Imperium cards (stage P3).
             PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP: (
                 "You may deploy 1 troop from your garrison to the Conflict"
+            ),
+            PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: (
+                "Choose one: 2 Persuasion / 2 swords"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
+                "You may pay 6 solari → Gain 1 Victory Point"
             ),
             PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
                 "Choose one: Gain 5 solari / "

@@ -1436,6 +1436,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     # Baron's secret Factions): only in its catalog, so Uprising's rows stay
     # what they were.
     if content.base_game is BaseGame.IMPERIUM:
+        # Bene Gesserit Sister's "2 Persuasion OR 2 swords" (stage P3).
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in (
+                "gain_two_reveal_persuasion",
+                "gain_two_reveal_swords",
+                "pay_reveal_solari_for_vp",
+            )
+        )
         templates.extend(
             ActionTemplate(
                 action_id="choose_masterstroke_faction",

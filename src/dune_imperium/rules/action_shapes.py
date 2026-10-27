@@ -651,6 +651,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "advance_reveal_tleilaxu": _row(_V.ADVANCE, _S.REVEAL_CARD, variant="tleilaxu"),
     "advance_reveal_research": _row(_V.ADVANCE, _S.REVEAL_CARD, variant="research"),
     "gain_reveal_persuasion": _row(_V.GAIN, _S.REVEAL_CARD, variant="persuasion"),
+    "gain_two_reveal_persuasion": _row(
+        _V.GAIN, _S.REVEAL_CARD, variant="two_persuasion"
+    ),
+    "gain_two_reveal_swords": _row(_V.GAIN, _S.REVEAL_CARD, variant="two_swords"),
     "take_reveal_contract": _row(_V.TAKE, _S.REVEAL_CARD, variant="contract"),
     "gain_five_reveal_solari": _row(_V.GAIN, _S.REVEAL_CARD, variant="five_solari"),
     "take_high_council_from_reveal": _row(
@@ -684,6 +688,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.LOSE_INFLUENCE, _S.REVEAL_CARD, _T.FACTION
     ),
     "pay_reveal_spice_influence": _row(_V.PAY, _S.REVEAL_CARD, _T.FACTION),
+    "pay_reveal_solari_for_vp": _row(_V.PAY, _S.REVEAL_CARD, variant="solari_for_vp"),
     "pay_reveal_water_for_sandworm": _row(
         _V.PAY, _S.REVEAL_CARD, variant="water_for_sandworm"
     ),

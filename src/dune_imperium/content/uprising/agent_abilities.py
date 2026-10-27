@@ -217,6 +217,10 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
         {
             # --- One action: gains -------------------------------------------
             _BOX.GAIN_TWO_SOLARI: _box(GainResources(solari=2)),
+            # Crysknife (original game): one Solari.
+            _BOX.GAIN_ONE_SOLARI: _box(GainResources(solari=1)),
+            # Opulence (original game): three Solari.
+            _BOX.GAIN_THREE_SOLARI: _box(GainResources(solari=3)),
             _BOX.GAIN_ONE_SPICE: _box(GainResources(spice=1)),
             _BOX.GAIN_WATER: _box(GainResources(water=1)),
             _BOX.RECRUIT_TWO_TROOPS: _box(RecruitTroops(2)),
@@ -628,6 +632,25 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 PayResources(spice=2),
                 GainInfluence(factions=(Faction.SPACING_GUILD,)),
                 GainResources(solari=3),
+            ),
+            # Fremen Camp (original game): "[2 spice] -> [3 troops]" -- a paid
+            # arrow, the troops recruited at once [DI p. 9] [FAQ p. 3].
+            _BOX.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS: _pay(
+                PayResources(spice=2), RecruitTroops(3)
+            ),
+            # Duncan Idaho (original game): "[1 water] -> [troop] [draw 1
+            # card]" -- a paid arrow whose two rewards wait as icons once the
+            # water is paid, each its own step (OQ-027 (b), OQ-106).
+            _BOX.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(RecruitTroops(1),), costs=(PayResources(water=1),)
+                    ),
+                    _line(DrawPersonalCards(1)),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("troops", "cards"),
             ),
             # --- One action with follow-ups for the opponents (composed A3g) -----
             # Covert Operation: "Each opponent discards a card" -- one frame per

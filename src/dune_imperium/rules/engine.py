@@ -285,6 +285,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_influence_loss,
     apply_reveal_persuasion_or_contract,
     apply_reveal_sandworm_action,
+    apply_reveal_solari_vp,
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
     apply_reveal_troop_move,
@@ -878,6 +879,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "command_acquire_row_card": apply_reveal_command_acquisition,
     "gain_reveal_persuasion": apply_reveal_persuasion_or_contract,
     "take_reveal_contract": apply_reveal_persuasion_or_contract,
+    # Bene Gesserit Sister (original game): "2 Persuasion OR 2 swords".
+    "gain_two_reveal_persuasion": apply_reveal_persuasion_or_contract,
+    "gain_two_reveal_swords": apply_reveal_persuasion_or_contract,
     "play_turn_start_card": apply_turn_start_card,
     "complete_contract_by_card": apply_agent_card_contract_completion,
     "choose_skill": apply_skill_choice,
@@ -893,6 +897,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_reveal_water_for_sandworm": apply_reveal_sandworm_action,
     "decline_reveal_sandworm": apply_reveal_sandworm_action,
     "pay_reveal_spice_influence": apply_reveal_spice_influence,
+    # Opulence (original game): "6 Solari -> 1 Victory Point".
+    "pay_reveal_solari_for_vp": apply_reveal_solari_vp,
     "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
     # Immortality Reveal choices (For Humanity, Shadout Mapes, Tleilaxu
     # Surgeon)
