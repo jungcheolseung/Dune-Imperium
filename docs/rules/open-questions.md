@@ -171,6 +171,7 @@
 | [OQ-143](#oq-143--bindu-suspension으로-차례를-이어-간-뒤-다른-차례-시작-카드-원판) | Bindu Suspension으로 차례를 이어 간 뒤 다른 차례 시작 카드 (원판) | `DECIDED` |
 | [OQ-144](#oq-144--double-cross의-supply-배치와-sardaukar-commander-원판--bloodlines) | Double Cross의 supply 배치와 Sardaukar Commander (원판 + Bloodlines) | `DECIDED` |
 | [OQ-145](#oq-145--덱-위에-앞면으로-놓은-카드는-누가-아는가-원판--immortality) | 덱 위에 앞면으로 놓은 카드는 누가 아는가 (원판 + Immortality) | `DECIDED` |
+| [OQ-146](#oq-146--kwisatz-haderach의-from-anywhere와-conflict에-있는-into-the-fray의-agent-원판--bloodlines) | Kwisatz Haderach의 "from anywhere"와 Conflict에 있는 Into the Fray의 Agent (원판 + Bloodlines) | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3112,7 +3113,7 @@
 
 ## OQ-146 — Kwisatz Haderach의 "from anywhere"와 Conflict에 있는 Into the Fray의 Agent (원판 + Bloodlines)
 
-- 상태: `OPEN` (2026-10-28, P3 Codex 독립 리뷰의 질문; 사용자 확인 대기)
+- 상태: `DECIDED` (2026-10-28 사용자 판정 (가), 조정자 경유; 디자이너 판정 OQ-037 (d)의 연장인 project convention)
 - 인쇄: Kwisatz Haderach "Send one of your Agents from anywhere to ANY board space (even if occupied)." `[Kwisatz Haderach card]`(앱 문구).
   Into the Fray "You may take the Agent you sent this turn and deploy it to the Conflict as a 2 strength unit that can't be retreated."
   `[Duncan Idaho card]`.
@@ -3130,4 +3131,6 @@
 - 추천: **(가).** 디자이너 판정이 그 Agent를 "자신의 Agent"로 보고 recall 효과 넷이 모두 넣는다. "from anywhere"는 자리를 제한하지 않는다.
 - 같이 볼 공식 문장(다른 질문): "When grafted to Kwisatz Haderach, you still send only one Agent on your turn (though you draw two cards)."
   `[FAQ p. 2]`(Ghola 항목) — 원판 + Immortality의 graft는 P7([base-game-and-ix-plan.md](../base-game-and-ix-plan.md) 16.10 9).
+- 판정(2026-10-28 23:2x 사용자, 조정자 경유): **(가)** — "OQ-146 이건 (가) 가 맞다. 소환도 되는데 퀴사츠 헤더락도 가능하지." Conflict에 있는
+  Into the Fray의 Agent도 Kwisatz Haderach의 출발점이고, 옮기면 유닛으로서 Conflict를 떠난다(recall과 같은 처리, 전투력 갱신).
 - 구현: 판정대로 P7(원판 + Bloodlines를 여는 단계)에서.

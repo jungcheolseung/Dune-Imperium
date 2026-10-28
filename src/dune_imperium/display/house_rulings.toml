@@ -2091,3 +2091,13 @@ title = "Double Cross deploys a troop from the supply, never a Commander"
 ruling_ko = "Double Cross가 공급처에서 교전 칸으로 내보내는 것은 병력 하나뿐이고 사다우카 지휘관은 아니다. 공급처의 지휘관은 2 솔라리로 소집하는 길로만 나온다. 상대가 잃는 쪽은 상대가 교전 칸의 유닛 가운데 고르며 지휘관도 고를 수 있다."
 ruling = "Double Cross deploys one troop from your supply to the Conflict, never a Sardaukar Commander: a Commander in the supply comes out only through its 2 Solari recruit. The opponent who loses a unit chooses it among its units in the Conflict, a Commander included."
 names = ["Double Cross"]
+
+[[ruling]]
+oq = "OQ-146"
+group = "project"
+game = "base_ix"
+title_ko = "Kwisatz Haderach는 교전 칸의 에이전트도 옮긴다"
+title = "Kwisatz Haderach may move the Agent in the Conflict"
+ruling_ko = "전투 속으로로 교전 칸에 간 에이전트도 여전히 자기 에이전트라서, Kwisatz Haderach의 \"어디에 있든\"에 든다. 옮기면 그 에이전트는 교전 칸을 떠나 고른 칸으로 가고 전투력에서 빠진다. 제국 특권으로 소환할 때와 같다."
+ruling = "An Agent sent to the Conflict with Into the Fray is still one of your Agents, so Kwisatz Haderach's \"from anywhere\" includes it. Moved, it leaves the Conflict for the chosen space and no longer adds strength, as when Imperial Privilege recalls it."
+names = ["Kwisatz Haderach"]

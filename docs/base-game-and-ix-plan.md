@@ -1037,7 +1037,9 @@ Ghidra는 launch.sh 대신 JDK 25로 직접 띄워 `-Duser.home`·`-Djava.io.tmp
 
 8. **Kwisatz Haderach의 자기 Agent 둘(P7):** 원판에서 회수 줄은 고쳤다(`761cba10`). Uprising의 Into the Fray(`leader_abilities.py`, 칸 id로 다
    지움)와 Immortality의 Twisted Mentat(같은 칸 줄 겹침)는 원판 카드와 섞이는 P7에서 같은 셈으로 고친다. Kwisatz가 Conflict의 Agent(Into the Fray)를
-   옮길 수 있는가("from anywhere")는 [OQ-146](rules/open-questions.md#oq-146--kwisatz-haderach의-from-anywhere와-conflict에-있는-into-the-fray의-agent-원판--bloodlines)(추천 (가) 포함, 사용자 확인 대기), 구현은 P7.
+   옮길 수 있는가("from anywhere")는 [OQ-146](rules/open-questions.md#oq-146--kwisatz-haderach의-from-anywhere와-conflict에-있는-into-the-fray의-agent-원판--bloodlines) (가)로
+   정해졌다(2026-10-28 사용자 "소환도 되는데 퀴사츠 헤더락도 가능하지"). P7 할 일: `_placements_for_card`의 출발점과 `_placing_owner`에 Conflict의
+   Agent(`agent_in_conflict`)를 넣고, 옮기면 OQ-037 (d)의 recall처럼 유닛으로서 Conflict를 떠나게(전투력 갱신) 하며 테스트를 둔다.
 
 9. **원판 카드의 graft(P7, 원판 + Immortality):** 공식 판정 셋이 원판 카드를 이름한다 — "Ghola — When grafted to Carryall, you get four times the base
    spice you harvest with your Agent. When grafted to Kwisatz Haderach, you still send only one Agent on your turn (though you draw two cards)."
