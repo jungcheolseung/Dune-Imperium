@@ -11,6 +11,12 @@ was waiting for instead). See docs/human-records.md.
 (``records.problems``): ``check`` resolves every position on this engine,
 ``score`` asks agents for them.
 
+``convert`` converts saves and suites to this engine's codec into an archive
+folder (``records.convert``): a byte copy of each original, its converted
+file, manifests of both and the list of copies that would put the converted
+files in place. It writes nothing outside that folder, and nothing at all
+when a record cannot be converted without hiding what is wrong with it.
+
 ``corpus`` reads a record corpus (``records.corpus``): ``list`` the corpora,
 the ``keys`` of one with how many records and occurrences each has,
 ``pick`` records by key patterns, optionally ``--export``-ing them as save
@@ -35,6 +41,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.decisions import ChanceDecision, Decision
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.paths import PROJECT_ROOT, SAVES_DIR
+from dune_imperium.records.convert import convert_files
 from dune_imperium.records.corpus import (
     CORPUS_ROOT,
     DEFAULT_WINDOW,
@@ -50,6 +57,7 @@ from dune_imperium.records.corpus import (
 )
 from dune_imperium.records.migration import MigratedRecord, migrate_record
 from dune_imperium.records.problems import (
+    AI_MISTAKES_SUITE,
     DEFAULT_SUITE,
     Resolved,
     answer,
@@ -82,6 +90,30 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     problems.add_argument("--seed", type=int, default=0)
     problems.add_argument("--json", type=Path, help="write every answer here")
+    convert = sub.add_parser(
+        "convert", help="convert saves and suites to this codec into an archive"
+    )
+    convert.add_argument("--out", type=Path, required=True, help="a new folder")
+    convert.add_argument("--saves-dir", type=Path, default=SAVES_DIR)
+    convert.add_argument(
+        "--suite",
+        type=Path,
+        action="append",
+        help="a human problem suite (default: the two default suites)",
+    )
+    convert.add_argument(
+        "--root",
+        type=Path,
+        default=PROJECT_ROOT,
+        help="the project folder the archive's paths are under",
+    )
+    convert.add_argument(
+        "--recapture",
+        action="append",
+        default=[],
+        metavar="FIELD",
+        help="a seat field a suite's judged positions may differ in (re-captured)",
+    )
     _add_corpus_parser(sub)
     return parser
 
@@ -169,7 +201,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _problems(args)
     if args.command == "corpus":
         return _corpus(args)
+    if args.command == "convert":
+        return _convert(args)
     return _check(args.saves_dir, every_save=args.every_save)
+
+
+def _convert(args: argparse.Namespace) -> int:
+    suites = (
+        args.suite
+        if args.suite is not None
+        else [path for path in (DEFAULT_SUITE, AI_MISTAKES_SUITE) if path.exists()]
+    )
+    saves = sorted(args.saves_dir.glob("*.json"))
+    try:
+        done = convert_files(
+            saves,
+            suites,
+            args.out,
+            root=args.root,
+            recapture=frozenset(args.recapture),
+        )
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"convert: {error}") from None
+    print(f"{args.out} (this engine: codec v{ACTION_CODEC_VERSION})")
+    for item in done:
+        print(f"  {item.path}: {item.summary}")
+    print(f"wrote {len(done)} files; the copies to make: {args.out / 'swap-plan.md'}")
+    return 0
 
 
 # The engine trees a corpus names (scripts/records/corpus_generate.py).
