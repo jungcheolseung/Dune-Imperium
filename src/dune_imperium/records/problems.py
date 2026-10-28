@@ -149,6 +149,9 @@ _LAPSED_REFUSALS: Final = frozenset(
     {OPTIONAL_REFUSAL_DROPPED, TURN_ROW_REFUSAL_DROPPED}
 )
 _TURN_ENDS: Final = frozenset({"finish_agent_turn", "finish_reveal"})
+# Why a problem does not resolve when the engine reaches its position with
+# other seat fields than it was judged with (``_matches``).
+POSITION_DIFFERS: Final = "the position differs from the judged one"
 
 
 def _plain(value: object) -> Any:
@@ -188,6 +191,36 @@ def position_state(state: GameState) -> dict[str, Any]:
             entry[zone] = sorted(entry[zone], key=repr)
         players.append(entry)
     return {"round": state.round_number, "players": players}
+
+
+def judged_differences(judged: Mapping[str, Any], state: GameState) -> tuple[str, ...]:
+    """Every field of the snapshot ``judged`` that ``state`` no longer holds.
+
+    ``round`` or ``players[i].<field>``, each once, in the snapshot's order;
+    like ``_matches`` only the snapshot's own keys count. Where ``_matches``
+    stops at the first difference, this names them all, so a conversion
+    (``records.convert``) can tell a difference it was asked to take
+    (OQ-145's ``hand_public``) from any other."""
+
+    now = position_state(state)
+    found: list[str] = []
+    for key, value in judged.items():
+        if key != "players":
+            if key not in now or _matches(value, now[key]) is not None:
+                found.append(key)
+            continue
+        seats = now.get("players")
+        for seat, fields in enumerate(value):
+            if not isinstance(seats, list) or seat >= len(seats):
+                found.append(f"players[{seat}]")
+                continue
+            for name, item in fields.items():
+                if (
+                    name not in seats[seat]
+                    or _matches(item, seats[seat][name]) is not None
+                ):
+                    found.append(f"players[{seat}].{name}")
+    return tuple(found)
 
 
 def _matches(then: Any, now: Any) -> str | None:
@@ -804,7 +837,7 @@ def _position(
         return f"seat {problem.seat} does not decide here on this engine"
     moved = _matches(problem.judged_state, position_state(state))
     if moved is not None:
-        return f"the position differs from the judged one: {moved}"
+        return f"{POSITION_DIFFERS}: {moved}"
     legal = engine.legal_actions(state, problem.seat)
     # The person's move as the migration replayed it, and the network's move
     # through the same rewrite bridges (either may have been renamed).
