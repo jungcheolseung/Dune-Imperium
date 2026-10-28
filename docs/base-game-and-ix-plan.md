@@ -912,18 +912,18 @@ card-implementer는 기존 조각으로 안 되는 카드를 건너뛰고 빠진
 
 | 조각 | 카드 | 근거 | 상태 |
 | --- | --- | --- | --- |
-| `DeployTheseTroops`(Reveal turn에 이 줄이 recruit한 병력 배치) | Reinforcements, Gurney Halleck | 카드 문구, `[DI p. 10]` `[FAQ p. 4]`, OQ-030 | 구현 `ce6deec6`; 가장자리 OQ-140(사용자 확인 대기) |
-| `DeployFromGarrison(up_to=None)`("any number") | Rapid Mobilization | 카드 문구, `[FAQ p. 3]` | 구현(Intrigue 묶음 2) |
+| `DeployTheseTroops`(Reveal turn에 이 줄이 recruit한 병력 배치) | Reinforcements, Gurney Halleck | 카드 문구, `[DI p. 10]` `[FAQ p. 4]`, OQ-030 | 구현 `ce6deec6`; 가장자리 OQ-140(사용자 확인 대기 — 원판 + Immortality의 specimen 반환, 원판 + Bloodlines의 Twisted Plot에서 닿음) |
+| `DeployFromGarrison(up_to=None)`("any number") | Rapid Mobilization | 카드 문구, `[FAQ p. 3]` | 구현(Intrigue 묶음 2); garrison의 Commander도 배치한다(`DeployFromGarrison`의 기존 처리, `[Bloodlines p. 4]`) |
 | 조건 `MoreSpiceMustFlowThanEachOpponent`, `InfluenceAtLeastOnTracks` | Corner the Market, Plans Within Plans | imperium-base.md 13.2, OQ-123, `[FAQ p. 2]` | 구현(명세는 내가; `SpiceMustFlowCardsAtLeast`가 원판의 The Spice Must Flow도 세게 고침) |
-| 획득 상자 아이콘 줄(아이콘마다 차례의 줄, 순서는 소유자) | CHOAM Directorship(고정 진영 넷), Lady Jessica(고른 진영 하나) | OQ-027·OQ-112 원칙의 확장 — OQ-141 | 구현(`rules/acquire_icons.py`, 행동 `resolve_acquire_icon`): 자기 차례 안에서는 차례의 줄(OQ-112 (4) 선례), 고를 진영이 모두 6이면 회색으로 기다리다 누름에 사라짐(차례 안 선례), 고정 진영 6은 얻는 것 없는 의무 줄. 자기 차례 밖 획득(원판 + Scouts의 Critical Moment, P7)은 아직 `NotImplementedError` |
-| 승자의 창에서 내는 Intrigue("When you win a Conflict:") | To the Victor..., Demand Respect | OQ-121 판정 6("쥐고 있고 조건·비용을 갖췄을 때 낼 수 있는 줄이다. 안 내도 창이 닫힌다"), `[DI p. 13]`(보상 spice로 낼 수 있음) | 구현; 닫기 줄의 숨은 정보 처리는 OQ-142(사용자 확인 대기). 휴리스틱·앱 AI는 이 카드를 내지 않는다(P6) |
+| 획득 상자 아이콘 줄(아이콘마다 차례의 줄, 순서는 소유자) | CHOAM Directorship(고정 진영 넷), Lady Jessica(고른 진영 하나) | OQ-027·OQ-112 원칙의 확장 — OQ-141(판정 2026-10-28 사용자: 구현대로) | 구현(`rules/acquire_icons.py`, 행동 `resolve_acquire_icon`): 자기 차례 안에서는 차례의 줄(OQ-112 (4) 선례), 고를 진영이 모두 6이면 회색으로 기다리다 누름에 사라짐(차례 안 선례), 고정 진영 6은 얻는 것 없는 의무 줄. 자기 차례 밖 획득(Scouts의 Critical Moment: Uprising + 원판 카드 + Scouts는 P7, 원판의 Scouts는 P8)은 OQ-141 조합대로 획득한 자리의 창 — 그 조합을 열 때 구현, 그때까지 `NotImplementedError` |
+| 승자의 창에서 내는 Intrigue("When you win a Conflict:") | To the Victor..., Demand Respect | OQ-121 판정 6("쥐고 있고 조건·비용을 갖췄을 때 낼 수 있는 줄이다. 안 내도 창이 닫힌다"), `[DI p. 13]`(보상 spice로 낼 수 있음) | 구현; 닫기 줄의 숨은 정보 처리는 OQ-142(사용자 확인 대기; 숨김은 카드를 읽어 섞인 덱·어느 판에서든 같음). 휴리스틱·앱 AI는 이 카드를 내지 않는다(P6) |
 | 덱 맨 위로 획득 | Bypass Protocol(B), Recruitment Mission(획득마다 위/버림) | 카드 문구, `[FAQ p. 3]`, imperium-base.md 14(덱 맨 위가 공개되는 숨은 정보) | 미설계 |
-| 상대 하나 지정 Conflict 손실 + supply에서 배치 | Double Cross | 카드 문구, `[FAQ p. 2]`(상대 troop이 있어야 낸다) | 구현(`OpponentHasTroopInConflict`, `OpponentLosesTroop`, `DeployFromSupply`; 빈 supply는 OQ-042 (2)의 부족분 기록) |
+| 상대 하나 지정 Conflict 손실 + supply에서 배치 | Double Cross | 카드 문구, `[FAQ p. 2]`(상대 troop이 있어야 낸다) | 구현(`OpponentHasTroopInConflict`, `OpponentLosesTroop`, `DeployFromSupply`; 빈 supply는 OQ-042 (2)의 부족분 기록). 잃는 쪽엔 Commander가 든다(`[Bloodlines p. 4]`); supply 배치는 troop만 — OQ-144(사용자 확인 대기) |
 | 덱 맨 위 보고 뽑기·trash | Poison Snooper | 카드 문구, `[FAQ p. 3]`, imperium-base.md 14 | 구현(`PeekTopCard(draw_or_trash=True)`, Controlled의 `peeked_card_id` 길) |
 | 버림 더미를 덱에 섞고 뽑기 | Refocus | 카드 문구, `[FAQ p. 3]` | 구현(`ShuffleDiscardIntoDeck`, 뽑기 섞기 frame을 다시 씀) |
 | 이번 turn 적 Agent가 막지 않음 | Infiltrate | 카드 문구, OQ-113 (C) | 미설계(좌석 상태, 관측) |
-| turn 시작 뽑기 + 선택형 pass | Bindu Suspension | OQ-117 | 구현(`PassTurn(optional=True)`); 이어 가기 뒤 다른 시작 카드는 OQ-143(사용자 확인 대기) |
-| Mentat 셋 | Kwisatz Haderach, Urgent Mission, Calculated Hire | OQ-139 재검토 | 사용자 답 대기(16.8 4) |
+| turn 시작 뽑기 + 선택형 pass | Bindu Suspension | OQ-117 | 구현(`PassTurn(optional=True)`); 이어 가기 뒤 다른 시작 카드는 OQ-143(판정 2026-10-28 사용자: 구현대로 — Bloodlines의 Litany Against Fear·Withdrawn과 한 표시) |
+| Mentat 셋 | Kwisatz Haderach, Urgent Mission, Calculated Hire | OQ-139 재검토(조합: Uprising 판엔 Mentat 없음, Immortality의 Twisted Mentat) | 사용자 답 대기(16.8 4) |
 | 프로모 셋 | Duncan, Loyal Blade·Jessica of Arrakis·Thumper | 16.3 | 사용자 답 대기(16.8 3) |
 
 Imperium 묶음에서 아직 멈추지 않은 새 모양 후보(16.4): harvest 두 배(Carryall), Power Play, Test of Humanity, The Voice(OQ-116), Guild Bankers.
@@ -940,9 +940,32 @@ Test of Humanity(`EachOpponentDiscardsOrLosesDeployedTroop`, Covert Operation �
 Bene Gesserit 카드를 손으로, OQ-010), The Voice(상대별 다음 배치 봉쇄 상태, 관측 변경). 문서가 말하지 않는 가장자리: 같은 Reveal에서 Guild Bankers를 나중에
 trash해도 이미 연 할인은 남는다(구현).
 Imperium 마지막 둘(06:21~06:53): Shifting Allegiances(Agent box의 Influence 잃기 화살표 `influence_loss_box`, 한 진영 +2), Other Memory
-(`TakeCardFromDiscard`, 버림 더미의 Bene Gesserit 카드를 `hand_public`으로 손에 — OQ-010) 구현. P7에 넘기는 것: Firm Grip의 `pay_agent_card_solari`가
-`graft_boxes.BOX_ACTION_IDS`에 없어 원판 + Immortality의 접합 차례에서 막힌다(지금 더하면 Uprising + Immortality 카탈로그가 바뀔 수 있어 그대로 둠).
+(`TakeCardFromDiscard`, 버림 더미의 Bene Gesserit 카드를 `hand_public`으로 손에 — OQ-010) 구현. 남은 것: Firm Grip의 `pay_agent_card_solari`가
+`graft_boxes.BOX_ACTION_IDS`에 없어 원판 + Immortality의 접합 차례에서 막힌다(16.10 2).
 휴리스틱은 새 행(`lose_agent_card_influence`, `take_agent_card_from_discard`, Bindu의 pass, 승리 책략)을 고르지 않는다 — P6.
 - **Uprising Tread in Darkness(확인 필요):** 같은 차례에 Bond가 깨져 뽑기 아이콘이 안 나올 때 상자가 선택형이 되는가(OQ-057 (1)). Gene Manipulation에는
   그렇게 했고(`_WAITING_ICON_BOXES`), Uprising 카드는 사용자 확인 전까지 그대로 둔다(`2a51da4c`).
+
+### 16.10 조합 다시 보기 (2026-10-28 아침, 사용자 상시 지시)
+
+사용자(조정자 경유): "뭔가 이런거 정할 때, 항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해. 원판 단독에서 문제없다고 끝나는게
+아니야. 확장들과 결합 무조건 할거니까." 그래서 "원판 단독 판에서는 닿지 않는다, 조합은 P7"을 멈출 이유로 쓰지 않는다. OQ-139~144와 16.9의
+행을 이렇게 다시 봤다. 조합마다 무엇이 닿는지는 각 OQ에 적었다. 정해진 것과 남은 일:
+
+1. **Commander를 빠뜨린 넷(고칠 것):** Sardaukar Legion(garrison에서 셋까지 배치), Scout(둘까지 퇴각), Chani(몇이든 퇴각), Test of Humanity(배치한
+   troop 잃기)는 "Commander는 P7에서 정한다"며 병력만 다룬다. 그러나 이미 정해져 있다 — "troop을 대상으로 하는 효과는 Commander에도
+   적용된다" `[Bloodlines p. 4]`, OQ-115 사용자 판정(2026-10-22) "이후 조합 구현에서도 Commander를 빠뜨리지 않는다". Rapid Mobilization
+   (`DeployFromGarrison`)과 Double Cross의 잃기는 이미 넣는다. 넷도 같은 처리로 고치고(Bloodlines Commander를 둔 테스트), 코드 주석의 "P7" 문장을
+   지운다. 밤 작업에서 이 판정을 다시 열린 것으로 적은 것은 잘못이었다.
+2. **Firm Grip 접합(고칠 것):** 원판 + Immortality에서 접합한 두 카드는 "두 카드의 효과를 board space 효과와 함께 원하는 순서로 얻는다"
+   `[Immortality p. 10]`. 그래서 Firm Grip의 Solari 화살표 줄(`pay_agent_card_solari`)을 `graft_boxes.BOX_ACTION_IDS`에 더한다. Uprising +
+   Immortality 카탈로그가 바뀌는지 먼저 확인한다(바뀌면 codec 문제라 따로 묻는다).
+3. **차례 밖 획득의 창(그 조합을 열 때):** OQ-141 조합 — Scouts의 Critical Moment로 얻은 CHOAM Directorship·Lady Jessica.
+4. **OQ-144(사용자 확인 대기):** Double Cross의 supply 배치에 Commander를 쓸 수 있는가.
+5. **Guild Bankers:** 할인은 원판·Uprising의 The Spice Must Flow 두 인쇄를 모두 이름하고(`ReserveCostDiscount.card_ids`), Scouts의 Reserve 비용
+   수정도 같은 값을 읽어(`scouts_modifiers.reserve_discount`) 조합에서도 같다.
+6. **Rise of Ix(P4):** 카드를 전사할 때 이 절의 OQ들(획득 상자 OQ-141, 차례 시작 OQ-143, 승리 책략 OQ-142, "이 병력" OQ-140, Mentat OQ-139,
+   Commander OQ-144)에 대어 본다. dreadnought는 troop이 아니다 `[Rise of Ix p. 6]`(OQ-115).
+
+1·2는 엔진 변경이라 조정자의 go를 기다린다(가벼운 일: 대상 테스트 `-n 2`, Uprising 카탈로그·특성 행 대조).
 
