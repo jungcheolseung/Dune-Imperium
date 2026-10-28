@@ -978,9 +978,32 @@ Rosetta로 돎; 더 내려받은 것 없음). Ghidra의 사용자 설정·임시
 | PlayerTurnPhase Cleanup MoveNext (The Voice 막힘 해제, OQ-116) | 9,841줄 | 5,434줄 | 반만 — asm 주석이 푸는 정적 필드 이름(`WormAttributes.BlockExceptions`)이 C에선 `+ 0x878` 숫자 |
 | UrgentMissionAbility::GetTargets | 75줄 | 1,626줄 | 아니오 — 분석 없이 만든 함수 경계가 이웃 코드까지 넘어감 |
 
-판단: **아직 "확실히 낫다"가 아니다.** 큰 함수는 글자 수가 약 45% 줄고 흐름(if/switch)이 바로 보이지만, (1) 함수 경계를 `methods.tsv`의 다음 주소로
+첫 판단(같은 날): **아직 "확실히 낫다"가 아니다.** 큰 함수는 글자 수가 약 45% 줄고 흐름(if/switch)이 바로 보이지만, (1) 함수 경계를 `methods.tsv`의 다음 주소로
 정해 주지 않으면 엉뚱하게 커지고, (2) asm 주석이 주는 정적 필드 이름을 C가 잃는다. 둘을 고치면(경계를 표로 지정, 정적 필드 블록에 이름 붙이기 — 기존
 `il2fields`의 표로) P3d 앱 동작 대조에 asm 대신 쓸 만하다. 다음: 그 두 수정 뒤 같은 네 함수 + 하나를 다시 재고 쓸지 정한다(사용자 확인).
+
+**다시 잼(같은 저녁, 사용자 "Fix and re-measure"):** 두 가지를 고쳤다 — (1) 함수 시작점 표(`methods.tsv` + `generics.tsv`, 348,038개)로 함수 몸을 다음
+시작점까지로 정하고, 몸 밖으로 뛰는 꼬리 `jmp`(공유 generic으로 가는 IL2CPP 꼬리 호출)를 call-return으로 표시; (2) asm 주석의 `~static Class.Field`로
+클래스 2,290개의 정적 필드 블록 타입을 만들어 TypeInfo 전역에 입힘(`TypeInfo_…WormAttributes->static_fields->BlockExceptions`, cctor 확인은
+`->cctor_finished`). The Voice의 비용(`NoCostAction`, OQ-116 앱 처리)을 다섯째로 더했다.
+
+| 함수 (이미 아는 답) | asm | C | 답이 C에서 보이는가 |
+| --- | --- | --- | --- |
+| UrgentMissionAbility::Cost (`HasDeployedAgents(1)`) | 26줄 | 19줄 | 예 |
+| TheVoiceAbility::Cost (`NoCostAction`) | 25줄 | 19줄 | 예 |
+| UrgentMissionAbility::GetTargets (보드의 자기 Agent를 람다로 거름) | 75줄 | 59줄 | 예 — `Descendents.OfType<WormAgent>().Where(<GetTargets>b__0)` |
+| SpaceAbility GrantResources MoveNext (Carryall·Thumper) | 1,731줄 | 1,011줄 | 예 — 로그 키로 가지를 찾고 더하기가 보임 |
+| PlayerTurnPhase Cleanup MoveNext (The Voice 막힘 해제) | 9,841줄 | 5,465줄 | 예 — `BlockExceptions`가 이름으로 나옴 |
+
+다섯의 합: asm 511,896자 → C 290,591자(43% 적음). 남은 차이: asm 주석이 푸는 **인스턴스 필드** 이름(`~WormPlaymat.<Board>k__BackingField`)은 C에서
+아직 `+ 0xa0` 같은 오프셋이다(그 자리는 asm 주석이나 `il2fields`로 맞춰 읽는다). 큰 코루틴은 C도 수천 줄이다.
+
+**결론(내 판단, 사용자 확인 전):** P3d의 앱 동작 대조에서는 **디컴파일한 C를 먼저 읽고**, 인스턴스 필드 이름과 결론을 가르는 줄은 주석 asm으로 확인한다.
+글자 수가 약 43% 줄고 흐름(if/switch/LINQ 사슬)이 바로 보이며, 답을 아는 다섯이 모두 맞게 읽혔다. 도구: `scripts/dwgr/ghidra_tables.py`(표 셋을
+assets의 `ghidra/`에), `scripts/dwgr/ghidra/DecompileTyped.java`(headless 스크립트). 한 번 불러와 이름·타입을 붙이는 데 약 80초, 메모리 약 1.5GB.
+Ghidra는 launch.sh 대신 JDK 25로 직접 띄워 `-Duser.home`·`-Djava.io.tmpdir`를 프로젝트 `tmp/`로 둔다(launch.sh는 `~/Library/ghidra`에 씀 — 시범 첫 실행에서
+생긴 파일 하나는 지웠다). macOS용 디컴파일러 본체는 릴리스에 없어 `Ghidra/Features/Decompiler/src/decompile/cpp`에서 `make ghidra_opt`로 빌드해
+`os/mac_arm_64/decompile`에 둔다(x86_64, Rosetta).
 
 ### 16.10 조합 다시 보기 (2026-10-28 아침, 사용자 상시 지시)
 
