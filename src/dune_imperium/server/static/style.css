@@ -2641,7 +2641,8 @@ body.hand-dragging, body.hand-dragging * {
 .host-save-list { list-style: none; padding: 0; margin: 0.3rem 0; font-size: 0.9em; }
 .host-save-list li { padding: 0.15rem 0; }
 .host-save-actions { display: flex; gap: 0.4rem; }
-.badge.autosave {
+.badge.autosave,
+.badge.base-game {
   margin-right: 0.35rem;
   padding: 0 0.35rem;
   border: 1px solid var(--line);

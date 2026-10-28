@@ -665,9 +665,131 @@ def first_player(base: str, browser, opens_checked: bool) -> None:
     context.close()
 
 
+# The base-game select, the Uprising-only boxes it locks, its note and the
+# AI seats' kinds (docs/base-game-and-ix-plan.md 18, P5a).
+BASE_GAME_JS = """() => {
+  const ids = ["opt-choam", "opt-bloodlines", "opt-tech", "opt-immortality",
+               "opt-go-to-11", "opt-epic-game", "opt-scouts"];
+  const note = document.getElementById("opt-base-game-note");
+  return {
+    base: document.getElementById("opt-base-game").value,
+    boxes: Object.fromEntries(ids.map((id) => {
+      const input = document.getElementById(id);
+      return [id, {checked: input.checked, disabled: input.disabled}];
+    })),
+    noteShown: !note.hidden,
+    note: note.textContent.trim(),
+    want: t("html.base_game_imperium_note"),
+    kinds: [...document.querySelectorAll("#seat-selects select")].map(
+      (select) => select.value),
+  };
+}"""
+
+# The original game's table as drawn: no board scan yet (stage P5b), the text
+# board's spaces, and the header's badges.
+ORIGINAL_TABLE_JS = """() => {
+  const badges = document.querySelector("#header-status .status-badges");
+  return {
+    base: state.summary.base_game,
+    view: state.view.base_game,
+    scan: Boolean(document.querySelector("#board .board-stage")),
+    spaces: [...document.querySelectorAll("#board .space-row")].map(
+      (row) => row.dataset.space),
+    badges: badges ? badges.textContent : "",
+    badge: t("screens.base_game_imperium_badge"),
+  };
+}"""
+
+UPRISING_ONLY_SPACES = {"deep_desert", "spice_refinery", "espionage", "sardaukar"}
+ORIGINAL_SPACES = {"carthag", "conspire", "the_great_flat", "mentat", "hall_of_oratory"}
+
+
+def original_game(base: str, browser) -> None:
+    """[8] The base-game select (P5a): the original game locks the options it
+    cannot take yet and gives them back on a return to Uprising, seats
+    heuristic AIs where no one picked a kind, and starts a game drawn on the
+    text board with the original spaces only."""
+    print("[8] the base-game select: the original game")
+    context, page, rec = open_context(browser, "setup-original-game")
+    page.goto(base + "/")
+    page.wait_for_selector("#setup-screen:not([hidden])")
+    before = page.evaluate(BASE_GAME_JS)
+    check.ok(before["base"] == "uprising", "the select opens on Uprising", before)
+    check.ok(not before["noteShown"], "Uprising: no note", before)
+    page.select_option("#seat-selects select[data-seat='1']", "random")
+    page.select_option("#opt-base-game", "imperium")
+    original = page.evaluate(BASE_GAME_JS)
+    check.ok(
+        all(box == {"checked": False, "disabled": True}
+            for box in original["boxes"].values()),
+        "the original game clears and locks every Uprising-only box",
+        original["boxes"],
+    )
+    check.ok(
+        original["noteShown"] and original["note"] == original["want"],
+        "the original game shows its note",
+        original,
+    )
+    check.ok(
+        original["kinds"] == ["human", "random", "heuristic", "heuristic"],
+        "unpicked AI seats follow the original game's default; a picked one stays",
+        original["kinds"],
+    )
+    page.select_option("#opt-base-game", "uprising")
+    back = page.evaluate(BASE_GAME_JS)
+    check.ok(
+        back["boxes"] == before["boxes"] and back["kinds"] == [
+            "human", "random", "app_ai", "app_ai"],
+        "back on Uprising: the boxes and the default seats come back",
+        {"before": before, "back": back},
+    )
+    open_setup(page, base)
+    page.select_option("#opt-base-game", "imperium")
+    with page.expect_request(
+        lambda r: r.method == "POST" and r.url.endswith("/games")
+    ) as sent:
+        page.click("#create-game")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    page.wait_for_function("state.view !== null && refreshFlight === null")
+    settled(page)
+    body = sent.value.post_data_json
+    check.ok(
+        body.get("base_game") == "imperium"
+        and not any(body.get(key) for key in (
+            "choam_module", "bloodlines", "tech_module", "immortality",
+            "go_to_11", "epic_game", "arrakeen_scouts")),
+        "POST /games carries the original game without Uprising-only options",
+        body,
+    )
+    table = page.evaluate(ORIGINAL_TABLE_JS)
+    spaces = set(table["spaces"])
+    check.ok(
+        table["base"] == "imperium" and table["view"] == "imperium",
+        "the summary and the view name the original game",
+        table,
+    )
+    check.ok(
+        not table["scan"], "the original game keeps the text board (no scan)", table
+    )
+    check.ok(
+        ORIGINAL_SPACES <= spaces and not (UPRISING_ONLY_SPACES & spaces)
+        and len(spaces) == 22,
+        "the text board lists the original game's 22 spaces only",
+        sorted(spaces),
+    )
+    check.ok(
+        table["badges"].startswith(" · ") and table["badge"] in table["badges"],
+        "the header names the original game",
+        table,
+    )
+    check.ok(not rec.js_errors, "no page errors", rec.js_errors)
+    context.close()
+
+
 def main() -> None:
     with chrome() as browser:
         with server() as (base, _log):
+            original_game(base, browser)
             go_to_11_epic_game(base, browser)
             epic_game(base, browser)
             retail_game(base, browser)

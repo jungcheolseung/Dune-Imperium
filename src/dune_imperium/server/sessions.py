@@ -69,7 +69,7 @@ from dune_imperium.agents.registry import (
     is_background_agent_kind,
     parse_search_kind,
 )
-from dune_imperium.config import RulesetConfig
+from dune_imperium.config import BaseGame, RulesetConfig
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
 from dune_imperium.core.actions import DomainAction
@@ -572,6 +572,7 @@ class GameSessionManager:
         self,
         seats: tuple[str, ...],
         *,
+        base_game: str = BaseGame.UPRISING.value,
         choam_module: bool = False,
         leader_draft: bool = False,
         promo_cards: bool = False,
@@ -621,6 +622,7 @@ class GameSessionManager:
         seats = tuple(self._seat_assignment(assignment) for assignment in seats)
         try:
             config = RulesetConfig(
+                base_game=BaseGame(base_game),
                 choam_module=choam_module,
                 leader_draft=leader_draft,
                 promo_cards=promo_cards,
@@ -635,7 +637,8 @@ class GameSessionManager:
         except ValueError as error:
             # RulesetConfig rejects unsupported combinations (the Tech Module
             # without Bloodlines [Bloodlines pp. 6-7], Go to 11 without
-            # Immortality (OQ-091), a non-four-player game).
+            # Immortality (OQ-091), a non-four-player game), and BaseGame an
+            # unknown base game.
             # That is a bad request, not a server fault, so it must not reach
             # the client as a bare 500.
             raise SessionError(str(error)) from error
@@ -653,6 +656,13 @@ class GameSessionManager:
             raise SessionError(f"unknown AI pace {pace!r}")
 
         engine = UprisingRulesEngine()
+        try:
+            initial = engine.reset(config, game_seed)
+        except NotImplementedError as error:
+            # Setup refuses a combination whose content is not in the engine
+            # yet (the original game with an option of a later stage of
+            # docs/base-game-and-ix-plan.md); a bad request too.
+            raise SessionError(str(error)) from error
         session = GameSession(
             game_id=uuid.uuid4().hex,
             config=config,
@@ -660,7 +670,7 @@ class GameSessionManager:
             policy_seed=policy_seed,
             seats=tuple(seats),
             engine=engine,
-            state=engine.reset(config, game_seed),
+            state=initial,
             chance=ChanceResolver(seed=game_seed),
             agents=_build_agents(seats, policy_seed, config),
         )
@@ -2356,6 +2366,7 @@ class GameSessionManager:
             # reproduce every shuffle, so a remote game keeps it to itself
             # until the finished game discloses everything (OQ-010 ruling 4).
             "game_seed": session.game_seed if finished or not remote else None,
+            "base_game": session.config.base_game.value,
             "choam_module": session.config.choam_module,
             "leader_draft": session.config.leader_draft,
             "promo_cards": session.config.promo_cards,

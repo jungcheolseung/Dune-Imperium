@@ -223,7 +223,7 @@ function renderBoard() {
     board.appendChild(note);
     return;
   }
-  if (state.catalog.board_image) {
+  if (boardScan(view)) {
     renderBoardStage(board, view);
     animatePlacedAgents(board, before);
   } else {
@@ -389,7 +389,7 @@ function renderBoardStage(board, view) {
   stage.className = "board-stage";
   const map = document.createElement("img");
   map.className = "board-map";
-  map.src = state.catalog.board_image;
+  map.src = boardScan(view);
   map.alt = t("board.map_alt");
   map.draggable = false;
   stage.appendChild(map);
@@ -1780,7 +1780,7 @@ function renderMarket() {
   /* With the board scan the Conflict card and the face-up contracts sit
      in their printed slots on the board (renderSlotCards); the strips
      below only cover the text-board fallback. */
-  const onBoard = Boolean(state.catalog.board_image);
+  const onBoard = Boolean(boardScan(view));
   if (!onBoard) {
     const conflicts = cardStrip(
       market,

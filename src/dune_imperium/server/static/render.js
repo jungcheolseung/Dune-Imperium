@@ -648,6 +648,8 @@ function renderHeaderStatus() {
   }
   /* The seed and the ruleset badges never change during a game. */
   const extras = RULESET_BADGES.filter(([field]) => summary[field]).map(([, key]) => t(key));
+  /* The original game first: every badge after it is an option on it. */
+  if (summary.base_game === "imperium") extras.unshift(t("screens.base_game_imperium_badge"));
   if (summary.game_seed !== null) extras.unshift(t("common.seed", { seed: summary.game_seed }));
   if (extras.length) pieces.push(["status-badges", " · " + extras.join(" · ")]);
   const status = el("header-status");

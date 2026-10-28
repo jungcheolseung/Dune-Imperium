@@ -676,6 +676,26 @@ const UI_TEXT = {
     "ko": "불멸 확장 (베네 틀레이락스 게임판·틀레이락스 열·접합·새 카드)",
     "en": "Immortality expansion (Bene Tleilax board · Tleilaxu Row · Graft · new cards)"
   },
+  "html.opt_base_game_label": {
+    "ko": "기본 판",
+    "en": "Base game"
+  },
+  "html.opt_base_game_uprising": {
+    "ko": "듄 임페리움: 봉기",
+    "en": "Dune: Imperium — Uprising"
+  },
+  "html.opt_base_game_imperium": {
+    "ko": "듄 임페리움 (원판)",
+    "en": "Dune: Imperium (the original game)"
+  },
+  "html.base_game_imperium_note": {
+    "ko": "원판은 아직 플레이어1 시작 플레이어·지도자 드래프트·프로모 카드(원판 3장)만 함께 씁니다. 다른 확장은 준비 중입니다. 앱 AI와 탐색 AI는 아직 원판 카드를 모릅니다(휴리스틱 AI를 권합니다).",
+    "en": "The original game takes only Player 1 as First Player, the Leader draft and the promo cards (its 3) so far; the other expansions are still to come. The app AI and the search AI do not know the original cards yet (the heuristic AI is recommended)."
+  },
+  "screens.base_game_imperium_badge": {
+    "ko": "원판",
+    "en": "Original"
+  },
   "html.opt_scouts": {
     "ko": "아라킨 스카웃 (컴패니언 앱 모드: 소위원회·임무·이벤트·경매·판매, 공식 규칙서 없음)",
     "en": "Arrakeen Scouts (companion app mode: subcommittees · missions · events · auctions · sales; no official rulebook)"

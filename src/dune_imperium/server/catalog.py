@@ -56,6 +56,7 @@ from functools import cache
 from urllib.parse import quote
 
 from dune_imperium.adapters.observation_encoding import SCOUTS_ITEM_IDS
+from dune_imperium.config import BaseGame
 from dune_imperium.content.arrakeen_scouts import AUCTIONS_BY_ID, SUBCOMMITTEES_BY_ID
 from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.bloodlines.tech import TECH_TILES
@@ -71,6 +72,12 @@ from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
     TLEILAXU_CARDS_BY_ID,
 )
+from dune_imperium.content.imperium.board import IMPERIUM_BOARD_SPACES
+from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
+from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
+from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
+from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
+from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     BOARD_SPACES_BY_ID,
@@ -257,7 +264,9 @@ def build_catalog(
             text_ko=personal_card_text_ko(starter),
             image=_image_url("other", card_id, image_files),
         )
-    for stack in RESERVE_STACKS:
+    # Uprising's Reserve and the original game's (Arrakis Liaison, its own
+    # The Spice Must Flow, the Foldspace card [DI p. 3]).
+    for stack in (*RESERVE_STACKS, *IMPERIUM_RESERVE_STACKS):
         cards[stack.card.card_id] = _personal_card(
             stack.card.name,
             cost=stack.acquisition_cost,
@@ -269,8 +278,10 @@ def build_catalog(
             text_ko=personal_card_text_ko(stack),
             image=_image_url("other", stack.card.card_id, image_files),
         )
-    # Uprising's own cards; the original game's come with its screen (P5).
-    for entry in IMPERIUM_CARDS:
+    # Uprising's own cards, then the original game's 43 and its 3 promos
+    # (stage P5a of docs/base-game-and-ix-plan.md: names and text; their
+    # pictures come with P5d). Ids never repeat across the two (plan 16.2).
+    for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS):
         card_id = entry.card.card_id
         cards[card_id] = _personal_card(
             entry.card.name,
@@ -320,7 +331,7 @@ def build_catalog(
         )
 
     intrigue: dict[str, JsonValue] = {}
-    for intrigue_entry in INTRIGUE_CARDS:
+    for intrigue_entry in (*INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS):
         intrigue_id = intrigue_entry.card.card_id
         # Navigation cards print no Plot/Combat/Endgame banner: Plot Course
         # plays them automatically on reaching 2 Influence, not by timing
@@ -348,7 +359,7 @@ def build_catalog(
 
     leader_layouts = leader_layout()
     leaders: dict[str, JsonValue] = {}
-    for leader in LEADERS:
+    for leader in (*LEADERS, *IMPERIUM_LEADERS):
         leaders[leader.leader_id] = _leader_face(
             leader.name,
             ability=leader.ability_name,
@@ -472,14 +483,17 @@ def build_catalog(
                     "conflict", conflict.card.card_id, image_files
                 ),
             }
-            for conflict in CONFLICTS
+            for conflict in (*CONFLICTS, *IMPERIUM_CONFLICTS)
         },
         "leaders": leaders,
-        # Uprising's board: the original game's has no page yet (stage P5 of
-        # docs/base-game-and-ix-plan.md).
+        # Both boards' spaces; ``base_games`` says which board prints each
+        # (Arrakeen, Imperial Basin and Secrets are on both). The original
+        # board has no scan or layout yet: its spaces carry a null ``box``
+        # and the page draws the original game on the text board (stage P5b
+        # of docs/base-game-and-ix-plan.md).
         "spaces": {
             space.space_id: _space(space.space_id, image_files, tile_files)
-            for space in BOARD_SPACES
+            for space in (*BOARD_SPACES, *IMPERIUM_BOARD_SPACES)
         },
         "objectives": {
             objective.objective_id: {
@@ -797,6 +811,11 @@ def _space(
         ]
     return {
         "name": space.name,
+        "base_games": [
+            base_game.value
+            for base_game, spaces in _BOARD_SPACE_IDS.items()
+            if space_id in spaces
+        ],
         "agent_icon": space.agent_icon.value,
         "combat": space.combat,
         "maker": space.maker,
@@ -819,7 +838,7 @@ def _space(
         ),
         "notes": list(space_notes(space_id)),
         "notes_ko": list(space_notes_ko(space_id)),
-        "box": list(SPACE_BOXES[space_id]),
+        "box": list(SPACE_BOXES[space_id]) if space_id in SPACE_BOXES else None,
         "implemented": space_is_implemented(space_id, choam_module=False),
         "choam_implemented": space_is_implemented(space_id, choam_module=True),
         "image": _image_url("location", space_id, image_files),
@@ -840,6 +859,13 @@ def _space(
             else None
         ),
     }
+
+
+# Each base game's printed board (``base_games`` of a catalog space).
+_BOARD_SPACE_IDS: dict[BaseGame, frozenset[str]] = {
+    BaseGame.UPRISING: frozenset(space.space_id for space in BOARD_SPACES),
+    BaseGame.IMPERIUM: frozenset(space.space_id for space in IMPERIUM_BOARD_SPACES),
+}
 
 
 def _immortality_overlay(

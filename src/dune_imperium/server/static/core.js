@@ -709,7 +709,26 @@ function entryImage(entry) {
 
 /* A Leader's own tile (Tuek's Sietch) is on the table only while that Leader
    plays [Bloodlines p. 12]. */
+/* The base game the shown game is played on (``view.base_game``):
+   "uprising" or "imperium", the original Dune: Imperium. */
+function viewBaseGame(view = state.view) {
+  return (view && view.base_game) || "uprising";
+}
+
+/* The board scan the shown game is drawn on, or null for the text board.
+   The one scan (catalog.board_image) and its layout are Uprising's; the
+   original game keeps the text board until its own picture and layout
+   (stage P5b of docs/base-game-and-ix-plan.md). */
+function boardScan(view = state.view) {
+  if (!state.catalog || !state.catalog.board_image) return null;
+  return viewBaseGame(view) === "uprising" ? state.catalog.board_image : null;
+}
+
+/* A space is on the table when its base game's board is (``base_games``:
+   the spaces both boards print, Arrakeen, Imperial Basin and Secrets, name
+   both) and, for a Leader's own tile, while that Leader plays. */
 function spaceInPlay(entry, view) {
+  if (entry.base_games && !entry.base_games.includes(viewBaseGame(view))) return false;
   return (
     !entry.required_leader_id ||
     (view.players || []).some((player) => player.leader_id === entry.required_leader_id)

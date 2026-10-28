@@ -29,7 +29,7 @@ import os
 from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 import anyio
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -204,6 +204,12 @@ class CreateGameRequest(BaseModel):
             "'search:<path>::flip=0.01'; GET /whoami says whether it has one)."
         ),
     )
+    # The base game (``RulesetConfig.base_game``): Dune: Imperium - Uprising,
+    # or the original Dune: Imperium (docs/base-game-and-ix-plan.md 18). The
+    # original takes only the promo cards, the Leader draft and Player 1 as
+    # First Player so far; any other option is refused (setup's pending
+    # options).
+    base_game: Literal["uprising", "imperium"] = "uprising"
     choam_module: bool = False
     leader_draft: bool = False
     # Shuffle in the promo Imperium cards (not in the retail decks): the
@@ -618,6 +624,7 @@ def create_app(
         with _http_errors():
             return sessions.create_game(
                 tuple(body.seats),
+                base_game=body.base_game,
                 choam_module=body.choam_module,
                 leader_draft=body.leader_draft,
                 promo_cards=body.promo_cards,
