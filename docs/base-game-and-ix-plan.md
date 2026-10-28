@@ -819,6 +819,9 @@ Orca 작업자가 멈춘 P2a(커밋 안 된 30파일)를 이어 받아 끝냈다
   OQ-123, Plans Within Plans, Tiebreaker의 Combat/Endgame 나뉜 카드), 덱 맨 위 보고 뽑거나 버리기(Poison Snooper, 숨은 정보), 버림 더미를 덱에 섞고 뽑기
   (Refocus, chance).
 - **codec v155 그대로:** 원판 카탈로그만 늘어난다(15.4의 이유 그대로: 원판 저장·기보·체크포인트가 아직 없음). Uprising 144개 조합 행은 바이트까지 같다.
+  **2026-10-28 사용자 판정 "병합 때 한 번":** OQ-145가 Uprising + Immortality 판의 상태(덱 위 Tleilaxu 카드의 `deck_public_top`·`hand_public`)를 바꿔, v155에서 만든
+  그런 판의 저장은 해시가 맞지 않게 된다. 그래서 브랜치 안에서는 v155 그대로 두고, P3를 master에 합칠 때 v156으로 한 번 올린다(상수, 버전 고정 테스트,
+  필요하면 v155 기록을 받는 경로를 한 커밋으로; 병합한 트리의 pytest·ruff·mypy로 확인). 카탈로그는 그대로다.
 - **관측 v37 한 번(P3a):** 개인 카드·Intrigue 구간 끝에 원판 id. Uprising 열은 그대로(늘어난 열 0), 형식 2 이관으로 옮긴 망이 Uprising 판에서 같은 수
   (P2처럼 `same_moves.py`). 엔티티 특성은 Uprising 개체로 척도를 고정해 Uprising 405행이 그대로(P2a의 `entity_features._table`). 숨은 정보가 새로
   생기는 카드(Poison Snooper의 엿보기)는 `known_card_seats`·scramble·결정 표본에 함께 넣는다(10.1).
@@ -901,7 +904,7 @@ P0 merged effect의 자리, 규칙 인용을 줬다.
 ### 16.8 사용자에게 묻는 것
 
 1. **하위 단계(16.1):** P3a 틀(80장 정의 생성·관측 v37 한 번·덱은 효과가 들어간 카드만) → P3b Imperium → P3c Intrigue → P3d 끝.
-2. **codec v155 그대로·관측 v37 한 번(16.4).** v37은 플레이 서버의 망·어댑터 좌석이 Uprising 판에서 같은 수를 두는지 P2처럼 확인한 뒤 병합한다.
+2. **codec v155 그대로·관측 v37 한 번(16.4).** v37은 플레이 서버의 망·어댑터 좌석이 Uprising 판에서 같은 수를 두는지 P2처럼 확인한 뒤 병합한다. **바뀜(2026-10-28 사용자 "병합 때 한 번"):** codec은 master 병합 때 v156으로 한 번 올린다(16.4). 관측은 v37 뒤 v38 한 번 더(덱 위 공개 카드·The Voice·Infiltrate·Recruitment Mission, 16.1).
 3. **프로모 셋은 prefab이 없어 속성 표 + 영어 문구로 전사(16.3).** D1(앱 자료만) 안이지만 화면 조각 확인이 없는 카드라 따로 묻는다.
 4. **OQ-139 다시 열기(16.5):** Kwisatz Haderach·Urgent Mission·Calculated Hire에서 Mentat을 옮기기·recall할 수 있는가. 공식 문장과 앱 처리를 붙여 OQ로 묻는다.
 5. **변환기 채택(16.6)과 갈래 나누기(16.7의 측정 뒤).**
