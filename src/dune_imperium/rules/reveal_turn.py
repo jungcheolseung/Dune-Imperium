@@ -4666,12 +4666,13 @@ def _reveal_choice_effect_is_available(
         or (
             # Sardaukar Legion, Scout, Chani (original game): a troop to move --
             # none is not asked ("up to" allows 0 [FAQ p. 3]), so with no troop
-            # to move the choice waits.
+            # to move the choice waits. A Commander is a troop [Bloodlines
+            # p. 4] (OQ-115), as in the rows (``legal_reveal_troops_move_actions``).
             (move := troops_move_shape(effect)) is not None
             and (
-                _deployable_garrison_troops(state, player)
+                _deployable_garrison_troops(state, player) + owner.commanders_garrison
                 if move[0] == "deploy"
-                else owner.troops_conflict
+                else owner.troops_conflict + owner.commanders_conflict
             )
             >= 1
         )

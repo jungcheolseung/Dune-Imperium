@@ -4540,6 +4540,34 @@ def test_chani_retreats_any_number_of_troops_and_commanders() -> None:
     assert after.combat_strength == 2
 
 
+def test_a_lone_commander_opens_the_troop_moves() -> None:
+    """A Commander is the only unit to move: the choice opens on it, as the
+    rows count it (Codex review 2026-10-28 -- the opening condition counted
+    troops only, so the choice waited)."""
+
+    engine, state = _start()
+    state = _with_bloodlines(state)
+    for card_id, garrison, conflict, action_id in (
+        ("sardaukar_legion", 1, 0, "deploy_reveal_card_troops"),
+        ("scout", 0, 1, "retreat_reveal_card_troops"),
+        ("chani_card", 0, 1, "retreat_reveal_card_troops"),
+    ):
+        revealed = _revealed_alone(
+            engine,
+            state,
+            card_id,
+            garrison=0,
+            commanders_garrison=garrison,
+            commanders_conflict=conflict,
+        )
+        assert _unit_rows(engine, revealed, action_id) == {(1, 1)}, card_id
+        moved = _do(engine, revealed, action_id, count=1, commanders=1).players[0]
+        assert (moved.commanders_garrison, moved.commanders_conflict) == (
+            conflict,
+            garrison,
+        ), card_id
+
+
 def test_the_counted_commander_moves_encode_in_a_bloodlines_catalog() -> None:
     """Every row with a Commander share encodes and decodes in an original +
     Bloodlines catalog, the staged count step too (the share rides on it); the
