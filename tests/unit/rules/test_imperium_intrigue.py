@@ -4630,6 +4630,13 @@ def test_a_sardaukar_commander_is_a_troop_for_double_cross_s_condition_and_loss(
     # Only the named seat is asked.
     assert [frame.decision.owner for frame in window.decision_stack[-1:]] == [2]  # type: ignore[union-attr]
     assert window.decision_stack[-2:-1] == both.decision_stack[-1:]
+    # OQ-144 (user 2026-10-28: "안 되는게 맞지. 아 근데 잃는 상대는 커맨더를
+    # 잃을 수 있게 되어 있지?"): the named seat may lose its Commander, which
+    # leaves the Conflict for its supply [Bloodlines p. 4] [DI p. 16].
+    lost = apply_whole(engine, window, _lose_in_conflict(2, commander=True)).state
+    rival = lost.players[2]
+    assert (rival.commanders_conflict, rival.commanders_supply) == (0, 1)
+    assert rival.troops_conflict == 1
 
 
 def test_double_cross_with_an_empty_supply_is_played_and_deploys_nothing() -> None:

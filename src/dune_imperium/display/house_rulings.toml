@@ -2014,8 +2014,9 @@ group = "project"
 game = "base_ix"
 title_ko = "멘타트와 자기 에이전트는 가르지 않는다"
 title = "The Mentat and your own Agents are not told apart"
-ruling_ko = "멘타트를 가진 라운드에는 에이전트를 하나 더 쓸 수 있을 뿐, 어느 칸에 멘타트를 놓았는지는 따로 고르지도 기록하지도 않는다. 회수 때 멘타트는 먼저 제자리로 돌아간다. 놓인 말이 멘타트인지가 결과를 바꾸는 카드가 들어오면 다시 정한다."
-ruling = "In a round you hold the Mentat you simply have one more Agent; which space the Mentat itself went to is neither chosen nor recorded. At Recall it returns to its space first. This is revisited once a card makes it matter which piece is where."
+ruling_ko = "멘타트를 가진 라운드에는 에이전트를 하나 더 쓸 수 있을 뿐, 어느 칸에 멘타트를 놓았는지는 따로 고르지도 기록하지도 않는다. 회수 때 멘타트는 먼저 제자리로 돌아간다. Kwisatz Haderach로 옮기거나 Urgent Mission으로 회수하는 말도 그 플레이어의 에이전트 하나다."
+ruling = "In a round you hold the Mentat you simply have one more Agent; which space the Mentat itself went to is neither chosen nor recorded. At Recall it returns to its space first. The Agent Kwisatz Haderach moves or Urgent Mission recalls is likewise one of that player's Agents."
+names = ["Kwisatz Haderach", "Urgent Mission"]
 
 [[ruling]]
 oq = "OQ-141"
@@ -2080,3 +2081,13 @@ title = "A card put face up on top of a deck is known to all"
 ruling_ko = "획득한 카드를 카드덱 맨 위에 놓으면(Bypass Protocol, Recruitment Mission, 틀레이락스 연구 트랙의 첫 유전 표지 뒤 틀레이락스 카드) 그 카드를 뽑거나 카드덱을 섞을 때까지 모든 플레이어가 안다. 여러 장을 차례로 놓으면 놓은 순서대로 쌓인다(마지막에 놓은 장이 맨 위). 그 카드를 뽑으면 핸드를 떠날 때까지 핸드에서도 공개다."
 ruling = "A card you acquire and put on top of your deck (Bypass Protocol, Recruitment Mission, or a Tleilaxu card once your research reaches the first genetic marker) is known to every player until it is drawn or the deck is shuffled. Cards put there one after another stack in that order, the last on top. Once drawn, it stays public in your hand until it leaves the hand."
 names = ["Bypass Protocol", "Recruitment Mission"]
+
+[[ruling]]
+oq = "OQ-144"
+group = "project"
+game = "base_ix"
+title_ko = "Double Cross로 공급처에서 내보내는 것은 병력뿐"
+title = "Double Cross deploys a troop from the supply, never a Commander"
+ruling_ko = "Double Cross가 공급처에서 교전 칸으로 내보내는 것은 병력 하나뿐이고 사다우카 지휘관은 아니다. 공급처의 지휘관은 2 솔라리로 소집하는 길로만 나온다. 상대가 잃는 쪽은 상대가 교전 칸의 유닛 가운데 고르며 지휘관도 고를 수 있다."
+ruling = "Double Cross deploys one troop from your supply to the Conflict, never a Sardaukar Commander: a Commander in the supply comes out only through its 2 Solari recruit. The opponent who loses a unit chooses it among its units in the Conflict, a Commander included."
+names = ["Double Cross"]

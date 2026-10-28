@@ -169,7 +169,7 @@
 | [OQ-141](#oq-141--획득-상자의-아이콘-여럿과-진영-고르기-원판) | 획득 상자의 아이콘 여럿과 진영 고르기 (원판) | `DECIDED` |
 | [OQ-142](#oq-142--승자의-창의-닫기-줄과-승리-책략의-숨은-정보-원판) | 승자의 창의 닫기 줄과 승리 책략의 숨은 정보 (원판) | `DECIDED` |
 | [OQ-143](#oq-143--bindu-suspension으로-차례를-이어-간-뒤-다른-차례-시작-카드-원판) | Bindu Suspension으로 차례를 이어 간 뒤 다른 차례 시작 카드 (원판) | `DECIDED` |
-| [OQ-144](#oq-144--double-cross의-supply-배치와-sardaukar-commander-원판--bloodlines) | Double Cross의 supply 배치와 Sardaukar Commander (원판 + Bloodlines) | `OPEN` |
+| [OQ-144](#oq-144--double-cross의-supply-배치와-sardaukar-commander-원판--bloodlines) | Double Cross의 supply 배치와 Sardaukar Commander (원판 + Bloodlines) | `DECIDED` |
 | [OQ-145](#oq-145--덱-위에-앞면으로-놓은-카드는-누가-아는가-원판--immortality) | 덱 위에 앞면으로 놓은 카드는 누가 아는가 (원판 + Immortality) | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
@@ -2912,6 +2912,9 @@
     "그 말이 Mentat인가"를 읽는 효과는 없고, Rise of Ix의 P0 읽기(로컬 faces: Imperium·Tech·Intrigue)에는 Mentat이 나오지 않는다.
   - 추천: **(가) 유지** — 세 카드를 "자기 Agent 하나"로 구현하고 말을 가리지 않는다. 사용자가 확인하기 전에는 세 카드를 전사하지 않는다(조정자 경유
     사용자 지시 2026-10-28 01:3x, 계획 16.8 4).
+  - 재판정(2026-10-28 17시경 사용자, 조정자 경유): "1, 구분하지 않는게 맞아. 근데 ui 상으로만 구분할 수 있나? 어쨌든 보드판에 있던 멘타트는
+    획득한 플레이어가 가져가는데, 아이콘 모양이 다르거든." — **(가) 유지.** 세 카드를 "자기 Agent 하나"로 구현하고 엔진은 말을 가리지 않는다.
+    화면에서만 Mentat 말을 따로 그리는 길은 설계 선택지를 사용자에게 먼저 보인다(엔진·codec·관측 무변경의 화면 작업).
 
 ## OQ-140 — "이 병력을 배치할 수 있다"의 이 병력 (원판)
 
@@ -3045,7 +3048,7 @@
 
 ## OQ-144 — Double Cross의 supply 배치와 Sardaukar Commander (원판 + Bloodlines)
 
-- 상태: `OPEN` (2026-10-28, P3 조합 다시 보기; 추천을 구현한 상태, 사용자 확인 대기)
+- 상태: `DECIDED` (2026-10-28 사용자 판정: troop만, 조정자 경유)
 - 계기: 사용자 상시 지시(2026-10-28, 조정자 경유) "항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해"로 원판 카드의 "troop" 효과를
   Bloodlines의 Sardaukar Commander와 함께 다시 봤다.
 - 이미 정한 것: Commander는 Conflict에서 strength 2인 "troop"이고 troop을 대상으로 하는 효과(예: Go to Ground의 retreat)는 Commander에도
@@ -3057,6 +3060,10 @@
   아니라 배치라서 위 문장이 바로 닿지 않는다.
 - 추천: 아니다(troop만). 문서가 supply의 Commander를 꺼내는 길로 두는 것은 2 Solari의 recruit뿐이고, 공짜 배치가 그 값을 건너뛰게 된다. 지금
   구현(`DeployFromSupply`)이 그렇다.
+- 판정(2026-10-28 사용자, 조정자 경유): "안 되는게 맞지. 아 근데 잃는 상대는 커맨더를 잃을 수 있게 되어 있지?" — supply 배치는 troop만(지금 구현
+  그대로). 잃는 쪽은 그렇다: 잃는 좌석이 Conflict의 유닛을 고르고 Commander도 든다(OQ-036 (a), `[Bloodlines p. 4]`). 테스트
+  `tests/unit/rules/test_imperium_intrigue.py::test_a_sardaukar_commander_is_a_troop_for_double_cross_s_condition_and_loss`가 Commander를 잃는 줄을
+  골라 그 Commander가 supply로 가는 것까지 본다.
 
 ## OQ-145 — 덱 위에 앞면으로 놓은 카드는 누가 아는가 (원판 + Immortality)
 
