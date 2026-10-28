@@ -227,6 +227,8 @@ BOX_ACTION_IDS: Final = frozenset(
         # Payments.
         "pay_agent_card_water",
         "pay_agent_card_spice",
+        # The original game's Firm Grip: "2 Solari -> Influence" (stage P3).
+        "pay_agent_card_solari",
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",
         "pay_agent_card_specimen",
