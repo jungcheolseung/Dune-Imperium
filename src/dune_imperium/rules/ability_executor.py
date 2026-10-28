@@ -36,7 +36,6 @@ from dataclasses import dataclass
 from functools import cache, lru_cache
 from typing import Final
 
-from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.abilities import Ability, intrigue_ability
 from dune_imperium.content.uprising.board import Faction
@@ -79,6 +78,7 @@ from dune_imperium.rules.acquisition import (
     acquirable_reserve_card_ids,
     acquire_imperium_for_intrigue,
     acquire_reserve_for_intrigue,
+    deck_top_offered,
     take_imperium_row_card,
 )
 from dune_imperium.rules.action_shapes import (
@@ -158,6 +158,7 @@ from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
     acquire_reclaimed_forces,
     acquire_tleilaxu_card,
+    deck_top_is_allowed,
     reclaimed_forces_block,
 )
 from dune_imperium.rules.unit_loss import (
@@ -530,9 +531,7 @@ def piece_rows(
         case AcquireTleilaxuCard():
             # "You may also acquire a Tleilaxu card (paying its normal
             # cost)"; Reclaimed Forces is one too (OQ-066).
-            deck_top = bool(owner.research_space) and (
-                genetic_markers_reached(owner.research_space) >= 1
-            )
+            deck_top = deck_top_is_allowed(state, player)
             for instance_id in state.tleilaxu_row:
                 if tleilaxu_card_for_instance(instance_id).specimen_cost > (
                     owner.specimens
@@ -617,18 +616,48 @@ def piece_rows(
                 # An empty Imperium Row: the set-aside fizzles and is
                 # confirmed (Manipulate, OQ-113 (C)).
                 rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.SET_ASIDE))
-        case AcquireCardUpTo(max_cost=max_cost):
-            rows.extend(
-                row(Verb.ACQUIRE, Target.RESERVE_CARD, (("card_id", card_id),))
-                for card_id in acquirable_reserve_card_ids(state, max_cost)
+        case AcquireCardUpTo(max_cost=max_cost, to_deck_top=forced_top):
+            # Where the card goes: the discard pile, or on top of the deck --
+            # always for Bypass Protocol's second option ("to the top of your
+            # deck"), and the owner's choice beside the plain row while
+            # Recruitment Mission is effective (``deck_top_offered``, [FAQ
+            # p. 3]) unless the card text puts it in the hand
+            # (``acquires_to_hand``). The twin row carries ``to_deck_top``.
+            tops = (
+                (True,)
+                if forced_top
+                else (False, True)
+                if deck_top_offered(state, player)
+                and not acquires_to_hand(state, player, piece)
+                else (False,)
             )
             rows.extend(
-                row(Verb.ACQUIRE, Target.IMPERIUM_CARD, (("instance_id", instance),))
+                row(
+                    Verb.ACQUIRE,
+                    Target.RESERVE_CARD,
+                    (
+                        ("card_id", card_id),
+                        *((("to_deck_top", True),) if top else ()),
+                    ),
+                )
+                for card_id in acquirable_reserve_card_ids(state, max_cost)
+                for top in tops
+            )
+            rows.extend(
+                row(
+                    Verb.ACQUIRE,
+                    Target.IMPERIUM_CARD,
+                    (
+                        ("instance_id", instance),
+                        *((("to_deck_top", True),) if top else ()),
+                    ),
+                )
                 # The owner's own Manipulate set-aside card is within reach
                 # at its printed cost, never an opponent's [FAQ p. 3].
                 for instance in acquirable_imperium_instance_ids(
                     state, max_cost, player=player
                 )
+                for top in tops
             )
             if not rows and empty_confirm:
                 # Nothing within the cap: the acquisition alone fizzles
@@ -1221,6 +1250,7 @@ def acquire_by_piece(
     if shape.verb is Verb.CONFIRM_EMPTY:
         return None
     arguments = dict(action.arguments)
+    to_deck_top = arguments.get("to_deck_top") is True
     if shape.target is Target.RESERVE_CARD:
         return acquire_reserve_for_intrigue(
             state,
@@ -1228,6 +1258,7 @@ def acquire_by_piece(
             str(arguments["card_id"]),
             to_hand=to_hand,
             source=step_source,
+            to_deck_top=to_deck_top,
         )
     return acquire_imperium_for_intrigue(
         state,
@@ -1235,6 +1266,7 @@ def acquire_by_piece(
         str(arguments["instance_id"]),
         to_hand=to_hand,
         source=step_source,
+        to_deck_top=to_deck_top,
     )
 
 

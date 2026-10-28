@@ -88,6 +88,11 @@ def _original_card_ids() -> frozenset[str]:
 # The original board's High Council and Swordmaster print the icons of the
 # same names [DI pp. 17-18], whose keys are Uprising's space ids.
 _ORIGINAL_ICONS = frozenset({"high_council", "swordmaster"})
+# A refusal or an empty confirmation names the verb of the effect it answers
+# (``of``): Bypass Protocol's "acquire a card that costs 3 or less" with
+# nothing to take confirms ``of=acquire``, which is also the id of Uprising's
+# "acquire" Contract by coincidence of the word, not a leak.
+_ORIGINAL_VERBS = frozenset({"acquire"})
 
 
 def test_the_original_game_catalog_holds_no_uprising_content() -> None:
@@ -111,6 +116,7 @@ def test_the_original_game_catalog_holds_no_uprising_content() -> None:
                 for name, value in template.arguments
                 if isinstance(value, str)
                 and not (name in ("icon", "effect") and value in _ORIGINAL_ICONS)
+                and not (name == "of" and value in _ORIGINAL_VERBS)
                 and any(part in uprising for part in value.split(":"))
             }
         )

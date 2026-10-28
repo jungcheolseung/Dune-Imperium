@@ -1107,19 +1107,26 @@ class AcquireCardUpTo:
     """Acquire one Imperium Row or Reserve card costing at most ``max_cost``.
 
     No Persuasion is spent; the printed cost cap limits the choice among the
-    five Row cards and the Reserve stacks [Main p. 13], plus the owner's own
-    Manipulate set-aside card at its printed cost [FAQ p. 3]. The card lands
+    five Row cards and the Reserve stacks [Main p. 13] (OQ-125, user ruling
+    2026-10-23: Arrakis Liaison and The Spice Must Flow, never Foldspace
+    [FAQ p. 2]), plus the owner's own Manipulate set-aside card at its
+    printed cost [FAQ p. 3]. The card lands
     in the owner's discard pile [Main pp. 6, 13] unless ``to_hand_if`` holds
     when the acquisition resolves, in which case the card text puts it in
-    hand.
+    hand, or ``to_deck_top`` says the card goes on top of the owner's deck
+    (Bypass Protocol's "[2 spice] -> Acquire a card that costs [Persuasion 5]
+    or less to the top of your deck", docs/rules/open-questions.md OQ-125).
     """
 
     max_cost: int
     to_hand_if: Condition | None = None
+    to_deck_top: bool = False
 
     def __post_init__(self) -> None:
         if self.max_cost < 1:
             raise ValueError("acquisition cost cap must be positive")
+        if self.to_deck_top and self.to_hand_if is not None:
+            raise ValueError("a card goes to the deck top or to the hand, not both")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1343,6 +1350,16 @@ class RevealPersuasionThisRound:
     def __post_init__(self) -> None:
         if self.amount < 1:
             raise ValueError("Persuasion bonus must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class AcquireToDeckTopThisRound:
+    """You may put cards you acquire on top of your deck, during the owner's
+    Reveal turn this round (Recruitment Mission): "for each card acquired the
+    owner chooses top of deck or discard pile" [FAQ p. 3]
+    (docs/rules/imperium-base.md 13.2). Not retroactive: cards acquired
+    before the card is played are unaffected (13.3). The whole card waits for
+    the owner's Reveal turn [FAQ p. 2]."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1845,6 +1862,7 @@ type Reward = (
     | GenerateSpecimens
     | AcquireTleilaxuCard
     | RevealPersuasionThisRound
+    | AcquireToDeckTopThisRound
     | ReturnThisCardToHand
     | BoostNextBeneGesseritCard
     | DrawPerSandwormInConflict

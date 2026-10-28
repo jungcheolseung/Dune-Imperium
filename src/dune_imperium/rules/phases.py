@@ -163,6 +163,8 @@ def draw_round_hands(state: GameState) -> RuleResult:
             bene_gesserit_boost_pending=False,
             # Tleilaxu Puppet's Reveal Persuasion lasts "this round" only.
             reveal_persuasion_round_bonus=0,
+            # Recruitment Mission's deck-top option lasts "this round" only.
+            acquire_to_deck_top_round=False,
             # Chairdog's return and Usurp's borrowed card never outlive the
             # round (both are consumed earlier in ordinary play).
             chairdog_return_card_ids=(),

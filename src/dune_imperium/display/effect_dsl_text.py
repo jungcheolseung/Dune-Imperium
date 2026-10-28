@@ -20,6 +20,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireReserveCardToHand,
     AcquireTech,
     AcquireTleilaxuCard,
+    AcquireToDeckTopThisRound,
     AdvanceTleilaxu,
     AgentOnSpaceWithIcon,
     AllConditions,
@@ -603,6 +604,10 @@ def reward_text(reward: Reward) -> str:
             # Every Contract taken is a face-up one, as the cards print it
             # ("Take 1 face-up Contract", the personal cards' own text).
             return f"Take {count} face-up {_plural(count, 'Contract')}"
+        case AcquireCardUpTo(max_cost=max_cost, to_deck_top=True):
+            # Bypass Protocol's "[2 spice] -> Acquire a card that costs
+            # [Persuasion 5] or less to the top of your deck."
+            return f"Acquire a card costing {max_cost} or less to the top of your deck"
         case AcquireCardUpTo(max_cost=max_cost, to_hand_if=to_hand_if):
             if to_hand_if is None:
                 return f"Acquire a card costing {max_cost} or less"
@@ -677,6 +682,10 @@ def reward_text(reward: Reward) -> str:
             return "You may acquire a Tleilaxu card (paying its specimen cost)"
         case RevealPersuasionThisRound(amount=amount):
             return f"Gain {amount} Persuasion during your Reveal turn this round"
+        case AcquireToDeckTopThisRound():
+            # Recruitment Mission's second line [Recruitment Mission card],
+            # joined after its Persuasion line like Bindu Suspension's pass.
+            return "you may put cards you acquire on top of your deck"
         case ReturnThisCardToHand():
             return "Return this card to your hand"
         case BoostNextBeneGesseritCard():
