@@ -247,6 +247,47 @@ def test_determinize_keeps_the_observers_view_and_every_card() -> None:
     assert other != world
 
 
+def test_determinize_keeps_the_public_deck_tops_in_place() -> None:
+    # OQ-145: cards put face up on top of a deck are known to every seat, so
+    # a sampled world keeps them on top, in order, for the observer's own
+    # deck and every opponent's; below them the decks are re-dealt as before.
+    state = _play_rounds(seed=21, rounds=2)
+    mine, rival = state.players[0], state.players[1]
+    assert len(mine.deck) > 3 and len(rival.deck) > 3
+    top_mine, top_rival = mine.deck[:2], rival.deck[:3]
+    state = replace(
+        state,
+        players=(
+            replace(mine, deck_public_top=top_mine),
+            replace(rival, deck_public_top=top_rival),
+            *state.players[2:],
+        ),
+    )
+
+    moved = False
+    for seed in range(8):
+        world = determinize(state, 0, random.Random(seed))
+        assert world.players[0].deck[:2] == top_mine
+        assert world.players[1].deck[:3] == top_rival
+        assert world.players[0].deck_public_top == top_mine
+        assert world.players[1].deck_public_top == top_rival
+        assert observe_state(world, 0) == observe_state(state, 0)
+        assert _card_census(world) == _card_census(state)
+        assert sorted(world.players[1].hand + world.players[1].deck) == sorted(
+            rival.hand + rival.deck
+        )
+        moved = moved or (
+            world.players[0].deck[2:] != mine.deck[2:]
+            and world.players[1].deck[3:] != rival.deck[3:]
+        )
+    assert moved
+    # A longer record than the peek shows wins; the peek still holds below it.
+    other = determinize(state, 1, random.Random(0))
+    assert other.players[0].deck[:2] == top_mine
+    assert other.players[1].deck[:3] == top_rival
+    assert observe_state(other, 1) == observe_state(state, 1)
+
+
 def test_determinize_keeps_twisted_intrigue_in_the_opponents_hands() -> None:
     # Twisted Intrigue cards never join the shared deck (OQ-097, user ruling
     # 2026-10-04, "다른 사람이 twisted 카드를 뽑는 일은 없도록"), so a sampled

@@ -84,6 +84,8 @@ _SEATS: Final = 4
 _ZONE_VOCABULARY: Final = {
     "hand_public": "personal",
     "deck_pool": "personal",
+    # v38: the public deck-top cards by identity, counted, per seat (OQ-145).
+    "deck_public_top": "personal",
     "in_play": "personal",
     "discard": "personal",
     "trashed": "personal",

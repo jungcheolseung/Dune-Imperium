@@ -166,8 +166,8 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
         # imperium-base.md 16); the second is a cost line, played only with
         # two spice and a card of cost 5 or less to take (OQ-071). The card
         # goes on top of the deck, placed before its acquire box resolves
-        # (``to_deck_top``); the top of the deck is as hidden as any deck
-        # card (imperium-base.md 14).
+        # (``to_deck_top``), where every seat knows it until it is drawn or
+        # the deck is shuffled (OQ-145, ``rules.deck_top``).
         options=(
             _plot(EffectSection(rewards=(AcquireCardUpTo(3),))),
             _plot(

@@ -227,6 +227,16 @@ def check_state_invariants(state: GameState, census: CardCensus) -> None:
     tracked card population."""
 
     check_game_state(state)
+    for player in state.players:
+        # OQ-145: the cards every seat knows on top of a deck really are its
+        # top cards, in order (``rules.deck_top`` settles it after every
+        # transition).
+        top = player.deck_public_top
+        if player.deck[: len(top)] != top:
+            raise InvariantViolation(
+                f"player {player.player_id}'s public deck top {top} is not "
+                f"the top of the deck {player.deck[: len(top) + 1]}"
+            )
     personal = _require_unique(_all_personal_instances(state), "personal cards")
     fixed_personal = frozenset(
         instance_id
@@ -523,21 +533,27 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
             )
         if seat == observer:
             # Controlled lets the owner see the top card while deciding: it
-            # stays put and the rest of the deck reorders.
+            # stays put and the rest of the deck reorders. So do the deck's
+            # public top cards (OQ-145), known to every seat.
             peeked = peeked_card_id(state, observer)
-            deck = (
-                (player.deck[0], *reversed(player.deck[1:]))
-                if peeked and player.deck and player.deck[0] == peeked
-                else tuple(reversed(player.deck))
+            fixed = max(
+                len(player.deck_public_top),
+                1 if peeked and player.deck and player.deck[0] == peeked else 0,
             )
+            deck = (*player.deck[:fixed], *reversed(player.deck[fixed:]))
             players[seat] = replace(player, deck=deck, twisted_deck=twisted)
             continue
-        # Publicly known hand cards stay in the hand; only the face-down
-        # draws trade places with the deck.
+        # Publicly known hand cards stay in the hand, and the deck's public
+        # top cards (OQ-145) stay on top; only the face-down draws trade
+        # places with the rest of the deck.
         known = set(player.hand_public)
         secret_hand = tuple(card for card in player.hand if card not in known)
-        secret, deck = _split_reversed((*secret_hand, *player.deck), len(secret_hand))
+        public_top = player.deck_public_top
+        secret, rest = _split_reversed(
+            (*secret_hand, *player.deck[len(public_top) :]), len(secret_hand)
+        )
         hand = (*player.hand_public, *secret)
+        deck = (*public_top, *rest)
         intrigue_pool.extend(
             card for card in player.intrigue_cards if card not in resolving
         )

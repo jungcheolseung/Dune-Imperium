@@ -685,6 +685,79 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
     assert torch.equal(actual_values, expected_values)
 
 
+def test_a_v37_file_migrates_to_v38_with_the_new_columns_at_zero(
+    tmp_path: Path,
+) -> None:
+    # Observation v38 appended the public deck-top depths (four seats by
+    # personal-card identity), the Voice's barred spaces and the card turn
+    # flags after every older segment: a v37 file's columns keep their place,
+    # the new ones start at zero, and every Uprising game without Immortality
+    # has them 0 anyway, so the migrated file scores as before.
+    codec = ActionCodec(RulesetConfig())
+    network, _ = _trained(codec)
+    current = tmp_path / "current.pt"
+    save_checkpoint(
+        current, network, ruleset=codec.config.identifier, iteration=4, codec=codec
+    )
+    document = torch.load(current, weights_only=True)
+    state = dict(document["state_dict"])
+    weight = state["body.0.weight"]
+    new_segments = (
+        *(f"seat{seat}_deck_public_top" for seat in range(4)),
+        "voice_blocks",
+        "card_turn_flags",
+    )
+    layout = [
+        (segment.name, segment.offset, segment.length)
+        for segment in OBSERVATION_SEGMENTS
+        if segment.name not in new_segments
+    ]
+    size = layout[-1][1] + layout[-1][2]
+    assert layout[-1][0] == "private_masterstroke"
+    state["body.0.weight"] = weight[:, :size].clone()
+    older = tmp_path / "v37.pt"
+    torch.save(
+        {
+            **document,
+            "state_dict": state,
+            "observation_layout": layout,
+            "observation_size": size,
+            "observation_version": 37,
+        },
+        older,
+    )
+
+    migrated, info = load_checkpoint(older)
+
+    assert info.migration is not None
+    report = info.migration
+    assert (report.from_observation_version, report.to_observation_version) == (
+        37,
+        OBSERVATION_VERSION,
+    )
+    added = OBSERVATION_SIZE - size
+    assert added == 4 * 188 + 4 * 42 + 4 * 2
+    assert (
+        report.observation_kept,
+        report.observation_new,
+        report.observation_dropped,
+    ) == (size, added, 0)
+    first_layer = migrated.body[0]
+    assert isinstance(first_layer, torch.nn.Linear)
+    first = first_layer.weight.detach()
+    assert torch.equal(first[:, :size], weight[:, :size])
+    assert float(first[:, size:].abs().sum()) == 0.0
+    # The new columns cannot move an output, whatever they read.
+    observations = torch.randint(0, 3, (6, OBSERVATION_SIZE), dtype=torch.int32)
+    cut = observations.clone()
+    cut[:, size:] = 0
+    masks = torch.ones(6, codec.size, dtype=torch.int8)
+    expected, expected_values = migrated(cut, masks)
+    actual, actual_values = migrated(observations, masks)
+    assert torch.equal(actual, expected)
+    assert torch.equal(actual_values, expected_values)
+
+
 def test_checkpoint_cli_inspects_stamps_and_migrates(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

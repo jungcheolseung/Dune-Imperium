@@ -245,7 +245,9 @@ class PlayerState:
     # Recruitment Mission: "You may put cards you acquire on top of your deck"
     # during this round's Reveal turn of the owner [FAQ p. 3]; effective only
     # while the owner's own Reveal turn is open, cleared when it ends and at
-    # Round Start (not observed: the Reveal shop offers the twin rows).
+    # Round Start. Public, and observed since v38 (``PublicPlayerView``): the
+    # Reveal shop offers the twin rows, and a network deciding a Reveal reads
+    # the flag.
     acquire_to_deck_top_round: bool = False
     # Chairdog: grafted cards that return from play to the hand when the
     # owner's Reveal turn starts [card face].
@@ -254,6 +256,14 @@ class PlayerState:
     # the game when the Agent turn closes [card face].
     usurped_row_card_id: str = ""
     deck: tuple[str, ...] = ()
+    # The deck's top cards every seat knows, top first (OQ-145, user ruling
+    # 2026-10-28): cards put face up on top of the deck (Bypass Protocol,
+    # Recruitment Mission, a Tleilaxu card with the first genetic marker)
+    # are public until they are drawn or the deck is shuffled. Between
+    # transitions ``deck[:len(deck_public_top)] == deck_public_top``
+    # (``simulation.invariants``); ``rules.deck_top`` places, settles and
+    # clears it, and a drawn card moves on into ``hand_public``.
+    deck_public_top: tuple[str, ...] = ()
     hand: tuple[str, ...] = ()
     # Hand cards whose identity every seat already knows because they
     # entered the hand through a public move (acquired face up from the
@@ -287,6 +297,7 @@ class PlayerState:
             "voice_blocked_space_ids",
             "enemy_agents_ignored_turn",
             "acquire_to_deck_top_round",
+            "deck_public_top",
         }
     )
 
@@ -442,6 +453,10 @@ class PlayerState:
 
         if len(self.hand_public) != len(set(self.hand_public)):
             raise ValueError("a hand card cannot be publicly known twice")
+        if self.deck_public_top and len(self.deck_public_top) != len(
+            set(self.deck_public_top)
+        ):
+            raise ValueError("a deck card cannot be publicly known twice")
         in_hand = set(self.hand)
         if any(card_id not in in_hand for card_id in self.hand_public):
             object.__setattr__(

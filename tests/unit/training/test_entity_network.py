@@ -30,6 +30,7 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     LEADER_IDS,
     OBSERVATION_SEGMENTS,
     OBSERVATION_SIZE,
+    OBSERVATION_VERSION,
     PERSONAL_CARD_IDS,
     POST_IDS,
     RESEARCH_SPACE_IDS,
@@ -430,6 +431,8 @@ _COUNTED = {
         (
             "hand_public",
             "deck_pool",
+            # v38 (OQ-145): the depth of each public deck-top card.
+            "deck_public_top",
             "in_play",
             "discard",
             "trashed",
@@ -963,13 +966,17 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     # the base-game flag (v34, a raw board input), and v35's raw columns
     # (Carthag's Control in the seat encoder; three Reserve stacks, two Maker
     # spaces and the Mentat's resting flag on the board) and its two Mentat
-    # seat fields, and v36's raw Masterstroke columns (four seats on the
-    # board, four Factions private) are the inputs the file never had.
+    # seat fields, v36's raw Masterstroke columns (four seats on the board,
+    # four Factions private) and v38's: the public deck-top zone of a seat,
+    # the 42 barred spaces and two turn flags of four seats (raw, on the
+    # board) are the inputs the file never had.
     assert info.migration.observation_new == network.entity_width * (1 + 3) + (
         network.entity_width + 1
     ) + network.entity_width + len(Verb) + len(Source) + 2 + 7 * (
         network.entity_width
-    ) + 1 + (1 + 3 + 2 + 1) + 2 * network.entity_width + (4 + 4)
+    ) + 1 + (1 + 3 + 2 + 1) + 2 * network.entity_width + (4 + 4) + (
+        network.entity_width + 4 * 42 + 4 * 2
+    )
     assert info.migration.observation_dropped == 0
     observations = _observations(recorded).clone()
     pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)
@@ -1002,6 +1009,86 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
         assert torch.equal(moved.trunk(observations), hidden)
         assert torch.equal(
             moved.action_logits(hidden, actions),
+            original.action_logits(hidden, actions),
+        )
+
+
+_V38_SEGMENTS = (
+    *(f"seat{seat}_deck_public_top" for seat in range(4)),
+    "voice_blocks",
+    "card_turn_flags",
+)
+
+
+def test_a_v37_entity_file_moves_onto_v38_with_the_new_inputs_at_zero(
+    tmp_path: Path, recorded: list[tuple[np.ndarray, np.ndarray, int]]
+) -> None:
+    """A file written under observation v37 knows none of v38's inputs (the
+    public deck-top zone of a seat, the Voice's barred spaces and the card turn
+    flags): every older input keeps its place by name, the new ones start at
+    zero, so the file computes its own function whatever they read."""
+
+    path = _saved(tmp_path, _FULL)
+    document = checkpoint_module._read(path)
+    state = dict(document["state_dict"])
+    inputs: dict[str, list[str]] = {}
+    for encoder, key in (
+        ("seat", "seat_encoder.0.weight"),
+        ("board", "board_encoder.0.weight"),
+        ("private", "private_encoder.0.weight"),
+    ):
+        names = document["entity_inputs"][encoder]
+        kept = [
+            index
+            for index, name in enumerate(names)
+            if not name.startswith(
+                ("zone:deck_public_top:", "raw:voice_blocks:", "raw:card_turn_flags:")
+            )
+        ]
+        state[key] = state[key][:, kept]
+        inputs[encoder] = [names[index] for index in kept]
+    layout = [
+        row for row in document["observation_layout"] if row[0] not in _V38_SEGMENTS
+    ]
+    document.update(
+        state_dict=state,
+        entity_inputs=inputs,
+        observation_version=37,
+        observation_layout=layout,
+        observation_size=layout[-1][1] + layout[-1][2],
+    )
+    torch.save(document, path)
+
+    moved, info = load_checkpoint(path)
+    assert isinstance(moved, EntityNetwork)
+    assert info.migration is not None
+    assert info.migration.from_observation_version == 37
+    assert info.migration.to_observation_version == OBSERVATION_VERSION
+    # One zone of a seat, 42 spaces and two flags for each of four seats.
+    assert info.migration.observation_new == moved.entity_width + 4 * 42 + 4 * 2
+    assert info.migration.observation_dropped == 0
+    assert layout[-1][0] == "private_masterstroke"
+
+    observations = _observations(recorded).clone()
+    new = torch.cat(
+        [
+            torch.arange(segment_slice(name).start, segment_slice(name).stop)
+            for name in _V38_SEGMENTS
+        ]
+    )
+    # Uprising's own columns: a game without a public top has none of them.
+    cut = observations.clone()
+    cut[:, new] = 0
+    noisy = observations.clone()
+    noisy[:, new] = 3
+    original = _network(_FULL)
+    actions = torch.arange(0, moved.action_size, 211)
+    with torch.no_grad():
+        hidden = original.trunk(cut)
+        assert torch.equal(moved.trunk(cut), hidden)
+        assert torch.equal(moved.trunk(noisy), hidden)
+        assert torch.equal(
+            moved.action_logits(moved.trunk(noisy), actions),
             original.action_logits(hidden, actions),
         )
 

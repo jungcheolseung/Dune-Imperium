@@ -150,6 +150,7 @@ from dune_imperium.rules.contracts import (
     open_held_contract_icons,
     resolve_exhausted_contract_choice,
 )
+from dune_imperium.rules.deck_top import settle_public_deck_tops
 from dune_imperium.rules.effect_steps import (
     present,
     presents_steps,
@@ -997,6 +998,18 @@ def _reveal_masterstroke(result: RuleResult) -> RuleResult:
     return peaked if revealed is peaked else _advance_automatic(revealed)
 
 
+def _settle_deck_tops(result: RuleResult) -> RuleResult:
+    """Bring every seat's public deck top in line with its deck, once the
+    transition's draws, trashes and discards are all done (OQ-145,
+    ``rules.deck_top``); a transition that leaves every record as it was is
+    returned itself."""
+
+    settled = settle_public_deck_tops(result.state)
+    if settled is result.state:
+        return result
+    return RuleResult(state=settled, events=result.events)
+
+
 class UprisingRulesEngine(RulesEngine):
     """Connect the implemented rule modules into one multi-round state machine."""
 
@@ -1072,8 +1085,10 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
-        return refresh_pre_reveal_strength(
-            _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
+        return _settle_deck_tops(
+            refresh_pre_reveal_strength(
+                _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
+            )
         )
 
     def legal_actions(
@@ -1184,8 +1199,10 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
-        return refresh_pre_reveal_strength(
-            _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
+        return _settle_deck_tops(
+            refresh_pre_reveal_strength(
+                _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
+            )
         )
 
     def observe(self, state: GameState, player: int) -> PlayerView:
