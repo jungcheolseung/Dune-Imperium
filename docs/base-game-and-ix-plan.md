@@ -935,8 +935,8 @@ card-implementer는 기존 조각으로 안 되는 카드를 건너뛰고 빠진
 | 이번 turn 적 Agent가 막지 않음 | Infiltrate | 카드 문구, OQ-113 (C), P0 sweep S15 | 구현 `a80be9ca`(`enemy_agents_ignored_turn`, Eyes Everywhere와 같은 자리 — Spy 회수 행 없음, 자기 Agent·요구·The Voice는 그대로 막음); 관측 v38 |
 | 상대별 다음 배치 봉쇄 | The Voice | OQ-116(판정 B), imperium-base.md 13.1 | 구현 `a80be9ca`(`voice_blocked_space_ids`, 다음 배치나 라운드 끝에 풀림, 무엇으로도 못 넘음); 관측 v38 |
 | turn 시작 뽑기 + 선택형 pass | Bindu Suspension | OQ-117 | 구현(`PassTurn(optional=True)`); 이어 가기 뒤 다른 시작 카드는 OQ-143(판정 2026-10-28 사용자: 구현대로 — Bloodlines의 Litany Against Fear·Withdrawn과 한 표시) |
-| Mentat 셋 | Kwisatz Haderach, Urgent Mission, Calculated Hire | OQ-139 재검토(조합: Uprising 판엔 Mentat 없음, Immortality의 Twisted Mentat) | 사용자 답 대기(16.8 4) |
-| 프로모 셋 | Duncan, Loyal Blade·Jessica of Arrakis·Thumper | 16.3 | 사용자 답 대기(16.8 3) |
+| Mentat 셋 | Kwisatz Haderach, Urgent Mission, Calculated Hire | OQ-139 (가) 유지(2026-10-28 사용자), imperium-base.md 9·13.1·16 | 구현: Kwisatz `0e9ce20f`(빈 Leader로도 Agent turn, 보드의 자기 Agent를 `from_space`로 옮김, 아이콘·점유 무시, 비용·요구·한 번만·The Voice는 지킴; 자기 Agent 둘이 한 칸에 설 수 있음), Urgent Mission·Calculated Hire `2883b808`(빈 Leader에서 Plot 창으로 Agent turn이 다시 열림; Mentat 칸 효과를 풀기 전에 Calculated Hire로 가져가면 그 효과는 사라짐 — 조건은 해결할 때, OQ-028·OQ-057 (1)); 같은 칸 둘의 회수 줄 겹침 고침 `761cba10`. 화면은 (가) 규칙으로 좌석 패널에 Mentat 자리 `98465c26`(보드 위 말은 P5) |
+| 프로모 셋 | Duncan, Loyal Blade·Jessica of Arrakis·Thumper | 16.3(앱 속성 표 + 영어 문구로 충분, 이미지 안 읽음) | 구현 `51f44a9f`(Duncan의 trash 줄은 한 방향·몇이든·Commander 포함, Jessica의 두 뽑기는 아이콘마다 BG 조건, Thumper는 보너스 spice만 두 배); 원판도 `promo_cards`를 받음 |
 
 Imperium 묶음에서 아직 멈추지 않은 새 모양 후보(16.4): harvest 두 배(Carryall), Power Play, Test of Humanity, The Voice(OQ-116), Guild Bankers.
 
@@ -1032,6 +1032,10 @@ Ghidra는 launch.sh 대신 JDK 25로 직접 띄워 `-Duser.home`·`-Djava.io.tmp
 7. **Navigation card 4 + Recruitment Mission(P7):** Bloodlines Navigation card 4의 Plot이 The Spice Must Flow를 얻는 길(`ability_executor`의
    `reserve_acquisitions`)은 고를 단계 없는 자동 보상이라, Recruitment Mission이 켜진 Reveal turn에 얻어도 덱 위를 고를 수 없다. 원판 + Bloodlines가
    열리는 P7에서 고르기 단계를 둔다.
+
+8. **Kwisatz Haderach의 자기 Agent 둘(P7):** 원판에서 회수 줄은 고쳤다(`761cba10`). Uprising의 Into the Fray(`leader_abilities.py`, 칸 id로 다
+   지움)와 Immortality의 Twisted Mentat(같은 칸 줄 겹침)는 원판 카드와 섞이는 P7에서 같은 셈으로 고친다. Kwisatz가 Conflict의 Agent(Into the Fray)를
+   옮길 수 있는가("from anywhere")도 P7에서 정한다.
 
 1·2는 조정자의 go(2026-10-28 아침)로 끝냈다(대상 테스트 `-n 2`, Uprising 카탈로그·특성 행 대조; 전체 pytest와 관문은 E7b 뒤 그대로).
 
