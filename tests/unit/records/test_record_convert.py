@@ -25,8 +25,11 @@ from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.cli.records import main
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.replay import ReplayStep
+from dune_imperium.records import convert
 from dune_imperium.records.convert import (
     CONVERTED_FROM,
+    ConversionError,
+    convert_files,
     convert_save_document,
     convert_suite,
     verify_converted_save,
@@ -379,8 +382,8 @@ def test_convert_archives_and_converts_without_writing_outside_its_folder(
     printed = capsys.readouterr().out
     assert f"saves/{'a' * 32}.json: v{OLDER} {len(older)} steps -> " in printed
     assert "1 problems -> 1 (0 re-captured, 0 left out)" in printed
-    originals = json.loads((out / "originals" / "manifest.json").read_text())
-    converted = json.loads((out / "converted" / "manifest.json").read_text())
+    originals = json.loads((out / "manifests" / "originals.json").read_text())
+    converted = json.loads((out / "manifests" / "converted.json").read_text())
     for entry in originals["files"]:
         copy = out / "originals" / entry["path"]
         assert _sha(copy) == entry["sha256"] == inputs[root / entry["path"]]
@@ -401,7 +404,15 @@ def test_convert_archives_and_converts_without_writing_outside_its_folder(
         == 1
     )
     plan = (out / "swap-plan.md").read_text()
-    assert f"converted/saves/{'a' * 32}.json" in plan
+    assert f"converted/saves/{'a' * 32}.json' 'saves/{'a' * 32}.json'" in plan
+    assert "manifests/originals.json" in plan
+    # The mirrors hold the inputs and nothing else.
+    for mirror in ("originals", "converted"):
+        assert sorted(
+            str(path.relative_to(out / mirror))
+            for path in (out / mirror).rglob("*")
+            if path.is_file()
+        ) == sorted(str(path.relative_to(root)) for path in inputs)
 
     with pytest.raises(SystemExit, match="already exists"):
         main(
@@ -436,3 +447,118 @@ def test_a_converted_save_loads_on_the_play_server(
     assert isinstance(summary["round_number"], int)
     assert summary["log_count"] >= len(converted["steps"])
     assert summary["round_number"] >= converted["round_number"]
+
+
+@pytest.mark.parametrize("damage", ["truncated", "hash"])
+def test_a_save_of_this_engine_that_misses_its_own_hash_is_refused(
+    played: tuple[ReplayStep, ...], damage: str
+) -> None:
+    # A save stamped with this engine's versions replays here as recorded or
+    # it is damaged; its conversion must not stamp a new hash over that.
+    document = save_document(SEED, played)
+    if damage == "truncated":
+        document["steps"] = document["steps"][:-25]
+    else:
+        document["expected_state_hash"] = "0" * 64
+
+    with pytest.raises(ConversionError, match="does not reach its recorded state"):
+        convert_save_document(document, ENGINE)
+
+
+def test_a_save_of_this_engine_converts_to_itself(
+    played: tuple[ReplayStep, ...],
+) -> None:
+    log = [
+        *save_document(SEED, played)["log"],
+        {
+            "type": "action",
+            "action_id": "pass_combat_intrigue",
+            "actor": 1,
+            "arguments": {},
+            "undone": True,
+        },
+        {"type": "undo", "seat": 1, "count": 1},
+    ]
+    document = save_document(SEED, played, log=log)
+
+    result = convert_save_document(document, ENGINE).document
+
+    # Same steps, same hash, and the undo history kept: nothing changed.
+    assert {key: value for key, value in result.items() if key != CONVERTED_FROM} == (
+        document
+    )
+
+
+def test_a_conversion_that_loses_recorded_steps_fails(
+    played: tuple[ReplayStep, ...],
+    older: tuple[ReplayStep, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A migration that ended early without a divergence would cut the tail
+    # off silently (an older save's hash cannot be rebuilt to catch it).
+    real = migrate_record
+
+    def cut(replay: Any, engine: Any = None) -> MigratedRecord:
+        record = real(replay, engine)
+        return replace(record, steps=record.steps[:-10], walked=None)
+
+    monkeypatch.setattr(convert, "migrate_record", cut)
+
+    with pytest.raises(ConversionError, match="lacks recorded steps"):
+        convert_save_document(_older_save(played, older), ENGINE)
+
+
+def test_a_record_that_fails_leaves_no_archive(
+    played: tuple[ReplayStep, ...], older: tuple[ReplayStep, ...], tmp_path: Path
+) -> None:
+    root = tmp_path / "project"
+    (root / "saves").mkdir(parents=True)
+    good = root / "saves" / f"{'a' * 32}.json"
+    good.write_text(json.dumps(_older_save(played, older)), encoding="utf-8")
+    bad = root / "saves" / f"{'b' * 32}.json"
+    damaged = save_document(SEED, played)
+    damaged["steps"] = damaged["steps"][:-25]
+    bad.write_text(json.dumps(damaged), encoding="utf-8")
+    out = root / "archive"
+
+    with pytest.raises(ConversionError, match=f"saves/{'b' * 32}.json: "):
+        convert_files([good, bad], [], out, root=root, engine=ENGINE)
+    assert not out.exists()
+    with pytest.raises(ValueError, match="given twice"):
+        convert_files([good, good], [], out, root=root, engine=ENGINE)
+    assert not out.exists()
+
+
+def test_inputs_named_like_the_archive_s_own_files_keep_their_bytes(
+    played: tuple[ReplayStep, ...], older: tuple[ReplayStep, ...], tmp_path: Path
+) -> None:
+    # The archive's manifests and plan stand outside the two mirrors, so an
+    # input named ``manifest.json`` (or anything else) keeps its copy and its
+    # conversion (review finding 2026-10-29).
+    root = tmp_path / "project"
+    root.mkdir()
+    named = [root / "manifest.json", root / "manifests" / "originals.json"]
+    for path in named:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(_older_save(played, older)), encoding="utf-8")
+    sha = {path: _sha(path) for path in named}
+    out = root / "archive"
+
+    convert_files(named, [], out, root=root, engine=ENGINE)
+
+    for path in named:
+        relative = path.relative_to(root)
+        assert _sha(out / "originals" / relative) == sha[path]
+        document = json.loads((out / "converted" / relative).read_text())
+        verify_converted_save(document, ENGINE)
+    originals = json.loads((out / "manifests" / "originals.json").read_text())
+    assert [entry["path"] for entry in originals["files"]] == [
+        "manifest.json",
+        "manifests/originals.json",
+    ]
+    assert {path.name for path in out.iterdir()} == {
+        "originals",
+        "converted",
+        "manifests",
+        "swap-plan.md",
+    }

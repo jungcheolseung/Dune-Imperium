@@ -13,8 +13,9 @@ was waiting for instead). See docs/human-records.md.
 
 ``convert`` converts saves and suites to this engine's codec into an archive
 folder (``records.convert``): a byte copy of each original, its converted
-file, a manifest of both and the list of copies that would put the converted
-files in place. It writes nothing outside that folder.
+file, manifests of both and the list of copies that would put the converted
+files in place. It writes nothing outside that folder, and nothing at all
+when a record cannot be converted without hiding what is wrong with it.
 
 ``corpus`` reads a record corpus (``records.corpus``): ``list`` the corpora,
 the ``keys`` of one with how many records and occurrences each has,

@@ -12,11 +12,21 @@ steps (the bridged ones included, a rewritten one in its new form) and it
 is stamped with this engine's versions and the state hash they reach, so
 the play server's strict ``parse_save_document`` takes it and the record
 replays here exactly. A record that ends in a ``Divergence`` keeps its
-steps up to the divergence and is no longer finished. The converted
-session log is the live steps alone: an undone step was taken on the
-recording engine and has no counterpart here (records never read the undo
-history; the archived original keeps it). The turn-end fields that count
-recorded steps (``sealed_steps``, ``open_units``) move with the steps.
+steps up to the divergence and is no longer finished. The converted session
+log is the live steps alone: an undone step was taken on the recording
+engine, which the server would replay it on when it loads the log (records
+never read the undo history; the archived original keeps it). Only a save
+of this engine whose steps stay as they were keeps its log. The
+turn-end fields that count recorded steps (``sealed_steps``,
+``open_units``) move with the steps.
+
+A conversion never hides a damaged input (``ConversionError``). A save
+already stamped with this engine's versions must reach its own recorded
+state hash: the new hash may replace an older engine's only. And every
+recorded step must be in the converted record -- up to the divergence of
+one that diverges -- or be one the migration dropped by name
+(``dropped_steps``, reported with the conversion), so no tail is cut
+silently.
 
 A suite converts by resolving its problems on this engine
 (``records.problems.resolve``) and freezing each position where its record,
@@ -48,16 +58,22 @@ from dune_imperium.records.problems import (
     Resolved,
     Suite,
     judged_differences,
-    load_suite,
     position_state,
     resolve,
-    save_suite,
+    suite_from_document,
+    suite_text,
 )
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.server.persistence import parse_save_document, serialize_step
 
 # Where a converted save says what it was converted from.
 CONVERTED_FROM: Final = "converted_from"
+# The version stamps a save of this engine has (``parse_save_document``).
+_VERSION_FIELDS: Final = ("ruleset_version", "content_version", "action_codec_version")
+
+
+class ConversionError(ValueError):
+    """A record that cannot be converted without hiding what is wrong with it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +127,7 @@ def convert_save_document(
         expected_state_hash=canonical_state_hash(state),
         action_codec_version=ACTION_CODEC_VERSION,
     )
+    _check_input(document, original, record, stamped)
     converted: dict[str, Any] = dict(document)
     converted.update(
         steps=[serialize_step(step) for step in steps],
@@ -119,7 +136,9 @@ def convert_save_document(
         content_version=stamped.content_version,
         action_codec_version=stamped.action_codec_version,
     )
-    if "log" in document:
+    if "log" in document and not (
+        _current(document, stamped) and steps == original.steps
+    ):
         converted["log"] = [{**serialize_step(step), "undone": False} for step in steps]
     if "round_number" in document:
         converted["round_number"] = state.round_number
@@ -148,6 +167,63 @@ def convert_save_document(
     return ConvertedSave(
         converted, record, original.action_codec_version, len(original.steps)
     )
+
+
+def _current(document: Mapping[str, Any], stamped: GameReplay) -> bool:
+    """Whether ``document`` is stamped with this engine's versions."""
+
+    return all(document.get(name) == getattr(stamped, name) for name in _VERSION_FIELDS)
+
+
+def _check_input(
+    document: Mapping[str, Any],
+    original: GameReplay,
+    record: MigratedRecord,
+    stamped: GameReplay,
+) -> None:
+    """Raise ``ConversionError`` when converting would hide a damaged input."""
+
+    if _current(document, stamped):
+        # This engine's own save: it replays to its recorded state or it is
+        # damaged (a step cut or changed), never "converted".
+        if stamped.expected_state_hash != original.expected_state_hash:
+            divergence = record.divergence
+            where = (
+                ""
+                if divergence is None
+                else f", stopping at step {divergence.recorded_index}: "
+                f"{divergence.reason}"
+            )
+            raise ConversionError(
+                f"a save of this engine (codec v{ACTION_CODEC_VERSION}) does not "
+                f"reach its recorded state hash{where}"
+            )
+    divergence = record.divergence
+    reached = len(original.steps) if divergence is None else divergence.recorded_index
+    kept = {
+        migrated.recorded_index
+        for migrated in record.steps
+        if migrated.recorded_index is not None
+    }
+    lost = sorted(set(range(reached)) - kept - set(dropped_steps(record)))
+    if lost:
+        raise ConversionError(
+            f"the converted record lacks recorded steps {lost[:5]}"
+            + (" ..." if len(lost) > 5 else "")
+            + f" of the {reached} it reached"
+        )
+
+
+def dropped_steps(record: MigratedRecord) -> dict[int, str]:
+    """The recorded steps the migration dropped by name, each with its reason.
+
+    A bridge may find a recorded step with no counterpart here (the bridges
+    of codecs v143-v154 dropped the old graft switch, refusals the turn's
+    end lapses now, and a few more); a migration module that does so lists
+    them as ``MigratedRecord.dropped``, and they are reported with the
+    conversion. This one has none."""
+
+    return dict(getattr(record, "dropped", ()))
 
 
 def verify_converted_save(
@@ -316,9 +392,13 @@ def _check_same_positions(
 
 # --- files -------------------------------------------------------------------
 
+# The archive's own files, outside ``originals/`` and ``converted/``, which
+# mirror the inputs' paths under the root: no input path can name them.
+MANIFESTS: Final = Path("manifests")
+SWAP_PLAN: Final = Path("swap-plan.md")
 
-def _digest(path: Path) -> dict[str, Any]:
-    data = path.read_bytes()
+
+def _digest(data: bytes) -> dict[str, Any]:
     return {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
 
 
@@ -343,6 +423,20 @@ class ConvertedFile:
     summary: str
 
 
+@dataclass(frozen=True, slots=True)
+class _Pending:
+    """A file converted in memory, before anything is written."""
+
+    source: Path
+    relative: Path
+    kind: str
+    data: bytes
+    codec: Any
+    text: str
+    entry: dict[str, Any]
+    summary: str
+
+
 def convert_files(
     saves: Sequence[Path],
     suites: Sequence[Path],
@@ -356,102 +450,102 @@ def convert_files(
 
     ``out/originals/<path>`` is a byte copy of each file and
     ``out/converted/<path>`` its conversion, ``<path>`` being the file's
-    path under ``root``; each folder has a ``manifest.json`` (path, sha256,
-    size, codec, and for a converted file its original's sha256 and what
-    the conversion did), and ``out/swap-plan.md`` lists the copies that
-    would put the converted files in place. Nothing under ``root`` is
+    path under ``root``. The archive's own files stand outside those two
+    mirrors: ``out/manifests/originals.json`` and ``converted.json`` (path,
+    sha256, size, codec, and for a converted file its original's sha256 and
+    what the conversion did) and ``out/swap-plan.md``, the copies that would
+    put the converted files in place. Every file is converted and checked
+    before anything is written, so a record that fails
+    (``ConversionError``) leaves no archive. Nothing under ``root`` is
     written. ``out`` must not exist yet.
     """
 
     engine = engine or UprisingRulesEngine()
     if out.exists():
         raise FileExistsError(f"{out} already exists")
-    # Every input reads before anything is written.
-    for path in saves:
-        _relative(path, root)
-        parse_save_document(
-            json.loads(path.read_text(encoding="utf-8")), check_versions=False
-        )
-    for path in suites:
-        _relative(path, root)
-        load_suite(path)
-    out.mkdir(parents=True)
-    originals: list[dict[str, Any]] = []
-    converted_entries: list[dict[str, Any]] = []
-    done: list[ConvertedFile] = []
+    pending: list[_Pending] = []
+    seen: set[Path] = set()
     for kind, paths in (("save", saves), ("suite", suites)):
         for path in paths:
             relative = _relative(path, root)
-            original = out / "originals" / relative
-            converted = out / "converted" / relative
-            original.parent.mkdir(parents=True, exist_ok=True)
-            converted.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, original)
-            if _digest(original) != _digest(path):
-                raise OSError(f"the copy of {path} differs from it")
-            document = json.loads(original.read_text(encoding="utf-8"))
-            if kind == "save":
-                entry, summary = _convert_save_file(document, converted, engine)
-                codecs: Any = document.get("action_codec_version")
-            else:
-                entry, summary = _convert_suite_file(
-                    original, converted, engine, recapture
-                )
-                codecs = sorted(
-                    {
-                        record["action_codec_version"]
-                        for record in document["records"].values()
-                    }
-                )
-            originals.append(
-                {
-                    "path": str(relative),
-                    "kind": kind,
-                    **_digest(original),
-                    "codec": codecs,
-                }
+            if relative in seen:
+                raise ValueError(f"{relative} is given twice")
+            seen.add(relative)
+            try:
+                pending.append(_convert_file(kind, path, relative, engine, recapture))
+            except ValueError as error:
+                raise ConversionError(f"{relative}: {error}") from error
+    originals: list[dict[str, Any]] = []
+    converted_entries: list[dict[str, Any]] = []
+    done: list[ConvertedFile] = []
+    out.mkdir(parents=True)
+    for item in pending:
+        original = out / "originals" / item.relative
+        converted = out / "converted" / item.relative
+        original.parent.mkdir(parents=True, exist_ok=True)
+        converted.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(item.source, original)
+        if original.read_bytes() != item.data:
+            raise OSError(f"{item.source} changed while it was converted")
+        converted.write_text(item.text, encoding="utf-8")
+        common = {"path": str(item.relative), "kind": item.kind}
+        originals.append({**common, **_digest(item.data), "codec": item.codec})
+        converted_entries.append(
+            {
+                **common,
+                **_digest(converted.read_bytes()),
+                "codec": ACTION_CODEC_VERSION,
+                "original_sha256": _digest(item.data)["sha256"],
+                **item.entry,
+            }
+        )
+        done.append(
+            ConvertedFile(
+                item.relative,
+                original.relative_to(out),
+                converted.relative_to(out),
+                item.kind,
+                item.summary,
             )
-            converted_entries.append(
-                {
-                    "path": str(relative),
-                    "kind": kind,
-                    **_digest(converted),
-                    "codec": ACTION_CODEC_VERSION,
-                    "original_sha256": _digest(original)["sha256"],
-                    **entry,
-                }
-            )
-            done.append(
-                ConvertedFile(
-                    relative,
-                    original.relative_to(out),
-                    converted.relative_to(out),
-                    kind,
-                    summary,
-                )
-            )
-    for folder, entries in (("originals", originals), ("converted", converted_entries)):
-        (out / folder).mkdir(exist_ok=True)
-        (out / folder / "manifest.json").write_text(
+        )
+    (out / MANIFESTS).mkdir()
+    for name, entries in (("originals", originals), ("converted", converted_entries)):
+        (out / MANIFESTS / f"{name}.json").write_text(
             json.dumps(
                 {"root": str(root), "files": entries}, ensure_ascii=False, indent=1
             )
             + "\n",
             encoding="utf-8",
         )
-    (out / "swap-plan.md").write_text(_swap_plan(done, out, root), encoding="utf-8")
+    (out / SWAP_PLAN).write_text(swap_plan(done, out, root), encoding="utf-8")
     return done
 
 
+def _convert_file(
+    kind: str,
+    source: Path,
+    relative: Path,
+    engine: UprisingRulesEngine,
+    recapture: frozenset[str],
+) -> _Pending:
+    data = source.read_bytes()
+    document = json.loads(data.decode("utf-8"))
+    if kind == "save":
+        text, entry, summary = _convert_save_file(document, engine)
+        codec: Any = document.get("action_codec_version")
+    else:
+        text, entry, summary = _convert_suite_file(document, engine, recapture)
+        codec = sorted(
+            {record["action_codec_version"] for record in document["records"].values()}
+        )
+    return _Pending(source, relative, kind, data, codec, text, entry, summary)
+
+
 def _convert_save_file(
-    document: dict[str, Any], target: Path, engine: UprisingRulesEngine
-) -> tuple[dict[str, Any], str]:
+    document: dict[str, Any], engine: UprisingRulesEngine
+) -> tuple[str, dict[str, Any], str]:
     converted = convert_save_document(document, engine)
     verify_converted_save(converted.document, engine)
-    # Written as the play server writes a save (``SaveStore``).
-    target.write_text(
-        json.dumps(converted.document, ensure_ascii=False, indent=1), encoding="utf-8"
-    )
     record = converted.record
     divergence = record.divergence
     outcome = (
@@ -461,25 +555,29 @@ def _convert_save_file(
         if divergence is None
         else f"diverged at step {divergence.recorded_index}: {divergence.reason}"
     )
-    bridges = dict(sorted(record.bridge_counts().items()))
     entry = {
         "outcome": outcome,
         "steps": [converted.steps, len(record.steps)],
-        "bridges": bridges,
+        "bridges": dict(sorted(record.bridge_counts().items())),
+        "dropped": {
+            str(index): reason
+            for index, reason in sorted(dropped_steps(record).items())
+        },
     }
     summary = (
         f"v{converted.codec} {converted.steps} steps -> "
         f"v{ACTION_CODEC_VERSION} {len(record.steps)} steps, {outcome}"
     )
-    return entry, summary
+    # Written as the play server writes a save (``SaveStore``).
+    text = json.dumps(converted.document, ensure_ascii=False, indent=1)
+    return text, entry, summary
 
 
 def _convert_suite_file(
-    source: Path, target: Path, engine: UprisingRulesEngine, recapture: frozenset[str]
-) -> tuple[dict[str, Any], str]:
-    suite = load_suite(source)
+    document: dict[str, Any], engine: UprisingRulesEngine, recapture: frozenset[str]
+) -> tuple[str, dict[str, Any], str]:
+    suite = suite_from_document(document)
     converted = convert_suite(suite, engine, recapture=recapture)
-    save_suite(target, converted.suite)
     entry = {
         "problems": [len(suite.problems), len(converted.suite.problems)],
         "recaptured": {
@@ -492,10 +590,13 @@ def _convert_suite_file(
         f"({len(converted.recaptured)} re-captured, "
         f"{len(converted.left_out)} left out)"
     )
-    return entry, summary
+    return suite_text(converted.suite), entry, summary
 
 
-def _swap_plan(done: Sequence[ConvertedFile], out: Path, root: Path) -> str:
+def swap_plan(done: Sequence[ConvertedFile], out: Path, root: Path) -> str:
+    """The copies that put the converted files of the archive ``out`` in
+    place under ``root`` (``out/swap-plan.md``)."""
+
     try:
         archive = str(out.resolve().relative_to(root.resolve()))
     except ValueError:
@@ -504,9 +605,10 @@ def _swap_plan(done: Sequence[ConvertedFile], out: Path, root: Path) -> str:
         f"# Putting the converted records in place (codec v{ACTION_CODEC_VERSION})",
         "",
         f"Each file under `{archive}/converted/` replaces the file of the same path",
-        f"under `{root}`; its original stays in `{archive}/originals/` (both",
-        "`manifest.json` files have the sha256 of every file). Check the converted",
-        "files first (docs/human-records.md), then, from that folder:",
+        f"under `{root}`; its original stays in `{archive}/originals/`. The",
+        f"sha256 of every file is in `{archive}/{MANIFESTS}/originals.json` and",
+        f"`{archive}/{MANIFESTS}/converted.json`. Check the converted files first",
+        "(docs/human-records.md), then, from that folder:",
         "",
         "```bash",
         f"cd '{root}'",

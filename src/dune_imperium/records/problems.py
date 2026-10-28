@@ -474,6 +474,12 @@ def _judged_positions(
 
 def save_suite(path: Path, suite: Suite) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(suite_text(suite), encoding="utf-8")
+
+
+def suite_text(suite: Suite) -> str:
+    """The suite file's text (``save_suite``)."""
+
     document = {
         "format": SUITE_FORMAT,
         "version": SUITE_VERSION,
@@ -496,15 +502,24 @@ def save_suite(path: Path, suite: Suite) -> None:
             for problem in suite.problems
         ],
     }
-    path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+    return json.dumps(document, ensure_ascii=False)
 
 
 def load_suite(path: Path = DEFAULT_SUITE) -> Suite:
     document = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return suite_from_document(document)
+    except ValueError as error:
+        raise ValueError(f"{path}: {error}") from None
+
+
+def suite_from_document(document: Mapping[str, Any]) -> Suite:
+    """A suite file's parsed JSON as a ``Suite`` (``load_suite``)."""
+
     if document.get("format") != SUITE_FORMAT or document.get("version") != (
         SUITE_VERSION
     ):
-        raise ValueError(f"{path} is not a version {SUITE_VERSION} human problem suite")
+        raise ValueError(f"not a version {SUITE_VERSION} human problem suite")
     problems = []
     for index, item in enumerate(document["problems"]):
         right = deserialize_step(item["right"], index)
