@@ -2,7 +2,7 @@
 
 Bloodlines는 Dune: Imperium — Uprising의 확장이다. 이 문서는 4인 Uprising 게임에 Bloodlines를 더했을 때 바뀌거나 추가되는 규칙을 구현 단위로 정리한다. 규범 근거는 [공식 Bloodlines 룰북](sources.md)이며, `[Bloodlines p. N]`은 그 PDF의 페이지 번호다(인쇄된 쪽수와 같다). 프로젝트는 확장을 `RulesetConfig(bloodlines=True)` 옵션으로, 함께 든 Tech Module을 `tech_module=True` 옵션(Bloodlines 필요)으로 취급하며 둘 다 기본값은 꺼짐이다. 공식 문서가 침묵하는 Tech Module 판정은 [open-questions.md](open-questions.md)의 OQ-040~044다.
 
-범위 밖: 1·2인 Rivals 규칙 `[Bloodlines pp. 8-9]`, 6인 팀전 `[Bloodlines p. 10]`, 원본 Dune: Imperium과의 조합 `[Bloodlines p. 3]`, Rise of Ix와의 조합 `[Bloodlines p. 7]`. 2025-01-13 FAQ에는 Bloodlines 항목이 없다(2026-09-07 확인; "Sardaukar Commander" 검색 결과는 Shaddam Corrino IV의 능력명뿐이다).
+범위 밖: 1·2인 Rivals 규칙 `[Bloodlines pp. 8-9]`, 6인 팀전 `[Bloodlines p. 10]`, 원본 Dune: Imperium과의 조합 `[Bloodlines p. 3]`, Rise of Ix와의 조합 `[Bloodlines p. 7]`(2026-10-29 옮겨 적음: [rise-of-ix.md](rise-of-ix.md) 10a, 구현은 P7). 2025-01-13 FAQ에는 Bloodlines 항목이 없다(2026-09-07 확인; "Sardaukar Commander" 검색 결과는 Shaddam Corrino IV의 능력명뿐이다).
 
 ## 1. 구성물
 

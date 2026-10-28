@@ -1193,8 +1193,9 @@ P4는 원판 + Ix(+ 프로모, Epic, 지도자 드래프트)를 연다. 그 밖�
 
 ### 17.6 사용자 답이 필요한 것 (OQ 후보 — 아침에 한 번에)
 
-1. **Bloodlines 룰북 받기:** Tech Module과 Rise of Ix를 함께 쓰는 법은 `[Bloodlines p. 7]`에 있다(우리 bloodlines.md는 범위 밖으로 두었다). 원문이
-   `tmp/official-rules/`에 없다. `scripts/prepare_official_rules.py`로 공식 PDF를 받아 해당 쪽만 읽어도 될지(내려받기는 사용자 허락).
+1. ~~Bloodlines 룰북 받기~~ → **끝(2026-10-29, 사용자 "assets/rulebooks 에 룰북 다 있을텐데"):** 로컬 Bloodlines 룰북 p. 7만 읽어 [rise-of-ix.md](rules/rise-of-ix.md)
+   10a에 옮겼다. 두 모듈을 함께 쓰면 타일 36장을 섞어 세 더미, Ix 전부를 쓰므로 Ixian Embassy 없음(High Council 할인 없음, Tech Negotiation 할인은 씀),
+   덮인 Commander 자리 둘은 Dreadnought와 (4인) Tech Negotiation으로. 구현은 원판 + Bloodlines의 P7.
 2. ~~배치 몫과 commission~~ → **문장으로 정해진다(묻지 않음):** "You may deploy any or all units recruited during your current turn … plus up to two
    more units from your garrison" `[Rise of Ix p. 6]`, "If you commissioned the dreadnought while sending an Agent to a Combat space, you may deploy it
    to the Conflict" `[Rise of Ix p. 6]`. 이번 turn에 commission한 dreadnought는 garrison 몫(둘) 밖에서 배치할 수 있고, garrison 몫 둘은 troop·
@@ -1227,8 +1228,8 @@ v38은 137구간 8,265열이다. 원칙은 v35·v37·v38과 같다: 새 id는 �
   - `dreadnought_control`: Control 칸마다 그 칸에 dreadnought를 놓은 좌석(+1, 없으면 0)과 "다음 Combat 끝에 떠남" 표시 — 원판 Arrakeen·Carthag·Imperial
     Basin(Uprising 판이면 그 판의 Control 칸, P7). 칸 수는 `CONTROL_SPACE_IDS`(넷)를 다시 쓴다.
   - `seatN_ix`: Freighter 칸(0~3), 협상가 수, Snooper token 넷(Tessia; 트랙마다 남은 token 칸 또는 0).
-  - Ix Tech 더미: 지금 `tech_face_up`(3)·`tech_stack_sizes`(3)를 그대로 쓴다(더미 셋, 원판 + Ix에는 Bloodlines Tech가 없다). **두 모듈을 함께 쓰는 판은
-    17.6 1이 정해질 때까지 열지 않는다.**
+  - Ix Tech 더미: 지금 `tech_face_up`(3)·`tech_stack_sizes`(3)를 그대로 쓴다. 두 모듈을 함께 쓰는 판(P7)도 더미가 셋이다(`[Bloodlines p. 7]`,
+    rise-of-ix.md 10a) — Tech 어휘(Bloodlines 18 + Ix 18)만 늘면 된다.
   - 숨은 정보(rise-of-ix.md 13): `private_intrigue_top`(Hundro가 아는 Intrigue 덱 맨 위, 124+17열 one-hot), `private_intrigue_bottom`(Court Intrigue·Sonic
     Snoopers로 놓은 좌석이 아는 덱 맨 아래 카드들, 수 세기), `private_set_aside`(Ilesa가 따로 둔 카드, 주인만). Spaceport로 덱 위에 놓은 카드는 v38의
     `seatN_deck_public_top`(OQ-145)을 그대로 쓴다.
