@@ -115,7 +115,7 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # ``sends_agent_anywhere`` column, and the ``from_space`` argument read as a
 # board space (``ARGUMENT_HINTS``); Urgent Mission, Calculated Hire and the
 # three promos.
-_GOLDEN_DIGEST = "e833d62860ac86dd8489f96138dc1db695cf35cb08cf7a315eef9f78139008fd"
+_GOLDEN_DIGEST = "b9162e24eae837d04b103c8264f7fe616ba8240e77bbf321729877f5011361b2"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

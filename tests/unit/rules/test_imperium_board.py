@@ -233,6 +233,32 @@ def test_the_spacing_guild_and_fremen_fourth_spaces() -> None:
 # --- The Mentat [DI pp. 6, 13, 16, 18] ----------------------------------------
 
 
+def test_research_station_draws_its_three_cards_one_at_a_time() -> None:
+    """Research Station: 2 water, draw three cards [DI p. 18], one card at a
+    time, each its own step -- user ruling 2026-10-29 "연구 기지는 한 장씩
+    뽑아야지" (OQ-147; the app's space lists its draw three times). The
+    legal list names the draw once while any is left, and the turn cannot
+    end before all three are drawn."""
+
+    state = _seat(
+        _with_card(_start(), "reconnaissance"), resources=Resources(water=2)
+    )
+    placed = _place(state, "imperium_research_station")
+    hand = len(placed.players[0].hand)
+    current = placed
+    for drawn in (1, 2, 3):
+        rows = [
+            action
+            for action in _wholes(current)
+            if action.action_id == "resolve_board_effect"
+        ]
+        assert [dict(action.arguments)["effect"] for action in rows] == ["cards"]
+        assert "finish_agent_turn" not in {a.action_id for a in _wholes(current)}
+        current = _do(current, "resolve_board_effect", effect="cards")
+        assert len(current.players[0].hand) == hand + drawn
+    assert "cards" not in _effects(current)
+
+
 def test_the_mentat_space_draws_and_takes_the_resting_mentat() -> None:
     # "Draw a card. If the Mentat is here, take it" [DI p. 18]; "this round,
     # you may use it as one of your Agents".

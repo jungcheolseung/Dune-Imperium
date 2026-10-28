@@ -172,6 +172,8 @@
 | [OQ-144](#oq-144--double-cross의-supply-배치와-sardaukar-commander-원판--bloodlines) | Double Cross의 supply 배치와 Sardaukar Commander (원판 + Bloodlines) | `DECIDED` |
 | [OQ-145](#oq-145--덱-위에-앞면으로-놓은-카드는-누가-아는가-원판--immortality) | 덱 위에 앞면으로 놓은 카드는 누가 아는가 (원판 + Immortality) | `DECIDED` |
 | [OQ-146](#oq-146--kwisatz-haderach의-from-anywhere와-conflict에-있는-into-the-fray의-agent-원판--bloodlines) | Kwisatz Haderach의 "from anywhere"와 Conflict에 있는 Into the Fray의 Agent (원판 + Bloodlines) | `DECIDED` |
+| [OQ-147](#oq-147--research-station의-카드-셋-원판) | Research Station의 카드 셋 (원판) | `DECIDED` |
+| [OQ-148](#oq-148--spice-smugglers의-화살표-보상-순서-원판) | Spice Smugglers의 화살표 보상 순서 (원판) | `OPEN` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3139,3 +3141,27 @@
 - 판정(2026-10-28 23:2x 사용자, 조정자 경유): **(가)** — "OQ-146 이건 (가) 가 맞다. 소환도 되는데 퀴사츠 헤더락도 가능하지." Conflict에 있는
   Into the Fray의 Agent도 Kwisatz Haderach의 출발점이고, 옮기면 유닛으로서 Conflict를 떠난다(recall과 같은 처리, 전투력 갱신).
 - 구현: 판정대로 P7(원판 + Bloodlines를 여는 단계)에서.
+
+## OQ-147 — Research Station의 카드 셋 (원판)
+
+- 상태: `DECIDED` (2026-10-29 사용자 판정, 조정자 경유)
+- 인쇄: Research Station "2 water → 카드 셋을 뽑는다" `[DI p. 18]`.
+- 앱 처리(Steam `dad97e20`, 보조 증거, P3d 앱 대조): 칸의 능력 목록에 `DrawAbility`가 세 번 들어 있다 — 한 장씩 세 번 뽑는다.
+- P3d에서 내가 둔 것: 한 번에 셋(plan 16.12 "내 판단으로 그대로 둔 것").
+- 판정(2026-10-29 07시대 사용자, 조정자 경유): **"연구 기지는 한 장씩 뽑아야지"** — 카드 셋을 한 장씩 세 번, 각자 그 방문의 효과 하나로
+  (아이콘마다 독립·순서 자유, OQ-027). 구현: `content/imperium/board_abilities`의 `DrawPersonalCards(1)` 셋, `rules/board_effects.REPEATED_BOARD_ICONS`
+  (같은 아이콘을 인쇄된 만큼 대기시키고 행동 줄은 하나). 테스트 `tests/unit/rules/test_imperium_board.py`
+  (`test_research_station_draws_its_three_cards_one_at_a_time`).
+
+## OQ-148 — Spice Smugglers의 화살표 보상 순서 (원판)
+
+- 상태: `OPEN` (2026-10-29, 사용자 확인 대기)
+- 인쇄: Spice Smugglers "[2 spice] → [Spacing Guild Influence] [3 Solari]"(앱 문구). 앱은 Influence를 먼저, Solari를 나중에 준다(P3d 앱 대조).
+- 지금 엔진: 화살표 지불 함수가 Solari를 먼저 주고 Influence를 나중에 준다(Influence가 여는 창이 넘긴 frame 위에 쌓이게 하려는 구조). 결과에는 차이가 없다.
+- 경과: 조정자 경유 사용자 답(2026-10-29 07시대) "인쇄 앱 순서로 고쳐" 뒤, 사용자가 이 세션에서 다시 물었다: "사건 순서가 꼭 고정이어야해? 비용 지불
+  후 influence 받는거랑 solari 획득인 플레이어가 원하는 순서로 할 수 있어야 하는거 아닌가".
+- 이미 정한 원칙: 인쇄된 아이콘은 각각 독립된 효과이고 소유자가 순서를 고른다 — Agent box(OQ-027), Conflict·계약 보상 한 줄(OQ-112), 화살표 비용 뒤의
+  보상을 아이콘마다 따로 두는 선례(Duncan Idaho의 "troop, 카드", OQ-106; Uprising의 화살표 몇 장도 `armed_icons`).
+- 선택지: (가) 비용을 낸 뒤 Influence와 Solari를 아이콘 둘로 두고 소유자가 순서를 고른다(`armed_icons`, Duncan Idaho와 같은 길) — 인쇄·앱 순서는 그
+  가운데 하나. (나) 인쇄·앱 순서로 고정(Influence 먼저).
+- 추천: **(가).** 위 원칙과 같고, 고정 순서를 따로 둘 근거(카드 문구의 "then" 등)가 없다.

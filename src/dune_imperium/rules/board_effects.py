@@ -159,6 +159,12 @@ AUTOMATIC_BOARD_ICONS: Final = (
 IMPERIUM_ONLY_BOARD_ICONS: Final = frozenset({BOARD_ICON_FOLDSPACE, BOARD_ICON_MENTAT})
 # The automatic icons the original board prints [DI pp. 17-18]: no Contract
 # and no research (Uprising systems, docs/rules/imperium-base.md 2).
+# An icon a space may print more than once, each a step of its own: the
+# original Research Station draws its three cards one at a time -- user
+# ruling 2026-10-29 "연구 기지는 한 장씩 뽑아야지" (OQ-147). The visit's
+# list holds the key once per printed icon, ``finish_board_icon`` retires one
+# at a time, and the legal list names the key once while any is pending.
+REPEATED_BOARD_ICONS: Final = frozenset({BOARD_ICON_CARDS})
 IMPERIUM_BOARD_ICONS: Final = frozenset(
     {
         BOARD_ICON_CARDS,
@@ -556,7 +562,7 @@ def board_icons_for(
         # Tech Module: the Ixian Embassy's Acquire Tech "each time you send
         # an Agent to a Landsraad board space" [Bloodlines pp. 7, 12].
         icons.append(BOARD_ICON_TECH)
-    if len(set(icons)) != len(icons):
+    if any(icons.count(key) > 1 for key in icons if key not in REPEATED_BOARD_ICONS):
         raise RuntimeError(f"board icons of {space_id} must be distinct: {icons}")
     return tuple(icons)
 
@@ -581,7 +587,8 @@ def legal_board_effect_actions(
             actor=player,
             arguments=(("effect", key),),
         )
-        for key in pending_board_icons(context)
+        # A repeated icon (``REPEATED_BOARD_ICONS``) is one row.
+        for key in dict.fromkeys(pending_board_icons(context))
         if key in AUTOMATIC_BOARD_ICONS
         # "If the Mentat is here, take it" [DI p. 18] is judged when it
         # resolves (OQ-028): with the Mentat gone from its space -- Calculated

@@ -126,6 +126,14 @@ def _do(
     return apply_whole(engine, state, action).state
 
 
+def _research_drawn(engine: UprisingRulesEngine, state: GameState) -> GameState:
+    """Research Station's three cards, drawn one at a time (OQ-147)."""
+
+    for _ in range(3):
+        state = _do(engine, state, "resolve_board_effect", effect="cards")
+    return state
+
+
 def _reveal(engine: UprisingRulesEngine, state: GameState) -> dict[str, object]:
     """The Reveal frame's context after seat 0 reveals its hand."""
 
@@ -274,7 +282,7 @@ def test_spice_smugglers_arrow_is_optional() -> None:
     engine, state = _start()
     placed = _smugglers_placed(engine, state)
     before = placed.players[0]
-    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    resolved = _research_drawn(engine, placed)
     assert "pay_agent_card_spice" in _ids(engine, resolved)
     finished = _do(engine, resolved, "finish_agent_turn")
     after = finished.players[0]
@@ -877,7 +885,7 @@ def test_duncan_idaho_arrow_is_optional() -> None:
     engine, state = _start()
     placed = _duncan_placed(engine, state)
     before = placed.players[0]
-    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    resolved = _research_drawn(engine, placed)
     assert "pay_agent_card_water" in _ids(engine, resolved)
     finished = _do(engine, resolved, "finish_agent_turn")
     after = finished.players[0]
@@ -1017,7 +1025,7 @@ def test_fedaykin_death_commando_trash_is_optional() -> None:
     engine, state = _start()
     placed = _commando_placed(engine, state)
     before = placed.players[0]
-    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    resolved = _research_drawn(engine, placed)
     assert _trash_rows(engine, resolved)
     finished = _do(engine, resolved, "finish_agent_turn")
     assert finished.players[0].trashed == before.trashed
@@ -2727,7 +2735,7 @@ def test_missionaria_protectiva_alone_gains_nothing() -> None:
     engine, state = _start()
     placed = _missionaria_placed(engine, state, bene_gesserit=False)
     assert not _influence_rows(engine, placed)
-    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    resolved = _research_drawn(engine, placed)
     finished = _do(engine, resolved, "finish_agent_turn")
     assert finished.players[0].influence == placed.players[0].influence
 
@@ -2845,7 +2853,7 @@ def test_gene_manipulation_without_another_bene_gesserit_gains_no_spice() -> Non
     assert not _spice_icon(engine, placed)
     assert _trash_rows(engine, placed)
     # The trash is optional: the box is done once it is left unused.
-    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    resolved = _research_drawn(engine, placed)
     finished = _do(engine, resolved, "finish_agent_turn")
     assert finished.players[0].trashed == placed.players[0].trashed
     assert finished.players[0].resources.spice == placed.players[0].resources.spice
