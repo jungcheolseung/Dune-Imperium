@@ -419,12 +419,16 @@ def conflicts_by_tier(
 
 
 # One table for both base games (docs/base-game-and-ix-plan.md 4.2 item 7):
-# the original game's cards follow Uprising's. Imported last, as they are
-# built from ``ConflictDefinition`` (``content.imperium``).
+# the original game's cards follow Uprising's, and Rise of Ix's three new
+# Conflicts (stage P4a, plan 17; Economic Supremacy is in ``CONFLICTS``) join
+# them. Imported last, as they are built from ``ConflictDefinition``
+# (``content.imperium``, ``content.rise_of_ix``).
 from dune_imperium.content.imperium.conflicts import (  # noqa: E402
     IMPERIUM_CONFLICTS,
 )
+from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS  # noqa: E402
 
 CONFLICTS_BY_ID: Final = {
-    conflict.card.card_id: conflict for conflict in (*CONFLICTS, *IMPERIUM_CONFLICTS)
+    conflict.card.card_id: conflict
+    for conflict in (*CONFLICTS, *IMPERIUM_CONFLICTS, *IX_CONFLICTS)
 }

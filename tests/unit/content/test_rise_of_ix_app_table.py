@@ -6,17 +6,34 @@ Imperium and Intrigue cards come from the Steam app's attribute table
 (``agents/app_ai/data/archetypes.py``), and a plain pytest keeps every
 identity entry equal to it. ``scripts/dwgr/imperium_entries.py --set ix``
 writes the entries from the same table; this test reads it on its own, so a
-slip in the generator does not pass unseen.
+slip in the generator does not pass unseen. The six Leaders and the three new
+Conflict cards (names, tiers) are held to the same table.
 """
 
 import re
 
+from dune_imperium import BaseGame, RulesetConfig
+from dune_imperium.adapters.observation_encoding import (
+    BATTLE_CARD_IDS,
+    CONFLICT_IDS,
+    LEADER_IDS,
+)
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
+from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
 from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
+from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
+from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS
 from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS
 from dune_imperium.content.rise_of_ix.intrigue import IX_INTRIGUE_CARDS
+from dune_imperium.content.rise_of_ix.leaders import IX_LEADERS
+from dune_imperium.content.rulesets import IMPERIUM_LEADER_IDS, content_for
 from dune_imperium.content.schema import SourceDocument, SourceRef
+from dune_imperium.content.uprising.conflicts import (
+    CONFLICTS,
+    CONFLICTS_BY_ID,
+    conflicts_by_tier,
+)
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS,
     IMPERIUM_CARDS_BY_ID,
@@ -26,8 +43,13 @@ from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_ID,
     INTRIGUE_CARDS_BY_INSTANCE,
 )
-from dune_imperium.content.uprising.leaders import LEADERS_BY_ID
+from dune_imperium.content.uprising.leaders import (
+    LEADERS,
+    LEADERS_BY_ID,
+    leaders_for_choam,
+)
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
+from dune_imperium.content.uprising.types import ConflictTier
 
 # The one name Rise of Ix prints that another kind already uses: the
 # Bloodlines Leader ``esmar_tuek`` (plan 17.2); it takes ``_card``.
@@ -195,3 +217,259 @@ def test_ix_entries_cite_the_component_table() -> None:
     sources = (SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2,)),)
     for entry in (*IX_IMPERIUM_CARDS, *IX_INTRIGUE_CARDS):
         assert entry.card.sources == sources, entry.card.card_id
+
+
+# --- Leaders (docs/rules/rise-of-ix.md 10) ----------------------------------
+
+# The left ability and the Signet Ring of each Leader, from docs/rules/
+# rise-of-ix.md 10 (the app's attribute table lists the ability classes of a
+# Leader together, so it does not say which is the Signet).
+_IX_LEADER_ABILITIES = {
+    "archduke_armand_ecaz": ("Coordination", "Conscript"),
+    "ilesa_ecaz": ("One Step Ahead", "Guild Contacts"),
+    "prince_rhombur_vernius": ("Heavy Lasgun Cannons", "Ixian Technology"),
+    "princess_yuna_moritani": ("Smuggling Operation", "Final Delivery"),
+    "tessia_vernius": ("Careful Observation", "Duplicity"),
+    "viscount_hundro_moritani": ("Intelligence", "Couriers"),
+}
+
+
+def _leader_archetypes() -> dict[str, Archetype]:
+    return {
+        _id(archetype): archetype
+        for short, archetype in ARCHETYPES.items()
+        if short.startswith("LeaderArchetypes.RiseOfIx.")
+    }
+
+
+def _ability_classes(archetype: Archetype) -> str:
+    abilities = archetype.attributes["WormAbilityIDs"]
+    assert isinstance(abilities, tuple)
+    return " ".join(str(name).rsplit(".", 1)[-1] for name in abilities)
+
+
+def test_every_ix_leader_has_an_entry_and_no_more() -> None:
+    # Six Leaders [Rise of Ix p. 2] (docs/rules/rise-of-ix.md 2).
+    ids = [leader.leader_id for leader in IX_LEADERS]
+    assert len(ids) == len(set(ids)) == 6
+    assert set(ids) == set(_leader_archetypes())
+    assert set(ids) == set(_IX_LEADER_ABILITIES)
+
+
+def test_leader_names_match_the_app() -> None:
+    table = _leader_archetypes()
+    for leader in IX_LEADERS:
+        assert leader.name == _title(table[leader.leader_id]), leader.leader_id
+    # The one title with quotation marks keeps them, and its id drops them.
+    names = {leader.leader_id: leader.name for leader in IX_LEADERS}
+    assert names["princess_yuna_moritani"] == '"Princess" Yuna Moritani'
+
+
+def test_leader_ability_names_match_the_app_and_the_rules() -> None:
+    # The app names an ability by its class (``CoordinationAbility``,
+    # ``OneStepAheadRoundAbility``), so each printed name, without spaces, is
+    # the start of one of the Leader's classes; which of the two is the
+    # Signet Ring is docs/rules/rise-of-ix.md 10.
+    table = _leader_archetypes()
+    for leader in IX_LEADERS:
+        classes = _ability_classes(table[leader.leader_id]).split()
+        assert (leader.ability_name, leader.signet_name) == _IX_LEADER_ABILITIES[
+            leader.leader_id
+        ], leader.leader_id
+        for name in (leader.ability_name, leader.signet_name):
+            assert name is not None
+            assert any(
+                cls.startswith(name.replace(" ", "")) and cls.endswith("Ability")
+                for cls in classes
+            ), (leader.leader_id, name, classes)
+        assert leader.alternate_face_id is None, leader.leader_id
+
+
+def test_ix_leaders_are_identities_only() -> None:
+    # Stage P4a lists the Leaders before their setup deviations and abilities
+    # (stage P4e, plan 17.1): Yuna's water, Hundro's Intrigue look and
+    # Tessia's Snooper tokens are not wired, and no printed start differs.
+    for leader in IX_LEADERS:
+        assert leader.starting_water == 1, leader.leader_id
+        assert leader.extra_starting_spice == 0, leader.leader_id
+        assert leader.extra_starting_solari == 0, leader.leader_id
+        assert leader.removed_starting_card_ids == (), leader.leader_id
+        assert not (
+            leader.choam_only
+            or leader.bloodlines_only
+            or leader.tech_only
+            or leader.uses_feyd_token
+            or leader.uses_tactics_track
+            or leader.uses_twisted_intrigue
+        ), leader.leader_id
+
+
+def test_ix_leaders_cite_the_component_table_and_the_card_face() -> None:
+    sources = (
+        SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2,)),
+        SourceRef(SourceDocument.CARD_FACE, (1,)),
+    )
+    for leader in IX_LEADERS:
+        assert leader.sources == sources, leader.leader_id
+
+
+# --- Conflicts (docs/rules/rise-of-ix.md 12) --------------------------------
+
+
+def _conflict_id(archetype: Archetype) -> str:
+    # ``…RiseOfIx.SkirmishE`` -> ``skirmish_e``: two cards share the title.
+    last = archetype.short.rsplit(".", 1)[-1]
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", last).lower()
+
+
+def _conflict_archetypes() -> dict[str, Archetype]:
+    # Economic Supremacy is Uprising's Epic Conflict already (OQ-094).
+    return {
+        _conflict_id(archetype): archetype
+        for short, archetype in ARCHETYPES.items()
+        if short.startswith("ConflictArchetypes.RiseOfIx.")
+        and _title(archetype) != "Economic Supremacy"
+    }
+
+
+def test_every_new_ix_conflict_has_an_entry_and_no_more() -> None:
+    # Rise of Ix prints four Conflict cards, I 2, II 1 and III 1 [Rise of Ix
+    # p. 2] (docs/rules/rise-of-ix.md 2); the Conflict III, Economic
+    # Supremacy, is not defined again.
+    ids = [conflict.card.card_id for conflict in IX_CONFLICTS]
+    assert ids == ["skirmish_e", "skirmish_f", "trade_monopoly"]
+    assert set(ids) == set(_conflict_archetypes())
+    assert "economic_supremacy" not in ids
+    economic = CONFLICTS_BY_ID["economic_supremacy"]
+    assert economic in CONFLICTS and economic.epic_only
+    assert economic.tier is ConflictTier.THREE
+    tiers = [conflict.tier for conflict in IX_CONFLICTS]
+    assert tiers.count(ConflictTier.ONE) == 2
+    assert tiers.count(ConflictTier.TWO) == 1
+
+
+def test_conflict_names_and_tiers_match_the_app() -> None:
+    table = _conflict_archetypes()
+    for conflict in IX_CONFLICTS:
+        archetype = table[conflict.card.card_id]
+        assert conflict.card.name == _title(archetype), conflict.card.card_id
+        level = archetype.attributes["ConflictLevel"]
+        assert isinstance(level, int)
+        assert conflict.tier == ConflictTier(level), conflict.card.card_id
+    assert [(c.card.name, c.tier) for c in IX_CONFLICTS] == [
+        ("Skirmish", ConflictTier.ONE),
+        ("Skirmish", ConflictTier.ONE),
+        ("Trade Monopoly", ConflictTier.TWO),
+    ]
+
+
+def test_new_ix_conflicts_are_identities_without_a_battle_icon() -> None:
+    # The original game prints no battle icon and the app's table gives these
+    # cards none (an Uprising Conflict has a ``BattleIcon`` attribute);
+    # Economic Supremacy prints none either (OQ-094). Their rewards are not
+    # transcribed yet (``reward_rows`` ``None``).
+    table = _conflict_archetypes()
+    for conflict in IX_CONFLICTS:
+        assert "BattleIcon" not in table[conflict.card.card_id].attributes
+        assert conflict.battle_icon is None, conflict.card.card_id
+        assert conflict.reward_rows is None, conflict.card.card_id
+        assert not conflict.shield_wall_protected, conflict.card.card_id
+        assert not conflict.bloodlines_only, conflict.card.card_id
+        assert not conflict.epic_only, conflict.card.card_id
+        assert conflict.control_space_id is None, conflict.card.card_id
+
+
+def test_new_ix_conflicts_cite_the_component_table_and_setup() -> None:
+    sources = (SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2, 3)),)
+    for conflict in IX_CONFLICTS:
+        assert conflict.card.sources == sources, conflict.card.card_id
+
+
+# --- Ids and the merged lookups ----------------------------------------------
+
+
+def test_no_ix_leader_or_conflict_id_collides_with_an_existing_id() -> None:
+    # An id names one printing across the merged lookup tables (plan 4.2 7,
+    # 17.2): a collision would silently replace a Leader or Conflict in them.
+    # The original game's Skirmishes are ``skirmish_a`` to ``skirmish_d``.
+    ix_leaders = [leader.leader_id for leader in IX_LEADERS]
+    ix_conflicts = [conflict.card.card_id for conflict in IX_CONFLICTS]
+    existing_leaders = {leader.leader_id for leader in (*LEADERS, *IMPERIUM_LEADERS)}
+    existing_conflicts = {
+        conflict.card.card_id for conflict in (*CONFLICTS, *IMPERIUM_CONFLICTS)
+    }
+    assert not existing_leaders.intersection(ix_leaders)
+    assert not existing_conflicts.intersection(ix_conflicts)
+    assert {"skirmish_a", "skirmish_b", "skirmish_c", "skirmish_d"} <= (
+        existing_conflicts
+    )
+    # Nor with a card of any kind, a Leader's id with a Conflict's, or each
+    # other.
+    ids = [*ix_leaders, *ix_conflicts]
+    assert len(set(ids)) == len(ids)
+    others = {
+        *IMPERIUM_CARDS_BY_ID,
+        *INTRIGUE_CARDS_BY_ID,
+        *STARTING_CARDS_BY_ID,
+        *(entry.card.card_id for entry in IX_IMPERIUM_CARDS),
+        *(entry.card.card_id for entry in IX_INTRIGUE_CARDS),
+    }
+    assert not others.intersection(ids)
+    # The merged tables lost nothing to a collision.
+    assert len(LEADERS_BY_ID) == len(existing_leaders) + len(ix_leaders)
+    assert len(CONFLICTS_BY_ID) == len(existing_conflicts) + len(ix_conflicts)
+
+
+def test_ix_leaders_and_conflicts_resolve_in_the_merged_tables() -> None:
+    for leader in IX_LEADERS:
+        assert LEADERS_BY_ID[leader.leader_id] is leader
+    for conflict in IX_CONFLICTS:
+        assert CONFLICTS_BY_ID[conflict.card.card_id] is conflict
+
+
+def test_no_uprising_or_original_game_pool_lists_an_ix_leader_or_conflict() -> None:
+    # Code that lists Uprising's or the original game's own Leaders and
+    # Conflicts iterates these tuples, the draft pools, the deck pools and the
+    # observation's universes; none holds the Ix entries before their stages
+    # (plan 17.1: the observation takes them at v39, setup still refuses Rise
+    # of Ix).
+    leader_ids = {leader.leader_id for leader in IX_LEADERS}
+    conflict_ids = {conflict.card.card_id for conflict in IX_CONFLICTS}
+    listed_leaders = {leader.leader_id for leader in (*LEADERS, *IMPERIUM_LEADERS)}
+    listed_conflicts = {c.card.card_id for c in (*CONFLICTS, *IMPERIUM_CONFLICTS)}
+    assert not leader_ids & listed_leaders
+    assert not conflict_ids & listed_conflicts
+    assert not leader_ids & set(IMPERIUM_LEADER_IDS)
+    assert not leader_ids & set(LEADER_IDS)
+    assert not conflict_ids & set(CONFLICT_IDS)
+    assert not conflict_ids & set(BATTLE_CARD_IDS)
+    for choam_module in (False, True):
+        for bloodlines in (False, True):
+            for tech_module in (False, True):
+                pool = leaders_for_choam(
+                    choam_module, bloodlines=bloodlines, tech_module=tech_module
+                )
+                assert not leader_ids & {leader.leader_id for leader in pool}
+    for tier in ConflictTier:
+        for bloodlines in (False, True):
+            for epic_game in (False, True):
+                pool_ids = {
+                    c.card.card_id
+                    for c in conflicts_by_tier(
+                        tier, bloodlines=bloodlines, epic_game=epic_game
+                    )
+                }
+                assert not conflict_ids & pool_ids
+    # The content of every game either base game sets up, Rise of Ix on or off.
+    for base_game in BaseGame:
+        for rise_of_ix in (False, True):
+            for epic_game in (False, True):
+                config = RulesetConfig(
+                    base_game=base_game, rise_of_ix=rise_of_ix, epic_game=epic_game
+                )
+                content = content_for(config)
+                assert not leader_ids & {x.leader_id for x in content.leaders}
+                assert not conflict_ids & {x.card.card_id for x in content.conflicts}
+                assert not conflict_ids & {
+                    x.card.card_id for x in content.conflict_pool
+                }
