@@ -56,6 +56,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardedCardHasFaction,
     DiscardFromHand,
     DoubleBaseHarvestSpice,
+    DoubleBonusHarvestSpice,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
@@ -1072,6 +1073,30 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 timing=AbilityTiming.AGENT_BOX,
                 sections=(_line(DoubleBaseHarvestSpice()),),
                 mark=AbilityMark.AUTOMATIC,
+            ),
+            # Thumper (promo): "Double the bonus spice you harvest with this
+            # Agent" -- Carryall's shape for the bonus; the harvest reads this
+            # record and the box never opens.
+            _BOX.DOUBLE_BONUS_HARVEST_SPICE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(_line(DoubleBonusHarvestSpice()),),
+                mark=AbilityMark.AUTOMATIC,
+            ),
+            # Jessica of Arrakis (promo): "If you have another Bene Gesserit card
+            # in play: [draw 1] [draw 1]" -- the Bond opens the box at the
+            # placement and is judged again on each icon when it resolves
+            # (OQ-028), each draw its own step (OQ-027, OQ-106); Smuggler's
+            # Thopter's two draw icons (``cards`` / ``cards_second``) under
+            # Tread in Darkness's Bond.
+            _BOX.DRAW_TWO_IF_BENE_GESSERIT_BOND: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(DrawPersonalCards(1), condition=_BG_BOND),
+                    _line(DrawPersonalCards(1), condition=_BG_BOND),
+                ),
+                structure=AbilityStructure.SEPARATE,
+                requirement=_BG_BOND,
+                icons=("cards", "cards_second"),
             ),
         }
     )

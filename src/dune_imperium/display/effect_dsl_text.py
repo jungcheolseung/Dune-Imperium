@@ -46,6 +46,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardedCardHasFaction,
     DiscardFromHand,
     DoubleBaseHarvestSpice,
+    DoubleBonusHarvestSpice,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
@@ -831,6 +832,8 @@ def reward_text(reward: Reward) -> str:
             return "Complete one of your contracts"
         case DoubleBaseHarvestSpice():
             return "Double the base (not bonus) spice you harvest with this Agent"
+        case DoubleBonusHarvestSpice():
+            return "Double the bonus spice you harvest with this Agent"
         case ReserveCostDiscount(card_ids=card_ids, amount=amount):
             # Guild Bankers' printed sentence; one name for the printings.
             name = RESERVE_STACKS_BY_ID[card_ids[0]].card.name

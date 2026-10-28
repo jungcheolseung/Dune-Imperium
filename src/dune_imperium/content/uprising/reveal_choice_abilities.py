@@ -264,6 +264,19 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: _choice(
                 _line(RetreatTroops(0, None)), mark=_OPTIONAL
             ),
+            # Duncan, Loyal Blade (original game promo): "Trash this card -> Deploy
+            # or retreat any number of your troops from or to your garrison" --
+            # the trash is the cost of either line and the owner names one
+            # direction and a count, none included ("any number" [FAQ p. 3]);
+            # troops only (a Commander is a troop [Bloodlines p. 4], OQ-115).
+            _CHOICE.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS: _choice(
+                _line(
+                    DeployFromGarrison(up_to=None), costs=(TrashCard(this_card=True),)
+                ),
+                _line(RetreatTroops(0, None), costs=(TrashCard(this_card=True),)),
+                mark=_OPTIONAL,
+                structure=AbilityStructure.ONE_OF,
+            ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
             _CHOICE.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: _choice(

@@ -1646,6 +1646,18 @@ def _old_icon_condition_holds(
         and key in ("cards", "cards_second")
     ):
         return owner.influence.spacing_guild >= 2
+    # 2026-10-28 (the original game's promo Jessica of Arrakis, stage P3): two
+    # draw icons, each judging the Bene Gesserit Bond.
+    if (
+        effect is PersonalCardAgentEffect.DRAW_TWO_IF_BENE_GESSERIT_BOND
+        and key in ("cards", "cards_second")
+    ):
+        card_id = context.get("card_id")
+        return has_faction_bond(
+            counted_in_play(owner),
+            card_id if isinstance(card_id, str) else "",
+            Faction.BENE_GESSERIT,
+        )
     if key == "cards_second":
         return False
     # Stillsuit Manufacturer's water and its Fremen Alliance return.

@@ -154,6 +154,12 @@ _ICON_CONDITIONS: dict[tuple[PersonalCardAgentEffect, str], str] = {
     (_BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND, "cards"): (
         "if you have another Bene Gesserit card in play"
     ),
+    (_BOX.DRAW_TWO_IF_BENE_GESSERIT_BOND, "cards"): (
+        "if you have another Bene Gesserit card in play"
+    ),
+    (_BOX.DRAW_TWO_IF_BENE_GESSERIT_BOND, "cards_second"): (
+        "if you have another Bene Gesserit card in play"
+    ),
     (_BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND, "spice"): (
         "if you have another Bene Gesserit card in play"
     ),
@@ -216,6 +222,12 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
     ),
     # Tread in Darkness, in tokens_ko.py's words for the same box.
     (_BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND, "cards"): (
+        "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
+    ),
+    (_BOX.DRAW_TWO_IF_BENE_GESSERIT_BOND, "cards"): (
+        "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
+    ),
+    (_BOX.DRAW_TWO_IF_BENE_GESSERIT_BOND, "cards_second"): (
         "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
     ),
     (_BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND, "spice"): (

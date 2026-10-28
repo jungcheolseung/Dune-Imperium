@@ -544,6 +544,13 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE: (
         "이 {agent}로 수확하는 기본 {spice} 두 배 (보너스 제외)"
     ),
+    # Quotes ``effect_dsl_text_ko.py``'s DoubleBonusHarvestSpice line.
+    PersonalCardAgentEffect.DOUBLE_BONUS_HARVEST_SPICE: (
+        "이 {agent}로 수확하는 보너스 {spice} 두 배"
+    ),
+    PersonalCardAgentEffect.DRAW_TWO_IF_BENE_GESSERIT_BOND: (
+        "베네 게세리트의 유대감이면: {draw:2}"
+    ),
     PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP: (
         "다른 플레이어 각자 하나 선택: 카드 1장 {discard} 또는 "
         "{conflict}에 배치된 {troop} 하나 잃음"
@@ -702,6 +709,13 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     ),
     PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
         "원하는 수의 {troop} {retreat} 가능"
+    ),
+    (
+        PersonalCardRevealChoiceEffect
+        .MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS
+    ): (
+        "이 카드 {trash} {arrow_right} 원하는 수의 {troop}을 {garrison}에서 "
+        "{conflict}에 배치하거나 {retreat}"
     ),
     PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
         "{solari:6} 지불 가능 {arrow_right} {victory_point:1}"

@@ -21,14 +21,22 @@ from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     RecallYourAgent,
     TakeMentat,
 )
+from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS,
     intrigue_card_for_instance,
+)
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAgentEffect,
+    PersonalCardRevealChoiceEffect,
 )
 from dune_imperium.core import (
     ChanceDecision,
@@ -595,3 +603,545 @@ def test_calculated_hire_rows_have_codec_templates() -> None:
     assert DomainAction(
         "play", 0, (("printed", "plot"), ("source", "intrigue"))
     ) in engine.legal_actions(state, 0)
+
+
+# --- The original game's promos (stage P3, behind ``promo_cards``) -------------
+#
+# docs/base-game-and-ix-plan.md 9 8 and 16.3: Duncan, Loyal Blade; Jessica of
+# Arrakis and Thumper are shuffled into the original Imperium deck only with
+# ``promo_cards``; their printed values are the Steam app's attribute table and
+# English text (the promos have no card prefab).
+
+PROMO_CONFIG = replace(CONFIG, promo_cards=True)
+DUNCAN = "imperium:duncan_loyal_blade:0"
+JESSICA = "imperium:jessica_of_arrakis:0"
+THUMPER = "imperium:thumper:0"
+PROMO_IDS = ("duncan_loyal_blade", "jessica_of_arrakis", "thumper")
+# Another Bene Gesserit card, in play for Jessica's Bond.
+INITIATE = "imperium:bene_gesserit_initiate:0"
+
+
+def _promo_start(
+    leaders: tuple[str, ...] = LEADERS, seed: int = 3
+) -> tuple[UprisingRulesEngine, GameState]:
+    """Round 1 of an original game with the promos, at seat 0's first turn."""
+
+    engine = UprisingRulesEngine(leader_ids=leaders)
+    state = engine.reset(PROMO_CONFIG, seed)
+    chance = ChanceResolver(seed=seed)
+    while isinstance(decision := engine.current_decision(state), ChanceDecision):
+        state = engine.apply(state, chance.resolve(decision)).state
+    assert state.phase is GamePhase.PLAYER_TURNS
+    return engine, state
+
+
+def _do(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    action_id: str,
+    seat: int = 0,
+    **arguments: object,
+) -> GameState:
+    """``seat``'s whole action ``action_id`` with ``arguments``."""
+
+    action = next(
+        action
+        for action in engine.whole_actions(state, seat)
+        if action.action_id == action_id
+        and all(dict(action.arguments).get(k) == v for k, v in arguments.items())
+    )
+    return apply_whole(engine, state, action).state
+
+
+def _rows(
+    engine: UprisingRulesEngine, state: GameState, action_id: str
+) -> set[tuple[int, int]]:
+    """The (units, Commanders among them) the Reveal frame offers as ``action_id``."""
+
+    return {
+        (
+            int(dict(action.arguments)["count"]),
+            int(dict(action.arguments).get("commanders", 0)),
+        )
+        for action in engine.whole_actions(state, 0)
+        if action.action_id == action_id
+    }
+
+
+def _troops(
+    state: GameState, garrison: int, conflict: int = 0, **changes: object
+) -> GameState:
+    """Seat 0 with those troops in the garrison and the Conflict."""
+
+    return _seat(
+        state,
+        troops_garrison=garrison,
+        troops_conflict=conflict,
+        troops_supply=12 - garrison - conflict,
+        resources=Resources(),
+        **changes,
+    )
+
+
+def test_the_promos_join_the_original_deck_only_with_promo_cards() -> None:
+    # "the Imperium deck takes the promos only with promo_cards" (plan 9 8; the
+    # same option deals Uprising's promos). The original game plays with the
+    # option since stage P3 filled the three cards.
+    plain = content_for(CONFIG)
+    promoted = content_for(PROMO_CONFIG)
+    deck = {entry.card.card_id for entry in plain.imperium_cards}
+    assert not deck & set(PROMO_IDS)
+    assert {entry.card.card_id for entry in promoted.imperium_cards} == deck | set(
+        PROMO_IDS
+    )
+    assert set(promoted.imperium_deck_instance_ids) - set(
+        plain.imperium_deck_instance_ids
+    ) == {DUNCAN, JESSICA, THUMPER}
+    assert set(PROMO_IDS) <= plain.card_ids
+
+    engine = UprisingRulesEngine(leader_ids=LEADERS)
+    for config, expected in ((CONFIG, 0), (PROMO_CONFIG, 3)):
+        state = engine.reset(config, 3)
+        chance = ChanceResolver(seed=3)
+        while isinstance(decision := engine.current_decision(state), ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+        cards = (*state.imperium_deck, *state.imperium_row)
+        assert sum(card in {DUNCAN, JESSICA, THUMPER} for card in cards) == expected
+
+
+def test_the_promos_match_the_app_table() -> None:
+    # App attribute table (plan 16.3) and the P0 sweep's merged effects: cost,
+    # copies, Faction, Agent icons and the printed Reveal values.
+    duncan = IMPERIUM_CARDS_BY_ID["duncan_loyal_blade"]
+    assert duncan.card.name == "Duncan, Loyal Blade"
+    assert (duncan.acquisition_cost, duncan.copies, duncan.factions) == (5, 1, ())
+    assert duncan.agent_icons == (AgentIcon.FREMEN, AgentIcon.CITY)
+    assert duncan.agent_effect is PersonalCardAgentEffect.RECRUIT_ONE_TROOP
+    assert (duncan.reveal_persuasion, duncan.reveal_strength) == (1, 2)
+    assert duncan.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS,
+    )
+    jessica = IMPERIUM_CARDS_BY_ID["jessica_of_arrakis"]
+    assert jessica.card.name == "Jessica of Arrakis"
+    assert (jessica.acquisition_cost, jessica.copies) == (3, 1)
+    assert jessica.factions == (Faction.BENE_GESSERIT,)
+    assert jessica.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert (
+        jessica.agent_effect is PersonalCardAgentEffect.DRAW_TWO_IF_BENE_GESSERIT_BOND
+    )
+    assert (jessica.reveal_persuasion, jessica.reveal_strength) == (1, 2)
+    thumper = IMPERIUM_CARDS_BY_ID["thumper"]
+    assert thumper.card.name == "Thumper"
+    assert (thumper.acquisition_cost, thumper.copies) == (3, 1)
+    assert thumper.factions == (Faction.FREMEN,)
+    assert thumper.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert thumper.agent_effect is PersonalCardAgentEffect.DOUBLE_BONUS_HARVEST_SPICE
+    assert (thumper.reveal_persuasion, thumper.reveal_strength) == (1, 0)
+    for entry in (duncan, jessica, thumper):
+        assert entry.promo
+        assert entry.play_data_complete
+    assert personal_card_for_instance(DUNCAN) is duncan
+
+
+# --- Duncan, Loyal Blade ------------------------------------------------------
+
+
+def test_duncan_recruits_one_troop_as_an_agent() -> None:
+    # Agent: "[troop]" -- the one-troop icon alone.
+    engine, state = _promo_start()
+    state = _seat(state, hand=(DUNCAN,))
+    placement = next(
+        placement
+        for placement in executable_placements(state, 0)
+        if dict(placement.arguments)["card_id"] == DUNCAN
+        and dict(placement.arguments)["space_id"] == "arrakeen"
+    )
+    placed = apply_placement(engine, state, placement).state
+    before = placed.players[0]
+    resolved = _do(engine, placed, "resolve_agent_card_effect")
+    after = resolved.players[0]
+    assert (
+        after.troops_garrison + after.troops_conflict
+        == before.troops_garrison + before.troops_conflict + 1
+    )
+
+
+def test_duncans_trash_deploys_a_chosen_number_and_keeps_the_printed_values() -> None:
+    # "Trash this card -> Deploy or retreat any number of your troops from or
+    # to your garrison": the trash is the cost; "the Persuasion and swords
+    # already gained stay after the trash" (OQ-022, imperium-base.md 16).
+    engine, state = _promo_start()
+    held = _troops(state, 3, hand=(DUNCAN,))
+    revealed = _do(engine, held, "reveal_turn")
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 1
+    assert _rows(engine, revealed, "deploy_reveal_card_troops") == {
+        (0, 0),
+        (1, 0),
+        (2, 0),
+        (3, 0),
+    }
+    assert not _rows(engine, revealed, "retreat_reveal_card_troops")
+
+    deployed = apply_whole(
+        engine,
+        revealed,
+        DomainAction(
+            "deploy_reveal_card_troops",
+            0,
+            (("count", 2), ("source", "duncan_loyal_blade")),
+        ),
+    )
+    after = deployed.state.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (1, 2)
+    # 2 troops and Duncan's 2 swords; the card is gone but its Persuasion and
+    # swords stay in the Reveal's totals.
+    assert after.combat_strength == 2 * 2 + 2
+    assert DUNCAN not in after.in_play
+    assert DUNCAN in after.trashed
+    frame = deployed.state.decision_stack[-1]
+    assert frame.kind == "reveal"
+    assert dict(frame.context)["persuasion"] == 1
+    assert dict(frame.context)["strength"] == 6
+    kinds = [event.kind for event in deployed.events]
+    assert kinds.index("card_trashed") < kinds.index("troops_deployed")
+    # The choice is used up with the card.
+    assert not _rows(engine, deployed.state, "deploy_reveal_card_troops")
+
+
+def test_duncans_trash_retreats_a_chosen_number() -> None:
+    engine, state = _promo_start()
+    held = _troops(state, 2, 2, hand=(DUNCAN,), combat_strength=4)
+    revealed = _do(engine, held, "reveal_turn")
+    assert _rows(engine, revealed, "retreat_reveal_card_troops") == {(1, 0), (2, 0)}
+    # One direction: both are offered, and taking one uses the choice up.
+    assert (1, 0) in _rows(engine, revealed, "deploy_reveal_card_troops")
+
+    retreated = apply_whole(
+        engine,
+        revealed,
+        DomainAction(
+            "retreat_reveal_card_troops",
+            0,
+            (("count", 1), ("source", "duncan_loyal_blade")),
+        ),
+    )
+    after = retreated.state.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (3, 1)
+    assert after.combat_strength == 2 + 2
+    assert DUNCAN in after.trashed
+    assert dict(retreated.state.decision_stack[-1].context)["strength"] == 4
+    assert not _rows(engine, retreated.state, "deploy_reveal_card_troops")
+    assert not _rows(engine, retreated.state, "retreat_reveal_card_troops")
+
+
+def test_duncans_trash_may_move_none_and_offers_that_zero_once() -> None:
+    # "any number" allows zero [FAQ p. 3]: the card is trashed and nothing
+    # moves. Zero is one row, not one per direction.
+    engine, state = _promo_start()
+    held = _troops(state, 2, 2, hand=(DUNCAN,), combat_strength=4)
+    revealed = _do(engine, held, "reveal_turn")
+    zero = [
+        action
+        for action in engine.whole_actions(revealed, 0)
+        if dict(action.arguments).get("count") == 0
+    ]
+    assert len(zero) == 1
+    done = apply_whole(engine, revealed, zero[0])
+    after = done.state.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (2, 2)
+    assert DUNCAN in after.trashed
+    assert [event.kind for event in done.events].count("card_trashed") == 1
+    assert "troops_deployed" not in [event.kind for event in done.events]
+    # With only the Conflict holding units the zero sits in the retreat rows.
+    only_conflict = _do(
+        engine, _troops(state, 0, 2, hand=(DUNCAN,), combat_strength=4), "reveal_turn"
+    )
+    assert _rows(engine, only_conflict, "retreat_reveal_card_troops") == {
+        (0, 0),
+        (1, 0),
+        (2, 0),
+    }
+    assert not _rows(engine, only_conflict, "deploy_reveal_card_troops")
+
+
+def test_duncans_trash_is_offered_only_while_a_unit_could_move() -> None:
+    # A cost line needs a reward that can change something (OQ-071, OQ-113
+    # (C)): with no troop in the garrison or the Conflict the trash is not
+    # offered, and Duncan stays in play.
+    engine, state = _promo_start()
+    held = _troops(state, 0, 0, hand=(DUNCAN,))
+    revealed = _do(engine, held, "reveal_turn")
+    ids = {action.action_id for action in engine.whole_actions(revealed, 0)}
+    assert "deploy_reveal_card_troops" not in ids
+    assert "retreat_reveal_card_troops" not in ids
+    finished = _do(engine, revealed, "finish_reveal")
+    assert DUNCAN not in finished.players[0].trashed
+
+
+def test_duncans_trash_moves_sardaukar_commanders_as_troops() -> None:
+    # "Commander는 Conflict에서 strength 2인 "troop"이다. troop을 대상으로 하는 효과는
+    # Commander에도 적용된다." [Bloodlines p. 4], OQ-115. A Bloodlines state: the
+    # garrison's units may deploy and the Conflict's retreat, each split of a
+    # count between troops and Commanders is a row.
+    engine, state = _promo_start()
+    state = replace(state, config=replace(state.config, bloodlines=True))
+    held = _troops(
+        state,
+        1,
+        1,
+        hand=(DUNCAN,),
+        commanders_garrison=1,
+        commanders_conflict=1,
+        combat_strength=4,
+    )
+    revealed = _do(engine, held, "reveal_turn")
+    assert _rows(engine, revealed, "deploy_reveal_card_troops") == {
+        (0, 0),
+        (1, 0),
+        (1, 1),
+        (2, 1),
+    }
+    assert _rows(engine, revealed, "retreat_reveal_card_troops") == {
+        (1, 0),
+        (1, 1),
+        (2, 1),
+    }
+    deployed = apply_whole(
+        engine,
+        revealed,
+        DomainAction(
+            "deploy_reveal_card_troops",
+            0,
+            (
+                ("commanders", 1),
+                ("count", 2),
+                ("source", "duncan_loyal_blade"),
+            ),
+        ),
+    ).state
+    after = deployed.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (0, 2)
+    assert (after.commanders_garrison, after.commanders_conflict) == (0, 2)
+    assert after.units_deployed_turn == 2
+    assert DUNCAN in after.trashed
+
+
+def test_duncans_rows_have_codec_templates_only_with_the_promos() -> None:
+    engine, state = _promo_start()
+    codec = ActionCodec(PROMO_CONFIG)
+    held = _troops(state, 2, 2, hand=(DUNCAN,), combat_strength=4)
+    revealed = _do(engine, held, "reveal_turn")
+    offered = engine.legal_actions(revealed, 0)
+    assert offered
+    for action in offered:
+        assert codec.decode(codec.encode(action), 0) == action
+
+    def rows(config: RulesetConfig) -> set[str]:
+        return {
+            template.action_id
+            for template in ActionCodec(config).catalog
+            if dict(template.arguments).get("printed") == "duncan_loyal_blade"
+        }
+
+    # The Reveal choice's two rows, beside the Agent box's own (a draw, the
+    # box's resolve).
+    assert {"deploy", "retreat"} <= rows(PROMO_CONFIG)
+    assert not rows(CONFIG)
+    assert not rows(RulesetConfig(promo_cards=True))
+    # With Bloodlines the staged count step carries the Commander shares too,
+    # zero included, and the catalog holds every one.
+    bloodlines = ActionCodec(replace(PROMO_CONFIG, bloodlines=True))
+    commanders = replace(state, config=replace(state.config, bloodlines=True))
+    revealed = _do(
+        engine,
+        _troops(
+            commanders,
+            1,
+            1,
+            hand=(DUNCAN,),
+            commanders_garrison=1,
+            commanders_conflict=1,
+            combat_strength=4,
+        ),
+        "reveal_turn",
+    )
+    effects = [
+        action
+        for action in engine.legal_actions(revealed, 0)
+        if dict(action.arguments).get("printed") == "duncan_loyal_blade"
+    ]
+    assert {action.action_id for action in effects} == {"deploy", "retreat"}
+    for effect in effects:
+        counts = engine.legal_actions(engine.apply(revealed, effect).state, 0)
+        assert any("commanders" in dict(action.arguments) for action in counts)
+        for action in (effect, *counts):
+            assert bloodlines.decode(bloodlines.encode(action), 0) == action
+    assert not any(
+        template.action_id == "choose_count"
+        and "commanders" in dict(template.arguments)
+        for template in ActionCodec(PROMO_CONFIG).catalog
+    )
+
+
+# --- Jessica of Arrakis -------------------------------------------------------
+
+
+def _jessica_placed(
+    engine: UprisingRulesEngine, state: GameState, *, bond: bool
+) -> GameState:
+    held = _seat(
+        state,
+        hand=(JESSICA,),
+        in_play=(INITIATE,) if bond else (),
+        resources=Resources(solari=4, spice=2, water=1),
+    )
+    placement = next(
+        placement
+        for placement in executable_placements(held, 0)
+        if dict(placement.arguments)["card_id"] == JESSICA
+        and dict(placement.arguments)["space_id"] == "secure_contract"
+    )
+    return apply_placement(engine, held, placement).state
+
+
+def _icon(effect: str) -> DomainAction:
+    return DomainAction("resolve_agent_card_effect", 0, (("effect", effect),))
+
+
+def test_jessica_draws_two_cards_with_another_bene_gesserit_card_in_play() -> None:
+    # "If you have another Bene Gesserit card in play: [draw 1] [draw 1]" --
+    # two draw icons, each its own step (OQ-027, OQ-106).
+    engine, state = _promo_start()
+    placed = _jessica_placed(engine, state, bond=True)
+    offered = engine.whole_actions(placed, 0)
+    assert _icon("cards") in offered
+    assert _icon("cards_second") in offered
+    hand = len(placed.players[0].hand)
+
+    first = _do(engine, placed, "resolve_agent_card_effect", effect="cards")
+    assert len(first.players[0].hand) == hand + 1
+    assert _icon("cards_second") in engine.whole_actions(first, 0)
+    assert _icon("cards") not in engine.whole_actions(first, 0)
+    second = _do(engine, first, "resolve_agent_card_effect", effect="cards_second")
+    assert len(second.players[0].hand) == hand + 2
+
+
+def test_jessica_draws_nothing_without_another_bene_gesserit_card() -> None:
+    # The Bond opens the box at the placement (OQ-028): without another Bene
+    # Gesserit card in play (Jessica herself does not count) it draws nothing.
+    engine, state = _promo_start()
+    placed = _jessica_placed(engine, state, bond=False)
+    ids = {action.action_id for action in engine.whole_actions(placed, 0)}
+    assert "resolve_agent_card_effect" not in ids
+
+
+def test_jessicas_two_icons_judge_the_bond_each_when_it_resolves() -> None:
+    # Conditions are judged when they resolve (OQ-028, imperium-base.md 16): if
+    # the Bond is gone when the second icon comes up, only the first drew.
+    engine, state = _promo_start()
+    placed = _jessica_placed(engine, state, bond=True)
+    first = _do(engine, placed, "resolve_agent_card_effect", effect="cards")
+    broken = _seat(
+        first, in_play=tuple(c for c in first.players[0].in_play if c != INITIATE)
+    )
+    assert _icon("cards_second") not in engine.whole_actions(broken, 0)
+    # The Bond comes back before the turn ends: the waiting icon is offered.
+    restored = _seat(broken, in_play=(*broken.players[0].in_play, INITIATE))
+    assert _icon("cards_second") in engine.whole_actions(restored, 0)
+
+
+def test_jessica_reveals_one_persuasion_and_two_swords() -> None:
+    engine, state = _promo_start()
+    held = _troops(state, 2, 1, hand=(JESSICA,), combat_strength=2)
+    revealed = _do(engine, held, "reveal_turn")
+    context = dict(revealed.decision_stack[-1].context)
+    assert context["persuasion"] == 1
+    # One troop in the Conflict (2) and the two swords.
+    assert revealed.players[0].combat_strength == 2 + 2
+
+
+# --- Thumper ------------------------------------------------------------------
+
+
+def _thumper_harvest(
+    state: GameState, engine: UprisingRulesEngine, space_id: str, bonus: int
+) -> tuple[GameState, GameState]:
+    """The state before and after seat 0 harvests ``space_id`` (holding
+    ``bonus`` bonus spice) with Thumper."""
+
+    held = _seat(state, hand=(THUMPER,), resources=Resources(solari=4, water=1))
+    held = replace(
+        held,
+        maker_bonus_spice=tuple(
+            (space, bonus if space == space_id else amount)
+            for space, amount in held.maker_bonus_spice
+        ),
+    )
+    placement = next(
+        placement
+        for placement in executable_placements(held, 0)
+        if dict(placement.arguments)["card_id"] == THUMPER
+        and dict(placement.arguments)["space_id"] == space_id
+    )
+    placed = apply_placement(engine, held, placement).state
+    return placed, _do(engine, placed, "harvest_maker_spice")
+
+
+def test_thumper_doubles_the_bonus_spice_and_not_the_base() -> None:
+    # "Double the bonus spice you harvest with this Agent": at Hagga Basin the
+    # base is 2 [FAQ p. 1] and the board gathered 3 bonus: 2 + 3 * 2 = 8, the
+    # extra from the bank (imperium-base.md 13.2, P0 sweep).
+    engine, state = _promo_start()
+    placed, harvested = _thumper_harvest(state, engine, "imperium_hagga_basin", 3)
+    assert harvested.players[0].resources.spice == 2 + 3 * 2
+    assert dict(harvested.maker_bonus_spice)["imperium_hagga_basin"] == 0
+    # Without any bonus the harvest is the base alone.
+    _, plain = _thumper_harvest(state, engine, "imperium_hagga_basin", 0)
+    assert plain.players[0].resources.spice == 2
+    # Imperial Basin's base is 1.
+    _, basin = _thumper_harvest(state, engine, "imperial_basin", 2)
+    assert basin.players[0].resources.spice == 1 + 2 * 2
+    # The box is a modifier of the harvest, never a step to resolve.
+    assert "resolve_agent_card_effect" not in {
+        action.action_id for action in engine.whole_actions(placed, 0)
+    }
+
+
+def test_thumper_event_names_the_doubled_gain() -> None:
+    engine, state = _promo_start()
+    _, harvested = _thumper_harvest(state, engine, "imperial_basin", 2)
+    gained = [
+        event
+        for event in harvested.event_log
+        if event.kind == "resources_gained"
+        and dict(event.payload).get("spice")
+        and "board:imperial_basin" in str(dict(event.payload).get("source"))
+    ]
+    assert dict(gained[-1].payload)["spice"] == 1 + 2 * 2
+
+
+def test_thumper_with_countess_ariana_takes_her_one_less_once_after_the_doubling() -> (
+    None
+):
+    # "Countess Ariana의 −1은 Carryall·Thumper로 두 배를 한 뒤 harvest 전체에서 한
+    # 번 뺀다" (imperium-base.md 16): base + 2 * bonus - 1, and her card.
+    engine, state = _promo_start(
+        leaders=(
+            "countess_ariana_thorvald",
+            "glossu_rabban",
+            "count_ilban_richese",
+            "earl_memnon_thorvald",
+        )
+    )
+    _, harvested = _thumper_harvest(state, engine, "imperium_hagga_basin", 3)
+    assert harvested.players[0].resources.spice == 2 + 3 * 2 - 1
+
+
+def test_thumper_reveals_one_persuasion_and_one_spice() -> None:
+    engine, state = _promo_start()
+    held = _seat(state, hand=(THUMPER,), resources=Resources())
+    revealed = _do(engine, held, "reveal_turn")
+    assert dict(revealed.decision_stack[-1].context)["persuasion"] == 1
+    assert (
+        _do(engine, revealed, "gain_reveal_resources").players[0].resources.spice == 1
+    )

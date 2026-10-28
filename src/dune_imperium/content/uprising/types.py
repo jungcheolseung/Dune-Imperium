@@ -369,6 +369,13 @@ class PersonalCardAgentEffect(StrEnum):
     # Carryall: "Double the base (not bonus) spice you harvest with this
     # Agent" -- a modifier of the harvest, never a box to resolve.
     DOUBLE_BASE_HARVEST_SPICE = "double_base_harvest_spice"
+    # Thumper (promo): "Double the bonus spice you harvest with this Agent" --
+    # a modifier of the harvest, like Carryall's, never a box to resolve.
+    DOUBLE_BONUS_HARVEST_SPICE = "double_bonus_harvest_spice"
+    # Jessica of Arrakis (promo): "If you have another Bene Gesserit card in
+    # play: [draw 1] [draw 1]", two draw icons each judged when it resolves
+    # (OQ-027, OQ-028).
+    DRAW_TWO_IF_BENE_GESSERIT_BOND = "draw_two_if_bene_gesserit_bond"
     # Test of Humanity: "Each opponent chooses: Discard a card -OR- Lose a
     # deployed troop."
     EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP = (
@@ -579,6 +586,12 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # Chani: "Retreat any number of your troops" ("any number" allows none
     # [FAQ p. 3]).
     MAY_RETREAT_ANY_NUMBER_OF_TROOPS = "may_retreat_any_number_of_troops"
+    # Duncan, Loyal Blade (promo): "Trash this card -> Deploy or retreat any
+    # number of your troops from or to your garrison" -- the trash, then one
+    # direction and a count, none included ("any number" [FAQ p. 3]).
+    MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS = (
+        "may_trash_self_to_move_any_number_of_troops"
+    )
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -611,6 +624,7 @@ IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = froz
         PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS,
         PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
         PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS,
     }
 )
 

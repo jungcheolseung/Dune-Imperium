@@ -170,8 +170,8 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
     # Imperial Spy, Missionaria Protectiva, Gene Manipulation, Reverend Mother
     # Mohiam, Carryall, Test of Humanity, Firm Grip, Shifting Allegiances,
-    # Other Memory, The Voice).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 21
+    # Other Memory, The Voice, and the promos Thumper and Jessica of Arrakis).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -219,6 +219,8 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         _BOX.RECRUIT_TWO_AND_DRAW_ONE: ("troops", "cards"),
         # Gene Manipulation: a black trash icon and the Bond's spice icon.
         _BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: ("trash", "spice"),
+        # Jessica of Arrakis (promo): two draw icons behind one Bond.
+        _BOX.DRAW_TWO_IF_BENE_GESSERIT_BOND: ("cards", "cards_second"),
     }
     for effect, ability in AGENT_BOX_ABILITIES.items():
         if not ability.icons:

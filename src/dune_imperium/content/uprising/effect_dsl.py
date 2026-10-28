@@ -1848,6 +1848,21 @@ class DoubleBaseHarvestSpice:
 
 
 @dataclass(frozen=True, slots=True)
+class DoubleBonusHarvestSpice:
+    """Double the bonus spice the Agent harvests this turn ("Double the bonus
+    spice you harvest with this Agent" [Thumper card, app text]).
+
+    A modifier of the Maker space's harvest, not a step of its own, like
+    ``DoubleBaseHarvestSpice``: the box never opens (``AbilityMark.AUTOMATIC``),
+    the harvest reads it. The bonus is the spice the space has gathered
+    [DI p. 13]; the base spice does not double, the extra comes from the bank,
+    and nothing doubles at a space that is not a harvest. Countess Ariana's one
+    less comes off the whole harvest once, after the doubling
+    (docs/rules/imperium-base.md 16).
+    """
+
+
+@dataclass(frozen=True, slots=True)
 class ReserveCostDiscount:
     """Every copy of the named Reserve card acquired during this Reveal turn
     costs ``amount`` less ("The Spice Must Flow costs {Persuasion_3} less to
@@ -1951,6 +1966,7 @@ type Reward = (
     | GainSpiceWithHelixBonus
     | ReserveCostDiscount
     | DoubleBaseHarvestSpice
+    | DoubleBonusHarvestSpice
 )
 
 

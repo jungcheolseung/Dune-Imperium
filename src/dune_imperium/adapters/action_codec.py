@@ -144,6 +144,7 @@ from dune_imperium.rules.reveal_turn import (
     SOURCE_ARGUMENT,
     card_holds_reveal_value,
     troops_move_shape,
+    troops_trash_move,
 )
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
@@ -3761,6 +3762,9 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     _Choice.MAY_DEPLOY_UP_TO_THREE_TROOPS: ("deploy_reveal_card_troops",),
     _Choice.MAY_RETREAT_UP_TO_TWO_TROOPS: ("retreat_reveal_card_troops",),
     _Choice.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: ("retreat_reveal_card_troops",),
+    # Duncan, Loyal Blade (original game promo): the trash, then one
+    # direction and a count, none included.
+    _Choice.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS: _SOURCED_TROOPS_MOVE,
     _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED: (
         "recall_spy_for_reveal",
     ),
@@ -3838,10 +3842,12 @@ def _reveal_source_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...
                     # Commander being a troop [Bloodlines p. 4], as the engine
                     # offers them (``units.unit_count_arguments``).
                     shape = troops_move_shape(effect)
-                    assert shape is not None
+                    # Duncan, Loyal Blade names a count from none (one
+                    # direction and a count, "any number" [FAQ p. 3]).
+                    assert shape is not None or troops_trash_move(effect)
                     variants = unit_count_arguments(
-                        minimum=1,
-                        maximum=shape[1],
+                        minimum=0 if shape is None else 1,
+                        maximum=None if shape is None else shape[1],
                         troops=MAX_DEPLOYMENT_COUNT,
                         commanders=(
                             MAX_COMMANDER_DEPLOYMENT if config.bloodlines else 0

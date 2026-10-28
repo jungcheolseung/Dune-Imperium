@@ -147,8 +147,9 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
     assert optional | mandatory == set(PersonalCardRevealChoiceEffect)
     # Sixteen of the Uprising family's, Gun Thopter's deploy, Opulence's and
     # Guild Ambassador's Victory Point, Gurney Halleck's troops, and Sardaukar
-    # Legion's, Scout's and Chani's counts of troops (stage P3).
-    assert len(optional) == 16 + 7
+    # Legion's, Scout's and Chani's counts of troops (stage P3), and the promo
+    # Duncan, Loyal Blade's trash for a count of troops.
+    assert len(optional) == 16 + 8
     # Ten of the Uprising family's and Bene Gesserit Sister's -OR- (stage P3).
     assert len(mandatory) == 10 + 1
     assert set(REVEAL_CHOICE_EFFECT_ACTIONS) == set(PersonalCardRevealChoiceEffect)

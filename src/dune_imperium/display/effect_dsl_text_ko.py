@@ -73,6 +73,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardedCardHasFaction,
     DiscardFromHand,
     DoubleBaseHarvestSpice,
+    DoubleBonusHarvestSpice,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
@@ -1114,6 +1115,9 @@ def reward_text_ko(reward: Reward) -> str:
             # Bare ``{agent}`` and ``{spice}`` (the English line has one each);
             # "수확" is ``static/labels.js``'s ``harvest_maker_spice`` verb.
             return "이 {agent}로 수확하는 기본 {spice} 두 배 (보너스 제외)"
+        case DoubleBonusHarvestSpice():
+            # The same words for the bonus (Thumper).
+            return "이 {agent}로 수확하는 보너스 {spice} 두 배"
         case ReserveCostDiscount(card_ids=card_ids, amount=amount):
             # The Reserve card's Korean print name (``_reserve_card_name_ko``,
             # as the Corner the Market conditions above); one name for the

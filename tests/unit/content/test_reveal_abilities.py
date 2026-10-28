@@ -75,9 +75,9 @@ def test_every_record_names_a_card_with_its_play_data() -> None:
     # Fedaykin Death Commando, Thufir Hawat, Spice Hunter, Sietch Reverend
     # Mother, Smuggler's Thopter, Worm Riders' two lines, Assassination
     # Mission, Reverend Mother Mohiam, Liet Kynes, CHOAM Directorship, Guild
-    # Bankers, Carryall, Firm Grip).
-    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 15
-    assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == 55 + 1 + 16
+    # Bankers, Carryall, Firm Grip, and the promo Thumper).
+    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 16
+    assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == 55 + 1 + 17
 
 
 def test_reveal_gain_records_are_automatic_lines() -> None:

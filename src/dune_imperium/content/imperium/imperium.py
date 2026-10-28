@@ -717,22 +717,64 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         agent_effect=PersonalCardAgentEffect.GAIN_TWO_SPICE,
         play_data_complete=True,
     ),
+    # --- The three promos, behind ``promo_cards`` (plan 9 8, 16.3): the app's
+    # attribute table and English text. ---
+    # App table: cost 5, 1 copy, no Faction, Fremen and City, Reveal 1 Persuasion
+    # and 2 swords. Agent: "[troop]", one troop (a Combat space lets the owner
+    # deploy it [DI p. 10] [FAQ p. 4]). Reveal: "[P1] [S2]" and "Trash this card
+    # -> Deploy or retreat any number of your troops from or to your garrison"
+    # -- the trash, then one direction and a count, none included ("any number"
+    # [FAQ p. 3]); offered only while some unit could move (OQ-071); the
+    # Persuasion and swords already gained stay after the trash (OQ-022,
+    # imperium-base.md 16); a Sardaukar Commander is a troop [Bloodlines p. 4]
+    # (OQ-115).
     ImperiumCardEntry(
         card=imperium_card("duncan_loyal_blade", "Duncan, Loyal Blade"),
         copies=1,
         acquisition_cost=5,
+        agent_icons=(AgentIcon.FREMEN, AgentIcon.CITY),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_ONE_TROOP,
+        reveal_persuasion=1,
+        reveal_strength=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS,
+        ),
         promo=True,
+        play_data_complete=True,
     ),
+    # App table: cost 3, 1 copy, Bene Gesserit, Spice Trade, Reveal 1 Persuasion
+    # and 2 swords. Agent: "If you have another Bene Gesserit card in play: [draw
+    # 1] [draw 1]" -- two draw icons, each its own step with the Bond judged when
+    # it resolves (OQ-027, OQ-028, OQ-106; Smuggler's Thopter's shape under the
+    # Bond). Reveal: "[P1] [S2]".
     ImperiumCardEntry(
         card=imperium_card("jessica_of_arrakis", "Jessica of Arrakis"),
         copies=1,
         acquisition_cost=3,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.DRAW_TWO_IF_BENE_GESSERIT_BOND,
+        reveal_persuasion=1,
+        reveal_strength=2,
         promo=True,
+        play_data_complete=True,
     ),
+    # App table: cost 3, 1 copy, Fremen, Spice Trade, Reveal 1 Persuasion and 1
+    # spice. Agent: "Double the bonus spice you harvest with this Agent" -- when
+    # this Agent harvests at a Maker space, its bonus spice is doubled (the extra
+    # from the bank), the base spice not; Countess Ariana's one less comes off the
+    # harvest once, after the doubling (imperium-base.md 16); a modifier of the
+    # harvest, so its box never opens (``DoubleBonusHarvestSpice``). Reveal: "[P1]
+    # [1 spice]".
     ImperiumCardEntry(
         card=imperium_card("thumper", "Thumper"),
         copies=1,
         acquisition_cost=3,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.DOUBLE_BONUS_HARVEST_SPICE,
+        reveal_persuasion=1,
         promo=True,
+        play_data_complete=True,
     ),
 )
