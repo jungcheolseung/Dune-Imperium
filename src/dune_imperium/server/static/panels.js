@@ -349,6 +349,15 @@ function renderSeats() {
        spaces: the panel no longer repeats them (play feedback 2026-10-26). */
     const flags = [];
     if (player.swordmaster_acquired) flags.push(tNode("panels.swordmaster"));
+    /* The original game's Mentat, where the screen puts it (mentatSpace). */
+    if (player.mentat) {
+      const space = mentatSpace(player);
+      flags.push(
+        tNode("panels.mentat_at", {
+          where: space ? spaceName(space) : t("panels.mentat_on_leader"),
+        })
+      );
+    }
     if (player.has_revealed) flags.push(tNode("panels.revealed"));
     /* Bloodlines Leader state: Piter's Twisted deck. Chani's Tactics space,
        Y'rkoon's Navigation cards and Kota's Secret Project tile are drawn
@@ -2508,6 +2517,20 @@ function deckTopChoicePicture() {
 /* What shows the seat its deck's top card, by its name on screen: the
    Glowglobes tile it owns, or else Controlled (the one Intrigue that peeks
    at a deck, content/uprising/intrigue.py). */
+/* The original game's Mentat held by `player` this round: the engine does
+   not tell it from the seat's own Agents (OQ-139 (가)), so the screen draws
+   it by rule (user ruling 2026-10-28, "(가) 로 하자"): the last piece the seat
+   placed beyond its own Agents (two, three with the Swordmaster) is the
+   Mentat; with no such piece it stands on the Leader (""). A Kwisatz
+   Haderach move puts the moved piece last, Urgent Mission's recall takes
+   one off, and Recall returns the Mentat to its space (not held). */
+function mentatSpace(player) {
+  if (!player.mentat) return null;
+  const own = 2 + (player.swordmaster_acquired ? 1 : 0);
+  const placed = player.agent_locations || [];
+  return placed.length > own ? placed[placed.length - 1] : "";
+}
+
 function deckTopSource(glowglobes, leaderId) {
   if (!glowglobes && leaderId === "paul_atreides") {
     /* Prescience: "자기 덱 맨 위 카드를 언제든 볼 수 있다" (imperium-base.md

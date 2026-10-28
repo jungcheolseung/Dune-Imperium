@@ -992,6 +992,14 @@ const UI_TEXT = {
     "ko": "소드마스터",
     "en": "Swordmaster"
   },
+  "panels.mentat_at": {
+    "ko": "멘타트: {{where}}",
+    "en": "Mentat: {{where}}"
+  },
+  "panels.mentat_on_leader": {
+    "ko": "지도자 위",
+    "en": "on the Leader"
+  },
   "panels.family_atomics": {
     "ko": "가문 핵 토큰",
     "en": "Family Atomics"

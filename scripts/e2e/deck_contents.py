@@ -106,6 +106,8 @@ TEXT = {
             "맨 위로 표시한 카드는 앞면으로 카드덱 맨 위에 놓아 모두가 아는 카드입니다."
         ),
         "public_top_label": "카드덱 맨 위 (공개)",
+        "mentat_at": "멘타트: {where}",
+        "mentat_leader": "지도자 위",
         "strip_badge": "덱 맨 위",
         # Controlled's buttons, naming the card (icons read as their words).
         "choices": {
@@ -140,6 +142,8 @@ TEXT = {
             " knows it."
         ),
         "public_top_label": "Top of deck (public)",
+        "mentat_at": "Mentat: {where}",
+        "mentat_leader": "on the Leader",
         "strip_badge": "Top of deck",
         "choices": {
             "put_back_top_card": "Leave top card of deck ({card}) on top",
@@ -885,6 +889,26 @@ PUBLIC_TOP_LINES_JS = """() => [...document.querySelectorAll('article.seat')]
              cards: line ? [...line.children].slice(1).map(text) : [] };
   })"""
 
+# The original game's Mentat on the kept view: the seat holds it with
+# ``placed`` Agent locations (Swordmaster off); the other seats hold none.
+MENTAT_JS = """([placed]) => {
+  state.view = structuredClone(window.__deckTop.view);
+  for (const seat of state.view.players) seat.mentat = false;
+  const own = state.view.players[state.view.player];
+  own.mentat = true;
+  own.swordmaster_acquired = false;
+  own.agent_locations = placed;
+  state.actions = window.__deckTop.actions;
+  render();
+}"""
+
+# Each seat panel's status flags, as text.
+SEAT_FLAGS_JS = """() => [...document.querySelectorAll('article.seat')]
+  .map((card) => {
+    const detail = card.querySelector('.seat-detail');
+    return { seat: Number(card.dataset.seat), text: detail ? detail.innerText : '' };
+  })"""
+
 TOP_RESTORE_JS = """() => {
   state.view = window.__deckTop.real;
   state.actions = window.__deckTop.actions;
@@ -1084,6 +1108,38 @@ def check_public_top(page: Any, lang: str) -> None:
     page.evaluate(TOP_RESTORE_JS)
 
 
+def check_mentat_place(page: Any, lang: str) -> None:
+    """OQ-139 (가), user ruling 2026-10-28: the screen puts the Mentat by rule
+    -- the last piece a holding seat placed beyond its own two Agents, or its
+    Leader when there is none -- in that seat's panel only."""
+
+    words = TEXT[lang]
+    label = f"[C {lang}]"
+    if page.evaluate(TOP_SETUP_JS) is None:
+        return
+    me = page.evaluate("state.view.player")
+    leader_line = words["mentat_at"].format(where=words["mentat_leader"])
+    page.evaluate(MENTAT_JS, [["carthag", "arrakeen"]])
+    flags = {f["seat"]: f["text"] for f in page.evaluate(SEAT_FLAGS_JS)}
+    check.ok(
+        leader_line in flags[me]
+        and all(
+            words["mentat_at"].split(":")[0] not in flags[s] for s in flags if s != me
+        ),
+        f"{label} with only its own two Agents placed the Mentat is on the Leader",
+        flags[me],
+    )
+    page.evaluate(MENTAT_JS, [["carthag", "arrakeen", "imperial_basin"]])
+    name = page.evaluate("spaceName('imperial_basin')")
+    flags = {f["seat"]: f["text"] for f in page.evaluate(SEAT_FLAGS_JS)}
+    check.ok(
+        words["mentat_at"].format(where=name) in flags[me],
+        f"{label} the third piece placed is drawn as the Mentat ({name})",
+        flags[me],
+    )
+    page.evaluate(TOP_RESTORE_JS)
+
+
 def check_controlled_panel(page: Any, lang: str, top: str, case: str) -> None:
     """Controlled's offered choice (user decision 2026-10-10, (나) and "옆에
     카드 이미지도 나오지?"): the top card's picture right above the three
@@ -1254,6 +1310,7 @@ def scenario_c(base: str, browser: Any) -> None:
             page.wait_for_function(f"TERM_LANGUAGE === '{lang}'")
         check_top_mark(page, lang)
         check_public_top(page, lang)
+        check_mentat_place(page, lang)
     check.ok(
         rec.count("POST", "/actions") == posts, "[C] the view edits post no action"
     )
