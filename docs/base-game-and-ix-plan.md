@@ -1022,7 +1022,9 @@ Ghidra는 launch.sh 대신 JDK 25로 직접 띄워 `-Duser.home`·`-Djava.io.tmp
    `[Immortality p. 10]`. 그래서 Firm Grip의 Solari 화살표 줄(`pay_agent_card_solari`)을 `graft_boxes.BOX_ACTION_IDS`에 더한다. Uprising +
    Immortality 카탈로그가 바뀌는지 먼저 확인한다(바뀌면 codec 문제라 따로 묻는다). **끝(`4c926fc0`):** 어느 카탈로그도 바뀌지 않았다 —
    box 1의 단계 줄은 Immortality가 있는 카탈로그에 이미 있었고, 막은 것은 효과 frame의 거절뿐이었다(Uprising 144개·원판 144개 줄마다 같음).
-3. **차례 밖 획득의 창(그 조합을 열 때):** OQ-141 조합 — Scouts의 Critical Moment로 얻은 CHOAM Directorship·Lady Jessica.
+3. **차례 밖 획득의 창(그 조합을 열 때):** OQ-141 조합 — Scouts의 Critical Moment로 얻은 CHOAM Directorship·Lady Jessica. 차례 밖에서 Imperium 카드를
+   얻는 길은 Impress(비용 3 이하라 닿지 않음)와 Critical Moment뿐이고, 획득 상자의 Influence는 한 곳(`_acquisition_influence`)을 지나 거절이 모든 길을
+   덮는다(2026-10-28 Codex 리뷰 뒤 OQ-141에 적음).
 4. **OQ-144(사용자 확인 대기):** Double Cross의 supply 배치에 Commander를 쓸 수 있는가.
 5. **Guild Bankers:** 할인은 원판·Uprising의 The Spice Must Flow 두 인쇄를 모두 이름하고(`ReserveCostDiscount.card_ids`), Scouts의 Reserve 비용
    수정도 같은 값을 읽어(`scouts_modifiers.reserve_discount`) 조합에서도 같다.
@@ -1035,7 +1037,17 @@ Ghidra는 launch.sh 대신 JDK 25로 직접 띄워 `-Duser.home`·`-Djava.io.tmp
 
 8. **Kwisatz Haderach의 자기 Agent 둘(P7):** 원판에서 회수 줄은 고쳤다(`761cba10`). Uprising의 Into the Fray(`leader_abilities.py`, 칸 id로 다
    지움)와 Immortality의 Twisted Mentat(같은 칸 줄 겹침)는 원판 카드와 섞이는 P7에서 같은 셈으로 고친다. Kwisatz가 Conflict의 Agent(Into the Fray)를
-   옮길 수 있는가("from anywhere")도 P7에서 정한다.
+   옮길 수 있는가("from anywhere")는 [OQ-146](rules/open-questions.md#oq-146--kwisatz-haderach의-from-anywhere와-conflict에-있는-into-the-fray의-agent-원판--bloodlines)(추천 (가) 포함, 사용자 확인 대기), 구현은 P7.
+
+9. **원판 카드의 graft(P7, 원판 + Immortality):** 공식 판정 셋이 원판 카드를 이름한다 — "Ghola — When grafted to Carryall, you get four times the base
+   spice you harvest with your Agent. When grafted to Kwisatz Haderach, you still send only one Agent on your turn (though you draw two cards)."
+   `[FAQ p. 2]`, "If you graft this card with Power Play to send an Agent to a faction board space, you gain only 2 Influence with that faction, the
+   same as if you'd played Power Play alone." `[Immortality p. 14]`. 지금 Maker 칸 수확의 두 배(`rules/board_effects.apply_maker_space_action`)는
+   놓인 칸의 카드(`active_agent_card`)만 읽어 graft 짝의 Carryall·Thumper를 빠뜨린다(Ghola + Carryall이 네 배가 아니라 두 배; 2026-10-28 Codex 리뷰).
+   P7에서 두 칸의 카드를 모두 읽고(배수는 겹침 — 위 FAQ), Thumper의 보너스 spice 두 배도 같은 읽기로 겹치게 한다(Thumper는 FAQ가 이름하지 않아
+   project convention으로 적는다). Power Play·Kwisatz는 위 두 문장대로 테스트를 둔다.
+10. **Commander만 있는 Reveal 이동(고침 `09bf5f2d`):** 16.10 1의 세 이동 줄은 Commander 몫을 냈지만 선택이 열리는 조건은 troop만 세어, Commander만
+   있으면 선택이 기다렸다(Codex 리뷰). 조건도 Commander를 센다 `[Bloodlines p. 4]`(OQ-115).
 
 1·2는 조정자의 go(2026-10-28 아침)로 끝냈다(대상 테스트 `-n 2`, Uprising 카탈로그·특성 행 대조; 전체 pytest와 관문은 E7b 뒤 그대로).
 

@@ -3007,6 +3007,10 @@
     Scouts 단계 등)은 완수한 자리의 창 그대로다")를 따라, 획득한 자리에 그 상자의 창을 열고 아이콘마다 줄 하나, 순서는 소유자다(계약 보상 창
     `contract_reward_icons`과 같은 꼴). 그 창이 생길 때까지 `queue_acquire_icons`가 거절하고(`NotImplementedError`), setup도 그 조합을 아직 받지
     않는다(`rules/setup._IMPERIUM_PENDING_OPTIONS`; Uprising + 원판 카드는 P7). 창의 구현은 그 조합을 여는 단계에서 한다.
+  - 찾아본 길(2026-10-28 Codex 리뷰 뒤): 획득 상자의 Influence는 어느 길로 얻든 `rules/acquisition._acquisition_influence` 한 곳을 지나므로
+    위 거절이 모든 길을 덮는다. 차례 밖에서 Imperium 카드를 얻는 길은 Uprising Impress(Combat의 `AcquireCardUpTo(3)`, 두 장에 닿지 않음)와 Scouts의
+    Critical Moment(`rules/scouts_auctions`)뿐이다. 나머지(`AcquireCardUpTo`를 쓰는 Plot·Agent box, 지도자 Signet의 획득, Agent 칸의 획득)는 모두
+    자기 차례 안이다. Rise of Ix(P4)의 카드·보상은 전사할 때 이 목록에 대어 본다.
 
 ## OQ-142 — 승자의 창의 닫기 줄과 승리 책략의 숨은 정보 (원판)
 
@@ -3105,3 +3109,25 @@
   - OQ-010 판정 5와 [information-visibility.md](information-visibility.md)의 "순서는 소유자에게도 숨긴다"에 이 예외를 적었다.
 - 정해져 있어 묻지 않는 것: 덱 위에 놓기와 그 카드의 획득 상자 순서는 놓기가 먼저다(Immortality 구현 선례 `rules/tleilaxu_row.py`: 덱 위에 놓은 뒤
   획득 보너스). 그래서 Immortality의 두 번째 genetic marker 뒤 Research(카드 1장 뽑기)가 획득 상자에 있으면 방금 덱 위에 놓은 그 카드를 뽑는다.
+
+## OQ-146 — Kwisatz Haderach의 "from anywhere"와 Conflict에 있는 Into the Fray의 Agent (원판 + Bloodlines)
+
+- 상태: `OPEN` (2026-10-28, P3 Codex 독립 리뷰의 질문; 사용자 확인 대기)
+- 인쇄: Kwisatz Haderach "Send one of your Agents from anywhere to ANY board space (even if occupied)." `[Kwisatz Haderach card]`(앱 문구).
+  Into the Fray "You may take the Agent you sent this turn and deploy it to the Conflict as a 2 strength unit that can't be retreated."
+  `[Duncan Idaho card]`.
+- 이미 정한 것: Conflict에 있는 Into the Fray의 Agent는 여전히 "자신의 Agent"다 — 뒤의 turn에 Imperial Privilege로 recall할 수 있고, recall되면
+  유닛으로서 Conflict를 떠나 Leader로 돌아오며 전투력이 갱신된다(OQ-037 (d), 디자이너 판정 `[Board Guide p. 2]`). High Council(Bloodlines)의 recall
+  (OQ-068, 사용자 판정), Scouts의 Contingencies(OQ-075 (D)), 원판 Urgent Mission의 recall(`rules/effects.recall_agent_targets`)도 그 Agent를 넣는다.
+- 문서가 답하지 않는 것: recall이 아니라 "send … from anywhere"도 그 Agent를 고를 수 있는가, 고르면 그 Agent가 유닛으로서 Conflict를 떠나는가.
+- 지금 엔진: Kwisatz의 출발점은 Leader와 board space의 자기 Agent뿐이다(`rules/agent_turn._placements_for_card`의 `agent_locations`;
+  `_placing_owner`도 `agent_in_conflict`를 세지 않는다). 원판은 Bloodlines를 P7부터 받으므로(`rules/setup._IMPERIUM_PENDING_OPTIONS`) 지금 판에서는
+  닿지 않는다. 앱에는 Bloodlines가 없어 보조 증거가 없다.
+- 선택지:
+  - (가) 포함한다: Conflict의 그 Agent도 출발점이다. 옮기면 유닛으로서 Conflict를 떠나(전투력 2, Swordmaster면 3이 빠짐, OQ-037 (c)) 고른 칸으로
+    간다 — OQ-037 (d)의 recall이 Conflict를 떠나는 처리와 같다. "can't be retreated"는 retreat만 막고 이 이동은 retreat가 아니다.
+  - (나) 넣지 않는다: board space와 Leader의 Agent만 "anywhere"다.
+- 추천: **(가).** 디자이너 판정이 그 Agent를 "자신의 Agent"로 보고 recall 효과 넷이 모두 넣는다. "from anywhere"는 자리를 제한하지 않는다.
+- 같이 볼 공식 문장(다른 질문): "When grafted to Kwisatz Haderach, you still send only one Agent on your turn (though you draw two cards)."
+  `[FAQ p. 2]`(Ghola 항목) — 원판 + Immortality의 graft는 P7([base-game-and-ix-plan.md](../base-game-and-ix-plan.md) 16.10 9).
+- 구현: 판정대로 P7(원판 + Bloodlines를 여는 단계)에서.
