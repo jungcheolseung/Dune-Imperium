@@ -188,8 +188,10 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.AGENT_SPACE: frozenset(
         {"cost_option", "discount", "infiltrate_post_id", "space_id"}
     ),
-    Target.IMPERIUM_CARD: frozenset({"instance_id"}),
-    Target.RESERVE_CARD: frozenset({"card_id"}),
+    # ``to_deck_top``: the card goes on top of the deck instead of the discard
+    # pile (the original game's Bypass Protocol, Recruitment Mission).
+    Target.IMPERIUM_CARD: frozenset({"instance_id", "to_deck_top"}),
+    Target.RESERVE_CARD: frozenset({"card_id", "to_deck_top"}),
     Target.TLEILAXU_CARD: frozenset({"instance_id", "to_deck_top"}),
     Target.RECLAIMED_FORCES: frozenset({"choice"}),
     Target.PERSONAL_CARD: frozenset({"card_id", "graft"}),

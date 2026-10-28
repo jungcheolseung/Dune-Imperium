@@ -18,6 +18,8 @@ from typing import Final
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
+    AcquireToDeckTopThisRound,
     DeployFromGarrison,
     DeployFromSupply,
     DeployTheseTroops,
@@ -152,6 +154,29 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("bypass_protocol", "Bypass Protocol"),
         copies=1,
+        # "Acquire a card that costs [Persuasion 3] or less." -OR- "[2 spice]
+        # -> Acquire a card that costs [Persuasion 5] or less to the top of
+        # your deck." [Bypass Protocol card, app text]: two exclusive Plot
+        # options (OQ-058; imperium-base.md 16 lists the card among the -OR-
+        # cards). "A card that costs N or less" is the Imperium Row's five
+        # cards and the Reserve's Arrakis Liaison and The Spice Must Flow,
+        # never Foldspace [DI p. 11] [FAQ p. 2] (OQ-125, decided 2026-10-23:
+        # ``AcquireCardUpTo``, Impress's piece). The first option has no
+        # cost, so it is played even with nothing to acquire (OQ-113 (C),
+        # imperium-base.md 16); the second is a cost line, played only with
+        # two spice and a card of cost 5 or less to take (OQ-071). The card
+        # goes on top of the deck, placed before its acquire box resolves
+        # (``to_deck_top``); the top of the deck is as hidden as any deck
+        # card (imperium-base.md 14).
+        options=(
+            _plot(EffectSection(rewards=(AcquireCardUpTo(3),))),
+            _plot(
+                EffectSection(
+                    costs=(PayResources(spice=2),),
+                    rewards=(AcquireCardUpTo(5, to_deck_top=True),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("choam_shares", "CHOAM Shares"),
@@ -408,6 +433,22 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("recruitment_mission", "Recruitment Mission"),
         copies=1,
+        # "Gain [Persuasion 1] during your Reveal turn this round." and "You
+        # may put cards you acquire on top of your deck." [Recruitment
+        # Mission card, app text]: one cost-free Plot whose whole effect
+        # waits for the owner's Reveal turn this round [FAQ p. 2], so the
+        # played card stays face up until that turn ends (Charisma's and
+        # Tleilaxu Puppet's shape, ``waits_for_reveal_turn``). For each card
+        # acquired the owner chooses top of the deck or the discard pile
+        # [FAQ p. 3] (imperium-base.md 13.2); the option is not retroactive:
+        # a card acquired before the Plot was played is unaffected (13.3).
+        options=(
+            _plot(
+                EffectSection(
+                    rewards=(RevealPersuasionThisRound(1), AcquireToDeckTopThisRound())
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("refocus", "Refocus"),

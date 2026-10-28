@@ -5926,6 +5926,8 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         in_play=(),
         imperium_set_aside=(),
         held_contract_icons=0,
+        # Recruitment Mission's deck-top option ends with the Reveal turn.
+        acquire_to_deck_top_round=False,
     )
     players = tuple(
         next_owner if player.player_id == action.actor else player

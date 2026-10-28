@@ -47,6 +47,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireReserveCardToHand,
     AcquireTech,
     AcquireTleilaxuCard,
+    AcquireToDeckTopThisRound,
     AdvanceTleilaxu,
     AgentOnSpaceWithIcon,
     AllConditions,
@@ -847,6 +848,10 @@ def reward_text_ko(reward: Reward) -> str:
             # The personal cards' own "앞면 {contract} N개 가져옴" (every
             # Contract taken is a face-up one, as the cards print it).
             return f"앞면 {{contract}} {count}개 가져옴"
+        case AcquireCardUpTo(max_cost=max_cost, to_deck_top=True):
+            # Bypass Protocol's "to the top of your deck"; "카드덱 맨 위" is
+            # the official Korean wording (Glowglobes' tile, above).
+            return f"비용이 {max_cost} 이하인 카드 {{acquire}} (카드덱 맨 위로)"
         case AcquireCardUpTo(max_cost=max_cost, to_hand_if=to_hand_if):
             base = f"비용이 {max_cost} 이하인 카드 {{acquire}}"
             if to_hand_if is None:
@@ -958,6 +963,10 @@ def reward_text_ko(reward: Reward) -> str:
             return "틀레이락스 카드 {acquire} 가능 (표본 비용 지불)"
         case RevealPersuasionThisRound(amount=amount):
             return f"이번 라운드 자기 {{reveal_turn}}에 {{persuasion:{amount}}}"
+        case AcquireToDeckTopThisRound():
+            # Recruitment Mission's second line: the cards it {acquire}s may
+            # go on the top of the deck.
+            return "{acquire}하는 카드를 카드덱 맨 위에 놓을 수 있음"
         case ReturnThisCardToHand():
             # Quotes ``tokens_ko.py``'s "이 카드를 핸드로 되돌림" (Weirding
             # Woman).

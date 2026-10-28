@@ -21,6 +21,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireReserveCard,
     AcquireTech,
     AcquireTleilaxuCard,
+    AcquireToDeckTopThisRound,
     AdvanceTleilaxu,
     AllConditions,
     AtFactionSpace,
@@ -1397,6 +1398,11 @@ def apply_rewards(
                         owner.reveal_persuasion_round_bonus + amount
                     ),
                 )
+            case AcquireToDeckTopThisRound():
+                # Recruitment Mission: effective in the owner's Reveal turn
+                # only (``acquisition.deck_top_offered``); cards acquired
+                # before it is played are unaffected (imperium-base.md 13.3).
+                owner = replace(owner, acquire_to_deck_top_round=True)
             case GainResources(solari=solari, spice=spice, water=water):
                 owner = replace(
                     owner,

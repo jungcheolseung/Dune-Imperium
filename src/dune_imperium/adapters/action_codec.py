@@ -1297,6 +1297,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for instance_id in imperium_instances
         )
+    if content.base_game is BaseGame.IMPERIUM:
+        templates.extend(_deck_top_templates(config, imperium_instances))
     templates.extend(
         ActionTemplate(
             action_id="acquire_imperium_with_solari",
@@ -1584,6 +1586,49 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     ]
     templates.extend(_effect_step_templates(config, wholes))
     return tuple(sorted(dict.fromkeys(templates), key=_template_sort_key))
+
+
+def _deck_top_templates(
+    config: RulesetConfig, imperium_instances: tuple[str, ...]
+) -> tuple[ActionTemplate, ...]:
+    """The original game's ``to_deck_top`` twins of the Imperium Row and
+    Reserve acquisitions (stage P3): Bypass Protocol's "to the top of your
+    deck" and, while Recruitment Mission is effective in its owner's Reveal
+    turn, every card the seat acquires there [FAQ p. 3]. A Reveal purchase
+    (``acquire_imperium``, ``acquire_reserve``, a Manipulate set-aside card),
+    an Intrigue acquisition (``acquire_intrigue_*``) and Engineered
+    Miracle's Command (Bloodlines); Foldspace is never acquired by a cost
+    cap or a purchase (OQ-125). The Tleilaxu Row's twins stand in every
+    Immortality catalog (``acquire_tleilaxu``). Only the original game's
+    catalogs hold these rows, so Uprising's stay what they were."""
+
+    content = content_for(config)
+    reserve = tuple(
+        stack.card.card_id for stack in content.reserve_stacks if not stack.icon_only
+    )
+    templates: list[ActionTemplate] = []
+    for action_id in (
+        "acquire_imperium",
+        "acquire_manipulated_imperium",
+        "acquire_intrigue_imperium",
+        *(("command_acquire_row_card",) if config.bloodlines else ()),
+    ):
+        templates.extend(
+            ActionTemplate(
+                action_id=action_id,
+                arguments=(("instance_id", instance_id), ("to_deck_top", True)),
+            )
+            for instance_id in imperium_instances
+        )
+    for action_id in ("acquire_reserve", "acquire_intrigue_reserve"):
+        templates.extend(
+            ActionTemplate(
+                action_id=action_id,
+                arguments=(("card_id", card_id), ("to_deck_top", True)),
+            )
+            for card_id in reserve
+        )
+    return tuple(templates)
 
 
 def _acquire_icon_templates(

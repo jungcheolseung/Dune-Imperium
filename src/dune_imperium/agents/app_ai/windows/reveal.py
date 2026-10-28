@@ -1439,6 +1439,11 @@ def _acquire_sources(run: DecisionRun) -> list[Source]:
 
     sources: list[Source] = []
     for action in run.legal:
+        if arg(action, "to_deck_top") is True:
+            # The original game's Recruitment Mission twin (stage P3): the
+            # app answers no deck-top picker for these buys here, so the
+            # plain row stands for the card, as before the twin existed.
+            continue
         if action.action_id in ("acquire_imperium", "acquire_manipulated_imperium"):
             instance = str_arg(action, "instance_id")
             if instance is None:

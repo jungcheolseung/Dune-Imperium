@@ -242,6 +242,11 @@ class PlayerState:
     # Tleilaxu Puppet: Persuasion granted for this round's Reveal turn only
     # (cleared at Round Start).
     reveal_persuasion_round_bonus: int = 0
+    # Recruitment Mission: "You may put cards you acquire on top of your deck"
+    # during this round's Reveal turn of the owner [FAQ p. 3]; effective only
+    # while the owner's own Reveal turn is open, cleared when it ends and at
+    # Round Start (not observed: the Reveal shop offers the twin rows).
+    acquire_to_deck_top_round: bool = False
     # Chairdog: grafted cards that return from play to the hand when the
     # owner's Reveal turn starts [card face].
     chairdog_return_card_ids: tuple[str, ...] = ()
@@ -281,6 +286,7 @@ class PlayerState:
             "masterstroke_revealed",
             "voice_blocked_space_ids",
             "enemy_agents_ignored_turn",
+            "acquire_to_deck_top_round",
         }
     )
 
