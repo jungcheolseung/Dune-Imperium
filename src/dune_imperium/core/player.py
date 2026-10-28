@@ -255,6 +255,56 @@ class PlayerState:
     # Usurp: the Imperium Row card grafted without acquiring it; it leaves
     # the game when the Agent turn closes [card face].
     usurped_row_card_id: str = ""
+    # Rise of Ix (docs/rules/rise-of-ix.md; plan 17.8, observation v39). Every
+    # field below defaults to "absent" and stays so in every game without the
+    # ``rise_of_ix`` option (``simulation.invariants``), so those games' state
+    # hashes, saves and records are what they were before the fields existed
+    # (``HASH_OMITTED_AT_DEFAULT``). Stage P4a only adds them; stages P4b, P4c
+    # and P4e set them.
+    # The seat's two dreadnoughts [Rise of Ix p. 6]: in its supply, its
+    # garrison and the Conflict (one on a Control space is in
+    # ``GameState.dreadnought_control``). The supply defaults to 0, not the
+    # printed two: Rise of Ix's setup gives them [Rise of Ix p. 3]
+    # (rise-of-ix.md 3 item 5), so a game without it holds none.
+    dreadnoughts_supply: int = 0
+    dreadnoughts_garrison: int = 0
+    dreadnoughts_conflict: int = 0
+    # The Freighter's space on the Shipping track, 0 the bottom (its setup
+    # space) to 3 the top [Rise of Ix p. 5] (rise-of-ix.md 5).
+    freighter_space: int = 0
+    # Troops sent from the supply to the Ix board as Negotiators [Rise of Ix
+    # p. 4] (rise-of-ix.md 4); they count among the seat's 12 troops.
+    negotiators: int = 0
+    # Tessia Vernius' Careful Observation: the Influence tracks (Faction ids)
+    # still holding her Snooper token, each on its track's Influence 2 space
+    # [Tessia Vernius card] (rise-of-ix.md 10). Public.
+    snooper_faction_ids: tuple[str, ...] = ()
+    # Ilesa Ecaz's One Step Ahead: the card set aside from the hand at Round
+    # Start, face down -- its identity is the owner's alone until it returns
+    # to the hand at the start of her second turn [Ilesa Ecaz card]
+    # (rise-of-ix.md 10, 13); "" when none. Every seat still counts it in her
+    # deck pool (plan 17.8 review item 1).
+    set_aside_card_id: str = ""
+    # Whether the set-aside card came back to the hand at this turn's start,
+    # its bonus waiting for an Agent sent with it [Ilesa Ecaz card]; and the
+    # turns this seat has finished this round, which says which turn is the
+    # second (a pass without an Agent and Weirding Way's extra turn count,
+    # OQ-119). Both public; kept at 0 outside a Rise of Ix game.
+    set_aside_returned_turn: bool = False
+    turns_finished_round: int = 0
+    # Intrigue cards this seat knows that are hidden from another seat, by
+    # instance: the deck's top card Viscount Hundro Moritani put back
+    # [Hundro Moritani card], the cards it put on the deck's bottom with Court
+    # Intrigue or Sonic Snoopers [Rise of Ix p. 10] [FAQ p. 2], and such a
+    # card once another seat drew it (rise-of-ix.md 13; plan 17.8 review
+    # items 2 and 6). Each entry is in the Intrigue deck or in another seat's
+    # held Intrigue (``simulation.invariants``). Its place -- the deck's top,
+    # its depth from the bottom (the order the seat put the cards there), or
+    # the seat holding it -- is read from those zones, so the record keeps no
+    # order of its own to go stale. An entry leaves when its card reaches a
+    # public zone or this seat's own hand, and a reshuffle of the Intrigue
+    # deck forgets the deck's entries.
+    known_intrigue_ids: tuple[str, ...] = ()
     deck: tuple[str, ...] = ()
     # The deck's top cards every seat knows, top first (OQ-145, user ruling
     # 2026-10-28): cards put face up on top of the deck (Bypass Protocol,
@@ -298,6 +348,17 @@ class PlayerState:
             "enemy_agents_ignored_turn",
             "acquire_to_deck_top_round",
             "deck_public_top",
+            # Rise of Ix (observation v39, stage P4a).
+            "dreadnoughts_supply",
+            "dreadnoughts_garrison",
+            "dreadnoughts_conflict",
+            "freighter_space",
+            "negotiators",
+            "snooper_faction_ids",
+            "set_aside_card_id",
+            "set_aside_returned_turn",
+            "turns_finished_round",
+            "known_intrigue_ids",
         }
     )
 
@@ -355,6 +416,12 @@ class PlayerState:
             self.tleilaxu_space,
             self.specimens,
             self.reveal_persuasion_round_bonus,
+            self.dreadnoughts_supply,
+            self.dreadnoughts_garrison,
+            self.dreadnoughts_conflict,
+            self.freighter_space,
+            self.negotiators,
+            self.turns_finished_round,
         )
         if min(quantities) < 0:
             raise ValueError("player component quantities must not be negative")
@@ -376,6 +443,26 @@ class PlayerState:
                 self.tech_flipped
             ) != len(set(self.tech_flipped)):
                 raise ValueError("flipped Tech tiles must be held tiles")
+        # Rise of Ix: two dreadnoughts a seat (one on a Control space is the
+        # game's, ``GameState.dreadnought_control``) [Rise of Ix p. 6], and a
+        # Shipping track of three spaces above the bottom [Rise of Ix p. 5].
+        if (
+            self.dreadnoughts_supply
+            + self.dreadnoughts_garrison
+            + self.dreadnoughts_conflict
+            > 2
+        ):
+            raise ValueError("a player has only two dreadnoughts")
+        if self.freighter_space > 3:
+            raise ValueError("the Freighter's top space is the third")
+        if self.snooper_faction_ids and len(self.snooper_faction_ids) != len(
+            set(self.snooper_faction_ids)
+        ):
+            raise ValueError("a track holds one Snooper token")
+        if self.known_intrigue_ids and len(self.known_intrigue_ids) != len(
+            set(self.known_intrigue_ids)
+        ):
+            raise ValueError("an Intrigue card is known once")
 
         active_agents = (3 if self.swordmaster_acquired else 2) + self.mentat
         if (
@@ -396,7 +483,8 @@ class PlayerState:
         if len(self.voice_blocked_space_ids) != len(set(self.voice_blocked_space_ids)):
             raise ValueError("a space cannot be blocked twice for a player")
         # Specimens are troops from the supply in the Axolotl tanks
-        # [Immortality p. 8].
+        # [Immortality p. 8], and Negotiators troops from the supply on the
+        # Ix board [Rise of Ix p. 4].
         if (
             self.troops_supply
             + self.troops_garrison
@@ -404,6 +492,7 @@ class PlayerState:
             + self.memories
             + self.specimens
             + self.troops_parked
+            + self.negotiators
             != 12
         ):
             raise ValueError("a player must always account for all 12 troops")
@@ -441,6 +530,7 @@ class PlayerState:
             *self.in_play,
             *self.trashed,
             *self.imperium_set_aside,
+            *((self.set_aside_card_id,) if self.set_aside_card_id else ()),
         )
         if len(imperium_cards) != len(set(imperium_cards)):
             raise ValueError("an Imperium card instance cannot occupy two zones")

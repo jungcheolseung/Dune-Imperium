@@ -70,6 +70,9 @@ def _personal_zone_instances(player: PlayerState) -> Iterator[str]:
     yield from player.in_play
     yield from player.trashed
     yield from player.imperium_set_aside
+    # Rise of Ix: Ilesa Ecaz's face-down set-aside card.
+    if player.set_aside_card_id:
+        yield player.set_aside_card_id
 
 
 def _all_personal_instances(state: GameState) -> Iterator[str]:
@@ -222,6 +225,76 @@ def _require_unique(instance_ids: Iterable[str], zone_name: str) -> tuple[str, .
     return instances
 
 
+def _ix_fields_absent(player: PlayerState) -> bool:
+    """Whether every Rise of Ix seat field is at its default."""
+
+    return not (
+        player.dreadnoughts_supply
+        or player.dreadnoughts_garrison
+        or player.dreadnoughts_conflict
+        or player.freighter_space
+        or player.negotiators
+        or player.snooper_faction_ids
+        or player.set_aside_card_id
+        or player.set_aside_returned_turn
+        or player.turns_finished_round
+        or player.known_intrigue_ids
+    )
+
+
+def _check_rise_of_ix(state: GameState) -> None:
+    """Rise of Ix's seat fields (observation v39, stage P4a).
+
+    A game without the option leaves every one at its default, so its state
+    hashes are those of the engine before the fields existed
+    (``PlayerState.HASH_OMITTED_AT_DEFAULT``). In a Rise of Ix game a seat
+    owns two dreadnoughts at most, the one on a Control space included
+    [Rise of Ix p. 6], and every Intrigue card it knows is in the Intrigue
+    deck or in another seat's held Intrigue (``known_intrigue_ids``): a card
+    that reached a public zone or the seat's own hand has left the record.
+    """
+
+    if not state.config.rise_of_ix:
+        for player in state.players:
+            if not _ix_fields_absent(player):
+                raise InvariantViolation(
+                    f"player {player.player_id} holds Rise of Ix state "
+                    "outside a Rise of Ix game"
+                )
+        return
+    deck = frozenset(state.intrigue_deck)
+    for player in state.players:
+        on_spaces = sum(
+            1 for _, seat, _ in state.dreadnought_control if seat == player.player_id
+        )
+        owned = (
+            player.dreadnoughts_supply
+            + player.dreadnoughts_garrison
+            + player.dreadnoughts_conflict
+            + on_spaces
+        )
+        if owned > 2:
+            raise InvariantViolation(
+                f"player {player.player_id} owns {owned} dreadnoughts"
+            )
+        held_elsewhere = frozenset(
+            card
+            for other in state.players
+            if other.player_id != player.player_id
+            for card in other.intrigue_cards
+        )
+        stale = [
+            card
+            for card in player.known_intrigue_ids
+            if card not in deck and card not in held_elsewhere
+        ]
+        if stale:
+            raise InvariantViolation(
+                f"player {player.player_id} still records known Intrigue {stale} "
+                "outside the deck and the other seats' hands"
+            )
+
+
 def check_state_invariants(state: GameState, census: CardCensus) -> None:
     """Check every ``GameState`` invariant, then global conservation of every
     tracked card population."""
@@ -237,6 +310,7 @@ def check_state_invariants(state: GameState, census: CardCensus) -> None:
                 f"player {player.player_id}'s public deck top {top} is not "
                 f"the top of the deck {player.deck[: len(top) + 1]}"
             )
+    _check_rise_of_ix(state)
     personal = _require_unique(_all_personal_instances(state), "personal cards")
     fixed_personal = frozenset(
         instance_id

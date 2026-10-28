@@ -189,12 +189,26 @@ class GameState:
     # Mentat "at the start of the next round" [FAQ p. 4]; the seat, until
     # then (docs/rules/imperium-base.md 9).
     mentat_owed_to: int | None = None
+    # Rise of Ix: the dreadnoughts on Control spaces, as (space, owning seat,
+    # leaving). A Conflict won with a dreadnought puts one on a Control space
+    # holding none; it controls the space "until the end of the next Combat
+    # phase" and then returns to its garrison [Rise of Ix p. 6]
+    # (docs/rules/rise-of-ix.md 6, OQ-121 ruling 1). ``leaving`` is True for
+    # a dreadnought that returns at the end of the next Combat phase to end
+    # (the one under way, if any), False for one placed during the Combat
+    # phase under way, which stays through the next round's Combat; at a
+    # Combat phase's end the leaving ones return and the others turn leaving
+    # (stage P4b). Public; empty in every game without the ``rise_of_ix``
+    # option (stage P4a adds the field, observation v39).
+    dreadnought_control: tuple[tuple[str, int, bool], ...] = ()
     decision_stack: tuple[DecisionFrame, ...] = ()
     event_log: tuple[GameEvent, ...] = ()
 
     # Fields added after saves and records already held state hashes, left
     # out of the canonical state hash at their default (``canonical_state_hash``).
-    HASH_OMITTED_AT_DEFAULT: ClassVar[frozenset[str]] = frozenset({"mentat_owed_to"})
+    HASH_OMITTED_AT_DEFAULT: ClassVar[frozenset[str]] = frozenset(
+        {"mentat_owed_to", "dreadnought_control"}
+    )
 
     def __post_init__(self) -> None:
         # Only the checks: copy.replace builds copies without the constructor
@@ -525,6 +539,25 @@ def _check_scouts(state: GameState) -> None:
         raise ValueError("Scouts state requires the Arrakeen Scouts module")
 
 
+def _check_dreadnought_control(state: GameState) -> None:
+    """Dreadnoughts on Control spaces (Rise of Ix [Rise of Ix p. 6])."""
+
+    if not state.config.rise_of_ix:
+        if state.dreadnought_control:
+            raise ValueError("dreadnoughts require Rise of Ix")
+        return
+    spaces = tuple(space_id for space_id, _, _ in state.dreadnought_control)
+    if len(spaces) != len(set(spaces)):
+        raise ValueError("a Control space holds one dreadnought")
+    if not set(spaces) <= content_for(state.config).control_visit_bonuses.keys():
+        raise ValueError("a dreadnought controls a Control space")
+    if any(
+        not 0 <= seat < state.config.players
+        for _, seat, _ in state.dreadnought_control
+    ):
+        raise ValueError("a dreadnought on a Control space has a configured owner")
+
+
 def _check_makers(state: GameState) -> None:
     maker_ids = tuple(space_id for space_id, _ in state.maker_bonus_spice)
     makers = content_for(state.config).maker_space_ids
@@ -640,6 +673,9 @@ STATE_CHECKS: Final[tuple[StateCheck, ...]] = (
         frozenset({"player_id", "troops_parked", "control_space_ids"}),
     ),
     StateCheck(_check_makers, frozenset({"config", "maker_bonus_spice"})),
+    StateCheck(
+        _check_dreadnought_control, frozenset({"config", "dreadnought_control"})
+    ),
 )
 _SEAT_FIELDS: Final = frozenset().union(*(check.seat_fields for check in STATE_CHECKS))
 

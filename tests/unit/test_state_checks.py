@@ -257,6 +257,10 @@ def _corruptions() -> list[tuple[str, Any]]:
             ),
         ),
         (
+            "dreadnought without Rise of Ix",
+            lambda: replace(mid, dreadnought_control=(("arrakeen", 0, True),)),
+        ),
+        (
             "Makers out of order",
             lambda: replace(
                 mid, maker_bonus_spice=tuple(reversed(mid.maker_bonus_spice))
