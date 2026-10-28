@@ -896,6 +896,10 @@ const UI_TEXT = {
     "ko": "맨 위로 표시한 카드는 {{source}} 효과로 확인한 {deck} 맨 위 카드입니다.",
     "en": "The card marked Top is the top card of the {deck}, seen through {{source}}."
   },
+  "panels.deck_list_public_top_note": {
+    "ko": "맨 위로 표시한 카드는 앞면으로 {deck} 맨 위에 놓아 모두가 아는 카드입니다.",
+    "en": "The card marked Top was put face up on top of the {deck}, so everyone knows it."
+  },
   "panels.my_deck": {
     "ko": "내 {deck} · {{count}}장 (순서 비공개)",
     "en": "My deck · {{count}} cards (order hidden)"
@@ -943,6 +947,10 @@ const UI_TEXT = {
   "panels.hand_public_label": {
     "ko": "{hand} (공개) ",
     "en": "Hand (public) "
+  },
+  "panels.deck_public_top_label": {
+    "ko": "{deck} 맨 위 (공개) ",
+    "en": "Top of deck (public) "
   },
   "panels.in_play_label": {
     "ko": "플레이 영역",

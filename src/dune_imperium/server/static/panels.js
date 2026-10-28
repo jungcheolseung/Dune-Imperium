@@ -544,6 +544,18 @@ function renderSeats() {
       for (const id of player.hand_public) line.appendChild(chip(id));
       detail.appendChild(line);
     }
+    /* Cards put face up on top of the deck (Bypass Protocol, Recruitment
+       Mission, a Tleilaxu card) are known to every seat until drawn or
+       shuffled, top first (OQ-145, core/observation.py). */
+    if ((player.deck_public_top || []).length) {
+      const line = document.createElement("div");
+      line.className = "cardline deck-public-top";
+      const strong = document.createElement("strong");
+      strong.textContent = t("panels.deck_public_top_label");
+      line.appendChild(strong);
+      for (const id of player.deck_public_top) line.appendChild(chip(id));
+      detail.appendChild(line);
+    }
     if (view.intrigue_resolving.length && view.decision_owner === player.player) {
       const line = document.createElement("div");
       line.className = "cardline";
@@ -965,17 +977,22 @@ function pileListContent(piles) {
 
 /* The deck list's cards and its marked top card, as the hand strip's deck
    count reads them: `deck_cards` (sorted by card id, OQ-010 ruling 5) and
-   the top card only when `peeked_card_id` names one of them (Glowglobes at
-   any time, Controlled while its choice is up; core/observation.py), with
-   the name of what shows it. */
+   the top card only when `peeked_card_id` names one of them (Glowglobes or
+   the original Paul Atreides' Prescience at any time, Controlled while its
+   choice is up; core/observation.py), with the name of what shows it -- or,
+   with no such peek, a card put face up on top of the deck, which every
+   seat knows (`deck_public_top`, OQ-145; `source` is then null). */
 function deckListState(view) {
   const own = view.players[view.player];
   const deckCards = view.private.deck_cards || [];
   const peeked = view.private.peeked_card_id || "";
   const glowglobes = (own.tech_ids || []).includes("glowglobes");
+  const publicTop = (own.deck_public_top || [])[0] || "";
   const top = peeked && deckCards.includes(peeked)
-    ? { id: peeked, source: deckTopSource(glowglobes) }
-    : null;
+    ? { id: peeked, source: deckTopSource(glowglobes, own.leader_id) }
+    : publicTop && deckCards.includes(publicTop)
+      ? { id: publicTop, source: null }
+      : null;
   return { deckCards, top };
 }
 
@@ -1038,7 +1055,9 @@ function deckListContent(key, view) {
   if (topId) {
     const topNote = document.createElement("div");
     topNote.className = "popover-note deck-top-note";
-    topNote.textContent = t("panels.deck_list_top_note", { source: top.source });
+    topNote.textContent = top.source
+      ? t("panels.deck_list_top_note", { source: top.source })
+      : t("panels.deck_list_public_top_note");
     notes.push(topNote);
   }
   const pin = (entry, card) => {
@@ -2489,7 +2508,13 @@ function deckTopChoicePicture() {
 /* What shows the seat its deck's top card, by its name on screen: the
    Glowglobes tile it owns, or else Controlled (the one Intrigue that peeks
    at a deck, content/uprising/intrigue.py). */
-function deckTopSource(glowglobes) {
+function deckTopSource(glowglobes, leaderId) {
+  if (!glowglobes && leaderId === "paul_atreides") {
+    /* Prescience: "자기 덱 맨 위 카드를 언제든 볼 수 있다" (imperium-base.md
+       12), named by its Leader. */
+    const leader = lookup("paul_atreides", "leaders");
+    return leader ? leader.name : prettify("paul_atreides");
+  }
   const id = glowglobes ? "glowglobes" : "twisted_controlled";
   const entry = lookup(id, glowglobes ? "tech" : "intrigue");
   return entry ? entry.name : prettify(id);
