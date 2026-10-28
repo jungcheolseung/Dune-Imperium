@@ -398,6 +398,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "retreat_opponent_troop": _row(
         _V.RETREAT, _S.AGENT_CARD, _T.UNITS, variant="opponent", tag=_BOX
     ),
+    # The Voice's board space (the original game; a new verb would widen the
+    # observation's effect-pick verb segment, ``len(Verb)``).
+    "block_agent_card_space": _row(_V.CHOOSE, _S.AGENT_CARD, _T.SPACE, tag=_BOX),
     "take_agent_card_combat_icon": _row(
         _V.GAIN, _S.AGENT_CARD, variant="combat_icon", tag=_BOX
     ),

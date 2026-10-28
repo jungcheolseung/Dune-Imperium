@@ -666,10 +666,21 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_persuasion=2,
         play_data_complete=True,
     ),
+    # App table: cost 2, 2 copies, Bene Gesserit, City and Spice Trade, Reveal 2
+    # Persuasion. Agent: "Choose any board space. Opponents can't send their
+    # next Agents there this round." -- a mandatory choice among every board
+    # space on the table (imperium-base.md 15); each opponent's block lasts
+    # until that opponent's next Agent placement of the round (OQ-116, user
+    # ruling B, imperium-base.md 13.1). Reveal: "[P2]".
     ImperiumCardEntry(
         card=imperium_card("the_voice", "The Voice"),
         copies=2,
         acquisition_cost=2,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT,
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     # App table: cost 5, 1 copy, no Faction, six Agent icons (every one but
     # Landsraad), Reveal 1 Persuasion. Agent: "Draw 1 card" (its own step,

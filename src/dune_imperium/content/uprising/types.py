@@ -391,6 +391,11 @@ class PersonalCardAgentEffect(StrEnum):
     DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD = (
         "draw_one_or_bene_gesserit_card_from_discard"
     )
+    # The Voice: "Choose any board space. Opponents can't send their next
+    # Agents there this round."
+    BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT = (
+        "block_chosen_space_for_opponents_next_agent"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

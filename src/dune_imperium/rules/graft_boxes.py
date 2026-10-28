@@ -217,6 +217,8 @@ BOX_ACTION_IDS: Final = frozenset(
         "decline_agent_card_discard",
         "complete_contract_by_card",
         "retreat_opponent_troop",
+        # The original game's The Voice: the board space to block.
+        "block_agent_card_space",
         "recall_agent_for_agent_card",
         "recall_conflict_agent_for_agent_card",
         "decline_agent_card_recall",

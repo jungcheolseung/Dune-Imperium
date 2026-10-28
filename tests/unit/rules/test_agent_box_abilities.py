@@ -32,6 +32,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AtFactionSpace,
     AtMakerSpace,
+    BlockChosenSpaceForOpponentsNextAgent,
     CompleteContract,
     DiscardedCardHasFaction,
     DiscardFromHand,
@@ -169,8 +170,8 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
     # Imperial Spy, Missionaria Protectiva, Gene Manipulation, Reverend Mother
     # Mohiam, Carryall, Test of Humanity, Firm Grip, Shifting Allegiances,
-    # Other Memory).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 20
+    # Other Memory, The Voice).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 21
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -743,6 +744,10 @@ def test_seven_boxes_choose_one_target_and_read_as_their_cards() -> None:
         _BOX.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE: GainInfluence,
         # Missionaria Protectiva (the original game, stage P3).
         _BOX.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: GainInfluence,
+        # The Voice (the original game, stage P3): "Choose any board space".
+        _BOX.BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT: (
+            BlockChosenSpaceForOpponentsNextAgent
+        ),
     }
     for effect in (
         _BOX.PLACE_SPY,

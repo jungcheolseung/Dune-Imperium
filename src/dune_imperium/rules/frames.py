@@ -280,6 +280,15 @@ def reset_turn_counters(
         else seat
         for seat in players
     )
+    # Infiltrate lasts for the turn it was played in (an Agent turn's
+    # placement spends it earlier; a Reveal turn's play never can): whichever
+    # seat's turn opens, none carries it over.
+    players = tuple(
+        replace(seat, enemy_agents_ignored_turn=False)
+        if seat.enemy_agents_ignored_turn
+        else seat
+        for seat in players
+    )
     owner = players[player]
     return replace_player(
         players,

@@ -170,8 +170,9 @@ def test_ruthless_negotiator_draws_when_solari_pay_a_space_s_cost() -> None:
 
 def test_ruthless_negotiator_ignores_a_cost_paid_in_spice_or_water() -> None:
     engine, state = _start("count_ilban_richese")
-    state = _seat(state, resources=Resources(spice=4))
-    placed = _place(engine, state, "conspire")
+    # Diplomacy reaches the Emperor space whatever the shuffle dealt.
+    state = _seat(_with_card(state, "diplomacy"), resources=Resources(spice=4))
+    placed = _place(engine, state, "conspire", "diplomacy")
     assert placed.players[0].owed_draws == ()
 
 

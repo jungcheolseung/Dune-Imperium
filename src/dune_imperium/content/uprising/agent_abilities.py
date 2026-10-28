@@ -44,6 +44,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AtFactionSpace,
     AtMakerSpace,
+    BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommandersInConflictAtLeast,
     CompleteContract,
@@ -943,6 +944,15 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                     _line(GainInfluence(factions=(Faction.SPACING_GUILD,))),
                 ),
                 structure=AbilityStructure.ONE_OF,
+            ),
+            # The Voice (original game): "Choose any board space. Opponents can't
+            # send their next Agents there this round." -- one mandatory target
+            # choice among every board space on the table (imperium-base.md 15):
+            # its rows are the spaces (``agent_box_abilities.target_rows``), and
+            # the block lands on every opponent's seat state
+            # (``PlayerState.voice_blocked_space_ids``, OQ-116).
+            _BOX.BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT: _box(
+                BlockChosenSpaceForOpponentsNextAgent()
             ),
             # Other Memory (original game): "[draw 1] -OR- Draw a Bene Gesserit
             # card from your discard pile" -- a printed -OR- the owner must

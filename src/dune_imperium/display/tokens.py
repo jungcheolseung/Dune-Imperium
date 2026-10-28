@@ -470,6 +470,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "Choose one: Draw 1 card / Draw a Bene Gesserit card from your "
             "discard pile"
         ),
+        PersonalCardAgentEffect.BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT: (
+            "Choose any board space. Opponents can't send their next Agents "
+            "there this round"
+        ),
         PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE: (
             "Recruit 2 troops, Draw 1 card"
         ),

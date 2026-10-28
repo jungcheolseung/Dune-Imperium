@@ -82,6 +82,17 @@ class PlayerState:
     # Masterstroke has revealed them, once per game (OQ-115).
     masterstroke_factions: tuple[str, ...] = ()
     masterstroke_revealed: bool = False
+    # The original game's The Voice: the board spaces this seat may not send
+    # its next Agent to ("Opponents can't send their next Agents there this
+    # round" [The Voice card]). Each is lifted, with every other, by the
+    # seat's next Agent placement anywhere (a turn passed without one, a
+    # Reveal turn, keeps them) and all clear when the round ends (OQ-116,
+    # user ruling B 2026-10-22). A public marker, no hidden information.
+    voice_blocked_space_ids: tuple[str, ...] = ()
+    # The original game's Infiltrate: enemy Agents don't block this seat's
+    # next Agent at board spaces this turn [Infiltrate card]. Set by the
+    # Plot, spent by the turn's Agent placement, gone when any turn opens.
+    enemy_agents_ignored_turn: bool = False
     troops_supply: int = 9
     troops_garrison: int = 3
     troops_conflict: int = 0
@@ -268,6 +279,8 @@ class PlayerState:
             "track_troops_recruited_turn",
             "masterstroke_factions",
             "masterstroke_revealed",
+            "voice_blocked_space_ids",
+            "enemy_agents_ignored_turn",
         }
     )
 
@@ -360,6 +373,8 @@ class PlayerState:
             raise ValueError("Leader token positions must be non-negative")
         if len(self.agent_locations) != len(set(self.agent_locations)):
             raise ValueError("a player cannot place two agents in one space")
+        if len(self.voice_blocked_space_ids) != len(set(self.voice_blocked_space_ids)):
+            raise ValueError("a space cannot be blocked twice for a player")
         # Specimens are troops from the supply in the Axolotl tanks
         # [Immortality p. 8].
         if (
