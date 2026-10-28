@@ -935,13 +935,13 @@ Imperium 묶음 2(2026-10-28 03:09~04:2x)가 멈춘 곳:
   `[Bloodlines p. 4]`, Combat 아이콘의 garrison 둘과 어떻게 합치는가.
 - **Other Memory:** 버림 더미의 Bene Gesserit 카드를 손으로(공개 경로의 손 카드, OQ-010).
 Imperium 묶음 3(04:41~06:12): Guild Bankers(`ReserveCostDiscount`), Carryall(`DoubleBaseHarvestSpice`), Power Play(Subversive Advisor의 상자),
-Test of Humanity(`EachOpponentDiscardsOrLosesDeployedTroop`, Covert Operation 창에 손실 줄), Sardaukar Legion·Scout·Chani(수를 고르는 Reveal 병력 이동,
-병력만 — Commander는 P7), Firm Grip(Solari 화살표 + 고른 진영) 구현. 멈춘 곳: Shifting Allegiances(Agent box의 대상 비용 + 한 진영 2), Other Memory(버림 더미의
+Test of Humanity(`EachOpponentDiscardsOrLosesDeployedTroop`, Covert Operation 창에 손실 줄), Sardaukar Legion·Scout·Chani(수를 고르는 Reveal 병력 이동;
+Commander는 16.10 1에서 넣음), Firm Grip(Solari 화살표 + 고른 진영) 구현. 멈춘 곳: Shifting Allegiances(Agent box의 대상 비용 + 한 진영 2), Other Memory(버림 더미의
 Bene Gesserit 카드를 손으로, OQ-010), The Voice(상대별 다음 배치 봉쇄 상태, 관측 변경). 문서가 말하지 않는 가장자리: 같은 Reveal에서 Guild Bankers를 나중에
 trash해도 이미 연 할인은 남는다(구현).
 Imperium 마지막 둘(06:21~06:53): Shifting Allegiances(Agent box의 Influence 잃기 화살표 `influence_loss_box`, 한 진영 +2), Other Memory
 (`TakeCardFromDiscard`, 버림 더미의 Bene Gesserit 카드를 `hand_public`으로 손에 — OQ-010) 구현. 남은 것: Firm Grip의 `pay_agent_card_solari`가
-`graft_boxes.BOX_ACTION_IDS`에 없어 원판 + Immortality의 접합 차례에서 막힌다(16.10 2).
+`graft_boxes.BOX_ACTION_IDS`에 없어 원판 + Immortality의 접합 차례에서 막혔다(16.10 2에서 고침).
 휴리스틱은 새 행(`lose_agent_card_influence`, `take_agent_card_from_discard`, Bindu의 pass, 승리 책략)을 고르지 않는다 — P6.
 - **Uprising Tread in Darkness(확인 필요):** 같은 차례에 Bond가 깨져 뽑기 아이콘이 안 나올 때 상자가 선택형이 되는가(OQ-057 (1)). Gene Manipulation에는
   그렇게 했고(`_WAITING_ICON_BOXES`), Uprising 카드는 사용자 확인 전까지 그대로 둔다(`2a51da4c`).
@@ -956,10 +956,13 @@ Imperium 마지막 둘(06:21~06:53): Shifting Allegiances(Agent box의 Influence
    troop 잃기)는 "Commander는 P7에서 정한다"며 병력만 다룬다. 그러나 이미 정해져 있다 — "troop을 대상으로 하는 효과는 Commander에도
    적용된다" `[Bloodlines p. 4]`, OQ-115 사용자 판정(2026-10-22) "이후 조합 구현에서도 Commander를 빠뜨리지 않는다". Rapid Mobilization
    (`DeployFromGarrison`)과 Double Cross의 잃기는 이미 넣는다. 넷도 같은 처리로 고치고(Bloodlines Commander를 둔 테스트), 코드 주석의 "P7" 문장을
-   지운다. 밤 작업에서 이 판정을 다시 열린 것으로 적은 것은 잘못이었다.
+   지운다. 밤 작업에서 이 판정을 다시 열린 것으로 적은 것은 잘못이었다. **끝(`f5f1444a`, 조정자 go 2026-10-28 아침):** 세 이동은 수와
+   Commander 몫마다 줄(Bloodlines가 있는 카탈로그에만), Test of Humanity는 Conflict의 Commander를 잃는 줄. Uprising 카탈로그 144개 바이트까지
+   같음, 특성 405행 같음.
 2. **Firm Grip 접합(고칠 것):** 원판 + Immortality에서 접합한 두 카드는 "두 카드의 효과를 board space 효과와 함께 원하는 순서로 얻는다"
    `[Immortality p. 10]`. 그래서 Firm Grip의 Solari 화살표 줄(`pay_agent_card_solari`)을 `graft_boxes.BOX_ACTION_IDS`에 더한다. Uprising +
-   Immortality 카탈로그가 바뀌는지 먼저 확인한다(바뀌면 codec 문제라 따로 묻는다).
+   Immortality 카탈로그가 바뀌는지 먼저 확인한다(바뀌면 codec 문제라 따로 묻는다). **끝(`4c926fc0`):** 어느 카탈로그도 바뀌지 않았다 —
+   box 1의 단계 줄은 Immortality가 있는 카탈로그에 이미 있었고, 막은 것은 효과 frame의 거절뿐이었다(Uprising 144개·원판 144개 줄마다 같음).
 3. **차례 밖 획득의 창(그 조합을 열 때):** OQ-141 조합 — Scouts의 Critical Moment로 얻은 CHOAM Directorship·Lady Jessica.
 4. **OQ-144(사용자 확인 대기):** Double Cross의 supply 배치에 Commander를 쓸 수 있는가.
 5. **Guild Bankers:** 할인은 원판·Uprising의 The Spice Must Flow 두 인쇄를 모두 이름하고(`ReserveCostDiscount.card_ids`), Scouts의 Reserve 비용
@@ -967,5 +970,5 @@ Imperium 마지막 둘(06:21~06:53): Shifting Allegiances(Agent box의 Influence
 6. **Rise of Ix(P4):** 카드를 전사할 때 이 절의 OQ들(획득 상자 OQ-141, 차례 시작 OQ-143, 승리 책략 OQ-142, "이 병력" OQ-140, Mentat OQ-139,
    Commander OQ-144)에 대어 본다. dreadnought는 troop이 아니다 `[Rise of Ix p. 6]`(OQ-115).
 
-1·2는 엔진 변경이라 조정자의 go를 기다린다(가벼운 일: 대상 테스트 `-n 2`, Uprising 카탈로그·특성 행 대조).
+1·2는 조정자의 go(2026-10-28 아침)로 끝냈다(대상 테스트 `-n 2`, Uprising 카탈로그·특성 행 대조; 전체 pytest와 관문은 E7b 뒤 그대로).
 
