@@ -833,6 +833,8 @@ Orca 작업자가 멈춘 P2a(커밋 안 된 30파일)를 이어 받아 끝냈다
   연다. 엔진은 Mentat을 따로 세지 않으므로 "Mentat을 옮기거나 recall할 수 있는가"를 사용자에게 묻는다(16.8 4).
 - **Masterstroke의 병력 셈:** P4(dreadnought)·P7(모래벌레·Commander) 몫. P3 카드(Gun Thopter·Sardaukar Legion·Rapid Mobilization·Reinforcements의 garrison에서
   배치, Double Cross의 공급에서 배치)가 "이번 turn 배치"에 드는지만 확인한다(OQ-115: 배치한 병력을 셈).
+- **끝(2026-10-28 오후, `33e27918`):** 위 셋을 원판 덱으로 확인했다 — Helena의 따로 두기·채우기·1 적게 사기·안 사면 제거, Scheme의 덱 맨 위·빈 덱의
+  버림 더미 섞기, Masterstroke가 Reinforcements 3 + Gun Thopter 1, Rapid Mobilization 4로 공개(Legion·Double Cross는 이미 셈 테스트). 엔진 변경 없음.
 - **화면(P5)·AI(P6)** 몫은 그대로 넘긴다.
 
 ### 16.6 도구 시범: 화면 조각 → 능력 기록 초안 (D4-2, 2026-10-28)
@@ -917,11 +919,12 @@ card-implementer는 기존 조각으로 안 되는 카드를 건너뛰고 빠진
 | 조건 `MoreSpiceMustFlowThanEachOpponent`, `InfluenceAtLeastOnTracks` | Corner the Market, Plans Within Plans | imperium-base.md 13.2, OQ-123, `[FAQ p. 2]` | 구현(명세는 내가; `SpiceMustFlowCardsAtLeast`가 원판의 The Spice Must Flow도 세게 고침) |
 | 획득 상자 아이콘 줄(아이콘마다 차례의 줄, 순서는 소유자) | CHOAM Directorship(고정 진영 넷), Lady Jessica(고른 진영 하나) | OQ-027·OQ-112 원칙의 확장 — OQ-141(판정 2026-10-28 사용자: 구현대로) | 구현(`rules/acquire_icons.py`, 행동 `resolve_acquire_icon`): 자기 차례 안에서는 차례의 줄(OQ-112 (4) 선례), 고를 진영이 모두 6이면 회색으로 기다리다 누름에 사라짐(차례 안 선례), 고정 진영 6은 얻는 것 없는 의무 줄. 자기 차례 밖 획득(Scouts의 Critical Moment: Uprising + 원판 카드 + Scouts는 P7, 원판의 Scouts는 P8)은 OQ-141 조합대로 획득한 자리의 창 — 그 조합을 열 때 구현, 그때까지 `NotImplementedError` |
 | 승자의 창에서 내는 Intrigue("When you win a Conflict:") | To the Victor..., Demand Respect | OQ-121 판정 6("쥐고 있고 조건·비용을 갖췄을 때 낼 수 있는 줄이다. 안 내도 창이 닫힌다"), `[DI p. 13]`(보상 spice로 낼 수 있음) | 구현; 닫기 줄의 숨은 정보 처리는 OQ-142(사용자 확인 대기; 숨김은 카드를 읽어 섞인 덱·어느 판에서든 같음). 휴리스틱·앱 AI는 이 카드를 내지 않는다(P6) |
-| 덱 맨 위로 획득 | Bypass Protocol(B), Recruitment Mission(획득마다 위/버림) | 카드 문구, `[FAQ p. 3]`, imperium-base.md 14(덱 맨 위가 공개되는 숨은 정보) | 미설계 |
+| 덱 맨 위로 획득 | Bypass Protocol(B), Recruitment Mission(획득마다 위/버림) | 카드 문구, `[FAQ p. 3]`, OQ-125, OQ-145(판정 2026-10-28 사용자 (나)) | 구현 `92b5046b`(`AcquireCardUpTo.to_deck_top`, Reveal turn 획득마다 `to_deck_top` 쌍둥이 행, Tleilaxu 덱 위 조건 확장; 놓은 뒤 획득 상자). 덱 위 카드는 모두가 앎·뽑은 뒤 손에서 공개(OQ-145) — 관측 v38과 함께 |
 | 상대 하나 지정 Conflict 손실 + supply에서 배치 | Double Cross | 카드 문구, `[FAQ p. 2]`(상대 troop이 있어야 낸다) | 구현(`OpponentHasTroopInConflict`, `OpponentLosesTroop`, `DeployFromSupply`; 빈 supply는 OQ-042 (2)의 부족분 기록). 잃는 쪽엔 Commander가 든다(`[Bloodlines p. 4]`); supply 배치는 troop만 — OQ-144(사용자 확인 대기) |
 | 덱 맨 위 보고 뽑기·trash | Poison Snooper | 카드 문구, `[FAQ p. 3]`, imperium-base.md 14 | 구현(`PeekTopCard(draw_or_trash=True)`, Controlled의 `peeked_card_id` 길) |
 | 버림 더미를 덱에 섞고 뽑기 | Refocus | 카드 문구, `[FAQ p. 3]` | 구현(`ShuffleDiscardIntoDeck`, 뽑기 섞기 frame을 다시 씀) |
-| 이번 turn 적 Agent가 막지 않음 | Infiltrate | 카드 문구, OQ-113 (C) | 미설계(좌석 상태, 관측) |
+| 이번 turn 적 Agent가 막지 않음 | Infiltrate | 카드 문구, OQ-113 (C), P0 sweep S15 | 구현 `a80be9ca`(`enemy_agents_ignored_turn`, Eyes Everywhere와 같은 자리 — Spy 회수 행 없음, 자기 Agent·요구·The Voice는 그대로 막음); 관측 v38 |
+| 상대별 다음 배치 봉쇄 | The Voice | OQ-116(판정 B), imperium-base.md 13.1 | 구현 `a80be9ca`(`voice_blocked_space_ids`, 다음 배치나 라운드 끝에 풀림, 무엇으로도 못 넘음); 관측 v38 |
 | turn 시작 뽑기 + 선택형 pass | Bindu Suspension | OQ-117 | 구현(`PassTurn(optional=True)`); 이어 가기 뒤 다른 시작 카드는 OQ-143(판정 2026-10-28 사용자: 구현대로 — Bloodlines의 Litany Against Fear·Withdrawn과 한 표시) |
 | Mentat 셋 | Kwisatz Haderach, Urgent Mission, Calculated Hire | OQ-139 재검토(조합: Uprising 판엔 Mentat 없음, Immortality의 Twisted Mentat) | 사용자 답 대기(16.8 4) |
 | 프로모 셋 | Duncan, Loyal Blade·Jessica of Arrakis·Thumper | 16.3 | 사용자 답 대기(16.8 3) |
@@ -970,6 +973,10 @@ Imperium 마지막 둘(06:21~06:53): Shifting Allegiances(Agent box의 Influence
    수정도 같은 값을 읽어(`scouts_modifiers.reserve_discount`) 조합에서도 같다.
 6. **Rise of Ix(P4):** 카드를 전사할 때 이 절의 OQ들(획득 상자 OQ-141, 차례 시작 OQ-143, 승리 책략 OQ-142, "이 병력" OQ-140, Mentat OQ-139,
    Commander OQ-144)에 대어 본다. dreadnought는 troop이 아니다 `[Rise of Ix p. 6]`(OQ-115).
+
+7. **Navigation card 4 + Recruitment Mission(P7):** Bloodlines Navigation card 4의 Plot이 The Spice Must Flow를 얻는 길(`ability_executor`의
+   `reserve_acquisitions`)은 고를 단계 없는 자동 보상이라, Recruitment Mission이 켜진 Reveal turn에 얻어도 덱 위를 고를 수 없다. 원판 + Bloodlines가
+   열리는 P7에서 고르기 단계를 둔다.
 
 1·2는 조정자의 go(2026-10-28 아침)로 끝냈다(대상 테스트 `-n 2`, Uprising 카탈로그·특성 행 대조; 전체 pytest와 관문은 E7b 뒤 그대로).
 
