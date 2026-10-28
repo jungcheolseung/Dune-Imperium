@@ -165,6 +165,13 @@
 | [OQ-137](#oq-137--공동-1위로-남은-conflict-카드) | 공동 1위로 남은 Conflict 카드 | `DECIDED` |
 | [OQ-138](#oq-138--covert-operation에서-손이-빈-상대와-결정-창) | Covert Operation에서 손이 빈 상대와 결정 창 | `DECIDED` |
 | [OQ-139](#oq-139--mentat이-어느-말인가-원판) | Mentat이 어느 말인가 (원판) | `DECIDED` |
+| [OQ-140](#oq-140--이-병력을-배치할-수-있다의-이-병력-원판) | "이 병력을 배치할 수 있다"의 이 병력 (원판) | `DECIDED` |
+| [OQ-141](#oq-141--획득-상자의-아이콘-여럿과-진영-고르기-원판) | 획득 상자의 아이콘 여럿과 진영 고르기 (원판) | `DECIDED` |
+| [OQ-142](#oq-142--승자의-창의-닫기-줄과-승리-책략의-숨은-정보-원판) | 승자의 창의 닫기 줄과 승리 책략의 숨은 정보 (원판) | `DECIDED` |
+| [OQ-143](#oq-143--bindu-suspension으로-차례를-이어-간-뒤-다른-차례-시작-카드-원판) | Bindu Suspension으로 차례를 이어 간 뒤 다른 차례 시작 카드 (원판) | `DECIDED` |
+| [OQ-144](#oq-144--double-cross의-supply-배치와-sardaukar-commander-원판--bloodlines) | Double Cross의 supply 배치와 Sardaukar Commander (원판 + Bloodlines) | `DECIDED` |
+| [OQ-145](#oq-145--덱-위에-앞면으로-놓은-카드는-누가-아는가-원판--immortality) | 덱 위에 앞면으로 놓은 카드는 누가 아는가 (원판 + Immortality) | `DECIDED` |
+| [OQ-146](#oq-146--kwisatz-haderach의-from-anywhere와-conflict에-있는-into-the-fray의-agent-원판--bloodlines) | Kwisatz Haderach의 "from anywhere"와 Conflict에 있는 Into the Fray의 Agent (원판 + Bloodlines) | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -258,7 +265,7 @@
   2. **완료 contract identity는 전원 공개.** 활성 중 face-up이었고 완료 시 사실과 reward를 알린 뒤 뒤집는다 `[Main p. 16]`. 뒤집힌 battle card를 `face_down_battle_card_ids`로 공개하는 선례와 같은 구조로 `PublicPlayerView.completed_contract_ids`(관측 v3 `seat{n}_completed_contracts`)에 둔다.
   3. **실시간 행동 로그의 기준.** 로그는 엔진 `event_log`를 `visible_to`로 걸러 보여 준다. 공개 이벤트(`visible_to=None`)의 payload에 담긴 card identity는 그 이벤트 직후 공개 존에 있는 카드만 허용하고, 비공개 존(hand·deck·보유 Intrigue·deck·bank)에 남는 identity를 담는 이벤트는 관련 좌석 한정으로 표시한다. 장수·수량만 담는 이벤트는 전원 공개다. sweep 불변식 `check_event_visibility`가 매 전이마다 이를 검사한다(미래 콘텐츠 tripwire). 적용 결과: Secrets의 강탈은 공개 `intrigue_card_stolen`(도둑·피해자만)과 `intrigue_card_stolen_identity`(도둑·피해자 한정, card_id 포함)로 분리 `[Main p. 7]`; `cards_drawn`·`personal_discard_shuffled`는 장수만 담으므로 공개. `tests/integration/test_sweep.py`. 보정(2026-10-26, 일반 규칙 감사 2026-10-25): Round Start 보충의 `personal_discard_shuffled`(`rules/phases.py`)와 Navigation setup의 `navigation_card_placed`(`rules/navigation.py`, slot 번호만 — 다른 좌석도 `navigation_remaining`으로 장수를 본다)가 자기 좌석에만 보이던 것을 이 판정대로 공개로 맞췄다. 테스트: `tests/unit/rules/test_phases.py::test_round_start_requests_and_applies_recorded_discard_reshuffle`, `tests/unit/rules/test_navigation.py::test_strange_form_and_the_navigation_setup_choice`.
   4. **게임 종료 후 전체 공개.** 이 항목만 재확인 원칙 밖이다(상대의 미사용 Intrigue와 deck 순서는 한 번도 공개된 적이 없다). 로컬 분석 도구라는 성격을 고려한 **검토 편의 convention**으로, FINISHED 이후에는 모든 좌석의 hand·deck 순서·보유 Intrigue와 Imperium/Intrigue/Conflict deck·contract bank 순서를 `disclose_hidden_zones`로 열고, M11 서버는 종료된 게임의 live view와 검토의 모든 step에 `disclosure`를 붙인다. 검토 라벨은 좌석 구분 없이 모든 행동을 상세 표시하고 chance 결과 값도 보여 주며, AI 좌석 시점의 검토도 허용한다. 진행 중인 게임의 view는 바뀌지 않는다. `tests/server/test_saves.py`, `tests/server/test_app.py`.
-  5. **자기 deck의 구성(순서 아님)은 소유자에게 보인다.** (2026-10-05, 사용자 판정.) 개인 deck에 카드가 들어오는 모든 경로 — starting deck, 다시 섞이는 자신의 face-up discard pile `[Main pp. 5-6, 13]`, 소유자가 고른 Tleilaxu 카드의 deck 맨 위 놓기 `[Immortality pp. 6, 16]` — 가 소유자가 보는 존을 거치므로 구성은 소유자가 이미 추론할 수 있고, 재확인 원칙에 따라 보여 줘도 새 정보가 없다. 순서는 소유자에게도 숨긴다 — 예외는 카드 효과가 소유자에게 보여 주는 맨 위 카드 한 장뿐이다(Glowglobes "언제든 자기 덱 맨 위 카드를 볼 수 있다" `[Bloodlines p. 7]`는 늘, Controlled는 그 선택 동안; 소유자의 view `private.peeked_card_id`에만). 서버 view `private.deck_cards`(카드 id순 정렬, 관측·코덱 밖)와 UI의 "내 카드덱" 목록(이름순·×N)으로만 드러나며 다른 좌석의 view·공개 요약·로그에는 없다. 2026-10-10 보충(사용자 결정, 화면 convention이며 규칙 변경 아님): 목록은 그 맨 위 카드 한 장을 "맨 위" 표시와 테두리를 단 따로 항목으로 떼어 같은 카드의 나머지 장 묶음(×(N-1), 한 장이면 수 없음) 바로 앞에 두고(같은 날 사용자 결정 (나)안; 처음에는 묶음 전체에 "맨 위 · ×N"을 달았다), 이름순 자리는 그대로 둬 맨 위 아래의 순서는 여전히 드러나지 않는다. 손패 옆 따로 줄은 없앴고(Glowglobes·Controlled 모두), Controlled의 선택 동안에는 결정 칸의 세 버튼 위에 그 카드 그림이 서고 버튼마다 카드 이름을 단다(소유자의 화면에만; 행동 로그 줄은 카드를 말하지 않는다). 이미 소유자에게 가는 `peeked_card_id`를 다른 자리에 그릴 뿐이라 새로 나가는 정보가 없다. `tests/server/test_deck_contents.py`, `scripts/e2e/deck_contents.py`.
+  5. **자기 deck의 구성(순서 아님)은 소유자에게 보인다.** (2026-10-05, 사용자 판정.) 개인 deck에 카드가 들어오는 모든 경로 — starting deck, 다시 섞이는 자신의 face-up discard pile `[Main pp. 5-6, 13]`, 소유자가 고른 Tleilaxu 카드의 deck 맨 위 놓기 `[Immortality pp. 6, 16]` — 가 소유자가 보는 존을 거치므로 구성은 소유자가 이미 추론할 수 있고, 재확인 원칙에 따라 보여 줘도 새 정보가 없다. 순서는 소유자에게도 숨긴다 — 예외는 카드 효과가 소유자에게 보여 주는 맨 위 카드 한 장뿐이다(2026-10-28 [OQ-145](#oq-145--덱-위에-앞면으로-놓은-카드는-누가-아는가-원판--immortality)로 하나 더: 앞면으로 덱 위에 놓은 카드는 뽑히거나 섞일 때까지 모든 좌석이 안다) (Glowglobes "언제든 자기 덱 맨 위 카드를 볼 수 있다" `[Bloodlines p. 7]`는 늘, Controlled는 그 선택 동안; 소유자의 view `private.peeked_card_id`에만). 서버 view `private.deck_cards`(카드 id순 정렬, 관측·코덱 밖)와 UI의 "내 카드덱" 목록(이름순·×N)으로만 드러나며 다른 좌석의 view·공개 요약·로그에는 없다. 2026-10-10 보충(사용자 결정, 화면 convention이며 규칙 변경 아님): 목록은 그 맨 위 카드 한 장을 "맨 위" 표시와 테두리를 단 따로 항목으로 떼어 같은 카드의 나머지 장 묶음(×(N-1), 한 장이면 수 없음) 바로 앞에 두고(같은 날 사용자 결정 (나)안; 처음에는 묶음 전체에 "맨 위 · ×N"을 달았다), 이름순 자리는 그대로 둬 맨 위 아래의 순서는 여전히 드러나지 않는다. 손패 옆 따로 줄은 없앴고(Glowglobes·Controlled 모두), Controlled의 선택 동안에는 결정 칸의 세 버튼 위에 그 카드 그림이 서고 버튼마다 카드 이름을 단다(소유자의 화면에만; 행동 로그 줄은 카드를 말하지 않는다). 이미 소유자에게 가는 `peeked_card_id`를 다른 자리에 그릴 뿐이라 새로 나가는 정보가 없다. `tests/server/test_deck_contents.py`, `scripts/e2e/deck_contents.py`.
   6. **각 좌석의 "덱 + 숨은 손패" 카드 구성은 전원에게 보인다.** (2026-10-13, 사용자 판정 "관측 + 화면 둘 다".) 개인 카드가 덱이나 손패에 들어오는 길은 모두 공개된 곳에서 온다 — 시작 덱 `[Main pp. 5-6]`, Imperium Row·예비 더미·Tleilaxu Row에서 산 카드(앞면에서 고르고, Tleilaxu 카드는 덱 위에 놓기도 한다), 앞면 discard pile을 섞은 것 `[Main pp. 5-6, 13]`. in play에서 손패로 돌아온 카드(Weirding Woman의 Bond, Stillsuit Manufacturer, Chairdog)는 공개 손패(`hand_public`)로 들어가 합에 들지 않는다. 나가는 길도 모두 공개된 곳으로 간다 — in play, 앞면 discard pile, 폐기(덱 맨 위를 버리거나 폐기하는 Long Live the Fighters·Controlled 포함, 공개 이벤트), 지도자 설정으로 게임에서 빠지는 시작 카드(지도자 정체로 공개). 덱과 손패 사이의 이동(draw, 덱 위로 되돌리기)은 둘의 합을 바꾸지 않는다. 그래서 둘을 합친 구성은 공개 정보만으로 누구나 셀 수 있고, 재확인 원칙에 따라 보인다(2026-10-14 독립 리뷰: 엔진의 덱·손패 변경 지점 전부와 7개 규칙 조합 14판의 카드 이동 약 17,000건을 대조해 숨은 출처·목적지 0). 어느 카드가 덱에 있고 어느 카드가 손패에 있는지는 계속 비공개다. 목록은 사본 번호를 싣지 않는다(5의 "상대에게는 구성도 보이지 않는다"는 덱만의 구성이 그대로다). `PublicPlayerView.deck_pool`(카드 id, 사본 번호 없이 정렬), 관측 v32 `seat{k}_deck_pool`, 화면은 각 좌석의 손패·덱·버림 줄에서 여는 목록. 계기: 망에는 기억이 없어 산 카드가 덱으로 섞여 들어가면 관측에서 사라졌다(사람은 기억하거나 다시 셀 수 있다).
 - 관련 설계(2026-09-02, 사용자): **행동 되돌리기**(M11 슬라이스 6, [`../implementation-plan.md`](../implementation-plan.md))의 허용 경계도 같은 원칙을 따른다 — 숨겨진 더미에서 누군가에게 흘러간 정보(자기 draw 포함)는 되돌릴 수 없고, 자기 비공개 존에서 공개 존으로 스스로 옮긴 정보(Intrigue play, hand discard/trash, Reveal)는 손해를 감수하고 되돌릴 수 있으며, 되돌린 행동은 로그에 공개로 남는다.
 - 재개 조건: 새 공식 룰북·FAQ가 열람 정책을 직접 정할 때.
@@ -373,6 +380,21 @@
 - 보강(2026-09-26, 카드 전사 감사): (b) Priority Contracts·Delivery Agreement의 "[spice] —OR— If you have completed four or more contracts: Trash this card → [1 VP]" `[Priority Contracts card]` `[Delivery Agreement card]`에서 spice는 선택의 한 갈래이므로 자동 이득으로 주지 않고 선택 frame(`keep_contract_reveal_spice`)으로만 준다. 선택은 항상 열리고 trash 갈래는 해결 시점에 완료 contract가 4개 이상일 때만 제시한다 — 미뤄 둔 뒤 The Spice Must Flow로 4번째 contract를 완료하면 VP를 고를 수 있지만 spice와 VP를 함께 받지는 않는다(이전 구현은 시작 시 3개면 spice를 자동으로 주고 선택을 미뤄, 4번째 완료 뒤 keep이 spice를 한 번 더, trash가 VP를 더 주었다). 해결 시점 판정은 이 OQ의 project convention이다. (c) Sardaukar Commander Skill의 Reveal 보너스(Charismatic·Driven·Hardy)도 Reveal 도중 Commander가 처음 Conflict에 들어오면 그때 한 번 지급한다("While you have any number of Sardaukar Commanders in the Conflict, the effects of all your Sardaukar Commander Skills are active" `[Bloodlines p. 4]`).
 - 적용(2026-09-26, project convention): 같은 Agent box 안의 인쇄 줄 사이에도 적용한다. Scientific Breakthrough는 Research 아이콘과 별도 줄의 "[2 genetic markers]: Trash this card → 1 VP"를 인쇄하는데 `[Scientific Breakthrough card]`, marker 조건을 Research 전에 한 번만 판정해 카드 자신의 Research가 두 번째 marker에 닿아도 trash 줄을 쓸 수 없었다. "When your research token reaches a column with a genetic marker at the bottom, for the rest of the game, any effects on cards marked with that icon are active for you." `[Immortality p. 6]`와 자유 순서 `[Main p. 9]`에 따라 Research를 먼저 해결하면 줄은 열린 채 남고, Research가 끝난 뒤 marker가 2 이상이면 화살표 비용(거절 가능)으로 제시된다. 그때 trash해도 Research를 다시 하지 않는다. 2 미만이면 turn 종료까지 보류된 뒤 소멸한다(OQ-057 (1)).
 - 적용(2026-10-06, Tread in Darkness, project convention): (a)는 Faction Bond를 "줄어들 수만 있다"는 이유로 배치 시점에만 판정하지만, Tread in Darkness는 자기 trash 아이콘으로 Bond를 이루는 다른 Bene Gesserit 카드를 trash할 수 있어 같은 box 안에서 Bond가 깨진다. 그래서 이 카드의 Bond는 아이콘마다 해결할 때 판정한다(OQ-027 확장 2). Bond를 이루는 카드를 먼저 trash하면 draw 아이콘은 조건을 기다리다 turn 종료에 소멸하고(OQ-057 (1); 화면은 이유와 함께 회색 줄), draw를 먼저 하면 draw와 trash를 모두 받는다. Tread in Darkness 자신을 그 아이콘으로 trash하면 카드가 자기 아이콘으로 떠난 것이므로 draw는 그대로 남는다(OQ-022의 "자기 효과" 예외). graft 상대의 box를 그 사이에 해결해도 같다(2026-10-12부터 두 box를 처음부터 함께 제시한다 — [graft-boxes-plan.md](../graft-boxes-plan.md); 그 전에는 `switch_graft_card`로 전환했다가 돌아왔다). 테스트: `tests/unit/rules/test_agent_effects.py`(`test_tread_in_darkness_draw_waits_once_its_bond_card_is_trashed`, `test_tread_in_darkness_trashing_itself_still_draws`), `tests/unit/display/test_unavailable.py::test_tread_in_darkness_draw_greys_out_once_its_bond_card_is_trashed`.
+- 다시 확인(2026-10-28, 사용자 "당연히 trash도 draw와 마찬가지로 베네게세리트 카드가 있을 때만 가능한 동작인데 왜 그건 남게 구현됐다는거야. 이건
+  버그인데. 어쨌든 추천한대로 구현하면 문제 없을거 같은데 다시 확인해봐", 조정자 경유): 걱정은 P3 밤 메모(계획 16.9)의 "trash는 남는다"였는데,
+  엔진은 이미 카드 문구대로다 — "If you have another Bene Gesserit card in play:"가 trash와 draw를 함께 걸고, 아이콘마다 해결할 때 판정한다. 확인한 것:
+  (1) 다른 Bene Gesserit 카드가 다른 길(Intrigue 폐기 칸, graft 상대의 box — 테스트는 In High Places 테스트처럼 상태를 직접 바꿔 흉내)로 먼저 빠지면 trash도 draw도 제시되지 않고 이유와 함께 회색, 턴 종료는
+  막히지 않으며 누르면 둘 다 `agent_card_effect_unavailable`; (2) draw를 먼저 받은 뒤 Bond가 깨지면 trash가 회색으로 남고 누르면
+  `agent_card_effect_lapsed`(선택 효과이면서 조건도 안 맞음 — 사건 이름만 다르고 동작은 같다; 사용자 판정 2026-10-28 (가) 그대로 둠: "쓸 수 있었는데 안 쓰고 베네게세리트 bond를 깨는 선택을 먼저 한거잖아." — draw를 먼저 받을 때 trash는 쓸 수 있었으므로 "쓰지 않고 지나간" 선택 효과다); (3) 자기 trash로 Bond 카드를 버리면 draw가 회색;
+  (4) 같은 차례에 Bond가 다시 생기면 둘 다 다시 제시되고 의무인 draw가 턴 종료를 다시 막는다; (5) Ghola가 Tread를 복사하면 복사본의 Bond는 Tread
+  자신을 세어 제시되고, Tread 자신의 box는 Ghola가 Bene Gesserit 카드가 아니므로 제시되지 않는다 `[Immortality p. 14]`. 앱도 두 능력 모두에
+  `HasPlayedFactionCard`를 건다(보조 증거, 로컬 `…/analysis/p3-oq-2026-10-28.md`). 동작 변경 없음 — 회귀 테스트만 더했다
+  (`test_agent_effects.py`의 `test_tread_in_darkness_bond_broken_elsewhere_greys_both_icons` 외 둘, `test_graft_boxes.py`의
+  `test_ghola_s_copy_of_tread_in_darkness_counts_tread_for_the_bond`).
+- 적용(2026-10-28, 원판 Gene Manipulation, 사용자 판정 "이건 지금 구현을 유지해. 순서 자유", 조정자 경유): trash 아이콘(조건 없음, 선택)과 "If you
+  have another Bene Gesserit card in play: 2 spice"는 따로, 소유자가 고른 순서로 받고 spice의 Bond는 그 아이콘을 받을 때 판정한다 — 그 전에 Bond
+  카드를 trash하면 spice는 회색으로 기다리다 턴 종료에 소멸하고, 같은 차례에 Bond가 생기면 받는다. 앱은 Agent 능력이 돌 때 한 번 판정해 spice를
+  곧바로 준다(로컬 분석, `GeneManipulationAbility`) — 앱과 다른 판정이라 공지의 (나) 묶음에 올렸다.
 
 ## OQ-029 — Conflict에 배치한 troop의 임의 회수와 배치의 분할
 
@@ -2551,11 +2573,14 @@
   보내면 "the Mentat is here"인가.
 - 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): `SpaceAbilities.BaseSet.MentatSpaceAbility` @0x4bca9b0이 칸 아래의 Mentat 개체를 찾아 보낸 좌석에게 recall한다 — 쉬고 있는
   Mentat과 Agent로 놓인 Mentat을 가르지 않아, 아마 다시 가져가게 한다. 앱이 Mentat을 제 칸에 보내는 것 자체를 허용하는지는 확인 못 함.
+  **정정(2026-10-28 P3d 앱 대조, 디컴파일한 C와 asm):** 다시 가져가지 않는다 — `MentatSpaceAbility`는 색이 Black(`PieceColor.Black`, 쉬고 있는 Mentat)인
+  Mentat만 가져가고, 가져간 Mentat은 Recall이 주인 색을 입히며(`Recall::execute`) 라운드의 Recall에서 다시 Black이 된다. Mentat을 제 칸에 보내는 것은 허용하고
+  경고(`worm.warning.mentat`)만 띄운다. 그래서 앱도 아래 판정 A와 같다.
 - 선택지: (가) 제 자리에 쉬고 있는 Mentat만 "here" — Agent로 보낸 Mentat은 다른 Agent처럼 칸을 차지하고 카드 1장만 뽑는다. (나) 문장 그대로 다시 가져간다
   — 칸이 비고 Mentat을 또 쓸 수 있어, 2 Solari마다 Agent turn이 하나 더 생긴다. (다) Mentat은 제 칸에 보낼 수 없다.
 - 추천: **(가)** — p. 16과 Calculated Hire clarification이 말하는 것은 제 자리(starting position)에서 가져오는 것이고, 놓인 Agent는 Phase 5까지 칸에 남는다
   `[DI p. 13]`(내 해석). (나)는 칸을 반복 가능한 추가 turn으로 만든다.
-- 판정(2026-10-22 사용자): **A(가).** Mentat 자체도 Mentat 칸에 보낼 수 있다. 정상 비용을 내고 카드 1장을 뽑되, 보낸 Mentat은 사용한 Agent로 남고 다시 가져오지 않는다. 가져오는 대상은 제 자리에 대기 중인 Mentat이다. 앱 동작 미확인이라는 조사 한계는 유지한다.
+- 판정(2026-10-22 사용자): **A(가).** Mentat 자체도 Mentat 칸에 보낼 수 있다. 정상 비용을 내고 카드 1장을 뽑되, 보낸 Mentat은 사용한 Agent로 남고 다시 가져오지 않는다. 가져오는 대상은 제 자리에 대기 중인 Mentat이다. 앱 동작 미확인이라는 조사 한계는 유지한다(2026-10-28 P3d 대조에서 확인: 앱도 같다).
 - 같은 방향의 커뮤니티 기록(2026-10-23 보강; 정리본의 "Discussion: BGG forum", 디자이너 판정이 아닌 토론): Mentat을 이미 누가 가져갔어도 Mentat 칸에는 갈 수 있고,
   카드 1장을 뽑으려고 갈 수도 있다. 칸이 비어 있어도 갈 수 있다는 점만 같은 쪽이고, Mentat 자체를 보낸 경우는 말하지 않는다.
 
@@ -2567,7 +2592,9 @@
   `[card faces]`. Uprising 계열에도 같은 문장이 있다: Impress·Inspire Awe(3 이하), Tleilaxu Master(Immortality, 6 이하).
 - 공식: 획득할 수 있는 카드는 "any of the five cards in the Imperium Row, or Arrakis Liaison or The Spice Must Flow from the Reserve (Foldspace is acquired
   at the board space of the same name …)" `[DI p. 11]`; Foldspace는 Foldspace 아이콘으로만 얻는다 `[FAQ p. 2]`.
-- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 어디서나 Imperium Row 카드만 고르게 한다.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 어디서나 Imperium Row 카드만 고르게 한다. **정정(2026-10-28 P3d 앱 대조, 디컴파일한 C와
+  asm):** 앱도 Reserve를 낸다 — Bypass Protocol(`GetBypassProtocolTargets`, includeReserve=1)과 Conscript·Boundless Ambition·Impress·Inspire Awe·
+  Tleilaxu Master가 Reserve의 Arrakis Liaison·The Spice Must Flow를 넣고 Foldspace는 뺀다(`ReserveRowCards`). 그래서 이 판정은 앱과도 같다.
 - 지금 엔진: `AcquireCardUpTo`가 Row 다섯 장과 Reserve 더미를 함께 낸다(`[Main p. 13]`을 근거로 적었으나 사용자 판정은 없다) — Uprising의 Impress·
   Inspire Awe·Tleilaxu Master가 이렇게 돈다.
 - 추천: **Reserve 포함, Foldspace 제외.** "a card"는 획득 규칙이 얻을 수 있다고 한 카드 전체(Row + Reserve)로 읽는다(내 해석); 지금 Uprising 엔진과 같다.
@@ -2576,7 +2603,7 @@
   Imperium Row 다섯 장과 Reserve의 Arrakis Liaison·The Spice Must Flow `[DI p. 11]` — 가운데 비용 N 이하에서 고른다. Foldspace는 Foldspace
   아이콘으로만 얻으므로 빠진다 `[FAQ p. 2]`. Bypass Protocol·Boundless Ambition·Archduke Armand Ecaz의 Conscript에 적용한다. Uprising의
   Impress·Inspire Awe·Tleilaxu Master는 지금 동작(`AcquireCardUpTo`가 Row와 Reserve 더미를 함께 냄)을 그대로 두고, 그 근거가 이제 이 판정이다
-  (`effect_dsl.AcquireCardUpTo` docstring의 `[Main p. 13]` 옆에 OQ-125를 적는 것은 다음 코드 작업 때). 앱(Row만)과는 다르다.
+  (`effect_dsl.AcquireCardUpTo` docstring의 `[Main p. 13]` 옆에 OQ-125를 적는 것은 다음 코드 작업 때). 앱(Row만)과는 다르다(위 정정: 앱도 같다).
 
 ## OQ-126 — Disposal Facility의 "Persuasion 6 이상"
 
@@ -2872,3 +2899,243 @@
 - 판정(2026-10-27 사용자, P2 설계 승인과 함께): **(가)**. P2에서는 Mentat과 자기 Agent를 가리지 않고 그 라운드 Agent 수만 하나 늘린다.
   공식 규칙이 아닌 project convention(엔진 이유)이고, 놓인 말이 Mentat인지가 결과를 바꾸는 P3 카드(Kwisatz Haderach, Urgent Mission)에서 다시
   연다. 테스트는 P2a 구현 커밋에서 이 OQ를 인용한다.
+- **P3 재검토(2026-10-28, 사용자 확인 대기).** 다시 열기로 한 카드 셋의 공식 문장과 앱 처리:
+  - Kwisatz Haderach: "Send one of your Agents from anywhere to ANY board space (even if occupied)" + 카드 1장(앱 문구). 룰북: 보드나 Leader 위의 자기
+    Agent 하나를 옮기고, 방금 떠난 칸으로도 보낼 수 있다 `[DI p. 13]`.
+  - Urgent Mission: "Recall one of your Agents"(앱 문구). 앱의 `UrgentMissionAbility`는 보드에 Agent가 하나 이상 있어야 내고(`HasDeployedAgents(1)`),
+    대상은 그 좌석의 Agent 가운데 막히지 않은 것 전부다(P0 sweep, 로컬 `…/p0-readings/sweep/intrigue.md`).
+  - Calculated Hire: "1 spice → Take the Mentat from its designated space in the Landsraad"(앱 문구). 룰북: Mentat이 제 칸에 있을 때만 `[DI p. 13]`.
+  - 디자이너 판정: 가져간 Mentat은 그 라운드 끝까지 그 플레이어의 Agent로 모든 목적에 친다 — Urgent Mission이 되돌릴 수 있고 Kwisatz Haderach가
+    옮길 수 있다([imperium-base.md](imperium-base.md) 9절, BGG Forum).
+  - 분석: 디자이너 판정대로 Mentat이 모든 목적에 그 좌석의 Agent라면, 세 카드의 결과는 어느 말을 옮기거나 거뒀는지에 달려 있지 않다. 옮긴 말은
+    어느 쪽이든 그 좌석의 Agent로 새 칸에 서고, 거둔 말은 어느 쪽이든 Leader로 돌아와 이번 라운드에 다시 보낼 수 있으며(Mentat도 쥔 좌석의 말로
+    남음), Recall은 Mentat을 어디에 있든 제 칸으로 돌린다 `[DI p. 13]`. Calculated Hire는 이미 있는 상태(`mentat`·`mentat_owed_to`, Mentat이 제 칸에
+    있는지)만 읽는다. 차이가 생길 수 있는 곳은 "그 말이 Mentat인가"를 읽는 효과뿐인데 원판 카드·지도자에는 없다.
+  - 조합(2026-10-28 다시 봄, 사용자 상시 지시 "항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해"): Uprising 판에는 Mentat이 없어
+    Uprising + 원판 카드에서는 Calculated Hire가 빠지고(공식 조합 `[Uprising Main p. 18]`, [계획](../base-game-and-ix-plan.md) 1절) Kwisatz
+    Haderach·Urgent Mission은 Mentat 없이 그대로다. 원판 + Immortality의 Twisted Mentat("GRAFT: may recall the Agent sent this turn")도 거두는 말이
+    Mentat일 수 있는데, (가)에서는 Urgent Mission과 같다(거둔 말은 그 좌석의 말로 Leader에). Bloodlines·Arrakeen Scouts·CHOAM·프로모의 콘텐츠에
+    "그 말이 Mentat인가"를 읽는 효과는 없고, Rise of Ix의 P0 읽기(로컬 faces: Imperium·Tech·Intrigue)에는 Mentat이 나오지 않는다.
+  - 추천: **(가) 유지** — 세 카드를 "자기 Agent 하나"로 구현하고 말을 가리지 않는다. 사용자가 확인하기 전에는 세 카드를 전사하지 않는다(조정자 경유
+    사용자 지시 2026-10-28 01:3x, 계획 16.8 4).
+  - 재판정(2026-10-28 17시경 사용자, 조정자 경유): "1, 구분하지 않는게 맞아. 근데 ui 상으로만 구분할 수 있나? 어쨌든 보드판에 있던 멘타트는
+    획득한 플레이어가 가져가는데, 아이콘 모양이 다르거든." — **(가) 유지.** 세 카드를 "자기 Agent 하나"로 구현하고 엔진은 말을 가리지 않는다.
+    화면에서만 Mentat 말을 따로 그리는 길은 설계 선택지를 사용자에게 먼저 보인다(엔진·codec·관측 무변경의 화면 작업).
+  - 화면(2026-10-28 사용자, 이 세션에서 직접): "화면에서 Mentat 말을 어떻게 그릴지 -> (가) 로 하자" — **규칙으로 정한다.** Mentat을 쥔 좌석이 자기
+    Agent 수(2, Swordmaster 뒤 3)를 넘어 놓은 말(놓은 순서로 마지막 말)을 Mentat 그림으로 그리고, 놓인 말이 그 수 이하면 Mentat은 Leader 위에
+    그린다. 쥔 좌석이 없으면 제 칸에 그린다. 엔진·서버·저장은 바뀌지 않는다(화면만의 convention; 실물에서 Mentat을 먼저 보냈어도 화면은 넘친
+    말을 Mentat으로 그린다).
+
+## OQ-140 — "이 병력을 배치할 수 있다"의 이 병력 (원판)
+
+- 상태: `DECIDED` (2026-10-28 사용자 판정, 조정자 경유 — 밤의 구현을 바꾼 새 설계; Gurney Halleck은 디자이너 답, 나머지는 project convention)
+- 계기: 원판 Reinforcements "3 Solari → 3 troops. If it's your Reveal turn, you may deploy any of these troops to the Conflict."와 Gurney Halleck의
+  Reveal "… → 2 troops. You may deploy these troops to the Conflict."(앱 문구). 엔진 조각 `DeployTheseTroops`(계획 16.4).
+- 공식 문장이 정한 것: Reveal turn이면 그 줄이 recruit한 병력은 아무 수나 배치할 수 있다(카드 문구). Agent turn에는 Combat 칸 규칙대로 어느 출처로
+  recruit했든 배치한다 `[DI p. 10]` `[FAQ p. 4]`. recruit는 supply에 있는 만큼이다(OQ-030).
+- 정하지 않은 것: supply가 모자라 못 한 recruit가 OQ-030 재판정(2026-10-04)대로 같은 turn 뒤에 채워질 때, 그 병력도 "이 병력"인가.
+- 닿는 곳(2026-10-28 다시 봄, 사용자 상시 지시 "항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해"): 원판 단독 판에는 자기 Reveal
+  turn 중에 자기 병력이 supply로 돌아오는 효과가 없지만, 조합에서는 닿는다.
+  - Immortality(원판 + Immortality, Uprising + 원판 카드 + Immortality): 자기 specimen은 언제든 supply로 돌려보낼 수 있다 `[Immortality p. 8]`
+    ([immortality.md](immortality.md) 73·121행). Reinforcements의 recruit가 모자란 뒤 specimen을 돌려보내면 부족분이 그 turn에 채워진다
+    (OQ-030·OQ-049). 먼저 돌려보내고 Reinforcements를 내면 그 병력은 줄이 recruit한 것이라 이 병력이다 — 그래서 "채워진 병력은 아니다"로 정하면
+    결과가 반환 순서에 달린다. Tleilaxu Surgeon의 Reveal 선택(troop 2 잃기 → specimen 2)도 같은 Reveal turn에 병력을 supply로 돌린다.
+  - Bloodlines(원판 + Bloodlines 등): Piter De Vries의 Twisted Plot Ambitious(troop 3 잃기)·Sadistic(troop 1 잃기 → 카드 1)을 자기 Reveal turn에
+    낼 수 있다.
+  - Sardaukar Commander는 이 병력에 들지 않는다: supply의 Commander는 일반 수단으로 recruit하지 않는다 `[Bloodlines p. 4]`.
+  - Rise of Ix(P4)의 카드는 이 목록에 아직 대어 보지 않았다.
+- 밤의 구현(폐기): 줄을 해결할 때 실제로 recruit한 수만 열었다 — 나중에 채워진 부족분은 배치할 수 없었다.
+- 디자이너 답(Gurney Halleck): BGG 스레드 <https://boardgamegeek.com/thread/2794420>에서 질문자가 "may deploy these troops"가 0 또는 2만인지
+  물었고, Paul Dennen(BGG userid 31474, 2022-01-15)이 "Yes. It's indeed 0, 1, or 2."라고 답했다(페이지는 사람 확인 뒤라 공개 geekdo API로 본문을
+  확인, 원문 JSON은 git 무시 `tmp/`). 그래서 Gurney도 Reinforcements("any of these troops")처럼 두 병력 중 아무 수나 배치한다.
+- 판정(2026-10-28 사용자, 조정자 경유): "Reinforcements 는 일단 문구에도 \"any of\" 라고 되어 있으니 공개차례라면 3개 소집한 것 중 원하는 개수는
+  교전 칸에 보낼 수 있어야해. 근데 \"3개 소집한 것\"이 지금 당장은 모자라도 나중에 추가된 것도 엄연히 그 3개에 포함된거잖아? … 이 두카드로 소집하는
+  병력 말고 다른 방법으로 소집하는 병력이 또 있다면, 공급처에 병력이 추가됐을 때 이게 어떤 효과로 소집된건지를 구분해야 하나 싶은데, 그건 좀
+  애매하긴 해. 그래서 내 생각은 이거야. 지금도 에이전트 칸에 교전칸 방문하면 기존 병영에서 최대 2개, 그리고 이번 턴에 소집한 병력만큼을 교전칸에
+  넣을 수 있잖아? … 해당 카드들을 사용했을 때, 각각 최대 3개, 2개의 병력을 교전칸에 넣을 수 있게 하고, 만약 지금 부족하다면 지금 가능한 개수만
+  보여주고, 공급처에 가능한 병력이 생기면 그때 또 추가 배치가 가능하게 보여주고 그러면 될듯? specimen은 별개 얘기지. 기존 원칙대로 사용자가
+  되돌리기를 하고 안 하고를 따로 둬야지".
+- 사용자 재판정(같은 날, 이 세션에서 직접): "공개 차례에 Reinforcements·Gurney 가 아닌 다른 효과로 얻은 병력은 배치 가능한 병력이 아니잖아.
+  … 그래서 공급처가 비어도 이번 차례에 소집한 병력이 병영에서 기다리면 Reinforcements를 낼 수 있습니다. -> 이건 틀렸지. 그 카드로 소집한 병력이
+  아닌걸?" — 첫 구현(`5236de15`)이 "그 Reveal turn의 recruit 전부"로 상한을 채운 것과 빈 supply에서도 낼 수 있게 한 것은 내가 사용자 문장을 넘어
+  정한 것이었고, 둘 다 틀렸다. 같은 차례에 다른 효과도 병력이 모자랐을 때 나중에 채워지는 병력의 몫은 사용자 답 "이 카드들 몫 먼저(추천)".
+- 구현(2026-10-28, 고친 것): Reveal turn에서 줄을 쓰면 그 줄이 실제로 recruit한 병력(`combat_deployment.RECRUITS_DEPLOYABLE_KEY`)과 supply가 비어
+  못 한 병력(`RECRUITS_OWED_KEY`)을 따로 센다. 배치할 수 있는 병력은 앞의 것 − 그 몫으로 이미 배치한 병력이다(`recruit_room`). 같은 turn 뒤에 병력이
+  supply로 돌아와 부족분이 채워지면(OQ-030) 이 카드들이 못 한 몫에 먼저 넣고(`credit_owed_recruits`, `shortfall.refill_shortfall`) 그만큼 배치 줄이
+  늘어난다. 지금 못 하는 것은 보이지 않는다. 다른 효과의 recruit는 이 몫에 들지 않는다. 쓸 때마다 더해지므로 Reinforcements와 Gurney를 같은
+  Reveal에 쓰면 최대 3 + 2다. Combat 아이콘의 몫(이번 turn의 recruit 전부 + garrison 둘)이 열려 있으면 그 몫이 이 병력을 이미 담는다. Agent turn에는
+  열리지 않는다(Combat 칸 규칙 그대로). 줄을 낼 수 있는지는 recruit가 정한다 — supply가 비면(Immortality의 돌려보낼 specimen도 없으면) Reinforcements를
+  내지 않는다(OQ-071). Gurney의 결제는 Reveal 화살표라 supply가 비어도 낼 수 있고(부족분은 나중에 채워질 수 있음, 이전 그대로), 그 두 병력이 모두 못
+  한 몫이 된다. specimen은 섞지 않는다 — 돌려보낼지는 소유자가 정하고 `[Immortality p. 8]`, 돌려보내면 그 병력이 채워져 이 몫에 든다.
+- 조합(사용자 상시 지시 "항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해"):
+  - Immortality: 돌려보낸 specimen, Tleilaxu Surgeon이 잃은 병력이 부족분을 채우면 이 카드들 몫에 먼저 들어 배치할 수 있다. specimen을 먼저
+    돌려보내든(그 병력을 줄이 recruit) 나중에 돌려보내든(부족분이 채워짐) 결과가 같다(밤의 구현에서 갈리던 순서 문제가 사라짐).
+  - Bloodlines: Twisted Plot(Ambitious·Sadistic)이 잃은 병력이 부족분을 채우면 같다. Sardaukar Commander는 이 몫에 들지 않는다 — 이번 turn에
+    recruit한 병력의 몫은 병력만, Commander의 몫은 Commander만이다(OQ-070), supply의 Commander는 일반 수단으로 recruit하지 않는다 `[Bloodlines p. 4]`.
+    Combat 아이콘을 주는 Bloodlines 카드가 같은 Reveal에 있으면 그 몫(Commander 몫 포함)이 쓰인다.
+  - Arrakeen Scouts: Uprising 판의 Corrinth City로 Reveal turn에 Readiness(긴급대응, troop 1 recruit)에 가입해 얻은 병력은 다른 효과의 recruit라
+    이 몫에 들지 않는다.
+    임무에 supply 병력을 세우는 것은 차례 밖이라, 그때의 부족분은 차례 밖에서 버려진다(OQ-030 구현 `shortfall.drop_stale_shortfalls`).
+  - Uprising 판 + 원판 카드: 같은 조각이 그대로 돈다(Reveal turn의 Combat 아이콘 몫과 함께, 위와 같음).
+  - Baron Harkonnen의 Masterstroke(OQ-115): 이 몫으로 배치한 병력은 이번 turn에 배치한 유닛으로 센다(`add_units_to_reveal`).
+  - Harkonnen Advisor의 병력(OQ-038)은 이 몫으로도 배치할 수 없다(garrison에서 빼고 셈).
+  - Emperor of the Known Universe의 배치 금지는 그 Agent turn에만 걸리므로 Reveal turn에는 닿지 않는다 `[FAQ p. 3]`.
+  - Rise of Ix(P4): dreadnought는 troop이 아니라 이 몫에 들지 않는다 `[Rise of Ix p. 6]`(OQ-115); Ix 카드는 전사할 때 이 목록에 대어 본다.
+- 테스트: `tests/unit/rules/test_imperium_reinforcements.py`(부족분이 뒤에 채워지면 배치가 늘어남, 다른 효과의 recruit는 안 듦, 빈 supply는 기다리는
+  병력이 있어도 못 냄, 채워진 병력은 이 카드들 몫 먼저), `tests/unit/rules/test_imperium_cards.py`(Gurney: 아무 수, 채워진 부족분, Commander 제외).
+
+## OQ-141 — 획득 상자의 아이콘 여럿과 진영 고르기 (원판)
+
+- 상태: `DECIDED` (2026-10-28 사용자 판정, 조정자 경유; OQ-027·OQ-112 원칙의 확장인 project convention, 공식 규칙이 아니다)
+- 계기: 원판 CHOAM Directorship의 획득 상자 — Emperor·Spacing Guild·Bene Gesserit·Fremen Influence 아이콘 넷 — 과 Lady Jessica의 획득 상자 —
+  "Influence 1, 고른 진영" (앱 화면 조각, P0 sweep). 지금 엔진의 획득 보너스는 고정 진영 하나만 즉시 준다
+  (`rules/acquisition._acquisition_influence_faction`, Steersman·Imperial Throneship).
+- 공식 문장: 획득 상자는 카드를 얻을 때 한 번 받는다 `[DI p. 16]`. 인쇄된 아이콘의 순서는 말하지 않는다.
+- 이미 정한 원칙: 인쇄된 아이콘은 각각 독립된 효과이고 소유자가 순서를 고른다 — Agent box(OQ-027), Conflict·계약 보상 한 줄(OQ-112). 진영을 고르는
+  Influence는 6칸 진영을 내놓지 않는다(OQ-060).
+- 추천: 같은 원칙을 획득 상자에 넓힌다. 아이콘이 둘 이상이거나 고를 것이 있는 획득 상자는 계약 보상의 아이콘 창(`contracts.CONTRACT_REWARD_ICONS`)과
+  같은 꼴의 창을 열어 아이콘마다 줄 하나를 내고, 소유자가 원하는 순서로 받는다. 아이콘 하나에 고를 것이 없는 지금의 획득 보너스는 그대로 즉시
+  받는다(Uprising 동작 그대로). 순서는 원판 카드에서 결과를 바꾸지 않지만(진영마다 따로 오르므로), 2026-10-19 상시 지시("원칙대로")를 따른다.
+- 구현(2026-10-28): `rules/acquire_icons.py`. 자기 차례 안의 획득은 아이콘마다 차례(Agent turn 효과·Reveal turn)의 줄이고
+  차례의 끝을 붙잡는다 — 계약 보상의 OQ-112 (4)와 같은 자리. 고를 진영이 하나도 없으면(넷 다 6) 회색 줄로 기다리다 턴 종료 누름에 사라진다.
+- 판정(2026-10-28 사용자, 조정자 경유): **구현대로** — 아이콘마다 줄 하나, 순서는 소유자. "이건 지금 구현이 맞다. CHOAM Directorship을 사면 줄
+  네 개를 눌러야지."
+- 조합(같은 날 사용자 상시 지시 "항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해. 원판 단독에서 문제없다고 끝나는게 아니야"):
+  - 상자: 아이콘이 여럿이거나 고를 것이 있는 획득 상자는 지금 원판의 두 장뿐이다. Uprising·Bloodlines·Immortality(Tleilaxu 카드 포함)의 획득 상자는
+    모두 고를 것 없는 아이콘 하나라 어느 조합에서든 지금처럼 곧바로 받는다. Rise of Ix 카드(P4)는 전사할 때 `acquire_box_icons`에 대어 보고,
+    Influence와 다른 아이콘이 섞인 상자는 반만 받지 않고 `NotImplementedError`로 멈춘다(그 카드가 나오면 이 판정대로 줄을 더한다).
+  - 자기 차례 안의 획득은 어느 판·조합이든 그 차례의 줄이다: Reveal turn의 구매, Agent turn 효과의 획득(Uprising + 원판 카드에서 Uprising Agent
+    칸의 `AcquireCardForSolari`, 지도자 Signet의 획득 등). 같은 차례의 다른 줄 — Agent 칸 아이콘, 같은 획득으로 완수한 계약의 줄(OQ-112 (4)) — 과
+    함께 나오고 소유자가 전부의 순서를 고른다. 줄의 Influence는 `gain_faction_influence`를 거쳐 그 판의 Influence 보너스(VP·4칸 보너스·동맹,
+    Uprising 판의 Emperor 트랙 Spy — OQ-057 (15))를 그 줄에서 일으킨다. Agent 칸의 Influence와 같다. 6칸은 어느 판이든 OQ-060이다.
+  - 차례 밖의 획득: Uprising의 Impress(Combat, 비용 3 이하)는 두 장(비용 8·7)에 닿지 않는다. Arrakeen Scouts의 Critical Moment 시장은 닿는다
+    (Uprising + 원판 카드 + Scouts는 P7, 원판의 Scouts는 P8). 그때는 이 판정과 OQ-112 (4)의 차례 밖 선례("차례 밖(Conflict 보상 도중의 동맹 계약,
+    Scouts 단계 등)은 완수한 자리의 창 그대로다")를 따라, 획득한 자리에 그 상자의 창을 열고 아이콘마다 줄 하나, 순서는 소유자다(계약 보상 창
+    `contract_reward_icons`과 같은 꼴). 그 창이 생길 때까지 `queue_acquire_icons`가 거절하고(`NotImplementedError`), setup도 그 조합을 아직 받지
+    않는다(`rules/setup._IMPERIUM_PENDING_OPTIONS`; Uprising + 원판 카드는 P7). 창의 구현은 그 조합을 여는 단계에서 한다.
+  - 찾아본 길(2026-10-28 Codex 리뷰 뒤): 획득 상자의 Influence는 어느 길로 얻든 `rules/acquisition._acquisition_influence` 한 곳을 지나므로
+    위 거절이 모든 길을 덮는다. 차례 밖에서 Imperium 카드를 얻는 길은 Uprising Impress(Combat의 `AcquireCardUpTo(3)`, 두 장에 닿지 않음)와 Scouts의
+    Critical Moment(`rules/scouts_auctions`)뿐이다. 나머지(`AcquireCardUpTo`를 쓰는 Plot·Agent box, 지도자 Signet의 획득, Agent 칸의 획득)는 모두
+    자기 차례 안이다. Rise of Ix(P4)의 카드·보상은 전사할 때 이 목록에 대어 본다.
+
+## OQ-142 — 승자의 창의 닫기 줄과 승리 책략의 숨은 정보 (원판)
+
+- 상태: `DECIDED` (2026-10-28 사용자 판정, 조정자 경유; project convention — 숨은 정보 원칙 OQ-121·OQ-103의 적용)
+- 계기: 원판 To the Victor...·Demand Respect를 승자의 창에서 내게 하면서(OQ-121 판정 6 "안 내도 창이 닫힌다") 창을 닫는 줄이 필요해졌다.
+- 정한 것(구현 `00c23f84`, `e4b0bf39`): 창의 마지막 줄 `resolve_combat_reward_icon(effect=winning_intrigue)`. 다른 줄을 모두 받은 뒤에만 나오므로
+  보상으로 뽑은 승리 책략도 먼저 낼 수 있다([FAQ p. 4]).
+- 정하지 않은 것: 이 줄을 언제 두는가. 구현은 **원판에 승리 책략 사본이 아직 덱이나 손에 숨어 있는 동안 모든 단독 승자의 창에** 둔다 — 승자가
+  그 카드를 쥐었는지가 창의 모양으로 드러나지 않게(OQ-121 "승리 책략을 쥐었는지는 드러나지 않는다", OQ-103 선례). 값: 그 동안 승자는 창마다 한 번 더
+  누른다. 다른 길: 낼 수 있는 승리 책략을 쥐었을 때만 둔다(누름은 줄지만 쥐었음이 드러난다). 한 함수(`combat.winning_intrigue_is_hidden`)만 바꾸면 된다.
+- 추천: 구현대로(숨김). 화면(P5)에서 사람 좌석 혼자인 판의 자동 누름은 그때 정한다.
+- 판정(2026-10-28 사용자, 조정자 경유): **구현대로(숨김)** — "이건 추천대로 (가)". 승리 책략 사본이 덱이나 손에 숨어 있는 동안 모든 단독
+  승자의 창에 닫기 줄을 둔다. 플레이어 공지에 올렸다(`display/house_rulings.toml`).
+- 닿는 곳(2026-10-28 다시 봄, 사용자 상시 지시 "항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해"): 숨김 판단은 판이 아니라 카드를
+  읽는다(`combat._winning_intrigue_instances`: "When you win a Conflict"(`OnConflictWon`)가 붙은 Intrigue, 덱과 손). 그래서 Uprising + 원판 카드의
+  섞인 Intrigue 덱에서도, 어느 판에서든 같은 규칙이다. 그런 Intrigue는 원판의 두 장뿐이다 — Uprising·Bloodlines(Piter의 Twisted 포함)·Immortality
+  Intrigue에는 없고, Rise of Ix Intrigue 17장(P0 읽기)의 승리 조건은 Strategic Push의 "IF you win this Conflict"뿐인데 이 카드는 Conflict 전에 내는
+  Combat 카드이고 승리 몫은 창의 자동 줄이다(OQ-112 확장). 조합에서는 창에 다른 줄도 선다 — Rise of Ix의 dreadnought 지배·Detonation Devices·
+  Windtraps, Bloodlines의 Planetary Array(OQ-121 판정 3·6) — 닫기 줄은 그래도 맨 끝이다.
+
+## OQ-143 — Bindu Suspension으로 차례를 이어 간 뒤 다른 차례 시작 카드 (원판)
+
+- 상태: `DECIDED` (2026-10-28 사용자 판정, 조정자 경유; 공식 문서는 말하지 않는다 — OQ-095 (6) 사용자 판정을 넓힌 project convention)
+- 정한 것: Bindu Suspension은 차례 시작의 첫 행동으로만 내고, 뽑은 뒤 pass하거나 차례를 그대로 이어 간다(OQ-117 C, imperium-base.md 13.1).
+- 질문: 이어 가기를 고른 뒤 같은 차례에 다른 "차례 시작" 카드(Bloodlines의 Litany Against Fear·Withdrawn)를 더 낼 수 있는가. 공식 문서는 말하지
+  않는다. 원판 단독 판에는 다른 차례 시작 카드가 없다.
+- 구현: 이어 가기를 고르면 차례 시작이 닫힌다 — Bindu 자체가 "다른 행동 전"의 첫 행동이었으므로 그 뒤는 이미 시작이 아니다. 다른 좌석이 모두 공개해
+  pass가 차례를 곧바로 되돌려 주면 새 차례의 시작은 열려 있다(테스트로 고정).
+- 판정(2026-10-28 사용자, 조정자 경유): **구현대로**. "지금 구현이 맞다."
+- 조합(같은 날 사용자 상시 지시 "항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해"): 차례 시작 카드는 셋이다 — 원판 Bindu
+  Suspension(Intrigue), Bloodlines의 Litany Against Fear(Imperium, "At the start of your turn: put this card into play → draw a card and pass
+  your turn")와 Withdrawn(Piter De Vries의 Twisted Intrigue, Plot, pass). 닿는 조합은 원판 + Bloodlines(Litany는 Imperium 덱에, Withdrawn은
+  Piter를 고른 좌석에)와 Uprising + 원판 카드 + Bloodlines(Bindu가 섞인 Intrigue 덱)다. Immortality·Arrakeen Scouts·CHOAM·프로모의 콘텐츠에는
+  차례 시작 카드가 없고, Rise of Ix도 P0 읽기(로컬 faces·sweep, 원판·Ix 전부)에서 "At the start of your turn"은 Bindu뿐이다. 셋은 한 표시
+  (`frames.TURN_START_OVER_KEY`)를 함께 쓴다 — OQ-095 (6) 사용자 판정(2026-10-04) "턴 시작 후 이 카드를 사용하는 것 말고 다른 행동을 했으면
+  이제 턴 시작이 끝났으니 이 카드를 사용할 수 없게 되는게 맞다고 봐":
+  - Bindu로 뽑고 이어 가면 그 차례에 Litany·Withdrawn을 낼 수 없다.
+  - Litany·Withdrawn은 차례를 넘기므로 같은 차례에 Bindu가 뒤따르지 않는다. Bindu를 낸 뒤 pass/이어 가기에 답하기 전에는 그 선택이 맨 위라
+    다른 카드가 끼지 않는다.
+  - pass로 차례가 곧바로 돌아오면(다른 좌석이 모두 공개) 새 차례의 시작이 열려 있어 셋 중 손에 있는 것을 낼 수 있다.
+  - Uprising 판의 Emperor 트랙 Spy는 차례 안의 다른 행동 뒤에만 기다리므로(`agent_turn`의 Litany 설명) Bindu의 pass가 그것을 건너뛰지 않는다.
+    Bindu의 뽑기는 Influence를 주지 않는다.
+
+## OQ-144 — Double Cross의 supply 배치와 Sardaukar Commander (원판 + Bloodlines)
+
+- 상태: `DECIDED` (2026-10-28 사용자 판정: troop만, 조정자 경유)
+- 계기: 사용자 상시 지시(2026-10-28, 조정자 경유) "항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해"로 원판 카드의 "troop" 효과를
+  Bloodlines의 Sardaukar Commander와 함께 다시 봤다.
+- 이미 정한 것: Commander는 Conflict에서 strength 2인 "troop"이고 troop을 대상으로 하는 효과(예: Go to Ground의 retreat)는 Commander에도
+  적용된다 `[Bloodlines p. 4]`; OQ-115 사용자 판정(2026-10-22) "커맨더도 troop에 포함할 수 있고 그런 조건들 다 동일하게 적용해야지", "이후 조합
+  구현에서도 Commander를 빠뜨리지 않는다". supply의 Commander는 일반 수단으로 recruit할 수 없고, turn마다 한 번 2 Solari로 recruit한다
+  `[Bloodlines p. 4]`. 그래서 garrison·Conflict의 troop을 옮기거나 잃는 원판 카드(Sardaukar Legion, Scout, Chani, Rapid Mobilization, Test of
+  Humanity, Double Cross의 잃기)는 Commander를 넣고, recruit하는 카드(Reinforcements, Gurney Halleck 등)는 넣지 않는다 — 문서가 정한다.
+- 정하지 않은 것: Double Cross의 "you deploy one troop from your supply to the Conflict"(앱 문구)로 supply의 Commander를 배치할 수 있는가. recruit가
+  아니라 배치라서 위 문장이 바로 닿지 않는다.
+- 추천: 아니다(troop만). 문서가 supply의 Commander를 꺼내는 길로 두는 것은 2 Solari의 recruit뿐이고, 공짜 배치가 그 값을 건너뛰게 된다. 지금
+  구현(`DeployFromSupply`)이 그렇다.
+- 판정(2026-10-28 사용자, 조정자 경유): "안 되는게 맞지. 아 근데 잃는 상대는 커맨더를 잃을 수 있게 되어 있지?" — supply 배치는 troop만(지금 구현
+  그대로). 잃는 쪽은 그렇다: 잃는 좌석이 Conflict의 유닛을 고르고 Commander도 든다(OQ-036 (a), `[Bloodlines p. 4]`). 테스트
+  `tests/unit/rules/test_imperium_intrigue.py::test_a_sardaukar_commander_is_a_troop_for_double_cross_s_condition_and_loss`가 Commander를 잃는 줄을
+  골라 그 Commander가 supply로 가는 것까지 본다.
+
+## OQ-145 — 덱 위에 앞면으로 놓은 카드는 누가 아는가 (원판 + Immortality)
+
+- 상태: `DECIDED` (2026-10-28 사용자 판정 (나), 뽑은 뒤 손에서도 공개)
+- 인쇄(앱 문구): Bypass Protocol "Acquire a card that costs [5] or less to the top of your deck"; Recruitment Mission "You may put cards you acquire
+  on top of your deck". Immortality: 첫 genetic marker 뒤 "you may put Tleilaxu cards you acquire on top of your deck" `[Immortality p. 6]`. 셋 모두 앞면
+  으로 고른 카드를 모두가 보는 앞에서 덱 위에 놓는다.
+- 문서 둘이 어긋난다:
+  - [imperium-base.md](imperium-base.md) 14(P0 명세, 사용자 판정 없음): "Bypass Protocol, Recruitment Mission(덱 위에 놓기) | 모두 | … | 그 카드가 뽑힐
+    때까지 모든 좌석이 맨 위 카드를 안다 — 관측에 새로 넣을 정보".
+  - [OQ-010](#oq-010--손패discard와-과거-공개-정보의-열람-범위) 판정 5(2026-10-05 사용자)와 [information-visibility.md](information-visibility.md):
+    덱에 들어오는 길로 "소유자가 고른 Tleilaxu 카드의 deck 맨 위 놓기"를 들고 "순서는 소유자에게도 숨긴다 — 예외는 카드 효과가 소유자에게 보여
+    주는 맨 위 카드 한 장뿐"이라고 적는다. 엔진도 그렇게 돈다: 덱 위에 놓은 Tleilaxu 카드는 `known_card_seats`에서 아무도 모르는 카드다.
+  - 재확인 원칙(OQ-010, 2026-09-01 사용자 "한 번 공개된 정보는 다시 확인할 수 있어야 한다")으로는 모두가 본 카드다.
+- 조합: 세 길은 같은 물리 상황이라 하나로 정해야 한다. 그래서 Uprising + Immortality 판도 바뀐다(관측, 결정 표본, 되돌리기 경계). 원판 Paul
+  Atreides의 Prescience와 Bloodlines Glowglobes는 소유자에게 맨 위 한 장을 보여 준다. (나)면 그 카드는 이미 모두가 안다. Refocus나 다시 섞기는
+  공개를 지운다. Recruitment Mission으로 여러 장을 놓거나 Bypass Protocol 뒤에 더 놓으면, 공개 카드가 맨 위에 놓은 순서대로 쌓인다(맨 위의 연속한
+  장들).
+- 선택지:
+  - (가) 지금 그대로: 덱 위에 놓은 카드도 덱의 다른 카드처럼 아무도 모른다(엿보기 효과만 예외). 관측 변경 없음.
+  - (나) 모든 좌석이 안다: 맨 위에 공개로 놓인 연속한 장들은 뽑히거나 섞일 때까지 공개다. `known_card_seats`, 관측(좌석마다 덱 위 공개 카드),
+    결정 표본(그 장들을 고정), 되돌리기 경계에 넣는다. Immortality의 Tleilaxu 덱 위 놓기도 같이 바뀐다.
+  - (나)의 하위 질문: 그 카드를 뽑아 손에 넣으면 손에서도 공개인가(OQ-010 판정 1의 "공개 경로로 hand에 들어온 카드", `hand_public`), 보통 뽑기처럼
+    숨기는가.
+- 추천: **(나), 뽑은 뒤에도 손에서 공개.** 재확인 원칙에 맞고 imperium-base.md 14가 이미 그렇게 적었다. OQ-010 판정 5는 덱 구성을 소유자에게
+  보여 주는 결정이었고, 덱 위 놓기를 따로 판정한 것은 아니다(내 해석). 모두가 그 카드가 그 손에 들어간 것을 안다.
+- 지금 구현(2026-10-28): Bypass Protocol과 Recruitment Mission의 덱 위 놓기는 Immortality와 같은 길로 넣었다(숨김). 사용자가 (나)를 고르면 세 길의
+  공개와 관측·표본기를 한 번에 바꾼다(관측 버전 하나).
+- 판정(2026-10-28 사용자, 조정자 경유, 질문 "OQ-145는 추천 (나)로 정할까요?"): "(나)로 정함". 추천의 하위 답(뽑은 뒤 손에서도 공개)까지
+  함께 정해졌다.
+  - 덱 위에 앞면으로 놓은 카드(맨 위의 연속한 장들)는 뽑히거나 덱이 섞일 때까지 모든 좌석이 안다. 여러 장을 차례로 놓으면 놓은 순서대로
+    쌓인다(마지막에 놓은 장이 맨 위).
+  - 그 카드를 뽑아 손에 넣으면 손을 떠날 때까지 공개다(OQ-010 판정 1의 "공개 경로로 hand에 들어온 카드", `hand_public`).
+  - 세 길(Bypass Protocol, Recruitment Mission, Immortality의 Tleilaxu 덱 위 놓기)을 함께 바꾼다. 그래서 Uprising + Immortality 판의 동작도 바뀐다.
+  - OQ-010 판정 5와 [information-visibility.md](information-visibility.md)의 "순서는 소유자에게도 숨긴다"에 이 예외를 적었다.
+- 정해져 있어 묻지 않는 것: 덱 위에 놓기와 그 카드의 획득 상자 순서는 놓기가 먼저다(Immortality 구현 선례 `rules/tleilaxu_row.py`: 덱 위에 놓은 뒤
+  획득 보너스). 그래서 Immortality의 두 번째 genetic marker 뒤 Research(카드 1장 뽑기)가 획득 상자에 있으면 방금 덱 위에 놓은 그 카드를 뽑는다.
+
+## OQ-146 — Kwisatz Haderach의 "from anywhere"와 Conflict에 있는 Into the Fray의 Agent (원판 + Bloodlines)
+
+- 상태: `DECIDED` (2026-10-28 사용자 판정 (가), 조정자 경유; 디자이너 판정 OQ-037 (d)의 연장인 project convention)
+- 인쇄: Kwisatz Haderach "Send one of your Agents from anywhere to ANY board space (even if occupied)." `[Kwisatz Haderach card]`(앱 문구).
+  Into the Fray "You may take the Agent you sent this turn and deploy it to the Conflict as a 2 strength unit that can't be retreated."
+  `[Duncan Idaho card]`.
+- 이미 정한 것: Conflict에 있는 Into the Fray의 Agent는 여전히 "자신의 Agent"다 — 뒤의 turn에 Imperial Privilege로 recall할 수 있고, recall되면
+  유닛으로서 Conflict를 떠나 Leader로 돌아오며 전투력이 갱신된다(OQ-037 (d), 디자이너 판정 `[Board Guide p. 2]`). High Council(Bloodlines)의 recall
+  (OQ-068, 사용자 판정), Scouts의 Contingencies(OQ-075 (D)), 원판 Urgent Mission의 recall(`rules/effects.recall_agent_targets`)도 그 Agent를 넣는다.
+- 문서가 답하지 않는 것: recall이 아니라 "send … from anywhere"도 그 Agent를 고를 수 있는가, 고르면 그 Agent가 유닛으로서 Conflict를 떠나는가.
+- 지금 엔진: Kwisatz의 출발점은 Leader와 board space의 자기 Agent뿐이다(`rules/agent_turn._placements_for_card`의 `agent_locations`;
+  `_placing_owner`도 `agent_in_conflict`를 세지 않는다). 원판은 Bloodlines를 P7부터 받으므로(`rules/setup._IMPERIUM_PENDING_OPTIONS`) 지금 판에서는
+  닿지 않는다. 앱에는 Bloodlines가 없어 보조 증거가 없다.
+- 선택지:
+  - (가) 포함한다: Conflict의 그 Agent도 출발점이다. 옮기면 유닛으로서 Conflict를 떠나(전투력 2, Swordmaster면 3이 빠짐, OQ-037 (c)) 고른 칸으로
+    간다 — OQ-037 (d)의 recall이 Conflict를 떠나는 처리와 같다. "can't be retreated"는 retreat만 막고 이 이동은 retreat가 아니다.
+  - (나) 넣지 않는다: board space와 Leader의 Agent만 "anywhere"다.
+- 추천: **(가).** 디자이너 판정이 그 Agent를 "자신의 Agent"로 보고 recall 효과 넷이 모두 넣는다. "from anywhere"는 자리를 제한하지 않는다.
+- 같이 볼 공식 문장(다른 질문): "When grafted to Kwisatz Haderach, you still send only one Agent on your turn (though you draw two cards)."
+  `[FAQ p. 2]`(Ghola 항목) — 원판 + Immortality의 graft는 P7([base-game-and-ix-plan.md](../base-game-and-ix-plan.md) 16.10 9).
+- 판정(2026-10-28 23:2x 사용자, 조정자 경유): **(가)** — "OQ-146 이건 (가) 가 맞다. 소환도 되는데 퀴사츠 헤더락도 가능하지." Conflict에 있는
+  Into the Fray의 Agent도 Kwisatz Haderach의 출발점이고, 옮기면 유닛으로서 Conflict를 떠난다(recall과 같은 처리, 전투력 갱신).
+- 구현: 판정대로 P7(원판 + Bloodlines를 여는 단계)에서.

@@ -41,6 +41,10 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.acquire_icons import (
+    acquire_box_icons,
+    queue_acquire_icons,
+)
 from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.contracts import (
@@ -48,6 +52,7 @@ from dune_imperium.rules.contracts import (
     complete_acquire_contracts,
     contract_gain_opens_market,
 )
+from dune_imperium.rules.deck_top import place_on_deck_top
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
     OptionalEffectBlock,
@@ -111,6 +116,62 @@ class AcquireBlock(StrEnum):
     # Reclaimed Forces' Tleilaxu choice with the token on the track's last
     # space, where the advance does nothing (OQ-048, OQ-071).
     TLEILAXU_TRACK_END = "tleilaxu_track_end"
+
+
+def deck_top_offered(state: GameState, player: int) -> bool:
+    """Whether a card ``player`` acquires may go on top of their deck now.
+
+    Recruitment Mission: "You may put cards you acquire on top of your deck"
+    -- the whole card applies only to the owner's Reveal turn this round, and
+    for each card acquired the owner chooses top of deck or discard pile
+    [FAQ p. 3] (docs/rules/imperium-base.md 13.2). It is effective while the
+    owner's own Reveal turn is open and cleared when that turn ends
+    (``PlayerState.acquire_to_deck_top_round``); a card acquired before the
+    Plot was played is unaffected (13.3), which holds as it is the Plot's
+    play that sets the flag.
+    """
+
+    return state.players[player].acquire_to_deck_top_round and reveal_is_open_for(
+        state, player
+    )
+
+
+def with_deck_top_twins(
+    state: GameState, player: int, actions: tuple[DomainAction, ...]
+) -> tuple[DomainAction, ...]:
+    """``actions`` with each followed by its ``to_deck_top`` twin while
+    ``deck_top_offered`` (Recruitment Mission): the card's own row stays and
+    the twin puts it on top of the deck instead of the discard pile."""
+
+    if not deck_top_offered(state, player):
+        return actions
+    return tuple(
+        twin
+        for action in actions
+        for twin in (
+            action,
+            replace(action, arguments=(*action.arguments, ("to_deck_top", True))),
+        )
+    )
+
+
+def acquired_card_placed(
+    owner: PlayerState, instance_id: str, *, to_deck_top: bool
+) -> PlayerState:
+    """``owner`` with an acquired card in the discard pile, or on top of the
+    deck (Bypass Protocol, Recruitment Mission) -- placed first, so the
+    card's acquire box resolves with it already there (the Immortality
+    precedent, ``rules.tleilaxu_row``). A card put on top of the deck is
+    known to every seat until it is drawn or the deck is shuffled (OQ-145,
+    ``rules.deck_top``)."""
+
+    if to_deck_top:
+        return place_on_deck_top(owner, instance_id)
+    return replace(owner, discard_pile=(*owner.discard_pile, instance_id))
+
+
+def _wants_deck_top(action: DomainAction) -> bool:
+    return dict(action.arguments).get("to_deck_top") is True
 
 
 def take_imperium_row_card(
@@ -666,20 +727,9 @@ def _acquire_imperium_to_hand_with_solari(
         pending_intrigue_draws=_with_pending_draw(state, bonus.pending_draw),
         decision_stack=(*state.decision_stack[:-1], base_frame),
     )
-    faction = _acquisition_influence_faction(definition.acquisition_effect)
-    if faction is not None:
-        gained = gain_faction_influence(
-            prepared,
-            action.actor,
-            faction,
-            1,
-            event_prefix=(
-                f"round:{state.round_number}:player:{action.actor}:"
-                f"acquire_with_solari:{instance_id}:influence:{faction.value}"
-            ),
-        )
-        prepared = gained.state
-        acquisition_events = (*acquisition_events, *gained.events)
+    gained = _acquisition_influence(prepared, action.actor, definition, source=source)
+    prepared = gained.state
+    acquisition_events = (*acquisition_events, *gained.events)
     completed = complete_acquire_contracts(
         prepared,
         action.actor,
@@ -750,14 +800,18 @@ def legal_reserve_acquisitions(
     persuasion = revealer_persuasion(state, player)
     if persuasion is None:
         return ()
-    return tuple(
-        DomainAction(
-            action_id="acquire_reserve",
-            actor=player,
-            arguments=(("card_id", card_id),),
-        )
-        for card_id, count in state.reserve_stacks
-        if reserve_acquisition_block(state, card_id, count, persuasion) is None
+    return with_deck_top_twins(
+        state,
+        player,
+        tuple(
+            DomainAction(
+                action_id="acquire_reserve",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id, count in state.reserve_stacks
+            if reserve_acquisition_block(state, card_id, count, persuasion) is None
+        ),
     )
 
 
@@ -823,10 +877,10 @@ def apply_reserve_acquisition(
         raise RuntimeError("Reveal frame has invalid Persuasion")
 
     instance_id = next_reserve_instance_id(state, card_id)
+    to_deck_top = _wants_deck_top(action)
     owner = state.players[action.actor]
     next_owner = replace(
-        owner,
-        discard_pile=(*owner.discard_pile, instance_id),
+        acquired_card_placed(owner, instance_id, to_deck_top=to_deck_top),
         victory_points=owner.victory_points + definition.acquisition_vp,
     )
     players = tuple(
@@ -853,7 +907,11 @@ def apply_reserve_acquisition(
             f"round:{state.round_number}:player:{action.actor}:acquire:{instance_id}"
         ),
         kind="card_acquired",
-        payload=(("card_id", card_id), ("player", action.actor)),
+        payload=(
+            ("card_id", card_id),
+            *((("destination", "deck_top"),) if to_deck_top else ()),
+            ("player", action.actor),
+        ),
     )
     triggered = _resolve_reveal_acquisition_triggers(
         next_state,
@@ -892,14 +950,18 @@ def legal_imperium_acquisitions(
     persuasion = revealer_persuasion(state, player)
     if persuasion is None:
         return ()
-    return tuple(
-        DomainAction(
-            action_id="acquire_imperium",
-            actor=player,
-            arguments=(("instance_id", instance_id),),
-        )
-        for instance_id in state.imperium_row
-        if imperium_acquisition_block(instance_id, persuasion) is None
+    return with_deck_top_twins(
+        state,
+        player,
+        tuple(
+            DomainAction(
+                action_id="acquire_imperium",
+                actor=player,
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in state.imperium_row
+            if imperium_acquisition_block(instance_id, persuasion) is None
+        ),
     )
 
 
@@ -941,11 +1003,9 @@ def apply_imperium_acquisition(
     if isinstance(persuasion, bool) or not isinstance(persuasion, int):
         raise RuntimeError("Reveal frame has invalid Persuasion")
     imperium_row, imperium_deck = take_imperium_row_card(state, instance_id)
+    to_deck_top = _wants_deck_top(action)
     owner = state.players[action.actor]
-    next_owner = replace(
-        owner,
-        discard_pile=(*owner.discard_pile, instance_id),
-    )
+    next_owner = acquired_card_placed(owner, instance_id, to_deck_top=to_deck_top)
     bonus = _resolve_imperium_acquisition_bonus(
         state,
         action.actor,
@@ -1022,7 +1082,15 @@ def apply_imperium_acquisition(
         kind="card_acquired",
         payload=(
             ("card_id", definition.card.card_id),
-            ("instance_id", instance_id),
+            *(
+                (("destination", "deck_top"),)
+                if to_deck_top
+                # The instance is named only for the discard pile, as the
+                # Tleilaxu Row's event does; the deck-top card is public too
+                # (OQ-145, ``rules.deck_top``) but the payload stays as it
+                # was so old saves replay their events.
+                else (("instance_id", instance_id),)
+            ),
             ("player", action.actor),
         ),
     )
@@ -1080,21 +1148,12 @@ def _acquisition_effects(
     state: GameState, player: int, definition: ImperiumCardEntry, *, source: str
 ) -> RuleResult:
     """The acquired card's effects after its bonus, in this order: the
-    acquire box's Influence (``<source>:influence:<faction>``), its track
-    steps (``apply_acquisition_track_effects``) and the Contracts the
-    acquisition completes (``complete_acquire_contracts``)."""
+    acquire box's Influence (``_acquisition_influence``), its track steps
+    (``apply_acquisition_track_effects``) and the Contracts the acquisition
+    completes (``complete_acquire_contracts``)."""
 
-    events: tuple[GameEvent, ...] = ()
-    faction = _acquisition_influence_faction(definition.acquisition_effect)
-    if faction is not None:
-        gained = gain_faction_influence(
-            state,
-            player,
-            faction,
-            1,
-            event_prefix=f"{source}:influence:{faction.value}",
-        )
-        state, events = gained.state, gained.events
+    influenced = _acquisition_influence(state, player, definition, source=source)
+    state, events = influenced.state, influenced.events
     tracked = apply_acquisition_track_effects(state, player, definition, source=source)
     completed = complete_acquire_contracts(
         tracked.state, player, definition.card.card_id, source=source
@@ -1132,16 +1191,48 @@ def apply_acquisition_track_effects(
 def _acquisition_influence_faction(
     effect: PersonalCardAcquisitionEffect | None,
 ) -> Faction | None:
-    """Return the Faction an acquisition bonus raises by one, if any."""
+    """Return the Faction an acquisition bonus raises by one, if any: the
+    box's single fixed Influence icon (Steersman, Imperial Throneship). A box
+    of several icons or a chosen Faction is paid icon by icon instead
+    (``rules.acquire_icons``) and is refused here, never half paid."""
 
     ability = acquisition_ability(effect)
-    for reward in () if ability is None else ability.sections[0].rewards:
-        if isinstance(reward, GainInfluence):
-            # Steersman's and Imperial Throneship's fixed Faction.
-            if reward.factions is None or reward.requires_choice:
-                raise ValueError(f"{reward!r} is not a fixed Faction's Influence")
-            return reward.factions[0]
-    return None
+    rewards = () if ability is None else ability.sections[0].rewards
+    gains = [reward for reward in rewards if isinstance(reward, GainInfluence)]
+    if not gains:
+        return None
+    (reward,) = gains
+    if reward.factions is None or reward.requires_choice:
+        raise ValueError(f"{reward!r} is not a fixed Faction's Influence")
+    return reward.factions[0]
+
+
+def _acquisition_influence(
+    state: GameState,
+    player: int,
+    definition: ImperiumCardEntry,
+    *,
+    source: str,
+) -> RuleResult:
+    """The acquire box's Influence. One fixed Faction's icon is gained at
+    once (``<source>:influence:<faction>``), as it always was; a box of
+    several icons or a Faction of the owner's choice waits as a row per icon
+    on the owner's turn (``acquire_icons``, OQ-141)."""
+
+    if acquire_box_icons(definition) is not None:
+        return RuleResult(
+            state=queue_acquire_icons(state, player, definition, source=source)
+        )
+    faction = _acquisition_influence_faction(definition.acquisition_effect)
+    if faction is None:
+        return RuleResult(state=state)
+    return gain_faction_influence(
+        state,
+        player,
+        faction,
+        1,
+        event_prefix=f"{source}:influence:{faction.value}",
+    )
 
 
 def _resolve_imperium_acquisition_bonus(
@@ -1348,14 +1439,18 @@ def legal_manipulated_acquisitions(
     persuasion = revealer_persuasion(state, player)
     if persuasion is None:
         return ()
-    return tuple(
-        DomainAction(
-            action_id="acquire_manipulated_imperium",
-            actor=player,
-            arguments=(("instance_id", instance_id),),
-        )
-        for instance_id in owner.imperium_set_aside
-        if manipulated_acquisition_block(instance_id, persuasion) is None
+    return with_deck_top_twins(
+        state,
+        player,
+        tuple(
+            DomainAction(
+                action_id="acquire_manipulated_imperium",
+                actor=player,
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in owner.imperium_set_aside
+            if manipulated_acquisition_block(instance_id, persuasion) is None
+        ),
     )
 
 
@@ -1395,13 +1490,17 @@ def apply_manipulated_acquisition(
     persuasion = context["persuasion"]
     if isinstance(persuasion, bool) or not isinstance(persuasion, int):
         raise RuntimeError("Reveal frame has invalid Persuasion")
+    to_deck_top = _wants_deck_top(action)
     owner = state.players[action.actor]
-    next_owner = replace(
-        owner,
-        imperium_set_aside=tuple(
-            held for held in owner.imperium_set_aside if held != instance_id
+    next_owner = acquired_card_placed(
+        replace(
+            owner,
+            imperium_set_aside=tuple(
+                held for held in owner.imperium_set_aside if held != instance_id
+            ),
         ),
-        discard_pile=(*owner.discard_pile, instance_id),
+        instance_id,
+        to_deck_top=to_deck_top,
     )
     bonus = _resolve_imperium_acquisition_bonus(
         state,
@@ -1462,8 +1561,9 @@ def apply_manipulated_acquisition(
         kind="card_acquired",
         payload=(
             ("card_id", definition.card.card_id),
+            *((("destination", "deck_top"),) if to_deck_top else ()),
             ("discount", MANIPULATE_DISCOUNT),
-            ("instance_id", instance_id),
+            *(() if to_deck_top else (("instance_id", instance_id),)),
             ("player", action.actor),
         ),
     )
@@ -1586,23 +1686,31 @@ def acquire_reserve_for_intrigue(
     *,
     to_hand: bool,
     source: str,
+    to_deck_top: bool = False,
 ) -> IntrigueAcquisition:
-    """Acquire one Reserve card without Persuasion for an Intrigue effect."""
+    """Acquire one Reserve card without Persuasion for an Intrigue effect.
 
+    ``to_deck_top`` puts it on top of the deck instead of the discard pile
+    (Bypass Protocol, Recruitment Mission); never together with ``to_hand``.
+    """
+
+    if to_hand and to_deck_top:
+        raise ValueError("a card goes to the hand or the deck top, not both")
     definition = RESERVE_STACKS_BY_ID[card_id]
     instance_id = next_reserve_instance_id(state, card_id)
     owner = state.players[player]
-    destination = "hand" if to_hand else "discard"
+    destination = "hand" if to_hand else "deck_top" if to_deck_top else "discard"
+    placed = (
+        replace(
+            owner,
+            hand=(*owner.hand, instance_id),
+            hand_public=(*owner.hand_public, instance_id),
+        )
+        if to_hand
+        else acquired_card_placed(owner, instance_id, to_deck_top=to_deck_top)
+    )
     next_owner = replace(
-        owner,
-        hand=(*owner.hand, instance_id) if to_hand else owner.hand,
-        hand_public=(
-            (*owner.hand_public, instance_id) if to_hand else owner.hand_public
-        ),
-        discard_pile=(
-            owner.discard_pile if to_hand else (*owner.discard_pile, instance_id)
-        ),
-        victory_points=owner.victory_points + definition.acquisition_vp,
+        placed, victory_points=owner.victory_points + definition.acquisition_vp
     )
     reserve_stacks = tuple(
         (candidate_id, count - 1 if candidate_id == card_id else count)
@@ -1684,13 +1792,17 @@ def legal_reveal_command_acquisition_actions(
         # choice waited): an effect of a trashed card can't be activated
         # (OQ-022), so nothing remains.
         return ()
-    return tuple(
-        DomainAction(
-            action_id="command_acquire_row_card",
-            actor=player,
-            arguments=(("instance_id", instance_id),),
-        )
-        for instance_id in state.imperium_row
+    return with_deck_top_twins(
+        state,
+        player,
+        tuple(
+            DomainAction(
+                action_id="command_acquire_row_card",
+                actor=player,
+                arguments=(("instance_id", instance_id),),
+            )
+            for instance_id in state.imperium_row
+        ),
     )
 
 
@@ -1719,7 +1831,12 @@ def apply_reveal_command_acquisition(
     # own troops (none on a shipped card yet) are credited here.
     trashed = credit_trash_recruits(trashed, action.actor)
     acquired = acquire_imperium_for_intrigue(
-        trashed.state, action.actor, instance_id, to_hand=False, source=source
+        trashed.state,
+        action.actor,
+        instance_id,
+        to_hand=False,
+        source=source,
+        to_deck_top=_wants_deck_top(action),
     )
     opened = open_acquisition_frames(
         acquired.result.state, action.actor, acquired, source=source
@@ -1738,6 +1855,7 @@ def acquire_imperium_for_intrigue(
     to_hand: bool,
     source: str,
     from_market: bool = False,
+    to_deck_top: bool = False,
 ) -> IntrigueAcquisition:
     """Acquire one Imperium Row card without Persuasion for an Intrigue effect.
 
@@ -1748,14 +1866,19 @@ def acquire_imperium_for_intrigue(
     cards instead of the Row, with nothing to refill. The player's own
     Manipulate set-aside card is taken from that zone instead, also with
     nothing to refill (``take_acquired_imperium_card``, [FAQ p. 3]).
+    ``to_deck_top`` puts the card on top of the deck instead of the discard
+    pile (Bypass Protocol, Recruitment Mission), placed before its acquire
+    box resolves; never together with ``to_hand``.
     """
 
+    if to_hand and to_deck_top:
+        raise ValueError("a card goes to the hand or the deck top, not both")
     definition = imperium_card_for_instance(instance_id)
     if definition.has_acquisition_bonus and definition.acquisition_effect is None:
         raise NotImplementedError(
             f"acquisition bonus is not implemented: {definition.card.card_id}"
         )
-    destination = "hand" if to_hand else "discard"
+    destination = "hand" if to_hand else "deck_top" if to_deck_top else "discard"
     market = state.scouts_market_cards
     owner = state.players[player]
     set_aside = owner.imperium_set_aside
@@ -1768,16 +1891,15 @@ def acquire_imperium_for_intrigue(
         imperium_row, imperium_deck, set_aside = take_acquired_imperium_card(
             state, player, instance_id
         )
-    next_owner = replace(
-        owner,
-        imperium_set_aside=set_aside,
-        hand=(*owner.hand, instance_id) if to_hand else owner.hand,
-        hand_public=(
-            (*owner.hand_public, instance_id) if to_hand else owner.hand_public
-        ),
-        discard_pile=(
-            owner.discard_pile if to_hand else (*owner.discard_pile, instance_id)
-        ),
+    taken_owner = replace(owner, imperium_set_aside=set_aside)
+    next_owner = (
+        replace(
+            taken_owner,
+            hand=(*owner.hand, instance_id),
+            hand_public=(*owner.hand_public, instance_id),
+        )
+        if to_hand
+        else acquired_card_placed(taken_owner, instance_id, to_deck_top=to_deck_top)
     )
     bonus = _resolve_imperium_acquisition_bonus(state, player, instance_id, next_owner)
     prepared = replace(
@@ -1826,7 +1948,10 @@ def acquire_imperium_for_intrigue(
         payload=(
             ("card_id", definition.card.card_id),
             ("destination", destination),
-            ("instance_id", instance_id),
+            # A card put on top of the deck is named by its identity only, as
+            # the Tleilaxu Row's event does (the payload predates OQ-145,
+            # which makes that card public: ``rules.deck_top``).
+            *(() if to_deck_top else (("instance_id", instance_id),)),
             ("player", player),
         ),
     )

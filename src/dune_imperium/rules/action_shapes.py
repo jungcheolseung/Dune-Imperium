@@ -140,7 +140,8 @@ class Target(StrEnum):
 
     NONE = "none"
     # The space an Agent goes to, with its cost option, discount and
-    # infiltration (stage B1: the card is picked first).
+    # infiltration (stage B1: the card is picked first), and the board space
+    # Kwisatz Haderach's Agent comes off (the original game).
     AGENT_SPACE = "agent_space"
     IMPERIUM_CARD = "imperium_card"
     RESERVE_CARD = "reserve_card"
@@ -177,6 +178,8 @@ class Tag(StrEnum):
     # Which completed Contract's icon, where several wait on one turn
     # (stage B3b, OQ-112 (4)).
     CONTRACT = "contract_id"
+    # Which acquired card's icon, where several wait on one turn (OQ-141).
+    ACQUIRED_CARD = "acquired_card_id"
     SOURCE = "source"
 
 
@@ -184,10 +187,12 @@ class Tag(StrEnum):
 TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.NONE: frozenset(),
     Target.AGENT_SPACE: frozenset(
-        {"cost_option", "discount", "infiltrate_post_id", "space_id"}
+        {"cost_option", "discount", "from_space", "infiltrate_post_id", "space_id"}
     ),
-    Target.IMPERIUM_CARD: frozenset({"instance_id"}),
-    Target.RESERVE_CARD: frozenset({"card_id"}),
+    # ``to_deck_top``: the card goes on top of the deck instead of the discard
+    # pile (the original game's Bypass Protocol, Recruitment Mission).
+    Target.IMPERIUM_CARD: frozenset({"instance_id", "to_deck_top"}),
+    Target.RESERVE_CARD: frozenset({"card_id", "to_deck_top"}),
     Target.TLEILAXU_CARD: frozenset({"instance_id", "to_deck_top"}),
     Target.RECLAIMED_FORCES: frozenset({"choice"}),
     Target.PERSONAL_CARD: frozenset({"card_id", "graft"}),
@@ -205,7 +210,7 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.SPACE: frozenset({"space_id"}),
     Target.TRACK_SPACE: frozenset({"space_id"}),
     Target.FACTION: frozenset(
-        {"alliance_recipient", "faction", "gained_faction", "lost_faction"}
+        {"alliance_recipient", "effect", "faction", "gained_faction", "lost_faction"}
     ),
     Target.UNITS: frozenset({"commanders", "count", "player", "zone", "zones"}),
     Target.RESOURCES: frozenset({"solari", "spice", "water"}),
@@ -357,6 +362,12 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "decline_agent_card_trash": _row(_V.DECLINE, _S.AGENT_CARD, of=_V.TRASH, tag=_BOX),
     "lose_agent_card_troop": _row(_V.LOSE_UNIT, _S.AGENT_CARD, _T.UNITS, tag=_BOX),
+    "lose_agent_card_influence": _row(
+        _V.LOSE_INFLUENCE, _S.AGENT_CARD, _T.FACTION, tag=_BOX
+    ),
+    "take_agent_card_from_discard": _row(
+        _V.TAKE, _S.AGENT_CARD, _T.PERSONAL_CARD, tag=_BOX
+    ),
     "pay_agent_card_five_solari_for_tleilaxu": _row(
         _V.PAY, _S.AGENT_CARD, variant="five_solari_for_tleilaxu", tag=_BOX
     ),
@@ -366,6 +377,7 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "pay_agent_card_specimen": _row(
         _V.PAY, _S.AGENT_CARD, variant="specimen", tag=_BOX
     ),
+    "pay_agent_card_solari": _row(_V.PAY, _S.AGENT_CARD, variant="solari", tag=_BOX),
     "pay_agent_card_spice": _row(_V.PAY, _S.AGENT_CARD, variant="spice", tag=_BOX),
     "pay_agent_card_spice_for_sandworm": _row(
         _V.PAY, _S.AGENT_CARD, variant="spice_for_sandworm", tag=_BOX
@@ -389,6 +401,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "retreat_opponent_troop": _row(
         _V.RETREAT, _S.AGENT_CARD, _T.UNITS, variant="opponent", tag=_BOX
     ),
+    # The Voice's board space (the original game; a new verb would widen the
+    # observation's effect-pick verb segment, ``len(Verb)``).
+    "block_agent_card_space": _row(_V.CHOOSE, _S.AGENT_CARD, _T.SPACE, tag=_BOX),
     "take_agent_card_combat_icon": _row(
         _V.GAIN, _S.AGENT_CARD, variant="combat_icon", tag=_BOX
     ),
@@ -521,6 +536,19 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "put_back_top_card": _row(_V.KEEP, _S.INTRIGUE, variant="deck_top"),
     "discard_top_card": _row(_V.DISCARD, _S.INTRIGUE, variant="deck_top"),
     "draw_top_card_for_solari": _row(_V.DRAW, _S.INTRIGUE, variant="deck_top"),
+    # Double Cross (the original game): the opponent whose troop in the
+    # Conflict is lost, named by the owner.
+    "choose_opponent_troop_loss": _row(
+        _V.LOSE_UNIT, _S.INTRIGUE, _T.UNITS, variant="opponent"
+    ),
+    # Bindu Suspension (the original game): pass the turn after the draw, or
+    # play it normally (OQ-117).
+    "pass_turn_intrigue": _row(_V.PASS, _S.INTRIGUE, variant="turn"),
+    "keep_turn_intrigue": _row(_V.DECLINE, _S.INTRIGUE, of=_V.PASS),
+    # Poison Snooper (the original game): draw the card it looked at, or
+    # trash it, free either way.
+    "draw_top_card": _row(_V.DRAW, _S.INTRIGUE, variant="deck_top_free"),
+    "trash_top_card": _row(_V.TRASH, _S.INTRIGUE, variant="deck_top"),
     # Cost-free choices with nothing to act on are played and confirmed
     # (OQ-113 (C), user ruling 2026-10-24): an empty deck's peek, an empty
     # Imperium Row's set-aside, an empty hand's mandatory trash.
@@ -529,6 +557,16 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "skip_intrigue_set_aside": _row(_V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.SET_ASIDE),
     "skip_intrigue_trash": _row(_V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.TRASH),
+    # Urgent Mission (the original game): the Agent that returns to its
+    # Leader, on a board space or in the Conflict, and the confirmation when
+    # there is none on the board (OQ-113 (C)).
+    "recall_agent_for_intrigue": _row(_V.RECALL_AGENT, _S.INTRIGUE, _T.SPACE),
+    "recall_conflict_agent_for_intrigue": _row(
+        _V.RECALL_AGENT, _S.INTRIGUE, variant="conflict"
+    ),
+    "skip_intrigue_recall_agent": _row(
+        _V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.RECALL_AGENT
+    ),
     "acquire_intrigue_imperium": _row(_V.ACQUIRE, _S.INTRIGUE, _T.IMPERIUM_CARD),
     "acquire_intrigue_reserve": _row(_V.ACQUIRE, _S.INTRIGUE, _T.RESERVE_CARD),
     "skip_intrigue_acquisition": _row(_V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.ACQUIRE),
@@ -618,6 +656,12 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "resolve_contract_reward_icon": _row(
         _V.RESOLVE, _S.CONTRACT, _T.OPTION, tag=Tag.CONTRACT
     ),
+    # One icon of an acquired Imperium card's acquire box, waiting on its
+    # owner's turn: an Influence with a fixed Faction, or the chosen one
+    # (OQ-141).
+    "resolve_acquire_icon": _row(
+        _V.GAIN_INFLUENCE, _S.ACQUISITION, _T.FACTION, tag=Tag.ACQUIRED_CARD
+    ),
     # Nothing in the market can be taken now: the icons wait, or fizzle
     # with an empty market (OQ-059).
     "hold_contract_icons": _row(
@@ -651,6 +695,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "advance_reveal_tleilaxu": _row(_V.ADVANCE, _S.REVEAL_CARD, variant="tleilaxu"),
     "advance_reveal_research": _row(_V.ADVANCE, _S.REVEAL_CARD, variant="research"),
     "gain_reveal_persuasion": _row(_V.GAIN, _S.REVEAL_CARD, variant="persuasion"),
+    "gain_two_reveal_persuasion": _row(
+        _V.GAIN, _S.REVEAL_CARD, variant="two_persuasion"
+    ),
+    "gain_two_reveal_swords": _row(_V.GAIN, _S.REVEAL_CARD, variant="two_swords"),
     "take_reveal_contract": _row(_V.TAKE, _S.REVEAL_CARD, variant="contract"),
     "gain_five_reveal_solari": _row(_V.GAIN, _S.REVEAL_CARD, variant="five_solari"),
     "take_high_council_from_reveal": _row(
@@ -684,6 +732,11 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.LOSE_INFLUENCE, _S.REVEAL_CARD, _T.FACTION
     ),
     "pay_reveal_spice_influence": _row(_V.PAY, _S.REVEAL_CARD, _T.FACTION),
+    "pay_reveal_solari_for_vp": _row(_V.PAY, _S.REVEAL_CARD, variant="solari_for_vp"),
+    "pay_reveal_spice_for_vp": _row(_V.PAY, _S.REVEAL_CARD, variant="spice_for_vp"),
+    "pay_reveal_solari_for_troops": _row(
+        _V.PAY, _S.REVEAL_CARD, variant="solari_for_troops"
+    ),
     "pay_reveal_water_for_sandworm": _row(
         _V.PAY, _S.REVEAL_CARD, variant="water_for_sandworm"
     ),
@@ -696,6 +749,14 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "retreat_reveal_card_troop": _row(
         _V.RETREAT, _S.REVEAL_CARD, _T.UNITS, tag=_SOURCE
+    ),
+    # Sardaukar Legion's deploy, Scout's and Chani's retreat of ``count`` troops
+    # (original game).
+    "deploy_reveal_card_troops": _row(
+        _V.DEPLOY, _S.REVEAL_CARD, _T.UNITS, variant="count", tag=_SOURCE
+    ),
+    "retreat_reveal_card_troops": _row(
+        _V.RETREAT, _S.REVEAL_CARD, _T.UNITS, variant="count", tag=_SOURCE
     ),
     "retreat_two_troops_for_reveal": _row(
         _V.RETREAT, _S.REVEAL_CARD, _T.UNITS, variant="two", tag=_SOURCE
@@ -842,6 +903,12 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
             # effect they answer (``of``).
             _V.DECLINE,
             _V.CONFIRM_EMPTY,
+            # Stage P3: the original game's Helena Richese's Manipulate
+            # (an Imperium Row card set aside), once its deck has cards.
+            _V.SET_ASIDE,
+            # Stage P3: the original game's Bindu Suspension, which may pass
+            # the turn after its draw (OQ-117).
+            _V.PASS,
         )
     },
     # A target row picks one target of the effect its seat picked.

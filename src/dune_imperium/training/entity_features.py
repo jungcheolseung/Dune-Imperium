@@ -513,6 +513,9 @@ _ORDER: Final = (
 # The vocabularies an action argument's values belong to, tried first.
 ARGUMENT_HINTS: Final[Mapping[str, tuple[str, ...]]] = {
     "space_id": ("space",),
+    # The board space Kwisatz Haderach's Agent comes off (the original game;
+    # a space's id may be a Contract's too, as ``deliver_supplies`` is).
+    "from_space": ("space",),
     "post_id": ("post",),
     "infiltrate_post_id": ("post",),
     "first_post_id": ("post",),

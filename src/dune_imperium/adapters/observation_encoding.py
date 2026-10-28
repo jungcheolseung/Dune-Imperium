@@ -42,6 +42,8 @@ from dune_imperium.content.immortality.board import (
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
 from dune_imperium.content.imperium.board import IMPERIUM_ONLY_BOARD_SPACES
 from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
+from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
+from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
 from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
 from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
 from dune_imperium.content.uprising.board import (
@@ -54,9 +56,9 @@ from dune_imperium.content.uprising.contracts import (
     CONTRACTS_BY_ID,
     contract_for_instance,
 )
-from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
+from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.intrigue import (
-    INTRIGUE_CARDS_BY_ID,
+    INTRIGUE_CARDS,
     INTRIGUE_CARDS_BY_INSTANCE,
 )
 from dune_imperium.content.uprising.leaders import FEYD_TRACK_BY_ID, LEADERS
@@ -185,7 +187,26 @@ from dune_imperium.rules.frames import FrameKind
 # whether it holds Masterstroke Factions not yet revealed, and the
 # observer's own secret Factions (docs/rules/imperium-base.md 14), appended
 # after every other segment; 0 in every Uprising game.
-OBSERVATION_VERSION: Final = 36
+# v37 (stage P3a, plan 16.1 and 16.4): the original game's 46 Imperium cards
+# (its three promos included) join the personal-card universe and its 34
+# Intrigue cards the Intrigue universe, each at its end, so every older
+# identity keeps its index and column; 0 in every Uprising game. They are
+# listed whole, transcribed or not, so the layout changes once in stage P3.
+# v38 (OQ-145, user ruling 2026-10-28, and the original game's public
+# markers), appended after every other segment; 0 in every game that has none
+# of them (an Uprising game without Immortality):
+# ``seat{k}_deck_public_top`` per relative seat -- the cards put face up on top
+# of its deck (Bypass Protocol, Recruitment Mission, a Tleilaxu card), known
+# to every seat until drawn or shuffled -- one column per personal-card
+# identity holding how many public copies lie there, as ``deck_pool`` counts
+# (a count, so the entity network weighs it like its other zones; the order
+# of a stack of two or more is not encoded, a rare case: independent review
+# 2026-10-28); ``voice_blocks`` the spaces each relative seat may
+# not send its next Agent to (The Voice); ``card_turn_flags`` per relative
+# seat Infiltrate's turn marker and Recruitment Mission's round marker. Every
+# older column keeps its offset; a v37 checkpoint migrates by segment and
+# starts them at 0.
+OBSERVATION_VERSION: Final = 38
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -195,7 +216,8 @@ PERSONAL_CARD_IDS: Final = (
         if card_id != CONTROL_THE_SPICE.card.card_id
     ),
     *(stack.card.card_id for stack in RESERVE_STACKS),
-    *IMPERIUM_CARDS_BY_ID,
+    # Uprising's own cards; the original game's follow every older identity.
+    *(entry.card.card_id for entry in IMPERIUM_CARDS),
     # Immortality: the Tleilaxu deck (its promo included) joins the
     # personal-card universe; Reclaimed Forces never enters a deck.
     *TLEILAXU_CARDS_BY_ID,
@@ -204,9 +226,14 @@ PERSONAL_CARD_IDS: Final = (
     CONTROL_THE_SPICE.card.card_id,
     # v35: the original game's Reserve cards.
     *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
+    # v37: the original game's Imperium cards and promos.
+    *(entry.card.card_id for entry in IMPERIUM_BASE_CARDS),
 )
 RESEARCH_SPACE_IDS: Final = tuple(RESEARCH_SPACES_BY_ID)
-INTRIGUE_IDS: Final = tuple(INTRIGUE_CARDS_BY_ID)
+# v37: the original game's Intrigue cards follow Uprising's.
+INTRIGUE_IDS: Final = tuple(
+    entry.card.card_id for entry in (*INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS)
+)
 CONTRACT_IDS: Final = tuple(CONTRACTS_BY_ID)
 # The segments with one column per CONTRACT_IDS identity, in that order
 # (checkpoint migration re-links them by identity across versions).
@@ -237,15 +264,18 @@ LEADER_IDS: Final = tuple(
 SPACE_IDS: Final = tuple(
     space.space_id for space in (*BOARD_SPACES, *IMPERIUM_ONLY_BOARD_SPACES)
 )
-# The identities v35 added: the original game's own spaces, Conflicts,
-# Leaders and Reserve cards (its Arrakeen, Imperial Basin and Secrets, and
-# its starting deck, are Uprising's).
+# The identities v35 and v37 added: the original game's own spaces,
+# Conflicts, Leaders, Reserve cards, Imperium and Intrigue cards (its
+# Arrakeen, Imperial Basin and Secrets, and its starting deck, are
+# Uprising's).
 IMPERIUM_IDENTITIES: Final = frozenset(
     {
         *(space.space_id for space in IMPERIUM_ONLY_BOARD_SPACES),
         *(conflict.card.card_id for conflict in IMPERIUM_CONFLICTS),
         *(leader.leader_id for leader in IMPERIUM_LEADERS),
         *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
+        *(entry.card.card_id for entry in IMPERIUM_BASE_CARDS),
+        *(entry.card.card_id for entry in IMPERIUM_INTRIGUE_CARDS),
     }
 )
 POST_IDS: Final = tuple(post.post_id for post in OBSERVATION_POSTS)
@@ -504,6 +534,15 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             # unrevealed secret; the observer's own secret Factions.
             ("masterstroke_secret", _SEATS),
             ("private_masterstroke", len(FACTION_IDS)),
+            # v38: per relative seat, the public deck-top cards counted by
+            # identity; the spaces each relative seat is barred from; its
+            # Infiltrate and Recruitment Mission markers.
+            *(
+                (f"seat{seat}_deck_public_top", len(PERSONAL_CARD_IDS))
+                for seat in range(_SEATS)
+            ),
+            ("voice_blocks", _SEATS * len(SPACE_IDS)),
+            ("card_turn_flags", _SEATS * 2),
         )
     )
     return tuple(lengths)
@@ -741,6 +780,19 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     offset = _OFFSET["private_masterstroke"]
     for faction in view.private.masterstroke_factions:
         values[offset + _FACTION_INDEX[faction]] = 1
+    for seat_offset in range(_SEATS):
+        seat_view = view.players[(observer + seat_offset) % _SEATS]
+        offset = _OFFSET[f"seat{seat_offset}_deck_public_top"]
+        for instance_id in seat_view.deck_public_top:
+            values[offset + _personal_identity_index(instance_id)] += 1
+    for seat_view in view.players:
+        row = relative(seat_view.player) - 1
+        offset = _OFFSET["voice_blocks"] + row * len(SPACE_IDS)
+        for space_id in seat_view.voice_blocked_space_ids:
+            values[offset + _SPACE_INDEX[space_id]] = 1
+        offset = _OFFSET["card_turn_flags"] + row * 2
+        values[offset] = int(seat_view.enemy_agents_ignored_turn)
+        values[offset + 1] = int(seat_view.acquire_to_deck_top_round)
     offset = _OFFSET["shortfall"]
     for seat_view in view.players:
         index = offset + (relative(seat_view.player) - 1) * 2

@@ -40,6 +40,23 @@ class InfluenceAtLeast:
 
 
 @dataclass(frozen=True, slots=True)
+class InfluenceAtLeastOnTracks:
+    """The player has at least ``influence`` Influence on at least ``tracks``
+    of the four Faction tracks (Plans Within Plans: "3 Influence (or more)
+    on three Faction tracks", imperium-base.md 13.2: Influence 3 is the space
+    just above the Victory Point space)."""
+
+    influence: int
+    tracks: int
+
+    def __post_init__(self) -> None:
+        if self.influence < 1:
+            raise ValueError("Influence condition amount must be positive")
+        if not 1 <= self.tracks <= len(Faction):
+            raise ValueError("Influence tracks must be between one and the four")
+
+
+@dataclass(frozen=True, slots=True)
 class HasHighCouncil:
     """The player holds a High Council seat."""
 
@@ -154,7 +171,8 @@ class SpiceMustFlowCardsAtLeast:
     """The player owns at least ``count`` copies of The Spice Must Flow.
 
     Copies in the deck, hand, discard pile and play area count; a trashed
-    copy has left the game.
+    copy has left the game. Uprising's card and the original game's both
+    count.
     """
 
     count: int = 2
@@ -162,6 +180,17 @@ class SpiceMustFlowCardsAtLeast:
     def __post_init__(self) -> None:
         if self.count < 1:
             raise ValueError("The Spice Must Flow count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class MoreSpiceMustFlowThanEachOpponent:
+    """The player owns more copies of The Spice Must Flow than each opponent.
+
+    Each opponent is compared separately and an opponent with as many
+    copies fails the condition (Corner the Market, imperium-base.md 13.2,
+    ``[FAQ p. 2]``). The copies counted are those of
+    ``SpiceMustFlowCardsAtLeast`` (OQ-123).
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -416,6 +445,14 @@ class OpponentSandwormInConflict:
 
 
 @dataclass(frozen=True, slots=True)
+class OpponentHasTroopInConflict:
+    """An opponent has a troop in the Conflict: "Double Cross | 상대 하나
+    이상이 Conflict에 troop이 있어야 낸다" `[FAQ p. 2]` (imperium-base.md
+    13.2), an official condition of playing the card. A Sardaukar Commander
+    is a troop for a card effect [Bloodlines p. 4] (OQ-036 (a))."""
+
+
+@dataclass(frozen=True, slots=True)
 class StrengthInConflictAtLeast:
     """The player has ``amount`` or more strength in the Conflict ("If you
     have 6 or more strength in the Conflict" [Gurney Halleck card])."""
@@ -459,6 +496,7 @@ class AllConditions:
 
 type Condition = (
     InfluenceAtLeast
+    | InfluenceAtLeastOnTracks
     | HasHighCouncil
     | HasAlliance
     | InNavigationSlot
@@ -469,6 +507,7 @@ type Condition = (
     | GainedSpiceThisTurn
     | UnitsDeployedThisTurnAtLeast
     | SpiceMustFlowCardsAtLeast
+    | MoreSpiceMustFlowThanEachOpponent
     | OpponentAllianceInfluenceAtLeast
     | WaterAtLeast
     | CommandersInConflictAtLeast
@@ -501,6 +540,7 @@ type Condition = (
     | StrengthInConflictAtLeast
     | AgentOnSpaceWithIcon
     | OpponentSandwormInConflict
+    | OpponentHasTroopInConflict
 )
 
 
@@ -842,6 +882,25 @@ class DrawPersonalCards:
 
 
 @dataclass(frozen=True, slots=True)
+class ShuffleDiscardIntoDeck:
+    """Refocus (the original game): shuffle the discard pile into the deck,
+    then draw ``draw`` cards "Shuffle your discard pile into your deck, then:
+    [draw 1]" [Refocus card, app text].
+
+    The deck is shuffled along with the discard pile, so an empty discard
+    pile still shuffles the deck [FAQ p. 3]; with both empty there is nothing
+    to shuffle or draw. Nobody learns an order: the shuffle is a chance step
+    (docs/rules/imperium-base.md 14).
+    """
+
+    draw: int = 1
+
+    def __post_init__(self) -> None:
+        if self.draw < 1:
+            raise ValueError("a shuffle then draws at least one card")
+
+
+@dataclass(frozen=True, slots=True)
 class DrawIntrigueCards:
     """Draw from the shared Intrigue deck, reshuffling if required."""
 
@@ -951,12 +1010,16 @@ class SummonSandworm:
 
 @dataclass(frozen=True, slots=True)
 class DeployFromGarrison:
-    """Deploy up to ``up_to`` garrison troops to the Conflict (player choice)."""
+    """Deploy up to ``up_to`` garrison troops to the Conflict (player choice).
 
-    up_to: int
+    ``up_to=None`` is a printed "any number" [Rapid Mobilization card]: as
+    for a retreat, zero is a choice too [FAQ p. 3].
+    """
+
+    up_to: int | None
 
     def __post_init__(self) -> None:
-        if self.up_to < 1:
+        if self.up_to is not None and self.up_to < 1:
             raise ValueError("deployment limit must be positive")
 
 
@@ -1044,19 +1107,26 @@ class AcquireCardUpTo:
     """Acquire one Imperium Row or Reserve card costing at most ``max_cost``.
 
     No Persuasion is spent; the printed cost cap limits the choice among the
-    five Row cards and the Reserve stacks [Main p. 13], plus the owner's own
-    Manipulate set-aside card at its printed cost [FAQ p. 3]. The card lands
+    five Row cards and the Reserve stacks [Main p. 13] (OQ-125, user ruling
+    2026-10-23: Arrakis Liaison and The Spice Must Flow, never Foldspace
+    [FAQ p. 2]), plus the owner's own Manipulate set-aside card at its
+    printed cost [FAQ p. 3]. The card lands
     in the owner's discard pile [Main pp. 6, 13] unless ``to_hand_if`` holds
     when the acquisition resolves, in which case the card text puts it in
-    hand.
+    hand, or ``to_deck_top`` says the card goes on top of the owner's deck
+    (Bypass Protocol's "[2 spice] -> Acquire a card that costs [Persuasion 5]
+    or less to the top of your deck", docs/rules/open-questions.md OQ-125).
     """
 
     max_cost: int
     to_hand_if: Condition | None = None
+    to_deck_top: bool = False
 
     def __post_init__(self) -> None:
         if self.max_cost < 1:
             raise ValueError("acquisition cost cap must be positive")
+        if self.to_deck_top and self.to_hand_if is not None:
+            raise ValueError("a card goes to the deck top or to the hand, not both")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1106,6 +1176,19 @@ class IgnoreInfluenceRequirementsThisTurn:
 class GrantCombatDeployment:
     """The Combat icon: this turn the owner may deploy to the Conflict as
     though an Agent had been sent to a Combat space [Bloodlines pp. 5, 12]."""
+
+
+@dataclass(frozen=True, slots=True)
+class DeployTheseTroops:
+    """"You may deploy these troops to the Conflict" after a recruit in the
+    same line (the original game's Gurney Halleck Reveal box, Reinforcements:
+    "If it's your Reveal turn, you may deploy any of these troops"). In a
+    Reveal turn the troops the line recruited may be deployed, any number of
+    them (Gurney: "Yes. It's indeed 0, 1, or 2.", the designer), and a troop
+    it owed for an empty supply once it is refilled later in the turn
+    (OQ-140, ``combat_deployment.recruit_room``); other effects' recruits do
+    not. In an Agent turn it adds nothing, as troops recruited then deploy
+    by the Combat space rule [DI p. 10] [FAQ p. 4]."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1164,7 +1247,14 @@ class GainSolariPerUnitType:
 @dataclass(frozen=True, slots=True)
 class PeekTopCard:
     """Controlled (Twisted Intrigue): look at the top card of the deck and
-    put it back, discard it, or pay one Solari to draw it (player choice)."""
+    put it back, discard it, or pay one Solari to draw it (player choice).
+
+    ``draw_or_trash``: Poison Snooper (the original game), "Look at the top
+    card of your deck. Draw or trash it." [Poison Snooper card, app text]:
+    the look is the same, but the card is drawn (free) or trashed, never put
+    back or discarded; it is mandatory once the card is played."""
+
+    draw_or_trash: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1184,7 +1274,14 @@ class GrantAgentIconsThisTurn:
 @dataclass(frozen=True, slots=True)
 class PassTurn:
     """Withdrawn (Twisted Intrigue): "At the start of your turn: pass your
-    turn" — the option is playable only from the turn frame."""
+    turn" — the option is playable only from the turn frame.
+
+    ``optional``: Bindu Suspension (the original game), "[draw 1]. You may
+    pass your turn." [Bindu Suspension card, app text] -- after the draw the
+    owner chooses to pass or to play the turn normally (OQ-117), so it is a
+    choice of the card's frame, taken after the rest of the line resolved."""
+
+    optional: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1256,6 +1353,16 @@ class RevealPersuasionThisRound:
 
 
 @dataclass(frozen=True, slots=True)
+class AcquireToDeckTopThisRound:
+    """You may put cards you acquire on top of your deck, during the owner's
+    Reveal turn this round (Recruitment Mission): "for each card acquired the
+    owner chooses top of deck or discard pile" [FAQ p. 3]
+    (docs/rules/imperium-base.md 13.2). Not retroactive: cards acquired
+    before the card is played are unaffected (13.3). The whole card waits for
+    the owner's Reveal turn [FAQ p. 2]."""
+
+
+@dataclass(frozen=True, slots=True)
 class ReturnThisCardToHand:
     """Return this card from play to its owner's hand, face up so far so it
     stays known (OQ-010) [Weirding Woman card]. Only a card counted in play
@@ -1293,16 +1400,155 @@ class RecallAgent:
 
 
 @dataclass(frozen=True, slots=True)
+class RecallYourAgent:
+    """Recall one of the player's own Agents ("Recall one of your Agents"
+    [Urgent Mission card, app text]): any of them, the one sent this turn
+    included -- the exclusion belongs to Uprising's Recall Agent icon [Main
+    p. 20], not to this card (docs/rules/imperium-base.md 13.3).
+
+    The owner names a board space with its Agent, or the Conflict for an
+    Agent Into the Fray left there (OQ-068); the Agent returns to its Leader
+    (``agents_available`` + 1). The Mentat is one of the seat's Agents, and
+    the engine does not tell its piece from the others (OQ-139, user ruling
+    (가) 2026-10-28). Without an Agent on the board the effect fizzles."""
+
+
+@dataclass(frozen=True, slots=True)
 class EachOpponentDiscardsCard:
     """Each opponent discards a card [Covert Operation card]: every opponent
-    holding a card picks one, clockwise from the next seat."""
+    holding a card picks one, clockwise from the next seat.
+
+    ``count``: "each opponent discards two cards" [Reverend Mother Mohiam
+    card] -- each opponent picks that many, as many as the hand holds
+    (OQ-118), one opponent after the other. None is one card, so a record
+    printed with one (Covert Operation) carries no count (an entity feature
+    column only the original game's card fills).
+    """
+
+    count: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.count is not None and self.count < 2:
+            raise ValueError("a one-card discard carries no count")
+
+    @property
+    def cards(self) -> int:
+        """How many cards each opponent discards."""
+
+        return self.count or 1
+
+
+@dataclass(frozen=True, slots=True)
+class OpponentLosesTroop:
+    """An opponent of the owner's choice loses one troop in the Conflict
+    ("An opponent of your choice loses one troop in the Conflict" [Double
+    Cross card, app text]; the troop goes back to its supply [DI p. 16]).
+
+    The owner names the opponent -- only one with a troop in the Conflict
+    (``OpponentHasTroopInConflict``, the card's official condition) -- and
+    that seat chooses the troop it loses in the same window Holy War opens,
+    limited to the Conflict (OQ-036 (a): the loser chooses the unit, a
+    Sardaukar Commander being a troop for a card effect [Bloodlines p. 4]).
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class DeployFromSupply:
+    """Deploy ``count`` troops from the owner's supply to the Conflict
+    ("you deploy one troop from your supply to the Conflict" [Double Cross
+    card, app text]): a deployment, not a recruit, so it needs no Combat icon.
+    With an empty supply nothing deploys [FAQ p. 2] and the shortfall is
+    recorded as Suspensor Suits' is (OQ-042 ruling (2): "Double Cross ...
+    같은 기록을 쓴다"); while deployment is banned (Emperor of the Known
+    Universe, [Main p. 17]) nothing deploys.
+    """
+
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("a deployment moves at least one troop")
 
 
 @dataclass(frozen=True, slots=True)
 class EachOpponentLosesTroop:
     """Each opponent loses one troop [Holy War card]: every opponent is
     asked, clockwise from the next seat, even with nothing to lose (OQ-036
-    (a))."""
+    (a)).
+
+    ``garrison_only``: "Each opponent loses one garrisoned troop" [Gun
+    Thopter card] -- the loser's choice is limited to its garrison; one with
+    no garrisoned troop is unaffected [FAQ p. 2] (and still confirms it,
+    OQ-036 (a)).
+    """
+
+    garrison_only: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class EachOpponentDiscardsOrLosesDeployedTroop:
+    """Each opponent chooses: discard a card -OR- lose a deployed troop
+    ("Each opponent chooses: Discard a card -OR- Lose a deployed troop" [Test
+    of Humanity card]).
+
+    Every opponent is asked, clockwise from the next seat; each must choose
+    what it can -- the discard needs a card in hand, the loss a troop in the
+    Conflict ("손이 비면 버리기 불가, 배치한 troop이 없으면 잃기 불가"
+    [DI p. 13], imperium-base.md 13.1) -- and the discarder picks the card.
+    One with neither is unaffected and confirms it (OQ-138). A lost troop
+    goes to the supply [DI p. 16]. A Sardaukar Commander in the Conflict is a
+    deployed troop too [Bloodlines p. 4] (OQ-115), so with Bloodlines the
+    loss may name one.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class TakeCardFromDiscard:
+    """Put a card of ``faction``'s affiliation of the player's choice from
+    their own discard pile into their hand ("Draw a Bene Gesserit card from
+    your discard pile" [Other Memory card]).
+
+    Only a card there can be taken: the choice is not offered with none
+    (imperium-base.md 15). The pile is face up, so the card reaches the hand
+    by a public path and every seat knows it (imperium-base.md 14, OQ-010).
+    """
+
+    faction: Faction
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.faction, Faction):
+            raise TypeError("a discard-pile card is taken by a Faction")
+
+
+@dataclass(frozen=True, slots=True)
+class BlockChosenSpaceForOpponentsNextAgent:
+    """Choose any board space; no opponent may send their next Agent there
+    this round ("Opponents can't send their next Agents there this round"
+    [The Voice card]).
+
+    The space is the owner's mandatory choice among every board space on the
+    table, occupied or not, the owner's own included (imperium-base.md 15).
+    Each opponent's block lasts until that opponent's next Agent placement of
+    the round (OQ-116, 2026-10-22 user ruling B): a turn passed without an
+    Agent does not use it up, and the end of the round clears it. It is no
+    Agent, so nothing that lets a seat ignore occupying Agents beats it
+    (``PlayerState.voice_blocked_space_ids``).
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class IgnoreEnemyAgentsNextPlacement:
+    """Enemy Agents don't block the owner's next Agent at board spaces this
+    turn ("Enemy Agents don't block your next Agent at board spaces this
+    turn" [Infiltrate card, app text]).
+
+    Every opponent Agent -- an opponent's Mentat is one -- is treated as not
+    occupying the space, as Helena's Eyes Everywhere does; the owner's own
+    Agent, Influence requirements, once-per-game limits, costs and The Voice
+    still stop the placement. Set for this turn
+    (``PlayerState.enemy_agents_ignored_turn``) and spent by the turn's
+    Agent placement.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -1586,11 +1832,65 @@ class GainSpiceWithHelixBonus:
             raise ValueError("the Helix amount must beat the plain amount")
 
 
+@dataclass(frozen=True, slots=True)
+class DoubleBaseHarvestSpice:
+    """Double the base (not bonus) spice the Agent harvests this turn
+    ("Double the base (not bonus) spice you harvest with this Agent"
+    [Carryall card]).
+
+    A modifier of the Maker space's harvest, not a step of its own: the box
+    never opens (``AbilityMark.AUTOMATIC``), the harvest reads it. The base
+    is the spice the space prints beside its bonus -- 1, 2 or 3 at Imperial
+    Basin, Hagga Basin and The Great Flat [FAQ p. 1]; nothing at a space that
+    is not a harvest (Secure Contract, Sell Melange, Imperial Basin's control
+    bonus).
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class DoubleBonusHarvestSpice:
+    """Double the bonus spice the Agent harvests this turn ("Double the bonus
+    spice you harvest with this Agent" [Thumper card, app text]).
+
+    A modifier of the Maker space's harvest, not a step of its own, like
+    ``DoubleBaseHarvestSpice``: the box never opens (``AbilityMark.AUTOMATIC``),
+    the harvest reads it. The bonus is the spice the space has gathered
+    [DI p. 13]; the base spice does not double, the extra comes from the bank,
+    and nothing doubles at a space that is not a harvest. Countess Ariana's one
+    less comes off the whole harvest once, after the doubling
+    (docs/rules/imperium-base.md 16).
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class ReserveCostDiscount:
+    """Every copy of the named Reserve card acquired during this Reveal turn
+    costs ``amount`` less ("The Spice Must Flow costs {Persuasion_3} less to
+    acquire this turn" [Guild Bankers card]).
+
+    ``card_ids`` lists the printings the sentence names: the Reserve card's
+    id in each game ("the_spice_must_flow", the original game's
+    "imperium_the_spice_must_flow"). It holds for each copy, not the first
+    only ("마다 할인", [FAQ p. 2]); it is read as the card's cost anywhere
+    (``reserve_cost``), so the cost check and the payment agree.
+    """
+
+    card_ids: tuple[str, ...]
+    amount: int
+
+    def __post_init__(self) -> None:
+        if not self.card_ids:
+            raise ValueError("a Reserve discount names a Reserve card")
+        if self.amount < 1:
+            raise ValueError("a Reserve discount must be positive")
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
     | RecruitTroops
     | DrawPersonalCards
+    | ShuffleDiscardIntoDeck
     | DrawIntrigueCards
     | GainCombatStrength
     | GainInfluence
@@ -1607,6 +1907,7 @@ type Reward = (
     | IgnoreInfluenceRequirementsThisTurn
     | GrantAgentIconThisTurn
     | GrantCombatDeployment
+    | DeployTheseTroops
     | RedirectSpiesOnTurnSpace
     | RevealContractsTakeOne
     | GainSolariPerUnitType
@@ -1621,6 +1922,7 @@ type Reward = (
     | GenerateSpecimens
     | AcquireTleilaxuCard
     | RevealPersuasionThisRound
+    | AcquireToDeckTopThisRound
     | ReturnThisCardToHand
     | BoostNextBeneGesseritCard
     | DrawPerSandwormInConflict
@@ -1631,8 +1933,15 @@ type Reward = (
     | AcquireCardForSolari
     | TrashThisCard
     | RecallAgent
+    | RecallYourAgent
     | EachOpponentDiscardsCard
     | EachOpponentLosesTroop
+    | EachOpponentDiscardsOrLosesDeployedTroop
+    | OpponentLosesTroop
+    | DeployFromSupply
+    | TakeCardFromDiscard
+    | BlockChosenSpaceForOpponentsNextAgent
+    | IgnoreEnemyAgentsNextPlacement
     | OpponentsMoveSpiesFromVisitedSpace
     | ReturnOtherGraftedCardAtRevealStart
     | GainSolariPerPartnerAgentIcon
@@ -1655,6 +1964,9 @@ type Reward = (
     | AcquireReserveCardToHand
     | GainLowestInfluence
     | GainSpiceWithHelixBonus
+    | ReserveCostDiscount
+    | DoubleBaseHarvestSpice
+    | DoubleBonusHarvestSpice
 )
 
 
@@ -1823,7 +2135,11 @@ class IntrigueOption:
     """One way to play an Intrigue card (the halves of an ``—OR—`` card).
 
     An option with a ``trigger`` does nothing when played; the card waits
-    face up and its sections resolve each time the trigger fires.
+    face up and its sections resolve each time the trigger fires. Two
+    triggers name the moment the card is *played* instead, so the card is
+    played from the hand then and resolves at once (``OnTroopsLostAtConflictEnd``,
+    Harvest Cells' Conflict-end window; ``OnConflictWon``, a winning Intrigue
+    in the winner's reward window, which may carry a cost and a condition).
     """
 
     timing: IntrigueTiming
@@ -1845,17 +2161,25 @@ class IntrigueOption:
         if not self.sections:
             raise ValueError("an Intrigue option needs at least one section")
         if self.trigger is not None:
-            # A Conflict-end loss trigger is played during Combat (Harvest
-            # Cells); every other trigger card is a Plot card.
+            # A Conflict-end loss trigger and a Conflict win are played during
+            # Combat (Harvest Cells; To the Victor..., Demand Respect); every
+            # other trigger card is a Plot card.
             expected = (
                 IntrigueTiming.COMBAT
-                if isinstance(self.trigger, OnTroopsLostAtConflictEnd)
+                if isinstance(self.trigger, OnTroopsLostAtConflictEnd | OnConflictWon)
                 else IntrigueTiming.PLOT
             )
             if self.timing is not expected:
-                raise ValueError("triggered Intrigue options must use Plot timing")
+                raise ValueError(
+                    f"this trigger's Intrigue options must use {expected.value} timing"
+                )
             for section in self.sections:
-                if section.costs or section.condition is not None:
+                # A winning Intrigue is played from the hand once the win has
+                # happened, so it may carry the cost and the condition its
+                # play needs [FAQ p. 2]; a card waiting face up may not.
+                if (section.costs or section.condition is not None) and not isinstance(
+                    self.trigger, OnConflictWon
+                ):
                     raise ValueError(
                         "triggered Intrigue sections must be free and unconditional"
                     )

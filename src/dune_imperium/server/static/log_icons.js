@@ -71,6 +71,7 @@ const LOG_EVENT_ICONS = {
   cards_drawn: "draw",
   research_drew_card: "draw",
   top_card_drawn: "draw",
+  top_card_drawn_free: "draw",
   card_discarded: "discard",
   top_card_discarded: "discard",
   agent_card_trashed_for_vp: "log:card_trashed",

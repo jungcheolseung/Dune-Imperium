@@ -49,7 +49,10 @@ the top card's picture stands right above its three buttons in the decision
 panel (hover shows it large, a click pins it), each button names the card in
 ko and en, the strip beside the Intrigue cards is gone, the card is drawn
 nowhere else, a logged step of the choice names no card and the action log is
-unchanged; without Glowglobes the list's note names Controlled. It also
+unchanged; without Glowglobes the list's note names Controlled. Cards put face up
+on top of a deck (OQ-145, user ruling 2026-10-28) are public: each seat panel
+lists its own top first, and the owner's deck list marks a public top card
+"Top" with a note of its own. It also
 opens the deck list and a pile list while a card or a leader popover is
 pinned: the pinned popover gives way (its pin used to carry over to the
 list), and the list stays open through a foreign render, drawn again.
@@ -99,6 +102,12 @@ TEXT = {
             "맨 위로 표시한 카드는 {source} 효과로 확인한 카드덱 맨 위 카드입니다."
         ),
         "glowglobes": "발광구",
+        "public_top_note": (
+            "맨 위로 표시한 카드는 앞면으로 카드덱 맨 위에 놓아 모두가 아는 카드입니다."
+        ),
+        "public_top_label": "카드덱 맨 위 (공개)",
+        "mentat_at": "멘타트: {where}",
+        "mentat_leader": "지도자 위",
         "strip_badge": "덱 맨 위",
         # Controlled's buttons, naming the card (icons read as their words).
         "choices": {
@@ -128,6 +137,13 @@ TEXT = {
             "The card marked Top is the top card of the deck, seen through {source}."
         ),
         "glowglobes": "Glowglobes",
+        "public_top_note": (
+            "The card marked Top was put face up on top of the deck, so everyone"
+            " knows it."
+        ),
+        "public_top_label": "Top of deck (public)",
+        "mentat_at": "Mentat: {where}",
+        "mentat_leader": "on the Leader",
         "strip_badge": "Top of deck",
         "choices": {
             "put_back_top_card": "Leave top card of deck ({card}) on top",
@@ -848,6 +864,51 @@ TOP_VARIANT_JS = """([glowglobes, peeked, controlled]) => {
   render();
 }"""
 
+# OQ-145: the kept view with cards put face up on top of decks -- the seat's
+# own ``top`` and two cards on the next seat's -- with no peek.
+PUBLIC_TOP_JS = """([top, other]) => {
+  state.view = structuredClone(window.__deckTop.view);
+  const own = state.view.players[state.view.player];
+  own.tech_ids = (own.tech_ids || []).filter((id) => id !== 'glowglobes');
+  own.leader_id = own.leader_id === 'paul_atreides' ? 'glossu_rabban' : own.leader_id;
+  state.view.private.peeked_card_id = '';
+  for (const seat of state.view.players) seat.deck_public_top = [];
+  own.deck_public_top = [top];
+  state.view.players[(state.view.player + 1) % 4].deck_public_top = other;
+  state.actions = window.__deckTop.actions;
+  render();
+}"""
+
+# Each seat panel's public deck-top line: its label and its cards' names.
+PUBLIC_TOP_LINES_JS = """() => [...document.querySelectorAll('article.seat')]
+  .map((card) => {
+    const line = card.querySelector('.cardline.deck-public-top');
+    const text = (node) => node.textContent.trim();
+    return { seat: Number(card.dataset.seat),
+             label: line ? text(line.querySelector('strong')) : null,
+             cards: line ? [...line.children].slice(1).map(text) : [] };
+  })"""
+
+# The original game's Mentat on the kept view: the seat holds it with
+# ``placed`` Agent locations (Swordmaster off); the other seats hold none.
+MENTAT_JS = """([placed]) => {
+  state.view = structuredClone(window.__deckTop.view);
+  for (const seat of state.view.players) seat.mentat = false;
+  const own = state.view.players[state.view.player];
+  own.mentat = true;
+  own.swordmaster_acquired = false;
+  own.agent_locations = placed;
+  state.actions = window.__deckTop.actions;
+  render();
+}"""
+
+# Each seat panel's status flags, as text.
+SEAT_FLAGS_JS = """() => [...document.querySelectorAll('article.seat')]
+  .map((card) => {
+    const detail = card.querySelector('.seat-detail');
+    return { seat: Number(card.dataset.seat), text: detail ? detail.innerText : '' };
+  })"""
+
 TOP_RESTORE_JS = """() => {
   state.view = window.__deckTop.real;
   state.actions = window.__deckTop.actions;
@@ -993,6 +1054,88 @@ def check_top_mark(page: Any, lang: str) -> None:
         shown["notes"] == [words["note"], words["top_note"].format(source=controlled)],
         f"{label} without Glowglobes the note names Controlled",
         shown["notes"],
+    )
+    page.evaluate(TOP_RESTORE_JS)
+
+
+def check_public_top(page: Any, lang: str) -> None:
+    """OQ-145 (user ruling 2026-10-28): a card put face up on top of a deck is
+    known to every seat. Each seat panel lists its public deck-top cards top
+    first; the owner's deck list marks a public top card "Top" with its own
+    note, as it does a card seen through Glowglobes."""
+
+    words = TEXT[lang]
+    label = f"[C {lang}]"
+    group = page.evaluate(TOP_SETUP_JS)
+    if not check.ok(group is not None, f"{label} the deck holds copies of a card"):
+        return
+    top = group["top"]
+    deck = page.evaluate("window.__deckTop.view.private.deck_cards")
+    other = [card for card in deck if card != top][:2]
+    page.evaluate(PUBLIC_TOP_JS, [top, other])
+    me = page.evaluate("state.view.player")
+    lines = {line["seat"]: line for line in page.evaluate(PUBLIC_TOP_LINES_JS)}
+    names = page.evaluate("(ids) => ids.map((id) => nameOf(id))", [top, *other])
+    check.ok(
+        lines[me]["label"] == words["public_top_label"]
+        and lines[me]["cards"] == names[:1]
+        and lines[(me + 1) % 4]["label"] == words["public_top_label"]
+        and lines[(me + 1) % 4]["cards"] == names[1:]
+        and all(
+            lines[seat]["label"] is None
+            for seat in lines
+            if seat not in (me, (me + 1) % 4)
+        ),
+        f"{label} each seat panel lists its public deck-top cards, top first,"
+        " and no other seat shows the line",
+        lines,
+    )
+    check.ok(
+        deck_stat_title(page) == words["deck_button_top"],
+        f"{label} with a public top the deck count's title says the top is marked",
+        deck_stat_title(page),
+    )
+    marked = open_deck_list(page, "click")
+    page.keyboard.press("Escape")
+    tops = [card for card in marked["cards"] if card["top"]]
+    check.ok(
+        [card["instance"] for card in tops] == [top]
+        and marked["notes"] == [words["note"], words["public_top_note"]],
+        f"{label} the owner's deck list marks the public top card with its own note",
+        (tops, marked["notes"]),
+    )
+    page.screenshot(path=str(SHOTS / f"public_top_{lang}.png"))
+    page.evaluate(TOP_RESTORE_JS)
+
+
+def check_mentat_place(page: Any, lang: str) -> None:
+    """OQ-139 (가), user ruling 2026-10-28: the screen puts the Mentat by rule
+    -- the last piece a holding seat placed beyond its own two Agents, or its
+    Leader when there is none -- in that seat's panel only."""
+
+    words = TEXT[lang]
+    label = f"[C {lang}]"
+    if page.evaluate(TOP_SETUP_JS) is None:
+        return
+    me = page.evaluate("state.view.player")
+    leader_line = words["mentat_at"].format(where=words["mentat_leader"])
+    page.evaluate(MENTAT_JS, [["carthag", "arrakeen"]])
+    flags = {f["seat"]: f["text"] for f in page.evaluate(SEAT_FLAGS_JS)}
+    check.ok(
+        leader_line in flags[me]
+        and all(
+            words["mentat_at"].split(":")[0] not in flags[s] for s in flags if s != me
+        ),
+        f"{label} with only its own two Agents placed the Mentat is on the Leader",
+        flags[me],
+    )
+    page.evaluate(MENTAT_JS, [["carthag", "arrakeen", "imperial_basin"]])
+    name = page.evaluate("spaceName('imperial_basin')")
+    flags = {f["seat"]: f["text"] for f in page.evaluate(SEAT_FLAGS_JS)}
+    check.ok(
+        words["mentat_at"].format(where=name) in flags[me],
+        f"{label} the third piece placed is drawn as the Mentat ({name})",
+        flags[me],
     )
     page.evaluate(TOP_RESTORE_JS)
 
@@ -1166,6 +1309,8 @@ def scenario_c(base: str, browser: Any) -> None:
             page.click("#language-toggle")
             page.wait_for_function(f"TERM_LANGUAGE === '{lang}'")
         check_top_mark(page, lang)
+        check_public_top(page, lang)
+        check_mentat_place(page, lang)
     check.ok(
         rec.count("POST", "/actions") == posts, "[C] the view edits post no action"
     )

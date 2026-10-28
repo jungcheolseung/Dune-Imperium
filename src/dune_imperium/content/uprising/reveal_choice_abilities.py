@@ -37,6 +37,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Condition,
     Cost,
     DeployFromGarrison,
+    DeployTheseTroops,
     DrawIntrigueCards,
     EffectSection,
     FactionBond,
@@ -53,6 +54,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     PrintedRevealValue,
     RecallSpy,
+    RecruitTroops,
     RetreatTroops,
     RevealPersuasion,
     RevealSwords,
@@ -207,6 +209,74 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                 mark=_OPTIONAL,
                 structure=AbilityStructure.ONE_OF,
             ),
+            # Gun Thopter (original game): "You may deploy a troop from your
+            # garrison to the Conflict" -- the deploy line of Shadout Mapes'
+            # choice alone; a Commander is a troop [Bloodlines p. 4].
+            _CHOICE.MAY_DEPLOY_ONE_TROOP: _choice(
+                _line(DeployFromGarrison(1)), mark=_OPTIONAL
+            ),
+            # Opulence (original game): "[6 Solari] -> [1 Victory Point]" -- an
+            # optional arrow ("You do not have to pay such a cost on a card"
+            # [Main p. 20]), paid once [FAQ p. 3].
+            _CHOICE.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: _choice(
+                _line(GainVictoryPoints(1), costs=(PayResources(solari=6),)),
+                mark=_OPTIONAL,
+            ),
+            # Guild Ambassador (original game): "Spacing Guild Alliance: [3
+            # spice] -> [1 Victory Point]" -- an optional arrow paid once, the
+            # Alliance judged whenever its row is asked (OQ-028).
+            _CHOICE.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE: (
+                _choice(
+                    _line(
+                        GainVictoryPoints(1),
+                        costs=(PayResources(spice=3),),
+                        condition=HasAlliance(Faction.SPACING_GUILD),
+                    ),
+                    mark=_OPTIONAL,
+                )
+            ),
+            # Gurney Halleck (original game): "[3 Solari] -> [2 troops], you may
+            # deploy these troops to the Conflict" -- an optional arrow paid once;
+            # in a Reveal turn the two recruits may deploy ("these troops" only,
+            # no garrison share).
+            _CHOICE.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY: _choice(
+                _line(
+                    RecruitTroops(2),
+                    DeployTheseTroops(),
+                    costs=(PayResources(solari=3),),
+                ),
+                mark=_OPTIONAL,
+            ),
+            # Sardaukar Legion (original game): "Deploy up to three troops from
+            # your garrison to the Conflict" -- a count the owner picks, none
+            # included ("up to" [FAQ p. 3]); troops only (a Commander's share
+            # is for the combinations stage, P7).
+            _CHOICE.MAY_DEPLOY_UP_TO_THREE_TROOPS: _choice(
+                _line(DeployFromGarrison(3)), mark=_OPTIONAL
+            ),
+            # Scout (original game): "Retreat up to two of your troops" to the
+            # garrison [DI p. 16], none included.
+            _CHOICE.MAY_RETREAT_UP_TO_TWO_TROOPS: _choice(
+                _line(RetreatTroops(0, 2)), mark=_OPTIONAL
+            ),
+            # Chani (original game): "Retreat any number of your troops", none
+            # included [FAQ p. 3].
+            _CHOICE.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: _choice(
+                _line(RetreatTroops(0, None)), mark=_OPTIONAL
+            ),
+            # Duncan, Loyal Blade (original game promo): "Trash this card -> Deploy
+            # or retreat any number of your troops from or to your garrison" --
+            # the trash is the cost of either line and the owner names one
+            # direction and a count, none included ("any number" [FAQ p. 3]);
+            # troops only (a Commander is a troop [Bloodlines p. 4], OQ-115).
+            _CHOICE.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS: _choice(
+                _line(
+                    DeployFromGarrison(up_to=None), costs=(TrashCard(this_card=True),)
+                ),
+                _line(RetreatTroops(0, None), costs=(TrashCard(this_card=True),)),
+                mark=_OPTIONAL,
+                structure=AbilityStructure.ONE_OF,
+            ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
             _CHOICE.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: _choice(
@@ -278,6 +348,17 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             # chosen Faction".
             _CHOICE.COMMAND_GAIN_CHOSEN_INFLUENCE: _choice(
                 _line(GainInfluence(), condition=_COMMAND), mark=_MANDATORY
+            ),
+            # Bene Gesserit Sister (original game): "[2 Persuasion] -OR- [2
+            # swords]" -- a printed -OR- the owner must settle ("-OR-" is a
+            # must-pick-one choice, P0 sweep); the swords count once a unit
+            # stands in the Conflict ("Conflict에 troop이 하나도 없으면 0"
+            # [DI p. 11]).
+            _CHOICE.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: _choice(
+                _line(RevealPersuasion(2)),
+                _line(RevealSwords(2)),
+                mark=_MANDATORY,
+                structure=AbilityStructure.ONE_OF,
             ),
             # Ixian Ambassador: "If you have 2 or more Tech tiles: Gain 1
             # Influence with a chosen Faction".

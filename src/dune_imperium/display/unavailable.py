@@ -98,6 +98,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CommanderDiscountThisTurn,
     Cost,
     DeployFromGarrison,
+    DeployFromSupply,
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
@@ -111,12 +112,14 @@ from dune_imperium.content.uprising.effect_dsl import (
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
+    IgnoreEnemyAgentsNextPlacement,
     IgnoreInfluenceRequirementsThisTurn,
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
     OnTroopsLostAtConflictEnd,
+    OpponentLosesTroop,
     PassTurn,
     PayResources,
     PeekTopCard,
@@ -129,6 +132,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RevealContractsTakeOne,
     Reward,
     SetAsideImperiumRowCard,
+    ShuffleDiscardIntoDeck,
     SummonSandworm,
     TakeContract,
     TrashDiscardPileCard,
@@ -162,6 +166,8 @@ from dune_imperium.display.effect_dsl_text_ko import (
     reward_text_ko,
 )
 from dune_imperium.display.leaders_ko import LEADER_FACE_TEXTS_KO
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.acquire_icons import acquire_icon_row
 from dune_imperium.rules.acquisition import (
     AcquireBlock,
     agent_card_acquisition_block,
@@ -184,6 +190,7 @@ from dune_imperium.rules.agent_effect_frame import (
 from dune_imperium.rules.agent_effects import (
     AGENT_ICON_TRASH,
     AUTOMATIC_AGENT_ICONS,
+    OR_LOSE_DEPLOYED_TROOP_KEY,
     agent_box_influence_blocked,
     agent_card_cost_block,
     agent_card_payment_block,
@@ -321,9 +328,11 @@ from dune_imperium.rules.tleilaxu_row import (
 )
 from dune_imperium.rules.turn_rows import tech_influence_blocked
 from dune_imperium.rules.unit_loss import (
-    UNIT_LOSS_CANDIDATES,
     UnitLossBlock,
+    frame_conflict_only,
+    frame_garrison_only,
     unit_loss_block,
+    unit_loss_candidates,
     unit_loss_options,
 )
 
@@ -479,6 +488,9 @@ _NO_CARD_TO_DRAW: Final[Reason] = (
     "뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음",
     "empty",
 )
+# A recruit with no troop to take (Fremen Camp, Duncan Idaho), worded as the
+# Intrigue option's reward block (OQ-071's recruit criterion).
+_NO_TROOP_TO_RECRUIT: Final[Reason] = (*troops_reason("supply", 1, 0)[:2], "reward")
 _TLEILAXU_TRACK_END: Final[Reason] = (
     "Your Tleilaxu token is already at the end of its track",
     "{tleilaxu} 트랙 끝에 이미 도달함",
@@ -552,6 +564,22 @@ def _conflict_end_reason(option: IntrigueOption) -> Reason:
         f"{{conflict}}이 끝난 뒤 {{troop}}을 {lost} 이상 잃었을 때 사용",
         "timing",
     )
+
+
+# "When you win a Conflict:" in a Combat Intrigue round (To the Victor...,
+# Demand Respect): played only in the sole winner's reward window (OQ-121).
+_CONFLICT_WON: Final[Reason] = (
+    "Played in your reward window when you win the Conflict",
+    "{conflict}에서 승리했을 때 보상 창에서 사용",
+    "timing",
+)
+# A Combat card of the rounds in the reward window, where only the winning
+# Intrigue is played (OQ-121 decision 6).
+_COMBAT_ROUNDS_OVER: Final[Reason] = (
+    "Combat Intrigue: its rounds are over",
+    "전투 책략 카드: 전투 책략 단계가 끝남",
+    "timing",
+)
 
 
 def _conflict_end_trigger_reason(
@@ -809,8 +837,20 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
     match reward:
         case DeployFromGarrison():
             return _deploy_reason(state, seat)
-        case DrawPersonalCards():
+        case DrawPersonalCards() | ShuffleDiscardIntoDeck():
             return _NO_CARD_TO_DRAW
+        case OpponentLosesTroop():
+            return (
+                "No opponent has a troop in the Conflict",
+                "{conflict}에 {troop}이 있는 상대 없음",
+                "reward",
+            )
+        case DeployFromSupply():
+            return (
+                "No troop in your supply to deploy, or deployment is banned",
+                "{supply}에 배치할 {troop}이 없거나 배치가 금지됨",
+                "reward",
+            )
         case Research():
             return (
                 "Past the second genetic marker Research draws a card,"
@@ -865,6 +905,14 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
             )
         case GrantAgentIconThisTurn() | GrantAgentIconsThisTurn():
             return _BEFORE_THE_AGENT
+        case IgnoreEnemyAgentsNextPlacement():
+            if not agent_placement_ahead(state, seat):
+                return _BEFORE_THE_AGENT
+            return (
+                "No opponent's Agent is on the board",
+                "{agent}가 놓인 다른 플레이어의 게임판 장소 없음",
+                "reward",
+            )
         case IgnoreInfluenceRequirementsThisTurn():
             if not agent_placement_ahead(state, seat):
                 return _BEFORE_THE_AGENT
@@ -1238,7 +1286,15 @@ def _intrigue(state: GameState, seat: int, found: _Found) -> None:
                 other_window = other_window or _TURN_START
                 continue
             if block is IntriguePlayBlock.TIMING:
-                other_window = other_window or _TIMING[option.timing]
+                other_window = other_window or (
+                    _COMBAT_ROUNDS_OVER
+                    if frame_kind == FrameKind.COMBAT_REWARD_ICONS
+                    and option.timing is IntrigueTiming.COMBAT
+                    else _TIMING[option.timing]
+                )
+                continue
+            if block is IntriguePlayBlock.CONFLICT_WON:
+                other_window = other_window or _CONFLICT_WON
                 continue
             if block is IntriguePlayBlock.CONFLICT_END:
                 other_window = other_window or _conflict_end_reason(option)
@@ -2165,8 +2221,17 @@ def _unit_loss(state: GameState, seat: int, found: _Found) -> None:
     """
 
     owner = state.players[seat]
-    nothing = not unit_loss_options(state, seat)
-    for zone, commander in UNIT_LOSS_CANDIDATES:
+    # Gun Thopter's loss lists the garrison alone: the Conflict is no option
+    # there, so no greyed row names it.
+    garrison_only = frame_garrison_only(state.decision_stack[-1])
+    # Double Cross's loss lists the Conflict alone, the garrison no option.
+    conflict_only = frame_conflict_only(state.decision_stack[-1])
+    nothing = not unit_loss_options(
+        state, seat, garrison_only=garrison_only, conflict_only=conflict_only
+    )
+    for zone, commander in unit_loss_candidates(
+        garrison_only=garrison_only, conflict_only=conflict_only
+    ):
         if commander and owner.commanders_total == 0:
             continue
         block = unit_loss_block(owner, zone, commander=commander)
@@ -2198,7 +2263,44 @@ def _opponent_card_discard(state: GameState, seat: int, found: _Found) -> None:
     seat's own hand is its own to see.
     """
 
-    if state.players[seat].hand:
+    frame = state.decision_stack[-1]
+    owner = state.players[seat]
+    if dict(frame.context).get(OR_LOSE_DEPLOYED_TROOP_KEY) is True:
+        # Test of Humanity: each half is greyed while it cannot be done
+        # (imperium-base.md 13.1); with neither, both read the one reason. A
+        # Conflict Commander is a deployed troop [Bloodlines p. 4]; its row
+        # shows only for a seat that owns one, as in Holy War's loss.
+        neither = not owner.hand and not unit_loss_options(
+            state, seat, conflict_only=True
+        )
+        if not owner.hand:
+            found.row(
+                "choice",
+                "discard_opponent_card",
+                DomainAction(action_id="discard_opponent_card", actor=seat),
+                _NO_CARD_TO_DISCARD,
+            )
+        for zone, commander in unit_loss_candidates(conflict_only=True):
+            if commander and owner.commanders_total == 0:
+                continue
+            block = unit_loss_block(owner, zone, commander=commander)
+            if block is None:
+                continue
+            found.row(
+                "choice",
+                f"lose_unit:{zone}:{int(commander)}",
+                DomainAction(
+                    action_id="lose_unit",
+                    actor=seat,
+                    arguments=(
+                        *((("commanders", 1),) if commander else ()),
+                        ("zone", zone),
+                    ),
+                ),
+                _NO_UNIT_TO_LOSE if neither else _unit_loss_reason(zone, block),
+            )
+        return
+    if owner.hand:
         return
     found.row(
         "choice",
@@ -2339,6 +2441,45 @@ def _tech_acquire_influence(state: GameState, seat: int, found: _Found) -> None:
                         ("tech_id", tech_id),
                     ),
                 ),
+                _AT_THE_TOP,
+            )
+
+
+def _pending_acquire_icons(state: GameState, seat: int, found: _Found) -> None:
+    """An acquired card's "Influence with any Faction" icon waiting on the
+    seat's own turn (Lady Jessica, OQ-141): the Factions at the top greyed
+    out beside the ones offered, as a Tech tile's is (OQ-060); with every
+    cube at the top one row says it waits for the turn's end, which lapses
+    it."""
+
+    frame = turn_rows.rows_frame(state, seat)
+    if frame is None:
+        return
+    owner = state.players[seat]
+    reveal = frame.kind == FrameKind.REVEAL
+    for kind, _source, value in turn_rows.pending(frame):
+        if kind != turn_rows.ACQUIRE_ICON:
+            continue
+        card_id, icon = value.split("|")
+        if icon != turn_rows.CHOSEN_INFLUENCE_ICON:
+            continue
+        if turn_rows.acquire_icon_blocked(value, owner):
+            found.row(
+                "waiting",
+                f"acquire_icon:{card_id}",
+                acquire_icon_row(seat, card_id, icon),
+                _with_tail(_ALL_AT_THE_TOP, _REVEAL_LAPSES_UNMET, "waiting")
+                if reveal
+                else _ALL_AT_THE_TOP_WAITING,
+            )
+            continue
+        for faction in Faction:
+            if influence_can_rise(owner, faction):
+                continue
+            found.row(
+                "choice",
+                f"acquire_icon:{card_id}:{faction.value}",
+                acquire_icon_row(seat, card_id, icon, faction),
                 _AT_THE_TOP,
             )
 
@@ -2543,9 +2684,14 @@ _CHOICE_ICON_ROWS: Final[Mapping[str, str]] = {
 _PAYMENT_BLOCK_REASONS: Final[Mapping[AgentPaymentBlock, Reason]] = {
     AgentPaymentBlock.NO_CARD_TO_DRAW: _NO_CARD_TO_DRAW,
     AgentPaymentBlock.TLEILAXU_TRACK_END: _TLEILAXU_TRACK_END,
+    AgentPaymentBlock.NO_FACTION_TO_RAISE: _ALL_AT_THE_TOP,
+    AgentPaymentBlock.NO_TROOP_TO_RECRUIT: _NO_TROOP_TO_RECRUIT,
 }
 # The payment an ``AgentPaymentBlock`` withholds, by the box's effect.
 _WITHHELD_PAYMENTS: Final[Mapping[PersonalCardAgentEffect, str]] = {
+    PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: (
+        "pay_agent_card_solari"
+    ),
     PersonalCardAgentEffect.PAY_TWO_WATER_TO_DRAW_TWO: "pay_agent_card_water",
     PersonalCardAgentEffect.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: (
         "pay_agent_card_two_specimens"
@@ -2721,6 +2867,19 @@ _OPTIONAL_REASONS: Final[Mapping[OptionalBlockKind, Reason]] = {
     ),
     OptionalBlockKind.MAKER_HOOKS: _NO_MAKER_HOOKS,
     OptionalBlockKind.NO_CARD_TO_DRAW: _NO_CARD_TO_DRAW,
+    OptionalBlockKind.NO_INTRIGUE_TO_DRAW: (
+        "No Intrigue card to draw: the Intrigue deck is empty"
+        " and its discard pile holds nothing to shuffle",
+        "뽑을 {intrigue_card} 없음: 책략 카드덱이 비었고"
+        " 버린 더미에 섞을 카드 없음",
+        "empty",
+    ),
+    OptionalBlockKind.NO_TROOP_TO_RECRUIT: _NO_TROOP_TO_RECRUIT,
+    OptionalBlockKind.NO_INFLUENCE_TO_LOSE: (
+        "No Influence of yours to lose",
+        "잃을 내 {influence_any} 없음",
+        "cost",
+    ),
     OptionalBlockKind.TECH_NEEDS_SPY: (
         "Advanced Data Analysis needs a Spy of yours on the board to trash",
         "고급 데이터 분석은 보드에 있는 내 {spy}를 폐기해야 함",
@@ -2957,7 +3116,11 @@ def _optional_box_reason(
         # the turn refills them), Tleilaxu Surgeon at the track's end.
         return (
             _PAYMENT_BLOCK_REASONS[payment],
-            payment is AgentPaymentBlock.NO_CARD_TO_DRAW,
+            payment
+            in (
+                AgentPaymentBlock.NO_CARD_TO_DRAW,
+                AgentPaymentBlock.NO_TROOP_TO_RECRUIT,
+            ),
         )
     block = (
         cost
@@ -3208,6 +3371,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _subcommittee_choice,
         _pending_research,
         _tech_acquire_influence,
+        _pending_acquire_icons,
         _intrigue,
     ),
     FrameKind.AGENT_EFFECTS: (
@@ -3224,6 +3388,7 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _subcommittee_choice,
         _pending_research,
         _tech_acquire_influence,
+        _pending_acquire_icons,
         _intrigue,
     ),
     # Servo-Receivers' Signet Ring outside the Agent box (OQ-062 (b)).
@@ -3245,9 +3410,14 @@ _BY_FRAME: Final[Mapping[str, tuple[Callable[[GameState, int, _Found], None], ..
         _turn_start_card,
         _pending_research,
         _tech_acquire_influence,
+        _pending_acquire_icons,
         _intrigue,
     ),
     FrameKind.COMBAT_INTRIGUE: (_intrigue,),
+    # The sole winner's reward window holds its winning Intrigue as rows
+    # (OQ-121 decision 6); ``_intrigue`` collects nothing for any other
+    # window of the frame.
+    FrameKind.COMBAT_REWARD_ICONS: (_intrigue,),
     FrameKind.CONFLICT_END_TRIGGER: (_conflict_end_trigger,),
     FrameKind.ENDGAME_INTRIGUE: (_intrigue,),
 }

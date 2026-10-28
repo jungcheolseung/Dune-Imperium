@@ -20,6 +20,10 @@ from dune_imperium.core.engine import RuleResult, RulesEngine
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import PlayerView, observe_state
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.acquire_icons import (
+    apply_acquire_icon,
+    legal_acquire_icon_actions,
+)
 from dune_imperium.rules.acquisition import (
     apply_acquisition_spy_action,
     apply_agent_card_acquisition,
@@ -45,6 +49,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_opponent_retreat,
     apply_agent_card_payment,
     apply_agent_card_recall,
+    apply_agent_card_space_block,
     apply_agent_card_spy_action,
     apply_agent_card_trash,
     apply_corrinth_city_payment,
@@ -145,6 +150,7 @@ from dune_imperium.rules.contracts import (
     open_held_contract_icons,
     resolve_exhausted_contract_choice,
 )
+from dune_imperium.rules.deck_top import settle_public_deck_tops
 from dune_imperium.rules.effect_steps import (
     present,
     presents_steps,
@@ -288,8 +294,11 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_spice_influence,
     apply_reveal_spy_action,
     apply_reveal_troop_move,
+    apply_reveal_troop_purchase,
     apply_reveal_troop_retreat,
     apply_reveal_troop_sacrifice,
+    apply_reveal_troops_move,
+    apply_reveal_vp_payment,
     begin_reveal_turn,
     finish_reveal_turn,
     grant_late_reveal_effects,
@@ -493,6 +502,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_owed_draw_actions,
         # A Contract completed in the turn waits on it as rows (OQ-112 (4)).
         legal_contract_icon_row_actions,
+        # So does an acquire box's icon, a row each (OQ-141).
+        legal_acquire_icon_actions,
         # A research bonus or trash icon a Plot raised waits on the turn
         # (cleanup-2b).
         legal_research_bonus_actions,
@@ -520,6 +531,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_owed_draw_actions,
         # A Contract completed in the Reveal waits on it as rows (OQ-112 (4)).
         legal_contract_icon_row_actions,
+        # So does an acquire box's icon, a row each (OQ-141).
+        legal_acquire_icon_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
@@ -564,7 +577,13 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.COMBAT_REWARD_TRASH: (legal_combat_reward_trash_actions,),
     FrameKind.CONFLICT_END_TRIGGER: (legal_conflict_end_trigger_actions,),
     FrameKind.COMBAT_REWARD_SPY: (legal_combat_reward_spy_actions,),
-    FrameKind.COMBAT_REWARD_ICONS: (legal_combat_reward_icon_actions,),
+    FrameKind.COMBAT_REWARD_ICONS: (
+        legal_combat_reward_icon_actions,
+        # The sole winner's "When you win a Conflict" Intrigue, a row of its
+        # window in any order with the icons (OQ-121, user ruling
+        # 2026-10-25); none for any other recipient's window.
+        legal_intrigue_play_actions,
+    ),
     FrameKind.COMBAT_REWARD_INFLUENCE: (legal_combat_reward_influence_actions,),
     FrameKind.COMBAT_REWARD_DISTINCT_INFLUENCE: (
         legal_distinct_combat_reward_influence_actions,
@@ -685,6 +704,11 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_agent_card_five_solari_for_tleilaxu": apply_agent_card_payment,
     "trash_grafted_card_for_influence": apply_agent_card_payment,
     "lose_agent_card_troop": apply_agent_card_payment,
+    # Shifting Allegiances (original game): "lose 1 Influence + 2 spice -> 2
+    # Influence with one Faction".
+    "lose_agent_card_influence": apply_agent_card_payment,
+    # Other Memory (original game): a Bene Gesserit card from the discard pile.
+    "take_agent_card_from_discard": apply_agent_card_payment,
     "choose_agent_card_reward": apply_agent_card_payment,
     "keep_peeked_intrigue": apply_intrigue_peek,
     "gain_reveal_resources": apply_reveal_gain,
@@ -702,11 +726,19 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_intrigue_spy": apply_intrigue_choice,
     "place_intrigue_spy": apply_intrigue_choice,
     "lose_intrigue_troop": apply_intrigue_choice,
+    "choose_opponent_troop_loss": apply_intrigue_choice,
+    "recall_agent_for_intrigue": apply_intrigue_choice,
+    "recall_conflict_agent_for_intrigue": apply_intrigue_choice,
+    "skip_intrigue_recall_agent": apply_intrigue_choice,
     "give_intrigue_card": apply_intrigue_choice,
     "trash_intrigue_hand_card": apply_intrigue_choice,
     "put_back_top_card": apply_intrigue_choice,
     "discard_top_card": apply_intrigue_choice,
     "draw_top_card_for_solari": apply_intrigue_choice,
+    "draw_top_card": apply_intrigue_choice,
+    "pass_turn_intrigue": apply_intrigue_choice,
+    "keep_turn_intrigue": apply_intrigue_choice,
+    "trash_top_card": apply_intrigue_choice,
     "recall_spy_for_intrigue": apply_intrigue_choice,
     "retreat_intrigue_troops": apply_intrigue_choice,
     "acquire_intrigue_imperium": apply_intrigue_choice,
@@ -791,6 +823,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Agent-card serial choices
     "trash_agent_card": apply_agent_card_trash,
     "retreat_opponent_troop": apply_agent_card_opponent_retreat,
+    # The Voice (original game): the board space to block.
+    "block_agent_card_space": apply_agent_card_space_block,
     "decline_agent_card_trash": apply_agent_card_trash,
     "discard_agent_card": apply_agent_card_discard,
     "decline_agent_card_discard": apply_agent_card_discard,
@@ -798,6 +832,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_agent_card_spice_for_sandworm": apply_agent_card_payment,
     "pay_agent_card_spice_for_sandworm_and_shield_wall": apply_agent_card_payment,
     "pay_agent_card_spice": apply_agent_card_payment,
+    # Firm Grip (original game): "2 Solari -> Choose one Influence".
+    "pay_agent_card_solari": apply_agent_card_payment,
     "decline_agent_card_payment": apply_agent_card_payment,
     "pay_corrinth_city": apply_corrinth_city_payment,
     "select_corrinth_city_discard": apply_corrinth_city_payment,
@@ -878,6 +914,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "command_acquire_row_card": apply_reveal_command_acquisition,
     "gain_reveal_persuasion": apply_reveal_persuasion_or_contract,
     "take_reveal_contract": apply_reveal_persuasion_or_contract,
+    # Bene Gesserit Sister (original game): "2 Persuasion OR 2 swords".
+    "gain_two_reveal_persuasion": apply_reveal_persuasion_or_contract,
+    "gain_two_reveal_swords": apply_reveal_persuasion_or_contract,
     "play_turn_start_card": apply_turn_start_card,
     "complete_contract_by_card": apply_agent_card_contract_completion,
     "choose_skill": apply_skill_choice,
@@ -893,12 +932,21 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_reveal_water_for_sandworm": apply_reveal_sandworm_action,
     "decline_reveal_sandworm": apply_reveal_sandworm_action,
     "pay_reveal_spice_influence": apply_reveal_spice_influence,
+    # Opulence (original game): "6 Solari -> 1 Victory Point"; Guild
+    # Ambassador: "Spacing Guild Alliance: 3 spice -> 1 Victory Point".
+    "pay_reveal_solari_for_vp": apply_reveal_vp_payment,
+    "pay_reveal_spice_for_vp": apply_reveal_vp_payment,
+    # Gurney Halleck (original game): "3 Solari -> 2 troops".
+    "pay_reveal_solari_for_troops": apply_reveal_troop_purchase,
     "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
     # Immortality Reveal choices (For Humanity, Shadout Mapes, Tleilaxu
     # Surgeon)
     "lose_reveal_influence_for_vp": apply_reveal_influence_loss,
     "deploy_reveal_card_troop": apply_reveal_troop_move,
     "retreat_reveal_card_troop": apply_reveal_troop_move,
+    # Sardaukar Legion, Scout, Chani (original game): a chosen number of troops.
+    "deploy_reveal_card_troops": apply_reveal_troops_move,
+    "retreat_reveal_card_troops": apply_reveal_troops_move,
     "lose_reveal_troops_for_specimens": apply_reveal_troop_sacrifice,
     # Contracts
     "take_contract": apply_contract_action,
@@ -906,6 +954,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "hold_contract_icons": apply_contract_hold,
     "resolve_contract_icons_without_contract": apply_contract_fizzle,
     "resolve_contract_reward_icon": apply_contract_reward_icon,
+    # An acquire box's icon waiting on the owner's turn (OQ-141).
+    "resolve_acquire_icon": apply_acquire_icon,
     "place_contract_spy": apply_contract_spy_action,
     "recall_spy_for_contract": apply_contract_spy_action,
     "decline_contract_spy": apply_contract_spy_action,
@@ -949,6 +999,18 @@ def _reveal_masterstroke(result: RuleResult) -> RuleResult:
     peaked = record_deployment_peak(result)
     revealed = reveal_masterstroke(peaked)
     return peaked if revealed is peaked else _advance_automatic(revealed)
+
+
+def _settle_deck_tops(result: RuleResult) -> RuleResult:
+    """Bring every seat's public deck top in line with its deck, once the
+    transition's draws, trashes and discards are all done (OQ-145,
+    ``rules.deck_top``); a transition that leaves every record as it was is
+    returned itself."""
+
+    settled = settle_public_deck_tops(result.state)
+    if settled is result.state:
+        return result
+    return RuleResult(state=settled, events=result.events)
 
 
 class UprisingRulesEngine(RulesEngine):
@@ -1026,8 +1088,10 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
-        return refresh_pre_reveal_strength(
-            _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
+        return _settle_deck_tops(
+            refresh_pre_reveal_strength(
+                _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
+            )
         )
 
     def legal_actions(
@@ -1138,8 +1202,10 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
-        return refresh_pre_reveal_strength(
-            _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
+        return _settle_deck_tops(
+            refresh_pre_reveal_strength(
+                _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
+            )
         )
 
     def observe(self, state: GameState, player: int) -> PlayerView:
@@ -1165,8 +1231,14 @@ def _end_turn_start(
     automatic steps, so a turn those steps open is a fresh one.
     """
 
-    if not turn_start_is_open(state, action.actor) or (
-        action.action_id == "play_turn_start_card" or plays_turn_start_option(action)
+    if (
+        not turn_start_is_open(state, action.actor)
+        or action.action_id == "play_turn_start_card"
+        or plays_turn_start_option(action)
+        # An answer that passes the turn (Bindu Suspension's pass, after its
+        # draw) opens the next turn, the seat's own again when every other seat
+        # has revealed: that turn is a fresh one, its start still open.
+        or any(event.kind == "turn_passed" for event in handled.events)
     ):
         return handled
     return RuleResult(

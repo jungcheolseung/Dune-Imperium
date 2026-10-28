@@ -40,9 +40,13 @@ from dune_imperium.content.uprising.board import (
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireTech,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
+    GrantAgentIconsThisTurn,
     OnTroopsLostAtConflictEnd,
+    OpponentLosesTroop,
     OpponentsMoveSpiesFromVisitedSpace,
+    PeekTopCard,
     PrintedRevealValue,
     RedirectSpiesOnTurnSpace,
     TrashPersonalCard,
@@ -66,6 +70,7 @@ from dune_imperium.content.uprising.personal_cards import (
     card_is_ghola,
     card_is_graft,
     card_is_usurp,
+    card_sends_agent_anywhere,
     personal_card_for_instance,
 )
 from dune_imperium.content.uprising.reserve import (
@@ -80,6 +85,7 @@ from dune_imperium.content.uprising.starting_cards import (
 from dune_imperium.content.uprising.types import (
     BLOODLINES_REVEAL_CHOICE_EFFECTS,
     IMMORTALITY_REVEAL_CHOICE_EFFECTS,
+    IMPERIUM_REVEAL_CHOICE_EFFECTS,
     AgentIcon,
     BattleIcon,
     PersonalCardAgentEffect,
@@ -87,6 +93,12 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
 )
 from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.rules.acquire_icons import (
+    ACQUIRE_ICON_ACTION,
+    ACQUIRED_CARD_ARGUMENT,
+    acquire_box_icons,
+    acquire_icon_faction,
+)
 from dune_imperium.rules.acquisition import (
     acquire_box_draws_intrigue,
     acquire_box_places_spy,
@@ -107,7 +119,11 @@ from dune_imperium.rules.contracts import (
     CONTRACT_REWARD_ICON_KINDS,
     contract_reward_icons,
 )
-from dune_imperium.rules.effect_interpreter import automatic_rewards, choice_slots
+from dune_imperium.rules.effect_interpreter import (
+    automatic_rewards,
+    choice_slots,
+    rewards_come_first,
+)
 from dune_imperium.rules.effect_steps import (
     AGENT_ICON_VERBS,
     INTRIGUE_WINDOWS,
@@ -125,10 +141,16 @@ from dune_imperium.rules.immortality import (
 )
 from dune_imperium.rules.planetologist import PLANETOLOGIST_LEADER
 from dune_imperium.rules.reveal_lines import RevealLine, reveal_lines
-from dune_imperium.rules.reveal_turn import SOURCE_ARGUMENT, card_holds_reveal_value
+from dune_imperium.rules.reveal_turn import (
+    SOURCE_ARGUMENT,
+    card_holds_reveal_value,
+    troops_move_shape,
+    troops_trash_move,
+)
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
 from dune_imperium.rules.tech import optional_trash_tech_ids
+from dune_imperium.rules.units import unit_count_arguments
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
 # Imperial Privilege, may recall an Into the Fray Agent from the Conflict --
@@ -644,7 +666,18 @@ from dune_imperium.rules.tech import optional_trash_tech_ids
 # The window records the card that opened it (``printer``). Older records
 # answer the new window before the next recorded step
 # (``opponent_discard_alone``); docs/human-records.md.
-ACTION_CODEC_VERSION = 155
+# v156 (base game P3, docs/base-game-and-ix-plan.md 16; one raise for the
+# whole stage, in its master merge, user decision 2026-10-28 "병합 때 한
+# 번"): the original game's Imperium and Intrigue cards and three promos,
+# their templates in the original-game catalogs only (the 144 Uprising
+# catalogs are unchanged). Uprising games change where the stage's rulings
+# reach them: a card put face up on a deck top is public until drawn or
+# shuffled and stays public in hand (OQ-145, Immortality's Tleilaxu
+# placements), and a paid line whose recruit or draw cannot happen is not
+# offered (OQ-071, the trash-to-draw lines). Observation v38. Older records
+# need no new bridge (the v155 records replay with ``hand_public`` the only
+# difference).
+ACTION_CODEC_VERSION = 156
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
@@ -914,6 +947,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         and (kind != "contract" or content.contract_instance_ids)
         # Planetary Array's row of the winner's window (OQ-121).
         and (kind != "planetary_array" or config.tech_module)
+        # The original game's winning Intrigue closes the winner's window
+        # (OQ-121 decision 6); Uprising's catalogs hold no such row.
+        and (kind != "winning_intrigue" or content.base_game is BaseGame.IMPERIUM)
     )
     # One board-effect resolution per printed automatic icon (OQ-027).
     templates.extend(
@@ -939,16 +975,26 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for key in AUTOMATIC_AGENT_ICONS
     )
     # Bringing back one kind of deferred Reveal choice [Main p. 12]: the
-    # kinds the Uprising family's cards print.
+    # kinds the Uprising family's cards print, or those the original game's
+    # deck cards print (stage P3: the cards transcribed so far).
+    original_choices = frozenset(
+        effect
+        for card in content.imperium_cards
+        for effect in card.reveal_choice_effects
+    )
     templates.extend(
         ActionTemplate(
             action_id="resume_reveal_choice",
             arguments=(("effect", effect.value),),
         )
         for effect in PersonalCardRevealChoiceEffect
-        if content.base_game is BaseGame.UPRISING
-        and (config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS)
-        and (config.immortality or effect not in IMMORTALITY_REVEAL_CHOICE_EFFECTS)
+        if (
+            content.base_game is BaseGame.UPRISING
+            and (config.bloodlines or effect not in BLOODLINES_REVEAL_CHOICE_EFFECTS)
+            and (config.immortality or effect not in IMMORTALITY_REVEAL_CHOICE_EFFECTS)
+            and effect not in IMPERIUM_REVEAL_CHOICE_EFFECTS
+        )
+        or (content.base_game is BaseGame.IMPERIUM and effect in original_choices)
     )
     if config.choam_module:
         templates.extend(
@@ -985,11 +1031,46 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     templates.append(ActionTemplate(action_id="finish_agent_turn"))
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
+    elif content.base_game is BaseGame.IMPERIUM:
+        # The original game's Gun Thopter asks each opponent to lose a
+        # garrisoned troop (stage P3), in the window Holy War opens; a seat
+        # with none confirms it (OQ-036 (a)).
+        templates.extend(_unit_loss_templates())
+        templates.append(ActionTemplate("resolve_unit_loss_without_unit"))
         # Unswerving Loyalty (every ruleset) and Shadout Mapes (Immortality)
         # may move a Sardaukar Commander: it "is a 'troop'" [Bloodlines p. 4].
         templates.extend(
             ActionTemplate(action_id=action_id, arguments=(("commanders", 1),))
             for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
+        )
+    if content.base_game is BaseGame.IMPERIUM:
+        # The original game's Poison Snooper: draw the card it looked at or
+        # trash it, or confirm an empty deck (stage P3); only in its catalog,
+        # so Uprising's rows stay what they were.
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in (*_DRAW_OR_TRASH_EFFECTS, *_OPTIONAL_PASS_EFFECTS)
+        )
+        # Double Cross: the opponent whose Conflict troop is lost.
+        templates.extend(
+            ActionTemplate(
+                action_id="choose_opponent_troop_loss", arguments=(("player", seat),)
+            )
+            for seat in range(config.players)
+        )
+        # Urgent Mission: the Agent that returns to its Leader -- one row per
+        # board space, one for the Conflict -- or the confirmation when none
+        # is on the board.
+        templates.extend(
+            ActionTemplate(
+                action_id="recall_agent_for_intrigue",
+                arguments=(("space_id", space.space_id),),
+            )
+            for space in catalog_spaces(config)
+        )
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in _RECALL_AGENT_EFFECTS[1:]
         )
     if config.tech_module:
         templates.extend(_tech_templates(config))
@@ -1243,6 +1324,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for instance_id in imperium_instances
         )
+    if content.base_game is BaseGame.IMPERIUM:
+        templates.extend(_deck_top_templates(config, imperium_instances))
     templates.extend(
         ActionTemplate(
             action_id="acquire_imperium_with_solari",
@@ -1419,12 +1502,58 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     # Baron's secret Factions): only in its catalog, so Uprising's rows stay
     # what they were.
     if content.base_game is BaseGame.IMPERIUM:
+        # Bene Gesserit Sister's "2 Persuasion OR 2 swords" (stage P3).
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in (
+                "gain_two_reveal_persuasion",
+                "gain_two_reveal_swords",
+                "pay_reveal_solari_for_vp",
+                "pay_reveal_spice_for_vp",
+                "pay_reveal_solari_for_troops",
+                # Firm Grip's "2 Solari -> Influence" (an Agent-box arrow).
+                "pay_agent_card_solari",
+            )
+        )
         templates.extend(
             ActionTemplate(
                 action_id="choose_masterstroke_faction",
                 arguments=(("faction", faction.value),),
             )
             for faction in Faction
+        )
+        # Shifting Allegiances' "lose 1 Influence + 2 spice -> 2 Influence" (an
+        # Agent-box arrow): the Faction lost, and where its Alliance token could
+        # go to several seats, the recipient.
+        templates.extend(
+            ActionTemplate(
+                action_id="lose_agent_card_influence",
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        )
+        templates.extend(
+            ActionTemplate(
+                action_id="lose_agent_card_influence",
+                arguments=(
+                    ("alliance_recipient", recipient),
+                    ("faction", faction.value),
+                ),
+            )
+            for faction in Faction
+            for recipient in range(config.players)
+        )
+        # Other Memory's Bene Gesserit card taken from the discard pile (an
+        # Agent-box choice).
+        templates.extend(_trash_templates(config, "take_agent_card_from_discard"))
+        # The Voice's board space (an Agent-box choice): every space on the
+        # table, a Leader's own only with its Leader's catalog.
+        templates.extend(
+            ActionTemplate(
+                action_id="block_agent_card_space",
+                arguments=(("space_id", space.space_id),),
+            )
+            for space in catalog_spaces(config)
         )
         templates.extend(
             ActionTemplate(
@@ -1433,6 +1562,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for instance_id in imperium_instances
         )
+        # An acquire box paid icon by icon (OQ-141; CHOAM Directorship, Lady
+        # Jessica): a row per icon, the chosen Faction's once per Faction.
+        templates.extend(_acquire_icon_templates(content.imperium_cards))
     templates.extend(
         ActionTemplate(
             action_id="acquire_leader_reserve",
@@ -1481,6 +1613,73 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     ]
     templates.extend(_effect_step_templates(config, wholes))
     return tuple(sorted(dict.fromkeys(templates), key=_template_sort_key))
+
+
+def _deck_top_templates(
+    config: RulesetConfig, imperium_instances: tuple[str, ...]
+) -> tuple[ActionTemplate, ...]:
+    """The original game's ``to_deck_top`` twins of the Imperium Row and
+    Reserve acquisitions (stage P3): Bypass Protocol's "to the top of your
+    deck" and, while Recruitment Mission is effective in its owner's Reveal
+    turn, every card the seat acquires there [FAQ p. 3]. A Reveal purchase
+    (``acquire_imperium``, ``acquire_reserve``, a Manipulate set-aside card),
+    an Intrigue acquisition (``acquire_intrigue_*``) and Engineered
+    Miracle's Command (Bloodlines); Foldspace is never acquired by a cost
+    cap or a purchase (OQ-125). The Tleilaxu Row's twins stand in every
+    Immortality catalog (``acquire_tleilaxu``). Only the original game's
+    catalogs hold these rows, so Uprising's stay what they were."""
+
+    content = content_for(config)
+    reserve = tuple(
+        stack.card.card_id for stack in content.reserve_stacks if not stack.icon_only
+    )
+    templates: list[ActionTemplate] = []
+    for action_id in (
+        "acquire_imperium",
+        "acquire_manipulated_imperium",
+        "acquire_intrigue_imperium",
+        *(("command_acquire_row_card",) if config.bloodlines else ()),
+    ):
+        templates.extend(
+            ActionTemplate(
+                action_id=action_id,
+                arguments=(("instance_id", instance_id), ("to_deck_top", True)),
+            )
+            for instance_id in imperium_instances
+        )
+    for action_id in ("acquire_reserve", "acquire_intrigue_reserve"):
+        templates.extend(
+            ActionTemplate(
+                action_id=action_id,
+                arguments=(("card_id", card_id), ("to_deck_top", True)),
+            )
+            for card_id in reserve
+        )
+    return tuple(templates)
+
+
+def _acquire_icon_templates(
+    cards: tuple[ImperiumCardEntry, ...],
+) -> tuple[ActionTemplate, ...]:
+    """The rows of the Imperium cards' acquire boxes paid icon by icon
+    (``rules.acquire_icons``)."""
+
+    templates: list[ActionTemplate] = []
+    for card in cards:
+        icons = acquire_box_icons(card)
+        for icon in () if icons is None else dict.fromkeys(icons):
+            base: tuple[tuple[str, ActionValue], ...] = (
+                (ACQUIRED_CARD_ARGUMENT, card.card.card_id),
+                ("effect", icon),
+            )
+            if acquire_icon_faction(icon) is not None:
+                templates.append(ActionTemplate(ACQUIRE_ICON_ACTION, base))
+                continue
+            templates.extend(
+                ActionTemplate(ACQUIRE_ICON_ACTION, (*base, ("faction", faction.value)))
+                for faction in Faction
+            )
+    return tuple(templates)
 
 
 def _effect_step_templates(
@@ -1582,7 +1781,7 @@ def _effect_step_templates(
                         for printed in kinds
                     )
                     or (kind == "choose_influence" and config.promo_cards)
-                    or kind == "planetary_array"
+                    or kind in ("planetary_array", "winning_intrigue")
                 )
             )
         elif spec.printed == Printed.CONTRACT:
@@ -1763,6 +1962,17 @@ def _visited_spaces(
 # The effects an Intrigue card's choice slot offers beside its own, by the
 # slot (``ability_executor.piece_rows``): recalling a Spy first, the Shield
 # Wall, the look at the deck's top card.
+# Bindu Suspension's optional pass of the turn after its draw: pass, or play
+# the turn normally (OQ-117).
+_OPTIONAL_PASS_EFFECTS: Final = ("pass_turn_intrigue", "keep_turn_intrigue")
+# Urgent Mission's recall of one of the seat's own Agents: from a board
+# space (one row per space, in the catalog's own loop), from the Conflict, or
+# the empty confirmation (OQ-113 (C)).
+_RECALL_AGENT_EFFECTS: Final = (
+    "recall_agent_for_intrigue",
+    "recall_conflict_agent_for_intrigue",
+    "skip_intrigue_recall_agent",
+)
 _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
     "PlaceSpy": ("recall_spy_for_intrigue", "decline_intrigue_spy"),
     "DestroyShieldWall": ("detonate_shield_wall", "keep_shield_wall"),
@@ -1773,17 +1983,28 @@ _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
         "skip_intrigue_top_card",
     ),
     # The slots' refusals and empty confirmations (B3d-3; OQ-113 (C)), a
-    # mandatory trash's own below (``_MANDATORY_TRASH_EFFECTS``).
+    # mandatory trash's own below (``_MANDATORY_TRASH_EFFECTS``), Poison
+    # Snooper's draw-or-trash look at the deck's top card
+    # (``_DRAW_OR_TRASH_EFFECTS``).
     "TrashPersonalCard": ("decline_intrigue_trash",),
     "SetAsideImperiumRowCard": ("skip_intrigue_set_aside",),
     "TrashDiscardPileCard": ("decline_intrigue_trash",),
     "AcquireTleilaxuCard": ("decline_intrigue_tleilaxu",),
     "AcquireCardUpTo": ("skip_intrigue_acquisition",),
     "GainInfluence": ("resolve_intrigue_influence_without_faction",),
+    "PassTurn": _OPTIONAL_PASS_EFFECTS,
+    "RecallYourAgent": _RECALL_AGENT_EFFECTS,
 }
 # A mandatory personal-card trash (Twisted Devious) is confirmed with an empty
 # hand instead of refused (OQ-113 (C)).
 _MANDATORY_TRASH_EFFECTS: Final = ("skip_intrigue_trash",)
+# Poison Snooper's look at the deck's top card (``PeekTopCard.draw_or_trash``):
+# draw it or trash it, free, and confirmed when the deck is empty (OQ-113 (C)).
+_DRAW_OR_TRASH_EFFECTS: Final = (
+    "draw_top_card",
+    "trash_top_card",
+    "skip_intrigue_top_card",
+)
 # A Conflict reward window's refusal or empty confirmation by the icons
 # whose window offers it (``effect_steps.window_icon``, B3d-3).
 _REWARD_WINDOW_REFUSALS: Final[Mapping[str, tuple[str, ...]]] = {
@@ -1826,7 +2047,11 @@ def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
                 effect
                 for slot in slots
                 for effect in (
-                    *_INTRIGUE_SLOT_EFFECTS.get(type(slot).__name__, ()),
+                    *(
+                        _DRAW_OR_TRASH_EFFECTS
+                        if isinstance(slot, PeekTopCard) and slot.draw_or_trash
+                        else _INTRIGUE_SLOT_EFFECTS.get(type(slot).__name__, ())
+                    ),
                     *(
                         _MANDATORY_TRASH_EFFECTS
                         if isinstance(slot, TrashPersonalCard) and slot.mandatory
@@ -1834,7 +2059,9 @@ def _intrigue_choice_cards(config: RulesetConfig) -> dict[str, tuple[str, ...]]:
                     ),
                 )
             }
-            if automatic_rewards(option.sections):
+            if automatic_rewards(option.sections) and not rewards_come_first(
+                option.sections
+            ):
                 effects.add("resolve_intrigue_rewards")
             for effect in effects:
                 cards.setdefault(effect, {})[card.card.card_id] = None
@@ -2062,14 +2289,30 @@ def _window_printers(
             for card in _intrigue_reward_cards(config, AcquireTech)
         )
     if action_id == "resolve_opponent_discard_without_card":
+        # Covert Operation's, Reverend Mother Mohiam's and Test of Humanity's
+        # (an opponent with neither a card nor a deployed troop).
         return tuple(
-            (Source.AGENT_CARD, card)
-            for card in _box_reward_cards(config, EachOpponentDiscardsCard)
+            dict.fromkeys(
+                (Source.AGENT_CARD, card)
+                for reward in (
+                    EachOpponentDiscardsCard,
+                    EachOpponentDiscardsOrLosesDeployedTroop,
+                )
+                for card in _box_reward_cards(config, reward)
+            )
         )
     if action_id == "resolve_unit_loss_without_unit":
-        return tuple(
-            (Source.AGENT_CARD, card)
-            for card in _box_reward_cards(config, EachOpponentLosesTroop)
+        return (
+            *(
+                (Source.AGENT_CARD, card)
+                for card in _box_reward_cards(config, EachOpponentLosesTroop)
+            ),
+            # Double Cross's chosen opponent (never without a troop to lose
+            # in the Conflict, but the window can always be confirmed).
+            *(
+                (Source.INTRIGUE, card)
+                for card in _intrigue_reward_cards(config, OpponentLosesTroop)
+            ),
         )
     if action_id == "lose_moved_spy":
         return (
@@ -2284,6 +2527,12 @@ _PIECE_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "ForceEnemyRetreat": (("retreat", ""),),
     "CompleteContract": (("complete_contract", ""),),
     "LoseTroops": (("lose_unit", ""),),
+    # Shifting Allegiances' cost (no Uprising box prints one).
+    "LoseInfluence": (("lose_influence", ""),),
+    # Other Memory's card from the discard pile.
+    "TakeCardFromDiscard": (("take", ""),),
+    # The Voice's "Choose any board space".
+    "BlockChosenSpaceForOpponentsNextAgent": (("choose", ""),),
     "AcquireCardForSolari": (("acquire", ""),),
     "AcquireCardUpTo": (("acquire", ""),),
     "GrantCombatDeployment": (("gain", "combat"),),
@@ -2374,6 +2623,21 @@ def _leader_faces(config: RulesetConfig) -> tuple[str, ...]:
         if leader.alternate_face_id is not None:
             faces.setdefault(leader.alternate_face_id, None)
     return tuple(faces)
+
+
+def _unit_loss_templates() -> tuple[ActionTemplate, ...]:
+    """The unit-loss window's rows: the loser picks the zone and the unit
+    kind (OQ-036); ``commanders`` marks a Sardaukar Commander like the
+    retreat argument does."""
+
+    return tuple(
+        ActionTemplate(action_id="lose_unit", arguments=arguments)
+        for zone in ("garrison", "conflict")
+        for arguments in (
+            (("zone", zone),),
+            (("commanders", 1), ("zone", zone)),
+        )
+    )
 
 
 def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
@@ -2589,16 +2853,7 @@ def _bloodlines_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             min(count, MAX_COMMANDER_DEPLOYMENT) + 1,
         )
     )
-    # The loser picks the zone and the unit kind (OQ-036); ``commanders``
-    # marks a Sardaukar Commander like the retreat argument does.
-    templates.extend(
-        ActionTemplate(action_id="lose_unit", arguments=arguments)
-        for zone in ("garrison", "conflict")
-        for arguments in (
-            (("zone", zone),),
-            (("commanders", 1), ("zone", zone)),
-        )
-    )
+    templates.extend(_unit_loss_templates())
     # "Gain one Influence of your choice" as a Reveal choice (Pointing the Way).
     templates.extend(
         ActionTemplate(
@@ -3219,6 +3474,20 @@ def _agent_turn_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     )
 
 
+def _deck_granted_icons(config: RulesetConfig) -> tuple[AgentIcon, ...]:
+    """The Agent icons an Intrigue card of the game's deck gives the card
+    played this turn (``GrantAgentIconsThisTurn``), in printed order."""
+
+    icons: dict[AgentIcon, None] = {}
+    for instance_id in content_for(config).intrigue_deck_instance_ids:
+        for option in intrigue_card_for_instance(instance_id).options:
+            for section in option.sections:
+                for reward in section.rewards:
+                    if isinstance(reward, GrantAgentIconsThisTurn):
+                        icons.update(dict.fromkeys(reward.icons))
+    return tuple(icons)
+
+
 def _agent_placement_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     # Emperor's Invitation (Bloodlines) can give any card the Emperor icon
     # for a turn, so the option's catalogs also hold every card's Emperor
@@ -3231,6 +3500,10 @@ def _agent_placement_templates(config: RulesetConfig) -> tuple[ActionTemplate, .
     every_icon = tuple(AgentIcon) if config.bloodlines else ()
     if config.bloodlines:
         granted = every_icon
+    if content_for(config).base_game is BaseGame.IMPERIUM:
+        # The original game's Dispatch an Envoy gives the card played this
+        # turn the four Faction icons (stage P3): its deck's grants.
+        granted = tuple(dict.fromkeys((*granted, *_deck_granted_icons(config))))
     templates: list[ActionTemplate] = []
     for starting_card in _starting_entries(config):
         templates.extend(
@@ -3315,10 +3588,13 @@ def _agent_turn_templates_for_card(
     graft: bool = False,
 ) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = []
+    anywhere = card_sends_agent_anywhere(card)
     # Immortality: a Graft card is only ever played grafted; any other card
     # may also be played grafted (the partner is chosen next), and Blank
-    # Slate grafted has the four Faction icons [card face].
-    if not graft:
+    # Slate grafted has the four Faction icons [card face]. Kwisatz Haderach
+    # is never grafted: the original game takes Immortality from stage P7
+    # (``rules.agent_turn._placements_for_hand_card``).
+    if not graft or anywhere:
         graft_variants: tuple[bool, ...] = (False,)
     elif card_is_graft(card):
         graft_variants = (True,)
@@ -3334,6 +3610,11 @@ def _agent_turn_templates_for_card(
         if card.card.card_id == "blank_slate"
         else ()
     )
+    # Kwisatz Haderach's Agent comes from the Leader (no ``from_space``) or
+    # off any board space of the catalog (``rules.agent_turn``).
+    from_spaces: tuple[str | None, ...] = (
+        (None, *(space.space_id for space in spaces)) if anywhere else (None,)
+    )
     for copy in range(card.copies):
         card_id = f"{prefix}:{card.card.card_id}:{copy}"
         for space in spaces:
@@ -3347,6 +3628,7 @@ def _agent_turn_templates_for_card(
                         posts,
                         space_discounts=space_discounts,
                         grafted=grafted,
+                        from_spaces=from_spaces,
                     )
                 )
     return tuple(templates)
@@ -3361,14 +3643,18 @@ def _placement_templates(
     *,
     space_discounts: bool,
     grafted: bool,
+    from_spaces: tuple[str | None, ...] = (None,),
 ) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = []
+    # Kwisatz Haderach goes to "ANY board space (even if occupied)" [card].
+    anywhere = card_sends_agent_anywhere(card)
     if (
         space.agent_icon not in card.agent_icons
         and space.agent_icon not in granted_icons
         and AgentIcon.SPY not in card.agent_icons
         # Usurp reaches any space on a Row card's icons [card face].
         and not (grafted and card_is_usurp(card))
+        and not anywhere
     ):
         return ()
     cost_options: tuple[int | None, ...] = (
@@ -3389,37 +3675,41 @@ def _placement_templates(
                 )
             ),
         )
+    # An occupied space never needs a Spy's Infiltrate for Kwisatz Haderach.
     infiltration_post_ids: tuple[str | None, ...] = (
         None,
         *(
             post.post_id
             for post in posts
-            if space.space_id in post.connected_space_ids
+            if space.space_id in post.connected_space_ids and not anywhere
         ),
     )
     for cost_option in cost_options:
         for discount in discounts:
-            for infiltrate_post_id in infiltration_post_ids:
-                arguments: list[tuple[str, ActionValue]] = [
-                    ("card_id", card_id)
-                ]
-                if cost_option is not None:
-                    arguments.append(("cost_option", cost_option))
-                if discount is not None:
-                    arguments.append(("discount", discount))
-                if grafted:
-                    arguments.append(("graft", True))
-                if infiltrate_post_id is not None:
-                    arguments.append(
-                        ("infiltrate_post_id", infiltrate_post_id)
+            for from_space in from_spaces:
+                for infiltrate_post_id in infiltration_post_ids:
+                    arguments: list[tuple[str, ActionValue]] = [
+                        ("card_id", card_id)
+                    ]
+                    if cost_option is not None:
+                        arguments.append(("cost_option", cost_option))
+                    if discount is not None:
+                        arguments.append(("discount", discount))
+                    if from_space is not None:
+                        arguments.append(("from_space", from_space))
+                    if grafted:
+                        arguments.append(("graft", True))
+                    if infiltrate_post_id is not None:
+                        arguments.append(
+                            ("infiltrate_post_id", infiltrate_post_id)
+                        )
+                    arguments.append(("space_id", space.space_id))
+                    templates.append(
+                        ActionTemplate(
+                            action_id="agent_turn",
+                            arguments=tuple(arguments),
+                        )
                     )
-                arguments.append(("space_id", space.space_id))
-                templates.append(
-                    ActionTemplate(
-                        action_id="agent_turn",
-                        arguments=tuple(arguments),
-                    )
-                )
     return tuple(templates)
 
 
@@ -3479,6 +3769,11 @@ _SOURCED_SPY_PLACEMENT: Final = (
 # A plain Spy icon also passes up its empty-supply recall-first (OQ-057 (14)).
 _SOURCED_PLAIN_SPY: Final = (*_SOURCED_SPY_PLACEMENT, "decline_reveal_spy_recall")
 _SOURCED_TROOP_MOVE: Final = ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
+# The troops a count of which a Reveal choice moves (original game).
+_SOURCED_TROOPS_MOVE: Final = (
+    "deploy_reveal_card_troops",
+    "retreat_reveal_card_troops",
+)
 _Choice = PersonalCardRevealChoiceEffect
 _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     _Choice.PLACE_SPY: _SOURCED_PLAIN_SPY,
@@ -3491,6 +3786,14 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: ("gain_reveal_influence",),
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _SOURCED_TROOP_MOVE,
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _SOURCED_TROOP_MOVE,
+    _Choice.MAY_DEPLOY_ONE_TROOP: ("deploy_reveal_card_troop",),
+    # Sardaukar Legion, Scout, Chani (original game): a count of troops.
+    _Choice.MAY_DEPLOY_UP_TO_THREE_TROOPS: ("deploy_reveal_card_troops",),
+    _Choice.MAY_RETREAT_UP_TO_TWO_TROOPS: ("retreat_reveal_card_troops",),
+    _Choice.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: ("retreat_reveal_card_troops",),
+    # Duncan, Loyal Blade (original game promo): the trash, then one
+    # direction and a count, none included.
+    _Choice.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS: _SOURCED_TROOPS_MOVE,
     _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED: (
         "recall_spy_for_reveal",
     ),
@@ -3561,6 +3864,24 @@ def _reveal_source_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...
                     variants = shares
                 elif action_id in _SOURCED_TROOP_MOVE:
                     variants = one_unit
+                elif action_id in _SOURCED_TROOPS_MOVE:
+                    # One row per count the card allows: up to its most, or
+                    # as many as a seat can have in play ("any number"); with
+                    # Bloodlines also per Sardaukar Commander share, a
+                    # Commander being a troop [Bloodlines p. 4], as the engine
+                    # offers them (``units.unit_count_arguments``).
+                    shape = troops_move_shape(effect)
+                    # Duncan, Loyal Blade names a count from none (one
+                    # direction and a count, "any number" [FAQ p. 3]).
+                    assert shape is not None or troops_trash_move(effect)
+                    variants = unit_count_arguments(
+                        minimum=0 if shape is None else 1,
+                        maximum=None if shape is None else shape[1],
+                        troops=MAX_DEPLOYMENT_COUNT,
+                        commanders=(
+                            MAX_COMMANDER_DEPLOYMENT if config.bloodlines else 0
+                        ),
+                    )
                 elif action_id == "gain_reveal_influence":
                     variants = tuple(
                         (("faction", faction.value),) for faction in Faction

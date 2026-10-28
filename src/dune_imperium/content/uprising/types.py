@@ -312,6 +312,97 @@ class PersonalCardAgentEffect(StrEnum):
     # a card] [troop]". The arrow cost is optional and once [Main p. 9]
     # [FAQ p. 3]; the black-X trash stays optional after paying [FAQ p. 3].
     MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT = "may_pay_spice_to_trash_and_recruit"
+    # The original game's Imperium cards (stage P3).
+    # Arrakis Recruiter: the troop icon alone, "Recruit 1 troop".
+    RECRUIT_ONE_TROOP = "recruit_one_troop"
+    # Spice Smugglers: "[2 spice] -> [Spacing Guild Influence] [3 Solari]"; the
+    # arrow cost is optional and paid once [DI p. 9] [FAQ p. 3].
+    MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI = (
+        "may_pay_two_spice_for_spacing_guild_influence_and_three_solari"
+    )
+    # Gun Thopter: "Each opponent loses one garrisoned troop."
+    EACH_OPPONENT_LOSES_GARRISON_TROOP = "each_opponent_loses_garrison_troop"
+    # Crysknife: the Solari icon alone, "Gain 1 Solari".
+    GAIN_ONE_SOLARI = "gain_one_solari"
+    # Opulence: the Solari icon alone, "Gain 3 Solari".
+    GAIN_THREE_SOLARI = "gain_three_solari"
+    # Duncan Idaho: "[1 water] -> [troop] [draw 1 card]"; the arrow cost is
+    # optional and paid once [DI p. 9] [FAQ p. 3], and the troop and the
+    # hidden draw are separate steps (OQ-027, OQ-106).
+    MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE = (
+        "may_pay_one_water_for_troop_and_draw_one"
+    )
+    # Fremen Camp: "[2 spice] -> [3 troops]", an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3].
+    MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS = "may_pay_two_spice_for_three_troops"
+    # Smuggler's Thopter: "[Spacing Guild] 2 Influence: [draw 1] [draw 1]", two
+    # draw icons each judged when it resolves (OQ-027, OQ-028).
+    DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO = "draw_two_if_spacing_guild_influence_two"
+    # Worm Riders: the spice icon with a 2, "Gain 2 spice".
+    GAIN_TWO_SPICE = "gain_two_spice"
+    # Guild Ambassador: "[Spacing Guild Influence] -OR- [2 spice]", a printed
+    # -OR- the owner must settle.
+    GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE = (
+        "gain_spacing_guild_influence_or_two_spice"
+    )
+    # Gurney Halleck: "[2 troops] [draw 1 card]", two icons each its own step
+    # (OQ-027, OQ-106).
+    RECRUIT_TWO_AND_DRAW_ONE = "recruit_two_and_draw_one"
+    # Imperial Spy: "Trash this card -> [Intrigue card]", an optional arrow
+    # paid once [DI p. 9] [FAQ p. 3].
+    MAY_TRASH_SELF_TO_DRAW_INTRIGUE = "may_trash_self_to_draw_intrigue"
+    # Missionaria Protectiva: "If you have another Bene Gesserit card in play:
+    # [Influence of your choice]".
+    GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND = (
+        "gain_chosen_influence_if_bene_gesserit_bond"
+    )
+    # Gene Manipulation: "[trash] AND If you have another Bene Gesserit card in
+    # play: [2 spice]", two separate icons (OQ-027).
+    MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND = (
+        "may_trash_and_gain_two_spice_if_bene_gesserit_bond"
+    )
+    # Reverend Mother Mohiam: "If you have another Bene Gesserit card in play,
+    # each opponent discards two cards."
+    EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND = (
+        "each_opponent_discards_two_if_bene_gesserit_bond"
+    )
+    # Carryall: "Double the base (not bonus) spice you harvest with this
+    # Agent" -- a modifier of the harvest, never a box to resolve.
+    DOUBLE_BASE_HARVEST_SPICE = "double_base_harvest_spice"
+    # Thumper (promo): "Double the bonus spice you harvest with this Agent" --
+    # a modifier of the harvest, like Carryall's, never a box to resolve.
+    DOUBLE_BONUS_HARVEST_SPICE = "double_bonus_harvest_spice"
+    # Jessica of Arrakis (promo): "If you have another Bene Gesserit card in
+    # play: [draw 1] [draw 1]", two draw icons each judged when it resolves
+    # (OQ-027, OQ-028).
+    DRAW_TWO_IF_BENE_GESSERIT_BOND = "draw_two_if_bene_gesserit_bond"
+    # Test of Humanity: "Each opponent chooses: Discard a card -OR- Lose a
+    # deployed troop."
+    EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP = (
+        "each_opponent_discards_or_loses_deployed_troop"
+    )
+    # Firm Grip: "[2 Solari] -> Choose one: [Spacing Guild Influence] / [Bene
+    # Gesserit Influence] / [Fremen Influence]", an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3].
+    MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE = (
+        "may_pay_two_solari_for_chosen_influence"
+    )
+    # Shifting Allegiances: "[lose 1 Influence with a chosen Faction] [2 spice]
+    # -> [2 Influence with one chosen Faction]", an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3]; the same Faction may be lost and gained [FAQ p. 4].
+    MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE = (
+        "may_lose_influence_and_pay_two_spice_for_two_influence"
+    )
+    # Other Memory: "[draw 1] -OR- Draw a Bene Gesserit card from your discard
+    # pile" -- a printed -OR- the owner must settle.
+    DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD = (
+        "draw_one_or_bene_gesserit_card_from_discard"
+    )
+    # The Voice: "Choose any board space. Opponents can't send their next
+    # Agents there this round."
+    BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT = (
+        "block_chosen_space_for_opponents_next_agent"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -325,6 +416,9 @@ class PersonalCardTrashEffect(StrEnum):
     ACQUIRE_BANK_COMMANDER = "acquire_bank_commander"
     # Replacement Eyes (Immortality): "When this card is trashed: Tleilaxu".
     ADVANCE_TLEILAXU = "advance_tleilaxu"
+    # Assassination Mission (the original game): "When this card is trashed: 4
+    # Solari" -- whatever trashes it, never the card itself [FAQ p. 1].
+    GAIN_FOUR_SOLARI = "gain_four_solari"
 
 
 class PersonalCardIconCondition(StrEnum):
@@ -383,6 +477,12 @@ class PersonalCardAcquisitionEffect(StrEnum):
     ADVANCE_TLEILAXU = "advance_tleilaxu"
     GAIN_ONE_SPICE = "gain_one_spice"
     RECRUIT_THREE_TROOPS = "recruit_three_troops"
+    # CHOAM Directorship (original game): four Influence icons, one with each
+    # Faction, each its own row in the owner's order (OQ-141).
+    GAIN_INFLUENCE_WITH_EACH_FACTION = "gain_influence_with_each_faction"
+    # Lady Jessica (original game): one Influence with a Faction of the
+    # owner's choice (OQ-141, OQ-060).
+    GAIN_INFLUENCE_WITH_CHOSEN_FACTION = "gain_influence_with_chosen_faction"
 
 
 class PersonalCardRevealChoiceEffect(StrEnum):
@@ -458,6 +558,40 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     )
     # Tleilaxu Surgeon: "Lose two troops -> two specimens".
     MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS = "may_lose_two_troops_for_two_specimens"
+    # The original game's Imperium cards (stage P3). Gun Thopter: "You may
+    # deploy a troop from your garrison to the Conflict" -- the deploy half of
+    # Shadout Mapes' "deploy or retreat".
+    MAY_DEPLOY_ONE_TROOP = "may_deploy_one_troop"
+    # Bene Gesserit Sister: "[2 Persuasion] -OR- [2 swords]", a printed -OR-
+    # the owner must settle (a mandatory choice, like Delivery Logistics').
+    CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH = "choose_two_persuasion_or_two_strength"
+    # Opulence: "[6 Solari] -> [1 Victory Point]", an optional arrow paid once
+    # [DI p. 9] [FAQ p. 3].
+    MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT = "may_pay_six_solari_for_victory_point"
+    # Guild Ambassador: "Spacing Guild Alliance: [3 spice] -> [1 Victory
+    # Point]", an optional arrow paid once [DI p. 9] [FAQ p. 3].
+    MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE = (
+        "may_pay_three_spice_for_victory_point_if_spacing_guild_alliance"
+    )
+    # Gurney Halleck: "[3 Solari] -> [2 troops], you may deploy these troops to
+    # the Conflict", an optional arrow paid once [DI p. 9] [FAQ p. 3].
+    MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY = (
+        "may_pay_three_solari_for_two_troops_and_deploy"
+    )
+    # Sardaukar Legion: "Deploy up to three troops from your garrison to the
+    # Conflict" ("up to" allows none [FAQ p. 3]).
+    MAY_DEPLOY_UP_TO_THREE_TROOPS = "may_deploy_up_to_three_troops"
+    # Scout: "Retreat up to two of your troops" [DI p. 16].
+    MAY_RETREAT_UP_TO_TWO_TROOPS = "may_retreat_up_to_two_troops"
+    # Chani: "Retreat any number of your troops" ("any number" allows none
+    # [FAQ p. 3]).
+    MAY_RETREAT_ANY_NUMBER_OF_TROOPS = "may_retreat_any_number_of_troops"
+    # Duncan, Loyal Blade (promo): "Trash this card -> Deploy or retreat any
+    # number of your troops from or to your garrison" -- the trash, then one
+    # direction and a count, none included ("any number" [FAQ p. 3]).
+    MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS = (
+        "may_trash_self_to_move_any_number_of_troops"
+    )
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -474,6 +608,23 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
         PersonalCardRevealChoiceEffect.PERSUASION_OR_CONTRACT,
         PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
+    }
+)
+
+# Choice effects added by the original game's Imperium cards (stage P3):
+# outside every Uprising catalog, whose resume templates list one per choice
+# effect of the Uprising family only.
+IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = frozenset(
+    {
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,
+        PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
+        PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT,
+        PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE,
+        PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY,
+        PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS,
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS,
     }
 )
 

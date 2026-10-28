@@ -327,6 +327,35 @@ def test_no_other_view_log_or_summary_depends_on_a_seats_deck(
     )
 
 
+def test_a_public_deck_top_is_named_in_every_seats_view() -> None:
+    # OQ-145 (user ruling 2026-10-28): the cards put face up on top of a deck
+    # are public to every seat, the observer's own included, and only they:
+    # the cards below still name nobody's order.
+    manager, game_id = _midgame(seed=1)
+    session = manager._get(game_id)
+    state = session.state
+    owner = 2
+    deck = state.players[owner].deck
+    top = deck[:2]
+    session.state = replace(
+        state,
+        players=replace_player(
+            state.players, replace(state.players[owner], deck_public_top=top)
+        ),
+    )
+
+    for seat in range(4):
+        players = _obj(manager.view(game_id, seat))["players"]
+        assert isinstance(players, list)
+        for shown in range(4):
+            expected = list(top) if shown == owner else []
+            assert _obj(players[shown])["deck_public_top"] == expected
+        text = json.dumps(manager.view(game_id, seat)["players"])
+        assert not [card for card in deck[2:] if card in text]
+    # The owner's own list is as it was: sorted, order-free.
+    assert _deck_cards(manager.view(game_id, owner)) == sorted(deck)
+
+
 def test_remote_seats_cannot_reach_another_seats_list() -> None:
     manager = GameSessionManager(access=AccessMode.REMOTE, admin_key=ADMIN_KEY)
     admin = Credentials(admin_key=ADMIN_KEY)

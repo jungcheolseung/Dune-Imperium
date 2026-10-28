@@ -163,6 +163,8 @@ def draw_round_hands(state: GameState) -> RuleResult:
             bene_gesserit_boost_pending=False,
             # Tleilaxu Puppet's Reveal Persuasion lasts "this round" only.
             reveal_persuasion_round_bonus=0,
+            # Recruitment Mission's deck-top option lasts "this round" only.
+            acquire_to_deck_top_round=False,
             # Chairdog's return and Usurp's borrowed card never outlive the
             # round (both are consumed earlier in ordinary play).
             chairdog_return_card_ids=(),
@@ -529,6 +531,10 @@ def resolve_recall_or_endgame(state: GameState) -> RuleResult:
             agent_locations=(),
             has_revealed=False,
             mentat=False,
+            # The Voice's blocks end with the round (OQ-116), and an
+            # Infiltrate played in a last Reveal turn never reaches the next.
+            voice_blocked_space_ids=(),
+            enemy_agents_ignored_turn=False,
         )
         for player in state.players
     )

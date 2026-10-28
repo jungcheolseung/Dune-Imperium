@@ -3622,3 +3622,84 @@ def test_a_play_in_the_window_is_confirmed_by_the_seats_own_finish() -> None:
     assert summary["confirmation"] is None
     assert _rows(summary["undo"]) == []
     assert session.undo_floor > played + 3
+
+
+def _bindu_game() -> tuple[GameSessionManager, str]:
+    """``_turn_pass_game`` with the original game's Bindu Suspension in seat 0's
+    hand (an injected card: the play server does not host the original game
+    yet, but the session layer reads only the decision stack and the events)."""
+
+    owner = PlayerState(
+        player_id=0,
+        intrigue_cards=("intrigue:bindu_suspension:0",),
+        hand=(_DAGGER,),
+        deck=tuple(card for card in _STARTERS if card != _DAGGER)[:4],
+    )
+    return _turn_pass_game(owner)
+
+
+def test_bindu_suspension_passing_is_the_press_and_keeping_the_turn_is_not() -> None:
+    # OQ-117: after its draw Bindu Suspension lets the seat pass its turn or
+    # play it normally. The pass is a turn-passing card's end of the turn, the
+    # press itself, so no confirm_turn follows (OQ-095 (6)); playing on is no
+    # end at all and the seat stays inside its own turn. The play itself, which
+    # drew a card, is a turn-start play that cannot be taken back.
+    manager, game_id = _bindu_game()
+    session = manager._get(game_id)
+
+    def offered() -> list[dict[str, object]]:
+        return _rows(manager.legal_actions(game_id, 0)["actions"])
+
+    play = next(a for a in offered() if a["action_id"] == "play_intrigue")
+    assert play["turn_start"] is True
+    assert play["undoable"] is False
+    opened = manager.apply_action(game_id, 0, 0, _int(play["index"]))
+    assert _obj(opened["decision"])["kind"] == "intrigue_choice"
+    assert opened["confirmation"] is None
+    rows = {str(row["action_id"]): row for row in offered()}
+    assert set(rows) == {"pass_turn_intrigue", "keep_turn_intrigue"}
+
+    # Passing hands the turn over at once: the press itself.
+    log_before = len(session.log)
+    handed = manager.apply_action(
+        game_id, 0, _int(opened["revision"]), _int(rows["pass_turn_intrigue"]["index"])
+    )
+    assert "turn_passed" in {
+        logged.kind
+        for step in live_steps(session.log[log_before:])
+        for logged in step.events
+    }
+    assert handed["confirmation"] is None
+    decision = _obj(handed["decision"])
+    assert decision["kind"] == "turn" and decision["owner"] == 1
+    assert 0 not in session.open_units
+    with pytest.raises(SessionError, match="no turn end to confirm"):
+        manager.confirm_turn(game_id, 0, _int(handed["revision"]))
+
+
+def test_bindu_suspension_playing_on_keeps_the_seat_in_its_turn() -> None:
+    manager, game_id = _bindu_game()
+    session = manager._get(game_id)
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    play = next(a for a in actions if a["action_id"] == "play_intrigue")
+    opened = manager.apply_action(game_id, 0, 0, _int(play["index"]))
+    actions = _rows(manager.legal_actions(game_id, 0)["actions"])
+    keep = next(a for a in actions if a["action_id"] == "keep_turn_intrigue")
+
+    kept = manager.apply_action(
+        game_id, 0, _int(opened["revision"]), _int(keep["index"])
+    )
+
+    decision = _obj(kept["decision"])
+    assert decision["kind"] == "turn" and decision["owner"] == 0
+    assert kept["confirmation"] is None
+    offered = {
+        str(action["action_id"])
+        for action in _rows(manager.legal_actions(game_id, 0)["actions"])
+    }
+    assert "reveal_turn" in offered
+    assert "turn_passed" not in {
+        logged.kind
+        for step in live_steps(session.log)
+        for logged in step.events
+    }

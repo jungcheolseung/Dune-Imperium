@@ -13,10 +13,10 @@ from copy import replace
 from types import MappingProxyType
 from typing import Final, assert_never
 
-from dune_imperium.config import BaseGame
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.abilities import Ability, AbilityMark
+from dune_imperium.content.uprising.agent_abilities import agent_box_ability
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.board_abilities import (
     BOARD_CHOICE_ABILITIES,
@@ -25,6 +25,8 @@ from dune_imperium.content.uprising.board_abilities import (
 )
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireReserveCard,
+    DoubleBaseHarvestSpice,
+    DoubleBonusHarvestSpice,
     DrawIntrigueCards,
     DrawPersonalCards,
     EffectSection,
@@ -45,6 +47,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.leader_abilities import leader_triggers
+from dune_imperium.content.uprising.personal_cards import PersonalCardDefinition
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.chance import ChanceOutcome
@@ -65,12 +68,14 @@ from dune_imperium.rules.effects import (
     AutomaticEffect,
     OptionalBlockKind,
     OptionalEffectBlock,
+    active_agent_card,
     add_board_icon,
     advance_after_effect,
     blocked_board_icons,
     board_icon_is_pending,
     current_agent_effect_context,
     finish_board_icon,
+    mentat_rests,
     pending_board_icons,
     recall_agent_targets,
     recall_board_agent,
@@ -446,18 +451,6 @@ def board_icon_for_effect(effect: AutomaticEffect) -> str:
             assert_never(effect)
 
 
-def mentat_rests(state: GameState) -> bool:
-    """Whether the Mentat rests on its space: no seat took it this round and
-    no Sort Through the Chaos winner waits for it [FAQ p. 4]
-    (docs/rules/imperium-base.md 9). Only an original game sets it out."""
-
-    return (
-        state.config.base_game is BaseGame.IMPERIUM
-        and state.mentat_owed_to is None
-        and not any(player.mentat for player in state.players)
-    )
-
-
 def board_icons_for(
     state: GameState,
     player: int,
@@ -590,6 +583,11 @@ def legal_board_effect_actions(
         )
         for key in pending_board_icons(context)
         if key in AUTOMATIC_BOARD_ICONS
+        # "If the Mentat is here, take it" [DI p. 18] is judged when it
+        # resolves (OQ-028): with the Mentat gone from its space -- Calculated
+        # Hire took it earlier in the visit -- the icon waits and lapses at
+        # the turn's end (``effects.blocked_board_icons``).
+        and not (key == BOARD_ICON_MENTAT and not mentat_rests(state))
     )
 
 
@@ -2028,6 +2026,22 @@ def legal_maker_space_actions(
     return tuple(actions)
 
 
+def _harvest_doublings(card: PersonalCardDefinition) -> tuple[bool, bool]:
+    """Whether the card's Agent box doubles the base spice (Carryall) and the
+    bonus spice (Thumper) of its harvest."""
+
+    ability = agent_box_ability(card.agent_effect)
+    rewards = (
+        ()
+        if ability is None
+        else tuple(reward for line in ability.sections for reward in line.rewards)
+    )
+    return (
+        any(isinstance(reward, DoubleBaseHarvestSpice) for reward in rewards),
+        any(isinstance(reward, DoubleBonusHarvestSpice) for reward in rewards),
+    )
+
+
 def apply_maker_space_action(
     state: GameState,
     action: DomainAction,
@@ -2042,7 +2056,14 @@ def apply_maker_space_action(
     bonus_by_space = dict(state.maker_bonus_spice)
     bonus_spice = bonus_by_space[space_id]
     owner = state.players[action.actor]
+    # The card whose Agent made this visit: a box that is a modifier of the
+    # harvest rather than a step (Carryall) is read off it. A grafted
+    # partner's own modifier is for the combinations stage (P7).
+    context_card = active_agent_card(current_agent_effect_context(state)[1])
     base_spice = 0
+    # What the harvest gains of the space's bonus spice: all of it, twice with
+    # Thumper (``bonus_spice`` is what the space held).
+    bonus_gained = bonus_spice
     sandworms = 0
     replaced = 0
     addict = False
@@ -2068,6 +2089,18 @@ def apply_maker_space_action(
         )
     elif action.action_id == "harvest_maker_spice":
         base_spice = MAKER_BASE_SPICE[space_id]
+        doubles_base, doubles_bonus = _harvest_doublings(context_card)
+        if doubles_base:
+            # Carryall: "Double the base (not bonus) spice you harvest with
+            # this Agent" -- the printed base only [FAQ p. 1]; the bonus spice
+            # below stays as it is. Doubled before Spice Addict's one less
+            # (imperium-base.md 16: Countess Ariana's -1 comes off the total).
+            base_spice *= 2
+        if doubles_bonus:
+            # Thumper: "Double the bonus spice you harvest with this Agent" --
+            # the spice the space gathered counts twice, the extra from the
+            # bank; the base spice stays as it is.
+            bonus_gained = bonus_spice * 2
         face = owner.leader_face_id or owner.leader_id
         addict = bool(leader_triggers(face, OnMakerSpiceHarvested))
         if addict:
@@ -2081,7 +2114,7 @@ def apply_maker_space_action(
             owner,
             resources=replace(
                 owner.resources,
-                spice=owner.resources.spice + bonus_spice + base_spice,
+                spice=owner.resources.spice + bonus_gained + base_spice,
             ),
         )
         if addict:
@@ -2130,8 +2163,8 @@ def apply_maker_space_action(
     next_state = advance_after_effect(effect_state, context, players)
     source = f"round:{state.round_number}:player:{action.actor}:board:{space_id}"
     gains = (
-        (resources_gained_event(source, action.actor, spice=bonus_spice + base_spice),)
-        if bonus_spice + base_spice
+        (resources_gained_event(source, action.actor, spice=bonus_gained + base_spice),)
+        if bonus_gained + base_spice
         else ()
     )
     event = GameEvent(

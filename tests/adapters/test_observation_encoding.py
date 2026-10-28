@@ -4,7 +4,7 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
-from tests.support.observation_growth import V35_SEGMENTS, v35_growth
+from tests.support.observation_growth import NEW_SEGMENTS, growth_since_v34
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.observation_encoding import (
@@ -16,6 +16,7 @@ from dune_imperium.adapters.observation_encoding import (
     OBSERVATION_SIZE,
     OBSERVATION_VERSION,
     PERSONAL_CARD_IDS,
+    SPACE_IDS,
     ObservationSegment,
     encode_player_view,
     segment_slice,
@@ -38,21 +39,24 @@ from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 36
+    assert OBSERVATION_VERSION == 38
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
     # Game Mode's Control the Spice, then (v35) the original game's three
-    # Reserve cards; 39 Uprising Intrigue identities plus 18 Bloodlines, 12
-    # Twisted, 10 Navigation, and 11 Immortality.
-    assert len(PERSONAL_CARD_IDS) == 66 + 26 + 1 + 25 + 1 + 19 + 1 + 3
-    assert PERSONAL_CARD_IDS[-4] == "control_the_spice"
-    assert PERSONAL_CARD_IDS[-3:] == (
+    # Reserve cards and (v37) its 43 Imperium cards and three promos; 39
+    # Uprising Intrigue identities plus 18 Bloodlines, 12 Twisted, 10
+    # Navigation, 11 Immortality and (v37) the original game's 34.
+    assert len(PERSONAL_CARD_IDS) == 66 + 26 + 1 + 25 + 1 + 19 + 1 + 3 + 46
+    assert PERSONAL_CARD_IDS[-50] == "control_the_spice"
+    assert PERSONAL_CARD_IDS[-49:-46] == (
         "arrakis_liaison",
         "imperium_the_spice_must_flow",
         "foldspace_card",
     )
-    assert len(INTRIGUE_IDS) == 39 + 18 + 12 + 10 + 11
+    assert PERSONAL_CARD_IDS[-46] == "arrakis_recruiter"
+    assert len(INTRIGUE_IDS) == 39 + 18 + 12 + 10 + 11 + 34
+    assert INTRIGUE_IDS[-34] == "bribery"
     # 16 Uprising Conflicts, the two Bloodlines cards and Epic Game Mode's
     # Economic Supremacy (identity universe), then (v35) the original game's
     # 18; the battle cards add the four Objectives before Economic
@@ -172,11 +176,20 @@ def test_layout_is_versioned_and_contiguous() -> None:
         # Factions.
         + 4
         + 4
+        # v37 (stage P3a): the original game's 46 Imperium cards in the 26
+        # personal-card segments and its 34 Intrigue cards in the nine
+        # Intrigue segments.
+        + 26 * 46
+        + 9 * 34
+        # v38 (OQ-145 and the original game's public markers): the public
+        # deck-top counts of four seats by personal-card identity, the
+        # barred spaces of four seats, and two turn flags per seat.
+        + 4 * 188
+        + 4 * 42
+        + 4 * 2
     )
-    assert OBSERVATION_SIZE == 5_835
-    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment(
-        "private_masterstroke", 5_831, 4
-    )
+    assert OBSERVATION_SIZE == 8_265
+    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment("card_turn_flags", 8_257, 8)
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -194,7 +207,10 @@ def test_layout_is_versioned_and_contiguous() -> None:
         == segment_slice("imperium_removed").start
     )
     seat0_in_play = segment_slice("seat0_in_play")
-    assert seat0_in_play.stop - seat0_in_play.start == 66 + 26 + 1 + 25 + 20 + 1 + 3
+    assert (
+        seat0_in_play.stop - seat0_in_play.start
+        == 66 + 26 + 1 + 25 + 20 + 1 + 3 + 46
+    )
     private_secret_project = segment_slice("private_secret_project")
     # v22 appends the Arrakeen Scouts segments after the private ones.
     assert private_secret_project.stop == segment_slice("scouts_items").start
@@ -245,7 +261,23 @@ def test_layout_is_versioned_and_contiguous() -> None:
     # v35 appends the Mentat after the base-game flag.
     assert segment_slice("base_game").stop == segment_slice("mentat").start
     assert segment_slice("mentat").stop == segment_slice("masterstroke_secret").start
-    assert segment_slice("private_masterstroke").stop == OBSERVATION_SIZE
+    # v38 appends the public deck tops (seat by seat), the barred spaces and
+    # the turn flags after the Masterstroke segments.
+    assert (
+        segment_slice("private_masterstroke").stop
+        == segment_slice("seat0_deck_public_top").start
+    )
+    for seat in range(3):
+        assert (
+            segment_slice(f"seat{seat}_deck_public_top").stop
+            == segment_slice(f"seat{seat + 1}_deck_public_top").start
+        )
+    assert (
+        segment_slice("seat3_deck_public_top").stop
+        == segment_slice("voice_blocks").start
+    )
+    assert segment_slice("voice_blocks").stop == segment_slice("card_turn_flags").start
+    assert segment_slice("card_turn_flags").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -550,6 +582,84 @@ def test_seat_blocks_rotate_egocentrically() -> None:
         assert zero_slice == one_slice
 
 
+_V38_SEGMENTS = (
+    *(f"seat{seat}_deck_public_top" for seat in range(4)),
+    "voice_blocks",
+    "card_turn_flags",
+)
+
+
+def test_a_public_deck_top_is_counted_by_identity_for_its_relative_seat() -> None:
+    # v38 (OQ-145): per relative seat, a personal-card identity's column counts
+    # its public copies on the deck top, as ``deck_pool`` counts (independent
+    # review 2026-10-28: a depth hid a second copy and weighed the top card
+    # least in the entity network); the other columns, and the other seats'
+    # blocks, stay 0.
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=5)
+    rival = state.players[1]
+    first, second, third = (
+        "player:1:starter:convincing_argument:0",
+        "player:1:starter:dagger:0",
+        "player:1:starter:convincing_argument:1",
+    )
+    hidden = tuple(
+        card
+        for card in (*rival.hand, *rival.deck)
+        if card not in (first, second, third)
+    )
+    crafted = replace(
+        rival,
+        deck=(first, second, third, *hidden[:2]),
+        hand=hidden[2:],
+        hand_public=(),
+        deck_public_top=(first, second, third),
+    )
+    state = replace(state, players=(state.players[0], crafted, *state.players[2:]))
+
+    ids = {card_id: index for index, card_id in enumerate(PERSONAL_CARD_IDS)}
+    for observer in range(4):
+        encoded = encode_player_view(engine.observe(state, observer))
+        for block in range(4):
+            column = encoded[segment_slice(f"seat{block}_deck_public_top")]
+            if (observer + block) % 4 != 1:
+                assert not any(column)
+                continue
+            assert column[ids["convincing_argument"]] == 2  # two public copies
+            assert column[ids["dagger"]] == 1
+            assert sum(1 for value in column if value) == 2
+
+
+def test_the_voice_and_the_card_turn_flags_are_encoded_by_relative_seat() -> None:
+    # v38: the spaces each relative seat may not send its next Agent to (The
+    # Voice), then per relative seat Infiltrate's turn marker and Recruitment
+    # Mission's round marker.
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=5)
+    barred = replace(
+        state.players[2], voice_blocked_space_ids=("arrakeen", "heighliner")
+    )
+    flagged = replace(
+        state.players[3], enemy_agents_ignored_turn=True, acquire_to_deck_top_round=True
+    )
+    state = replace(state, players=(*state.players[:2], barred, flagged))
+    spaces = {space_id: index for index, space_id in enumerate(SPACE_IDS)}
+
+    for observer in range(4):
+        encoded = encode_player_view(engine.observe(state, observer))
+        blocks = encoded[segment_slice("voice_blocks")]
+        flags = encoded[segment_slice("card_turn_flags")]
+        for seat in range(4):
+            row = (seat - observer) % 4
+            row_blocks = blocks[row * len(SPACE_IDS) : (row + 1) * len(SPACE_IDS)]
+            expected = (
+                {spaces["arrakeen"], spaces["heighliner"]} if seat == 2 else set()
+            )
+            assert {i for i, value in enumerate(row_blocks) if value} == expected
+            assert all(value in (0, 1) for value in row_blocks)
+            assert flags[row * 2 : row * 2 + 2] == ((1, 1) if seat == 3 else (0, 0))
+
+
 def test_every_seat_discard_pile_is_encoded_for_every_observer() -> None:
     # OQ-010 ruling 1: discard piles are re-checkable by everyone because
     # every card reached them face up [Main pp. 9, 12, 13, 20].
@@ -589,6 +699,10 @@ def test_every_state_of_a_full_game_encodes(choam_module: bool) -> None:
             encoded = encode_player_view(engine.observe(state, observer))
             assert len(encoded) == OBSERVATION_SIZE
             assert min(encoded) >= 0
+            # v38: without Immortality (or the original game) no card is put
+            # on a deck top, no space is barred and no turn flag is set.
+            for name in _V38_SEGMENTS:
+                assert not any(encoded[segment_slice(name)]), name
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
             state = engine.apply(state, chance.resolve(decision)).state
@@ -1189,7 +1303,7 @@ def _pinned_columns(vector: tuple[int, ...]) -> bytes:
     """The v33 columns the golden digests pin. v34 appended only the
     base-game flag (the base-game axis), 0 in every Uprising game: an
     Uprising observation is the v33 one with a 0 after it. v35 (stage P2a)
-    grew segments at their end (``v35_growth``) and appended the Mentat,
+    grew segments at their end (``growth_since_v34``) and appended the Mentat,
     all 0 in every Uprising game: each segment's older columns, in order,
     are the v34 vector."""
 
@@ -1198,10 +1312,10 @@ def _pinned_columns(vector: tuple[int, ...]) -> bytes:
     older: list[int] = []
     for segment in OBSERVATION_SEGMENTS:
         part = vector[segment.offset : segment.offset + segment.length]
-        if segment.name in ("base_game", *V35_SEGMENTS):
+        if segment.name in ("base_game", *NEW_SEGMENTS):
             assert not any(part)
             continue
-        grown = v35_growth(segment)
+        grown = growth_since_v34(segment)
         assert not any(part[segment.length - grown :])
         older.extend(part[: segment.length - grown])
     assert len(older) == _V33_SIZE

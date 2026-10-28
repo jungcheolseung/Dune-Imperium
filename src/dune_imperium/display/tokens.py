@@ -34,10 +34,13 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GeneticMarkersAtLeast,
     GrantCombatDeployment,
+    HasAlliance,
     HasHighCouncil,
     HasSwordmaster,
+    InfluenceAtLeast,
     RecruitTroops,
     Research,
+    ReserveCostDiscount,
     RevealCountKind,
     RevealPersuasion,
     RevealSwords,
@@ -45,6 +48,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyingOnMakerSpace,
     TrashThisCard,
 )
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
@@ -438,6 +442,76 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "Choose one: Gain 1 Influence with a chosen Faction / Recruit 2 troops; "
             "if Bene Gesserit Bond: get both"
         ),
+        # The original game's Imperium cards (stage P3).
+        PersonalCardAgentEffect.RECRUIT_ONE_TROOP: "Recruit 1 troop",
+        (
+            PersonalCardAgentEffect
+            .MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+        ): "You may pay 2 spice → Gain 1 Spacing Guild Influence, Gain 3 Solari",
+        PersonalCardAgentEffect.EACH_OPPONENT_LOSES_GARRISON_TROOP: (
+            "Each opponent loses one garrisoned troop"
+        ),
+        PersonalCardAgentEffect.GAIN_ONE_SOLARI: "Gain 1 solari",
+        PersonalCardAgentEffect.GAIN_THREE_SOLARI: "Gain 3 solari",
+        PersonalCardAgentEffect.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE: (
+            "You may pay 1 water → Recruit 1 troop, Draw 1 card"
+        ),
+        PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS: (
+            "You may pay 2 spice → Recruit 3 troops"
+        ),
+        PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: (
+            "If you have 2 or more Spacing Guild Influence: Draw 2 cards"
+        ),
+        PersonalCardAgentEffect.GAIN_TWO_SPICE: "Gain 2 spice",
+        PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: (
+            "Choose one: Gain 1 Spacing Guild Influence / Gain 2 spice"
+        ),
+        PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD: (
+            "Choose one: Draw 1 card / Draw a Bene Gesserit card from your "
+            "discard pile"
+        ),
+        PersonalCardAgentEffect.BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT: (
+            "Choose any board space. Opponents can't send their next Agents "
+            "there this round"
+        ),
+        PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE: (
+            "Recruit 2 troops, Draw 1 card"
+        ),
+        PersonalCardAgentEffect.MAY_TRASH_SELF_TO_DRAW_INTRIGUE: (
+            "You may trash this card → Draw 1 Intrigue card"
+        ),
+        PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: Gain 1 Influence with a chosen Faction"
+        ),
+        PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: (
+            "You may trash a card, If Bene Gesserit Bond: Gain 2 spice"
+        ),
+        PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: Each opponent discards 2 cards"
+        ),
+        PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE: (
+            "Double the base (not bonus) spice you harvest with this Agent"
+        ),
+        PersonalCardAgentEffect.DOUBLE_BONUS_HARVEST_SPICE: (
+            "Double the bonus spice you harvest with this Agent"
+        ),
+        PersonalCardAgentEffect.DRAW_TWO_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: Draw 2 cards"
+        ),
+        PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP: (
+            "Each opponent chooses: Discard a card -OR- Lose a deployed troop"
+        ),
+        PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: (
+            "You may pay 2 solari → Choose one: Gain 1 Spacing Guild Influence / "
+            "Gain 1 Bene Gesserit Influence / Gain 1 Fremen Influence"
+        ),
+        (
+            PersonalCardAgentEffect
+            .MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE
+        ): (
+            "You may lose 1 Influence with a chosen Faction and pay 2 spice → "
+            "Gain 2 Influence with one chosen Faction"
+        ),
     }
 )
 
@@ -463,6 +537,7 @@ TRASH_EFFECT_TEXT: Final[Mapping[PersonalCardTrashEffect, str]] = MappingProxyTy
         PersonalCardTrashEffect.ADVANCE_TLEILAXU: (
             "Tleilaxu (advance your Tleilaxu token)"
         ),
+        PersonalCardTrashEffect.GAIN_FOUR_SOLARI: "Gain 4 solari",
     }
 )
 
@@ -515,6 +590,15 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
             ),
             PersonalCardAcquisitionEffect.GAIN_ONE_SPICE: "Gain 1 spice",
             PersonalCardAcquisitionEffect.RECRUIT_THREE_TROOPS: "Recruit 3 troops",
+            # The original game's CHOAM Directorship and Lady Jessica
+            # (OQ-141): one text per printed icon, as the record renders.
+            PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_EACH_FACTION: (
+                "Gain 1 Emperor Influence, Gain 1 Spacing Guild Influence, "
+                "Gain 1 Bene Gesserit Influence, Gain 1 Fremen Influence"
+            ),
+            PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_CHOSEN_FACTION: (
+                "Gain 1 Influence (choose any Faction)"
+            ),
         }
     )
 )
@@ -588,6 +672,45 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             PersonalCardRevealChoiceEffect.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: (
                 "You may lose 2 troops → Generate 2 specimens"
             ),
+            # The original game's Imperium cards (stage P3).
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP: (
+                "You may deploy 1 troop from your garrison to the Conflict"
+            ),
+            PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: (
+                "Choose one: 2 Persuasion / 2 swords"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS: (
+                "You may deploy up to 3 troops from your garrison to the Conflict"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS: (
+                "You may retreat up to 2 troops"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
+                "You may retreat any number of troops"
+            ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS
+            ): (
+                "Trash this card → Deploy or retreat any number of your troops "
+                "from or to your garrison"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
+                "You may pay 6 solari → Gain 1 Victory Point"
+            ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY
+            ): (
+                "You may pay 3 solari → Recruit 2 troops, "
+                "you may deploy these troops to the Conflict"
+            ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE
+            ): (
+                "Spacing Guild Alliance: You may pay 3 spice → Gain 1 Victory Point"
+            ),
             PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
                 "Choose one: Gain 5 solari / "
                 "Pay 5 solari → Take the High Council seat"
@@ -654,6 +777,8 @@ HANDLED_REVEAL_CONDITIONS: Final[frozenset[type]] = frozenset(
         GeneticMarkersAtLeast,
         GarrisonedUnitsAtLeast,
         CommandReached,
+        InfluenceAtLeast,
+        HasAlliance,
     }
 )
 HANDLED_REVEAL_REWARDS: Final[frozenset[type]] = frozenset(
@@ -669,6 +794,7 @@ HANDLED_REVEAL_REWARDS: Final[frozenset[type]] = frozenset(
         GenerateSpecimens,
         AdvanceTleilaxu,
         Research,
+        ReserveCostDiscount,
     }
 )
 
@@ -686,6 +812,10 @@ class RevealLineConditions:
     markers: int = 0
     garrison: int = 0
     command: bool = False
+    # "Fremen Influence 2" (Worm Riders): a Faction and the Influence it needs.
+    influence: tuple[Faction, int] | None = None
+    # "Fremen Alliance" (Worm Riders).
+    alliance: Faction | None = None
 
 
 def reveal_line_conditions(line: RevealLine) -> RevealLineConditions:
@@ -712,6 +842,10 @@ def reveal_line_conditions(line: RevealLine) -> RevealLineConditions:
                 found["garrison"] = count
             case CommandReached():
                 found["command"] = True
+            case InfluenceAtLeast(faction=faction, amount=amount):
+                found["influence"] = (faction, amount)
+            case HasAlliance(faction=faction) if faction is not None:
+                found["alliance"] = faction
             case _:
                 raise TypeError(f"{condition!r} is not a Reveal line condition")
     return RevealLineConditions(**found)  # type: ignore[arg-type]
@@ -752,6 +886,12 @@ def reveal_effect_text(line: RevealLine) -> str:
         conditions.append(f"you have {held.garrison} or more garrisoned units")
     if held.command:
         conditions.append("Command (6+ Persuasion)")
+    if held.influence is not None:
+        faction, amount = held.influence
+        name = _faction_name(faction)
+        conditions.append(f"you have {amount} or more {name} Influence")
+    if held.alliance is not None:
+        conditions.append(f"you have the {_faction_name(held.alliance)} Alliance")
 
     count = line.faction_count
     per_faction = (
@@ -808,6 +948,13 @@ def reveal_effect_text(line: RevealLine) -> str:
             "Research (advance your research token)"
             if line.research == 1
             else f"Research ×{line.research} (advance your research token twice)"
+        )
+    for discount in line.reserve_discounts:
+        # Guild Bankers: the card's printed sentence (``effect_dsl_text``'s
+        # ``ReserveCostDiscount``).
+        name = RESERVE_STACKS_BY_ID[discount.card_ids[0]].card.name
+        gains.append(
+            f"{name} costs {discount.amount} Persuasion less to acquire this turn"
         )
 
     text = ", ".join(gains)

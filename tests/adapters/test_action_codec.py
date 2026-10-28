@@ -19,7 +19,10 @@ from dune_imperium.content.arrakeen_scouts import (
     missions_for,
     scouts_pool,
 )
-from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
+from dune_imperium.content.uprising.types import (
+    IMPERIUM_REVEAL_CHOICE_EFFECTS,
+    PersonalCardRevealChoiceEffect,
+)
 from dune_imperium.core import DomainAction, PlayerDecision
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_effects import AUTOMATIC_AGENT_ICONS
@@ -82,8 +85,10 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # Array's reward-window row and its step row join the Tech catalogs only.
     # v155 (OQ-138): Covert Operation's confirm of an empty hand joins every
     # catalog (its ``confirm_empty`` row; Ghola's too with Immortality, 4,336
-    # to 4,338 with every option on).
-    assert ACTION_CODEC_VERSION == 155
+    # to 4,338 with every option on). v156 (base game P3): the original
+    # game's cards add templates to its own catalogs only; every Uprising
+    # catalog stays as it was.
+    assert ACTION_CODEC_VERSION == 156
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)
     # v92/v93/v97: the Reveal gain actions join every catalog (troops, Intrigue,
@@ -1170,11 +1175,13 @@ def test_reveal_choice_deferral_and_resumption_round_trip() -> None:
     # Free Reveal ordering [Main p. 12]: one bare deferral plus one resume
     # template per choice-effect kind (codec v88).
     # Bloodlines and Immortality choice kinds join only the option's
-    # catalogs.
+    # catalogs; the original game's cards' (stage P3) join its catalog later.
     codec = ActionCodec(RulesetConfig(bloodlines=True, immortality=True))
     defer = DomainAction(action_id="defer_reveal_choice", actor=3)
     assert codec.decode(codec.encode(defer), actor=3) == defer
     for effect in PersonalCardRevealChoiceEffect:
+        if effect in IMPERIUM_REVEAL_CHOICE_EFFECTS:
+            continue
         action = DomainAction(
             action_id="resume_reveal_choice",
             actor=3,

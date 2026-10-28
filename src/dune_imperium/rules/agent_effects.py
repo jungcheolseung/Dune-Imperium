@@ -20,6 +20,7 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.content.uprising.effect_dsl import (
+    BlockChosenSpaceForOpponentsNextAgent,
     CompleteContract,
     DrawPersonalCards,
     ForceEnemyRetreat,
@@ -28,6 +29,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GrantCombatDeployment,
     PlaceSpy,
+    TakeCardFromDiscard,
 )
 from dune_imperium.content.uprising.leader_abilities import (
     SIGNET_ABILITIES,
@@ -58,7 +60,9 @@ from dune_imperium.rules.agent_box_abilities import (
     apply_chosen_reward,
     apply_discard,
     apply_discard_pay,
+    apply_discard_take,
     apply_either_influence,
+    apply_influence_loss,
     apply_intrigue_payment,
     apply_lose,
     apply_payment,
@@ -83,6 +87,9 @@ from dune_imperium.rules.agent_box_abilities import (
     graft_trash_box,
     graft_trash_rows,
     icon_line,
+    influence_loss_block,
+    influence_loss_box,
+    influence_loss_rows,
     intrigue_box,
     intrigue_cost_block,
     intrigue_rows,
@@ -198,6 +205,7 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
+from dune_imperium.rules.unit_loss import lose_unit, unit_loss_options
 from dune_imperium.rules.units import retreat_units
 
 # Immortality boxes whose enum names do not fit a comparison line.
@@ -241,6 +249,16 @@ AGENT_ICON_TRASH_SELF: Final = "trash_self"
 _TRASH_TO_DRAW_IF_BOND: Final = (
     PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND
 )
+# Gene Manipulation (the original game): the black trash icon beside a spice
+# icon under the Bond, apart from each other (OQ-027).
+_TRASH_AND_SPICE_IF_BOND: Final = (
+    PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND
+)
+# The boxes whose conditioned icon waits for the turn's end while an
+# optional icon is all they still offer (``box_is_optional``).
+_WAITING_ICON_BOXES: Final = (_TRASH_AND_SPICE_IF_BOND,)
+# The boxes whose black trash icon is one of several icons.
+_TRASH_ICON_BOXES: Final = (_TRASH_TO_DRAW_IF_BOND, _TRASH_AND_SPICE_IF_BOND)
 AGENT_ICON_TROOPS: Final = "troops"
 AGENT_ICON_WATER: Final = "water"
 AUTOMATIC_AGENT_ICONS: Final = (
@@ -527,6 +545,9 @@ def apply_agent_card_long_live_action(
 
 # Covert Operation's confirm of a seat with an empty hand (OQ-138).
 OPPONENT_DISCARD_WITHOUT_CARD: Final = "resolve_opponent_discard_without_card"
+# The context key of Test of Humanity's window, which offers a deployed troop's
+# loss beside the discard (absent from every other discard window).
+OR_LOSE_DEPLOYED_TROOP_KEY: Final = "or_lose_deployed_troop"
 
 
 def legal_opponent_card_discard_actions(
@@ -551,16 +572,40 @@ def legal_opponent_card_discard_actions(
         or "covert_operation_owner" not in context
     ):
         return ()
-    if not state.players[player].hand:
-        return (DomainAction(action_id=OPPONENT_DISCARD_WITHOUT_CARD, actor=player),)
-    return tuple(
+    owner = state.players[player]
+    # Test of Humanity: "Each opponent chooses: Discard a card -OR- Lose a
+    # deployed troop" -- each must choose what it can (imperium-base.md 13.1),
+    # so each half is offered while it can be done. A Sardaukar Commander in
+    # the Conflict is a deployed troop too: it "is a 'troop'" and troop
+    # effects reach it [Bloodlines p. 4] (OQ-115: "이후 조합 구현에서도
+    # Commander를 빠뜨리지 않는다"); ``commanders`` 1 names it, as the
+    # unit-loss window does.
+    loses = (
+        tuple(
+            DomainAction(
+                action_id="lose_unit",
+                actor=player,
+                arguments=(
+                    *((("commanders", 1),) if commander else ()),
+                    ("zone", zone),
+                ),
+            )
+            for zone, commander in unit_loss_options(state, player, conflict_only=True)
+        )
+        if context.get(OR_LOSE_DEPLOYED_TROOP_KEY) is True
+        else ()
+    )
+    discards = tuple(
         DomainAction(
             action_id="discard_opponent_card",
             actor=player,
             arguments=(("card_id", card_id),),
         )
-        for card_id in state.players[player].hand
+        for card_id in owner.hand
     )
+    if not discards and not loses:
+        return (DomainAction(action_id=OPPONENT_DISCARD_WITHOUT_CARD, actor=player),)
+    return (*discards, *loses)
 
 
 def apply_opponent_card_discard(
@@ -577,18 +622,30 @@ def apply_opponent_card_discard(
     source_owner = context["covert_operation_owner"]
     card_id = dict(action.arguments).get("card_id")
     confirmed = action.action_id == OPPONENT_DISCARD_WITHOUT_CARD
+    loses_troop = action.action_id == "lose_unit"
     if (
         not isinstance(source_card_id, str)
         or isinstance(source_owner, bool)
         or not isinstance(source_owner, int)
-        or not (confirmed or isinstance(card_id, str))
+        or not (confirmed or loses_troop or isinstance(card_id, str))
     ):
         raise RuntimeError("Covert Operation frame has invalid context")
     source = (
         f"round:{state.round_number}:player:{source_owner}:"
         f"agent_card:{source_card_id}:opponent:{action.actor}"
     )
-    if confirmed:
+    if loses_troop:
+        # Test of Humanity's other half: the opponent loses a deployed troop
+        # (to the supply [DI p. 16]) instead of discarding, a Sardaukar
+        # Commander if the row names one [Bloodlines p. 4].
+        discarded = lose_unit(
+            state,
+            action.actor,
+            "conflict",
+            commander=dict(action.arguments).get("commanders") == 1,
+            source=source,
+        )
+    elif confirmed:
         # Nothing to discard: the seat's own confirm leaves a public event,
         # as Holy War's confirm with no unit does (``unit_loss_unavailable``).
         discarded = RuleResult(
@@ -605,6 +662,24 @@ def apply_opponent_card_discard(
         assert isinstance(card_id, str)
         discarded = discard_personal_card_from_hand(
             state, action.actor, card_id, source=source
+        )
+    owed = context.get("opponent_discards_remaining", 1)
+    if isinstance(owed, bool) or not isinstance(owed, int):
+        raise RuntimeError("Covert Operation frame has invalid discard count")
+    if not confirmed and owed > 1 and discarded.state.players[action.actor].hand:
+        # "Each opponent discards two cards": the same opponent picks again,
+        # as many as the hand holds (OQ-118), before the next one is asked.
+        frame = discarded.state.decision_stack[-1]
+        context["opponent_discards_remaining"] = owed - 1
+        return RuleResult(
+            state=replace(
+                discarded.state,
+                decision_stack=(
+                    *discarded.state.decision_stack[:-1],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                ),
+            ),
+            events=discarded.events,
         )
     popped = replace(
         discarded.state,
@@ -755,14 +830,17 @@ def apply_agent_card_influence(
         f"round:{state.round_number}:player:{action.actor}:"
         f"agent_card:{source_card_id}"
     )
+    icon = icon_line(context, recorded, GainInfluence)
+    # One Faction gaining both of a "two Influence with one Faction" icon
+    # (Shifting Allegiances' armed gain, [DI p. 16]), else the one.
+    times = icon[1].times if icon is not None and icon[1].one_faction else 1
     gained = gain_faction_influence(
         state,
         action.actor,
         faction,
-        1,
+        times,
         event_prefix=f"{source}:influence:{faction.value}",
     )
-    icon = icon_line(context, recorded, GainInfluence)
     if icon is not None:
         # The box's other printed icons (Dangerous Rhetoric's "Trash this
         # card.", Clandestine Meeting's Intrigue card) resolve by their own
@@ -1367,6 +1445,96 @@ def apply_agent_card_opponent_retreat(
     return RuleResult(state=next_state, events=(*retreated.events, event))
 
 
+def legal_agent_card_space_block_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return The Voice's choices: one board space to block.
+
+    "Choose any board space" [The Voice card]: a mandatory choice among every
+    space on the table, from the box's record (``target_rows``).
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True or pending_agent_icons(context):
+        return ()
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    if recorded is None or not isinstance(
+        target_piece(recorded), BlockChosenSpaceForOpponentsNextAgent
+    ):
+        return ()
+    return target_rows(state, player, recorded)
+
+
+def apply_agent_card_space_block(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Block the chosen space for every opponent's next Agent.
+
+    The space joins each opponent's ``voice_blocked_space_ids`` (once); the
+    seat's own Agent is not stopped by it. Each block lasts until that
+    opponent's next Agent placement (``agent_turn.apply_agent_action``) or the
+    end of the round (``phases.resolve_recall_or_endgame``), OQ-116. One
+    public event names the space and the seats it now binds, then the box's
+    own.
+    """
+
+    if action not in legal_agent_card_space_block_actions(state, action.actor):
+        raise ValueError("action is not a legal The Voice space choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    space_id = dict(action.arguments)["space_id"]
+    if not isinstance(space_id, str):
+        raise RuntimeError("The Voice has an invalid space")
+    blocked = tuple(
+        seat.player_id for seat in state.players if seat.player_id != action.actor
+    )
+    players = tuple(
+        replace(
+            seat,
+            voice_blocked_space_ids=(
+                seat.voice_blocked_space_ids
+                if space_id in seat.voice_blocked_space_ids
+                else (*seat.voice_blocked_space_ids, space_id)
+            ),
+        )
+        if seat.player_id in blocked
+        else seat
+        for seat in state.players
+    )
+    source = agent_card_source(state.round_number, action.actor, source_card_id)
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(state, context, players)
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:space_blocked:{space_id}",
+                kind="space_blocked_for_opponents",
+                payload=(
+                    ("blocked_players", blocked),
+                    ("player", action.actor),
+                    ("space_id", space_id),
+                ),
+            ),
+            agent_box_event(
+                source,
+                source_card_id,
+                action.actor,
+                BoxOutcome.RESOLVED,
+            ),
+        ),
+    )
+
+
 def legal_agent_card_trash_actions(
     state: GameState,
     player: int,
@@ -1390,9 +1558,12 @@ def legal_agent_card_trash_actions(
         return ()
     _, source_card_id, _ = _effect_subject(context)
     source_card = active_agent_card(context)
-    if source_card.agent_effect is _TRASH_TO_DRAW_IF_BOND and not (
+    if source_card.agent_effect in _TRASH_ICON_BOXES and not (
         agent_icon_condition_holds(
-            state.players[player], context, _TRASH_TO_DRAW_IF_BOND, AGENT_ICON_TRASH
+            state.players[player],
+            context,
+            source_card.agent_effect,
+            AGENT_ICON_TRASH,
         )
     ):
         # Tread in Darkness's trash icon without the Bond, judged now
@@ -1403,7 +1574,7 @@ def legal_agent_card_trash_actions(
         # A trash box, from its record (composed A3e).
         return trash_rows(state, player, recorded)
     if source_card.agent_effect not in (
-        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND,
+        *_TRASH_ICON_BOXES,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
     ):
         return ()
@@ -1712,6 +1883,8 @@ def agent_card_cost_block(state: GameState, player: int) -> OptionalEffectBlock 
         )
     if ability is not None and lose_box(ability):
         return lose_cost_block(owner)
+    if ability is not None and influence_loss_box(ability):
+        return influence_loss_block(owner, ability)
     if ability is not None and discard_pay_box(ability):
         return discard_pay_block(owner, ability)
     return None
@@ -1750,10 +1923,13 @@ def legal_agent_card_payment_actions(
     if (
         recorded is not None
         and either_box(recorded)
-        and isinstance(either_choice(recorded), GrantCombatDeployment)
+        and isinstance(
+            either_choice(recorded), GrantCombatDeployment | TakeCardFromDiscard
+        )
     ):
         # High Priority Travel: "[Guild] 2 Influence: draw a card —OR—
-        # Combat" [card face], from its record (composed A3f).
+        # Combat" [card face], from its record (composed A3f); Other Memory's
+        # card from the discard pile beside its draw (stage P3b).
         return either_rows(state, player, recorded)
     combat = _combat_icon_rows(state, player, context, recorded)
     if combat is not None:
@@ -1787,6 +1963,9 @@ def legal_agent_card_payment_actions(
     if recorded is not None and lose_box(recorded):
         # Piter, Genius Advisor, from its record (composed A3f).
         return lose_rows(state, player)
+    if recorded is not None and influence_loss_box(recorded):
+        # Shifting Allegiances, from its record (stage P3b).
+        return influence_loss_rows(state, player, recorded)
     if recorded is not None and choose_two_box(recorded):
         # Stitched Horror, from its record (cleanup-2d).
         return choose_two_rows(state, player, recorded)
@@ -1985,6 +2164,9 @@ def _apply_payment_choice(
     if recorded is not None and lose_box(recorded):
         # Piter, Genius Advisor (composed A3f).
         return apply_lose(state, action, recorded, context, source)
+    if recorded is not None and influence_loss_box(recorded):
+        # Shifting Allegiances (stage P3b).
+        return apply_influence_loss(state, action, recorded, context, source)
 
     if recorded is not None and graft_trash_box(recorded):
         return _apply_graft_trash(state, action, recorded, context, source)
@@ -1992,6 +2174,9 @@ def _apply_payment_choice(
         # High Priority Travel's Combat half [Bloodlines p. 5].
         open_combat_deployment(context)
         return RuleResult(state=advance_after_effect(state, context), events=())
+    if action.action_id == "take_agent_card_from_discard":
+        # Other Memory's card from the discard pile (stage P3b).
+        return apply_discard_take(state, action)
     if action.action_id == "trash_agent_card_self_for_vp":
         # Scientific Breakthrough: the card trashes itself as its own cost,
         # so its Research still pays out (OQ-022) unless it already did. The
@@ -3022,6 +3207,7 @@ OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = 
     MappingProxyType(
         {
             _TRASH_TO_DRAW_IF_BOND: frozenset({AGENT_ICON_TRASH}),
+            _TRASH_AND_SPICE_IF_BOND: frozenset({AGENT_ICON_TRASH}),
             PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: frozenset(
                 {AGENT_ICON_RECALL}
             ),
@@ -3089,7 +3275,27 @@ def box_is_optional(state: GameState) -> bool:
             if effect is None
             else OPTIONAL_AGENT_ICONS.get(effect, frozenset())
         )
-        return set(icons) <= optional_icons
+        if set(icons) <= optional_icons:
+            return True
+        if effect not in _WAITING_ICON_BOXES:
+            return False
+        # A conditioned icon that is not offered now waits for the turn's end
+        # (OQ-057 (1)): the box is then optional when an optional icon is all
+        # it still offers (Gene Manipulation's black trash icon beside the
+        # spice its Bond has to meet). Only the original game's box for now:
+        # Uprising's Tread in Darkness keeps its behaviour until the same
+        # reading is confirmed for it (plan 16.9).
+        offered = {
+            dict(row.arguments).get("effect")
+            for row in legal_agent_card_icon_actions(
+                state, context_int(context, "turn_owner")
+            )
+        }
+        return any(key in optional_icons for key in icons) and all(
+            key in optional_icons
+            or (key in AUTOMATIC_AGENT_ICONS and key not in offered)
+            for key in icons
+        )
     if context.get("agent_card_spy_pending") is True:
         return False
     if "trashes_remaining" in context:

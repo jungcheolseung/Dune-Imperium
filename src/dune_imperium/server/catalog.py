@@ -78,8 +78,8 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.conflicts import CONFLICTS, ConflictDefinition
 from dune_imperium.content.uprising.contracts import CONTRACTS_BY_ID
-from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
-from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
+from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
+from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS
 from dune_imperium.content.uprising.leaders import LEADERS
 from dune_imperium.content.uprising.objectives import OBJECTIVES, ObjectiveDefinition
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
@@ -269,7 +269,9 @@ def build_catalog(
             text_ko=personal_card_text_ko(stack),
             image=_image_url("other", stack.card.card_id, image_files),
         )
-    for card_id, entry in IMPERIUM_CARDS_BY_ID.items():
+    # Uprising's own cards; the original game's come with its screen (P5).
+    for entry in IMPERIUM_CARDS:
+        card_id = entry.card.card_id
         cards[card_id] = _personal_card(
             entry.card.name,
             cost=entry.acquisition_cost,
@@ -318,7 +320,8 @@ def build_catalog(
         )
 
     intrigue: dict[str, JsonValue] = {}
-    for intrigue_id, intrigue_entry in INTRIGUE_CARDS_BY_ID.items():
+    for intrigue_entry in INTRIGUE_CARDS:
+        intrigue_id = intrigue_entry.card.card_id
         # Navigation cards print no Plot/Combat/Endgame banner: Plot Course
         # plays them automatically on reaching 2 Influence, not by timing
         # [Navigation card faces].

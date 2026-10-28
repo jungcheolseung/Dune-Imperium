@@ -217,6 +217,8 @@ BOX_ACTION_IDS: Final = frozenset(
         "decline_agent_card_discard",
         "complete_contract_by_card",
         "retreat_opponent_troop",
+        # The original game's The Voice: the board space to block.
+        "block_agent_card_space",
         "recall_agent_for_agent_card",
         "recall_conflict_agent_for_agent_card",
         "decline_agent_card_recall",
@@ -227,6 +229,8 @@ BOX_ACTION_IDS: Final = frozenset(
         # Payments.
         "pay_agent_card_water",
         "pay_agent_card_spice",
+        # The original game's Firm Grip: "2 Solari -> Influence" (stage P3).
+        "pay_agent_card_solari",
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",
         "pay_agent_card_specimen",
@@ -237,6 +241,8 @@ BOX_ACTION_IDS: Final = frozenset(
         "trash_agent_card_self_for_vp",
         "take_agent_card_combat_icon",
         "lose_agent_card_troop",
+        "lose_agent_card_influence",
+        "take_agent_card_from_discard",
         "choose_agent_card_reward",
         "decline_agent_card_payment",
         "pay_corrinth_city",

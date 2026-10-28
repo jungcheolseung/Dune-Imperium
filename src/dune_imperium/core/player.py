@@ -82,6 +82,17 @@ class PlayerState:
     # Masterstroke has revealed them, once per game (OQ-115).
     masterstroke_factions: tuple[str, ...] = ()
     masterstroke_revealed: bool = False
+    # The original game's The Voice: the board spaces this seat may not send
+    # its next Agent to ("Opponents can't send their next Agents there this
+    # round" [The Voice card]). Each is lifted, with every other, by the
+    # seat's next Agent placement anywhere (a turn passed without one, a
+    # Reveal turn, keeps them) and all clear when the round ends (OQ-116,
+    # user ruling B 2026-10-22). A public marker, no hidden information.
+    voice_blocked_space_ids: tuple[str, ...] = ()
+    # The original game's Infiltrate: enemy Agents don't block this seat's
+    # next Agent at board spaces this turn [Infiltrate card]. Set by the
+    # Plot, spent by the turn's Agent placement, gone when any turn opens.
+    enemy_agents_ignored_turn: bool = False
     troops_supply: int = 9
     troops_garrison: int = 3
     troops_conflict: int = 0
@@ -231,6 +242,13 @@ class PlayerState:
     # Tleilaxu Puppet: Persuasion granted for this round's Reveal turn only
     # (cleared at Round Start).
     reveal_persuasion_round_bonus: int = 0
+    # Recruitment Mission: "You may put cards you acquire on top of your deck"
+    # during this round's Reveal turn of the owner [FAQ p. 3]; effective only
+    # while the owner's own Reveal turn is open, cleared when it ends and at
+    # Round Start. Public, and observed since v38 (``PublicPlayerView``): the
+    # Reveal shop offers the twin rows, and a network deciding a Reveal reads
+    # the flag.
+    acquire_to_deck_top_round: bool = False
     # Chairdog: grafted cards that return from play to the hand when the
     # owner's Reveal turn starts [card face].
     chairdog_return_card_ids: tuple[str, ...] = ()
@@ -238,6 +256,14 @@ class PlayerState:
     # the game when the Agent turn closes [card face].
     usurped_row_card_id: str = ""
     deck: tuple[str, ...] = ()
+    # The deck's top cards every seat knows, top first (OQ-145, user ruling
+    # 2026-10-28): cards put face up on top of the deck (Bypass Protocol,
+    # Recruitment Mission, a Tleilaxu card with the first genetic marker)
+    # are public until they are drawn or the deck is shuffled. Between
+    # transitions ``deck[:len(deck_public_top)] == deck_public_top``
+    # (``simulation.invariants``); ``rules.deck_top`` places, settles and
+    # clears it, and a drawn card moves on into ``hand_public``.
+    deck_public_top: tuple[str, ...] = ()
     hand: tuple[str, ...] = ()
     # Hand cards whose identity every seat already knows because they
     # entered the hand through a public move (acquired face up from the
@@ -268,6 +294,10 @@ class PlayerState:
             "track_troops_recruited_turn",
             "masterstroke_factions",
             "masterstroke_revealed",
+            "voice_blocked_space_ids",
+            "enemy_agents_ignored_turn",
+            "acquire_to_deck_top_round",
+            "deck_public_top",
         }
     )
 
@@ -358,8 +388,13 @@ class PlayerState:
         # the agent total above bounds the count.
         if self.agent_in_conflict < 0 or self.tactics_track_space < 0:
             raise ValueError("Leader token positions must be non-negative")
-        if len(self.agent_locations) != len(set(self.agent_locations)):
-            raise ValueError("a player cannot place two agents in one space")
+        # Two Agents of one seat may share a space: the original game's
+        # Kwisatz Haderach "can be sent to a space holding my other Agent"
+        # ("Kwisatz Haderach는 내 다른 Agent가 있는 칸에도 보낼 수 있다",
+        # docs/rules/imperium-base.md 16). Every other placement still skips
+        # a space the seat holds (``rules.agent_turn``).
+        if len(self.voice_blocked_space_ids) != len(set(self.voice_blocked_space_ids)):
+            raise ValueError("a space cannot be blocked twice for a player")
         # Specimens are troops from the supply in the Axolotl tanks
         # [Immortality p. 8].
         if (
@@ -421,6 +456,10 @@ class PlayerState:
 
         if len(self.hand_public) != len(set(self.hand_public)):
             raise ValueError("a hand card cannot be publicly known twice")
+        if self.deck_public_top and len(self.deck_public_top) != len(
+            set(self.deck_public_top)
+        ):
+            raise ValueError("a deck card cannot be publicly known twice")
         in_hand = set(self.hand)
         if any(card_id not in in_hand for card_id in self.hand_public):
             object.__setattr__(

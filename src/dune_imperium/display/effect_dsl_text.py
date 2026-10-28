@@ -20,6 +20,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireReserveCardToHand,
     AcquireTech,
     AcquireTleilaxuCard,
+    AcquireToDeckTopThisRound,
     AdvanceTleilaxu,
     AgentOnSpaceWithIcon,
     AllConditions,
@@ -27,6 +28,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AtBoardSpace,
     AtFactionSpace,
     AtMakerSpace,
+    BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
@@ -38,15 +40,20 @@ from dune_imperium.content.uprising.effect_dsl import (
     ContractTaken,
     Cost,
     DeployFromGarrison,
+    DeployFromSupply,
+    DeployTheseTroops,
     DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
+    DoubleBaseHarvestSpice,
+    DoubleBonusHarvestSpice,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
     DuringAgentTurn,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
@@ -76,8 +83,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     HasHighCouncil,
     HasSwordmaster,
+    IgnoreEnemyAgentsNextPlacement,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
+    InfluenceAtLeastOnTracks,
     InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
@@ -88,6 +97,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseHighestInfluence,
     LoseInfluence,
     LoseTroops,
+    MoreSpiceMustFlowThanEachOpponent,
     OnAgentSentTo,
     OnBoardSpaceSolariPaid,
     OnCardTrashed,
@@ -102,6 +112,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnSpiceGainedInTurnAtLeast,
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
+    OpponentHasTroopInConflict,
+    OpponentLosesTroop,
     OpponentPlayedCombatIntrigue,
     OpponentSandwormInConflict,
     OpponentsMoveSpiesFromVisitedSpace,
@@ -114,11 +126,13 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallAgent,
     RecallOtherAgent,
     RecallSpy,
+    RecallYourAgent,
     RecruitToConflict,
     RecruitTroops,
     RecruitUndeployableTroops,
     RedirectSpiesOnTurnSpace,
     Research,
+    ReserveCostDiscount,
     RetreatTroops,
     ReturnOtherGraftedCardAtRevealStart,
     ReturnThisCardToHand,
@@ -131,6 +145,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
+    ShuffleDiscardIntoDeck,
     SolariAtLeast,
     SpendSpecimens,
     SpiceAtLeast,
@@ -140,6 +155,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     StrengthInConflictAtLeast,
     SummonSandworm,
+    TakeCardFromDiscard,
     TakeContract,
     TakeControl,
     TakeHighCouncilSeat,
@@ -180,6 +196,8 @@ _BATTLE_ICON_NAMES: dict[BattleIcon, str] = {
     BattleIcon.WILD: "Wild",
 }
 
+_TURN_START = "At the start of your turn"
+
 _TIMING_LABELS: dict[IntrigueTiming, str] = {
     IntrigueTiming.PLOT: "Plot",
     IntrigueTiming.COMBAT: "Combat",
@@ -217,6 +235,10 @@ def _retreat_troops_text(troops: RetreatTroops) -> str:
         return f"Retreat any number of troops (at least {troops.minimum})"
     if troops.minimum == troops.maximum:
         return f"Retreat {troops.minimum} {_plural(troops.minimum, 'troop')}"
+    if troops.minimum == 0:
+        # "Retreat up to three of your troops" [Master Tactician card]: zero
+        # is a legal choice of an "up to" retreat [FAQ p. 3].
+        return f"Retreat up to {troops.maximum} {_plural(troops.maximum, 'troop')}"
     return f"Retreat {troops.minimum}-{troops.maximum} troops"
 
 
@@ -282,6 +304,14 @@ def condition_text(condition: Condition) -> str:
     match condition:
         case InfluenceAtLeast(faction=faction, amount=amount):
             return f"you have {amount} or more {_faction_name(faction)} Influence"
+        case InfluenceAtLeastOnTracks(influence=influence, tracks=tracks):
+            # "3 Influence (or more) on three Faction tracks" [Plans Within
+            # Plans card, app text]; the card's own "or more" is the count's.
+            noun = "track" if tracks == 1 else "tracks"
+            return (
+                f"you have {influence} or more Influence on at least {tracks}"
+                f" Faction {noun}"
+            )
         case HasHighCouncil():
             return "you hold a High Council seat"
         case HasAlliance(faction=faction):
@@ -315,6 +345,10 @@ def condition_text(condition: Condition) -> str:
             return f"you have deployed {count} or more units to the Conflict this turn"
         case SpiceMustFlowCardsAtLeast(count=count):
             return f"you own {count} or more copies of The Spice Must Flow"
+        case MoreSpiceMustFlowThanEachOpponent():
+            # "If you have more The Spice Must Flow than each opponent"
+            # [Corner the Market card, app text]; a tie with any opponent fails.
+            return "you own more copies of The Spice Must Flow than each opponent"
         case OpponentAllianceInfluenceAtLeast(amount=amount):
             return (
                 f"you have {amount} or more Influence on a Faction track whose "
@@ -390,6 +424,8 @@ def condition_text(condition: Condition) -> str:
         case OpponentSandwormInConflict():
             # Quotes ``display/bloodlines.py``'s Fierce line.
             return "any opponent has a sandworm in the Conflict"
+        case OpponentHasTroopInConflict():
+            return "an opponent has a troop in the Conflict"
         case CommandReached():
             return "Command (6+ Persuasion)"
         case AtBoardSpace(space_id=space_id):
@@ -516,6 +552,23 @@ def reward_text(reward: Reward) -> str:
             return f"Recruit {count} {_plural(count, 'troop')}"
         case DrawPersonalCards(count=count):
             return f"Draw {count} {_plural(count, 'card')}"
+        case ShuffleDiscardIntoDeck(draw=draw):
+            return (
+                "Shuffle your discard pile into your deck, then draw "
+                f"{draw} {_plural(draw, 'card')}"
+            )
+        case BlockChosenSpaceForOpponentsNextAgent():
+            # The Voice's printed sentences.
+            return (
+                "Choose any board space. Opponents can't send their next Agents "
+                "there this round"
+            )
+        case IgnoreEnemyAgentsNextPlacement():
+            # Infiltrate's printed sentence.
+            return "Enemy Agents don't block your next Agent at board spaces this turn"
+        case TakeCardFromDiscard(faction=faction):
+            # Other Memory's printed sentence.
+            return f"Draw a {_faction_name(faction)} card from your discard pile"
         case DrawIntrigueCards(count=count):
             return f"Draw {count} Intrigue {_plural(count, 'card')}"
         case GainCombatStrength(amount=amount):
@@ -533,6 +586,10 @@ def reward_text(reward: Reward) -> str:
             # "Deploy up to N troops from your garrison to the Conflict"
             # [Detonation card face] [Counterattack card face] [Twisted
             # Devious card face] — the player may deploy fewer.
+            if up_to is None:
+                # "Deploy any number of your garrisoned troops to the
+                # Conflict" [Rapid Mobilization card].
+                return "Deploy any number of troops from your garrison to the Conflict"
             return (
                 f"Deploy up to {up_to} {_plural(up_to, 'troop')} from your"
                 " garrison to the Conflict"
@@ -560,6 +617,10 @@ def reward_text(reward: Reward) -> str:
             # Every Contract taken is a face-up one, as the cards print it
             # ("Take 1 face-up Contract", the personal cards' own text).
             return f"Take {count} face-up {_plural(count, 'Contract')}"
+        case AcquireCardUpTo(max_cost=max_cost, to_deck_top=True):
+            # Bypass Protocol's "[2 spice] -> Acquire a card that costs
+            # [Persuasion 5] or less to the top of your deck."
+            return f"Acquire a card costing {max_cost} or less to the top of your deck"
         case AcquireCardUpTo(max_cost=max_cost, to_hand_if=to_hand_if):
             if to_hand_if is None:
                 return f"Acquire a card costing {max_cost} or less"
@@ -581,8 +642,12 @@ def reward_text(reward: Reward) -> str:
             return f"The card you play this turn has the {icon.value} icon"
         case GrantCombatDeployment():
             return "Combat: deploy this turn as though at a Combat space"
+        case DeployTheseTroops():
+            return "In your Reveal turn, you may deploy these troops to the Conflict"
         case GainSolariPerUnitType():
             return "Gain 1 solari for each type of unit you have in the Conflict"
+        case PeekTopCard(draw_or_trash=True):
+            return "Look at the top card of your deck: draw it or trash it"
         case PeekTopCard():
             return (
                 "Look at the top card of your deck: put it back, discard it, or"
@@ -591,6 +656,8 @@ def reward_text(reward: Reward) -> str:
         case GrantAgentIconsThisTurn(icons=icons):
             names = ", ".join(icon.value for icon in icons)
             return f"The card you play this turn has the {names} icons"
+        case PassTurn(optional=True):
+            return "you may pass your turn"
         case PassTurn():
             return "At the start of your turn: pass your turn"
         case PermanentRevealPersuasion(amount=amount):
@@ -628,6 +695,10 @@ def reward_text(reward: Reward) -> str:
             return "You may acquire a Tleilaxu card (paying its specimen cost)"
         case RevealPersuasionThisRound(amount=amount):
             return f"Gain {amount} Persuasion during your Reveal turn this round"
+        case AcquireToDeckTopThisRound():
+            # Recruitment Mission's second line [Recruitment Mission card],
+            # joined after its Persuasion line like Bindu Suspension's pass.
+            return "you may put cards you acquire on top of your deck"
         case ReturnThisCardToHand():
             return "Return this card to your hand"
         case BoostNextBeneGesseritCard():
@@ -661,10 +732,29 @@ def reward_text(reward: Reward) -> str:
             return f"You may {text}" if optional else text.capitalize()
         case RecallAgent():
             return "Recall 1 Agent"
-        case EachOpponentDiscardsCard():
+        case RecallYourAgent():
+            # Urgent Mission's printed sentence.
+            return "Recall one of your Agents"
+        case EachOpponentDiscardsCard(count=None):
             return "Each opponent discards a card"
-        case EachOpponentLosesTroop():
-            return "Each opponent loses one troop"
+        case EachOpponentDiscardsCard(count=count):
+            return f"Each opponent discards {count} cards"
+        case EachOpponentDiscardsOrLosesDeployedTroop():
+            # Test of Humanity's printed sentence.
+            return "Each opponent chooses: Discard a card -OR- Lose a deployed troop"
+        case EachOpponentLosesTroop(garrison_only=garrison_only):
+            return (
+                "Each opponent loses one garrisoned troop"
+                if garrison_only
+                else "Each opponent loses one troop"
+            )
+        case OpponentLosesTroop():
+            return "An opponent of your choice loses one troop in the Conflict"
+        case DeployFromSupply(count=count):
+            return (
+                f"Deploy {count} {_plural(count, 'troop')} from your supply to the"
+                " Conflict"
+            )
         case OpponentsMoveSpiesFromVisitedSpace():
             return (
                 "Each opponent spying on the board space where you sent an"
@@ -740,6 +830,14 @@ def reward_text(reward: Reward) -> str:
             return f"Gain {spice} spice ({helix} once you reach the Helix)"
         case CompleteContract():
             return "Complete one of your contracts"
+        case DoubleBaseHarvestSpice():
+            return "Double the base (not bonus) spice you harvest with this Agent"
+        case DoubleBonusHarvestSpice():
+            return "Double the bonus spice you harvest with this Agent"
+        case ReserveCostDiscount(card_ids=card_ids, amount=amount):
+            # Guild Bankers' printed sentence; one name for the printings.
+            name = RESERVE_STACKS_BY_ID[card_ids[0]].card.name
+            return f"{name} costs {amount} Persuasion less to acquire this turn"
         case _:
             assert_never(reward)
 
@@ -811,6 +909,10 @@ def option_text(option: IntrigueOption, *, show_timing: bool = True) -> str:
     body = "; ".join(section_text(section) for section in option.sections)
     if option.trigger is not None:
         body = f"{trigger_text(option.trigger)}: {body}"
+    if option.turn_start_only and not body.startswith(_TURN_START):
+        # A card that names its moment in no effect of its own (Bindu
+        # Suspension's draw and optional pass).
+        body = f"{_TURN_START}: {body}"
     if not show_timing:
         return body
     return f"{_TIMING_LABELS[option.timing]} — {body}"

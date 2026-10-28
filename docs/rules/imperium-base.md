@@ -393,7 +393,9 @@ P2·P3에서 효과마다 "그 카드가 있든 없든 상대에게 똑같이 �
 
 - trash된 카드의 남은 효과는 없다(OQ-022 — 디자이너가 번복 판정의 예로 Esmar Tuek를 들었다). Imperial Spy·Power Play·Foldspace의 순서도 이것으로 정해진다.
 - 조건은 해결할 때 판정한다(OQ-028·OQ-057 (1)) — Gene Manipulation·Missionaria Protectiva·Mohiam·Jessica of Arrakis의 "another Bene Gesserit card in play".
-- Intrigue의 인쇄 줄은 따로, 적어도 한 줄; 쓸 때 낸다(OQ-058) — Bypass Protocol·Master Tactician·Demand Respect·Plans Within Plans·Tiebreaker.
+  Gene Manipulation의 trash와 spice는 순서 자유(사용자 2026-10-28 "이건 지금 구현을 유지해. 순서 자유"; 앱은 Agent 능력이 돌 때 한 번 판정 — OQ-028 적용).
+- Intrigue의 인쇄 줄은 따로, 적어도 한 줄; 쓸 때 낸다(OQ-058). 같은 OQ대로 "—OR—"로 나뉜 카드는 그대로 배타 option이다 — Bypass Protocol·
+  Master Tactician·Demand Respect·Plans Within Plans·Tiebreaker(Combat 면과 Endgame 면)가 모두 이쪽이다(2026-10-28 P3 시범에서 문구를 바로잡음).
 - 책략을 낼 수 있는지는 OQ-113의 통일 기준 (C)다(2026-10-24 사용자; 2026-10-06 원칙 "효과 없는 Intrigue는 낼 수 없다"를 바꿈): 비용이 있는 줄은
   보상 중 하나라도 지금 무언가를 바꿀 수 있어야 내고(OQ-071), 비용 없는 효과는 불발해도 낸다. 공식 문서가 조건으로 정한 것(원로회 자리, Double
   Cross의 상대 troop `[FAQ p. 2]`)은 그대로 조건이다. 원판 카드: Double Cross는 상대가 Conflict에 troop이 있어야 하고 내 supply는 비어도 된다;

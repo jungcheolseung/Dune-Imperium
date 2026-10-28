@@ -252,6 +252,8 @@ _FACTION = (("faction", _C.FACTION),)
 _IMPERIUM = (("instance_id", _C.IMPERIUM_CARD),)
 _RESERVE = (("card_id", _C.RESERVE_CARD),)
 _RECALLED = (("space_id", _C.SPACE),)
+# The Voice's "Choose any board space".
+_BOARD_SPACE = _RECALLED
 _CONFLICT = (("=conflict", _C.SPACE),)
 # Who takes an Alliance token an Influence loss hands on, when several could.
 _RECIPIENT = ("alliance_recipient", _C.SEAT)
@@ -313,6 +315,10 @@ _COMBAT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "deep_cover_spy": _V.PLACE_SPY,
     # Planetary Array's card, a row of the winner's window (OQ-121).
     "planetary_array": _V.DRAW,
+    # The sole winner's close of its window: no more winning Intrigue
+    # (OQ-121 decision 6; the original game's To the Victor... and Demand
+    # Respect). Nothing is gained, so it only resolves the row.
+    "winning_intrigue": _V.RESOLVE,
     # The original game's: the Mentat, one Faction's two Influence, and the
     # lines of a row of alternatives.
     "mentat": _V.TAKE,
@@ -332,6 +338,15 @@ _CONTRACT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "resources": _V.GAIN,
     "spy": _V.PLACE_SPY,
     "troops": _V.RECRUIT,
+})
+# What an Imperium card's acquire icon does (``acquire_icons``, OQ-141): an
+# Influence with a fixed Faction, or with the one the owner chooses.
+_ACQUIRE_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
+    "influence_emperor": _V.GAIN_INFLUENCE,
+    "influence_spacing_guild": _V.GAIN_INFLUENCE,
+    "influence_bene_gesserit": _V.GAIN_INFLUENCE,
+    "influence_fremen": _V.GAIN_INFLUENCE,
+    "influence_any": _V.GAIN_INFLUENCE,
 })
 # What a Tech tile's acquire icon does (``TechTile.acquire_effect_keys``).
 _TECH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
@@ -392,6 +407,7 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "pay_agent_card_water": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
     "pay_agent_card_spice": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
+    "pay_agent_card_solari": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
     "pay_agent_card_specimen": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
     "pay_agent_card_two_specimens": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
     "pay_agent_card_five_solari_for_tleilaxu": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
@@ -403,6 +419,12 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _V.PAY, _S.AGENT_CARD, _BOX, option="sandworm_and_shield_wall"
     ),
     "lose_agent_card_troop": _spec(_V.LOSE_UNIT, _S.AGENT_CARD, _BOX),
+    "lose_agent_card_influence": _spec(
+        _V.LOSE_INFLUENCE, _S.AGENT_CARD, _BOX, targets=(*_FACTION, _RECIPIENT)
+    ),
+    "take_agent_card_from_discard": _spec(
+        _V.TAKE, _S.AGENT_CARD, _BOX, targets=_CARD
+    ),
     "pay_agent_card_intrigue_and_spice": _spec(
         _V.PAY, _S.AGENT_CARD, _BOX, targets=_INTRIGUE
     ),
@@ -433,6 +455,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "retreat_opponent_troop": _spec(
         _V.RETREAT, _S.AGENT_CARD, _BOX, targets=(("player", _C.SEAT),)
+    ),
+    # The Voice: "Choose any board space".
+    "block_agent_card_space": _spec(
+        _V.CHOOSE, _S.AGENT_CARD, _BOX, targets=_BOARD_SPACE
     ),
     "take_agent_card_combat_icon": _spec(
         _V.GAIN, _S.AGENT_CARD, _BOX, icon="combat"
@@ -578,6 +604,16 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "resolve_contract_reward_icon": _spec(
         _CONTRACT_ICON_VERBS, _S.CONTRACT, Printed.CONTRACT, icon="arg:effect"
     ),
+    # An icon of an acquired Imperium card's acquire box, waiting on its
+    # owner's turn (OQ-141): the card names it; a chosen Faction is the
+    # target row.
+    "resolve_acquire_icon": _spec(
+        _ACQUIRE_ICON_VERBS,
+        _S.ACQUISITION,
+        "acquired_card_id",
+        icon="arg:effect",
+        targets=_FACTION,
+    ),
     "flip_tech": _spec(_V.FLIP, _S.TECH, "tech_id"),
     "resolve_tech_acquire_effect": _spec(
         _TECH_ICON_VERBS,
@@ -635,6 +671,11 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
             _RECIPIENT,
         ),
     ),
+    "pay_reveal_solari_for_vp": _spec(_V.PAY, _S.REVEAL_CARD, "=opulence"),
+    "pay_reveal_spice_for_vp": _spec(_V.PAY, _S.REVEAL_CARD, "=guild_ambassador"),
+    "pay_reveal_solari_for_troops": _spec(
+        _V.PAY, _S.REVEAL_CARD, "=gurney_halleck_card"
+    ),
     "pay_reveal_spice_influence": _spec(
         _V.PAY, _S.REVEAL_CARD, "=spacing_guild_s_favor", targets=_FACTION
     ),
@@ -648,6 +689,14 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "retreat_two_troops_for_reveal": _spec(_V.RETREAT, _S.REVEAL_CARD, "source"),
     "deploy_reveal_card_troop": _spec(_V.DEPLOY, _S.REVEAL_CARD, "source"),
     "retreat_reveal_card_troop": _spec(_V.RETREAT, _S.REVEAL_CARD, "source"),
+    # The count the owner picks of Sardaukar Legion's deploy, Scout's and
+    # Chani's retreat (original game).
+    "deploy_reveal_card_troops": _spec(
+        _V.DEPLOY, _S.REVEAL_CARD, "source", targets=(("count", _C.COUNT),)
+    ),
+    "retreat_reveal_card_troops": _spec(
+        _V.RETREAT, _S.REVEAL_CARD, "source", targets=(("count", _C.COUNT),)
+    ),
     "lose_reveal_troops_for_specimens": _spec(
         _V.LOSE_UNIT, _S.REVEAL_CARD, "=tleilaxu_surgeon"
     ),
@@ -656,6 +705,13 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _V.TAKE, _S.REVEAL_CARD, "=corrinth_city"
     ),
     "gain_reveal_persuasion": _spec(_V.GAIN, _S.REVEAL_CARD, "=delivery_logistics"),
+    # Bene Gesserit Sister's "-OR-": two alternatives sharing a verb.
+    "gain_two_reveal_persuasion": _spec(
+        _V.GAIN, _S.REVEAL_CARD, "=bene_gesserit_sister", option="persuasion"
+    ),
+    "gain_two_reveal_swords": _spec(
+        _V.GAIN, _S.REVEAL_CARD, "=bene_gesserit_sister", option="swords"
+    ),
     "take_reveal_contract": _spec(_V.TAKE, _S.REVEAL_CARD, "=delivery_logistics"),
     "keep_contract_reveal_spice": _spec(_V.KEEP, _S.REVEAL_CARD, "source"),
     "trash_contract_reveal_for_vp": _spec(_V.TRASH, _S.REVEAL_CARD, "source"),
@@ -778,6 +834,13 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "put_back_top_card": _spec(_V.KEEP, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "discard_top_card": _spec(_V.DISCARD, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "draw_top_card_for_solari": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    "draw_top_card": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    # Bindu Suspension: pass the turn after the draw, or keep playing it.
+    "pass_turn_intrigue": _spec(_V.PASS, _S.INTRIGUE, Printed.INTRIGUE_CARD),
+    "keep_turn_intrigue": _spec(
+        _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.PASS
+    ),
+    "trash_top_card": _spec(_V.TRASH, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     # Cost-free choices with nothing to act on (OQ-113 (C)).
     "skip_intrigue_top_card": _spec(
         _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.KEEP
@@ -786,6 +849,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.SET_ASIDE
     ),
     "skip_intrigue_trash": _spec(_E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.TRASH),
+    # Urgent Mission: no Agent on the board to recall.
+    "skip_intrigue_recall_agent": _spec(
+        _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.RECALL_AGENT
+    ),
     # --- Arrakeen Scouts (stage B3d-2b) ---------------------------------------
     # A new High Council seat may join a subcommittee (docs/rules/
     # arrakeen-scouts.md 4): the Agent turn's or the Reveal's row (D-3), then
@@ -1031,6 +1098,11 @@ TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxy
     "deploy_intrigue_troops": _COUNT,
     "retreat_intrigue_troops": _COUNT,
     "lose_intrigue_troop": _UNIT,
+    # Double Cross: the opponent whose troop in the Conflict is lost.
+    "choose_opponent_troop_loss": (("player", _C.SEAT),),
+    # Urgent Mission: the board space (or the Conflict) whose Agent returns.
+    "recall_agent_for_intrigue": _RECALLED,
+    "recall_conflict_agent_for_intrigue": _CONFLICT,
     "acquire_intrigue_imperium": _IMPERIUM,
     "acquire_intrigue_reserve": _RESERVE,
     "manipulate_imperium_row": _IMPERIUM,
@@ -1434,6 +1506,9 @@ _INTRIGUE_WINDOWS: Final[Mapping[str, str]] = MappingProxyType({
     FrameKind.AGENT_EFFECTS: "plot",
     FrameKind.REVEAL: "plot",
     FrameKind.COMBAT_INTRIGUE: "combat",
+    # The sole winner's reward window: a winning Intrigue is played there
+    # (``intrigue.intrigue_window``).
+    FrameKind.COMBAT_REWARD_ICONS: "combat",
     FrameKind.ENDGAME_INTRIGUE: "endgame",
 })
 INTRIGUE_WINDOWS: Final = tuple(dict.fromkeys(_INTRIGUE_WINDOWS.values()))

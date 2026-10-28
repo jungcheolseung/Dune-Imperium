@@ -1,5 +1,6 @@
 """Small typed effects and pending-effect frame utilities."""
 
+from collections import Counter
 from collections.abc import Mapping
 from copy import replace
 from dataclasses import dataclass
@@ -7,6 +8,7 @@ from dataclasses import replace as replace_card
 from enum import StrEnum
 from typing import Final
 
+from dune_imperium.config import BaseGame
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.contracts import (
     contract_for_instance,
@@ -109,6 +111,19 @@ AGENT_EFFECT_CONTEXT_KEYS = frozenset(
         "turn_owner",
     }
 )
+
+
+def mentat_rests(state: GameState) -> bool:
+    """Whether the Mentat rests on its space: no seat took it this round and
+    no Sort Through the Chaos winner waits for it [FAQ p. 4]
+    (docs/rules/imperium-base.md 9). Only an original game sets it out. The
+    Mentat space's take and Calculated Hire's read it."""
+
+    return (
+        state.config.base_game is BaseGame.IMPERIUM
+        and state.mentat_owed_to is None
+        and not any(player.mentat for player in state.players)
+    )
 
 
 def open_next_turn(state: GameState, player: int) -> GameState:
@@ -361,6 +376,10 @@ BOARD_ICON_COMMANDER = "sardaukar_commander"
 # Landsraad board space" [Bloodlines pp. 7, 12]; like the Commander it is an
 # effect of the visit, not a printed icon.
 BOARD_ICON_TECH = "tech"
+# The original board's Mentat space take ("If the Mentat is here, take it"
+# [DI p. 18]), spelled here so this module keeps importing none of
+# ``board_effects`` (a test checks it agrees with ``BOARD_ICON_MENTAT``).
+MENTAT_BOARD_ICON: Final = "mentat"
 # The visit's optional effects -- "may", an arrow cost or a black trash icon
 # [FAQ p. 3]: Desert Tactics' trash ("원하면 card 1장 trash", [Board Guide
 # p. 1] [Main p. 20]), Imperial Privilege's Intrigue trade (an arrow cost,
@@ -432,6 +451,8 @@ class OptionalBlockKind(StrEnum):
     MAKER_HOOKS = "maker_hooks"
     # The reward would do nothing (OQ-071).
     NO_CARD_TO_DRAW = "no_card_to_draw"
+    NO_INTRIGUE_TO_DRAW = "no_intrigue_to_draw"  # deck and shufflable discard
+    NO_TROOP_TO_RECRUIT = "no_troop_to_recruit"  # no supply troop nor specimen
     TECH_UNAFFORDABLE = "tech_unaffordable"  # ``needed``: cheapest tile
     TECH_NEEDS_SPY = "tech_needs_spy"  # Advanced Data Analysis only
     # Never again in this turn.
@@ -450,6 +471,8 @@ class OptionalBlockKind(StrEnum):
     TECH_STACKS_EMPTY = "tech_stacks_empty"
     # Waits for the visit's mandatory effects (Reverend Mother's repeat).
     AFTER_THE_SPACE = "after_the_space"
+    # No Faction the owner has Influence with, to lose (Shifting Allegiances).
+    NO_INFLUENCE_TO_LOSE = "no_influence_to_lose"
 
 
 @dataclass(frozen=True, slots=True)
@@ -684,6 +707,7 @@ def blocked_board_icons(
     later in the turn offers it again.
     """
 
+    blocked: set[str] = set()
     space, icon = _SHIPPING_INFLUENCE
     waiting = {
         key
@@ -694,9 +718,17 @@ def blocked_board_icons(
         )
         if key is not None and board_icon_is_pending(context, key)
     }
-    if not waiting or any(influence_can_rise(owner, faction) for faction in Faction):
-        return frozenset()
-    return frozenset(waiting)
+    if waiting and not any(influence_can_rise(owner, faction) for faction in Faction):
+        blocked |= waiting
+    if owner.mentat and board_icon_is_pending(context, MENTAT_BOARD_ICON):
+        # The Mentat space's "If the Mentat is here, take it" [DI p. 18],
+        # judged when it resolves (OQ-028, docs/rules/imperium-base.md 16):
+        # a seat that already holds the Mentat -- Calculated Hire took it
+        # from the space earlier in the same visit -- finds it gone, so the
+        # icon can only lapse. The seat held no Mentat when the visit began
+        # (the icon is armed only while it rests, ``mentat_rests``).
+        blocked.add(MENTAT_BOARD_ICON)
+    return frozenset(blocked)
 
 
 def mandatory_board_icons_pending(
@@ -854,13 +886,21 @@ def recall_agent_targets(
     OQ-037 (d), OQ-068). Imperial Privilege's "Recall one of your other
     Agents from the board" [Board Guide p. 2], the Contract reward and an
     Agent box's Recall Agent icon read this.
+
+    Each space is named once. The original game's Kwisatz Haderach may send a
+    second Agent of the seat to a space it already holds (docs/rules/
+    imperium-base.md 16), so the exclusion takes away one Agent of that
+    space, not all of them: the other one there may still be recalled.
     """
 
+    left = Counter(owner.agent_locations)
+    if excluded_space_id:
+        left[excluded_space_id] -= 1
     return (
         *(
             space_id
-            for space_id in owner.agent_locations
-            if space_id != excluded_space_id
+            for space_id in dict.fromkeys(owner.agent_locations)
+            if left[space_id] > 0
         ),
         *(
             ("conflict",)
@@ -883,13 +923,17 @@ def recall_board_agent(
     """Return the owner with its Agent on ``space_id`` recalled, and its
     event: the Agent returns to its Leader [Main p. 20]. ``source_key``
     names the payload key ``source`` is filed under, as in
-    ``recall_conflict_agent``."""
+    ``recall_conflict_agent``. One Agent comes back: the original game's
+    Kwisatz Haderach can put two of a seat's Agents on one space
+    (docs/rules/imperium-base.md 16)."""
 
+    index = owner.agent_locations.index(space_id)
     next_owner = replace(
         owner,
         agents_available=owner.agents_available + 1,
-        agent_locations=tuple(
-            location for location in owner.agent_locations if location != space_id
+        agent_locations=(
+            *owner.agent_locations[:index],
+            *owner.agent_locations[index + 1 :],
         ),
     )
     event = GameEvent(

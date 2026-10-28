@@ -36,7 +36,6 @@ from dataclasses import dataclass
 from functools import cache, lru_cache
 from typing import Final
 
-from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.abilities import Ability, intrigue_ability
 from dune_imperium.content.uprising.board import Faction
@@ -55,9 +54,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     GiveIntrigueToOpponent,
     LoseInfluence,
     LoseTroops,
+    OpponentLosesTroop,
+    PassTurn,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
+    RecallYourAgent,
     RetreatTroops,
     SetAsideImperiumRowCard,
     TrashDiscardPileCard,
@@ -68,8 +70,10 @@ from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import (
     IntrigueAcquisition,
@@ -77,6 +81,7 @@ from dune_imperium.rules.acquisition import (
     acquirable_reserve_card_ids,
     acquire_imperium_for_intrigue,
     acquire_reserve_for_intrigue,
+    deck_top_offered,
     take_imperium_row_card,
 )
 from dune_imperium.rules.action_shapes import (
@@ -95,6 +100,7 @@ from dune_imperium.rules.card_discard import (
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
     grant_combat_icon,
+    grant_recruit_deployment,
     reconcile_deployment_after_retreat,
 )
 from dune_imperium.rules.effect_interpreter import (
@@ -113,14 +119,20 @@ from dune_imperium.rules.effect_interpreter import (
 from dune_imperium.rules.effects import (
     agent_turn_space_id,
     open_next_turn,
+    recall_board_agent,
+    recall_conflict_agent,
     recruit_shortfall_events,
     recruit_troops,
+    turn_agent_in_conflict,
 )
 from dune_imperium.rules.frames import (
+    FrameKind,
+    frame_context,
     replace_player,
     reveal_is_open_for,
     turn_owner_of,
     update_turn_recruits,
+    with_context,
 )
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
@@ -150,14 +162,19 @@ from dune_imperium.rules.spy_placement import (
 )
 from dune_imperium.rules.strength import reveal_in_progress
 from dune_imperium.rules.tactics import advance_tactics_token
-from dune_imperium.rules.tech import push_tech_acquisition
+from dune_imperium.rules.tech import deploy_troops_from_supply, push_tech_acquisition
 from dune_imperium.rules.tleilaxu_row import (
     RECLAIMED_FORCES_CHOICES,
     acquire_reclaimed_forces,
     acquire_tleilaxu_card,
+    deck_top_is_allowed,
     reclaimed_forces_block,
 )
-from dune_imperium.rules.unit_loss import lose_unit
+from dune_imperium.rules.unit_loss import (
+    lose_unit,
+    opponent_unit_loss_frames,
+    opponents_with_conflict_troop,
+)
 from dune_imperium.rules.units import retreat_units, unit_count_arguments, unit_counts
 
 # --- Pending entries ---------------------------------------------------------
@@ -507,12 +524,23 @@ def piece_rows(
                 for held in owner.intrigue_cards
                 if held != played_card_id
             )
+        case OpponentLosesTroop():
+            # Double Cross: the opponent whose troop goes, one that has a
+            # troop in the Conflict to lose (the card's official condition,
+            # [FAQ p. 2]), clockwise from the next seat.
+            rows.extend(
+                row(
+                    Verb.LOSE_UNIT,
+                    Target.UNITS,
+                    (("player", seat),),
+                    variant="opponent",
+                )
+                for seat in opponents_with_conflict_troop(state, player)
+            )
         case AcquireTleilaxuCard():
             # "You may also acquire a Tleilaxu card (paying its normal
             # cost)"; Reclaimed Forces is one too (OQ-066).
-            deck_top = bool(owner.research_space) and (
-                genetic_markers_reached(owner.research_space) >= 1
-            )
+            deck_top = deck_top_is_allowed(state, player)
             for instance_id in state.tleilaxu_row:
                 if tleilaxu_card_for_instance(instance_id).specimen_cost > (
                     owner.specimens
@@ -535,6 +563,16 @@ def piece_rows(
             )
             if refusals:
                 rows.append(row(Verb.DECLINE, of=Verb.ACQUIRE))
+        case PeekTopCard(draw_or_trash=True):
+            # Poison Snooper: draw the card it looked at, or trash it; both
+            # are free and it is neither put back nor discarded.
+            if owner.deck:
+                rows.append(row(Verb.DRAW, variant="deck_top_free"))
+                rows.append(row(Verb.TRASH, variant="deck_top"))
+            elif empty_confirm:
+                # "덱이 비면 맨 위를 볼 수 없다" (imperium-base.md 13.1): the
+                # look fizzles and is confirmed (OQ-113 (C), like Controlled).
+                rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.KEEP, variant="deck_top"))
         case PeekTopCard():
             if owner.deck:
                 rows.append(row(Verb.KEEP, variant="deck_top"))
@@ -550,6 +588,24 @@ def piece_rows(
                 row(Verb.RECALL_SPY, Target.POST, (("post_id", post_id),))
                 for post_id in owner.spy_post_ids
             )
+        case RecallYourAgent():
+            # Urgent Mission: "Recall one of your Agents" -- any of the
+            # seat's own, the one sent this turn included (P0 sweep S29; the
+            # exclusion is Uprising's Recall Agent icon's, [Main p. 20]), and
+            # one Into the Fray left in the Conflict (OQ-068). The Mentat is
+            # one of them (OQ-139 (가)). A space is named once: Kwisatz
+            # Haderach may have put two of the seat's Agents on it (section
+            # 16), and either one recalled leaves the other.
+            rows.extend(
+                row(Verb.RECALL_AGENT, Target.SPACE, (("space_id", space_id),))
+                for space_id in dict.fromkeys(owner.agent_locations)
+            )
+            if owner.agent_in_conflict > 0:
+                rows.append(row(Verb.RECALL_AGENT, variant="conflict"))
+            if not rows and empty_confirm:
+                # No Agent to return: the cost-free Plot fizzles and is
+                # confirmed (OQ-113 (C), imperium-base.md 13.3).
+                rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.RECALL_AGENT))
         case RetreatTroops(minimum=minimum, maximum=maximum):
             # Commanders in the Conflict are troops for a retreat
             # [Bloodlines p. 4].
@@ -587,23 +643,59 @@ def piece_rows(
                 # An empty Imperium Row: the set-aside fizzles and is
                 # confirmed (Manipulate, OQ-113 (C)).
                 rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.SET_ASIDE))
-        case AcquireCardUpTo(max_cost=max_cost):
-            rows.extend(
-                row(Verb.ACQUIRE, Target.RESERVE_CARD, (("card_id", card_id),))
-                for card_id in acquirable_reserve_card_ids(state, max_cost)
+        case AcquireCardUpTo(max_cost=max_cost, to_deck_top=forced_top):
+            # Where the card goes: the discard pile, or on top of the deck --
+            # always for Bypass Protocol's second option ("to the top of your
+            # deck"), and the owner's choice beside the plain row while
+            # Recruitment Mission is effective (``deck_top_offered``, [FAQ
+            # p. 3]) unless the card text puts it in the hand
+            # (``acquires_to_hand``). The twin row carries ``to_deck_top``.
+            tops = (
+                (True,)
+                if forced_top
+                else (False, True)
+                if deck_top_offered(state, player)
+                and not acquires_to_hand(state, player, piece)
+                else (False,)
             )
             rows.extend(
-                row(Verb.ACQUIRE, Target.IMPERIUM_CARD, (("instance_id", instance),))
+                row(
+                    Verb.ACQUIRE,
+                    Target.RESERVE_CARD,
+                    (
+                        ("card_id", card_id),
+                        *((("to_deck_top", True),) if top else ()),
+                    ),
+                )
+                for card_id in acquirable_reserve_card_ids(state, max_cost)
+                for top in tops
+            )
+            rows.extend(
+                row(
+                    Verb.ACQUIRE,
+                    Target.IMPERIUM_CARD,
+                    (
+                        ("instance_id", instance),
+                        *((("to_deck_top", True),) if top else ()),
+                    ),
+                )
                 # The owner's own Manipulate set-aside card is within reach
                 # at its printed cost, never an opponent's [FAQ p. 3].
                 for instance in acquirable_imperium_instance_ids(
                     state, max_cost, player=player
                 )
+                for top in tops
             )
             if not rows and empty_confirm:
                 # Nothing within the cap: the acquisition alone fizzles
                 # (designer ruling, Impress; OQ-057).
                 rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.ACQUIRE))
+        case PassTurn(optional=True):
+            # Bindu Suspension: after the draw, "you may pass your turn" or
+            # play it normally (OQ-117); the refusal is the normal turn.
+            rows.append(row(Verb.PASS, variant="turn"))
+            if refusals:
+                rows.append(row(Verb.DECLINE, of=Verb.PASS))
         case PlaceSpy():
             # Placing is mandatory while a Spy and a post are free (the
             # designer's erratum to [Main p. 11], OQ-057); the placement is
@@ -734,6 +826,11 @@ _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
         "intrigue_set_aside_unavailable",
     ),
     "skip_intrigue_trash": ("trash_unavailable", "intrigue_trash_unavailable"),
+    # Bindu Suspension's pass refused: the turn is played normally (OQ-117).
+    "keep_turn_intrigue": ("turn_kept", "intrigue_turn_kept"),
+    # Urgent Mission with no Agent on the board: played and fizzled
+    # (OQ-113 (C), imperium-base.md 13.3).
+    "skip_intrigue_recall_agent": ("agent_unavailable", "intrigue_agent_unavailable"),
 }
 # The event a Faction named for a later step announces (``held``), by source.
 _HELD_FACTION_EVENTS: Final[Mapping[Source, str]] = {
@@ -920,6 +1017,18 @@ def apply_piece(
                 lost.state, player, entry.held, step_source, lost.events
             )
             taken = replace(taken, held=())
+        case GainInfluence(one_faction=True, times=times):
+            # "Gain two Influence with one Faction of your choice" [DI p. 16]:
+            # one pick, every Influence on that Faction (a cube at 5 gains 1).
+            faction = Faction(str(arguments["faction"]))
+            taken = replace(taken, chosen=(*entry.chosen, faction.value))
+            result = gain_faction_influence(
+                state,
+                player,
+                faction,
+                times,
+                event_prefix=f"{step_source}:gained:{faction.value}",
+            )
         case GainInfluence(distinct=distinct):
             faction = Faction(str(arguments["faction"]))
             later_distinct = distinct and any(
@@ -1069,14 +1178,58 @@ def apply_piece(
             result = _trash_intrigue_hand_card(
                 state, player, str(arguments["card_id"]), troops_bonus, step_source
             )
+        case OpponentLosesTroop():
+            # The named opponent chooses the troop it loses, in a window of
+            # its own above this frame (OQ-036 (a)); the card's own
+            # deployment waits for its automatic rewards.
+            printed = intrigue_card_for_instance(
+                split_intrigue_ref(entry.ref)[0]
+            ).card.card_id
+            chosen = arguments["player"]
+            assert isinstance(chosen, int) and not isinstance(chosen, bool)
+            result = opponent_unit_loss_frames(
+                state,
+                player,
+                source=step_source,
+                printer=printer_value(Source.INTRIGUE, printed),
+                conflict_only=True,
+                seats=(chosen,),
+            )
+        case PassTurn(optional=True) if shape.verb is Verb.DECLINE:
+            result = _passed(state, player, action, step_source)
+        case PassTurn(optional=True):
+            # The turn ends at once and the seat stays unrevealed, as
+            # Withdrawn's pass (``apply_automatic_rewards``); the seat took
+            # no Agent, so nothing it blocks is used up (OQ-116).
+            result = RuleResult(
+                state=open_next_turn(state, player),
+                events=(
+                    GameEvent(
+                        event_id=f"{step_source}:turn_passed",
+                        kind="turn_passed",
+                        payload=(("player", player),),
+                    ),
+                ),
+            )
         case PeekTopCard() if shape.verb is Verb.CONFIRM_EMPTY:
             result = _passed(state, player, action, step_source)
+        case PeekTopCard(draw_or_trash=True):
+            result = _resolve_look(state, player, shape.verb, step_source)
         case PeekTopCard():
             result = _resolve_peek(state, player, shape.verb, step_source)
         case PlaceSpy() if shape.verb is Verb.DECLINE:
             # The Spy placement is passed up only when it cannot be made
             # (``piece_rows``).
             result = _passed(state, player, action, step_source)
+        case RecallYourAgent() if shape.verb is Verb.CONFIRM_EMPTY:
+            result = _passed(state, player, action, step_source)
+        case RecallYourAgent():
+            result = _recall_your_agent(
+                state,
+                player,
+                None if shape.variant == "conflict" else str(arguments["space_id"]),
+                step_source,
+            )
         case RecallSpy() | PlaceSpy():
             post_id = str(arguments["post_id"])
             owner = state.players[player]
@@ -1136,6 +1289,7 @@ def acquire_by_piece(
     if shape.verb is Verb.CONFIRM_EMPTY:
         return None
     arguments = dict(action.arguments)
+    to_deck_top = arguments.get("to_deck_top") is True
     if shape.target is Target.RESERVE_CARD:
         return acquire_reserve_for_intrigue(
             state,
@@ -1143,6 +1297,7 @@ def acquire_by_piece(
             str(arguments["card_id"]),
             to_hand=to_hand,
             source=step_source,
+            to_deck_top=to_deck_top,
         )
     return acquire_imperium_for_intrigue(
         state,
@@ -1150,6 +1305,7 @@ def acquire_by_piece(
         str(arguments["instance_id"]),
         to_hand=to_hand,
         source=step_source,
+        to_deck_top=to_deck_top,
     )
 
 
@@ -1272,6 +1428,146 @@ def _trash_intrigue_hand_card(
     if recruited and turn_owner_of(next_state) == player:
         next_state = update_turn_recruits(next_state, troops_recruited=recruited)
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _recall_your_agent(
+    state: GameState,
+    player: int,
+    space_id: str | None,
+    step_source: str,
+) -> RuleResult:
+    """Urgent Mission: return the Agent on ``space_id`` -- or one in the
+    Conflict, ``space_id`` None -- to its Leader.
+
+    "Recall one of your Agents" [Urgent Mission card, app text]: any Agent,
+    the one sent this turn too; the Mentat is one of them and the engine
+    keeps no separate piece (OQ-139 (가)). A Conflict Agent leaves as a unit
+    (``recall_conflict_agent``): the running strength drops with it, and in
+    the owner's Reveal turn the Reveal frame's tally follows
+    (``_follow_reveal_strength``, as for any unit removed there). Recalling
+    the Agent sent this turn is marked in its Agent-effect frame
+    (``turn_agent_recalled``), as Twisted Mentat's recall does, so a later
+    "other Agents" recall of the same turn (Steersman, Imperial Privilege in
+    a combined game) does not leave out one more Agent from the Conflict.
+    """
+
+    owner = state.players[player]
+    turn_space = agent_turn_space_id(state, player)
+    if space_id is None:
+        in_conflict = owner.agent_in_conflict
+        next_owner, event = recall_conflict_agent(
+            owner,
+            player=player,
+            source=step_source,
+            event_id=f"{step_source}:agent_recalled:conflict",
+        )
+        # The Conflict's lone Agent is this turn's when Into the Fray sent it
+        # there (``turn_agent_in_conflict``); with several, an earlier turn's
+        # goes first.
+        was_turn_agent = in_conflict == 1 and _turn_agent_is_in_conflict(
+            state, owner, turn_space
+        )
+    else:
+        next_owner, event = recall_board_agent(
+            owner,
+            space_id,
+            player=player,
+            source=step_source,
+            event_id=f"{step_source}:agent_recalled:{space_id}",
+        )
+        was_turn_agent = space_id == turn_space
+    recalled = replace(state, players=replace_player(state.players, next_owner))
+    if was_turn_agent:
+        recalled = _mark_turn_agent_recalled(recalled, player)
+    return _follow_reveal_strength(
+        state, RuleResult(state=recalled, events=(event,)), player
+    )
+
+
+def _turn_agent_frame_index(state: GameState, player: int) -> int | None:
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if (
+            frame.kind == FrameKind.AGENT_EFFECTS
+            and isinstance(frame.decision, PlayerDecision)
+            and frame.decision.owner == player
+        ):
+            return index
+    return None
+
+
+def _turn_agent_is_in_conflict(
+    state: GameState, owner: PlayerState, turn_space: str | None
+) -> bool:
+    index = _turn_agent_frame_index(state, owner.player_id)
+    if index is None or turn_space is None:
+        return False
+    context = frame_context(state.decision_stack[index])
+    return turn_agent_in_conflict(owner, context, turn_space)
+
+
+def _mark_turn_agent_recalled(state: GameState, player: int) -> GameState:
+    """Note in the seat's Agent-effect frame that this turn's Agent is home."""
+
+    index = _turn_agent_frame_index(state, player)
+    if index is None:
+        return state
+    frame = state.decision_stack[index]
+    context = frame_context(frame)
+    context["turn_agent_recalled"] = True
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:index],
+            with_context(frame, context),
+            *state.decision_stack[index + 1 :],
+        ),
+    )
+
+
+def _resolve_look(
+    state: GameState,
+    player: int,
+    verb: Verb,
+    step_source: str,
+) -> RuleResult:
+    """Poison Snooper: draw the top card it looked at, or trash it.
+
+    "Look at the top card of your deck. Draw or trash it." [Poison Snooper
+    card, app text]. The drawn card goes to the hand and stays hidden from
+    the others (``top_card_drawn_free`` names no card), unless it was a
+    public deck-top card (OQ-145: then it stays public in the hand,
+    ``rules.deck_top``); in the owner's Reveal
+    turn it is revealed at once and used this turn [FAQ p. 3]
+    (imperium-base.md 13.2). The trashed card becomes public (imperium-base.md
+    14: "trash하면 공개"): it is trashed from the deck like Long Live the
+    Fighters' (``trash_personal_card`` with ``allow_deck``), so a Reserve card
+    returns to its pile [DI p. 16] and the card's own trash trigger fires.
+    """
+
+    owner = state.players[player]
+    if not owner.deck:
+        raise RuntimeError("Poison Snooper needs a card on top of the deck")
+    top = owner.deck[0]
+    if verb is Verb.TRASH:
+        trashed = trash_personal_card(
+            state, player, top, source=step_source, allow_deck=True
+        )
+        # A troop the card's own trash box recruits is this turn's recruit
+        # [Main p. 10] [FAQ p. 4], as for the discard-pile trash above.
+        return credit_trash_recruits(trashed, player)
+    next_owner = replace(owner, deck=owner.deck[1:], hand=(*owner.hand, top))
+    drawn = replace(state, players=replace_player(state.players, next_owner))
+    event = GameEvent(
+        event_id=f"{step_source}:top_card_drawn_free",
+        kind="top_card_drawn_free",
+        payload=(("player", player),),
+    )
+    if reveal_is_open_for(drawn, player):
+        # "Reveal turn에 뽑으면 바로 공개해 이번 turn에 쓴다" [FAQ p. 3].
+        late = reveal_late_arrivals(drawn, player, (top,))
+        return RuleResult(state=late.state, events=(event, *late.events))
+    return RuleResult(state=drawn, events=(event,))
 
 
 def _resolve_peek(
@@ -1495,6 +1791,20 @@ def apply_automatic_rewards(
         )
     if outcome.combat_icons:
         next_state = grant_combat_icon(next_state, player)
+    if outcome.supply_deployments:
+        # Double Cross: its troop goes from the supply to the Conflict.
+        deployed = deploy_troops_from_supply(
+            next_state,
+            player,
+            outcome.supply_deployments,
+            source=f"{source}:supply",
+        )
+        next_state = deployed.state
+        events.extend(deployed.events)
+    if outcome.deployable_recruits or outcome.deployable_owed:
+        next_state = grant_recruit_deployment(
+            next_state, player, outcome.deployable_recruits, outcome.deployable_owed
+        )
     if outcome.sandworms_replaced:
         replacement = replace_sandworms(
             next_state, player, outcome.sandworms_replaced, source=source

@@ -44,6 +44,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AtFactionSpace,
     AtMakerSpace,
+    BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommandersInConflictAtLeast,
     CompleteContract,
@@ -54,10 +55,13 @@ from dune_imperium.content.uprising.effect_dsl import (
     DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
+    DoubleBaseHarvestSpice,
+    DoubleBonusHarvestSpice,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
@@ -76,6 +80,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     InfluenceAtLeast,
     LookAtIntrigueKeepOne,
+    LoseInfluence,
     LoseTroops,
     OpponentsMoveSpiesFromVisitedSpace,
     PayResources,
@@ -91,6 +96,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpendSpecimens,
     SpyRecalledThisTurn,
     SummonSandworm,
+    TakeCardFromDiscard,
     TakeContract,
     TrashCard,
     TrashedCardHasFaction,
@@ -217,9 +223,16 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
         {
             # --- One action: gains -------------------------------------------
             _BOX.GAIN_TWO_SOLARI: _box(GainResources(solari=2)),
+            # Crysknife (original game): one Solari.
+            _BOX.GAIN_ONE_SOLARI: _box(GainResources(solari=1)),
+            # Opulence (original game): three Solari.
+            _BOX.GAIN_THREE_SOLARI: _box(GainResources(solari=3)),
             _BOX.GAIN_ONE_SPICE: _box(GainResources(spice=1)),
             _BOX.GAIN_WATER: _box(GainResources(water=1)),
             _BOX.RECRUIT_TWO_TROOPS: _box(RecruitTroops(2)),
+            # Arrakis Recruiter (original game): one troop; a Combat space
+            # lets the owner deploy it [DI p. 10] [FAQ p. 4].
+            _BOX.RECRUIT_ONE_TROOP: _box(RecruitTroops(1)),
             _BOX.BOOST_NEXT_BENE_GESSERIT_CARD_THIS_ROUND: _box(
                 BoostNextBeneGesseritCard()
             ),
@@ -617,10 +630,44 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU: _pay(
                 SpendSpecimens(2), AdvanceTleilaxu(2)
             ),
+            # Spice Smugglers (original game): "[2 spice] -> [Spacing Guild
+            # Influence] [3 Solari]" -- a paid arrow whose first reward is a
+            # fixed Faction's Influence (no choice) and whose Solari keep it
+            # worth paying at the top of the track (OQ-060, OQ-071).
+            _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI: _pay(
+                PayResources(spice=2),
+                GainInfluence(factions=(Faction.SPACING_GUILD,)),
+                GainResources(solari=3),
+            ),
+            # Fremen Camp (original game): "[2 spice] -> [3 troops]" -- a paid
+            # arrow, the troops recruited at once [DI p. 9] [FAQ p. 3].
+            _BOX.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS: _pay(
+                PayResources(spice=2), RecruitTroops(3)
+            ),
+            # Duncan Idaho (original game): "[1 water] -> [troop] [draw 1
+            # card]" -- a paid arrow whose two rewards wait as icons once the
+            # water is paid, each its own step (OQ-027 (b), OQ-106).
+            _BOX.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(RecruitTroops(1),), costs=(PayResources(water=1),)
+                    ),
+                    _line(DrawPersonalCards(1)),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("troops", "cards"),
+            ),
             # --- One action with follow-ups for the opponents (composed A3g) -----
             # Covert Operation: "Each opponent discards a card" -- one frame per
             # opponent holding a card, named ``<box>:opponent:<seat>``.
             _BOX.EACH_OPPONENT_DISCARDS_PERSONAL_CARD: _box(EachOpponentDiscardsCard()),
+            # Gun Thopter (original game): "Each opponent loses one garrisoned
+            # troop" -- Holy War's window, each loss limited to the garrison;
+            # an opponent with none is unaffected [FAQ p. 2].
+            _BOX.EACH_OPPONENT_LOSES_GARRISON_TROOP: _box(
+                EachOpponentLosesTroop(garrison_only=True)
+            ),
             # Holy War: "Each opponent loses one troop. Each opponent spying on
             # the board space where you sent an Agent this turn must move that
             # Spy" -- every loss first, then the Spy moves (OQ-036).
@@ -875,6 +922,181 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                         condition=HasAlliance(Faction.FREMEN),
                     ),
                 ),
+            ),
+            # Smuggler's Thopter (original game): "Spacing Guild Influence 2:
+            # [draw] [draw]" -- two printed draw icons, each its own step with
+            # the Influence judged when it resolves (OQ-027, OQ-028, OQ-106).
+            _BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: _icons(
+                ("cards", _line(DrawPersonalCards(1), condition=_GUILD_TWO)),
+                ("cards_second", _line(DrawPersonalCards(1), condition=_GUILD_TWO)),
+            ),
+            # Worm Riders (original game): two spice.
+            _BOX.GAIN_TWO_SPICE: _box(GainResources(spice=2)),
+            # Guild Ambassador (original game): "[Spacing Guild Influence] -OR-
+            # [2 spice]" -- a printed -OR- the owner must settle (the P0
+            # sweep's "choose one (must)"; Southern Faith's plain-beside-choice
+            # shape). The 2 spice is the plain line, the Influence the choice
+            # line; a track at 6 gains nothing (OQ-060), so only the spice is
+            # then offered.
+            _BOX.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(GainResources(spice=2)),
+                    _line(GainInfluence(factions=(Faction.SPACING_GUILD,))),
+                ),
+                structure=AbilityStructure.ONE_OF,
+            ),
+            # The Voice (original game): "Choose any board space. Opponents can't
+            # send their next Agents there this round." -- one mandatory target
+            # choice among every board space on the table (imperium-base.md 15):
+            # its rows are the spaces (``agent_box_abilities.target_rows``), and
+            # the block lands on every opponent's seat state
+            # (``PlayerState.voice_blocked_space_ids``, OQ-116).
+            _BOX.BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT: _box(
+                BlockChosenSpaceForOpponentsNextAgent()
+            ),
+            # Other Memory (original game): "[draw 1] -OR- Draw a Bene Gesserit
+            # card from your discard pile" -- a printed -OR- the owner must
+            # settle (the P0 sweep's "choose one (must)"; Guild Ambassador's
+            # plain-beside-choice shape). The draw is the plain line, its own
+            # hidden step (OQ-106); the card taken from the discard pile is the
+            # choice line, offered only with a Bene Gesserit card there.
+            _BOX.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(DrawPersonalCards(1)),
+                    _line(TakeCardFromDiscard(Faction.BENE_GESSERIT)),
+                ),
+                structure=AbilityStructure.ONE_OF,
+            ),
+            # Gurney Halleck (original game): "[2 troops] [draw 1 card]" -- two
+            # printed icons, each its own step in the owner's order (OQ-027);
+            # the hidden draw is apart from the public recruit (OQ-106).
+            _BOX.RECRUIT_TWO_AND_DRAW_ONE: _icons(
+                ("troops", _line(RecruitTroops(2))),
+                ("cards", _line(DrawPersonalCards(1))),
+            ),
+            # Imperial Spy (original game): "Trash this card -> [Intrigue card]"
+            # -- the card trashes itself as the arrow's cost, then the Intrigue
+            # draw is armed as an icon of its own (OQ-022, OQ-106; Pivotal
+            # Gambit's shape). Trashed by anything else it draws nothing
+            # [FAQ p. 2].
+            _BOX.MAY_TRASH_SELF_TO_DRAW_INTRIGUE: _trash(
+                EffectSection(
+                    rewards=(DrawIntrigueCards(1),),
+                    costs=(TrashCard(this_card=True),),
+                ),
+                armed=("intrigue",),
+            ),
+            # Missionaria Protectiva (original game): "If you have another Bene
+            # Gesserit card in play: [Influence of your choice]" -- the Bond
+            # opens the box at the placement and is judged again when it
+            # resolves (OQ-028); a track at 6 is not offered (OQ-060).
+            _BOX.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: _box(
+                GainInfluence(), condition=_BG_BOND, requirement=_BG_BOND
+            ),
+            # Gene Manipulation (original game): "[trash] AND If you have
+            # another Bene Gesserit card in play: [2 spice]" -- two printed
+            # icons, each its own step in the owner's order (OQ-027), the Bond
+            # judged when the spice icon resolves (OQ-028: trashing the other
+            # Bene Gesserit card first loses the spice); the black trash icon is
+            # optional [DI p. 16] [FAQ p. 3].
+            _BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: _icons(
+                ("trash", _line(TrashPersonalCard())),
+                ("spice", _line(GainResources(spice=2), condition=_BG_BOND)),
+            ),
+            # Reverend Mother Mohiam (original game): "If you have another Bene
+            # Gesserit card in play, each opponent discards two cards" -- the
+            # Bond opens the box at the placement and is judged again when it
+            # resolves (OQ-028); each opponent picks, clockwise from the next
+            # seat, as many as the hand holds (OQ-118, [FAQ p. 3]).
+            _BOX.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: _box(
+                EachOpponentDiscardsCard(2), condition=_BG_BOND, requirement=_BG_BOND
+            ),
+            # Firm Grip (original game): "[2 Solari] -> Choose one: [Spacing Guild
+            # Influence] / [Bene Gesserit Influence] / [Fremen Influence]" -- an
+            # optional arrow paid once [DI p. 9] [FAQ p. 3]; paid, its reward waits
+            # as an icon and the owner picks the Faction (never a track at 6,
+            # OQ-060). No Emperor choice.
+            _BOX.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(
+                            GainInfluence(
+                                factions=(
+                                    Faction.SPACING_GUILD,
+                                    Faction.BENE_GESSERIT,
+                                    Faction.FREMEN,
+                                )
+                            ),
+                        ),
+                        costs=(PayResources(solari=2),),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("influence",),
+            ),
+            # Shifting Allegiances (original game): "[lose 1 Influence with a
+            # chosen Faction] [2 spice] -> [2 Influence with one chosen
+            # Faction]" -- an optional arrow paid once [DI p. 9] [FAQ p. 3]; the
+            # loss and the spice are its cost, and paid, the +2 waits as an
+            # armed "influence" icon whose Faction the owner picks (the same
+            # one may be lost and gained again [FAQ p. 4]; one unbreakable
+            # gain, imperium-base.md 13.3).
+            _BOX.MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE: (
+                Ability(
+                    timing=AbilityTiming.AGENT_BOX,
+                    sections=(
+                        EffectSection(
+                            rewards=(GainInfluence(times=2, one_faction=True),),
+                            costs=(LoseInfluence(1), PayResources(spice=2)),
+                        ),
+                    ),
+                    mark=AbilityMark.OPTIONAL,
+                    armed_icons=("influence",),
+                )
+            ),
+            # Test of Humanity (original game): "Each opponent chooses: Discard a
+            # card -OR- Lose a deployed troop" -- one frame per opponent, the
+            # next seat first, named ``<box>:opponent:<seat>`` as Covert
+            # Operation's; each offers what it can do (imperium-base.md 13.1).
+            _BOX.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP: _box(
+                EachOpponentDiscardsOrLosesDeployedTroop()
+            ),
+            # Carryall (original game): "Double the base (not bonus) spice you
+            # harvest with this Agent" -- the harvest reads this record
+            # (``board_effects.apply_maker_space_action``); there is nothing to
+            # resolve, so the box never opens (``AbilityMark.AUTOMATIC``,
+            # ``agent_box_abilities.opens_at_placement``).
+            _BOX.DOUBLE_BASE_HARVEST_SPICE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(_line(DoubleBaseHarvestSpice()),),
+                mark=AbilityMark.AUTOMATIC,
+            ),
+            # Thumper (promo): "Double the bonus spice you harvest with this
+            # Agent" -- Carryall's shape for the bonus; the harvest reads this
+            # record and the box never opens.
+            _BOX.DOUBLE_BONUS_HARVEST_SPICE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(_line(DoubleBonusHarvestSpice()),),
+                mark=AbilityMark.AUTOMATIC,
+            ),
+            # Jessica of Arrakis (promo): "If you have another Bene Gesserit card
+            # in play: [draw 1] [draw 1]" -- the Bond opens the box at the
+            # placement and is judged again on each icon when it resolves
+            # (OQ-028), each draw its own step (OQ-027, OQ-106); Smuggler's
+            # Thopter's two draw icons (``cards`` / ``cards_second``) under
+            # Tread in Darkness's Bond.
+            _BOX.DRAW_TWO_IF_BENE_GESSERIT_BOND: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(DrawPersonalCards(1), condition=_BG_BOND),
+                    _line(DrawPersonalCards(1), condition=_BG_BOND),
+                ),
+                structure=AbilityStructure.SEPARATE,
+                requirement=_BG_BOND,
+                icons=("cards", "cards_second"),
             ),
         }
     )

@@ -11,6 +11,14 @@ Every opponent is asked, even with one option or none (user ruling
 ``resolve_unit_loss_without_unit``. ``unit_loss_block`` is the one judgment
 of which (zone, unit) a seat can lose, read by the provider and by the
 page's greyed-out rows (``display.unavailable``).
+
+Gun Thopter's "each opponent loses one garrisoned troop" asks the same
+window with the choice limited to the garrison (``GARRISON_ONLY_KEY`` in the
+frame's context, ``frame_garrison_only``): an opponent with no garrisoned
+troop is unaffected [FAQ p. 2] and confirms it like any seat with nothing to
+lose. Double Cross's "an opponent of your choice loses one troop in the
+Conflict" asks one chosen opponent, with the choice limited to the Conflict
+(``CONFLICT_ONLY_KEY``, ``frame_conflict_only``).
 """
 
 from copy import replace
@@ -35,6 +43,13 @@ from dune_imperium.rules.spy_moves import opponent_seats
 from dune_imperium.rules.units import retreat_units
 
 UNIT_ZONES: tuple[str, ...] = ("garrison", "conflict")
+
+# The frame context key of a window limited to the garrison (Gun Thopter);
+# absent from every other unit-loss frame.
+GARRISON_ONLY_KEY: Final = "garrison_only"
+# The frame context key of a window limited to the Conflict (Double Cross);
+# absent from every other unit-loss frame.
+CONFLICT_ONLY_KEY: Final = "conflict_only"
 
 # Every (zone, commander) a unit can be lost from, in the order the loss
 # window lists them: the garrison's troop, then its Commander, then the
@@ -81,14 +96,59 @@ def unit_loss_block(
     return None if held > 0 else UnitLossBlock.NO_TROOP
 
 
-def unit_loss_options(state: GameState, player: int) -> tuple[tuple[str, bool], ...]:
+def frame_garrison_only(frame: DecisionFrame) -> bool:
+    """Whether the unit-loss ``frame`` limits the loss to the garrison."""
+
+    return dict(frame.context).get(GARRISON_ONLY_KEY) is True
+
+
+def frame_conflict_only(frame: DecisionFrame) -> bool:
+    """Whether the unit-loss ``frame`` limits the loss to the Conflict."""
+
+    return dict(frame.context).get(CONFLICT_ONLY_KEY) is True
+
+
+def unit_loss_candidates(
+    *, garrison_only: bool = False, conflict_only: bool = False
+) -> tuple[tuple[str, bool], ...]:
+    """The (zone, commander) pairs a window lists, in its order."""
+
+    return tuple(
+        (zone, commander)
+        for zone, commander in UNIT_LOSS_CANDIDATES
+        if not (garrison_only and zone != "garrison")
+        and not (conflict_only and zone != "conflict")
+    )
+
+
+def unit_loss_options(
+    state: GameState,
+    player: int,
+    *,
+    garrison_only: bool = False,
+    conflict_only: bool = False,
+) -> tuple[tuple[str, bool], ...]:
     """Return the (zone, commander) pairs the player can lose a unit from."""
 
     owner = state.players[player]
     return tuple(
         (zone, commander)
-        for zone, commander in UNIT_LOSS_CANDIDATES
+        for zone, commander in unit_loss_candidates(
+            garrison_only=garrison_only, conflict_only=conflict_only
+        )
         if unit_loss_block(owner, zone, commander=commander) is None
+    )
+
+
+def opponents_with_conflict_troop(state: GameState, actor: int) -> tuple[int, ...]:
+    """The opponents of ``actor`` that have a troop in the Conflict, clockwise
+    from the next seat: those who can lose one there (Double Cross's official
+    condition, [FAQ p. 2]; a Sardaukar Commander is a troop [Bloodlines p. 4])."""
+
+    return tuple(
+        seat
+        for seat in opponent_seats(state, actor)
+        if unit_loss_options(state, seat, conflict_only=True)
     )
 
 
@@ -165,10 +225,16 @@ def opponent_unit_loss_frames(
     *,
     source: str,
     printer: str,
+    garrison_only: bool = False,
+    conflict_only: bool = False,
+    seats: tuple[int, ...] | None = None,
 ) -> RuleResult:
     """Push one unit-loss decision for every opponent of ``actor``;
     ``printer`` is the card that makes them lose it
-    (``action_shapes.printer_value``; stage B3d-3).
+    (``action_shapes.printer_value``; stage B3d-3); ``garrison_only``
+    limits each loss to the garrison (Gun Thopter), ``conflict_only`` to the
+    Conflict (Double Cross) and ``seats`` to the opponents named (the one
+    Double Cross's owner chose), still clockwise from the next seat.
 
     Every opponent is asked, clockwise from the next seat (the frames are
     pushed so that seat decides first), even with a single (zone, unit) to
@@ -184,18 +250,37 @@ def opponent_unit_loss_frames(
             decision=PlayerDecision(
                 owner=seat,
                 prompt=(
-                    "Choose where to lose one unit"
-                    if unit_loss_options(state, seat)
+                    (
+                        "Choose a garrisoned unit to lose"
+                        if garrison_only
+                        else "Choose a unit in the Conflict to lose"
+                        if conflict_only
+                        else "Choose where to lose one unit"
+                    )
+                    if unit_loss_options(
+                        state,
+                        seat,
+                        garrison_only=garrison_only,
+                        conflict_only=conflict_only,
+                    )
                     else "No unit to lose"
                 ),
             ),
+            # A context is sorted by name: ``conflict_only`` and
+            # ``garrison_only`` come first.
             context=(
+                *(((CONFLICT_ONLY_KEY, True),) if conflict_only else ()),
+                *(((GARRISON_ONLY_KEY, True),) if garrison_only else ()),
                 ("player", seat),
                 (PRINTER_KEY, printer),
                 ("source", f"{source}:unit_loss:{seat}"),
             ),
         )
-        for seat in opponent_seats(state, actor)
+        for seat in (
+            opponent_seats(state, actor)
+            if seats is None
+            else tuple(seat for seat in opponent_seats(state, actor) if seat in seats)
+        )
     )
     return RuleResult(
         state=replace(
@@ -217,7 +302,12 @@ def legal_unit_loss_actions(
     frame = owned_top_frame(state, FrameKind.OPPONENT_UNIT_LOSS, player)
     if frame is None:
         return ()
-    options = unit_loss_options(state, player)
+    options = unit_loss_options(
+        state,
+        player,
+        garrison_only=frame_garrison_only(frame),
+        conflict_only=frame_conflict_only(frame),
+    )
     if not options:
         return (
             DomainAction(action_id="resolve_unit_loss_without_unit", actor=player),
@@ -239,6 +329,15 @@ def apply_unit_loss(state: GameState, action: DomainAction) -> RuleResult:
     """Lose one unit from the chosen zone, or confirm there is none, and close
     the frame."""
 
+    if state.decision_stack and (
+        state.decision_stack[-1].kind == FrameKind.OPPONENT_CARD_DISCARD
+    ):
+        # Test of Humanity's window offers the loss of a deployed troop beside
+        # the discard; the window's own handler closes it, as for a discard.
+        # Read at call time: ``rules.agent_effects`` imports this module.
+        from dune_imperium.rules.agent_effects import apply_opponent_card_discard
+
+        return apply_opponent_card_discard(state, action)
     if action not in legal_unit_loss_actions(state, action.actor):
         raise ValueError("action is not a legal unit loss choice")
     frame = state.decision_stack[-1]

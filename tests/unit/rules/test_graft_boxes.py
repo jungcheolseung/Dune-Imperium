@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from dune_imperium import RulesetConfig
+from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.adapters.action_codec import ActionTemplate
 from dune_imperium.adapters.observation_encoding import (
@@ -114,8 +114,10 @@ OTHER_FRAME_KEYS = frozenset(
         "long_live_fighters_draw_card_id",
         "occupied",
         "only_option",
+        "opponent_discards_remaining",
         "option",
         "optional_sword_strength",
+        "or_lose_deployed_troop",
         "partner_waives_influence",
         "pending_ability",
         "pending_lines",
@@ -136,11 +138,16 @@ OTHER_FRAME_KEYS = frozenset(
         "reveal_commanders_deployed",
         "reveal_commanders_recruited",
         "reveal_pending_gains",
+        "reveal_recruits_deployable",
+        "reveal_recruits_owed",
         "reveal_spy_recalled",
         "reveal_troops_recruited",
         "reveal_units_deployed",
         "revealed_card_count",
         "separate_effect",
+        # Refocus's reshuffle of the deck along with the discard pile
+        # (``card_draw.SHUFFLE_DECK_KEY``).
+        "shuffle_deck",
         "skill_reveal_granted",
         "source",
         "spice_must_flow_acquired",
@@ -1231,6 +1238,52 @@ def test_the_codec_holds_box_one_twins_in_immortality_catalogs_only() -> None:
             )
             assert twin in templates
     assert "switch_graft_card" not in {t.action_id for t in codec.catalog}
+
+
+FIRM_GRIP = "imperium:firm_grip:0"
+
+
+def test_a_grafted_firm_grip_pays_its_solari_arrow_in_either_box() -> None:
+    """Grafted cards give both their effects: "두 카드의 효과를 board space
+    효과와 함께 원하는 순서로 얻는다" [Immortality p. 10] (immortality.md 5).
+    The original game's Firm Grip ("[2 Solari] -> +1 Influence with the
+    Spacing Guild, the Bene Gesserit or the Fremen", stage P3) as Ghola's
+    partner offers its arrow in box 1, and Ghola's copy of it in box 0; each
+    box pays its own 2 Solari and names its own Faction. The engine's state
+    puts the original card in an Uprising + Immortality hand: the original
+    game takes Immortality from stage P7, the rows are the same."""
+
+    state = _graft(_state((GHOLA, FIRM_GRIP)), GHOLA, "arrakeen", FIRM_GRIP)
+    assert _boxes_offered(state, "pay_agent_card_solari") == {0, 1}
+    # The staged rows were always in the original + Immortality catalog; the
+    # effect frame refused the box 1 action until it joined BOX_ACTION_IDS.
+    original = ActionCodec(
+        RulesetConfig(base_game=BaseGame.IMPERIUM, immortality=True)
+    )
+    for row in ENGINE.legal_actions(state, 0):
+        if dict(row.arguments).get("printed") == "firm_grip":
+            assert original.decode(original.encode(row), 0) == row
+    paid = _apply(state, "pay_agent_card_solari", box=1)
+    assert paid.players[0].resources.solari == 4 - 2
+    chosen = _apply(paid, "choose_agent_card_influence", box=1, faction="fremen")
+    assert chosen.players[0].influence.fremen == state.players[0].influence.fremen + 1
+    assert _boxes_offered(chosen, "pay_agent_card_solari") == {0}
+    again = _apply(chosen, "pay_agent_card_solari")
+    assert again.players[0].resources.solari == 0
+
+
+def test_ghola_s_copy_of_tread_in_darkness_counts_tread_for_the_bond() -> None:
+    """immortality.md 5, [Immortality p. 14]: "Bene Gesserit 카드에 graft하면 그
+    카드의 'BG 카드가 play 중이면' 조건은 그 카드 자신을 세지만 Ghola 자체는 BG
+    카드가 아니다". Ghola's copy of Tread in Darkness's box has its Bond in
+    Tread itself, so the copy's trash and draw are offered; Tread's own box
+    needs another Bene Gesserit card, which Ghola is not, so it offers none
+    (each icon judged when it resolves, OQ-028)."""
+
+    tread = "imperium:tread_in_darkness:0"
+    state = _graft(_state((GHOLA, tread)), GHOLA, "arrakeen", tread)
+    assert _boxes_offered(state, "resolve_agent_card_effect") == {0}
+    assert _boxes_offered(state, "trash_agent_card") == {0}
 
 
 def test_the_observation_names_both_boxes_by_their_fixed_number() -> None:

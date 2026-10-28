@@ -767,3 +767,351 @@ Orca 작업자가 멈춘 P2a(커밋 안 된 30파일)를 이어 받아 끝냈다
 - **P3에 넘기는 것:** 원판 Imperium·Intrigue 덱(빈 덱 동안 Helena의 Manipulate는 빈 확인, Baron의 Scheme은 내지 않음), OQ-139(Kwisatz Haderach·Urgent
   Mission에서 Mentat 말 구분), Masterstroke의 병력 셈(P4·P7), 화면(P5)의 Mentat·Masterstroke 표시와 공개의 되돌리기 경계, AI(P6)의 원판 판 점수.
 
+
+## 16. P3 계획 초안 (2026-10-28, 브랜치 `claude/base-ix-p3`, master `60c2fcfb`에서)
+
+**상태: 초안.** 사용자 지시(조정자 경유, 2026-10-28 00:5x) "P3는 계획 초안·도구 시범·시범 전사 5장까지만". 이 절의 결정은 모두 추천이고 16.8의
+질문에 사용자가 답하기 전에는 카드 묶음 전사를 시작하지 않는다. 범위는 8절 표의 P3: 원판 Imperium 43종 67장, Intrigue 34종 40장, 프로모 3장
+(Duncan, Loyal Blade·Jessica of Arrakis·Thumper, `promo_cards` 뒤, 9절 8). 끝의 모습: 원판 판이 두 덱으로 끝까지 돌고(소크), 앱 속성 표와 기계 대조
+0 차이, P3 끝 앱 행동 대조(10.4절 1)의 차이를 모두 판정.
+
+### 16.1 하위 단계
+
+| 단계 | 내용 | codec | 관측 |
+| --- | --- | --- | --- |
+| **P3a 틀** | 80장(Imperium 43·프로모 3·Intrigue 34)의 정의를 앱 속성 표에서 생성(도구 1: 이름·장수·비용·진영·Agent 아이콘·Reveal 값·획득 보너스), id, 덱 연결(`play_data_complete`인 카드만 덱에 — 정의는 다 있어도 효과가 없는 카드는 덱에 안 넣는다), `archetypes.py`와 기계 대조 pytest(9절 4), 화면 조각과 P0 카드면 읽기의 한 번 대조(D2), 시범 5장(16.7) | v155 그대로(원판 카탈로그만 늘어남, 15.4와 같은 이유) | **v37 한 번**: 개인 카드 +46, Intrigue +34를 구간 끝에(P2a의 지도자처럼 정의를 한 번에 넣어 어휘가 한 번만 바뀌게) |
+| **P3b Imperium** | 나머지 Imperium 41장 + 프로모 3. 갈래 둘(16.7 측정으로 정함)에 card-implementer, 합친 뒤 관문 | 그대로 | **v38(2026-10-28):** 덱 위 공개 카드(OQ-145)·The Voice 봉쇄·Infiltrate·Recruitment Mission 표시를 끝에 |
+| **P3c Intrigue** | 나머지 Intrigue 32장. Endgame 셋·Combat 창·Plot 시점 | 그대로 | 그대로 |
+| **P3d 끝** | 원판 두 덱 소크, 원판 전부의 앱 행동 대조(10.4절 1; 디컴파일러는 그 전에 다시 묻는다, D4-3 (나)), P2에서 넘어온 확인(16.5) | – | – |
+
+**병합 시점(2026-10-28 사용자, 조정자 경유 "B. E7 AI 가치망 측정 / 이거 빼고 나머지는 추천대로"):** 남은 여섯 장(Mentat 셋, 프로모 셋), 화면 둘(덱 위
+공개 카드; Mentat 말 모양은 사용자 답 뒤), P3d까지 끝낸 뒤 master에 한 번 합치고, 그 병합 커밋에서 codec을 v156으로 올린다(16.4). 옛 기록(사람 판
+저장, 문제집)을 새 버전으로 바꿔 쓰고 옛 다리를 지우는 정리는 P3 병합 뒤 따로 한다 — P3에서는 `records/migration.py`에 다리를 더하지 않는다.
+
+단계마다 엔진 관문 전체를 돈다(2026-10-20 사용자 결정, 15.6과 같은 묶음). E7b 같은 학습이 CPU를 잡는 동안은 표적 테스트만 `-n 2`로 돌리고
+관문은 게시판에 예약한다(2026-10-28 조정자 제한).
+
+### 16.2 id (4.2절 7)
+
+- 원판 Imperium·Intrigue 80장의 이름은 지금 어느 Imperium·Intrigue 카드 id와도 같은 종류 안에서 겹치지 않는다(2026-10-28 스크립트) — 모두 이름
+  그대로(`arrakis_recruiter`, `bribery` …).
+- **종류 사이 겹침을 새로 만들지 않는다**(15.2의 `foldspace_card`): 다른 종류가 쓰는 이름 일곱은 `_card`를 붙인다 — Uprising Intrigue `crysknife`와
+  겹치는 `crysknife_card`, Uprising·Bloodlines 지도자와 겹치는 `chani_card`, `duncan_idaho_card`, `gurney_halleck_card`, `lady_jessica_card`, `liet_kynes_card`,
+  `piter_de_vries_card`. 생성기(`scripts/dwgr/imperium_entries.py`의 `ID_OVERRIDES`)가 정하고, 덱이 연결되면 `test_content_ids.py`가 지킨다.
+
+### 16.3 출처 (D1·D2, 2.4절)
+
+- **앱 자료만.** 숫자·아이콘·장수·진영은 속성 표(도구 1, 생성), 효과는 카드별 화면 조각(2.2 4)과 영어 문구. 카드면 스캔은 새로 읽지 않는다.
+  화면 조각을 초안으로 바꾸는 변환기(D4-2)를 16.6에서 시범했다.
+- **화면 조각이 없는 카드:** 원판 프로모 셋은 카드 전용 prefab이 없다(일반 `UI_crd_Imperium` 틀이 문구로 그린다). 셋은 속성 표 + 영어 문구로 쓴다.
+  **예외(2026-10-28 사용자, 조정자 경유):** "앱 자료로 부족하면 dunecardshub의 이미지를 직접 읽어야지" — 이 셋에 한해, 속성 표와 영어 문구로
+  정해지지 않는 부분은 https://dunecardshub.com 의 카드 이미지를 직접 읽어 정한다(AGENTS.md "원판·Ix는 카드면을 읽지 않는다"(2026-10-21)의 예외).
+  Intrigue는 34장 모두 전용 prefab이 있다.
+- **D2 한 번 대조:** 화면 조각을 P0 블라인드 읽기(에셋 `…/p0-readings/faces/`)와 스크립트로 한 번 대조하고 다른 카드만 사람이 본다. 변환기 시범의
+  나란히 표(16.6)가 그 대조의 첫 판이다: 아이콘·숫자가 다른 카드 0장(Duncan Idaho의 검은 P0가 이미 앱 쪽 2로 고쳐 둠).
+- **규칙 근거는 공식 문서.** 순서·may/must·시점이 화면 조각과 문구로 정해지지 않을 때만 능력 클래스를 읽고, 공식 문서가 답하지 않으면 OQ-140부터.
+  P0 sweep(`…/p0-readings/sweep/base-imperium.md`, `intrigue.md`)이 카드마다 근거를 단 "merged effect"를 이미 갖고 있어 전사 agent의 입력이 된다.
+- **한국어:** 공식 한글판 카드 사진이 있는 카드만(9절 6, 찾기는 미룸). 없으면 영어 이름·영어 앞면.
+
+### 16.4 엔진·codec·관측
+
+- **콘텐츠:** `content/imperium/imperium.py`(Imperium·프로모 정의), `content/imperium/intrigue.py`, 능력 기록은 Uprising과 같은 표(`agent_abilities`·
+  `reveal_abilities`·`trigger_abilities`·Intrigue의 `IntrigueOption`)에 원판 항목을 더한다. `rulesets._imperium_content`가 `imperium_cards`·
+  `imperium_deck_instance_ids`·`intrigue_deck_instance_ids`를 채운다(지금 빈 튜플).
+- **P0 분류(dsl-coverage):** 원판 Imperium 86칸 중 기존 모양 74(값만 19), 새 조각 12(변형 5), hook 0; 원판 Intrigue 41절 중 기존 24, 새 17(변형 5).
+  hook이 될 위험 칸(The Voice, Kwisatz Haderach, Mentat, harvest 조정, 적 Agent 무시)은 P2에서 엔진 쪽 일부가 이미 생겼다(Mentat, Helena의 막힘 예외).
+  새 조각 후보: 버려질 때 trigger(Assassination Mission), harvest 두 배(Carryall 기본·Thumper 보너스), "다른 Bene Gesserit 카드가 in play"(Bond와 같은지
+  P3a에서 대조), Fremen 카드 수만큼 Persuasion(Liet Kynes), TSMF 할인(Guild Bankers), 상대마다 고르기(Test of Humanity), Endgame 셋(Corner the Market은
+  OQ-123, Plans Within Plans, Tiebreaker의 Combat/Endgame 나뉜 카드), 덱 맨 위 보고 뽑거나 버리기(Poison Snooper, 숨은 정보), 버림 더미를 덱에 섞고 뽑기
+  (Refocus, chance).
+- **codec v155 그대로:** 원판 카탈로그만 늘어난다(15.4의 이유 그대로: 원판 저장·기보·체크포인트가 아직 없음). Uprising 144개 조합 행은 바이트까지 같다.
+  **2026-10-28 사용자 판정 "병합 때 한 번":** OQ-145가 Uprising + Immortality 판의 상태(덱 위 Tleilaxu 카드의 `deck_public_top`·`hand_public`)를 바꿔, v155에서 만든
+  그런 판의 저장은 해시가 맞지 않게 된다. 그래서 브랜치 안에서는 v155 그대로 두고, P3를 master에 합칠 때 v156으로 한 번 올린다(상수, 버전 고정 테스트,
+  필요하면 v155 기록을 받는 경로를 한 커밋으로; 병합한 트리의 pytest·ruff·mypy로 확인). 카탈로그는 그대로다.
+- **관측 v37 한 번(P3a):** 개인 카드·Intrigue 구간 끝에 원판 id. Uprising 열은 그대로(늘어난 열 0), 형식 2 이관으로 옮긴 망이 Uprising 판에서 같은 수
+  (P2처럼 `same_moves.py`). 엔티티 특성은 Uprising 개체로 척도를 고정해 Uprising 405행이 그대로(P2a의 `entity_features._table`). 숨은 정보가 새로
+  생기는 카드(Poison Snooper의 엿보기)는 `known_card_seats`·scramble·결정 표본에 함께 넣는다(10.1).
+- **같음 확인:** 상태에 새 칸이 생기면 선언 차이 파일(`scripts/ab/differences/`). Uprising 판의 그 밖의 차이는 0.
+- **휴리스틱:** 새 효과의 점수는 원판 콘텐츠에서만 닿는 가지(15.4와 같은 방식). 앱 AI는 P6.
+
+### 16.5 P2에서 넘어온 것 (15.9)
+
+- **Helena의 Manipulate:** 덱이 비어 있던 동안은 빈 확인이었다. Row가 차면 Row 카드 따로 두기·나중에 사기를 확인하는 테스트를 더한다.
+- **Baron의 Scheme:** Intrigue 덱이 비면 내지 않았다(16절, OQ-071). 덱이 생기면 Solari 1 → Intrigue 1 지급과 버림 더미 섞기 경로를 테스트한다.
+- **OQ-139(Mentat 말 구분 없음):** Kwisatz Haderach(Agent 하나를 아무 칸으로), Urgent Mission(Agent recall), Calculated Hire(Mentat 가져오기)에서 다시
+  연다. 엔진은 Mentat을 따로 세지 않으므로 "Mentat을 옮기거나 recall할 수 있는가"를 사용자에게 묻는다(16.8 4).
+- **Masterstroke의 병력 셈:** P4(dreadnought)·P7(모래벌레·Commander) 몫. P3 카드(Gun Thopter·Sardaukar Legion·Rapid Mobilization·Reinforcements의 garrison에서
+  배치, Double Cross의 공급에서 배치)가 "이번 turn 배치"에 드는지만 확인한다(OQ-115: 배치한 병력을 셈).
+- **끝(2026-10-28 오후, `33e27918`):** 위 셋을 원판 덱으로 확인했다 — Helena의 따로 두기·채우기·1 적게 사기·안 사면 제거, Scheme의 덱 맨 위·빈 덱의
+  버림 더미 섞기, Masterstroke가 Reinforcements 3 + Gun Thopter 1, Rapid Mobilization 4로 공개(Legion·Double Cross는 이미 셈 테스트). 엔진 변경 없음.
+- **화면(P5)·AI(P6)** 몫은 그대로 넘긴다.
+
+### 16.6 도구 시범: 화면 조각 → 능력 기록 초안 (D4-2, 2026-10-28)
+
+`scripts/dwgr/app_pieces.py`: 카드 prefab의 활성 노드에서 칸(Agent·Reveal·획득·버려질 때·Intrigue 본문)마다 아이콘 스프라이트·숫자·화살표·글을
+읽어 우리 DSL 이름으로 초안을 쓴다. 모르는 조각과 문장은 `TEXT(...)`로 넘긴다(추측하지 않음). 앱이 실행 중에 문구에 넣는 아이콘(Gene Manipulation의
+"in play: {Spice_2}")은 영어 문구에서 채운다. 출력은 git 밖(`tmp/`).
+
+**정확도(P0 카드별 전사 자료의 face·merged effect와 한 장씩 대조, 80장):**
+
+| | 그대로 맞음 | 문장이 남음(TEXT, 사람·agent 몫) | 고쳐야 함 | prefab 없음 |
+| --- | --- | --- | --- | --- |
+| 첫 판 Imperium 43 | 21 | 16 | 6 | – |
+| 첫 판 Intrigue 34 | 12 | 21 | 1 | – |
+| 둘째 판 Imperium 43 | 25 | 18 | 0 | – |
+| 둘째 판 Intrigue 34 | 12 | 21 | 1 | – |
+| 프로모 3 | – | – | – | 3 |
+
+- 첫 판의 "고쳐야 함" 7장은 모두 구조였다: 맨 진영 아이콘을 Alliance로만 읽음(Smuggler's Thopter·Worm Riders의 "2 Influence :"), "Alliance :" 글이
+  남음(Firm Grip·Guild Ambassador), 실행 중에 문구에 들어가는 아이콘이 빠짐(Gene Manipulation의 spice 2, Guild Bankers의 Persuasion 3), Combat/Endgame으로
+  나뉜 카드를 고르기로 읽음(Tiebreaker). **아이콘·숫자를 잘못 읽은 것은 0.** 둘째 판에서 앞의 셋을 고쳤고 Tiebreaker만 남았다. 둘째 판은 같은 80장으로
+  고친 것이라 과적합일 수 있다 — P4의 Ix 카드가 처음 보는 시험이 된다.
+- "그대로 맞음"은 초안이 P0 기록과 같은 조각·숫자·구조(비용 화살표, -OR-, 조건)를 가진다는 뜻이다. may/must·별도 단계·OQ 같은 규칙 쪽 표시는 초안이
+  아니라 기록 helper(`_pay`·`_trash`·`_icons`)와 전사 agent가 붙인다.
+- 문장이 남는 카드는 대부분 새 조각 후보(16.4)와 같은 카드다: 초안이 덮는 것은 아이콘 칸이고, 새 규칙은 어차피 사람이 쓴다.
+- **Rise of Ix(P4 몫) 미리 보기:** 같은 도구를 Ix 46장에 돌리면 40장에 TEXT가 남고, 원판 카드에 없던 스프라이트 이름 10종이 모르는 조각으로 나온다
+  (Discard 9, `UI_Icon_crd_freighter` 8, Unload 7, Troop 5, Water 4, `Icon_Dreadnought` 3, `Icon_buytech` 2, `Icon_TechCost_Reduce` 2, WildRankUp 1, VictoryPoint 1 —
+  Ix prefab은 `ActionIcon_` 없는 이름을 쓴다). P4에서 어휘를 넓힌 뒤 처음 보는 시험으로 잰다.
+- 들인 것: 벽시계로 약 7분(00:59 worktree 준비 ~ 01:06, 계획 읽기 포함 — 도구 호출이 빠른 일), 대조 표 읽기 약 2.4만 토큰.
+- **추천:** 채택. 전사 agent에게 그 카드의 초안 줄을 P0 merged effect와 함께 준다. 고친 수를 16.7에서 잰다.
+
+### 16.7 시범 전사 5장과 갈래 나누기 (D5, 11절 4; 2026-10-28 01:15~01:44)
+
+틀(`5cbfcca1`: 빈 원판 카드 표, 합친 조회 표, 관측·덱은 그대로)에서 card-implementer(Sonnet) 둘을 갈래마다 worktree 하나씩 동시에 돌렸다.
+갈래는 종류로 나눴다: Imperium 셋(`claude/base-ix-p3-imperium`), Intrigue 둘(`claude/base-ix-p3-intrigue`). agent마다 그 카드의 변환기 초안 줄,
+P0 merged effect의 자리, 규칙 인용을 줬다.
+
+| 카드 | 벽시계 | 변환기 초안과의 차이 |
+| --- | --- | --- |
+| Arrakis Recruiter | 11.4분(첫 카드, 틀 읽기 포함) | 조각·숫자 그대로. Agent box 효과 값 하나(`RECRUIT_ONE_TROOP`)를 enum 끝에 더함 |
+| Spice Smugglers | 5.4분 | 조각 그대로 + 화살표의 OPTIONAL 표시. 지불 실행기가 Influence 보상을 몰라 `apply_payment`에 더함(공유 코드) |
+| Gun Thopter | 10.5분 | TEXT 둘을 기존 조각의 변형으로: `EachOpponentLosesTroop(garrison_only=True)`(손실 창이 garrison만 보임, garrison이 빈 상대는 영향 없음 `[FAQ p. 2]`)과 Reveal 고르기 `MAY_DEPLOY_ONE_TROOP`(Shadout Mapes 기록의 배치 반쪽). 손실 창·Reveal 고르기·codec 행(원판 카탈로그에서 아직 뺌)을 고침 |
+| Bribery | 8.5분(첫 카드) | 그대로(감싸기만) |
+| Master Tactician | 3.8분 | ONE_OF → 배타 option 둘(OQ-058), TEXT → `RetreatTroops(0, 3)`("up to"는 0 허용 `[FAQ p. 3]`), 표시 문구 "Retreat up to 3 troops" |
+
+- **토큰:** Imperium agent 39.2만(도구 162번, 28.7분), Intrigue agent 19.1만(64번, 12.7분). 카드당 평균 약 11.7만(Imperium 약 13만, Intrigue 약
+  9.5만). 계정 주간 사용량은 시범 앞뒤로 58% 그대로(5시간 창 2→4%) — Sonnet agent 토큰은 주간 한도에 거의 닿지 않았다.
+- **변환기 초안을 고친 횟수:** 5장 가운데 아이콘·숫자를 고친 것 0. 초안을 그대로 쓴 것 3(감싸기·표시만), TEXT를 조각으로 바꾼 것 2(Gun Thopter 둘,
+  Master Tactician 하나). 구조를 바꾼 것 1(Master Tactician의 ONE_OF를 배타 option으로 — 같은 뜻).
+- **갈래 합치기(11절 4):** 충돌 **0**. Imperium 갈래 19파일, Intrigue 갈래 3파일, 둘 다 고친 파일은 `display/effect_dsl_text.py` 하나(다른 자리라 자동
+  합침). Imperium agent가 미리 짚은 위험: 같은 종류 갈래 둘이면 enum 끝과 기록 수를 고정한 테스트(`test_agent_box_abilities.py`)에서 충돌한다 — 그래서
+  갈래는 종류로 나누고 같은 종류 둘을 동시에 돌리지 않는다.
+- **합친 뒤 내가 본 것:** Uprising codec 카탈로그 144개 차이 0, Uprising 특성 405행 차이 0, 관측 구간·`FEATURE_DIGEST`가 P2 끝과 같음(`catalog_digest.py`·
+  `compare_features.py`). 표적 테스트 1,404개 통과(`-n 2`). 실수로 전체 테스트를 `-n 2`로 돌려(10분, 8,704개) agent가 못 본 실패 둘을 찾았다: 서버 카탈로그
+  테스트가 합친 표를 돌던 것, Gun Thopter의 새 안내 문구 둘에 한국어가 없던 것(`de488de7`). 교훈: agent의 표적 테스트에 `tests/server`의 카탈로그·i18n을
+  넣는다.
+- **리뷰에서 남긴 것:** Spice Smugglers의 지불이 Solari 사건을 Influence 사건보다 먼저 낸다(인쇄는 Influence 먼저). 결과는 서로 기대지 않으나 원칙대로라면
+  인쇄 순서다 — 다음 묶음 전에 실행기를 인쇄 순서로 고칠지 본다. Gun Thopter의 Reveal 배치 "may"는 카드 문구(앱)가 근거이고 규칙 문서에 따로 줄이 없다.
+- **어림(남은 69장: 80 − 시범 5 − 프로모 3 − OQ-139 셋):** 카드당 약 7분·12만 토큰이면 agent 둘로 약 4~5시간, agent 토큰 약 800만. 새 조각이 필요한
+  카드(16.4)는 이보다 길다.
+- **추천:** 변환기 채택(초안 줄을 agent 입력에), 갈래 나누기 채택(종류별 둘), 첫 카드의 틀 읽기 비용을 줄이려고 agent 하나가 같은 종류 카드 여러 장을
+  이어서 맡는다.
+
+### 16.8 사용자에게 묻는 것
+
+1. **하위 단계(16.1):** P3a 틀(80장 정의 생성·관측 v37 한 번·덱은 효과가 들어간 카드만) → P3b Imperium → P3c Intrigue → P3d 끝.
+2. **codec v155 그대로·관측 v37 한 번(16.4).** v37은 플레이 서버의 망·어댑터 좌석이 Uprising 판에서 같은 수를 두는지 P2처럼 확인한 뒤 병합한다. **바뀜(2026-10-28 사용자 "병합 때 한 번"):** codec은 master 병합 때 v156으로 한 번 올린다(16.4). 관측은 v37 뒤 v38 한 번 더(덱 위 공개 카드·The Voice·Infiltrate·Recruitment Mission, 16.1).
+3. **프로모 셋은 prefab이 없어 속성 표 + 영어 문구로 전사(16.3).** D1(앱 자료만) 안이지만 화면 조각 확인이 없는 카드라 따로 묻는다.
+4. **OQ-139 다시 열기(16.5):** Kwisatz Haderach·Urgent Mission·Calculated Hire에서 Mentat을 옮기기·recall할 수 있는가. 공식 문장과 앱 처리를 붙여 OQ로 묻는다.
+5. **변환기 채택(16.6)과 갈래 나누기(16.7의 측정 뒤).**
+6. **P3d의 앱 행동 대조 전에 디컴파일러(D4-3 (나)) 내려받기를 다시 묻는다.**
+7. **관문 일정:** E7b 같은 학습이 끝난 뒤 P3a 관문을 돈다(게시판 예약).
+
+### 16.9 카드 묶음이 멈춘 곳: 새 엔진 조각 (2026-10-28 밤, 조정자 경유 "설계하고 OQ마다 적고 16에 기록")
+
+card-implementer는 기존 조각으로 안 되는 카드를 건너뛰고 빠진 것을 보고한다(멈춤 규칙). 조각마다 근거와 상태:
+
+| 조각 | 카드 | 근거 | 상태 |
+| --- | --- | --- | --- |
+| `DeployTheseTroops`(Reveal turn에 이 줄이 recruit한 병력 배치) | Reinforcements, Gurney Halleck | 카드 문구, `[DI p. 10]` `[FAQ p. 4]`, OQ-030 | 구현 `ce6deec6`, 2026-10-28 사용자 판정으로 고침: 그 카드로 소집한 병력과 뒤에 채워진 그 카드의 부족분(이 카드들 몫 먼저)만 배치, 다른 효과의 recruit는 안 듦 — OQ-140 DECIDED |
+| `DeployFromGarrison(up_to=None)`("any number") | Rapid Mobilization | 카드 문구, `[FAQ p. 3]` | 구현(Intrigue 묶음 2); garrison의 Commander도 배치한다(`DeployFromGarrison`의 기존 처리, `[Bloodlines p. 4]`) |
+| 조건 `MoreSpiceMustFlowThanEachOpponent`, `InfluenceAtLeastOnTracks` | Corner the Market, Plans Within Plans | imperium-base.md 13.2, OQ-123, `[FAQ p. 2]` | 구현(명세는 내가; `SpiceMustFlowCardsAtLeast`가 원판의 The Spice Must Flow도 세게 고침) |
+| 획득 상자 아이콘 줄(아이콘마다 차례의 줄, 순서는 소유자) | CHOAM Directorship(고정 진영 넷), Lady Jessica(고른 진영 하나) | OQ-027·OQ-112 원칙의 확장 — OQ-141(판정 2026-10-28 사용자: 구현대로) | 구현(`rules/acquire_icons.py`, 행동 `resolve_acquire_icon`): 자기 차례 안에서는 차례의 줄(OQ-112 (4) 선례), 고를 진영이 모두 6이면 회색으로 기다리다 누름에 사라짐(차례 안 선례), 고정 진영 6은 얻는 것 없는 의무 줄. 자기 차례 밖 획득(Scouts의 Critical Moment: Uprising + 원판 카드 + Scouts는 P7, 원판의 Scouts는 P8)은 OQ-141 조합대로 획득한 자리의 창 — 그 조합을 열 때 구현, 그때까지 `NotImplementedError` |
+| 승자의 창에서 내는 Intrigue("When you win a Conflict:") | To the Victor..., Demand Respect | OQ-121 판정 6("쥐고 있고 조건·비용을 갖췄을 때 낼 수 있는 줄이다. 안 내도 창이 닫힌다"), `[DI p. 13]`(보상 spice로 낼 수 있음) | 구현; 닫기 줄의 숨은 정보 처리는 OQ-142(사용자 확인 대기; 숨김은 카드를 읽어 섞인 덱·어느 판에서든 같음). 휴리스틱·앱 AI는 이 카드를 내지 않는다(P6) |
+| 덱 맨 위로 획득 | Bypass Protocol(B), Recruitment Mission(획득마다 위/버림) | 카드 문구, `[FAQ p. 3]`, OQ-125, OQ-145(판정 2026-10-28 사용자 (나)) | 구현 `92b5046b`(`AcquireCardUpTo.to_deck_top`, Reveal turn 획득마다 `to_deck_top` 쌍둥이 행, Tleilaxu 덱 위 조건 확장; 놓은 뒤 획득 상자). 덱 위 카드는 모두가 앎·뽑은 뒤 손에서 공개(OQ-145) — 관측 v38과 함께 |
+| 상대 하나 지정 Conflict 손실 + supply에서 배치 | Double Cross | 카드 문구, `[FAQ p. 2]`(상대 troop이 있어야 낸다) | 구현(`OpponentHasTroopInConflict`, `OpponentLosesTroop`, `DeployFromSupply`; 빈 supply는 OQ-042 (2)의 부족분 기록). 잃는 쪽엔 Commander가 든다(`[Bloodlines p. 4]`); supply 배치는 troop만 — OQ-144(사용자 확인 대기) |
+| 덱 맨 위 보고 뽑기·trash | Poison Snooper | 카드 문구, `[FAQ p. 3]`, imperium-base.md 14 | 구현(`PeekTopCard(draw_or_trash=True)`, Controlled의 `peeked_card_id` 길) |
+| 버림 더미를 덱에 섞고 뽑기 | Refocus | 카드 문구, `[FAQ p. 3]` | 구현(`ShuffleDiscardIntoDeck`, 뽑기 섞기 frame을 다시 씀) |
+| 이번 turn 적 Agent가 막지 않음 | Infiltrate | 카드 문구, OQ-113 (C), P0 sweep S15 | 구현 `a80be9ca`(`enemy_agents_ignored_turn`, Eyes Everywhere와 같은 자리 — Spy 회수 행 없음, 자기 Agent·요구·The Voice는 그대로 막음); 관측 v38 |
+| 상대별 다음 배치 봉쇄 | The Voice | OQ-116(판정 B), imperium-base.md 13.1 | 구현 `a80be9ca`(`voice_blocked_space_ids`, 다음 배치나 라운드 끝에 풀림, 무엇으로도 못 넘음); 관측 v38 |
+| turn 시작 뽑기 + 선택형 pass | Bindu Suspension | OQ-117 | 구현(`PassTurn(optional=True)`); 이어 가기 뒤 다른 시작 카드는 OQ-143(판정 2026-10-28 사용자: 구현대로 — Bloodlines의 Litany Against Fear·Withdrawn과 한 표시) |
+| Mentat 셋 | Kwisatz Haderach, Urgent Mission, Calculated Hire | OQ-139 (가) 유지(2026-10-28 사용자), imperium-base.md 9·13.1·16 | 구현: Kwisatz `0e9ce20f`(빈 Leader로도 Agent turn, 보드의 자기 Agent를 `from_space`로 옮김, 아이콘·점유 무시, 비용·요구·한 번만·The Voice는 지킴; 자기 Agent 둘이 한 칸에 설 수 있음), Urgent Mission·Calculated Hire `2883b808`(빈 Leader에서 Plot 창으로 Agent turn이 다시 열림; Mentat 칸 효과를 풀기 전에 Calculated Hire로 가져가면 그 효과는 사라짐 — 조건은 해결할 때, OQ-028·OQ-057 (1)); 같은 칸 둘의 회수 줄 겹침 고침 `761cba10`. 화면은 (가) 규칙으로 좌석 패널에 Mentat 자리 `98465c26`(보드 위 말은 P5) |
+| 프로모 셋 | Duncan, Loyal Blade·Jessica of Arrakis·Thumper | 16.3(앱 속성 표 + 영어 문구로 충분, 이미지 안 읽음) | 구현 `51f44a9f`(Duncan의 trash 줄은 한 방향·몇이든·Commander 포함, Jessica의 두 뽑기는 아이콘마다 BG 조건, Thumper는 보너스 spice만 두 배); 원판도 `promo_cards`를 받음 |
+
+Imperium 묶음에서 아직 멈추지 않은 새 모양 후보(16.4): harvest 두 배(Carryall), Power Play, Test of Humanity, The Voice(OQ-116), Guild Bankers.
+
+Imperium 묶음 2(2026-10-28 03:09~04:2x)가 멈춘 곳:
+- **Firm Grip:** Agent box 화살표 비용이 Solari이고 보상이 세 진영 중 고르기 — Agent box 지불은 water·spice·specimen만, 무장 아이콘에 Influence 없음.
+- **Shifting Allegiances:** Agent box 화살표 비용 `LoseInfluence`(대상) + spice → 한 진영 Influence 2.
+- **Sardaukar Legion·Scout·Chani:** Reveal turn에 수를 고르는 병력 이동(garrison에서 셋까지 배치, 둘까지·몇이든 퇴각). 열린 질문: Commander도 "troop"인가
+  `[Bloodlines p. 4]`, Combat 아이콘의 garrison 둘과 어떻게 합치는가.
+- **Other Memory:** 버림 더미의 Bene Gesserit 카드를 손으로(공개 경로의 손 카드, OQ-010).
+Imperium 묶음 3(04:41~06:12): Guild Bankers(`ReserveCostDiscount`), Carryall(`DoubleBaseHarvestSpice`), Power Play(Subversive Advisor의 상자),
+Test of Humanity(`EachOpponentDiscardsOrLosesDeployedTroop`, Covert Operation 창에 손실 줄), Sardaukar Legion·Scout·Chani(수를 고르는 Reveal 병력 이동;
+Commander는 16.10 1에서 넣음), Firm Grip(Solari 화살표 + 고른 진영) 구현. 멈춘 곳: Shifting Allegiances(Agent box의 대상 비용 + 한 진영 2), Other Memory(버림 더미의
+Bene Gesserit 카드를 손으로, OQ-010), The Voice(상대별 다음 배치 봉쇄 상태, 관측 변경). 문서가 말하지 않는 가장자리: 같은 Reveal에서 Guild Bankers를 나중에
+trash해도 이미 연 할인은 남는다(구현).
+Imperium 마지막 둘(06:21~06:53): Shifting Allegiances(Agent box의 Influence 잃기 화살표 `influence_loss_box`, 한 진영 +2), Other Memory
+(`TakeCardFromDiscard`, 버림 더미의 Bene Gesserit 카드를 `hand_public`으로 손에 — OQ-010) 구현. 남은 것: Firm Grip의 `pay_agent_card_solari`가
+`graft_boxes.BOX_ACTION_IDS`에 없어 원판 + Immortality의 접합 차례에서 막혔다(16.10 2에서 고침).
+휴리스틱은 새 행(`lose_agent_card_influence`, `take_agent_card_from_discard`, Bindu의 pass, 승리 책략)을 고르지 않는다 — P6.
+- **Uprising Tread in Darkness(2026-10-28 확인, 동작 변경 없음):** 이 메모가 걱정한 "Bond가 깨져도 trash는 남는다"는 사실이 아니었다 — 두 아이콘
+  모두 Bond로 걸리고 해결할 때 판정하며, 깨지면 회색으로 기다리다 턴 종료에 사라진다(OQ-028 "다시 확인"). `_WAITING_ICON_BOXES`는 조건 있는 아이콘과
+  조건 없는 선택 아이콘이 섞인 상자(Gene Manipulation)에만 필요하다. Gene Manipulation의 순서 자유는 사용자 판정(같은 날, OQ-028 적용).
+
+### 16.11 디컴파일러 시범 (D4-3 (나), 2026-10-28 저녁)
+
+사용자(조정자 경유) "확실히 도움된다면 디컴파일러 써보지 뭐", 이 세션에서 "디컴파일러 내려받기 시작해"·"Download JDK 25". 내려받은 것: Ghidra 12.2
+(`ghidra_12.2_PUBLIC_20261016.zip`, 569,712,708바이트, NationalSecurityAgency/ghidra 공식 release, SHA-256 릴리스 페이지와 같음), Temurin JDK 21.0.13
+(약 200MB, 공식 체크섬과 같음; Ghidra 12.2는 Java 25 이상을 요구해 쓰지 못함), Temurin JDK 25.0.5(136,446,056바이트, 공식 체크섬과 같음). 설치는 P3
+worktree의 `tmp/claude/2719085b/decompiler/`, 릴리스에 macOS용 디컴파일러 본체가 없어 같이 든 C++ 소스를 이 Mac의 make·clang으로 빌드했다(x86_64,
+Rosetta로 돎; 더 내려받은 것 없음). Ghidra의 사용자 설정·임시 파일도 프로젝트 `tmp/`로(launch.sh를 거치지 않는 `headless.sh`). 앱에서 나온 것(x86_64
+바이너리 사본, Ghidra 프로젝트, C 결과)은 assets의 git 무시 `reference/dune-steam-app/<build>/ghidra/`에만.
+
+방법: 분석 없이 가져온 뒤(`-noanalysis`, 74초, 1.3GB) 우리 표로 이름을 붙임 — `methods.tsv`의 함수 이름과 기존 asm 주석의 메타데이터 전역(`MethodRef:`,
+`TypeInfo:`, `Str:` 등) 198,148개 — 그리고 답을 아는 네 함수만 디컴파일해 기존 주석 asm과 견줌.
+
+| 함수 (이미 아는 답) | asm | C | 답이 C에서 보이는가 |
+| --- | --- | --- | --- |
+| UrgentMissionAbility::Cost (`HasDeployedAgents(1)`) | 26줄 | 19줄 | 예 — `new HasDeployedAgents(…, 1)`로 바로 읽힘 |
+| SpaceAbility GrantResources MoveNext (Carryall 기본·Thumper 보너스) | 1,731줄 | 1,007줄 | 예 — 로그 키로 두 가지를 찾고 더하기가 보임; 필드는 오프셋 숫자 |
+| PlayerTurnPhase Cleanup MoveNext (The Voice 막힘 해제, OQ-116) | 9,841줄 | 5,434줄 | 반만 — asm 주석이 푸는 정적 필드 이름(`WormAttributes.BlockExceptions`)이 C에선 `+ 0x878` 숫자 |
+| UrgentMissionAbility::GetTargets | 75줄 | 1,626줄 | 아니오 — 분석 없이 만든 함수 경계가 이웃 코드까지 넘어감 |
+
+첫 판단(같은 날): **아직 "확실히 낫다"가 아니다.** 큰 함수는 글자 수가 약 45% 줄고 흐름(if/switch)이 바로 보이지만, (1) 함수 경계를 `methods.tsv`의 다음 주소로
+정해 주지 않으면 엉뚱하게 커지고, (2) asm 주석이 주는 정적 필드 이름을 C가 잃는다. 둘을 고치면(경계를 표로 지정, 정적 필드 블록에 이름 붙이기 — 기존
+`il2fields`의 표로) P3d 앱 동작 대조에 asm 대신 쓸 만하다. 다음: 그 두 수정 뒤 같은 네 함수 + 하나를 다시 재고 쓸지 정한다(사용자 확인).
+
+**다시 잼(같은 저녁, 사용자 "Fix and re-measure"):** 두 가지를 고쳤다 — (1) 함수 시작점 표(`methods.tsv` + `generics.tsv`, 348,038개)로 함수 몸을 다음
+시작점까지로 정하고, 몸 밖으로 뛰는 꼬리 `jmp`(공유 generic으로 가는 IL2CPP 꼬리 호출)를 call-return으로 표시; (2) asm 주석의 `~static Class.Field`로
+클래스 2,290개의 정적 필드 블록 타입을 만들어 TypeInfo 전역에 입힘(`TypeInfo_…WormAttributes->static_fields->BlockExceptions`, cctor 확인은
+`->cctor_finished`). The Voice의 비용(`NoCostAction`, OQ-116 앱 처리)을 다섯째로 더했다.
+
+| 함수 (이미 아는 답) | asm | C | 답이 C에서 보이는가 |
+| --- | --- | --- | --- |
+| UrgentMissionAbility::Cost (`HasDeployedAgents(1)`) | 26줄 | 19줄 | 예 |
+| TheVoiceAbility::Cost (`NoCostAction`) | 25줄 | 19줄 | 예 |
+| UrgentMissionAbility::GetTargets (보드의 자기 Agent를 람다로 거름) | 75줄 | 59줄 | 예 — `Descendents.OfType<WormAgent>().Where(<GetTargets>b__0)` |
+| SpaceAbility GrantResources MoveNext (Carryall·Thumper) | 1,731줄 | 1,011줄 | 예 — 로그 키로 가지를 찾고 더하기가 보임 |
+| PlayerTurnPhase Cleanup MoveNext (The Voice 막힘 해제) | 9,841줄 | 5,465줄 | 예 — `BlockExceptions`가 이름으로 나옴 |
+
+다섯의 합: asm 511,896자 → C 290,591자(43% 적음). 남은 차이: asm 주석이 푸는 **인스턴스 필드** 이름(`~WormPlaymat.<Board>k__BackingField`)은 C에서
+아직 `+ 0xa0` 같은 오프셋이다(그 자리는 asm 주석이나 `il2fields`로 맞춰 읽는다). 큰 코루틴은 C도 수천 줄이다.
+
+**결론(내 판단, 사용자 확인 전):** P3d의 앱 동작 대조에서는 **디컴파일한 C를 먼저 읽고**, 인스턴스 필드 이름과 결론을 가르는 줄은 주석 asm으로 확인한다.
+글자 수가 약 43% 줄고 흐름(if/switch/LINQ 사슬)이 바로 보이며, 답을 아는 다섯이 모두 맞게 읽혔다. 도구: `scripts/dwgr/ghidra_tables.py`(표 셋을
+assets의 `ghidra/`에), `scripts/dwgr/ghidra/DecompileTyped.java`(headless 스크립트). 한 번 불러와 이름·타입을 붙이는 데 약 80초, 메모리 약 1.5GB.
+Ghidra는 launch.sh 대신 JDK 25로 직접 띄워 `-Duser.home`·`-Djava.io.tmpdir`를 프로젝트 `tmp/`로 둔다(launch.sh는 `~/Library/ghidra`에 씀 — 시범 첫 실행에서
+생긴 파일 하나는 지웠다). macOS용 디컴파일러 본체는 릴리스에 없어 `Ghidra/Features/Decompiler/src/decompile/cpp`에서 `make ghidra_opt`로 빌드해
+`os/mac_arm_64/decompile`에 둔다(x86_64, Rosetta).
+
+### 16.10 조합 다시 보기 (2026-10-28 아침, 사용자 상시 지시)
+
+사용자(조정자 경유): "뭔가 이런거 정할 때, 항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해. 원판 단독에서 문제없다고 끝나는게
+아니야. 확장들과 결합 무조건 할거니까." 그래서 "원판 단독 판에서는 닿지 않는다, 조합은 P7"을 멈출 이유로 쓰지 않는다. OQ-139~144와 16.9의
+행을 이렇게 다시 봤다. 조합마다 무엇이 닿는지는 각 OQ에 적었다. 정해진 것과 남은 일:
+
+1. **Commander를 빠뜨린 넷(고칠 것):** Sardaukar Legion(garrison에서 셋까지 배치), Scout(둘까지 퇴각), Chani(몇이든 퇴각), Test of Humanity(배치한
+   troop 잃기)는 "Commander는 P7에서 정한다"며 병력만 다룬다. 그러나 이미 정해져 있다 — "troop을 대상으로 하는 효과는 Commander에도
+   적용된다" `[Bloodlines p. 4]`, OQ-115 사용자 판정(2026-10-22) "이후 조합 구현에서도 Commander를 빠뜨리지 않는다". Rapid Mobilization
+   (`DeployFromGarrison`)과 Double Cross의 잃기는 이미 넣는다. 넷도 같은 처리로 고치고(Bloodlines Commander를 둔 테스트), 코드 주석의 "P7" 문장을
+   지운다. 밤 작업에서 이 판정을 다시 열린 것으로 적은 것은 잘못이었다. **끝(`f5f1444a`, 조정자 go 2026-10-28 아침):** 세 이동은 수와
+   Commander 몫마다 줄(Bloodlines가 있는 카탈로그에만), Test of Humanity는 Conflict의 Commander를 잃는 줄. Uprising 카탈로그 144개 바이트까지
+   같음, 특성 405행 같음.
+2. **Firm Grip 접합(고칠 것):** 원판 + Immortality에서 접합한 두 카드는 "두 카드의 효과를 board space 효과와 함께 원하는 순서로 얻는다"
+   `[Immortality p. 10]`. 그래서 Firm Grip의 Solari 화살표 줄(`pay_agent_card_solari`)을 `graft_boxes.BOX_ACTION_IDS`에 더한다. Uprising +
+   Immortality 카탈로그가 바뀌는지 먼저 확인한다(바뀌면 codec 문제라 따로 묻는다). **끝(`4c926fc0`):** 어느 카탈로그도 바뀌지 않았다 —
+   box 1의 단계 줄은 Immortality가 있는 카탈로그에 이미 있었고, 막은 것은 효과 frame의 거절뿐이었다(Uprising 144개·원판 144개 줄마다 같음).
+3. **차례 밖 획득의 창(그 조합을 열 때):** OQ-141 조합 — Scouts의 Critical Moment로 얻은 CHOAM Directorship·Lady Jessica. 차례 밖에서 Imperium 카드를
+   얻는 길은 Impress(비용 3 이하라 닿지 않음)와 Critical Moment뿐이고, 획득 상자의 Influence는 한 곳(`_acquisition_influence`)을 지나 거절이 모든 길을
+   덮는다(2026-10-28 Codex 리뷰 뒤 OQ-141에 적음).
+4. **OQ-144(사용자 확인 대기):** Double Cross의 supply 배치에 Commander를 쓸 수 있는가.
+5. **Guild Bankers:** 할인은 원판·Uprising의 The Spice Must Flow 두 인쇄를 모두 이름하고(`ReserveCostDiscount.card_ids`), Scouts의 Reserve 비용
+   수정도 같은 값을 읽어(`scouts_modifiers.reserve_discount`) 조합에서도 같다.
+6. **Rise of Ix(P4):** 카드를 전사할 때 이 절의 OQ들(획득 상자 OQ-141, 차례 시작 OQ-143, 승리 책략 OQ-142, "이 병력" OQ-140, Mentat OQ-139,
+   Commander OQ-144)에 대어 본다. dreadnought는 troop이 아니다 `[Rise of Ix p. 6]`(OQ-115).
+
+7. **Navigation card 4 + Recruitment Mission(P7):** Bloodlines Navigation card 4의 Plot이 The Spice Must Flow를 얻는 길(`ability_executor`의
+   `reserve_acquisitions`)은 고를 단계 없는 자동 보상이라, Recruitment Mission이 켜진 Reveal turn에 얻어도 덱 위를 고를 수 없다. 원판 + Bloodlines가
+   열리는 P7에서 고르기 단계를 둔다.
+
+8. **Kwisatz Haderach의 자기 Agent 둘(P7):** 원판에서 회수 줄은 고쳤다(`761cba10`). Uprising의 Into the Fray(`leader_abilities.py`, 칸 id로 다
+   지움)와 Immortality의 Twisted Mentat(같은 칸 줄 겹침)는 원판 카드와 섞이는 P7에서 같은 셈으로 고친다. Kwisatz가 Conflict의 Agent(Into the Fray)를
+   옮길 수 있는가("from anywhere")는 [OQ-146](rules/open-questions.md#oq-146--kwisatz-haderach의-from-anywhere와-conflict에-있는-into-the-fray의-agent-원판--bloodlines) (가)로
+   정해졌다(2026-10-28 사용자 "소환도 되는데 퀴사츠 헤더락도 가능하지"). P7 할 일: `_placements_for_card`의 출발점과 `_placing_owner`에 Conflict의
+   Agent(`agent_in_conflict`)를 넣고, 옮기면 OQ-037 (d)의 recall처럼 유닛으로서 Conflict를 떠나게(전투력 갱신) 하며 테스트를 둔다.
+
+9. **원판 카드의 graft(P7, 원판 + Immortality):** 공식 판정 셋이 원판 카드를 이름한다 — "Ghola — When grafted to Carryall, you get four times the base
+   spice you harvest with your Agent. When grafted to Kwisatz Haderach, you still send only one Agent on your turn (though you draw two cards)."
+   `[FAQ p. 2]`, "If you graft this card with Power Play to send an Agent to a faction board space, you gain only 2 Influence with that faction, the
+   same as if you'd played Power Play alone." `[Immortality p. 14]`. 지금 Maker 칸 수확의 두 배(`rules/board_effects.apply_maker_space_action`)는
+   놓인 칸의 카드(`active_agent_card`)만 읽어 graft 짝의 Carryall·Thumper를 빠뜨린다(Ghola + Carryall이 네 배가 아니라 두 배; 2026-10-28 Codex 리뷰).
+   P7에서 두 칸의 카드를 모두 읽고(배수는 겹침 — 위 FAQ), Thumper의 보너스 spice 두 배도 같은 읽기로 겹치게 한다(Thumper는 FAQ가 이름하지 않아
+   project convention으로 적는다). Power Play·Kwisatz는 위 두 문장대로 테스트를 둔다.
+10. **Commander만 있는 Reveal 이동(고침 `09bf5f2d`):** 16.10 1의 세 이동 줄은 Commander 몫을 냈지만 선택이 열리는 조건은 troop만 세어, Commander만
+   있으면 선택이 기다렸다(Codex 리뷰). 조건도 Commander를 센다 `[Bloodlines p. 4]`(OQ-115).
+11. **Uprising Maker 칸의 sandworm 쪽 harvest(P7):** 공식 FAQ(Countess Ariana 항목) "When playing Uprising, it is possible to harvest no spice from
+   Deep Desert and Hagga Basin (if there is no bonus spice there, and you choose to summon a sandworm rather than take base spice). In such a case, you
+   did not “harvest spice” … so the “Spice Addict” ability does not apply." — 보너스 spice가 있으면 sandworm을 골라도 harvest다. 그래서 Uprising 판의
+   원판 Thumper("Double the bonus spice you harvest with this Agent")는 sandworm 쪽에서도 보너스 spice를 두 배로 하고, Countess Ariana의 Spice Addict도
+   보너스 spice가 있으면 sandworm 쪽에서 적용한다. 지금 `rules/board_effects.apply_maker_space_action`은 둘 다 `harvest_maker_spice` 쪽에서만 한다(P3d
+   앱 대조; 앱은 보너스 두 배를 배치 때 함께 준다). 원판 판에는 sandworm이 없어 지금은 닿지 않는다.
+12. **Masterstroke의 셈에서 sandworm·dreadnought 빼기(P4·P7):** OQ-115 판정은 troop과 Commander만 세고 "sandworm까지 세는 unit 조건 …의 전체 유닛 합계를
+   Baron의 troop 수와 혼동하지 않는다", dreadnought도 뺀다 `[Rise of Ix p. 6]`. 그런데 `rules/masterstroke.masterstroke_is_due`는
+   `units_deployed_turn`·`units_deployed_peak`를 읽고, 이 셈은 sandworm을 더한다(`board_effects.py`의 Maker 칸 소환, `reveal_turn`의 Reveal 배치; P3d
+   앱 대조에서 확인). 원판 단독에는 sandworm·dreadnought가 없어 결과가 같다. 원판 + Ix(P4, dreadnought 배치)와 Uprising 판(P7) 전에 troop·Commander만
+   세는 turn 셈과 그 최고치를 따로 둔다(관측·같음 확인 영향은 그때 판단).
+13. **원판 Conflict 보상과 sandworm(P7):** "보상을 받을 때 자신의 sandworm이 Conflict에 하나 이상 있으면 자신이 받는 보상을 두 배로 한다"
+   `[Main p. 14]`(combat-and-round-end.md 4). `rules/combat`의 보상 아이콘은 원판 Conflict의 보상 종류(Mentat, 한 진영 Influence, 보상 줄)를 "그 판에는
+   sandworm이 없다"며 두 배로 하지 않는다. 원판 판 + Uprising 카드(P7)에서 sandworm이 Conflict에 들어오면 이 종류도 두 배다 — Cloak and Dagger
+   3위의 "Intrigue -OR- spice"는 고르기를 두 번(앱도 두 번, P3d 앱 대조), 비용 있는 줄은 비용도 두 번 `[Main p. 14]`.
+14. **Earl Memnon의 Connections와 칸 밖의 원로회 자리(P7):** 지도자 문구(앱) "When you take a High Council seat: [Influence 1, 고른 진영]". 지금은 High
+   Council 칸의 아이콘에서만 일어난다(`rules/board_effects`의 `OnHighCouncilSeatTaken`). Uprising의 Corrinth City처럼 칸 밖에서 자리를 얻는 효과와 만나면
+   그때도 일어나야 한다(앱도 `Fire::HighCouncilSeatTaken`으로 같은 사건을 쓴다, P3d 앱 대조). 원판 단독에는 칸 밖의 자리가 없다.
+15. **Uprising 칸 id를 박아 둔 코드(P7):** 원판 칸은 이름이 같아도 id가 다르다(`imperium_sietch_tabr`, `imperium_high_council` …, 16.2·P1). Bloodlines
+   Liet Kynes의 Sietch Tabr 요구 면제는 Uprising의 `sietch_tabr`에만 걸려 있어(`rules/agent_turn.py`) 원판 + Bloodlines에서 원판 Sietch Tabr에 닿지 않는다
+   (P3d 앱 대조). CHOAM 모듈의 Harvest 계약이 원판 Maker 칸(Imperial Basin·Hagga Basin·The Great Flat)에서 성립하는지도 정해야 한다(앱은 Uprising 칸만
+   이름하나 원판 보드와 CHOAM을 함께 쓰지 않는다). P7을 열 때 `rules/`·`content/`에서 Uprising 칸 id 문자열을 모두 찾아 원판 칸에도 맞는지 본다.
+
+1·2는 조정자의 go(2026-10-28 아침)로 끝냈다(대상 테스트 `-n 2`, Uprising 카탈로그·특성 행 대조; 전체 pytest와 관문은 E7b 뒤 그대로).
+
+
+### 16.12 P3d 끝: 두 덱 소크와 앱 행동 대조 (2026-10-28 밤 ~ 10-29 새벽)
+
+조정자 go(22:4x, 사용자 "왜 계속 안 하고 멈춰있어"), 사용자 23:2x "평소대로 꼼꼼히 … 동시에 도는 agent는 2개(많아도 3개)".
+
+**원판 두 덱 소크(`0618a2dc` 스냅숏, 22:43~22:51):** 원판 5,000판(휴리스틱·무작위 × Leader 돌리기·드래프트·프로모, 설정마다 1,000판, 시드 100000부터),
+숨은 정보 검사 10결정마다, 제시한 모든 행동의 코덱 왕복 25결정마다 — 모두 끝까지, 실패 0. 내용 집계: 원판 카드 49종(프로모 포함) 모두 획득, Intrigue 34종
+모두 사용, Conflict 18장, 지도자 8명 모두 등장. 원판은 아직 확장 옵션을 받지 않는다(`rules/setup._IMPERIUM_PENDING_OPTIONS`); 조합은 P4·P7.
+
+**앱 행동 대조(10.4절 1):** 원판 카드·칸·지도자·Conflict 138항목(Imperium 46+스타터 7+Reserve 3, Intrigue 34, Conflict 18, 지도자 8, 칸 22) — 앱 BaseSet·Promo
+아키타입과 모두 짝지음. 대조한 앱 능력 클래스의 메서드 3,983개를 Ghidra로 디컴파일(16.11의 도구, 약 15분, 한 번)해 클래스마다 C 파일로 모았고, agent가
+C를 먼저 읽고 결론을 가르는 줄은 주석 asm으로 확인했다. 20묶음, Sonnet agent 20개(동시 2~3개), agent 토큰 약 1,130만. 차이로 보고된 것은 이 세션이 반박
+위주로 다시 보고 `docs/rules` 인용으로 판정했다. 결과: 같음 58, 다름 74, 불명 6(주장 133개 — 대부분 이미 판정된 OQ가 앱과 다르게 정한 것과
+조합 메모). 도구·묶음·결과는 assets의 `reference/dune-steam-app/<build>/analysis/p3d-compare-2026-10-28/`(로컬)에만.
+
+- **고친 결함 넷(모두 OQ-071 "비용만 내고 보상을 받지 못하는 경우는 없어야 한다"와 그 recruit 기준·확장 2를 빠뜨린 자리):**
+  - `b12933e5` Agent box 화살표의 recruit — Fremen Camp "[2 spice] → troop 셋", Duncan Idaho "[1 water] → troop, 카드"가 supply가 비어도(그리고 Duncan은
+    뽑을 카드도 없을 때) 비용을 받았다. recruit는 supply에 troop이 있거나 되돌릴 specimen이 있을 때만 살아 있다(`immortality.troop_can_join`, Intrigue와 같은 셈).
+  - `d30062e7` Gurney Halleck의 Reveal "[3 Solari] → troop 둘, 배치 가능"(supply 0이면 내지 않음; 하나 남으면 그대로 내고 나머지는 OQ-030·OQ-140의 부족분),
+    Imperial Spy의 "Trash this card → Intrigue"(Intrigue 덱과 섞을 버림 더미가 비면 내지 않음 — 버리는 카드는 비용의 부수 효과라 줄을 살리지 못한다). 한 줄짜리
+    trash 비용 box는 뽑기·recruit가 죽었으면 기다리고 화면이 이유를 말한다(Uprising의 trash→뽑기 줄도 같은 판정).
+  - Codex 리뷰의 `09bf5f2d`(Commander만 있는 Reveal 이동, 16.10 10)도 이 밤의 고침이다.
+- **판정이 이미 있어 바꾸지 않은 차이(앱이 다르게 함):** 비용 없는 효과의 불발(OQ-113 (C) — Bribery·Poison Snooper·Urgent Mission·Water of Life 등은 앱이 반대로 둔다),
+  아이콘·효과의 자유 순서(OQ-027·OQ-106·OQ-112 — 앱은 칸 → 카드 → 지연 능력의 고정 순서와 자동 실행), Reveal 자원 줄(OQ-045), 6칸 진영(OQ-060), 상대 손실 창
+  (OQ-036·OQ-138), 같은 순위 순서(OQ-002), Endgame 창(OQ-001), 승자의 창(OQ-121), 앞면 Intrigue(Charisma·Recruitment Mission — FAQ p. 2가 두 카드를 이름함, OQ-016),
+  Bindu(OQ-117·OQ-143), Masterstroke의 셈과 자기 turn(OQ-115·OQ-063), Helena의 할인(FAQ p. 3 "the 1 persuasion discount will not apply"), Infiltrate의 "your next
+  Agent"(인쇄), Control 방어 배치의 "may"(`[DI pp. 10, 16]`), Sort Through the Chaos의 Mentat(FAQ p. 4), Foldspace 카드를 먼저 trash한 뒤 Foldspace 칸에서 다시 얻기
+  (효과 순서 자유 `[DI p. 9]`와 "Reserve cards are returned to their stack in the Reserve" `[DI]` trash 아이콘 설명).
+- **내 판단으로 그대로 둔 것(사용자 확인 대상):** Spice Smugglers의 지불은 Solari를 Influence보다 먼저 낸다(인쇄와 앱은 Influence 먼저). 화살표 지불 함수가 단순
+  획득을 먼저 하고 효과 frame을 넘긴 뒤 Influence 같은 단계(창을 열 수 있음 — 동맹, Emperor 트랙 Spy)를 하기 때문이다. 인쇄 순서로 돌리면 그 창이 넘긴 frame
+  아래에 쌓일 수 있다. 결과가 그 순서에 기대는 경우는 찾지 못했다(로그 순서만 다름). Research Station의 "카드 셋"은 화살표 뒤의 한 보상으로 한 번에 뽑는다(앱은
+  뽑기 셋을 따로 둠). 
+- **문서 정정:** OQ-125의 앱 설명(앱도 Reserve를 낸다 — 판정과 같음), OQ-124의 앱 설명(앱도 보낸 Mentat을 다시 가져가지 않는다 — 판정 A와 같음). OQ-042의
+  "Double Cross가 `UndeployedTroops`를 쓴다"는 이번 대조에서 확실하지 않았다(빈 supply가 아니라 빈 garrison일 때만 쓴다는 읽기, 추론 포함) — 판정은 원칙
+  ("원칙대로")에 선 것이라 바뀌지 않는다. OQ-117: 앱은 turn 시작의 다른 Plot 뒤에도 Bindu를 허용한다(우리는 디자이너 문장대로 첫 행동만).
+- **조합에서 할 일(16.10 9·11~14):** graft 짝의 Carryall·Thumper와 Ghola 판정(9), Uprising Maker 칸 sandworm 쪽의 harvest(11), Masterstroke 셈의 sandworm·dreadnought(12),
+  원판 Conflict 보상의 sandworm 두 배(13), Connections와 칸 밖의 원로회 자리(14), Uprising 칸 id를 박아 둔 코드(15: Liet Kynes의 Sietch Tabr 면제, CHOAM Harvest 계약).
+- **P4 점검 목록(앱 코드에서 본 Ix 상호작용):** Guild Accord의 Heighliner spice 할인(2, Ghola와 4), Spaceport의 Foldspace 카드 덱 위, Combat 칸 배치 몫의
+  dreadnought, Rise of Ix가 Hall of Oratory·Rally Troops·Secure Contract·Sell Melange를 보드에서 뺌, Yuna Moritani의 Smuggling Operation이 Windfall에도 +1
+  Solari, dreadnought가 Control marker보다 먼저 칸의 controller가 됨(`WormSpace::get_ControllingPlayer`).

@@ -47,6 +47,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireReserveCardToHand,
     AcquireTech,
     AcquireTleilaxuCard,
+    AcquireToDeckTopThisRound,
     AdvanceTleilaxu,
     AgentOnSpaceWithIcon,
     AllConditions,
@@ -54,6 +55,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AtBoardSpace,
     AtFactionSpace,
     AtMakerSpace,
+    BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
@@ -65,15 +67,20 @@ from dune_imperium.content.uprising.effect_dsl import (
     ContractTaken,
     Cost,
     DeployFromGarrison,
+    DeployFromSupply,
+    DeployTheseTroops,
     DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
+    DoubleBaseHarvestSpice,
+    DoubleBonusHarvestSpice,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
     DuringAgentTurn,
     EachOpponentDiscardsCard,
+    EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
     EffectSection,
     FactionBond,
@@ -103,8 +110,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     HasHighCouncil,
     HasSwordmaster,
+    IgnoreEnemyAgentsNextPlacement,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
+    InfluenceAtLeastOnTracks,
     InNavigationSlot,
     IntrigueOption,
     IntrigueTiming,
@@ -115,6 +124,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseHighestInfluence,
     LoseInfluence,
     LoseTroops,
+    MoreSpiceMustFlowThanEachOpponent,
     OnAgentSentTo,
     OnBoardSpaceSolariPaid,
     OnCardTrashed,
@@ -129,6 +139,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnSpiceGainedInTurnAtLeast,
     OnTroopsLostAtConflictEnd,
     OpponentAllianceInfluenceAtLeast,
+    OpponentHasTroopInConflict,
+    OpponentLosesTroop,
     OpponentPlayedCombatIntrigue,
     OpponentSandwormInConflict,
     OpponentsMoveSpiesFromVisitedSpace,
@@ -141,11 +153,13 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallAgent,
     RecallOtherAgent,
     RecallSpy,
+    RecallYourAgent,
     RecruitToConflict,
     RecruitTroops,
     RecruitUndeployableTroops,
     RedirectSpiesOnTurnSpace,
     Research,
+    ReserveCostDiscount,
     RetreatTroops,
     ReturnOtherGraftedCardAtRevealStart,
     ReturnThisCardToHand,
@@ -158,6 +172,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Reward,
     SandwormsInConflictAtLeast,
     SetAsideImperiumRowCard,
+    ShuffleDiscardIntoDeck,
     SolariAtLeast,
     SpendSpecimens,
     SpiceAtLeast,
@@ -167,6 +182,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     StrengthInConflictAtLeast,
     SummonSandworm,
+    TakeCardFromDiscard,
     TakeContract,
     TakeControl,
     TakeHighCouncilSeat,
@@ -227,6 +243,8 @@ _AGENT_ICON_NAMES_KO: dict[AgentIcon, str] = {
     AgentIcon.SPICE_TRADE: "스파이스 거래",
     AgentIcon.SPY: "스파이",
 }
+
+_TURN_START_KO = "차례 시작 시"
 
 _TIMING_LABELS_KO: dict[IntrigueTiming, str] = {
     # PLOT/COMBAT/ENDGAME timing headers | 음모/전투/종료 단계
@@ -411,6 +429,12 @@ def condition_text_ko(condition: Condition) -> str:
     match condition:
         case InfluenceAtLeast(faction=faction, amount=amount):
             return f"{{influence_{faction.value}}} {amount} 이상이면"
+        case InfluenceAtLeastOnTracks(influence=influence, tracks=tracks):
+            # "당신의 영향력이 2 이상인 다른 팩션 하나" (Navigation Card 1's
+            # print, korean-card-style.md) with the "N개 이상이면" threshold
+            # of "당신이 가진 기술 타일이 3개 이상이면"; glossary-ko.md: 팩션,
+            # 영향력.
+            return f"당신의 영향력이 {influence} 이상인 팩션이 {tracks}개 이상이면"
         case HasHighCouncil():
             # Quotes ``display/tokens_ko.py``'s ``reveal_effect_text_ko``
             # ("High Council" clause), itself sourced from the glossary's
@@ -486,6 +510,15 @@ def condition_text_ko(condition: Condition) -> str:
         case SpiceMustFlowCardsAtLeast(count=count):
             name = _reserve_card_name_ko("the_spice_must_flow")
             return f"당신이 {name}{_object_particle(name)} {count} 이상 보유했다면"
+        case MoreSpiceMustFlowThanEachOpponent():
+            # The at-least-N line's wording ("당신이 … 보유했다면") with
+            # "다른 플레이어" for opponent (glossary-ko.md: "상대"가 아님) and
+            # "각각" (each, compared separately; a tie fails).
+            name = _reserve_card_name_ko("the_spice_must_flow")
+            return (
+                f"당신이 {name}{_object_particle(name)} "
+                "다른 플레이어 각각보다 더 많이 보유했다면"
+            )
         case OpponentAllianceInfluenceAtLeast(amount=amount):
             # No adjacent digit+"Influence" in English's own text ("N or
             # more Influence on a..."), so ICON_RULES draws no icon there
@@ -576,6 +609,8 @@ def condition_text_ko(condition: Condition) -> str:
         case OpponentSandwormInConflict():
             # Quotes ``display/bloodlines.py``'s Fierce line.
             return "다른 플레이어 중 누군가 {conflict}에 {sandworm}를 가지고 있다면"
+        case OpponentHasTroopInConflict():
+            return "다른 플레이어 중 누군가 {conflict}에 {troop}이 있다면"
         case CommandReached():
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return "{command} ({persuasion} 6 이상)이면"
@@ -746,6 +781,25 @@ def reward_text_ko(reward: Reward) -> str:
             return f"{{troop:{count}}}"
         case DrawPersonalCards(count=count):
             return f"{{draw:{count}}}"
+        case ShuffleDiscardIntoDeck(draw=draw):
+            return f"{{discard_pile}}을 {{deck}}에 섞은 뒤 {{draw:{draw}}}"
+        case BlockChosenSpaceForOpponentsNextAgent():
+            # Quotes ``tokens_ko.py``'s The Voice line.
+            return (
+                "게임판 장소 하나 선택. 다른 플레이어는 이번 라운드의 다음 {agent}를 "
+                "그곳에 보낼 수 없음"
+            )
+        case IgnoreEnemyAgentsNextPlacement():
+            # Same wording as ``tokens_ko.py``'s Tleilaxu Infiltrator line.
+            return (
+                "이번 차례에 다른 플레이어의 {agent}가 당신의 다음 {agent}를 "
+                "막지 않음"
+            )
+        case TakeCardFromDiscard(faction=faction):
+            # Quotes ``tokens_ko.py``'s Other Memory line.
+            return (
+                f"{{discard_pile}}의 {_faction_name_ko(faction)} 카드 1장을 {{hand}}로"
+            )
         case DrawIntrigueCards(count=count):
             return f"{{intrigue:{count}}}"
         case GainCombatStrength(amount=amount):
@@ -768,6 +822,10 @@ def reward_text_ko(reward: Reward) -> str:
             # Devious card face] — the player may deploy fewer; "Deploy (to
             # the Conflict) | 배치" [Main p. 10], [Main p. 20], "garrison |
             # 주둔지" [Bloodlines glossary row].
+            if up_to is None:
+                # "any number" [Rapid Mobilization card]: the bare troop icon
+                # and "원하는 수만큼" as for the unlimited retreat.
+                return "{garrison}에서 {troop} 원하는 수만큼 {conflict}에 배치"
             return f"{{garrison}}에서 {{troop:{up_to}}} 이하를 {{conflict}}에 배치"
         case TrashPersonalCard(
             hand_only=hand_only,
@@ -792,6 +850,10 @@ def reward_text_ko(reward: Reward) -> str:
             # The personal cards' own "앞면 {contract} N개 가져옴" (every
             # Contract taken is a face-up one, as the cards print it).
             return f"앞면 {{contract}} {count}개 가져옴"
+        case AcquireCardUpTo(max_cost=max_cost, to_deck_top=True):
+            # Bypass Protocol's "to the top of your deck"; "카드덱 맨 위" is
+            # the official Korean wording (Glowglobes' tile, above).
+            return f"비용이 {max_cost} 이하인 카드 {{acquire}} (카드덱 맨 위로)"
         case AcquireCardUpTo(max_cost=max_cost, to_hand_if=to_hand_if):
             base = f"비용이 {max_cost} 이하인 카드 {{acquire}}"
             if to_hand_if is None:
@@ -807,6 +869,8 @@ def reward_text_ko(reward: Reward) -> str:
             # Invitation]`, docs/rules/korean-card-style.md row 44).
             name = _AGENT_ICON_NAMES_KO[icon]
             return f"이번 차례에 당신이 플레이하는 카드는 {name} 아이콘 보유"
+        case DeployTheseTroops():
+            return "{reveal_turn}에 이 병력을 {conflict}에 배치 가능"
         case GrantCombatDeployment():
             # Quotes ``tokens_ko.py``'s established "{combat} (전투 장소에
             # 보낸 것처럼 배치 가능)" (its own ``reveal_effect_text_ko``,
@@ -814,6 +878,10 @@ def reward_text_ko(reward: Reward) -> str:
             return "{combat} (전투 장소에 보낸 것처럼 배치 가능)"
         case GainSolariPerUnitType():
             return "{conflict}에 있는 부대 종류마다 {solari:1}"
+        case PeekTopCard(draw_or_trash=True):
+            # The look as in the next case's print, then the plain word
+            # "뽑기" and the trash icon (the original game's Poison Snooper).
+            return "{deck} 맨 위 카드 확인: 뽑거나 {trash}하기"
         case PeekTopCard():
             # "언제든지 당신의 카드덱 맨 위 카드 1장 확인 가능." — Glowglobes'
             # own Korean print (`[KO card: Glowglobes]`, docs/rules/korean-card-style.md
@@ -830,6 +898,8 @@ def reward_text_ko(reward: Reward) -> str:
         case GrantAgentIconsThisTurn(icons=icons):
             names = ", ".join(_AGENT_ICON_NAMES_KO[icon] for icon in icons)
             return f"이번 차례에 당신이 플레이하는 카드는 {names} 아이콘 보유"
+        case PassTurn(optional=True):
+            return "차례를 넘길 수 있음"
         case PassTurn():
             return "차례 시작 시: 차례 넘기기"
         case PermanentRevealPersuasion(amount=amount):
@@ -895,6 +965,10 @@ def reward_text_ko(reward: Reward) -> str:
             return "틀레이락스 카드 {acquire} 가능 (표본 비용 지불)"
         case RevealPersuasionThisRound(amount=amount):
             return f"이번 라운드 자기 {{reveal_turn}}에 {{persuasion:{amount}}}"
+        case AcquireToDeckTopThisRound():
+            # Recruitment Mission's second line: the cards it {acquire}s may
+            # go on the top of the deck.
+            return "{acquire}하는 카드를 카드덱 맨 위에 놓을 수 있음"
         case ReturnThisCardToHand():
             # Quotes ``tokens_ko.py``'s "이 카드를 핸드로 되돌림" (Weirding
             # Woman).
@@ -936,12 +1010,31 @@ def reward_text_ko(reward: Reward) -> str:
         case RecallAgent():
             # Quotes ``tokens_ko.py``'s Steersman line.
             return "{agent} 소환"
-        case EachOpponentDiscardsCard():
+        case RecallYourAgent():
+            # The plain recall of Steersman's line, for any of your Agents
+            # (Urgent Mission).
+            return "당신의 {agent} 하나 소환"
+        case EachOpponentDiscardsCard() as discard:
             # Quotes ``tokens_ko.py``'s Covert Operation line.
-            return "다른 플레이어 각자 카드 1장 버리기"
-        case EachOpponentLosesTroop():
-            # Quotes ``tokens_ko.py``'s Holy War line.
-            return "다른 플레이어 각자 {troop} 하나 잃음"
+            return f"다른 플레이어 각자 카드 {discard.cards}장 버리기"
+        case EachOpponentDiscardsOrLosesDeployedTroop():
+            # Quotes ``tokens_ko.py``'s Test of Humanity line.
+            return (
+                "다른 플레이어 각자 하나 선택: 카드 1장 {discard} 또는 "
+                "{conflict}에 배치된 {troop} 하나 잃음"
+            )
+        case EachOpponentLosesTroop(garrison_only=garrison_only):
+            # Quotes ``tokens_ko.py``'s Holy War and Gun Thopter lines.
+            return (
+                "다른 플레이어 각자 {garrison}의 {troop} 하나 잃음"
+                if garrison_only
+                else "다른 플레이어 각자 {troop} 하나 잃음"
+            )
+        case OpponentLosesTroop():
+            # The choice of the opponent is the owner's (Double Cross).
+            return "원하는 다른 플레이어 하나가 {conflict}에서 {troop} 하나 잃음"
+        case DeployFromSupply(count=count):
+            return f"{{supply}}의 {{troop:{count}}}을 {{conflict}}에 배치"
         case OpponentsMoveSpiesFromVisitedSpace():
             # Quotes ``tokens_ko.py``'s Holy War line.
             return (
@@ -1018,6 +1111,22 @@ def reward_text_ko(reward: Reward) -> str:
         case CompleteContract():
             # Quotes ``tokens_ko.py``'s CHOAM Demands line.
             return "당신의 계약 하나 완수"
+        case DoubleBaseHarvestSpice():
+            # Bare ``{agent}`` and ``{spice}`` (the English line has one each);
+            # "수확" is ``static/labels.js``'s ``harvest_maker_spice`` verb.
+            return "이 {agent}로 수확하는 기본 {spice} 두 배 (보너스 제외)"
+        case DoubleBonusHarvestSpice():
+            # The same words for the bonus (Thumper).
+            return "이 {agent}로 수확하는 보너스 {spice} 두 배"
+        case ReserveCostDiscount(card_ids=card_ids, amount=amount):
+            # The Reserve card's Korean print name (``_reserve_card_name_ko``,
+            # as the Corner the Market conditions above); one name for the
+            # printings. The possessive "의" needs no final-consonant particle.
+            name = _reserve_card_name_ko(card_ids[0])
+            return (
+                f"이번 {{reveal_turn}}에 {name}의 {{acquire}} 비용 "
+                f"{{persuasion:{amount}}} 감소"
+            )
         case _:
             assert_never(reward)
 
@@ -1107,6 +1216,10 @@ def option_text_ko(option: IntrigueOption, *, show_timing: bool = True) -> str:
     body = "; ".join(section_text_ko(section) for section in option.sections)
     if option.trigger is not None:
         body = f"{trigger_text_ko(option.trigger)}: {body}"
+    if option.turn_start_only and not body.startswith(_TURN_START_KO):
+        # A card that names its moment in no effect of its own (Bindu
+        # Suspension's draw and optional pass).
+        body = f"{_TURN_START_KO}: {body}"
     if not show_timing:
         return body
     return f"{_TIMING_LABELS_KO[option.timing]} — {body}"

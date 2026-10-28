@@ -6,13 +6,17 @@ ability records, keyed by the card's ``acquisition_effect`` /
 ``trash_effect`` / ``discard_effect`` value; the printed text is
 ``display/tokens.py`` (``ACQUISITION_EFFECT_TEXT``, ``TRASH_EFFECT_TEXT``,
 ``DISCARD_EFFECT_TEXT``). None of them offers a choice: the box pays when it
-fires.
+fires. The exception is the original game's Influence boxes (OQ-141): a box
+of several Influence icons (CHOAM Directorship) or of one with a Faction of
+the owner's choice (Lady Jessica) is paid icon by icon, a row each in the
+owner's order (``rules.acquire_icons``).
 
 - An acquire box is paid by ``rules.acquisition`` in three pieces whose order
   each purchase path keeps as it was: the owner's gains and Overthrow's draw
-  (``resolve_acquisition_bonus``), a fixed Faction's Influence, and the token
-  tracks after the card has reached its zone; a Spy or a Contract is left to
-  the path, which opens its choice.
+  (``resolve_acquisition_bonus``), a fixed Faction's Influence (or the rows
+  of a box paid icon by icon), and the token tracks after the card has
+  reached its zone; a Spy or a Contract is left to the path, which opens its
+  choice.
 - A trash box is paid inside ``rules.card_trash.trash_personal_card``,
   whatever trashed the card; a discard box by
   ``rules.card_discard.resolve_personal_card_discard_trigger`` (a deck
@@ -113,6 +117,21 @@ ACQUISITION_ABILITIES: Final[Mapping[PersonalCardAcquisitionEffect, Ability]] = 
             _ACQUIRE.RECRUIT_THREE_TROOPS: _when(
                 AbilityTiming.ACQUIRE, RecruitTroops(3)
             ),
+            # CHOAM Directorship (original game): four separate Influence
+            # icons, one per Faction, taken one row each in the owner's order
+            # (OQ-141; ``rules.acquire_icons``).
+            _ACQUIRE.GAIN_INFLUENCE_WITH_EACH_FACTION: _when(
+                AbilityTiming.ACQUIRE,
+                GainInfluence(factions=(Faction.EMPEROR,)),
+                GainInfluence(factions=(Faction.SPACING_GUILD,)),
+                GainInfluence(factions=(Faction.BENE_GESSERIT,)),
+                GainInfluence(factions=(Faction.FREMEN,)),
+            ),
+            # Lady Jessica (original game): one Influence with a Faction of
+            # the owner's choice, a Faction at 6 not offered (OQ-141, OQ-060).
+            _ACQUIRE.GAIN_INFLUENCE_WITH_CHOSEN_FACTION: _when(
+                AbilityTiming.ACQUIRE, GainInfluence()
+            ),
         }
     )
 )
@@ -129,6 +148,8 @@ TRASH_ABILITIES: Final[Mapping[PersonalCardTrashEffect, Ability]] = MappingProxy
         ),
         # Replacement Eyes.
         _TRASH.ADVANCE_TLEILAXU: _when(AbilityTiming.TRASH, AdvanceTleilaxu(1)),
+        # Assassination Mission (original game): 4 Solari.
+        _TRASH.GAIN_FOUR_SOLARI: _when(AbilityTiming.TRASH, GainResources(solari=4)),
     }
 )
 

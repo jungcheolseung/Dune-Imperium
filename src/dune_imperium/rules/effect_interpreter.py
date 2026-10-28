@@ -21,6 +21,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireReserveCard,
     AcquireTech,
     AcquireTleilaxuCard,
+    AcquireToDeckTopThisRound,
     AdvanceTleilaxu,
     AllConditions,
     AtFactionSpace,
@@ -30,6 +31,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     ContractCompletedThisTurn,
     Cost,
     DeployFromGarrison,
+    DeployFromSupply,
+    DeployTheseTroops,
     DestroyShieldWall,
     DiscardedCardHasFaction,
     DiscardFromHand,
@@ -51,11 +54,16 @@ from dune_imperium.content.uprising.effect_dsl import (
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
+    IgnoreEnemyAgentsNextPlacement,
     IgnoreInfluenceRequirementsThisTurn,
     IntrigueOption,
     LoseInfluence,
     LoseTroops,
+    MoreSpiceMustFlowThanEachOpponent,
+    OnConflictWon,
     OpponentAllianceInfluenceAtLeast,
+    OpponentHasTroopInConflict,
+    OpponentLosesTroop,
     OpponentPlayedCombatIntrigue,
     PassTurn,
     PayResources,
@@ -63,6 +71,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PermanentRevealPersuasion,
     PlaceSpy,
     RecallSpy,
+    RecallYourAgent,
     RecruitTroops,
     RedirectSpiesOnTurnSpace,
     Research,
@@ -71,9 +80,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     RevealPersuasionThisRound,
     Reward,
     SetAsideImperiumRowCard,
+    ShuffleDiscardIntoDeck,
     SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
+    TakeMentat,
     TrashDiscardPileCard,
     TrashedCardHasFaction,
     TrashIntrigueCard,
@@ -91,9 +102,15 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.card_bonds import trashable_cards
-from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.card_draw import (
+    draw_or_request_personal_cards,
+    shuffle_discard_into_deck,
+)
 from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
-from dune_imperium.rules.conditions import owner_condition_holds
+from dune_imperium.rules.conditions import (
+    owner_condition_holds,
+    spice_must_flow_copies,
+)
 from dune_imperium.rules.contract_tiles import contract_reveal_is_possible
 from dune_imperium.rules.contracts import (
     begin_contract_gain,
@@ -104,16 +121,17 @@ from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
     agent_turn_space_id,
     board_icon_is_pending,
+    mentat_rests,
     recruit_shortfall_events,
     recruit_troops,
 )
-from dune_imperium.rules.frames import FrameKind, replace_player, turn_owner_of
+from dune_imperium.rules.frames import FrameKind, replace_player
 from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.immortality import (
     advance_research,
     advance_tleilaxu,
-    legal_specimen_return_actions,
     tleilaxu_track_finished,
+    troop_can_join,
 )
 from dune_imperium.rules.influence import (
     gain_faction_influence,
@@ -137,6 +155,7 @@ from dune_imperium.rules.spy_placement import (
     spy_placement_allowed_post_ids,
     spy_placement_posts,
 )
+from dune_imperium.rules.unit_loss import opponents_with_conflict_troop
 
 type ChoiceSlot = (
     LoseInfluence
@@ -158,6 +177,9 @@ type ChoiceSlot = (
     | TrashIntrigueCard
     | PeekTopCard
     | AcquireTleilaxuCard
+    | PassTurn
+    | OpponentLosesTroop
+    | RecallYourAgent
 )
 
 
@@ -258,8 +280,22 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             return any(
                 seat != player for seat in state.combat_intrigue_players
             )
+        case OpponentHasTroopInConflict():
+            # Double Cross: "상대 하나 이상이 Conflict에 troop이 있어야 낸다"
+            # `[FAQ p. 2]` (imperium-base.md 13.2).
+            return bool(opponents_with_conflict_troop(state, player))
         case AllConditions(conditions=conditions):
             return all(condition_holds(state, player, item) for item in conditions)
+        case MoreSpiceMustFlowThanEachOpponent():
+            # Corner the Market: "상대 하나라도 같거나 많으면 둘째 조건 실패"
+            # (imperium-base.md 13.2, ``[FAQ p. 2]``): each opponent is
+            # compared on its own, so a tie with any one of them fails.
+            copies = spice_must_flow_copies(owner)
+            return all(
+                copies > spice_must_flow_copies(candidate)
+                for candidate in state.players
+                if candidate.player_id != player
+            )
         case OpponentAllianceInfluenceAtLeast(amount=amount):
             return any(
                 influence_amount(owner.influence, faction) >= amount
@@ -392,7 +428,9 @@ def choice_slots(
         for reward in section.rewards:
             match reward:
                 case GainInfluence() if reward.requires_choice:
-                    slots.extend([reward] * reward.times)
+                    # A one-Faction gain (the two-chevron icon [DI p. 16])
+                    # names its Faction once and gains all its Influence there.
+                    slots.extend([reward] * (1 if reward.one_faction else reward.times))
                 case DestroyShieldWall() if shield_wall_present:
                     slots.append(reward)
                 case (
@@ -405,6 +443,16 @@ def choice_slots(
                     | PeekTopCard()
                     | AcquireTleilaxuCard()
                 ):
+                    slots.append(reward)
+                case PassTurn(optional=True):
+                    # Bindu Suspension: "You may pass your turn" is the
+                    # owner's choice, after the line's draw.
+                    slots.append(reward)
+                case OpponentLosesTroop():
+                    # Double Cross: the owner names the opponent.
+                    slots.append(reward)
+                case RecallYourAgent():
+                    # Urgent Mission: the owner names the Agent that returns.
                     slots.append(reward)
                 case _:
                     pass
@@ -614,36 +662,6 @@ def agent_placement_ahead(state: GameState, player: int) -> bool:
     )
 
 
-def _troop_can_join(state: GameState, owner: PlayerState) -> bool:
-    """Whether a recruit can take a troop for ``owner`` now.
-
-    A troop in the supply, or under Immortality a specimen the owner may
-    return to the supply first ("You may return any of your specimens to
-    your supply at any time. (This could be useful if you need to recruit
-    troops but have no more in your supply.)" [Immortality p. 8]). A
-    shortfall the engine records and may fill later in the turn (OQ-030
-    re-ruling 2026-10-04) does not count, in a player turn or out of one:
-    the user's ruling of 2026-10-06 that an Intrigue option with no effect
-    cannot be played ("아무 효과 없이 책략을 쓸 수 없는거지"), read as the
-    Arrakeen Scouts recruit already is (``scouts_effects.reward_has_effect``,
-    OQ-071).
-    """
-
-    if owner.troops_supply >= 1:
-        return True
-    if not state.config.immortality or owner.specimens < 1:
-        return False
-    # The specimen must be one the owner can still turn into a troop for
-    # this recruit: returnable at the decision open now (the owner's turn,
-    # Combat Intrigue priority, a troop-less Control defense -- OQ-050), or
-    # later in the owner's own open turn, which makes up the recorded
-    # shortfall (OQ-030 re-ruling 2026-10-04). A Navigation choice opened
-    # in Combat has neither: the shortfall is dropped at once.
-    return bool(
-        legal_specimen_return_actions(state, owner.player_id)
-    ) or turn_owner_of(state) == owner.player_id
-
-
 def _paid_commander_ahead(state: GameState, player: int, frame: DecisionFrame) -> bool:
     """A Commander may still be bought for Solari in the owner's turn.
 
@@ -820,6 +838,11 @@ def reward_can_change_something(
             return gather_intelligence_draw_available(state, player) or any(
                 isinstance(cost, DiscardFromHand) for cost in costs
             )
+        case ShuffleDiscardIntoDeck():
+            # The deck is shuffled along with the discard pile, so a card in
+            # either pile gives the shuffle (and its draw) something to do
+            # [FAQ p. 3].
+            return gather_intelligence_draw_available(state, player)
         case Research():
             # Past the second genetic marker Research draws a card instead
             # [Immortality p. 6]; before it the token always has a space to
@@ -840,7 +863,7 @@ def reward_can_change_something(
                 not is_twisted_intrigue(held) for held in owner.intrigue_cards
             )
         case RecruitTroops():
-            return _troop_can_join(state, owner_after)
+            return troop_can_join(state, owner_after)
         case GenerateSpecimens():
             if owner_after.troops_supply >= 1:
                 return True
@@ -916,6 +939,14 @@ def reward_can_change_something(
             )
         case GainSolariPerUnitType():
             return owner.units_in_conflict > 0
+        case OpponentLosesTroop():
+            return bool(opponents_with_conflict_troop(state, player))
+        case DeployFromSupply():
+            # Nothing deploys with an empty supply [FAQ p. 2] or while
+            # deployment is banned (Emperor of the Known Universe).
+            return owner_after.troops_supply > 0 and not units_deployment_blocked(
+                state, player
+            )
         case PassTurn():
             # With every other seat revealed, the pass hands the turn
             # straight back [Main p. 8] (``effects.next_unrevealed_player``).
@@ -932,14 +963,40 @@ def reward_can_change_something(
             return agent_placement_ahead(state, player) and (
                 _unmet_influence_requirement(state, player)
             )
+        case IgnoreEnemyAgentsNextPlacement():
+            # A cost-free Plot is played whatever it does (OQ-113 (C)); this
+            # only tells the page whether it could change the turn: an Agent
+            # still to send, and an opponent's Agent on the board to ignore.
+            return agent_placement_ahead(state, player) and any(
+                seat.agent_locations
+                for seat in state.players
+                if seat.player_id != player
+            )
         case CommanderDiscountThisTurn():
             return _commander_purchase_ahead(state, player)
         case GrantCombatDeployment():
             return _combat_deployment_ahead(state, player)
+        case DeployTheseTroops():
+            # It only lets the line's own troops deploy: whether the line
+            # changes anything is the recruit's to say (OQ-071; OQ-140, user
+            # 2026-10-28: "그 카드로 소집한 병력이 아닌걸?").
+            return False
         case SetAsideImperiumRowCard():
             return bool(state.imperium_row)
         case PeekTopCard():
             return bool(owner.deck)
+        case RecallYourAgent():
+            # A cost-free Plot is played whatever it does (OQ-113 (C),
+            # imperium-base.md 13.3); this only tells the page whether it
+            # could change something: an Agent on a board space or in the
+            # Conflict to return.
+            return bool(owner.agent_locations) or owner.agent_in_conflict > 0
+        case TakeMentat():
+            # Calculated Hire's "[1 spice] -> Take the Mentat": the Mentat
+            # is taken only from its own space [DI p. 13], so the cost line
+            # is played only while it rests there (designer ruling,
+            # imperium-base.md 9).
+            return mentat_rests(state)
     # Resources, Victory Points, swords, persuasion and Contract reveals
     # (the bank check runs first, OQ-064) always change something; Harvest
     # Cells' Tleilaxu card is judged by its Conflict-end window.
@@ -1179,7 +1236,7 @@ def option_unplayable_reason(
     sections = applicable_sections(state, player, option)
     if not sections:
         return OptionBlock.CONDITION
-    if option.trigger is not None:
+    if option.trigger is not None and not isinstance(option.trigger, OnConflictWon):
         # Playing it only sets the card waiting face up, and its firing has
         # no cost, so it is played even when that firing can change nothing
         # (OQ-113 (C): Call to Arms' recruit or a Reveal turn with nothing
@@ -1216,12 +1273,37 @@ class RewardOutcome:
     troops_recruited: int = 0
     sandworms_deployed: int = 0
     combat_icons: int = 0
+    # Troops a ``DeployTheseTroops`` line recruited, and those it owes for an
+    # empty supply: deployable in a Reveal turn, the owed ones once refilled
+    # (the caller opens them, ``combat_deployment.grant_recruit_deployment``;
+    # OQ-140).
+    deployable_recruits: int = 0
+    deployable_owed: int = 0
     redirects_turn_space_spies: bool = False
     sandworms_replaced: int = 0
     passes_turn: bool = False
     reserve_acquisitions: tuple[str, ...] = ()
     # Acquire Tech icons to open, one discount per icon (Tech Module).
     tech_acquisitions: tuple[int, ...] = ()
+    # Troops to deploy from the supply to the Conflict (Double Cross; the
+    # caller moves them, ``tech.deploy_troops_from_supply``).
+    supply_deployments: int = 0
+
+
+def rewards_come_first(sections: tuple[EffectSection, ...]) -> bool:
+    """Whether the automatic rewards of ``sections`` resolve before its choices.
+
+    "[draw 1]. You may pass your turn." [Bindu Suspension card]: a pass the
+    owner may take ends the turn, so what the line printed before it resolves
+    first and only the choice to pass is left (OQ-117, "카드 한 장을 뽑은 뒤
+    pass 또는 정상 진행을 고른다").
+    """
+
+    return any(
+        isinstance(reward, PassTurn) and reward.optional
+        for section in sections
+        for reward in section.rewards
+    )
 
 
 def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]:
@@ -1232,6 +1314,7 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
         for section in sections
         for reward in section.rewards
         if not (isinstance(reward, GainInfluence) and reward.requires_choice)
+        and not (isinstance(reward, PassTurn) and reward.optional)
         and not isinstance(
             reward,
             DestroyShieldWall
@@ -1243,6 +1326,8 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | SetAsideImperiumRowCard
             | PeekTopCard
             | AcquireTleilaxuCard
+            | OpponentLosesTroop
+            | RecallYourAgent
             | RevealContractsTakeOne,
         )
     )
@@ -1264,6 +1349,8 @@ def apply_rewards(
     owner = state.players[player]
     events: list[GameEvent] = []
     troops_recruited = 0
+    printed_recruits = 0
+    deploy_these = False
     sandworms_deployed = 0
     combat_icons = 0
     redirects_turn_space_spies = False
@@ -1271,7 +1358,9 @@ def apply_rewards(
     passes_turn = False
     reserve_acquisitions: list[str] = []
     tech_acquisitions: list[int] = []
+    supply_deployments = 0
     personal_draws = 0
+    shuffle_draws: list[int] = []
     intrigue_draws = 0
     contracts = 0
     fixed_influence: list[GainInfluence] = []
@@ -1299,6 +1388,11 @@ def apply_rewards(
                         owner.reveal_persuasion_round_bonus + amount
                     ),
                 )
+            case AcquireToDeckTopThisRound():
+                # Recruitment Mission: effective in the owner's Reveal turn
+                # only (``acquisition.deck_top_offered``); cards acquired
+                # before it is played are unaffected (imperium-base.md 13.3).
+                owner = replace(owner, acquire_to_deck_top_round=True)
             case GainResources(solari=solari, spice=spice, water=water):
                 owner = replace(
                     owner,
@@ -1320,6 +1414,7 @@ def apply_rewards(
             case RecruitTroops(count=count):
                 owner, recruited = recruit_troops(owner, count)
                 troops_recruited += recruited
+                printed_recruits += count
                 events.extend(
                     recruit_shortfall_events(
                         f"{source}:recruit", player, count, recruited
@@ -1327,6 +1422,8 @@ def apply_rewards(
                 )
             case DrawPersonalCards(count=count):
                 personal_draws += count
+            case ShuffleDiscardIntoDeck(draw=draw):
+                shuffle_draws.append(draw)
             case DrawIntrigueCards(count=count):
                 intrigue_draws += count
             case GainInfluence() if not reward.requires_choice:
@@ -1375,6 +1472,10 @@ def apply_rewards(
                 )
             case IgnoreInfluenceRequirementsThisTurn():
                 owner = replace(owner, ignores_influence_requirements_turn=True)
+            case IgnoreEnemyAgentsNextPlacement():
+                # Infiltrate: spent by this turn's Agent placement
+                # (``agent_turn.apply_agent_action``), gone when a turn opens.
+                owner = replace(owner, enemy_agents_ignored_turn=True)
             case GrantAgentIconThisTurn(icon=icon):
                 # Emperor's Invitation adds its icon to any already granted:
                 # both cards say "The card you play this turn has …", not
@@ -1394,6 +1495,23 @@ def apply_rewards(
                     granted_agent_icon_turn=_add_granted_icons(
                         owner.granted_agent_icon_turn, icons
                     ),
+                )
+            case TakeMentat():
+                # Calculated Hire: "take it and place it on your Leader; this
+                # round, you may use it as one of your Agents" [DI p. 18]; the
+                # engine does not tell the piece from the seat's other Agents
+                # (OQ-139 (가)), so the round has one Agent more.
+                if not mentat_rests(state):
+                    raise RuntimeError("the Mentat is not on its space")
+                owner = replace(
+                    owner, mentat=True, agents_available=owner.agents_available + 1
+                )
+                events.append(
+                    GameEvent(
+                        event_id=f"{source}:mentat_taken",
+                        kind="mentat_taken",
+                        payload=(("player", player),),
+                    )
                 )
             case GainSolariPerUnitType():
                 # Calculating: troops, sandworms, Commanders and a fighting
@@ -1420,6 +1538,8 @@ def apply_rewards(
                     gains["solari"] += kinds
             case PassTurn():
                 passes_turn = True
+            case DeployFromSupply(count=count):
+                supply_deployments += count
             case PermanentRevealPersuasion(amount=amount):
                 owner = replace(
                     owner,
@@ -1431,6 +1551,8 @@ def apply_rewards(
                 tech_acquisitions.append(discount)
             case GrantCombatDeployment():
                 combat_icons += 1
+            case DeployTheseTroops():
+                deploy_these = True
             case RedirectSpiesOnTurnSpace():
                 redirects_turn_space_spies = True
             case RevealContractsTakeOne():
@@ -1489,6 +1611,14 @@ def apply_rewards(
         )
         next_state = researched.state
         events.extend(researched.events)
+    for index, draw in enumerate(shuffle_draws):
+        # Refocus: the shuffle is a chance frame on top, and its draw waits in
+        # it until the permutation is applied.
+        shuffled = shuffle_discard_into_deck(
+            next_state, player, draw, source=f"{source}:refocus:{index}"
+        )
+        next_state = shuffled.state
+        events.extend(shuffled.events)
     if personal_draws:
         drawn = draw_or_request_personal_cards(
             next_state, player, personal_draws, source=source
@@ -1506,9 +1636,12 @@ def apply_rewards(
         troops_recruited=troops_recruited,
         sandworms_deployed=sandworms_deployed,
         combat_icons=combat_icons,
+        deployable_recruits=troops_recruited if deploy_these else 0,
+        deployable_owed=printed_recruits - troops_recruited if deploy_these else 0,
         redirects_turn_space_spies=redirects_turn_space_spies,
         sandworms_replaced=sandworms_replaced,
         passes_turn=passes_turn,
         reserve_acquisitions=tuple(reserve_acquisitions),
         tech_acquisitions=tuple(tech_acquisitions),
+        supply_deployments=supply_deployments,
     )

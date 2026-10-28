@@ -440,8 +440,8 @@ group = "project"
 game = "uprising"
 title_ko = "어둠 속 발소리의 유대"
 title = "Tread in Darkness and its Bond"
-ruling_ko = "어둠 속 발소리의 유대 조건은 아이콘마다 해결할 때 본다. 유대를 이루는 카드를 먼저 폐기하면 뽑기는 기다리다 턴 종료 때 사라지고, 뽑기를 먼저 하면 둘 다 받는다."
-ruling = "Tread in Darkness checks its Bond per icon: trash the card that makes the Bond first and the draw waits and lapses at the end of the turn; draw first and you get both."
+ruling_ko = "어둠 속 발소리의 유대 조건은 폐기와 뽑기 아이콘마다 해결할 때 본다. 유대를 이루는 다른 베네 게세리트 카드가 어떤 길로든 먼저 빠지면 남은 아이콘은 폐기든 뽑기든 회색으로 기다리다 턴 종료 때 사라지고, 턴 종료를 막지 않는다. 뽑기를 먼저 하면 둘 다 받는다."
+ruling = "Tread in Darkness checks its Bond for the trash and the draw each, when each resolves: once the other Bene Gesserit card leaves play by any route, whichever icon is left waits greyed and lapses at the end of the turn, never holding it; draw first and you get both."
 
 [[ruling]]
 oq = "OQ-029"
@@ -2014,5 +2014,90 @@ group = "project"
 game = "base_ix"
 title_ko = "멘타트와 자기 에이전트는 가르지 않는다"
 title = "The Mentat and your own Agents are not told apart"
-ruling_ko = "멘타트를 가진 라운드에는 에이전트를 하나 더 쓸 수 있을 뿐, 어느 칸에 멘타트를 놓았는지는 따로 고르지도 기록하지도 않는다. 회수 때 멘타트는 먼저 제자리로 돌아간다. 놓인 말이 멘타트인지가 결과를 바꾸는 카드가 들어오면 다시 정한다."
-ruling = "In a round you hold the Mentat you simply have one more Agent; which space the Mentat itself went to is neither chosen nor recorded. At Recall it returns to its space first. This is revisited once a card makes it matter which piece is where."
+ruling_ko = "멘타트를 가진 라운드에는 에이전트를 하나 더 쓸 수 있을 뿐, 어느 칸에 멘타트를 놓았는지는 따로 고르지도 기록하지도 않는다. 회수 때 멘타트는 먼저 제자리로 돌아간다. Kwisatz Haderach로 옮기거나 Urgent Mission으로 회수하는 말도 그 플레이어의 에이전트 하나다."
+ruling = "In a round you hold the Mentat you simply have one more Agent; which space the Mentat itself went to is neither chosen nor recorded. At Recall it returns to its space first. The Agent Kwisatz Haderach moves or Urgent Mission recalls is likewise one of that player's Agents."
+names = ["Kwisatz Haderach", "Urgent Mission"]
+
+[[ruling]]
+oq = "OQ-141"
+group = "project"
+game = "base_ix"
+title_ko = "획득 효과의 아이콘은 하나씩, 순서는 내가"
+title = "An acquire effect's icons one at a time, in your order"
+ruling_ko = "카드를 획득할 때 받는 효과에 아이콘이 여럿이거나 진영을 고르는 영향력이 있으면(CHOAM Directorship의 네 진영 영향력, Lady Jessica의 고른 진영 영향력) 아이콘마다 따로 받고, 순서는 카드 주인이 고른다. 에이전트 칸과 교전·계약 보상의 아이콘과 같은 원칙이다. 자기 차례에 얻으면 그 차례의 다른 효과와 함께 받고, 다 받기 전에는 턴 종료를 누를 수 없다. 아이콘 하나에 고를 것이 없으면 지금처럼 곧바로 받는다."
+ruling = "When the effect a card gives on acquire shows several icons or an Influence with a Faction to choose (CHOAM Directorship's four Factions, Lady Jessica's chosen one), each icon is taken on its own, in the order the owner picks: the same rule as an Agent box's icons and a Conflict or contract reward's. Gained in your own turn, they come with that turn's other effects, and the turn cannot end before they are taken. A single icon with nothing to choose is still taken at once."
+names = ["CHOAM Directorship", "Lady Jessica"]
+
+[[ruling]]
+oq = "OQ-143"
+group = "project"
+game = "base_ix"
+title_ko = "Bindu Suspension으로 이어 간 차례는 이미 시작한 차례"
+title = "A turn played on after Bindu Suspension has already started"
+ruling_ko = "Bindu Suspension으로 카드를 뽑고 차례를 그대로 진행하면 그 차례의 시작은 끝난 것이라, 같은 차례에 다른 \"차례 시작\" 카드(Litany Against Fear, Withdrawn)는 낼 수 없다. 넘긴 차례가 곧바로 돌아오면(다른 플레이어가 모두 공개한 뒤) 새 차례라서 시작에 쓰는 카드를 다시 낼 수 있다."
+ruling = "If you draw with Bindu Suspension and play the turn on, the start of that turn is over: no other \"start of your turn\" card (Litany Against Fear, Withdrawn) can be played in it. A pass that hands the turn straight back (every other player has revealed) begins a new turn, whose start is open again."
+names = ["Bindu Suspension", "Litany Against Fear", "Withdrawn"]
+
+[[ruling]]
+oq = "OQ-028 (Gene Manipulation)"
+group = "app_differs"
+game = "base_ix"
+title_ko = "Gene Manipulation의 폐기와 스파이스는 순서 자유"
+title = "Gene Manipulation: the trash and the spice in either order"
+ruling_ko = "Gene Manipulation의 폐기 아이콘과 \"다른 베네 게세리트 카드가 플레이 중이면 스파이스 2\"는 따로, 원하는 순서로 받는다. 스파이스의 조건은 그 아이콘을 받을 때 본다: 그 전에 유대를 이루는 카드를 폐기하면 스파이스는 회색으로 기다리다 턴 종료 때 사라지고, 같은 차례에 유대가 생기면 받을 수 있다."
+ruling = "Gene Manipulation's trash icon and its \"2 spice if you have another Bene Gesserit card in play\" are taken apart, in either order. The spice's condition is checked when it is taken: trash the card that makes the Bond first and the spice waits greyed and lapses at the end of the turn; a Bond formed later in the turn pays it."
+names = ["Gene Manipulation"]
+sources_ko = "공식은 말하지 않음. 앱은 카드의 에이전트 효과가 돌 때 유대를 한 번 보고 스파이스를 곧바로 준다(나중에 생긴 유대는 세지 않는다)."
+sources = "The official documents are silent. The app checks the Bond once, when the card's Agent effect runs, and pays the spice at once (a Bond formed later does not count)."
+
+[[ruling]]
+oq = "OQ-142"
+group = "project"
+game = "base_ix"
+title_ko = "승리 책략이 숨어 있는 동안 승자의 창은 늘 닫기 줄로 끝난다"
+title = "While a winning Intrigue is hidden, every winner's window ends with a close"
+ruling_ko = "\"교전에서 이기면\" 책략(To the Victor..., Demand Respect)의 사본이 아직 덱이나 누군가의 손에 있는 동안, 교전의 단독 승자가 받는 창은 모든 보상을 받은 뒤 닫기 줄로 끝난다. 승자가 그 카드를 쥐었는지와 상관없이 늘 그렇게 해서, 창의 모양으로 승자의 손이 드러나지 않는다. 보상으로 뽑은 그 책략도 닫기 전에 낼 수 있다."
+ruling = "While a copy of a \"when you win a Conflict\" Intrigue (To the Victor..., Demand Respect) is still in the deck or a hand, a sole winner's reward window ends with a close row after every reward, whether or not the winner holds one, so the window's shape never shows the winner's hand. One drawn as a reward can still be played before the close."
+names = ["To the Victor...", "Demand Respect"]
+
+[[ruling]]
+oq = "OQ-140"
+group = "app_differs"
+game = "base_ix"
+title_ko = "Reinforcements·Gurney Halleck: 공개 차례에 소집한 병력의 배치"
+title = "Reinforcements and Gurney Halleck: deploying the troops in a Reveal turn"
+ruling_ko = "공개 차례에 Reinforcements나 Gurney Halleck의 공개 효과로 소집한 병력은 원하는 수만큼(0개도) 교전 칸에 배치할 수 있다. 공급처가 모자라 그 카드로 못 소집한 병력은 같은 차례 뒤에 공급처로 병력이 돌아와 채워지면 그때 배치할 수 있다 — 다른 효과도 병력이 모자랐으면 이 카드들 몫을 먼저 채운다. 다른 효과로 소집한 병력과 사다우카 지휘관은 이 몫으로 배치하지 않는다."
+ruling = "In a Reveal turn, the troops Reinforcements or Gurney Halleck's Reveal effect recruited may be deployed to the Conflict, any number of them (zero included). A troop the supply could not cover for that card may deploy once troops return to the supply later in the turn and fill it; when another effect is also short, these cards are filled first. Troops another effect recruited and Sardaukar Commanders do not deploy by this."
+names = ["Reinforcements", "Gurney Halleck"]
+sources_ko = "Gurney Halleck의 \"원하는 수만큼\"은 디자이너의 답(따름). 앱은 쓸 때 공급처와 표본에서 병력을 골라 곧바로 배치하고, 나중에 채워진 병력은 배치하지 않는다."
+sources = "Gurney Halleck's \"any number\" is the designer's answer (followed). The app picks the troops from the supply and specimens when the card is used and deploys them at once; a troop recruited later is never deployed by it."
+
+[[ruling]]
+oq = "OQ-145"
+group = "project"
+game = "uprising"
+title_ko = "카드덱 맨 위에 앞면으로 놓은 카드는 모두가 안다"
+title = "A card put face up on top of a deck is known to all"
+ruling_ko = "획득한 카드를 카드덱 맨 위에 놓으면(Bypass Protocol, Recruitment Mission, 틀레이락스 연구 트랙의 첫 유전 표지 뒤 틀레이락스 카드) 그 카드를 뽑거나 카드덱을 섞을 때까지 모든 플레이어가 안다. 여러 장을 차례로 놓으면 놓은 순서대로 쌓인다(마지막에 놓은 장이 맨 위). 그 카드를 뽑으면 핸드를 떠날 때까지 핸드에서도 공개다."
+ruling = "A card you acquire and put on top of your deck (Bypass Protocol, Recruitment Mission, or a Tleilaxu card once your research reaches the first genetic marker) is known to every player until it is drawn or the deck is shuffled. Cards put there one after another stack in that order, the last on top. Once drawn, it stays public in your hand until it leaves the hand."
+names = ["Bypass Protocol", "Recruitment Mission"]
+
+[[ruling]]
+oq = "OQ-144"
+group = "project"
+game = "base_ix"
+title_ko = "Double Cross로 공급처에서 내보내는 것은 병력뿐"
+title = "Double Cross deploys a troop from the supply, never a Commander"
+ruling_ko = "Double Cross가 공급처에서 교전 칸으로 내보내는 것은 병력 하나뿐이고 사다우카 지휘관은 아니다. 공급처의 지휘관은 2 솔라리로 소집하는 길로만 나온다. 상대가 잃는 쪽은 상대가 교전 칸의 유닛 가운데 고르며 지휘관도 고를 수 있다."
+ruling = "Double Cross deploys one troop from your supply to the Conflict, never a Sardaukar Commander: a Commander in the supply comes out only through its 2 Solari recruit. The opponent who loses a unit chooses it among its units in the Conflict, a Commander included."
+names = ["Double Cross"]
+
+[[ruling]]
+oq = "OQ-146"
+group = "project"
+game = "base_ix"
+title_ko = "Kwisatz Haderach는 교전 칸의 에이전트도 옮긴다"
+title = "Kwisatz Haderach may move the Agent in the Conflict"
+ruling_ko = "전투 속으로로 교전 칸에 간 에이전트도 여전히 자기 에이전트라서, Kwisatz Haderach의 \"어디에 있든\"에 든다. 옮기면 그 에이전트는 교전 칸을 떠나 고른 칸으로 가고 전투력에서 빠진다. 제국 특권으로 소환할 때와 같다."
+ruling = "An Agent sent to the Conflict with Into the Fray is still one of your Agents, so Kwisatz Haderach's \"from anywhere\" includes it. Moved, it leaves the Conflict for the chosen space and no longer adds strength, as when Imperial Privilege recalls it."
+names = ["Kwisatz Haderach"]

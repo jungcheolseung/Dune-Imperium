@@ -61,6 +61,7 @@ from dune_imperium.display.spaces import (
 )
 from dune_imperium.display.tokens import REVEAL_CHOICE_EFFECT_TEXT
 from dune_imperium.display.tokens_ko import REVEAL_CHOICE_EFFECT_TEXT_KO
+from dune_imperium.rules.acquire_icons import ACQUIRE_ICON_ACTION, acquire_icon_faction
 from dune_imperium.rules.agent_effect_frame import agent_box_rows, route_box_action
 from dune_imperium.rules.agent_effects import (
     boost_draw_card,
@@ -68,7 +69,11 @@ from dune_imperium.rules.agent_effects import (
     resolves_boost_draw,
 )
 from dune_imperium.rules.agent_turn import CARD_PICK_ACTION, executable_placements
-from dune_imperium.rules.combat import REWARD_ICON_ACTION, reward_icon_piece
+from dune_imperium.rules.combat import (
+    REWARD_ICON_ACTION,
+    WINNING_INTRIGUE,
+    reward_icon_piece,
+)
 from dune_imperium.rules.contracts import (
     CONTRACT_REWARD_ICON_ACTION,
     contract_icon_piece,
@@ -100,6 +105,12 @@ _SHIGAWIRE = "Urgent Shigawire"
 # its card draw draws two and its Research generates no specimen.
 _PITER = _BOX.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
 _SHIGAWIRE_KO = KOREAN_CARD_NAMES["cards"]["urgent_shigawire"]
+# The boxes whose ``spice`` icon pays 2 (the others pay 1): Branching Path's
+# and the original game's Gene Manipulation's.
+_TWO_SPICE_ICON_BOXES = (
+    _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE,
+    _BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND,
+)
 
 # Printed conditions of the multi-icon Agent boxes, judged when the icon
 # resolves (OQ-027); shown after the icon's effect.
@@ -128,6 +139,12 @@ _ICON_CONDITIONS: dict[tuple[PersonalCardAgentEffect, str], str] = {
     (_BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN, "cards"): (
         "if you gained 2 or more spice this turn"
     ),
+    (_BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO, "cards"): (
+        "at 2 Spacing Guild Influence"
+    ),
+    (_BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO, "cards_second"): (
+        "at 2 Spacing Guild Influence"
+    ),
     (_BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO, "cards"): (
         "if you have completed 2 or more contracts"
     ),
@@ -135,6 +152,15 @@ _ICON_CONDITIONS: dict[tuple[PersonalCardAgentEffect, str], str] = {
         "if you have completed 4 or more contracts"
     ),
     (_BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND, "cards"): (
+        "if you have another Bene Gesserit card in play"
+    ),
+    (_BOX.DRAW_TWO_IF_BENE_GESSERIT_BOND, "cards"): (
+        "if you have another Bene Gesserit card in play"
+    ),
+    (_BOX.DRAW_TWO_IF_BENE_GESSERIT_BOND, "cards_second"): (
+        "if you have another Bene Gesserit card in play"
+    ),
+    (_BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND, "spice"): (
         "if you have another Bene Gesserit card in play"
     ),
     (_BOX.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED, "research"): "if grafted",
@@ -182,6 +208,12 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
         "이번 차례에 {spice}를 2 이상 얻었다면"
     ),
     # Cargo Runner's lines, in tokens_ko.py's own words for the same box.
+    (_BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO, "cards"): (
+        "{influence_spacing_guild:2}일 때"
+    ),
+    (_BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO, "cards_second"): (
+        "{influence_spacing_guild:2}일 때"
+    ),
     (_BOX.DRAW_PER_TWO_COMPLETED_CONTRACTS_UP_TO_TWO, "cards"): (
         "{contract} 둘 이상 완수했다면"
     ),
@@ -190,6 +222,15 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
     ),
     # Tread in Darkness, in tokens_ko.py's words for the same box.
     (_BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND, "cards"): (
+        "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
+    ),
+    (_BOX.DRAW_TWO_IF_BENE_GESSERIT_BOND, "cards"): (
+        "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
+    ),
+    (_BOX.DRAW_TWO_IF_BENE_GESSERIT_BOND, "cards_second"): (
+        "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
+    ),
+    (_BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND, "spice"): (
         "당신의 {in_play}에 다른 베네 게세리트 카드가 있다면"
     ),
     (_BOX.DRAW_ONE_AND_RESEARCH_AND_SPECIMEN_IF_GRAFTED, "research"): "{graft}했다면",
@@ -258,7 +299,11 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
         case "intrigue":
             base = "Draw 1 Intrigue card"
         case "troops":
-            base = "Recruit 1 troop"
+            base = (
+                "Recruit 2 troops"
+                if effect is _BOX.RECRUIT_TWO_AND_DRAW_ONE
+                else "Recruit 1 troop"
+            )
         case "solari":
             # Fill Coffers (the Signet Ring's box) pays 1.
             base = (
@@ -267,11 +312,7 @@ def agent_card_icon_text(effect: PersonalCardAgentEffect | None, key: str) -> st
         case "spice":
             base = (
                 "Gain 2 spice"
-                if effect
-                is (
-                    _BOX
-                    .MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
-                )
+                if effect in _TWO_SPICE_ICON_BOXES
                 else "Gain 1 spice"
             )
         case "water":
@@ -323,18 +364,16 @@ def agent_card_icon_text_ko(effect: PersonalCardAgentEffect | None, key: str) ->
         case "intrigue":
             base = "{intrigue:1}"
         case "troops":
-            base = "{troop:1}"
+            base = (
+                "{troop:2}"
+                if effect is _BOX.RECRUIT_TWO_AND_DRAW_ONE
+                else "{troop:1}"
+            )
         case "solari":
             base = "{solari:1}" if effect is _BOX.LEADER_SIGNET else "{solari:2}"
         case "spice":
             base = (
-                "{spice:2}"
-                if effect
-                is (
-                    _BOX
-                    .MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
-                )
-                else "{spice:1}"
+                "{spice:2}" if effect in _TWO_SPICE_ICON_BOXES else "{spice:1}"
             )
         case "water":
             base = "{water:1}"
@@ -667,6 +706,14 @@ def combat_reward_icon_action_text(
             f"{_PLANETARY_ARRAY}: {reward_text(draw)}",
             f"{_PLANETARY_ARRAY_KO}: {reward_text_ko(draw)}",
         )
+    if kind == WINNING_INTRIGUE:
+        # The sole winner's close of its window once every other row is
+        # resolved: no more "When you win a Conflict" Intrigue (OQ-121
+        # decision 6, "안 내도 창이 닫힌다").
+        return (
+            "Finish: no more winning Intrigue",
+            "승리 {intrigue} 끝내기",
+        )
     piece = reward_icon_piece(state.current_conflict_ids[-1], rank, kind)
     match piece:
         case EffectSection():
@@ -729,6 +776,19 @@ def _scaled_reward(piece: Reward, multiplier: int) -> Reward:
         case GainInfluence(times=times, factions=(_,)):
             return replace(piece, times=times * multiplier)
     return piece
+
+
+def acquire_icon_action_text(action: DomainAction) -> tuple[str, str] | None:
+    """Describe one icon of an acquired Imperium card's acquire box
+    (``resolve_acquire_icon``, OQ-141): an Influence with its Faction, or
+    with the one the row chooses."""
+
+    if action.action_id != ACQUIRE_ICON_ACTION:
+        return None
+    effect = str(dict(action.arguments)["effect"])
+    faction = acquire_icon_faction(effect)
+    piece = GainInfluence(factions=None if faction is None else (faction,))
+    return reward_text(piece), reward_text_ko(piece)
 
 
 def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
@@ -912,7 +972,11 @@ def effect_action_text(state: GameState, action: DomainAction) -> str | None:
     )
     if owed is not None:
         return owed[0]
-    tech = tech_acquire_action_text(action) or research_icon_action_text(action)
+    tech = (
+        tech_acquire_action_text(action)
+        or research_icon_action_text(action)
+        or acquire_icon_action_text(action)
+    )
     if tech is not None:
         return tech[0]
     icon = combat_reward_icon_action_text(
@@ -988,7 +1052,11 @@ def effect_action_text_ko(state: GameState, action: DomainAction) -> str | None:
     )
     if owed is not None:
         return owed[1]
-    tech = tech_acquire_action_text(action) or research_icon_action_text(action)
+    tech = (
+        tech_acquire_action_text(action)
+        or research_icon_action_text(action)
+        or acquire_icon_action_text(action)
+    )
     if tech is not None:
         return tech[1]
     icon = combat_reward_icon_action_text(

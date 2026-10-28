@@ -14,7 +14,10 @@ from dune_imperium.content.uprising.effect_dsl import (
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.leader_abilities import leader_triggers
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
-from dune_imperium.content.uprising.trigger_abilities import trash_ability
+from dune_imperium.content.uprising.trigger_abilities import (
+    single_resource,
+    trash_ability,
+)
 from dune_imperium.content.uprising.types import PersonalCardTrashEffect
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -200,6 +203,26 @@ def trash_personal_card(
                     pending_intrigue_draws = (*pending_intrigue_draws, pending)
             case AdvanceTleilaxu():
                 pass  # Once the card has moved (below).
+            case GainResources():
+                # Assassination Mission: "When this card is trashed: 4 Solari",
+                # whatever trashed it.
+                gained = single_resource(reward)
+                next_owner = replace(
+                    next_owner,
+                    resources=replace(
+                        next_owner.resources,
+                        solari=next_owner.resources.solari + reward.solari,
+                        spice=next_owner.resources.spice + reward.spice,
+                        water=next_owner.resources.water + reward.water,
+                    ),
+                )
+                events.append(
+                    GameEvent(
+                        event_id=f"{source}:trash:{card_id}:effect",
+                        kind="personal_card_trash_effect_resolved",
+                        payload=(("card_id", card_id), ("player", player), gained),
+                    )
+                )
             case _:
                 raise TypeError(f"{reward!r} is not a trash box's reward")
 

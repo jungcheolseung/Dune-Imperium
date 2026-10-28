@@ -864,6 +864,14 @@ const UI_TEXT = {
     "ko": "{solari} 1 지불 → {deck} 맨 위 카드({{card}}) 뽑기",
     "en": "Pay 1 {solari} -> Draw top card of {deck} ({{card}})"
   },
+  "panels.deck_top_draw_free": {
+    "ko": "{deck} 맨 위 카드({{card}}) 뽑기",
+    "en": "Draw top card of {deck} ({{card}})"
+  },
+  "panels.deck_top_trash": {
+    "ko": "{deck} 맨 위 카드({{card}}) 폐기",
+    "en": "Trash top card of {deck} ({{card}})"
+  },
   "panels.deck_list_note": {
     "ko": "이름순으로 보여 줍니다. 뽑는 순서와는 무관합니다.",
     "en": "Shown by name, not in draw order."
@@ -887,6 +895,10 @@ const UI_TEXT = {
   "panels.deck_list_top_note": {
     "ko": "맨 위로 표시한 카드는 {{source}} 효과로 확인한 {deck} 맨 위 카드입니다.",
     "en": "The card marked Top is the top card of the {deck}, seen through {{source}}."
+  },
+  "panels.deck_list_public_top_note": {
+    "ko": "맨 위로 표시한 카드는 앞면으로 {deck} 맨 위에 놓아 모두가 아는 카드입니다.",
+    "en": "The card marked Top was put face up on top of the {deck}, so everyone knows it."
   },
   "panels.my_deck": {
     "ko": "내 {deck} · {{count}}장 (순서 비공개)",
@@ -936,6 +948,10 @@ const UI_TEXT = {
     "ko": "{hand} (공개) ",
     "en": "Hand (public) "
   },
+  "panels.deck_public_top_label": {
+    "ko": "{deck} 맨 위 (공개) ",
+    "en": "Top of deck (public) "
+  },
   "panels.in_play_label": {
     "ko": "플레이 영역",
     "en": "In play"
@@ -975,6 +991,14 @@ const UI_TEXT = {
   "panels.swordmaster": {
     "ko": "소드마스터",
     "en": "Swordmaster"
+  },
+  "panels.mentat_at": {
+    "ko": "멘타트: {{where}}",
+    "en": "Mentat: {{where}}"
+  },
+  "panels.mentat_on_leader": {
+    "ko": "지도자 위",
+    "en": "on the Leader"
   },
   "panels.family_atomics": {
     "ko": "가문 핵 토큰",

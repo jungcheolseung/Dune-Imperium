@@ -23,6 +23,7 @@ from typing import Final
 
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireToDeckTopThisRound,
     EffectSection,
     OnRevealAcquisitionThisRound,
     RecruitTroops,
@@ -62,11 +63,16 @@ DEFERRED_ACQUISITION_TRIGGERS_KEY = "deferred_acquisition_triggers"
 type _WaitingTrigger = tuple[str, str]
 
 
-_REVEAL_TURN_REWARDS: Final = (RevealPersuasionThisRound, SetAsideImperiumRowCard)
+_REVEAL_TURN_REWARDS: Final = (
+    RevealPersuasionThisRound,
+    AcquireToDeckTopThisRound,
+    SetAsideImperiumRowCard,
+)
 """Plot rewards that last until the owner's Reveal turn this round ends:
-Tleilaxu Puppet's "Gain [1 Persuasion] during your Reveal turn this round"
-and Manipulate's set-aside card, acquirable at a discount until the end of
-that Reveal turn [FAQ p. 3]."""
+Tleilaxu Puppet's "Gain [1 Persuasion] during your Reveal turn this round",
+Recruitment Mission's deck-top option for the cards acquired in it
+[FAQ p. 3] and Manipulate's set-aside card, acquirable at a discount until
+the end of that Reveal turn [FAQ p. 3]."""
 
 
 def waits_for_reveal_turn(sections: Iterable[EffectSection]) -> bool:

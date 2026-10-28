@@ -126,6 +126,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
+from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.tokens import reveal_line_conditions
 from dune_imperium.rules.reveal_lines import RevealLine
 
@@ -494,6 +495,75 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "하나 선택: {influence_any:1} 선택 / {troop:2}; "
         "베네 게세리트의 유대감이면 둘 다 얻음"
     ),
+    # The original game's Imperium cards (stage P3): the effect text the
+    # engine generates, glossary words only (no Korean card source yet).
+    PersonalCardAgentEffect.RECRUIT_ONE_TROOP: "{troop:1}",
+    (
+        PersonalCardAgentEffect
+        .MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+    ): "{spice:2} 지불 가능 {arrow_right} {influence_spacing_guild:1}, {solari:3}",
+    PersonalCardAgentEffect.EACH_OPPONENT_LOSES_GARRISON_TROOP: (
+        "다른 플레이어 각자 {garrison}의 {troop} 하나 잃음"
+    ),
+    PersonalCardAgentEffect.GAIN_ONE_SOLARI: "{solari:1}",
+    PersonalCardAgentEffect.GAIN_THREE_SOLARI: "{solari:3}",
+    PersonalCardAgentEffect.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE: (
+        "{water:1} 지불 가능 {arrow_right} {troop:1}, {draw:1}"
+    ),
+    PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS: (
+        "{spice:2} 지불 가능 {arrow_right} {troop:3}"
+    ),
+    PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: (
+        "{influence_spacing_guild} 2 이상이면: {draw:2}"
+    ),
+    PersonalCardAgentEffect.GAIN_TWO_SPICE: "{spice:2}",
+    PersonalCardAgentEffect.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: (
+        "하나 선택: {influence_spacing_guild:1} / {spice:2}"
+    ),
+    PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD: (
+        "하나 선택: {draw:1} / {discard_pile}의 베네 게세리트 카드 1장을 {hand}로"
+    ),
+    PersonalCardAgentEffect.BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT: (
+        "게임판 장소 하나 선택. 다른 플레이어는 이번 라운드의 다음 {agent}를 "
+        "그곳에 보낼 수 없음"
+    ),
+    PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE: "{troop:2}, {draw:1}",
+    PersonalCardAgentEffect.MAY_TRASH_SELF_TO_DRAW_INTRIGUE: (
+        "이 카드 {trash} 가능 {arrow_right} {intrigue:1}"
+    ),
+    PersonalCardAgentEffect.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: (
+        "베네 게세리트의 유대감이면: {influence_any:1} 선택"
+    ),
+    PersonalCardAgentEffect.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: (
+        "카드 1장 {trash} 가능, 베네 게세리트의 유대감이면: {spice:2}"
+    ),
+    PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_TWO_IF_BENE_GESSERIT_BOND: (
+        "베네 게세리트의 유대감이면: 다른 플레이어 각자 카드 2장 버리기"
+    ),
+    # Quotes ``effect_dsl_text_ko.py``'s DoubleBaseHarvestSpice line.
+    PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE: (
+        "이 {agent}로 수확하는 기본 {spice} 두 배 (보너스 제외)"
+    ),
+    # Quotes ``effect_dsl_text_ko.py``'s DoubleBonusHarvestSpice line.
+    PersonalCardAgentEffect.DOUBLE_BONUS_HARVEST_SPICE: (
+        "이 {agent}로 수확하는 보너스 {spice} 두 배"
+    ),
+    PersonalCardAgentEffect.DRAW_TWO_IF_BENE_GESSERIT_BOND: (
+        "베네 게세리트의 유대감이면: {draw:2}"
+    ),
+    PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP: (
+        "다른 플레이어 각자 하나 선택: 카드 1장 {discard} 또는 "
+        "{conflict}에 배치된 {troop} 하나 잃음"
+    ),
+    PersonalCardAgentEffect.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE: (
+        "{solari:2} 지불 가능 {arrow_right} 하나 선택: "
+        "{influence_spacing_guild:1} / {influence_bene_gesserit:1} / "
+        "{influence_fremen:1}"
+    ),
+    PersonalCardAgentEffect.MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE: (
+        "{influence_any:1} 선택 잃기·{spice:2} 지불 가능 {arrow_right} "
+        "{influence_any:2} 한 번 선택"
+    ),
 }
 
 # Turn-start alternatives, printed in a red box in place of an Agent box
@@ -517,6 +587,7 @@ TRASH_EFFECT_TEXT_KO: Final[dict[PersonalCardTrashEffect, str]] = {
         "은행의 {commander} {acquire} 후 {recruit}"
     ),
     PersonalCardTrashEffect.ADVANCE_TLEILAXU: "{tleilaxu} (트랙 전진)",
+    PersonalCardTrashEffect.GAIN_FOUR_SOLARI: "{solari:4}",
 }
 
 # The printed condition that turns a card's greyed Agent icons on; Korean
@@ -558,6 +629,13 @@ ACQUISITION_EFFECT_TEXT_KO: Final[dict[PersonalCardAcquisitionEffect, str]] = {
     PersonalCardAcquisitionEffect.ADVANCE_TLEILAXU: "{tleilaxu} (트랙 전진)",
     PersonalCardAcquisitionEffect.GAIN_ONE_SPICE: "{spice:1}",
     PersonalCardAcquisitionEffect.RECRUIT_THREE_TROOPS: "{troop:3}",
+    PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_EACH_FACTION: (
+        "{influence_emperor:1}, {influence_spacing_guild:1}, "
+        "{influence_bene_gesserit:1}, {influence_fremen:1}"
+    ),
+    PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_CHOSEN_FACTION: (
+        "{influence_any:1} (4개의 팩션 중 하나 선택)"
+    ),
 }
 
 # The one transcribed member is specific to The Spice Must Flow; cards.py
@@ -615,6 +693,46 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     ): "프레멘의 유대감: {troop:1} 배치 또는 {retreat} 가능",
     PersonalCardRevealChoiceEffect.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: (
         "{troop:2} 잃기 가능 {arrow_right} 표본 2개 생성"
+    ),
+    # The original game's Imperium cards (stage P3): glossary words only.
+    PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP: (
+        "{garrison}의 {troop:1}을 {conflict}에 배치 가능"
+    ),
+    PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: (
+        "하나 선택: {persuasion:2} / {sword:2}"
+    ),
+    PersonalCardRevealChoiceEffect.MAY_DEPLOY_UP_TO_THREE_TROOPS: (
+        "{garrison}의 {troop:3}까지 {conflict}에 배치 가능"
+    ),
+    PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS: (
+        "{troop:2}까지 {retreat} 가능"
+    ),
+    PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
+        "원하는 수의 {troop} {retreat} 가능"
+    ),
+    (
+        PersonalCardRevealChoiceEffect
+        .MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS
+    ): (
+        "이 카드 {trash} {arrow_right} 원하는 수의 {troop}을 {garrison}에서 "
+        "{conflict}에 배치하거나 {retreat}"
+    ),
+    PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
+        "{solari:6} 지불 가능 {arrow_right} {victory_point:1}"
+    ),
+    (
+        PersonalCardRevealChoiceEffect
+        .MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY
+    ): (
+        "{solari:3} 지불 가능 {arrow_right} {troop:2}, "
+        "이 병력을 {conflict}에 배치 가능"
+    ),
+    (
+        PersonalCardRevealChoiceEffect
+        .MAY_PAY_THREE_SPICE_FOR_VICTORY_POINT_IF_SPACING_GUILD_ALLIANCE
+    ): (
+        "우주 항행 길드 {alliance}: {spice:3} 지불 가능 {arrow_right} "
+        "{victory_point:1}"
     ),
     PersonalCardRevealChoiceEffect.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: (
         "하나 선택: {solari:5} / {solari:5} 지불 {arrow_right} 원로회 자리 차지"
@@ -706,6 +824,11 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
         conditions.append(f"{{garrison}}에 부대가 {held.garrison} 이상 있다면")
     if held.command:
         conditions.append("{command} ({persuasion} 6 이상)이면")
+    if held.influence is not None:
+        faction, amount = held.influence
+        conditions.append(f"{{influence_{faction.value}}} {amount} 이상이면")
+    if held.alliance is not None:
+        conditions.append(f"{_faction_name_ko(held.alliance)} {{alliance}}이면")
 
     count = line.faction_count
     per_faction = (
@@ -754,6 +877,16 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
             "{research} (연구 트랙 전진)"
             if line.research == 1
             else f"{{research}} ×{line.research} (연구 트랙 {line.research}회 전진)"
+        )
+    for discount in line.reserve_discounts:
+        # Guild Bankers: ``effect_dsl_text_ko``'s ``ReserveCostDiscount``
+        # line (the Reserve card's Korean print name, no card text of its own).
+        name = KOREAN_CARD_NAMES["cards"].get(
+            discount.card_ids[0], discount.card_ids[0]
+        )
+        gains.append(
+            f"이번 {{reveal_turn}}에 {name}의 {{acquire}} 비용 "
+            f"{{persuasion:{discount.amount}}} 감소"
         )
 
     text = ", ".join(gains)

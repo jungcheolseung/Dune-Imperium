@@ -3,6 +3,7 @@
 import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 import pytest
 from tests.support.reward_windows import settle_reward_window
@@ -29,6 +30,7 @@ from dune_imperium.core import (
     RuleResult,
     Transition,
 )
+from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import card_trash
 from dune_imperium.rules.agent_effects import (
     agent_box_influence_blocked,
@@ -5018,6 +5020,112 @@ def test_tread_in_darkness_trashing_itself_still_draws() -> None:
     ).state
     assert drawn.players[0].hand == (drawn_card,)
     assert drawn.players[0].in_play == (bond_card,)
+
+
+# Tread in Darkness with its Bond broken by another route (OQ-028, user
+# 2026-10-28: "당연히 trash도 draw와 마찬가지로 베네게세리트 카드가 있을
+# 때만 가능한 동작"): "If you have another Bene Gesserit card in play:" gates
+# both icons, each judged when it resolves; with the Bond gone both wait
+# greyed and the turn's end is never held for them.
+
+
+def _without(state: GameState, card_id: str) -> GameState:
+    """``state`` with ``card_id`` taken out of play to the trash, by a route
+    outside Tread's own box (an Intrigue trash slot, a graft partner's box)."""
+
+    owner = state.players[0]
+    left = replace(
+        owner,
+        in_play=tuple(card for card in owner.in_play if card != card_id),
+        trashed=(*owner.trashed, card_id),
+    )
+    return replace(state, players=(left, *state.players[1:]))
+
+
+def _arrakeen_settled(engine: UprisingRulesEngine, state: GameState) -> GameState:
+    for effect in ("troops", "cards"):  # Arrakeen's own mandatory effects
+        action = DomainAction("resolve_board_effect", 0, (("effect", effect),))
+        state = apply_whole(engine, state, action).state
+    return state
+
+
+def _greyed_icons(engine: UprisingRulesEngine, state: GameState) -> set[str]:
+    found = unavailable_choices(state, 0, engine.whole_actions(state, 0))
+    rows = cast("list[dict[str, object]]", [] if found is None else found["rows"])
+    return {
+        str(row["key"]).removeprefix("choice:agent_icon:")
+        for row in rows
+        if row["code"] == "condition"
+    }
+
+
+def test_tread_in_darkness_bond_broken_elsewhere_greys_both_icons() -> None:
+    engine = UprisingRulesEngine()
+    placed, tread, bond_card = _tread_in_darkness_placed(
+        hand=(_instance("dagger"),), deck=(_instance("convincing_argument"),)
+    )
+    broken = _arrakeen_settled(engine, _without(placed, bond_card))
+    legal = engine.whole_actions(broken, 0)
+    assert not [a for a in legal if a.action_id == "trash_agent_card"]
+    assert _offered_icons(broken) == set()
+    assert _greyed_icons(engine, broken) == {"trash", "cards"}
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+    assert finish in legal
+    pressed = engine.apply(broken, finish)
+    assert {
+        (event.kind, dict(event.payload).get("effect")) for event in pressed.events
+    } >= {
+        ("agent_card_effect_unavailable", "trash"),
+        ("agent_card_effect_unavailable", "cards"),
+    }
+    assert pressed.state.players[0].trashed == (bond_card,)
+    assert tread in pressed.state.players[0].in_play
+
+
+def test_tread_in_darkness_trash_waits_when_the_bond_breaks_after_the_draw() -> None:
+    engine = UprisingRulesEngine()
+    trash_target = _instance("dagger")
+    placed, _, bond_card = _tread_in_darkness_placed(
+        hand=(trash_target,), deck=(_instance("convincing_argument"),)
+    )
+    drawn = resolve_agent_card_icon(placed, _icon_action(placed, "cards")).state
+    broken = _arrakeen_settled(engine, _without(drawn, bond_card))
+    legal = engine.whole_actions(broken, 0)
+    assert not [a for a in legal if a.action_id == "trash_agent_card"]
+    assert _greyed_icons(engine, broken) == {"trash"}
+    finish = DomainAction(action_id="finish_agent_turn", actor=0)
+    assert finish in legal
+    # The trash could have been used before the Bond broke, so the press
+    # lapses it as an unused optional effect (``box_is_optional``); user
+    # ruling 2026-10-28 (OQ-028): "쓸 수 있었는데 안 쓰고 베네게세리트 bond를
+    # 깨는 선택을 먼저 한거잖아."
+    pressed = engine.apply(broken, finish)
+    assert ("agent_card_effect_lapsed", "trash") in {
+        (event.kind, dict(event.payload).get("effect")) for event in pressed.events
+    }
+    assert trash_target in pressed.state.players[0].hand
+
+
+def test_tread_in_darkness_icons_return_when_the_bond_forms_again() -> None:
+    """Each icon is judged when it resolves, so a Bene Gesserit card back in
+    play before the press offers both again; the draw is mandatory and holds
+    the turn's end once more."""
+
+    engine = UprisingRulesEngine()
+    placed, _, bond_card = _tread_in_darkness_placed(
+        deck=(_instance("convincing_argument"),)
+    )
+    broken = _arrakeen_settled(engine, _without(placed, bond_card))
+    other = _imperium_instance("truthtrance").replace(":0", ":1")
+    owner = broken.players[0]
+    again = replace(
+        broken,
+        players=(replace(owner, in_play=(*owner.in_play, other)), *broken.players[1:]),
+    )
+    assert _offered_icons(again) == {"cards"}
+    legal = engine.whole_actions(again, 0)
+    assert [a for a in legal if a.action_id == "trash_agent_card"]
+    assert DomainAction(action_id="finish_agent_turn", actor=0) not in legal
 
 
 def test_tread_in_darkness_has_no_agent_effect_without_bond() -> None:

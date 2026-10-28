@@ -34,9 +34,11 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import (
     AcquireBlock,
     apply_acquisition_track_effects,
+    deck_top_offered,
     resolve_acquisition_bonus,
     with_pending_draw,
 )
+from dune_imperium.rules.deck_top import place_on_deck_top
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -73,7 +75,7 @@ def legal_tleilaxu_acquisitions(
     if not tleilaxu_shop_is_open(state, player):
         return ()
     owner = state.players[player]
-    deck_top_allowed = genetic_markers_reached(owner.research_space) >= 1
+    deck_top_allowed = deck_top_is_allowed(state, player)
     actions: list[DomainAction] = []
     for instance_id in state.tleilaxu_row:
         if tleilaxu_acquisition_block(owner, instance_id) is not None:
@@ -103,6 +105,18 @@ def legal_tleilaxu_acquisitions(
         if reclaimed_forces_block(owner, choice) is None
     )
     return tuple(actions)
+
+
+def deck_top_is_allowed(state: GameState, player: int) -> bool:
+    """Whether a Tleilaxu card ``player`` acquires may go on top of the deck:
+    once the first genetic marker is reached [Immortality pp. 6, 8], or while
+    Recruitment Mission is effective in their Reveal turn (``deck_top_offered``,
+    [FAQ p. 3]), which covers every card they acquire there."""
+
+    space = state.players[player].research_space
+    return (
+        bool(space) and genetic_markers_reached(space) >= 1
+    ) or deck_top_offered(state, player)
 
 
 def tleilaxu_shop_is_open(state: GameState, player: int) -> bool:
@@ -185,20 +199,19 @@ def acquire_tleilaxu_card(
     if instance_id not in state.tleilaxu_row:
         raise ValueError("the card is not in the Tleilaxu Row")
     definition = tleilaxu_card_for_instance(instance_id)
-    if (
-        to_deck_top
-        and genetic_markers_reached(state.players[player].research_space) < 1
-    ):
-        raise ValueError("the deck top needs the first genetic marker")
+    if to_deck_top and not deck_top_is_allowed(state, player):
+        raise ValueError(
+            "the deck top needs the first genetic marker or Recruitment Mission"
+        )
     owner = spend_specimens(state.players[player], definition.specimen_cost)
-    next_owner = replace(
-        owner,
-        # "you may put Tleilaxu cards you acquire on top of your deck"
-        # [Immortality p. 6]; otherwise the discard pile [Immortality p. 8].
-        deck=(instance_id, *owner.deck) if to_deck_top else owner.deck,
-        discard_pile=(
-            owner.discard_pile if to_deck_top else (*owner.discard_pile, instance_id)
-        ),
+    # "you may put Tleilaxu cards you acquire on top of your deck"
+    # [Immortality p. 6]; otherwise the discard pile [Immortality p. 8]. A
+    # card put on top is known to every seat until it is drawn or the deck
+    # is shuffled (OQ-145, ``rules.deck_top``).
+    next_owner = (
+        place_on_deck_top(owner, instance_id)
+        if to_deck_top
+        else replace(owner, discard_pile=(*owner.discard_pile, instance_id))
     )
     bonus = resolve_acquisition_bonus(state, player, instance_id, next_owner)
     next_state = refill_tleilaxu_row(
@@ -244,9 +257,10 @@ def acquire_tleilaxu_card(
             GameEvent(
                 event_id=f"{source}:{instance_id}",
                 kind="tleilaxu_card_acquired",
-                # The identity was public in the Row; the instance is named
-                # only while it stays public (the discard pile), since the
-                # deck order is hidden (OQ-010).
+                # The identity was public in the Row. The instance is named
+                # only for the discard pile: the payload is kept as it was
+                # before OQ-145 made a deck-top card public too
+                # (``rules.deck_top``), so old saves replay their events.
                 payload=(
                     ("card_id", definition.card.card_id),
                     *(() if to_deck_top else (("instance_id", instance_id),)),

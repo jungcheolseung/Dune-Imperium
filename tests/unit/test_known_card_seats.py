@@ -107,6 +107,51 @@ def test_a_peeked_deck_top_is_known_to_its_owner() -> None:
     assert glowglobes["p3:b"] == frozenset()
 
 
+def test_a_public_deck_top_wins_over_every_owner_only_peek() -> None:
+    # OQ-145: a card put face up on top of the deck is known to every seat. An
+    # owner's peek (Controlled, Glowglobes, Paul Atreides' Prescience, Long
+    # Live the Fighters' top three) must not hide it from the others again:
+    # the cards the record covers are public, the ones the peek shows below
+    # them are still the owner's alone.
+    players = list(_state().players)
+    players[1] = replace(players[1], deck_public_top=("p1:a",))
+    players[2] = replace(
+        players[2], deck_public_top=("p2:a",), leader_id="paul_atreides"
+    )
+    players[3] = replace(
+        players[3], deck_public_top=("p3:a",), tech_ids=("glowglobes",)
+    )
+    state = replace(_state(), players=tuple(players))
+
+    glowglobes = known_card_seats(state)
+    assert "p3:a" not in glowglobes
+    assert glowglobes["p3:b"] == frozenset()
+    assert peeked_card_id(state, 3) == "p3:a"  # the owner is shown it anyway
+    assert "p2:a" not in glowglobes
+    assert peeked_card_id(state, 2) == "p2:a"
+
+    controlled = known_card_seats(
+        replace(
+            state,
+            decision_stack=(
+                _frame(
+                    FrameKind.INTRIGUE_CHOICE, 1, card_id="x", peeked_card_id="p1:a"
+                ),
+            ),
+        )
+    )
+    assert "p1:a" not in controlled
+    assert controlled["p1:b"] == frozenset()
+
+    fighters = known_card_seats(
+        replace(state, decision_stack=(_frame(FrameKind.LONG_LIVE_FIGHTERS, 1),))
+    )
+    assert "p1:a" not in fighters
+    assert fighters["p1:b"] == fighters["p1:c"] == frozenset({1})
+    for seat in range(4):
+        assert observe_state(state, seat).players[1].deck_public_top == ("p1:a",)
+
+
 def test_glowglobes_shows_nothing_on_an_empty_deck() -> None:
     """"You may look at the top card of your deck at any time." [Glowglobes
     Tech tile]: an empty deck has no top card, and a look is no draw, so no

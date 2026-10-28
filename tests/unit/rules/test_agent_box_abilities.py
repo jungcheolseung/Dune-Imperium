@@ -32,6 +32,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AtFactionSpace,
     AtMakerSpace,
+    BlockChosenSpaceForOpponentsNextAgent,
     CompleteContract,
     DiscardedCardHasFaction,
     DiscardFromHand,
@@ -49,6 +50,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GraftedWithFaction,
     HasAlliance,
     InfluenceAtLeast,
+    LoseInfluence,
     OpponentsMoveSpiesFromVisitedSpace,
     PayResources,
     PlaceSpy,
@@ -94,6 +96,8 @@ from dune_imperium.rules.agent_box_abilities import (
     discard_spy,
     either_box,
     graft_trash_box,
+    influence_loss_box,
+    influence_loss_spice,
     intrigue_box,
     lose_box,
     opens_at_placement,
@@ -108,6 +112,7 @@ from dune_imperium.rules.agent_box_abilities import (
 )
 from dune_imperium.rules.agent_effects import (
     AGENT_ICON_CARDS,
+    AGENT_ICON_INFLUENCE,
     AGENT_ICON_INTRIGUE,
     AGENT_ICON_PLEDGE,
     AGENT_ICON_RESEARCH,
@@ -159,8 +164,14 @@ _BOX = PersonalCardAgentEffect
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
-    # 103 Uprising-family boxes and the original game's Foldspace.
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1
+    # 103 Uprising-family boxes, the original game's Foldspace and the
+    # original Imperium cards' new boxes (stage P3: Arrakis Recruiter, Spice
+    # Smugglers, Gun Thopter, Crysknife, Duncan Idaho, Fremen Camp, Opulence,
+    # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
+    # Imperial Spy, Missionaria Protectiva, Gene Manipulation, Reverend Mother
+    # Mohiam, Carryall, Test of Humanity, Firm Grip, Shifting Allegiances,
+    # Other Memory, The Voice, and the promos Thumper and Jessica of Arrakis).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -202,6 +213,14 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         # The original game's Foldspace: "Draw 1 card" and "Trash this card",
         # separate effects (imperium-base.md 13.3).
         _BOX.DRAW_ONE_AND_TRASH_SELF: ("cards", "trash_self"),
+        # Smuggler's Thopter: two draw icons behind one Influence line.
+        _BOX.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO: ("cards", "cards_second"),
+        # Gurney Halleck: the two troops and the card, separate icons.
+        _BOX.RECRUIT_TWO_AND_DRAW_ONE: ("troops", "cards"),
+        # Gene Manipulation: a black trash icon and the Bond's spice icon.
+        _BOX.MAY_TRASH_AND_GAIN_TWO_SPICE_IF_BENE_GESSERIT_BOND: ("trash", "spice"),
+        # Jessica of Arrakis (promo): two draw icons behind one Bond.
+        _BOX.DRAW_TWO_IF_BENE_GESSERIT_BOND: ("cards", "cards_second"),
     }
     for effect, ability in AGENT_BOX_ABILITIES.items():
         if not ability.icons:
@@ -608,9 +627,14 @@ def test_a_payment_that_buys_nothing_is_withheld() -> None:
 
 
 def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
-    """The payment shape takes the five records it was written for (Control
-    the Spice since cleanup-2d), and refuses a record it would pay wrongly
-    (a reward it does not give, a cost no row names): such a box keeps its
+    """The payment shape takes the nine records it was written for (Control
+    the Spice since cleanup-2d, the original game's Spice Smugglers since
+    stage P3, whose reward is one fixed Faction's Influence, its Duncan
+    Idaho, whose troop and draw wait as armed icons, its Fremen Camp, and its
+    Firm Grip, whose Influence of three named Factions waits as an armed
+    icon), and refuses a
+    record it would pay wrongly (a reward it does not give -- a chosen or the
+    visited Faction's Influence --, a cost no row names): such a box keeps its
     own code."""
 
     payments = {
@@ -624,10 +648,16 @@ def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
         _BOX.MAY_PAY_SPECIMEN_FOR_FOUR_SOLARI,
         _BOX.MAY_PAY_TWO_SPECIMENS_FOR_TWO_TLEILAXU,
         _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT,
+        _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI,
+        _BOX.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE,
+        _BOX.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS,
+        _BOX.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE,
     }
     for cost, rewards in (
         (PayResources(spice=1), (GainInfluence(),)),
-        (PayResources(solari=5), (AdvanceTleilaxu(1),)),
+        (PayResources(spice=1), (GainInfluence(visited_space=True),)),
+        # Solari alone has a row since Firm Grip (stage P3); a mixed cost has none.
+        (PayResources(solari=1, spice=1), (AdvanceTleilaxu(1),)),
     ):
         optional = Ability(
             AbilityTiming.AGENT_BOX,
@@ -714,6 +744,12 @@ def test_seven_boxes_choose_one_target_and_read_as_their_cards() -> None:
         _BOX.FORCE_OPPONENT_TROOP_RETREAT: ForceEnemyRetreat,
         _BOX.COMPLETE_ONE_CONTRACT: CompleteContract,
         _BOX.GAIN_TWO_DISTINCT_CHOSEN_INFLUENCE: GainInfluence,
+        # Missionaria Protectiva (the original game, stage P3).
+        _BOX.GAIN_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_BOND: GainInfluence,
+        # The Voice (the original game, stage P3): "Choose any board space".
+        _BOX.BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT: (
+            BlockChosenSpaceForOpponentsNextAgent
+        ),
     }
     for effect in (
         _BOX.PLACE_SPY,
@@ -924,6 +960,9 @@ def test_six_trash_boxes_and_what_they_read_as() -> None:
         _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE,
         _BOX.MAY_TRASH_HAND_CARD_FOR_EMPEROR_REWARDS,
         _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE,
+        # The original game's Imperial Spy (stage P3): Pivotal Gambit's shape
+        # with an armed Intrigue draw.
+        _BOX.MAY_TRASH_SELF_TO_DRAW_INTRIGUE,
     }
     treacherous = _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
     hand = TrashCard(hand_only=True, faction=Faction.EMPEROR)
@@ -1015,13 +1054,25 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     # Guild Envoy's two cards: the icon path reads an armed line's count
     # (engine audit 2026-10-22, P6).
     envoy = _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD
+    # The original game's Duncan Idaho (stage P3): a paid arrow arming the
+    # same troop and card icons.
+    duncan = _BOX.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE
+    # Imperial Spy: the card trashes itself, then the armed Intrigue draw.
+    spy = _BOX.MAY_TRASH_SELF_TO_DRAW_INTRIGUE
+    # The original game's Firm Grip: a paid arrow arming a chosen Faction's
+    # Influence, answered by ``choose_agent_card_influence``.
+    grip = _BOX.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE
+    # Shifting Allegiances: the Influence lost and the spice are the cost, the
+    # one Faction's two Influence is the same armed icon.
+    shifting = _BOX.MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE
     assert users == {
-        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite},
-        AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy},
+        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy},
+        AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy, duncan},
         AGENT_ICON_SPICE: {branching},
-        AGENT_ICON_TROOPS: {gambit, elite},
+        AGENT_ICON_TROOPS: {gambit, elite, duncan},
         AGENT_ICON_PLEDGE: {gambit},
         AGENT_ICON_RESEARCH: {piter},
+        AGENT_ICON_INFLUENCE: {grip, shifting},
     }
 
 
@@ -1105,6 +1156,44 @@ def test_piter_loses_a_unit_then_arms_its_rewards() -> None:
         resolve_agent_card_effect(bare)
 
 
+def test_shifting_allegiances_is_the_one_influence_loss_arrow() -> None:
+    """Stage P3b: "[lose 1 Influence with a chosen Faction] [2 spice] -> [2
+    Influence with one chosen Faction]" is an optional arrow whose cost is the
+    loss and the spice and whose reward waits as the armed "influence" icon;
+    no payment, loss or other shape claims it, and a cost or reward it would
+    pay wrongly is no such arrow."""
+
+    effect = _BOX.MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE
+    shifting = AGENT_BOX_ABILITIES[effect]
+    assert {
+        found
+        for found, ability in AGENT_BOX_ABILITIES.items()
+        if influence_loss_box(ability)
+    } == {effect}
+    assert shifting.mark is AbilityMark.OPTIONAL and shifting.hook is None
+    assert shifting.armed_icons == (AGENT_ICON_INFLUENCE,)
+    (line,) = shifting.sections
+    assert line.costs == (LoseInfluence(1), PayResources(spice=2))
+    assert line.rewards == (GainInfluence(times=2, one_faction=True),)
+    assert influence_loss_spice(shifting) == 2
+    assert not payment_box(shifting) and not lose_box(shifting)
+    assert not optional_arrow(shifting) and target_piece(shifting) is None
+    for costs, rewards in (
+        ((LoseInfluence(1), PayResources(solari=2)), line.rewards),
+        ((LoseInfluence(2), PayResources(spice=2)), line.rewards),
+        ((PayResources(spice=2),), line.rewards),
+        (line.costs, (GainInfluence(times=2, distinct=True),)),
+    ):
+        other = Ability(
+            AbilityTiming.AGENT_BOX,
+            (EffectSection(rewards=rewards, costs=costs),),
+            mark=AbilityMark.OPTIONAL,
+            armed_icons=(AGENT_ICON_INFLUENCE,),
+        )
+        assert not influence_loss_box(other)
+    assert "Gain 2 Influence with one" in AGENT_EFFECT_TEXT[effect]
+
+
 def test_control_the_spice_is_a_payment_box() -> None:
     """Control the Spice's arrow is the payment shape's since cleanup-2d:
     the troop now, the black trash icon on a frame of its own
@@ -1120,7 +1209,8 @@ def test_control_the_spice_is_a_payment_box() -> None:
 
 
 def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
-    """Composed A3f: Southern Faith and High Priority Travel ("Choose one").
+    """Composed A3f: Southern Faith and High Priority Travel ("Choose one"), and
+    Guild Ambassador's and Other Memory's "-OR-" (stages P3, P3b).
     The plain line resolves as one action; Possible Futures, whose Bond
     turns its choice into both, is a hook. Interstellar Conspiracy, a plain
     line then a conditioned choice that once paid both, resolves icon by
@@ -1138,6 +1228,12 @@ def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
         _BOX.DRAW_ONE_OR_COMBAT_ICON_IF_SPACING_GUILD_INFLUENCE_TWO: (
             AbilityStructure.ONE_OF
         ),
+        # Guild Ambassador (the original game, stage P3): the 2 spice beside a
+        # fixed Faction's Influence, the choice line printed under no condition.
+        _BOX.GAIN_SPACING_GUILD_INFLUENCE_OR_TWO_SPICE: AbilityStructure.ONE_OF,
+        # Other Memory (stage P3b): the draw beside a Bene Gesserit card taken
+        # from the discard pile, the choice line offered only with one there.
+        _BOX.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD: AbilityStructure.ONE_OF,
     }
     assert AGENT_BOX_ABILITIES[conspiracy].icons == ("spice", "influence")
     futures = AGENT_BOX_ABILITIES[_BOX.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND]

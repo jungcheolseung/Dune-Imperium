@@ -96,6 +96,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    OnConflictWon,
     OnTroopsLostAtConflictEnd,
     PlaceSpy,
     RecallSpy,
@@ -751,12 +752,17 @@ def _old_option_is_playable(
             for section in option.sections
         )
     sections = applicable_sections(state, player, option)
-    if option.trigger is not None:
+    if option.trigger is not None and not isinstance(option.trigger, OnConflictWon):
         # Updated on purpose 2026-10-24 (user ruling, OQ-113 (C)): a
         # triggered option is played whenever a section applies, even when
         # its firing can change nothing (Call to Arms' troop, a Reveal turn
         # with nothing left to acquire) -- a rule change made after the copy.
         return bool(sections)
+    # Updated on purpose 2026-10-28 (stage P3c, OQ-121 decision 6): a winning
+    # Intrigue ("When you win a Conflict:", the original game's To the
+    # Victor... and Demand Respect) is played from the hand in the sole
+    # winner's window, so it meets the cost and the live reward like any
+    # other played card; only a card waiting face up skips them.
     # Updated on purpose 2026-10-03 (codec v129, OQ-016): Coercive
     # Negotiation is no longer a face-up trigger but a Plot whose condition
     # is this turn's deployment, so its Contract-bank check (OQ-064) moved
@@ -802,6 +808,11 @@ def _old_intrigue_plays(state: GameState, player: int) -> tuple[DomainAction, ..
             # 2026-10-06, OQ-057 (11)): a rule change made on purpose after
             # the copy.
             if isinstance(option.trigger, OnTroopsLostAtConflictEnd):
+                continue
+            # A winning Intrigue only in the sole winner's reward window
+            # (stage P3c, OQ-121 decision 6): a rule change made on purpose
+            # after the copy, whose rounds are the only Combat window it knew.
+            if isinstance(option.trigger, OnConflictWon):
                 continue
             if option.timing is not timing:
                 continue
@@ -1628,6 +1639,25 @@ def _old_icon_condition_holds(
             return len(owner.completed_contract_ids) >= 2
         if key == "cards_second":
             return len(owner.completed_contract_ids) >= 4
+    # 2026-10-28 (the original game, stage P3): Smuggler's Thopter's two draw
+    # icons, each judged at 2 Spacing Guild Influence.
+    if (
+        effect is PersonalCardAgentEffect.DRAW_TWO_IF_SPACING_GUILD_INFLUENCE_TWO
+        and key in ("cards", "cards_second")
+    ):
+        return owner.influence.spacing_guild >= 2
+    # 2026-10-28 (the original game's promo Jessica of Arrakis, stage P3): two
+    # draw icons, each judging the Bene Gesserit Bond.
+    if (
+        effect is PersonalCardAgentEffect.DRAW_TWO_IF_BENE_GESSERIT_BOND
+        and key in ("cards", "cards_second")
+    ):
+        card_id = context.get("card_id")
+        return has_faction_bond(
+            counted_in_play(owner),
+            card_id if isinstance(card_id, str) else "",
+            Faction.BENE_GESSERIT,
+        )
     if key == "cards_second":
         return False
     # Stillsuit Manufacturer's water and its Fremen Alliance return.

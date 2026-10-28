@@ -12,7 +12,11 @@ from typing import Any
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
-from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
+from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.uprising.imperium import (
+    imperium_card_for_instance,
+    imperium_deck_instance_ids,
+)
 from dune_imperium.core import (
     ChanceDecision,
     ChanceResolver,
@@ -166,8 +170,9 @@ def test_ruthless_negotiator_draws_when_solari_pay_a_space_s_cost() -> None:
 
 def test_ruthless_negotiator_ignores_a_cost_paid_in_spice_or_water() -> None:
     engine, state = _start("count_ilban_richese")
-    state = _seat(state, resources=Resources(spice=4))
-    placed = _place(engine, state, "conspire")
+    # Diplomacy reaches the Emperor space whatever the shuffle dealt.
+    state = _seat(_with_card(state, "diplomacy"), resources=Resources(spice=4))
+    placed = _place(engine, state, "conspire", "diplomacy")
     assert placed.players[0].owed_draws == ()
 
 
@@ -185,7 +190,7 @@ def test_connections_gives_a_chosen_influence_with_the_high_council_seat() -> No
     # of the owner's choice (imperium-base.md 12).
     engine, state = _start("earl_memnon_thorvald")
     state = _seat(_with_card(state, "dagger"), resources=Resources(solari=5))
-    placed = _place(engine, state, "imperium_high_council")
+    placed = _place(engine, state, "imperium_high_council", "dagger")
     seated = _do(engine, placed, "resolve_board_effect", effect="high_council")
     assert seated.players[0].high_council is True
     factions = {
@@ -210,7 +215,7 @@ def test_connections_with_every_faction_at_the_top_lapses() -> None:
         resources=Resources(solari=5),
         influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
     )
-    placed = _place(engine, state, "imperium_high_council")
+    placed = _place(engine, state, "imperium_high_council", "dagger")
     seated = _do(engine, placed, "resolve_board_effect", effect="high_council")
     assert "choose_connections_influence" not in _ids(engine, seated)
     assert legal_agent_turn_finish_actions(seated, 0)
@@ -364,10 +369,11 @@ def test_eyes_everywhere_ignores_opponents_on_landsraad_and_city_spaces() -> Non
 
 
 def test_manipulate_with_an_empty_row_is_confirmed() -> None:
-    # The original game's Row is empty until stage P3: the set-aside fizzles
-    # and is confirmed, as the Intrigue card's (OQ-113 (C), [FAQ p. 3]).
+    # With an empty Row (the original game's was until stage P3 put cards in
+    # its deck) the set-aside fizzles and is confirmed, as the Intrigue
+    # card's (OQ-113 (C), [FAQ p. 3]).
     engine, state = _start("helena_richese")
-    state = _with_card(state, "signet_ring")
+    state = replace(_with_card(state, "signet_ring"), imperium_row=(), imperium_deck=())
     placed = _place(engine, state, "secure_contract", "signet_ring")
     assert "set_aside_leader_imperium" not in _ids(engine, placed)
     confirmed = _do(engine, placed, "resolve_leader_signet_without_option")
@@ -563,9 +569,11 @@ def test_masterstroke_gains_nothing_with_a_faction_at_the_top() -> None:
 def test_scheme_buys_an_intrigue_card_only_when_one_can_be_drawn() -> None:
     # "Scheme: 1 Solari → Intrigue 1" (imperium-base.md 12), an arrow [FAQ
     # p. 3]; "비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다" (section
-    # 16, OQ-071): the original Intrigue deck is empty until stage P3.
+    # 16, OQ-071): with no Intrigue card to draw it is not offered (the
+    # original deck was empty until stage P3 put cards in it).
     engine, state = _start_baron()
     state = _seat(_with_card(state, "signet_ring"), resources=Resources(solari=1))
+    state = replace(state, intrigue_deck=(), intrigue_discard=())
     placed = _place(engine, state, "secure_contract", "signet_ring")
     assert "pay_leader_signet_solari" not in _ids(engine, placed)
     stocked = replace(placed, intrigue_deck=("intrigue:0",))
@@ -573,3 +581,156 @@ def test_scheme_buys_an_intrigue_card_only_when_one_can_be_drawn() -> None:
     paid = _do(engine, stocked, "pay_leader_signet_solari")
     assert paid.players[0].resources.solari == 0
     assert paid.players[0].intrigue_cards == ("intrigue:0",)
+
+
+# --- Carried over from stage P2 (docs/base-game-and-ix-plan.md 16.5) ---------
+
+
+def test_manipulate_sets_aside_a_card_of_the_original_row() -> None:
+    # Plan 16.5: with stage P3's deck the Row is full. "Imperium Row 카드
+    # 하나를 치우고 채움" (imperium-base.md 12): the set-aside card's place is
+    # filled from the top of the original Imperium deck.
+    engine, state = _start("helena_richese")
+    row, deck = state.imperium_row, state.imperium_deck
+    assert len(row) == 5 and deck
+    original = set(content_for(CONFIG).imperium_deck_instance_ids)
+    assert {*row, deck[0]} <= original
+    placed = _place(
+        engine, _with_card(state, "signet_ring"), "secure_contract", "signet_ring"
+    )
+    taken = _do(engine, placed, "set_aside_leader_imperium", instance_id=row[2])
+    assert taken.players[0].imperium_set_aside == (row[2],)
+    assert taken.imperium_row == (*row[:2], deck[0], *row[3:])
+    assert taken.imperium_deck == deck[1:]
+
+
+def _helena_revealed(persuasion: int) -> tuple[UprisingRulesEngine, GameState, str]:
+    """Helena mid-Reveal later in the round, a Row card set aside for her by
+    Manipulate, with ``persuasion`` to spend."""
+
+    engine, state = _start("helena_richese")
+    card = state.imperium_row[0]
+    state = _seat(
+        replace(state, imperium_row=state.imperium_row[1:]),
+        imperium_set_aside=(card,),
+    )
+    revealed = _do(engine, state, "reveal_turn")
+    frame = revealed.decision_stack[-1]
+    context = dict(frame.context)
+    context["persuasion"] = persuasion
+    frame = replace(frame, context=tuple(sorted(context.items())))
+    return (
+        engine,
+        replace(revealed, decision_stack=(*revealed.decision_stack[:-1], frame)),
+        card,
+    )
+
+
+def test_helena_buys_her_set_aside_card_for_one_persuasion_less() -> None:
+    # Plan 16.5: "나중에 사기". "이번 라운드 Reveal turn에 치운 카드를
+    # Persuasion 1 적게 획득 가능 | Manipulate는 Uprising Intrigue와 같은 판정
+    # [FAQ p. 3]" (imperium-base.md 12).
+    probe_engine, probe, card = _helena_revealed(0)
+    cost = imperium_card_for_instance(card).acquisition_cost
+    assert cost is not None and cost >= 2
+    _, short, _ = _helena_revealed(cost - 2)
+    assert "acquire_manipulated_imperium" not in _ids(probe_engine, short)
+    engine, revealed, card = _helena_revealed(cost - 1)
+    bought = _do(engine, revealed, "acquire_manipulated_imperium", instance_id=card)
+    owner = bought.players[0]
+    assert owner.imperium_set_aside == ()
+    assert card in owner.discard_pile
+    assert dict(bought.decision_stack[-1].context)["persuasion"] == 0
+
+
+def test_an_unbought_set_aside_card_leaves_the_game_after_her_reveal() -> None:
+    # "다음 Reveal turn 끝까지 얻지 않으면 게임에서 제거한다" [FAQ p. 3]
+    # (official-rulings-index.md, Manipulate).
+    engine, revealed, card = _helena_revealed(0)
+    finished = _do(engine, revealed, "finish_reveal")
+    assert finished.players[0].imperium_set_aside == ()
+    assert card in finished.imperium_removed
+
+
+def test_scheme_draws_the_top_card_of_the_original_intrigue_deck() -> None:
+    # Plan 16.5: "Scheme: 1 Solari → Intrigue 1" (imperium-base.md 12) with
+    # stage P3's Intrigue deck in play.
+    engine, state = _start_baron()
+    deck = state.intrigue_deck
+    assert deck and set(deck) <= set(content_for(CONFIG).intrigue_deck_instance_ids)
+    state = _seat(_with_card(state, "signet_ring"), resources=Resources(solari=1))
+    placed = _place(engine, state, "secure_contract", "signet_ring")
+    paid = _do(engine, placed, "pay_leader_signet_solari")
+    assert paid.players[0].resources.solari == 0
+    assert paid.players[0].intrigue_cards[-1] == deck[0]
+    assert paid.intrigue_deck == deck[1:]
+
+
+def test_scheme_with_an_empty_deck_shuffles_the_intrigue_discard() -> None:
+    # Plan 16.5: the discard-pile path. With the deck empty a card can still
+    # be drawn from the shuffled discard pile, so the arrow is offered (OQ-071
+    # needs a reward that can change something) and the draw shuffles first.
+    engine, state = _start_baron()
+    discard = state.intrigue_deck[:3]
+    state = _seat(_with_card(state, "signet_ring"), resources=Resources(solari=1))
+    state = replace(state, intrigue_deck=(), intrigue_discard=discard)
+    placed = _place(engine, state, "secure_contract", "signet_ring")
+    assert "pay_leader_signet_solari" in _ids(engine, placed)
+    paid = _do(engine, placed, "pay_leader_signet_solari")
+    chance = ChanceResolver(seed=5)
+    while isinstance(decision := engine.current_decision(paid), ChanceDecision):
+        paid = engine.apply(paid, chance.resolve(decision)).state
+    owner = paid.players[0]
+    assert owner.resources.solari == 0
+    assert len(owner.intrigue_cards) == 1 and owner.intrigue_cards[0] in discard
+    assert paid.intrigue_discard == ()
+    assert sorted((*paid.intrigue_deck, *owner.intrigue_cards)) == sorted(discard)
+
+
+def test_masterstroke_counts_p3_cards_deploying_in_his_reveal_turn() -> None:
+    # Plan 16.5 / OQ-115: "기존 배치 조건의 문턱 4" -- troops deployed this
+    # turn, whatever deploys them. Reinforcements deploys the three it
+    # recruited in his Reveal turn (OQ-140) and Gun Thopter's Reveal one more
+    # from the garrison: four, and the secret Factions are revealed.
+    engine, state = _start_baron(("emperor", "fremen"))
+    reinforcements = "intrigue:reinforcements:0"
+    owner = state.players[0]
+    thopter = next(card for card in state.imperium_deck if ":gun_thopter:" in card)
+    state = _seat(
+        replace(
+            state, imperium_deck=tuple(c for c in state.imperium_deck if c != thopter)
+        ),
+        hand=(thopter,),
+        deck=(*owner.hand, *owner.deck),
+        intrigue_cards=(reinforcements,),
+        resources=Resources(solari=3),
+    )
+    revealed = _do(engine, state, "reveal_turn")
+    played = _do(engine, revealed, "play_intrigue", card_id=reinforcements)
+    three = engine.apply(
+        played, DomainAction("deploy_troops", 0, (("count", 3),))
+    ).state
+    assert three.players[0].units_deployed_turn == 3
+    assert three.players[0].masterstroke_revealed is False
+    four = _do(engine, three, "deploy_reveal_card_troop")
+    baron = four.players[0]
+    assert baron.units_deployed_turn == 4
+    assert baron.masterstroke_revealed is True
+    assert baron.influence.emperor == 1 and baron.influence.fremen == 1
+
+
+def test_masterstroke_counts_rapid_mobilization() -> None:
+    # Plan 16.5: a Plot deploying from the garrison is a deployment this turn
+    # (OQ-115), four at once reveal the Factions.
+    engine, state = _start_baron(("spacing_guild", "bene_gesserit"))
+    mobilization = "intrigue:rapid_mobilization:0"
+    state = _seat(
+        state, intrigue_cards=(mobilization,), troops_garrison=4, troops_supply=8
+    )
+    opened = _do(engine, state, "play_intrigue", card_id=mobilization)
+    deployed = apply_whole(
+        engine, opened, DomainAction("deploy_intrigue_troops", 0, (("count", 4),))
+    ).state
+    baron = deployed.players[0]
+    assert baron.units_deployed_turn == 4
+    assert baron.masterstroke_revealed is True

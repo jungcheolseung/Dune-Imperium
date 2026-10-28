@@ -1,12 +1,14 @@
 """Replayable personal-deck draw and discard reshuffle transitions."""
 
 from copy import replace
+from typing import Final
 
 from dune_imperium.core.chance import ChanceOutcome
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.deck_top import clear_deck_top
 from dune_imperium.rules.frames import FrameKind, reveal_is_open_for
 from dune_imperium.rules.reveal_turn import reveal_late_arrivals
 
@@ -73,6 +75,60 @@ def draw_or_request_personal_cards(
     return _draw_available(state, player, count, source)
 
 
+# The context key of a reshuffle that shuffles the deck along with the discard
+# pile (Refocus); absent from every draw's own reshuffle, which only shuffles
+# the discard pile beneath an exhausted deck.
+SHUFFLE_DECK_KEY: Final = "shuffle_deck"
+
+
+def shuffle_discard_into_deck(
+    state: GameState,
+    player: int,
+    draw: int,
+    *,
+    source: str,
+) -> RuleResult:
+    """Shuffle ``player``'s discard pile into the deck, then draw ``draw`` cards.
+
+    "Shuffle your discard pile into your deck, then: [draw 1]" [Refocus
+    card, app text]: the deck and the discard pile become one shuffled deck,
+    so an empty discard pile still shuffles the deck [FAQ p. 3]. The shuffle
+    is a chance step on the personal-draw frame, carrying the deck as well as
+    the discard pile and the cards to draw once it resolves (docs/rules/
+    imperium-base.md 14: nobody learns an order). With neither pile holding a
+    card there is nothing to shuffle or draw.
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("shuffle player must identify a configured seat")
+    if draw < 1:
+        raise ValueError("a shuffle then draws at least one card")
+    if not source:
+        raise ValueError("personal card shuffle source must not be empty")
+    owner = state.players[player]
+    pile = (*owner.deck, *owner.discard_pile)
+    if not pile:
+        return RuleResult(state=state)
+    decision_id = f"{source}:discard_shuffle"
+    frame = DecisionFrame(
+        kind=FrameKind.PERSONAL_DRAW_RESHUFFLE,
+        frame_id=f"{decision_id}:personal_draw",
+        decision=ChanceDecision(
+            decision_id=decision_id,
+            prompt=f"Shuffle player {player}'s discard pile into the deck",
+            options=pile,
+            count=len(pile),
+        ),
+        context=(
+            ("count", draw),
+            ("player", player),
+            (SHUFFLE_DECK_KEY, True),
+            ("source", source),
+        ),
+    )
+    return RuleResult(state=state.push_decision(frame))
+
+
 def apply_personal_draw_reshuffle(
     state: GameState,
     outcome: ChanceOutcome,
@@ -100,11 +156,18 @@ def apply_personal_draw_reshuffle(
         raise RuntimeError("personal draw reshuffle has invalid context")
 
     owner = state.players[player]
+    whole_deck = context.get(SHUFFLE_DECK_KEY) is True
+    # Refocus's permutation is the whole new deck, so no card of it is known
+    # on top any more (OQ-145); a draw's own reshuffle puts the shuffled
+    # discard pile beneath the cards the deck still holds, which keep their
+    # public top (``rules.deck_top``).
     next_owner = replace(
         owner,
-        deck=(*owner.deck, *outcome.values),
+        deck=outcome.values if whole_deck else (*owner.deck, *outcome.values),
         discard_pile=(),
     )
+    if whole_deck:
+        next_owner = clear_deck_top(next_owner)
     players = tuple(
         next_owner if candidate.player_id == player else candidate
         for candidate in state.players
@@ -116,7 +179,13 @@ def apply_personal_draw_reshuffle(
     event = GameEvent(
         event_id=f"{source}:discard_shuffled",
         kind="personal_discard_shuffled",
-        payload=(("count", len(outcome.values)), ("player", player)),
+        payload=(
+            (
+                "count",
+                len(owner.discard_pile) if whole_deck else len(outcome.values),
+            ),
+            ("player", player),
+        ),
     )
     return RuleResult(state=drawn.state, events=(event, *drawn.events))
 

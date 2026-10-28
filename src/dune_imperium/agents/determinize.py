@@ -132,20 +132,31 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
     for seat, player in enumerate(players):
         if seat == observer:
             # Glowglobes, Controlled's peek and an open Long Live the Fighters
-            # pick show the observer the top card(s), which stay in place.
-            top = list(player.deck[: known_top_card_count(state, observer)])
+            # pick show the observer the top card(s), and cards put face up
+            # on top of the deck are known to every seat (OQ-145): they stay
+            # in place.
+            top = list(
+                player.deck[
+                    : max(
+                        len(player.deck_public_top),
+                        known_top_card_count(state, observer),
+                    )
+                ]
+            )
             own_deck = list(player.deck[len(top) :])
             rng.shuffle(own_deck)
             players[seat] = replace(player, deck=(*top, *own_deck))
             continue
-        # Hand cards that entered the hand publicly stay known (OQ-010);
-        # the face-down draws and the deck are one unknown pool.
+        # Hand cards that entered the hand publicly stay known (OQ-010) and
+        # so do the deck's public top cards (OQ-145); the face-down draws and
+        # the rest of the deck are one unknown pool.
         known = frozenset(player.hand_public)
         secret_hand = [card for card in player.hand if card not in known]
-        pool = [*secret_hand, *player.deck]
+        public_top = player.deck_public_top
+        pool = [*secret_hand, *player.deck[len(public_top) :]]
         rng.shuffle(pool)
         hand = (*player.hand_public, *pool[: len(secret_hand)])
-        deck = tuple(pool[len(secret_hand) :])
+        deck = (*public_top, *pool[len(secret_hand) :])
         # A played Intrigue is public while its choices resolve; the rest of
         # an opponent's hand is indistinguishable from the deck.
         intrigue_pool.extend(

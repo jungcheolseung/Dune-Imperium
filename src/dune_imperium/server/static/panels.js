@@ -355,6 +355,15 @@ function renderSeats() {
        spaces: the panel no longer repeats them (play feedback 2026-10-26). */
     const flags = [];
     if (player.swordmaster_acquired) flags.push(tNode("panels.swordmaster"));
+    /* The original game's Mentat, where the screen puts it (mentatSpace). */
+    if (player.mentat) {
+      const space = mentatSpace(player);
+      flags.push(
+        tNode("panels.mentat_at", {
+          where: space ? spaceName(space) : t("panels.mentat_on_leader"),
+        })
+      );
+    }
     if (player.has_revealed) flags.push(tNode("panels.revealed"));
     /* Bloodlines Leader state: Piter's Twisted deck. Chani's Tactics space,
        Y'rkoon's Navigation cards and Kota's Secret Project tile are drawn
@@ -548,6 +557,18 @@ function renderSeats() {
       strong.textContent = t("panels.hand_public_label");
       line.appendChild(strong);
       for (const id of player.hand_public) line.appendChild(chip(id));
+      detail.appendChild(line);
+    }
+    /* Cards put face up on top of the deck (Bypass Protocol, Recruitment
+       Mission, a Tleilaxu card) are known to every seat until drawn or
+       shuffled, top first (OQ-145, core/observation.py). */
+    if ((player.deck_public_top || []).length) {
+      const line = document.createElement("div");
+      line.className = "cardline deck-public-top";
+      const strong = document.createElement("strong");
+      strong.textContent = t("panels.deck_public_top_label");
+      line.appendChild(strong);
+      for (const id of player.deck_public_top) line.appendChild(chip(id));
       detail.appendChild(line);
     }
     if (view.intrigue_resolving.length && view.decision_owner === player.player) {
@@ -971,17 +992,22 @@ function pileListContent(piles) {
 
 /* The deck list's cards and its marked top card, as the hand strip's deck
    count reads them: `deck_cards` (sorted by card id, OQ-010 ruling 5) and
-   the top card only when `peeked_card_id` names one of them (Glowglobes at
-   any time, Controlled while its choice is up; core/observation.py), with
-   the name of what shows it. */
+   the top card only when `peeked_card_id` names one of them (Glowglobes or
+   the original Paul Atreides' Prescience at any time, Controlled while its
+   choice is up; core/observation.py), with the name of what shows it -- or,
+   with no such peek, a card put face up on top of the deck, which every
+   seat knows (`deck_public_top`, OQ-145; `source` is then null). */
 function deckListState(view) {
   const own = view.players[view.player];
   const deckCards = view.private.deck_cards || [];
   const peeked = view.private.peeked_card_id || "";
   const glowglobes = (own.tech_ids || []).includes("glowglobes");
+  const publicTop = (own.deck_public_top || [])[0] || "";
   const top = peeked && deckCards.includes(peeked)
-    ? { id: peeked, source: deckTopSource(glowglobes) }
-    : null;
+    ? { id: peeked, source: deckTopSource(glowglobes, own.leader_id) }
+    : publicTop && deckCards.includes(publicTop)
+      ? { id: publicTop, source: null }
+      : null;
   return { deckCards, top };
 }
 
@@ -1044,7 +1070,9 @@ function deckListContent(key, view) {
   if (topId) {
     const topNote = document.createElement("div");
     topNote.className = "popover-note deck-top-note";
-    topNote.textContent = t("panels.deck_list_top_note", { source: top.source });
+    topNote.textContent = top.source
+      ? t("panels.deck_list_top_note", { source: top.source })
+      : t("panels.deck_list_public_top_note");
     notes.push(topNote);
   }
   const pin = (entry, card) => {
@@ -2434,15 +2462,18 @@ function renderLog() {
 
 /* ---------- own hand ---------- */
 
-/* Controlled's choice on the deck's top card (rules/intrigue.py, the
-   PeekTopCard choice): these actions are offered exactly while that choice
-   is up for the seat. Their live buttons name the card the seat is looking
-   at (deckTopChoiceLabel, the text keyed here); the logged step keeps its
-   plain label (ACTION_LABELS), since the log is everyone's to read. */
+/* Controlled's and Poison Snooper's choice on the deck's top card
+   (rules/intrigue.py, the PeekTopCard choice): these actions are offered
+   exactly while that choice is up for the seat. Their live buttons name the
+   card the seat is looking at (deckTopChoiceLabel, the text keyed here); the
+   logged step keeps its plain label (ACTION_LABELS), since the log is
+   everyone's to read. */
 const DECK_TOP_CHOICE_TEXT = {
   put_back_top_card: "panels.deck_top_put_back",
   discard_top_card: "panels.deck_top_discard",
   draw_top_card_for_solari: "panels.deck_top_draw",
+  draw_top_card: "panels.deck_top_draw_free",
+  trash_top_card: "panels.deck_top_trash",
 };
 const DECK_TOP_CHOICES = new Set(Object.keys(DECK_TOP_CHOICE_TEXT));
 
@@ -2492,7 +2523,27 @@ function deckTopChoicePicture() {
 /* What shows the seat its deck's top card, by its name on screen: the
    Glowglobes tile it owns, or else Controlled (the one Intrigue that peeks
    at a deck, content/uprising/intrigue.py). */
-function deckTopSource(glowglobes) {
+/* The original game's Mentat held by `player` this round: the engine does
+   not tell it from the seat's own Agents (OQ-139 (가)), so the screen draws
+   it by rule (user ruling 2026-10-28, "(가) 로 하자"): the last piece the seat
+   placed beyond its own Agents (two, three with the Swordmaster) is the
+   Mentat; with no such piece it stands on the Leader (""). A Kwisatz
+   Haderach move puts the moved piece last, Urgent Mission's recall takes
+   one off, and Recall returns the Mentat to its space (not held). */
+function mentatSpace(player) {
+  if (!player.mentat) return null;
+  const own = 2 + (player.swordmaster_acquired ? 1 : 0);
+  const placed = player.agent_locations || [];
+  return placed.length > own ? placed[placed.length - 1] : "";
+}
+
+function deckTopSource(glowglobes, leaderId) {
+  if (!glowglobes && leaderId === "paul_atreides") {
+    /* Prescience: "자기 덱 맨 위 카드를 언제든 볼 수 있다" (imperium-base.md
+       12), named by its Leader. */
+    const leader = lookup("paul_atreides", "leaders");
+    return leader ? leader.name : prettify("paul_atreides");
+  }
   const id = glowglobes ? "glowglobes" : "twisted_controlled";
   const entry = lookup(id, glowglobes ? "tech" : "intrigue");
   return entry ? entry.name : prettify(id);

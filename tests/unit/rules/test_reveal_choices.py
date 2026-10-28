@@ -145,8 +145,13 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
         if ability.mark is AbilityMark.MANDATORY
     }
     assert optional | mandatory == set(PersonalCardRevealChoiceEffect)
-    assert len(optional) == 16
-    assert len(mandatory) == 10
+    # Sixteen of the Uprising family's, Gun Thopter's deploy, Opulence's and
+    # Guild Ambassador's Victory Point, Gurney Halleck's troops, and Sardaukar
+    # Legion's, Scout's and Chani's counts of troops (stage P3), and the promo
+    # Duncan, Loyal Blade's trash for a count of troops.
+    assert len(optional) == 16 + 8
+    # Ten of the Uprising family's and Bene Gesserit Sister's -OR- (stage P3).
+    assert len(mandatory) == 10 + 1
     assert set(REVEAL_CHOICE_EFFECT_ACTIONS) == set(PersonalCardRevealChoiceEffect)
     # A printed "-OR-" choice and a gain are mandatory; the Spy icons too
     # (OQ-057 (14)); "may" and arrows are optional [FAQ p. 3].
@@ -161,6 +166,8 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
         _Choice.PERSUASION_OR_CONTRACT,
         _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE,
         _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
+        # The original game's (stage P3): Bene Gesserit Sister.
+        _Choice.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
     } == mandatory
 
 
@@ -277,7 +284,20 @@ def test_an_id_two_cards_produce_always_names_its_card() -> None:
     # Operation's pass leaves its second icon), so no id two cards produce is
     # left without it.
     produced = _produced_by_card()
-    assert set(produced) == REVEAL_CHOICE_ACTION_IDS
+    # Bene Gesserit Sister's -OR- rows, Opulence's payment and the counted troop
+    # moves of Sardaukar Legion, Scout and Chani (the original game, stage P3)
+    # belong to no card of the Uprising deck read here; their tests are in
+    # ``test_imperium_cards.py``.
+    original_only = {
+        "gain_two_reveal_persuasion",
+        "gain_two_reveal_swords",
+        "pay_reveal_solari_for_vp",
+        "pay_reveal_spice_for_vp",
+        "pay_reveal_solari_for_troops",
+        "deploy_reveal_card_troops",
+        "retreat_reveal_card_troops",
+    }
+    assert set(produced) == REVEAL_CHOICE_ACTION_IDS - original_only
     for action_id, by_card in produced.items():
         actions = [action for found in by_card.values() for action in found]
         sourced = [
@@ -292,9 +312,9 @@ def test_an_id_two_cards_produce_always_names_its_card() -> None:
         assert len(by_card) == 1, (action_id, sorted(by_card))
     assert {
         action_id
-        for action_id in SOURCED_REVEAL_ACTION_IDS
+        for action_id in SOURCED_REVEAL_ACTION_IDS - original_only
         if len(produced[action_id]) > 1
-    } == SOURCED_REVEAL_ACTION_IDS
+    } == SOURCED_REVEAL_ACTION_IDS - original_only
 
 
 # --- the Reveal frame offers the choices -------------------------------------
