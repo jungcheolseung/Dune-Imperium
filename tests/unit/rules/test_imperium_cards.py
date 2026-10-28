@@ -1164,7 +1164,7 @@ def test_fremen_camp_arrow_waits_with_no_troop_to_recruit() -> None:
     assert greyed is not None
     assert any(
         str(row["reason"]).startswith("Needs 1 troop in your supply (you have 0)")
-        for row in greyed["rows"]  # type: ignore[union-attr]
+        for row in greyed["rows"]  # type: ignore[attr-defined]
     )
 
 
@@ -2472,7 +2472,7 @@ def test_imperial_spy_trash_waits_with_no_intrigue_card_to_draw() -> None:
     assert greyed is not None
     assert any(
         str(row["reason"]).startswith("No Intrigue card to draw")
-        for row in greyed["rows"]  # type: ignore[union-attr]
+        for row in greyed["rows"]  # type: ignore[attr-defined]
     )
     shufflable = replace(empty, intrigue_discard=("intrigue:bribery:0",))
     assert "trash_agent_card" in _ids(
