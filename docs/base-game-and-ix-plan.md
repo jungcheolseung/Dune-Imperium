@@ -959,6 +959,29 @@ Imperium 마지막 둘(06:21~06:53): Shifting Allegiances(Agent box의 Influence
   모두 Bond로 걸리고 해결할 때 판정하며, 깨지면 회색으로 기다리다 턴 종료에 사라진다(OQ-028 "다시 확인"). `_WAITING_ICON_BOXES`는 조건 있는 아이콘과
   조건 없는 선택 아이콘이 섞인 상자(Gene Manipulation)에만 필요하다. Gene Manipulation의 순서 자유는 사용자 판정(같은 날, OQ-028 적용).
 
+### 16.11 디컴파일러 시범 (D4-3 (나), 2026-10-28 저녁)
+
+사용자(조정자 경유) "확실히 도움된다면 디컴파일러 써보지 뭐", 이 세션에서 "디컴파일러 내려받기 시작해"·"Download JDK 25". 내려받은 것: Ghidra 12.2
+(`ghidra_12.2_PUBLIC_20261016.zip`, 569,712,708바이트, NationalSecurityAgency/ghidra 공식 release, SHA-256 릴리스 페이지와 같음), Temurin JDK 21.0.13
+(약 200MB, 공식 체크섬과 같음; Ghidra 12.2는 Java 25 이상을 요구해 쓰지 못함), Temurin JDK 25.0.5(136,446,056바이트, 공식 체크섬과 같음). 설치는 P3
+worktree의 `tmp/claude/2719085b/decompiler/`, 릴리스에 macOS용 디컴파일러 본체가 없어 같이 든 C++ 소스를 이 Mac의 make·clang으로 빌드했다(x86_64,
+Rosetta로 돎; 더 내려받은 것 없음). Ghidra의 사용자 설정·임시 파일도 프로젝트 `tmp/`로(launch.sh를 거치지 않는 `headless.sh`). 앱에서 나온 것(x86_64
+바이너리 사본, Ghidra 프로젝트, C 결과)은 assets의 git 무시 `reference/dune-steam-app/<build>/ghidra/`에만.
+
+방법: 분석 없이 가져온 뒤(`-noanalysis`, 74초, 1.3GB) 우리 표로 이름을 붙임 — `methods.tsv`의 함수 이름과 기존 asm 주석의 메타데이터 전역(`MethodRef:`,
+`TypeInfo:`, `Str:` 등) 198,148개 — 그리고 답을 아는 네 함수만 디컴파일해 기존 주석 asm과 견줌.
+
+| 함수 (이미 아는 답) | asm | C | 답이 C에서 보이는가 |
+| --- | --- | --- | --- |
+| UrgentMissionAbility::Cost (`HasDeployedAgents(1)`) | 26줄 | 19줄 | 예 — `new HasDeployedAgents(…, 1)`로 바로 읽힘 |
+| SpaceAbility GrantResources MoveNext (Carryall 기본·Thumper 보너스) | 1,731줄 | 1,007줄 | 예 — 로그 키로 두 가지를 찾고 더하기가 보임; 필드는 오프셋 숫자 |
+| PlayerTurnPhase Cleanup MoveNext (The Voice 막힘 해제, OQ-116) | 9,841줄 | 5,434줄 | 반만 — asm 주석이 푸는 정적 필드 이름(`WormAttributes.BlockExceptions`)이 C에선 `+ 0x878` 숫자 |
+| UrgentMissionAbility::GetTargets | 75줄 | 1,626줄 | 아니오 — 분석 없이 만든 함수 경계가 이웃 코드까지 넘어감 |
+
+판단: **아직 "확실히 낫다"가 아니다.** 큰 함수는 글자 수가 약 45% 줄고 흐름(if/switch)이 바로 보이지만, (1) 함수 경계를 `methods.tsv`의 다음 주소로
+정해 주지 않으면 엉뚱하게 커지고, (2) asm 주석이 주는 정적 필드 이름을 C가 잃는다. 둘을 고치면(경계를 표로 지정, 정적 필드 블록에 이름 붙이기 — 기존
+`il2fields`의 표로) P3d 앱 동작 대조에 asm 대신 쓸 만하다. 다음: 그 두 수정 뒤 같은 네 함수 + 하나를 다시 재고 쓸지 정한다(사용자 확인).
+
 ### 16.10 조합 다시 보기 (2026-10-28 아침, 사용자 상시 지시)
 
 사용자(조정자 경유): "뭔가 이런거 정할 때, 항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해. 원판 단독에서 문제없다고 끝나는게
