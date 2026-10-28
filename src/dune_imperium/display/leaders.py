@@ -221,5 +221,69 @@ LEADER_FACE_TEXTS: Mapping[str, LeaderFaceText] = MappingProxyType(
                 " solari; a Spice Trade space: Gain 1 spice"
             ),
         ),
+        # The original game's eight Leaders (stage P5a of
+        # docs/base-game-and-ix-plan.md): our own wording of the abilities as
+        # docs/rules/imperium-base.md 12 states them (the app's card text
+        # stays local, plan 2.3), with the rulings it cites as notes.
+        "paul_atreides": LeaderFaceText(
+            ability_text="You may look at the top card of your deck at any time",
+            signet_text="Draw 1 card",
+            notes=("Nothing to look at while your deck is empty (DI p. 13)",),
+        ),
+        "duke_leto_atreides": LeaderFaceText(
+            ability_text=(
+                "Sending an Agent to a Landsraad board space costs you 1 solari"
+                " less"
+            ),
+            signet_text=(
+                "Pay 1 spice → Gain 1 Influence with a Faction where an opponent"
+                " has more Influence than you"
+            ),
+        ),
+        "glossu_rabban": LeaderFaceText(
+            ability_text="Start the game with 1 more spice and 1 more solari",
+            signet_text="Recruit 1 troop; with any Alliance, Recruit 2 troops instead",
+        ),
+        "baron_vladimir_harkonnen": LeaderFaceText(
+            ability_text=(
+                "Before the first round, secretly choose two Factions. The first"
+                " time you deploy 4 or more troops to the Conflict in one of your"
+                " turns, reveal them: Gain 1 Influence with each"
+            ),
+            signet_text="Pay 1 solari → Draw 1 Intrigue card",
+            notes=("Who holds the secret is public; the Factions are not (OQ-115)",),
+        ),
+        "count_ilban_richese": LeaderFaceText(
+            ability_text=(
+                "Whenever you pay a board space's solari cost: Draw 1 card"
+            ),
+            signet_text="Gain 1 solari",
+            notes=("Only a printed board-space cost counts (FAQ p. 2)",),
+        ),
+        "helena_richese": LeaderFaceText(
+            ability_text=(
+                "Opponents' Agents do not block your Agents at Landsraad and"
+                " City board spaces"
+            ),
+            signet_text=(
+                "Set aside a card of the Imperium Row and refill it; in your"
+                " Reveal turn this round you may acquire the set-aside card for"
+                " 1 Persuasion less"
+            ),
+        ),
+        "earl_memnon_thorvald": LeaderFaceText(
+            ability_text=(
+                "When you take a High Council seat: Gain 1 Influence with a"
+                " Faction of your choice"
+            ),
+            signet_text="Gain 1 spice",
+        ),
+        "countess_ariana_thorvald": LeaderFaceText(
+            ability_text=(
+                "Whenever you harvest spice at a Maker space: Gain 1 spice less"
+                " and Draw 1 card"
+            ),
+            signet_text="Gain 1 water",
+        ),
     }
 )

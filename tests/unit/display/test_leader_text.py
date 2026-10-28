@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
 from dune_imperium.content.uprising.leaders import LEADERS
 from dune_imperium.display.leaders import LEADER_FACE_TEXTS
 from dune_imperium.display.leaders_ko import LEADER_FACE_TEXTS_KO
@@ -19,9 +20,12 @@ from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
 
 
 def test_every_printed_leader_face_has_text() -> None:
-    face_ids = {leader.leader_id for leader in LEADERS} | {
+    # Both base games' Leaders (the original game's eight since stage P5a of
+    # docs/base-game-and-ix-plan.md).
+    leaders = (*LEADERS, *IMPERIUM_LEADERS)
+    face_ids = {leader.leader_id for leader in leaders} | {
         leader.alternate_face_id
-        for leader in LEADERS
+        for leader in leaders
         if leader.alternate_face_id is not None
     }
     assert set(LEADER_FACE_TEXTS) == face_ids
@@ -52,7 +56,11 @@ def test_every_scanned_leader_face_has_korean_text() -> None:
     """
 
     face_ids = set(LEADER_FACE_TEXTS)
-    assert set(LEADER_FACE_TEXTS_KO) == face_ids - {"reverend_mother_jessica"}
+    # No original Leader has a Korean scan yet (docs/base-game-and-ix-plan.md
+    # 18.5 2): the catalog keeps their English, like Reverend Mother Jessica.
+    original = {leader.leader_id for leader in IMPERIUM_LEADERS}
+    unscanned = {"reverend_mother_jessica"} | original
+    assert set(LEADER_FACE_TEXTS_KO) == face_ids - unscanned
     for face_id, text in LEADER_FACE_TEXTS_KO.items():
         assert text.ability_name, face_id
         assert text.ability_text, face_id

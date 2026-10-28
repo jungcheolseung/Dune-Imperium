@@ -180,13 +180,28 @@ from dune_imperium.content.uprising.effect_dsl import (
 )
 from dune_imperium.content.uprising.intrigue import IntrigueCardEntry
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
-from dune_imperium.content.uprising.types import BattleIcon
+from dune_imperium.content.uprising.types import AgentIcon, BattleIcon
 
 _FACTION_NAMES: dict[Faction, str] = {
     Faction.EMPEROR: "Emperor",
     Faction.SPACING_GUILD: "Spacing Guild",
     Faction.BENE_GESSERIT: "Bene Gesserit",
     Faction.FREMEN: "Fremen",
+}
+
+# The Agent icons as the English rules name them, for the cards that hand a
+# played card more of them ("has the following icons: Emperor, Spacing Guild,
+# Bene Gesserit, Fremen" [Dispatch an Envoy card]); the Korean twin is
+# ``effect_dsl_text_ko._AGENT_ICON_NAMES_KO``.
+_AGENT_ICON_NAMES: dict[AgentIcon, str] = {
+    AgentIcon.EMPEROR: "Emperor",
+    AgentIcon.SPACING_GUILD: "Spacing Guild",
+    AgentIcon.BENE_GESSERIT: "Bene Gesserit",
+    AgentIcon.FREMEN: "Fremen",
+    AgentIcon.LANDSRAAD: "Landsraad",
+    AgentIcon.CITY: "City",
+    AgentIcon.SPICE_TRADE: "Spice Trade",
+    AgentIcon.SPY: "Spy",
 }
 
 _BATTLE_ICON_NAMES: dict[BattleIcon, str] = {
@@ -639,7 +654,9 @@ def reward_text(reward: Reward) -> str:
                 "Agent this turn"
             )
         case GrantAgentIconThisTurn(icon=icon):
-            return f"The card you play this turn has the {icon.value} icon"
+            return (
+                f"The card you play this turn has the {_AGENT_ICON_NAMES[icon]} icon"
+            )
         case GrantCombatDeployment():
             return "Combat: deploy this turn as though at a Combat space"
         case DeployTheseTroops():
@@ -654,7 +671,7 @@ def reward_text(reward: Reward) -> str:
                 " pay 1 solari to draw it"
             )
         case GrantAgentIconsThisTurn(icons=icons):
-            names = ", ".join(icon.value for icon in icons)
+            names = ", ".join(_AGENT_ICON_NAMES[icon] for icon in icons)
             return f"The card you play this turn has the {names} icons"
         case PassTurn(optional=True):
             return "you may pass your turn"

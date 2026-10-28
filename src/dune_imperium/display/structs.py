@@ -21,9 +21,9 @@ everything else (connectives, particles); a game term neither source has is
 left in English rather than invented, per the same file's "규칙" section.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from dune_imperium.content.uprising.abilities import Ability
+from dune_imperium.content.uprising.abilities import Ability, AbilityStructure
 from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.conflicts import ConflictDefinition
 from dune_imperium.content.uprising.contracts import ContractDefinition
@@ -48,6 +48,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecruitTroops,
     TakeContract,
     TakeControl,
+    TakeMentat,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
@@ -150,9 +151,12 @@ def _card_name_ko(card_id: str) -> str:
 
 
 def _space_name_ko(space_id: str) -> str:
-    """The board space's Korean name (every space has one)."""
+    """The board space's Korean name: every Uprising space has one; an
+    original-game space keeps its English name until the official Korean
+    edition gives one (docs/base-game-and-ix-plan.md 18.5 2)."""
 
-    return KOREAN_CARD_NAMES["spaces"][space_id]
+    names = KOREAN_CARD_NAMES["spaces"]
+    return names[space_id] if space_id in names else BOARD_SPACES_BY_ID[space_id].name
 
 
 def contract_condition_text(contract: ContractDefinition) -> str:
@@ -384,6 +388,9 @@ class ConflictRowParts:
     victory_points: int = 0
     choose_influence: int = 0
     choose_distinct_influence: int = 0
+    # The original game's two-chevron Influence: one chosen Faction, every
+    # Influence with it [DI p. 16] (Grand Vision).
+    one_faction_influence: int = 0
     faction_influence: int = 0
     influence_faction: Faction | None = None
     control_space_id: str | None = None
@@ -391,10 +398,13 @@ class ConflictRowParts:
     optional_solari_cost: int = 0
     optional_recall_spies: int = 0
     optional_victory_points: int = 0
+    # The original game's Mentat icon (Sort Through the Chaos): the winner
+    # takes the Mentat at the next round's start [DI p. 16] [FAQ p. 4].
+    mentat: bool = False
 
 
 def conflict_row_parts(row: Ability) -> ConflictRowParts:
-    found: dict[str, int | str | Faction] = {}
+    found: dict[str, int | str | Faction | bool] = {}
     counted = {
         "place_spies": 0,
         "deep_cover_spies": 0,
@@ -437,12 +447,16 @@ def conflict_row_parts(row: Ability) -> ConflictRowParts:
                     found["victory_points"] = amount
                 case GainInfluence(times=times, distinct=True):
                     found["choose_distinct_influence"] = times
+                case GainInfluence(times=times, one_faction=True):
+                    found["one_faction_influence"] = times
                 case GainInfluence(times=times, factions=(faction,)):
                     found.update(faction_influence=times, influence_faction=faction)
                 case GainInfluence():
                     counted["choose_influence"] += 1
                 case TakeControl(space_id=space_id):
                     found["control_space_id"] = space_id
+                case TakeMentat():
+                    found["mentat"] = True
                 case _:
                     raise TypeError(f"{reward!r} is not a Conflict reward")
     found.update({key: value for key, value in counted.items() if value})
@@ -475,11 +489,35 @@ def _optional_trade_text(reward: ConflictRowParts) -> list[str]:
     return [f"You may {cost_text} → Gain {vp} VP" for cost_text in cost_texts]
 
 
+def _choice_parts(row: Ability) -> tuple[Ability, ...] | None:
+    """The lines of a choice row, each as a row of its own, or ``None``.
+
+    The original game prints "-OR-" (``ONE_OF``) and "Choose two:"
+    (``CHOOSE_TWO``) between a reward row's icon groups [DI p. 12]
+    (``content.imperium.conflict_abilities``); both are named before either
+    is taken (OQ-114). Every other row is one sequence of rewards.
+    """
+
+    if row.structure is AbilityStructure.SEQUENCE:
+        return None
+    return tuple(replace(row, sections=(line,), structure=AbilityStructure.SEQUENCE)
+                 for line in row.sections)
+
+
 def conflict_reward_text(row: Ability) -> str:
     """Render one Conflict card's printed reward row."""
 
+    choices = _choice_parts(row)
+    if choices is not None:
+        two = row.structure is AbilityStructure.CHOOSE_TWO
+        lines = " / ".join(conflict_reward_text(line) for line in choices)
+        return f"{'Choose two' if two else 'Choose one'}: {lines}"
     reward = conflict_row_parts(row)
     parts: list[str] = []
+    if reward.mentat:
+        parts.append(
+            "Take the Mentat at the next round's start (if it is on its space)"
+        )
     if reward.solari:
         parts.append(f"Gain {reward.solari} solari")
     if reward.spice:
@@ -511,6 +549,10 @@ def conflict_reward_text(row: Ability) -> str:
     if reward.choose_distinct_influence:
         parts.append(
             _choose_influence_text(reward.choose_distinct_influence, distinct=True)
+        )
+    if reward.one_faction_influence:
+        parts.append(
+            f"Gain {reward.one_faction_influence} Influence (choose a Faction once)"
         )
     if reward.influence_faction is not None:
         faction_name = _faction_name(reward.influence_faction)
@@ -604,8 +646,20 @@ def conflict_reward_text_ko(row: Ability) -> str:
     review). The space goes by its Korean name (공간 이름 row) either way.
     """
 
+    choices = _choice_parts(row)
+    if choices is not None:
+        # "둘 선택:"/"하나 선택:" are the project's card-text words for a
+        # printed "Choose two:"/a choice row (``tokens_ko``,
+        # ``effect_dsl_text_ko``).
+        two = row.structure is AbilityStructure.CHOOSE_TWO
+        lines = " / ".join(conflict_reward_text_ko(line) for line in choices)
+        return f"{'둘 선택' if two else '하나 선택'}: {lines}"
     reward = conflict_row_parts(row)
     parts: list[str] = []
+    if reward.mentat:
+        # "Mentat" stays the English word, as in ``effect_dsl_text_ko``'s
+        # Calculated Hire, until the official Korean edition names it.
+        parts.append("다음 라운드 시작에 Mentat 가져옴 (그 장소에 있으면)")
     if reward.solari:
         parts.append(f"{{solari:{reward.solari}}}")
     if reward.spice:
@@ -634,6 +688,12 @@ def conflict_reward_text_ko(row: Ability) -> str:
     if reward.choose_distinct_influence:
         parts.append(
             _choose_influence_text_ko(reward.choose_distinct_influence, distinct=True)
+        )
+    if reward.one_faction_influence:
+        # ``effect_dsl_text_ko``'s two-chevron line (Grand Vision).
+        parts.append(
+            f"{{influence_any:{reward.one_faction_influence}}}"
+            " (4개의 팩션 중 하나 한 번 선택)"
         )
     if reward.influence_faction is not None:
         parts.append(
