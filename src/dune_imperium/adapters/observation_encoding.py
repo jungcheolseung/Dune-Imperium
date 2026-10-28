@@ -192,7 +192,19 @@ from dune_imperium.rules.frames import FrameKind
 # Intrigue cards the Intrigue universe, each at its end, so every older
 # identity keeps its index and column; 0 in every Uprising game. They are
 # listed whole, transcribed or not, so the layout changes once in stage P3.
-OBSERVATION_VERSION: Final = 37
+# v38 (OQ-145, user ruling 2026-10-28, and the original game's public
+# markers), appended after every other segment; 0 in every game that has none
+# of them (an Uprising game without Immortality):
+# ``seat{k}_deck_public_top`` per relative seat -- the cards put face up on top
+# of its deck (Bypass Protocol, Recruitment Mission, a Tleilaxu card), known
+# to every seat until drawn or shuffled -- one column per personal-card
+# identity holding the depth from the top of the shallowest public copy (1 =
+# the top card, 0 = none); ``voice_blocks`` the spaces each relative seat may
+# not send its next Agent to (The Voice); ``card_turn_flags`` per relative
+# seat Infiltrate's turn marker and Recruitment Mission's round marker. Every
+# older column keeps its offset; a v37 checkpoint migrates by segment and
+# starts them at 0.
+OBSERVATION_VERSION: Final = 38
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -520,6 +532,15 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             # unrevealed secret; the observer's own secret Factions.
             ("masterstroke_secret", _SEATS),
             ("private_masterstroke", len(FACTION_IDS)),
+            # v38: per relative seat, the depth of each public deck-top card
+            # by identity; the spaces each relative seat is barred from; its
+            # Infiltrate and Recruitment Mission markers.
+            *(
+                (f"seat{seat}_deck_public_top", len(PERSONAL_CARD_IDS))
+                for seat in range(_SEATS)
+            ),
+            ("voice_blocks", _SEATS * len(SPACE_IDS)),
+            ("card_turn_flags", _SEATS * 2),
         )
     )
     return tuple(lengths)
@@ -757,6 +778,21 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     offset = _OFFSET["private_masterstroke"]
     for faction in view.private.masterstroke_factions:
         values[offset + _FACTION_INDEX[faction]] = 1
+    for seat_offset in range(_SEATS):
+        seat_view = view.players[(observer + seat_offset) % _SEATS]
+        offset = _OFFSET[f"seat{seat_offset}_deck_public_top"]
+        for depth, instance_id in enumerate(seat_view.deck_public_top, start=1):
+            column = offset + _personal_identity_index(instance_id)
+            if not values[column]:
+                values[column] = depth
+    for seat_view in view.players:
+        row = relative(seat_view.player) - 1
+        offset = _OFFSET["voice_blocks"] + row * len(SPACE_IDS)
+        for space_id in seat_view.voice_blocked_space_ids:
+            values[offset + _SPACE_INDEX[space_id]] = 1
+        offset = _OFFSET["card_turn_flags"] + row * 2
+        values[offset] = int(seat_view.enemy_agents_ignored_turn)
+        values[offset + 1] = int(seat_view.acquire_to_deck_top_round)
     offset = _OFFSET["shortfall"]
     for seat_view in view.players:
         index = offset + (relative(seat_view.player) - 1) * 2

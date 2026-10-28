@@ -15,7 +15,12 @@ deck (after its first genetic marker):
 - every seat's ``PublicPlayerView`` gains ``deck_public_top``; the views'
   ``hand_public`` lists the cards drawn from it, and ``deck_pool`` (the deck
   and the hidden hand, by identity) leaves them out as it does every public
-  hand card.
+  hand card;
+- observation v38 also shows each seat's public markers of the original game,
+  ``voice_blocked_space_ids``, ``enemy_agents_ignored_turn`` and
+  ``acquire_to_deck_top_round`` (existing ``PlayerState`` fields), which an
+  Uprising game never sets: the views gain them at ``[]``, ``False`` and
+  ``False``.
 
 Nothing else a player, an agent or a save sees changes: the legal rows, the
 events and their payloads stay as they were. The two view differences are
@@ -30,17 +35,26 @@ from equivalence_rules import Rule, Step
 
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 
+# The fields the views gain, at their Uprising values.
+_NEW_VIEW_FIELDS = (
+    ("deck_public_top", []),
+    ("voice_blocked_space_ids", []),
+    ("enemy_agents_ignored_turn", False),
+    ("acquire_to_deck_top_round", False),
+)
 
-def _add_empty_top(step: Step) -> bool:
-    """Show the base's views the new field at its default; whether any seat
-    was missing it."""
+
+def _add_new_fields(step: Step) -> bool:
+    """Show the base's views the new fields at their defaults; whether any
+    seat was missing one."""
 
     shown = False
     for view in step.views:
         for seat in view["players"]:
-            if "deck_public_top" not in seat:
-                seat["deck_public_top"] = []
-                shown = True
+            for name, default in _NEW_VIEW_FIELDS:
+                if name not in seat:
+                    seat[name] = list(default) if isinstance(default, list) else default
+                    shown = True
     return shown
 
 
@@ -84,7 +98,7 @@ VIEWS_SHOW_THE_PUBLIC_TOP = Rule(
     name="views_show_the_public_top",
     why="OQ-145: every seat's view names the deck's public top cards and the "
     "cards drawn from it stay public in the hand",
-    old=_add_empty_top,
+    old=_add_new_fields,
     new=_normalise_public_top,
 )
 

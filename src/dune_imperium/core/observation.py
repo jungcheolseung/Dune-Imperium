@@ -152,6 +152,13 @@ class PublicPlayerView:
     # face up on top of the deck stay public until they are drawn or the deck
     # is shuffled; ``PlayerState.deck_public_top``.
     deck_public_top: tuple[str, ...] = ()
+    # The original game's public markers: the spaces The Voice bars this seat's
+    # next Agent from, Infiltrate's turn marker (its Agents ignore enemy Agents
+    # this turn) and Recruitment Mission's round marker (cards it acquires may
+    # go on top of its deck); ``PlayerState`` fields of the same names.
+    voice_blocked_space_ids: tuple[str, ...] = ()
+    enemy_agents_ignored_turn: bool = False
+    acquire_to_deck_top_round: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1006,4 +1013,7 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
             player.masterstroke_factions if player.masterstroke_revealed else ()
         ),
         deck_public_top=player.deck_public_top,
+        voice_blocked_space_ids=player.voice_blocked_space_ids,
+        enemy_agents_ignored_turn=player.enemy_agents_ignored_turn,
+        acquire_to_deck_top_round=player.acquire_to_deck_top_round,
     )

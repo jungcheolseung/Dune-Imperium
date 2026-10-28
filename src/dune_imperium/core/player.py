@@ -245,7 +245,9 @@ class PlayerState:
     # Recruitment Mission: "You may put cards you acquire on top of your deck"
     # during this round's Reveal turn of the owner [FAQ p. 3]; effective only
     # while the owner's own Reveal turn is open, cleared when it ends and at
-    # Round Start (not observed: the Reveal shop offers the twin rows).
+    # Round Start. Public, and observed since v38 (``PublicPlayerView``): the
+    # Reveal shop offers the twin rows, and a network deciding a Reveal reads
+    # the flag.
     acquire_to_deck_top_round: bool = False
     # Chairdog: grafted cards that return from play to the hand when the
     # owner's Reveal turn starts [card face].

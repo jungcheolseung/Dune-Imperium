@@ -17,6 +17,11 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import BaseGame, RulesetConfig
+from dune_imperium.adapters.observation_encoding import (
+    PERSONAL_CARD_IDS,
+    encode_player_view,
+    segment_slice,
+)
 from dune_imperium.content.immortality.board import RESEARCH_START_ID
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
@@ -347,9 +352,18 @@ def test_a_tleilaxu_card_put_on_the_deck_is_public_to_every_seat() -> None:
     for seat in range(4):
         view = observe_state(second, seat)
         assert view.players[0].deck_public_top == (SUBJECT, CONTAMINATOR)
-    # Nothing below the public cards is known to anyone but ... nobody.
+    # Nothing below the public cards is known to anyone.
     assert known_card_seats(second)[owner.deck[2]] == frozenset()
     check_observation_privacy(second)
+    # The observation (v38) holds the depth of each public card by identity,
+    # in the block of the seat's place relative to the observer.
+    ids = {card_id: index for index, card_id in enumerate(PERSONAL_CARD_IDS)}
+    for seat in range(4):
+        encoded = encode_player_view(observe_state(second, seat))
+        column = encoded[segment_slice(f"seat{(0 - seat) % 4}_deck_public_top")]
+        assert column[ids["subject_x_137"]] == 1
+        assert column[ids["contaminator"]] == 2
+        assert sum(1 for value in column if value) == 2
 
 
 def _top_row(state: GameState, instance_id: str) -> DomainAction:
