@@ -303,8 +303,8 @@
 - **미룬 연출:** ③ 카드 사기, ⑤ 동맹 띠·영향력 큐브, ⑦ Conflict 카드가 승자에게, ⑧ 라운드 정리, ⑩ 연출 끄기 설정.
   [2026-10-08 게임다운 연출 4~5단계, [`ui-improvement-plan.md`](ui-improvement-plan.md) 12단계]
 - **한국어 화면에 남은 영어(작음):** ⑤⑧⑨는 2026-10-14에 끝났다(OQ 번호·경로·명령 인자는 플레이 화면에서 뺌, 서버 오류는
-  `static/errors_ko.js`로 한국어, 런처 창 제목·로그 줄 한국어; 가드 테스트 `tests/server/test_i18n.py`). 남은 것: 런처 설정의
-  안내 문구("비우면 checkpoints/play/search.pt", "Tailscale CLI 없음"), macOS 바로가기의 알림 제목 "Dune Imperium 서버"와 앱 이름
+  `static/errors_ko.js`로 한국어, 런처 창 제목·로그 줄 한국어; 가드 테스트 `tests/server/test_i18n.py`). 런처 설정의 안내 문구 셋은
+  2026-10-28에 한국어로 바뀌었다(Codex, 병합 `9c96d253`). 남은 것: macOS 바로가기의 알림 제목 "Dune Imperium 서버"와 앱 이름
   "Dune Imperium Server"(`launcher/shortcuts.py`). ③ "AI"와 ⑥ 도움말 범례의 영어 병기는 사용자 결정으로 그대로 둔다.
   [2026-10-14 남은 영어·테스트 빈자리·선택 불가 표시]
 - **(사용자) 한글판 카드 그림:** 한국어 사진이 없는 Uprising 책략 34장과 Bloodlines·Twisted 책략 23장은 한국어
@@ -346,6 +346,11 @@
   불러온다(`server/persistence.py`). codec을 올리면 그 전의 저장은 서버에서 열리지 않는다. 사람이 둔 판은
   `dune-imperium-records`가 지금 엔진의 기보로 옮긴다. 엔진이 묻는 결정을 바꾸면 그 codec 문턱의 다리를
   `records/`에 더하고 `uv run dune-imperium-records check`로 확인한다([`human-records.md`](human-records.md)).
+- **codec은 병합 때 한 번(사용자 결정 2026-10-28).** 단계 브랜치 안에서는 codec 번호를 그대로 두고, master 병합 커밋에서 한 번 올린다
+  (상수, `tests/adapters/test_action_codec.py`, 다리 문턱). 검사 비용은 번호가 아니라 엔진 변경에서 나온다(관문은 하위 단계마다 돈다).
+- **다리 정리(사용자 결정 2026-10-28, P3 병합 뒤):** `records/migration.py`의 다리(53개, v137~v155)를 계속 쌓지 않는다. P3를 합친 뒤 남기는
+  기록(사람 판 저장 18개, 사람 판 문제집)을 지금 버전으로 한 번 바꿔 쓰고, 원본은 코드가 읽지 않는 곳에 보관하고, 옛 다리와 그 시험 기록을
+  지운다. 그 뒤로는 바로 전 버전 → 지금의 다리만 두고 codec이 오를 때마다 다시 바꿔 쓴다. 그때까지 다리를 새로 더하기 전에 묻는다.
 - **상태 해시.** 이벤트를 상태의 `event_log`에 새로 넣으면 그 뒤 모든 상태 해시가 바뀌어 옛 저장이 열리지 않는다.
   화면에만 필요한 이벤트는 `report_only_event_kinds`(`rules/engine.py`)로 보고만 한다. `RulesetConfig`에 옵션을 더할 때도
   같다(상태가 config를 품는다): 기본값일 때 해시에서 빼도록 `RulesetConfig.HASH_OMITTED_AT_DEFAULT`에 이름을 넣고, 카드나
