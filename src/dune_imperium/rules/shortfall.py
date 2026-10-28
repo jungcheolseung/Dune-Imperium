@@ -26,7 +26,10 @@ from copy import replace
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.combat_deployment import refill_undeployable_troops
+from dune_imperium.rules.combat_deployment import (
+    credit_owed_recruits,
+    refill_undeployable_troops,
+)
 from dune_imperium.rules.frames import (
     FrameKind,
     replace_player,
@@ -90,6 +93,11 @@ def refill_shortfall(state: GameState, player: int) -> RuleResult:
         if troops - undeployable:
             next_state = update_turn_recruits(
                 next_state, troops_recruited=troops - undeployable
+            )
+            # Reinforcements' and Gurney Halleck's owed troops come first: in
+            # the Reveal turn they may then deploy (OQ-140).
+            next_state = credit_owed_recruits(
+                next_state, player, troops - undeployable
             )
     placed: tuple[GameEvent, ...] = ()
     if conflict:

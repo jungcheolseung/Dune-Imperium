@@ -2941,31 +2941,34 @@
   넣을 수 있잖아? … 해당 카드들을 사용했을 때, 각각 최대 3개, 2개의 병력을 교전칸에 넣을 수 있게 하고, 만약 지금 부족하다면 지금 가능한 개수만
   보여주고, 공급처에 가능한 병력이 생기면 그때 또 추가 배치가 가능하게 보여주고 그러면 될듯? specimen은 별개 얘기지. 기존 원칙대로 사용자가
   되돌리기를 하고 안 하고를 따로 둬야지".
-- 구현(2026-10-28): Reveal turn에서 줄을 쓸 때마다 인쇄된 recruit 수(Reinforcements 3, Gurney 2)만큼 배치 상한이 열리고(쓸 때마다 더해짐),
-  배치할 수 있는 병력은 min(열린 상한, 이번 Reveal turn에 recruit한 병력) − 그 몫으로 이미 배치한 병력이다(`combat_deployment.recruit_cap_room`).
-  recruit는 어느 효과가 했든 recruit이고, 같은 turn 뒤에 채워진 부족분(OQ-030)도 그때 recruit로 세므로 배치 줄이 그때 늘어난다. 지금 못 하는 것은
-  보이지 않는다. Combat 아이콘의 몫(이번 turn의 recruit 전부 + garrison 둘)이 열려 있으면 그 몫이 이 상한을 이미 담는다. Agent turn에는 열리지
-  않는다(Combat 칸 규칙 그대로). specimen은 섞지 않는다 — 돌려보낼지는 소유자가 정하고(`[Immortality p. 8]`), 돌려보내면 그 병력이 recruit되어
-  상한을 채운다.
-- 사용자 문장을 넘어 정한 것(사용자 확인 대기, 조정자에게 보고): (1) 상한을 채우는 recruit는 그 Reveal turn의 recruit **전부**다 — 카드보다 먼저
-  한 recruit와 다른 효과의 recruit도 든다(교전 칸 규칙의 "이번 턴에 소집한 병력"을 그대로 따름, 출처를 가리지 않음). (2) 그래서 supply가 비어 줄의
-  recruit가 아무것도 못 해도, 이번 Reveal turn의 recruit가 garrison에서 기다리면 Reinforcements를 낼 수 있다(OQ-113 (C): 비용 있는 줄은 보상
-  하나라도 지금 무언가를 바꿔야 한다 — 상한이 배치를 연다). supply가 비고 기다리는 recruit도 없으면 지금처럼 낼 수 없다(OQ-071).
+- 사용자 재판정(같은 날, 이 세션에서 직접): "공개 차례에 Reinforcements·Gurney 가 아닌 다른 효과로 얻은 병력은 배치 가능한 병력이 아니잖아.
+  … 그래서 공급처가 비어도 이번 차례에 소집한 병력이 병영에서 기다리면 Reinforcements를 낼 수 있습니다. -> 이건 틀렸지. 그 카드로 소집한 병력이
+  아닌걸?" — 첫 구현(`5236de15`)이 "그 Reveal turn의 recruit 전부"로 상한을 채운 것과 빈 supply에서도 낼 수 있게 한 것은 내가 사용자 문장을 넘어
+  정한 것이었고, 둘 다 틀렸다. 같은 차례에 다른 효과도 병력이 모자랐을 때 나중에 채워지는 병력의 몫은 사용자 답 "이 카드들 몫 먼저(추천)".
+- 구현(2026-10-28, 고친 것): Reveal turn에서 줄을 쓰면 그 줄이 실제로 recruit한 병력(`combat_deployment.RECRUITS_DEPLOYABLE_KEY`)과 supply가 비어
+  못 한 병력(`RECRUITS_OWED_KEY`)을 따로 센다. 배치할 수 있는 병력은 앞의 것 − 그 몫으로 이미 배치한 병력이다(`recruit_room`). 같은 turn 뒤에 병력이
+  supply로 돌아와 부족분이 채워지면(OQ-030) 이 카드들이 못 한 몫에 먼저 넣고(`credit_owed_recruits`, `shortfall.refill_shortfall`) 그만큼 배치 줄이
+  늘어난다. 지금 못 하는 것은 보이지 않는다. 다른 효과의 recruit는 이 몫에 들지 않는다. 쓸 때마다 더해지므로 Reinforcements와 Gurney를 같은
+  Reveal에 쓰면 최대 3 + 2다. Combat 아이콘의 몫(이번 turn의 recruit 전부 + garrison 둘)이 열려 있으면 그 몫이 이 병력을 이미 담는다. Agent turn에는
+  열리지 않는다(Combat 칸 규칙 그대로). 줄을 낼 수 있는지는 recruit가 정한다 — supply가 비면(Immortality의 돌려보낼 specimen도 없으면) Reinforcements를
+  내지 않는다(OQ-071). Gurney의 결제는 Reveal 화살표라 supply가 비어도 낼 수 있고(부족분은 나중에 채워질 수 있음, 이전 그대로), 그 두 병력이 모두 못
+  한 몫이 된다. specimen은 섞지 않는다 — 돌려보낼지는 소유자가 정하고 `[Immortality p. 8]`, 돌려보내면 그 병력이 채워져 이 몫에 든다.
 - 조합(사용자 상시 지시 "항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해"):
-  - Immortality: 돌려보낸 specimen, Tleilaxu Surgeon이 잃은 병력이 부족분을 채우면 그 recruit가 상한을 채운다. specimen을 먼저 돌려보내든 나중에
-    돌려보내든 결과가 같다(밤의 구현에서 갈리던 순서 문제가 사라짐).
+  - Immortality: 돌려보낸 specimen, Tleilaxu Surgeon이 잃은 병력이 부족분을 채우면 이 카드들 몫에 먼저 들어 배치할 수 있다. specimen을 먼저
+    돌려보내든(그 병력을 줄이 recruit) 나중에 돌려보내든(부족분이 채워짐) 결과가 같다(밤의 구현에서 갈리던 순서 문제가 사라짐).
   - Bloodlines: Twisted Plot(Ambitious·Sadistic)이 잃은 병력이 부족분을 채우면 같다. Sardaukar Commander는 이 몫에 들지 않는다 — 이번 turn에
     recruit한 병력의 몫은 병력만, Commander의 몫은 Commander만이다(OQ-070), supply의 Commander는 일반 수단으로 recruit하지 않는다 `[Bloodlines p. 4]`.
     Combat 아이콘을 주는 Bloodlines 카드가 같은 Reveal에 있으면 그 몫(Commander 몫 포함)이 쓰인다.
-  - Arrakeen Scouts: Uprising 판의 Corrinth City로 Reveal turn에 Readiness(긴급대응, troop 1 recruit)에 가입하면 그 recruit도 상한을 채운다.
+  - Arrakeen Scouts: Uprising 판의 Corrinth City로 Reveal turn에 Readiness(긴급대응, troop 1 recruit)에 가입해 얻은 병력은 다른 효과의 recruit라
+    이 몫에 들지 않는다.
     임무에 supply 병력을 세우는 것은 차례 밖이라, 그때의 부족분은 차례 밖에서 버려진다(OQ-030 구현 `shortfall.drop_stale_shortfalls`).
   - Uprising 판 + 원판 카드: 같은 조각이 그대로 돈다(Reveal turn의 Combat 아이콘 몫과 함께, 위와 같음).
   - Baron Harkonnen의 Masterstroke(OQ-115): 이 몫으로 배치한 병력은 이번 turn에 배치한 유닛으로 센다(`add_units_to_reveal`).
   - Harkonnen Advisor의 병력(OQ-038)은 이 몫으로도 배치할 수 없다(garrison에서 빼고 셈).
   - Emperor of the Known Universe의 배치 금지는 그 Agent turn에만 걸리므로 Reveal turn에는 닿지 않는다 `[FAQ p. 3]`.
   - Rise of Ix(P4): dreadnought는 troop이 아니라 이 몫에 들지 않는다 `[Rise of Ix p. 6]`(OQ-115); Ix 카드는 전사할 때 이 목록에 대어 본다.
-- 테스트: `tests/unit/rules/test_imperium_reinforcements.py`(부족분이 뒤에 채워지면 배치가 늘어남, 상한 3, 앞선 recruit가 상한을 채움, 빈 supply와
-  기다리는 recruit), `tests/unit/rules/test_imperium_cards.py`(Gurney: 아무 수, 채워진 부족분, Commander 제외).
+- 테스트: `tests/unit/rules/test_imperium_reinforcements.py`(부족분이 뒤에 채워지면 배치가 늘어남, 다른 효과의 recruit는 안 듦, 빈 supply는 기다리는
+  병력이 있어도 못 냄, 채워진 병력은 이 카드들 몫 먼저), `tests/unit/rules/test_imperium_cards.py`(Gurney: 아무 수, 채워진 부족분, Commander 제외).
 
 ## OQ-141 — 획득 상자의 아이콘 여럿과 진영 고르기 (원판)
 

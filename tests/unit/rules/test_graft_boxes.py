@@ -139,6 +139,7 @@ OTHER_FRAME_KEYS = frozenset(
         "reveal_commanders_recruited",
         "reveal_pending_gains",
         "reveal_recruits_deployable",
+        "reveal_recruits_owed",
         "reveal_spy_recalled",
         "reveal_troops_recruited",
         "reveal_units_deployed",

@@ -102,12 +102,7 @@ from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
     shuffle_discard_into_deck,
 )
-from dune_imperium.rules.combat_deployment import (
-    own_reveal_frame_index,
-    recruit_cap_room,
-    undeployable_troops,
-    undeployable_troops_this_turn,
-)
+from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
 from dune_imperium.rules.conditions import (
     owner_condition_holds,
     spice_must_flow_copies,
@@ -658,28 +653,6 @@ def agent_placement_ahead(state: GameState, player: int) -> bool:
     )
 
 
-def _recruit_cap_opens_room(
-    state: GameState, player: int, section: EffectSection
-) -> bool:
-    """Whether ``section``'s "you may deploy these troops" lets ``player``
-    deploy a garrison troop now that cannot deploy without it (OQ-140): in
-    their own Reveal turn, with no Combat icon room already holding every
-    recruit, and the turn's deployment not banned."""
-
-    index = own_reveal_frame_index(state, player)
-    if index is None or units_deployment_blocked(state, player):
-        return False
-    context = dict(state.decision_stack[index].context)
-    if context.get("combat_deployment") is True:
-        return False
-    cap = sum(
-        reward.count for reward in section.rewards if isinstance(reward, RecruitTroops)
-    )
-    now = recruit_cap_room(context)
-    garrison = state.players[player].troops_garrison - undeployable_troops(context)
-    return garrison > now and recruit_cap_room(context, extra_cap=cap) > now
-
-
 def _troop_can_join(state: GameState, owner: PlayerState) -> bool:
     """Whether a recruit can take a troop for ``owner`` now.
 
@@ -1016,12 +989,10 @@ def reward_can_change_something(
         case GrantCombatDeployment():
             return _combat_deployment_ahead(state, player)
         case DeployTheseTroops():
-            # In the owner's Reveal turn it opens a deploy cap the turn's
-            # recruits fill (OQ-140): it changes something when that lets a
-            # garrison troop deploy that cannot now -- a recruit made earlier
-            # in the turn, say, while the line's own recruit finds an empty
-            # supply (OQ-071 judges that one).
-            return _recruit_cap_opens_room(state, player, section)
+            # It only lets the line's own troops deploy: whether the line
+            # changes anything is the recruit's to say (OQ-071; OQ-140, user
+            # 2026-10-28: "그 카드로 소집한 병력이 아닌걸?").
+            return False
         case SetAsideImperiumRowCard():
             return bool(state.imperium_row)
         case PeekTopCard():
@@ -1302,10 +1273,12 @@ class RewardOutcome:
     troops_recruited: int = 0
     sandworms_deployed: int = 0
     combat_icons: int = 0
-    # The deploy cap a ``DeployTheseTroops`` line opens in a Reveal turn: its
-    # printed recruit (the caller opens it,
-    # ``combat_deployment.grant_recruit_deployment``; OQ-140).
+    # Troops a ``DeployTheseTroops`` line recruited, and those it owes for an
+    # empty supply: deployable in a Reveal turn, the owed ones once refilled
+    # (the caller opens them, ``combat_deployment.grant_recruit_deployment``;
+    # OQ-140).
     deployable_recruits: int = 0
+    deployable_owed: int = 0
     redirects_turn_space_spies: bool = False
     sandworms_replaced: int = 0
     passes_turn: bool = False
@@ -1636,7 +1609,8 @@ def apply_rewards(
         troops_recruited=troops_recruited,
         sandworms_deployed=sandworms_deployed,
         combat_icons=combat_icons,
-        deployable_recruits=printed_recruits if deploy_these else 0,
+        deployable_recruits=troops_recruited if deploy_these else 0,
+        deployable_owed=printed_recruits - troops_recruited if deploy_these else 0,
         redirects_turn_space_spies=redirects_turn_space_spies,
         sandworms_replaced=sandworms_replaced,
         passes_turn=passes_turn,

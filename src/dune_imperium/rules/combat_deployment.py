@@ -752,10 +752,16 @@ def open_combat_deployment(context: dict[str, ActionValue]) -> None:
 
 
 RECRUITS_DEPLOYABLE_KEY = "reveal_recruits_deployable"
-"""The deploy cap the ``DeployTheseTroops`` lines opened in the owner's
-Reveal turn (OQ-140): each use adds its printed recruit -- 3 for the
-original game's Reinforcements, 2 for Gurney Halleck's Reveal -- and the
-turn's recruits fill it (``recruit_cap_room``; absent means none)."""
+"""Troops the ``DeployTheseTroops`` lines recruited in the owner's Reveal
+turn (the original game's Reinforcements, Gurney Halleck's Reveal): those
+may be deployed, any of them (OQ-140; absent means none). A troop the line
+owed and the turn recruited later counts once it comes
+(``RECRUITS_OWED_KEY``)."""
+
+RECRUITS_OWED_KEY = "reveal_recruits_owed"
+"""Troops the ``DeployTheseTroops`` lines could not recruit for an empty
+supply (OQ-030): a troop refilled later in the turn joins
+``RECRUITS_DEPLOYABLE_KEY`` while some are owed (``credit_owed_recruits``)."""
 
 
 def own_reveal_frame_index(state: GameState, player: int) -> int | None:
@@ -775,18 +781,15 @@ def own_reveal_frame_index(state: GameState, player: int) -> int | None:
     return None
 
 
-def grant_recruit_deployment(state: GameState, player: int, cap: int) -> GameState:
-    """Open ``cap`` more troops of "You may deploy these troops to the
-    Conflict" for ``player`` when it is their Reveal turn (OQ-140); in their
-    Agent turn the troops deploy by the Combat space rule [DI p. 10]
-    [FAQ p. 4] and nothing opens here."""
-
-    index = own_reveal_frame_index(state, player)
-    if index is None:
-        return state
+def _with_reveal_counts(
+    state: GameState, index: int, *, recruited: int, owed: int
+) -> GameState:
     frame = state.decision_stack[index]
     context = dict(frame.context)
-    context[RECRUITS_DEPLOYABLE_KEY] = recruit_deploy_cap(context) + cap
+    context[RECRUITS_DEPLOYABLE_KEY] = recruits_deployable(context) + recruited
+    context[RECRUITS_OWED_KEY] = recruits_owed(context) + owed
+    if not context[RECRUITS_OWED_KEY]:
+        del context[RECRUITS_OWED_KEY]
     return replace(
         state,
         decision_stack=(
@@ -797,8 +800,39 @@ def grant_recruit_deployment(state: GameState, player: int, cap: int) -> GameSta
     )
 
 
-def recruit_deploy_cap(context: Mapping[str, object]) -> int:
-    """The deploy cap ``DeployTheseTroops`` lines opened in a Reveal frame."""
+def grant_recruit_deployment(
+    state: GameState, player: int, recruited: int, owed: int = 0
+) -> GameState:
+    """Let ``player`` deploy the ``recruited`` troops a line just recruited,
+    "You may deploy these troops to the Conflict", when it is their Reveal
+    turn, and the ``owed`` ones the supply could not cover once they come
+    (OQ-140); in their Agent turn the troops deploy by the Combat space rule
+    [DI p. 10] [FAQ p. 4] and nothing opens here."""
+
+    index = own_reveal_frame_index(state, player)
+    if index is None:
+        return state
+    return _with_reveal_counts(state, index, recruited=recruited, owed=owed)
+
+
+def credit_owed_recruits(state: GameState, player: int, troops: int) -> GameState:
+    """Count ``troops`` refilled into ``player``'s garrison in their Reveal
+    turn as the ``DeployTheseTroops`` lines' troops first, as many as those
+    lines still owe (OQ-140, user ruling 2026-10-28: "이 카드들 몫 먼저" --
+    a refill goes to these cards' owed troops before another effect's)."""
+
+    index = own_reveal_frame_index(state, player)
+    if index is None or troops < 1:
+        return state
+    owed = recruits_owed(dict(state.decision_stack[index].context))
+    credited = min(troops, owed)
+    if not credited:
+        return state
+    return _with_reveal_counts(state, index, recruited=credited, owed=-credited)
+
+
+def recruits_deployable(context: Mapping[str, object]) -> int:
+    """The troops ``DeployTheseTroops`` lines recruited in a Reveal frame."""
 
     value = context.get(RECRUITS_DEPLOYABLE_KEY, 0)
     if isinstance(value, bool) or not isinstance(value, int):
@@ -806,26 +840,29 @@ def recruit_deploy_cap(context: Mapping[str, object]) -> int:
     return value
 
 
-def recruit_cap_room(context: Mapping[str, object], *, extra_cap: int = 0) -> int:
-    """The troops the "deploy these troops" caps let the owner deploy now
-    (OQ-140, user ruling 2026-10-28): the Reveal turn's recruits up to the
-    caps, less the troops already deployed through them. "교전칸 방문했을
-    때의 '이번 턴에 소집한 병력만큼을 교전칸에 넣을 수 있잖아'를 적용 ...
-    각각 최대 3개, 2개의 병력을 교전칸에 넣을 수 있게 하고, 만약 지금
-    부족하다면 지금 가능한 개수만 보여주고, 공급처에 가능한 병력이 생기면
-    그때 또 추가 배치가 가능하게": a recruit is a recruit whichever effect
-    made it, a shortfall refilled later in the turn included (OQ-030), so
-    the room grows as they come. ``extra_cap`` asks what one more line
-    would open. Sardaukar Commanders keep their own slot (OQ-070)."""
+def recruits_owed(context: Mapping[str, object]) -> int:
+    """The troops ``DeployTheseTroops`` lines still owe in a Reveal frame."""
 
-    cap = recruit_deploy_cap(context) + extra_cap
-    recruited = context.get("reveal_troops_recruited", 0)
+    value = context.get(RECRUITS_OWED_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"Reveal frame has invalid {RECRUITS_OWED_KEY}")
+    return value
+
+
+def recruit_room(context: Mapping[str, object]) -> int:
+    """The troops "you may deploy these troops" lets the owner deploy now:
+    those the lines recruited, owed ones refilled since included, less those
+    already deployed through it (OQ-140, user rulings 2026-10-28: "각각 최대
+    3개, 2개의 병력을 교전칸에 넣을 수 있게 하고, 만약 지금 부족하다면 지금
+    가능한 개수만 보여주고, 공급처에 가능한 병력이 생기면 그때 또 추가 배치가
+    가능하게"; "Reinforcements·Gurney 가 아닌 다른 효과로 얻은 병력은 배치
+    가능한 병력이 아니잖아"). Sardaukar Commanders keep their own slot
+    (OQ-070)."""
+
     deployed = context.get("reveal_units_deployed", 0)
-    for value in (recruited, deployed):
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise RuntimeError("Reveal frame has an invalid recruit or deploy count")
-    assert isinstance(recruited, int) and isinstance(deployed, int)
-    return max(0, min(cap, recruited) - deployed)
+    if isinstance(deployed, bool) or not isinstance(deployed, int):
+        raise RuntimeError("Reveal frame has an invalid deploy count")
+    return max(0, recruits_deployable(context) - deployed)
 
 
 def grant_combat_icon(state: GameState, player: int) -> GameState:

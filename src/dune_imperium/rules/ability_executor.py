@@ -1633,9 +1633,9 @@ def apply_automatic_rewards(
         )
         next_state = deployed.state
         events.extend(deployed.events)
-    if outcome.deployable_recruits:
+    if outcome.deployable_recruits or outcome.deployable_owed:
         next_state = grant_recruit_deployment(
-            next_state, player, outcome.deployable_recruits
+            next_state, player, outcome.deployable_recruits, outcome.deployable_owed
         )
     if outcome.sandworms_replaced:
         replacement = replace_sandworms(

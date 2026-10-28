@@ -106,8 +106,9 @@ from dune_imperium.rules.combat_deployment import (
     grant_combat_icon,
     grant_recruit_deployment,
     reconcile_deployment_after_retreat,
-    recruit_cap_room,
-    recruit_deploy_cap,
+    recruit_room,
+    recruits_deployable,
+    recruits_owed,
     undeployable_troops,
     undeployable_troops_this_turn,
     ungained_undeployable_troops,
@@ -1616,7 +1617,7 @@ def legal_reveal_deployments(
         return ()
     context = dict(frame.context)
     combat = context.get("combat_deployment") is True
-    if not combat and not recruit_deploy_cap(context):
+    if not combat and not recruits_deployable(context) and not recruits_owed(context):
         return ()
     recruited = context_int(context, "reveal_troops_recruited", owner="Reveal frame")
     deployed = context_int(context, "reveal_units_deployed", owner="Reveal frame")
@@ -1635,9 +1636,9 @@ def legal_reveal_deployments(
         )
     else:
         # Only "these troops" (the original game's Gurney Halleck,
-        # Reinforcements): the turn's recruits up to the opened caps, as
-        # they come (OQ-140); no garrison share, no Commander (OQ-070).
-        troop_room, commander_room = recruit_cap_room(context), 0
+        # Reinforcements): those the lines recruited, owed ones as they are
+        # refilled (OQ-140); no garrison share, no Commander (OQ-070).
+        troop_room, commander_room = recruit_room(context), 0
     owner = state.players[player]
     actions: list[DomainAction] = []
     for action_id, garrison, room in (
@@ -1860,10 +1861,10 @@ def apply_reveal_troop_purchase(
     popped = replace(
         state.pop_decision(), players=replace_player(state.players, next_owner)
     )
-    # The recruits count toward the Reveal's Combat-icon room, and up to the
-    # printed two may be deployed from the garrison [Gurney Halleck card] --
-    # any number of them ("Yes. It's indeed 0, 1, or 2.", Paul Dennen, BGG
-    # 2022-01-15), a shortfall refilled later in the turn too (OQ-140).
+    # The recruits count toward the Reveal's Combat-icon room, and these
+    # troops may be deployed from the garrison [Gurney Halleck card] -- any
+    # number of them ("Yes. It's indeed 0, 1, or 2.", Paul Dennen, BGG
+    # 2022-01-15), an owed one once it is refilled (OQ-140).
     frame = popped.decision_stack[-1]
     reveal_context = dict(frame.context)
     reveal_context["reveal_troops_recruited"] = (
@@ -1871,7 +1872,9 @@ def apply_reveal_troop_purchase(
         + recruited
     )
     counted = replace_top_frame(popped, with_context(frame, reveal_context))
-    next_state = grant_recruit_deployment(counted, action.actor, count)
+    next_state = grant_recruit_deployment(
+        counted, action.actor, recruited, count - recruited
+    )
     return RuleResult(
         state=next_state,
         events=(
