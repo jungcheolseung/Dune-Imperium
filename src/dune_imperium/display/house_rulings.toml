@@ -440,8 +440,8 @@ group = "project"
 game = "uprising"
 title_ko = "어둠 속 발소리의 유대"
 title = "Tread in Darkness and its Bond"
-ruling_ko = "어둠 속 발소리의 유대 조건은 아이콘마다 해결할 때 본다. 유대를 이루는 카드를 먼저 폐기하면 뽑기는 기다리다 턴 종료 때 사라지고, 뽑기를 먼저 하면 둘 다 받는다."
-ruling = "Tread in Darkness checks its Bond per icon: trash the card that makes the Bond first and the draw waits and lapses at the end of the turn; draw first and you get both."
+ruling_ko = "어둠 속 발소리의 유대 조건은 폐기와 뽑기 아이콘마다 해결할 때 본다. 유대를 이루는 다른 베네 게세리트 카드가 어떤 길로든 먼저 빠지면 남은 아이콘은 폐기든 뽑기든 회색으로 기다리다 턴 종료 때 사라지고, 턴 종료를 막지 않는다. 뽑기를 먼저 하면 둘 다 받는다."
+ruling = "Tread in Darkness checks its Bond for the trash and the draw each, when each resolves: once the other Bene Gesserit card leaves play by any route, whichever icon is left waits greyed and lapses at the end of the turn, never holding it; draw first and you get both."
 
 [[ruling]]
 oq = "OQ-029"
@@ -2036,3 +2036,25 @@ title = "A turn played on after Bindu Suspension has already started"
 ruling_ko = "Bindu Suspension으로 카드를 뽑고 차례를 그대로 진행하면 그 차례의 시작은 끝난 것이라, 같은 차례에 다른 \"차례 시작\" 카드(Litany Against Fear, Withdrawn)는 낼 수 없다. 넘긴 차례가 곧바로 돌아오면(다른 플레이어가 모두 공개한 뒤) 새 차례라서 시작에 쓰는 카드를 다시 낼 수 있다."
 ruling = "If you draw with Bindu Suspension and play the turn on, the start of that turn is over: no other \"start of your turn\" card (Litany Against Fear, Withdrawn) can be played in it. A pass that hands the turn straight back (every other player has revealed) begins a new turn, whose start is open again."
 names = ["Bindu Suspension", "Litany Against Fear", "Withdrawn"]
+
+[[ruling]]
+oq = "OQ-028 (Gene Manipulation)"
+group = "app_differs"
+game = "base_ix"
+title_ko = "Gene Manipulation의 폐기와 스파이스는 순서 자유"
+title = "Gene Manipulation: the trash and the spice in either order"
+ruling_ko = "Gene Manipulation의 폐기 아이콘과 \"다른 베네 게세리트 카드가 플레이 중이면 스파이스 2\"는 따로, 원하는 순서로 받는다. 스파이스의 조건은 그 아이콘을 받을 때 본다: 그 전에 유대를 이루는 카드를 폐기하면 스파이스는 회색으로 기다리다 턴 종료 때 사라지고, 같은 차례에 유대가 생기면 받을 수 있다."
+ruling = "Gene Manipulation's trash icon and its \"2 spice if you have another Bene Gesserit card in play\" are taken apart, in either order. The spice's condition is checked when it is taken: trash the card that makes the Bond first and the spice waits greyed and lapses at the end of the turn; a Bond formed later in the turn pays it."
+names = ["Gene Manipulation"]
+sources_ko = "공식은 말하지 않음. 앱은 카드의 에이전트 효과가 돌 때 유대를 한 번 보고 스파이스를 곧바로 준다(나중에 생긴 유대는 세지 않는다)."
+sources = "The official documents are silent. The app checks the Bond once, when the card's Agent effect runs, and pays the spice at once (a Bond formed later does not count)."
+
+[[ruling]]
+oq = "OQ-142"
+group = "project"
+game = "base_ix"
+title_ko = "승리 책략이 숨어 있는 동안 승자의 창은 늘 닫기 줄로 끝난다"
+title = "While a winning Intrigue is hidden, every winner's window ends with a close"
+ruling_ko = "\"교전에서 이기면\" 책략(To the Victor..., Demand Respect)의 사본이 아직 덱이나 누군가의 손에 있는 동안, 교전의 단독 승자가 받는 창은 모든 보상을 받은 뒤 닫기 줄로 끝난다. 승자가 그 카드를 쥐었는지와 상관없이 늘 그렇게 해서, 창의 모양으로 승자의 손이 드러나지 않는다. 보상으로 뽑은 그 책략도 닫기 전에 낼 수 있다."
+ruling = "While a copy of a \"when you win a Conflict\" Intrigue (To the Victor..., Demand Respect) is still in the deck or a hand, a sole winner's reward window ends with a close row after every reward, whether or not the winner holds one, so the window's shape never shows the winner's hand. One drawn as a reward can still be played before the close."
+names = ["To the Victor...", "Demand Respect"]

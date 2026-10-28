@@ -1271,6 +1271,20 @@ def test_a_grafted_firm_grip_pays_its_solari_arrow_in_either_box() -> None:
     assert again.players[0].resources.solari == 0
 
 
+def test_ghola_s_copy_of_tread_in_darkness_counts_tread_for_the_bond() -> None:
+    """immortality.md 5, [Immortality p. 14]: "Bene Gesserit 카드에 graft하면 그
+    카드의 'BG 카드가 play 중이면' 조건은 그 카드 자신을 세지만 Ghola 자체는 BG
+    카드가 아니다". Ghola's copy of Tread in Darkness's box has its Bond in
+    Tread itself, so the copy's trash and draw are offered; Tread's own box
+    needs another Bene Gesserit card, which Ghola is not, so it offers none
+    (each icon judged when it resolves, OQ-028)."""
+
+    tread = "imperium:tread_in_darkness:0"
+    state = _graft(_state((GHOLA, tread)), GHOLA, "arrakeen", tread)
+    assert _boxes_offered(state, "resolve_agent_card_effect") == {0}
+    assert _boxes_offered(state, "trash_agent_card") == {0}
+
+
 def test_the_observation_names_both_boxes_by_their_fixed_number() -> None:
     """Observation v31 (plan 4.7): box 0 the placed card, box 1 the partner,
     each with its pending flag, whichever box the frame holds in

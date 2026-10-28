@@ -167,7 +167,7 @@
 | [OQ-139](#oq-139--mentat이-어느-말인가-원판) | Mentat이 어느 말인가 (원판) | `DECIDED` |
 | [OQ-140](#oq-140--이-병력을-배치할-수-있다의-이-병력-원판) | "이 병력을 배치할 수 있다"의 이 병력 (원판) | `OPEN` |
 | [OQ-141](#oq-141--획득-상자의-아이콘-여럿과-진영-고르기-원판) | 획득 상자의 아이콘 여럿과 진영 고르기 (원판) | `DECIDED` |
-| [OQ-142](#oq-142--승자의-창의-닫기-줄과-승리-책략의-숨은-정보-원판) | 승자의 창의 닫기 줄과 승리 책략의 숨은 정보 (원판) | `OPEN` |
+| [OQ-142](#oq-142--승자의-창의-닫기-줄과-승리-책략의-숨은-정보-원판) | 승자의 창의 닫기 줄과 승리 책략의 숨은 정보 (원판) | `DECIDED` |
 | [OQ-143](#oq-143--bindu-suspension으로-차례를-이어-간-뒤-다른-차례-시작-카드-원판) | Bindu Suspension으로 차례를 이어 간 뒤 다른 차례 시작 카드 (원판) | `DECIDED` |
 | [OQ-144](#oq-144--double-cross의-supply-배치와-sardaukar-commander-원판--bloodlines) | Double Cross의 supply 배치와 Sardaukar Commander (원판 + Bloodlines) | `OPEN` |
 
@@ -378,6 +378,21 @@
 - 보강(2026-09-26, 카드 전사 감사): (b) Priority Contracts·Delivery Agreement의 "[spice] —OR— If you have completed four or more contracts: Trash this card → [1 VP]" `[Priority Contracts card]` `[Delivery Agreement card]`에서 spice는 선택의 한 갈래이므로 자동 이득으로 주지 않고 선택 frame(`keep_contract_reveal_spice`)으로만 준다. 선택은 항상 열리고 trash 갈래는 해결 시점에 완료 contract가 4개 이상일 때만 제시한다 — 미뤄 둔 뒤 The Spice Must Flow로 4번째 contract를 완료하면 VP를 고를 수 있지만 spice와 VP를 함께 받지는 않는다(이전 구현은 시작 시 3개면 spice를 자동으로 주고 선택을 미뤄, 4번째 완료 뒤 keep이 spice를 한 번 더, trash가 VP를 더 주었다). 해결 시점 판정은 이 OQ의 project convention이다. (c) Sardaukar Commander Skill의 Reveal 보너스(Charismatic·Driven·Hardy)도 Reveal 도중 Commander가 처음 Conflict에 들어오면 그때 한 번 지급한다("While you have any number of Sardaukar Commanders in the Conflict, the effects of all your Sardaukar Commander Skills are active" `[Bloodlines p. 4]`).
 - 적용(2026-09-26, project convention): 같은 Agent box 안의 인쇄 줄 사이에도 적용한다. Scientific Breakthrough는 Research 아이콘과 별도 줄의 "[2 genetic markers]: Trash this card → 1 VP"를 인쇄하는데 `[Scientific Breakthrough card]`, marker 조건을 Research 전에 한 번만 판정해 카드 자신의 Research가 두 번째 marker에 닿아도 trash 줄을 쓸 수 없었다. "When your research token reaches a column with a genetic marker at the bottom, for the rest of the game, any effects on cards marked with that icon are active for you." `[Immortality p. 6]`와 자유 순서 `[Main p. 9]`에 따라 Research를 먼저 해결하면 줄은 열린 채 남고, Research가 끝난 뒤 marker가 2 이상이면 화살표 비용(거절 가능)으로 제시된다. 그때 trash해도 Research를 다시 하지 않는다. 2 미만이면 turn 종료까지 보류된 뒤 소멸한다(OQ-057 (1)).
 - 적용(2026-10-06, Tread in Darkness, project convention): (a)는 Faction Bond를 "줄어들 수만 있다"는 이유로 배치 시점에만 판정하지만, Tread in Darkness는 자기 trash 아이콘으로 Bond를 이루는 다른 Bene Gesserit 카드를 trash할 수 있어 같은 box 안에서 Bond가 깨진다. 그래서 이 카드의 Bond는 아이콘마다 해결할 때 판정한다(OQ-027 확장 2). Bond를 이루는 카드를 먼저 trash하면 draw 아이콘은 조건을 기다리다 turn 종료에 소멸하고(OQ-057 (1); 화면은 이유와 함께 회색 줄), draw를 먼저 하면 draw와 trash를 모두 받는다. Tread in Darkness 자신을 그 아이콘으로 trash하면 카드가 자기 아이콘으로 떠난 것이므로 draw는 그대로 남는다(OQ-022의 "자기 효과" 예외). graft 상대의 box를 그 사이에 해결해도 같다(2026-10-12부터 두 box를 처음부터 함께 제시한다 — [graft-boxes-plan.md](../graft-boxes-plan.md); 그 전에는 `switch_graft_card`로 전환했다가 돌아왔다). 테스트: `tests/unit/rules/test_agent_effects.py`(`test_tread_in_darkness_draw_waits_once_its_bond_card_is_trashed`, `test_tread_in_darkness_trashing_itself_still_draws`), `tests/unit/display/test_unavailable.py::test_tread_in_darkness_draw_greys_out_once_its_bond_card_is_trashed`.
+- 다시 확인(2026-10-28, 사용자 "당연히 trash도 draw와 마찬가지로 베네게세리트 카드가 있을 때만 가능한 동작인데 왜 그건 남게 구현됐다는거야. 이건
+  버그인데. 어쨌든 추천한대로 구현하면 문제 없을거 같은데 다시 확인해봐", 조정자 경유): 걱정은 P3 밤 메모(계획 16.9)의 "trash는 남는다"였는데,
+  엔진은 이미 카드 문구대로다 — "If you have another Bene Gesserit card in play:"가 trash와 draw를 함께 걸고, 아이콘마다 해결할 때 판정한다. 확인한 것:
+  (1) 다른 Bene Gesserit 카드가 다른 길(Intrigue 폐기 칸, graft 상대의 box — 테스트는 In High Places 테스트처럼 상태를 직접 바꿔 흉내)로 먼저 빠지면 trash도 draw도 제시되지 않고 이유와 함께 회색, 턴 종료는
+  막히지 않으며 누르면 둘 다 `agent_card_effect_unavailable`; (2) draw를 먼저 받은 뒤 Bond가 깨지면 trash가 회색으로 남고 누르면
+  `agent_card_effect_lapsed`(선택 효과이면서 조건도 안 맞음 — 사건 이름만 다르고 동작은 같다); (3) 자기 trash로 Bond 카드를 버리면 draw가 회색;
+  (4) 같은 차례에 Bond가 다시 생기면 둘 다 다시 제시되고 의무인 draw가 턴 종료를 다시 막는다; (5) Ghola가 Tread를 복사하면 복사본의 Bond는 Tread
+  자신을 세어 제시되고, Tread 자신의 box는 Ghola가 Bene Gesserit 카드가 아니므로 제시되지 않는다 `[Immortality p. 14]`. 앱도 두 능력 모두에
+  `HasPlayedFactionCard`를 건다(보조 증거, 로컬 `…/analysis/p3-oq-2026-10-28.md`). 동작 변경 없음 — 회귀 테스트만 더했다
+  (`test_agent_effects.py`의 `test_tread_in_darkness_bond_broken_elsewhere_greys_both_icons` 외 둘, `test_graft_boxes.py`의
+  `test_ghola_s_copy_of_tread_in_darkness_counts_tread_for_the_bond`).
+- 적용(2026-10-28, 원판 Gene Manipulation, 사용자 판정 "이건 지금 구현을 유지해. 순서 자유", 조정자 경유): trash 아이콘(조건 없음, 선택)과 "If you
+  have another Bene Gesserit card in play: 2 spice"는 따로, 소유자가 고른 순서로 받고 spice의 Bond는 그 아이콘을 받을 때 판정한다 — 그 전에 Bond
+  카드를 trash하면 spice는 회색으로 기다리다 턴 종료에 소멸하고, 같은 차례에 Bond가 생기면 받는다. 앱은 Agent 능력이 돌 때 한 번 판정해 spice를
+  곧바로 준다(로컬 분석, `GeneManipulationAbility`) — 앱과 다른 판정이라 공지의 (나) 묶음에 올렸다.
 
 ## OQ-029 — Conflict에 배치한 troop의 임의 회수와 배치의 분할
 
@@ -2951,7 +2966,7 @@
 
 ## OQ-142 — 승자의 창의 닫기 줄과 승리 책략의 숨은 정보 (원판)
 
-- 상태: `OPEN` (2026-10-28, P3 밤 작업; 구현한 쪽을 추천, 사용자 확인 대기)
+- 상태: `DECIDED` (2026-10-28 사용자 판정, 조정자 경유; project convention — 숨은 정보 원칙 OQ-121·OQ-103의 적용)
 - 계기: 원판 To the Victor...·Demand Respect를 승자의 창에서 내게 하면서(OQ-121 판정 6 "안 내도 창이 닫힌다") 창을 닫는 줄이 필요해졌다.
 - 정한 것(구현 `00c23f84`, `e4b0bf39`): 창의 마지막 줄 `resolve_combat_reward_icon(effect=winning_intrigue)`. 다른 줄을 모두 받은 뒤에만 나오므로
   보상으로 뽑은 승리 책략도 먼저 낼 수 있다([FAQ p. 4]).
@@ -2959,6 +2974,8 @@
   그 카드를 쥐었는지가 창의 모양으로 드러나지 않게(OQ-121 "승리 책략을 쥐었는지는 드러나지 않는다", OQ-103 선례). 값: 그 동안 승자는 창마다 한 번 더
   누른다. 다른 길: 낼 수 있는 승리 책략을 쥐었을 때만 둔다(누름은 줄지만 쥐었음이 드러난다). 한 함수(`combat.winning_intrigue_is_hidden`)만 바꾸면 된다.
 - 추천: 구현대로(숨김). 화면(P5)에서 사람 좌석 혼자인 판의 자동 누름은 그때 정한다.
+- 판정(2026-10-28 사용자, 조정자 경유): **구현대로(숨김)** — "이건 추천대로 (가)". 승리 책략 사본이 덱이나 손에 숨어 있는 동안 모든 단독
+  승자의 창에 닫기 줄을 둔다. 플레이어 공지에 올렸다(`display/house_rulings.toml`).
 - 닿는 곳(2026-10-28 다시 봄, 사용자 상시 지시 "항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해"): 숨김 판단은 판이 아니라 카드를
   읽는다(`combat._winning_intrigue_instances`: "When you win a Conflict"(`OnConflictWon`)가 붙은 Intrigue, 덱과 손). 그래서 Uprising + 원판 카드의
   섞인 Intrigue 덱에서도, 어느 판에서든 같은 규칙이다. 그런 Intrigue는 원판의 두 장뿐이다 — Uprising·Bloodlines(Piter의 Twisted 포함)·Immortality

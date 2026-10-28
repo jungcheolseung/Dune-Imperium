@@ -943,8 +943,9 @@ Imperium 마지막 둘(06:21~06:53): Shifting Allegiances(Agent box의 Influence
 (`TakeCardFromDiscard`, 버림 더미의 Bene Gesserit 카드를 `hand_public`으로 손에 — OQ-010) 구현. 남은 것: Firm Grip의 `pay_agent_card_solari`가
 `graft_boxes.BOX_ACTION_IDS`에 없어 원판 + Immortality의 접합 차례에서 막혔다(16.10 2에서 고침).
 휴리스틱은 새 행(`lose_agent_card_influence`, `take_agent_card_from_discard`, Bindu의 pass, 승리 책략)을 고르지 않는다 — P6.
-- **Uprising Tread in Darkness(확인 필요):** 같은 차례에 Bond가 깨져 뽑기 아이콘이 안 나올 때 상자가 선택형이 되는가(OQ-057 (1)). Gene Manipulation에는
-  그렇게 했고(`_WAITING_ICON_BOXES`), Uprising 카드는 사용자 확인 전까지 그대로 둔다(`2a51da4c`).
+- **Uprising Tread in Darkness(2026-10-28 확인, 동작 변경 없음):** 이 메모가 걱정한 "Bond가 깨져도 trash는 남는다"는 사실이 아니었다 — 두 아이콘
+  모두 Bond로 걸리고 해결할 때 판정하며, 깨지면 회색으로 기다리다 턴 종료에 사라진다(OQ-028 "다시 확인"). `_WAITING_ICON_BOXES`는 조건 있는 아이콘과
+  조건 없는 선택 아이콘이 섞인 상자(Gene Manipulation)에만 필요하다. Gene Manipulation의 순서 자유는 사용자 판정(같은 날, OQ-028 적용).
 
 ### 16.10 조합 다시 보기 (2026-10-28 아침, 사용자 상시 지시)
 
