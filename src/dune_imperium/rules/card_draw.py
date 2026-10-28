@@ -8,6 +8,7 @@ from dune_imperium.core.decisions import ChanceDecision, DecisionFrame
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.deck_top import clear_deck_top
 from dune_imperium.rules.frames import FrameKind, reveal_is_open_for
 from dune_imperium.rules.reveal_turn import reveal_late_arrivals
 
@@ -156,13 +157,17 @@ def apply_personal_draw_reshuffle(
 
     owner = state.players[player]
     whole_deck = context.get(SHUFFLE_DECK_KEY) is True
-    # Refocus's permutation is the whole new deck; a draw's own reshuffle puts
-    # the shuffled discard pile beneath the cards the deck still holds.
+    # Refocus's permutation is the whole new deck, so no card of it is known
+    # on top any more (OQ-145); a draw's own reshuffle puts the shuffled
+    # discard pile beneath the cards the deck still holds, which keep their
+    # public top (``rules.deck_top``).
     next_owner = replace(
         owner,
         deck=outcome.values if whole_deck else (*owner.deck, *outcome.values),
         discard_pile=(),
     )
+    if whole_deck:
+        next_owner = clear_deck_top(next_owner)
     players = tuple(
         next_owner if candidate.player_id == player else candidate
         for candidate in state.players

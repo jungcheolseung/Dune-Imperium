@@ -5,8 +5,9 @@ docs/rules/imperium-base.md 13.2 (Recruitment Mission: the whole card applies
 only to the owner's Reveal turn this round, and "for each card acquired the
 owner chooses top of deck or discard pile" [FAQ p. 3]), 13.3 (the card is not
 retroactive; a cost-free effect is played even when it fizzles, OQ-113 (C)),
-14 (a card put on top of the deck is as hidden as any deck card) and 16 (the
--OR- cards) with docs/rules/open-questions.md OQ-016 (a Plot whose effect
+14 (a card put on top of the deck is public to every seat until it is drawn
+or the deck is shuffled, OQ-145) and 16 (the -OR- cards) with
+docs/rules/open-questions.md OQ-016 (a Plot whose effect
 waits for the Reveal turn stays face up until that turn ends [FAQ p. 2]),
 OQ-058, OQ-071 and OQ-125 (a cost cap reaches the Imperium Row's five cards
 and the Reserve's Arrakis Liaison and The Spice Must Flow, never Foldspace
@@ -346,8 +347,9 @@ def test_bypass_protocol_first_option_is_played_with_nothing_to_acquire() -> Non
 def test_bypass_protocol_second_option_pays_two_spice_and_tops_the_deck() -> None:
     # "[2 spice] -> Acquire a card that costs [Persuasion 5] or less to the top
     # of your deck": the cost is paid, the card is placed on the deck first
-    # and its acquire box resolves (Chani's one water), the deck order being
-    # hidden as for any deck card (imperium-base.md 14, OQ-010).
+    # and its acquire box resolves (Chani's one water). A card put face up on
+    # top of the deck is known to every seat until it is drawn or the deck is
+    # shuffled (OQ-145, user ruling 2026-10-28).
     engine, state = _bypass_hand(spice=3)
     water = state.players[0].resources.water
     deck = state.players[0].deck
@@ -370,7 +372,10 @@ def test_bypass_protocol_second_option_pays_two_spice_and_tops_the_deck() -> Non
         "destination": "deck_top",
         "player": 0,
     }
-    assert known_card_seats(done)[CHANI] == frozenset()
+    assert owner.deck_public_top == (CHANI,)
+    assert CHANI not in known_card_seats(done)
+    for seat in range(4):
+        assert engine.observe(done, seat).players[0].deck_public_top == (CHANI,)
 
 
 def test_bypass_protocol_second_option_offers_only_the_deck_top_rows() -> None:
@@ -544,8 +549,8 @@ def test_every_reveal_acquisition_offers_both_destinations() -> None:
 def test_a_reveal_acquisition_may_go_on_top_of_the_deck() -> None:
     # The card is placed first and its acquire box then resolves (Chani's
     # water); the Persuasion is paid as for a plain purchase and the Row
-    # refills. The identity is public, the instance named only while it stays
-    # public (OQ-010) and, once on the deck, known to nobody.
+    # refills. The identity is public and so is the card on the deck (OQ-145);
+    # the event names the instance only while it is in the discard pile.
     engine, state = _mission_reveal()
     owner = state.players[0]
     persuasion = _persuasion(state)
@@ -566,8 +571,29 @@ def test_a_reveal_acquisition_may_go_on_top_of_the_deck() -> None:
         "destination": "deck_top",
         "player": 0,
     }
-    assert known_card_seats(done)[CHANI] == frozenset()
+    assert after.deck_public_top == (CHANI,)
+    assert CHANI not in known_card_seats(done)
     assert _persuasion(done) == 0
+
+
+def test_cards_put_on_the_deck_one_after_another_stack_in_that_order() -> None:
+    # OQ-145 (user ruling 2026-10-28): the last card placed is on top, and
+    # every one of them is public until it is drawn or the deck is shuffled.
+    engine, state = _mission_reveal()
+    owner = state.players[0]
+
+    first = apply_whole(engine, state, _imperium(MISSIONARIA, top=True)).state
+    second = apply_whole(engine, first, _imperium(SISTER, top=True)).state
+
+    after = second.players[0]
+    assert after.deck == (SISTER, MISSIONARIA, *owner.deck)
+    assert after.deck_public_top == (SISTER, MISSIONARIA)
+    assert not {SISTER, MISSIONARIA} & set(known_card_seats(second))
+    for seat in range(4):
+        assert engine.observe(second, seat).players[0].deck_public_top == (
+            SISTER,
+            MISSIONARIA,
+        )
 
 
 def test_a_reveal_acquisition_may_still_go_to_the_discard_pile() -> None:

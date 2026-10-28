@@ -241,6 +241,43 @@ def test_reveal_detection_follows_the_information_flow_rules() -> None:
     assert reveals_hidden_information(before, after, actor=0) is False
 
 
+def test_a_public_deck_top_card_is_no_reveal_when_placed_or_drawn() -> None:
+    # OQ-145: a card put face up on top of the deck is known to every seat, so
+    # placing it, and drawing it into the hand where it stays public
+    # (``hand_public``), show nobody anything new and may be taken back; the
+    # card under it, drawn as usual, is a reveal as it always was.
+    placed = _state(
+        p0=PlayerState(
+            player_id=0, deck=("imp:1", "own:1"), deck_public_top=("imp:1",)
+        )
+    )
+    on_row = replace(
+        _state(p0=PlayerState(player_id=0, deck=("own:1",))),
+        imperium_row=("imp:1",),
+    )
+    assert reveals_hidden_information(on_row, placed, actor=0) is False
+
+    drawn_public = _state(
+        p0=PlayerState(
+            player_id=0, deck=("own:1",), hand=("imp:1",), hand_public=("imp:1",)
+        )
+    )
+    assert reveals_hidden_information(placed, drawn_public, actor=None) is False
+    assert reveals_hidden_information(placed, drawn_public, actor=0) is False
+
+    # The same draw of a card nobody had seen reveals it to its owner.
+    plain = _state(p0=PlayerState(player_id=0, deck=("imp:1", "own:1")))
+    drawn_plain = _state(p0=PlayerState(player_id=0, deck=("own:1",), hand=("imp:1",)))
+    assert reveals_hidden_information(plain, drawn_plain, actor=None) is True
+    # The card below a public top is still a reveal when drawn after it.
+    drawn_two = _state(
+        p0=PlayerState(
+            player_id=0, hand=("imp:1", "own:1"), hand_public=("imp:1",)
+        )
+    )
+    assert reveals_hidden_information(placed, drawn_two, actor=None) is True
+
+
 def test_a_starting_card_removed_by_a_leader_pick_is_not_a_reveal() -> None:
     # Limited Allies: "You start the game without Diplomacy in your deck"
     # [Staban Tuek card]. The pick takes the card out of a face-down deck

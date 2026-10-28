@@ -52,6 +52,7 @@ from dune_imperium.rules.contracts import (
     complete_acquire_contracts,
     contract_gain_opens_market,
 )
+from dune_imperium.rules.deck_top import place_on_deck_top
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
     OptionalEffectBlock,
@@ -160,10 +161,12 @@ def acquired_card_placed(
     """``owner`` with an acquired card in the discard pile, or on top of the
     deck (Bypass Protocol, Recruitment Mission) -- placed first, so the
     card's acquire box resolves with it already there (the Immortality
-    precedent, ``rules.tleilaxu_row``)."""
+    precedent, ``rules.tleilaxu_row``). A card put on top of the deck is
+    known to every seat until it is drawn or the deck is shuffled (OQ-145,
+    ``rules.deck_top``)."""
 
     if to_deck_top:
-        return replace(owner, deck=(instance_id, *owner.deck))
+        return place_on_deck_top(owner, instance_id)
     return replace(owner, discard_pile=(*owner.discard_pile, instance_id))
 
 

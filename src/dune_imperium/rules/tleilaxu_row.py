@@ -38,6 +38,7 @@ from dune_imperium.rules.acquisition import (
     resolve_acquisition_bonus,
     with_pending_draw,
 )
+from dune_imperium.rules.deck_top import place_on_deck_top
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -203,14 +204,14 @@ def acquire_tleilaxu_card(
             "the deck top needs the first genetic marker or Recruitment Mission"
         )
     owner = spend_specimens(state.players[player], definition.specimen_cost)
-    next_owner = replace(
-        owner,
-        # "you may put Tleilaxu cards you acquire on top of your deck"
-        # [Immortality p. 6]; otherwise the discard pile [Immortality p. 8].
-        deck=(instance_id, *owner.deck) if to_deck_top else owner.deck,
-        discard_pile=(
-            owner.discard_pile if to_deck_top else (*owner.discard_pile, instance_id)
-        ),
+    # "you may put Tleilaxu cards you acquire on top of your deck"
+    # [Immortality p. 6]; otherwise the discard pile [Immortality p. 8]. A
+    # card put on top is known to every seat until it is drawn or the deck
+    # is shuffled (OQ-145, ``rules.deck_top``).
+    next_owner = (
+        place_on_deck_top(owner, instance_id)
+        if to_deck_top
+        else replace(owner, discard_pile=(*owner.discard_pile, instance_id))
     )
     bonus = resolve_acquisition_bonus(state, player, instance_id, next_owner)
     next_state = refill_tleilaxu_row(

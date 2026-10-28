@@ -148,6 +148,10 @@ class PublicPlayerView:
     # docs/rules/imperium-base.md 14), and the Factions once revealed.
     masterstroke_secret: bool = False
     masterstroke_revealed_factions: tuple[str, ...] = ()
+    # The deck's top cards every seat knows, top first (OQ-145): cards put
+    # face up on top of the deck stay public until they are drawn or the deck
+    # is shuffled; ``PlayerState.deck_public_top``.
+    deck_public_top: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -406,11 +410,14 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     public (``revealed_contract_ids``). A hand or a held Intrigue card is
     known to its owner only [Main p. 7], except the cards OQ-010 keeps
     public: publicly acquired hand cards (``PlayerState.hand_public``) and a
-    played Intrigue whose choices are still resolving. A hidden card its
-    owner has been shown is known to that owner: a peeked deck top
-    (Controlled, Glowglobes), Long Live the Fighters' top three, Imperium
-    Ceremony's two Intrigue cards, Kota Odax's bottom Tech tiles and Secret
-    Project. An Arrakeen Scouts secret pick is listed under
+    played Intrigue whose choices are still resolving. The deck's top cards
+    put there face up (Bypass Protocol, Recruitment Mission, a Tleilaxu
+    card; ``PlayerState.deck_public_top``, OQ-145) are public until they
+    are drawn or the deck is shuffled, and that wins over the owner-only
+    peeks below. A hidden card its owner has been shown is known to that
+    owner: a peeked deck top (Controlled, Glowglobes), Long Live the
+    Fighters' top three, Imperium Ceremony's two Intrigue cards, Kota Odax's
+    bottom Tech tiles and Secret Project. An Arrakeen Scouts secret pick is listed under
     ``secret_pick_id`` for its seat until it is due, and a sealed bid under
     ``secret_bid_id`` until every seat has confirmed, and the original
     game's Baron Harkonnen's Masterstroke Factions under ``masterstroke_id``
@@ -419,7 +426,8 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     may take back, so every hidden zone and every private glimpse belongs
     here (``tests/unit/test_known_card_seats.py`` checks it against
     what each seat's view and choices show). It is knowledge of a card's
-    place: a deck card stays known to nobody even though the play server
+    place: a deck card below the public top stays known to nobody even
+    though the play server
     shows the owner its deck's composition, sorted (OQ-010 ruling 5), and
     every seat each seat's deck pool (``PublicPlayerView.deck_pool``, card
     ids by identity only, OQ-010 ruling 6).
@@ -476,6 +484,10 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
         ):
             if card_id:
                 known[card_id] = owner
+        for card_id in player.deck_public_top:
+            # Put on top face up for the whole table (OQ-145): the one deck
+            # knowledge that wins over the owner's peeks above.
+            known.pop(card_id, None)
     for event_round, _, seat, _ in state.scouts_secret_picks:
         # Arrakeen Scouts: a secret pick is its seat's alone until due. It
         # is no card, but the log redaction, the undo boundary and the
@@ -993,4 +1005,5 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         masterstroke_revealed_factions=(
             player.masterstroke_factions if player.masterstroke_revealed else ()
         ),
+        deck_public_top=player.deck_public_top,
     )

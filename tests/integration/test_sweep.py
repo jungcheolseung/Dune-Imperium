@@ -375,6 +375,32 @@ def test_privacy_scramble_changes_hidden_state_but_not_the_view() -> None:
     check_observation_privacy(marked)
 
 
+def test_privacy_scramble_keeps_the_public_deck_tops_in_place() -> None:
+    # OQ-145: cards put face up on top of a deck are known to every seat, so
+    # the scramble leaves them on top in order, the observer's own deck and an
+    # opponent's alike, and reorders only what lies below them.
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(), seed=65)
+    mine, rival = state.players[0], state.players[1]
+    marked = replace(
+        state,
+        players=(
+            replace(mine, deck_public_top=mine.deck[:2]),
+            replace(rival, deck_public_top=rival.deck[:2]),
+            *state.players[2:],
+        ),
+    )
+
+    scrambled = _scramble_hidden_information(marked, observer=0)
+
+    assert scrambled.players[0].deck[:2] == mine.deck[:2]
+    assert scrambled.players[1].deck[:2] == rival.deck[:2]
+    assert scrambled.players[0].deck != mine.deck
+    assert scrambled.players[1].hand != rival.hand
+    assert observe_state(scrambled, 0) == observe_state(marked, 0)
+    check_observation_privacy(marked)
+
+
 def test_privacy_scramble_reorders_the_expansion_hidden_zones() -> None:
     # The Conflict deck [Main p. 4], the face-down Skill stack
     # [Bloodlines p. 3] and the Tleilaxu deck [Immortality p. 4] are observed
