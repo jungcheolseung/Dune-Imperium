@@ -1212,3 +1212,26 @@ P4는 원판 + Ix(+ 프로모, Epic, 지도자 드래프트)를 연다. 그 밖�
 - 기계 대조 pytest: 앱 표(공개 저장소의 `agents/app_ai/data/archetypes.py`)와 Ix 정의를 칸마다 대조(P3a의 `test_imperium_app_table`처럼).
 - 관측 v39 구간 설계(17.4) — 독립 리뷰 한 번(P3 v38처럼), Uprising 판 같은 수 확인.
 - 소크: 원판 + Ix(효과 없는 카드는 덱 밖이라 틀만으로도 돈다).
+
+### 17.8 관측 v39 설계안 (P4a, 구현 전 독립 리뷰 대상)
+
+v38은 137구간 8,265열이다. 원칙은 v35·v37·v38과 같다: 새 id는 각 어휘의 **끝에** 붙이고 새 구간은 배치의 **끝에** 둔다. 그래야 형식 2 이관이
+열을 (구간, 자리)로 옮기고 새 열은 0에서 시작해, 옮긴 망이 Uprising 판에서 같은 수를 둔다(P2·P3처럼 `same_moves.py`).
+
+- **어휘 끝에 붙일 Ix id:** 개인 카드 +30(Imperium 29종 + Boundless Ambition; Control the Spice는 이미 있음), Intrigue +17, Conflict +3(Economic
+  Supremacy는 이미 `BATTLE_CARD_IDS`에), 지도자 +6, 칸 +4(Dreadnought·Tech Negotiation·Interstellar Shipping·Smuggling), Tech +18(Bloodlines 18장
+  뒤에). 이 어휘를 쓰는 구간(손 공개·in play·discard·trash·덱 풀·imperium_removed·private_hand·엿본 카드·고르는 카드·Intrigue 구간들·`tech_trash`·
+  `seatN_tech`·지도자 드래프트 풀·Agent 자리)은 길이만 늘고 뜻은 그대로다.
+- **새 구간 후보(상태 칸은 P4a에서 기본값 0으로 먼저 만들고 값은 P4b·c·e가 채운다):**
+  - `seatN_units`: dreadnought의 supply·garrison·Conflict 수(좌석마다 3열). troop·Commander 열은 이미 `seatN_scalars`에 있다.
+  - `dreadnought_control`: Control 칸마다 그 칸에 dreadnought를 놓은 좌석(+1, 없으면 0)과 "다음 Combat 끝에 떠남" 표시 — 원판 Arrakeen·Carthag·Imperial
+    Basin(Uprising 판이면 그 판의 Control 칸, P7). 칸 수는 `CONTROL_SPACE_IDS`(넷)를 다시 쓴다.
+  - `seatN_ix`: Freighter 칸(0~3), 협상가 수, Snooper token 넷(Tessia; 트랙마다 남은 token 칸 또는 0).
+  - Ix Tech 더미: 지금 `tech_face_up`(3)·`tech_stack_sizes`(3)를 그대로 쓴다(더미 셋, 원판 + Ix에는 Bloodlines Tech가 없다). **두 모듈을 함께 쓰는 판은
+    17.6 1이 정해질 때까지 열지 않는다.**
+  - 숨은 정보(rise-of-ix.md 13): `private_intrigue_top`(Hundro가 아는 Intrigue 덱 맨 위, 124+17열 one-hot), `private_intrigue_bottom`(Court Intrigue·Sonic
+    Snoopers로 놓은 좌석이 아는 덱 맨 아래 카드들, 수 세기), `private_set_aside`(Ilesa가 따로 둔 카드, 주인만). Spaceport로 덱 위에 놓은 카드는 v38의
+    `seatN_deck_public_top`(OQ-145)을 그대로 쓴다.
+  - `ix_flags`: 판 표시(원판 + Ix인가, 4.2절 8)와 뒤집은 Tech(이미 `tech_flipped`가 좌석 상태에 있으면 그것).
+- **확인할 것:** `known_card_seats`·결정 표본(determinizer)·되돌리기 경계에 Hundro·Court Intrigue·Sonic Snoopers·Ilesa를 넣는다. 엔티티 특성은 Uprising 개체로
+  척도를 고정해 Uprising 405행 그대로(P2a의 `entity_features._table`). 크기 어림: 어휘 늘림 약 +1,100열, 새 구간 약 +330열 → 약 9,700열.
