@@ -1037,12 +1037,6 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # with none confirms it (OQ-036 (a)).
         templates.extend(_unit_loss_templates())
         templates.append(ActionTemplate("resolve_unit_loss_without_unit"))
-        # Unswerving Loyalty (every ruleset) and Shadout Mapes (Immortality)
-        # may move a Sardaukar Commander: it "is a 'troop'" [Bloodlines p. 4].
-        templates.extend(
-            ActionTemplate(action_id=action_id, arguments=(("commanders", 1),))
-            for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
-        )
     if content.base_game is BaseGame.IMPERIUM:
         # The original game's Poison Snooper: draw the card it looked at or
         # trash it, or confirm an empty deck (stage P3); only in its catalog,
