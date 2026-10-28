@@ -170,6 +170,7 @@
 | [OQ-142](#oq-142--승자의-창의-닫기-줄과-승리-책략의-숨은-정보-원판) | 승자의 창의 닫기 줄과 승리 책략의 숨은 정보 (원판) | `DECIDED` |
 | [OQ-143](#oq-143--bindu-suspension으로-차례를-이어-간-뒤-다른-차례-시작-카드-원판) | Bindu Suspension으로 차례를 이어 간 뒤 다른 차례 시작 카드 (원판) | `DECIDED` |
 | [OQ-144](#oq-144--double-cross의-supply-배치와-sardaukar-commander-원판--bloodlines) | Double Cross의 supply 배치와 Sardaukar Commander (원판 + Bloodlines) | `OPEN` |
+| [OQ-145](#oq-145--덱-위에-앞면으로-놓은-카드는-누가-아는가-원판--immortality) | 덱 위에 앞면으로 놓은 카드는 누가 아는가 (원판 + Immortality) | `OPEN` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3057,3 +3058,32 @@
 - 추천: 아니다(troop만). 문서가 supply의 Commander를 꺼내는 길로 두는 것은 2 Solari의 recruit뿐이고, 공짜 배치가 그 값을 건너뛰게 된다. 지금
   구현(`DeployFromSupply`)이 그렇다.
 
+## OQ-145 — 덱 위에 앞면으로 놓은 카드는 누가 아는가 (원판 + Immortality)
+
+- 상태: `OPEN` (2026-10-28, P3 남은 카드 설계; 지금 구현은 바꾸지 않은 상태 — 덱 위에 놓은 카드도 아무도 모른다)
+- 인쇄(앱 문구): Bypass Protocol "Acquire a card that costs [5] or less to the top of your deck"; Recruitment Mission "You may put cards you acquire
+  on top of your deck". Immortality: 첫 genetic marker 뒤 "you may put Tleilaxu cards you acquire on top of your deck" `[Immortality p. 6]`. 셋 모두 앞면
+  으로 고른 카드를 모두가 보는 앞에서 덱 위에 놓는다.
+- 문서 둘이 어긋난다:
+  - [imperium-base.md](imperium-base.md) 14(P0 명세, 사용자 판정 없음): "Bypass Protocol, Recruitment Mission(덱 위에 놓기) | 모두 | … | 그 카드가 뽑힐
+    때까지 모든 좌석이 맨 위 카드를 안다 — 관측에 새로 넣을 정보".
+  - [OQ-010](#oq-010--손패discard와-과거-공개-정보의-열람-범위) 판정 5(2026-10-05 사용자)와 [information-visibility.md](information-visibility.md):
+    덱에 들어오는 길로 "소유자가 고른 Tleilaxu 카드의 deck 맨 위 놓기"를 들고 "순서는 소유자에게도 숨긴다 — 예외는 카드 효과가 소유자에게 보여
+    주는 맨 위 카드 한 장뿐"이라고 적는다. 엔진도 그렇게 돈다: 덱 위에 놓은 Tleilaxu 카드는 `known_card_seats`에서 아무도 모르는 카드다.
+  - 재확인 원칙(OQ-010, 2026-09-01 사용자 "한 번 공개된 정보는 다시 확인할 수 있어야 한다")으로는 모두가 본 카드다.
+- 조합: 세 길은 같은 물리 상황이라 하나로 정해야 한다. 그래서 Uprising + Immortality 판도 바뀐다(관측, 결정 표본, 되돌리기 경계). 원판 Paul
+  Atreides의 Prescience와 Bloodlines Glowglobes는 소유자에게 맨 위 한 장을 보여 준다. (나)면 그 카드는 이미 모두가 안다. Refocus나 다시 섞기는
+  공개를 지운다. Recruitment Mission으로 여러 장을 놓거나 Bypass Protocol 뒤에 더 놓으면, 공개 카드가 맨 위에 놓은 순서대로 쌓인다(맨 위의 연속한
+  장들).
+- 선택지:
+  - (가) 지금 그대로: 덱 위에 놓은 카드도 덱의 다른 카드처럼 아무도 모른다(엿보기 효과만 예외). 관측 변경 없음.
+  - (나) 모든 좌석이 안다: 맨 위에 공개로 놓인 연속한 장들은 뽑히거나 섞일 때까지 공개다. `known_card_seats`, 관측(좌석마다 덱 위 공개 카드),
+    결정 표본(그 장들을 고정), 되돌리기 경계에 넣는다. Immortality의 Tleilaxu 덱 위 놓기도 같이 바뀐다.
+  - (나)의 하위 질문: 그 카드를 뽑아 손에 넣으면 손에서도 공개인가(OQ-010 판정 1의 "공개 경로로 hand에 들어온 카드", `hand_public`), 보통 뽑기처럼
+    숨기는가.
+- 추천: **(나), 뽑은 뒤에도 손에서 공개.** 재확인 원칙에 맞고 imperium-base.md 14가 이미 그렇게 적었다. OQ-010 판정 5는 덱 구성을 소유자에게
+  보여 주는 결정이었고, 덱 위 놓기를 따로 판정한 것은 아니다(내 해석). 모두가 그 카드가 그 손에 들어간 것을 안다.
+- 지금 구현(2026-10-28): Bypass Protocol과 Recruitment Mission의 덱 위 놓기는 Immortality와 같은 길로 넣었다(숨김). 사용자가 (나)를 고르면 세 길의
+  공개와 관측·표본기를 한 번에 바꾼다(관측 버전 하나).
+- 정해져 있어 묻지 않는 것: 덱 위에 놓기와 그 카드의 획득 상자 순서는 놓기가 먼저다(Immortality 구현 선례 `rules/tleilaxu_row.py`: 덱 위에 놓은 뒤
+  획득 보너스). 그래서 Immortality의 두 번째 genetic marker 뒤 Research(카드 1장 뽑기)가 획득 상자에 있으면 방금 덱 위에 놓은 그 카드를 뽑는다.
