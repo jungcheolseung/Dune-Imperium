@@ -1045,6 +1045,20 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for seat in range(config.players)
         )
+        # Urgent Mission: the Agent that returns to its Leader -- one row per
+        # board space, one for the Conflict -- or the confirmation when none
+        # is on the board.
+        templates.extend(
+            ActionTemplate(
+                action_id="recall_agent_for_intrigue",
+                arguments=(("space_id", space.space_id),),
+            )
+            for space in catalog_spaces(config)
+        )
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in _RECALL_AGENT_EFFECTS[1:]
+        )
     if config.tech_module:
         templates.extend(_tech_templates(config))
     if config.immortality:
@@ -1938,6 +1952,14 @@ def _visited_spaces(
 # Bindu Suspension's optional pass of the turn after its draw: pass, or play
 # the turn normally (OQ-117).
 _OPTIONAL_PASS_EFFECTS: Final = ("pass_turn_intrigue", "keep_turn_intrigue")
+# Urgent Mission's recall of one of the seat's own Agents: from a board
+# space (one row per space, in the catalog's own loop), from the Conflict, or
+# the empty confirmation (OQ-113 (C)).
+_RECALL_AGENT_EFFECTS: Final = (
+    "recall_agent_for_intrigue",
+    "recall_conflict_agent_for_intrigue",
+    "skip_intrigue_recall_agent",
+)
 _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
     "PlaceSpy": ("recall_spy_for_intrigue", "decline_intrigue_spy"),
     "DestroyShieldWall": ("detonate_shield_wall", "keep_shield_wall"),
@@ -1958,6 +1980,7 @@ _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
     "AcquireCardUpTo": ("skip_intrigue_acquisition",),
     "GainInfluence": ("resolve_intrigue_influence_without_faction",),
     "PassTurn": _OPTIONAL_PASS_EFFECTS,
+    "RecallYourAgent": _RECALL_AGENT_EFFECTS,
 }
 # A mandatory personal-card trash (Twisted Devious) is confirmed with an empty
 # hand instead of refused (OQ-113 (C)).

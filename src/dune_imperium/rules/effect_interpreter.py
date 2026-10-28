@@ -71,6 +71,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PermanentRevealPersuasion,
     PlaceSpy,
     RecallSpy,
+    RecallYourAgent,
     RecruitTroops,
     RedirectSpiesOnTurnSpace,
     Research,
@@ -83,6 +84,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     SummonSandworm,
     TakeContract,
+    TakeMentat,
     TrashDiscardPileCard,
     TrashedCardHasFaction,
     TrashIntrigueCard,
@@ -119,6 +121,7 @@ from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
     agent_turn_space_id,
     board_icon_is_pending,
+    mentat_rests,
     recruit_shortfall_events,
     recruit_troops,
 )
@@ -176,6 +179,7 @@ type ChoiceSlot = (
     | AcquireTleilaxuCard
     | PassTurn
     | OpponentLosesTroop
+    | RecallYourAgent
 )
 
 
@@ -446,6 +450,9 @@ def choice_slots(
                     slots.append(reward)
                 case OpponentLosesTroop():
                     # Double Cross: the owner names the opponent.
+                    slots.append(reward)
+                case RecallYourAgent():
+                    # Urgent Mission: the owner names the Agent that returns.
                     slots.append(reward)
                 case _:
                     pass
@@ -1008,6 +1015,18 @@ def reward_can_change_something(
             return bool(state.imperium_row)
         case PeekTopCard():
             return bool(owner.deck)
+        case RecallYourAgent():
+            # A cost-free Plot is played whatever it does (OQ-113 (C),
+            # imperium-base.md 13.3); this only tells the page whether it
+            # could change something: an Agent on a board space or in the
+            # Conflict to return.
+            return bool(owner.agent_locations) or owner.agent_in_conflict > 0
+        case TakeMentat():
+            # Calculated Hire's "[1 spice] -> Take the Mentat": the Mentat
+            # is taken only from its own space [DI p. 13], so the cost line
+            # is played only while it rests there (designer ruling,
+            # imperium-base.md 9).
+            return mentat_rests(state)
     # Resources, Victory Points, swords, persuasion and Contract reveals
     # (the bank check runs first, OQ-064) always change something; Harvest
     # Cells' Tleilaxu card is judged by its Conflict-end window.
@@ -1338,6 +1357,7 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | PeekTopCard
             | AcquireTleilaxuCard
             | OpponentLosesTroop
+            | RecallYourAgent
             | RevealContractsTakeOne,
         )
     )
@@ -1505,6 +1525,23 @@ def apply_rewards(
                     granted_agent_icon_turn=_add_granted_icons(
                         owner.granted_agent_icon_turn, icons
                     ),
+                )
+            case TakeMentat():
+                # Calculated Hire: "take it and place it on your Leader; this
+                # round, you may use it as one of your Agents" [DI p. 18]; the
+                # engine does not tell the piece from the seat's other Agents
+                # (OQ-139 (가)), so the round has one Agent more.
+                if not mentat_rests(state):
+                    raise RuntimeError("the Mentat is not on its space")
+                owner = replace(
+                    owner, mentat=True, agents_available=owner.agents_available + 1
+                )
+                events.append(
+                    GameEvent(
+                        event_id=f"{source}:mentat_taken",
+                        kind="mentat_taken",
+                        payload=(("player", player),),
+                    )
                 )
             case GainSolariPerUnitType():
                 # Calculating: troops, sandworms, Commanders and a fighting

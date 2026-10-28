@@ -152,6 +152,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallAgent,
     RecallOtherAgent,
     RecallSpy,
+    RecallYourAgent,
     RecruitToConflict,
     RecruitTroops,
     RecruitUndeployableTroops,
@@ -1008,6 +1009,10 @@ def reward_text_ko(reward: Reward) -> str:
         case RecallAgent():
             # Quotes ``tokens_ko.py``'s Steersman line.
             return "{agent} 소환"
+        case RecallYourAgent():
+            # The plain recall of Steersman's line, for any of your Agents
+            # (Urgent Mission).
+            return "당신의 {agent} 하나 소환"
         case EachOpponentDiscardsCard() as discard:
             # Quotes ``tokens_ko.py``'s Covert Operation line.
             return f"다른 플레이어 각자 카드 {discard.cards}장 버리기"

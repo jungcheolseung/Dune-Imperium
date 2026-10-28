@@ -13,7 +13,6 @@ from copy import replace
 from types import MappingProxyType
 from typing import Final, assert_never
 
-from dune_imperium.config import BaseGame
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.abilities import Ability, AbilityMark
@@ -75,6 +74,7 @@ from dune_imperium.rules.effects import (
     board_icon_is_pending,
     current_agent_effect_context,
     finish_board_icon,
+    mentat_rests,
     pending_board_icons,
     recall_agent_targets,
     recall_board_agent,
@@ -450,18 +450,6 @@ def board_icon_for_effect(effect: AutomaticEffect) -> str:
             assert_never(effect)
 
 
-def mentat_rests(state: GameState) -> bool:
-    """Whether the Mentat rests on its space: no seat took it this round and
-    no Sort Through the Chaos winner waits for it [FAQ p. 4]
-    (docs/rules/imperium-base.md 9). Only an original game sets it out."""
-
-    return (
-        state.config.base_game is BaseGame.IMPERIUM
-        and state.mentat_owed_to is None
-        and not any(player.mentat for player in state.players)
-    )
-
-
 def board_icons_for(
     state: GameState,
     player: int,
@@ -594,6 +582,11 @@ def legal_board_effect_actions(
         )
         for key in pending_board_icons(context)
         if key in AUTOMATIC_BOARD_ICONS
+        # "If the Mentat is here, take it" [DI p. 18] is judged when it
+        # resolves (OQ-028): with the Mentat gone from its space -- Calculated
+        # Hire took it earlier in the visit -- the icon waits and lapses at
+        # the turn's end (``effects.blocked_board_icons``).
+        and not (key == BOARD_ICON_MENTAT and not mentat_rests(state))
     )
 
 

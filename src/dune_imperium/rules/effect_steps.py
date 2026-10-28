@@ -849,6 +849,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.SET_ASIDE
     ),
     "skip_intrigue_trash": _spec(_E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.TRASH),
+    # Urgent Mission: no Agent on the board to recall.
+    "skip_intrigue_recall_agent": _spec(
+        _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.RECALL_AGENT
+    ),
     # --- Arrakeen Scouts (stage B3d-2b) ---------------------------------------
     # A new High Council seat may join a subcommittee (docs/rules/
     # arrakeen-scouts.md 4): the Agent turn's or the Reveal's row (D-3), then
@@ -1096,6 +1100,9 @@ TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxy
     "lose_intrigue_troop": _UNIT,
     # Double Cross: the opponent whose troop in the Conflict is lost.
     "choose_opponent_troop_loss": (("player", _C.SEAT),),
+    # Urgent Mission: the board space (or the Conflict) whose Agent returns.
+    "recall_agent_for_intrigue": _RECALLED,
+    "recall_conflict_agent_for_intrigue": _CONFLICT,
     "acquire_intrigue_imperium": _IMPERIUM,
     "acquire_intrigue_reserve": _RESERVE,
     "manipulate_imperium_row": _IMPERIUM,

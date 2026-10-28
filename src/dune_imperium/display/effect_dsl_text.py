@@ -125,6 +125,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallAgent,
     RecallOtherAgent,
     RecallSpy,
+    RecallYourAgent,
     RecruitToConflict,
     RecruitTroops,
     RecruitUndeployableTroops,
@@ -730,6 +731,9 @@ def reward_text(reward: Reward) -> str:
             return f"You may {text}" if optional else text.capitalize()
         case RecallAgent():
             return "Recall 1 Agent"
+        case RecallYourAgent():
+            # Urgent Mission's printed sentence.
+            return "Recall one of your Agents"
         case EachOpponentDiscardsCard(count=None):
             return "Each opponent discards a card"
         case EachOpponentDiscardsCard(count=count):

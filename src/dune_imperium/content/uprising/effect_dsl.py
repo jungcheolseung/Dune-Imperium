@@ -1400,6 +1400,20 @@ class RecallAgent:
 
 
 @dataclass(frozen=True, slots=True)
+class RecallYourAgent:
+    """Recall one of the player's own Agents ("Recall one of your Agents"
+    [Urgent Mission card, app text]): any of them, the one sent this turn
+    included -- the exclusion belongs to Uprising's Recall Agent icon [Main
+    p. 20], not to this card (docs/rules/imperium-base.md 13.3).
+
+    The owner names a board space with its Agent, or the Conflict for an
+    Agent Into the Fray left there (OQ-068); the Agent returns to its Leader
+    (``agents_available`` + 1). The Mentat is one of the seat's Agents, and
+    the engine does not tell its piece from the others (OQ-139, user ruling
+    (가) 2026-10-28). Without an Agent on the board the effect fizzles."""
+
+
+@dataclass(frozen=True, slots=True)
 class EachOpponentDiscardsCard:
     """Each opponent discards a card [Covert Operation card]: every opponent
     holding a card picks one, clockwise from the next seat.
@@ -1904,6 +1918,7 @@ type Reward = (
     | AcquireCardForSolari
     | TrashThisCard
     | RecallAgent
+    | RecallYourAgent
     | EachOpponentDiscardsCard
     | EachOpponentLosesTroop
     | EachOpponentDiscardsOrLosesDeployedTroop

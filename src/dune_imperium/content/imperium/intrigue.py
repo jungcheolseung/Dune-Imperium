@@ -44,11 +44,13 @@ from dune_imperium.content.uprising.effect_dsl import (
     PassTurn,
     PayResources,
     PeekTopCard,
+    RecallYourAgent,
     RecruitTroops,
     RetreatTroops,
     RevealPersuasionThisRound,
     ShuffleDiscardIntoDeck,
     SpiceMustFlowCardsAtLeast,
+    TakeMentat,
 )
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
@@ -196,6 +198,25 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("calculated_hire", "Calculated Hire"),
         copies=1,
+        # "[1 spice] -> Take the Mentat from its designated space in the
+        # Landsraad" [Calculated Hire card, app text]: a cost arrow line [DI
+        # p. 16]. It takes the Mentat "from its own space only" [DI p. 13], so
+        # it is played only while the Mentat rests there (designer ruling,
+        # imperium-base.md 9, 13.3; ``TakeMentat``, the Mentat space's icon):
+        # the cost line needs a reward that can change something (OQ-071,
+        # OQ-113 (C)), and the Mentat taken by someone else, or owed to a Sort
+        # Through the Chaos winner, is nothing to take. Played at the start of
+        # a turn with an empty Leader it enables an Agent turn (OQ-015 (a)),
+        # and in the owner's own Reveal turn too: the Mentat leaves its space
+        # (imperium-base.md 16).
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(spice=1),),
+                    rewards=(TakeMentat(),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=intrigue_card("charisma", "Charisma"),
@@ -553,6 +574,16 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("urgent_mission", "Urgent Mission"),
         copies=1,
+        # "Recall one of your Agents" [Urgent Mission card, app text]: a
+        # cost-free Plot. "Urgent Mission은 Agent가 남지 않아도 낸다(Reveal
+        # turn을 선언하기 전)" (imperium-base.md 13.3): it is played even with no
+        # Agent on the board and then fizzles (OQ-113 (C); the app's
+        # ``HasDeployedAgents`` gate is not followed), at the start of a turn
+        # with an empty Leader (OQ-015 (a)) and in the owner's own Reveal turn
+        # (imperium-base.md 16). Any of the seat's Agents may return, the one
+        # sent this turn and one Into the Fray in the Conflict included (OQ-068,
+        # P0 sweep S29), the Mentat as one of them (OQ-139 (가)).
+        options=(_plot(EffectSection(rewards=(RecallYourAgent(),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("water_peddlers_union", "Water Peddlers Union"),

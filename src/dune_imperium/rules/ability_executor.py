@@ -59,6 +59,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
+    RecallYourAgent,
     RetreatTroops,
     SetAsideImperiumRowCard,
     TrashDiscardPileCard,
@@ -69,8 +70,10 @@ from dune_imperium.content.uprising.imperium import imperium_card_for_instance
 from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import (
     IntrigueAcquisition,
@@ -116,14 +119,20 @@ from dune_imperium.rules.effect_interpreter import (
 from dune_imperium.rules.effects import (
     agent_turn_space_id,
     open_next_turn,
+    recall_board_agent,
+    recall_conflict_agent,
     recruit_shortfall_events,
     recruit_troops,
+    turn_agent_in_conflict,
 )
 from dune_imperium.rules.frames import (
+    FrameKind,
+    frame_context,
     replace_player,
     reveal_is_open_for,
     turn_owner_of,
     update_turn_recruits,
+    with_context,
 )
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
@@ -579,6 +588,22 @@ def piece_rows(
                 row(Verb.RECALL_SPY, Target.POST, (("post_id", post_id),))
                 for post_id in owner.spy_post_ids
             )
+        case RecallYourAgent():
+            # Urgent Mission: "Recall one of your Agents" -- any of the
+            # seat's own, the one sent this turn included (P0 sweep S29; the
+            # exclusion is Uprising's Recall Agent icon's, [Main p. 20]), and
+            # one Into the Fray left in the Conflict (OQ-068). The Mentat is
+            # one of them (OQ-139 (가)).
+            rows.extend(
+                row(Verb.RECALL_AGENT, Target.SPACE, (("space_id", space_id),))
+                for space_id in owner.agent_locations
+            )
+            if owner.agent_in_conflict > 0:
+                rows.append(row(Verb.RECALL_AGENT, variant="conflict"))
+            if not rows and empty_confirm:
+                # No Agent to return: the cost-free Plot fizzles and is
+                # confirmed (OQ-113 (C), imperium-base.md 13.3).
+                rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.RECALL_AGENT))
         case RetreatTroops(minimum=minimum, maximum=maximum):
             # Commanders in the Conflict are troops for a retreat
             # [Bloodlines p. 4].
@@ -801,6 +826,9 @@ _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
     "skip_intrigue_trash": ("trash_unavailable", "intrigue_trash_unavailable"),
     # Bindu Suspension's pass refused: the turn is played normally (OQ-117).
     "keep_turn_intrigue": ("turn_kept", "intrigue_turn_kept"),
+    # Urgent Mission with no Agent on the board: played and fizzled
+    # (OQ-113 (C), imperium-base.md 13.3).
+    "skip_intrigue_recall_agent": ("agent_unavailable", "intrigue_agent_unavailable"),
 }
 # The event a Faction named for a later step announces (``held``), by source.
 _HELD_FACTION_EVENTS: Final[Mapping[Source, str]] = {
@@ -1191,6 +1219,15 @@ def apply_piece(
             # The Spy placement is passed up only when it cannot be made
             # (``piece_rows``).
             result = _passed(state, player, action, step_source)
+        case RecallYourAgent() if shape.verb is Verb.CONFIRM_EMPTY:
+            result = _passed(state, player, action, step_source)
+        case RecallYourAgent():
+            result = _recall_your_agent(
+                state,
+                player,
+                None if shape.variant == "conflict" else str(arguments["space_id"]),
+                step_source,
+            )
         case RecallSpy() | PlaceSpy():
             post_id = str(arguments["post_id"])
             owner = state.players[player]
@@ -1389,6 +1426,101 @@ def _trash_intrigue_hand_card(
     if recruited and turn_owner_of(next_state) == player:
         next_state = update_turn_recruits(next_state, troops_recruited=recruited)
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def _recall_your_agent(
+    state: GameState,
+    player: int,
+    space_id: str | None,
+    step_source: str,
+) -> RuleResult:
+    """Urgent Mission: return the Agent on ``space_id`` -- or one in the
+    Conflict, ``space_id`` None -- to its Leader.
+
+    "Recall one of your Agents" [Urgent Mission card, app text]: any Agent,
+    the one sent this turn too; the Mentat is one of them and the engine
+    keeps no separate piece (OQ-139 (가)). A Conflict Agent leaves as a unit
+    (``recall_conflict_agent``): the running strength drops with it, and in
+    the owner's Reveal turn the Reveal frame's tally follows
+    (``_follow_reveal_strength``, as for any unit removed there). Recalling
+    the Agent sent this turn is marked in its Agent-effect frame
+    (``turn_agent_recalled``), as Twisted Mentat's recall does, so a later
+    "other Agents" recall of the same turn (Steersman, Imperial Privilege in
+    a combined game) does not leave out one more Agent from the Conflict.
+    """
+
+    owner = state.players[player]
+    turn_space = agent_turn_space_id(state, player)
+    if space_id is None:
+        in_conflict = owner.agent_in_conflict
+        next_owner, event = recall_conflict_agent(
+            owner,
+            player=player,
+            source=step_source,
+            event_id=f"{step_source}:agent_recalled:conflict",
+        )
+        # The Conflict's lone Agent is this turn's when Into the Fray sent it
+        # there (``turn_agent_in_conflict``); with several, an earlier turn's
+        # goes first.
+        was_turn_agent = in_conflict == 1 and _turn_agent_is_in_conflict(
+            state, owner, turn_space
+        )
+    else:
+        next_owner, event = recall_board_agent(
+            owner,
+            space_id,
+            player=player,
+            source=step_source,
+            event_id=f"{step_source}:agent_recalled:{space_id}",
+        )
+        was_turn_agent = space_id == turn_space
+    recalled = replace(state, players=replace_player(state.players, next_owner))
+    if was_turn_agent:
+        recalled = _mark_turn_agent_recalled(recalled, player)
+    return _follow_reveal_strength(
+        state, RuleResult(state=recalled, events=(event,)), player
+    )
+
+
+def _turn_agent_frame_index(state: GameState, player: int) -> int | None:
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if (
+            frame.kind == FrameKind.AGENT_EFFECTS
+            and isinstance(frame.decision, PlayerDecision)
+            and frame.decision.owner == player
+        ):
+            return index
+    return None
+
+
+def _turn_agent_is_in_conflict(
+    state: GameState, owner: PlayerState, turn_space: str | None
+) -> bool:
+    index = _turn_agent_frame_index(state, owner.player_id)
+    if index is None or turn_space is None:
+        return False
+    context = frame_context(state.decision_stack[index])
+    return turn_agent_in_conflict(owner, context, turn_space)
+
+
+def _mark_turn_agent_recalled(state: GameState, player: int) -> GameState:
+    """Note in the seat's Agent-effect frame that this turn's Agent is home."""
+
+    index = _turn_agent_frame_index(state, player)
+    if index is None:
+        return state
+    frame = state.decision_stack[index]
+    context = frame_context(frame)
+    context["turn_agent_recalled"] = True
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:index],
+            with_context(frame, context),
+            *state.decision_stack[index + 1 :],
+        ),
+    )
 
 
 def _resolve_look(

@@ -556,6 +556,16 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "skip_intrigue_set_aside": _row(_V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.SET_ASIDE),
     "skip_intrigue_trash": _row(_V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.TRASH),
+    # Urgent Mission (the original game): the Agent that returns to its
+    # Leader, on a board space or in the Conflict, and the confirmation when
+    # there is none on the board (OQ-113 (C)).
+    "recall_agent_for_intrigue": _row(_V.RECALL_AGENT, _S.INTRIGUE, _T.SPACE),
+    "recall_conflict_agent_for_intrigue": _row(
+        _V.RECALL_AGENT, _S.INTRIGUE, variant="conflict"
+    ),
+    "skip_intrigue_recall_agent": _row(
+        _V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.RECALL_AGENT
+    ),
     "acquire_intrigue_imperium": _row(_V.ACQUIRE, _S.INTRIGUE, _T.IMPERIUM_CARD),
     "acquire_intrigue_reserve": _row(_V.ACQUIRE, _S.INTRIGUE, _T.RESERVE_CARD),
     "skip_intrigue_acquisition": _row(_V.CONFIRM_EMPTY, _S.INTRIGUE, of=_V.ACQUIRE),
