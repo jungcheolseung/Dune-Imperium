@@ -23,6 +23,7 @@ from dune_imperium.content.uprising.personal_cards import (
     card_is_ghola,
     card_is_graft,
     card_is_usurp,
+    card_sends_agent_anywhere,
     personal_card_for_instance,
 )
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
@@ -128,7 +129,15 @@ def legal_graft_partner_actions(
     # is unmet needs a partner that ignores the requirements.
     partner_must_waive = context.get(GRAFT_PARTNER_WAIVES_INFLUENCE_KEY) is True
     candidates: tuple[str, ...] = (
-        *(card_id for card_id in owner.hand if card_id != placed_id),
+        # Never Kwisatz Haderach: the original game takes Immortality from
+        # stage P7 (``setup._IMPERIUM_PENDING_OPTIONS``), which settles how its
+        # "from anywhere" send joins a Graft pair.
+        *(
+            card_id
+            for card_id in owner.hand
+            if card_id != placed_id
+            and not card_sends_agent_anywhere(personal_card_for_instance(card_id))
+        ),
         # Usurp: "graft this card with a card from the Imperium Row".
         *(state.imperium_row if card_is_usurp(placed) else ()),
     )

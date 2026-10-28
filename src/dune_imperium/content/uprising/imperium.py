@@ -80,6 +80,11 @@ class ImperiumCardEntry(DeckCardEntry):
     # (Long Reach, Show of Strength); ``agent_icons`` lists them and the
     # condition is judged at play time.
     icon_condition: PersonalCardIconCondition | None = None
+    # The original game's Kwisatz Haderach: "Send one of your Agents from
+    # anywhere to ANY board space (even if occupied)" -- no Agent icon, the
+    # Agent from the Leader or from a board space, playable with none left on
+    # the Leader [DI p. 13] (docs/rules/imperium-base.md 13.1, 16).
+    sends_agent_anywhere: bool = False
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -93,6 +98,10 @@ class ImperiumCardEntry(DeckCardEntry):
             raise TypeError("Influence-requirement override must be a boolean")
         if not isinstance(self.allows_recruited_troop_deployment, bool):
             raise TypeError("recruited-troop deployment permission must be a boolean")
+        if not isinstance(self.sends_agent_anywhere, bool):
+            raise TypeError("the send-from-anywhere flag must be a boolean")
+        if self.sends_agent_anywhere and self.agent_icons:
+            raise ValueError("a send-from-anywhere card has no Agent icons")
         if self.agent_spy_factions and (
             self.agent_effect is not PersonalCardAgentEffect.PLACE_SPY
         ):
@@ -110,6 +119,7 @@ class ImperiumCardEntry(DeckCardEntry):
             or self.agent_spy_factions
             or self.ignores_influence_requirements
             or self.allows_recruited_troop_deployment
+            or self.sends_agent_anywhere
             or self.acquisition_effect is not None
             or self.discard_effect is not None
             or self.reveal_acquisition_effect is not None

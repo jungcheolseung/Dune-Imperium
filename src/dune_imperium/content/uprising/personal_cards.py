@@ -63,3 +63,10 @@ def card_is_usurp(card: PersonalCardDefinition) -> bool:
     """Usurp: may graft with an Imperium Row card instead of a hand card."""
 
     return isinstance(card, ImperiumCardEntry) and card.card.card_id == "usurp"
+
+
+def card_sends_agent_anywhere(card: PersonalCardDefinition) -> bool:
+    """Kwisatz Haderach (the original game): "Send one of your Agents from
+    anywhere to ANY board space (even if occupied)" [DI p. 13]."""
+
+    return isinstance(card, ImperiumCardEntry) and card.sends_agent_anywhere

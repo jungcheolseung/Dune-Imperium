@@ -140,7 +140,8 @@ class Target(StrEnum):
 
     NONE = "none"
     # The space an Agent goes to, with its cost option, discount and
-    # infiltration (stage B1: the card is picked first).
+    # infiltration (stage B1: the card is picked first), and the board space
+    # Kwisatz Haderach's Agent comes off (the original game).
     AGENT_SPACE = "agent_space"
     IMPERIUM_CARD = "imperium_card"
     RESERVE_CARD = "reserve_card"
@@ -186,7 +187,7 @@ class Tag(StrEnum):
 TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.NONE: frozenset(),
     Target.AGENT_SPACE: frozenset(
-        {"cost_option", "discount", "infiltrate_post_id", "space_id"}
+        {"cost_option", "discount", "from_space", "infiltrate_post_id", "space_id"}
     ),
     # ``to_deck_top``: the card goes on top of the deck instead of the discard
     # pile (the original game's Bypass Protocol, Recruitment Mission).
