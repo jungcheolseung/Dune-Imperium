@@ -1176,9 +1176,12 @@ class DeployTheseTroops:
     """"You may deploy these troops to the Conflict" after a recruit in the
     same line (the original game's Gurney Halleck Reveal box, Reinforcements:
     "If it's your Reveal turn, you may deploy any of these troops"). In a
-    Reveal turn the troops the line recruited may be deployed, any of them;
-    in an Agent turn it adds nothing, as troops recruited then deploy by the
-    Combat space rule [DI p. 10] [FAQ p. 4]."""
+    Reveal turn it opens a deploy cap of the line's printed recruit, any
+    number of them (Gurney: "Yes. It's indeed 0, 1, or 2.", the designer),
+    filled by the turn's recruits as they come, a shortfall refilled later
+    included (OQ-140, ``combat_deployment.recruit_cap_room``); in an Agent
+    turn it adds nothing, as troops recruited then deploy by the Combat space
+    rule [DI p. 10] [FAQ p. 4]."""
 
 
 @dataclass(frozen=True, slots=True)

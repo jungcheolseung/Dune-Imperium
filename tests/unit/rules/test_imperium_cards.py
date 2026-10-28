@@ -2222,6 +2222,61 @@ def test_gurney_halleck_pays_three_solari_for_two_troops_it_may_deploy() -> None
     assert finished.players[0].combat_strength == 2 * 2
 
 
+def test_gurney_halleck_deploys_any_number_and_a_refilled_shortfall() -> None:
+    """ "You may deploy these troops": any number of the two -- "Yes. It's
+    indeed 0, 1, or 2." (Paul Dennen, designer, BGG thread 2794420,
+    2022-01-15). With one troop in the supply the payment recruits one and
+    owes one (OQ-030); the owed troop recruited later in the turn may deploy
+    too (OQ-140, user ruling 2026-10-28), never more than the printed two."""
+
+    from dune_imperium.rules.shortfall import refill_shortfall
+
+    engine, state = _start()
+    revealed = _gurney_revealed(engine, state, 3)
+    seat = revealed.players[0]
+    short = _seat(
+        revealed,
+        troops_garrison=seat.troops_garrison + seat.troops_supply - 1,
+        troops_supply=1,
+    )
+    paid = _do(engine, short, "pay_reveal_solari_for_troops")
+    assert paid.players[0].ungained_troops == 1
+    assert _deploy_counts(engine, paid) == {1}
+    one = _do(engine, paid, "deploy_troops", count=1)
+    assert _deploy_counts(engine, one) == set()
+    lost = one.players[0]
+    back = _seat(
+        one, troops_garrison=lost.troops_garrison - 1, troops_supply=1
+    )
+    refilled = refill_shortfall(back, 0).state
+    assert _deploy_counts(engine, refilled) == {1}
+    two = _do(engine, refilled, "deploy_troops", count=1)
+    assert two.players[0].troops_conflict == 2
+    assert _deploy_counts(engine, two) == set()
+
+
+def test_gurney_halleck_room_never_takes_a_sardaukar_commander() -> None:
+    """A Commander keeps its own slot (OQ-070): "these troops" are the
+    recruited troops' room, and a garrisoned Commander does not deploy by it
+    (Bloodlines combined; [Bloodlines p. 4])."""
+
+    engine, state = _start()
+    held = _with_bloodlines(state)
+    held = _seat(held, commanders_garrison=1)
+    revealed = _gurney_revealed(engine, held, 3)
+    paid = _do(engine, revealed, "pay_reveal_solari_for_troops")
+    assert _deploy_counts(engine, paid) == {1, 2}
+    assert "deploy_commanders" not in _ids(engine, paid)
+
+
+def _deploy_counts(engine: UprisingRulesEngine, state: GameState) -> set[int]:
+    return {
+        int(dict(action.arguments)["count"])
+        for action in _wholes(engine, state)
+        if action.action_id == "deploy_troops"
+    }
+
+
 def test_gurney_halleck_deployment_is_optional() -> None:
     """ "May deploy": the recruited troops stay in the garrison when not
     deployed, and the Reveal ends without a refusal."""

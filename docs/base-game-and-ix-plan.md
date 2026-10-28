@@ -912,7 +912,7 @@ card-implementer는 기존 조각으로 안 되는 카드를 건너뛰고 빠진
 
 | 조각 | 카드 | 근거 | 상태 |
 | --- | --- | --- | --- |
-| `DeployTheseTroops`(Reveal turn에 이 줄이 recruit한 병력 배치) | Reinforcements, Gurney Halleck | 카드 문구, `[DI p. 10]` `[FAQ p. 4]`, OQ-030 | 구현 `ce6deec6`; 가장자리 OQ-140(사용자 확인 대기 — 원판 + Immortality의 specimen 반환, 원판 + Bloodlines의 Twisted Plot에서 닿음) |
+| `DeployTheseTroops`(Reveal turn에 이 줄이 recruit한 병력 배치) | Reinforcements, Gurney Halleck | 카드 문구, `[DI p. 10]` `[FAQ p. 4]`, OQ-030 | 구현 `ce6deec6`, 2026-10-28 사용자 판정으로 다시 설계: 쓸 때마다 인쇄된 수(3·2)의 상한을 열고 그 Reveal turn의 recruit(뒤에 채워진 부족분 포함)로 채움 — OQ-140 DECIDED |
 | `DeployFromGarrison(up_to=None)`("any number") | Rapid Mobilization | 카드 문구, `[FAQ p. 3]` | 구현(Intrigue 묶음 2); garrison의 Commander도 배치한다(`DeployFromGarrison`의 기존 처리, `[Bloodlines p. 4]`) |
 | 조건 `MoreSpiceMustFlowThanEachOpponent`, `InfluenceAtLeastOnTracks` | Corner the Market, Plans Within Plans | imperium-base.md 13.2, OQ-123, `[FAQ p. 2]` | 구현(명세는 내가; `SpiceMustFlowCardsAtLeast`가 원판의 The Spice Must Flow도 세게 고침) |
 | 획득 상자 아이콘 줄(아이콘마다 차례의 줄, 순서는 소유자) | CHOAM Directorship(고정 진영 넷), Lady Jessica(고른 진영 하나) | OQ-027·OQ-112 원칙의 확장 — OQ-141(판정 2026-10-28 사용자: 구현대로) | 구현(`rules/acquire_icons.py`, 행동 `resolve_acquire_icon`): 자기 차례 안에서는 차례의 줄(OQ-112 (4) 선례), 고를 진영이 모두 6이면 회색으로 기다리다 누름에 사라짐(차례 안 선례), 고정 진영 6은 얻는 것 없는 의무 줄. 자기 차례 밖 획득(Scouts의 Critical Moment: Uprising + 원판 카드 + Scouts는 P7, 원판의 Scouts는 P8)은 OQ-141 조합대로 획득한 자리의 창 — 그 조합을 열 때 구현, 그때까지 `NotImplementedError` |

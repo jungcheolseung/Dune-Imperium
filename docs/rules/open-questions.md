@@ -165,7 +165,7 @@
 | [OQ-137](#oq-137--공동-1위로-남은-conflict-카드) | 공동 1위로 남은 Conflict 카드 | `DECIDED` |
 | [OQ-138](#oq-138--covert-operation에서-손이-빈-상대와-결정-창) | Covert Operation에서 손이 빈 상대와 결정 창 | `DECIDED` |
 | [OQ-139](#oq-139--mentat이-어느-말인가-원판) | Mentat이 어느 말인가 (원판) | `DECIDED` |
-| [OQ-140](#oq-140--이-병력을-배치할-수-있다의-이-병력-원판) | "이 병력을 배치할 수 있다"의 이 병력 (원판) | `OPEN` |
+| [OQ-140](#oq-140--이-병력을-배치할-수-있다의-이-병력-원판) | "이 병력을 배치할 수 있다"의 이 병력 (원판) | `DECIDED` |
 | [OQ-141](#oq-141--획득-상자의-아이콘-여럿과-진영-고르기-원판) | 획득 상자의 아이콘 여럿과 진영 고르기 (원판) | `DECIDED` |
 | [OQ-142](#oq-142--승자의-창의-닫기-줄과-승리-책략의-숨은-정보-원판) | 승자의 창의 닫기 줄과 승리 책략의 숨은 정보 (원판) | `DECIDED` |
 | [OQ-143](#oq-143--bindu-suspension으로-차례를-이어-간-뒤-다른-차례-시작-카드-원판) | Bindu Suspension으로 차례를 이어 간 뒤 다른 차례 시작 카드 (원판) | `DECIDED` |
@@ -2914,7 +2914,7 @@
 
 ## OQ-140 — "이 병력을 배치할 수 있다"의 이 병력 (원판)
 
-- 상태: `OPEN` (2026-10-28, P3 밤 작업; 추천대로 구현, 사용자 확인 대기)
+- 상태: `DECIDED` (2026-10-28 사용자 판정, 조정자 경유 — 밤의 구현을 바꾼 새 설계; Gurney Halleck은 디자이너 답, 나머지는 project convention)
 - 계기: 원판 Reinforcements "3 Solari → 3 troops. If it's your Reveal turn, you may deploy any of these troops to the Conflict."와 Gurney Halleck의
   Reveal "… → 2 troops. You may deploy these troops to the Conflict."(앱 문구). 엔진 조각 `DeployTheseTroops`(계획 16.4).
 - 공식 문장이 정한 것: Reveal turn이면 그 줄이 recruit한 병력은 아무 수나 배치할 수 있다(카드 문구). Agent turn에는 Combat 칸 규칙대로 어느 출처로
@@ -2930,9 +2930,42 @@
     낼 수 있다.
   - Sardaukar Commander는 이 병력에 들지 않는다: supply의 Commander는 일반 수단으로 recruit하지 않는다 `[Bloodlines p. 4]`.
   - Rise of Ix(P4)의 카드는 이 목록에 아직 대어 보지 않았다.
-- 구현(추천): 줄을 해결할 때 recruit한 수만 연다(`effect_interpreter.RewardOutcome.deployable_recruits`, `combat_deployment.grant_recruit_deployment`).
-  Combat 아이콘의 배치 몫이 함께 열리면 그 몫(이번 turn의 recruit 전부 + garrison 둘)이 이 병력을 이미 포함한다. 조각 자체는 무언가를 바꾸지 않으므로
-  줄을 낼 수 있는지는 recruit가 정한다(OQ-071 — supply가 비면 Reinforcements를 내지 않는다).
+- 밤의 구현(폐기): 줄을 해결할 때 실제로 recruit한 수만 열었다 — 나중에 채워진 부족분은 배치할 수 없었다.
+- 디자이너 답(Gurney Halleck): BGG 스레드 <https://boardgamegeek.com/thread/2794420>에서 질문자가 "may deploy these troops"가 0 또는 2만인지
+  물었고, Paul Dennen(BGG userid 31474, 2022-01-15)이 "Yes. It's indeed 0, 1, or 2."라고 답했다(페이지는 사람 확인 뒤라 공개 geekdo API로 본문을
+  확인, 원문 JSON은 git 무시 `tmp/`). 그래서 Gurney도 Reinforcements("any of these troops")처럼 두 병력 중 아무 수나 배치한다.
+- 판정(2026-10-28 사용자, 조정자 경유): "Reinforcements 는 일단 문구에도 \"any of\" 라고 되어 있으니 공개차례라면 3개 소집한 것 중 원하는 개수는
+  교전 칸에 보낼 수 있어야해. 근데 \"3개 소집한 것\"이 지금 당장은 모자라도 나중에 추가된 것도 엄연히 그 3개에 포함된거잖아? … 이 두카드로 소집하는
+  병력 말고 다른 방법으로 소집하는 병력이 또 있다면, 공급처에 병력이 추가됐을 때 이게 어떤 효과로 소집된건지를 구분해야 하나 싶은데, 그건 좀
+  애매하긴 해. 그래서 내 생각은 이거야. 지금도 에이전트 칸에 교전칸 방문하면 기존 병영에서 최대 2개, 그리고 이번 턴에 소집한 병력만큼을 교전칸에
+  넣을 수 있잖아? … 해당 카드들을 사용했을 때, 각각 최대 3개, 2개의 병력을 교전칸에 넣을 수 있게 하고, 만약 지금 부족하다면 지금 가능한 개수만
+  보여주고, 공급처에 가능한 병력이 생기면 그때 또 추가 배치가 가능하게 보여주고 그러면 될듯? specimen은 별개 얘기지. 기존 원칙대로 사용자가
+  되돌리기를 하고 안 하고를 따로 둬야지".
+- 구현(2026-10-28): Reveal turn에서 줄을 쓸 때마다 인쇄된 recruit 수(Reinforcements 3, Gurney 2)만큼 배치 상한이 열리고(쓸 때마다 더해짐),
+  배치할 수 있는 병력은 min(열린 상한, 이번 Reveal turn에 recruit한 병력) − 그 몫으로 이미 배치한 병력이다(`combat_deployment.recruit_cap_room`).
+  recruit는 어느 효과가 했든 recruit이고, 같은 turn 뒤에 채워진 부족분(OQ-030)도 그때 recruit로 세므로 배치 줄이 그때 늘어난다. 지금 못 하는 것은
+  보이지 않는다. Combat 아이콘의 몫(이번 turn의 recruit 전부 + garrison 둘)이 열려 있으면 그 몫이 이 상한을 이미 담는다. Agent turn에는 열리지
+  않는다(Combat 칸 규칙 그대로). specimen은 섞지 않는다 — 돌려보낼지는 소유자가 정하고(`[Immortality p. 8]`), 돌려보내면 그 병력이 recruit되어
+  상한을 채운다.
+- 사용자 문장을 넘어 정한 것(사용자 확인 대기, 조정자에게 보고): (1) 상한을 채우는 recruit는 그 Reveal turn의 recruit **전부**다 — 카드보다 먼저
+  한 recruit와 다른 효과의 recruit도 든다(교전 칸 규칙의 "이번 턴에 소집한 병력"을 그대로 따름, 출처를 가리지 않음). (2) 그래서 supply가 비어 줄의
+  recruit가 아무것도 못 해도, 이번 Reveal turn의 recruit가 garrison에서 기다리면 Reinforcements를 낼 수 있다(OQ-113 (C): 비용 있는 줄은 보상
+  하나라도 지금 무언가를 바꿔야 한다 — 상한이 배치를 연다). supply가 비고 기다리는 recruit도 없으면 지금처럼 낼 수 없다(OQ-071).
+- 조합(사용자 상시 지시 "항상 다른 모든 확장들과 결합했을 때의 시나리오를 다 생각해야해"):
+  - Immortality: 돌려보낸 specimen, Tleilaxu Surgeon이 잃은 병력이 부족분을 채우면 그 recruit가 상한을 채운다. specimen을 먼저 돌려보내든 나중에
+    돌려보내든 결과가 같다(밤의 구현에서 갈리던 순서 문제가 사라짐).
+  - Bloodlines: Twisted Plot(Ambitious·Sadistic)이 잃은 병력이 부족분을 채우면 같다. Sardaukar Commander는 이 몫에 들지 않는다 — 이번 turn에
+    recruit한 병력의 몫은 병력만, Commander의 몫은 Commander만이다(OQ-070), supply의 Commander는 일반 수단으로 recruit하지 않는다 `[Bloodlines p. 4]`.
+    Combat 아이콘을 주는 Bloodlines 카드가 같은 Reveal에 있으면 그 몫(Commander 몫 포함)이 쓰인다.
+  - Arrakeen Scouts: Uprising 판의 Corrinth City로 Reveal turn에 Readiness(긴급대응, troop 1 recruit)에 가입하면 그 recruit도 상한을 채운다.
+    임무에 supply 병력을 세우는 것은 차례 밖이라, 그때의 부족분은 차례 밖에서 버려진다(OQ-030 구현 `shortfall.drop_stale_shortfalls`).
+  - Uprising 판 + 원판 카드: 같은 조각이 그대로 돈다(Reveal turn의 Combat 아이콘 몫과 함께, 위와 같음).
+  - Baron Harkonnen의 Masterstroke(OQ-115): 이 몫으로 배치한 병력은 이번 turn에 배치한 유닛으로 센다(`add_units_to_reveal`).
+  - Harkonnen Advisor의 병력(OQ-038)은 이 몫으로도 배치할 수 없다(garrison에서 빼고 셈).
+  - Emperor of the Known Universe의 배치 금지는 그 Agent turn에만 걸리므로 Reveal turn에는 닿지 않는다 `[FAQ p. 3]`.
+  - Rise of Ix(P4): dreadnought는 troop이 아니라 이 몫에 들지 않는다 `[Rise of Ix p. 6]`(OQ-115); Ix 카드는 전사할 때 이 목록에 대어 본다.
+- 테스트: `tests/unit/rules/test_imperium_reinforcements.py`(부족분이 뒤에 채워지면 배치가 늘어남, 상한 3, 앞선 recruit가 상한을 채움, 빈 supply와
+  기다리는 recruit), `tests/unit/rules/test_imperium_cards.py`(Gurney: 아무 수, 채워진 부족분, Commander 제외).
 
 ## OQ-141 — 획득 상자의 아이콘 여럿과 진영 고르기 (원판)
 
