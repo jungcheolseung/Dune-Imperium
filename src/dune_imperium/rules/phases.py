@@ -529,6 +529,10 @@ def resolve_recall_or_endgame(state: GameState) -> RuleResult:
             agent_locations=(),
             has_revealed=False,
             mentat=False,
+            # The Voice's blocks end with the round (OQ-116), and an
+            # Infiltrate played in a last Reveal turn never reaches the next.
+            voice_blocked_space_ids=(),
+            enemy_agents_ignored_turn=False,
         )
         for player in state.players
     )

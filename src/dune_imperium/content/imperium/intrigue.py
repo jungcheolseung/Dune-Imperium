@@ -30,6 +30,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GrantAgentIconsThisTurn,
     HasAlliance,
     HasHighCouncil,
+    IgnoreEnemyAgentsNextPlacement,
     InfluenceAtLeastOnTracks,
     IntrigueOption,
     IntrigueTiming,
@@ -321,6 +322,12 @@ IMPERIUM_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=intrigue_card("infiltrate", "Infiltrate"),
         copies=1,
+        # "Enemy Agents don't block your next Agent at board spaces this turn"
+        # [Infiltrate card, app text]: a cost-free Plot. It is played even
+        # after the turn's Agent was sent or in the Reveal turn, where it
+        # does nothing (OQ-113 (C), imperium-base.md 13.3 and 16). Not the
+        # Spy's Infiltrate [Main p. 11]: The Voice still blocks the space.
+        options=(_plot(EffectSection(rewards=(IgnoreEnemyAgentsNextPlacement(),))),),
     ),
     IntrigueCardEntry(
         card=intrigue_card("know_their_ways", "Know Their Ways"),

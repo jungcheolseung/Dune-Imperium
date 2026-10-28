@@ -1517,6 +1517,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # Other Memory's Bene Gesserit card taken from the discard pile (an
         # Agent-box choice).
         templates.extend(_trash_templates(config, "take_agent_card_from_discard"))
+        # The Voice's board space (an Agent-box choice): every space on the
+        # table, a Leader's own only with its Leader's catalog.
+        templates.extend(
+            ActionTemplate(
+                action_id="block_agent_card_space",
+                arguments=(("space_id", space.space_id),),
+            )
+            for space in catalog_spaces(config)
+        )
         templates.extend(
             ActionTemplate(
                 action_id="set_aside_leader_imperium",
@@ -2441,6 +2450,8 @@ _PIECE_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "LoseInfluence": (("lose_influence", ""),),
     # Other Memory's card from the discard pile.
     "TakeCardFromDiscard": (("take", ""),),
+    # The Voice's "Choose any board space".
+    "BlockChosenSpaceForOpponentsNextAgent": (("choose", ""),),
     "AcquireCardForSolari": (("acquire", ""),),
     "AcquireCardUpTo": (("acquire", ""),),
     "GrantCombatDeployment": (("gain", "combat"),),

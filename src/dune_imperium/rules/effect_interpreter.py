@@ -53,6 +53,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
+    IgnoreEnemyAgentsNextPlacement,
     IgnoreInfluenceRequirementsThisTurn,
     IntrigueOption,
     LoseInfluence,
@@ -984,6 +985,15 @@ def reward_can_change_something(
             return agent_placement_ahead(state, player) and (
                 _unmet_influence_requirement(state, player)
             )
+        case IgnoreEnemyAgentsNextPlacement():
+            # A cost-free Plot is played whatever it does (OQ-113 (C)); this
+            # only tells the page whether it could change the turn: an Agent
+            # still to send, and an opponent's Agent on the board to ignore.
+            return agent_placement_ahead(state, player) and any(
+                seat.agent_locations
+                for seat in state.players
+                if seat.player_id != player
+            )
         case CommanderDiscountThisTurn():
             return _commander_purchase_ahead(state, player)
         case GrantCombatDeployment():
@@ -1466,6 +1476,10 @@ def apply_rewards(
                 )
             case IgnoreInfluenceRequirementsThisTurn():
                 owner = replace(owner, ignores_influence_requirements_turn=True)
+            case IgnoreEnemyAgentsNextPlacement():
+                # Infiltrate: spent by this turn's Agent placement
+                # (``agent_turn.apply_agent_action``), gone when a turn opens.
+                owner = replace(owner, enemy_agents_ignored_turn=True)
             case GrantAgentIconThisTurn(icon=icon):
                 # Emperor's Invitation adds its icon to any already granted:
                 # both cards say "The card you play this turn has …", not

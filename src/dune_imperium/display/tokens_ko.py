@@ -523,6 +523,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD: (
         "하나 선택: {draw:1} / {discard_pile}의 베네 게세리트 카드 1장을 {hand}로"
     ),
+    PersonalCardAgentEffect.BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT: (
+        "게임판 장소 하나 선택. 다른 플레이어는 이번 라운드의 다음 {agent}를 "
+        "그곳에 보낼 수 없음"
+    ),
     PersonalCardAgentEffect.RECRUIT_TWO_AND_DRAW_ONE: "{troop:2}, {draw:1}",
     PersonalCardAgentEffect.MAY_TRASH_SELF_TO_DRAW_INTRIGUE: (
         "이 카드 {trash} 가능 {arrow_right} {intrigue:1}"

@@ -252,6 +252,8 @@ _FACTION = (("faction", _C.FACTION),)
 _IMPERIUM = (("instance_id", _C.IMPERIUM_CARD),)
 _RESERVE = (("card_id", _C.RESERVE_CARD),)
 _RECALLED = (("space_id", _C.SPACE),)
+# The Voice's "Choose any board space".
+_BOARD_SPACE = _RECALLED
 _CONFLICT = (("=conflict", _C.SPACE),)
 # Who takes an Alliance token an Influence loss hands on, when several could.
 _RECIPIENT = ("alliance_recipient", _C.SEAT)
@@ -453,6 +455,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "retreat_opponent_troop": _spec(
         _V.RETREAT, _S.AGENT_CARD, _BOX, targets=(("player", _C.SEAT),)
+    ),
+    # The Voice: "Choose any board space".
+    "block_agent_card_space": _spec(
+        _V.CHOOSE, _S.AGENT_CARD, _BOX, targets=_BOARD_SPACE
     ),
     "take_agent_card_combat_icon": _spec(
         _V.GAIN, _S.AGENT_CARD, _BOX, icon="combat"

@@ -58,6 +58,7 @@ from dune_imperium.rules.board_effects import (
     board_effect_is_implemented,
     board_icons_for,
 )
+from dune_imperium.rules.board_table import board_spaces_on_table
 from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
 )
@@ -479,11 +480,16 @@ def _placements_for_card(
     any_icon = card_is_boosted(card, owner) or any(
         boosted for _, _, boosted in usurp_partners
     )
-    for space in content_for(state.config).board_spaces:
-        if space.required_leader_id is not None and all(
-            seat.leader_id != space.required_leader_id for seat in state.players
-        ):
-            # Tuek's Sietch is on the table only with Esmar Tuek.
+    # Tuek's Sietch is on the table only with Esmar Tuek.
+    for space in board_spaces_on_table(state):
+        if space.space_id in owner.voice_blocked_space_ids:
+            # The Voice: "Opponents can't send their next Agents there this
+            # round" [The Voice card]. Judged before the occupancy below, as no
+            # Agent is involved: nothing that ignores occupying Agents (a
+            # Spy's Infiltrate, Eyes Everywhere, Tleilaxu Infiltrator, the
+            # Infiltrate Intrigue) opens the space (OQ-116, imperium-base.md
+            # 13.1). The block ends with this seat's next Agent placement
+            # (``apply_agent_action``).
             continue
         if not card_can_access_space(icons, space, owner, any_icon=any_icon):
             continue
@@ -512,14 +518,13 @@ def _placements_for_card(
             if candidate.player_id != player
             and space.space_id in candidate.agent_locations
         )
-        if owner.leader_id == "helena_richese" and space.agent_icon in (
-            AgentIcon.LANDSRAAD,
-            AgentIcon.CITY,
-        ):
+        if opponents_do_not_block(owner, space):
             # Eyes Everywhere: "상대 Agent가 Landsraad·City 칸에서 내 Agent를
             # 막지 않는다" (docs/rules/imperium-base.md 12); her own Agent
             # still blocks (above), as do requirements and once-per-game
-            # limits (P0 sweep L8).
+            # limits (P0 sweep L8). The Infiltrate Intrigue does the same
+            # for the turn ("Enemy Agents don't block your next Agent at
+            # board spaces this turn").
             occupying_opponents = ()
         infiltrator_partner_fits = True
         if usurp:
@@ -601,6 +606,18 @@ def _placements_for_card(
                 )
             )
     return tuple(actions)
+
+
+def opponents_do_not_block(owner: PlayerState, space: BoardSpace) -> bool:
+    """Whether opponents' Agents on ``space`` stop ``owner``'s Agent: not for
+    Helena Richese's Eyes Everywhere on a Landsraad or City space, nor on any
+    space for the turn of an Infiltrate Intrigue (``enemy_agents_ignored_turn``).
+    An opponent's Mentat is an Agent like any other and is ignored too."""
+
+    return owner.enemy_agents_ignored_turn or (
+        owner.leader_id == "helena_richese"
+        and space.agent_icon in (AgentIcon.LANDSRAAD, AgentIcon.CITY)
+    )
 
 
 def card_can_access_space(
@@ -704,6 +721,10 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         spice_spent_turn=owner.spice_spent_turn + cost.spice,
         agents_available=owner.agents_available - 1,
         agent_locations=(*owner.agent_locations, space_id),
+        # Every Agent placement, the Mentat's too, uses up the seat's Voice
+        # blocks ("their next Agents", OQ-116) and the turn's Infiltrate.
+        voice_blocked_space_ids=(),
+        enemy_agents_ignored_turn=False,
         spies_supply=owner.spies_supply + int(infiltrate_post_id is not None),
         spies_recalled_turn=owner.spies_recalled_turn
         + int(infiltrate_post_id is not None),
@@ -902,6 +923,9 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     (
                         "occupied",
                         infiltrate_post_id is None
+                        # Eyes Everywhere and Infiltrate: opponents' Agents
+                        # do not block, so no Infiltrator promise is needed.
+                        and not opponents_do_not_block(owner, space)
                         and any(
                             space_id in seat.agent_locations
                             for seat in state.players

@@ -54,6 +54,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AtBoardSpace,
     AtFactionSpace,
     AtMakerSpace,
+    BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
@@ -107,6 +108,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     HasHighCouncil,
     HasSwordmaster,
+    IgnoreEnemyAgentsNextPlacement,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
     InfluenceAtLeastOnTracks,
@@ -778,6 +780,18 @@ def reward_text_ko(reward: Reward) -> str:
             return f"{{draw:{count}}}"
         case ShuffleDiscardIntoDeck(draw=draw):
             return f"{{discard_pile}}을 {{deck}}에 섞은 뒤 {{draw:{draw}}}"
+        case BlockChosenSpaceForOpponentsNextAgent():
+            # Quotes ``tokens_ko.py``'s The Voice line.
+            return (
+                "게임판 장소 하나 선택. 다른 플레이어는 이번 라운드의 다음 {agent}를 "
+                "그곳에 보낼 수 없음"
+            )
+        case IgnoreEnemyAgentsNextPlacement():
+            # Same wording as ``tokens_ko.py``'s Tleilaxu Infiltrator line.
+            return (
+                "이번 차례에 다른 플레이어의 {agent}가 당신의 다음 {agent}를 "
+                "막지 않음"
+            )
         case TakeCardFromDiscard(faction=faction):
             # Quotes ``tokens_ko.py``'s Other Memory line.
             return (

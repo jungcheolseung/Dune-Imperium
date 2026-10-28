@@ -1490,6 +1490,37 @@ class TakeCardFromDiscard:
 
 
 @dataclass(frozen=True, slots=True)
+class BlockChosenSpaceForOpponentsNextAgent:
+    """Choose any board space; no opponent may send their next Agent there
+    this round ("Opponents can't send their next Agents there this round"
+    [The Voice card]).
+
+    The space is the owner's mandatory choice among every board space on the
+    table, occupied or not, the owner's own included (imperium-base.md 15).
+    Each opponent's block lasts until that opponent's next Agent placement of
+    the round (OQ-116, 2026-10-22 user ruling B): a turn passed without an
+    Agent does not use it up, and the end of the round clears it. It is no
+    Agent, so nothing that lets a seat ignore occupying Agents beats it
+    (``PlayerState.voice_blocked_space_ids``).
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class IgnoreEnemyAgentsNextPlacement:
+    """Enemy Agents don't block the owner's next Agent at board spaces this
+    turn ("Enemy Agents don't block your next Agent at board spaces this
+    turn" [Infiltrate card, app text]).
+
+    Every opponent Agent -- an opponent's Mentat is one -- is treated as not
+    occupying the space, as Helena's Eyes Everywhere does; the owner's own
+    Agent, Influence requirements, once-per-game limits, costs and The Voice
+    still stop the placement. Set for this turn
+    (``PlayerState.enemy_agents_ignored_turn``) and spent by the turn's
+    Agent placement.
+    """
+
+
+@dataclass(frozen=True, slots=True)
 class OpponentsMoveSpiesFromVisitedSpace:
     """Each opponent spying on the board space where the player sent an
     Agent this turn must move that Spy [Holy War card] (OQ-036 (b))."""
@@ -1861,6 +1892,8 @@ type Reward = (
     | OpponentLosesTroop
     | DeployFromSupply
     | TakeCardFromDiscard
+    | BlockChosenSpaceForOpponentsNextAgent
+    | IgnoreEnemyAgentsNextPlacement
     | OpponentsMoveSpiesFromVisitedSpace
     | ReturnOtherGraftedCardAtRevealStart
     | GainSolariPerPartnerAgentIcon

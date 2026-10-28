@@ -27,6 +27,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AtBoardSpace,
     AtFactionSpace,
     AtMakerSpace,
+    BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
@@ -80,6 +81,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     HasAlliance,
     HasHighCouncil,
     HasSwordmaster,
+    IgnoreEnemyAgentsNextPlacement,
     IgnoreInfluenceRequirementsThisTurn,
     InfluenceAtLeast,
     InfluenceAtLeastOnTracks,
@@ -552,6 +554,15 @@ def reward_text(reward: Reward) -> str:
                 "Shuffle your discard pile into your deck, then draw "
                 f"{draw} {_plural(draw, 'card')}"
             )
+        case BlockChosenSpaceForOpponentsNextAgent():
+            # The Voice's printed sentences.
+            return (
+                "Choose any board space. Opponents can't send their next Agents "
+                "there this round"
+            )
+        case IgnoreEnemyAgentsNextPlacement():
+            # Infiltrate's printed sentence.
+            return "Enemy Agents don't block your next Agent at board spaces this turn"
         case TakeCardFromDiscard(faction=faction):
             # Other Memory's printed sentence.
             return f"Draw a {_faction_name(faction)} card from your discard pile"

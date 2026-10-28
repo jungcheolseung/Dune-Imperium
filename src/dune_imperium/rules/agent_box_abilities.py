@@ -64,6 +64,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllConditions,
     AtFactionSpace,
     AtMakerSpace,
+    BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommandersInConflictAtLeast,
     CompleteContract,
@@ -138,6 +139,7 @@ from dune_imperium.rules.action_shapes import (
     template_id,
 )
 from dune_imperium.rules.agent_icons import effective_agent_icons
+from dune_imperium.rules.board_table import board_spaces_on_table
 from dune_imperium.rules.box_events import BoxNeedsRows, BoxOutcome, agent_box_event
 from dune_imperium.rules.card_bonds import (
     counted_in_play,
@@ -1462,7 +1464,14 @@ def apply_payment(
 # the gain's alone); a Spy, a retreat and a Contract keep their handlers in
 # ``agent_effects``, named after their own actions.
 
-type TargetPiece = GainInfluence | PlaceSpy | ForceEnemyRetreat | CompleteContract
+type TargetPiece = (
+    GainInfluence
+    | PlaceSpy
+    | ForceEnemyRetreat
+    | CompleteContract
+    | BlockChosenSpaceForOpponentsNextAgent
+)
+
 
 def target_piece(ability: Ability | None) -> TargetPiece | None:
     """The one target ``ability``'s mandatory line chooses, if it is one."""
@@ -1486,7 +1495,11 @@ def target_piece(ability: Ability | None) -> TargetPiece | None:
             return piece
         case PlaceSpy(agent_icons=None):
             return piece
-        case ForceEnemyRetreat() | CompleteContract():
+        case (
+            ForceEnemyRetreat()
+            | CompleteContract()
+            | BlockChosenSpaceForOpponentsNextAgent()
+        ):
             return piece
     return None
 
@@ -1531,6 +1544,18 @@ def target_rows(
             return agent_spy_rows(state, player, piece, context)
         case ForceEnemyRetreat():
             return _enemy_retreat_rows(state, player)
+        case BlockChosenSpaceForOpponentsNextAgent():
+            # "Choose any board space" [The Voice card]: every space on the
+            # table, occupied or not, the owner's own Agent's included
+            # (imperium-base.md 15); a Leader's space only with its Leader.
+            return tuple(
+                DomainAction(
+                    action_id="block_agent_card_space",
+                    actor=player,
+                    arguments=(("space_id", space.space_id),),
+                )
+                for space in board_spaces_on_table(state)
+            )
         case CompleteContract():
             return tuple(
                 DomainAction(

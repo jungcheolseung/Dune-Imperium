@@ -20,6 +20,7 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.content.uprising.effect_dsl import (
+    BlockChosenSpaceForOpponentsNextAgent,
     CompleteContract,
     DrawPersonalCards,
     ForceEnemyRetreat,
@@ -1442,6 +1443,96 @@ def apply_agent_card_opponent_retreat(
         BoxOutcome.RESOLVED,
     )
     return RuleResult(state=next_state, events=(*retreated.events, event))
+
+
+def legal_agent_card_space_block_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Return The Voice's choices: one board space to block.
+
+    "Choose any board space" [The Voice card]: a mandatory choice among every
+    space on the table, from the box's record (``target_rows``).
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("pending_agent_effect") is not True or pending_agent_icons(context):
+        return ()
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    if recorded is None or not isinstance(
+        target_piece(recorded), BlockChosenSpaceForOpponentsNextAgent
+    ):
+        return ()
+    return target_rows(state, player, recorded)
+
+
+def apply_agent_card_space_block(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Block the chosen space for every opponent's next Agent.
+
+    The space joins each opponent's ``voice_blocked_space_ids`` (once); the
+    seat's own Agent is not stopped by it. Each block lasts until that
+    opponent's next Agent placement (``agent_turn.apply_agent_action``) or the
+    end of the round (``phases.resolve_recall_or_endgame``), OQ-116. One
+    public event names the space and the seats it now binds, then the box's
+    own.
+    """
+
+    if action not in legal_agent_card_space_block_actions(state, action.actor):
+        raise ValueError("action is not a legal The Voice space choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    space_id = dict(action.arguments)["space_id"]
+    if not isinstance(space_id, str):
+        raise RuntimeError("The Voice has an invalid space")
+    blocked = tuple(
+        seat.player_id for seat in state.players if seat.player_id != action.actor
+    )
+    players = tuple(
+        replace(
+            seat,
+            voice_blocked_space_ids=(
+                seat.voice_blocked_space_ids
+                if space_id in seat.voice_blocked_space_ids
+                else (*seat.voice_blocked_space_ids, space_id)
+            ),
+        )
+        if seat.player_id in blocked
+        else seat
+        for seat in state.players
+    )
+    source = agent_card_source(state.round_number, action.actor, source_card_id)
+    context["pending_agent_effect"] = False
+    next_state = advance_after_effect(state, context, players)
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=f"{source}:space_blocked:{space_id}",
+                kind="space_blocked_for_opponents",
+                payload=(
+                    ("blocked_players", blocked),
+                    ("player", action.actor),
+                    ("space_id", space_id),
+                ),
+            ),
+            agent_box_event(
+                source,
+                source_card_id,
+                action.actor,
+                BoxOutcome.RESOLVED,
+            ),
+        ),
+    )
 
 
 def legal_agent_card_trash_actions(

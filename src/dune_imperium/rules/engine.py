@@ -49,6 +49,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_opponent_retreat,
     apply_agent_card_payment,
     apply_agent_card_recall,
+    apply_agent_card_space_block,
     apply_agent_card_spy_action,
     apply_agent_card_trash,
     apply_corrinth_city_payment,
@@ -818,6 +819,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Agent-card serial choices
     "trash_agent_card": apply_agent_card_trash,
     "retreat_opponent_troop": apply_agent_card_opponent_retreat,
+    # The Voice (original game): the board space to block.
+    "block_agent_card_space": apply_agent_card_space_block,
     "decline_agent_card_trash": apply_agent_card_trash,
     "discard_agent_card": apply_agent_card_discard,
     "decline_agent_card_discard": apply_agent_card_discard,

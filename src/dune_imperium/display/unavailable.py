@@ -112,6 +112,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GrantAgentIconsThisTurn,
     GrantAgentIconThisTurn,
     GrantCombatDeployment,
+    IgnoreEnemyAgentsNextPlacement,
     IgnoreInfluenceRequirementsThisTurn,
     IntrigueOption,
     IntrigueTiming,
@@ -901,6 +902,14 @@ def _choice_reward_reason(state: GameState, seat: int, reward: Reward) -> Reason
             )
         case GrantAgentIconThisTurn() | GrantAgentIconsThisTurn():
             return _BEFORE_THE_AGENT
+        case IgnoreEnemyAgentsNextPlacement():
+            if not agent_placement_ahead(state, seat):
+                return _BEFORE_THE_AGENT
+            return (
+                "No opponent's Agent is on the board",
+                "{agent}가 놓인 다른 플레이어의 게임판 장소 없음",
+                "reward",
+            )
         case IgnoreInfluenceRequirementsThisTurn():
             if not agent_placement_ahead(state, seat):
                 return _BEFORE_THE_AGENT
