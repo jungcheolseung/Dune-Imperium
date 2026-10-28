@@ -54,6 +54,16 @@ def settle_deck_top(owner: PlayerState) -> PlayerState:
     if kept == len(record):
         return owner
     dropped = record[: len(record) - kept]
+    if not frozenset(dropped).isdisjoint(deck):
+        # Every engine path takes public cards off the top only, or shuffles
+        # the whole deck (``clear_deck_top``). A dropped card still in the
+        # deck means a new path reordered the deck or put a card above the
+        # record: guessing here could leak a reordered card or hide a public
+        # one, so fail loudly and let that path say what every seat knows
+        # (independent review of observation v38, 2026-10-28).
+        raise RuntimeError(
+            "a public deck-top card left the record while still in the deck"
+        )
     in_hand = frozenset(owner.hand)
     already_public = frozenset(owner.hand_public)
     drawn = tuple(

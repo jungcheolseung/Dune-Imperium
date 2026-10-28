@@ -1401,7 +1401,9 @@ def _resolve_look(
 
     "Look at the top card of your deck. Draw or trash it." [Poison Snooper
     card, app text]. The drawn card goes to the hand and stays hidden from
-    the others (``top_card_drawn_free`` names no card); in the owner's Reveal
+    the others (``top_card_drawn_free`` names no card), unless it was a
+    public deck-top card (OQ-145: then it stays public in the hand,
+    ``rules.deck_top``); in the owner's Reveal
     turn it is revealed at once and used this turn [FAQ p. 3]
     (imperium-base.md 13.2). The trashed card becomes public (imperium-base.md
     14: "trash하면 공개"): it is trashed from the deck like Long Live the

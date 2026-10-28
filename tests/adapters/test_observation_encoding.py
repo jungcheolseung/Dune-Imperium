@@ -182,7 +182,7 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 26 * 46
         + 9 * 34
         # v38 (OQ-145 and the original game's public markers): the public
-        # deck-top depths of four seats by personal-card identity, the
+        # deck-top counts of four seats by personal-card identity, the
         # barred spaces of four seats, and two turn flags per seat.
         + 4 * 188
         + 4 * 42
@@ -589,10 +589,12 @@ _V38_SEGMENTS = (
 )
 
 
-def test_a_public_deck_top_is_encoded_by_depth_for_its_relative_seat() -> None:
-    # v38 (OQ-145): per relative seat, a personal-card identity's column holds
-    # the depth from the top (1 = the top card) of its shallowest public copy;
-    # the other columns, and the other seats' blocks, stay 0.
+def test_a_public_deck_top_is_counted_by_identity_for_its_relative_seat() -> None:
+    # v38 (OQ-145): per relative seat, a personal-card identity's column counts
+    # its public copies on the deck top, as ``deck_pool`` counts (independent
+    # review 2026-10-28: a depth hid a second copy and weighed the top card
+    # least in the entity network); the other columns, and the other seats'
+    # blocks, stay 0.
     engine = UprisingRulesEngine()
     state = engine.reset(RulesetConfig(), seed=5)
     rival = state.players[1]
@@ -623,8 +625,8 @@ def test_a_public_deck_top_is_encoded_by_depth_for_its_relative_seat() -> None:
             if (observer + block) % 4 != 1:
                 assert not any(column)
                 continue
-            assert column[ids["convincing_argument"]] == 1  # not 3: the shallowest
-            assert column[ids["dagger"]] == 2
+            assert column[ids["convincing_argument"]] == 2  # two public copies
+            assert column[ids["dagger"]] == 1
             assert sum(1 for value in column if value) == 2
 
 

@@ -1085,8 +1085,10 @@ def apply_imperium_acquisition(
             *(
                 (("destination", "deck_top"),)
                 if to_deck_top
-                # The deck order is hidden (OQ-010): the instance is named
-                # only while it stays public (``rules.tleilaxu_row``).
+                # The instance is named only for the discard pile, as the
+                # Tleilaxu Row's event does; the deck-top card is public too
+                # (OQ-145, ``rules.deck_top``) but the payload stays as it
+                # was so old saves replay their events.
                 else (("instance_id", instance_id),)
             ),
             ("player", action.actor),
@@ -1946,8 +1948,9 @@ def acquire_imperium_for_intrigue(
         payload=(
             ("card_id", definition.card.card_id),
             ("destination", destination),
-            # The deck order is hidden (OQ-010): a card put on top of the deck
-            # is named by its identity only (``rules.tleilaxu_row``).
+            # A card put on top of the deck is named by its identity only, as
+            # the Tleilaxu Row's event does (the payload predates OQ-145,
+            # which makes that card public: ``rules.deck_top``).
             *(() if to_deck_top else (("instance_id", instance_id),)),
             ("player", player),
         ),

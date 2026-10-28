@@ -198,8 +198,10 @@ from dune_imperium.rules.frames import FrameKind
 # ``seat{k}_deck_public_top`` per relative seat -- the cards put face up on top
 # of its deck (Bypass Protocol, Recruitment Mission, a Tleilaxu card), known
 # to every seat until drawn or shuffled -- one column per personal-card
-# identity holding the depth from the top of the shallowest public copy (1 =
-# the top card, 0 = none); ``voice_blocks`` the spaces each relative seat may
+# identity holding how many public copies lie there, as ``deck_pool`` counts
+# (a count, so the entity network weighs it like its other zones; the order
+# of a stack of two or more is not encoded, a rare case: independent review
+# 2026-10-28); ``voice_blocks`` the spaces each relative seat may
 # not send its next Agent to (The Voice); ``card_turn_flags`` per relative
 # seat Infiltrate's turn marker and Recruitment Mission's round marker. Every
 # older column keeps its offset; a v37 checkpoint migrates by segment and
@@ -532,8 +534,8 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             # unrevealed secret; the observer's own secret Factions.
             ("masterstroke_secret", _SEATS),
             ("private_masterstroke", len(FACTION_IDS)),
-            # v38: per relative seat, the depth of each public deck-top card
-            # by identity; the spaces each relative seat is barred from; its
+            # v38: per relative seat, the public deck-top cards counted by
+            # identity; the spaces each relative seat is barred from; its
             # Infiltrate and Recruitment Mission markers.
             *(
                 (f"seat{seat}_deck_public_top", len(PERSONAL_CARD_IDS))
@@ -781,10 +783,8 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     for seat_offset in range(_SEATS):
         seat_view = view.players[(observer + seat_offset) % _SEATS]
         offset = _OFFSET[f"seat{seat_offset}_deck_public_top"]
-        for depth, instance_id in enumerate(seat_view.deck_public_top, start=1):
-            column = offset + _personal_identity_index(instance_id)
-            if not values[column]:
-                values[column] = depth
+        for instance_id in seat_view.deck_public_top:
+            values[offset + _personal_identity_index(instance_id)] += 1
     for seat_view in view.players:
         row = relative(seat_view.player) - 1
         offset = _OFFSET["voice_blocks"] + row * len(SPACE_IDS)

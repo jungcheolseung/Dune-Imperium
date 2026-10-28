@@ -107,8 +107,9 @@ SLOT_VERSION: Final = 1
 # v37 lists the original game's Imperium cards after Uprising's in every
 # Imperium-card field (stage P3a, plan 16.4); their keys are new, so a
 # migrated network starts them at 0.
-# v38 appends the public deck-top depths, the Voice's barred spaces and the
-# card turn flags as raw segments (no field reads them).
+# v38 appends the public deck-top counts, the Voice's barred spaces and the
+# card turn flags; no slot field reads them (the entity network reads the
+# deck-top counts as a zone, ``entity_network``).
 SLOT_OBSERVATION_VERSION: Final = 38
 VALUE_RANGE: Final = 256
 

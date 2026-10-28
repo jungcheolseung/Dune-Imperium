@@ -355,14 +355,14 @@ def test_a_tleilaxu_card_put_on_the_deck_is_public_to_every_seat() -> None:
     # Nothing below the public cards is known to anyone.
     assert known_card_seats(second)[owner.deck[2]] == frozenset()
     check_observation_privacy(second)
-    # The observation (v38) holds the depth of each public card by identity,
-    # in the block of the seat's place relative to the observer.
+    # The observation (v38) counts the public cards by identity, in the block
+    # of the seat's place relative to the observer.
     ids = {card_id: index for index, card_id in enumerate(PERSONAL_CARD_IDS)}
     for seat in range(4):
         encoded = encode_player_view(observe_state(second, seat))
         column = encoded[segment_slice(f"seat{(0 - seat) % 4}_deck_public_top")]
         assert column[ids["subject_x_137"]] == 1
-        assert column[ids["contaminator"]] == 2
+        assert column[ids["contaminator"]] == 1
         assert sum(1 for value in column if value) == 2
 
 

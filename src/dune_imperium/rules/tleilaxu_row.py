@@ -257,9 +257,10 @@ def acquire_tleilaxu_card(
             GameEvent(
                 event_id=f"{source}:{instance_id}",
                 kind="tleilaxu_card_acquired",
-                # The identity was public in the Row; the instance is named
-                # only while it stays public (the discard pile), since the
-                # deck order is hidden (OQ-010).
+                # The identity was public in the Row. The instance is named
+                # only for the discard pile: the payload is kept as it was
+                # before OQ-145 made a deck-top card public too
+                # (``rules.deck_top``), so old saves replay their events.
                 payload=(
                     ("card_id", definition.card.card_id),
                     *(() if to_deck_top else (("instance_id", instance_id),)),

@@ -26,7 +26,15 @@ Nothing else a player, an agent or a save sees changes: the legal rows, the
 events and their payloads stay as they were. The two view differences are
 declared as exactly that -- a candidate ``hand_public`` that holds the base's
 plus extra cards, and a ``deck_pool`` that lacks exactly those cards'
-identities -- so any other change of them is still reported. Checked with
+identities -- so any other change of them is still reported. An extra hand
+card is accepted only if that seat's candidate view named it on its public
+deck top at this or an earlier step of the game, or the step put a card of
+that identity on that seat's deck top (placed and drawn in one transition):
+an ordinary hidden draw turned public in any game is still a difference, and
+``PlayerState.hand_public`` is left out of the state comparison only for a
+seat that has had a public deck top in this game: a chance step records no
+views to check the hand card by, and the next step with views checks it
+card by card (independent review of observation v38, 2026-10-28). Checked with
 ``engine_equivalence.py check --differences
 scripts/ab/differences/public_deck_tops.py``.
 """
@@ -62,15 +70,55 @@ def _identity(instance_id: str) -> str:
     return personal_card_for_instance(instance_id).card.card_id
 
 
+# Per game (a lower step index starts another): the instances each seat's
+# candidate view has named on its public deck top so far, and the seats that
+# have had a public deck top (their ``hand_public`` may differ from here on).
+_seen_on_top: dict[int, set[str]] = {}
+_had_public_top: set[int] = set()
+_last_index = [-1]
+
+
+def _placed_identities(candidate: Step) -> dict[int, set[str]]:
+    """The card identities this step put on a seat's deck top, by seat."""
+
+    placed: dict[int, set[str]] = {}
+    for event in candidate.events:
+        payload = dict(event["payload"])
+        on_top = (
+            event["kind"] == "card_acquired"
+            and payload.get("destination") == "deck_top"
+        ) or (event["kind"] == "tleilaxu_card_acquired" and payload.get("to_deck_top"))
+        if on_top:
+            placed.setdefault(int(payload["player"]), set()).add(
+                str(payload["card_id"])
+            )
+    return placed
+
+
 def _normalise_public_top(old: Step, candidate: Step) -> bool:
     """Take the declared difference out of the candidate's views: the record
     itself, the cards drawn from it in ``hand_public``, and their identities
     in ``deck_pool``. Whatever else differs is left to be reported."""
 
+    if candidate.index < _last_index[0]:
+        _seen_on_top.clear()
+        _had_public_top.clear()
+    _last_index[0] = candidate.index
+    for view in candidate.views:
+        for seat, new_seat in enumerate(view["players"]):
+            _seen_on_top.setdefault(seat, set()).update(
+                new_seat.get("deck_public_top", [])
+            )
+    placed = _placed_identities(candidate)
+    _had_public_top.update(seat for seat, seen in _seen_on_top.items() if seen)
+    _had_public_top.update(placed)
+    candidate.fields_unchecked.update(
+        f"players[{seat}].hand_public" for seat in _had_public_top
+    )
     changed = False
     for old_view, new_view in zip(old.views, candidate.views, strict=False):
-        for old_seat, new_seat in zip(
-            old_view["players"], new_view["players"], strict=False
+        for seat, (old_seat, new_seat) in enumerate(
+            zip(old_view["players"], new_view["players"], strict=False)
         ):
             if new_seat.get("deck_public_top"):
                 new_seat["deck_public_top"] = []
@@ -81,6 +129,12 @@ def _normalise_public_top(old: Step, candidate: Step) -> bool:
                 if card not in old_seat.get("hand_public", [])
             ]
             if not extra:
+                continue
+            if not all(
+                card in _seen_on_top.get(seat, set())
+                or _identity(card) in placed.get(seat, set())
+                for card in extra
+            ):
                 continue
             rest = [card for card in new_seat["hand_public"] if card not in extra]
             if rest != old_seat["hand_public"]:
@@ -106,7 +160,9 @@ STATE_HOLDS_THE_PUBLIC_TOP = Rule(
     name="state_holds_the_public_top",
     why="OQ-145: the record of the deck's public top and the public hand "
     "cards drawn from it",
-    state_fields=frozenset({"PlayerState.deck_public_top", "PlayerState.hand_public"}),
+    # The new field everywhere; ``hand_public`` only where
+    # ``_normalise_public_top`` accepted a card drawn from the public top.
+    state_fields=frozenset({"PlayerState.deck_public_top"}),
 )
 
 RULES = (STATE_HOLDS_THE_PUBLIC_TOP, VIEWS_SHOW_THE_PUBLIC_TOP)
