@@ -1235,3 +1235,22 @@ v38은 137구간 8,265열이다. 원칙은 v35·v37·v38과 같다: 새 id는 �
   - `ix_flags`: 판 표시(원판 + Ix인가, 4.2절 8)와 뒤집은 Tech(이미 `tech_flipped`가 좌석 상태에 있으면 그것).
 - **확인할 것:** `known_card_seats`·결정 표본(determinizer)·되돌리기 경계에 Hundro·Court Intrigue·Sonic Snoopers·Ilesa를 넣는다. 엔티티 특성은 Uprising 개체로
   척도를 고정해 Uprising 405행 그대로(P2a의 `entity_features._table`). 크기 어림: 어휘 늘림 약 +1,100열, 새 구간 약 +330열 → 약 9,700열.
+
+**독립 리뷰 반영(2026-10-29 04:4x, Codex gpt-6.1-sol 읽기 전용, `78a06d55`; 조정자가 1·5를 코드에서 확인):**
+
+1. **Ilesa가 따로 둔 카드와 덱 풀(숨은 정보):** 공개 집계 `seatN_deck_pool`(`core/observation._deck_pool`: 덱 + 공개 아닌 손패)에서 따로 둔 카드를 빼면
+   상대가 빼기로 그 카드를 안다. → 따로 둔 카드는 **공개 집계에 그대로 남긴다**(덱 풀 = 덱 + 공개 아닌 손패 + 따로 둔 카드). 정체는 주인의
+   `private_set_aside`에만.
+2. **덱 맨 아래에 놓은 Intrigue의 행방:** 놓은 좌석은 그 카드가 뽑힌 뒤 누가 가졌는지도 안다(rise-of-ix.md 13). → `private_known_intrigue`: 보는
+   좌석이 아는 "다른 좌석 손의 Intrigue"를 상대 셋 × Intrigue 어휘의 수로 둔다(공개 `seatN_intrigue_faceup`에는 넣지 않는다 — 모두에게 새므로).
+   `known_card_seats`·결정 표본도 같은 지식을 쓴다.
+3. **Ilesa의 카드가 돌아온 뒤:** 정체는 OQ-010의 공개 경로 손패(`hand_public`)로 보인다. "둘째 turn 보너스" 자격은 Agent 수로 셀 수 없다(pass·Weirding
+   Way, OQ-119) → `seatN_ix`에 "따로 둔 카드가 이번 turn에 돌아옴(보너스 대기)" 표시와 "이번 라운드에 끝낸 turn 수" 하나.
+4. **남은 Shipping 회수 보상과 Tech 구매 방식:** Freighter 칸·협상가 수만으로는 열린 결정이 안 보인다. → 열린 결정의 구간 `ix_pending`: 남은 회수
+   보상 셋(1·2·3칸, 받았는지), 열린 Acquire Tech의 할인(0·1·2), 지불 수단(spice·Appropriate의 Solari), 돌려받을 수 있는 협상가 수.
+5. **이관과 좌석 × 어휘 행렬(확인됨):** `voice_blocks`는 `row * len(SPACE_IDS) + space_index`라 칸 어휘를 늘리면 좌석 1~3 행이 밀린다. → 옛 행렬은
+   **그대로 두고** Ix 칸 넷은 새 구간 `voice_blocks_ix`(좌석 × 4)로. P4a 구현 때 `observation_encoding.py`에서 어휘 길이를 곱하는 구간을 모두 찾아
+   같은 처리를 한다(검사: 옛 구간마다 v38과 v39의 열 뜻이 같은지 테스트로 고정).
+6. **덱 맨 아래의 순서:** Sonic Snoopers는 "몇 장이든" 맨 아래로 보낸다 — 놓은 좌석은 놓은 순서를 안다. → `private_intrigue_bottom`은 수 세기가 아니라
+   맨 아래부터의 자리(최대 8칸, 칸마다 Intrigue 어휘 index+1)로 두고, 공개 `global_scalars`에 Intrigue 덱 크기를 더한다(덱 크기는 공개 사실 — 맨 위로부터의
+   거리는 덱 크기와 자리로 셈).
