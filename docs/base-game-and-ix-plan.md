@@ -1115,3 +1115,100 @@ C를 먼저 읽고 결론을 가르는 줄은 주석 asm으로 확인했다. 20�
 - **P4 점검 목록(앱 코드에서 본 Ix 상호작용):** Guild Accord의 Heighliner spice 할인(2, Ghola와 4), Spaceport의 Foldspace 카드 덱 위, Combat 칸 배치 몫의
   dreadnought, Rise of Ix가 Hall of Oratory·Rally Troops·Secure Contract·Sell Melange를 보드에서 뺌, Yuna Moritani의 Smuggling Operation이 Windfall에도 +1
   Solari, dreadnought가 Control marker보다 먼저 칸의 controller가 됨(`WormSpace::get_ControllingPlayer`).
+
+## 17. P4 계획 초안: Rise of Ix (원판 위) (2026-10-29, 브랜치 `claude/base-ix-p4`, P3 병합 master에서)
+
+**상태: 초안.** 조정자 경유 사용자 승인 계획대로(2026-10-29 03:2x): P4 계획 절 초안·OQ 목록·P4a 틀 설계를 먼저 쓰고, 사용자 답이 필요한 OQ는 모아
+아침에 올리고, 답 없이 되는 틀 작업은 계속한다. 규칙 명세는 P0의 [rise-of-ix.md](rules/rise-of-ix.md)(구성표·setup·Tech·Shipping·dreadnought·
+Unload·잠입·칸·지도자·Epic·숨은 정보·결정 단위)이고, 판정은 OQ-119~OQ-127(Ix 몫)이 끝냈다. 범위는 8절 표의 P4: CHOAM 덮개 칸 넷, Ix 보드(Tech 18,
+협상가, Shipping), dreadnought와 유닛 규칙, Discard·Unload·잠입 아이콘, 카드(Imperium 29종 35장 + 프로모 Boundless Ambition, Intrigue 17, Conflict 셋 +
+이미 있는 Economic Supremacy), 지도자 6, 원판 + Ix의 Epic, 끝에 소크와 Ix 전부의 앱 행동 대조. 크기는 P0 분류(`…/p0-readings/dsl-coverage.md`):
+Ix Imperium 60칸 중 새 조각 22, Intrigue 22절 중 9, 지도자는 hook이 많고, Tech 18장 중 새 조각·hook 10.
+
+### 17.1 하위 단계 (추천)
+
+| 단계 | 내용 | codec | 관측 |
+| --- | --- | --- | --- |
+| **P4a 틀** | Ix 정의를 앱 속성 표에서 생성(도구 1을 Ix로: Imperium 30·Intrigue 17·Conflict 3·지도자 6·Tech 18·칸 4), id(17.2), `rise_of_ix`를 원판에서 받기(Uprising + Ix는 P7까지 거절), CHOAM 덮개가 칸 넷을 바꿈, Conflict 덱(I 1·II 5·III 4, 원판 + Ix 카드에서), 덱은 효과가 들어간 카드만(P3처럼), 앱 표와 기계 대조 pytest | 브랜치 안에서는 그대로, 병합 때 한 번(사용자 2026-10-28 "병합 때 한 번") | **v39 한 번**: Ix id를 구간 끝에, 새 구간(17.4) |
+| **P4b 유닛과 dreadnought** | `PlayerState`의 dreadnought(supply·garrison·Conflict·Control 칸 위), commission(좌석당 둘), strength 3, 끈질김, 지배(승자의 창의 줄, OQ-121), 배치 규칙의 "유닛"(rise-of-ix.md 6의 표), Masterstroke의 troop 셈(16.10 12) | 그대로 | (v39에 포함) |
+| **P4c Ix 보드** | Tech 타일 — Bloodlines Tech 틀(세 더미, 획득 창, 할인, 뒤집기)을 Ix 타일로 다시 씀, 협상가, Shipping 트랙(Freighter 아이콘, 회수 보상 순서 자유, 차례 밖 회수), 덮개 칸 넷(Dreadnought·Tech Negotiation·Interstellar Shipping·Smuggling) | 그대로 | (v39) |
+| **P4d 카드** | Imperium·Intrigue·Conflict를 card-implementer 묶음으로(동시 2~3), Discard 아이콘·Unload·잠입 | 그대로 | 그대로 |
+| **P4e 지도자·Epic·프로모** | 지도자 6(숨은 정보: Hundro의 Intrigue 맨 위, Ilesa의 따로 둔 카드; Tessia의 Snooper), 원판 + Ix의 Epic(Uprising Epic 구현 재사용, 12점, Conflict I 없음), Boundless Ambition(`promo_cards`) | 그대로 | (v39) |
+| **P4f 끝** | 원판 + Ix 소크(Epic·프로모·드래프트), Ix 전부의 앱 행동 대조(P3d와 같은 방법: 대조할 능력 클래스를 Ghidra로 디컴파일, C 먼저·asm으로 확인, agent 동시 2~3, 차이마다 반박 위주 재확인과 `docs/rules` 인용 판정) | – | – |
+
+단계마다 엔진 관문 전체(2026-10-20 사용자 결정). 관측 변경은 P4a 한 번에 모은다(P3의 v37처럼): 필요한 구간을 P4a에서 미리 다 잡고, 뒤 단계는 값을
+채우기만 한다. 뒤에서 구간이 더 필요해지면 그때 사용자에게 묻는다(P3의 v38처럼).
+
+### 17.2 id (4.2절 7)
+
+- 2026-10-29 스크립트(앱 `RiseOfIx`·Promo 아키타입 이름 → id, 지금 Imperium·Intrigue·지도자·Bloodlines Tech id와 대조): 겹침은 **Esmar Tuek**(Ix
+  Imperium 카드 ↔ Bloodlines 지도자 `esmar_tuek`) 하나 → `esmar_tuek_card`(15.2·16.2와 같은 규칙). Tech 타일 18장과 Bloodlines Tech 18장은 이름이
+  겹치지 않는다. 칸 넷: `dreadnought`, `tech_negotiation`, `interstellar_shipping`, `smuggling`(Uprising의 `shipping` 칸과 다르다).
+- 이름이 비슷한 것 셋은 엔진 id와 화면 용어집에서 가른다(rise-of-ix.md 7): Uprising Spy의 "Infiltrate"(행동), 원판 Intrigue "Infiltrate", Ix의
+  "Infiltration" 아이콘(`infiltration`).
+- Control the Spice는 이미 있다(Uprising Epic, `content/uprising/starting_cards.py`) — 원판 + Ix Epic도 같은 카드다(앱도 `RiseOfIx` 아키타입 하나).
+
+### 17.3 출처 (D1·D2, 2.4절)
+
+- P3와 같다: 앱 속성 표(도구 1)와 카드별 화면 조각, 영어 문구. 카드면 스캔은 새로 읽지 않는다. Tech 타일은 앱 레이아웃(Bloodlines Tech 렌더가
+  이미 앱 Ix 타일 틀을 씀). 프로모 Boundless Ambition은 앱에 Promo 아키타입과 문구가 있다.
+- 순서·may/must·시점이 문구로 정해지지 않으면 디컴파일한 C(16.11)를 먼저 읽는다. 공식 문서가 답하지 않으면 OQ-147부터.
+- 공식 문서: Rise of Ix 룰북(`22-2-11` 판), 2025-01-13 FAQ, 원판 룰북 — 받은 텍스트가 `tmp/official-rules/`에 있다. **Bloodlines 룰북은 없다**(17.6 1).
+
+### 17.4 엔진·codec·관측
+
+- **새 조각(P0 분류):** `FREIGHTER`(11곳: 카드·Intrigue·Conflict 보상·Hundro의 Signet; 차례 밖에서도 일어난다 `[FAQ p. 3]`), `UNLOAD`(9장: 버리거나
+  trash할 때도 Reveal box), `INFILTRATION`(7장: 카드 Agent 아이콘의 표시), `DREAD_COMMISSION`(3곳), Discard 아이콘(비용), Tech 획득·협상가·뒤집기
+  (Bloodlines 틀). `IGNORE_BLOCK`는 P3에서 생겼다(Infiltrate·Eyes Everywhere·Invasion Ships). hook 위험: Weirding Way의 추가 turn, Ilesa·Tessia·Hundro.
+- **"턴 종료" 제공자 목록**(lessons 2026-10-18): 새 제공자(Freighter, Acquire Tech, 협상가, dreadnought 지배, Unload, Discard)를 그 판정과 제공자 목록을
+  든 곳에서 이름으로 모두 찾아 함께 고친다(rise-of-ix.md 14).
+- **codec:** 원판 + Ix 카탈로그에 새 행이 생긴다. Uprising 144개 카탈로그는 바이트까지 같아야 한다(P2·P3와 같은 대조). codec 버전은 병합 때 한 번.
+- **관측 v39(P4a 한 번):** Ix id를 기존 구간 끝에(개인 카드·Intrigue·지도자·Conflict·Tech·칸). 새 구간 후보: 좌석의 dreadnought(supply·garrison·
+  Conflict 수, Control 칸마다 놓인 dreadnought의 주인), Freighter 칸, 협상가 수, Snooper token(Tessia), Ix Tech 더미(지금 Bloodlines Tech의
+  `tech_stacks`·`tech_face_up`·`tech_stack_sizes`를 Ix 타일로 다시 쓸 수 있는지 P4a에서 확인 — 두 모듈을 함께 쓰는 판은 17.6 1). 숨은 정보
+  (rise-of-ix.md 13): Hundro가 아는 Intrigue 덱 맨 위, Court Intrigue·Sonic Snoopers로 덱 맨 아래에 놓은 카드(놓은 좌석), Ilesa가 따로 둔 카드(주인),
+  Spaceport로 덱 위에 놓은 카드(모두 — OQ-145 (나)와 같은 길). 모두 `known_card_seats`·결정 표본·되돌리기 경계에. Uprising 열은 그대로, 형식 2
+  이관으로 옮긴 망이 Uprising 판에서 같은 수(P2·P3처럼 `same_moves.py`). 엔티티 특성은 Uprising 405행 그대로.
+- **같음 확인:** 상태에 새 칸이 생기면 선언 차이 파일. Uprising 판의 그 밖의 차이는 0.
+- **휴리스틱:** 새 효과의 점수는 Ix 콘텐츠에서만 닿는 가지(P3와 같은 방식). 앱 AI는 P6.
+
+### 17.5 조합 (상시 규칙 "모든 확장과 결합한 판으로 판정", 사용자 2026-10-28 — 16.10; 구현은 그 조합을 여는 단계)
+
+P4는 원판 + Ix(+ 프로모, Epic, 지도자 드래프트)를 연다. 그 밖의 조합은 판정만 지금 하고 구현은 P7·P8에서 한다.
+
+1. **Uprising + Ix(P7, `[Main p. 18]` "Adding Rise of Ix"):** CHOAM 덮개를 반만 펴 Assembly Hall·Gather Support를 덮는다. Ix·CHOAM 보드에 관측 초소가
+   하나씩 있는 것으로 친다(Interstellar Shipping·Smuggling, Tech Negotiation·Dreadnought). Ix Conflict 카드는 넣지 않기를 권하되 넣어도 되고, Epic이면
+   Economic Supremacy를 III에 더한다. Ilesa는 Foldspace를 얻을 수 있다(원판 Foldspace 카드가 필요). CHOAM 모듈과 Ix: 덮개가 계약 칸 하나를 바꾸므로
+   Ix용 계약 10장을 좌석마다 둘씩 받아 하나 고른다(`[Main p. 16]`; 앱의 Uprising 계약 28장에 든다). dreadnought의 지배 칸은 그 판의 Control 칸(4.2절 6:
+   Ix 기계는 보드에 묶지 않는다). sandworm·Shield Wall과 dreadnought의 관계는 17.6 3.
+2. **Ix + Bloodlines(원판 또는 Uprising):** Sardaukar Commander는 troop이고 dreadnought는 troop이 아니다(rise-of-ix.md 6 표, `[Bloodlines p. 4]`).
+   배치 몫(17.6 2). Tech Module과 Ix Tech를 함께 쓰는 판은 Bloodlines 룰북 p. 7이 다룬다(17.6 1).
+3. **Ix + Immortality(원판, P7):** 앱은 Immortality에서 원판 Research Station을 빼고 Immortality판 칸을 쓴다(`RemovedFromSetList`, P3d). FAQ의 graft 예
+   (16.10 9)와 Spaceport·Recruitment Mission·Tleilaxu 덱 위 놓기(OQ-145).
+4. **Ix + Uprising Spy:** 잠입 아이콘(Ix)과 Spy의 Infiltrate(Uprising)는 다른 것이다 — 둘 다 상대 Agent를 무시하지만 The Voice는 못 넘는다.
+5. **P3에서 넘어온 Ix 몫(16.10·16.12):** Masterstroke의 셈에서 dreadnought 빼기(16.10 12 — P4b에서 구현), Guild Accord의 Heighliner spice 할인(2, Ghola와 4),
+   Spaceport의 Foldspace 칸 카드 덱 위, Combat 칸 배치 몫의 dreadnought, Ix가 Hall of Oratory·Rally Troops·Secure Contract·Sell Melange를 뺌, Yuna의
+   Smuggling Operation이 Windfall에도 +1, dreadnought가 Control marker보다 먼저 칸의 controller(앱 `WormSpace::get_ControllingPlayer`). P3의 OQ들
+   (OQ-139~145)은 Ix 카드를 전사할 때 대어 본다(16.10 6).
+
+### 17.6 사용자 답이 필요한 것 (OQ 후보 — 아침에 한 번에)
+
+1. **Bloodlines 룰북 받기:** Tech Module과 Rise of Ix를 함께 쓰는 법은 `[Bloodlines p. 7]`에 있다(우리 bloodlines.md는 범위 밖으로 두었다). 원문이
+   `tmp/official-rules/`에 없다. `scripts/prepare_official_rules.py`로 공식 PDF를 받아 해당 쪽만 읽어도 될지(내려받기는 사용자 허락).
+2. ~~배치 몫과 commission~~ → **문장으로 정해진다(묻지 않음):** "You may deploy any or all units recruited during your current turn … plus up to two
+   more units from your garrison" `[Rise of Ix p. 6]`, "If you commissioned the dreadnought while sending an Agent to a Combat space, you may deploy it
+   to the Conflict" `[Rise of Ix p. 6]`. 이번 turn에 commission한 dreadnought는 garrison 몫(둘) 밖에서 배치할 수 있고, garrison 몫 둘은 troop·
+   Commander·dreadnought가 함께 쓴다(OQ-070의 "garrison 몫은 두 종류가 함께 쓴다"를 유닛으로 넓힘). P4b에서 테스트로 고정한다.
+3. **Uprising + Ix의 dreadnought와 sandworm·Shield Wall(P7):** 둘 다 유닛이고 sandworm은 보상을 두 배로 한다 `[Main p. 14]`. dreadnought만 남은 쪽의
+   Combat Intrigue 자격, Shield Wall이 있을 때 dreadnought 배치 — 공식 문장을 찾고, 없으면 OQ.
+4. **(확인만) P4 끝 앱 행동 대조를 P3d와 같은 방법으로**(디컴파일러 C 먼저, Sonnet agent 동시 2~3, 약 100항목) — 추천.
+
+### 17.7 P4a 틀 설계 (답 없이 하는 일)
+
+- 생성기: `scripts/dwgr/imperium_entries.py`(P3 도구 1)를 Ix 아키타입에 넓혀 정의 줄을 만든다(이름·장수·비용·진영·Agent 아이콘·Reveal 값·획득
+  보너스·잠입 아이콘·Unload 표시). `content/rise_of_ix/`(imperium·intrigue·conflicts·leaders·tech·board) 새 패키지, 합친 BY_ID 조회.
+- 판 축: `content_for(config)`가 `rise_of_ix`면 원판 칸 목록에서 덮개 칸 넷을 바꾸고 Ix Conflict·카드·지도자·Tech를 더한다. `rules/setup`의
+  `_IMPERIUM_PENDING_OPTIONS`에서 `rise_of_ix`와 `epic_game`(P4)을 뺀다; Uprising + Ix는 계속 거절(P7).
+- 기계 대조 pytest: 앱 표(공개 저장소의 `agents/app_ai/data/archetypes.py`)와 Ix 정의를 칸마다 대조(P3a의 `test_imperium_app_table`처럼).
+- 관측 v39 구간 설계(17.4) — 독립 리뷰 한 번(P3 v38처럼), Uprising 판 같은 수 확인.
+- 소크: 원판 + Ix(효과 없는 카드는 덱 밖이라 틀만으로도 돈다).
