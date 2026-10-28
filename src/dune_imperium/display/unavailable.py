@@ -2255,8 +2255,12 @@ def _opponent_card_discard(state: GameState, seat: int, found: _Found) -> None:
     owner = state.players[seat]
     if dict(frame.context).get(OR_LOSE_DEPLOYED_TROOP_KEY) is True:
         # Test of Humanity: each half is greyed while it cannot be done
-        # (imperium-base.md 13.1); with neither, both read the one reason.
-        neither = not owner.hand and not owner.troops_conflict
+        # (imperium-base.md 13.1); with neither, both read the one reason. A
+        # Conflict Commander is a deployed troop [Bloodlines p. 4]; its row
+        # shows only for a seat that owns one, as in Holy War's loss.
+        neither = not owner.hand and not unit_loss_options(
+            state, seat, conflict_only=True
+        )
         if not owner.hand:
             found.row(
                 "choice",
@@ -2264,18 +2268,24 @@ def _opponent_card_discard(state: GameState, seat: int, found: _Found) -> None:
                 DomainAction(action_id="discard_opponent_card", actor=seat),
                 _NO_CARD_TO_DISCARD,
             )
-        if not owner.troops_conflict:
+        for zone, commander in unit_loss_candidates(conflict_only=True):
+            if commander and owner.commanders_total == 0:
+                continue
+            block = unit_loss_block(owner, zone, commander=commander)
+            if block is None:
+                continue
             found.row(
                 "choice",
-                "lose_unit:conflict:0",
+                f"lose_unit:{zone}:{int(commander)}",
                 DomainAction(
                     action_id="lose_unit",
                     actor=seat,
-                    arguments=(("zone", "conflict"),),
+                    arguments=(
+                        *((("commanders", 1),) if commander else ()),
+                        ("zone", zone),
+                    ),
                 ),
-                _NO_UNIT_TO_LOSE if neither else _unit_loss_reason(
-                    "conflict", UnitLossBlock.NO_TROOP
-                ),
+                _NO_UNIT_TO_LOSE if neither else _unit_loss_reason(zone, block),
             )
         return
     if owner.hand:

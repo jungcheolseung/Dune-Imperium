@@ -204,7 +204,7 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
-from dune_imperium.rules.unit_loss import lose_unit
+from dune_imperium.rules.unit_loss import lose_unit, unit_loss_options
 from dune_imperium.rules.units import retreat_units
 
 # Immortality boxes whose enum names do not fit a comparison line.
@@ -574,18 +574,24 @@ def legal_opponent_card_discard_actions(
     owner = state.players[player]
     # Test of Humanity: "Each opponent chooses: Discard a card -OR- Lose a
     # deployed troop" -- each must choose what it can (imperium-base.md 13.1),
-    # so each half is offered while it can be done. A Sardaukar Commander is
-    # no option here: whether one is a "deployed troop" is for the
-    # combinations stage (P7).
+    # so each half is offered while it can be done. A Sardaukar Commander in
+    # the Conflict is a deployed troop too: it "is a 'troop'" and troop
+    # effects reach it [Bloodlines p. 4] (OQ-115: "이후 조합 구현에서도
+    # Commander를 빠뜨리지 않는다"); ``commanders`` 1 names it, as the
+    # unit-loss window does.
     loses = (
-        (
+        tuple(
             DomainAction(
                 action_id="lose_unit",
                 actor=player,
-                arguments=(("zone", "conflict"),),
-            ),
+                arguments=(
+                    *((("commanders", 1),) if commander else ()),
+                    ("zone", zone),
+                ),
+            )
+            for zone, commander in unit_loss_options(state, player, conflict_only=True)
         )
-        if context.get(OR_LOSE_DEPLOYED_TROOP_KEY) is True and owner.troops_conflict
+        if context.get(OR_LOSE_DEPLOYED_TROOP_KEY) is True
         else ()
     )
     discards = tuple(
@@ -629,8 +635,15 @@ def apply_opponent_card_discard(
     )
     if loses_troop:
         # Test of Humanity's other half: the opponent loses a deployed troop
-        # (to the supply [DI p. 16]) instead of discarding.
-        discarded = lose_unit(state, action.actor, "conflict", source=source)
+        # (to the supply [DI p. 16]) instead of discarding, a Sardaukar
+        # Commander if the row names one [Bloodlines p. 4].
+        discarded = lose_unit(
+            state,
+            action.actor,
+            "conflict",
+            commander=dict(action.arguments).get("commanders") == 1,
+            source=source,
+        )
     elif confirmed:
         # Nothing to discard: the seat's own confirm leaves a public event,
         # as Holy War's confirm with no unit does (``unit_loss_unavailable``).

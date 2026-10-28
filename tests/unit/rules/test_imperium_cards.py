@@ -4028,8 +4028,8 @@ def test_test_of_humanity_text_names_the_choice() -> None:
 # "Retreat up to two of your troops" (Scout), "Retreat any number of your
 # troops" (Chani): the owner picks the count, and "up to" / "any number" allow
 # 0 [FAQ p. 3] (imperium-base.md 13.2: "Chani (Imperium) -> Retreat | 'any
-# number'는 0 가능"); a retreat goes to the garrison [DI p. 16]; troops only (the
-# original game has no Sardaukar Commander, P7 decides whether one counts).
+# number'는 0 가능"); a retreat goes to the garrison [DI p. 16]. With Bloodlines a
+# Sardaukar Commander is one of these troops (the Commander tests below).
 
 
 def _counts(engine: UprisingRulesEngine, state: GameState, action_id: str) -> set[int]:
@@ -4050,13 +4050,21 @@ def _revealed_alone(
     garrison: int,
     conflict: int = 0,
     copies: int = 1,
+    commanders_garrison: int = 0,
+    commanders_conflict: int = 0,
 ) -> GameState:
     """Seat 0 reveals ``copies`` of ``card_id`` and nothing else, holding that
-    many troops in the garrison and the Conflict."""
+    many troops (and Sardaukar Commanders) in the garrison and the Conflict."""
 
     held = _with_troops(state, 0, garrison, conflict)
     hand = tuple(f"imperium:{card_id}:{copy}" for copy in range(copies))
-    held = _seat(held, hand=hand, resources=Resources())
+    held = _seat(
+        held,
+        hand=hand,
+        resources=Resources(),
+        commanders_garrison=commanders_garrison,
+        commanders_conflict=commanders_conflict,
+    )
     return _do(engine, held, "reveal_turn")
 
 
@@ -4364,6 +4372,219 @@ def test_the_counted_troop_moves_are_staged_rows_of_the_original_catalog() -> No
         after = moved.players[0]
         # The first row is count 1: one troop crossed.
         assert abs(after.troops_conflict - conflict) == 1, card_id
+
+
+# --- Sardaukar Commanders: troops for these cards (Bloodlines combined) -----------
+#
+# bloodlines.md 3 "유닛으로서의 취급": "Commander는 Conflict에서 strength 2인
+# "troop"이다. troop을 대상으로 하는 효과(예: Go to Ground의 retreat)는
+# Commander에도 적용된다." [Bloodlines p. 4]; OQ-115 (user ruling 2026-10-22):
+# "이후 조합 구현에서도 Commander를 빠뜨리지 않는다". The original game takes
+# Bloodlines from stage P7 (setup refuses it today), so these states put the
+# Commanders on the seat directly; the codec rows come from an original +
+# Bloodlines catalog.
+
+BLOODLINES_CONFIG = replace(CONFIG, bloodlines=True)
+
+
+def _with_bloodlines(state: GameState) -> GameState:
+    """``state`` under a configuration with Bloodlines, so a seat may hold
+    Sardaukar Commanders (``GameState`` refuses them otherwise)."""
+
+    return replace(state, config=replace(state.config, bloodlines=True))
+
+
+def _unit_rows(
+    engine: UprisingRulesEngine, state: GameState, action_id: str
+) -> set[tuple[int, int]]:
+    """The (units, Commanders among them) the Reveal frame offers as ``action_id``."""
+
+    rows = (
+        dict(action.arguments)
+        for action in _wholes(engine, state)
+        if action.action_id == action_id
+    )
+    return {(int(row["count"]), int(row.get("commanders", 0))) for row in rows}
+
+
+def test_sardaukar_legion_deploys_garrisoned_commanders() -> None:
+    """Two troops and a Commander in the garrison: every split of one to three
+    units is a row; deploying all three moves the Commander too (2 strength
+    each) and counts three units for the turn (OQ-115)."""
+
+    engine, state = _start()
+    state = _with_bloodlines(state)
+    revealed = _revealed_alone(
+        engine, state, "sardaukar_legion", garrison=2, commanders_garrison=1
+    )
+    assert _unit_rows(engine, revealed, "deploy_reveal_card_troops") == {
+        (1, 0),
+        (1, 1),
+        (2, 0),
+        (2, 1),
+        (3, 1),
+    }
+    deployed = _do(
+        engine, revealed, "deploy_reveal_card_troops", count=3, commanders=1
+    )
+    after = deployed.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (0, 2)
+    assert (after.commanders_garrison, after.commanders_conflict) == (0, 1)
+    assert after.combat_strength == 6
+    assert after.units_deployed_turn == 3
+    assert "deploy_reveal_card_troops" not in _ids(engine, deployed)
+
+
+def test_scout_retreats_a_commander_with_a_troop() -> None:
+    """ "Retreat up to two of your troops": a troop and a Commander in the
+    Conflict may both go back to the garrison; the sword then counts for nothing
+    ("Conflict에 troop이 하나도 없으면 0" [DI p. 11])."""
+
+    engine, state = _start()
+    state = _with_bloodlines(state)
+    revealed = _revealed_alone(
+        engine, state, "scout", garrison=0, conflict=1, commanders_conflict=1
+    )
+    assert revealed.players[0].combat_strength == 2 + 2 + 1
+    assert _unit_rows(engine, revealed, "retreat_reveal_card_troops") == {
+        (1, 0),
+        (1, 1),
+        (2, 1),
+    }
+    retreated = _do(
+        engine, revealed, "retreat_reveal_card_troops", count=2, commanders=1
+    )
+    after = retreated.players[0]
+    assert (after.troops_garrison, after.troops_conflict) == (1, 0)
+    assert (after.commanders_garrison, after.commanders_conflict) == (1, 0)
+    assert after.combat_strength == 0
+
+
+def test_chani_retreats_any_number_of_troops_and_commanders() -> None:
+    engine, state = _start()
+    state = _with_bloodlines(state)
+    revealed = _revealed_alone(
+        engine, state, "chani_card", garrison=0, conflict=2, commanders_conflict=2
+    )
+    assert _unit_rows(engine, revealed, "retreat_reveal_card_troops") == {
+        (1, 0),
+        (1, 1),
+        (2, 0),
+        (2, 1),
+        (2, 2),
+        (3, 1),
+        (3, 2),
+        (4, 2),
+    }
+    retreated = _do(
+        engine, revealed, "retreat_reveal_card_troops", count=3, commanders=2
+    )
+    after = retreated.players[0]
+    assert (after.troops_conflict, after.commanders_conflict) == (1, 0)
+    assert (after.troops_garrison, after.commanders_garrison) == (1, 2)
+    assert after.combat_strength == 2
+
+
+def test_the_counted_commander_moves_encode_in_a_bloodlines_catalog() -> None:
+    """Every row with a Commander share encodes and decodes in an original +
+    Bloodlines catalog, the staged count step too (the share rides on it); the
+    original game's own catalog keeps its rows (no share without Bloodlines)."""
+
+    from dune_imperium.adapters import ActionCodec
+
+    codec = ActionCodec(BLOODLINES_CONFIG)
+    engine, state = _start()
+    state = _with_bloodlines(state)
+    for card_id, garrison, conflict in (
+        ("sardaukar_legion", 2, 0),
+        ("scout", 0, 1),
+        ("chani_card", 0, 2),
+    ):
+        revealed = _revealed_alone(
+            engine,
+            state,
+            card_id,
+            garrison=garrison,
+            conflict=conflict,
+            commanders_garrison=2 if garrison else 0,
+            commanders_conflict=0 if garrison else 2,
+        )
+        wholes = tuple(
+            action
+            for action in engine.whole_actions(revealed, 0)
+            if action.action_id.endswith("_reveal_card_troops")
+        )
+        assert any("commanders" in dict(a.arguments) for a in wholes), card_id
+        effects = tuple(
+            action
+            for action in engine.legal_actions(revealed, 0)
+            if dict(action.arguments).get("printed") == card_id
+        )
+        (effect,) = effects
+        picked = engine.apply(revealed, effect).state
+        counts = engine.legal_actions(picked, 0)
+        # The Commander share rides on the count step.
+        assert any("commanders" in dict(a.arguments) for a in counts), card_id
+        # The catalog holds the staged rows (stage B3), not the whole ones.
+        for action in (effect, *counts):
+            assert codec.decode(codec.encode(action), 0) == action
+    plain = ActionCodec(CONFIG)
+    assert not any(
+        template.action_id == "choose_count"
+        and "commanders" in dict(template.arguments)
+        for template in plain.catalog
+    )
+
+
+def test_test_of_humanity_may_lose_a_deployed_commander() -> None:
+    """A Commander in the Conflict is a deployed troop: an opponent with one
+    there and no card loses it (to its supply); one with a troop and a
+    Commander there may pick either."""
+
+    engine, state = _start()
+    state = _with_bloodlines(state)
+    held = _seat(state, 1, commanders_conflict=1)
+    held = _seat(held, 2, commanders_conflict=1)
+    resolved = _humanity_played(
+        engine, held, {1: ((), 0), 2: ((), 1), 3: (("imperium:dr_yueh:0",), 0)}
+    )
+    commander = ("lose_unit", (("commanders", 1), ("zone", "conflict")))
+    assert _window_rows(engine, resolved, 1) == {commander}
+    lost = _do_for(engine, resolved, 1, "lose_unit", zone="conflict", commanders=1)
+    seat = lost.players[1]
+    assert (seat.commanders_conflict, seat.commanders_supply) == (
+        0,
+        resolved.players[1].commanders_supply + 1,
+    )
+    assert seat.troops_garrison == resolved.players[1].troops_garrison
+    assert _window_rows(engine, lost, 2) == {
+        commander,
+        ("lose_unit", (("zone", "conflict"),)),
+    }
+
+
+def test_test_of_humanity_greys_the_commander_of_a_seat_that_owns_one() -> None:
+    """The page greys each loss that cannot be done; a Commander row shows only
+    for a seat owning one, as in Holy War's loss (``display.unavailable``)."""
+
+    engine, state = _start()
+    state = _with_bloodlines(state)
+    held = _seat(state, 1, commanders_garrison=1)
+    resolved = _humanity_played(
+        engine, held, {1: (("imperium:dr_yueh:0",), 1), 2: ((), 0), 3: ((), 0)}
+    )
+    found = unavailable_choices(resolved, 1, engine.whole_actions(resolved, 1))
+    assert found is not None
+    keys = {row["key"] for row in cast("list[dict[str, Any]]", found["rows"])}
+    assert keys == {"choice:lose_unit:conflict:1"}
+    after = _do_for(
+        engine, resolved, 1, "discard_opponent_card", card_id="imperium:dr_yueh:0"
+    )
+    # Seat 2 owns no Commander: no Commander row, greyed or not.
+    found = unavailable_choices(after, 2, engine.whole_actions(after, 2))
+    assert found is not None
+    keys = {row["key"] for row in cast("list[dict[str, Any]]", found["rows"])}
+    assert keys == {"choice:discard_opponent_card", "choice:lose_unit:conflict:0"}
 
 
 # --- Firm Grip --------------------------------------------------------------------

@@ -169,7 +169,7 @@ from dune_imperium.rules.spy_placement import (
 from dune_imperium.rules.strength import units_strength
 from dune_imperium.rules.tactics import advance_tactics_token
 from dune_imperium.rules.unit_loss import lose_unit
-from dune_imperium.rules.units import retreat_units
+from dune_imperium.rules.units import retreat_units, unit_count_arguments, unit_counts
 
 # Immortality Reveal choices whose enum names do not fit a comparison line.
 _LOSE_INFLUENCE_FOR_VP = (
@@ -629,8 +629,9 @@ def troops_move_shape(
 
     The owner picks the count, none included ("up to"/"any number" allow 0
     [FAQ p. 3]: an optional choice, no refusal is offered, OQ-095 (7)).
-    Troops only: the original game has no Sardaukar Commander, and whether
-    one counts as one of these troops is for the combinations stage (P7).
+    A Sardaukar Commander counts as one of these troops: it "is a 'troop'"
+    and troop effects reach it [Bloodlines p. 4] (OQ-115: "이후 조합
+    구현에서도 Commander를 빠뜨리지 않는다").
     """
 
     if effect is None:
@@ -2646,10 +2647,13 @@ def legal_reveal_troops_move_actions(
 ) -> tuple[DomainAction, ...]:
     """Sardaukar Legion's deploy, Scout's and Chani's retreat of several troops.
 
-    One row per count from 1 to what the card allows and the seat can move:
-    the garrison's troops that may deploy (Harkonnen Advisor's stays out,
-    ``_deployable_garrison_troops``) or the Conflict's. None is not a row
-    ("May": no refusal is offered, the choice lapses at ``finish_reveal``).
+    One row per count from 1 to what the card allows and the seat can move,
+    and per Sardaukar Commander share of it (a Commander is a troop
+    [Bloodlines p. 4]; ``units.unit_count_arguments``, as the Intrigue
+    deploy and retreat counts): the garrison's units that may deploy
+    (Harkonnen Advisor's troop stays out, ``_deployable_garrison_troops``)
+    or the Conflict's. None is not a row ("May": no refusal is offered, the
+    choice lapses at ``finish_reveal``).
     """
 
     pending = pending_choice_rows(state, player, legal_reveal_troops_move_actions)
@@ -2664,15 +2668,17 @@ def legal_reveal_troops_move_actions(
     assert shape is not None
     kind, most = shape
     card_id, _ = _reveal_choice_card_source(state, player, context, "troops_move")
-    room = (
-        _deployable_garrison_troops(state, player)
+    owner = state.players[player]
+    troops, commanders = (
+        (_deployable_garrison_troops(state, player), owner.commanders_garrison)
         if kind == "deploy"
-        else state.players[player].troops_conflict
+        else (owner.troops_conflict, owner.commanders_conflict)
     )
-    top = room if most is None else min(room, most)
     return tuple(
-        _sourced(f"{kind}_reveal_card_troops", player, card_id, (("count", count),))
-        for count in range(1, top + 1)
+        _sourced(f"{kind}_reveal_card_troops", player, card_id, arguments)
+        for arguments in unit_count_arguments(
+            minimum=1, maximum=most, troops=troops, commanders=commanders
+        )
     )
 
 
@@ -2680,8 +2686,9 @@ def apply_reveal_troops_move(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Deploy ``count`` garrison troops, or retreat ``count`` Conflict troops
-    (the chosen count; the choice is used up)."""
+    """Deploy ``count`` garrison units, or retreat ``count`` Conflict units
+    (the chosen count, ``commanders`` of them Sardaukar Commanders; the
+    choice is used up)."""
 
     state = _open_pending(state, action, legal_reveal_troops_move_actions)
     if action not in legal_reveal_troops_move_actions(state, action.actor):
@@ -2689,28 +2696,35 @@ def apply_reveal_troops_move(
     context = dict(state.decision_stack[-1].context)
     _, source = _reveal_choice_card_source(state, action.actor, context, "troops_move")
     popped = state.pop_decision()
-    count = dict(action.arguments)["count"]
-    assert isinstance(count, int) and not isinstance(count, bool)
+    troops, commanders = unit_counts(dict(action.arguments))
     if action.action_id == "deploy_reveal_card_troops":
-        counted = add_units_to_reveal(popped, action.actor, troops=count)
+        counted = add_units_to_reveal(
+            popped, action.actor, troops=troops, commanders=commanders
+        )
         return RuleResult(
             state=counted.state,
             events=(
                 GameEvent(
                     event_id=f"{source}:deployed",
                     kind="troops_deployed",
-                    payload=(("count", count), ("player", action.actor)),
+                    payload=(
+                        *((("commanders", commanders),) if commanders else ()),
+                        ("count", troops + commanders),
+                        ("player", action.actor),
+                    ),
                 ),
                 *counted.events,
             ),
         )
     before = popped.players[action.actor].combat_strength
-    retreated = retreat_units(popped, action.actor, source, troops=count)
+    retreated = retreat_units(
+        popped, action.actor, source, troops=troops, commanders=commanders
+    )
     delta = retreated.state.players[action.actor].combat_strength - before
-    # Retreated troops no longer count among the turn's deployed units, as on
+    # Retreated units no longer count among the turn's deployed units, as on
     # an Agent turn (OQ-016).
     next_state = reconcile_deployment_after_retreat(
-        retreated.state, action.actor, troops=count
+        retreated.state, action.actor, troops=troops, commanders=commanders
     )
     if delta:
         next_state = replace(

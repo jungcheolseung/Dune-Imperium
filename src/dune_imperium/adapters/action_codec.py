@@ -148,6 +148,7 @@ from dune_imperium.rules.reveal_turn import (
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
 from dune_imperium.rules.tech import optional_trash_tech_ids
+from dune_imperium.rules.units import unit_count_arguments
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
 # Imperial Privilege, may recall an Into the Fray Agent from the Conflict --
@@ -3753,12 +3754,19 @@ def _reveal_source_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...
                     variants = one_unit
                 elif action_id in _SOURCED_TROOPS_MOVE:
                     # One row per count the card allows: up to its most, or
-                    # as many as a seat can have in play ("any number").
+                    # as many as a seat can have in play ("any number"); with
+                    # Bloodlines also per Sardaukar Commander share, a
+                    # Commander being a troop [Bloodlines p. 4], as the engine
+                    # offers them (``units.unit_count_arguments``).
                     shape = troops_move_shape(effect)
                     assert shape is not None
-                    most = shape[1] or MAX_DEPLOYMENT_COUNT
-                    variants = tuple(
-                        (("count", count),) for count in range(1, most + 1)
+                    variants = unit_count_arguments(
+                        minimum=1,
+                        maximum=shape[1],
+                        troops=MAX_DEPLOYMENT_COUNT,
+                        commanders=(
+                            MAX_COMMANDER_DEPLOYMENT if config.bloodlines else 0
+                        ),
                     )
                 elif action_id == "gain_reveal_influence":
                     variants = tuple(
