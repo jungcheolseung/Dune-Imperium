@@ -1050,6 +1050,68 @@ Ghidra는 launch.sh 대신 JDK 25로 직접 띄워 `-Duser.home`·`-Djava.io.tmp
    project convention으로 적는다). Power Play·Kwisatz는 위 두 문장대로 테스트를 둔다.
 10. **Commander만 있는 Reveal 이동(고침 `09bf5f2d`):** 16.10 1의 세 이동 줄은 Commander 몫을 냈지만 선택이 열리는 조건은 troop만 세어, Commander만
    있으면 선택이 기다렸다(Codex 리뷰). 조건도 Commander를 센다 `[Bloodlines p. 4]`(OQ-115).
+11. **Uprising Maker 칸의 sandworm 쪽 harvest(P7):** 공식 FAQ(Countess Ariana 항목) "When playing Uprising, it is possible to harvest no spice from
+   Deep Desert and Hagga Basin (if there is no bonus spice there, and you choose to summon a sandworm rather than take base spice). In such a case, you
+   did not “harvest spice” … so the “Spice Addict” ability does not apply." — 보너스 spice가 있으면 sandworm을 골라도 harvest다. 그래서 Uprising 판의
+   원판 Thumper("Double the bonus spice you harvest with this Agent")는 sandworm 쪽에서도 보너스 spice를 두 배로 하고, Countess Ariana의 Spice Addict도
+   보너스 spice가 있으면 sandworm 쪽에서 적용한다. 지금 `rules/board_effects.apply_maker_space_action`은 둘 다 `harvest_maker_spice` 쪽에서만 한다(P3d
+   앱 대조; 앱은 보너스 두 배를 배치 때 함께 준다). 원판 판에는 sandworm이 없어 지금은 닿지 않는다.
+12. **Masterstroke의 셈에서 sandworm·dreadnought 빼기(P4·P7):** OQ-115 판정은 troop과 Commander만 세고 "sandworm까지 세는 unit 조건 …의 전체 유닛 합계를
+   Baron의 troop 수와 혼동하지 않는다", dreadnought도 뺀다 `[Rise of Ix p. 6]`. 그런데 `rules/masterstroke.masterstroke_is_due`는
+   `units_deployed_turn`·`units_deployed_peak`를 읽고, 이 셈은 sandworm을 더한다(`board_effects.py`의 Maker 칸 소환, `reveal_turn`의 Reveal 배치; P3d
+   앱 대조에서 확인). 원판 단독에는 sandworm·dreadnought가 없어 결과가 같다. 원판 + Ix(P4, dreadnought 배치)와 Uprising 판(P7) 전에 troop·Commander만
+   세는 turn 셈과 그 최고치를 따로 둔다(관측·같음 확인 영향은 그때 판단).
+13. **원판 Conflict 보상과 sandworm(P7):** "보상을 받을 때 자신의 sandworm이 Conflict에 하나 이상 있으면 자신이 받는 보상을 두 배로 한다"
+   `[Main p. 14]`(combat-and-round-end.md 4). `rules/combat`의 보상 아이콘은 원판 Conflict의 보상 종류(Mentat, 한 진영 Influence, 보상 줄)를 "그 판에는
+   sandworm이 없다"며 두 배로 하지 않는다. 원판 판 + Uprising 카드(P7)에서 sandworm이 Conflict에 들어오면 이 종류도 두 배다 — Cloak and Dagger
+   3위의 "Intrigue -OR- spice"는 고르기를 두 번(앱도 두 번, P3d 앱 대조), 비용 있는 줄은 비용도 두 번 `[Main p. 14]`.
+14. **Earl Memnon의 Connections와 칸 밖의 원로회 자리(P7):** 지도자 문구(앱) "When you take a High Council seat: [Influence 1, 고른 진영]". 지금은 High
+   Council 칸의 아이콘에서만 일어난다(`rules/board_effects`의 `OnHighCouncilSeatTaken`). Uprising의 Corrinth City처럼 칸 밖에서 자리를 얻는 효과와 만나면
+   그때도 일어나야 한다(앱도 `Fire::HighCouncilSeatTaken`으로 같은 사건을 쓴다, P3d 앱 대조). 원판 단독에는 칸 밖의 자리가 없다.
+15. **Uprising 칸 id를 박아 둔 코드(P7):** 원판 칸은 이름이 같아도 id가 다르다(`imperium_sietch_tabr`, `imperium_high_council` …, 16.2·P1). Bloodlines
+   Liet Kynes의 Sietch Tabr 요구 면제는 Uprising의 `sietch_tabr`에만 걸려 있어(`rules/agent_turn.py`) 원판 + Bloodlines에서 원판 Sietch Tabr에 닿지 않는다
+   (P3d 앱 대조). CHOAM 모듈의 Harvest 계약이 원판 Maker 칸(Imperial Basin·Hagga Basin·The Great Flat)에서 성립하는지도 정해야 한다(앱은 Uprising 칸만
+   이름하나 원판 보드와 CHOAM을 함께 쓰지 않는다). P7을 열 때 `rules/`·`content/`에서 Uprising 칸 id 문자열을 모두 찾아 원판 칸에도 맞는지 본다.
 
 1·2는 조정자의 go(2026-10-28 아침)로 끝냈다(대상 테스트 `-n 2`, Uprising 카탈로그·특성 행 대조; 전체 pytest와 관문은 E7b 뒤 그대로).
 
+
+### 16.12 P3d 끝: 두 덱 소크와 앱 행동 대조 (2026-10-28 밤 ~ 10-29 새벽)
+
+조정자 go(22:4x, 사용자 "왜 계속 안 하고 멈춰있어"), 사용자 23:2x "평소대로 꼼꼼히 … 동시에 도는 agent는 2개(많아도 3개)".
+
+**원판 두 덱 소크(`0618a2dc` 스냅숏, 22:43~22:51):** 원판 5,000판(휴리스틱·무작위 × Leader 돌리기·드래프트·프로모, 설정마다 1,000판, 시드 100000부터),
+숨은 정보 검사 10결정마다, 제시한 모든 행동의 코덱 왕복 25결정마다 — 모두 끝까지, 실패 0. 내용 집계: 원판 카드 49종(프로모 포함) 모두 획득, Intrigue 34종
+모두 사용, Conflict 18장, 지도자 8명 모두 등장. 원판은 아직 확장 옵션을 받지 않는다(`rules/setup._IMPERIUM_PENDING_OPTIONS`); 조합은 P4·P7.
+
+**앱 행동 대조(10.4절 1):** 원판 카드·칸·지도자·Conflict 138항목(Imperium 46+스타터 7+Reserve 3, Intrigue 34, Conflict 18, 지도자 8, 칸 22) — 앱 BaseSet·Promo
+아키타입과 모두 짝지음. 대조한 앱 능력 클래스의 메서드 3,983개를 Ghidra로 디컴파일(16.11의 도구, 약 15분, 한 번)해 클래스마다 C 파일로 모았고, agent가
+C를 먼저 읽고 결론을 가르는 줄은 주석 asm으로 확인했다. 20묶음, Sonnet agent 20개(동시 2~3개), agent 토큰 약 1,130만. 차이로 보고된 것은 이 세션이 반박
+위주로 다시 보고 `docs/rules` 인용으로 판정했다. 결과: 같음 58, 다름 74, 불명 6(주장 133개 — 대부분 이미 판정된 OQ가 앱과 다르게 정한 것과
+조합 메모). 도구·묶음·결과는 assets의 `reference/dune-steam-app/<build>/analysis/p3d-compare-2026-10-28/`(로컬)에만.
+
+- **고친 결함 넷(모두 OQ-071 "비용만 내고 보상을 받지 못하는 경우는 없어야 한다"와 그 recruit 기준·확장 2를 빠뜨린 자리):**
+  - `b12933e5` Agent box 화살표의 recruit — Fremen Camp "[2 spice] → troop 셋", Duncan Idaho "[1 water] → troop, 카드"가 supply가 비어도(그리고 Duncan은
+    뽑을 카드도 없을 때) 비용을 받았다. recruit는 supply에 troop이 있거나 되돌릴 specimen이 있을 때만 살아 있다(`immortality.troop_can_join`, Intrigue와 같은 셈).
+  - `d30062e7` Gurney Halleck의 Reveal "[3 Solari] → troop 둘, 배치 가능"(supply 0이면 내지 않음; 하나 남으면 그대로 내고 나머지는 OQ-030·OQ-140의 부족분),
+    Imperial Spy의 "Trash this card → Intrigue"(Intrigue 덱과 섞을 버림 더미가 비면 내지 않음 — 버리는 카드는 비용의 부수 효과라 줄을 살리지 못한다). 한 줄짜리
+    trash 비용 box는 뽑기·recruit가 죽었으면 기다리고 화면이 이유를 말한다(Uprising의 trash→뽑기 줄도 같은 판정).
+  - Codex 리뷰의 `09bf5f2d`(Commander만 있는 Reveal 이동, 16.10 10)도 이 밤의 고침이다.
+- **판정이 이미 있어 바꾸지 않은 차이(앱이 다르게 함):** 비용 없는 효과의 불발(OQ-113 (C) — Bribery·Poison Snooper·Urgent Mission·Water of Life 등은 앱이 반대로 둔다),
+  아이콘·효과의 자유 순서(OQ-027·OQ-106·OQ-112 — 앱은 칸 → 카드 → 지연 능력의 고정 순서와 자동 실행), Reveal 자원 줄(OQ-045), 6칸 진영(OQ-060), 상대 손실 창
+  (OQ-036·OQ-138), 같은 순위 순서(OQ-002), Endgame 창(OQ-001), 승자의 창(OQ-121), 앞면 Intrigue(Charisma·Recruitment Mission — FAQ p. 2가 두 카드를 이름함, OQ-016),
+  Bindu(OQ-117·OQ-143), Masterstroke의 셈과 자기 turn(OQ-115·OQ-063), Helena의 할인(FAQ p. 3 "the 1 persuasion discount will not apply"), Infiltrate의 "your next
+  Agent"(인쇄), Control 방어 배치의 "may"(`[DI pp. 10, 16]`), Sort Through the Chaos의 Mentat(FAQ p. 4), Foldspace 카드를 먼저 trash한 뒤 Foldspace 칸에서 다시 얻기
+  (효과 순서 자유 `[DI p. 9]`와 "Reserve cards are returned to their stack in the Reserve" `[DI]` trash 아이콘 설명).
+- **내 판단으로 그대로 둔 것(사용자 확인 대상):** Spice Smugglers의 지불은 Solari를 Influence보다 먼저 낸다(인쇄와 앱은 Influence 먼저). 화살표 지불 함수가 단순
+  획득을 먼저 하고 효과 frame을 넘긴 뒤 Influence 같은 단계(창을 열 수 있음 — 동맹, Emperor 트랙 Spy)를 하기 때문이다. 인쇄 순서로 돌리면 그 창이 넘긴 frame
+  아래에 쌓일 수 있다. 결과가 그 순서에 기대는 경우는 찾지 못했다(로그 순서만 다름). Research Station의 "카드 셋"은 화살표 뒤의 한 보상으로 한 번에 뽑는다(앱은
+  뽑기 셋을 따로 둠). 
+- **문서 정정:** OQ-125의 앱 설명(앱도 Reserve를 낸다 — 판정과 같음), OQ-124의 앱 설명(앱도 보낸 Mentat을 다시 가져가지 않는다 — 판정 A와 같음). OQ-042의
+  "Double Cross가 `UndeployedTroops`를 쓴다"는 이번 대조에서 확실하지 않았다(빈 supply가 아니라 빈 garrison일 때만 쓴다는 읽기, 추론 포함) — 판정은 원칙
+  ("원칙대로")에 선 것이라 바뀌지 않는다. OQ-117: 앱은 turn 시작의 다른 Plot 뒤에도 Bindu를 허용한다(우리는 디자이너 문장대로 첫 행동만).
+- **조합에서 할 일(16.10 9·11~14):** graft 짝의 Carryall·Thumper와 Ghola 판정(9), Uprising Maker 칸 sandworm 쪽의 harvest(11), Masterstroke 셈의 sandworm·dreadnought(12),
+  원판 Conflict 보상의 sandworm 두 배(13), Connections와 칸 밖의 원로회 자리(14), Uprising 칸 id를 박아 둔 코드(15: Liet Kynes의 Sietch Tabr 면제, CHOAM Harvest 계약).
+- **P4 점검 목록(앱 코드에서 본 Ix 상호작용):** Guild Accord의 Heighliner spice 할인(2, Ghola와 4), Spaceport의 Foldspace 카드 덱 위, Combat 칸 배치 몫의
+  dreadnought, Rise of Ix가 Hall of Oratory·Rally Troops·Secure Contract·Sell Melange를 보드에서 뺌, Yuna Moritani의 Smuggling Operation이 Windfall에도 +1
+  Solari, dreadnought가 Control marker보다 먼저 칸의 controller가 됨(`WormSpace::get_ControllingPlayer`).

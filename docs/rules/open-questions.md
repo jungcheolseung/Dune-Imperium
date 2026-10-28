@@ -2573,11 +2573,14 @@
   보내면 "the Mentat is here"인가.
 - 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): `SpaceAbilities.BaseSet.MentatSpaceAbility` @0x4bca9b0이 칸 아래의 Mentat 개체를 찾아 보낸 좌석에게 recall한다 — 쉬고 있는
   Mentat과 Agent로 놓인 Mentat을 가르지 않아, 아마 다시 가져가게 한다. 앱이 Mentat을 제 칸에 보내는 것 자체를 허용하는지는 확인 못 함.
+  **정정(2026-10-28 P3d 앱 대조, 디컴파일한 C와 asm):** 다시 가져가지 않는다 — `MentatSpaceAbility`는 색이 Black(`PieceColor.Black`, 쉬고 있는 Mentat)인
+  Mentat만 가져가고, 가져간 Mentat은 Recall이 주인 색을 입히며(`Recall::execute`) 라운드의 Recall에서 다시 Black이 된다. Mentat을 제 칸에 보내는 것은 허용하고
+  경고(`worm.warning.mentat`)만 띄운다. 그래서 앱도 아래 판정 A와 같다.
 - 선택지: (가) 제 자리에 쉬고 있는 Mentat만 "here" — Agent로 보낸 Mentat은 다른 Agent처럼 칸을 차지하고 카드 1장만 뽑는다. (나) 문장 그대로 다시 가져간다
   — 칸이 비고 Mentat을 또 쓸 수 있어, 2 Solari마다 Agent turn이 하나 더 생긴다. (다) Mentat은 제 칸에 보낼 수 없다.
 - 추천: **(가)** — p. 16과 Calculated Hire clarification이 말하는 것은 제 자리(starting position)에서 가져오는 것이고, 놓인 Agent는 Phase 5까지 칸에 남는다
   `[DI p. 13]`(내 해석). (나)는 칸을 반복 가능한 추가 turn으로 만든다.
-- 판정(2026-10-22 사용자): **A(가).** Mentat 자체도 Mentat 칸에 보낼 수 있다. 정상 비용을 내고 카드 1장을 뽑되, 보낸 Mentat은 사용한 Agent로 남고 다시 가져오지 않는다. 가져오는 대상은 제 자리에 대기 중인 Mentat이다. 앱 동작 미확인이라는 조사 한계는 유지한다.
+- 판정(2026-10-22 사용자): **A(가).** Mentat 자체도 Mentat 칸에 보낼 수 있다. 정상 비용을 내고 카드 1장을 뽑되, 보낸 Mentat은 사용한 Agent로 남고 다시 가져오지 않는다. 가져오는 대상은 제 자리에 대기 중인 Mentat이다. 앱 동작 미확인이라는 조사 한계는 유지한다(2026-10-28 P3d 대조에서 확인: 앱도 같다).
 - 같은 방향의 커뮤니티 기록(2026-10-23 보강; 정리본의 "Discussion: BGG forum", 디자이너 판정이 아닌 토론): Mentat을 이미 누가 가져갔어도 Mentat 칸에는 갈 수 있고,
   카드 1장을 뽑으려고 갈 수도 있다. 칸이 비어 있어도 갈 수 있다는 점만 같은 쪽이고, Mentat 자체를 보낸 경우는 말하지 않는다.
 
@@ -2589,7 +2592,9 @@
   `[card faces]`. Uprising 계열에도 같은 문장이 있다: Impress·Inspire Awe(3 이하), Tleilaxu Master(Immortality, 6 이하).
 - 공식: 획득할 수 있는 카드는 "any of the five cards in the Imperium Row, or Arrakis Liaison or The Spice Must Flow from the Reserve (Foldspace is acquired
   at the board space of the same name …)" `[DI p. 11]`; Foldspace는 Foldspace 아이콘으로만 얻는다 `[FAQ p. 2]`.
-- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 어디서나 Imperium Row 카드만 고르게 한다.
+- 앱 처리(Steam 4.1.2.1808(build `dad97e20`), 보조 증거): 어디서나 Imperium Row 카드만 고르게 한다. **정정(2026-10-28 P3d 앱 대조, 디컴파일한 C와
+  asm):** 앱도 Reserve를 낸다 — Bypass Protocol(`GetBypassProtocolTargets`, includeReserve=1)과 Conscript·Boundless Ambition·Impress·Inspire Awe·
+  Tleilaxu Master가 Reserve의 Arrakis Liaison·The Spice Must Flow를 넣고 Foldspace는 뺀다(`ReserveRowCards`). 그래서 이 판정은 앱과도 같다.
 - 지금 엔진: `AcquireCardUpTo`가 Row 다섯 장과 Reserve 더미를 함께 낸다(`[Main p. 13]`을 근거로 적었으나 사용자 판정은 없다) — Uprising의 Impress·
   Inspire Awe·Tleilaxu Master가 이렇게 돈다.
 - 추천: **Reserve 포함, Foldspace 제외.** "a card"는 획득 규칙이 얻을 수 있다고 한 카드 전체(Row + Reserve)로 읽는다(내 해석); 지금 Uprising 엔진과 같다.
@@ -2598,7 +2603,7 @@
   Imperium Row 다섯 장과 Reserve의 Arrakis Liaison·The Spice Must Flow `[DI p. 11]` — 가운데 비용 N 이하에서 고른다. Foldspace는 Foldspace
   아이콘으로만 얻으므로 빠진다 `[FAQ p. 2]`. Bypass Protocol·Boundless Ambition·Archduke Armand Ecaz의 Conscript에 적용한다. Uprising의
   Impress·Inspire Awe·Tleilaxu Master는 지금 동작(`AcquireCardUpTo`가 Row와 Reserve 더미를 함께 냄)을 그대로 두고, 그 근거가 이제 이 판정이다
-  (`effect_dsl.AcquireCardUpTo` docstring의 `[Main p. 13]` 옆에 OQ-125를 적는 것은 다음 코드 작업 때). 앱(Row만)과는 다르다.
+  (`effect_dsl.AcquireCardUpTo` docstring의 `[Main p. 13]` 옆에 OQ-125를 적는 것은 다음 코드 작업 때). 앱(Row만)과는 다르다(위 정정: 앱도 같다).
 
 ## OQ-126 — Disposal Facility의 "Persuasion 6 이상"
 
