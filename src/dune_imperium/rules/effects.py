@@ -451,6 +451,8 @@ class OptionalBlockKind(StrEnum):
     MAKER_HOOKS = "maker_hooks"
     # The reward would do nothing (OQ-071).
     NO_CARD_TO_DRAW = "no_card_to_draw"
+    NO_INTRIGUE_TO_DRAW = "no_intrigue_to_draw"  # deck and shufflable discard
+    NO_TROOP_TO_RECRUIT = "no_troop_to_recruit"  # no supply troop nor specimen
     TECH_UNAFFORDABLE = "tech_unaffordable"  # ``needed``: cheapest tile
     TECH_NEEDS_SPY = "tech_needs_spy"  # Advanced Data Analysis only
     # Never again in this turn.

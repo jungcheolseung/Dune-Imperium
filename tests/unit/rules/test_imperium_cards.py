@@ -2368,6 +2368,19 @@ def test_gurney_halleck_needs_three_solari_to_pay() -> None:
     assert "pay_reveal_solari_for_troops" not in _ids(engine, revealed)
 
 
+def test_gurney_halleck_arrow_waits_with_no_troop_to_recruit() -> None:
+    """OQ-071's recruit criterion (user 2026-10-06 "효과 없음"): with the
+    supply empty the three Solari would buy nothing, so the arrow is not
+    offered (P3d app comparison: the app's Cost needs a troop in the supply
+    or a specimen); one troop left still pays, the other owed (OQ-030, OQ-140,
+    the test above)."""
+
+    engine, state = _start()
+    revealed = _gurney_revealed(engine, _supply_emptied(state), 3)
+    assert revealed.players[0].troops_supply == 0
+    assert "pay_reveal_solari_for_troops" not in _ids(engine, revealed)
+
+
 def test_gurney_halleck_payment_opens_once_a_later_gain_makes_three_solari() -> None:
     """Reveal effects resolve in any order ([Main p. 12]; OQ-028: judged when
     asked): Price is No Object's 2 Solari bring 1 to the 3 the arrow costs."""
@@ -2441,6 +2454,30 @@ def test_imperial_spy_trashes_itself_to_draw_an_intrigue_card() -> None:
         "intrigue:bribery:0",
     )
     assert drawn.intrigue_deck == ("intrigue:bribery:1",)
+
+
+def test_imperial_spy_trash_waits_with_no_intrigue_card_to_draw() -> None:
+    """ "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만
+    제시한다" (OQ-071, user 2026-09-29), and the trash leaving the deck is a
+    cost's side effect, which never keeps a line alive (OQ-071 extension 2):
+    with the Intrigue deck and its discard pile empty the card is not offered
+    for trashing, and the page names why (P3d app comparison)."""
+
+    engine, state = _start()
+    held, _ = _with_card(state, "imperial_spy")
+    empty = replace(held, intrigue_deck=(), intrigue_discard=())
+    placed = _place(engine, empty, "wealth", "imperial_spy")
+    assert "trash_agent_card" not in _ids(engine, placed)
+    greyed = unavailable_choices(placed, 0, engine.legal_actions(placed, 0))
+    assert greyed is not None
+    assert any(
+        str(row["reason"]).startswith("No Intrigue card to draw")
+        for row in greyed["rows"]  # type: ignore[union-attr]
+    )
+    shufflable = replace(empty, intrigue_discard=("intrigue:bribery:0",))
+    assert "trash_agent_card" in _ids(
+        engine, _place(engine, shufflable, "wealth", "imperial_spy")
+    )
 
 
 def test_imperial_spy_arrow_is_optional() -> None:

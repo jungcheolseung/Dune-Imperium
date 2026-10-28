@@ -191,6 +191,7 @@ from dune_imperium.rules.influence import (
 )
 from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
+    shufflable_intrigue_discard,
     with_trashed_intrigue,
 )
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
@@ -2345,6 +2346,8 @@ def trash_block(
         block := replacing_gain_block(owner, gain, context)
     ) is not None:
         return block
+    if (dead := _paid_trash_reward_block(state, player, ability)) is not None:
+        return dead
     if trash_targets(state, player, ability, context):
         return None
     cost = _trash_cost(ability)
@@ -2365,6 +2368,8 @@ def trash_rows(
     _, context = current_agent_effect_context(state)
     if not _trash_conditions_hold(state.players[player], ability):
         return ()
+    if _paid_trash_reward_block(state, player, ability) is not None:
+        return ()
     return (
         DomainAction(action_id="decline_agent_card_trash", actor=player),
         *(
@@ -2376,6 +2381,49 @@ def trash_rows(
             for card_id in trash_targets(state, player, ability, context)
         ),
     )
+
+
+def _paid_trash_reward_block(
+    state: GameState, player: int, ability: Ability
+) -> OptionalEffectBlock | None:
+    """Why a trash paid as the cost of a one-line reward would buy nothing.
+
+    "비용이 있는 줄은 보상 중 하나라도 무언가를 바꿀 수 있을 때만 제시한다"
+    (OQ-071, user 2026-09-29), and a cost's side effect -- here the trashed
+    card leaving the deck -- never keeps the line alive (OQ-071 extension
+    2): Imperial Spy's "Trash this card -> [Intrigue card]" waits while the
+    Intrigue deck and its shufflable discard pile are empty (P3d app
+    comparison). A draw needs a card to draw, a recruit a troop to take
+    (``troop_can_join``); every other reward pays. The first dead reward's
+    reason, or None.
+    """
+
+    if _trash_cost(ability) is None or len(ability.sections) != 1:
+        return None
+    blocks = [
+        _paid_trash_reward_dead(state, player, reward)
+        for reward in ability.sections[0].rewards
+    ]
+    if not blocks or any(block is None for block in blocks):
+        return None
+    return blocks[0]
+
+
+def _paid_trash_reward_dead(
+    state: GameState, player: int, reward: Reward
+) -> OptionalEffectBlock | None:
+    kind = OptionalBlockKind
+    match reward:
+        case DrawIntrigueCards():
+            if not (state.intrigue_deck or shufflable_intrigue_discard(state)):
+                return OptionalEffectBlock(kind.NO_INTRIGUE_TO_DRAW)
+        case DrawPersonalCards():
+            if not gather_intelligence_draw_available(state, player):
+                return OptionalEffectBlock(kind.NO_CARD_TO_DRAW)
+        case RecruitTroops():
+            if not troop_can_join(state, state.players[player]):
+                return OptionalEffectBlock(kind.NO_TROOP_TO_RECRUIT)
+    return None
 
 
 def apply_trash(

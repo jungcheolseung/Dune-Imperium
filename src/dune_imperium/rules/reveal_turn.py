@@ -1856,8 +1856,20 @@ def legal_reveal_troop_purchase_actions(
     context = dict(frame.context)
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return ()
+    # Imported here: the Immortality module imports the card draw, which
+    # imports this module.
+    from dune_imperium.rules.immortality import troop_can_join
+
     payment = troop_purchase_payment(_effect_value(context))
-    if payment is None or state.players[player].resources.solari < payment[0]:
+    owner = state.players[player]
+    if (
+        payment is None
+        or owner.resources.solari < payment[0]
+        # A recruit with no troop to take buys nothing (OQ-071's recruit
+        # criterion); a supply short of two still pays, the rest owed and
+        # deployable once refilled (OQ-030, OQ-140).
+        or not troop_can_join(state, owner)
+    ):
         return ()
     return (DomainAction(action_id="pay_reveal_solari_for_troops", actor=player),)
 
@@ -4615,6 +4627,10 @@ def _reveal_choice_effect_is_available(
     Persuasion reaches six [Bloodlines p. 5].
     """
 
+    # Imported here: the Immortality module imports the card draw, which
+    # imports this module.
+    from dune_imperium.rules.immortality import troop_can_join
+
     command_open = persuasion is not None and persuasion >= COMMAND_PERSUASION
     ability = reveal_choice_ability(effect)
     if target_reward_choice(ability):
@@ -4719,10 +4735,12 @@ def _reveal_choice_effect_is_available(
         # Opulence's and Guild Ambassador's Victory Point: the cost is there
         # (and the Alliance held) when the choice opens.
         or vp_payment_affordable(owner, effect)
-        # Gurney Halleck's troops: the Solari are there when the choice opens.
+        # Gurney Halleck's troops: the Solari are there when the choice opens,
+        # and a troop to take (OQ-071's recruit criterion).
         or (
             (troop_payment := troop_purchase_payment(effect)) is not None
             and owner.resources.solari >= troop_payment[0]
+            and troop_can_join(state, owner)
         )
         # The Persuasion branch is always choosable, so the choice always
         # opens, with or without Maker Hooks (option (B), user ruling

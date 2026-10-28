@@ -2867,6 +2867,14 @@ _OPTIONAL_REASONS: Final[Mapping[OptionalBlockKind, Reason]] = {
     ),
     OptionalBlockKind.MAKER_HOOKS: _NO_MAKER_HOOKS,
     OptionalBlockKind.NO_CARD_TO_DRAW: _NO_CARD_TO_DRAW,
+    OptionalBlockKind.NO_INTRIGUE_TO_DRAW: (
+        "No Intrigue card to draw: the Intrigue deck is empty"
+        " and its discard pile holds nothing to shuffle",
+        "뽑을 {intrigue_card} 없음: 책략 카드덱이 비었고"
+        " 버린 더미에 섞을 카드 없음",
+        "empty",
+    ),
+    OptionalBlockKind.NO_TROOP_TO_RECRUIT: _NO_TROOP_TO_RECRUIT,
     OptionalBlockKind.NO_INFLUENCE_TO_LOSE: (
         "No Influence of yours to lose",
         "잃을 내 {influence_any} 없음",
