@@ -513,8 +513,13 @@ def _placements_for_card(
     # imperium-base.md 16) included, while The Voice, the once-per-game
     # spaces and the Influence requirements still stop it (13.1 [DI p. 13]).
     anywhere = card_sends_agent_anywhere(card)
+    # Every other card's Agent comes from the Leader, whatever ``owner``'s
+    # count: the callers that place judge the count (``_placing_owner``,
+    # ``_placements_for_hand_card``), and the app AI asks this function
+    # where a card could go for a projected seat (gate 4 found a count check
+    # here changed its choices in Uprising games).
     sources: tuple[str | None, ...] = (
-        *((None,) if owner.agents_available > 0 else ()),
+        *((None,) if not anywhere or owner.agents_available > 0 else ()),
         *(dict.fromkeys(owner.agent_locations) if anywhere else ()),
     )
     # Tuek's Sietch is on the table only with Esmar Tuek.

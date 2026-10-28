@@ -32,6 +32,7 @@ from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core import (
     ChanceDecision,
@@ -44,7 +45,7 @@ from dune_imperium.core import (
 from dune_imperium.core.engine import RuleResult, Transition
 from dune_imperium.display.cards import personal_card_text, personal_card_text_ko
 from dune_imperium.rules import UprisingRulesEngine
-from dune_imperium.rules.agent_turn import executable_placements
+from dune_imperium.rules.agent_turn import _placements_for_card, executable_placements
 from dune_imperium.rules.board_table import board_spaces_on_table
 from dune_imperium.rules.effects import recall_board_agent
 from dune_imperium.rules.phases import resolve_makers, resolve_recall_or_endgame
@@ -534,3 +535,22 @@ def test_kwisatz_haderach_is_never_grafted_nor_a_partner() -> None:
     rows = [dict(p.arguments) for p in executable_placements(state, 0)]
     assert rows and {row["card_id"] for row in rows} == {KWISATZ}
     assert not any(row.get("graft") for row in rows)
+
+
+def test_another_card_s_placements_do_not_read_the_agent_count() -> None:
+    # The app AI asks ``_placements_for_card`` where a card could go for a
+    # projected seat, whatever its Agent count; the count is judged by the
+    # placing callers. P3 gate 4 found a count check added here for Kwisatz
+    # Haderach changed the app AI's choices in Uprising games (same-moves
+    # older 11/12, search 3/4): every other card's Agent still comes from the
+    # Leader.
+    _, state = _start()
+    owner = replace(
+        state.players[0], agents_available=0, agent_locations=("carthag", "arrakeen")
+    )
+    card_id = owner.hand[0]
+    placements = _placements_for_card(
+        state, 0, owner, card_id, personal_card_for_instance(card_id), False
+    )
+    assert placements
+    assert all("from_space" not in dict(action.arguments) for action in placements)
