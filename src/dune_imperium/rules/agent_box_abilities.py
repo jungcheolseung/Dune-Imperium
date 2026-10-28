@@ -179,6 +179,7 @@ from dune_imperium.rules.immortality import (
     advance_research,
     advance_tleilaxu,
     tleilaxu_track_finished,
+    troop_can_join,
 )
 from dune_imperium.rules.influence import (
     MAX_INFLUENCE,
@@ -267,6 +268,10 @@ class AgentPaymentBlock(StrEnum):
     # of its track, where a gain is lost (OQ-060), so the 2 Solari would buy
     # nothing ("the cost line is not offered if all three are at 6", OQ-071).
     NO_FACTION_TO_RAISE = "no_faction_to_raise"
+    # Fremen Camp's and Duncan Idaho's recruit: no troop in the supply and no
+    # specimen to return, so the cost would buy nothing (OQ-071's recruit
+    # criterion, user ruling 2026-10-06 "효과 없음"; P3d app comparison).
+    NO_TROOP_TO_RECRUIT = "no_troop_to_recruit"
 
 
 def box_ability(effect: PersonalCardAgentEffect | None) -> Ability | None:
@@ -1287,7 +1292,8 @@ def payment_reward_block(
 
     if ability.armed_icons:
         # Rewards waiting as icons: the arrow is dead only when none of them
-        # can pay (a troop is always a live reward, like Control the Spice's).
+        # can pay. A recruit pays while a troop can join (``troop_can_join``,
+        # OQ-071's recruit criterion, user ruling 2026-10-06 "효과 없음").
         if any(
             isinstance(reward, GainInfluence)
             for line in ability.sections
@@ -1305,15 +1311,25 @@ def payment_reward_block(
             ):
                 return None
             return AgentPaymentBlock.NO_FACTION_TO_RAISE
-        if any(
-            not isinstance(reward, DrawPersonalCards)
-            or gather_intelligence_draw_available(state, player)
+        blocks = [
+            _armed_reward_block(state, player, reward)
             for line in ability.sections
             for reward in line.rewards
-        ):
+        ]
+        if any(block is None for block in blocks):
             return None
-        return AgentPaymentBlock.NO_CARD_TO_DRAW
-    for reward in ability.sections[0].rewards:
+        return blocks[0]
+    rewards = ability.sections[0].rewards
+    if (
+        rewards
+        and all(isinstance(reward, RecruitTroops) for reward in rewards)
+        and not troop_can_join(state, state.players[player])
+    ):
+        # Fremen Camp's "[2 spice] -> [troop][troop]" with no troop to take
+        # (OQ-071's recruit criterion); a line with another live reward
+        # beside its recruit (Control the Spice's trash) stays offered.
+        return AgentPaymentBlock.NO_TROOP_TO_RECRUIT
+    for reward in rewards:
         if isinstance(reward, DrawPersonalCards) and not (
             gather_intelligence_draw_available(state, player)
         ):
@@ -1322,6 +1338,25 @@ def payment_reward_block(
             state.players[player]
         ):
             return AgentPaymentBlock.TLEILAXU_TRACK_END
+    return None
+
+
+def _armed_reward_block(
+    state: GameState, player: int, reward: Reward
+) -> AgentPaymentBlock | None:
+    """Why one of an armed arrow's rewards would change nothing now, or None:
+    a draw from an empty deck and discard pile, a recruit with no troop to
+    take (Duncan Idaho's "[water] -> [troop][draw]", OQ-071). Every other
+    reward pays."""
+
+    if isinstance(reward, DrawPersonalCards) and not (
+        gather_intelligence_draw_available(state, player)
+    ):
+        return AgentPaymentBlock.NO_CARD_TO_DRAW
+    if isinstance(reward, RecruitTroops) and not troop_can_join(
+        state, state.players[player]
+    ):
+        return AgentPaymentBlock.NO_TROOP_TO_RECRUIT
     return None
 
 

@@ -488,6 +488,9 @@ _NO_CARD_TO_DRAW: Final[Reason] = (
     "뽑을 카드 없음: 덱과 버린 카드 더미가 모두 비었음",
     "empty",
 )
+# A recruit with no troop to take (Fremen Camp, Duncan Idaho), worded as the
+# Intrigue option's reward block (OQ-071's recruit criterion).
+_NO_TROOP_TO_RECRUIT: Final[Reason] = (*troops_reason("supply", 1, 0)[:2], "reward")
 _TLEILAXU_TRACK_END: Final[Reason] = (
     "Your Tleilaxu token is already at the end of its track",
     "{tleilaxu} 트랙 끝에 이미 도달함",
@@ -2682,6 +2685,7 @@ _PAYMENT_BLOCK_REASONS: Final[Mapping[AgentPaymentBlock, Reason]] = {
     AgentPaymentBlock.NO_CARD_TO_DRAW: _NO_CARD_TO_DRAW,
     AgentPaymentBlock.TLEILAXU_TRACK_END: _TLEILAXU_TRACK_END,
     AgentPaymentBlock.NO_FACTION_TO_RAISE: _ALL_AT_THE_TOP,
+    AgentPaymentBlock.NO_TROOP_TO_RECRUIT: _NO_TROOP_TO_RECRUIT,
 }
 # The payment an ``AgentPaymentBlock`` withholds, by the box's effect.
 _WITHHELD_PAYMENTS: Final[Mapping[PersonalCardAgentEffect, str]] = {
@@ -3104,7 +3108,11 @@ def _optional_box_reason(
         # the turn refills them), Tleilaxu Surgeon at the track's end.
         return (
             _PAYMENT_BLOCK_REASONS[payment],
-            payment is AgentPaymentBlock.NO_CARD_TO_DRAW,
+            payment
+            in (
+                AgentPaymentBlock.NO_CARD_TO_DRAW,
+                AgentPaymentBlock.NO_TROOP_TO_RECRUIT,
+            ),
         )
     block = (
         cost

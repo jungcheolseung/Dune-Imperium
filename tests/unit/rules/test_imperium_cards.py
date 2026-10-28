@@ -45,7 +45,11 @@ from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.acquire_icons import acquire_box_icons
 from dune_imperium.rules.acquisition import acquire_imperium_for_intrigue
-from dune_imperium.rules.agent_effects import expire_trashed_card_effects
+from dune_imperium.rules.agent_box_abilities import AgentPaymentBlock
+from dune_imperium.rules.agent_effects import (
+    agent_card_payment_block,
+    expire_trashed_card_effects,
+)
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat_deployment import legal_combat_deployments
 from dune_imperium.rules.frames import FrameKind
@@ -893,6 +897,37 @@ def test_duncan_idaho_needs_one_water_to_pay() -> None:
     assert _do(engine, exact, "pay_agent_card_water").players[0].resources.water == 0
 
 
+def _supply_emptied(state: GameState) -> GameState:
+    """Seat 0 with every supply troop moved to the garrison."""
+
+    owner = state.players[0]
+    return _seat(
+        state,
+        troops_supply=0,
+        troops_garrison=owner.troops_garrison + owner.troops_supply,
+    )
+
+
+def test_duncan_idaho_arrow_waits_while_neither_reward_could_pay() -> None:
+    """ "비용만 내고 보상을 받지 못하는 경우는 없어야 한다" (OQ-071, user
+    2026-09-29), with its recruit criterion (user 2026-10-06 "효과 없음": a
+    recruit changes something only with a troop in the supply or a specimen to
+    return): with no troop to take and no card to draw the water buys nothing,
+    so the arrow is not offered; a card to draw keeps it (P3d app comparison:
+    the app's Cost needs water and a troop or a drawable card)."""
+
+    engine, state = _start()
+    empty = _seat(_supply_emptied(state), deck=(), discard_pile=())
+    placed = _duncan_placed(engine, empty)
+    assert "pay_agent_card_water" not in _ids(engine, placed)
+    assert agent_card_payment_block(
+        placed, 0, PersonalCardAgentEffect.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE
+    ) is AgentPaymentBlock.NO_TROOP_TO_RECRUIT
+    drawable = _duncan_placed(engine, _supply_emptied(state))
+    assert drawable.players[0].deck
+    assert "pay_agent_card_water" in _ids(engine, drawable)
+
+
 def test_duncan_idaho_reveals_one_water_and_two_swords() -> None:
     """Reveal: "1 water" is a gain line and the swords count once a troop
     stands in the Conflict ("Conflict에 troop이 하나도 없으면 0" [DI p. 11])."""
@@ -1104,6 +1139,33 @@ def test_fremen_camp_needs_two_spice_to_pay() -> None:
     assert "pay_agent_card_spice" not in _ids(engine, _camp_placed(engine, state, 1))
     exact = _camp_placed(engine, state, 2)
     assert _do(engine, exact, "pay_agent_card_spice").players[0].resources.spice == 0
+
+
+def test_fremen_camp_arrow_waits_with_no_troop_to_recruit() -> None:
+    """OQ-071's recruit criterion (user 2026-10-06 "효과 없음"): with the
+    supply empty the two spice would buy nothing, so the arrow is not offered
+    (P3d app comparison: the app's Cost also needs a troop in the supply)."""
+
+    engine, state = _start()
+    placed = _camp_placed(engine, _supply_emptied(state))
+    assert "pay_agent_card_spice" not in _ids(engine, placed)
+    assert agent_card_payment_block(
+        placed, 0, PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS
+    ) is AgentPaymentBlock.NO_TROOP_TO_RECRUIT
+    one_left = _seat(
+        _supply_emptied(state),
+        troops_supply=1,
+        troops_garrison=state.players[0].troops_garrison
+        + state.players[0].troops_supply
+        - 1,
+    )
+    assert "pay_agent_card_spice" in _ids(engine, _camp_placed(engine, one_left))
+    greyed = unavailable_choices(placed, 0, engine.legal_actions(placed, 0))
+    assert greyed is not None
+    assert any(
+        str(row["reason"]).startswith("Needs 1 troop in your supply (you have 0)")
+        for row in greyed["rows"]  # type: ignore[union-attr]
+    )
 
 
 def test_fremen_camp_reveals_two_persuasion_and_one_sword() -> None:

@@ -65,6 +65,7 @@ from dune_imperium.rules.frames import (
     owned_top_frame,
     replace_player,
     replace_top_frame,
+    turn_owner_of,
     with_context,
 )
 from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
@@ -155,6 +156,36 @@ def legal_specimen_return_actions(
     ):
         return ()
     return (DomainAction(action_id="return_specimen", actor=player),)
+
+
+def troop_can_join(state: GameState, owner: PlayerState) -> bool:
+    """Whether a recruit can take a troop for ``owner`` now.
+
+    A troop in the supply, or under Immortality a specimen the owner may
+    return to the supply first ("You may return any of your specimens to
+    your supply at any time. (This could be useful if you need to recruit
+    troops but have no more in your supply.)" [Immortality p. 8]). A
+    shortfall the engine records and may fill later in the turn (OQ-030
+    re-ruling 2026-10-04) does not count, in a player turn or out of one:
+    the user's ruling of 2026-10-06 that an Intrigue option with no effect
+    cannot be played ("아무 효과 없이 책략을 쓸 수 없는거지"), read as the
+    Arrakeen Scouts recruit already is (``scouts_effects.reward_has_effect``,
+    OQ-071), and an Agent box's arrow alike (``agent_box_abilities``).
+    """
+
+    if owner.troops_supply >= 1:
+        return True
+    if not state.config.immortality or owner.specimens < 1:
+        return False
+    # The specimen must be one the owner can still turn into a troop for
+    # this recruit: returnable at the decision open now (the owner's turn,
+    # Combat Intrigue priority, a troop-less Control defense -- OQ-050), or
+    # later in the owner's own open turn, which makes up the recorded
+    # shortfall (OQ-030 re-ruling 2026-10-04). A Navigation choice opened
+    # in Combat has neither: the shortfall is dropped at once.
+    return bool(
+        legal_specimen_return_actions(state, owner.player_id)
+    ) or turn_owner_of(state) == owner.player_id
 
 
 def _owner_at_combat_intrigue(state: GameState, player: int) -> bool:
