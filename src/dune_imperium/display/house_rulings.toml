@@ -2016,3 +2016,23 @@ title_ko = "멘타트와 자기 에이전트는 가르지 않는다"
 title = "The Mentat and your own Agents are not told apart"
 ruling_ko = "멘타트를 가진 라운드에는 에이전트를 하나 더 쓸 수 있을 뿐, 어느 칸에 멘타트를 놓았는지는 따로 고르지도 기록하지도 않는다. 회수 때 멘타트는 먼저 제자리로 돌아간다. 놓인 말이 멘타트인지가 결과를 바꾸는 카드가 들어오면 다시 정한다."
 ruling = "In a round you hold the Mentat you simply have one more Agent; which space the Mentat itself went to is neither chosen nor recorded. At Recall it returns to its space first. This is revisited once a card makes it matter which piece is where."
+
+[[ruling]]
+oq = "OQ-141"
+group = "project"
+game = "base_ix"
+title_ko = "획득 효과의 아이콘은 하나씩, 순서는 내가"
+title = "An acquire effect's icons one at a time, in your order"
+ruling_ko = "카드를 획득할 때 받는 효과에 아이콘이 여럿이거나 진영을 고르는 영향력이 있으면(CHOAM Directorship의 네 진영 영향력, Lady Jessica의 고른 진영 영향력) 아이콘마다 따로 받고, 순서는 카드 주인이 고른다. 에이전트 칸과 교전·계약 보상의 아이콘과 같은 원칙이다. 자기 차례에 얻으면 그 차례의 다른 효과와 함께 받고, 다 받기 전에는 턴 종료를 누를 수 없다. 아이콘 하나에 고를 것이 없으면 지금처럼 곧바로 받는다."
+ruling = "When the effect a card gives on acquire shows several icons or an Influence with a Faction to choose (CHOAM Directorship's four Factions, Lady Jessica's chosen one), each icon is taken on its own, in the order the owner picks: the same rule as an Agent box's icons and a Conflict or contract reward's. Gained in your own turn, they come with that turn's other effects, and the turn cannot end before they are taken. A single icon with nothing to choose is still taken at once."
+names = ["CHOAM Directorship", "Lady Jessica"]
+
+[[ruling]]
+oq = "OQ-143"
+group = "project"
+game = "base_ix"
+title_ko = "Bindu Suspension으로 이어 간 차례는 이미 시작한 차례"
+title = "A turn played on after Bindu Suspension has already started"
+ruling_ko = "Bindu Suspension으로 카드를 뽑고 차례를 그대로 진행하면 그 차례의 시작은 끝난 것이라, 같은 차례에 다른 \"차례 시작\" 카드(Litany Against Fear, Withdrawn)는 낼 수 없다. 넘긴 차례가 곧바로 돌아오면(다른 플레이어가 모두 공개한 뒤) 새 차례라서 시작에 쓰는 카드를 다시 낼 수 있다."
+ruling = "If you draw with Bindu Suspension and play the turn on, the start of that turn is over: no other \"start of your turn\" card (Litany Against Fear, Withdrawn) can be played in it. A pass that hands the turn straight back (every other player has revealed) begins a new turn, whose start is open again."
+names = ["Bindu Suspension", "Litany Against Fear", "Withdrawn"]
