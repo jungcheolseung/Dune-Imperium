@@ -593,10 +593,12 @@ def piece_rows(
             # seat's own, the one sent this turn included (P0 sweep S29; the
             # exclusion is Uprising's Recall Agent icon's, [Main p. 20]), and
             # one Into the Fray left in the Conflict (OQ-068). The Mentat is
-            # one of them (OQ-139 (가)).
+            # one of them (OQ-139 (가)). A space is named once: Kwisatz
+            # Haderach may have put two of the seat's Agents on it (section
+            # 16), and either one recalled leaves the other.
             rows.extend(
                 row(Verb.RECALL_AGENT, Target.SPACE, (("space_id", space_id),))
-                for space_id in owner.agent_locations
+                for space_id in dict.fromkeys(owner.agent_locations)
             )
             if owner.agent_in_conflict > 0:
                 rows.append(row(Verb.RECALL_AGENT, variant="conflict"))

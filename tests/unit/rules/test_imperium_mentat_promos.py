@@ -52,7 +52,7 @@ from dune_imperium.display.effect_dsl_text_ko import reward_text_ko
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.effect_interpreter import play_changes_nothing
-from dune_imperium.rules.effects import mentat_rests
+from dune_imperium.rules.effects import mentat_rests, recall_agent_targets
 from dune_imperium.rules.intrigue import legal_intrigue_play_actions
 from dune_imperium.rules.phases import resolve_recall_or_endgame
 
@@ -179,6 +179,45 @@ def test_urgent_mission_recalls_the_agent_the_owner_names() -> None:
     assert "arrakeen" not in {
         space for seat in done.state.players for space in seat.agent_locations
     }
+
+
+def test_two_agents_on_one_space_are_one_recall_row_and_one_is_recalled() -> None:
+    # Kwisatz Haderach may send a seat's Agent to a space holding its other
+    # Agent (imperium-base.md 16). Urgent Mission then names that space once
+    # (two equal rows broke the staged step) and recalls one of the two.
+    engine, state = _urgent_hand(
+        agents_available=0, agent_locations=("carthag", "carthag")
+    )
+    opened = apply_whole(engine, state, _play(URGENT)).state
+    rows = [
+        a
+        for a in engine.whole_actions(opened, 0)
+        if a.action_id == _recall("x").action_id
+    ]
+    assert rows == [_recall("carthag")]
+    done = apply_whole(engine, opened, _recall("carthag")).state
+    assert done.players[0].agent_locations == ("carthag",)
+    assert done.players[0].agents_available == 1
+
+
+def test_a_recall_of_other_agents_keeps_the_second_agent_on_this_turns_space() -> None:
+    # "not the Agent you sent during this turn" [Main p. 20] takes away that
+    # one Agent: a second Agent of the seat on the same space (Kwisatz
+    # Haderach) is still one of its other Agents.
+    _, state = _start()
+    owner = replace(
+        state.players[0],
+        agent_locations=("carthag", "arrakeen", "carthag"),
+        agents_available=0,
+        swordmaster_acquired=True,
+    )
+    assert recall_agent_targets(
+        owner, excluded_space_id="carthag", turn_agent_in_conflict=False
+    ) == ("carthag", "arrakeen")
+    single = replace(owner, agent_locations=("carthag", "arrakeen"), agents_available=1)
+    assert recall_agent_targets(
+        single, excluded_space_id="carthag", turn_agent_in_conflict=False
+    ) == ("arrakeen",)
 
 
 def test_urgent_mission_with_no_agent_on_the_board_fizzles_but_is_played() -> None:

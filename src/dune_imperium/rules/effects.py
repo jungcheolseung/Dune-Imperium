@@ -1,5 +1,6 @@
 """Small typed effects and pending-effect frame utilities."""
 
+from collections import Counter
 from collections.abc import Mapping
 from copy import replace
 from dataclasses import dataclass
@@ -883,13 +884,21 @@ def recall_agent_targets(
     OQ-037 (d), OQ-068). Imperial Privilege's "Recall one of your other
     Agents from the board" [Board Guide p. 2], the Contract reward and an
     Agent box's Recall Agent icon read this.
+
+    Each space is named once. The original game's Kwisatz Haderach may send a
+    second Agent of the seat to a space it already holds (docs/rules/
+    imperium-base.md 16), so the exclusion takes away one Agent of that
+    space, not all of them: the other one there may still be recalled.
     """
 
+    left = Counter(owner.agent_locations)
+    if excluded_space_id:
+        left[excluded_space_id] -= 1
     return (
         *(
             space_id
-            for space_id in owner.agent_locations
-            if space_id != excluded_space_id
+            for space_id in dict.fromkeys(owner.agent_locations)
+            if left[space_id] > 0
         ),
         *(
             ("conflict",)
