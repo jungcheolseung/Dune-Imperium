@@ -39,8 +39,8 @@ by ``_made_for``, protect it with a record of the previous engine, convert
 every kept record with it, and remove it at the following bump. If a
 recorded choice is simply no longer legal, the divergence is the right
 answer. The bridges of codecs v135-v155 were removed when every kept record
-was converted to v156 (2026-10-29); docs/human-records.md keeps their
-history.
+was converted to v156 (2026-10-29); docs/human-records.md section 8 says
+where their history is.
 """
 
 from collections import Counter
