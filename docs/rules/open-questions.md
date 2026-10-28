@@ -173,7 +173,7 @@
 | [OQ-145](#oq-145--덱-위에-앞면으로-놓은-카드는-누가-아는가-원판--immortality) | 덱 위에 앞면으로 놓은 카드는 누가 아는가 (원판 + Immortality) | `DECIDED` |
 | [OQ-146](#oq-146--kwisatz-haderach의-from-anywhere와-conflict에-있는-into-the-fray의-agent-원판--bloodlines) | Kwisatz Haderach의 "from anywhere"와 Conflict에 있는 Into the Fray의 Agent (원판 + Bloodlines) | `DECIDED` |
 | [OQ-147](#oq-147--research-station의-카드-셋-원판) | Research Station의 카드 셋 (원판) | `DECIDED` |
-| [OQ-148](#oq-148--spice-smugglers의-화살표-보상-순서-원판) | Spice Smugglers의 화살표 보상 순서 (원판) | `OPEN` |
+| [OQ-148](#oq-148--spice-smugglers의-화살표-보상-순서-원판) | Spice Smugglers의 화살표 보상 순서 (원판) | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3155,7 +3155,7 @@
 
 ## OQ-148 — Spice Smugglers의 화살표 보상 순서 (원판)
 
-- 상태: `OPEN` (2026-10-29, 사용자 확인 대기)
+- 상태: `DECIDED` (2026-10-29 사용자 판정 (가), 이 세션에서 직접)
 - 인쇄: Spice Smugglers "[2 spice] → [Spacing Guild Influence] [3 Solari]"(앱 문구). 앱은 Influence를 먼저, Solari를 나중에 준다(P3d 앱 대조).
 - 지금 엔진: 화살표 지불 함수가 Solari를 먼저 주고 Influence를 나중에 준다(Influence가 여는 창이 넘긴 frame 위에 쌓이게 하려는 구조). 결과에는 차이가 없다.
 - 경과: 조정자 경유 사용자 답(2026-10-29 07시대) "인쇄 앱 순서로 고쳐" 뒤, 사용자가 이 세션에서 다시 물었다: "사건 순서가 꼭 고정이어야해? 비용 지불
@@ -3165,3 +3165,9 @@
 - 선택지: (가) 비용을 낸 뒤 Influence와 Solari를 아이콘 둘로 두고 소유자가 순서를 고른다(`armed_icons`, Duncan Idaho와 같은 길) — 인쇄·앱 순서는 그
   가운데 하나. (나) 인쇄·앱 순서로 고정(Influence 먼저).
 - 추천: **(가).** 위 원칙과 같고, 고정 순서를 따로 둘 근거(카드 문구의 "then" 등)가 없다.
+- 판정(2026-10-29 사용자, 이 세션에서 직접 — 질문 "Spice Smugglers: let the owner order the Influence and the Solari after paying?"에 답 "Owner's order"):
+  **(가)** — 2 spice를 낸 뒤 Spacing Guild Influence와 3 Solari는 아이콘 둘이고 소유자가 순서를 고른다(인쇄·앱 순서는 그 가운데 하나). 앞서 조정자 경유로
+  받은 "인쇄 앱 순서로 고쳐"를 이 판정이 대신한다. 구현: `content/uprising/agent_abilities`의 무장 아이콘("influence", "solari"), Influence는 정해진 진영 하나의
+  `choose_agent_card_influence` 행(Clandestine Meeting과 같은 길; 6칸이면 그 획득만 버림, OQ-060), Solari는 그 줄의 값. 화살표는 둘 중 하나라도 무언가를
+  바꿀 수 있으면 열린다(OQ-071). 원판 카탈로그에 Solari 행 하나가 더해졌고(codec은 P4 병합 때), Uprising 카탈로그 144개는 그대로다. 테스트
+  `tests/unit/rules/test_imperium_cards.py`(`test_spice_smugglers_rewards_are_taken_in_the_owner_s_order` 등).

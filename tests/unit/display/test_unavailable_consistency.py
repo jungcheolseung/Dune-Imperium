@@ -1750,6 +1750,14 @@ def _old_icon_condition_holds(
         is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
     )
     if key == AGENT_ICON_SOLARI:
+        # Spice Smugglers' armed 3 Solari (OQ-148, 2026-10-29) is offered as
+        # it waits; the old copy knew only Wheels Within Wheels.
+        smugglers = (
+            PersonalCardAgentEffect
+            .MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+        )
+        if effect is smugglers:
+            return True
         return wheels and owner.influence.emperor >= 2
     if key == AGENT_ICON_SPICE:
         return (

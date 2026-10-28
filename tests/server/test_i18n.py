@@ -351,6 +351,7 @@ _BASE_IX_NAMES = (
     "Rapid Mobilization",
     "Reverend Mother Mohiam",
     "Shuttle Fleet",
+    "Spice Smugglers",
     "The Voice",
     "Treachery",
     "Unload",

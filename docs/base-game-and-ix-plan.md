@@ -1103,7 +1103,7 @@ C를 먼저 읽고 결론을 가르는 줄은 주석 asm으로 확인했다. 20�
   Bindu(OQ-117·OQ-143), Masterstroke의 셈과 자기 turn(OQ-115·OQ-063), Helena의 할인(FAQ p. 3 "the 1 persuasion discount will not apply"), Infiltrate의 "your next
   Agent"(인쇄), Control 방어 배치의 "may"(`[DI pp. 10, 16]`), Sort Through the Chaos의 Mentat(FAQ p. 4), Foldspace 카드를 먼저 trash한 뒤 Foldspace 칸에서 다시 얻기
   (효과 순서 자유 `[DI p. 9]`와 "Reserve cards are returned to their stack in the Reserve" `[DI]` trash 아이콘 설명).
-- **사용자 판정(2026-10-29):** Research Station은 한 장씩 세 번(OQ-147, 고침). Spice Smugglers의 순서는 OQ-148(사용자 확인 대기, 추천 (가) 소유자가 순서를 고름).
+- **사용자 판정(2026-10-29):** Research Station은 한 장씩 세 번(OQ-147, 고침). Spice Smugglers는 비용을 낸 뒤 Influence와 Solari를 소유자가 원하는 순서로(OQ-148 (가), 고침).
 - **내 판단으로 그대로 둔 것(사용자 확인 대상, 위 판정 전):** Spice Smugglers의 지불은 Solari를 Influence보다 먼저 낸다(인쇄와 앱은 Influence 먼저). 화살표 지불 함수가 단순
   획득을 먼저 하고 효과 frame을 넘긴 뒤 Influence 같은 단계(창을 열 수 있음 — 동맹, Emperor 트랙 Spy)를 하기 때문이다. 인쇄 순서로 돌리면 그 창이 넘긴 frame
   아래에 쌓일 수 있다. 결과가 그 순서에 기대는 경우는 찾지 못했다(로그 순서만 다름). Research Station의 "카드 셋"은 화살표 뒤의 한 보상으로 한 번에 뽑는다(앱은

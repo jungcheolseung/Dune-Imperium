@@ -2111,3 +2111,13 @@ title = "Research Station draws its three cards one at a time"
 ruling_ko = "원판 Research Station의 카드 셋은 한 번에 뽑지 않고 한 장씩 세 번 뽑는다. 한 장마다 그 방문의 효과 하나라서, 다른 효과와 원하는 순서로 섞어 해결할 수 있다."
 ruling = "The original game's Research Station draws its three cards one at a time, not all at once. Each card is one effect of the visit, ordered freely with the visit's other effects."
 names = ["Research Station"]
+
+[[ruling]]
+oq = "OQ-148"
+group = "project"
+game = "base_ix"
+title_ko = "Spice Smugglers의 보상은 원하는 순서로"
+title = "Spice Smugglers' rewards in the order you choose"
+ruling_ko = "Spice Smugglers에 스파이스 2를 내면 스페이싱 길드 영향력 1과 솔라리 3을 따로 받고, 어느 쪽을 먼저 받을지는 그 플레이어가 고른다. 길드 트랙이 맨 위여도 솔라리 때문에 낼 수 있다."
+ruling = "Paying Spice Smugglers' 2 spice gives the Spacing Guild Influence and the 3 Solari as two separate effects, taken in the order you choose. It may be paid with the Guild track at the top, for the Solari."
+names = ["Spice Smugglers"]
