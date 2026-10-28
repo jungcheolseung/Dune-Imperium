@@ -1,5 +1,7 @@
 """Declared differences of OQ-145 (cards put face up on top of a deck are
-public) against ``ed6a77c1`` (codec v155, observation v37).
+public) against ``ed6a77c1`` (codec v155, observation v37), and against
+``60c2fcfb`` (stage P3's start) once the original game's seat markers of
+The Voice, Infiltrate and Recruitment Mission are declared too.
 
 docs/rules/open-questions.md OQ-145, user ruling 2026-10-28: a card put face
 up on top of a deck -- the original game's Bypass Protocol and Recruitment
@@ -162,7 +164,16 @@ STATE_HOLDS_THE_PUBLIC_TOP = Rule(
     "cards drawn from it",
     # The new field everywhere; ``hand_public`` only where
     # ``_normalise_public_top`` accepted a card drawn from the public top.
-    state_fields=frozenset({"PlayerState.deck_public_top"}),
+    # Against a base before stage P3's last cards (``60c2fcfb``) the original
+    # game's seat markers are new fields too; no Uprising game sets them.
+    state_fields=frozenset(
+        {
+            "PlayerState.deck_public_top",
+            "PlayerState.voice_blocked_space_ids",
+            "PlayerState.enemy_agents_ignored_turn",
+            "PlayerState.acquire_to_deck_top_round",
+        }
+    ),
 )
 
 RULES = (STATE_HOLDS_THE_PUBLIC_TOP, VIEWS_SHOW_THE_PUBLIC_TOP)
