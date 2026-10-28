@@ -258,6 +258,15 @@ def _factions_or_ko(factions: tuple[Faction, ...]) -> str:
 
 _PLAY_DATA_NOT_TRANSCRIBED: Final = "(play data not transcribed)"
 _PLAY_DATA_NOT_TRANSCRIBED_KO: Final = "(플레이 데이터 없음)"
+# Kwisatz Haderach (the original game), the app's card text; its draw is the
+# Agent box line that follows. The Korean twin is composed from the glossary
+# ("Send an Agent | 보내다", "게임판의 장소" [Main p. 9]).
+_SENDS_AGENT_ANYWHERE_LINE: Final = (
+    "Send one of your Agents from anywhere to ANY board space (even if occupied)"
+)
+_SENDS_AGENT_ANYWHERE_LINE_KO: Final = (
+    "당신의 {agent} 하나를 어디에서든 아무 게임판 장소로 보냄 (다른 {agent}가 있어도)"
+)
 
 # Reclaimed Forces never enters a player's deck (it is "never removed from
 # the Tleilaxu Row" [Immortality p. 9] [Reclaimed Forces card]), so it has
@@ -429,6 +438,8 @@ def personal_card_text(entry: PersonalCardDefinition) -> list[str]:
     icon_condition_line = _icon_condition_line(entry)
     if icon_condition_line is not None:
         lines.append(icon_condition_line)
+    if isinstance(entry, ImperiumCardEntry) and entry.sends_agent_anywhere:
+        lines.append(_SENDS_AGENT_ANYWHERE_LINE)
     agent_line = _agent_line(entry)
     if agent_line is not None:
         lines.append(agent_line)
@@ -505,6 +516,8 @@ def personal_card_text_ko(entry: PersonalCardDefinition) -> list[str]:
     icon_condition_line = _icon_condition_line_ko(entry)
     if icon_condition_line is not None:
         lines.append(icon_condition_line)
+    if isinstance(entry, ImperiumCardEntry) and entry.sends_agent_anywhere:
+        lines.append(_SENDS_AGENT_ANYWHERE_LINE_KO)
     agent_line = _agent_line_ko(entry)
     if agent_line is not None:
         lines.append(agent_line)

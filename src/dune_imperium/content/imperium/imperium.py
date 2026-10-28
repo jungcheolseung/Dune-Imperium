@@ -366,10 +366,26 @@ IMPERIUM_BASE_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         reveal_strength=1,
         play_data_complete=True,
     ),
+    # App table: cost 8, 1 copy, Bene Gesserit, no Agent icons, no Reveal
+    # values. Agent: "Send one of your Agents from anywhere to ANY board space
+    # (even if occupied)." and "[draw 1]". Played as an Agent turn's card with
+    # no icon, even with no Agent left on the Leader: the Agent comes from the
+    # Leader or from any board space the seat holds -- the Mentat too, one of
+    # its Agents (OQ-139 (가)) -- to any space on the table, the one it left
+    # and one holding the seat's own other Agent included; the space's cost,
+    # Influence requirement, once-per-game limit and The Voice still apply
+    # (imperium-base.md 13.1, 16 [DI p. 13]). The draw is the box, after the
+    # placement ("Agent를 먼저 놓고 카드를 뽑는다", designer ruling; its own
+    # step, OQ-106).
     ImperiumCardEntry(
         card=imperium_card("kwisatz_haderach", "Kwisatz Haderach"),
         copies=1,
         acquisition_cost=8,
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(),
+        agent_effect=PersonalCardAgentEffect.DRAW_PERSONAL_CARD,
+        sends_agent_anywhere=True,
+        play_data_complete=True,
     ),
     # App table: cost 7, 1 copy, Bene Gesserit, Bene Gesserit, Landsraad, City
     # and Spice Trade, Reveal 3 Persuasion and 1 sword. Agent: "Draw 2 cards",

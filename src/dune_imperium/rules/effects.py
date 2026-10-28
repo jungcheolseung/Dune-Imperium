@@ -885,13 +885,17 @@ def recall_board_agent(
     """Return the owner with its Agent on ``space_id`` recalled, and its
     event: the Agent returns to its Leader [Main p. 20]. ``source_key``
     names the payload key ``source`` is filed under, as in
-    ``recall_conflict_agent``."""
+    ``recall_conflict_agent``. One Agent comes back: the original game's
+    Kwisatz Haderach can put two of a seat's Agents on one space
+    (docs/rules/imperium-base.md 16)."""
 
+    index = owner.agent_locations.index(space_id)
     next_owner = replace(
         owner,
         agents_available=owner.agents_available + 1,
-        agent_locations=tuple(
-            location for location in owner.agent_locations if location != space_id
+        agent_locations=(
+            *owner.agent_locations[:index],
+            *owner.agent_locations[index + 1 :],
         ),
     )
     event = GameEvent(

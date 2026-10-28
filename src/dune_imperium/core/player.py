@@ -388,8 +388,11 @@ class PlayerState:
         # the agent total above bounds the count.
         if self.agent_in_conflict < 0 or self.tactics_track_space < 0:
             raise ValueError("Leader token positions must be non-negative")
-        if len(self.agent_locations) != len(set(self.agent_locations)):
-            raise ValueError("a player cannot place two agents in one space")
+        # Two Agents of one seat may share a space: the original game's
+        # Kwisatz Haderach "can be sent to a space holding my other Agent"
+        # ("Kwisatz Haderach는 내 다른 Agent가 있는 칸에도 보낼 수 있다",
+        # docs/rules/imperium-base.md 16). Every other placement still skips
+        # a space the seat holds (``rules.agent_turn``).
         if len(self.voice_blocked_space_ids) != len(set(self.voice_blocked_space_ids)):
             raise ValueError("a space cannot be blocked twice for a player")
         # Specimens are troops from the supply in the Axolotl tanks

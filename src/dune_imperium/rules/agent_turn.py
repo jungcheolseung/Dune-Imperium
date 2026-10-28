@@ -26,6 +26,7 @@ from dune_imperium.content.uprising.personal_cards import (
     PersonalCardDefinition,
     card_is_graft,
     card_is_usurp,
+    card_sends_agent_anywhere,
     personal_card_for_instance,
 )
 from dune_imperium.content.uprising.types import (
@@ -324,7 +325,10 @@ def legal_agent_actions_for_card(
 
 
 def _placing_owner(state: GameState, player: int) -> PlayerState | None:
-    """Return the seat when it may place an Agent now, else ``None``."""
+    """Return the seat when it may place an Agent now, else ``None``: an
+    Agent on its Leader, or Kwisatz Haderach in hand with one of its Agents
+    on the board ("Agent가 남지 않아도 낼 수 있다(이미 칸에 있는 Agent를
+    보낸다)", docs/rules/imperium-base.md 13.1 [DI p. 13])."""
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
@@ -333,7 +337,13 @@ def _placing_owner(state: GameState, player: int) -> PlayerState | None:
     if owned_top_frame(state, FrameKind.TURN, player) is None:
         return None
     owner = state.players[player]
-    if owner.agents_available == 0:
+    if owner.agents_available == 0 and not (
+        owner.agent_locations
+        and any(
+            card_sends_agent_anywhere(personal_card_for_instance(card_id))
+            for card_id in owner.hand
+        )
+    ):
         return None
     return owner
 
@@ -345,13 +355,24 @@ def _placements_for_hand_card(
     card_instance_id: str,
 ) -> tuple[DomainAction, ...]:
     card = personal_card_for_instance(card_instance_id)
+    anywhere = card_sends_agent_anywhere(card)
+    if owner.agents_available == 0 and not anywhere:
+        # Only Kwisatz Haderach sends an Agent already on the board.
+        return ()
     # Immortality Graft [Immortality p. 10]: a Graft card "can't be
     # played alone. You must play two cards"; a plain card may join a
     # Graft partner. The partner is chosen after the placement.
     # Usurp may graft with an Imperium Row card instead [card face].
-    may_graft = state.config.immortality and (
-        graft_partner_exists(owner, card_instance_id)
-        or (card_is_usurp(card) and bool(state.imperium_row))
+    # Kwisatz Haderach is never grafted nor a partner (``graft_partner_exists``,
+    # ``graft.legal_graft_partner_actions``): the original game takes
+    # Immortality from stage P7 (``setup._IMPERIUM_PENDING_OPTIONS``).
+    may_graft = (
+        state.config.immortality
+        and not anywhere
+        and (
+            graft_partner_exists(owner, card_instance_id)
+            or (card_is_usurp(card) and bool(state.imperium_row))
+        )
     )
     graft_variants: tuple[bool, ...] = (
         *(() if card_is_graft(card) else (False,)),
@@ -366,11 +387,13 @@ def _placements_for_hand_card(
 
 
 def graft_partner_exists(owner: PlayerState, card_instance_id: str) -> bool:
-    """Return whether the hand holds a card that may be grafted to this one."""
+    """Return whether the hand holds a card that may be grafted to this one
+    (never Kwisatz Haderach, whose graft waits for stage P7)."""
 
     card = personal_card_for_instance(card_instance_id)
     return any(
         other_id != card_instance_id
+        and not card_sends_agent_anywhere(personal_card_for_instance(other_id))
         and (card_is_graft(card) or card_is_graft(personal_card_for_instance(other_id)))
         for other_id in owner.hand
     )
@@ -480,6 +503,20 @@ def _placements_for_card(
     any_icon = card_is_boosted(card, owner) or any(
         boosted for _, _, boosted in usurp_partners
     )
+    # Kwisatz Haderach: "Send one of your Agents from anywhere to ANY board
+    # space (even if occupied)" [Kwisatz Haderach card]. The Agent comes from
+    # the Leader (no ``from_space``) or off any board space the seat holds --
+    # "Agent가 남지 않아도 낼 수 있다(이미 칸에 있는 Agent를 보낸다)" -- the
+    # Mentat among them, one of its Agents (OQ-139 (가)); it goes to any
+    # space, the one it left ("방금 있던 칸으로 되돌려 보낼 수 있다") and one
+    # holding the seat's own other Agent ("내 다른 Agent가 있는 칸에도",
+    # imperium-base.md 16) included, while The Voice, the once-per-game
+    # spaces and the Influence requirements still stop it (13.1 [DI p. 13]).
+    anywhere = card_sends_agent_anywhere(card)
+    sources: tuple[str | None, ...] = (
+        *((None,) if owner.agents_available > 0 else ()),
+        *(dict.fromkeys(owner.agent_locations) if anywhere else ()),
+    )
     # Tuek's Sietch is on the table only with Esmar Tuek.
     for space in board_spaces_on_table(state):
         if space.space_id in owner.voice_blocked_space_ids:
@@ -488,12 +525,15 @@ def _placements_for_card(
             # Agent is involved: nothing that ignores occupying Agents (a
             # Spy's Infiltrate, Eyes Everywhere, Tleilaxu Infiltrator, the
             # Infiltrate Intrigue) opens the space (OQ-116, imperium-base.md
-            # 13.1). The block ends with this seat's next Agent placement
+            # 13.1), nor does Kwisatz Haderach ("The Voice를 넘지 못한다").
+            # The block ends with this seat's next Agent placement
             # (``apply_agent_action``).
             continue
-        if not card_can_access_space(icons, space, owner, any_icon=any_icon):
+        if not anywhere and not card_can_access_space(
+            icons, space, owner, any_icon=any_icon
+        ):
             continue
-        if space.space_id in owner.agent_locations:
+        if not anywhere and space.space_id in owner.agent_locations:
             continue
         if (
             space.space_id in ("swordmaster", "imperium_swordmaster")
@@ -518,13 +558,14 @@ def _placements_for_card(
             if candidate.player_id != player
             and space.space_id in candidate.agent_locations
         )
-        if opponents_do_not_block(owner, space):
+        if anywhere or opponents_do_not_block(owner, space):
             # Eyes Everywhere: "상대 Agent가 Landsraad·City 칸에서 내 Agent를
             # 막지 않는다" (docs/rules/imperium-base.md 12); her own Agent
             # still blocks (above), as do requirements and once-per-game
             # limits (P0 sweep L8). The Infiltrate Intrigue does the same
             # for the turn ("Enemy Agents don't block your next Agent at
-            # board spaces this turn").
+            # board spaces this turn"), and Kwisatz Haderach for its own
+            # placement ("even if occupied").
             occupying_opponents = ()
         infiltrator_partner_fits = True
         if usurp:
@@ -569,16 +610,18 @@ def _placements_for_card(
         if not occupying_opponents or (
             graft and _infiltrator_may_join(owner) and infiltrator_partner_fits
         ):
-            actions.extend(
-                _actions_for_affordable_costs(
-                    player,
-                    card_instance_id,
-                    space,
-                    owner,
-                    state,
-                    graft=graft,
+            for from_space in sources:
+                actions.extend(
+                    _actions_for_affordable_costs(
+                        player,
+                        card_instance_id,
+                        space,
+                        owner,
+                        state,
+                        graft=graft,
+                        from_space=from_space,
+                    )
                 )
-            )
             # The Infiltrator's promise is one way onto an occupied space,
             # not the only one: Infiltrate with a connected Spy stays open to
             # any pair ("Infiltrate하려면 상대 Agent가 있는 space와 연결된
@@ -713,14 +756,24 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
         raise ValueError("Agent action infiltrate_post_id must be a string")
     graft = arguments.get("graft") is True
+    # Kwisatz Haderach's Agent off a board space (``_placements_for_card``):
+    # that space is empty of it from now on, and nothing resolved there is
+    # undone (imperium-base.md 13.1: a Maker space it left gathers bonus spice
+    # if still empty at Phase 4).
+    from_space = arguments.get("from_space")
+    if from_space is not None and not isinstance(from_space, str):
+        raise ValueError("Agent action from_space must be a string")
     boosted = card_is_boosted(card, owner)
     next_owner = replace(
         owner,
         bene_gesserit_boost_pending=owner.bene_gesserit_boost_pending and not boosted,
         resources=_pay_cost(owner.resources, cost),
         spice_spent_turn=owner.spice_spent_turn + cost.spice,
-        agents_available=owner.agents_available - 1,
-        agent_locations=(*owner.agent_locations, space_id),
+        agents_available=owner.agents_available - int(from_space is None),
+        agent_locations=(
+            *_agent_moved_off(owner.agent_locations, from_space),
+            space_id,
+        ),
         # Every Agent placement, the Mentat's too, uses up the seat's Voice
         # blocks ("their next Agents", OQ-116) and the turn's Infiltrate.
         voice_blocked_space_ids=(),
@@ -971,11 +1024,22 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
             ),
         )
     next_state = replace(state, players=players, decision_stack=frames)
+    # Kwisatz Haderach may send a second Agent of the seat to one space in a
+    # round, so its placement's id names where the Agent came from; the
+    # payload's ``from_space`` names the board space it left (absent: the
+    # Leader).
+    moved_from = (
+        f":from:{from_space or 'leader'}" if card_sends_agent_anywhere(card) else ""
+    )
     placement_event = GameEvent(
-        event_id=(f"round:{state.round_number}:player:{action.actor}:agent:{space_id}"),
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:agent:{space_id}"
+            f"{moved_from}"
+        ),
         kind="agent_placed",
         payload=(
             ("card_id", card_instance_id),
+            *((("from_space", from_space),) if from_space is not None else ()),
             ("player", action.actor),
             ("space_id", space_id),
         ),
@@ -1273,7 +1337,12 @@ def _actions_for_affordable_costs(
     infiltrate_post_id: str | None = None,
     *,
     graft: bool = False,
+    from_space: str | None = None,
 ) -> tuple[DomainAction, ...]:
+    """The placement's actions, one per cost the owner can pay; ``from_space``
+    names the board space Kwisatz Haderach's Agent comes off (None: the
+    Leader)."""
+
     costs = _effective_costs(state, space, player)
     include_choice = space.dynamic_cost is None and len(space.cost_options) > 1
     actions: list[DomainAction] = []
@@ -1307,6 +1376,8 @@ def _actions_for_affordable_costs(
                 argument_items.append(("cost_option", cost_option))
             if discount is not None:
                 argument_items.append(("discount", discount))
+            if from_space is not None:
+                argument_items.append(("from_space", from_space))
             if graft:
                 argument_items.append(("graft", True))
             if infiltrate_post_id is not None:
@@ -1384,6 +1455,19 @@ def _selected_cost(
         return requested_option, costs[requested_option]
     except KeyError as error:
         raise ValueError("Agent action cost option is not available") from error
+
+
+def _agent_moved_off(
+    locations: tuple[str, ...], from_space: str | None
+) -> tuple[str, ...]:
+    """``locations`` less the one Agent Kwisatz Haderach takes off
+    ``from_space`` (None: the Agent came from the Leader); a second Agent of
+    the seat on that space stays."""
+
+    if from_space is None:
+        return locations
+    index = locations.index(from_space)
+    return (*locations[:index], *locations[index + 1 :])
 
 
 def _pay_cost(resources: Resources, cost: ResourceCost) -> Resources:

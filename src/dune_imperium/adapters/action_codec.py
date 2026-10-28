@@ -70,6 +70,7 @@ from dune_imperium.content.uprising.personal_cards import (
     card_is_ghola,
     card_is_graft,
     card_is_usurp,
+    card_sends_agent_anywhere,
     personal_card_for_instance,
 )
 from dune_imperium.content.uprising.reserve import (
@@ -3552,10 +3553,13 @@ def _agent_turn_templates_for_card(
     graft: bool = False,
 ) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = []
+    anywhere = card_sends_agent_anywhere(card)
     # Immortality: a Graft card is only ever played grafted; any other card
     # may also be played grafted (the partner is chosen next), and Blank
-    # Slate grafted has the four Faction icons [card face].
-    if not graft:
+    # Slate grafted has the four Faction icons [card face]. Kwisatz Haderach
+    # is never grafted: the original game takes Immortality from stage P7
+    # (``rules.agent_turn._placements_for_hand_card``).
+    if not graft or anywhere:
         graft_variants: tuple[bool, ...] = (False,)
     elif card_is_graft(card):
         graft_variants = (True,)
@@ -3571,6 +3575,11 @@ def _agent_turn_templates_for_card(
         if card.card.card_id == "blank_slate"
         else ()
     )
+    # Kwisatz Haderach's Agent comes from the Leader (no ``from_space``) or
+    # off any board space of the catalog (``rules.agent_turn``).
+    from_spaces: tuple[str | None, ...] = (
+        (None, *(space.space_id for space in spaces)) if anywhere else (None,)
+    )
     for copy in range(card.copies):
         card_id = f"{prefix}:{card.card.card_id}:{copy}"
         for space in spaces:
@@ -3584,6 +3593,7 @@ def _agent_turn_templates_for_card(
                         posts,
                         space_discounts=space_discounts,
                         grafted=grafted,
+                        from_spaces=from_spaces,
                     )
                 )
     return tuple(templates)
@@ -3598,14 +3608,18 @@ def _placement_templates(
     *,
     space_discounts: bool,
     grafted: bool,
+    from_spaces: tuple[str | None, ...] = (None,),
 ) -> tuple[ActionTemplate, ...]:
     templates: list[ActionTemplate] = []
+    # Kwisatz Haderach goes to "ANY board space (even if occupied)" [card].
+    anywhere = card_sends_agent_anywhere(card)
     if (
         space.agent_icon not in card.agent_icons
         and space.agent_icon not in granted_icons
         and AgentIcon.SPY not in card.agent_icons
         # Usurp reaches any space on a Row card's icons [card face].
         and not (grafted and card_is_usurp(card))
+        and not anywhere
     ):
         return ()
     cost_options: tuple[int | None, ...] = (
@@ -3626,37 +3640,41 @@ def _placement_templates(
                 )
             ),
         )
+    # An occupied space never needs a Spy's Infiltrate for Kwisatz Haderach.
     infiltration_post_ids: tuple[str | None, ...] = (
         None,
         *(
             post.post_id
             for post in posts
-            if space.space_id in post.connected_space_ids
+            if space.space_id in post.connected_space_ids and not anywhere
         ),
     )
     for cost_option in cost_options:
         for discount in discounts:
-            for infiltrate_post_id in infiltration_post_ids:
-                arguments: list[tuple[str, ActionValue]] = [
-                    ("card_id", card_id)
-                ]
-                if cost_option is not None:
-                    arguments.append(("cost_option", cost_option))
-                if discount is not None:
-                    arguments.append(("discount", discount))
-                if grafted:
-                    arguments.append(("graft", True))
-                if infiltrate_post_id is not None:
-                    arguments.append(
-                        ("infiltrate_post_id", infiltrate_post_id)
+            for from_space in from_spaces:
+                for infiltrate_post_id in infiltration_post_ids:
+                    arguments: list[tuple[str, ActionValue]] = [
+                        ("card_id", card_id)
+                    ]
+                    if cost_option is not None:
+                        arguments.append(("cost_option", cost_option))
+                    if discount is not None:
+                        arguments.append(("discount", discount))
+                    if from_space is not None:
+                        arguments.append(("from_space", from_space))
+                    if grafted:
+                        arguments.append(("graft", True))
+                    if infiltrate_post_id is not None:
+                        arguments.append(
+                            ("infiltrate_post_id", infiltrate_post_id)
+                        )
+                    arguments.append(("space_id", space.space_id))
+                    templates.append(
+                        ActionTemplate(
+                            action_id="agent_turn",
+                            arguments=tuple(arguments),
+                        )
                     )
-                arguments.append(("space_id", space.space_id))
-                templates.append(
-                    ActionTemplate(
-                        action_id="agent_turn",
-                        arguments=tuple(arguments),
-                    )
-                )
     return tuple(templates)
 
 

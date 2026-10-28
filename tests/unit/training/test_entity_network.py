@@ -111,8 +111,10 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # original game's 46 Imperium cards join the personal vocabulary and its 34
 # Intrigue cards the Intrigue one, each card's records as it is transcribed;
 # Uprising's 405 rows unchanged (compared 2026-10-28). The digest moves with
-# every original card transcribed in stage P3.
-_GOLDEN_DIGEST = "3fb3769c770b1f7cacfc177ecfd68747c0a4bb9c2f771daf96d8ddbb68831181"
+# every original card transcribed in stage P3: Kwisatz Haderach's row and its
+# ``sends_agent_anywhere`` column, and the ``from_space`` argument read as a
+# board space (``ARGUMENT_HINTS``).
+_GOLDEN_DIGEST = "7850cb30429cdd64d4ef3bba41e081df5d7d0e1693ea218fcce1d1368a2a4103"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
