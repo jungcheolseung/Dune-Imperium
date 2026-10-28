@@ -145,6 +145,7 @@ from dune_imperium.rules.reveal_turn import (
     SOURCE_ARGUMENT,
     card_holds_reveal_value,
     troops_move_shape,
+    troops_trash_move,
 )
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
@@ -1046,6 +1047,20 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for seat in range(config.players)
         )
+        # Urgent Mission: the Agent that returns to its Leader -- one row per
+        # board space, one for the Conflict -- or the confirmation when none
+        # is on the board.
+        templates.extend(
+            ActionTemplate(
+                action_id="recall_agent_for_intrigue",
+                arguments=(("space_id", space.space_id),),
+            )
+            for space in catalog_spaces(config)
+        )
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in _RECALL_AGENT_EFFECTS[1:]
+        )
     if config.tech_module:
         templates.extend(_tech_templates(config))
     if config.immortality:
@@ -1939,6 +1954,14 @@ def _visited_spaces(
 # Bindu Suspension's optional pass of the turn after its draw: pass, or play
 # the turn normally (OQ-117).
 _OPTIONAL_PASS_EFFECTS: Final = ("pass_turn_intrigue", "keep_turn_intrigue")
+# Urgent Mission's recall of one of the seat's own Agents: from a board
+# space (one row per space, in the catalog's own loop), from the Conflict, or
+# the empty confirmation (OQ-113 (C)).
+_RECALL_AGENT_EFFECTS: Final = (
+    "recall_agent_for_intrigue",
+    "recall_conflict_agent_for_intrigue",
+    "skip_intrigue_recall_agent",
+)
 _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
     "PlaceSpy": ("recall_spy_for_intrigue", "decline_intrigue_spy"),
     "DestroyShieldWall": ("detonate_shield_wall", "keep_shield_wall"),
@@ -1959,6 +1982,7 @@ _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
     "AcquireCardUpTo": ("skip_intrigue_acquisition",),
     "GainInfluence": ("resolve_intrigue_influence_without_faction",),
     "PassTurn": _OPTIONAL_PASS_EFFECTS,
+    "RecallYourAgent": _RECALL_AGENT_EFFECTS,
 }
 # A mandatory personal-card trash (Twisted Devious) is confirmed with an empty
 # hand instead of refused (OQ-113 (C)).
@@ -3756,6 +3780,9 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     _Choice.MAY_DEPLOY_UP_TO_THREE_TROOPS: ("deploy_reveal_card_troops",),
     _Choice.MAY_RETREAT_UP_TO_TWO_TROOPS: ("retreat_reveal_card_troops",),
     _Choice.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: ("retreat_reveal_card_troops",),
+    # Duncan, Loyal Blade (original game promo): the trash, then one
+    # direction and a count, none included.
+    _Choice.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS: _SOURCED_TROOPS_MOVE,
     _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED: (
         "recall_spy_for_reveal",
     ),
@@ -3833,10 +3860,12 @@ def _reveal_source_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...
                     # Commander being a troop [Bloodlines p. 4], as the engine
                     # offers them (``units.unit_count_arguments``).
                     shape = troops_move_shape(effect)
-                    assert shape is not None
+                    # Duncan, Loyal Blade names a count from none (one
+                    # direction and a count, "any number" [FAQ p. 3]).
+                    assert shape is not None or troops_trash_move(effect)
                     variants = unit_count_arguments(
-                        minimum=1,
-                        maximum=shape[1],
+                        minimum=0 if shape is None else 1,
+                        maximum=None if shape is None else shape[1],
                         troops=MAX_DEPLOYMENT_COUNT,
                         commanders=(
                             MAX_COMMANDER_DEPLOYMENT if config.bloodlines else 0

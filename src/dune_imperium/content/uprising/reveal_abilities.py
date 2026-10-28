@@ -161,6 +161,8 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "choam_directorship": _reveal(_line(GainResources(solari=3))),
         # Carryall (original game): "1 spice" beside its Persuasion.
         "carryall": _reveal(_line(GainResources(spice=1))),
+        # Thumper (original game promo): "1 spice" beside its Persuasion.
+        "thumper": _reveal(_line(GainResources(spice=1))),
         # Firm Grip (original game): "Emperor Alliance: 4 Persuasion", judged
         # when the line resolves (OQ-028); nothing unconditional.
         "firm_grip": _reveal(

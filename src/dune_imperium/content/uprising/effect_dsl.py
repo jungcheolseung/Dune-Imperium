@@ -1400,6 +1400,20 @@ class RecallAgent:
 
 
 @dataclass(frozen=True, slots=True)
+class RecallYourAgent:
+    """Recall one of the player's own Agents ("Recall one of your Agents"
+    [Urgent Mission card, app text]): any of them, the one sent this turn
+    included -- the exclusion belongs to Uprising's Recall Agent icon [Main
+    p. 20], not to this card (docs/rules/imperium-base.md 13.3).
+
+    The owner names a board space with its Agent, or the Conflict for an
+    Agent Into the Fray left there (OQ-068); the Agent returns to its Leader
+    (``agents_available`` + 1). The Mentat is one of the seat's Agents, and
+    the engine does not tell its piece from the others (OQ-139, user ruling
+    (가) 2026-10-28). Without an Agent on the board the effect fizzles."""
+
+
+@dataclass(frozen=True, slots=True)
 class EachOpponentDiscardsCard:
     """Each opponent discards a card [Covert Operation card]: every opponent
     holding a card picks one, clockwise from the next seat.
@@ -1834,6 +1848,21 @@ class DoubleBaseHarvestSpice:
 
 
 @dataclass(frozen=True, slots=True)
+class DoubleBonusHarvestSpice:
+    """Double the bonus spice the Agent harvests this turn ("Double the bonus
+    spice you harvest with this Agent" [Thumper card, app text]).
+
+    A modifier of the Maker space's harvest, not a step of its own, like
+    ``DoubleBaseHarvestSpice``: the box never opens (``AbilityMark.AUTOMATIC``),
+    the harvest reads it. The bonus is the spice the space has gathered
+    [DI p. 13]; the base spice does not double, the extra comes from the bank,
+    and nothing doubles at a space that is not a harvest. Countess Ariana's one
+    less comes off the whole harvest once, after the doubling
+    (docs/rules/imperium-base.md 16).
+    """
+
+
+@dataclass(frozen=True, slots=True)
 class ReserveCostDiscount:
     """Every copy of the named Reserve card acquired during this Reveal turn
     costs ``amount`` less ("The Spice Must Flow costs {Persuasion_3} less to
@@ -1904,6 +1933,7 @@ type Reward = (
     | AcquireCardForSolari
     | TrashThisCard
     | RecallAgent
+    | RecallYourAgent
     | EachOpponentDiscardsCard
     | EachOpponentLosesTroop
     | EachOpponentDiscardsOrLosesDeployedTroop
@@ -1936,6 +1966,7 @@ type Reward = (
     | GainSpiceWithHelixBonus
     | ReserveCostDiscount
     | DoubleBaseHarvestSpice
+    | DoubleBonusHarvestSpice
 )
 
 

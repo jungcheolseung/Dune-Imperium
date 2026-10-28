@@ -492,6 +492,12 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.DOUBLE_BASE_HARVEST_SPICE: (
             "Double the base (not bonus) spice you harvest with this Agent"
         ),
+        PersonalCardAgentEffect.DOUBLE_BONUS_HARVEST_SPICE: (
+            "Double the bonus spice you harvest with this Agent"
+        ),
+        PersonalCardAgentEffect.DRAW_TWO_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: Draw 2 cards"
+        ),
         PersonalCardAgentEffect.EACH_OPPONENT_DISCARDS_OR_LOSES_DEPLOYED_TROOP: (
             "Each opponent chooses: Discard a card -OR- Lose a deployed troop"
         ),
@@ -681,6 +687,13 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             ),
             PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
                 "You may retreat any number of troops"
+            ),
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS
+            ): (
+                "Trash this card → Deploy or retreat any number of your troops "
+                "from or to your garrison"
             ),
             PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT: (
                 "You may pay 6 solari → Gain 1 Victory Point"

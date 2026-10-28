@@ -840,14 +840,13 @@ def create_draft_initial_state(
 
 
 # The options the original game cannot be played with yet, and the stage of
-# docs/base-game-and-ix-plan.md that brings each (15.4): its own promo cards
-# arrive with its decks (P3), Rise of Ix and its Epic Game Mode in P4, the
-# Uprising expansions with it in P7 and Arrakeen Scouts in P8. The Leader
-# draft deals six of its eight Leaders (OQ-007), open since P2b brought them
-# all.
+# docs/base-game-and-ix-plan.md that brings each (15.4): Rise of Ix and its
+# Epic Game Mode in P4, the Uprising expansions with it in P7 and Arrakeen
+# Scouts in P8. Its own promo cards (Duncan, Loyal Blade; Jessica of Arrakis;
+# Thumper) are open since stage P3 filled them (plan 16.1); the Leader draft
+# deals six of its eight Leaders (OQ-007), open since P2b brought them all.
 _IMPERIUM_PENDING_OPTIONS: Final = (
     ("choam_module", "P7"),
-    ("promo_cards", "P3"),
     ("bloodlines", "P7"),
     ("tech_module", "P7"),
     ("immortality", "P7"),

@@ -260,6 +260,9 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     _Choice.MAY_DEPLOY_UP_TO_THREE_TROOPS: frozenset({"deploy_reveal_card_troops"}),
     _Choice.MAY_RETREAT_UP_TO_TWO_TROOPS: frozenset({"retreat_reveal_card_troops"}),
     _Choice.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: frozenset({"retreat_reveal_card_troops"}),
+    _Choice.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS: frozenset(
+        {"deploy_reveal_card_troops", "retreat_reveal_card_troops"}
+    ),
     _Choice.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH: frozenset(
         {"gain_two_reveal_persuasion", "gain_two_reveal_swords"}
     ),
@@ -656,6 +659,34 @@ def troops_move_shape(
         case (RetreatTroops(minimum=0, maximum=most),) if most is None or most >= 1:
             return "retreat", most
     return None
+
+
+def troops_trash_move(effect: PersonalCardRevealChoiceEffect | str | None) -> bool:
+    """"Trash this card -> Deploy or retreat any number of your troops from or
+    to your garrison" [Duncan, Loyal Blade card]: the trash is the cost of
+    either direction, and the owner names one direction and a count, none
+    included ("any number" [FAQ p. 3]). Its rows are those of
+    ``troops_move_shape`` (``deploy_reveal_card_troops`` and
+    ``retreat_reveal_card_troops``) and paying the cost is part of the row.
+    A Sardaukar Commander counts as a troop [Bloodlines p. 4] (OQ-115)."""
+
+    if effect is None:
+        return False
+    ability = reveal_choice_ability(PersonalCardRevealChoiceEffect(effect))
+    if (
+        ability is None
+        or ability.hook is not None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.structure is not AbilityStructure.ONE_OF
+    ):
+        return False
+    trash_self = (TrashCard(this_card=True),)
+    return [
+        (line.condition, line.costs, line.rewards) for line in ability.sections
+    ] == [
+        (None, trash_self, (DeployFromGarrison(up_to=None),)),
+        (None, trash_self, (RetreatTroops(0, None),)),
+    ]
 
 
 def _troop_move_bond(effect: PersonalCardRevealChoiceEffect) -> Faction | None:
@@ -2666,15 +2697,47 @@ def legal_reveal_troops_move_actions(
     if pending is not None:
         return pending
     context = _reveal_choice_frame_matching(
-        state, player, lambda effect: troops_move_shape(effect) is not None
+        state,
+        player,
+        lambda effect: troops_move_shape(effect) is not None
+        or troops_trash_move(effect),
     )
     if context is None:
         return ()
+    card_id, _ = _reveal_choice_card_source(state, player, context, "troops_move")
+    owner = state.players[player]
+    if troops_trash_move(_effect_value(context)):
+        # Duncan, Loyal Blade: the card trashes itself, so it must still be in
+        # play; one direction and a count, none included -- the zero is one
+        # row, in the first direction a unit could move in.
+        if card_id not in owner.in_play:
+            return ()
+        rows: list[DomainAction] = []
+        zero_offered = False
+        for direction, troops, commanders in (
+            (
+                "deploy",
+                _deployable_garrison_troops(state, player),
+                owner.commanders_garrison,
+            ),
+            ("retreat", owner.troops_conflict, owner.commanders_conflict),
+        ):
+            if troops + commanders < 1:
+                continue
+            rows.extend(
+                _sourced(f"{direction}_reveal_card_troops", player, card_id, arguments)
+                for arguments in unit_count_arguments(
+                    minimum=int(zero_offered),
+                    maximum=None,
+                    troops=troops,
+                    commanders=commanders,
+                )
+            )
+            zero_offered = True
+        return tuple(rows)
     shape = troops_move_shape(_effect_value(context))
     assert shape is not None
     kind, most = shape
-    card_id, _ = _reveal_choice_card_source(state, player, context, "troops_move")
-    owner = state.players[player]
     troops, commanders = (
         (_deployable_garrison_troops(state, player), owner.commanders_garrison)
         if kind == "deploy"
@@ -2700,9 +2763,24 @@ def apply_reveal_troops_move(
     if action not in legal_reveal_troops_move_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal troops move")
     context = dict(state.decision_stack[-1].context)
-    _, source = _reveal_choice_card_source(state, action.actor, context, "troops_move")
+    card_id, source = _reveal_choice_card_source(
+        state, action.actor, context, "troops_move"
+    )
     popped = state.pop_decision()
     troops, commanders = unit_counts(dict(action.arguments))
+    trash_events: tuple[GameEvent, ...] = ()
+    if troops_trash_move(_effect_value(context)):
+        # Duncan, Loyal Blade: "Trash this card ->" first, the cost; the
+        # Persuasion and swords it already gave stay (OQ-022, imperium-base.md
+        # 16), and a troop its own trash recruits is credited as for any
+        # Reveal self-trash.
+        trashed = trash_personal_card(popped, action.actor, card_id, source=source)
+        trashed = credit_trash_recruits(trashed, action.actor)
+        popped = trashed.state
+        trash_events = trashed.events
+        if troops + commanders == 0:
+            # "Any number" chose none: the card is trashed and nothing moves.
+            return RuleResult(state=popped, events=trash_events)
     if action.action_id == "deploy_reveal_card_troops":
         counted = add_units_to_reveal(
             popped, action.actor, troops=troops, commanders=commanders
@@ -2710,6 +2788,7 @@ def apply_reveal_troops_move(
         return RuleResult(
             state=counted.state,
             events=(
+                *trash_events,
                 GameEvent(
                     event_id=f"{source}:deployed",
                     kind="troops_deployed",
@@ -2737,7 +2816,7 @@ def apply_reveal_troops_move(
             next_state,
             decision_stack=add_reveal_strength(next_state.decision_stack, delta),
         )
-    return RuleResult(state=next_state, events=retreated.events)
+    return RuleResult(state=next_state, events=(*trash_events, *retreated.events))
 
 
 def legal_reveal_troop_sacrifice_actions(
@@ -4411,6 +4490,9 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect is PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS
         else "You may retreat any number of your troops"
         if effect is PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS
+        else "You may trash this card to deploy or retreat any number of your troops"
+        if effect
+        is PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS
         else "You may lose two troops for two specimens"
         if effect is _LOSE_TROOPS_FOR_SPECIMENS
         else "You may trash this card for one Influence with each Faction"
@@ -4591,6 +4673,17 @@ def _reveal_choice_effect_is_available(
                 if move[0] == "deploy"
                 else owner.troops_conflict
             )
+            >= 1
+        )
+        or (
+            # Duncan, Loyal Blade: the trash is offered only while some troop
+            # could move, to or from the garrison -- a cost line needs a live
+            # reward (OQ-071, OQ-113 (C)); a Commander is a troop.
+            troops_trash_move(effect)
+            and _deployable_garrison_troops(state, player)
+            + owner.commanders_garrison
+            + owner.troops_conflict
+            + owner.commanders_conflict
             >= 1
         )
         or (

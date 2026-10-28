@@ -311,10 +311,10 @@ def _imperium_content(config: RulesetConfig) -> RulesetContent:
         influence_four_bonuses=IMPERIUM_INFLUENCE_FOUR_BONUSES,
         card_ids=_IMPERIUM_CARD_IDS,
         leaders=tuple(LEADERS_BY_ID[leader_id] for leader_id in IMPERIUM_LEADER_IDS),
-        imperium_cards=_IMPERIUM_DECK_CARDS,
+        imperium_cards=_imperium_deck_cards(config.promo_cards),
         imperium_deck_instance_ids=tuple(
             f"imperium:{entry.card.card_id}:{copy}"
-            for entry in _IMPERIUM_DECK_CARDS
+            for entry in _imperium_deck_cards(config.promo_cards)
             for copy in range(entry.copies)
         ),
         intrigue_deck_instance_ids=tuple(
@@ -331,17 +331,24 @@ def _imperium_content(config: RulesetConfig) -> RulesetContent:
 
 
 # Stage P3 (plan 16.1): the original decks hold the cards transcribed so far,
-# so a soak plays each one as it lands; the promos wait for ``promo_cards``,
-# which the original game does not take yet (``rules.setup``).
-_IMPERIUM_DECK_CARDS: Final = tuple(
-    entry
-    for entry in IMPERIUM_BASE_CARDS
-    if entry.play_data_complete and not entry.promo
-)
+# so a soak plays each one as it lands; the three promos (Duncan, Loyal Blade;
+# Jessica of Arrakis; Thumper) are shuffled in only with ``promo_cards`` (plan
+# 9 8), as Uprising's promos are (``imperium_cards_for_choam``).
+@cache
+def _imperium_deck_cards(promo_cards: bool) -> tuple[ImperiumCardEntry, ...]:
+    return tuple(
+        entry
+        for entry in IMPERIUM_BASE_CARDS
+        if entry.play_data_complete and (promo_cards or not entry.promo)
+    )
+
+
+# Every personal card id the base game prints, the promos' whatever the
+# options (as ``_UPRISING_CARD_IDS``).
 _IMPERIUM_CARD_IDS: Final = frozenset(
     {
         *(entry.card.card_id for entry in starting_deck_entries()),
         *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
-        *(entry.card.card_id for entry in _IMPERIUM_DECK_CARDS),
+        *(entry.card.card_id for entry in _imperium_deck_cards(True)),
     }
 )

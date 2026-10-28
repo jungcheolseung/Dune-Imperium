@@ -7,6 +7,7 @@ from dataclasses import replace as replace_card
 from enum import StrEnum
 from typing import Final
 
+from dune_imperium.config import BaseGame
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.contracts import (
     contract_for_instance,
@@ -109,6 +110,19 @@ AGENT_EFFECT_CONTEXT_KEYS = frozenset(
         "turn_owner",
     }
 )
+
+
+def mentat_rests(state: GameState) -> bool:
+    """Whether the Mentat rests on its space: no seat took it this round and
+    no Sort Through the Chaos winner waits for it [FAQ p. 4]
+    (docs/rules/imperium-base.md 9). Only an original game sets it out. The
+    Mentat space's take and Calculated Hire's read it."""
+
+    return (
+        state.config.base_game is BaseGame.IMPERIUM
+        and state.mentat_owed_to is None
+        and not any(player.mentat for player in state.players)
+    )
 
 
 def open_next_turn(state: GameState, player: int) -> GameState:
@@ -361,6 +375,10 @@ BOARD_ICON_COMMANDER = "sardaukar_commander"
 # Landsraad board space" [Bloodlines pp. 7, 12]; like the Commander it is an
 # effect of the visit, not a printed icon.
 BOARD_ICON_TECH = "tech"
+# The original board's Mentat space take ("If the Mentat is here, take it"
+# [DI p. 18]), spelled here so this module keeps importing none of
+# ``board_effects`` (a test checks it agrees with ``BOARD_ICON_MENTAT``).
+MENTAT_BOARD_ICON: Final = "mentat"
 # The visit's optional effects -- "may", an arrow cost or a black trash icon
 # [FAQ p. 3]: Desert Tactics' trash ("원하면 card 1장 trash", [Board Guide
 # p. 1] [Main p. 20]), Imperial Privilege's Intrigue trade (an arrow cost,
@@ -686,6 +704,7 @@ def blocked_board_icons(
     later in the turn offers it again.
     """
 
+    blocked: set[str] = set()
     space, icon = _SHIPPING_INFLUENCE
     waiting = {
         key
@@ -696,9 +715,17 @@ def blocked_board_icons(
         )
         if key is not None and board_icon_is_pending(context, key)
     }
-    if not waiting or any(influence_can_rise(owner, faction) for faction in Faction):
-        return frozenset()
-    return frozenset(waiting)
+    if waiting and not any(influence_can_rise(owner, faction) for faction in Faction):
+        blocked |= waiting
+    if owner.mentat and board_icon_is_pending(context, MENTAT_BOARD_ICON):
+        # The Mentat space's "If the Mentat is here, take it" [DI p. 18],
+        # judged when it resolves (OQ-028, docs/rules/imperium-base.md 16):
+        # a seat that already holds the Mentat -- Calculated Hire took it
+        # from the space earlier in the same visit -- finds it gone, so the
+        # icon can only lapse. The seat held no Mentat when the visit began
+        # (the icon is armed only while it rests, ``mentat_rests``).
+        blocked.add(MENTAT_BOARD_ICON)
+    return frozenset(blocked)
 
 
 def mandatory_board_icons_pending(

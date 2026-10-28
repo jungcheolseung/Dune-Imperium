@@ -218,13 +218,34 @@ def test_the_original_game_plays_its_own_board_and_its_transcribed_cards() -> No
     assert content.starting_deck_entries == starting_deck_entries()
     assert content.starting_discard_entries == ()
     assert content.starting_deck_instance_ids(1) == starting_deck_instance_ids(1)
+    # The promos' ids are the base game's whatever the options, as Uprising's
+    # are; their copies join the deck with ``promo_cards`` only (plan 9 8).
+    promos = [e for e in IMPERIUM_BASE_CARDS if e.play_data_complete and e.promo]
+    assert {e.card.card_id for e in promos} == {
+        "duncan_loyal_blade",
+        "jessica_of_arrakis",
+        "thumper",
+    }
     assert content.card_ids == {
         *(entry.card.card_id for entry in starting_deck_entries()),
         "arrakis_liaison",
         "imperium_the_spice_must_flow",
         "foldspace_card",
         *(entry.card.card_id for entry in imperium),
+        *(entry.card.card_id for entry in promos),
     }
+    with_promos = content_for(
+        RulesetConfig(base_game=BaseGame.IMPERIUM, promo_cards=True)
+    )
+    assert with_promos.imperium_cards == (*imperium, *promos)
+    assert set(with_promos.imperium_deck_instance_ids) - set(
+        content.imperium_deck_instance_ids
+    ) == {
+        "imperium:duncan_loyal_blade:0",
+        "imperium:jessica_of_arrakis:0",
+        "imperium:thumper:0",
+    }
+    assert content.card_ids == with_promos.card_ids
 
 
 def test_a_combination_without_its_content_cannot_be_set_up() -> None:
@@ -236,7 +257,6 @@ def test_a_combination_without_its_content_cannot_be_set_up() -> None:
         UprisingRulesEngine().reset(RulesetConfig(rise_of_ix=True), 0)
     for option, stage in (
         ("choam_module", "P7"),
-        ("promo_cards", "P3"),
         ("bloodlines", "P7"),
         ("immortality", "P7"),
         ("epic_game", "P4"),

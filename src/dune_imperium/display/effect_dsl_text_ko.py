@@ -73,6 +73,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardedCardHasFaction,
     DiscardFromHand,
     DoubleBaseHarvestSpice,
+    DoubleBonusHarvestSpice,
     DrawIntrigueCards,
     DrawPerSandwormInConflict,
     DrawPersonalCards,
@@ -152,6 +153,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallAgent,
     RecallOtherAgent,
     RecallSpy,
+    RecallYourAgent,
     RecruitToConflict,
     RecruitTroops,
     RecruitUndeployableTroops,
@@ -1008,6 +1010,10 @@ def reward_text_ko(reward: Reward) -> str:
         case RecallAgent():
             # Quotes ``tokens_ko.py``'s Steersman line.
             return "{agent} 소환"
+        case RecallYourAgent():
+            # The plain recall of Steersman's line, for any of your Agents
+            # (Urgent Mission).
+            return "당신의 {agent} 하나 소환"
         case EachOpponentDiscardsCard() as discard:
             # Quotes ``tokens_ko.py``'s Covert Operation line.
             return f"다른 플레이어 각자 카드 {discard.cards}장 버리기"
@@ -1109,6 +1115,9 @@ def reward_text_ko(reward: Reward) -> str:
             # Bare ``{agent}`` and ``{spice}`` (the English line has one each);
             # "수확" is ``static/labels.js``'s ``harvest_maker_spice`` verb.
             return "이 {agent}로 수확하는 기본 {spice} 두 배 (보너스 제외)"
+        case DoubleBonusHarvestSpice():
+            # The same words for the bonus (Thumper).
+            return "이 {agent}로 수확하는 보너스 {spice} 두 배"
         case ReserveCostDiscount(card_ids=card_ids, amount=amount):
             # The Reserve card's Korean print name (``_reserve_card_name_ko``,
             # as the Corner the Market conditions above); one name for the
