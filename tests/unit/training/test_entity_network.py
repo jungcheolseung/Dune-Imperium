@@ -111,7 +111,7 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Intrigue cards the Intrigue one, each card's records as it is transcribed;
 # Uprising's 405 rows unchanged (compared 2026-10-28). The digest moves with
 # every original card transcribed in stage P3.
-_GOLDEN_DIGEST = "fc4501e29d312cd3a10643c21ca61c48ba82054bbe15aaff3f834afc1f440f90"
+_GOLDEN_DIGEST = "3fb3769c770b1f7cacfc177ecfd68747c0a4bb9c2f771daf96d8ddbb68831181"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

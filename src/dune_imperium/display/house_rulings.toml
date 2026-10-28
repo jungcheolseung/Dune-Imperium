@@ -2070,3 +2070,13 @@ ruling = "In a Reveal turn, the troops Reinforcements or Gurney Halleck's Reveal
 names = ["Reinforcements", "Gurney Halleck"]
 sources_ko = "Gurney Halleck의 \"원하는 수만큼\"은 디자이너의 답(따름). 앱은 쓸 때 공급처와 표본에서 병력을 골라 곧바로 배치하고, 나중에 채워진 병력은 배치하지 않는다."
 sources = "Gurney Halleck's \"any number\" is the designer's answer (followed). The app picks the troops from the supply and specimens when the card is used and deploys them at once; a troop recruited later is never deployed by it."
+
+[[ruling]]
+oq = "OQ-145"
+group = "project"
+game = "uprising"
+title_ko = "카드덱 맨 위에 앞면으로 놓은 카드는 모두가 안다"
+title = "A card put face up on top of a deck is known to all"
+ruling_ko = "획득한 카드를 카드덱 맨 위에 놓으면(Bypass Protocol, Recruitment Mission, 틀레이락스 연구 트랙의 첫 유전 표지 뒤 틀레이락스 카드) 그 카드를 뽑거나 카드덱을 섞을 때까지 모든 플레이어가 안다. 여러 장을 차례로 놓으면 놓은 순서대로 쌓인다(마지막에 놓은 장이 맨 위). 그 카드를 뽑으면 핸드를 떠날 때까지 핸드에서도 공개다."
+ruling = "A card you acquire and put on top of your deck (Bypass Protocol, Recruitment Mission, or a Tleilaxu card once your research reaches the first genetic marker) is known to every player until it is drawn or the deck is shuffled. Cards put there one after another stack in that order, the last on top. Once drawn, it stays public in your hand until it leaves the hand."
+names = ["Bypass Protocol", "Recruitment Mission"]
