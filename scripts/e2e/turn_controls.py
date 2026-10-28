@@ -511,6 +511,18 @@ def tleilaxu_shop(base: str, browser) -> None:
         "a Reclaimed Forces row shows its specimen cost",
         (reclaimed, specimens),
     )
+    harvest = page.evaluate(
+        """() => {
+          const item = actionItem({action_id: 'acquire_intrigue_reclaimed_forces',
+                                   index: -1, arguments: {choice: 'troops'}});
+          return item.querySelector('button .acquire-cost')?.textContent || null;
+        }"""
+    )
+    check.ok(
+        harvest == reclaimed,
+        "Harvest Cells' Reclaimed Forces choice shows the same specimen cost",
+        (harvest, reclaimed),
+    )
     action = page.evaluate(
         "state.actions.actions.find((a) => a.action_id === 'acquire_tleilaxu'"
         " && !a.arguments.to_deck_top)"

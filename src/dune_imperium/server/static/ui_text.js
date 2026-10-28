@@ -1076,6 +1076,10 @@ const UI_TEXT = {
     "ko": "상자로 돌아간 {spy} {{count}}",
     "en": "{spy} back in the box: {{count}}"
   },
+  "panels.track_spies_owed": {
+    "ko": "놓을 {spy} {{count}}",
+    "en": "{{count}} {spy} to place"
+  },
   "panels.standings_garrison_header": {
     "ko": "{garrison} {troop}",
     "en": "Garrison"

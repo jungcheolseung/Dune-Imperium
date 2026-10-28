@@ -2369,6 +2369,10 @@ function actionItem(action, onApply, zone, boxed = false) {
      own buttons only (panels.js deckTopChoiceLabel), never in the log. */
   button.appendChild(deckTopChoiceLabel(action) || describeAction(action, { boxed }));
   if (zone) button.appendChild(zoneSuffixNode(zone));
+  if (action.action_id === "acquire_intrigue_reclaimed_forces") {
+    const cost = acquireCostNode(action);
+    if (cost) button.appendChild(cost);
+  }
   button.disabled = state.busy;
   button.addEventListener("click", () =>
     onApply ? onApply(action) : chooseAction(action)
