@@ -383,7 +383,7 @@
   엔진은 이미 카드 문구대로다 — "If you have another Bene Gesserit card in play:"가 trash와 draw를 함께 걸고, 아이콘마다 해결할 때 판정한다. 확인한 것:
   (1) 다른 Bene Gesserit 카드가 다른 길(Intrigue 폐기 칸, graft 상대의 box — 테스트는 In High Places 테스트처럼 상태를 직접 바꿔 흉내)로 먼저 빠지면 trash도 draw도 제시되지 않고 이유와 함께 회색, 턴 종료는
   막히지 않으며 누르면 둘 다 `agent_card_effect_unavailable`; (2) draw를 먼저 받은 뒤 Bond가 깨지면 trash가 회색으로 남고 누르면
-  `agent_card_effect_lapsed`(선택 효과이면서 조건도 안 맞음 — 사건 이름만 다르고 동작은 같다); (3) 자기 trash로 Bond 카드를 버리면 draw가 회색;
+  `agent_card_effect_lapsed`(선택 효과이면서 조건도 안 맞음 — 사건 이름만 다르고 동작은 같다; 사용자 판정 2026-10-28 (가) 그대로 둠: "쓸 수 있었는데 안 쓰고 베네게세리트 bond를 깨는 선택을 먼저 한거잖아." — draw를 먼저 받을 때 trash는 쓸 수 있었으므로 "쓰지 않고 지나간" 선택 효과다); (3) 자기 trash로 Bond 카드를 버리면 draw가 회색;
   (4) 같은 차례에 Bond가 다시 생기면 둘 다 다시 제시되고 의무인 draw가 턴 종료를 다시 막는다; (5) Ghola가 Tread를 복사하면 복사본의 Bond는 Tread
   자신을 세어 제시되고, Tread 자신의 box는 Ghola가 Bene Gesserit 카드가 아니므로 제시되지 않는다 `[Immortality p. 14]`. 앱도 두 능력 모두에
   `HasPlayedFactionCard`를 건다(보조 증거, 로컬 `…/analysis/p3-oq-2026-10-28.md`). 동작 변경 없음 — 회귀 테스트만 더했다

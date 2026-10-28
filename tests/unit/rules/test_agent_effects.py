@@ -5095,8 +5095,10 @@ def test_tread_in_darkness_trash_waits_when_the_bond_breaks_after_the_draw() -> 
     assert _greyed_icons(engine, broken) == {"trash"}
     finish = DomainAction(action_id="finish_agent_turn", actor=0)
     assert finish in legal
-    # The trash is optional and unavailable both: the press lapses it as an
-    # unused optional effect (``box_is_optional``).
+    # The trash could have been used before the Bond broke, so the press
+    # lapses it as an unused optional effect (``box_is_optional``); user
+    # ruling 2026-10-28 (OQ-028): "쓸 수 있었는데 안 쓰고 베네게세리트 bond를
+    # 깨는 선택을 먼저 한거잖아."
     pressed = engine.apply(broken, finish)
     assert ("agent_card_effect_lapsed", "trash") in {
         (event.kind, dict(event.payload).get("effect")) for event in pressed.events
