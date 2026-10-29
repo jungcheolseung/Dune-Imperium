@@ -175,6 +175,7 @@
 | [OQ-147](#oq-147--research-station의-카드-셋-원판) | Research Station의 카드 셋 (원판) | `DECIDED` |
 | [OQ-148](#oq-148--spice-smugglers의-화살표-보상-순서-원판) | Spice Smugglers의 화살표 보상 순서 (원판) | `DECIDED` |
 | [OQ-149](#oq-149--intrigue-덱-맨-위를-보고-하나를-남긴-좌석은-그-카드를-아는가-immortality--rise-of-ix) | Intrigue 덱 맨 위를 보고 하나를 남긴 좌석은 그 카드를 아는가 (Immortality · Rise of Ix) | `DECIDED` |
+| [OQ-150](#oq-150--reveal-turn-tech-능력-artillery의-셈과-reveal-도중에-얻은-타일-rise-of-ix) | Reveal turn Tech 능력: Artillery의 셈과 Reveal 도중에 얻은 타일 (Rise of Ix) | `OPEN` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3201,3 +3202,23 @@
     본다, OQ-010 판정 3) — 이때 그 두 좌석이 아닌 좌석은 주는 좌석의 손에 있던 아는 카드를 잊는다.
   - Uprising + Immortality 판의 숨은 정보 처리(관측의 `private_intrigue_top`·`private_known_intrigue_seat*`, 결정 표본, `known_card_seats`와
     되돌리기 경계)가 바뀐다. 같음 확인의 의도한 차이는 `scripts/ab/differences/`에 선언한다.
+
+
+## OQ-150 — Reveal turn Tech 능력: Artillery의 셈과 Reveal 도중에 얻은 타일 (Rise of Ix)
+
+- 상태: `OPEN` (2026-10-29, P4c-2a `00f3a312`가 아래 "지금 구현"대로 넣었다 — 사용자 판정을 기다린다)
+- 인쇄·문서: [rise-of-ix.md](rise-of-ix.md) 4의 표 — Artillery "Reveal turn: sword를 주는 공개 카드마다 sword 1", Minimic Film "Reveal turn:
+  Persuasion 1", Restricted Ordnance "Reveal turn: High Council 자리가 있으면 sword 4", Disposal Facility "Reveal turn: 그 turn에 얻은 Persuasion
+  합계가 6 이상이면 in play 카드 하나를 trash할 수 있다"(OQ-126). 룰북·FAQ는 아래 두 점을 말하지 않는다.
+- 질문 (1) Artillery: "sword를 주는 공개 카드"를 언제 세는가 — Reveal 도중 조건이 채워져 sword를 주게 된 카드(예: 다른 카드에 기대는 sword)도
+  세는가, trash된 카드는 빼는가.
+- 질문 (2) Reveal 도중에 얻은 타일: 같은 Reveal turn에 Acquire Tech로 얻은 타일의 "Reveal turn" 능력이 그 turn에 듣는가. 원판 + Ix에서는 Ix
+  Reveal 카드가 Acquire Tech를 인쇄할 때(P4d)부터 생긴다.
+- 지금 구현(`00f3a312`, agent 판단 — 판정 아님): (1) Leadership의 셈처럼 이미 준 sword를 되돌리지 않고 늘어날 때만 채우며(높은 물 표시), trash된
+  카드는 세지 않는다(Leadership 셈은 그 카드에 대한 디자이너 판정이다). (2) Restricted Ordnance는 늦게 든 High Council 자리에도 준다(OQ-095 (7)의
+  순서 자유 원칙, Tech Module의 Command 타일과 같다). Artillery·Minimic Film·Disposal Facility는 Reveal이 시작될 때 가진 타일만 듣는다 — 둘이
+  어긋난다.
+- 선택지 (2): (가) Reveal 도중에 얻은 타일도 그 turn의 Reveal 능력이 모두 듣는다(Restricted Ordnance·Command 타일과 같게); (나) Reveal이
+  시작될 때 가진 타일만 — Restricted Ordnance도 그렇게 고친다; (다) 지금대로 섞어 둔다.
+- 추천: (2)는 **(가)** — 한 원칙으로 맞추고(늦게 든 것도 그 turn에 듣는다, OQ-095 (7)), Command 타일과 같다. (1)은 지금 구현(채우기만, trash 제외)
+  — 앱 동작은 P4f 대조(디컴파일)에서 확인한다.
