@@ -1649,6 +1649,40 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for stack in content.reserve_stacks
     )
     templates.extend(_trash_templates(config, "trash_leader_card"))
+    if config.rise_of_ix:
+        # Archduke Armand Ecaz (stage P4e): Coordination's Reveal-turn trash,
+        # and Conscript's card on top of the deck while Spaceport lets him
+        # put it there.
+        templates.extend(_trash_templates(config, "trash_leader_reveal_card"))
+        if not config.immortality:
+            # Viscount Hundro Moritani's Intelligence keeps one of the
+            # Intrigue deck's top two (an Immortality catalog holds the
+            # keep-one rows already, for Imperium Ceremony).
+            templates.extend(
+                ActionTemplate(
+                    action_id="keep_peeked_intrigue",
+                    arguments=(("instance_id", instance_id),),
+                )
+                for instance_id in intrigue_instances
+            )
+        templates.extend(
+            ActionTemplate(
+                action_id="acquire_leader_imperium",
+                arguments=(("instance_id", instance_id), ("to_deck_top", True)),
+            )
+            for instance_id in imperium_instances
+        )
+        # Guild Contacts' Foldspace goes on the deck the same way, so every
+        # Reserve stack has its twin.
+        templates.extend(
+            ActionTemplate(
+                action_id="acquire_leader_reserve",
+                arguments=(("card_id", stack.card.card_id), ("to_deck_top", True)),
+            )
+            for stack in content.reserve_stacks
+        )
+        # Ilesa Ecaz's One Step Ahead: the hand card set aside at Round Start.
+        templates.extend(_trash_templates(config, "set_aside_leader_card"))
     templates.extend(_trash_templates(config, "trash_agent_card"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_draw"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_discard"))
@@ -2402,6 +2436,12 @@ def _window_printers(
                 if config.rise_of_ix
                 else ()
             ),
+            # Prince Rhombur Vernius' Ixian Technology (stage P4e).
+            *(
+                (Source.LEADER, face)
+                for face in faces
+                if config.rise_of_ix and face == "prince_rhombur_vernius"
+            ),
         )
     if action_id == "resolve_opponent_discard_without_card":
         # Covert Operation's, Reverend Mother Mohiam's and Test of Humanity's
@@ -2600,6 +2640,13 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
             # The original game's Prudent Diplomacy and Scheme.
             "duke_leto_atreides",
             "baron_vladimir_harkonnen",
+            # Rise of Ix's Final Delivery, Ixian Technology, Conscript,
+            # Couriers and Guild Contacts.
+            "princess_yuna_moritani",
+            "prince_rhombur_vernius",
+            "archduke_armand_ecaz",
+            "viscount_hundro_moritani",
+            "ilesa_ecaz",
         }
     ),
     "resolve_leader_signet_without_option": frozenset(
@@ -2625,23 +2672,37 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "pay_leader_signet_spice": frozenset(
         {"lady_jessica", "reverend_mother_jessica", "staban_tuek", "gaius_helen_mohiam"}
     ),
-    # Unseen Network's Solari; the original game's Scheme.
+    # Unseen Network's Solari; the original game's Scheme; Rise of Ix's
+    # Final Delivery with every Faction at the top.
     "pay_leader_signet_solari": frozenset(
-        {"staban_tuek", "baron_vladimir_harkonnen"}
+        {"staban_tuek", "baron_vladimir_harkonnen", "princess_yuna_moritani"}
     ),
     "pay_leader_signet_water": frozenset({"chani"}),
     "gain_leader_signet_troop": frozenset({"shaddam_corrino_iv"}),
-    # Shaddam's three Solari; the original game's Prudent Diplomacy.
+    # Shaddam's three Solari; the original game's Prudent Diplomacy; Rise
+    # of Ix's Final Delivery.
     "choose_leader_signet_influence": frozenset(
-        {"shaddam_corrino_iv", "duke_leto_atreides"}
+        {"shaddam_corrino_iv", "duke_leto_atreides", "princess_yuna_moritani"}
     ),
-    "acquire_leader_imperium": frozenset({"princess_irulan"}),
-    "acquire_leader_reserve": frozenset({"princess_irulan"}),
+    # Chronicler's Insight; Rise of Ix's Conscript and Guild Contacts.
+    "acquire_leader_imperium": frozenset({"princess_irulan", "archduke_armand_ecaz"}),
+    "acquire_leader_reserve": frozenset(
+        {"princess_irulan", "archduke_armand_ecaz", "ilesa_ecaz"}
+    ),
+    # Rise of Ix's One Step Ahead.
+    "set_aside_leader_card": frozenset({"ilesa_ecaz"}),
+    # Rise of Ix's Coordination.
+    "trash_leader_reveal_card": frozenset({"archduke_armand_ecaz"}),
     "retreat_leader_troops": frozenset({"chani"}),
     "place_leader_bonus_spice": frozenset({"esmar_tuek"}),
     "take_leader_bonus_spice": frozenset({"esmar_tuek"}),
     "deploy_leader_agent": frozenset({"duncan_idaho"}),
     "gain_leader_signet_spice": frozenset({"kota_odax_of_ix"}),
+    # Rise of Ix's Couriers and Ixian Technology.
+    "advance_leader_freighter": frozenset({"viscount_hundro_moritani"}),
+    "recall_leader_freighter": frozenset({"viscount_hundro_moritani"}),
+    "acquire_leader_tech": frozenset({"prince_rhombur_vernius"}),
+    "place_leader_negotiator": frozenset({"prince_rhombur_vernius"}),
     "trash_leader_tech": frozenset({"kota_odax_of_ix"}),
     "use_other_memories": frozenset({"lady_jessica"}),
     "draw_planetologist_intrigue": frozenset({"liet_kynes"}),
@@ -2814,6 +2875,12 @@ def _rise_of_ix_unit_templates(config: RulesetConfig) -> tuple[ActionTemplate, .
             "recall_board_freighter",
             # Spaceport's Foldspace card on top of the deck.
             "acquire_foldspace_to_deck_top",
+            # Prince Rhombur Vernius' Ixian Technology and Viscount Hundro
+            # Moritani's Couriers (stage P4e).
+            "acquire_leader_tech",
+            "place_leader_negotiator",
+            "advance_leader_freighter",
+            "recall_leader_freighter",
         )
     )
     templates.extend(_shipping_track_templates())

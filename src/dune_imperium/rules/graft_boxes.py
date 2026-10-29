@@ -137,6 +137,9 @@ TURN_KEYS: Final = frozenset(
         # finds it gone.
         "turn_agent_recalled",
         "turn_owner",
+        # Ilesa Ecaz's card back in her hand at this turn's start (Rise of
+        # Ix, ``one_step_ahead``), read by the turn's placement.
+        "one_step_ahead_card",
         "undeployable_troops",
         # A Harkonnen Advisor troop still in the shortfall (OQ-038).
         "undeployable_troops_ungained",

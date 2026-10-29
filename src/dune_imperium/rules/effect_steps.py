@@ -526,6 +526,18 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "deploy_leader_agent": _spec(_V.DEPLOY, _S.LEADER, _LEADER),
     "gain_leader_signet_spice": _spec(_V.GAIN, _S.LEADER, _LEADER),
+    # Rise of Ix's Viscount Hundro Moritani: Couriers' two Freighter moves.
+    "advance_leader_freighter": _spec(
+        _V.ADVANCE, _S.LEADER, _LEADER, option="freighter"
+    ),
+    "recall_leader_freighter": _spec(
+        _V.COLLECT, _S.LEADER, _LEADER, option="freighter"
+    ),
+    # Rise of Ix's Prince Rhombur Vernius: Ixian Technology's "OR" halves.
+    "acquire_leader_tech": _spec(_V.ACQUIRE, _S.LEADER, _LEADER, option="tech"),
+    "place_leader_negotiator": _spec(
+        _V.RECRUIT, _S.LEADER, _LEADER, option="negotiator"
+    ),
     "trash_leader_tech": _spec(
         _V.TRASH, _S.LEADER, _LEADER, targets=(("tech_id", _C.TECH),)
     ),
@@ -786,6 +798,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _V.RETREAT, _S.LEADER, _LEADER, option="commander"
     ),
     "recall_spy_for_leader": _spec(_V.RECALL_SPY, _S.LEADER, _LEADER, targets=_POST),
+    # Rise of Ix's Archduke Armand Ecaz: Coordination's card in play.
+    "trash_leader_reveal_card": _spec(
+        _V.TRASH, _S.LEADER, _LEADER, option="coordination", targets=_CARD
+    ),
     "trash_skill_for_strength": _spec(_V.TRASH, _S.COMMANDER, "skill_id"),
     # Forbidden Weapons: three swords for an Influence, or the tile trashed.
     "choose_tech_strength": _spec(

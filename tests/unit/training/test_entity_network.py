@@ -220,7 +220,30 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # intrigue-table column is new (the "dreadnoughts" flag of its unit-count
 # condition), read by its row alone; no older scale moved (compared against
 # 257bdcc0, 2026-10-30).
-_GOLDEN_DIGEST = "e4efb969a0680675d0e9606f2a8b0be4c170ace80ad6f594a2c2d7a9d3006eb4"
+# Then "Princess" Yuna Moritani got her records (stage P4e): only her row
+# changed, and two Leader-table columns are new (her standing and Signet
+# hooks), read by her row alone. A column no Uprising entity uses now keeps
+# the original entities' scale (``entity_features._table``), so her Signet's
+# 7 Solari leaves Scheme's 1 Solari row as it was; no older scale moved
+# (compared against 0d65eb9c, 2026-10-30).
+# Then Prince Rhombur Vernius got his records (stage P4e): only his row
+# changed, and four Leader-table columns are new (his standing and Signet
+# hooks, the Signet's Negotiator and Acquire Tech pieces), read by his row
+# alone; no older scale moved (compared against 7514cff6, 2026-10-30).
+# Then Archduke Armand Ecaz got his records (stage P4e): only his row
+# changed, and four Leader-table columns are new (Coordination's Reveal hook,
+# Conscript's hook and its AcquireCardUpTo piece with its cost cap), read by
+# his row alone; no older scale moved (compared against d13b81cd,
+# 2026-10-30).
+# Then Viscount Hundro Moritani got his records (stage P4e): only his row
+# changed, and three Leader-table columns are new (Intelligence's standing
+# hook, Couriers' hook and its Freighter piece), read by his row alone; no
+# older scale moved (compared against c426d03d, 2026-10-30).
+# Then Ilesa Ecaz got her records (stage P4e): only her row changed, and three
+# Leader-table columns are new (One Step Ahead's standing hook, Guild
+# Contacts' hook and its AcquireReserveCard piece), read by her row alone; no
+# older scale moved (compared against 4b05d412, 2026-10-30).
+_GOLDEN_DIGEST = "ed08e9233f87525334f5343d39d8061b93f5760dbb132b91f4e89f63e64040ca"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

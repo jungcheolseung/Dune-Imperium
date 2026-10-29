@@ -20,7 +20,7 @@ axis (stage P4a, docs/base-game-and-ix-plan.md 17.1 and 17.7;
 ``content.rise_of_ix``): the CHOAM overlay swaps four board spaces, the
 Conflicts take Economic Supremacy and the new cards whose rewards are
 transcribed, the Leaders offered take the new ones whose abilities are wired
-(``IX_LEADER_IDS_OFFERED``, none until stage P4e) and the decks take the Ix
+(``IX_LEADER_IDS_OFFERED``, stage P4e) and the decks take the Ix
 cards whose play data is complete. Setup takes the option on the original
 game since stage P4c-5 (``rules.setup``); with Uprising it is stage P7's.
 """
@@ -174,7 +174,15 @@ IMPERIUM_LEADER_IDS: Final = (
 # prints 0). ``content.rise_of_ix.leaders.IX_LEADERS`` keeps all six (by-id
 # lookups and the observation vocabulary read them), and P4e adds each id
 # here as its Leader's abilities land.
-IX_LEADER_IDS_OFFERED: Final[frozenset[str]] = frozenset()
+IX_LEADER_IDS_OFFERED: Final[frozenset[str]] = frozenset(
+    {
+        "princess_yuna_moritani",
+        "prince_rhombur_vernius",
+        "archduke_armand_ecaz",
+        "viscount_hundro_moritani",
+        "ilesa_ecaz",
+    }
+)
 
 # The four original board spaces the CHOAM overlay covers: "Place the CHOAM
 # board overlay on top of the upper right corner of your original game board
@@ -444,8 +452,8 @@ def _imperium_conflicts(rise_of_ix: bool) -> tuple[ConflictDefinition, ...]:
 def _imperium_leaders(rise_of_ix: bool) -> tuple[LeaderDefinition, ...]:
     """The Leaders the engine plays; with Rise of Ix the new ones follow
     ("players may choose any combination of new or existing Leaders" [Rise
-    of Ix p. 3]) as they are complete (``IX_LEADER_IDS_OFFERED``; none
-    yet, so the offer is the original eight)."""
+    of Ix p. 3]) as they are complete (``IX_LEADER_IDS_OFFERED``), in
+    printed order."""
 
     original = tuple(LEADERS_BY_ID[leader_id] for leader_id in IMPERIUM_LEADER_IDS)
     if not rise_of_ix:

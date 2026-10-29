@@ -1827,13 +1827,15 @@ def test_v39_reserves_the_rise_of_ix_frame_kinds_after_every_other() -> None:
     # P4c-2c opens Sonic Snoopers' pick of Intrigue cards for the deck's bottom;
     # P4c-3 opens the Freighter outside its owner's turn and a recall's rewards
     # (docs/rules/rise-of-ix.md 5); P4d opens the Unload box outside its
-    # owner's turn (docs/rules/rise-of-ix.md 7).
+    # owner's turn (docs/rules/rise-of-ix.md 7); P4e opens Ilesa Ecaz's Round
+    # Start set-aside (rise-of-ix.md 10).
     opened = {
         FrameKind.DREADNOUGHT_CONTROL_CHOICE,
         FrameKind.INTRIGUE_BOTTOM_PICK,
         FrameKind.FREIGHTER_MOVE,
         FrameKind.SHIPPING_REWARD_ICONS,
         FrameKind.UNLOAD_ICONS,
+        FrameKind.ROUND_START_SET_ASIDE,
     }
     assert not (set(IX_FRAME_KINDS) - opened) & set(LEGAL_ACTION_PROVIDERS)
     assert opened <= set(LEGAL_ACTION_PROVIDERS)

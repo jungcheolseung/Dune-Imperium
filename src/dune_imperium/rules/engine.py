@@ -227,7 +227,9 @@ from dune_imperium.rules.intrigue_triggers import (
 )
 from dune_imperium.rules.ix_board_spaces import apply_ix_space_action
 from dune_imperium.rules.leader_abilities import (
+    apply_couriers,
     apply_feyd_track_action,
+    apply_ixian_technology,
     apply_kota_signet_action,
     apply_leader_agent_deploy,
     apply_leader_board_repeat,
@@ -243,6 +245,7 @@ from dune_imperium.rules.leader_abilities import (
     apply_shaddam_signet_choice,
     grant_hungry_for_spice,
     grant_leader_reveal_passives,
+    grant_smuggling_operation,
     legal_feyd_track_actions,
     legal_leader_reveal_actions,
     legal_leader_signet_actions,
@@ -264,6 +267,11 @@ from dune_imperium.rules.navigation import (
     legal_navigation_play_actions,
     legal_navigation_setup_actions,
     navigation_play_is_queued,
+)
+from dune_imperium.rules.one_step_ahead import (
+    apply_set_aside,
+    legal_set_aside_actions,
+    return_set_aside_card,
 )
 from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
@@ -669,6 +677,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     ),
     FrameKind.TECH_SECRET_PROJECT: (legal_secret_project_actions,),
     FrameKind.MASTERSTROKE_SETUP: (legal_masterstroke_actions,),
+    # Rise of Ix's Ilesa Ecaz: One Step Ahead's Round Start set-aside.
+    FrameKind.ROUND_START_SET_ASIDE: (legal_set_aside_actions,),
     FrameKind.RESEARCH_ADVANCE: (
         legal_research_advance_actions,
         legal_scouts_rewards_first_actions,
@@ -968,7 +978,11 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_leader_signet_payment": apply_leader_signet_payment,
     "resolve_leader_signet_without_option": apply_leader_signet_payment,
     "set_aside_leader_imperium": apply_manipulate_signet,
+    # Rise of Ix's Prince Rhombur Vernius: Ixian Technology's two halves.
+    "acquire_leader_tech": apply_ixian_technology,
+    "place_leader_negotiator": apply_ixian_technology,
     "choose_masterstroke_faction": apply_masterstroke_choice,
+    "set_aside_leader_card": apply_set_aside,
     "acquire_leader_imperium": apply_leader_signet_acquire,
     "acquire_leader_reserve": apply_leader_signet_acquire,
     "gain_leader_signet_troop": apply_shaddam_signet_choice,
@@ -981,6 +995,11 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "retreat_leader_troop": apply_leader_reveal_action,
     "retreat_leader_commander": apply_leader_reveal_action,
     "recall_spy_for_leader": apply_leader_reveal_action,
+    # Rise of Ix's Archduke Armand Ecaz: Coordination.
+    "trash_leader_reveal_card": apply_leader_reveal_action,
+    # Rise of Ix's Viscount Hundro Moritani: Couriers' two Freighter moves.
+    "advance_leader_freighter": apply_couriers,
+    "recall_leader_freighter": apply_couriers,
     "finish_reveal": finish_reveal_turn,
     "place_acquisition_spy": apply_acquisition_spy_action,
     "recall_spy_for_acquisition": apply_acquisition_spy_action,
@@ -1181,10 +1200,19 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
-        return _settle_card_knowledge(
-            refresh_pre_reveal_strength(
-                _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
-            )
+        # Ilesa Ecaz's set-aside card returns as her second turn opens, and
+        # Smuggling Operation reads the whole transition's gains (Rise of Ix).
+        return grant_smuggling_operation(
+            return_set_aside_card(
+                _settle_card_knowledge(
+                    refresh_pre_reveal_strength(
+                        _settle_finishing(
+                            _reveal_masterstroke(_advance_automatic(result))
+                        )
+                    )
+                )
+            ),
+            state,
         )
 
     def legal_actions(
@@ -1299,10 +1327,19 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
-        return _settle_card_knowledge(
-            refresh_pre_reveal_strength(
-                _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
-            )
+        # Ilesa Ecaz's set-aside card returns as her second turn opens, and
+        # Smuggling Operation reads the whole transition's gains (Rise of Ix).
+        return grant_smuggling_operation(
+            return_set_aside_card(
+                _settle_card_knowledge(
+                    refresh_pre_reveal_strength(
+                        _settle_finishing(
+                            _reveal_masterstroke(_advance_automatic(result))
+                        )
+                    )
+                )
+            ),
+            state,
         )
 
     def observe(self, state: GameState, player: int) -> PlayerView:

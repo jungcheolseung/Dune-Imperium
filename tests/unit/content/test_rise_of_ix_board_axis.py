@@ -291,29 +291,48 @@ _IX_LEADER_IDS = (
 )
 
 
+# The Ix Leaders stage P4e has wired so far, one commit each (setup, Leader
+# ability and Signet Ring with their tests): "Princess" Yuna Moritani, Prince
+# Rhombur Vernius, Archduke Armand Ecaz, Viscount Hundro Moritani, Ilesa Ecaz.
+# Tessia Vernius waits on a rule question (the order of two Snooper tokens
+# reached by one gain, plan 17.10's P4e note on Quid Pro Quo).
+_WIRED_IX_LEADER_IDS = frozenset(
+    {
+        "princess_yuna_moritani",
+        "prince_rhombur_vernius",
+        "archduke_armand_ecaz",
+        "viscount_hundro_moritani",
+        "ilesa_ecaz",
+    }
+)
+
+
 @pytest.mark.parametrize("options", _IX_OPTIONS, ids=lambda options: str(options))
-def test_the_leaders_offered_hold_the_six_ix_leaders_back_until_p4e(
+def test_the_leaders_offered_hold_back_the_ix_leaders_not_yet_wired(
     options: dict[str, Any],
 ) -> None:
     """rise-of-ix.md 3 item 4, `[Rise of Ix p. 3]`: "Add the 6 new Leaders to
     those you already have. When taking Leaders, players may choose any
     combination of new or existing Leaders." The six (10, `[Rise of Ix p. 2]`)
-    are held back on purpose until stage P4e wires their setup and abilities
-    (``rulesets.IX_LEADER_IDS_OFFERED``, plan 17.10 "P4c-5 Codex 리뷰" (1)): a
-    Leader joins the offer once its abilities are complete, as a deck card
-    joins once its play data is. Until then the offer is the original game's
-    eight, with Rise of Ix or without."""
+    join the offer one by one as stage P4e wires each one's setup and
+    abilities (``rulesets.IX_LEADER_IDS_OFFERED``, plan 17.10 "P4c-5 Codex
+    리뷰" (1)): a Leader joins once its abilities are complete, as a deck card
+    joins once its play data is. Until then it is held back; without Rise of
+    Ix the offer is the original game's eight."""
 
     content = _ix(**options)
-    assert [leader.leader_id for leader in content.leaders] == list(
-        IMPERIUM_LEADER_IDS
-    )
-    assert len(content.leaders) == 8
-    assert not set(_IX_LEADER_IDS) & {leader.leader_id for leader in content.leaders}
+    wired = [leader for leader in _IX_LEADER_IDS if leader in _WIRED_IX_LEADER_IDS]
+    assert [leader.leader_id for leader in content.leaders] == [
+        *IMPERIUM_LEADER_IDS,
+        *wired,
+    ]
+    assert len(content.leaders) == 8 + len(wired)
+    held = set(_IX_LEADER_IDS) - _WIRED_IX_LEADER_IDS
+    assert not held & {leader.leader_id for leader in content.leaders}
     assert [leader.leader_id for leader in _plain(**options).leaders] == list(
         IMPERIUM_LEADER_IDS
     )
-    assert IX_LEADER_IDS_OFFERED == frozenset()
+    assert IX_LEADER_IDS_OFFERED == _WIRED_IX_LEADER_IDS
     # Held back from the offer only: the six stay defined, found by id and in
     # the observation's vocabulary.
     assert tuple(leader.leader_id for leader in IX_LEADERS) == _IX_LEADER_IDS
