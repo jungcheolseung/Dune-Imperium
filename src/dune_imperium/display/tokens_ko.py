@@ -479,6 +479,11 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE: (
         "카드 1장 {discard} 가능 {arrow_right} {draw:1}"
     ),
+    # Rise of Ix's Court Intrigue (stage P4d): Sonic Snoopers' prompt words.
+    PersonalCardAgentEffect.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE: (
+        "{intrigue_card} 1장을 {intrigue} {deck} 맨 아래에 놓기 가능 "
+        "{arrow_right} {intrigue:1}"
+    ),
     # Rise of Ix's Guild Chief Administrator (stage P4d).
     PersonalCardAgentEffect.MAY_DISCARD_TO_TRASH_A_CARD: (
         "카드 1장 {discard} 가능 {arrow_right} 카드 1장 {trash} 가능"

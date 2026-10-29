@@ -347,6 +347,7 @@ _OPTIONAL_AGENT_TURN_ROWS: Final = frozenset(
         "select_corrinth_city_discard",
         "pay_agent_card_intrigue_and_spice",
         "trash_intrigue_for_agent_card",
+        "put_intrigue_on_bottom_for_agent_card",
         "acquire_imperium_with_solari",
         "acquire_reserve_with_solari",
         "acquire_imperium_by_card",

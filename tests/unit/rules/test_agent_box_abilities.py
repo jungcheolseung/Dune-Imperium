@@ -178,9 +178,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Landing Rights (the Freighter icon), Shai-Hulud ("[Trash a card] ->
     # [2 troops]"), Guild Chief Administrator ("[Discard] -> [Trash a
     # card]"), Desert Ambush ("For each troop you deploy this turn, you may
-    # force an enemy unit to retreat") and Embedded Agent ("If you have another
-    # Bene Gesserit card in play: [Freighter] [Freighter]").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 7
+    # force an enemy unit to retreat"), Embedded Agent ("If you have another
+    # Bene Gesserit card in play: [Freighter] [Freighter]") and Court Intrigue
+    # ("Put an Intrigue card on the bottom of the deck -> [Intrigue card]").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 8
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -962,7 +963,9 @@ def test_eight_discard_arrows_read_the_discarded_card() -> None:
 def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
     """Composed A3d: Branching Path and Junction Headquarters pay with an
     Intrigue card under an Alliance judged when the cost is paid; Branching
-    Path's rewards are armed as icons, Junction's VP is paid at once."""
+    Path's rewards are armed as icons, Junction's VP is paid at once. Rise of
+    Ix's Court Intrigue pays with one put under the Intrigue deck instead,
+    its Intrigue draw armed."""
 
     branching = AGENT_BOX_ABILITIES[
         _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
@@ -970,11 +973,13 @@ def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
     junction = AGENT_BOX_ABILITIES[
         _BOX.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
     ]
+    court = AGENT_BOX_ABILITIES[_BOX.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE]
     intrigue_arrows = [
         ability for ability in AGENT_BOX_ABILITIES.values() if intrigue_box(ability)
     ]
-    assert intrigue_arrows == [branching, junction]
+    assert intrigue_arrows == [branching, court, junction]
     assert branching.armed_icons == (AGENT_ICON_INTRIGUE, AGENT_ICON_SPICE)
+    assert court.armed_icons == (AGENT_ICON_INTRIGUE,)
     assert not junction.armed_icons
     for ability in intrigue_arrows:
         assert optional_arrow(ability)
@@ -1112,8 +1117,11 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     # Spice Smugglers: its Influence and its Solari armed once the spice is
     # paid, in the owner's order (OQ-148).
     smugglers = _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+    # Rise of Ix's Court Intrigue: its Intrigue draw once the card is under
+    # the deck.
+    court = _BOX.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE
     assert users == {
-        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy},
+        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy, court},
         AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy, duncan},
         AGENT_ICON_SPICE: {branching},
         AGENT_ICON_TROOPS: {gambit, elite, duncan},

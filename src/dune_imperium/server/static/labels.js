@@ -220,6 +220,7 @@ const ACTION_LABELS = {
   skip_intrigue_trash: "{trash}할 카드 없음 (건너뛰기)",
   skip_intrigue_recall_agent: "소환할 {agent} 없음 (건너뛰기)",
   trash_intrigue_for_agent_card: "{trash_intrigue} (카드 비용)",
+  put_intrigue_on_bottom_for_agent_card: "{intrigue_card}를 {intrigue} {deck} 맨 아래로 (카드 비용)",
   trash_intrigue_for_contract: "{trash_intrigue} (즉시 {contract})",
   trash_intrigue_for_imperial_privilege: "{trash_intrigue} → {intrigue} (제국 특권)",
   put_back_top_card: "{deck} 맨 위 카드 그대로 두기",

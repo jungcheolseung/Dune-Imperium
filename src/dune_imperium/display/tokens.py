@@ -420,6 +420,11 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE: (
             "You may discard a card → Draw 1 card"
         ),
+        # Rise of Ix's Court Intrigue (stage P4d).
+        PersonalCardAgentEffect.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE: (
+            "You may put an Intrigue card on the bottom of the Intrigue deck → "
+            "Draw 1 Intrigue card"
+        ),
         # Rise of Ix's Guild Chief Administrator (stage P4d).
         PersonalCardAgentEffect.MAY_DISCARD_TO_TRASH_A_CARD: (
             "You may discard a card → You may trash a card"

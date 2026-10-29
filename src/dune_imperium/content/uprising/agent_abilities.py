@@ -87,6 +87,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
+    PutIntrigueOnDeckBottom,
     RecallAgent,
     RecruitTroops,
     Research,
@@ -451,6 +452,25 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ),
                 mark=AbilityMark.OPTIONAL,
                 armed_icons=("intrigue", "spice"),
+            ),
+            # Court Intrigue (Rise of Ix): "Put an Intrigue card on the bottom
+            # of the deck -> [Intrigue card]" [Steam app text and screen
+            # pieces]: an optional arrow [FAQ p. 3] whose cost is one Intrigue
+            # card of the hand put under the Intrigue deck, unseen by the
+            # others ([Rise of Ix p. 10], rise-of-ix.md 9.1, 13); the draw, a
+            # hidden draw, is then armed as its own step (OQ-106), as
+            # Branching Path's. The card put there can be the one drawn when
+            # the deck holds nothing else.
+            _BOX.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(DrawIntrigueCards(1),),
+                        costs=(PutIntrigueOnDeckBottom(),),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("intrigue",),
             ),
             # Junction Headquarters: "If Spacing Guild Alliance: You may trash
             # an Intrigue card and pay 2 spice -> Gain 1 VP".

@@ -29,10 +29,11 @@ from dune_imperium.core import (
 )
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.observation import ix_pending_of
+from dune_imperium.core.observation import ix_pending_of, known_intrigue_places
 from dune_imperium.display.cards import personal_card_text, personal_card_text_ko
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.effect_steps import first_step
+from dune_imperium.simulation.invariants import check_observation_privacy
 
 IX = RulesetConfig(
     base_game=BaseGame.IMPERIUM, rise_of_ix=True, first_player_seat_zero=True
@@ -993,3 +994,127 @@ def test_embedded_agent_reveals_an_intrigue_card() -> None:
     held = len(state.players[0].intrigue_cards)
     drawn = _do(state, "draw_reveal_intrigue").state
     assert len(drawn.players[0].intrigue_cards) == held + 1
+
+
+# --- Court Intrigue -------------------------------------------------------------
+
+COURT = "imperium:court_intrigue:0"
+_PUT = "put_intrigue_on_bottom_for_agent_card"
+
+
+def _court(state: GameState, *intrigue: str) -> GameState:
+    """Court Intrigue sent to Wealth (its Emperor icon), the seat holding
+    ``intrigue`` (taken out of the Intrigue deck)."""
+
+    deck = tuple(card for card in state.intrigue_deck if card not in intrigue)
+    state = _give(replace(state, intrigue_deck=deck), 0, hand=(COURT,))
+    state = _give(state, 0, intrigue_cards=intrigue)
+    state = _do(state, "choose_agent_card", card_id=COURT).state
+    return _do(state, "place_agent", space_id="wealth").state
+
+
+def _intrigue_ids(state: GameState, count: int) -> tuple[str, ...]:
+    return state.intrigue_deck[:count]
+
+
+def test_court_intrigue_matches_the_app_and_joins_the_ix_deck() -> None:
+    """App table: Emperor, cost 2, one copy; the Emperor icon, its
+    Infiltration icon; Reveal 1 Persuasion, 1 sword. Text: "Put an Intrigue
+    card on the bottom of the deck -> [Intrigue card]"."""
+    entry = IMPERIUM_CARDS_BY_ID["court_intrigue"]
+    assert (entry.copies, entry.acquisition_cost) == (1, 2)
+    assert entry.factions == (Faction.EMPEROR,)
+    assert entry.agent_icons == entry.infiltration_icons == (AgentIcon.EMPEROR,)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 1)
+    assert entry.play_data_complete
+    assert COURT in content_for(IX).imperium_deck_instance_ids
+    for config in (replace(IX, rise_of_ix=False), RulesetConfig()):
+        assert COURT not in content_for(config).imperium_deck_instance_ids
+    assert (
+        "Agent: You may put an Intrigue card on the bottom of the Intrigue deck → "
+        "Draw 1 Intrigue card" in personal_card_text(entry)
+    )
+    assert len(personal_card_text(entry)) == len(personal_card_text_ko(entry))
+
+
+def test_the_card_goes_under_the_deck_unseen_then_one_is_drawn() -> None:
+    """ "Court Intrigue·Sonic Snoopers — Intrigue를 덱 맨 아래에 놓을 때 상대에게
+    보이지 않는다" (rise-of-ix.md 9.1, [Rise of Ix p. 10]); "놓은 좌석이 Intrigue
+    덱 맨 아래 카드(들) ... 공개하지 않는다" (rise-of-ix.md 13, OQ-149): the
+    seat knows the card at the bottom, the others do not and forget what they
+    knew of its hand; the draw from the top is its own step (OQ-106)."""
+    state = _start()
+    held, kept = _intrigue_ids(state, 2)
+    state = _give(state, 1, known_intrigue_ids=(held, kept))
+    state = _court(state, held, kept)
+    top = state.intrigue_deck[0]
+    put = _do(state, _PUT, intrigue_card_id=held)
+    events = [event for event in put.events if event.kind == "intrigue_put_on_bottom"]
+    assert len(events) == 1 and "card_id" not in dict(events[0].payload)
+    state = put.state
+    assert state.intrigue_deck[-1] == held
+    assert state.players[0].intrigue_cards == (kept,)
+    assert known_intrigue_places(state, state.players[0])[1] == ((0, held),)
+    assert state.players[1].known_intrigue_ids == ()
+    check_observation_privacy(state)
+    drawn = _do(state, "resolve_agent_card_effect", effect="intrigue").state
+    assert drawn.players[0].intrigue_cards == (kept, top)
+    assert drawn.intrigue_deck[-1] == held
+    check_observation_privacy(drawn)
+
+
+def test_the_card_put_down_is_drawn_back_from_a_deck_of_one() -> None:
+    """The draw takes the deck's top card; with nothing else left in the deck
+    it is the card just put there, back in the seat's hand, where its
+    knowledge record ends (OQ-149, ``settle_known_intrigue``)."""
+    state = _start()
+    (held,) = _intrigue_ids(state, 1)
+    state = _court(state, held)
+    state = replace(state, intrigue_deck=(), intrigue_discard=())
+    put = _do(state, _PUT, intrigue_card_id=held).state
+    assert put.intrigue_deck == (held,)
+    drawn = _do(put, "resolve_agent_card_effect", effect="intrigue").state
+    assert drawn.players[0].intrigue_cards == (held,)
+    assert drawn.intrigue_deck == ()
+    assert drawn.players[0].known_intrigue_ids == ()
+
+
+def test_no_intrigue_card_no_payment_and_the_arrow_lapses() -> None:
+    """ "내지 않으면 효과도 없다": with no Intrigue card the cost cannot be paid;
+    the optional arrow lapses at the turn's end (OQ-095 (2))."""
+    state = _court(_start())
+    assert not _offered(state, _PUT)
+    state = _do(state, "resolve_board_effect", effect="resources").state
+    state = _do(state, "resolve_faction_influence").state
+    finished = _do(state, "finish_agent_turn")
+    assert "agent_card_effect_lapsed" in _kinds(finished.events)
+
+
+def test_court_intrigue_infiltrates_an_emperor_space() -> None:
+    """ "잠입 아이콘 카드 7장: ... Court Intrigue(Emperor)" (rise-of-ix.md 7):
+    it goes to Wealth past an enemy Agent."""
+    state = _start()
+    state = _give(state, 1, agent_locations=("wealth",), agents_available=1)
+    state = _court(state)
+    assert "wealth" in state.players[0].agent_locations
+
+
+def test_the_deck_bottom_rows_are_in_the_ix_catalog_only() -> None:
+    """The rows naming the Intrigue card are in the original game's catalog
+    with Rise of Ix alone [Rise of Ix p. 2]."""
+    state = _start()
+    (held,) = _intrigue_ids(state, 1)
+    state = _court(state, held)
+    rows = [
+        row
+        for row in ENGINE.legal_actions(state, 0)
+        if dict(row.arguments).get("printed") == "court_intrigue"
+    ]
+    assert rows
+    plain = set(ActionCodec(replace(IX, rise_of_ix=False)).catalog)
+    for row in rows:
+        template = ActionTemplate(row.action_id, row.arguments)
+        assert template in set(CODEC.catalog) - plain

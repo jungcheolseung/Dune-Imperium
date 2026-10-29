@@ -279,6 +279,8 @@ BOX_ACTION_IDS: Final = frozenset(
         "decline_corrinth_city_payment",
         "pay_agent_card_intrigue_and_spice",
         "trash_intrigue_for_agent_card",
+        # Rise of Ix's Court Intrigue: an Intrigue card under the deck.
+        "put_intrigue_on_bottom_for_agent_card",
         "decline_agent_card_intrigue_payment",
         # Acquisitions.
         "acquire_imperium_with_solari",

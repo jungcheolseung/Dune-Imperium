@@ -745,6 +745,18 @@ class TrashIntrigueCard:
 
 
 @dataclass(frozen=True, slots=True)
+class PutIntrigueOnDeckBottom:
+    """Put one of the player's Intrigue cards on the bottom of the Intrigue
+    deck: "Put an Intrigue card on the bottom of the deck" [Court Intrigue
+    card, Steam app text]. The other seats do not see which card ("Court
+    Intrigue·Sonic Snoopers — Intrigue를 덱 맨 아래에 놓을 때 상대에게 보이지
+    않는다", docs/rules/rise-of-ix.md 9.1, [Rise of Ix p. 10]); the seat that
+    put it knows it until it is drawn or the deck is shuffled (rise-of-ix.md
+    13, OQ-149, ``rules.intrigue_knowledge``). A Twisted Intrigue card never
+    reaches the common deck (OQ-097)."""
+
+
+@dataclass(frozen=True, slots=True)
 class RecallSpy:
     """Return ``count`` of the player's placed Spies to supply (player choice)."""
 
@@ -872,6 +884,7 @@ type Cost = (
     | LoseTroops
     | GiveIntrigueToOpponent
     | TrashIntrigueCard
+    | PutIntrigueOnDeckBottom
     | RecallSpy
     | RetreatTroops
     | FlipBattleCard

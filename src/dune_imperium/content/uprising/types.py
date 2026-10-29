@@ -421,6 +421,11 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND = (
         "may_move_freighter_twice_if_bene_gesserit_bond"
     )
+    # Court Intrigue (Rise of Ix): "Put an Intrigue card on the bottom of the
+    # deck -> [Intrigue card]".
+    MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE = (
+        "may_put_intrigue_on_bottom_to_draw_intrigue"
+    )
     # Desert Ambush (Rise of Ix): "For each troop you deploy this turn, you
     # may force an enemy unit to retreat."
     MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED = (

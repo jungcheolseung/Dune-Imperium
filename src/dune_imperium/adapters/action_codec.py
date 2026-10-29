@@ -1098,6 +1098,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "recall_reveal_freighter",
             )
         )
+        # Court Intrigue's arrow: an Intrigue card of the hand under the
+        # Intrigue deck (``agent_box_abilities.intrigue_rows``).
+        templates.extend(
+            ActionTemplate(
+                action_id="put_intrigue_on_bottom_for_agent_card",
+                arguments=(("intrigue_card_id", instance_id),),
+            )
+            for instance_id in content.intrigue_deck_instance_ids
+        )
         # Desert Ambush's enemy unit (a troop or a dreadnought) to retreat,
         # by its seat; the Bloodlines catalog holds the troop rows already.
         for seat in range(config.players):
@@ -2801,6 +2810,8 @@ _PIECE_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "TrashCard": (("trash", ""),),
     "TrashThisCard": (("trash", ""),),
     "TrashIntrigueCard": (("trash", ""), ("pay", "")),
+    # Court Intrigue's Intrigue card under the deck (Rise of Ix).
+    "PutIntrigueOnDeckBottom": (("pay", ""),),
     "DiscardFromHand": (("discard", ""), ("pay", "")),
     "PayResources": (("pay", ""),),
     "SpendSpecimens": (("pay", ""),),

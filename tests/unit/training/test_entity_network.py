@@ -281,7 +281,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # observation v39 and its Ix features are not on master and no network has
 # trained on them; Uprising and original-game rows never change. No other
 # row or scale moved (compared against 5ddab661 on claude/base-ix-p4).
-_GOLDEN_DIGEST = "eb1142baebec0ac6b65f6b5194217b390ce8afeee6f3d199d96983c5b4fed3b9"
+# Then Court Intrigue got its record (stage P4d): only its own row changed,
+# and one personal-table column is new (the cost that puts an Intrigue card
+# under the deck), read by its row alone; no older scale moved (compared
+# against 560892d9, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 9260241c (2026-10-30).
+_GOLDEN_DIGEST = "6bc85c18450cd1fdf73cad058bf5eaeb96c5b48e222c8d2e6ec04439de7dea39"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

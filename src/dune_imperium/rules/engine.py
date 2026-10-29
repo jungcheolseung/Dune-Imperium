@@ -964,6 +964,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_corrinth_city_payment": apply_corrinth_city_payment,
     "pay_agent_card_intrigue_and_spice": apply_agent_card_intrigue_payment,
     "trash_intrigue_for_agent_card": apply_agent_card_intrigue_payment,
+    # Court Intrigue (Rise of Ix): an Intrigue card under the deck.
+    "put_intrigue_on_bottom_for_agent_card": apply_agent_card_intrigue_payment,
     "decline_agent_card_intrigue_payment": apply_agent_card_intrigue_payment,
     "recall_agent_for_agent_card": apply_agent_card_recall,
     "recall_conflict_agent_for_agent_card": apply_agent_card_recall,

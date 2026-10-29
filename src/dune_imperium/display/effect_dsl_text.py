@@ -131,6 +131,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     PledgeConflictWinSolari,
     PledgeFirstPlaceInfluence,
+    PutIntrigueOnDeckBottom,
     RecallAgent,
     RecallOtherAgent,
     RecallSpy,
@@ -490,6 +491,9 @@ def cost_text(cost: Cost) -> str:
                 else ""
             )
             return f"Trash an Intrigue card from your hand{extra}"
+        case PutIntrigueOnDeckBottom():
+            # Rise of Ix's Court Intrigue.
+            return "Put an Intrigue card on the bottom of the Intrigue deck"
         case DiscardFromHand(count=1):
             return "Discard a card"
         case DiscardFromHand(count=count):

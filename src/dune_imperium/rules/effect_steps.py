@@ -460,6 +460,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "trash_intrigue_for_agent_card": _spec(
         _V.TRASH, _S.AGENT_CARD, _BOX, targets=_INTRIGUE
     ),
+    # Court Intrigue (Rise of Ix): the card put under the Intrigue deck.
+    "put_intrigue_on_bottom_for_agent_card": _spec(
+        _V.PAY, _S.AGENT_CARD, _BOX, targets=_INTRIGUE
+    ),
     "acquire_imperium_by_card": _spec(
         _V.ACQUIRE, _S.AGENT_CARD, _BOX, targets=_IMPERIUM
     ),

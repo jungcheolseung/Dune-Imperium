@@ -158,6 +158,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     PledgeConflictWinSolari,
     PledgeFirstPlaceInfluence,
+    PutIntrigueOnDeckBottom,
     RecallAgent,
     RecallOtherAgent,
     RecallSpy,
@@ -714,6 +715,9 @@ def cost_text_ko(cost: Cost) -> str:
             # actual count either, so bare ``{troop}``, not ``{troop:N}``.
             extra = " (뒤틀린 책략 카드가 아니면 {troop})" if troops else ""
             return f"핸드에서 {{trash_intrigue}}{extra}"
+        case PutIntrigueOnDeckBottom():
+            # Rise of Ix's Court Intrigue: Sonic Snoopers' prompt words.
+            return "{intrigue_card} 1장을 {intrigue} {deck} 맨 아래에 놓기"
         case DiscardFromHand(count=1):
             return "카드 1장 {discard}"
         case DiscardFromHand(count=count):

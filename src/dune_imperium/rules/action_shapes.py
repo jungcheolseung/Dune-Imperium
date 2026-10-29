@@ -464,6 +464,11 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "trash_intrigue_for_agent_card": _row(
         _V.TRASH, _S.AGENT_CARD, _T.INTRIGUE_CARD, tag=_BOX
     ),
+    # Court Intrigue (Rise of Ix): the Intrigue card its arrow puts under the
+    # Intrigue deck [Rise of Ix p. 10].
+    "put_intrigue_on_bottom_for_agent_card": _row(
+        _V.PAY, _S.AGENT_CARD, _T.INTRIGUE_CARD, variant="intrigue_bottom", tag=_BOX
+    ),
     # Imperium Ceremony keeps one of the Intrigue deck's top two cards.
     "keep_peeked_intrigue": _row(_V.KEEP, _S.AGENT_CARD, _T.INTRIGUE_CARD),
     # --- Leaders -------------------------------------------------------------

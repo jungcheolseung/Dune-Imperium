@@ -179,6 +179,7 @@ const LABELS_EN = {
     "skip_intrigue_trash": "No card to {trash} (skip)",
     "skip_intrigue_recall_agent": "No {agent} to recall (skip)",
     "trash_intrigue_for_agent_card": "{trash_intrigue} (card cost)",
+    "put_intrigue_on_bottom_for_agent_card": "{intrigue_card} to the bottom of the {intrigue} {deck} (card cost)",
     "trash_intrigue_for_contract": "{trash_intrigue} (Immediate {contract})",
     "trash_intrigue_for_imperial_privilege": "{trash_intrigue} -> {intrigue} (Imperial Privilege)",
     "put_back_top_card": "Leave top card of {deck} on top",

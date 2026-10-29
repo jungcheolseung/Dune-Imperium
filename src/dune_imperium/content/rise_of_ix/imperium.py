@@ -14,8 +14,8 @@ keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
 game's deck takes only completed cards (CHOAM Delegate, Jamis, Sayyadina,
 Truthsayer, Imperial Shock Trooper, Local Fence, Water Peddler, Guild Chief
-Administrator, Negotiated Withdrawal, Desert Ambush, Full-Scale Assault and
-Embedded Agent so far),
+Administrator, Negotiated Withdrawal, Desert Ambush, Full-Scale Assault,
+Embedded Agent and Court Intrigue so far),
 while the observation lists every identity from v39. Setup takes Rise of Ix
 on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
@@ -83,6 +83,16 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=2,
         infiltration_icons=(AgentIcon.EMPEROR,),
+        # App table: Emperor; the Emperor icon, its Infiltration icon
+        # (``InfiltrationIconList``); Reveal 1 Persuasion, 1 sword. Text and
+        # screen pieces: Agent "Put an Intrigue card on the bottom of the
+        # deck -> [Intrigue card]", unseen by the others [Rise of Ix p. 10].
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR,),
+        agent_effect=PersonalCardAgentEffect.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("desert_ambush", "Desert Ambush"),
