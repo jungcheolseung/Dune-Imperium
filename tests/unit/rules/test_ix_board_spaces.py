@@ -568,6 +568,25 @@ def test_the_rows_are_in_the_catalog_only_with_rise_of_ix() -> None:
     assert not printers & refusals(ORIGINAL)
 
 
+def test_each_row_names_only_the_space_that_prints_it() -> None:
+    """A row of the four spaces' icons, and the Foldspace deck-top option, is
+    named by the space or spaces that print it and no other."""
+
+    printers: dict[tuple[object, object], set[object]] = {}
+    for t in ActionCodec(replace(ORIGINAL, rise_of_ix=True)).catalog:
+        arguments = dict(t.arguments)
+        if arguments.get("source") != "board_space":
+            continue
+        key = (arguments.get("icon"), arguments.get("option"))
+        printers.setdefault(key, set()).add(arguments.get("printed"))
+    assert printers[("commission", None)] == {"dreadnought"}
+    assert printers[("ix_tech", None)] == {"dreadnought"}
+    assert printers[("tech_negotiation", "tech")] == {"tech_negotiation"}
+    assert printers[("tech_negotiation", "negotiator")] == {"tech_negotiation"}
+    assert printers[("freighter", None)] == {"interstellar_shipping", "smuggling"}
+    assert printers[("foldspace", "deck_top")] == {"foldspace"}
+
+
 @pytest.mark.parametrize(
     ("space", "card", "changes"),
     [
