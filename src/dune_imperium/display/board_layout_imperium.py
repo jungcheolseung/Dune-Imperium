@@ -47,6 +47,8 @@ from dune_imperium.display.board_layout import (
     CONFLICT_UNIT_GAP,
     CONFLICT_UNIT_MIN_SCALE,
     CONFLICT_UNIT_PADDING,
+    DREADNOUGHT_ASPECT,
+    DREADNOUGHT_WIDTH,
     GARRISON_UNIT_LINE,
     GARRISON_UNIT_MIN_SCALE,
     SANDWORM_WIDTH,
@@ -258,6 +260,7 @@ CONFLICT_UNIT_SIZES: Final[Mapping[str, tuple[float, float]]] = MappingProxyType
         "commander": _piece_by_height(_FRAME_HEIGHT * COMMANDER_HEIGHT, 130 / 195),
         "agent": _piece_by_height(_FRAME_HEIGHT * AGENT_ON_SPACE_HEIGHT, 52 / 81),
         "sandworm": _piece_by_width(SANDWORM_WIDTH, 62 / 57),
+        "dreadnought": _piece_by_width(DREADNOUGHT_WIDTH, DREADNOUGHT_ASPECT),
     }
 )
 # The packing constants are Uprising's, except the garrison's padding: on
@@ -453,7 +456,7 @@ def imperium_board_layout() -> dict[str, Any]:
                 "rings": [list(ring) for ring in GARRISON_RINGS],
                 "sizes": {
                     kind: list(CONFLICT_UNIT_SIZES[kind])
-                    for kind in ("troop", "commander")
+                    for kind in ("troop", "commander", "dreadnought")
                 },
                 "gap": CONFLICT_UNIT_GAP,
                 "line": GARRISON_UNIT_LINE,

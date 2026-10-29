@@ -126,7 +126,9 @@ def test_marker_tables_cover_the_printed_tracks() -> None:
     assert isinstance(units, dict)
     assert units["boxes"] == [list(box) for box in CONFLICT_UNIT_BOXES]
     assert units["cross"] == list(CONFLICT_CROSS)
-    assert set(units["sizes"]) == {"troop", "commander", "agent", "sandworm"}
+    assert set(units["sizes"]) == {
+        "troop", "commander", "agent", "sandworm", "dreadnought"
+    }
     assert units["sizes"]["troop"][0] == cube
     assert units["gap"] == CONFLICT_UNIT_GAP
     assert units["padding"] == CONFLICT_UNIT_PADDING
@@ -306,13 +308,15 @@ def _ring_unit_layout(
 def test_garrison_rings_hold_their_units_as_pieces() -> None:
     # Every unit in a garrison stands in its seat's printed ring as a piece
     # of its own, the same pieces as in the Conflict: troops, and Bloodlines'
-    # Sardaukar Commanders (up to 7 exist). The client gets the rings and the
-    # packing's constants in one table.
+    # Sardaukar Commanders (up to 7 exist), and Rise of Ix's dreadnoughts,
+    # which wait in the garrison too [Rise of Ix p. 6]. The client gets the
+    # rings and the packing's constants in one table.
     units = marker_layout()["garrison_units"]
     assert isinstance(units, dict)
     assert units["rings"] == [list(ring) for ring in GARRISON_RINGS]
     assert units["sizes"] == {
-        kind: list(CONFLICT_UNIT_SIZES[kind]) for kind in ("troop", "commander")
+        kind: list(CONFLICT_UNIT_SIZES[kind])
+        for kind in ("troop", "commander", "dreadnought")
     }
     assert units["gap"] == CONFLICT_UNIT_GAP
     assert units["line"] == GARRISON_UNIT_LINE

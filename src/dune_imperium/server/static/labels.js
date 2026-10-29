@@ -974,6 +974,9 @@ const TERMS = {
   troop: { icon: "troop", ko: "병력", en: "troop" },
   recruit: { icon: null, ko: "소집", en: "Recruit" },
   sandworm: { icon: "sandworm", ko: "모래벌레", en: "sandworm" },
+  /* Rise of Ix's dreadnought, a word: the expansion prints no icon for the
+     figure itself (glossary-ko.md, Rise of Ix). */
+  dreadnought: { icon: null, ko: "드레드노트", en: "dreadnought" },
   agent: { icon: "agent", ko: "에이전트", en: "Agent" },
   recall_agent: { icon: "recall_agent", ko: "에이전트 소환", en: "Recall Agent" },
   spy: { icon: "spy", ko: "스파이", en: "Spy" },

@@ -514,6 +514,28 @@ function renderBoardStage(board, view) {
     const box = controlFlagBox(spaceId);
     if (box) stage.appendChild(controlMarker(seat, spaceId, box));
   }
+  /* Rise of Ix: a dreadnought controlling a space stands on its flag,
+     over the Control marker it covers [Rise of Ix p. 6]
+     (docs/rules/rise-of-ix.md 6). */
+  const dreadnoughtSize = (boardLayout(view).tracks.conflict_units || { sizes: {} }).sizes
+    .dreadnought;
+  for (const [spaceId, seat, leaving] of view.dreadnought_control || []) {
+    const box = controlFlagBox(spaceId);
+    if (!box || !dreadnoughtSize) continue;
+    const piece = unitPiece("dreadnought", seat, "control-dreadnought");
+    piece.removeAttribute("aria-hidden");
+    piece.setAttribute("role", "img");
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    title.textContent = t(
+      leaving ? "board.dreadnought_control_leaving" : "board.dreadnought_control_staying",
+      { seat, name: spaceName(spaceId) },
+    );
+    piece.prepend(title);
+    piece.style.width = `${dreadnoughtSize[0]}%`;
+    piece.style.height = `${dreadnoughtSize[1]}%`;
+    placeAt(piece, box[0] + box[2] / 2, box[1] + box[3] / 2);
+    stage.appendChild(piece);
+  }
   for (const [spaceId, count] of makerSpice) {
     const point = makerSpicePoint(spaceId);
     if (count && point) stage.appendChild(bonusSpiceToken(spaceId, count, point));
@@ -946,8 +968,9 @@ function makerHooksToken(seat, layout) {
 
 /* The kinds of unit a seat can have in the Conflict, in the order they are
    laid out: troops, then the figures (Bloodlines' Sardaukar Commanders,
-   Duncan Idaho's Into the Fray Agent, sandworms). */
-const CONFLICT_UNIT_KINDS = ["troop", "commander", "agent", "sandworm"];
+   Duncan Idaho's Into the Fray Agent, sandworms, Rise of Ix's
+   dreadnoughts). */
+const CONFLICT_UNIT_KINDS = ["troop", "commander", "agent", "sandworm", "dreadnought"];
 
 /* Where each of a seat's units stands in its quadrant of the Conflict, one
    piece per unit as on the table ("keep your deployed units in the quadrant
@@ -1031,9 +1054,10 @@ function conflictUnitLayout(counts, box, layout, { fromRight = false, fromBottom
 }
 
 /* The kinds of unit a garrison holds, in the order they are laid out:
-   troops, then Bloodlines' Sardaukar Commanders (nothing else is ever
-   garrisoned; a sandworm goes straight to the Conflict). */
-const GARRISON_UNIT_KINDS = ["troop", "commander"];
+   troops, then Bloodlines' Sardaukar Commanders, then Rise of Ix's
+   dreadnoughts (nothing else is ever garrisoned; a sandworm goes straight
+   to the Conflict). */
+const GARRISON_UNIT_KINDS = ["troop", "commander", "dreadnought"];
 
 /* Every way to share `total` rows among `parts` kinds, at least one row
    each, the first kind's fewest first. */
@@ -1245,6 +1269,8 @@ function unitPiece(kind, seat, className) {
     piece = document.createElement("span");
     piece.className = className;
     piece.style.background = SEAT_COLORS[seat];
+  } else if (kind === "dreadnought") {
+    piece = drawnDreadnought(className, seat);
   } else {
     const picture = kind === "commander" ? state.catalog.commander_token : iconUrl("sandworm");
     if (picture) {
@@ -1282,6 +1308,29 @@ function drawnSandworm(className) {
   );
   worm.appendChild(body);
   return worm;
+}
+
+/* A seat's dreadnought, drawn (the app's is a 3D model; user decision
+   2026-10-29, plan 18.6.6 3): the warship's blocky hull with its raised
+   bridge, seen from the side like the icon the Ix board prints, flat in
+   the seat's colour with the dark edge of every piece. */
+function drawnDreadnought(className, seat) {
+  const svgNs = "http://www.w3.org/2000/svg";
+  const ship = document.createElementNS(svgNs, "svg");
+  ship.setAttribute("class", `${className} drawn dreadnought-piece`);
+  ship.setAttribute("viewBox", "0 0 70 44");
+  ship.setAttribute("preserveAspectRatio", "none");
+  const hull = document.createElementNS(svgNs, "path");
+  hull.setAttribute(
+    "d",
+    "M3 30 L10 18 L24 15 L28 5 L44 3 L52 12 L64 16 L67 28 L60 41 L9 41 Z",
+  );
+  hull.setAttribute("fill", SEAT_COLORS[seat]);
+  const deck = document.createElementNS(svgNs, "path");
+  deck.setAttribute("d", "M10 18 L64 16 M28 5 L30 15");
+  deck.setAttribute("fill", "none");
+  ship.append(hull, deck);
+  return ship;
 }
 
 /* "troop 3, Sardaukar Commander 1": the kinds a seat has, with their
@@ -1593,6 +1642,7 @@ function renderTrackMarkers(stage, view) {
     const garrison = {
       troop: player.troops_garrison || 0,
       commander: player.commanders_garrison || 0,
+      dreadnought: player.dreadnoughts_garrison || 0,
     };
     if (tracks.garrison_units && GARRISON_UNIT_KINDS.some((kind) => garrison[kind] > 0)) {
       const avoid = hooks ? [makerHooksBox(seat, hooks)] : [];
@@ -1606,6 +1656,7 @@ function renderTrackMarkers(stage, view) {
       commander: player.commanders_conflict || 0,
       agent: player.agent_in_conflict || 0,
       sandworm: player.sandworms_conflict || 0,
+      dreadnought: player.dreadnoughts_conflict || 0,
     };
     if (CONFLICT_UNIT_KINDS.some((kind) => counts[kind] > 0)) {
       stage.appendChild(conflictUnits(seat, counts, unitLayout));

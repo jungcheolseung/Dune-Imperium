@@ -330,6 +330,12 @@ _SCAN_WIDTH, _SCAN_HEIGHT = 6012, 6005
 _FRAME_HEIGHT = SPACE_BOXES["sardaukar"][3]
 AGENT_ON_SPACE_HEIGHT: Final = 0.72
 SANDWORM_WIDTH: Final = 3.6
+# Rise of Ix's dreadnought, a seat's own figure drawn in its colour (the app's
+# is a 3D model; user decision 2026-10-29: drawn like the sandworm),
+# as wide as the sandworm (the miniature is a large figure, some three
+# troop cubes long), at the drawing's 70 x 44 proportions.
+DREADNOUGHT_WIDTH: Final = 3.6
+DREADNOUGHT_ASPECT: Final = 70 / 44
 
 
 def _piece_by_height(height: float, aspect: float) -> tuple[float, float]:
@@ -352,6 +358,7 @@ CONFLICT_UNIT_SIZES: Final[Mapping[str, tuple[float, float]]] = MappingProxyType
         "commander": _piece_by_height(_FRAME_HEIGHT * COMMANDER_HEIGHT, 130 / 195),
         "agent": _piece_by_height(_FRAME_HEIGHT * AGENT_ON_SPACE_HEIGHT, 52 / 81),
         "sandworm": _piece_by_width(SANDWORM_WIDTH, 62 / 57),
+        "dreadnought": _piece_by_width(DREADNOUGHT_WIDTH, DREADNOUGHT_ASPECT),
     }
 )
 CONFLICT_UNIT_GAP: Final = 0.35
@@ -593,7 +600,8 @@ def marker_layout() -> dict[str, Any]:
         "garrison_units": {
             "rings": [list(ring) for ring in GARRISON_RINGS],
             "sizes": {
-                kind: list(CONFLICT_UNIT_SIZES[kind]) for kind in ("troop", "commander")
+                kind: list(CONFLICT_UNIT_SIZES[kind])
+                for kind in ("troop", "commander", "dreadnought")
             },
             "gap": CONFLICT_UNIT_GAP,
             "line": GARRISON_UNIT_LINE,

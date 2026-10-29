@@ -693,7 +693,60 @@ def check_ix_table(page) -> None:
             f"{language}: a Negotiator pile on the Ix board per seat holding them",
             (table["piles"], table["negotiators"]),
         )
+    print("  .. dreadnoughts, the view edited in the browser")
+    for language, word in (("ko", "드레드노트"), ("en", "dreadnought")):
+        page.evaluate(f"setLanguage('{language}')")
+        settled(page)
+        pieces = page.evaluate(DREADNOUGHTS_JS)
+        check.ok(
+            pieces["garrison"] == 3 and pieces["conflict"] == 4,
+            f"{language}: a drawn dreadnought per unit in garrisons and the Conflict",
+            pieces,
+        )
+        check.ok(
+            [seat for seat, _ in pieces["control"]] == ["0", "2"]
+            and all(word in title for _, title in pieces["control"])
+            and pieces["onFlags"],
+            f"{language}: a dreadnought on each controlled space's flag, named",
+            pieces["control"],
+        )
+        check.ok(
+            all(word in label for label in pieces["labels"]) and pieces["labels"],
+            f"{language}: the unit groups name their dreadnoughts",
+            pieces["labels"],
+        )
     page.evaluate("setLanguage('ko')")
+
+
+DREADNOUGHTS_JS = """() => {
+  const view = state.view;
+  view.players.forEach((p, i) => {
+    p.dreadnoughts_garrison = i % 3;
+    p.dreadnoughts_conflict = (i + 1) % 3;
+  });
+  view.dreadnought_control = [["arrakeen", 0, true], ["carthag", 2, false]];
+  renderBoard();
+  const count = (selector) => document.querySelectorAll(selector).length;
+  const flags = boardLayout(view).tracks.control_flags.boxes;
+  const stage = document.querySelector('#board .board-stage').getBoundingClientRect();
+  const control = [...document.querySelectorAll('#board .control-dreadnought')];
+  return {
+    garrison: count('#board .garrison-unit[data-kind="dreadnought"]'),
+    conflict: count('#board .conflict-unit[data-kind="dreadnought"]'),
+    control: control.map((n) => [n.dataset.seat, n.querySelector('title').textContent]),
+    onFlags: control.every((n, i) => {
+      const [left, top, width, height] = flags[view.dreadnought_control[i][0]];
+      const r = n.getBoundingClientRect();
+      const x = ((r.left + r.width / 2 - stage.left) / stage.width) * 100;
+      const y = ((r.top + r.height / 2 - stage.top) / stage.height) * 100;
+      return Math.abs(x - (left + width / 2)) < 0.3
+        && Math.abs(y - (top + height / 2)) < 0.3;
+    }),
+    labels: [...document.querySelectorAll('#board [aria-label]')]
+      .map((n) => n.getAttribute('aria-label'))
+      .filter((label) => /드레드노트|dreadnought/.test(label)),
+  };
+}"""
 
 
 def main() -> None:

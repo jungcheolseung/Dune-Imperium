@@ -256,6 +256,14 @@ const UI_TEXT = {
     "ko": "플레이어{{seat}} · {garrison}: {{units}}",
     "en": "Player {{seat}} · {garrison}: {{units}}"
   },
+  "board.dreadnought_control_leaving": {
+    "ko": "플레이어{{seat}}의 드레드노트 · {{name}} 지배 · 다음 전투 단계가 끝나면 주둔지로",
+    "en": "Player {{seat}}'s dreadnought · controls {{name}} · back to the garrison when the next Combat phase ends"
+  },
+  "board.dreadnought_control_staying": {
+    "ko": "플레이어{{seat}}의 드레드노트 · {{name}} 지배 · 다음 라운드 전투 단계까지",
+    "en": "Player {{seat}}'s dreadnought · controls {{name}} · through the next round's Combat phase"
+  },
   "board.seat_freighter": {
     "ko": "플레이어{{seat}} · 화물선 · 운송 트랙 {{step}}칸",
     "en": "Player {{seat}} · Freighter · Shipping track step {{step}}"
