@@ -1257,8 +1257,10 @@ Infiltration, Discard; 7절), Ix 카드·지도자 6·Conflict 4 앞면, Hundro 
   스크립트 원칙의 유일한 예외로 docstring에 적었다. 곁가지 `claude/base-ix-p5-leader-hybrid`(P5 끝 `ddfebe32`에서; 옛 곁가지
   `claude/base-ix-p5-leader-renders`의 커밋을 옮겨 이음). Uprising 앞면 19장은 고치기 전 스크립트의 결과와 바이트까지 같다. 대조표(왼쪽 스캔, 오른쪽
   섞은 안) `tmp/claude/5823a41d/p5-leaders/hybrid-sheets/`(`overview-pairs.jpg`와 지도자마다 한 장). 남은 티: Helena는 앱 조각이 2.9배라 손 뒤
-  배경에 원본 블록이 보이고, 스캔으로 채운 곳은 인물보다 조금 부드럽다. 사용자가 보고 쓸지 정할 때까지 서버는 스캔을 쓴다(그림은
-  `tmp/claude/5823a41d/p5-leaders/hybrid/`). 덧붙여 찾은 것: 지금 스크립트로 다시 그린
+  배경에 원본 블록이 보이고, 스캔으로 채운 곳은 인물보다 조금 부드럽다. **사용자 결정(2026-10-29 오후, 조정자 경유) "섞은 안으로 바꿈":** 여덟 장을
+  `assets/cards/app/en/base/leader/`에 넣고 `leader_sources.json`에 더함(에셋 `ebb76ac`, 대조표에서 본 그림과 바이트까지 같다); 그림 색인이 앱 렌더를
+  먼저 고르므로 원판 지도자는 이제 이 앞면으로 보인다. 덧붙여 찾은 것: 지금 스크립트로 다시 그린
   Uprising 영어 앞면 열 장은 커밋된 것과 바이트가 다르다(색 8-13 단계, 고치기 전 스크립트로도 같음 — 라이브러리 판 차이로 보임; 한국어 아홉 장은 같다).
-- **남은 것:** 원판 지도자 섞은 안 앞면을 쓸지(사용자 결정), 한국어 카드 앞면(공식 한글판 사진 뒤), Rise of Ix 화면(18.6, P4 병합 뒤), 원판 판의 앱 AI 좌석(P5·P6
-  병합 뒤 작은 후속, 조정자 합의), worklog·handoff(병합 때).
+- **원판 판의 앱 AI 좌석:** P5·P6 병합 뒤 작은 후속으로 좌석 표의 원판 줄에 앱 AI 세 난이도를 넣음(master 병합 `9755edf5`; e2e
+  `app_ai_seats_original.py`).
+- **남은 것:** 한국어 카드 앞면(공식 한글판 사진 뒤), Rise of Ix 화면(18.6, P4 병합 뒤), worklog·handoff(병합 때).
