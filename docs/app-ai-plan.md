@@ -3,6 +3,7 @@
 상태: **완료** (2026-10-05 작성·구현·A/B, master 병합). 브랜치 `app-ai`(worktree), 기준 master `60707f8b`(codec v133, 관측 v30).
 뼈대 커밋 `279dffd8`.
 확장판(Immortality·Epic·Go to 11·프로모·지도자 드래프트·Bloodlines·Arrakeen Scouts): **구현 완료**, 브랜치 `app-ai-expansions`(11절). 16개 선택지 조합 12판씩 오류 0·무작위 대체 0·미포팅 0.
+원판 Dune: Imperium(base-game-and-ix-plan P6): **진행 중**, 브랜치 `claude/base-ix-p6-appai-b94c97`(12절).
 
 ## 1. 사용자 결정
 
@@ -325,3 +326,80 @@ Bloodlines·Scouts 데이터와 능력(구현 agent 4 + 검증 agent 4)이 넘�
 - 창 단계에서 할 것: Scouts 게임에서 Corrinth City의 Reveal을 `CorrinthCityRevealScoutsAbility`로 바꿔 평가, Market Opening의
   할인된 Reserve 카드를 나머지 자리(창·카드 포트)에도 쓰기, Hagga Basin의 Desert Riding 선택, 두 단계 입찰, Litany의
   `play_turn_start_card`, `AppContext`의 Scouts 읽기를 `view` 대신 `state`에서(가정 상태로 만든 문맥에서도 맞도록).
+
+## 12. 원판 Dune: Imperium (base-game-and-ix-plan P6, 2026-10-29~)
+
+### 12.1 범위와 결정
+
+2026-10-29 사용자(P5가 원판 좌석을 heuristic으로만 열자고 했을 때): "steam 앱 AI를 가져올 수 있지 않니? 원판, ix 게임도 이제
+가져오면 될거 같은데". 앱은 원판을 직접 두므로 원판 AI(아키타입 값·능력 클래스·프로필 분기)가 모두 앱 안에 있다. 그래서 원판은
+11절의 앱식 확장이 아니라 **충실 포팅**(1·4절 원칙 그대로)이다.
+
+- 범위: 원판 보드(P2, 칸 22·Mentat·Reserve), 원판 카드(P3, Imperium 43종·프로모 3·책략 34·Conflict 18), 지도자 8, 지도자
+  드래프트. Rise of Ix는 P4(`claude/base-ix-p4`)가 병합된 뒤 다음 단계.
+- 출처: 11절과 같은 앱 빌드 dad97e20. 원판 능력 클래스는 P3d 대조가 만든 자료를 쓴다: 에셋
+  `analysis/p3d-compare-2026-10-28/dossiers/{imperium,intrigue,conflict,leader,space}.json`(항목마다 우리 id ↔ 앱
+  아키타입, 능력 클래스의 메서드별 디컴파일 C와 주석 단 역어셈블)과 `ghidra/p3d/<addr>.c`. **C를 먼저 읽고 판단이 걸린 줄은
+  역어셈블로 확인한다.** 프로필의 BaseSet 분기는 2절의 사양(`spec/profile-*.md`)에 이미 적혀 있다(Uprising에서 "absent"로 둔 곳).
+- 엔진은 바꾸지 않는다(P4 세션 소유). 엔진 고리가 필요하면 조정 세션에 묻는다.
+- 완료 조건: 원판(드래프트 포함) 게임에서 세 난이도 모두 `fallbacks` 0·`UNPORTED` 0, Uprising app_ai 수는 고정 시드에서 그대로,
+  원판 app_ai soak 오류 0, 원판 Hard 대 heuristic 소규모 측정 보고(관문 아님). 그 뒤 P5에 원판 좌석을 열어도 된다고 알린다.
+
+### 12.2 census (2026-10-29, 원판 4좌석 app_ai 20판씩, 지도자 드래프트·프로모 포함)
+
+포팅 전(master `0672a8b5`): 6판 Hard에서 결정 2,644개 중 2,076개가 무작위였다. 대부분(1,076개)은 `error:` — catalog에 원판
+카드·Conflict·칸이 없어 창이 `KeyError`로 실패했다(`arrakis_liaison`, `imperium_secure_imperial_basin`, `gun_thopter` …).
+
+슬라이스 1(catalog·보드) 뒤 오류 0. 남은 무작위 대체:
+
+| 난이도 | 앱 판단 | 무작위 | agent_effects | reveal | intrigue_choice | combat_reward_* | masterstroke_setup |
+|---|---|---|---|---|---|---|---|
+| Hard | 7,471 | 2,841 (28%) | 2,314 | 421 | 32 | 56 | 18 |
+| Medium | 7,727 | 3,091 (29%) | 2,588 | 383 | 43 | 59 | 18 |
+| Easy | 7,768 | 2,683 (26%) | 2,275 | 297 | 39 | 54 | 18 |
+
+`agent_effects`의 원인(Hard 20판, 창의 `unmapped` 사유):
+
+- 칸: 원판 Maker 칸(Hagga Basin·The Great Flat의 수확, 542), Foldspace(50), 칸 draw(5). 칸 능력 미포팅 8:
+  `ConspireSpaceAbility`, `FoldspaceDeferredAbility`, `SelectiveBreedingDeferredAbility`, `HallOfOratorySpaceAbility`·
+  `HallOfOratoryAbility2`, `MentatSpaceAbility`, `SwordmasterSpaceAbility`(BaseSet), `SellMelangeSpaceAbility`.
+- 지도자 Signet: Paul 165, Ariana 111, Ilban 109, Rabban 106, Memnon 62; 미포팅 18 클래스(Prescience, Masterstroke 1·2·Scheme,
+  Connections·Spice Hoard, Manipulate, Manufacturing·Ruthless Negotiator, Hidden Reservoir·Spice Addict 1·2, Brutality·Arrakis
+  Fiefdom, Prudent Diplomacy·Landsraad Popularity, `LeaderDrawAbility`); 창 밖 결정 `masterstroke_setup`,
+  `choose_connections_influence`, `set_aside_leader_imperium`(Helena).
+- 카드 Agent 상자(창 표에 원판 카드가 없음): Worm Riders 165, BG Initiate 147, Power Play 122, Arrakis Recruiter 97, Gurney 161,
+  Space Travel 80, Thufir 77, Foldspace 70, Duncan Idaho 105, Spice Smugglers 47, Jessica of Arrakis 74, Stilgar 38, Other Memory 36,
+  Guild Administrator 35, Lady Jessica 30, Dr. Yueh 29, Sardaukar Legion 28, Fedaykin 27, Sietch RM 25, Duncan Loyal Blade 25,
+  Crysknife 24, Opulence 23, Piter 23, Imperial Spy 24, Firm Grip 13, Fremen Camp 12, Smuggler's Thopter 19, Guild Ambassador 14,
+  Shifting Allegiances 1; 모르는 행동 id `pay_agent_card_solari`, `block_agent_card_space`, `take_agent_card_from_discard`,
+  `lose_agent_card_influence`.
+- `reveal`: Reserve 구매(Arrakis Liaison 277, TSMF 80), 획득 아이콘(CHOAM Directorship 81, Lady Jessica 63), 원판 Reveal 선택
+  (`deploy_reveal_card_troop(s)`, `gain_two_reveal_persuasion/swords`, `retreat_reveal_card_troops`, `pay_reveal_solari_for_vp`
+  …), 원판 책략의 Plot.
+- 그 밖: `combat_reward_influence`·`combat_reward_distinct_influence`·`combat_reward_trash`(원판 Conflict 보상),
+  `intrigue_choice`(Poison Snooper의 `draw_top_card`/`trash_top_card`, `choose_opponent_troop_loss`).
+
+미포팅 앱 능력 클래스 160(앱 판단으로 센 결정도 이 능력은 값 0으로 본다): Conflict 54(18장 × 1·2·3등), Imperium 45, 책략 35,
+지도자 18, 칸 8.
+
+프로필에서 Uprising이라 건너뛴 BaseSet 분기(사양에 있음): `GetHeighlinerPotentialPlayer`의 Infiltrate·Urgent Mission·Dispatch an
+Envoy, Rapid Mobilization·Staged Incident·Reinforcements의 교전 항, 영향력의 "+1 influence intrigue"·"Abilities Bonus"·Plans
+Within Plans, `DeferredThresholdReached`의 Baron·Ariana·Ilban 항 등(`profile/*.py`의 "cannot be held"·"dead here" 주석).
+
+### 12.3 슬라이스
+
+각 슬라이스: 앱 클래스 포트(C → 역어셈블 확인) + 창 대응 + 사양의 분기·상수를 고정하는 단위 테스트 + 원판 census의 해당 사유 0 +
+Uprising 고정 시드 수 그대로(`tmp/claude/523fa7a8/same_moves.py`: 7개 선택지 조합 21판).
+
+| # | 슬라이스 | 내용 | 상태 |
+|---|---|---|---|
+| 1 | catalog·보드 | 원판 표 5개(`ORIGINAL_*`), `Board.original`, BaseSet 칸 순서, 앱의 `Is…Space` 판별(`swordmaster_space_id` 등), Maker 칸이 없는 보드의 worm potential, Hall of Oratory의 Reveal 미리보기 | 완료 `7919f867` |
+| 2 | 칸 | 칸 능력 8클래스, Mentat·Foldspace·Selective Breeding·Sell Melange·Hall of Oratory·Conspire 창 대응, 원판 Maker 칸 수확, 턴 창의 원판 칸 비용 | |
+| 3 | Conflict | 54클래스, 교전 보상 창(영향력 선택·서로 다른 영향력·Trash·Mentat 보상) | |
+| 4 | 지도자 | 18클래스, Signet 상자, `masterstroke_setup`·Connections·Helena의 Manipulate 등 지도자 창 | |
+| 5 | Imperium A–L | 카드 능력과 Agent 상자·Reveal 선택·획득 아이콘 창 | |
+| 6 | Imperium M–Z·프로모·Reserve | 같은 것 | |
+| 7 | 책략 A–M | 능력과 Plot·교전·종료·`intrigue_choice` 창 | |
+| 8 | 책략 N–Z | 같은 것 | |
+| 9 | 프로필 BaseSet 분기 | 12.2 끝 목록 | |
+| 10 | 마무리 | 세 난이도 census 0, Uprising 같은 수, 원판 soak, Hard 대 heuristic 측정, 문서·P5 알림 | |
