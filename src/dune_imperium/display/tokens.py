@@ -267,6 +267,12 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: (
             "You may move your Freighter up one space or recall it"
         ),
+        # Rise of Ix's Embedded Agent: two Freighter icons behind "another
+        # Bene Gesserit card in play", the original game's Bond words.
+        PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: You may move your Freighter up one space or "
+            "recall it, You may move your Freighter up one space or recall it"
+        ),
         PersonalCardAgentEffect.GENERATE_SPECIMEN: "Generate 1 specimen",
         PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
             "Gain 1 Bene Gesserit Influence, Draw 1 Intrigue card"

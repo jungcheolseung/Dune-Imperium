@@ -647,6 +647,23 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # (``agent_effects.OPTIONAL_AGENT_ICONS``) answered by its own rows
             # (``advance_agent_card_freighter``, ``recall_agent_card_freighter``).
             _BOX.MAY_MOVE_FREIGHTER: _icons(("freighter", _line(Freighter()))),
+            # Embedded Agent (Rise of Ix): "If you have another Bene Gesserit
+            # card in play:" [Steam app text] with two Freighter icons [screen
+            # pieces] -- a Bene Gesserit Bond ("one or more other ... cards in
+            # play" [Main p. 20]), as In High Places': the Bond opens the box
+            # and is judged again on each icon when it resolves (OQ-028); each
+            # icon is a "may" of its own [Rise of Ix p. 5] (OQ-027), answered by
+            # the Freighter rows (``agent_effects.OPTIONAL_AGENT_ICONS``).
+            _BOX.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(Freighter(), condition=_BG_BOND),
+                    _line(Freighter(), condition=_BG_BOND),
+                ),
+                structure=AbilityStructure.SEPARATE,
+                requirement=_BG_BOND,
+                icons=("freighter", "freighter_second"),
+            ),
             # Tread in Darkness: "If Bene Gesserit Bond: You may trash a card,
             # Draw 1 card" -- the Bond opens the box and is judged again on each
             # icon when it resolves (OQ-028); the trash stays optional (OQ-058).

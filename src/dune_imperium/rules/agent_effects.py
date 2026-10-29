@@ -291,6 +291,8 @@ AGENT_ICON_TRASH: Final = "trash"
 # Landing Rights' Freighter icon (Rise of Ix): ``advance_agent_card_freighter``
 # or ``recall_agent_card_freighter``; unused, it lapses at the turn's end.
 AGENT_ICON_FREIGHTER: Final = "freighter"
+# Embedded Agent's second Freighter icon (Rise of Ix).
+AGENT_ICON_FREIGHTER_SECOND: Final = "freighter_second"
 
 # Leaders whose Signet Ring ability prints several independent icons, from
 # their records (composed A6c): the Signet Ring card's box (or a Ghola
@@ -1142,20 +1144,26 @@ def apply_agent_card_freighter(state: GameState, action: DomainAction) -> RuleRe
     _, context = current_agent_effect_context(state)
     _, source_card_id, _ = _effect_subject(context)
     source = agent_card_source(state.round_number, action.actor, source_card_id)
-    finish_agent_icon(context, AGENT_ICON_FREIGHTER)
+    # The first Freighter icon still waiting (Embedded Agent prints two, each
+    # its own "may" [Rise of Ix p. 5]).
+    found = icon_line(
+        context, box_ability(active_agent_card(context).agent_effect), Freighter
+    )
+    key = AGENT_ICON_FREIGHTER if found is None else found[0]
+    finish_agent_icon(context, key)
     working = advance_after_effect(state, context)
     move = (
         move_freighter_up
         if action.action_id == "advance_agent_card_freighter"
         else recall_freighter
     )
-    moved = move(working, action.actor, source=f"{source}:freighter")
+    moved = move(working, action.actor, source=f"{source}:{key}")
     done = agent_box_event(
         source,
         source_card_id,
         action.actor,
         BoxOutcome.RESOLVED,
-        effect=AGENT_ICON_FREIGHTER,
+        effect=key,
     )
     return RuleResult(state=moved.state, events=(*moved.events, done))
 
@@ -3342,6 +3350,10 @@ OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = 
             # Landing Rights' Freighter icon (Rise of Ix, "may").
             PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: frozenset(
                 {AGENT_ICON_FREIGHTER}
+            ),
+            # Embedded Agent's two Freighter icons (Rise of Ix, "may" each).
+            PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
+                frozenset({AGENT_ICON_FREIGHTER, AGENT_ICON_FREIGHTER_SECOND})
             ),
         }
     )

@@ -877,3 +877,119 @@ def test_artillery_counts_the_assault_only_when_it_gave_swords() -> None:
     assert dict(without.decision_stack[-1].context)["sword_strength"] == 0
     with_one = _assault_revealed(_with_tile(_start(), "artillery"), dreadnoughts=1)
     assert dict(with_one.decision_stack[-1].context)["sword_strength"] == 3 + 1
+
+
+# --- Embedded Agent -------------------------------------------------------------
+
+EMBEDDED = "imperium:embedded_agent:0"
+INITIATE = "imperium:bene_gesserit_initiate:0"
+_AGENT_ADVANCE = "advance_agent_card_freighter"
+_AGENT_RECALL = "recall_agent_card_freighter"
+
+
+def _embedded(state: GameState, *, bond: bool = True, space: int = 0) -> GameState:
+    """Embedded Agent sent to Tech Negotiation (its Landsraad icon), with
+    another Bene Gesserit card in play when ``bond``."""
+
+    state = _give(
+        state,
+        0,
+        hand=(EMBEDDED,),
+        in_play=(INITIATE,) if bond else (),
+        freighter_space=space,
+    )
+    state = _do(state, "choose_agent_card", card_id=EMBEDDED).state
+    return _do(state, "place_agent", space_id="tech_negotiation").state
+
+
+def _agent_freighter_rows(state: GameState) -> list[str]:
+    _rows(state)
+    return [
+        row.action_id
+        for row in ENGINE.whole_actions(state, 0)
+        if row.action_id in (_AGENT_ADVANCE, _AGENT_RECALL)
+    ]
+
+
+def test_embedded_agent_matches_the_app_and_joins_the_ix_deck() -> None:
+    """App table: Bene Gesserit, cost 5, one copy; the Landsraad icon, its
+    Infiltration icon; Reveal 1 Persuasion. Screen pieces: Agent "If you have
+    another Bene Gesserit card in play: [Freighter] [Freighter]"; Reveal
+    "[Intrigue card]"."""
+    entry = IMPERIUM_CARDS_BY_ID["embedded_agent"]
+    assert (entry.copies, entry.acquisition_cost) == (1, 5)
+    assert entry.factions == (Faction.BENE_GESSERIT,)
+    assert entry.agent_icons == entry.infiltration_icons == (AgentIcon.LANDSRAAD,)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 0)
+    assert entry.play_data_complete
+    assert EMBEDDED in content_for(IX).imperium_deck_instance_ids
+    for config in (replace(IX, rise_of_ix=False), RulesetConfig()):
+        assert EMBEDDED not in content_for(config).imperium_deck_instance_ids
+    english = personal_card_text(entry)
+    assert any(
+        "If Bene Gesserit Bond: You may move your Freighter" in line for line in english
+    )
+    assert len(english) == len(personal_card_text_ko(entry))
+
+
+def test_the_two_freighter_icons_are_two_moves() -> None:
+    """ "Freighter 아이콘마다 Freighter를 둘 가운데 하나로 움직일 수 있다"
+    (rise-of-ix.md 5, [Rise of Ix p. 5]): with the Bond, two icons -- up from
+    the bottom, then up again or a recall of the space reached."""
+    state = _embedded(_start())
+    assert _agent_freighter_rows(state) == [_AGENT_ADVANCE]
+    once = _do(state, _AGENT_ADVANCE)
+    assert once.state.players[0].freighter_space == 1
+    assert set(_agent_freighter_rows(once.state)) == {_AGENT_ADVANCE, _AGENT_RECALL}
+    recalled = _do(once.state, _AGENT_RECALL)
+    assert recalled.state.players[0].freighter_space == 0
+    assert ix_pending_of(recalled.state, 0).shipping_rewards == (1,)
+    assert _agent_freighter_rows(recalled.state) == []
+    assert "agent_card_effect_resolved" in _kinds(recalled.events)
+
+
+def test_without_another_bene_gesserit_card_the_box_gives_nothing() -> None:
+    """ "If you have another Bene Gesserit card in play:" -- a Bene Gesserit
+    Bond ("one or more other ... cards in play" [Main p. 20]): without it no
+    Freighter is offered (OQ-028)."""
+    state = _embedded(_start(), bond=False)
+    assert _agent_freighter_rows(state) == []
+
+
+def test_unused_freighter_icons_lapse_with_the_turn() -> None:
+    """Each icon is a "may" (rise-of-ix.md 14): no refusal row; the turn's end
+    lapses what is left (OQ-095 (2))."""
+    state = _embedded(_start())
+    state = _do(state, _AGENT_ADVANCE).state
+    assert not any(
+        row.action_id.startswith("decline_") for row in ENGINE.whole_actions(state, 0)
+    )
+    # Tech Negotiation's own "Choose one" (a Negotiator here).
+    state = _do(state, "place_board_negotiator").state
+    finished = _do(state, "finish_agent_turn")
+    assert "agent_card_effect_lapsed" in _kinds(finished.events)
+    assert finished.state.players[0].freighter_space == 1
+
+
+def test_embedded_agent_infiltrates_a_landsraad_space() -> None:
+    """ "Agent의 옆얼굴이 든 Agent 아이콘은 그 아이콘의 칸에서 상대 Agent(여럿이어도)를
+    무시하고 보낼 수 있게 한다" (rise-of-ix.md 7, [Rise of Ix p. 7]): Embedded
+    Agent goes to Tech Negotiation past an enemy Agent."""
+    state = _start()
+    state = _give(state, 1, agent_locations=("tech_negotiation",), agents_available=1)
+    state = _embedded(state)
+    assert "tech_negotiation" in state.players[0].agent_locations
+
+
+def test_embedded_agent_reveals_an_intrigue_card() -> None:
+    """Reveal "[1 Persuasion] [Intrigue card]": the draw waits as the owner's
+    own step (OQ-045)."""
+    state = _give(_start(), 0, hand=(EMBEDDED,))
+    state = _do(state, "reveal_turn").state
+    assert dict(state.decision_stack[-1].context)["persuasion"] == 1
+    held = len(state.players[0].intrigue_cards)
+    drawn = _do(state, "draw_reveal_intrigue").state
+    assert len(drawn.players[0].intrigue_cards) == held + 1

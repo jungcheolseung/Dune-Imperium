@@ -416,6 +416,11 @@ class PersonalCardAgentEffect(StrEnum):
     TRASH_PERSONAL_CARD_TO_RECRUIT_TWO = "trash_personal_card_to_recruit_two"
     # Guild Chief Administrator (Rise of Ix): "[Discard] -> [Trash a card]".
     MAY_DISCARD_TO_TRASH_A_CARD = "may_discard_to_trash_a_card"
+    # Embedded Agent (Rise of Ix): "If you have another Bene Gesserit card in
+    # play: [Freighter] [Freighter]".
+    MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND = (
+        "may_move_freighter_twice_if_bene_gesserit_bond"
+    )
     # Desert Ambush (Rise of Ix): "For each troop you deploy this turn, you
     # may force an enemy unit to retreat."
     MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED = (

@@ -275,6 +275,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
 _IX_IMPERIUM_TRANSCRIBED = {
     "choam_delegate",
     "desert_ambush",
+    "embedded_agent",
     "full_scale_assault",
     "guild_chief_administrator",
     "imperial_shock_trooper",

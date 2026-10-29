@@ -329,6 +329,12 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: (
         "운송 트랙에서 한 칸 위로 또는 회수 가능"
     ),
+    # Rise of Ix's Embedded Agent: Landing Rights' line for each of its two
+    # Freighter icons, behind the Bond.
+    PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
+        "베네 게세리트의 유대감이면: 운송 트랙에서 한 칸 위로 또는 회수 가능, "
+        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+    ),
     PersonalCardAgentEffect.GENERATE_SPECIMEN: "표본 1개 생성",
     PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
         "{influence_bene_gesserit:1}, {intrigue:1}"

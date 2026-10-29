@@ -14,8 +14,8 @@ keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
 game's deck takes only completed cards (CHOAM Delegate, Jamis, Sayyadina,
 Truthsayer, Imperial Shock Trooper, Local Fence, Water Peddler, Guild Chief
-Administrator, Negotiated Withdrawal, Desert Ambush and Full-Scale Assault so
-far),
+Administrator, Negotiated Withdrawal, Desert Ambush, Full-Scale Assault and
+Embedded Agent so far),
 while the observation lists every identity from v39. Setup takes Rise of Ix
 on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
@@ -106,6 +106,16 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=5,
         infiltration_icons=(AgentIcon.LANDSRAAD,),
+        # App table: Bene Gesserit; the Landsraad icon, its Infiltration icon
+        # (``InfiltrationIconList``); Reveal 1 Persuasion. Screen pieces and
+        # text: Agent "If you have another Bene Gesserit card in play:
+        # [Freighter] [Freighter]"; Reveal "[1 Persuasion] [Intrigue card]"
+        # (its Reveal record, Thufir Hawat's line).
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        agent_effect=PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND,
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("esmar_tuek_card", "Esmar Tuek"),

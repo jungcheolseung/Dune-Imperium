@@ -120,6 +120,9 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         # (rise-of-ix.md 9.3, designer ruling: "sword는 공개한 카드가 준 값"
         # [DI p. 11]).
         "full_scale_assault": _reveal(_line(RevealSwords(3, per=_PER_DREADNOUGHT))),
+        # Embedded Agent (Rise of Ix): "[Intrigue card]" beside its 1
+        # Persuasion [Steam app screen pieces], Thufir Hawat's line.
+        "embedded_agent": _reveal(_line(DrawIntrigueCards(1))),
         # Delivery Agreement.
         "delivery_agreement": _reveal(_line(GainResources(spice=1))),
         # Ecological Testing Station.

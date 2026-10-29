@@ -177,9 +177,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Local Fence ("[2 spice] -> [5 Solari] -OR- [5 Solari] -> [4 spice]"),
     # Landing Rights (the Freighter icon), Shai-Hulud ("[Trash a card] ->
     # [2 troops]"), Guild Chief Administrator ("[Discard] -> [Trash a
-    # card]") and Desert Ambush ("For each troop you deploy this turn, you
-    # may force an enemy unit to retreat").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 6
+    # card]"), Desert Ambush ("For each troop you deploy this turn, you may
+    # force an enemy unit to retreat") and Embedded Agent ("If you have another
+    # Bene Gesserit card in play: [Freighter] [Freighter]").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 7
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -211,6 +212,11 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         # Landing Rights (Rise of Ix): the Freighter icon, answered by its own
         # rows.
         _BOX.MAY_MOVE_FREIGHTER: ("freighter",),
+        # Embedded Agent (Rise of Ix): two Freighter icons behind the Bond.
+        _BOX.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
+            "freighter",
+            "freighter_second",
+        ),
         _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: ("trash", "cards"),
         # Split per icon (cleanup-2d-5, user decision 2026-10-18).
         _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: ("influence", "intrigue"),

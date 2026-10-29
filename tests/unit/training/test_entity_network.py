@@ -272,7 +272,16 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # acquire box and the Reveal count per dreadnought in the Conflict), read by
 # its row alone; no older scale moved (compared against 94581a95, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against 71f32573 (2026-10-30).
-_GOLDEN_DIGEST = "68318babffff99a5e3476ba1b8149eea98ea06066c88c7b5f385922a6db283be"
+# Then Embedded Agent got its records (stage P4d, picked here before Court
+# Intrigue and Weirding Way): its own row changed, and its two Freighter
+# pieces widen the Ix-only personal column agent.sections.rewards:Freighter
+# from 1 to 2, so Landing Rights' row reads 0.5 there instead of 1.0 -- the
+# one older change, accepted by the coordinator (2026-10-30): an Ix entity
+# row may rescale when a later Ix card widens an Ix-only column, as
+# observation v39 and its Ix features are not on master and no network has
+# trained on them; Uprising and original-game rows never change. No other
+# row or scale moved (compared against 5ddab661 on claude/base-ix-p4).
+_GOLDEN_DIGEST = "eb1142baebec0ac6b65f6b5194217b390ce8afeee6f3d199d96983c5b4fed3b9"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

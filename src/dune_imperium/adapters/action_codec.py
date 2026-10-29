@@ -2830,6 +2830,8 @@ _ICON_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "combat": (("gain", "combat"),),
     "spy": (("place_spy", ""), ("recall_spy", "")),
     "freighter": (("advance", "freighter"), ("collect", "freighter")),
+    # Embedded Agent's second Freighter icon: the same two rows.
+    "freighter_second": (("advance", "freighter"), ("collect", "freighter")),
 }
 _HOOK_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "possible_futures": (("gain_influence", ""),),
