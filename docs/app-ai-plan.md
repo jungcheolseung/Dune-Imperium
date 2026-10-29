@@ -551,4 +551,8 @@ P4 브랜치(`51884e8f`)가 지금 가진 결정은 dreadnought 셋(P4b)과 예�
   Boundless Ambition의 카드 얻기(Reveal·Unload 창)는 `BoundlessAmbitionCustomAbility`가 답한다. 이 클래스의 응답 순서는 디컴파일한
   C로 바로잡았다(카드 먼저, 그다음 목적지 0). Signet 상자는 카드 이름 대신 카드의 `LEADER_SIGNET` 효과로 알아본다. 보류 중에는
   새 결정이 없다. 시험 트리에서 세 난이도·Epic·원판 단독 census 무작위 0, 같은 수 24/24.
+- P4 마지막 Imperium 묶음(`e3cac948`, 병합 `6c88b68f`): Guild Chief Administrator(버리기 + `EvaluateTrash`), Weirding Way(선택지 1이면
+  추가 턴), Embedded Agent(`FreighterCustomAbility` 둘), Full-Scale Assault(일반 상자), Court Intrigue(Intrigue를 덱 밑에, 뽑기는 이어서),
+  Desert Ambush(한 번의 답에 유닛 여럿, 나머지는 이어서), Negotiated Withdrawal(진영 + 앱이 빈 답 뒤에 하는 troop 먼저 셋, `Cost`
+  이식). 병합 직후 Hard 20판의 무작위 97번이 0이 됐다.
 - 남은 것: 원판 + Ix soak과 Hard 대 heuristic 측정(P4d 카드가 다 들어온 뒤).

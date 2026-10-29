@@ -72,6 +72,13 @@ app's prompts.
 | Boundless Ambition's "[Signet Ring]" box | The Leader's Signet ability, as the Signet Ring card's [Main p. 20] | A box is a Signet's by its card's `LEADER_SIGNET` effect (`_signet_box`), no longer by the Signet Ring's name; a Ghola's copy reads its partner's. |
 | Boundless Ambition's Reveal acquisition (`acquire_reveal_imperium_card` / `acquire_reveal_reserve_card`) | `BoundlessAmbitionCustomAbility` (Optional), which the card's `BoundlessAmbitionRevealAbility` grants (`GainCustomAbility`, @0x4d8dd90) | Targets (@0x4c5cff0): the Row then Reserve cards and the destination picker (option 0 the top of the deck while offered). Answer `((card,), (0,))`. See the judgement calls. |
 | Unload icons that are decisions (`rules.unload`): in the owner's turn `resolve_unload_icon`, taken at once (`ix.take_unload`); then their windows | Freighter: `freighter_move` (`FreighterFleetUnloadAbility` adds a `FreighterCustomAbility`). Tech Negotiation: `unload_icons`, placed (`UnloadAbility` reruns the card's Reveal, `AddTechNegotiators(2)`). Acquisition: `unload_icons`, `BoundlessAmbitionCustomAbility` (both Unload classes add it) | A Tech Negotiation is refused (`decline_unload_icon`) only when the supply cannot pay it. The fizzle's confirm (`skip_unload_acquisition`) is the only row with nothing in reach. P4's hold (an arrow's right side kept back while its cost's Unload is decided, `976aa6a1`) adds no decision: the seat's only rows are these windows, answered as outside the turn. A recall inside the hold opens `shipping_reward_icons`. |
+| Guild Chief Administrator's "[Discard] -> [Trash a card]" (`discard_agent_card`, then the turn's `trash_optional_card`) | `GuildChiefAdministratorAbility` (Optional): its Evaluate names the discard; the trash its box grants is its `EvaluateTrash` (@0x4dbc950, `GetCardToTrash`, minimum 1.0) | The trash row is named after the box (`immortality._box_trash`). Its Reveal Freighter is Freighter Fleet's `FreighterRevealAbility` row. |
+| Weirding Way's extra turn (`take_agent_card_extra_turn`) | `WeirdingWayAbility` (Optional, 1.0): option 1 "confirm" when the lower `ConflictPostureBounds` reaches the Conflict's interest, else option 0 "decline" | `ExtraTurn` is set only for an answer above 0 (@0x4df3290). A decline uses the key on nothing; the row lapses at the turn's end. |
+| Embedded Agent's two Freighter icons (`advance_agent_card_freighter` / `recall_agent_card_freighter`) | `EmbeddedAgentAbility` (Explicit, run at once) adds a `FreighterCustomAbility` (`AddCustomAbility`, @0x4e687d0) | Each icon is `FreighterAbility::Evaluate`'s answer, as Landing Rights'. |
+| Full-Scale Assault's two troops; its Reveal swords; its acquire Dreadnought | The generic Agent box (`AgentTroops` 2); `FullScaleAssaultRevealAbility`; `AcquireAbility` | No choice. The acquire icon is taken without asking, as every fixed acquire icon. |
+| Court Intrigue's "Put an Intrigue card on the bottom of the deck -> [Intrigue card]" (`put_intrigue_on_bottom_for_agent_card`) | `CourtIntrigueAbility` (Optional): a bad Intrigue card held, shuffled, at `CourtIntrigueValue` | The draw after it is a follow-up (`_ARMED_REWARD_CARDS`). |
+| Desert Ambush's retreats (`retreat_opponent_troop`, with a `dreadnoughts` row) | `DesertAmbushAbility` (Optional, unexhausted): one answer names every unit, at most the retreats the turn's troops still buy (`retreats_for_deployment_left`) | Our engine retreats one unit a row (seat and kind); the rest of the answer are follow-ups in `Memory.intents`. Targets: the offered opponents' units in seat order, troops (Commanders after) then dreadnoughts (UNTRACED). |
+| Negotiated Withdrawal's Reveal arrow (`retreat_reveal_units_for_influence`) | `NegotiatedWithdrawalAbility` (Optional): the Faction prompt, then the units | The answer's Faction; its units are none (see the judgement calls), so `BeginExecution` (@0x4dd78d0) retreats the first three of the seat's troops then dreadnoughts (`Take(3)`). `Cost` (@0x4dd6620): more than two troops and dreadnoughts in the Conflict and a Faction to rise on. |
 | Satellite Ban's Reveal "retreat up to two troops" | `SatelliteBanRevealAbility` | The effect is Scout's. Its table entry is the shared `OptionalRetreatAbility`, so each card answers with its own class. |
 | Intrigue slots | Strongarm's zone, Double Cross's victim (`OpponentLosesTroop`), Urgent Mission's Agent (`RecallYourAgent`) | Each comes from the play's recorded answer. Urgent Mission is an original card; Ix's extra Agents exposed its missing case. |
 | Advanced Weaponry's commission (`commission_intrigue_dreadnought`) | `AdvancedWeaponryPlotAbility` commissions as it runs | No prompt in the app: taken; declined only when no commission is offered. |
@@ -152,7 +159,10 @@ is taken first, in `GetAgentSpaceFactions`' board order: the app's
   Influence row comes before its Solari row, the app's order. The same fix
   is on `claude/spice-smugglers-app-ai` for the P4 merge.
 - **Negotiated Withdrawal**: its Evaluate reads both units and tracks from the
-  first target info, so it never retreats. Ported as compiled.
+  first target info, so it names no unit. Ported as compiled. With no unit
+  named, the app's `BeginExecution` retreats the first three of its list
+  (troops, then dreadnoughts); the window does the same. A Bloodlines
+  Commander counts as a troop, after the plain ones (D7).
 - **Units in the Conflict**: they have no entity kind. `DesertAmbushAbility`
   and `NegotiatedWithdrawalAbility` take them as `ConflictUnit` constructor
   data.
@@ -186,19 +196,21 @@ It confirmed two problems, both fixed in `16d6acda`:
 Left open by the review:
 - Some cards still have no window consumer, because their engine entries
   have no play data yet (P4d, as of P4 `3b8cd83c`):
-  - Imperium: Guild Chief Administrator, Weirding Way, Negotiated
-    Withdrawal, Embedded Agent. (Satellite Ban, Spice Trader, Imperial
-    Bashar, Bounty Hunter, Web of Power, Ixian Engineer, Esmar Tuek, Guild
-    Accord, In The Shadows and Treachery are on P4's `claude/p4d-imperium-b`;
-    their rows are mapped and checked on a trial merge, as are Freighter
-    Fleet, Ix-Guild Compact and Boundless Ambition with P4's Unload hold,
-    `5a006d95`.)
+  - Imperium: none on P4 since `e3cac948` (Guild Chief Administrator,
+    Weirding Way, Negotiated Withdrawal, Embedded Agent, Desert Ambush,
+    Full-Scale Assault and Court Intrigue are answered). Satellite Ban,
+    Spice Trader, Imperial Bashar, Bounty Hunter, Web of Power, Ixian
+    Engineer, Esmar Tuek, Guild Accord, In The Shadows and Treachery are on
+    P4's `claude/p4d-imperium-b`; their rows are mapped and checked on a
+    trial merge, as are Freighter Fleet, Ix-Guild Compact and Boundless
+    Ambition with P4's Unload hold, `5a006d95`.
   - Intrigue: none (Strategic Push landed with P4 `da3cd535`).
   Their response shapes are checked when the engine offers their rows.
   Quid Pro Quo (P4d-6b), Grand Conspiracy, War Chest, Machine Culture and
   Diversion (P4d) are now played and answered.
-- Negotiated Withdrawal's `Cost` is not ported as `meets_cost`. Imperial
-  Bashar's is: `HasTrashableCard` or a troop in the supply (@0x4dc3c70).
+- Negotiated Withdrawal's `Cost` is ported as `meets_cost` (@0x4dd6620), as
+  Imperial Bashar's is: `HasTrashableCard` or a troop in the supply
+  (@0x4dc3c70).
 - `GetBestInfluenceExchange`'s bool argument has no counterpart in
   `profile.best_influence_exchange`.
 
