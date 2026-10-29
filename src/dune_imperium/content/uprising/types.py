@@ -611,6 +611,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # Rise of Ix's Imperium cards (stage P4d). Guild Chief Administrator: the
     # Freighter icon in its Reveal box, "may" [Rise of Ix p. 5].
     MAY_MOVE_FREIGHTER = "may_move_freighter"
+    # Negotiated Withdrawal: "Retreat three of your units -> [Influence with
+    # any Faction]", an optional arrow [FAQ p. 3].
+    MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE = "may_retreat_three_units_for_influence"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -637,6 +640,7 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
 IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = frozenset(
     {
         PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER,
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE,
         PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,
         PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
         PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT,

@@ -288,6 +288,7 @@ const ACTION_LABELS = {
   recall_agent_card_freighter: "Freighter 회수",
   advance_reveal_freighter: "Freighter 한 칸 위로",
   recall_reveal_freighter: "Freighter 회수",
+  retreat_reveal_units_for_influence: "부대 3 후퇴 → {influence_any}",
   acquire_foldspace_to_deck_top: "Foldspace 카드를 덱 위에",
   place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
   /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep

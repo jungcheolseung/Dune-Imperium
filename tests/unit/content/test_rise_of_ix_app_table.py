@@ -279,6 +279,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "jamis",
     "landing_rights",
     "local_fence",
+    "negotiated_withdrawal",
     "sayyadina",
     "shai_hulud",
     "truthsayer",

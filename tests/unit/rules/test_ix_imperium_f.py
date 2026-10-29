@@ -17,6 +17,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.types import (
     AgentIcon,
+    PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardRevealChoiceEffect,
 )
@@ -367,5 +368,203 @@ def test_the_reveal_freighter_rows_are_in_the_ix_catalog_only() -> None:
         assert template in set(CODEC.catalog) - plain
     assert not any(
         dict(template.arguments).get("printed") == "guild_chief_administrator"
+        for template in ActionCodec(RulesetConfig()).catalog
+    )
+
+
+# --- Negotiated Withdrawal -----------------------------------------------------
+
+WITHDRAWAL = "imperium:negotiated_withdrawal:0"
+_UNIT_RETREAT = "retreat_reveal_units_for_influence"
+
+
+def _withdrawal(
+    state: GameState, *, troops: int = 0, dreadnoughts: int = 0, swords: int = 0
+) -> GameState:
+    """Negotiated Withdrawal revealed with ``troops`` and ``dreadnoughts`` in
+    the Conflict, at the strength the engine keeps for them (2 a troop, 3 a
+    dreadnought)."""
+
+    owner = state.players[0]
+    from_garrison = min(troops, owner.troops_garrison)
+    state = _give(
+        state,
+        0,
+        hand=(WITHDRAWAL,),
+        troops_supply=owner.troops_supply - (troops - from_garrison),
+        troops_garrison=owner.troops_garrison - from_garrison,
+        troops_conflict=troops,
+        dreadnoughts_supply=2 - dreadnoughts,
+        dreadnoughts_conflict=dreadnoughts,
+        combat_strength=2 * troops + 3 * dreadnoughts,
+    )
+    return _do(state, "reveal_turn").state
+
+
+def _unit_rows(state: GameState) -> list[dict[str, object]]:
+    _rows(state)
+    return [
+        dict(row.arguments)
+        for row in ENGINE.whole_actions(state, 0)
+        if row.action_id == _UNIT_RETREAT
+    ]
+
+
+def test_negotiated_withdrawal_matches_the_app_and_joins_the_ix_deck() -> None:
+    """App table: no Faction, cost 4, two copies; Landsraad, City and Spice
+    Trade icons and no Agent box; AcquireEffectList Troop; Reveal 2
+    Persuasion. Text: "Retreat three of your units -> [Influence with any
+    Faction]"."""
+    entry = IMPERIUM_CARDS_BY_ID["negotiated_withdrawal"]
+    assert (entry.copies, entry.acquisition_cost) == (2, 4)
+    assert entry.factions == ()
+    assert entry.agent_icons == (
+        AgentIcon.LANDSRAAD,
+        AgentIcon.CITY,
+        AgentIcon.SPICE_TRADE,
+    )
+    assert entry.agent_effect is None
+    assert entry.acquisition_effect is PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE,
+    )
+    assert entry.play_data_complete
+    ids = content_for(IX).imperium_deck_instance_ids
+    assert {WITHDRAWAL, "imperium:negotiated_withdrawal:1"} <= set(ids)
+    for config in (replace(IX, rise_of_ix=False), RulesetConfig()):
+        assert WITHDRAWAL not in content_for(config).imperium_deck_instance_ids
+    english = personal_card_text(entry)
+    korean = personal_card_text_ko(entry)
+    assert any("You may retreat 3 of your units" in line for line in english)
+    assert any("부대 3" in line for line in korean)
+    assert len(english) == len(korean)
+
+
+def test_three_troops_retreat_for_an_influence_of_the_owners_choice() -> None:
+    """ "Retreat three of your units -> [Influence with any Faction]": an
+    optional arrow [FAQ p. 3]; the troops go back to the garrison with their
+    strength (2 each [Main p. 12]), then one Influence."""
+    state = _withdrawal(_start(), troops=4)
+    assert dict(state.decision_stack[-1].context)["persuasion"] == 2
+    rows = _unit_rows(state)
+    assert [row["faction"] for row in rows] == [faction.value for faction in Faction]
+    assert all(set(row) == {"count", "faction"} for row in rows)
+    before = state.players[0]
+    result = _do(state, _UNIT_RETREAT, faction="fremen")
+    owner = result.state.players[0]
+    assert (owner.troops_conflict, owner.troops_garrison) == (
+        1,
+        before.troops_garrison + 3,
+    )
+    assert owner.troops_supply == before.troops_supply
+    assert owner.combat_strength == before.combat_strength - 6
+    assert owner.influence.fremen == before.influence.fremen + 1
+    assert "troops_retreated" in _kinds(result.events)
+    assert _unit_rows(result.state) == []
+
+
+def test_a_dreadnought_is_one_of_the_three_units() -> None:
+    """ "unit | ... Negotiated Withdrawal(retreat three units) ... | 예"
+    (rise-of-ix.md 6, [Rise of Ix p. 6]): with two troops and a dreadnought
+    the three may be all of them; a seat left with no unit keeps no strength
+    [Main p. 12]."""
+    state = _withdrawal(_start(), troops=2, dreadnoughts=1)
+    rows = _unit_rows(state)
+    assert {row.get("dreadnoughts") for row in rows} == {1}
+    result = _do(state, _UNIT_RETREAT, dreadnoughts=1, faction="emperor")
+    owner = result.state.players[0]
+    assert (owner.troops_conflict, owner.dreadnoughts_conflict) == (0, 0)
+    assert owner.dreadnoughts_garrison == 1
+    assert owner.combat_strength == 0
+    assert "dreadnought_retreated" in _kinds(result.events)
+
+
+def test_two_dreadnoughts_and_troops_give_every_mix() -> None:
+    """The owner picks which three units go (a dreadnought or a troop is
+    each a unit [Rise of Ix p. 6])."""
+    state = _withdrawal(_start(), troops=3, dreadnoughts=2)
+    mixes = {row.get("dreadnoughts", 0) for row in _unit_rows(state)}
+    assert mixes == {0, 1, 2}
+    result = _do(state, _UNIT_RETREAT, dreadnoughts=2, faction="bene_gesserit")
+    owner = result.state.players[0]
+    assert (owner.troops_conflict, owner.dreadnoughts_conflict) == (2, 0)
+    assert owner.combat_strength == 4
+
+
+def test_fewer_than_three_units_offer_nothing_and_the_arrow_lapses() -> None:
+    """The cost is three units: with two it cannot be paid, so the arrow is
+    not offered (OQ-071) and lapses unused when the Reveal ends (OQ-095 (7)
+    addition)."""
+    state = _withdrawal(_start(), troops=1, dreadnoughts=1)
+    assert _unit_rows(state) == []
+    finished = _do(state, "finish_reveal")
+    assert "reveal_choice_lapsed" in _kinds(finished.events)
+
+
+def test_no_row_while_every_cube_is_at_the_top() -> None:
+    """A gain on a cube at the top is lost (OQ-060), so an arrow buying only
+    that is not offered (OQ-071)."""
+    state = _start()
+    owner = state.players[0]
+    top = replace(
+        owner.influence, emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6
+    )
+    state = _give(state, 0, influence=top)
+    state = _withdrawal(state, troops=3)
+    assert _unit_rows(state) == []
+
+
+def _in_row(state: GameState, instance_id: str) -> GameState:
+    """``instance_id`` in the Imperium Row's first slot, out of the deck."""
+
+    state = _give(state, 0)
+    deck = tuple(card for card in state.imperium_deck if card != instance_id)
+    row = tuple(card for card in state.imperium_row if card != instance_id)
+    return replace(state, imperium_deck=deck, imperium_row=(instance_id, *row[1:]))
+
+
+def _with_persuasion(state: GameState, persuasion: int) -> GameState:
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    context["persuasion"] = persuasion
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+
+
+def test_negotiated_withdrawal_recruits_a_troop_when_acquired() -> None:
+    """App AcquireEffectList Troop: "When you acquire a card, you immediately
+    resolve its acquire box" [DI p. 16] -- one troop to the garrison."""
+    state = _in_row(_start(), WITHDRAWAL)
+    state = _with_persuasion(_do(state, "reveal_turn").state, 4)
+    garrison = state.players[0].troops_garrison
+    result = _do(state, "acquire_imperium", instance_id=WITHDRAWAL)
+    owner = result.state.players[0]
+    assert WITHDRAWAL in owner.discard_pile
+    assert owner.troops_garrison == garrison + 1
+
+
+def test_the_unit_retreat_rows_are_in_the_ix_catalog_only() -> None:
+    """The arrow's rows (the Faction row, the unit mix riding on it) are in
+    the original game's catalog with Rise of Ix alone [Rise of Ix p. 2]."""
+    state = _withdrawal(_start(), troops=2, dreadnoughts=1)
+    rows = [
+        row
+        for row in ENGINE.legal_actions(state, 0)
+        if dict(row.arguments).get("printed") == "negotiated_withdrawal"
+    ]
+    assert rows
+    plain = set(ActionCodec(replace(IX, rise_of_ix=False)).catalog)
+    for row in rows:
+        assert (
+            ActionTemplate(row.action_id, row.arguments) in set(CODEC.catalog) - plain
+        )
+    assert not any(
+        dict(template.arguments).get("printed") == "negotiated_withdrawal"
         for template in ActionCodec(RulesetConfig()).catalog
     )

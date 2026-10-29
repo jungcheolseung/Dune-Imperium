@@ -284,6 +284,16 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             # p. 5] (rise-of-ix.md 5) -- an optional choice, its two rows
             # (up one space, recall), lapsing unused when the Reveal ends.
             _CHOICE.MAY_MOVE_FREIGHTER: _choice(_line(Freighter()), mark=_OPTIONAL),
+            # Negotiated Withdrawal (Rise of Ix): "Retreat three of your units
+            # -> [Influence with any Faction]" [Steam app text and screen
+            # pieces]: an optional arrow [FAQ p. 3] whose cost is exactly
+            # three units, troops or dreadnoughts in any mix ("unit" -- 예,
+            # rise-of-ix.md 6, [Rise of Ix p. 6]); one row names the mix and
+            # the Faction, never a cube at the top (OQ-060, OQ-071).
+            _CHOICE.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE: _choice(
+                _line(GainInfluence(), costs=(RetreatTroops(3, 3, units=True),)),
+                mark=_OPTIONAL,
+            ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
             _CHOICE.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: _choice(

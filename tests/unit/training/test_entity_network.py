@@ -257,7 +257,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Reveal choice), read by its row alone; no older scale moved (compared
 # against 2a8bc1ea, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against da3cd535 (2026-10-30).
-_GOLDEN_DIGEST = "dcc99327ff896bebfaa9e8fe42975d46c53233321f8bbe663c959156953675ad"
+# Then Negotiated Withdrawal got its records (stage P4d): only its own row
+# changed, and one personal-table column is new (the "units" flag of a Reveal
+# choice's retreat cost), read by its row alone; no older scale moved
+# (compared against d2a5121e, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against d6419f86 (2026-10-30).
+_GOLDEN_DIGEST = "431b8e6e52d7b37788db6ed00060b7ef31d44a8c21f7dd776743fe3720d5636c"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

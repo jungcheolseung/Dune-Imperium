@@ -1097,6 +1097,27 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "recall_reveal_freighter",
             )
         )
+        # Negotiated Withdrawal's arrow: three units in any mix of troops,
+        # dreadnoughts (a seat has two) and, with Bloodlines, Commanders, for
+        # an Influence with each Faction (``reveal_turn``).
+        templates.extend(
+            ActionTemplate(
+                action_id="retreat_reveal_units_for_influence",
+                arguments=tuple(
+                    sorted(
+                        (
+                            *((("commanders", share),) if share else ()),
+                            ("count", 3),
+                            *((("dreadnoughts", ships),) if ships else ()),
+                            ("faction", faction.value),
+                        )
+                    )
+                ),
+            )
+            for ships in range(MAX_DREADNOUGHT_DEPLOYMENT + 1)
+            for share in range(0, (4 - ships) if config.bloodlines else 1)
+            for faction in Faction
+        )
         # An Unload card's Reveal box icon, a row each (``rules.unload``).
         templates.extend(
             ActionTemplate(

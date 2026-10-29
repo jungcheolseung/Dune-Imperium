@@ -762,6 +762,14 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "recall_reveal_freighter": _spec(
         _V.COLLECT, _S.REVEAL_CARD, "=guild_chief_administrator", icon="freighter"
     ),
+    # Negotiated Withdrawal's arrow (Rise of Ix): the Faction, then the three
+    # units, their mix riding on the count's row.
+    "retreat_reveal_units_for_influence": _spec(
+        _V.RETREAT,
+        _S.REVEAL_CARD,
+        "=negotiated_withdrawal",
+        targets=(*_FACTION, ("count", _C.COUNT)),
+    ),
     "pay_reveal_spice_influence": _spec(
         _V.PAY, _S.REVEAL_CARD, "=spacing_guild_s_favor", targets=_FACTION
     ),

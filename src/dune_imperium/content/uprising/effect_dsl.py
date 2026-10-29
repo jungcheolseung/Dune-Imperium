@@ -765,10 +765,17 @@ class RetreatTroops:
     (docs/rules/uprising-systems.md). During Combat the retreated troops'
     strength leaves the total at once and a player left without units drops
     out of the priority loop (OQ-003).
+
+    ``units``: "Retreat three of your units" [Negotiated Withdrawal card,
+    Steam app text] -- a unit is a troop or a dreadnought [Rise of Ix p. 6]
+    (docs/rules/rise-of-ix.md 6, its table's "unit" row), so the owner's
+    Conflict dreadnoughts are among what it may retreat. Without it a card's
+    "troop" never reaches a dreadnought.
     """
 
     minimum: int = 1
     maximum: int | None = None
+    units: bool = False
 
     def __post_init__(self) -> None:
         if self.minimum < 0:

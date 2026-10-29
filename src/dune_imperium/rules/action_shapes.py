@@ -224,9 +224,10 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
         {"alliance_recipient", "effect", "faction", "gained_faction", "lost_faction"}
     ),
     # ``dreadnoughts``: the share of a count that is dreadnoughts, for a card
-    # that moves "units" (Second Wave) [Rise of Ix p. 6].
+    # that moves "units" (Second Wave) [Rise of Ix p. 6]; ``faction``: the
+    # Influence the units' retreat pays for (Negotiated Withdrawal).
     Target.UNITS: frozenset(
-        {"commanders", "count", "dreadnoughts", "player", "zone", "zones"}
+        {"commanders", "count", "dreadnoughts", "faction", "player", "zone", "zones"}
     ),
     Target.RESOURCES: frozenset({"solari", "spice", "water"}),
     Target.OPTION: frozenset(
@@ -854,6 +855,11 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.ADVANCE, _S.REVEAL_CARD, variant="freighter"
     ),
     "recall_reveal_freighter": _row(_V.COLLECT, _S.REVEAL_CARD, variant="freighter"),
+    # Negotiated Withdrawal's arrow (Rise of Ix): three units, troops or
+    # dreadnoughts, for an Influence with a chosen Faction.
+    "retreat_reveal_units_for_influence": _row(
+        _V.RETREAT, _S.REVEAL_CARD, _T.UNITS, variant="units_for_influence"
+    ),
     "pay_reveal_water_for_sandworm": _row(
         _V.PAY, _S.REVEAL_CARD, variant="water_for_sandworm"
     ),

@@ -180,7 +180,12 @@ from dune_imperium.rules.spy_placement import (
 from dune_imperium.rules.strength import units_strength
 from dune_imperium.rules.tactics import advance_tactics_token
 from dune_imperium.rules.unit_loss import lose_unit
-from dune_imperium.rules.units import retreat_units, unit_count_arguments, unit_counts
+from dune_imperium.rules.units import (
+    retreat_dreadnought,
+    retreat_units,
+    unit_count_arguments,
+    unit_counts,
+)
 
 # Immortality Reveal choices whose enum names do not fit a comparison line.
 _LOSE_INFLUENCE_FOR_VP = (
@@ -289,6 +294,9 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     ),
     _Choice.MAY_MOVE_FREIGHTER: frozenset(
         {"advance_reveal_freighter", "recall_reveal_freighter"}
+    ),
+    _Choice.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE: frozenset(
+        {"retreat_reveal_units_for_influence"}
     ),
 }
 REVEAL_CHOICE_ACTION_IDS: Final = frozenset().union(
@@ -553,6 +561,25 @@ def retreat_pair_reward(
     if isinstance(reward, RevealSwords | RevealPersuasion) and reward.per is None:
         return reward
     return None
+
+
+def unit_retreat_influence(
+    effect: PersonalCardRevealChoiceEffect | str | None,
+) -> int | None:
+    """Negotiated Withdrawal's "Retreat three of your units -> [Influence with
+    any Faction]" (Rise of Ix): the units the arrow retreats, or None."""
+
+    line = _arrow_line(effect)
+    if line is None or len(line.costs) != 1 or line.rewards != (GainInfluence(),):
+        return None
+    cost = line.costs[0]
+    if (
+        not isinstance(cost, RetreatTroops)
+        or not cost.units
+        or cost.maximum != cost.minimum
+    ):
+        return None
+    return cost.minimum
 
 
 def influence_loss_reward(
@@ -1713,6 +1740,108 @@ def apply_reveal_freighter(state: GameState, action: DomainAction) -> RuleResult
         else recall_freighter
     )
     return move(closed, action.actor, source=source)
+
+
+def legal_reveal_unit_retreat_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Negotiated Withdrawal's arrow (Rise of Ix): "Retreat three of your
+    units" -- "unit" is a troop or a dreadnought, so a dreadnought counts
+    ("unit | Negotiated Withdrawal(retreat three units) ... | 예",
+    docs/rules/rise-of-ix.md 6, [Rise of Ix p. 6]); a Sardaukar Commander is a
+    troop [Bloodlines p. 4] -- "-> [Influence with any Faction]". One row
+    names the three (``count``, with the ``commanders`` and ``dreadnoughts``
+    shares of them, the rest troops) and the Faction, never one whose cube is at the top
+    (OQ-060); with fewer than three units or every cube at the top there is
+    no row, as an arrow cost is offered only for a live reward (OQ-071). An
+    arrow: no refusal (OQ-095 (7) addition)."""
+
+    pending = pending_choice_rows(state, player, legal_reveal_unit_retreat_actions)
+    if pending is not None:
+        return pending
+    opened = _choice_frame_effect(state, player)
+    count = None if opened is None else unit_retreat_influence(opened[1])
+    if count is None:
+        return ()
+    owner = state.players[player]
+    mixes = tuple(
+        row
+        for row in unit_count_arguments(
+            minimum=count,
+            maximum=count,
+            troops=owner.troops_conflict,
+            commanders=owner.commanders_conflict,
+            dreadnoughts=owner.dreadnoughts_conflict,
+        )
+    )
+    return tuple(
+        DomainAction(
+            action_id="retreat_reveal_units_for_influence",
+            actor=player,
+            arguments=tuple(sorted((*mix, ("faction", faction.value)))),
+        )
+        for mix in mixes
+        for faction in Faction
+        if influence_can_rise(owner, faction)
+    )
+
+
+def apply_reveal_unit_retreat(state: GameState, action: DomainAction) -> RuleResult:
+    """Retreat the three units, each taking its strength along (a seat left
+    without units keeps none [Main p. 12]), then gain the Influence."""
+
+    state = _open_pending(state, action, legal_reveal_unit_retreat_actions)
+    if action not in legal_reveal_unit_retreat_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal unit retreat")
+    opened = _choice_frame_effect(state, action.actor)
+    assert opened is not None
+    card_id, effect = opened
+    count = unit_retreat_influence(effect)
+    assert count is not None and dict(action.arguments)["count"] == count
+    arguments = dict(action.arguments)
+    commanders = arguments.get("commanders", 0)
+    dreadnoughts = arguments.get("dreadnoughts", 0)
+    faction = arguments.get("faction")
+    if (
+        isinstance(commanders, bool)
+        or not isinstance(commanders, int)
+        or isinstance(dreadnoughts, bool)
+        or not isinstance(dreadnoughts, int)
+        or not isinstance(faction, str)
+    ):
+        raise RuntimeError("Reveal unit retreat has invalid arguments")
+    troops = count - commanders - dreadnoughts
+    player = action.actor
+    source = f"round:{state.round_number}:player:{player}:reveal_card:{card_id}"
+    before = state.players[player].combat_strength
+    working = state.pop_decision()
+    events: list[GameEvent] = []
+    if troops + commanders:
+        retreated = retreat_units(
+            working, player, source, troops=troops, commanders=commanders
+        )
+        working = reconcile_deployment_after_retreat(
+            retreated.state, player, troops=troops, commanders=commanders
+        )
+        events.extend(retreated.events)
+    for index in range(dreadnoughts):
+        moved = retreat_dreadnought(working, player, f"{source}:{index}")
+        working = moved.state
+        events.extend(moved.events)
+    delta = working.players[player].combat_strength - before
+    if delta:
+        working = replace(
+            working, decision_stack=add_reveal_strength(working.decision_stack, delta)
+        )
+    gained = gain_faction_influence(
+        working,
+        player,
+        Faction(faction),
+        1,
+        event_prefix=f"{source}:influence:{faction}",
+    )
+    return RuleResult(state=gained.state, events=(*events, *gained.events))
 
 
 def legal_reveal_deployments(
@@ -4683,6 +4812,11 @@ def _in_play_cards(owner: PlayerState) -> tuple[PersonalCardDefinition, ...]:
     )
 
 
+_UNITS_FOR_INFLUENCE: Final = (
+    PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE
+)
+
+
 def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
     """Return the REVEAL_CHOICE frame prompt text for one choice effect."""
 
@@ -4778,6 +4912,8 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
         else "You may move your Freighter up one space or recall it"
         if effect is PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER
+        else "You may retreat three units for one Influence"
+        if effect is _UNITS_FOR_INFLUENCE
         else "Choose a Spy to recall for this Reveal effect"
     )
 
@@ -4805,7 +4941,9 @@ def reveal_influence_choice_blocked(
     """
 
     return (
-        effect in _INFLUENCE_GAIN_CHOICES or spice_influence_price(effect) > 0
+        effect in _INFLUENCE_GAIN_CHOICES
+        or spice_influence_price(effect) > 0
+        or unit_retreat_influence(effect) is not None
     ) and not any(influence_can_rise(owner, faction) for faction in Faction)
 
 
@@ -4957,6 +5095,16 @@ def _reveal_choice_effect_is_available(
         # Guild Chief Administrator's Freighter: up from the bottom, or a
         # recall from the top; some move is always there.
         or effect is PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER
+        # Negotiated Withdrawal: three units in the Conflict, troops,
+        # Commanders or dreadnoughts, and a cube that can rise (OQ-071).
+        or (
+            (units := unit_retreat_influence(effect)) is not None
+            and owner.troops_conflict
+            + owner.commanders_conflict
+            + owner.dreadnoughts_conflict
+            >= units
+            and not reveal_influence_choice_blocked(owner, effect)
+        )
     )
 
 
@@ -5147,6 +5295,7 @@ def reveal_choice_providers() -> tuple[ChoiceProvider, ...]:
         legal_reveal_troops_move_actions,
         legal_reveal_troop_sacrifice_actions,
         legal_reveal_freighter_actions,
+        legal_reveal_unit_retreat_actions,
     )
 
 

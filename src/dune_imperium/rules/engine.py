@@ -327,6 +327,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_troop_retreat,
     apply_reveal_troop_sacrifice,
     apply_reveal_troops_move,
+    apply_reveal_unit_retreat,
     apply_reveal_vp_payment,
     begin_reveal_turn,
     finish_reveal_turn,
@@ -1079,6 +1080,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Guild Chief Administrator (Rise of Ix): the Reveal box's Freighter icon.
     "advance_reveal_freighter": apply_reveal_freighter,
     "recall_reveal_freighter": apply_reveal_freighter,
+    # Negotiated Withdrawal (Rise of Ix): "Retreat three of your units ->
+    # Influence with any Faction".
+    "retreat_reveal_units_for_influence": apply_reveal_unit_retreat,
     "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
     # Immortality Reveal choices (For Humanity, Shadout Mapes, Tleilaxu
     # Surgeon)

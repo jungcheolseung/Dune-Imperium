@@ -149,8 +149,9 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
     # Guild Ambassador's Victory Point, Gurney Halleck's troops, and Sardaukar
     # Legion's, Scout's and Chani's counts of troops (stage P3), and the promo
     # Duncan, Loyal Blade's trash for a count of troops; Rise of Ix's Guild
-    # Chief Administrator's Freighter icon ("may" [Rise of Ix p. 5]).
-    assert len(optional) == 16 + 8 + 1
+    # Chief Administrator's Freighter icon ("may" [Rise of Ix p. 5]) and
+    # Negotiated Withdrawal's arrow.
+    assert len(optional) == 16 + 8 + 2
     # Ten of the Uprising family's and Bene Gesserit Sister's -OR- (stage P3).
     assert len(mandatory) == 10 + 1
     assert set(REVEAL_CHOICE_EFFECT_ACTIONS) == set(PersonalCardRevealChoiceEffect)
@@ -300,6 +301,7 @@ def test_an_id_two_cards_produce_always_names_its_card() -> None:
         # Rise of Ix's Guild Chief Administrator, on the original game (P4d).
         "advance_reveal_freighter",
         "recall_reveal_freighter",
+        "retreat_reveal_units_for_influence",
     }
     assert set(produced) == REVEAL_CHOICE_ACTION_IDS - original_only
     for action_id, by_card in produced.items():

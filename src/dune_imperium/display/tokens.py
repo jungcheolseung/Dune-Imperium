@@ -719,6 +719,11 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER: (
                 "You may move your Freighter up one space or recall it"
             ),
+            # Rise of Ix's Negotiated Withdrawal (stage P4d).
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE: (
+                "You may retreat 3 of your units → Gain 1 Influence with a "
+                "chosen Faction"
+            ),
             PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
                 "You may retreat any number of troops"
             ),

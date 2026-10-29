@@ -13,8 +13,8 @@ by ``scripts/dwgr/imperium_entries.py --set ix skeleton``. Incomplete entries
 keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
 game's deck takes only completed cards (CHOAM Delegate, Jamis, Sayyadina,
-Truthsayer, Imperial Shock Trooper, Local Fence, Water Peddler and Guild Chief
-Administrator so far),
+Truthsayer, Imperial Shock Trooper, Local Fence, Water Peddler, Guild Chief
+Administrator and Negotiated Withdrawal so far),
 while the observation lists every identity from v39. Setup takes Rise of Ix
 on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
@@ -204,6 +204,19 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("negotiated_withdrawal", "Negotiated Withdrawal"),
         copies=2,
         acquisition_cost=4,
+        # App table: no Faction; Landsraad, City and Spice Trade icons, no
+        # Agent box; AcquireEffectList Troop; Reveal 2 Persuasion. Text and
+        # screen pieces: Reveal "Retreat three of your units -> [Influence
+        # with any Faction]", an optional arrow -- its Reveal choice record;
+        # a unit is a troop or a dreadnought [Rise of Ix p. 6].
+        has_acquisition_bonus=True,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        acquisition_effect=PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP,
+        reveal_persuasion=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("satellite_ban", "Satellite Ban"),

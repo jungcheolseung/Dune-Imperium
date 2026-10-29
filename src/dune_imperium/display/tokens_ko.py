@@ -748,6 +748,11 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER: (
         "운송 트랙에서 한 칸 위로 또는 회수 가능"
     ),
+    # Rise of Ix's Negotiated Withdrawal (stage P4d): units are "부대"
+    # (glossary-ko.md, [Main p. 10]).
+    PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE: (
+        "부대 3 {retreat} 가능 {arrow_right} {influence_any:1} 선택"
+    ),
     PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
         "원하는 수의 {troop} {retreat} 가능"
     ),
