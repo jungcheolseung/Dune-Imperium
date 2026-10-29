@@ -2203,10 +2203,11 @@ def _bloodlines_box(t: _Turn, short: str, action: DomainAction) -> None:
         _box_auto(t, label, action)
         return
     if short == "possible_futures":
-        # Without an influence pick the box is the two troops alone (option
-        # 1 of ``PossibleFuturesAgentAbility``); our engine always offers the
-        # pick with it, so this is never reached in play: no guess.
-        t.unmapped.append(label)
+        # Without an influence pick offered, the box is the two
+        # troops alone, option 1 of ``PossibleFuturesAgentAbility`` and the
+        # only answer left: the box resolves as a generic one (big soak
+        # 2026-10-29, seed 7802985).
+        _box_auto(t, label, action)
         return
     found = _find(t.card, _BLOODLINES_BOX_ABILITY[short])
     request = (
