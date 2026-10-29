@@ -18,6 +18,10 @@ Rules:
   Strategic Push의 승리 몫·승리 책략 줄의 순서".
 - open-questions.md OQ-142 (닿는 곳): the card is no winning Intrigue held in
   hand -- "이 카드는 Conflict 전에 내는 Combat 카드이고 승리 몫은 창의 자동 줄이다".
+- docs/rules/information-visibility.md: a held Intrigue card is shown to the
+  opponents "play할 때만 공개한다. `[Main p. 7]`", and OQ-010 settled "한 번
+  공개된 정보는 재확인 가능해야 한다" (2026-09-02, user ruling; a project
+  convention): the played card's pledge is public.
 
 The states are built by hand as in ``test_ix_conflicts.py``: an original game
 with Rise of Ix, moved into the Combat phase with the seats' units in the
@@ -33,6 +37,10 @@ from tests.support.pauses import pause_outcome
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.action_codec import ActionCodec, ActionTemplate
+from dune_imperium.adapters.observation_encoding import (
+    encode_player_view,
+    segment_slice,
+)
 from dune_imperium.agents import HeuristicAgent
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.agents.app_ai.agent import AppAIAgent
@@ -48,6 +56,7 @@ from dune_imperium.core import DomainAction, GamePhase, GameState
 from dune_imperium.core.chance import ChanceResolver
 from dune_imperium.core.decisions import ChanceDecision
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.observation import observe_state
 from dune_imperium.core.replay import ReplayStep, replay_game
 from dune_imperium.core.state import canonical_state_hash
 from dune_imperium.display.actions import combat_reward_icon_action_text
@@ -72,6 +81,7 @@ from dune_imperium.server.persistence import (
 from dune_imperium.simulation.invariants import (
     CardCensus,
     InvariantViolation,
+    check_observation_privacy,
     check_state_invariants,
 )
 
@@ -511,6 +521,62 @@ def test_no_pledge_outlives_the_combat_phase() -> None:
             _seat(original, 1, strategic_push_solari=2),
             CardCensus.from_state(original),
         )
+
+
+# --- What every seat sees -------------------------------------------------------
+
+
+def _pledge_columns(state: GameState, observer: int) -> dict[int, int]:
+    """Each seat's pledge as ``observer``'s observation v39 holds it: the last
+    column of the seat's ``seat{k}_ix`` (k its seat relative to the
+    observer)."""
+
+    encoded = encode_player_view(observe_state(state, observer))
+    return {
+        seat: encoded[segment_slice(f"seat{(seat - observer) % 4}_ix")][-1]
+        for seat in range(4)
+    }
+
+
+def test_every_seat_sees_the_pledge_until_the_combat_ends() -> None:
+    """A played Intrigue card is shown to every opponent ("play할 때만 공개한다"
+    [Main p. 7]) and stays checkable (OQ-010): every seat's public view of the
+    pledging seat and its observation hold the 2 Solari, the privacy check
+    holds, and both read 0 once the Combat is cleaned up."""
+
+    state = _fight({0: (3, 0), 1: (1, 0)}, holder=1)
+    check_observation_privacy(state)
+    for observer in range(4):
+        view = observe_state(state, observer)
+        pledges = {seat.player: seat.strategic_push_solari for seat in view.players}
+        assert pledges == {0: 0, 1: 2, 2: 0, 3: 0}
+        assert _pledge_columns(state, observer) == pledges
+
+    settled, _events = _settle(state)
+    assert settled.phase is not GamePhase.COMBAT
+    check_observation_privacy(settled)
+    for observer in range(4):
+        view = observe_state(settled, observer)
+        assert all(seat.strategic_push_solari == 0 for seat in view.players)
+        assert set(_pledge_columns(settled, observer).values()) == {0}
+
+
+def test_a_pledge_moves_one_column_of_every_observation() -> None:
+    """The pledge going from 2 to 0 changes every seat's observation, in the
+    pledging seat's pledge column alone."""
+
+    state = _fight({0: (3, 0), 1: (1, 0)}, holder=1)
+    cleared = _seat(state, 1, strategic_push_solari=0)
+    for observer in range(4):
+        before = encode_player_view(observe_state(state, observer))
+        after = encode_player_view(observe_state(cleared, observer))
+        ix = segment_slice(f"seat{(1 - observer) % 4}_ix")
+        assert [
+            index
+            for index, (a, b) in enumerate(zip(before, after, strict=True))
+            if a != b
+        ] == [ix.stop - 1]
+        assert (before[ix.stop - 1], after[ix.stop - 1]) == (2, 0)
 
 
 # --- The codec and the scripted seats -------------------------------------------

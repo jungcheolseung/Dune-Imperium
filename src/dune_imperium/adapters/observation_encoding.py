@@ -225,7 +225,9 @@ from dune_imperium.rules.frames import FrameKind
 # game without Rise of Ix: each relative seat's dreadnoughts
 # (``seat{k}_units``), the dreadnoughts on Control spaces
 # (``dreadnought_control``), each relative seat's Freighter, Negotiators,
-# Snooper tokens, set-aside card and turn count (``seat{k}_ix``), the Voice's
+# Snooper tokens, set-aside card, turn count and Strategic Push pledge
+# (``seat{k}_ix``; the pledge's column joined at its end on 2026-10-30, before
+# v39 reached master, so the version stayed), the Voice's
 # bars on the four Rise of Ix spaces (``voice_blocks_ix``: ``voice_blocks``
 # is a relative seat x space matrix and keeps its 42 spaces, review item 5),
 # and the observer's own knowledge -- the Intrigue deck's top card
@@ -406,7 +408,9 @@ INTRIGUE_BOTTOM_SLOTS: Final = 8
 # [Tessia Vernius card] (docs/rules/rise-of-ix.md 10).
 SNOOPER_SPACE: Final = 2
 _SEAT_UNITS: Final = 3
-_SEAT_IX: Final = 9
+# Freighter, Negotiators, four Snooper columns, the set-aside card, its return
+# this turn, the turns finished this round and Strategic Push's pledged Solari.
+_SEAT_IX: Final = 10
 _IX_PENDING: Final = 7
 
 # Precomputed identity -> index maps for every universe otherwise searched
@@ -627,9 +631,10 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
             # the relative seat + 1 of the dreadnought on it and whether it
             # leaves at the next Combat's end; per relative seat its
             # Freighter's space, Negotiators, Snooper tokens (the space, 2,
-            # per Faction), set-aside card, its return this turn and the
-            # turns finished this round; the Voice's bars on the Rise of Ix
-            # spaces, relative seat x space.
+            # per Faction), set-aside card, its return this turn, the turns
+            # finished this round and the Solari it pledged with Strategic
+            # Push (2 a copy, one copy in the deck); the Voice's bars on the
+            # Rise of Ix spaces, relative seat x space.
             *((f"seat{seat}_units", _SEAT_UNITS) for seat in range(_SEATS)),
             ("dreadnought_control", len(CONTROL_SPACE_IDS) * 2),
             *((f"seat{seat}_ix", _SEAT_IX) for seat in range(_SEATS)),
@@ -972,6 +977,8 @@ def _write_rise_of_ix(
             int(seat_view.has_set_aside_card),
             int(seat_view.set_aside_returned_turn),
             seat_view.turns_finished_round,
+            # Public: the Combat card was played face up [Main p. 7].
+            seat_view.strategic_push_solari,
         ]
     offset = _OFFSET["dreadnought_control"]
     for space_id, seat, leaving in view.dreadnought_control:

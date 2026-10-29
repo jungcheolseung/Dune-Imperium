@@ -1212,9 +1212,12 @@ _V39_INPUTS = (
 
 
 def _v39_entity_inputs(width: int) -> int:
-    """How many encoder inputs v39 added for an entity width."""
+    """How many encoder inputs v39 added for an entity width: a seat's three
+    dreadnought counts and ten ``seat{k}_ix`` columns (Strategic Push's
+    pledge the tenth since 2026-10-30), the private and board raw columns and
+    five identity zones."""
 
-    return (3 + 9) + (1 + 8 + 16 + 7 + 1) + 8 + 5 * width
+    return (3 + 10) + (1 + 8 + 16 + 7 + 1) + 8 + 5 * width
 
 
 def test_a_v37_entity_file_moves_onto_v38_with_the_new_inputs_at_zero(

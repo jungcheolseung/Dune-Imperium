@@ -309,8 +309,8 @@ class PlayerState:
     # Combat card resolved and paid to the Conflict's sole winner as an
     # automatic row of its window (OQ-121 ruling 6 (1),
     # ``combat.STRATEGIC_PUSH``); a pledge not paid lapses as the Combat phase
-    # is cleaned up. Public: the played Combat card is face up. Not in
-    # observation v39 (a P6 note).
+    # is cleaned up. Public: the played Combat card is face up
+    # (``PublicPlayerView``, observation v39's ``seat{k}_ix``).
     strategic_push_solari: int = 0
     deck: tuple[str, ...] = ()
     # The deck's top cards every seat knows, top first (OQ-145, user ruling
