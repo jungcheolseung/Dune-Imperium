@@ -1920,6 +1920,20 @@ class PlaceNegotiator:
     """
 
 
+@dataclass(frozen=True, slots=True)
+class Freighter:
+    """The Freighter icon: move the owner's Freighter on the Shipping track,
+    one choice for each icon ("Freighter 아이콘마다 Freighter를 둘 가운데
+    하나로 움직일 수 있다("may"): 한 칸 위로(맨 위면 불가) 또는 맨 아래로
+    회수", [Rise of Ix p. 5], docs/rules/rise-of-ix.md 5).
+
+    An optional piece: the owner moves up one space (never from the top),
+    recalls the Freighter to the bottom -- taking the rewards of its space and
+    of every space below, in the order it chooses (``rules.shipping_track``)
+    -- or neither. A second icon is a second piece; the piece has no field.
+    """
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -2004,6 +2018,7 @@ type Reward = (
     | DoubleBonusHarvestSpice
     | CommissionDreadnought
     | PlaceNegotiator
+    | Freighter
 )
 
 

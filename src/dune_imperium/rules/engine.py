@@ -376,6 +376,13 @@ from dune_imperium.rules.scouts_secrets import (
     legal_secret_pick_actions,
 )
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
+from dune_imperium.rules.shipping_track import (
+    apply_freighter_move_action,
+    apply_shipping_reward,
+    legal_freighter_move_actions,
+    legal_shipping_reward_row_actions,
+    legal_shipping_reward_window_actions,
+)
 from dune_imperium.rules.shortfall import (
     drop_stale_shortfalls,
     refill_shortfall,
@@ -520,6 +527,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_contract_icon_row_actions,
         # So does an acquire box's icon, a row each (OQ-141).
         legal_acquire_icon_actions,
+        # And a Shipping track recall's rewards (Rise of Ix, stage P4c-3).
+        legal_shipping_reward_row_actions,
         # A research bonus or trash icon a Plot raised waits on the turn
         # (cleanup-2b).
         legal_research_bonus_actions,
@@ -549,6 +558,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_contract_icon_row_actions,
         # So does an acquire box's icon, a row each (OQ-141).
         legal_acquire_icon_actions,
+        # And a Shipping track recall's rewards (Rise of Ix, stage P4c-3).
+        legal_shipping_reward_row_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
@@ -657,6 +668,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.INTRIGUE_PEEK: (legal_intrigue_peek_actions,),
     # Rise of Ix's Sonic Snoopers (stage P4c-2c).
     FrameKind.INTRIGUE_BOTTOM_PICK: (legal_intrigue_bottom_actions,),
+    # Rise of Ix's Freighter outside its owner's turn and its recall's
+    # rewards (stage P4c-3, ``rules.shipping_track``).
+    FrameKind.FREIGHTER_MOVE: (legal_freighter_move_actions,),
+    FrameKind.SHIPPING_REWARD_ICONS: (legal_shipping_reward_window_actions,),
     # Servo-Receivers: the Leader's Signet Ring ability outside its box.
     FrameKind.LEADER_SIGNET: (legal_feyd_track_actions, legal_leader_signet_actions),
     # Arrakeen Scouts: Friends Everywhere's choice of Influence 4 bonus.
@@ -744,6 +759,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "keep_shield_wall": apply_intrigue_choice,
     "commission_intrigue_dreadnought": apply_intrigue_choice,
     "decline_intrigue_dreadnought": apply_intrigue_choice,
+    "advance_intrigue_freighter": apply_intrigue_choice,
+    "recall_intrigue_freighter": apply_intrigue_choice,
+    "decline_intrigue_freighter": apply_intrigue_choice,
     "place_intrigue_negotiator": apply_intrigue_choice,
     "decline_intrigue_negotiator": apply_intrigue_choice,
     "deploy_intrigue_troops": apply_intrigue_choice,
@@ -837,6 +855,11 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "flip_tech": apply_tech_flip,
     # Rise of Ix's tiles used by trashing them (stage P4c-2c).
     "trash_tech": apply_tech_trash,
+    # The Freighter and the Shipping track's rewards (Rise of Ix, P4c-3).
+    "advance_freighter": apply_freighter_move_action,
+    "recall_freighter": apply_freighter_move_action,
+    "decline_freighter": apply_freighter_move_action,
+    "resolve_shipping_reward": apply_shipping_reward,
     "put_intrigue_on_bottom": apply_intrigue_bottom_action,
     "finish_intrigue_bottom": apply_intrigue_bottom_action,
     "choose_secret_project": apply_secret_project,

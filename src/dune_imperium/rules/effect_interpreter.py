@@ -43,6 +43,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     FactionBond,
     FlipBattleCard,
     FlipFaceUpConflictCard,
+    Freighter,
     GainCombatStrength,
     GainInfluence,
     GainResources,
@@ -186,6 +187,7 @@ type ChoiceSlot = (
     | RecallYourAgent
     | CommissionDreadnought
     | PlaceNegotiator
+    | Freighter
 )
 
 
@@ -460,10 +462,11 @@ def choice_slots(
                 case RecallYourAgent():
                     # Urgent Mission: the owner names the Agent that returns.
                     slots.append(reward)
-                case CommissionDreadnought() | PlaceNegotiator():
+                case CommissionDreadnought() | PlaceNegotiator() | Freighter():
                     # "you may commission" [Rise of Ix p. 6], "you may take a
-                    # troop" [Rise of Ix p. 4]: the owner takes the icon or
-                    # leaves it, one choice for each icon.
+                    # troop" [Rise of Ix p. 4], "you may move your Freighter"
+                    # [Rise of Ix p. 5]: the owner takes the icon or leaves it,
+                    # one choice for each icon.
                     slots.append(reward)
                 case _:
                     pass
@@ -1012,6 +1015,10 @@ def reward_can_change_something(
             # line paying for the icon is played only while a troop is in
             # the supply.
             return negotiator_block(state, player) is None
+        case Freighter():
+            # The Freighter can always move: up from any space but the top,
+            # or recalled from the top (``rules.shipping_track``).
+            return True
         case TakeMentat():
             # Calculated Hire's "[1 spice] -> Take the Mentat": the Mentat
             # is taken only from its own space [DI p. 13], so the cost line
@@ -1351,6 +1358,7 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | RecallYourAgent
             | CommissionDreadnought
             | PlaceNegotiator
+            | Freighter
             | RevealContractsTakeOne,
         )
     )

@@ -867,6 +867,13 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "place_intrigue_negotiator": _spec(
         _V.RECRUIT, _S.INTRIGUE, Printed.INTRIGUE_CARD
     ),
+    # A Freighter icon's moves (Rise of Ix), likewise.
+    "advance_intrigue_freighter": _spec(
+        _V.ADVANCE, _S.INTRIGUE, Printed.INTRIGUE_CARD
+    ),
+    "recall_intrigue_freighter": _spec(
+        _V.COLLECT, _S.INTRIGUE, Printed.INTRIGUE_CARD
+    ),
     "put_back_top_card": _spec(_V.KEEP, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "discard_top_card": _spec(_V.DISCARD, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "draw_top_card_for_solari": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
@@ -959,6 +966,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "decline_intrigue_negotiator": _spec(
         _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.RECRUIT
+    ),
+    # A Freighter icon's moves (Rise of Ix), likewise.
+    "decline_intrigue_freighter": _spec(
+        _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.ADVANCE
     ),
     "resolve_intrigue_influence_without_faction": _spec(
         _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.GAIN_INFLUENCE

@@ -88,6 +88,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     FlipBattleCard,
     FlipFaceUpConflictCard,
     ForceEnemyRetreat,
+    Freighter,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
@@ -1089,6 +1090,12 @@ def reward_text_ko(reward: Reward) -> str:
             # Korean edition has no Rise of Ix), so the line stays English
             # rather than invented (module docstring).
             return "Place a troop from your supply on the Ix board as a Negotiator"
+        case Freighter():
+            # Rise of Ix's Freighter icon: no Korean source names the
+            # Freighter or the Shipping track yet (``glossary-ko.md`` has no
+            # entry; the official Korean edition has no Rise of Ix), so the
+            # line stays English rather than invented (module docstring).
+            return "Move your Freighter up one space or recall it"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "당신 {leader}의 {signet_ring} 능력 사용"

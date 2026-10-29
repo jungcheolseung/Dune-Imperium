@@ -51,6 +51,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     FlipBattleCard,
     FlipFaceUpConflictCard,
+    Freighter,
     GainInfluence,
     GiveIntrigueToOpponent,
     LoseInfluence,
@@ -157,6 +158,12 @@ from dune_imperium.rules.reveal_turn import (
     reveal_late_arrivals,
 )
 from dune_imperium.rules.shield_wall import destroy_shield_wall
+from dune_imperium.rules.shipping_track import (
+    freighter_can_advance,
+    freighter_can_recall,
+    move_freighter_up,
+    recall_freighter,
+)
 from dune_imperium.rules.spy_moves import (
     connected_post_ids,
     spy_placement_frame,
@@ -718,6 +725,18 @@ def piece_rows(
                 rows.append(row(Verb.RECRUIT, variant="negotiator"))
             if refusals:
                 rows.append(row(Verb.DECLINE, of=Verb.RECRUIT, variant="negotiator"))
+        case Freighter():
+            # "you may move your Freighter in one of two ways" [Rise of Ix
+            # p. 5]: up one space (never from the top), recall (never from
+            # the bottom, where it moves nothing), or neither. An own turn
+            # offers no refusal and the turn's end lapses the icon (OQ-095
+            # (2)), a stacked frame its refusal.
+            if freighter_can_advance(state, player):
+                rows.append(row(Verb.ADVANCE, variant="freighter"))
+            if freighter_can_recall(state, player):
+                rows.append(row(Verb.COLLECT, variant="freighter"))
+            if refusals:
+                rows.append(row(Verb.DECLINE, of=Verb.ADVANCE, variant="freighter"))
         case PassTurn(optional=True):
             # Bindu Suspension: after the draw, "you may pass your turn" or
             # play it normally (OQ-117); the refusal is the normal turn.
@@ -852,6 +871,11 @@ _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
     "decline_intrigue_negotiator": (
         "negotiator_declined",
         "intrigue_negotiator_declined",
+    ),
+    # A Freighter icon left unused (Rise of Ix).
+    "decline_intrigue_freighter": (
+        "freighter_declined",
+        "intrigue_freighter_declined",
     ),
     "resolve_intrigue_influence_without_faction": (
         "influence_unavailable",
@@ -1267,6 +1291,12 @@ def apply_piece(
             result = _passed(state, player, action, step_source)
         case PlaceNegotiator():
             result = place_negotiator(state, player, source=step_source)
+        case Freighter() if shape.verb is Verb.DECLINE:
+            result = _passed(state, player, action, step_source)
+        case Freighter() if shape.verb is Verb.ADVANCE:
+            result = move_freighter_up(state, player, source=step_source)
+        case Freighter():
+            result = recall_freighter(state, player, source=step_source)
         case RecallYourAgent() if shape.verb is Verb.CONFIRM_EMPTY:
             result = _passed(state, player, action, step_source)
         case RecallYourAgent():

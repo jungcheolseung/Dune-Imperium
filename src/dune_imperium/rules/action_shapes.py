@@ -545,6 +545,15 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "decline_intrigue_negotiator": _row(
         _V.DECLINE, _S.INTRIGUE, of=_V.RECRUIT, variant="negotiator"
     ),
+    # Rise of Ix's Freighter icon ("you may move your Freighter", [Rise of Ix
+    # p. 5]): up one space, recall (collect the spaces' rewards), or neither.
+    "advance_intrigue_freighter": _row(
+        _V.ADVANCE, _S.INTRIGUE, variant="freighter"
+    ),
+    "recall_intrigue_freighter": _row(_V.COLLECT, _S.INTRIGUE, variant="freighter"),
+    "decline_intrigue_freighter": _row(
+        _V.DECLINE, _S.INTRIGUE, of=_V.ADVANCE, variant="freighter"
+    ),
     "deploy_intrigue_troops": _row(_V.DEPLOY, _S.INTRIGUE, _T.UNITS),
     "retreat_intrigue_troops": _row(_V.RETREAT, _S.INTRIGUE, _T.UNITS),
     "lose_intrigue_troop": _row(_V.LOSE_UNIT, _S.INTRIGUE, _T.UNITS),
@@ -842,6 +851,17 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.SET_ASIDE, _S.TECH, _T.INTRIGUE_CARD, variant="deck_bottom"
     ),
     "finish_intrigue_bottom": _row(_V.FINISH, _S.TECH, variant="intrigue_bottom"),
+    # The Freighter's own window outside its owner's turn, and one reward of a
+    # Shipping track recall (a row of its owner's turn or of its window): the
+    # track is on the Ix board (stage P4c-3, ``rules.shipping_track``).
+    "advance_freighter": _row(_V.ADVANCE, _S.BOARD_SPACE, variant="freighter"),
+    "recall_freighter": _row(_V.COLLECT, _S.BOARD_SPACE, variant="freighter"),
+    "decline_freighter": _row(
+        _V.DECLINE, _S.BOARD_SPACE, of=_V.ADVANCE, variant="freighter"
+    ),
+    "resolve_shipping_reward": _row(
+        _V.RESOLVE, _S.BOARD_SPACE, _T.FACTION, variant="shipping_reward"
+    ),
     # Forbidden Weapons: the swords and an Influence lost, or the trash.
     "choose_tech_strength": _row(_V.CHOOSE, _S.TECH, _T.FACTION),
     "choose_tech_trash": _row(_V.CHOOSE, _S.TECH, variant="trash"),

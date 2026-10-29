@@ -105,6 +105,7 @@ from dune_imperium.rules.sardaukar import (
 )
 from dune_imperium.rules.scouts_effects import legal_subcommittee_choice_actions
 from dune_imperium.rules.scouts_missions import legal_mission_collect_actions
+from dune_imperium.rules.shipping_track import legal_shipping_reward_row_actions
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
 from dune_imperium.rules.spy_moves import legal_track_spy_actions
 from dune_imperium.rules.tech import (
@@ -169,6 +170,8 @@ def legal_agent_effect_frame_actions(
         *legal_contract_icon_row_actions(state, player),
         # And an acquire box's icons, a row each (OQ-141).
         *legal_acquire_icon_actions(state, player),
+        # A Shipping track recall's rewards (Rise of Ix, stage P4c-3).
+        *legal_shipping_reward_row_actions(state, player),
         *legal_leader_placement_ability_actions(state, player),
         *legal_leader_board_repeat_actions(state, player),
         *legal_contract_completion_actions(state, player),

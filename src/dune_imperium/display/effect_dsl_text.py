@@ -61,6 +61,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     FlipBattleCard,
     FlipFaceUpConflictCard,
     ForceEnemyRetreat,
+    Freighter,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
@@ -797,6 +798,10 @@ def reward_text(reward: Reward) -> str:
             # Rise of Ix's Tech Negotiation icon: "you may take a troop"
             # [Rise of Ix p. 4] (docs/rules/rise-of-ix.md 4).
             return "Place a troop from your supply on the Ix board as a Negotiator"
+        case Freighter():
+            # Rise of Ix's Freighter icon: "you may move your Freighter in one
+            # of two ways" [Rise of Ix p. 5] (docs/rules/rise-of-ix.md 5).
+            return "Move your Freighter up one space or recall it"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "Use your Leader's Signet Ring ability"

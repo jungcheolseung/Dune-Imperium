@@ -822,6 +822,12 @@ def known_intrigue_places(state: GameState, owner: PlayerState) -> KnownIntrigue
 # Acquire Tech's Tech Discount, its payment ("spice" or "solari") and the
 # Negotiators the seat may still return toward it.
 SHIPPING_REWARDS_KEY: Final = "shipping_rewards"
+# Inside the owner's own turn the owed recall rewards wait on its turn frame
+# instead (``rules.turn_rows``: the frame's waiting effects, a JSON list of
+# ``[kind, source, value]``, and a Shipping reward's kind, whose value is its
+# space), and ``ix_pending_of`` reads them there too.
+TURN_ROWS_KEY: Final = "pending_turn_rows"
+SHIPPING_REWARD_ROW: Final = "shipping_reward"
 TECH_DISCOUNT_KEY: Final = "tech_discount"
 TECH_PAYMENT_KEY: Final = "tech_payment"
 NEGOTIATORS_RETURNABLE_KEY: Final = "negotiators_returnable"
@@ -865,12 +871,20 @@ def ix_pending_of(state: GameState, player: int) -> IxPending:
         if isinstance(discount, int)
         else 0
     )
-    pending = IxPending(
-        shipping_rewards=tuple(
-            int(space) for space in rewards.split(",") if space
-        )
+    owed = (
+        {int(space) for space in rewards.split(",") if space}
         if isinstance(rewards, str)
-        else (),
+        else set()
+    )
+    waiting = context.get(TURN_ROWS_KEY)
+    if isinstance(waiting, str) and waiting:
+        owed.update(
+            int(value)
+            for kind, _source, value in json.loads(waiting)
+            if kind == SHIPPING_REWARD_ROW
+        )
+    pending = IxPending(
+        shipping_rewards=tuple(sorted(owed)),
         tech_discount=discount if isinstance(discount, int) else 0,
         tech_payment=payment if isinstance(payment, str) else "",
         negotiators_returnable=returnable,

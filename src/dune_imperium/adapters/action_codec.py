@@ -155,6 +155,17 @@ from dune_imperium.rules.reveal_turn import (
 )
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
+from dune_imperium.rules.shipping_track import (
+    ADVANCE_ACTION,
+    DECLINE_ACTION,
+    DIVIDENDS,
+    RECALL_ACTION,
+    RECRUIT,
+    REWARD_ACTION,
+    SPICE,
+    TECH,
+)
+from dune_imperium.rules.shipping_track import PRINTED as SHIPPING_PRINTED
 from dune_imperium.rules.tech import (
     TRASH_ABILITIES,
     optional_trash_tech_ids,
@@ -2016,6 +2027,11 @@ _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
         "place_intrigue_negotiator",
         "decline_intrigue_negotiator",
     ),
+    "Freighter": (
+        "advance_intrigue_freighter",
+        "recall_intrigue_freighter",
+        "decline_intrigue_freighter",
+    ),
     "PeekTopCard": (
         "put_back_top_card",
         "discard_top_card",
@@ -2323,10 +2339,18 @@ def _window_printers(
     if action_id in ("recall_spy_for_placement", "decline_spy_placement"):
         return _spy_placement_printers(config)
     if action_id == "decline_tech":
-        # Battlefield Research, Rapid Engineering.
-        return tuple(
-            (Source.INTRIGUE, card)
-            for card in _intrigue_reward_cards(config, AcquireTech)
+        # Battlefield Research, Rapid Engineering, and the Shipping track's
+        # space 3 (Rise of Ix).
+        return (
+            *(
+                (Source.INTRIGUE, card)
+                for card in _intrigue_reward_cards(config, AcquireTech)
+            ),
+            *(
+                ((Source.BOARD_SPACE, SHIPPING_PRINTED),)
+                if config.rise_of_ix
+                else ()
+            ),
         )
     if action_id == "resolve_opponent_discard_without_card":
         # Covert Operation's, Reverend Mother Mohiam's and Test of Humanity's
@@ -2684,7 +2708,36 @@ def _rise_of_ix_unit_templates() -> tuple[ActionTemplate, ...]:
             "decline_intrigue_dreadnought",
             "place_intrigue_negotiator",
             "decline_intrigue_negotiator",
+            "advance_intrigue_freighter",
+            "recall_intrigue_freighter",
+            "decline_intrigue_freighter",
         )
+    )
+    templates.extend(_shipping_track_templates())
+    return tuple(templates)
+
+
+def _shipping_track_templates() -> tuple[ActionTemplate, ...]:
+    """The Freighter's own window and the Shipping track's rewards
+    (``rules.shipping_track``): up, recall or neither outside the owner's
+    turn, and a row for each reward a recall owes -- Dividends, spice, the
+    recruit once for each Faction that gains its Influence (and once without,
+    every cube at the top, OQ-060) and the discounted Acquire Tech."""
+
+    templates = [
+        ActionTemplate(action_id=action_id)
+        for action_id in (ADVANCE_ACTION, RECALL_ACTION, DECLINE_ACTION)
+    ]
+    for effect in (DIVIDENDS, SPICE, RECRUIT, TECH):
+        templates.append(
+            ActionTemplate(action_id=REWARD_ACTION, arguments=(("effect", effect),))
+        )
+    templates.extend(
+        ActionTemplate(
+            action_id=REWARD_ACTION,
+            arguments=(("effect", RECRUIT), ("faction", faction.value)),
+        )
+        for faction in Faction
     )
     return tuple(templates)
 

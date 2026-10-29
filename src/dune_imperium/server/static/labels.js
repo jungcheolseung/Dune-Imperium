@@ -253,6 +253,15 @@ const ACTION_LABELS = {
      glossary row either, so it stays English. */
   place_intrigue_negotiator: "Negotiator 놓기",
   decline_intrigue_negotiator: "Negotiator 놓지 않음",
+  /* Rise of Ix's Freighter and Shipping track (stage P4c-3): no official
+     Korean source names them either, so they stay English. */
+  advance_intrigue_freighter: "Freighter 한 칸 위로",
+  recall_intrigue_freighter: "Freighter 회수",
+  decline_intrigue_freighter: "Freighter 움직이지 않음",
+  advance_freighter: "Freighter 한 칸 위로",
+  recall_freighter: "Freighter 회수",
+  decline_freighter: "Freighter 움직이지 않음",
+  resolve_shipping_reward: "Freighter 회수 보상",
   place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
   /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep
      their English names, which no official Korean source translates. */
@@ -468,6 +477,12 @@ const EVENT_LABELS = {
   dreadnoughts_withdrawn: "dreadnought 회수",
   negotiator_placed: "Negotiator 놓음",
   intrigue_negotiator_declined: "Negotiator 놓지 않음",
+  freighter_moved: "Freighter 한 칸 위로",
+  freighter_recalled: "Freighter 회수",
+  freighter_declined: "Freighter 움직이지 않음",
+  intrigue_freighter_declined: "Freighter 움직이지 않음",
+  shipping_troops_recruited: "Freighter 회수: {troop} {recruit}",
+  shipping_reward_lapsed: "Freighter 회수 보상: 쓰지 않음",
   dreadnought_control_placed: "dreadnought가 {control} 공간에",
   dreadnought_returned: "dreadnought {garrison} 복귀",
   dreadnought_detonated: "dreadnought를 {supply}로 (Detonation Devices)",
