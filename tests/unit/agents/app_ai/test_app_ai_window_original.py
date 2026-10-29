@@ -55,6 +55,31 @@ MAPPED_CARDS = (
 
 
 @pytest.fixture(scope="module")
+def fallbacks() -> Counter[str]:
+    """The random answers of four app_ai seats over six original games."""
+
+    counted: Counter[str] = Counter()
+    logging.getLogger("dune_imperium.agents.app_ai.agent").setLevel(logging.ERROR)
+    for seed in (31, 32, 33, 34, 35, 36):
+        agents = tuple(AppAIAgent(seed=seed * 10 + seat) for seat in range(4))
+        run_policy_game(ENGINE, ORIGINAL, seed, agents)
+        for agent in agents:
+            counted.update(agent.fallbacks)
+    return counted
+
+
+def test_the_reveal_window_maps_every_original_decision(
+    fallbacks: Counter[str],
+) -> None:
+    """The original Reveal choices (Gun Thopter, Bene Gesserit Sister,
+    Chani, Scout, Sardaukar Legion, Gurney Halleck, Opulence, Guild
+    Ambassador, Duncan Loyal Blade), the Reserve and the acquire icons."""
+
+    assert fallbacks["reveal"] == 0
+    assert not [key for key in fallbacks if key.startswith("error:")]
+
+
+@pytest.fixture(scope="module")
 def unmapped() -> Counter[str]:
     """The ``unmapped`` reasons of the Agent-turn window over four games."""
 
