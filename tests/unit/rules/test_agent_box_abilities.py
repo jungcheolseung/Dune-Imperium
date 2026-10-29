@@ -171,8 +171,9 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
     # Imperial Spy, Missionaria Protectiva, Gene Manipulation, Reverend Mother
     # Mohiam, Carryall, Test of Humanity, Firm Grip, Shifting Allegiances,
-    # Other Memory, The Voice, and the promos Thumper and Jessica of Arrakis).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23
+    # Other Memory, The Voice, and the promos Thumper and Jessica of Arrakis),
+    # and Rise of Ix's Sayyadina (stage P4d: "3 water -> 1 Victory Point").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 1
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -628,12 +629,12 @@ def test_a_payment_that_buys_nothing_is_withheld() -> None:
 
 
 def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
-    """The payment shape takes the nine records it was written for (Control
+    """The payment shape takes the ten records it was written for (Control
     the Spice since cleanup-2d, the original game's Spice Smugglers since
     stage P3, whose reward is one fixed Faction's Influence, its Duncan
     Idaho, whose troop and draw wait as armed icons, its Fremen Camp, and its
     Firm Grip, whose Influence of three named Factions waits as an armed
-    icon), and refuses a
+    icon, and Rise of Ix's Sayyadina since stage P4d), and refuses a
     record it would pay wrongly (a reward it does not give -- a chosen or the
     visited Faction's Influence --, a cost no row names): such a box keeps its
     own code."""
@@ -653,6 +654,7 @@ def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
         _BOX.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE,
         _BOX.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS,
         _BOX.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE,
+        _BOX.MAY_PAY_THREE_WATER_FOR_VP,
     }
     for cost, rewards in (
         (PayResources(spice=1), (GainInfluence(),)),
