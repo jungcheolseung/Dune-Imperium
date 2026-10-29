@@ -508,6 +508,17 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             PersonalCardAgentEffect
             .MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
         ): "You may pay 1 spice → Gain 1 Spacing Guild Influence, Draw 1 card",
+        # Rise of Ix's In The Shadows (stage P4d): "[Bene Gesserit] 2
+        # Influence: [Discard] -> Choose one: [Emperor] [Spacing Guild]
+        # [Fremen] Influence".
+        (
+            PersonalCardAgentEffect
+            .MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO
+        ): (
+            "If you have 2 or more Bene Gesserit Influence: You may discard a "
+            "card → Choose one: Gain 1 Emperor Influence / Gain 1 Spacing Guild "
+            "Influence / Gain 1 Fremen Influence"
+        ),
         PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT: "Complete one of your contracts",
         PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: (
             "Each opponent loses one troop. Each opponent spying on the board "

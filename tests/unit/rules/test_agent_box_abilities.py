@@ -166,6 +166,7 @@ from dune_imperium.rules.optional_trash import (
 from dune_imperium.rules.spy_placement import spy_placement_allowed_post_ids
 
 _BOX = PersonalCardAgentEffect
+_SHADOWS = _BOX.MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
@@ -190,9 +191,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # ("[Troop] -OR- [Trash a card]"), Bounty Hunter ("If used to send an
     # Agent to a board space with an enemy Agent: [2 Solari]"), Web of Power
     # (three Influence thresholds over three icons), Ixian Engineer (the
-    # Acquire Tech icon) and Esmar Tuek ("[1 spice] -> [Spacing Guild
-    # Influence] [draw 1 card]").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 16
+    # Acquire Tech icon), Esmar Tuek ("[1 spice] -> [Spacing Guild Influence]
+    # [draw 1 card]") and In The Shadows ("[Bene Gesserit] 2 Influence:
+    # [Discard] -> Choose one: [Emperor] [Spacing Guild] [Fremen] Influence").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 17
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -956,6 +958,9 @@ def test_ten_discard_arrows_read_the_discarded_card() -> None:
         # Rise of Ix's Spice Trader (stage P4d): an Influence threshold over the
         # whole arrow.
         _BOX.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO: AbilityMark.OPTIONAL,
+        # Rise of Ix's In The Shadows (stage P4d): the same threshold, its
+        # chosen Influence armed once the card is discarded.
+        _SHADOWS: AbilityMark.OPTIONAL,
         _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: AbilityMark.OPTIONAL,
         _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: AbilityMark.MANDATORY,
         _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: AbilityMark.OPTIONAL,
@@ -984,6 +989,7 @@ def test_ten_discard_arrows_read_the_discarded_card() -> None:
         # draw printed below it are separate steps (OQ-106; user decision
         # 2026-10-25; engine audit 2026-10-22, P6).
         _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: (AGENT_ICON_CARDS,),
+        _SHADOWS: (AGENT_ICON_INFLUENCE,),
     }
     for effect, mark in discards.items():
         ability = AGENT_BOX_ABILITIES[effect]
@@ -1163,6 +1169,8 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     # Rise of Ix's Esmar Tuek (stage P4d): its Influence and its draw armed
     # once the spice is paid, as Spice Smugglers' and Duncan Idaho's.
     esmar = _BOX.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
+    # Its In The Shadows: the chosen Influence armed once the card is discarded.
+    shadows = _SHADOWS
     assert users == {
         AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy, court},
         AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy, duncan, esmar},
@@ -1170,7 +1178,7 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
         AGENT_ICON_TROOPS: {gambit, elite, duncan},
         AGENT_ICON_PLEDGE: {gambit},
         AGENT_ICON_RESEARCH: {piter},
-        AGENT_ICON_INFLUENCE: {grip, shifting, smugglers, esmar},
+        AGENT_ICON_INFLUENCE: {grip, shifting, smugglers, esmar, shadows},
         AGENT_ICON_SOLARI: {smugglers},
     }
 

@@ -464,6 +464,11 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE = (
         "may_pay_one_spice_for_spacing_guild_influence_and_draw_one"
     )
+    # In The Shadows (Rise of Ix): "[Bene Gesserit] 2 Influence: [Discard] ->
+    # Choose one: [Emperor] / [Spacing Guild] / [Fremen] Influence".
+    MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO = (
+        "may_discard_for_chosen_influence_if_bene_gesserit_influence_two"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

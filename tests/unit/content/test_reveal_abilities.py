@@ -84,12 +84,12 @@ def test_every_record_names_a_card_with_its_play_data() -> None:
     # Delegate's "[3 Solari]", Full-Scale Assault's "[3 swords] for each of
     # your dreadnoughts in the Conflict", Embedded Agent's "[Intrigue card]",
     # Imperial Bashar's "+[sword] for each other revealed card that provides
-    # one or more [sword]", Esmar Tuek's Unload box "[2 spice] [2 Solari]"
-    # and Guild Accord's two lines "[1 water]" and "[Spacing Guild] Alliance:
-    # [3 spice]".
-    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 16 + 10
+    # one or more [sword]", Esmar Tuek's Unload box "[2 spice] [2 Solari]" and
+    # Guild Accord's two lines "[1 water]", "[Spacing Guild] Alliance: [3
+    # spice]" and In The Shadows' "[Bene Gesserit Influence]".
+    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 16 + 11
     assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == (
-        55 + 1 + 17 + 11
+        55 + 1 + 17 + 12
     )
 
 

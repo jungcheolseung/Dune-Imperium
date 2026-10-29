@@ -84,6 +84,7 @@ from dune_imperium.rules.agent_box_abilities import (
     discard_pay_block,
     discard_pay_box,
     discard_pay_rows,
+    discard_reward_block,
     discard_rows,
     discard_spy,
     either_box,
@@ -2084,6 +2085,9 @@ def agent_card_payment_block(
         return payment_reward_block(state, player, ability)
     if ability is not None and plain_and_paid_box(ability):
         return plain_and_paid_block(state, player)
+    if ability is not None and discard_box(ability):
+        # In The Shadows' Influence with every Faction it names at the top.
+        return discard_reward_block(state, player, ability)
     return None
 
 

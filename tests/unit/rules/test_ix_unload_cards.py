@@ -20,7 +20,11 @@ from dune_imperium.adapters import ActionCodec
 from dune_imperium.agents.agent_turn_steps import steps_after
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.effect_dsl import GainResources, HasAlliance
+from dune_imperium.content.uprising.effect_dsl import (
+    GainInfluence,
+    GainResources,
+    HasAlliance,
+)
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.reveal_abilities import REVEAL_GAIN_ABILITIES
 from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
@@ -36,6 +40,8 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules import UprisingRulesEngine, unload
+from dune_imperium.rules.agent_box_abilities import AgentPaymentBlock
+from dune_imperium.rules.agent_effects import agent_card_payment_block
 from dune_imperium.rules.effect_steps import first_step
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.pauses import (
@@ -623,4 +629,174 @@ def test_clean_up_moves_guild_accord_without_unloading_it() -> None:
     state, unloaded = _clean_up_round(_give(_start(), 0, in_play=(GUILD_ACCORD,)))
     assert state.phase is GamePhase.ROUND_START
     assert GUILD_ACCORD in state.players[0].discard_pile
+    assert unloaded == []
+
+
+# --- In The Shadows -----------------------------------------------------------
+
+SHADOWS = "imperium:in_the_shadows:0"
+SHADOWS_TWO = "imperium:in_the_shadows:1"
+_BOX = PersonalCardAgentEffect
+_SHADOWS_BOX = _BOX.MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO
+_BG = "influence_bene_gesserit"
+
+
+def _influence(state: GameState, seat: int, **tracks: int) -> GameState:
+    owner = state.players[seat]
+    return _seat(state, seat, influence=replace(owner.influence, **tracks))
+
+
+def _shadows_placed(state: GameState, *hand: str) -> GameState:
+    state = _give(state, 0, hand=(SHADOWS, *hand))
+    state = _do(state, "choose_agent_card", card_id=SHADOWS).state
+    return _do(state, "place_agent", space_id="arrakeen").state
+
+
+def test_in_the_shadows_play_data_matches_the_app() -> None:
+    """App table: cost 2, 2 copies, Bene Gesserit, the Landsraad and City
+    icons; screen pieces: Agent "[Bene Gesserit] 2 Influence: [Discard] ->
+    Choose one: [Emperor] [Spacing Guild] [Fremen] Influence", Reveal
+    "[Unload] [Bene Gesserit Influence]"."""
+    entry = IMPERIUM_CARDS_BY_ID["in_the_shadows"]
+    assert entry.play_data_complete and entry.unload
+    assert (entry.copies, entry.acquisition_cost) == (2, 2)
+    assert entry.factions == (Faction.BENE_GESSERIT,)
+    assert entry.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.CITY)
+    assert entry.agent_effect is _SHADOWS_BOX
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    (line,) = REVEAL_GAIN_ABILITIES["in_the_shadows"].sections
+    assert line.rewards == (GainInfluence(factions=(Faction.BENE_GESSERIT,)),)
+    assert unload.unload_icons(SHADOWS) == ((_BG, 1),)
+    for config in (IX, replace(IX, rise_of_ix=False), RulesetConfig()):
+        deck = content_for(config).imperium_deck_instance_ids
+        assert ({SHADOWS, SHADOWS_TWO} <= set(deck)) == config.rise_of_ix
+
+
+def test_in_the_shadows_discards_for_a_chosen_influence_at_two_bene_gesserit() -> None:
+    """ "[Bene Gesserit] 2 Influence: [Discard] -> Choose one: ..." -- the
+    threshold over the whole arrow (Spice Trader's), the Discard optional
+    [Rise of Ix p. 7], and the Influence with one of the three named
+    Factions, never one at the top (OQ-060)."""
+    state = _start()
+    kept = state.players[0].hand[0]
+    below = _shadows_placed(_influence(state, 0, bene_gesserit=1), kept)
+    assert not _offered(below, "discard_agent_card")
+    state = _influence(state, 0, bene_gesserit=2, emperor=6)
+    placed = _shadows_placed(state, kept)
+    discarded = _do(placed, "discard_agent_card", card_id=kept).state
+    assert kept in discarded.players[0].discard_pile
+    assert _arguments(discarded, "choose_agent_card_influence") == {
+        (("faction", "spacing_guild"),),
+        (("faction", "fremen"),),
+    }
+    assert not _offered(discarded, "finish_agent_turn")
+    done = _do(discarded, "choose_agent_card_influence", faction="fremen").state
+    assert done.players[0].influence.fremen == placed.players[0].influence.fremen + 1
+    assert done.players[0].influence.bene_gesserit == 2
+
+
+def test_in_the_shadows_arrow_is_not_offered_with_its_three_factions_at_the_top() -> (
+    None
+):
+    """ "비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다 ... 버릴 카드에
+    Unload가 있어도 같다" (docs/rules/rise-of-ix.md 15, OQ-071): the Emperor,
+    Spacing Guild and Fremen at 6, the discard buys nothing, also with the
+    other In The Shadows (an Unload card) in hand."""
+    state = _influence(
+        _start(), 0, bene_gesserit=2, emperor=6, spacing_guild=6, fremen=6
+    )
+    placed = _shadows_placed(state, SHADOWS_TWO)
+    assert not _offered(placed, "discard_agent_card")
+    assert (
+        agent_card_payment_block(placed, 0, _SHADOWS_BOX)
+        is AgentPaymentBlock.NO_FACTION_TO_RAISE
+    )
+    lower = _influence(placed, 0, fremen=5)
+    assert _offered(lower, "discard_agent_card")
+    assert agent_card_payment_block(lower, 0, _SHADOWS_BOX) is None
+
+
+def test_in_the_shadows_discarded_as_its_twin_s_cost_unloads_before_the_choice() -> (
+    None
+):
+    """ "비용 → 효과 줄의 왼쪽(비용)이 Unload를 일으키면 Unload를 끝까지 해결한
+    뒤 오른쪽으로 간다" (designer ruling, rise-of-ix.md 7): the discarded copy's
+    Bene Gesserit Influence comes inside the payment, before the chosen
+    Faction's."""
+    state = _influence(_start(), 0, bene_gesserit=2)
+    placed = _shadows_placed(state, SHADOWS_TWO)
+    result = _do(placed, "discard_agent_card", card_id=SHADOWS_TWO)
+    after = result.state.players[0]
+    assert after.influence.bene_gesserit == 3
+    kinds = _kinds(result.events)
+    assert kinds.index("card_discarded") < kinds.index("card_unloaded")
+    assert kinds.index("card_unloaded") < kinds.index("influence_gained")
+    assert not _offered(result.state, UNLOAD_ROW)
+    assert _offered(result.state, "choose_agent_card_influence")
+    check_observation_privacy(result.state)
+
+
+def test_in_the_shadows_revealed_gives_its_influence_as_usual() -> None:
+    """ "Reveal turn에 공개할 때(보통처럼, Unload 표시는 무시)" (rise-of-ix.md 7)."""
+    state = _give(_start(), 0, hand=(SHADOWS,))
+    revealed = _do(state, "reveal_turn")
+    assert "card_unloaded" not in _kinds(revealed.events)
+    before = revealed.state.players[0].influence.bene_gesserit
+    gained = _do(revealed.state, "gain_reveal_faction_influence").state
+    assert gained.players[0].influence.bene_gesserit == before + 1
+    assert not _offered(gained, UNLOAD_ROW)
+
+
+def test_in_the_shadows_trashed_by_jamis_waits_as_a_row() -> None:
+    """ "trash할 때 얻는다" [Rise of Ix p. 7]; Jamis: "Trash a card"."""
+    state = _give(_start(), 0, hand=(JAMIS, SHADOWS))
+    state = _do(state, "choose_agent_card", card_id=JAMIS).state
+    state = _do(state, "place_agent", space_id="stillsuits").state
+    before = state.players[0].influence.bene_gesserit
+    state = _do(state, "trash_agent_card", card_id=SHADOWS).state
+    assert state.players[0].influence.bene_gesserit == before
+    assert _arguments(state, UNLOAD_ROW) == {(("card_id", SHADOWS), ("effect", _BG))}
+    taken = _do(state, UNLOAD_ROW, card_id=SHADOWS, effect=_BG)
+    assert taken.state.players[0].influence.bene_gesserit == before + 1
+    assert "influence_gained" in _kinds(taken.events)
+    assert not _offered(taken.state, UNLOAD_ROW)
+
+
+def test_in_the_shadows_discarded_by_an_opponent_unloads_in_its_owners_window() -> None:
+    """ "남의 효과로 버려져도 된다(룰북 예: 상대의 Reverend Mother Mohiam)"
+    (rise-of-ix.md 7): seat 1 gains its own Bene Gesserit Influence in its
+    window."""
+    state = _start()
+    other = state.players[1].hand[0]
+    state = _mohiam_asks_seat_one(state, SHADOWS, other)
+    before = state.players[1].influence.bene_gesserit
+    state = _do(state, "discard_opponent_card", seat=1, card_id=SHADOWS).state
+    top = state.decision_stack[-1]
+    assert top.kind is FrameKind.UNLOAD_ICONS
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 1
+    state = _do(state, UNLOAD_ROW, seat=1, card_id=SHADOWS, effect=_BG).state
+    assert state.players[1].influence.bene_gesserit == before + 1
+    assert state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_in_the_shadows_revealed_then_trashed_gives_its_influence_again() -> None:
+    """OQ-120: "공개한 Unload 카드를 같은 Reveal turn에 trash하면 다시 얻는다"."""
+    state = _with_cull(_give(_start(), 0, hand=(SHADOWS,)))
+    state = _do(state, "reveal_turn").state
+    before = state.players[0].influence.bene_gesserit
+    state = _do(state, "gain_reveal_faction_influence").state
+    state = _do(state, "play_intrigue", card_id=CULL, option=0).state
+    state = _do(state, "trash_intrigue_card", card_id=SHADOWS).state
+    assert not _offered(state, "finish_reveal")
+    state = _do(state, UNLOAD_ROW, card_id=SHADOWS, effect=_BG).state
+    assert state.players[0].influence.bene_gesserit == before + 2
+    assert _offered(state, "finish_reveal")
+
+
+def test_clean_up_moves_in_the_shadows_without_unloading_it() -> None:
+    """ "Clean Up에서 in play 카드를 discard pile로 옮기는 것은 discard가 아니다"
+    (rise-of-ix.md 7, [FAQ p. 2])."""
+    state, unloaded = _clean_up_round(_give(_start(), 0, in_play=(SHADOWS,)))
+    assert state.phase is GamePhase.ROUND_START
+    assert SHADOWS in state.players[0].discard_pile
     assert unloaded == []

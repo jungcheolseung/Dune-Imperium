@@ -284,6 +284,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "guild_chief_administrator",
     "imperial_bashar",
     "imperial_shock_trooper",
+    "in_the_shadows",
     "ixian_engineer",
     "jamis",
     "landing_rights",

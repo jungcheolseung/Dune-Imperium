@@ -2190,6 +2190,28 @@ def discard_cost_block(
     return short_of(OptionalBlockKind.HAND, discard_count(ability), len(owner.hand))
 
 
+def discard_reward_block(
+    state: GameState, player: int, ability: Ability
+) -> AgentPaymentBlock | None:
+    """Why an optional discard arrow would buy nothing now (OQ-071), or None.
+
+    Gated only where every reward is a Faction's Influence waiting as an
+    armed icon -- In The Shadows' "Choose one: [Emperor] [Spacing Guild]
+    [Fremen] Influence" -- with each Faction it may raise at the top (OQ-060),
+    "버릴 카드에 Unload가 있어도 같다" (docs/rules/rise-of-ix.md 15). The other
+    discard arrows read no reward here (a discard always leaves a card to
+    draw), as before.
+    """
+
+    if ability.mark is not AbilityMark.OPTIONAL or not ability.armed_icons:
+        return None
+    rewards = [reward for line in ability.sections for reward in line.rewards]
+    if not rewards or not all(isinstance(reward, GainInfluence) for reward in rewards):
+        return None
+    blocks = [_armed_reward_block(state, player, reward) for reward in rewards]
+    return None if any(block is None for block in blocks) else blocks[0]
+
+
 def _discard_first_pick(
     context: Mapping[str, ActionValue], owner: PlayerState
 ) -> str | None:
@@ -2214,7 +2236,10 @@ def discard_rows(
         if ability.mark is AbilityMark.OPTIONAL
         else ()
     )
-    if discard_cost_block(owner, ability) is not None:
+    if (
+        discard_cost_block(owner, ability) is not None
+        or discard_reward_block(state, player, ability) is not None
+    ):
         return decline
     first = None
     if discard_count(ability) > 1:

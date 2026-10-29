@@ -36,13 +36,14 @@ callers write their own frame back after the transition and would drop a
 row or a window put there before.
 
 Wired so far: Reveal boxes of plain resource gains (Water Peddler, CHOAM
-Delegate, Esmar Tuek), also on a line with a condition the owner's seat alone
-settles (Guild Accord's "[Spacing Guild] Alliance: [3 spice]"). A conditioned
+Delegate, Esmar Tuek) and of a printed Faction's Influence (In The Shadows),
+also on a line with a condition the owner's seat alone settles (Guild
+Accord's "[Spacing Guild] Alliance: [3 spice]"). A conditioned
 icon is gained when its condition holds as the card is discarded or trashed:
 the Unload happens then ("trash되는 카드의 Unload는 trash되는 중에 일어난다"),
 and the rows and the window only let the owner order what it gained. A box
 with a choice, a cost, Persuasion or swords belongs to its card's brief
-(Freighter Fleet, In The Shadows, Ix-Guild Compact, Treachery -- whose
+(Freighter Fleet, Ix-Guild Compact, Treachery -- whose
 Combat-reward case is OQ-127 -- and the promo Boundless Ambition):
 ``unload_icons`` refuses it.
 """
@@ -52,10 +53,12 @@ from dataclasses import dataclass
 from functools import cache
 from typing import Final
 
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     CommandReached,
     Condition,
     FactionBond,
+    GainInfluence,
     GainResources,
 )
 from dune_imperium.content.uprising.imperium import (
@@ -79,6 +82,7 @@ from dune_imperium.rules.frames import (
     with_context,
 )
 from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.influence import gain_faction_influence
 
 UNLOAD_ICON_ACTION: Final = "resolve_unload_icon"
 UNLOADED_EVENT: Final = "card_unloaded"
@@ -88,6 +92,9 @@ commas, in printed order."""
 UNLOAD_PROMPT: Final = "Gain your Unload card's Reveal box"
 
 _RESOURCES: Final = ("solari", "spice", "water")
+INFLUENCE_ICON_PREFIX: Final = "influence_"
+"""An icon raising one printed Faction's Influence: ``influence_<faction>``
+(In The Shadows' "[Bene Gesserit Influence]")."""
 _FRAME: Final = "Unload frame"
 
 type UnloadIcon = tuple[str, int]
@@ -130,6 +137,16 @@ def _box(definition_id: str) -> tuple[_BoxIcon, ...]:
                 f"{definition_id}: an Unload box condition {line.condition!r}"
             )
         for reward in line.rewards:
+            if _one_faction(reward) is not None:
+                assert isinstance(reward, GainInfluence) and reward.factions
+                icons.append(
+                    _BoxIcon(
+                        f"{INFLUENCE_ICON_PREFIX}{reward.factions[0].value}",
+                        reward.times,
+                        line.condition,
+                    )
+                )
+                continue
             if not isinstance(reward, GainResources):
                 raise NotImplementedError(
                     f"{definition_id}: an Unload box icon {reward!r} is not wired"
@@ -143,6 +160,21 @@ def _box(definition_id: str) -> tuple[_BoxIcon, ...]:
     if len(set(names)) != len(names):
         raise NotImplementedError(f"{definition_id}: an Unload box icon twice")
     return tuple(icons)
+
+
+def _one_faction(reward: object) -> Faction | None:
+    """The one printed Faction an Influence icon raises, or None for any
+    other piece (a chosen or the visited Faction's is not wired)."""
+
+    if (
+        not isinstance(reward, GainInfluence)
+        or reward.requires_choice
+        or reward.visited_space
+        or reward.factions is None
+        or len(reward.factions) != 1
+    ):
+        return None
+    return reward.factions[0]
 
 
 def _unload_box(card_id: str) -> tuple[_BoxIcon, ...]:
@@ -179,7 +211,18 @@ def _unmet(state: GameState, player: int, card_id: str) -> tuple[str, ...]:
     return tuple(unmet)
 
 
-def _gain(state: GameState, player: int, name: str, amount: int) -> GameState:
+def _gain(
+    state: GameState, player: int, name: str, amount: int, *, source: str
+) -> RuleResult:
+    """Pay one icon of an Unload box: a resource, or a printed Faction's
+    Influence (gained on its track as any Influence is; at the top nothing
+    is gained, OQ-060). ``source`` names the icon's events."""
+
+    if name.startswith(INFLUENCE_ICON_PREFIX):
+        faction = Faction(name.removeprefix(INFLUENCE_ICON_PREFIX))
+        return gain_faction_influence(
+            state, player, faction, amount, event_prefix=source
+        )
     owner = state.players[player]
     gained = replace(
         owner,
@@ -188,7 +231,10 @@ def _gain(state: GameState, player: int, name: str, amount: int) -> GameState:
             **{name: getattr(owner.resources, name) + amount},
         ),
     )
-    return replace(state, players=replace_player(state.players, gained))
+    return RuleResult(
+        state=replace(state, players=replace_player(state.players, gained)),
+        events=(resources_gained_event(source, player, **{name: amount}),),
+    )
 
 
 def trigger_unload(
@@ -224,12 +270,9 @@ def trigger_unload(
         for name, amount in icons:
             if name in unmet:
                 continue
-            state = _gain(state, player, name, amount)
-            events.append(
-                resources_gained_event(
-                    f"{unload_source}:{name}", player, **{name: amount}
-                )
-            )
+            paid = _gain(state, player, name, amount, source=f"{unload_source}:{name}")
+            state = paid.state
+            events.extend(paid.events)
     return RuleResult(state=state, events=tuple(events))
 
 
@@ -376,7 +419,4 @@ def apply_unload_icon(state: GameState, action: DomainAction) -> RuleResult:
         source = item[1]
         state = turn_rows.take(state, player, item)
     amount = dict(unload_icons(card_id))[name]
-    return RuleResult(
-        state=_gain(state, player, name, amount),
-        events=(resources_gained_event(f"{source}:{name}", player, **{name: amount}),),
-    )
+    return _gain(state, player, name, amount, source=f"{source}:{name}")

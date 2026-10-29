@@ -17,9 +17,9 @@ Rights, Sayyadina, Shai-Hulud, Truthsayer, Imperial Shock Trooper, Local
 Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
 Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
 Way, Satellite Ban, Spice Trader, Imperial Bashar, Bounty Hunter, Web of
-Power, Ixian Engineer, Esmar Tuek and Guild Accord so far), while the
-observation lists every identity from v39. Setup takes Rise of Ix on the
-original game since stage P4c-5.
+Power, Ixian Engineer, Esmar Tuek, Guild Accord and In The Shadows so far),
+while the observation lists every identity from v39. Setup takes Rise of Ix
+on the original game since stage P4c-5.
 from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
@@ -54,6 +54,9 @@ _SPICE_TRADER = (
 )
 _ESMAR_TUEK = (
     PersonalCardAgentEffect.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
+)
+_IN_THE_SHADOWS = (
+    PersonalCardAgentEffect.MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO
 )
 
 
@@ -264,6 +267,17 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("in_the_shadows", "In The Shadows"),
         copies=2,
         acquisition_cost=2,
+        # App table: Bene Gesserit, the Landsraad and City icons (``Pentagon``,
+        # ``Circle``), no fixed Reveal values. Screen pieces: Agent "[Bene
+        # Gesserit] 2 Influence: [Discard] -> Choose one: [Emperor] [Spacing
+        # Guild] [Fremen] Influence", an optional arrow [Rise of Ix p. 7];
+        # Reveal "[Unload] [Bene Gesserit Influence]" -- gained also when the
+        # card is discarded or trashed [Rise of Ix p. 7] (``rules.unload``).
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY),
+        agent_effect=_IN_THE_SHADOWS,
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("ix_guild_compact", "Ix-Guild Compact"),
