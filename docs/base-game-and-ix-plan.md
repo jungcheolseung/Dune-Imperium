@@ -1402,3 +1402,9 @@ OQ-095 (2)); 차례 밖은 `FREIGHTER_MOVE`·`SHIPPING_REWARD_ICONS` 창. Troop 
 Kwisatz도 못 넘음), Smuggling(1 Solari + Freighter). 새 아이콘 넷은 선택이라 턴 종료에 소멸(OQ-095 (2)). 칸 출처 행과 Acquire Tech 거절 행의
 출처, Spaceport + Foldspace 칸(덱 위, 공개). Leto 할인은 기존 그대로 든다. 원판 + Ix 1,916행. **엔티티 특성:** `space` 표에 열 6개가 늘었다
 (Ix 칸 넷만 읽음, 옛 행 그대로) — 신경망 좌석의 같은 수는 P4c 관문에서 본다. 화면의 회색 사유 문구는 P5 몫.
+**P4c-3·4 Codex 리뷰(2026-10-29):** 지적 하나 — Troop Transports의 배치 허락(`SHIPPING_TROOPS_KEY`)이 supply가 모자라 나중에 채워지는 recruit
+(OQ-030, `shortfall.refill_shortfall`)에는 따라가지 않는다. OQ-030 재판정(2026-10-04): 채워진 troop은 "이번 turn의 recruit이므로 turn 주인의
+좌석이면 Combat 배치 몫에 들어간다" — 같은 원칙으로 Shipping recruit의 부족분은 채워질 때 Troop Transports 몫에도 든다. **고칠 일(P4c-5 뒤,
+agent 한 번에 하나):** Harkonnen Advisor의 `UNGAINED_UNDEPLOYABLE_KEY`(OQ-038)처럼 Shipping recruit 부족분을 frame에 따로 세고, 채워질 때
+`SHIPPING_TROOPS_KEY`로 옮긴다. 테스트: supply troop 하나·Negotiator 둘로 3번 칸 회수, Negotiator로 타일을 사 돌아온 troop이 부족분을 채우면
+그 둘도 배치할 수 있다(Codex의 예).
