@@ -3500,6 +3500,10 @@ _IX_REVEAL_PAY: Final = {
 _HIGH_COUNCIL_TECH: Final = (
     ("restricted_ordnance", TechAbility.REVEAL_HIGH_COUNCIL_SWORDS),
 )
+# Ix tiles whose Reveal line is a plain Persuasion (Minimic Film). A tile
+# acquired in the Reveal pays it then (OQ-150 (2)); the Tech Module's own
+# Persuasion tile (Self-Destroying Messages) is not touched.
+_PERSUASION_TECH: Final = (("minimic_film", TechAbility.MINIMIC_FILM),)
 # The Reveal-frame key of the sword cards Artillery has counted so far, as
 # Leadership keeps its own count (``_count_leadership_swords``).
 ARTILLERY_COUNTED_KEY: Final = "artillery_counted"
@@ -3701,7 +3705,15 @@ def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
     artillery_before = (
         context_int(context, ARTILLERY_COUNTED_KEY, owner="Reveal frame")
         if ARTILLERY_COUNTED_KEY in context
-        else None
+        # The Reveal's start records the count of a tile held then; a held
+        # tile with none was acquired in this Reveal, and its "Reveal turn"
+        # line works in this turn too, counting every sword card so far
+        # (OQ-150 (2), user ruling 2026-10-29 "(가) 모두 듣기").
+        else (
+            0
+            if has_tech(owner.tech_ids, TechAbility.REVEAL_SWORD_PER_SWORD_CARD)
+            else None
+        )
     )
     if artillery_before is not None and artillery_now > artillery_before:
         # Artillery: a sword for each revealed card providing swords, topped
@@ -4223,6 +4235,14 @@ def reveal_reserve_discount(state: GameState, reserve_card_id: str) -> int:
     return 0
 
 
+def _tech_granted_ids(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    """The tiles a Reveal frame records as paid or opened this turn."""
+
+    return tuple(
+        key for key in str(context.get(_TECH_GRANTED_KEY, "")).split(",") if key
+    )
+
+
 def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     """Pay out revealed cards' automatic effects whose condition came true later.
 
@@ -4316,6 +4336,28 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                     )
                 )
             },
+        )
+    # A Tech tile acquired during the Reveal works in this Reveal turn too
+    # (OQ-150 (2), user ruling 2026-10-29 "(가) 모두 듣기"; OQ-095 (7)):
+    # Minimic Film's Persuasion arrives then, ahead of the sweep below so it
+    # counts toward Command (6+) like a Skill's.
+    early_granted = _tech_granted_ids(context)
+    late_persuasion_tiles = tuple(
+        tech_id
+        for tech_id, ability in _PERSUASION_TECH
+        if tech_id not in early_granted and has_tech(owner.tech_ids, ability)
+    )
+    for tech_id in late_persuasion_tiles:
+        frames = add_reveal_persuasion(frames, _tech_reveal_pay(tech_id).persuasion)
+        events.append(
+            _tech_reveal_bonus(
+                f"round:{state.round_number}:player:{player}:reveal", player, tech_id
+            )
+        )
+    if late_persuasion_tiles:
+        frames = _update_reveal_frame(
+            frames,
+            {_TECH_GRANTED_KEY: ",".join((*early_granted, *late_persuasion_tiles))},
         )
     # What has paid so far: the record from the Reveal frame plus this pass's
     # grants, so a repeated sweep never pays an effect or a Contract twice.
@@ -4454,11 +4496,7 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     # Persuasion generated so far, spent or not [Bloodlines p. 5].
     late_persuasion = _frame_generated_persuasion(frames)
     reveal_context = frame_context(frames[_reveal_frame_position(frames)])
-    tech_granted = tuple(
-        key
-        for key in str(reveal_context.get(_TECH_GRANTED_KEY, "")).split(",")
-        if key
-    )
+    tech_granted = _tech_granted_ids(reveal_context)
     late_tech = (
         *(
             tech_id
@@ -4505,6 +4543,23 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             with_context(frames[position], reveal_context),
             *frames[position + 1 :],
         )
+    # Disposal Facility acquired in this Reveal opens its trash row then
+    # (OQ-150 (2)); the row itself waits on the turn's Persuasion (OQ-126).
+    reveal_context = frame_context(frames[_reveal_frame_position(frames)])
+    opened = _tech_granted_ids(reveal_context)
+    late_disposal = "disposal_facility" not in opened and has_tech(
+        next_owner.tech_ids, TechAbility.REVEAL_TRASH_AT_SIX_PERSUASION
+    )
+    if late_disposal:
+        frames = _update_reveal_frame(
+            frames,
+            {
+                _TECH_GRANTED_KEY: ",".join((*opened, "disposal_facility")),
+                TECH_PENDING_KEY: ",".join(
+                    (*tech_reveal_pending(reveal_context), "disposal_facility")
+                ),
+            },
+        )
     frames = _record_granted_effects(frames, newly_granted)
     frames = _append_reveal_gains(frames, tuple(late_gains))
     # Leadership may count every sword card provided so far, a late-met
@@ -4517,7 +4572,14 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
         ),
         player,
     )
-    if not newly_granted and not late_tech and not late_skills and not counted.events:
+    if (
+        not newly_granted
+        and not late_tech
+        and not late_skills
+        and not late_persuasion_tiles
+        and not late_disposal
+        and not counted.events
+    ):
         return result
     working = counted.state
     events.extend(counted.events)
@@ -5664,6 +5726,21 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             for tech_id, ability in _HIGH_COUNCIL_TECH
             if owner.high_council and has_tech(owner.tech_ids, ability)
         ),
+        # Minimic Film's Persuasion is in ``total_persuasion`` above; it is
+        # recorded as paid so a tile acquired later in the Reveal is not
+        # confused with this one (``grant_late_reveal_effects``).
+        *(
+            tech_id
+            for tech_id, ability in _PERSUASION_TECH
+            if has_tech(owner.tech_ids, ability)
+        ),
+    )
+    # Disposal Facility's row opens on the frame's pending list below; the
+    # tile is recorded as opened, so a late-acquired one is told apart.
+    tech_opened = (
+        ("disposal_facility",)
+        if has_tech(owner.tech_ids, TechAbility.REVEAL_TRASH_AT_SIX_PERSUASION)
+        else ()
     )
     tech_sword = sum(_tech_reveal_pay(tech_id).swords for tech_id in tech_granted)
 
@@ -5849,7 +5926,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ("revealed_card_count", len(revealed)),
         ("strength", strength),
         ("sword_strength", sword_strength),
-        (_TECH_GRANTED_KEY, ",".join(tech_granted)),
+        (_TECH_GRANTED_KEY, ",".join((*tech_granted, *tech_opened))),
         *(
             ((ARTILLERY_COUNTED_KEY, artillery_counted),)
             if has_tech(owner.tech_ids, TechAbility.REVEAL_SWORD_PER_SWORD_CARD)
@@ -6272,6 +6349,7 @@ def _tech_reveal_bonus(source: str, player: int, tech_id: str) -> GameEvent:
         event_id=f"{source}:tech:{tech_id}",
         kind="tech_reveal_bonus",
         payload=(
+            *((("persuasion", gains.persuasion),) if gains.persuasion else ()),
             ("player", player),
             *((("solari", gains.solari),) if gains.solari else ()),
             *((("strength", gains.swords),) if gains.swords else ()),

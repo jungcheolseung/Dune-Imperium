@@ -24,8 +24,10 @@ from typing import Final
 
 from dune_imperium.content.bloodlines.tech import (
     HIGH_COUNCIL_TECH_DISCOUNT,
+    IX_FLIP_ABILITIES,
     TECH_TILES,
     TECH_TILES_BY_ID,
+    TechAbility,
     TechTile,
     has_tech,
 )
@@ -68,9 +70,11 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, printer_value
 from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import grant_combat_icon
+from dune_imperium.rules.conditions import spice_must_flow_copies
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     BOARD_ICON_TECH,
@@ -94,7 +98,8 @@ from dune_imperium.rules.frames import (
     update_turn_recruits,
     with_context,
 )
-from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
+from dune_imperium.rules.immortality import troop_can_join
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
@@ -126,6 +131,19 @@ from dune_imperium.rules.turn_rows import tech_influence_blocked, tech_influence
 
 # Disposal Facility: "[Persuasion 6] or more" (OQ-126).
 DISPOSAL_FACILITY_PERSUASION: Final = 6
+# Rise of Ix's Flip tiles: Flagship "4 Solari -> troop 3", Training Drones
+# "troop 1" (docs/rules/rise-of-ix.md 4).
+FLAGSHIP_SOLARI: Final = 4
+FLAGSHIP_TROOPS: Final = 3
+TRAINING_DRONES_TROOPS: Final = 1
+# Rise of Ix's Endgame lines (docs/rules/rise-of-ix.md 4): each is 1 VP
+# (Spy Satellites: for each Faction where the owner has 1 or less Influence;
+# Holtzman Engine: with at least two The Spice Must Flow, OQ-123; Memocorders:
+# with 3 or more Influence on every track).
+ENDGAME_TILE_VP: Final = 1
+HOLTZMAN_ENGINE_SPICE_MUST_FLOW: Final = 2
+MEMOCORDERS_INFLUENCE: Final = 3
+SPY_SATELLITES_INFLUENCE: Final = 1
 _FRAME_LABEL = "Agent-turn effect frame"
 _ACQUISITION_LABEL = "Tech acquisition frame"
 # Kota Odax's Secret Project: "Whenever you could acquire a Tech tile, you
@@ -1087,7 +1105,7 @@ def legal_tech_flip_actions(state: GameState, player: int) -> tuple[DomainAction
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    if not state.config.tech_module:
+    if not (state.config.tech_module or state.config.rise_of_ix):
         return ()
     frame = _owned_turn_frame(state, player)
     if frame is None:
@@ -1097,6 +1115,9 @@ def legal_tech_flip_actions(state: GameState, player: int) -> tuple[DomainAction
     for tech_id in owner.tech_ids:
         tile = TECH_TILES_BY_ID[tech_id]
         if not tile.flips or tech_id in owner.tech_flipped:
+            continue
+        if tile.ability in IX_FLIP_ABILITIES:
+            actions.extend(_ix_flip_actions(state, owner, frame, tile))
             continue
         flip = _flip_ability(tech_id)
         if (
@@ -1134,6 +1155,8 @@ def apply_tech_flip(state: GameState, action: DomainAction) -> RuleResult:
         )
     ]
     working = replace(state, players=replace_player(state.players, flipped))
+    if TECH_TILES_BY_ID[tech_id].ability in IX_FLIP_ABILITIES:
+        return _apply_ix_flip(working, action, source, events)
     for line in _flip_ability(tech_id).sections:
         # Spy Drones: "and if you recalled a Spy this turn: trash a card"
         # (OQ-101; the trash icon is optional, like every printed trash).
@@ -1174,6 +1197,130 @@ def apply_tech_flip(state: GameState, action: DomainAction) -> RuleResult:
                         printer=trash_printer(Source.TECH, tech_id),
                     )
     return RuleResult(state=working, events=tuple(events))
+
+
+def _ix_flip_actions(
+    state: GameState, owner: PlayerState, frame: DecisionFrame, tile: TechTile
+) -> tuple[DomainAction, ...]:
+    """The rows of one of Rise of Ix's unflipped Flip tiles.
+
+    "뒤집기 아이콘이 있는 능력은 자기 turn(Agent·Reveal) 가운데 라운드에 한 번,
+    쓰면 뒷면으로 뒤집고 다음 라운드 Round Start에 되돌린다" [Rise of Ix p. 4]
+    [FAQ p. 1] (docs/rules/rise-of-ix.md 4). Training Drones' "troop 1" costs
+    nothing. Flagship's "4 Solari -> troop 3" is a paid line, offered only
+    when the Solari are there and a troop can join (OQ-071: nothing is paid
+    for a recruit that changes nothing). A "discard ->" cost is one hand card
+    named in the row (an Intrigue card is not a card here); Holoprojectors'
+    draw always changes something, the discarded card being shuffled back at
+    worst, as Twisted Discerning's. Invasion Ships' "이번 turn 상대 Agent가 내
+    Agent를 막지 않는다" can matter only before the turn's Agent is placed, so
+    it is offered on the turn frame, not after the placement or in a Reveal.
+    A Reveal turn has revealed the whole hand: no card is left to discard.
+    """
+
+    player = owner.player_id
+    tech_id = tile.tech_id
+
+    def row(*extra: tuple[str, ActionValue]) -> DomainAction:
+        return DomainAction(
+            action_id="flip_tech",
+            actor=player,
+            arguments=tuple(sorted((("tech_id", tech_id), *extra))),
+        )
+
+    match tile.ability:
+        case TechAbility.FLIP_TROOP:
+            return (row(),)
+        case TechAbility.FLIP_SOLARI_FOR_TROOPS:
+            if owner.resources.solari >= FLAGSHIP_SOLARI and troop_can_join(
+                state, owner
+            ):
+                return (row(),)
+            return ()
+        case TechAbility.FLIP_DISCARD_FOR_CARD:
+            return tuple(row(("card_id", card_id)) for card_id in owner.hand)
+        case TechAbility.FLIP_DISCARD_IGNORE_BLOCKS:
+            if frame.kind != FrameKind.TURN:
+                return ()
+            return tuple(row(("card_id", card_id)) for card_id in owner.hand)
+    raise ValueError(f"{tech_id}: not a Rise of Ix Flip tile")
+
+
+def _apply_ix_flip(
+    working: GameState,
+    action: DomainAction,
+    source: str,
+    events: list[GameEvent],
+) -> RuleResult:
+    """Resolve a Rise of Ix Flip tile whose tile is already turned face down
+    (``apply_tech_flip``): pay its cost, then its effect."""
+
+    player = action.actor
+    arguments = dict(action.arguments)
+    tech_id = str(arguments["tech_id"])
+    match TECH_TILES_BY_ID[tech_id].ability:
+        case TechAbility.FLIP_TROOP:
+            working, gained = _flip_recruit(
+                working, player, TRAINING_DRONES_TROOPS, source
+            )
+            events.extend(gained)
+        case TechAbility.FLIP_SOLARI_FOR_TROOPS:
+            owner = working.players[player]
+            paid = replace(
+                owner,
+                resources=replace(
+                    owner.resources, solari=owner.resources.solari - FLAGSHIP_SOLARI
+                ),
+            )
+            working = replace(working, players=replace_player(working.players, paid))
+            events.append(resources_paid_event(source, player, solari=FLAGSHIP_SOLARI))
+            working, gained = _flip_recruit(working, player, FLAGSHIP_TROOPS, source)
+            events.extend(gained)
+        case TechAbility.FLIP_DISCARD_FOR_CARD:
+            discarded = discard_personal_card_from_hand(
+                working, player, str(arguments["card_id"]), source=f"{source}:discard"
+            )
+            events.extend(discarded.events)
+            drawn = draw_or_request_personal_cards(
+                discarded.state, player, 1, source=f"{source}:draw"
+            )
+            working = drawn.state
+            events.extend(drawn.events)
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:draw",
+                    kind="cards_drawn",
+                    payload=(("count", 1), ("player", player)),
+                )
+            )
+        case TechAbility.FLIP_DISCARD_IGNORE_BLOCKS:
+            discarded = discard_personal_card_from_hand(
+                working, player, str(arguments["card_id"]), source=f"{source}:discard"
+            )
+            events.extend(discarded.events)
+            # The Infiltrate mechanism: spent by the turn's Agent placement,
+            # gone when any turn opens (``PlayerState.enemy_agents_ignored_turn``).
+            owner = discarded.state.players[player]
+            working = replace(
+                discarded.state,
+                players=replace_player(
+                    discarded.state.players,
+                    replace(owner, enemy_agents_ignored_turn=True),
+                ),
+            )
+    return RuleResult(state=working, events=tuple(events))
+
+
+def _flip_recruit(
+    state: GameState, player: int, count: int, source: str
+) -> tuple[GameState, tuple[GameEvent, ...]]:
+    """A Flip tile's "troop" icons: recruit to the garrison, the part the
+    supply lacks owed as every recruit's (OQ-030)."""
+
+    owner, recruited = recruit_troops(state.players[player], count)
+    working = replace(state, players=replace_player(state.players, owner))
+    working = update_turn_recruits(working, troops_recruited=recruited)
+    return working, recruit_shortfall_events(source, player, count, recruited)
 
 
 def _flip_ability(tech_id: str) -> Ability:
@@ -1663,7 +1810,55 @@ def apply_endgame_tech_effects(state: GameState) -> RuleResult:
                         )
                         state = gained.state
                         events.extend(gained.events)
+        # Rise of Ix's tiles, after the Tech Module's (OQ-040's convention:
+        # as the Endgame opens, before the Endgame Intrigue window).
+        for tech_id, points in ix_endgame_points(state.players[player]):
+            scored = replace(
+                state.players[player],
+                victory_points=state.players[player].victory_points + points,
+            )
+            state = replace(state, players=replace_player(state.players, scored))
+            events.append(
+                resources_gained_event(
+                    f"{source}:{tech_id}", player, victory_points=points
+                )
+            )
     return RuleResult(state=state, events=tuple(events))
+
+
+def ix_endgame_points(owner: PlayerState) -> tuple[tuple[str, int], ...]:
+    """The Victory Points each of Rise of Ix's Endgame tiles the owner holds
+    pays now, as (tile, VP) pairs for the ones that pay (docs/rules/
+    rise-of-ix.md 4), in the table's order.
+
+    - Holtzman Engine, "Endgame: The Spice Must Flow 2장 이상이면 1 VP": the
+      copies counted as OQ-123 rules (deck, hand, discard pile and in play;
+      not trashed).
+    - Memocorders, "Endgame: 네 track 모두 Influence 3 이상이면 1 VP".
+    - Spy Satellites, "Endgame: Influence 1 이하인 진영마다 1 VP".
+
+    Chaumurky's "동률을 이긴다" pays nothing; it is the first tie-break of
+    ``rules.endgame``.
+    """
+
+    points: list[tuple[str, int]] = []
+    if has_tech(owner.tech_ids, TechAbility.HOLTZMAN_ENGINE) and (
+        spice_must_flow_copies(owner) >= HOLTZMAN_ENGINE_SPICE_MUST_FLOW
+    ):
+        points.append(("holtzman_engine", ENDGAME_TILE_VP))
+    if has_tech(owner.tech_ids, TechAbility.ENDGAME_INFLUENCE_THREE_VP) and all(
+        influence_amount(owner.influence, faction) >= MEMOCORDERS_INFLUENCE
+        for faction in Faction
+    ):
+        points.append(("memocorders", ENDGAME_TILE_VP))
+    if has_tech(owner.tech_ids, TechAbility.SPY_SATELLITES):
+        low = sum(
+            influence_amount(owner.influence, faction) <= SPY_SATELLITES_INFLUENCE
+            for faction in Faction
+        )
+        if low:
+            points.append(("spy_satellites", ENDGAME_TILE_VP * low))
+    return tuple(points)
 
 
 # The tiles' Endgame lines in tile order (composed A6b): CHOAM Transports'

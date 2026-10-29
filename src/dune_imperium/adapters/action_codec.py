@@ -3494,6 +3494,14 @@ def _ix_tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     # Disposal Facility's Reveal-turn trash of a card in play (OQ-126); the
     # card is the step row's target.
     templates.append(ActionTemplate(action_id="trash_disposal_facility_card"))
+    # The four Flip tiles (docs/rules/rise-of-ix.md 4, stage P4c-2b): the tile
+    # names the whole action, and the card Holoprojectors and Invasion Ships
+    # discard is the step row's target.
+    templates.extend(
+        ActionTemplate(action_id="flip_tech", arguments=(("tech_id", tile.tech_id),))
+        for tile in IX_TECH_TILES
+        if tile.flips
+    )
     return tuple(templates)
 
 

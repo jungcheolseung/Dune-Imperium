@@ -151,6 +151,17 @@ class TechAbility(StrEnum):
     # Windtraps -- when you win a Conflict: 1 water.
     CONFLICT_WIN_WATER = "conflict_win_water"
 
+# Rise of Ix's four Flip tiles (docs/rules/rise-of-ix.md 4, "뒤집기" column):
+# Flagship, Holoprojectors, Invasion Ships and Training Drones.
+IX_FLIP_ABILITIES: Final = frozenset(
+    {
+        TechAbility.FLIP_SOLARI_FOR_TROOPS,
+        TechAbility.FLIP_DISCARD_FOR_CARD,
+        TechAbility.FLIP_DISCARD_IGNORE_BLOCKS,
+        TechAbility.FLIP_TROOP,
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class TechTile:
@@ -358,9 +369,11 @@ class TechTile:
         """Return whether the ability is used by flipping the tile: the
         tile's record has a Flip line [Bloodlines p. 7] (composed A6b)."""
 
-        return any(
+        return self.ability in IX_FLIP_ABILITIES or any(
             record.timing is AbilityTiming.FLIP
-            for record in TECH_ABILITIES[self.tech_id]
+            # A Rise of Ix tile has no ability record (``content.rise_of_ix.
+            # tech``): its flips are the members of ``IX_FLIP_ABILITIES``.
+            for record in TECH_ABILITIES.get(self.tech_id, ())
         )
 
 

@@ -704,8 +704,9 @@ def test_the_rows_of_the_ix_tiles_are_in_the_original_catalog_with_rise_of_ix() 
     """Only a Rise of Ix catalog holds the Ix tiles' rows: each tile bought
     with no Negotiator or with one up to its price, and the acquire icons that
     a key pays (every tile's since stage P4c-2a), with the two rows of a tile's
-    ability that choose (Detonation Devices, Disposal Facility); the original
-    game alone has none of them [Rise of Ix p. 4]."""
+    ability that choose (Detonation Devices, Disposal Facility) and the four
+    Flip tiles' effect rows (stage P4c-2b); the original game alone has none
+    of them [Rise of Ix p. 4]."""
 
     plain = ActionCodec(ORIGINAL).catalog
     ix = ActionCodec(IX).catalog
@@ -732,11 +733,14 @@ def test_the_rows_of_the_ix_tiles_are_in_the_original_catalog_with_rise_of_ix() 
         "detonation_devices",
         "disposal_facility",
         "flagship",
+        # The Flip tiles' effect rows (stage P4c-2b): the four of them.
+        "holoprojectors",
         "invasion_ships",
         "memocorders",
         "shuttle_fleet",
         "sonic_snoopers",
         "spaceport",
+        "training_drones",
         "windtraps",
     }
     assert not {tile for tile in effects if tile in TECH_IDS}

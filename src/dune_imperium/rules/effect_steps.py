@@ -621,7 +621,9 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         icon="arg:effect",
         targets=_FACTION,
     ),
-    "flip_tech": _spec(_V.FLIP, _S.TECH, "tech_id"),
+    # Holoprojectors' and Invasion Ships' discarded card is the target row
+    # (Rise of Ix, stage P4c-2b); the other tiles name none.
+    "flip_tech": _spec(_V.FLIP, _S.TECH, "tech_id", targets=_CARD),
     "resolve_tech_acquire_effect": _spec(
         _TECH_ICON_VERBS,
         _S.TECH,
