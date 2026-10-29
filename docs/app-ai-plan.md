@@ -3,7 +3,7 @@
 상태: **완료** (2026-10-05 작성·구현·A/B, master 병합). 브랜치 `app-ai`(worktree), 기준 master `60707f8b`(codec v133, 관측 v30).
 뼈대 커밋 `279dffd8`.
 확장판(Immortality·Epic·Go to 11·프로모·지도자 드래프트·Bloodlines·Arrakeen Scouts): **구현 완료**, 브랜치 `app-ai-expansions`(11절). 16개 선택지 조합 12판씩 오류 0·무작위 대체 0·미포팅 0.
-원판 Dune: Imperium(base-game-and-ix-plan P6): **진행 중**, 브랜치 `claude/base-ix-p6-appai-b94c97`(12절).
+원판 Dune: Imperium(base-game-and-ix-plan P6): **구현 완료**(무작위 대체 0), 브랜치 `claude/base-ix-p6-appai-b94c97`(12절). Rise of Ix는 P4 병합 뒤.
 
 ## 1. 사용자 결정
 
@@ -394,12 +394,29 @@ Uprising 고정 시드 수 그대로(`tmp/claude/523fa7a8/same_moves.py`: 7개 �
 | # | 슬라이스 | 내용 | 상태 |
 |---|---|---|---|
 | 1 | catalog·보드 | 원판 표 5개(`ORIGINAL_*`), `Board.original`, BaseSet 칸 순서, 앱의 `Is…Space` 판별(`swordmaster_space_id` 등), Maker 칸이 없는 보드의 worm potential, Hall of Oratory의 Reveal 미리보기 | 완료 `7919f867` |
-| 2 | 칸 | 칸 능력 8클래스, Mentat·Foldspace·Selective Breeding·Sell Melange·Hall of Oratory·Conspire 창 대응, 원판 Maker 칸 수확, 턴 창의 원판 칸 비용 | |
-| 3 | Conflict | 54클래스, 교전 보상 창(영향력 선택·서로 다른 영향력·Trash·Mentat 보상) | |
-| 4 | 지도자 | 18클래스, Signet 상자, `masterstroke_setup`·Connections·Helena의 Manipulate 등 지도자 창 | |
-| 5 | Imperium A–L | 카드 능력과 Agent 상자·Reveal 선택·획득 아이콘 창 | |
-| 6 | Imperium M–Z·프로모·Reserve | 같은 것 | |
-| 7 | 책략 A–M | 능력과 Plot·교전·종료·`intrigue_choice` 창 | |
-| 8 | 책략 N–Z | 같은 것 | |
-| 9 | 프로필 BaseSet 분기 | 12.2 끝 목록 | |
-| 10 | 마무리 | 세 난이도 census 0, Uprising 같은 수, 원판 soak, Hard 대 heuristic 측정, 문서·P5 알림 | |
+| 2 | 칸 | 칸 능력 8클래스(`abilities/original_board.py`), Mentat·Foldspace·Selective Breeding·Sell Melange(턴 창이 앱의 판매량으로 비용 선택)·Hall of Oratory·Conspire 창 대응, 원판 Maker 칸 수확 | 완료 `51816b4c` |
+| 3 | Conflict | 54클래스(`original_conflicts.py`), 교전 보상 창(영향력·서로 다른 영향력·Trash·-OR-·"둘 고르기"), `RelativeConflictValue`의 원판 경로(레벨별 고정표) | 완료 `9b8d9e1d`–`9dc7c096` (agent) |
+| 4 | 지도자 | 18클래스(`original_leaders.py`), Signet 상자·Prudent Diplomacy·Scheme·Manipulate·Connections, `masterstroke_setup`, Baron의 Masterstroke 배치 보정 | 완료 `cbe2640c` (agent), `41346d40`, `1b6e4c4a`, `a0462cb0` |
+| 5–6 | Imperium·프로모·Reserve | 47클래스(`original_imperium.py`), Agent 상자·지불·-OR-·Shifting Allegiances·Firm Grip·The Voice 창, Reveal 선택 9종, 획득 아이콘, Kwisatz Haderach의 출발 Agent | 완료 `aaa6fb91`, `33c83f09`…(agent), `58d3bf07`, `8aff86df`, `2ba5a23d` |
+| 7–8 | 책략 | 36클래스(`original_intrigue.py`), Poison Snooper·Bindu Suspension 선택, Test of Humanity 피해자 선택 | 완료 `33c83f09` (agent), `1b6e4c4a` |
+| 9 | 프로필 BaseSet 분기 | `AppContext.uprising`(`IsSetEnabled(4)`)의 거짓 경로(Emperor 4칸 보상 3.0, 칸 가치·영향력의 Uprising 블록, 종료 점수 등), 원판 책략·지도자 분기(Heighliner potential, Rapid Mobilization 등) | 완료 `92d7dafd`, `e89c7834` (agent) |
+| 10 | 마무리 | 세 난이도 census 0, Uprising 같은 수, 원판 soak, Hard 대 heuristic 측정, 문서·P5 알림 | census 0·같은 수 완료; soak·측정 예약 |
+
+### 12.4 결과와 알려진 차이
+
+- census: 원판(드래프트·프로모 포함) 30판씩 세 난이도 모두 앱 판단 약 16,300개, 무작위 대체 0, 미포팅 0(시드 7000–7029); 드래프트 없는
+  판·프로모만 켠 판도 0. Uprising app_ai 수는 고정 시드 21판(선택지 조합 7개)에서 슬라이스마다 master와 같았다
+  (`tmp/claude/523fa7a8/same_moves.py`).
+- Helena Richese의 Manipulate: 앱은 살 수 있는 Row 카드가 없으면 0.5의 빈 답으로 아무것도 놓지 않지만, 우리 엔진은 Signet을 쓰면
+  set-aside를 요구한다(그 밖에 낼 행동이 없다). 그때는 앱이 채울 수 없는 강제 프롬프트의 답인 `DefaultRandomChoice`(Row 카드 중
+  무작위)로 답한다(턴을 끝낼 수 있으면 쓰지 않은 채 둔다).
+- Gurney Halleck의 Reveal: 앱은 3 Solari 지불과 배치할 병력 수를 한 답으로 정한다. 우리는 지불만 그 답으로 하고, 배치는 Reveal의
+  일반 배치 키(`DeployUnitsAbility`, 0.5)가 정한다.
+- Kwisatz Haderach: 앱의 Agent 목록(`GetAgentTargets`, 놀이판의 자손 순서)은 추적하지 않았다. 아직 놓지 않은 Agent를 먼저, 놓인
+  Agent를 보드 순서로 둔다(같은 값일 때만 차이).
+- Baron의 Masterstroke 배치 보정: 앱의 "이번 턴 소진된 유닛"(`IsExhausted`)을 우리 `units_deployed_turn`으로 읽는다(앱이 언제
+  다시 세우는지는 추적하지 않음).
+- Test of Humanity·Reverend Mother Mohiam의 지연 능력: `CanRunImmediately`의 ClientVersion 검사(최소 3.0.0.0)는 컴퓨터 좌석을
+  "클라이언트 없음"으로 보아 곧바로 실행한다(agent 판단, `original_imperium._client_runs_immediately`).
+- Private Army의 결정적 교전 값 50.0, Bypass Protocol 세 번째 응답, Bindu Suspension 100.0 등 agent가 추정으로 읽은 값은 각
+  클래스 docstring에 주소와 함께 적었다.
