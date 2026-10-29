@@ -7,8 +7,7 @@
 Status (2026-10-30, branch `claude/base-ix-p6-ix`): every Rise of Ix decision
 our engine offers in an original + Ix game (draft, promos) is answered by an
 app class. The census has no random answer and no unported class: 20 games
-per level, seeds 8100+. Five of the six Ix Leaders are in (P4 `137d582f`);
-Tessia Vernius waits for P4.
+per level, seeds 8100+. All six Ix Leaders are in (P4 `6c6b747e`).
 
 Unlike the Bloodlines and Scouts files beside this one, Rise of Ix is a
 **faithful port**: the Steam app plays Rise of Ix itself. Values come from the
@@ -71,7 +70,8 @@ app's prompts.
 
 ## Leaders
 
-The twelve classes are in `abilities/ix_leaders.py`; Rhombur's
+The twenty-one classes are in `abilities/ix_leaders.py` (Tessia's eight
+and their abstract `CarefulObservationFactionAbility` included); Rhombur's
 `IxianTechnologyAbility` is in `abilities/tech.py`.
 
 | Leader | Decision | App class | Notes |
@@ -85,6 +85,17 @@ The twelve classes are in `abilities/ix_leaders.py`; Rhombur's
 | "Princess" Yuna Moritani | Final Delivery (Signet): `choose_leader_signet_influence` | `FinalDeliveryAbility` (Optional): each track at its `GetGainInfluenceValue` | With every Faction at the top our engine offers the payment alone; the app has no track to answer, so the key lapses. |
 | Viscount Hundro Moritani | Couriers (Signet): `advance_leader_freighter` / `recall_leader_freighter` | `CouriersAbility` (Optional): `GetFreighterSelections(-1).Item1` at `FreighterValue` | |
 | | Intelligence (setup `intrigue_peek`, source `setup:intelligence:<seat>`) | `IntelligenceAbility::EvaluateIntrigue`: the higher `Rating` | Imperium Ceremony's peek keeps `ImperiumCeremonyAbility`. |
+| Tessia Vernius | Careful Observation reward (1): `discard_snooper_card` in her turn (no refusal; lapses), or the `OPTIONAL_DISCARD` window outside it (`decline_snooper_discard`) | The reached track's `CarefulObservation<Faction>Ability`: `GetDiscardOrder`'s first card at 1.0, `((),)` for none | In her turn "discard nothing" is no candidate; in the window it is the refusal. Rewards (2)-(4) are paid by the engine. |
+| | Duplicity (Signet): `lose_leader_influence`, then `choose_leader_signet_influence` | `DuplicityAbility` (Optional): one prompt over the lose tracks and the Snooper tracks, `GetBestInfluenceExchange` -> `((lose,), (gain,))` | The loss takes the first track; the second waits in `Memory.intents` for the gain step (the app answers both before the loss). |
+
+Judgement (Tessia): the app numbers her Snooper rewards by the order its
+abilities run, ours by the order the tokens are reached; a waiting reward
+(1) is the app's first run, so `snooper_factions_used` is empty while one
+waits. One action reaching two tokens pays (2) before asking (1) in ours.
+
+Quid Pro Quo's per-Faction Influence (`resolve_effect_influence`, OQ-153)
+is taken first, in `GetAgentSpaceFactions`' board order: the app's
+`QuidProQuoAbility` gains them as it runs, without asking.
 
 ## Profile
 
@@ -168,8 +179,6 @@ Left open by the review:
 
 ## What waits
 
-- **Tessia Vernius**: eight classes, `optional_discard` and her setup, once
-  P4 lands her.
 - **Closing runs**: the original + Ix soak and the Hard vs heuristic
   measurement, booked on the CPU board once Tessia and the remaining cards
   are in.

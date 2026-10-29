@@ -506,7 +506,7 @@ P4 브랜치(`51884e8f`)가 지금 가진 결정은 dreadnought 셋(P4b)과 예�
 | 6 | Imperium | 48클래스, Unload·Discard·잠입 | 완료: 클래스 `43035f7d`(Opus agent), `beb1328b`, 창 `63b24e7f`, Boundless Ambition `5a195063` |
 | 7 | 책략 | 21클래스 | 완료: 클래스 `af6341ea`(Opus agent), `4689a8ec`(`GetBestOption`·Glimpse·Ixian Probe), 창 `63c94da4`, `2ec3f1d1` |
 | 8 | Conflict | 9클래스 | 완료 `c2838e5d` |
-| 9 | 지도자 | 20클래스, `round_start_set_aside`·`optional_discard`, Tessia·Hundro의 setup | 다섯 명 완료: 클래스 12개(Opus agent, `abilities/ix_leaders.py`), 창 연결·Rhombur의 dreadnought 힘 4; Tessia는 P4 뒤 |
+| 9 | 지도자 | 20클래스, `round_start_set_aside`·`optional_discard`, Tessia·Hundro의 setup | 완료: 다섯 명 클래스 12개, Tessia 9개(agent 둘, `abilities/ix_leaders.py`), 창 연결·Rhombur의 dreadnought 힘 4 |
 | 10 | 마무리 | 세 난이도 census 0, Uprising·원판 같은 수, 원판 + Ix soak, Hard 대 heuristic 측정, 문서·P5 알림 | census 0·같은 수 완료; 문서 `docs/app-ai/rise-of-ix.md`; soak·측정은 P4e 뒤 |
 
 - 진행(2026-10-29 밤, 브랜치 `claude/base-ix-p6-ix` = P4 `7a0c50e4` + P6 브랜치 `e7af766f` 병합, 그 뒤 P4 `87581ad9`를 따라
@@ -531,6 +531,9 @@ P4 브랜치(`51884e8f`)가 지금 가진 결정은 dreadnought 셋(P4b)과 예�
   `SecondWaveAbility`가 고른 유닛 수와 dreadnought 수가 같은 행이다. Cannon Turrets는 고를 것이 없다. Endgame의 Plans Within
   Plans·Grand Conspiracy는 넷을 채우면 2 VP 선택지를 낸다(앱 `CountTotalPoints`: 셋 1 VP, 넷 2 VP). 전에는 첫 선택지(1 VP)를
   냈고, 이 수정으로 원판 고정 시드 1판(`original:501:L1`)이 그 한 수만 바뀐다.
+- Tessia Vernius(`6c6b747e`, 병합 `23231f15`): 클래스 8개와 추상 베이스를 agent 하나(약 449k 토큰)가 이식했고, Duplicity의
+  두 단계(잃기 → 얻기)는 한 번의 답을 나눠 쓴다. Quid Pro Quo의 진영별 Influence 행(OQ-153)은 앱의 보드 순서로 먼저 받는다.
+  Disposal Facility의 두 trash(`b806b3db`)는 행 id가 그대로라 연결이 바뀌지 않는다.
 - P4e 지도자 다섯(`137d582f`, 병합 `22876e87`): 앱 클래스 12개를 agent 하나(세션 모델, 약 477k 토큰)가 이식했고, 창은 이
   세션이 이었다(Signet 다섯, Armand의 Reveal trash, Ilesa의 Round Start 따로 두기, Hundro의 Intelligence). 병합 직후 Hard 20판의
   무작위 285번이 0이 됐다.
