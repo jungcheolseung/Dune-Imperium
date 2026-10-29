@@ -21,6 +21,7 @@ const PROMPT_KO = {
   "Choose a different faction to gain one Influence": "{influence_any} 1을 얻을 다른 {faction} 선택",
   "Masterstroke: secretly choose two Factions": "{leader} 능력: 비밀로 {faction} 둘 선택",
   "One Step Ahead: set aside a card from your hand": "{leader} 능력: {hand} 카드 1장 따로 빼두기",
+  "Snooper reward: discard a card for 1 spice, or decline": "{leader} 능력: 카드 1장을 버리고 {spice} 1 얻기, 또는 거절",
   "Choose a faction to gain one Influence": "{influence_any} 1을 얻을 {faction} 선택",
   "Choose an Agent turn or Reveal turn": "{agent_turn} 또는 {reveal_turn} 선택",
   "Choose a space for the Agent": "{agent} 보낼 칸 선택",

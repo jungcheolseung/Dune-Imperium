@@ -29,7 +29,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.display.effect_dsl_text import intrigue_card_text
 from dune_imperium.display.effect_dsl_text_ko import intrigue_card_text_ko
-from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules import UprisingRulesEngine, turn_rows
 from dune_imperium.rules.agent_turn import executable_placements
 
 CONFIG = RulesetConfig(
@@ -91,6 +91,26 @@ def _playable(state: GameState) -> bool:
 
 def _play(state: GameState) -> GameState:
     return _take(state, "play_intrigue", card_id=QUID_PRO_QUO, option=0)
+
+
+def _influence_rows(state: GameState) -> list[str]:
+    """The Factions whose Influence rows wait on the turn (OQ-153)."""
+
+    return [
+        str(dict(row.arguments)["faction"])
+        for row in _rows(state)
+        if row.action_id == "resolve_effect_influence"
+    ]
+
+
+def _play_and_take(state: GameState) -> GameState:
+    """Play Quid Pro Quo, then take its Faction rows in Faction order."""
+
+    done = _play(state)
+    for faction in _influence_rows(done):
+        done = _take(done, "resolve_effect_influence", faction=faction)
+    assert _influence_rows(done) == []
+    return done
 
 
 def _visit(state: GameState, space: str, card: str = "diplomacy") -> GameState:
@@ -161,7 +181,12 @@ def test_quid_pro_quo_pays_two_spice_for_each_faction_with_an_agent(
     state = _start(resources=Resources(spice=3), agent_locations=locations)
     before = _influence(state)
     assert _playable(state)
-    done = _play(state)
+    played = _play(state)
+    # One row per Faction, taken in the owner's order (OQ-153); nothing has
+    # moved yet.
+    assert set(_influence_rows(played)) == gained
+    assert _influence(played) == before
+    done = _play_and_take(state)
     after = _influence(done)
     assert {faction for faction in after if after[faction] != before[faction]} == (
         gained
@@ -176,7 +201,8 @@ def test_quid_pro_quo_gains_once_per_faction_however_many_agents() -> None:
     board spaces": two Agents on Emperor spaces gain one Emperor Influence."""
     state = _start(resources=Resources(spice=2), agent_locations=("wealth", "conspire"))
     before = _influence(state)
-    done = _play(state)
+    assert _influence_rows(_play(state)) == ["emperor"]
+    done = _play_and_take(state)
     assert _influence(done) == {**before, "emperor": before["emperor"] + 1}
 
 
@@ -223,7 +249,10 @@ def test_quid_pro_quo_needs_a_faction_that_can_still_rise() -> None:
             "secrets",
         ),
     )
-    done = _play(state)
+    # A Faction at the top keeps its row and gains nothing taking it
+    # (OQ-060, as an acquire box's fixed icon, OQ-141).
+    assert set(_influence_rows(_play(state))) == {"emperor", "bene_gesserit"}
+    done = _play_and_take(state)
     assert done.players[0].influence == Influence(emperor=6, bene_gesserit=3)
 
 
@@ -233,7 +262,7 @@ def test_quid_pro_quo_counts_the_agent_sent_this_turn() -> None:
     seat's own Agent turn [DI pp. 7-8]."""
     state = _visit(_start(resources=Resources(spice=2)), "foldspace")
     before = _influence(state)
-    done = _play(state)
+    done = _play_and_take(state)
     assert _influence(done)["spacing_guild"] == before["spacing_guild"] + 1
     assert done.players[0].resources.spice == 0
 
@@ -245,5 +274,29 @@ def test_quid_pro_quo_plays_in_the_reveal_turn() -> None:
     state = _take(state, "reveal_turn")
     before = _influence(state)
     assert _playable(state)
-    done = _play(state)
+    done = _play_and_take(state)
     assert _influence(done) == {**before, "fremen": before["fremen"] + 1}
+
+
+def test_quid_pro_quo_s_factions_are_rows_taken_in_the_owner_s_order() -> None:
+    """OQ-153 (2026-10-30): "진영을 모두 정해 주는 효과(Quid Pro Quo)는 진영마다 줄
+    하나를 내고 소유자가 원하는 순서로 받는다(OQ-141과 같은 꼴)". Each row is one
+    Faction's Influence; they wait on the turn and hold its end until taken
+    (mandatory), in any order."""
+
+    state = _start(resources=Resources(spice=2), agent_locations=("wealth", "secrets"))
+    played = _play(state)
+    assert sorted(_influence_rows(played)) == ["bene_gesserit", "emperor"]
+    assert turn_rows.holds_the_end(played, 0)
+    first = _take(played, "resolve_effect_influence", faction="bene_gesserit")
+    assert _influence_rows(first) == ["emperor"]
+    assert first.players[0].influence.bene_gesserit == (
+        state.players[0].influence.bene_gesserit + 1
+    )
+    assert first.players[0].influence.emperor == state.players[0].influence.emperor
+    second = _take(first, "resolve_effect_influence", faction="emperor")
+    assert _influence_rows(second) == []
+    assert not turn_rows.holds_the_end(second, 0)
+    assert second.players[0].influence.emperor == (
+        state.players[0].influence.emperor + 1
+    )

@@ -27,6 +27,7 @@ from dune_imperium.rules.setup import (
     assign_twisted_deck,
     deal_setup_intrigue,
 )
+from dune_imperium.rules.snoopers import place_snooper_tokens
 from dune_imperium.rules.tech import assign_secret_project
 
 
@@ -185,23 +186,25 @@ def _finish_draft_setup(
         )
     )
     prepared = assign_masterstroke(
-        assign_secret_project(
-            assign_navigation_deck(
-                assign_twisted_deck(
-                    replace(
-                        state,
-                        phase=GamePhase.ROUND_START,
-                        players=players,
-                        intrigue_deck=intrigue_deck,
-                        contract_bank=bank,
-                        face_up_contract_ids=face_up,
-                        sardaukar_contract_ids=sardaukar_set_aside,
-                        maker_bonus_spice=content_for(
-                            state.config
-                        ).maker_bonus_spice_for(
-                            tuple(player.leader_id or "" for player in players)
-                        ),
-                        decision_stack=state.decision_stack[:-1],
+        place_snooper_tokens(
+            assign_secret_project(
+                assign_navigation_deck(
+                    assign_twisted_deck(
+                        replace(
+                            state,
+                            phase=GamePhase.ROUND_START,
+                            players=players,
+                            intrigue_deck=intrigue_deck,
+                            contract_bank=bank,
+                            face_up_contract_ids=face_up,
+                            sardaukar_contract_ids=sardaukar_set_aside,
+                            maker_bonus_spice=content_for(
+                                state.config
+                            ).maker_bonus_spice_for(
+                                tuple(player.leader_id or "" for player in players)
+                            ),
+                            decision_stack=state.decision_stack[:-1],
+                        )
                     )
                 )
             )

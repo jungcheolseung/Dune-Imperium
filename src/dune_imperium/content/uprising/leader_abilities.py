@@ -49,6 +49,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     HasAlliance,
     InfluenceAtLeast,
+    LoseInfluence,
     OnAgentSentTo,
     OnBoardSpaceSolariPaid,
     OnCardTrashed,
@@ -329,6 +330,15 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
                 costs=(PayResources(solari=1),),
             ),
         ),
+        # Duplicity: "Influence 1 잃기 → Snooper token이 있는 진영에 Influence 1"
+        # (rise-of-ix.md 10) -- an arrow, so never forced; the same Faction
+        # may be lost and gained (OQ-153); the Faction gained is one still
+        # holding a token (``rules.leader_abilities``).
+        "tessia_vernius": _hook(
+            "duplicity",
+            AbilityMark.OPTIONAL,
+            EffectSection(rewards=(GainInfluence(),), costs=(LoseInfluence(1),)),
+        ),
     }
 )
 
@@ -542,6 +552,11 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         # it then sends (rise-of-ix.md 10, OQ-119, OQ-122;
         # ``rules.one_step_ahead``).
         "ilesa_ecaz": (_standing("one_step_ahead"),),
+        # Careful Observation: a Snooper token on each track's Influence 2
+        # space, each token reached taking the next Snooper reward
+        # (rise-of-ix.md 10, OQ-153; ``rules.snoopers``,
+        # ``influence._reach_snooper``).
+        "tessia_vernius": (_standing("careful_observation"),),
     }
 )
 

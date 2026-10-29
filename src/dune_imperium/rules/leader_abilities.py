@@ -136,9 +136,11 @@ from dune_imperium.rules.gain_events import (
     resources_paid_event,
 )
 from dune_imperium.rules.influence import (
+    alliance_recipients_after_influence_loss,
     gain_faction_influence,
     influence_amount,
     influence_can_rise,
+    lose_faction_influence,
 )
 from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
@@ -202,6 +204,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "archduke_armand_ecaz",
         "viscount_hundro_moritani",
         "ilesa_ecaz",
+        "tessia_vernius",
     }
 )
 
@@ -235,6 +238,11 @@ COURIERS_RECALL_ACTION: Final = "recall_leader_freighter"
 ILESA_LEADER: Final = "ilesa_ecaz"
 GUILD_CONTACTS_SOLARI: Final = 1
 FOLDSPACE_CARD: Final = "foldspace_card"
+# Tessia Vernius (Rise of Ix): Duplicity's Influence loss, paid before the
+# gain with a Faction holding a Snooper token (docs/rules/rise-of-ix.md 10).
+TESSIA: Final = "tessia_vernius"
+DUPLICITY_LOSS_ACTION: Final = "lose_leader_influence"
+DUPLICITY_PAID_KEY: Final = "duplicity_paid"
 
 # Always Smiling grants its Persuasion at six or more strength in the
 # four-player game; the printed asterisk raises that to ten only in a
@@ -645,6 +653,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         "archduke_armand_ecaz",
         "viscount_hundro_moritani",
         "ilesa_ecaz",
+        "tessia_vernius",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
@@ -855,6 +864,7 @@ SIGNET_HOOKS: Final = frozenset(
         "conscript",
         "couriers",
         "guild_contacts",
+        "duplicity",
     }
 )
 
@@ -1602,6 +1612,27 @@ def legal_leader_signet_actions(
             ),
         )
 
+    if owner.leader_id == TESSIA:
+        # Duplicity: "Influence 1 잃기 → Snooper token이 있는 진영에 Influence 1"
+        # (docs/rules/rise-of-ix.md 10), an arrow, so declined freely; the
+        # same Faction may be lost and gained (OQ-153). Once the Influence is
+        # lost the gain is owed: one row per Faction still holding a token
+        # (each is at 1 or less, so it can rise). No token left, the loss buys
+        # nothing and is not offered (section 15, OQ-071).
+        if context.get(DUPLICITY_PAID_KEY) is True:
+            return tuple(
+                DomainAction(
+                    action_id="choose_leader_signet_influence",
+                    actor=player,
+                    arguments=(("faction", faction),),
+                )
+                for faction in owner.snooper_faction_ids
+            )
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(_duplicity_losses(state, player) if owner.snooper_faction_ids else ()),
+        )
+
     if owner.leader_id == ILESA_LEADER:
         # Guild Contacts: "1 Solari → Foldspace 획득" (docs/rules/rise-of-ix.md
         # 10), an arrow, so declined freely, and never paid for nothing
@@ -1624,8 +1655,7 @@ def legal_leader_signet_actions(
                     )
                     for top in tops
                 )
-                if foldspace > 0
-                and owner.resources.solari >= GUILD_CONTACTS_SOLARI
+                if foldspace > 0 and owner.resources.solari >= GUILD_CONTACTS_SOLARI
                 else ()
             ),
         )
@@ -1871,6 +1901,67 @@ def _chroniclers_insight_choices(
     )
 
 
+def _duplicity_losses(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """Duplicity's cost rows: an Influence lost with each Faction she has
+    one with, naming the Alliance's recipient when the loss hands it to one
+    of several opponents (``alliance_recipients_after_influence_loss``)."""
+
+    owner = state.players[player]
+    rows: list[DomainAction] = []
+    for faction in Faction:
+        if influence_amount(owner.influence, faction) < 1:
+            continue
+        recipients = alliance_recipients_after_influence_loss(state, player, faction)
+        if len(recipients) > 1:
+            rows.extend(
+                DomainAction(
+                    action_id=DUPLICITY_LOSS_ACTION,
+                    actor=player,
+                    arguments=(
+                        ("alliance_recipient", recipient),
+                        ("faction", faction.value),
+                    ),
+                )
+                for recipient in recipients
+            )
+        else:
+            rows.append(
+                DomainAction(
+                    action_id=DUPLICITY_LOSS_ACTION,
+                    actor=player,
+                    arguments=(("faction", faction.value),),
+                )
+            )
+    return tuple(rows)
+
+
+def apply_duplicity_loss(state: GameState, action: DomainAction) -> RuleResult:
+    """Duplicity's cost: one Influence lost; the gain then waits in the box
+    (``DUPLICITY_PAID_KEY``)."""
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Duplicity loss")
+    context = _signet_context(state)
+    player = action.actor
+    arguments = dict(action.arguments)
+    faction = Faction(str(arguments["faction"]))
+    recipient = arguments.get("alliance_recipient")
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    lost = lose_faction_influence(
+        state,
+        player,
+        faction,
+        1,
+        event_prefix=f"{source}:duplicity:{faction.value}",
+        alliance_recipient=recipient if isinstance(recipient, int) else None,
+    )
+    context[DUPLICITY_PAID_KEY] = True
+    return RuleResult(
+        state=_store_signet(lost.state, context, lost.state.players),
+        events=lost.events,
+    )
+
+
 def _conscript_choices(state: GameState, player: int) -> tuple[DomainAction, ...]:
     """Conscript's acquisitions: a card that costs 3 or less from the Row or
     the Reserve, never Foldspace (OQ-125), and the owner's own Manipulate
@@ -2095,6 +2186,7 @@ def apply_leader_signet_payment(
     context.pop("staban_bonus_post", None)
     context.pop("listeners_paid", None)
     context.pop("leader_spy_recalled", None)
+    context.pop(DUPLICITY_PAID_KEY, None)
 
     if action.action_id in ("decline_leader_signet_payment", SIGNET_NO_OPTION):
         next_state = _store_signet(state, context, state.players)
@@ -2746,6 +2838,25 @@ def apply_shaddam_signet_choice(
     if owner.leader_id == "duke_leto_atreides":
         # Prudent Diplomacy's 1 spice (``legal_leader_signet_actions``).
         return _apply_prudent_diplomacy(state, context, player, Faction(faction_value))
+    if owner.leader_id == TESSIA:
+        # Duplicity's gain, its Influence already lost
+        # (``legal_leader_signet_actions``); a token it reaches pays its
+        # Snooper reward (``influence._reach_snooper``).
+        context.pop(DUPLICITY_PAID_KEY, None)
+        gained = gain_faction_influence(
+            state,
+            player,
+            Faction(faction_value),
+            1,
+            event_prefix=f"{source}:influence:{faction_value}",
+        )
+        return RuleResult(
+            state=_store_signet(gained.state, context, gained.state.players),
+            events=(
+                *gained.events,
+                _signet_box(source, context, player, BoxOutcome.RESOLVED),
+            ),
+        )
     if owner.leader_id == YUNA:
         # Final Delivery's 7 Solari (``legal_leader_signet_actions``).
         return _apply_final_delivery(state, context, player, Faction(faction_value))

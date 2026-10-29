@@ -112,7 +112,7 @@ def test_the_records_say_which_signets_are_optional_and_which_print_icons() -> N
         "baron_vladimir_harkonnen",
         # Rise of Ix's Final Delivery (an arrow), Ixian Technology (two
         # "may" halves), Conscript ("may"), Couriers and Guild Contacts
-        # (arrows).
+        # (arrows); Duplicity is staged (optional until its Influence is lost).
         "princess_yuna_moritani",
         "prince_rhombur_vernius",
         "archduke_armand_ecaz",
@@ -272,9 +272,9 @@ def test_every_leader_face_prints_its_left_box_as_records() -> None:
     # The original game's: Ruthless Negotiator, Connections, Spice Addict's
     # standing record and its draw, and the standing Landsraad Popularity,
     # Eyes Everywhere, Prescience and Masterstroke. Rise of Ix's: the
-    # standing Smuggling Operation, Heavy Lasgun Cannons, Intelligence and
-    # One Step Ahead, and Coordination's Reveal-turn hook.
-    assert len(records) == 21 + 8 + 5
+    # standing Smuggling Operation, Heavy Lasgun Cannons, Intelligence, One
+    # Step Ahead and Careful Observation, and Coordination's Reveal-turn hook.
+    assert len(records) == 21 + 8 + 6
     assert {
         record.hook
         for record in records
@@ -300,6 +300,7 @@ def test_every_leader_face_prints_its_left_box_as_records() -> None:
         "prince_rhombur_vernius",
         "viscount_hundro_moritani",
         "ilesa_ecaz",
+        "tessia_vernius",
     }
     triggered = [record for record in records if record.trigger is not None]
     assert len(triggered) == 8 + 3

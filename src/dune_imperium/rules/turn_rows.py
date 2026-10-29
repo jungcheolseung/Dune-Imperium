@@ -98,6 +98,18 @@ UNLOAD_ICON: Final = "unload_icon"
 own turn (Rise of Ix, ``rules.unload``): ``value`` is ``"<card instance>|<icon>"``;
 mandatory, a gain [Rise of Ix p. 7]."""
 
+EFFECT_INFLUENCE: Final = "effect_influence"
+"""One Faction's Influence of an effect that raises several Factions it
+names itself (Rise of Ix's Quid Pro Quo, OQ-153): ``value`` is the Faction;
+each is a row taken in the owner's order; mandatory -- a Faction at the top
+gains nothing when taken (OQ-060), as an acquire box's fixed icon."""
+
+SNOOPER_DISCARD: Final = "snooper_discard"
+"""Tessia Vernius' first Snooper reward, "discard -> 1 spice", reached in
+her own turn (Rise of Ix, ``rules.snoopers``): ``value`` is the token's
+Faction; optional (an arrow), so it holds no turn end back and the press
+lapses it."""
+
 CHOSEN_INFLUENCE_ICON: Final = "influence_any"
 """The acquire icon ``value`` of an Influence with a Faction of the owner's
 choice."""
@@ -248,7 +260,14 @@ def holds_the_end(state: GameState, player: int) -> bool:
         return False
     owner = state.players[player]
     return any(
-        kind in (PLANETOLOGIST_INTRIGUE, RESEARCH_ICON, CONTRACT_ICON, UNLOAD_ICON)
+        kind
+        in (
+            PLANETOLOGIST_INTRIGUE,
+            RESEARCH_ICON,
+            CONTRACT_ICON,
+            UNLOAD_ICON,
+            EFFECT_INFLUENCE,
+        )
         or (kind == SHIPPING_REWARD and value != _OPTIONAL_SHIPPING_REWARD)
         or (
             kind == RESEARCH_BONUS
@@ -333,6 +352,12 @@ def _lapsed(player: int, item: Pending) -> GameEvent:
             event_id=f"{source}:{icon}_lapsed",
             kind="acquire_icon_lapsed",
             payload=(("card_id", card_id), ("effect", icon), ("player", player)),
+        )
+    if kind == SNOOPER_DISCARD:
+        return GameEvent(
+            event_id=f"{source}:snooper_discard_lapsed",
+            kind="snooper_discard_lapsed",
+            payload=(("faction", value), ("player", player)),
         )
     if kind == SHIPPING_REWARD:
         # Only space 3's Acquire Tech reaches the press (``holds_the_end``).

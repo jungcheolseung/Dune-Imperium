@@ -41,6 +41,7 @@ from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue_peek import assign_intelligence
 from dune_imperium.rules.masterstroke import assign_masterstroke
 from dune_imperium.rules.navigation import assign_navigation_deck
+from dune_imperium.rules.snoopers import place_snooper_tokens
 from dune_imperium.rules.tactics import TACTICS_TRACK_START
 from dune_imperium.rules.tech import assign_secret_project
 
@@ -747,7 +748,7 @@ def create_initial_state(
     # step [FAQ p. 1] (``rules.masterstroke``); Rise of Ix's Hundro Moritani
     # then looks at the Intrigue deck's top two, "모든 setup 뒤, 첫 라운드 전"
     # (docs/rules/rise-of-ix.md 3, ``rules.intrigue_peek``).
-    state = assign_intelligence(assign_masterstroke(state))
+    state = assign_intelligence(assign_masterstroke(place_snooper_tokens(state)))
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 

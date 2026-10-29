@@ -1453,6 +1453,51 @@ Strongarm·Strategic Push, 그다음 Imperium 카드. 끊기면: 커밋되지 �
   (`EachOpponentRetreatsDreadnought`), `a20f8e10` Second Wave(`DeployFromGarrison(dreadnoughts=True)`)); Imperium 묶음 d(브랜치 `claude/p4d-imperium-b`:
   `adacdc42` Satellite Ban, `0d7862d6` Spice Trader — 조건은 Fremen Alliance가 아니라 Fremen 2 Influence; Imperial Bashar는 선택 -OR- 칸으로 진행 중).
   Ix 카드(P4 위): Intrigue 13/17, Imperium 9/35.
+- Intrigue 묶음 e(Sonnet, 2026-10-30 새벽): `044b4ea1` War Chest(2 Solari는 비용 — 앱 기록 "spent 2 Solari to gain 4 swords"), `257bdcc0` Machine
+  Culture(`AcquireTech(discount=0)`; 비용 없는 Acquire Tech 줄을 비용 줄로 세어 살 타일이 없으면 못 낸다 — OQ-113 (C); 낸 뒤에는 의무 — Intrigue가 연
+  Rise of Ix Tech 창은 닿는 타일이 있으면 거절 줄이 없다, designer-rulings-audit.md 9행. **바뀐 것:** Ix 판의 Battlefield Research·Rapid Engineering 같은
+  Intrigue 출처 Tech 창도 같다), `e4dbdc9e` Diversion(`UnitsDeployedThisTurnAtLeast(4, dreadnoughts=True)`; dreadnought는 unit이지 troop이 아니다 —
+  rise-of-ix.md 6; 낸 Diversion은 turn frame에 자기 하한 `UNITS_COMMITTED_KEY`를 적어 troop·Commander·dreadnought 철수를 묶는다, OQ-029 (3)).
+  **남은 빚:** Diversion의 셈은 troop 쪽 최고치 + 이 turn에 배치한 dreadnought(한 순간의 합이 아니라 넘칠 수 있음); 하한은 종류별이 아니라 보수적(가능한
+  철수 일부를 막는다); Uprising + Ix의 Distraction·Coercive Negotiation이 dreadnought를 세는지는 P7. Strategic Push는 멈춤 — 브리프의 전제("When you win"
+  Intrigue)가 틀렸고(Combat 카드 + 승자 창의 자동 줄, OQ-121 판정 6 (1)), 서약을 담을 상태와 새 창 줄이 필요해 Opus 작업으로 따로(브랜치
+  `claude/p4d-strategic-push`). Ix 카드(P4 위): Intrigue 16/17.
+- P4e 지도자(Opus, 브랜치 `claude/p4e-leaders`, 63a61cb0에서): `1a402171` Yuna, `95b8af70` Rhombur, `83bc9575` Armand, `98774f8a` Hundro, `553b6daf` Ilesa —
+  각자 커밋에서 `IX_LEADER_IDS_OFFERED`에 든다. Tessia는 여러 진영을 한꺼번에 올리는 순서가 정해지지 않아 멈췄다 → OQ-153(`0d65eb9c`, 원칙 적용: 소유자가
+  순서, Quid Pro Quo는 진영마다 줄, "Choose two:"는 고른 순서, Duplicity는 같은 진영 허용). 지도자 쪽 판단(문서가 정하지 않음, 리뷰 대상): 엔티티 특성의 열
+  척도는 Uprising 개체가 쓰지 않는 열이면 원판 개체에서(원판 줄이 그대로); Yuna의 +1은 자기 turn의 Solari 획득 사건마다, 그 +1은 새 획득이 아님,
+  `reveal_finished` 뒤의 Combat 보상에는 없음; Final Delivery는 모든 진영이 맨 위여도 troop·spice 때문에 낸다(OQ-060·OQ-071); Rhombur의 Signet 기록 순서는
+  앱대로; Armand의 Coordination은 조건이 거짓이면 줄이 없다(회색 이유 없음 — P5 몫); Hundro는 Baron과 함께면 먼저 본다, Intelligence는 Imperium
+  Ceremony의 엿보기 frame(이제 멈춘 단계를 이어 감), Couriers는 spice와 이동이 한 줄, Epic 순서는 두 setup 경로에서 맞지만 원판 Epic이 막혀 있어 시험 안 함;
+  Ilesa의 따로 두기는 First Player turn 바로 위 frame, 그 동안 그 좌석 turn이 열린 것으로 셈, 자기 turn만 셈(`turns_finished_round`), 따로 두면 공개 손
+  카드 표시를 지운다(어느 카드를 두었는지 남이 알 수 없게, rise-of-ix.md 13), Weirding Way의 추가 turn이 들어오면 `one_step_ahead.finish_turn_count`를
+  불러야 한다. 무작위 소크가 Reserve 카드 instance id 중복 발급을 잡아 고쳤다(`next_reserve_instance_id`). **고칠 것:** 서버 로그 `SEALED_ACTION_IDS`에
+  `set_aside_leader_card`(Masterstroke의 `f8819963`과 같은 빈틈) — 지도자 작업자가 P4에 들이며 함께.
+- Imperium 묶음 e(Sonnet, 브랜치 `claude/p4d-imperium-b`): `374e8c1d` Bounty Hunter(새 조건 `AtSpaceWithEnemyAgent` — 카드를 낼 때(Agent를 보낼 때) 판정,
+  Mentat 포함 상대 Agent 누구든, 여럿이어도 2 Solari 한 번), `2d742367` Web of Power(Agent 칸: 진영별 Influence 2 문턱 셋 — Emperor 2 Solari, Spacing Guild
+  카드 1장, Fremen water 1; Reveal: 아무 진영 Influence 1, 의무 — "may"·화살표 없음, [FAQ p. 3] 효과는 의무), `74aab0c3` Ixian Engineer(Agent: Acquire Tech
+  할인 0 선택 아이콘, 새 행 `acquire_agent_card_tech`; Reveal: Tech 셋 이상이면 이 카드 trash → 1 VP, 선택 화살표 — CHOAM Demands 꼴). Ix 카드(P4 + 이 브랜치):
+  Imperium 15/30(종류)·남은 15: Unload 묶음 7(Esmar Tuek, Freighter Fleet, Guild Accord, Ix-Guild Compact, In The Shadows, Treachery, Boundless Ambition —
+  Opus, 같은 브랜치) → 나머지 8(Court Intrigue, Embedded Agent, Desert Ambush, Full-Scale Assault, Guild Chief Administrator, Negotiated Withdrawal,
+  Appropriate, Weirding Way).
+- Strategic Push(Opus, 브랜치 `claude/p4d-strategic-push`, `e03cbc8a`): Combat Intrigue — sword 2와 서약 `PledgeConflictWinSolari(2)`; 서약은
+  `PlayerState.strategic_push_solari`(0이면 상태 해시에서 빠짐, 관측 v39에는 없음 — P6 몫), `combat.finish_combat`에서 지운다. 단독 승자의 창에 자동 줄
+  `strategic_push`(OQ-121 판정 6 (1)), 고정 순서에서는 Windtraps 뒤·dreadnought 지배 앞; 공동 1위면 없음([FAQ p. 4]); sandworm은 두 배로 하지 않음(카드 효과,
+  Windtraps 선례 — P7). 덱에 한 장. **게이트 몫:** 동일성 검사의 차이 파일(`scripts/ab/differences/rise_of_ix_v39.py`)에 새 좌석 필드를 적는다.
+- Codex 리뷰(조정자 경유): unload 묶음 [COMBO] 1건 — graft trash 비용이 Unload보다 먼저 보상 → `c8a44cfd`(비용 경로 `unload_at_once=True`, rise-of-ix.md
+  153행 디자이너 판정). 지도자 리뷰: 숨은 정보 0건, Intrigue e 0건, [RULE] 1건 — Ilesa가 First Player면 따로 두기가 첫 turn의 시작 창을 닫아 Bindu
+  Suspension·Litany Against Fear를 막음 → `2a8bc1ea`(rise-of-ix.md 64행 OQ-122, OQ-117).
+- 지도자 P4 들임: `7514cff6` Yuna, `d13b81cd` Rhombur, `c426d03d` Armand, `4b05d412` Hundro, `700d0bed` Ilesa, `3880d91f` 지도자 × Unload 시험,
+  `137d582f` Ilesa 따로 두기 로그 봉인(Hundro는 봉인 불요 — Imperium Ceremony처럼 이미 가림).
+- **P4e 지도자 끝(2026-10-30 04:2x):** `89f8c189` Tessia Vernius(OQ-153대로 — Quid Pro Quo는 진영마다 줄, 맨 위 진영도 줄은 남고 받을 때 아무것도
+  없음(OQ-141의 고정 아이콘과 같음); "Choose two:"는 이미 고른 순서로 지급(Shuttle Fleet·Machinations, 고칠 것 없음); Snooper 보상 ①은 자기 turn에는 손이
+  비어도 줄로 기다리다 turn 종료에 사라지고, 차례 밖에서는 버릴 카드가 있을 때만 `OPTIONAL_DISCARD` 창; ④는 인쇄 순서(보너스 → Influence) 자동; Duplicity는
+  잃기 → 얻기 두 단계(Listeners와 같은 꼴)). 여섯 지도자 모두 `IX_LEADER_IDS_OFFERED`. `b806b3db` Disposal Facility의 두 trash를 단계에서 가름(P5의
+  seed 78 충돌 — 획득 상자 trash와 Reveal 능력이 같은 단계 경로; Reveal 능력 줄에 `option="reveal_turn"`). **조합 메모:** Tessia는 지금 원판 + Ix에서만
+  앉는다(Bloodlines·Immortality·CHOAM 결합은 P7). Panopticon(Bloodlines Tech)과 한 판에 드는 것도 P7 — 그때 OQ-153대로 진영마다 줄로 바꾼다. Uprising
+  Emperor 4칸의 Spy 보상, Bene Gesserit 보너스 Intrigue, research·contract Influence는 같은 획득 경로라 P7에서도 Snooper에 닿는다.
+  **남은 P4e:** 원판 + Ix Epic(rise-of-ix.md 11), Boundless Ambition(Unload 묶음에 포함). Weirding Way의 추가 turn은 `one_step_ahead.finish_turn_count`를
+  불러야 한다(마지막 8장 묶음에 전달).
 
 ## 18. P5 계획: 원판 화면 (2026-10-29, 브랜치 `claude/base-ix-p5-8de6c1`, master `6fcb0c16`에서)
 

@@ -3321,12 +3321,21 @@ _OPTIONAL_PROGRESS_KEYS: Final = (
     "staban_bonus_post",
     "listeners_paid",
     "leader_spy_recalled",
+    # Tessia Vernius' Duplicity, its Influence lost (Rise of Ix).
+    "duplicity_paid",
 )
 # Signet Ring abilities optional only at some stages (composed A6c): their
 # record's mark is the printed reading of the first one, their stage keys
 # decide the rest (``_signet_is_optional``).
 _STAGED_SIGNETS: Final = frozenset(
-    {"unseen_network", "corrino_liaison", "listeners", "personal_training"}
+    {
+        "unseen_network",
+        "corrino_liaison",
+        "listeners",
+        "personal_training",
+        # Rise of Ix's Tessia Vernius: optional until the Influence is lost.
+        "duplicity",
+    }
 )
 
 
@@ -3449,6 +3458,9 @@ def _signet_is_optional(state: GameState, context: dict[str, ActionValue]) -> bo
         return signet.mark is AbilityMark.OPTIONAL
     if signet.hook == "unseen_network":
         return isinstance(context.get("staban_bonus_post"), str)
+    if signet.hook == "duplicity":
+        # Duplicity's arrow: the gain is owed once the Influence is lost.
+        return context.get("duplicity_paid") is not True
     if signet.hook in ("corrino_liaison", "listeners"):
         return (
             context.get("leader_spy_recalled") is not True
@@ -3572,6 +3584,7 @@ _SIGNET_STAGE_KEYS: Final = (
     "leader_spy_recalled",
     "staban_bonus_post",
     "listeners_paid",
+    "duplicity_paid",
     "signet_rewards",
 )
 

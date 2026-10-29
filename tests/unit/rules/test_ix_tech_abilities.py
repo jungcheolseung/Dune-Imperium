@@ -658,17 +658,26 @@ def test_disposal_facility_is_a_may_that_never_holds_the_turn() -> None:
     )
 
 
+DISPOSAL_REVEAL_TRASH = DomainAction(
+    "trash",
+    0,
+    (("option", "reveal_turn"), ("printed", "disposal_facility"), ("source", "tech")),
+)
+DISPOSAL_ACQUIRE_TRASH = DomainAction(
+    "trash", 0, (("printed", "disposal_facility"), ("source", "tech"))
+)
+
+
 def test_the_reveal_rows_run_through_the_engine_and_the_codec() -> None:
     """The Reveal with Disposal Facility at six Persuasion offers the trash as
-    the tile's effect row and the card as its target row; every row it
+    the tile's effect row (its Reveal turn option, told apart from the
+    tile's acquire box trash) and the card as its target row; every row it
     offers encodes and decodes to itself in the original game with Rise of
     Ix's catalog."""
 
     state = _revealing(tiles=("disposal_facility",), high_council=True)
     legal = ENGINE.legal_actions(state, 0)
-    effect = DomainAction(
-        "trash", 0, (("printed", "disposal_facility"), ("source", "tech"))
-    )
+    effect = DISPOSAL_REVEAL_TRASH
     assert effect in legal
     after = ENGINE.apply(state, effect).state
     targets = [
@@ -1518,6 +1527,56 @@ def test_disposal_facility_acquired_in_the_reveal_opens_its_trash_then() -> None
     low = _acquired_late(_revealing(), "disposal_facility")
     assert _rows(low.state) == []
     assert _context(low.state)["tech_reveal_pending"] == "disposal_facility"
+
+
+def test_disposal_facility_bought_in_a_reveal_offers_both_trashes_apart() -> None:
+    """Disposal Facility prints two trashes: its acquire box "trash 1" and its
+    Reveal turn ability -- "Reveal turn: 그 turn에 얻은 Persuasion 합계(쓴 것
+    포함)가 6 이상이면 in play 카드 하나를 trash할 수 있다" (rise-of-ix.md 4,
+    OQ-126). Bought in a Reveal at six Persuasion, both are open at once: the
+    Reveal turn ability applies in that Reveal (OQ-150 (2), user ruling
+    2026-10-29 "(가) 모두 듣기") and the acquire box's icon is resolved in any
+    order with the turn's other effects (OQ-098, OQ-141). They are two effects,
+    so each keeps its own effect row; before this the two shared their steps
+    and ``legal_actions`` raised (P5's seed-78 game, Machine Culture buying
+    the tile in a Reveal)."""
+
+    bought = _bought_in_the_reveal("disposal_facility", high_council=True)
+    acquire_box = DomainAction(
+        "resolve_tech_acquire_effect",
+        0,
+        (("effect", "trash"), ("tech_id", "disposal_facility")),
+    )
+    opened = apply_whole(ENGINE, bought, acquire_box).state
+    legal = ENGINE.legal_actions(opened, 0)
+    assert DISPOSAL_REVEAL_TRASH in legal
+    assert DISPOSAL_ACQUIRE_TRASH in legal
+    _round_trips(opened, 0)
+
+    # The acquire box's trash, then the Reveal ability's: two cards in play.
+    in_play = opened.players[0].in_play
+    first = ENGINE.apply(opened, DISPOSAL_ACQUIRE_TRASH).state
+    _round_trips(first, 0)
+    picks = [
+        action
+        for action in ENGINE.legal_actions(first, 0)
+        if action.action_id == "choose_personal_card"
+    ]
+    assert len(picks) == len(in_play)
+    trashed = ENGINE.apply(first, picks[0]).state
+    assert len(trashed.players[0].in_play) == len(in_play) - 1
+    assert DISPOSAL_REVEAL_TRASH in ENGINE.legal_actions(trashed, 0)
+    assert DISPOSAL_ACQUIRE_TRASH not in ENGINE.legal_actions(trashed, 0)
+    second = ENGINE.apply(trashed, DISPOSAL_REVEAL_TRASH).state
+    _round_trips(second, 0)
+    pick = next(
+        action
+        for action in ENGINE.legal_actions(second, 0)
+        if action.action_id == "choose_personal_card"
+    )
+    done = ENGINE.apply(second, pick).state
+    assert len(done.players[0].in_play) == len(in_play) - 2
+    assert DISPOSAL_REVEAL_TRASH not in ENGINE.legal_actions(done, 0)
 
 
 # --- Sonic Snoopers, Spy Satellites' trade and Spaceport (stage P4c-2c) ------
