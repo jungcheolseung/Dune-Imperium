@@ -400,13 +400,19 @@ Uprising 고정 시드 수 그대로(`tmp/claude/523fa7a8/same_moves.py`: 7개 �
 | 5–6 | Imperium·프로모·Reserve | 47클래스(`original_imperium.py`), Agent 상자·지불·-OR-·Shifting Allegiances·Firm Grip·The Voice 창, Reveal 선택 9종, 획득 아이콘, Kwisatz Haderach의 출발 Agent | 완료 `aaa6fb91`, `33c83f09`…(agent), `58d3bf07`, `8aff86df`, `2ba5a23d` |
 | 7–8 | 책략 | 36클래스(`original_intrigue.py`), Poison Snooper·Bindu Suspension 선택, Test of Humanity 피해자 선택 | 완료 `33c83f09` (agent), `1b6e4c4a` |
 | 9 | 프로필 BaseSet 분기 | `AppContext.uprising`(`IsSetEnabled(4)`)의 거짓 경로(Emperor 4칸 보상 3.0, 칸 가치·영향력의 Uprising 블록, 종료 점수 등), 원판 책략·지도자 분기(Heighliner potential, Rapid Mobilization 등) | 완료 `92d7dafd`, `e89c7834` (agent) |
-| 10 | 마무리 | 세 난이도 census 0, Uprising 같은 수, 원판 soak, Hard 대 heuristic 측정, 문서·P5 알림 | census 0·같은 수 완료; soak·측정 예약 |
+| 10 | 마무리 | 세 난이도 census 0, Uprising 같은 수, 원판 soak, Hard 대 heuristic 측정, 문서·P5 알림 | 완료 (결과 12.4) |
 
 ### 12.4 결과와 알려진 차이
 
 - census: 원판(드래프트·프로모 포함) 30판씩 세 난이도 모두 앱 판단 약 16,300개, 무작위 대체 0, 미포팅 0(시드 7000–7029); 드래프트 없는
   판·프로모만 켠 판도 0. Uprising app_ai 수는 고정 시드 21판(선택지 조합 7개)에서 슬라이스마다 master와 같았다
   (`tmp/claude/523fa7a8/same_moves.py`).
+- soak: 원판(드래프트·프로모) app_ai 네 좌석, 난이도 섞어(좌석마다 0/1/2) 300판(시드 50000–50299): 예외 0, 미완료 0, 무작위 대체
+  0, 6–10라운드(평균 925걸음), 원판 지도자 8명 모두 141–165번.
+- 측정(관문 아님): Hard 대 heuristic 2:2 거울(ABAB·BABA), 원판·드래프트·프로모 300시드 600판(시드 60000–60299): 좌석당 승률 Hard
+  49.5%, heuristic 0.5%(Hard 쪽 99.0% ± 0.8), 좌석당 평균 VP 9.43 대 4.65; 예외·대체·오류 0. Uprising의 46.5% 대 3.5%(11절)보다
+  벌어진 것은 heuristic이 원판에 약하기 때문으로 보인다: heuristic 네 좌석 원판 20판은 우승 VP 평균 9.55·9.7라운드(대개 10라운드
+  끝까지), 같은 시드의 Uprising은 10.8·9.5라운드.
 - Helena Richese의 Manipulate: 앱은 살 수 있는 Row 카드가 없으면 0.5의 빈 답으로 아무것도 놓지 않지만, 우리 엔진은 Signet을 쓰면
   set-aside를 요구한다(그 밖에 낼 행동이 없다). 그때는 앱이 채울 수 없는 강제 프롬프트의 답인 `DefaultRandomChoice`(Row 카드 중
   무작위)로 답한다(턴을 끝낼 수 있으면 쓰지 않은 채 둔다).
