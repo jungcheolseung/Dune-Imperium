@@ -453,9 +453,21 @@ class CombatMixin(ProfileCore):
         w += min(max(0.0, (_garrison_troops(me) - 3) * 0.33), 2.0)
         # IsSetEnabled(RiseOfIx) is false: dreadnought, Negotiated Withdrawal
         # and Overpowering Dread terms skipped. Rapid Mobilization and Staged
-        # Incident (BaseSet) cannot be held: r = s = 1.0.
-        r = 1.0
+        # Incident (BaseSet, the original game's cards; spec §6): r is
+        # ``RapidMobilizationDeployMod`` with the first held, s is
+        # ``StagedIncidentDeployMod`` with the second held and
+        # ``StagedIncidentDeployedTroopThreshold >= ConflictTroops``.
+        r = (
+            self.C.RapidMobilizationDeployMod
+            if self._holds_intrigue("rapid_mobilization")
+            else 1.0
+        )
         s = 1.0
+        if (
+            self._holds_intrigue("staged_incident")
+            and self.C.StagedIncidentDeployedTroopThreshold >= _conflict_troops(me)
+        ):
+            s = self.C.StagedIncidentDeployMod
         w = w * (r * s)
         # Economic Positioning (Immortality, spec/immortality.md §2.9): not
         # gated by the set (the card exists only with it).
@@ -815,7 +827,9 @@ class CombatMixin(ProfileCore):
             s.add("Heighliner Potential", self.C.ConflictInterestHeighlinerPotential)
         if self.has_worm_potential():
             s.add("Worm Potential", self.C.ConflictInterestWormPotential)
-        # Reinforcements (BaseSet) cannot be held in an Uprising game.
+        # Reinforcements (BaseSet, the original game's card; spec §5).
+        if self._holds_intrigue("reinforcements") and me.resources.solari >= 3:
+            s.add("Reinforcements", self.C.ReinforcementsConflictInterestBonus)
         return s
 
     def _intrigue_troop_value(self) -> int:
@@ -1195,18 +1209,24 @@ class CombatMixin(ProfileCore):
                 continue
             # p.IsHagal: never in a 4-player game.
             if occupied and not self._observes(p, space):
-                # Only the AI could still go there, with Infiltrate (BaseSet),
-                # which an Uprising Intrigue hand cannot hold.
-                continue
+                # Only the AI could still go there, with Infiltrate in hand
+                # (``<GetHeighlinerPotentialPlayer>b__126_1``: ArchID ==
+                # BaseSet.Infiltrate; the original game's card).
+                if not is_me or not self._holds_intrigue("infiltrate"):
+                    continue
             if p.agents_available > 0:
                 if not is_me:
                     if any(_has_guild_icon(c) for c in self.ctx.hidden_pool(seat)):
                         return seat
                     continue
-            else:
-                # Urgent Mission (BaseSet) cannot be held: the AI is out too.
+            elif not is_me or not self._holds_intrigue("urgent_mission"):
+                # No Agent left: only the AI, with Urgent Mission in hand
+                # (``b__126_2``: ArchID == BaseSet.UrgentMission).
                 continue
-            # ME: Dispatch an Envoy (BaseSet) cannot be held.
+            # ME: Dispatch an Envoy in hand (``b__126_3``) gives it the Guild
+            # icon; else a Guild-icon hand card.
+            if self._holds_intrigue("dispatch_an_envoy"):
+                return seat
             if any(_has_guild_icon(card_id(card)) for card in self.ctx.hand):
                 return seat
         return None

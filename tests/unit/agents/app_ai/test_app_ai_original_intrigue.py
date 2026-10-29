@@ -1411,3 +1411,206 @@ def test_bindu_suspension(
             oi, "_current_conflict", lambda p, level=level: synth_conflict(level)
         )
         assert ability.choose_pass(prof(turn_state)) == answer
+
+
+# ---------------------------------------------------------------------------
+# Profile branches the original cards and leaders make live
+# ---------------------------------------------------------------------------
+
+
+def as_leader(state: GameState, leader_id: str, **changes: Any) -> GameState:
+    """The deciding seat playing ``leader_id`` (a single-sided leader)."""
+
+    return me(state, leader_id=leader_id, leader_face_id=leader_id, **changes)
+
+
+def real_profile(state: GameState) -> Profile:
+    return make_profile(state, _seat(state))
+
+
+def test_deferral_threshold_reads_the_original_leaders(
+    turn_state: GameState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``DeferredThresholdReached`` @0x482c8a0: Bribery's DeferValue 2 plus the
+    leader's extra reaches the threshold 3 (engine-order §4.1)."""
+
+    from dune_imperium.agents.app_ai.abilities import generic as g
+
+    base = hand_intrigues(turn_state, "bribery")
+    secret = {"masterstroke_factions": ("emperor", "fremen")}
+
+    def reached(state: GameState, *space_ids: str) -> bool:
+        spaces = [space_entity(space, BOARD) for space in space_ids]
+        monkeypatch.setattr(g, "_this_turn_agent", lambda p: ([], spaces))
+        return g.deferred_threshold_reached(real_profile(state))
+
+    plain = as_leader(base, "duke_leto_atreides")
+    assert not reached(plain, "stillsuits")
+    # The Baron: +2 while his secret Factions are held, none after Masterstroke.
+    baron = as_leader(base, "baron_vladimir_harkonnen", **secret)
+    assert reached(baron, "stillsuits")
+    assert not reached(as_leader(base, "baron_vladimir_harkonnen"), "stillsuits")
+    revealed = as_leader(
+        base, "baron_vladimir_harkonnen", masterstroke_revealed=True, **secret
+    )
+    assert not reached(revealed, "stillsuits")
+    # Earl Memnon: +2 at the High Council; Count Ilban: +1 at a Landsraad
+    # (Pentagon) space; Countess Ariana: +1 at a Maker space with spice.
+    memnon = as_leader(base, "earl_memnon_thorvald")
+    assert reached(memnon, "imperium_high_council")
+    assert not reached(memnon, "stillsuits")
+    ilban = as_leader(base, "count_ilban_richese")
+    assert reached(ilban, "rally_troops")
+    assert not reached(ilban, "stillsuits")
+    ariana = as_leader(base, "countess_ariana_thorvald")
+    assert reached(ariana, "imperium_hagga_basin")
+    assert not reached(ariana, "stillsuits")
+
+
+def test_baron_secret_factions_value_a_two_troop_combat_space(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    """``SpaceAbility::ValueForPlayer`` @0x4bafaf0: the Baron holding his
+    secret Factions adds ``BaronVladimirHarkonnenGetTroopsBonus`` (0.75) at a
+    Combat space with two or more troops."""
+
+    from dune_imperium.agents.app_ai.abilities import generic as g
+
+    def value(state: GameState, space_id: str) -> float:
+        p = prof(state)
+        return g.SpaceAbility(space_entity(space_id, BOARD)).value_for_player(p).sum
+
+    secret = as_leader(
+        turn_state,
+        "baron_vladimir_harkonnen",
+        masterstroke_factions=("emperor", "fremen"),
+    )
+    open_baron = as_leader(turn_state, "baron_vladimir_harkonnen")
+    assert value(secret, "hardy_warriors") - value(open_baron, "hardy_warriors") == (
+        pytest.approx(0.75)
+    )
+    for space in ("arrakeen", "conspire", "wealth"):  # one troop / not Combat
+        assert value(secret, space) == value(open_baron, space)
+    revealed = as_leader(
+        turn_state,
+        "baron_vladimir_harkonnen",
+        masterstroke_factions=("emperor", "fremen"),
+        masterstroke_revealed=True,
+    )
+    assert value(revealed, "hardy_warriors") == value(open_baron, "hardy_warriors")
+
+
+def test_paul_atreides_reads_the_top_of_his_deck(
+    turn_state: GameState,
+) -> None:
+    """``get_CardDrawValue`` @0x4908cc0: Paul's draw is worth ``v * (PersuasionCost
+    of his top card / 10 + 1)`` (his Prescience shows the card, ``PlayerView
+    .private.peeked_card_id``); everyone else ``v * 1.0``."""
+
+    paul = as_leader(turn_state, "paul_atreides")
+    p = real_profile(paul)
+    top = p.ctx.view.private.peeked_card_id if p.ctx.view.private else ""
+    assert top == paul.players[_seat(paul)].deck[0]
+    cost = card_entity(top).int_attr("PersuasionCost")
+    base = p.C.CardDrawValue
+    assert p.card_draw_value() == pytest.approx(base * (cost / 10.0 + 1.0))
+    expensive = me(
+        paul,
+        deck=("imperium:arrakis_liaison:0", *paul.players[_seat(paul)].deck[1:]),
+    )
+    dear = real_profile(expensive)
+    cost = card_entity("imperium:arrakis_liaison:0").int_attr("PersuasionCost")
+    assert dear.card_draw_value() == pytest.approx(base * (cost / 10.0 + 1.0))
+    empty = real_profile(me(paul, deck=()))
+    assert empty.card_draw_value() == base
+    other = real_profile(as_leader(turn_state, "duke_leto_atreides"))
+    assert other.card_draw_value() == base
+
+
+def test_deploy_value_scales_with_rapid_mobilization_and_staged_incident(
+    turn_state: GameState,
+) -> None:
+    """``DeployValue`` @0x4912c50 (spec §6): ``w * (r * s)`` with ``r =
+    RapidMobilizationDeployMod`` (0.5) and ``s = StagedIncidentDeployMod`` (1.2)
+    while ``StagedIncidentDeployedTroopThreshold`` (4.0) >= ConflictTroops."""
+
+    arrakeen = space_entity("arrakeen", BOARD)
+    plain = real_profile(turn_state).deploy_value(arrakeen)
+    assert plain != 0.0
+
+    def deploy(state: GameState) -> float:
+        return real_profile(state).deploy_value(arrakeen)
+
+    rapid = hand_intrigues(turn_state, "rapid_mobilization")
+    assert deploy(rapid) == pytest.approx(plain * 0.5)
+    staged = hand_intrigues(turn_state, "staged_incident")
+    assert deploy(staged) == pytest.approx(plain * 1.2)
+    both = hand_intrigues(turn_state, "rapid_mobilization", "staged_incident")
+    assert deploy(both) == pytest.approx(plain * 0.5 * 1.2)
+    # Five troops in the Conflict: Staged Incident's term is off (4.0 < 5).
+    crowded = pl(staged, _seat(staged), troops_conflict=5)
+    reference = hand_intrigues(
+        pl(turn_state, _seat(turn_state), troops_conflict=5), "ambush"
+    )
+    assert deploy(crowded) == pytest.approx(deploy(reference))
+    assert deploy(pl(staged, _seat(staged), troops_conflict=4)) != pytest.approx(
+        deploy(
+            hand_intrigues(
+                pl(turn_state, _seat(turn_state), troops_conflict=4), "ambush"
+            )
+        )
+    )
+
+
+def test_reinforcements_raises_the_conflict_interest(turn_state: GameState) -> None:
+    """``CurrentConflictInterest`` @0x4902f80: ``ReinforcementsConflictInterestBonus``
+    (3.0) while the card is held and the player has 3 Solari."""
+
+    def interest(state: GameState) -> float:
+        return real_profile(state).current_conflict_interest().sum
+
+    rich = me(turn_state, resources=Resources(solari=3))
+    poor = me(turn_state, resources=Resources(solari=2))
+    plain = interest(hand_intrigues(rich, "windfall"))
+    assert interest(hand_intrigues(rich, "reinforcements")) == pytest.approx(
+        plain + 3.0
+    )
+    assert interest(hand_intrigues(poor, "reinforcements")) == pytest.approx(
+        interest(hand_intrigues(poor, "windfall"))
+    )
+
+
+def test_heighliner_potential_with_the_original_intrigue(
+    turn_state: GameState,
+) -> None:
+    """``GetHeighlinerPotentialPlayer`` @0x49189a0 (spec §9.1): Infiltrate lets
+    the AI count an occupied Heighliner, Urgent Mission an empty Agent supply,
+    Dispatch an Envoy the Guild icon it lacks."""
+
+    seat = _seat(turn_state)
+    foe = (seat + 1) % 4
+    state = turn_state
+    for other in range(4):
+        state = with_player(state, other, resources=Resources(solari=0, spice=0))
+    state = me(state, resources=Resources(solari=0, spice=6))
+    # No Guild-icon card in hand and no Dispatch an Envoy: no potential.
+    no_guild = me(state, hand=())
+    assert (
+        real_profile(hand_intrigues(no_guild, "ambush")).heighliner_potential_player()
+        is None
+    )
+    dispatch = hand_intrigues(no_guild, "dispatch_an_envoy")
+    assert real_profile(dispatch).heighliner_potential_player() == seat
+    # An Agent on the Heighliner blocks it unless the AI holds Infiltrate.
+    blocked = pl(dispatch, foe, agents_available=1)
+    blocked = with_player(blocked, foe, agent_locations=("imperium_heighliner",))
+    assert real_profile(blocked).heighliner_potential_player() is None
+    both = hand_intrigues(blocked, "dispatch_an_envoy", "infiltrate")
+    assert real_profile(both).heighliner_potential_player() == seat
+    # No Agent left: only with Urgent Mission.
+    spent = hand_intrigues(pl(no_guild, seat, agents_available=0), "dispatch_an_envoy")
+    assert real_profile(spent).heighliner_potential_player() is None
+    urgent = hand_intrigues(
+        pl(no_guild, seat, agents_available=0), "dispatch_an_envoy", "urgent_mission"
+    )
+    assert real_profile(urgent).heighliner_potential_player() == seat

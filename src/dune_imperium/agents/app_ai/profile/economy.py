@@ -106,6 +106,7 @@ _ES_FIRST = (
 )
 
 # Leader archetypes (P.Leader == X).
+_PAUL_ATREIDES = "LeaderArchetypes.BaseSet.PaulAtreides"
 _GLOSSU_RABBAN = "LeaderArchetypes.BaseSet.GlossuTheBeastRabban"
 _DUKE_LETO = "LeaderArchetypes.BaseSet.DukeLetoAtreides"
 _EARL_MEMNON = "LeaderArchetypes.BaseSet.EarlMemnonThorvald"
@@ -1048,11 +1049,21 @@ class EconomyMixin(ProfileCore):
     def card_draw_value(self) -> float:
         """``WormAIProfile::get_CardDrawValue @0x4908cc0`` (spec §4.2).
 
-        Paul Atreides' deck-top branch (BaseSet leader) never occurs with our
-        content, and would read the deck order; it is not ported.
+        Paul Atreides (``LeaderArchetypes.BaseSet.PaulAtreides``, the
+        original game's leader) reads the card on top of his own deck
+        (``Deck.children.FirstOrDefault``): ``v * (PersuasionCost / 10.0 +
+        1.0)`` (0 for an empty deck; ``divsd 10.0``, ``addsd 1.0``). His
+        Prescience shows him that card at any time [DI p. 13], so it is in his
+        ``PlayerView`` (``peeked_card_id``, ``core.observation``), not a read
+        of the deck order.
         """
 
         value = self.C.CardDrawValue
+        if self._leader_short() == _PAUL_ATREIDES:
+            private = self.ctx.view.private
+            top = private.peeked_card_id if private is not None else ""
+            cost = card_entity(top).int_attr("PersuasionCost") if top else 0
+            return value * (cost / 10.0 + 1.0)
         return value * 1.0
 
     def card_draw_value_with_buy_gains(self) -> float:
