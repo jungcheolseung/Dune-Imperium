@@ -476,6 +476,10 @@ _REVEAL_ACTIONS = REVEAL_CHOICE_ACTION_IDS | frozenset(
         # and an Unload box owed in the turn (``ix.take_unload``).
         "resolve_shipping_reward",
         "resolve_unload_icon",
+        # One effect's per-Faction Influence (OQ-153, ``ix.take_effect_influence``).
+        "resolve_effect_influence",
+        # Tessia's Snooper reward (1) (``ix.snooper_sources``).
+        "discard_snooper_card",
         # Arrakeen Scouts (Corrinth City's seat)
         "choose_subcommittee",
         "decline_subcommittee",
@@ -2377,6 +2381,9 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     unload = ix.take_unload(run)
     if unload is not None:
         return unload
+    influence = ix.take_effect_influence(run)
+    if influence is not None:
+        return influence
     shipping = run.by_id("resolve_shipping_reward")
     if shipping:
         # A Reveal box Freighter's recall rewards: the app's Explicit
@@ -2434,6 +2441,7 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
         *tiles,
         *flips,
         *subcommittee,
+        *ix.snooper_sources(run),
     ]
     plots = run.by_id("play_intrigue")
     if plots:

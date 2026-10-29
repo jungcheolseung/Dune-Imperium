@@ -24,6 +24,7 @@ from collections.abc import Sequence
 
 from dune_imperium.agents.app_ai.abilities.base import (
     Request,
+    SelectionMode,
     TargetInfo,
     abilities_of,
 )
@@ -38,7 +39,11 @@ from dune_imperium.agents.app_ai.abilities.ix_board import (
     ShippingTrackAbility2,
     ShippingTrackAbility3,
 )
-from dune_imperium.agents.app_ai.abilities.ix_leaders import OneStepAheadRoundAbility
+from dune_imperium.agents.app_ai.abilities.ix_leaders import (
+    CarefulObservationFactionAbility,
+    OneStepAheadRoundAbility,
+    snooper_discards_waiting,
+)
 from dune_imperium.agents.app_ai.catalog import (
     card_entity,
     leader_entity,
@@ -259,6 +264,105 @@ def take_unload(run: DecisionRun) -> DomainAction | None:
     return rows[0] if rows else None
 
 
+SNOOPER_DISCARD = "discard_snooper_card"
+SNOOPER_DECLINE = "decline_snooper_discard"
+
+
+def snooper_sources(run: DecisionRun) -> list[Source]:
+    """Tessia Vernius' Snooper reward (1), "discard -> 1 spice": the key of
+    the reached track's ``CarefulObservation<Faction>Ability`` (its
+    Evaluate: ``GetDiscardOrder``'s first card, at 1.0), over the hand cards
+    we offer (``discard_snooper_card``). In her own turn the row has no
+    refusal and lapses at the turn's end: "discard nothing" is no candidate;
+    outside it the ``OPTIONAL_DISCARD`` window's refusal
+    (``decline_snooper_discard``) realises it."""
+
+    discards = run.by_id(SNOOPER_DISCARD)
+    decline = run.first(SNOOPER_DECLINE)
+    me = run.ctx.me
+    if (not discards and decline is None) or me.leader_id is None:
+        return []
+    p = run.profile
+    waiting = snooper_discards_waiting(p)
+    abilities = [
+        a
+        for a in abilities_of(leader_entity(me.leader_id, me.leader_face_id))
+        if isinstance(a, CarefulObservationFactionAbility)
+    ]
+    ability = next(
+        (a for a in abilities if waiting and a.snooper_faction == waiting[0]),
+        abilities[0] if abilities else None,
+    )
+    if ability is None:
+        return []
+    seat = run.ctx.seat
+    refs = [ref for a in discards if (ref := str_arg(a, "card_id")) is not None]
+    request = Request((TargetInfo(entities=tuple(card_entity(r, seat) for r in refs)),))
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        answer = ability.evaluate(p, request)
+        item = answer.response[0] if answer.response else ()
+        ref = item[0] if item else None
+        if ref is None:
+            return answer.value, decline
+        return answer.value, next(
+            (a for a in discards if str_arg(a, "card_id") == ref), decline
+        )
+
+    actions = (*discards, *((decline,) if decline is not None else ()))
+    explicit = ability.selection_mode(p) == SelectionMode.EXPLICIT
+    source = Source("Careful Observation", Stage.PROMPT, actions, evaluate)
+    source.extra["explicit"] = explicit
+    return [source]
+
+
+def optional_discard(run: DecisionRun) -> DomainAction | None:
+    """The ``OPTIONAL_DISCARD`` window outside Tessia's turn: her reward (1)
+    key (``snooper_sources``), forced as the app's ``IsOpponentTurn`` prompt
+    is (min 0)."""
+
+    ids = {SNOOPER_DISCARD, SNOOPER_DECLINE}
+    if any(a.action_id not in ids for a in run.legal):
+        return None
+    sources = snooper_sources(run)
+    if not sources:
+        return None
+    return decide(run, sources, skip=run.first(SNOOPER_DECLINE), forced=True)
+
+
+EFFECT_INFLUENCE = "resolve_effect_influence"
+
+
+def effect_influence_rows(run: DecisionRun) -> list[DomainAction]:
+    """One effect's per-Faction Influence rows (``resolve_effect_influence``,
+    OQ-153: Quid Pro Quo), in the app's order: ``QuidProQuoAbility`` gains
+    them as it runs, without asking, over ``GetAgentSpaceFactions`` (the
+    Faction spaces in board order, ``ix_intrigue._agent_space_factions``);
+    a Faction no longer there keeps our row order, after them."""
+
+    from dune_imperium.agents.app_ai.abilities.ix_intrigue import (
+        _agent_space_factions,
+    )
+
+    rows = list(run.by_id(EFFECT_INFLUENCE))
+    if len(rows) < 2:
+        return rows
+    order = _agent_space_factions(run.profile)
+
+    def rank(row: DomainAction) -> int:
+        faction = str_arg(row, "faction")
+        return order.index(faction) if faction in order else len(order)
+
+    return sorted(rows, key=rank)
+
+
+def take_effect_influence(run: DecisionRun) -> DomainAction | None:
+    """The next owed per-Faction Influence row, in the app's order."""
+
+    rows = effect_influence_rows(run)
+    return rows[0] if rows else None
+
+
 def unload_icons(run: DecisionRun) -> DomainAction | None:
     """``unload_icons``: an Unload box gained outside its owner's turn."""
 
@@ -308,6 +412,7 @@ def round_start_set_aside(run: DecisionRun) -> DomainAction | None:
 HANDLERS: dict[str, Handler] = {
     "unload_icons": unload_icons,
     "round_start_set_aside": round_start_set_aside,
+    "optional_discard": optional_discard,
     "dreadnought_control_choice": dreadnought_control_choice,
     "intrigue_bottom_pick": intrigue_bottom_pick,
     "freighter_move": freighter_move,

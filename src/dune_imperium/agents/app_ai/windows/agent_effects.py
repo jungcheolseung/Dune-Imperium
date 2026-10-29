@@ -1058,8 +1058,11 @@ _IX_ACTION_IDS: frozenset[str] = frozenset(
         "pay_agent_card_spice_for_solari",
         "pay_agent_card_solari_for_spice",
         "resolve_unload_icon",
+        "resolve_effect_influence",
+        "discard_snooper_card",
         "acquire_agent_card_tech",
         # The Ix Leaders' Signets (``_ix_signets``).
+        "lose_leader_influence",
         "acquire_leader_reserve",
         "acquire_leader_tech",
         "place_leader_negotiator",
@@ -3811,7 +3814,71 @@ def _final_delivery(t: _Turn) -> None:
     _influence_choice(t, "Final Delivery", found, choices)
 
 
+#: ``Memory.intents`` key of Duplicity's gain track: ``(DUPLICITY_INTENT,
+#: seat)`` -> the faction its one answer named before the loss.
+DUPLICITY_INTENT = "duplicity_gain"
+
+
+def _duplicity(t: _Turn) -> None:
+    """Tessia Vernius' Duplicity (``DuplicityAbility``, Optional): one app
+    prompt over the lose tracks (``infos[0]``: our ``lose_leader_influence``
+    rows) and the Snooper tracks (``infos[1]``), answered ``((lose,),
+    (gain,))``. The loss takes the answer's first track and keeps the
+    second for the gain step our engine asks after it
+    (``choose_leader_signet_influence``); without one, the gain is asked
+    again over the offered tracks."""
+
+    seat = t.run.ctx.seat
+    memory = t.run.memory.intents
+    found = _find(t.leader, "DuplicityAbility")
+    gains = t.by_id("choose_leader_signet_influence")
+    if gains:
+        kept = memory.pop((DUPLICITY_INTENT, seat), None)
+        chosen = with_arg(gains, "faction", kept) if isinstance(kept, str) else None
+        if chosen is not None:
+            _automatic(t, "Duplicity gain", _FOLLOW_UP, chosen, -1)
+            return
+        offered = set(_arg_refs(gains, "faction"))
+        me = t.run.ctx.me
+        held = tuple(
+            track_entity(f) for f in FACTIONS if int(getattr(me.influence, f)) > 0
+        )
+        tracks = tuple(track_entity(f) for f in FACTIONS if f in offered)
+        request = Request(
+            infos=(TargetInfo(entities=held), TargetInfo(entities=tracks))
+        )
+
+        def regain(ans: Answer) -> DomainAction | None:
+            return with_arg(gains, "faction", _response_ref(ans, 1))
+
+        _choice_source(t, "Duplicity gain", found, gains, request, regain, None)
+        return
+    losses = t.by_id("lose_leader_influence")
+    decline = t.run.first("decline_leader_signet_payment")
+    lost = set(_arg_refs(losses, "faction"))
+    request = Request(
+        infos=(
+            TargetInfo(entities=tuple(track_entity(f) for f in FACTIONS if f in lost)),
+            TargetInfo(
+                entities=tuple(
+                    track_entity(f) for f in t.run.ctx.me.snooper_faction_ids
+                )
+            ),
+        )
+    )
+
+    def answer(ans: Answer) -> DomainAction | None:
+        action = with_arg(losses, "faction", _response_ref(ans))
+        gain = _response_ref(ans, 1)
+        if action is not None and isinstance(gain, str):
+            memory[(DUPLICITY_INTENT, seat)] = gain
+        return action
+
+    _choice_source(t, "Duplicity", found, losses, request, answer, decline)
+
+
 _IX_SIGNETS: Mapping[str, Callable[[_Turn], None]] = {
+    "tessia_vernius": _duplicity,
     "archduke_armand_ecaz": _conscript,
     "ilesa_ecaz": _guild_contacts,
     "prince_rhombur_vernius": _ixian_technology,
@@ -4739,6 +4806,12 @@ def _ix_card_rows(t: _Turn) -> None:
         # An Unload box owed in the turn: Triggered, no AI hook (taken in
         # order, before the turn's choices).
         _automatic(t, "Unload", _FOLLOW_UP, row, -1)
+    # Tessia's Snooper reward (1) waiting on her turn (``ix.snooper_sources``).
+    t.sources.extend(ix.snooper_sources(run))
+    for index, row in enumerate(ix.effect_influence_rows(run)):
+        # Quid Pro Quo's per-Faction Influence (OQ-153): gained as the app's
+        # play resolves, in its board order, before the turn's choices.
+        _automatic(t, "Effect Influence", _FOLLOW_UP, row, index - 100)
     advance = t.by_id("advance_agent_card_freighter")
     recall = t.by_id("recall_agent_card_freighter")
     if (advance or recall) and t.card is not None:

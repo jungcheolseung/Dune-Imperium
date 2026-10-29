@@ -50,10 +50,12 @@ from dune_imperium.agents.app_ai.testing import (
     with_state,
 )
 from dune_imperium.config import BaseGame
-from dune_imperium.core.decisions import PlayerDecision
-from dune_imperium.core.player import Resources
+from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
+from dune_imperium.core.player import Influence, Resources
 from dune_imperium.core.state import GameState
+from dune_imperium.rules import turn_rows
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
 
 IX = RulesetConfig(
     base_game=BaseGame.IMPERIUM, rise_of_ix=True, promo_cards=True, leader_draft=True
@@ -91,9 +93,26 @@ def _stubs() -> dict[str, Callable[..., Any]]:
 
 @pytest.fixture(scope="module")
 def turn_state() -> GameState:
-    """The first original + Ix ``turn`` decision (round 1)."""
+    """The first original + Ix ``turn`` decision (round 1), its Imperium Row
+    pinned to ``FIXTURE_ROW`` (the deck takes back what the setup laid out),
+    so the content P4 adds cannot reshuffle it."""
 
-    return first_decision("turn", config=IX)
+    state = first_decision("turn", config=IX)
+    deck = tuple(
+        c for c in (*state.imperium_deck, *state.imperium_row) if c not in FIXTURE_ROW
+    )
+    return with_state(state, imperium_row=FIXTURE_ROW, imperium_deck=deck)
+
+
+#: Lady Jessica 7, Guild Bankers 3, Sayyadina 3, CHOAM Directorship 8, Piter
+#: de Vries 5.
+FIXTURE_ROW = (
+    "imperium:lady_jessica_card:0",
+    "imperium:guild_bankers:0",
+    "imperium:sayyadina:0",
+    "imperium:choam_directorship:0",
+    "imperium:piter_de_vries_card:0",
+)
 
 
 def _seat(state: GameState) -> int:
@@ -172,7 +191,20 @@ LEADERS: dict[str, list[type[Ability]]] = {
         ixl.SmugglingOperationWaterAbility,
     ],
     "viscount_hundro_moritani": [ixl.CouriersAbility, ixl.IntelligenceAbility],
+    "tessia_vernius": [
+        ixl.CarefulObeservationSetupAbility,
+        ixl.CarefulObservationEmperorAbility,
+        ixl.CarefulObservationSpacingGuildAbility,
+        ixl.CarefulObservationBeneGesseritAbility,
+        ixl.CarefulObservationFremenAbility,
+        ixl.CarefulObservationTriggeredAbility,
+        ixl.CarefulObservationOppTriggeredAbility,
+        ixl.DuplicityAbility,
+    ],
 }
+
+#: ``ActivatedAbilities.BaseSet.`` (Tessia's ``DuplicityAbility``).
+AB = "worm.canis.abilities.ActivatedAbilities.BaseSet."
 
 #: The module's port -> (app namespace prefix, app base port).
 PORTED: dict[type[Ability], tuple[str, type[Ability]]] = {
@@ -188,6 +220,21 @@ PORTED: dict[type[Ability], tuple[str, type[Ability]]] = {
     ixl.IntelligenceAbility: (TA, TriggeredAbility),
     ixl.SmugglingOperationSolariAbility: (PA, TriggeredAbility),
     ixl.SmugglingOperationWaterAbility: (PA, TriggeredAbility),
+    ixl.CarefulObservationFactionAbility: (AA, DeferredAbility),
+    ixl.CarefulObservationEmperorAbility: (AA, ixl.CarefulObservationFactionAbility),
+    ixl.CarefulObservationSpacingGuildAbility: (
+        AA,
+        ixl.CarefulObservationFactionAbility,
+    ),
+    ixl.CarefulObservationBeneGesseritAbility: (
+        AA,
+        ixl.CarefulObservationFactionAbility,
+    ),
+    ixl.CarefulObservationFremenAbility: (AA, ixl.CarefulObservationFactionAbility),
+    ixl.CarefulObeservationSetupAbility: (TA, TriggeredAbility),
+    ixl.CarefulObservationTriggeredAbility: (PA, TriggeredAbility),
+    ixl.CarefulObservationOppTriggeredAbility: (PA, TriggeredAbility),
+    ixl.DuplicityAbility: (AB, SignetAbility),
 }
 
 
@@ -208,7 +255,9 @@ def test_each_port_is_registered_under_its_app_class(
     assert issubclass(cls, base)
 
 
-def test_the_twelve_classes_are_the_module_ports() -> None:
+def test_the_twenty_one_classes_are_the_module_ports() -> None:
+    # The 20 classes the six Leaders list and Tessia's abstract
+    # CarefulObservationFactionAbility.
     ports = {
         cls
         for cls in vars(ixl).values()
@@ -218,7 +267,7 @@ def test_the_twelve_classes_are_the_module_ports() -> None:
         and PORTS.get(cls.APP_CLASS) is cls
     }
     assert ports == set(PORTED)
-    assert len(ports) == 12
+    assert len(ports) == 21
 
 
 def test_timings_and_flags() -> None:
@@ -687,3 +736,339 @@ def test_intelligence_keeps_the_highest_rating(turn_state: GameState) -> None:
     assert keep("cull", "blackmail") == (3.0, (("intrigue:cull:0",),))
     assert keep("blackmail") == (1.0, (("intrigue:blackmail:0",),))
     assert keep() == (0.0, None)
+
+
+# ---------------------------------------------------------------------------
+# Tessia Vernius
+# ---------------------------------------------------------------------------
+
+TESSIA = "tessia_vernius"
+FACTION_CLASSES: dict[str, type[ixl.CarefulObservationFactionAbility]] = {
+    "emperor": ixl.CarefulObservationEmperorAbility,
+    "spacing_guild": ixl.CarefulObservationSpacingGuildAbility,
+    "bene_gesserit": ixl.CarefulObservationBeneGesseritAbility,
+    "fremen": ixl.CarefulObservationFremenAbility,
+}
+
+
+def tessia(state: GameState, *tokens: str, **changes: Any) -> GameState:
+    """The deciding seat as Tessia Vernius with Snooper tokens on
+    ``tokens``."""
+
+    return me(state, leader_id=TESSIA, snooper_faction_ids=tokens, **changes)
+
+
+def snooper_row(state: GameState, faction: str) -> GameState:
+    """Reward (1) of ``faction``'s token waiting on her own turn frame."""
+
+    queued = turn_rows.queue(
+        state, _seat(state), (turn_rows.SNOOPER_DISCARD, f"src:{faction}", faction)
+    )
+    assert queued is not None
+    return queued
+
+
+def snooper_window(
+    state: GameState, faction: str, owner: int | None = None
+) -> GameState:
+    """Reward (1) of ``faction``'s token in the ``OPTIONAL_DISCARD`` window."""
+
+    seat = _seat(state) if owner is None else owner
+    return state.push_decision(
+        DecisionFrame(
+            kind=FrameKind.OPTIONAL_DISCARD,
+            frame_id=f"src:{faction}:optional_discard",
+            decision=PlayerDecision(owner=seat, prompt="Snooper reward"),
+            context=(("faction", faction), ("player", seat), ("source", "src")),
+        )
+    )
+
+
+def test_tessia_timings_and_flags() -> None:
+    # The faction abilities' .ctor stores no AbilityTiming; Duplicity
+    # inherits SignetAbility's Agent timing; the own-turn and opponent-turn
+    # triggers store 2; the setup trigger stores none.
+    faction_classes: list[type[ixl.CarefulObservationFactionAbility]] = [
+        ixl.CarefulObservationFactionAbility,
+        *FACTION_CLASSES.values(),
+    ]
+    for cls in faction_classes:
+        assert cls.timing is Timing.NONE
+        assert not cls.always_run_immediately
+        assert not cls.contextually_deferred
+        assert cls.value_for_player is Ability.value_for_player
+    assert ixl.DuplicityAbility.timing is Timing.AGENT
+    assert not ixl.DuplicityAbility.always_run_immediately
+    assert not ixl.DuplicityAbility.contextually_deferred
+    assert ixl.CarefulObeservationSetupAbility.timing is Timing.NONE
+    assert not hasattr(ixl.CarefulObeservationSetupAbility, "should_exhaust")
+    for trig in (
+        ixl.CarefulObservationTriggeredAbility,
+        ixl.CarefulObservationOppTriggeredAbility,
+    ):
+        assert trig.timing is Timing.REVEAL
+        assert vars(trig)["should_exhaust"] is False
+    for bare in (
+        ixl.CarefulObeservationSetupAbility,
+        ixl.CarefulObservationTriggeredAbility,
+        ixl.CarefulObservationOppTriggeredAbility,
+    ):
+        assert bare.evaluate is Ability.evaluate
+        assert bare.value_for_player is Ability.value_for_player
+
+
+def test_each_faction_class_names_its_snooper_track() -> None:
+    # get_SnooperFaction: 1-4 in the subclasses, Factions.None in the base.
+    assert ixl.CarefulObservationFactionAbility.snooper_faction == "none"
+    for faction, cls in FACTION_CLASSES.items():
+        assert cls.snooper_faction == faction
+        assert ab(TESSIA, cls).snooper_faction == faction
+        # Each subclass overrides only get_SnooperFaction (and its .ctors).
+        own = {name for name in vars(cls) if not name.startswith("__")}
+        assert own == {"snooper_faction", "APP_CLASS"}
+
+
+def test_snooper_discards_waiting_and_factions_used(turn_state: GameState) -> None:
+    def waiting(state: GameState, seat: int | None = None) -> tuple[str, ...]:
+        return ixl.snooper_discards_waiting(make_profile(state, seat))
+
+    def used(state: GameState) -> tuple[str, ...]:
+        return ixl.snooper_factions_used(make_profile(state))
+
+    three = tessia(turn_state, "spacing_guild", "bene_gesserit", "fremen")
+    # Nothing waits: every reached token's reward has been paid.
+    assert waiting(three) == ()
+    assert used(three) == ("emperor",)
+    assert used(tessia(turn_state, "fremen")) == (
+        "emperor",
+        "spacing_guild",
+        "bene_gesserit",
+    )
+    assert used(tessia(turn_state)) == (
+        "emperor",
+        "spacing_guild",
+        "bene_gesserit",
+        "fremen",
+    )
+    assert (
+        used(tessia(turn_state, "emperor", "spacing_guild", "bene_gesserit", "fremen"))
+        == ()
+    )
+    # Reward (1) waiting on her turn frame or in her own window: the app's
+    # first run, before which SnooperFactionsUsed is empty.
+    row = snooper_row(three, "emperor")
+    assert waiting(row) == ("emperor",)
+    assert used(row) == ()
+    two = tessia(turn_state, "bene_gesserit", "fremen")
+    assert used(snooper_row(two, "emperor")) == ()
+    window = snooper_window(three, "emperor")
+    assert waiting(window) == ("emperor",)
+    assert used(window) == ()
+    # Another seat's window is not hers.
+    seat = _seat(turn_state)
+    other = (seat + 1) % len(turn_state.players)
+    assert waiting(snooper_window(three, "emperor", owner=other), seat) == ()
+    # A leader without the list (the app's null) has used nothing.
+    assert used(me(turn_state, snooper_faction_ids=("fremen",))) == ()
+
+
+def test_careful_observation_selection_mode_and_run_immediately(
+    turn_state: GameState,
+) -> None:
+    ability = ab(TESSIA, ixl.CarefulObservationFremenAbility)
+    all_four = ("emperor", "spacing_guild", "bene_gesserit", "fremen")
+
+    def mode(state: GameState) -> SelectionMode:
+        return ability.selection_mode(make_profile(state))
+
+    # SnooperFactions.Count >= 3 (jge) -> Optional; fewer -> Explicit.
+    assert mode(tessia(turn_state, *all_four)) is SelectionMode.OPTIONAL
+    assert mode(tessia(turn_state, *all_four[:3])) is SelectionMode.OPTIONAL
+    assert mode(tessia(turn_state, *all_four[:2])) is SelectionMode.EXPLICIT
+    assert mode(tessia(turn_state, "fremen")) is SelectionMode.EXPLICIT
+    assert mode(tessia(turn_state)) is SelectionMode.EXPLICIT
+    # A leader without the list: Optional.
+    assert mode(me(turn_state, snooper_faction_ids=())) is SelectionMode.OPTIONAL
+
+    def immediately(state: GameState) -> bool:
+        return ability.can_run_immediately(make_profile(state))
+
+    # HandCount == 0 and SnooperFactions.Count == 3 (sete).
+    assert immediately(tessia(turn_state, *all_four[:3], hand=()))
+    assert not immediately(tessia(turn_state, *all_four[:3]))
+    assert not immediately(tessia(turn_state, *all_four, hand=()))
+    assert not immediately(tessia(turn_state, *all_four[:2], hand=()))
+    assert not immediately(me(turn_state, snooper_faction_ids=all_four[:3], hand=()))
+
+
+def test_careful_observation_cost(turn_state: GameState) -> None:
+    three = tessia(turn_state, "spacing_guild", "bene_gesserit", "fremen")
+    emperor = ab(TESSIA, ixl.CarefulObservationEmperorAbility)
+    fremen = ab(TESSIA, ixl.CarefulObservationFremenAbility)
+    # HasCustomAbility(this): the track's reward (1) waits; then the track is
+    # not in SnooperFactionsUsed.
+    for state in (snooper_row(three, "emperor"), snooper_window(three, "emperor")):
+        p = make_profile(state)
+        assert emperor.has_custom_ability(p)
+        assert emperor.meets_cost(p)
+        assert not fremen.meets_cost(p)
+    assert not emperor.meets_cost(make_profile(three))
+
+
+def test_careful_observation_evaluate(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    ability = ab(TESSIA, ixl.CarefulObservationEmperorAbility)
+    first = snooper_row(
+        tessia(turn_state, "spacing_guild", "bene_gesserit", "fremen"), "emperor"
+    )
+    hand = (DAGGER, DIPLOMACY, RECON)
+    infos = cards(*hand)
+    seen: list[tuple[tuple[str, ...], bool]] = []
+
+    def order(targets: Sequence[Entity], sg_bonus: bool) -> list[Entity]:
+        seen.append((tuple(t.ref for t in targets), sg_bonus))
+        return list(reversed(targets))
+
+    def at(discard: float, spice: float, **more: Callable[..., Any]) -> Profile:
+        return prof(
+            first,
+            discard_value=lambda: discard,
+            spice_value=lambda n: spice * n,
+            discard_order=more.pop("discard_order", order),
+            **more,
+        )
+
+    # The first reward: GetDiscardOrder(P, targets, false)'s first card at
+    # 1.0 whatever the summer, when DiscardValue + GetSpiceValue(1) > 0.
+    assert run(ability.evaluate, at(-0.5, 2.0), infos) == (1.0, ((RECON,),))
+    assert seen == [(hand, False)]
+    assert run(ability.evaluate, at(30.0, 0.0), infos) == (1.0, ((RECON,),))
+    # 0.0 >= Sum (jae): an empty target array, still at 1.0.
+    assert run(ability.evaluate, at(-2.0, 2.0), infos) == (1.0, ((),))
+    assert run(ability.evaluate, at(-3.0, 2.0), infos) == (1.0, ((),))
+    # ucomisd with a NaN sum: unordered, jae not taken -> the card.
+    assert run(ability.evaluate, at(math.nan, 2.0), infos) == (1.0, ((RECON,),))
+    # No card in the order: the empty target array.
+    empty = at(-0.5, 2.0, discard_order=lambda targets, sg: [])
+    assert run(ability.evaluate, empty, infos) == (1.0, ((),))
+    # No target (no information or an empty one): (1.0, null).
+    assert run(ability.evaluate, at(-0.5, 2.0)) == (1.0, ())
+    assert run(ability.evaluate, at(-0.5, 2.0), TargetInfo()) == (1.0, ())
+    # Not the first reward (SnooperFactionsUsed not empty): (1.0, null), the
+    # summer and the targets unread.
+    later = tessia(turn_state, "bene_gesserit", "fremen")
+    unread = prof(
+        later,
+        discard_value=lambda: pytest.fail("DiscardValue read"),
+        discard_order=lambda targets, sg: pytest.fail("GetDiscardOrder read"),
+    )
+    assert run(ability.evaluate, unread, infos) == (1.0, ())
+
+
+def test_duplicity_cost(
+    turn_state: GameState, signet: Callable[[bool], None], prof: ProfileFactory
+) -> None:
+    ability = ab(TESSIA, ixl.DuplicityAbility)
+    assert ability.selection_mode(make_profile(turn_state)) is SelectionMode.OPTIONAL
+    fremen_one = Influence(fremen=1)
+    held = tessia(turn_state, "emperor", influence=fremen_one)
+    signet(True)
+    assert ability.meets_cost(prof(held))
+    for faction in ("emperor", "spacing_guild", "bene_gesserit", "fremen"):
+        state = tessia(turn_state, "fremen", influence=Influence(**{faction: 1}))
+        assert ability.meets_cost(prof(state)), faction
+    # No Influence anywhere (AtLeast(F, 1) for none of the four).
+    assert not ability.meets_cost(prof(tessia(turn_state, "emperor")))
+    # No Snooper token left (Count > 0, setg), or no list at all.
+    assert not ability.meets_cost(prof(tessia(turn_state, influence=fremen_one)))
+    no_list = me(turn_state, snooper_faction_ids=("emperor",), influence=fremen_one)
+    assert not ability.meets_cost(prof(no_list))
+    signet(False)
+    assert not ability.meets_cost(prof(held))
+
+
+def test_duplicity_value_for_player(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    ability = ab(TESSIA, ixl.DuplicityAbility)
+    asked: list[tuple[int, int, Any, Any]] = []
+    value = [2.5]
+
+    def exchange(
+        lose: int, gain: int, lose_f: Any = None, gain_f: Any = None
+    ) -> tuple[str | None, str | None, float]:
+        asked.append((lose, gain, lose_f, gain_f))
+        return ("fremen", "emperor", value[0])
+
+    def v(*tokens: str) -> Summer:
+        p = prof(tessia(turn_state, *tokens), best_influence_exchange=exchange)
+        return ability.value_for_player(p, (space_entity("arrakeen", BOARD),))
+
+    # GetBestInfluenceExchange(-1, 1, false, null, SnooperFactions).
+    assert v("spacing_guild", "fremen").sum == 2.5
+    assert asked == [(-1, 1, None, ["spacing_guild", "fremen"])]
+    # Math.Max(0.0, value): a negative best is 0, a NaN stays.
+    value[0] = -1.0
+    assert v("emperor").sum == 0.0
+    value[0] = math.nan
+    assert math.isnan(v("emperor").sum)
+    # Only the Spacing Guild token, or none: nothing, and no exchange asked.
+    asked.clear()
+    assert v("spacing_guild").sum == 0.0
+    assert v().sum == 0.0
+    assert asked == []
+    no_list = me(turn_state, snooper_faction_ids=("emperor",))
+    assert (
+        ability.value_for_player(prof(no_list, best_influence_exchange=exchange)).sum
+        == 0.0
+    )
+    assert asked == []
+
+
+def test_duplicity_evaluate(turn_state: GameState, prof: ProfileFactory) -> None:
+    ability = ab(TESSIA, ixl.DuplicityAbility)
+    asked: list[tuple[int, int, Any, Any]] = []
+    best: list[tuple[str | None, str | None, float]] = [("fremen", "emperor", 1.75)]
+
+    def exchange(
+        lose: int, gain: int, lose_f: Any = None, gain_f: Any = None
+    ) -> tuple[str | None, str | None, float]:
+        asked.append((lose, gain, lose_f, gain_f))
+        return best[0]
+
+    p = prof(turn_state, best_influence_exchange=exchange)
+
+    def tracks(*factions: str) -> TargetInfo:
+        return TargetInfo(tuple(track_entity(f) for f in factions))
+
+    lose = tracks("emperor", "fremen")
+    gain = tracks("emperor", "bene_gesserit")
+    # GetBestInfluenceExchange(-1, 1, true, loseFactions, gainFactions); the
+    # answer [EntityList([lose]), EntityList([gain])] at its value.
+    assert run(ability.evaluate, p, lose, gain) == (1.75, (("fremen",), ("emperor",)))
+    assert asked == [(-1, 1, ["emperor", "fremen"], ["emperor", "bene_gesserit"])]
+    # One Faction lost and gained.
+    best[0] = ("emperor", "emperor", 0.5)
+    assert run(ability.evaluate, p, lose, gain) == (0.5, (("emperor",), ("emperor",)))
+    # No exchange above 0 (Factions.None matches no track), or a Faction the
+    # tracks do not hold: nothing.
+    best[0] = (None, None, 0.0)
+    assert run(ability.evaluate, p, lose, gain) == (0.0, None)
+    best[0] = ("spacing_guild", "emperor", 3.0)
+    assert run(ability.evaluate, p, lose, gain) == (0.0, None)
+    best[0] = ("fremen", "fremen", 3.0)
+    assert run(ability.evaluate, p, lose, gain) == (0.0, None)
+    # The lose tracks exactly one Spacing Guild track: nothing, nothing asked.
+    asked.clear()
+    best[0] = ("spacing_guild", "emperor", 3.0)
+    assert run(ability.evaluate, p, tracks("spacing_guild"), gain) == (0.0, None)
+    # Missing informations: nothing.
+    assert run(ability.evaluate, p) == (0.0, None)
+    assert run(ability.evaluate, p, lose) == (0.0, None)
+    assert asked == []
+    # Two lose tracks with the Spacing Guild: asked as usual.
+    assert run(ability.evaluate, p, tracks("spacing_guild", "fremen"), gain) == (
+        3.0,
+        (("spacing_guild",), ("emperor",)),
+    )

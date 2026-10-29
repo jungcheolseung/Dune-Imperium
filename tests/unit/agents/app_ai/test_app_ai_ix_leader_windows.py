@@ -17,6 +17,7 @@ from dune_imperium.agents.app_ai.catalog import leader_entity
 from dune_imperium.agents.app_ai.context import AppContext
 from dune_imperium.agents.app_ai.testing import first_decision, make_profile
 from dune_imperium.agents.app_ai.windows import agent_effects, immortality, ix, reveal
+from dune_imperium.agents.app_ai.windows.common import Stage
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Memory
 from dune_imperium.config import BaseGame
 from dune_imperium.core.actions import DomainAction
@@ -151,3 +152,117 @@ def test_hundro_keeps_the_higher_rated_intrigue_at_the_game_start(
     kept = immortality.intrigue_peek(run)
     best = 0 if ratings[0] >= ratings[1] else 1
     assert kept is rows[best]
+
+
+def test_quid_pro_quo_influence_rows_follow_the_board_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OQ-153 gives one ``resolve_effect_influence`` row per Faction; the
+    app's ``QuidProQuoAbility`` gains them as it runs, in
+    ``GetAgentSpaceFactions``' board order."""
+
+    from dune_imperium.agents.app_ai.abilities import ix_intrigue
+
+    rows = tuple(
+        _row("resolve_effect_influence", faction=f) for f in ("emperor", "fremen")
+    )
+    run = _run(rows)
+    monkeypatch.setattr(
+        ix_intrigue, "_agent_space_factions", lambda p: ["fremen", "emperor"]
+    )
+    assert ix.take_effect_influence(run) is rows[1]
+    monkeypatch.setattr(ix_intrigue, "_agent_space_factions", lambda p: [])
+    assert ix.take_effect_influence(run) is rows[0]
+
+
+def _tessia_run(rows: Sequence[DomainAction]) -> DecisionRun:
+    from dune_imperium.agents.app_ai.testing import with_player
+
+    state = first_decision("turn", config=IX)
+    seat = make_profile(state).ctx.seat
+    state = with_player(
+        state, seat, leader_id="tessia_vernius", leader_face_id="tessia_vernius"
+    )
+    p = make_profile(state, seat)
+    return DecisionRun(p.ctx, p, tuple(rows), p.rng, Memory())
+
+
+def test_the_snooper_discard_takes_the_card_or_the_windows_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Careful Observation's reward (1): ``GetDiscardOrder``'s first card;
+    "discard nothing" is no candidate in her turn (no refusal row) and the
+    ``OPTIONAL_DISCARD`` window's refusal outside it."""
+
+    from dune_imperium.agents.app_ai.abilities.ix_leaders import (
+        CarefulObservationFactionAbility,
+    )
+
+    discards = tuple(
+        _row("discard_snooper_card", card_id=c)
+        for c in ("player:0:starter:dagger:0", "player:0:starter:dagger:1")
+    )
+    decline = _row("decline_snooper_discard")
+    answers = iter(
+        (
+            Answer(1.0, (("player:0:starter:dagger:1",),), ""),
+            Answer(1.0, ((),), ""),
+            Answer(1.0, ((),), ""),
+        )
+    )
+    monkeypatch.setattr(
+        CarefulObservationFactionAbility,
+        "evaluate",
+        lambda self, p, request: next(answers),
+    )
+    [own] = ix.snooper_sources(_tessia_run(discards))
+    assert own.evaluate is not None
+    assert own.evaluate() == (1.0, discards[1])
+    assert own.evaluate() == (1.0, None)
+    assert ix.optional_discard(_tessia_run((*discards, decline))) is decline
+
+
+def test_duplicity_loses_then_gains_the_tracks_of_its_one_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``DuplicityAbility``: one prompt answered ``((lose,), (gain,))``; our
+    loss row takes the first, the gain row asked after it the second."""
+
+    from dune_imperium.agents.app_ai.abilities.ix_leaders import DuplicityAbility
+
+    losses = tuple(
+        _row("lose_leader_influence", faction=f) for f in ("emperor", "fremen")
+    )
+    run = _tessia_run(losses)
+    leader = leader_entity("tessia_vernius")
+    monkeypatch.setattr(
+        DuplicityAbility,
+        "evaluate",
+        lambda self, p, request: Answer(2.0, (("fremen",), ("emperor",)), ""),
+    )
+
+    def turn(r: DecisionRun) -> agent_effects._Turn:
+        return agent_effects._Turn(
+            run=r,
+            context={},
+            card_ref=None,
+            card_short=None,
+            card=None,
+            space_id=None,
+            space=None,
+            leader=leader,
+        )
+
+    first = turn(run)
+    agent_effects._duplicity(first)
+    [source] = first.sources
+    assert source.evaluate is not None
+    assert source.evaluate() == (2.0, losses[1])
+    gains = tuple(
+        _row("choose_leader_signet_influence", faction=f)
+        for f in ("emperor", "spacing_guild")
+    )
+    second = turn(DecisionRun(run.ctx, run.profile, gains, run.rng, run.memory))
+    agent_effects._duplicity(second)
+    [gain] = second.sources
+    assert gain.actions == (gains[0],) and gain.stage < Stage.PROMPT

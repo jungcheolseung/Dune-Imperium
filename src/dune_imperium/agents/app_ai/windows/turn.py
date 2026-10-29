@@ -203,6 +203,10 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "trash_tech",
         "resolve_shipping_reward",
         "resolve_unload_icon",
+        # One effect's per-Faction Influence (OQ-153, ``ix.take_effect_influence``).
+        "resolve_effect_influence",
+        # Tessia's Snooper reward (1) (``ix.snooper_sources``).
+        "discard_snooper_card",
     }
 )
 #: Navigation Chamber's discount variants of one space, in our legal order
@@ -1238,6 +1242,9 @@ def turn_window(run: DecisionRun) -> DomainAction | None:
     unload = ix.take_unload(run)
     if unload is not None:
         return unload  # an Unload box owed in the turn (Triggered, no AI hook)
+    influence = ix.take_effect_influence(run)
+    if influence is not None:
+        return influence  # Quid Pro Quo's gains, run as the play resolves
     shipping = run.by_id("resolve_shipping_reward")
     if shipping:
         # A recall's rewards still owed: the app's Explicit Shipping-track
@@ -1262,6 +1269,7 @@ def turn_window(run: DecisionRun) -> DomainAction | None:
     sources.extend(starts)
     sources.extend(flips)
     sources.extend(trashes)
+    sources.extend(ix.snooper_sources(run))
     chosen = decide(run, sources, skip=run.first("reveal_turn"), forced=False)
     if chosen is not None and chosen.action_id == "agent_turn":
         return _realise(run, chosen)

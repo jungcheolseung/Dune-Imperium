@@ -1,27 +1,36 @@
 """Rise of Ix's leader abilities (``LeaderArchetypes.RiseOfIx``).
 
-Ports of the 12 ability classes of five Rise of Ix leaders (Archduke Armand
-Ecaz, Ilesa Ecaz, Prince Rhombur Vernius, "Princess" Yuna Moritani,
-Viscount Hundro Moritani), read from the P6 Ix decompilation (assets
-``ghidra/p6ix/<addr>.c``, index ``ghidra/p6ix/targets-named.tsv``) and
-confirmed in the annotated disassembly
+Ports of the 20 ability classes of the six Rise of Ix leaders (Archduke
+Armand Ecaz, Ilesa Ecaz, Prince Rhombur Vernius, "Princess" Yuna Moritani,
+Tessia Vernius, Viscount Hundro Moritani) and of Tessia's abstract
+``CarefulObservationFactionAbility``, read from the P6 Ix decompilation
+(assets ``ghidra/p6ix/<addr>.c``, index ``ghidra/p6ix/targets-named.tsv``)
+and confirmed in the annotated disassembly
 (``dump/asm/worm-canis.dll/worm.canis.abilities.<ActivatedAbilities|
-TriggeredAbilities|PlayAbilities>.RiseOfIx.<Class>.asm``). Rhombur's signet
-``IxianTechnologyAbility`` is in ``abilities/tech.py``; Tessia Vernius is not
-ported here.
+TriggeredAbilities|PlayAbilities>.<RiseOfIx|BaseSet>.<Class>.asm``; the
+abstract base has no decompiled C, only its ``.asm``). Rhombur's signet
+``IxianTechnologyAbility`` is in ``abilities/tech.py``.
 
 App class chains (``dump/worm-canis.dll.cs``):
 
 - ``ActivatedAbilities.SignetAbility`` <- ``RiseOfIx.ConscriptAbility``,
-  ``GuildContactsAbility``, ``FinalDeliveryAbility``, ``CouriersAbility``;
-- ``ActivatedAbilities.DeferredAbility`` <- ``RiseOfIx.CoordinationAbility``;
+  ``GuildContactsAbility``, ``FinalDeliveryAbility``, ``CouriersAbility`` and
+  ``ActivatedAbilities.BaseSet.DuplicityAbility`` (Tessia's signet, despite
+  its namespace);
+- ``ActivatedAbilities.DeferredAbility`` <- ``RiseOfIx.CoordinationAbility``,
+  ``RiseOfIx.CarefulObservationFactionAbility`` (abstract) <-
+  ``CarefulObservationEmperorAbility``, ``SpacingGuildAbility``,
+  ``BeneGesseritAbility``, ``FremenAbility`` (each only overrides
+  ``get_SnooperFaction`` and its ``.ctor``s);
 - ``TriggeredAbilities.TriggeredAbility`` <-
   ``TriggeredAbilities.RiseOfIx.OneStepAheadRoundAbility``,
   ``OneStepAheadTurnAbility``, ``OneStepAheadSendAbility``,
-  ``HeavyLasgunCannonsAbility``, ``IntelligenceAbility`` and
+  ``HeavyLasgunCannonsAbility``, ``IntelligenceAbility``,
+  ``CarefulObeservationSetupAbility`` (the app's spelling) and
   ``PlayAbilities.RiseOfIx.SmugglingOperationSolariAbility``,
-  ``SmugglingOperationWaterAbility`` (two ``TriggeredAbility`` subclasses
-  despite their namespace).
+  ``SmugglingOperationWaterAbility``, ``CarefulObservationTriggeredAbility``,
+  ``CarefulObservationOppTriggeredAbility`` (four ``TriggeredAbility``
+  subclasses despite their namespace).
 
 How a leader ability reaches the AI is as in ``abilities/leaders.py``: a
 Signet's ``value_for_player`` is merged into a placement of a card with
@@ -30,8 +39,22 @@ triggered abilities have an AI member: ``OneStepAheadRoundAbility`` overrides
 ``Evaluate`` (the set-aside pick) and ``IntelligenceAbility`` hands
 ``EvaluateIntrigue`` to its ``KeepIntrigueCard`` picker
 (``evaluate_intrigue``, as ``ImperiumCeremonyAbility`` in
-``abilities/immortality.py``); the other five have none and are bare ports
+``abilities/immortality.py``); the other eight have none and are bare ports
 so that the leaders' abilities all resolve.
+
+Tessia Vernius' Careful Observation in the app: the setup trigger puts the
+four Factions in her Leader's ``SnooperFactions``; reaching a token in her
+own turn (``CarefulObservationTriggeredAbility``) or in another seat's
+(``...OppTriggeredAbility``, which then runs it at once) removes the track
+from that list and grants the track's ``CarefulObservation<Faction>Ability``
+as a custom ability. That deferred ability pays the reward when it runs: it
+adds its track to ``SnooperFactionsUsed`` and pays by the list's new count
+(1: discard -> 1 spice; 2 and 4: the track's 4-space bonus; 3 and 4: one
+Influence on it), so the app numbers the rewards by the order the abilities
+run. Ours numbers them by the order the tokens are reached and pays (2)-(4)
+at once (``rules.influence._reach_snooper``); only reward (1) waits for a
+decision (``rules.snoopers``), and that is the only prompt the faction
+classes answer.
 
 Request / answer encoding (``request.infos[i]`` is the app's target
 information ``i``; answers follow ``abilities/intrigue.py``'s ``_Choice``:
@@ -59,6 +82,36 @@ information ``i``; answers follow ``abilities/intrigue.py``'s ``_Choice``:
 - Intelligence (``evaluate_intrigue``): ``infos[0]`` the two INTRIGUE cards
   drawn (kind ``KeepIntrigueCard``); the answer is ``((card,),)``, the card
   kept.
+- Careful Observation (``CarefulObservation<Faction>Ability.evaluate``, the
+  class of the track whose token was reached): ``infos[0]`` the hand CARDs
+  (``<Targets>d__9`` @0x4da03b0: kind ``DiscardCard``, max 1; in her own
+  turn min 1 and not forced, outside it min 0 and forced,
+  ``IsOpponentTurn``). The app yields no information once a Snooper reward
+  has run (``SnooperFactionsUsed.Any()``) and, for a human only, with an
+  empty hand. Every answer is worth 1.0: ``((card,),)`` discards that card
+  for the spice; ``((),)`` (``Array.Empty``) discards nothing (Discard +
+  Spice not above 0, or no card in the discard order); ``()`` (no target
+  array) when the reward is not the first or no hand card was offered. Our
+  rows: reward (1)'s ``discard_snooper_card(card_id)`` (an Agent-turn row in
+  her own turn, ``turn_rows.SNOOPER_DISCARD``) and the ``OPTIONAL_DISCARD``
+  window outside it, each with ``infos[0]`` = the hand cards its rows offer;
+  ``((card,),)`` picks that card's row. ``((),)`` and ``()`` choose no card:
+  the window's ``decline_snooper_discard``; in her own turn the app's
+  prompt asks for at least one card (min 1, how it takes an empty answer is
+  UNTRACED) and our row has no refusal (it lapses at the turn-end press).
+- Duplicity: one app prompt with two target informations
+  (``<Targets>d__6`` @0x4e66de0, each kind ``SelectFaction``, forced, max
+  1): ``infos[0]`` the TRACKs she has Influence on (``minusone``,
+  ``InfluenceDelta`` -1, ``GetFactionInfluence > 0``), ``infos[1]`` the
+  TRACKs holding a Snooper token (``plusone``, ``InfluenceDelta`` +1), both
+  in ``FactionTracks`` order and neither when no track holds a token
+  (``Any`` on the token tracks, 0x4e67811). The app's ``Evaluate`` finds
+  them by that attribute; ours by position. The answer is
+  ``((lose,), (gain,))`` (``UpdateSelectionResponses``), which may name one
+  track twice. Our rows
+  ``lose_leader_influence(faction)`` and the gain row after it take
+  ``response[0]`` and ``response[1]`` of the one answer, made before the
+  loss as the app makes both picks at once.
 
 Addresses are build dad97e2021144d45b5b4f022e07bd3b3.
 """
@@ -75,6 +128,7 @@ from dune_imperium.agents.app_ai.abilities.base import (
     abilities_of,
     port,
 )
+from dune_imperium.agents.app_ai.abilities.board import _math_max
 from dune_imperium.agents.app_ai.abilities.generic import (
     AgentAbility,
     DeferredAbility,
@@ -95,8 +149,11 @@ from dune_imperium.agents.app_ai.catalog import (
     space_entity,
     swordmaster_space_id,
 )
+from dune_imperium.agents.app_ai.context import FACTIONS
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.summer import Summer
+from dune_imperium.rules import turn_rows
+from dune_imperium.rules.frames import FrameKind, own_turn_frame_index
 
 if TYPE_CHECKING:
     from dune_imperium.agents.app_ai.profile import Profile
@@ -104,6 +161,7 @@ if TYPE_CHECKING:
 _AA: Final = "worm.canis.abilities.ActivatedAbilities.RiseOfIx."
 _TA: Final = "worm.canis.abilities.TriggeredAbilities.RiseOfIx."
 _PA: Final = "worm.canis.abilities.PlayAbilities.RiseOfIx."
+_AB: Final = "worm.canis.abilities.ActivatedAbilities.BaseSet."
 
 #: ``Factions.None`` of ``GetGainInfluenceValue`` (``influence.NO_FACTION``).
 _ANY_FACTION: Final = "none"
@@ -662,3 +720,410 @@ class IntelligenceAbility(TriggeredAbility):
         for card in _targets(request, 0, Kind.INTRIGUE):
             choice.update_targets(float(card.int_attr("Rating")), (card.ref,))
         return choice.answer("Intelligence | keep Intrigue")
+
+
+# ---------------------------------------------------------------------------
+# Tessia Vernius: Careful Observation and Duplicity
+# ---------------------------------------------------------------------------
+
+#: Our id of Tessia Vernius (``rules.snoopers.TESSIA``): only her Leader's
+#: ``SnooperFactions`` is ever set (``CarefulObeservationSetupAbility``).
+_TESSIA: Final = "tessia_vernius"
+#: ``Factions.SpacingGuild`` (2), tested by Duplicity's V and E.
+_SPACING_GUILD: Final = "spacing_guild"
+#: ``Factions.None`` (0): the abstract ``get_SnooperFaction`` @0x4d9e600.
+_NO_FACTION: Final = "none"
+#: ``f64=1.0`` (0x4d9f059, 0x4d9f240, 0x4d9f2a2): every Careful Observation
+#: answer's value.
+_ONE: Final = 1.0
+#: ``CarefulObservationFactionAbility`` ``SelectionMode`` / ``CanRunImmediately``:
+#: ``SnooperFactions.Count`` compared with 3 (``cmp dword ptr [rcx+0x18], 3``).
+_FIRST_SNOOPER_LEFT: Final = 3
+
+
+def _snooper_factions(p: Profile) -> tuple[str, ...] | None:
+    """``Leader.SnooperFactions`` (``WormPlayer`` +0x130 is ``Leader``): the
+    tracks still holding a Snooper token, ``None`` for a leader whose list
+    was never set (every leader but Tessia). Ours:
+    ``PlayerState.snooper_faction_ids``; like the app's list, it loses a
+    track as its token is reached, before the reward is offered."""
+
+    me = p.ctx.me
+    if me.leader_id != _TESSIA:
+        return None
+    return me.snooper_faction_ids
+
+
+def snooper_discards_waiting(p: Profile) -> tuple[str, ...]:
+    """The tracks whose reward (1), "discard -> 1 spice", waits for its
+    discard: our stand-in for the app's granted, not yet run
+    ``CarefulObservation<Faction>Ability`` (``HasCustomAbility``).
+
+    Ours pays rewards (2)-(4) at the reach and holds only (1) for a
+    decision (``rules.snoopers.settle_snooper_discards``): an item of kind
+    ``turn_rows.SNOOPER_DISCARD`` (value: the track) waiting on her own open
+    turn frame, or her own ``OPTIONAL_DISCARD`` window (context
+    ``faction``) outside her turn.
+    """
+
+    ctx = p.ctx
+    found: list[str] = []
+    index = own_turn_frame_index(ctx.state, ctx.seat)
+    if index is not None:
+        frame = ctx.state.decision_stack[index]
+        found.extend(
+            value
+            for kind, _source, value in turn_rows.pending(frame)
+            if kind == turn_rows.SNOOPER_DISCARD
+        )
+    window = ctx.own_frame_context(FrameKind.OPTIONAL_DISCARD)
+    if window is not None:
+        faction = window.get("faction")
+        if isinstance(faction, str):
+            found.append(faction)
+    return tuple(found)
+
+
+def snooper_factions_used(p: Profile) -> tuple[str, ...]:
+    """``Leader.SnooperFactionsUsed``: the tracks whose Snooper reward has
+    run (``<BeginExecution>d__12`` adds its track before paying by the list's
+    count).
+
+    Ours keeps no such list. The app numbers the rewards by the order its
+    abilities run, so the reward (1) that waits in ours is the app's first
+    run, before which the list is empty: ``()`` while one waits (judgement;
+    ours numbers them by the order the tokens are reached, so a second token
+    reached by the same action has already been paid then). With none
+    waiting, every reached token's reward has been paid: the tracks without
+    a token, in ``FACTIONS`` order. ``()`` for a leader without the list
+    (the app's ``null``, read as empty by every caller).
+    """
+
+    tokens = _snooper_factions(p)
+    if tokens is None or snooper_discards_waiting(p):
+        return ()
+    return tuple(f for f in FACTIONS if f not in tokens)
+
+
+@port(_AA + "CarefulObservationFactionAbility")
+class CarefulObservationFactionAbility(DeferredAbility):
+    """``RiseOfIx.CarefulObservationFactionAbility`` (abstract; Tessia
+    Vernius' Snooper reward for one track, granted as a custom ability by
+    ``CarefulObservationTriggeredAbility`` / ``...OppTriggeredAbility``).
+
+    ``.ctor @0x4d9db50``: ``DeferredAbility::.ctor(m, name, 0, 0)``,
+    ``HideInvalidDeferred = true``, ``KeepImperiumRowOpen = true``, the
+    dynamic button texts; no ``AbilityTiming`` stored. No ``ValueForPlayer``
+    override (the empty base). ``BeginExecution`` (``<BeginExecution>d__12``
+    @0x4d9f3d0) adds the track to ``SnooperFactionsUsed``, then by its count
+    1: ``Discard`` of the picked card and ``GainSpice(1)``; 2 or 4:
+    ``FactionTrackBonusAction``; 3 or 4: ``GainFactionInfluence``; then
+    ``RemoveCustomAbility``.
+    """
+
+    #: ``get_SnooperFaction`` (vslot 89), our faction id.
+    snooper_faction: ClassVar[str] = _NO_FACTION
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``CarefulObservationFactionAbility::SelectionMode`` @0x4d9e410.
+
+        Optional (0) unless the context target is a ``WormPlayer`` whose
+        Leader's ``SnooperFactions`` is set with fewer than 3 tracks
+        (``cmp [rcx+0x18], 3; jge`` -> 0), then Explicit (``mov eax, 3``):
+        the first reward (three tokens left) is optional, the later ones
+        explicit.
+        """
+
+        tokens = _snooper_factions(p)
+        if tokens is None or len(tokens) >= _FIRST_SNOOPER_LEFT:
+            return SelectionMode.OPTIONAL
+        return SelectionMode.EXPLICIT
+
+    def can_run_immediately(self, p: Profile) -> bool:
+        """``CarefulObservationFactionAbility::CanRunImmediately`` @0x4d9e500.
+
+        A ``WormPlayer`` target with ``HandCount == 0`` (``test eax, eax;
+        jne`` -> false) whose ``SnooperFactions`` is set and holds exactly 3
+        tracks (``cmp [rax+0x18], 3; sete``): the first reward with no card
+        to discard runs at once (the token covers the top space, no spice).
+        """
+
+        tokens = _snooper_factions(p)
+        return (
+            len(p.ctx.hand) == 0
+            and tokens is not None
+            and len(tokens) == _FIRST_SNOOPER_LEFT
+        )
+
+    def has_custom_ability(self, p: Profile) -> bool:
+        """``HasCustomAbility(this)``: the track's reward was granted and has
+        not run. Ours: its reward (1) waits (``snooper_discards_waiting``)."""
+
+        return self.snooper_faction in snooper_discards_waiting(p)
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``CarefulObservationFactionAbility::Cost`` @0x4d9e880.
+
+        ``HasCustomAbility(this)`` then a ``BoolAction``: the context target
+        is a ``WormPlayer`` (``TargetIs<WormPlayer>``) and its Leader's
+        ``SnooperFactionsUsed`` does not hold ``SnooperFaction`` (``Contains``
+        then ``xor r13b, 1``; a ``null`` list passes, ``mov r13b, 1``).
+        """
+
+        return self.has_custom_ability(p) and (
+            self.snooper_faction not in snooper_factions_used(p)
+        )
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``CarefulObservationFactionAbility::Evaluate`` @0x4d9ed50.
+
+        ``SnooperFactionsUsed`` (a ``null`` list is a new empty one) not empty
+        (``ListUtil.IsEmpty`` false): ``UpdateSelectionTargets(1.0, src,
+        null)``. Empty (the first reward): a ``DefaultValueSummer`` of
+        ``DiscardValue`` ("Discard") and ``GetSpiceValue(1)`` ("Spice"); the
+        targets ``GetTargets(this).OfType<WormImperiumPlayable>().ToList()``;
+        none: ``(1.0, null)``. Else ``card = ChooseDiscardEvaluator.
+        GetDiscardOrder(P, targets, false).FirstOrDefault()`` (``xor edx,
+        edx``), and ``UpdateSelectionTargets(1.0, src, [card.ID])`` unless
+        ``0.0 >= Sum`` (``ucomisd xmm0=0.0, [Sum]; jae`` 0x4d9f1fa: a NaN sum
+        takes the card) or no card, then ``(1.0, src, Array.Empty)``. The
+        summer only gates; the value is always 1.0 (``f64=1.0``).
+        """
+
+        choice = _Choice()
+        if snooper_factions_used(p):
+            choice.update_targets(_ONE, None)
+            return choice.answer("Careful Observation")
+        v = Summer()
+        v.add("Discard", p.discard_value())
+        v.add("Spice", p.spice_value(1))
+        targets = _targets(request, 0, Kind.CARD)
+        if not targets:
+            choice.update_targets(_ONE, None)
+            return choice.answer("Careful Observation (First Snooper Token)")
+        order = p.discard_order(targets, False)
+        card = order[0] if order else None
+        label = (
+            f"Careful Observation (First Snooper Token) | {v.sum} | discarding: "
+            f"{None if card is None else card.ref} | hand: "
+            f"{', '.join(c.ref for c in order)}"
+        )
+        if not (0.0 >= v.sum) and card is not None:
+            choice.update_targets(_ONE, (card.ref,))
+        else:
+            choice.update_targets(_ONE, ())
+        return choice.answer(label)
+
+
+@port(_AA + "CarefulObservationEmperorAbility")
+class CarefulObservationEmperorAbility(CarefulObservationFactionAbility):
+    """``RiseOfIx.CarefulObservationEmperorAbility``: ``.ctor @0x4d9db00``
+    (the base's with its name); ``get_SnooperFaction`` @0x4d9de00 =
+    ``Emperor`` (``mov eax, 1``)."""
+
+    snooper_faction: ClassVar[str] = "emperor"
+
+
+@port(_AA + "CarefulObservationSpacingGuildAbility")
+class CarefulObservationSpacingGuildAbility(CarefulObservationFactionAbility):
+    """``RiseOfIx.CarefulObservationSpacingGuildAbility``: ``.ctor
+    @0x4d9def0``; ``get_SnooperFaction`` @0x4d9df90 = ``SpacingGuild``
+    (``mov eax, 2``)."""
+
+    snooper_faction: ClassVar[str] = "spacing_guild"
+
+
+@port(_AA + "CarefulObservationBeneGesseritAbility")
+class CarefulObservationBeneGesseritAbility(CarefulObservationFactionAbility):
+    """``RiseOfIx.CarefulObservationBeneGesseritAbility``: ``.ctor
+    @0x4d9e080``; ``get_SnooperFaction`` @0x4d9e120 = ``BeneGesserit``
+    (``mov eax, 3``)."""
+
+    snooper_faction: ClassVar[str] = "bene_gesserit"
+
+
+@port(_AA + "CarefulObservationFremenAbility")
+class CarefulObservationFremenAbility(CarefulObservationFactionAbility):
+    """``RiseOfIx.CarefulObservationFremenAbility``: ``.ctor @0x4d9e210``;
+    ``get_SnooperFaction`` @0x4d9e2b0 = ``Fremen`` (``mov eax, 4``)."""
+
+    snooper_faction: ClassVar[str] = "fremen"
+
+
+@port(_TA + "CarefulObeservationSetupAbility")
+class CarefulObeservationSetupAbility(TriggeredAbility):
+    """``TriggeredAbilities.RiseOfIx.CarefulObeservationSetupAbility`` (the
+    app's spelling; Tessia Vernius: a Snooper token on each track at setup).
+    ``IsValidFor`` (``<IsValidFor>d__5`` @0x4ad49b0) fires on
+    ``Events.GameStarted`` for a ``WormLeader`` owner held by a
+    ``WormPlayer``; ``<BeginExecution>d__7`` @0x4ad43d0 sets the Leader's
+    ``SnooperFactions`` to Emperor, Spacing Guild, Bene Gesserit, Fremen
+    (``ChangeAttribute``). ``.ctor @0x4ad4070`` stores no timing; ``Cost
+    @0x4ad4190`` = NoCost; no AI hook."""
+
+
+@port(_PA + "CarefulObservationTriggeredAbility")
+class CarefulObservationTriggeredAbility(TriggeredAbility):
+    """``PlayAbilities.RiseOfIx.CarefulObservationTriggeredAbility``
+    (Tessia Vernius reaches a Snooper token in her own turn).
+
+    ``IsValidFor`` (``<IsValidFor>d__6`` @0x4c01f70) fires on
+    ``Events.InfluenceGained`` for a ``WormPlayer`` target when not
+    ``IsOpponentTurn`` @0x4d9e610, the event's Faction's Influence is at
+    least ``GetSnooperInfluenceLevel`` and her ``SnooperFactions`` holds it;
+    ``<BeginExecution>d__10`` @0x4c01250 removes the track from the list
+    ("SnooperTokenRemoved") and grants its
+    ``CarefulObservation<Faction>Ability`` (``AddCustomAbility``). ``.ctor
+    @0x4c00ca0`` stores ``AbilityTiming = 2`` (``mov esi, 2``, 0x4c00d4a);
+    ``get_ShouldExhaust`` @0x4c00ef0 = false; ``Cost @0x4c00f00`` = NoCost;
+    no AI hook.
+    """
+
+    timing: ClassVar[Timing] = Timing.REVEAL
+    should_exhaust: ClassVar[bool] = False
+
+
+@port(_PA + "CarefulObservationOppTriggeredAbility")
+class CarefulObservationOppTriggeredAbility(TriggeredAbility):
+    """``PlayAbilities.RiseOfIx.CarefulObservationOppTriggeredAbility``
+    (Tessia Vernius reaches a Snooper token outside her own turn).
+
+    ``IsValidFor`` (``<IsValidFor>d__5`` @0x4c008b0) is the own-turn
+    trigger's with ``IsOpponentTurn`` true; ``<BeginExecution>d__9``
+    @0x4bff9b0 removes the token, grants the track's ability and runs it at
+    once (``RunUsableAbilityForPlayer``, the ability picked by type with
+    ``<>c.<BeginExecution>b__9_1``-``_4``). ``.ctor @0x4bff310`` stores
+    ``AbilityTiming = 2`` (``mov esi, 2``, 0x4bff3ba); ``get_ShouldExhaust``
+    @0x4bff4c0 = false; ``Cost @0x4bff4d0`` = NoCost; no AI hook.
+    """
+
+    timing: ClassVar[Timing] = Timing.REVEAL
+    should_exhaust: ClassVar[bool] = False
+
+
+def _faction_influence(p: Profile, faction: str) -> int:
+    """``WormPlayer::GetFactionInfluence(F)``."""
+
+    return int(getattr(p.ctx.me.influence, faction))
+
+
+#: ``Cost``'s ``HasFactionInfluence.AtLeast(F, 1)`` factions in the asm's
+#: order (``mov edi, 1 / 4 / 3 / 2``, 0x4e64abd-0x4e64b02), joined by ``Or``.
+_DUPLICITY_COST_FACTIONS: Final = (
+    "emperor",
+    "fremen",
+    "bene_gesserit",
+    "spacing_guild",
+)
+#: ``HasFactionInfluence.AtLeast(F, 1)`` (``mov esi, 1``).
+_DUPLICITY_MIN_INFLUENCE: Final = 1
+#: ``GetBestInfluenceExchange(-1, 1, ...)`` (``mov esi, 0xffffffff; mov edx,
+#: 1``) in both V and E.
+_DUPLICITY_LOSE: Final = -1
+_DUPLICITY_GAIN: Final = 1
+
+
+@port(_AB + "DuplicityAbility")
+class DuplicityAbility(SignetAbility):
+    """``ActivatedAbilities.BaseSet.DuplicityAbility`` (Tessia Vernius'
+    signet: lose one Influence for one with a Faction holding a Snooper
+    token).
+
+    ``.ctor @0x4e647c0``: ``SignetAbility::.ctor``, ``HideInvalidDeferred =
+    true``, signet button text ``tessiavernius``.
+    """
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``DuplicityAbility::SelectionMode`` @0x4e64bf0: Optional (0)."""
+
+        return SelectionMode.OPTIONAL
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``DuplicityAbility::Cost`` @0x4e64990.
+
+        ``SignetAbility::Cost``, then a ``BoolAction`` that the target is a
+        ``WormPlayer`` whose Leader's ``SnooperFactions`` is set and not empty
+        (``cmp [rax+0x18], 0; setg``), then ``HasFactionInfluence.AtLeast(F,
+        1)`` for Emperor, Fremen, Bene Gesserit or Spacing Guild (``Or``).
+        """
+
+        if not super().meets_cost(p):
+            return False
+        tokens = _snooper_factions(p)
+        if tokens is None or not len(tokens) > 0:
+            return False
+        return any(
+            _faction_influence(p, f) >= _DUPLICITY_MIN_INFLUENCE
+            for f in _DUPLICITY_COST_FACTIONS
+        )
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``DuplicityAbility::ValueForPlayer`` @0x4e64d00.
+
+        The base summer (``WormAbilityDefinition::ValueForPlayer(P,
+        Array.Empty)``, empty; ``with_entities`` is not read), then with the
+        Leader's ``SnooperFactions`` (``null`` read as a new empty list):
+        nothing when it is exactly ``[SpacingGuild]`` (``cmp [r15+0x18], 1``
+        and ``Contains(2)``) or empty (``Any``); else "Duplicity" =
+        ``Math.Max(0.0, GetBestInfluenceExchange(-1, 1, false, null,
+        SnooperFactions).Item3)`` (``xorps xmm0`` then ``Math::Max``, NaN
+        kept). The app shuffles the Leader's own list in place (the gain list
+        is the attribute itself); ours passes a copy.
+        """
+
+        s = Summer()
+        tokens = _snooper_factions(p) or ()
+        if len(tokens) == 1 and _SPACING_GUILD in tokens:
+            return s
+        if not tokens:
+            return s
+        _lose, _gain, value = p.best_influence_exchange(
+            _DUPLICITY_LOSE, _DUPLICITY_GAIN, None, list(tokens)
+        )
+        s.add("Duplicity", _math_max(0.0, value))
+        return s
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``DuplicityAbility::Evaluate`` @0x4e64fc0.
+
+        The lose tracks are the ``ValidEntities<WormFactionTrack>`` of the
+        target information with ``InfluenceDelta == -1`` (``b__12_0``
+        @0x4e65b60, ``cmp eax, -1``), the gain tracks those of the one with
+        ``+1`` (``b__12_1`` @0x4e65c30); ours ``infos[0]`` and ``infos[1]``.
+        Nothing without the lose information, when the lose tracks are
+        exactly one Spacing Guild track (``cmp [rax+0x18], 1``, ``Faction ==
+        2``), or without the gain information. ``(lose, gain, value) =
+        GetBestInfluenceExchange(-1, 1, true, loseFactions, gainFactions)``
+        (``mov ecx, 1``: showLog); the first lose track of ``lose``
+        (``b__4`` @0x4e65d20) and gain track of ``gain`` (``b__5``
+        @0x4e65d40), else nothing (``Factions.None`` matches no track: no
+        exchange above 0). The answer is a ``DefaultValueSummer`` "Best
+        Influence Exchange Value" stored with ``UpdateSelectionResponses(Sum,
+        src, [EntityList([lose]), EntityList([gain])])``; no threshold.
+        """
+
+        choice = _Choice()
+        if not request.infos:
+            return choice.answer("Duplicity")
+        lose_tracks = _targets(request, 0, Kind.TRACK)
+        if len(lose_tracks) == 1 and lose_tracks[0].ref == _SPACING_GUILD:
+            return choice.answer("Duplicity")
+        if len(request.infos) < 2:
+            return choice.answer("Duplicity")
+        gain_tracks = _targets(request, 1, Kind.TRACK)
+        lose, gain, value = p.best_influence_exchange(
+            _DUPLICITY_LOSE,
+            _DUPLICITY_GAIN,
+            [t.ref for t in lose_tracks],
+            [t.ref for t in gain_tracks],
+        )
+        lose_track = next((t for t in lose_tracks if t.ref == lose), None)
+        gain_track = next((t for t in gain_tracks if t.ref == gain), None)
+        if lose_track is None or gain_track is None:
+            return choice.answer("Duplicity")
+        v = Summer()
+        v.add("Best Influence Exchange Value", value)
+        choice.update_responses(v.sum, ((lose_track.ref,), (gain_track.ref,)))
+        return choice.answer(f"Duplicity | {v.sum}")
