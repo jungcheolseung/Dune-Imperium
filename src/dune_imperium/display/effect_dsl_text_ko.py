@@ -156,6 +156,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PermanentRevealPersuasion,
     PlaceNegotiator,
     PlaceSpy,
+    PledgeConflictWinSolari,
     PledgeFirstPlaceInfluence,
     RecallAgent,
     RecallOtherAgent,
@@ -1122,6 +1123,15 @@ def reward_text_ko(reward: Reward) -> str:
             # piece (드레드노트 [IX-ko pp. 2, 6]) and the base game's 후퇴; no
             # icon, as English draws none.
             return "각 상대가 드레드노트 하나를 후퇴시킴"
+        case PledgeConflictWinSolari(solari=solari):
+            # Strategic Push's "If you win this Conflict:": "이번" as in "이번
+            # 차례에", ``OnConflictWon``'s "{conflict}에서 승리", and rule 1's
+            # "-다면:" for a condition that names an action
+            # (korean-card-style.md).
+            return (
+                "이번 {conflict}에서 승리한다면: "
+                f"{reward_text_ko(GainResources(solari=solari))}"
+            )
         case PlaceNegotiator():
             # Rise of Ix's Tech Negotiation icon ("개인 공급처에서 병력 하나를
             # 가져와서 익스 게임판에 놓아도 됩니다. 이 병력은 협상가로

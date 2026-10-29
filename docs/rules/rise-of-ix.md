@@ -254,6 +254,11 @@ Duke Leto의 Landsraad 할인은 Dreadnought 칸에도 든다(3 → 2). Kwisatz 
 12점까지. Conflict I을 쓰지 않고 무작위 II 다섯 장을 III 다섯 장 위에 놓는다 — 원판 + Ix의 III은 다섯 장(원판 4 + Economic Supremacy)이라 모두 쓴다. 좌석마다
 Dune, the Desert Planet 하나를 Control the Spice로 바꾸고, 모두 Intrigue 1장을 뽑고(Hundro는 모두 뽑은 뒤 Intelligence), garrison troop 5로 시작한다.
 Uprising 위의 구현([epic-game-mode.md](epic-game-mode.md))을 다시 쓴다(계획 9절 9).
+- 구현(2026-10-30, P4e, `d88c6a7d`·`e8a0a2d8`·`556e57ea`): setup은 원판에서 `epic_game`을 `rise_of_ix`와 함께일 때만 받는다(없으면
+  `NotImplementedError`). Conflict 단계·garrison 5·12점 끝·First Player부터의 Intrigue 나누기는 Uprising Epic 경로가 그대로 읽고, 원판 시작 덱만
+  Dune, the Desert Planet 하나를 Control the Spice로 바꾼다(원판 시작 카드는 Uprising 인쇄본, imperium-base.md 3). Hundro의 Intelligence는 두
+  setup 경로 모두 모두가 뽑은 뒤 섞인 덱을 본다(시험: `tests/unit/rules/test_ix_epic.py`). Go to 11은 Immortality가 필요해 원판에서는 P7까지 닿지 않는다
+  (OQ-093의 0 → 12는 시험으로 고정). 관측은 v28의 `epic_game` 표시를 그대로 쓴다.
 
 ## 12. Ix Conflict 카드
 

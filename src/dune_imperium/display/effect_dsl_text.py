@@ -129,6 +129,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PermanentRevealPersuasion,
     PlaceNegotiator,
     PlaceSpy,
+    PledgeConflictWinSolari,
     PledgeFirstPlaceInfluence,
     RecallAgent,
     RecallOtherAgent,
@@ -837,6 +838,13 @@ def reward_text(reward: Reward) -> str:
             # "Each opponent retreats one dreadnought." [Cannon Turrets card,
             # Steam app text]
             return "Each opponent retreats one dreadnought"
+        case PledgeConflictWinSolari(solari=solari):
+            # "If you win this Conflict:" [Strategic Push card, Steam app
+            # text], its Solari paid in the sole winner's window (OQ-121).
+            return (
+                "If you win this Conflict: "
+                f"{reward_text(GainResources(solari=solari))}"
+            )
         case PlaceNegotiator():
             # Rise of Ix's Tech Negotiation icon: "you may take a troop"
             # [Rise of Ix p. 4] (docs/rules/rise-of-ix.md 4).

@@ -40,6 +40,8 @@ SEAT_VALUES: dict[str, Any] = {
     "set_aside_returned_turn": True,
     "turns_finished_round": 1,
     "known_intrigue_ids": (),
+    # Strategic Push's pledge (stage P4d), held during a Combat only.
+    "strategic_push_solari": 2,
 }
 IX_SEAT_FIELDS = frozenset(SEAT_VALUES)
 

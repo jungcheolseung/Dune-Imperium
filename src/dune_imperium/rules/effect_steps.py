@@ -320,6 +320,8 @@ _COMBAT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "dreadnought_control": _V.TAKE,
     # Windtraps' water, a row of the winner's window (Rise of Ix).
     "windtraps": _V.GAIN,
+    # Strategic Push's pledged Solari, a row of the same window (Rise of Ix).
+    "strategic_push": _V.GAIN,
     # The sole winner's close of its window: no more winning Intrigue
     # (OQ-121 decision 6; the original game's To the Victor... and Demand
     # Respect). Nothing is gained, so it only resolves the row.

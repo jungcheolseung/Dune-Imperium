@@ -118,7 +118,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "play Rise of Ix's Epic Game Mode (docs/rules/epic-game-mode.md): "
             "to 12, Conflict II over III, Control the Spice, one Intrigue card "
-            "and five garrison troops [Rise of Ix p. 10]"
+            "and five garrison troops [Rise of Ix p. 10]; with --base-game "
+            "imperium only together with --rise-of-ix (docs/rules/rise-of-ix.md "
+            "11)"
         ),
     )
     parser.add_argument(

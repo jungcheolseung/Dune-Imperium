@@ -754,6 +754,9 @@ const EFFECT_ICON_LABELS = {
   /* Windtraps' "When you win a Conflict" water (Rise of Ix); the tile has no
      official Korean name. */
   windtraps: "Windtraps: {water} 1",
+  /* Strategic Push's "If you win this Conflict" Solari (a Rise of Ix
+     Intrigue card, one copy); the card has no official Korean name. */
+  strategic_push: "Strategic Push: {solari} 2",
   /* The sole winner's close of its window: no more "When you win a
      Conflict" Intrigue (OQ-121 decision 6). */
   winning_intrigue: "승리 {intrigue} 끝내기",

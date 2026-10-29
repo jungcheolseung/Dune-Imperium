@@ -38,6 +38,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TakeContract,
 )
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
+from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
 from dune_imperium.content.uprising.leaders import LEADERS_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reveal_choice_abilities import (
@@ -71,6 +72,7 @@ from dune_imperium.rules.agent_effects import (
 from dune_imperium.rules.agent_turn import CARD_PICK_ACTION, executable_placements
 from dune_imperium.rules.combat import (
     REWARD_ICON_ACTION,
+    STRATEGIC_PUSH,
     WINDTRAPS,
     WINNING_INTRIGUE,
     reward_icon_piece,
@@ -730,6 +732,18 @@ def combat_reward_icon_action_text(
             f"{_WINDTRAPS}: {reward_text(water)}",
             f"{_WINDTRAPS}: {reward_text_ko(water)}",
         )
+    if kind == STRATEGIC_PUSH:
+        # Strategic Push's "If you win this Conflict:" Solari, pledged when
+        # the Combat card resolved and paid as a row of the sole winner's
+        # window (Rise of Ix, OQ-121 ruling 6 (1)); never doubled by a
+        # sandworm. The card has no Korean edition, so its name stays English.
+        win_solari = GainResources(
+            solari=state.players[action.actor].strategic_push_solari
+        )
+        return (
+            f"{_STRATEGIC_PUSH}: {reward_text(win_solari)}",
+            f"{_STRATEGIC_PUSH}: {reward_text_ko(win_solari)}",
+        )
     if kind == WINNING_INTRIGUE:
         # The sole winner's close of its window once every other row is
         # resolved: no more "When you win a Conflict" Intrigue (OQ-121
@@ -886,6 +900,7 @@ def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
 _CHOAM_TRANSPORTS = TECH_TILES_BY_ID["choam_transports"].name
 _PLANETARY_ARRAY = TECH_TILES_BY_ID["planetary_array"].name
 _WINDTRAPS = TECH_TILES_BY_ID["windtraps"].name
+_STRATEGIC_PUSH = INTRIGUE_CARDS_BY_ID["strategic_push"].card.name
 _PLANETARY_ARRAY_KO = KOREAN_CARD_NAMES["tech"].get("planetary_array", _PLANETARY_ARRAY)
 _OWED_ORIGINS: dict[str, tuple[str, str]] = {
     "bene_gesserit_4": (

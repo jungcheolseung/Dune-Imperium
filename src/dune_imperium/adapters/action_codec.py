@@ -119,6 +119,7 @@ from dune_imperium.rules.combat import (
     DREADNOUGHT_DETONATE_ACTION,
     IMPERIUM_REWARD_ICON_KINDS,
     IX_REWARD_ICON_KINDS,
+    STRATEGIC_PUSH,
     WINDTRAPS,
     conflict_reward_icon_kinds,
 )
@@ -988,6 +989,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         and (kind != DREADNOUGHT_CONTROL or config.rise_of_ix)
         # Windtraps' water, a row of the same window (Rise of Ix).
         and (kind != WINDTRAPS or config.rise_of_ix)
+        # Strategic Push's pledged Solari, a row of the same window (a Rise
+        # of Ix Intrigue card).
+        and (kind != STRATEGIC_PUSH or config.rise_of_ix)
     )
     # One board-effect resolution per printed automatic icon (OQ-027).
     templates.extend(
@@ -1923,6 +1927,7 @@ def _effect_step_templates(
                         "winning_intrigue",
                         DREADNOUGHT_CONTROL,
                         WINDTRAPS,
+                        STRATEGIC_PUSH,
                     )
                 )
             )

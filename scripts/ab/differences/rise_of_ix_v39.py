@@ -8,7 +8,8 @@ Only new fields at their "absent" values, which no game without the
 - ``PlayerState`` gains the dreadnoughts in the supply, garrison and
   Conflict, the Freighter's space, the Negotiators, Tessia Vernius' Snooper
   tokens, Ilesa Ecaz's set-aside card, its return this turn, the turns
-  finished this round and the Intrigue cards the seat knows; ``GameState``
+  finished this round, the Intrigue cards the seat knows and Strategic
+  Push's pledged Solari (stage P4d); ``GameState``
   gains the dreadnoughts on Control spaces. All are left out of the canonical
   state hash at their defaults (saves and records keep their hashes), but the
   tool digests the state field by field, so they are declared added.
@@ -40,6 +41,7 @@ _SEAT_FIELDS: tuple[tuple[str, Any], ...] = (
     ("has_set_aside_card", False),
     ("set_aside_returned_turn", False),
     ("turns_finished_round", 0),
+    ("strategic_push_solari", 0),
 )
 _PRIVATE_FIELDS: tuple[tuple[str, Any], ...] = (
     ("set_aside_card_id", ""),
@@ -114,6 +116,7 @@ STATE_HOLDS_RISE_OF_IX = Rule(
             "PlayerState.set_aside_returned_turn",
             "PlayerState.turns_finished_round",
             "PlayerState.known_intrigue_ids",
+            "PlayerState.strategic_push_solari",
             "GameState.dreadnought_control",
         }
     ),

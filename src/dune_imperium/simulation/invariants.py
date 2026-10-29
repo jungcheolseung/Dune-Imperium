@@ -46,7 +46,7 @@ from dune_imperium.core.observation import (
     revealed_contract_ids,
 )
 from dune_imperium.core.player import PlayerState
-from dune_imperium.core.state import GameState, check_game_state
+from dune_imperium.core.state import GamePhase, GameState, check_game_state
 from dune_imperium.rules.frames import FrameKind, turn_owner_of, turn_start_is_open
 from dune_imperium.rules.scouts_auctions import bid_cap
 from dune_imperium.rules.scouts_secrets import pick_alternatives
@@ -240,6 +240,7 @@ def _ix_fields_absent(player: PlayerState) -> bool:
         or player.set_aside_card_id
         or player.set_aside_returned_turn
         or player.turns_finished_round
+        or player.strategic_push_solari
     )
 
 
@@ -289,6 +290,14 @@ def _check_rise_of_ix(state: GameState) -> None:
         if owned != 2:
             raise InvariantViolation(
                 f"player {player.player_id} owns {owned} dreadnoughts"
+            )
+        # Strategic Push's pledge is for the Conflict under way: paid in the
+        # sole winner's window or lapsed at the Combat clean-up
+        # (``combat.finish_combat``), so no pledge outlives the Combat phase.
+        if player.strategic_push_solari and state.phase is not GamePhase.COMBAT:
+            raise InvariantViolation(
+                f"player {player.player_id} holds a Strategic Push pledge "
+                "outside the Combat phase"
             )
 
 

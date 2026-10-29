@@ -90,6 +90,7 @@ from dune_imperium.content.uprising.reserve import (
     ReserveStackDefinition,
 )
 from dune_imperium.content.uprising.starting_cards import (
+    CONTROL_THE_SPICE,
     STARTING_CARDS_BY_ID,
     StartingCardEntry,
     starting_deck_entries,
@@ -366,7 +367,15 @@ def _imperium_content(config: RulesetConfig) -> RulesetContent:
     Reserve and Leaders, none of the Objectives, observation posts,
     Contracts or sandworms Uprising prints; its Imperium and Intrigue decks
     hold the cards transcribed so far (stage P3). With ``rise_of_ix`` the
-    board, Conflicts, Leaders and decks take Rise of Ix's (stage P4a)."""
+    board, Conflicts, Leaders and decks take Rise of Ix's (stage P4a).
+
+    Epic Game Mode with Rise of Ix (stage P4e) reuses Uprising's: "좌석마다
+    Dune, the Desert Planet 하나를 Control the Spice로 바꾸고" [Rise of Ix
+    p. 10] (docs/rules/rise-of-ix.md 11) -- the original starting deck is
+    Uprising's printing, two Dune, the Desert Planet among its ten [DI p. 3]
+    (docs/rules/imperium-base.md 3). Setup refuses the mode on the original
+    game without Rise of Ix (``rules.setup``), so that configuration keeps the
+    plain starting deck."""
 
     rise_of_ix = config.rise_of_ix
     conflicts = _imperium_conflicts(rise_of_ix)
@@ -398,7 +407,9 @@ def _imperium_content(config: RulesetConfig) -> RulesetContent:
         ),
         contract_instance_ids=(),
         objectives=(),
-        starting_deck_entries=starting_deck_entries(),
+        starting_deck_entries=starting_deck_entries(
+            epic_game=config.epic_game and rise_of_ix
+        ),
         starting_discard_entries=(),
     )
 
@@ -507,12 +518,15 @@ def _imperium_deck_cards(
 
 
 # Every personal card id the base game prints, the promos' whatever the
-# options (as ``_UPRISING_CARD_IDS``); Rise of Ix's with its option.
+# options (as ``_UPRISING_CARD_IDS``); Rise of Ix's with its option, its
+# starting card Control the Spice (Epic Game Mode's [Rise of Ix p. 2],
+# docs/rules/rise-of-ix.md 2) among them.
 @cache
 def _imperium_card_ids(rise_of_ix: bool) -> frozenset[str]:
     return frozenset(
         {
             *(entry.card.card_id for entry in starting_deck_entries()),
+            *((CONTROL_THE_SPICE.card.card_id,) if rise_of_ix else ()),
             *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
             *(entry.card.card_id for entry in _imperium_deck_cards(True, rise_of_ix)),
         }

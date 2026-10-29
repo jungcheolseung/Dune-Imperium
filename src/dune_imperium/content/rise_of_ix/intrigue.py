@@ -45,6 +45,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     PayResources,
+    PledgeConflictWinSolari,
     RecruitTroops,
     SolariAtLeast,
     SpiceMustFlowCardsAtLeast,
@@ -346,6 +347,25 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("strategic_push", "Strategic Push"),
         copies=1,
+        # [COMBAT] 2 swords, "If you win this Conflict:" 2 Solari [Steam app
+        # text and card table (Strength 2, Combat); its log lines "played
+        # Strategic Push to gain 2 swords. If they win the Conflict they will
+        # gain 2 Solari" and "gained 2 Solari with Strategic Push for winning
+        # the Conflict"]: one cost-free Combat line. The swords are Combat
+        # strength at once, as every Combat Intrigue's; the Solari are pledged
+        # and paid only to the sole winner, as an automatic row of its window
+        # (OQ-121 ruling 6 (1); rise-of-ix.md 12 "승자의 창": "Strategic Push의
+        # 승리 몫"), never on a tie for first [FAQ p. 4]. The swords are always
+        # live, so the card is played whatever the Conflict's outcome
+        # (OQ-113 (C)). It is no "When you win a Conflict" card held in hand
+        # (OQ-142, ``combat._winning_intrigue_instances``).
+        options=(
+            _combat(
+                EffectSection(
+                    rewards=(GainCombatStrength(2), PledgeConflictWinSolari(2))
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("strongarm", "Strongarm"),

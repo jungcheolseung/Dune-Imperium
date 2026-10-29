@@ -226,8 +226,10 @@ def test_layout_is_versioned_and_contiguous() -> None:
         # personal-card segments and its 17 Intrigue cards in the nine
         # Intrigue segments; the Intrigue deck's size in ``global_scalars``;
         # then four seats' three dreadnought counts, two columns per Control
-        # space, four seats' nine Shipping, Negotiator, Snooper and Ilesa
-        # columns, four seats' bars on the four Ix spaces, the known Intrigue
+        # space, four seats' ten Shipping, Negotiator, Snooper, Ilesa and
+        # Strategic Push pledge columns (the pledge joined on 2026-10-30,
+        # before v39 reached master), four seats' bars on the four Ix spaces,
+        # the known Intrigue
         # deck top (141), its eight bottom depths, the known Intrigue of three
         # opponents (141 each), the set-aside card (218), seven pending
         # columns and the Rise of Ix flag. Its 18 Tech tiles in the six Tech
@@ -239,7 +241,7 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 1
         + 4 * 3
         + 4 * 2
-        + 4 * 9
+        + 4 * 10
         + 4 * 4
         + 141
         + 8
@@ -248,8 +250,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 7
         + 1
     )
-    assert OBSERVATION_SIZE == 10_297
-    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment("ix_flags", 10_296, 1)
+    assert OBSERVATION_SIZE == 10_301
+    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment("ix_flags", 10_300, 1)
     # v39: the Tech Module's 18 tiles, then Rise of Ix's 18; the segments
     # with a column per tile are exactly ``TECH_SEGMENTS``.
     assert len(TECH_IDS) == 18 + 18
@@ -1648,6 +1650,7 @@ def test_the_rise_of_ix_seat_columns_are_public_by_relative_seat() -> None:
         snooper_faction_ids=("spacing_guild", "fremen"),
         set_aside_returned_turn=True,
         turns_finished_round=1,
+        strategic_push_solari=2,
     )
     two = players[2]
     pool_before = observe_state(state, 0).players[2].deck_pool
@@ -1678,9 +1681,10 @@ def test_the_rise_of_ix_seat_columns_are_public_by_relative_seat() -> None:
         assert units[1] == (1, 0, 1)
         # Freighter, Negotiators, the Snooper tokens' space by Faction
         # (emperor, spacing_guild, bene_gesserit, fremen), the set-aside
-        # card, its return this turn, the turns finished this round.
-        assert ix[1] == (2, 2, 0, 2, 0, 2, 0, 1, 1)
-        assert ix[2] == (0, 0, 0, 0, 0, 0, 1, 0, 0)
+        # card, its return this turn, the turns finished this round, the
+        # Solari pledged with Strategic Push.
+        assert ix[1] == (2, 2, 0, 2, 0, 2, 0, 1, 1, 2)
+        assert ix[2] == (0, 0, 0, 0, 0, 0, 1, 0, 0, 0)
         for other in (0, 3):
             assert not any(units[other]) and not any(ix[other])
         control = encoded[segment_slice("dreadnought_control")]

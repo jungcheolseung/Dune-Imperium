@@ -823,7 +823,7 @@ def test_a_v38_file_migrates_to_v39_with_the_new_columns_at_zero(
         if segment.name in V39_NEW_SEGMENTS
     )
     assert added == sum(growth_in_v39(segment) for segment in OBSERVATION_SEGMENTS)
-    assert added == 10_297 - 8_265
+    assert added == 10_301 - 8_265
 
 
 def test_checkpoint_cli_inspects_stamps_and_migrates(
