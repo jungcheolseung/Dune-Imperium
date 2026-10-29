@@ -1395,3 +1395,10 @@ OQ-095 (2)); 차례 밖은 `FREIGHTER_MOVE`·`SHIPPING_REWARD_ICONS` 창. Troop 
 `5c60e908`(그 손에서 알던 카드를 모두 잊는다 — Secrets·Insidious와 같다, OQ-149). (2) Spaceport의 덱 위 선택이 Agent 칸의 카드 획득 길
 (`_acquire_by_agent_card`)에는 닿지 않는다 — 원판 카드의 획득은 Intrigue(Bypass Protocol)뿐이라 지금 원판 + Ix에는 닿지 않는다. **P4d에서** Ix
 카드를 전사할 때 Agent 칸 획득이 있으면 함께 고치고, Immortality의 Tleilaxu Master 같은 조합은 **P7**에서 고친다.
+
+**P4c-4 끝(2026-10-29, `e08546a5`·`642f8535`):** 덮개 칸 넷의 효과(`content/rise_of_ix/board_abilities.py`, `rules/ix_board_spaces.py`) — Dreadnought
+(commission + 할인 0 Acquire Tech, 둘 다 "may"), Tech Negotiation(고르기: 할인 1 Acquire Tech 또는 Negotiator; 반쪽을 고르면 아이콘을 쓴 것 —
+기존 고르기 상자와 같다; 여기 Agent가 있으면 Reveal에 Persuasion 1, Hall of Oratory처럼), Interstellar Shipping(Freighter 둘, Guild 2 요구 —
+Kwisatz도 못 넘음), Smuggling(1 Solari + Freighter). 새 아이콘 넷은 선택이라 턴 종료에 소멸(OQ-095 (2)). 칸 출처 행과 Acquire Tech 거절 행의
+출처, Spaceport + Foldspace 칸(덱 위, 공개). Leto 할인은 기존 그대로 든다. 원판 + Ix 1,916행. **엔티티 특성:** `space` 표에 열 6개가 늘었다
+(Ix 칸 넷만 읽음, 옛 행 그대로) — 신경망 좌석의 같은 수는 P4c 관문에서 본다. 화면의 회색 사유 문구는 P5 몫.
