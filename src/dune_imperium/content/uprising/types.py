@@ -403,6 +403,17 @@ class PersonalCardAgentEffect(StrEnum):
     BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT = (
         "block_chosen_space_for_opponents_next_agent"
     )
+    # Sayyadina (Rise of Ix): "[3 water] -> [1 Victory Point]".
+    MAY_PAY_THREE_WATER_FOR_VP = "may_pay_three_water_for_vp"
+    # Local Fence (Rise of Ix): "[2 spice] -> [5 Solari] -OR- [5 Solari] ->
+    # [4 spice]".
+    MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE = (
+        "may_pay_two_spice_for_five_solari_or_five_solari_for_four_spice"
+    )
+    # Landing Rights (Rise of Ix): the Freighter icon.
+    MAY_MOVE_FREIGHTER = "may_move_freighter"
+    # Shai-Hulud (Rise of Ix): "[Trash a card] -> [2 troops]".
+    TRASH_PERSONAL_CARD_TO_RECRUIT_TWO = "trash_personal_card_to_recruit_two"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -483,6 +494,9 @@ class PersonalCardAcquisitionEffect(StrEnum):
     # Lady Jessica (original game): one Influence with a Faction of the
     # owner's choice (OQ-141, OQ-060).
     GAIN_INFLUENCE_WITH_CHOSEN_FACTION = "gain_influence_with_chosen_faction"
+    # Shai-Hulud (Rise of Ix): the black Trash icon in the acquire box -- an
+    # optional trash resolved at once when the card is acquired.
+    MAY_TRASH_A_CARD = "may_trash_a_card"
 
 
 class PersonalCardRevealChoiceEffect(StrEnum):

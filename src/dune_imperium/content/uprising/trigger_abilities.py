@@ -45,6 +45,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Research,
     Reward,
     TakeContract,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
@@ -131,6 +132,12 @@ ACQUISITION_ABILITIES: Final[Mapping[PersonalCardAcquisitionEffect, Ability]] = 
             # the owner's choice, a Faction at 6 not offered (OQ-141, OQ-060).
             _ACQUIRE.GAIN_INFLUENCE_WITH_CHOSEN_FACTION: _when(
                 AbilityTiming.ACQUIRE, GainInfluence()
+            ),
+            # Shai-Hulud (Rise of Ix): the black Trash icon, resolved when the
+            # card is acquired as an optional trash (``rules.acquisition``,
+            # ``rules.optional_trash``).
+            _ACQUIRE.MAY_TRASH_A_CARD: _when(
+                AbilityTiming.ACQUIRE, TrashPersonalCard()
             ),
         }
     )

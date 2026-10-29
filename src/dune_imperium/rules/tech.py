@@ -1273,8 +1273,14 @@ def _apply_ix_flip(
             working, gained = _flip_recruit(working, player, FLAGSHIP_TROOPS, source)
             events.extend(gained)
         case TechAbility.FLIP_DISCARD_FOR_CARD:
+            # The flip's cost: an Unload card's box comes before its effect
+            # (docs/rules/rise-of-ix.md 7).
             discarded = discard_personal_card_from_hand(
-                working, player, str(arguments["card_id"]), source=f"{source}:discard"
+                working,
+                player,
+                str(arguments["card_id"]),
+                source=f"{source}:discard",
+                unload_at_once=True,
             )
             events.extend(discarded.events)
             drawn = draw_or_request_personal_cards(
@@ -1290,8 +1296,14 @@ def _apply_ix_flip(
                 )
             )
         case TechAbility.FLIP_DISCARD_IGNORE_BLOCKS:
+            # The flip's cost: an Unload card's box comes before its effect
+            # (docs/rules/rise-of-ix.md 7).
             discarded = discard_personal_card_from_hand(
-                working, player, str(arguments["card_id"]), source=f"{source}:discard"
+                working,
+                player,
+                str(arguments["card_id"]),
+                source=f"{source}:discard",
+                unload_at_once=True,
             )
             events.extend(discarded.events)
             # The Infiltrate mechanism: spent by the turn's Agent placement,

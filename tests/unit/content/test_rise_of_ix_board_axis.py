@@ -408,6 +408,13 @@ def test_nothing_else_of_the_original_game_changes(options: dict[str, Any]) -> N
         conflicts=ix.conflicts,
         conflict_pool=ix.conflict_pool,
         leaders=ix.leaders,
+        card_ids=ix.card_ids,
+        imperium_cards=ix.imperium_cards,
+        imperium_deck_instance_ids=ix.imperium_deck_instance_ids,
+        # The Ix cards shuffled in as their play data lands (stage
+        # P4d); ``test_the_decks_take_the_ix_cards_whose_play_data_is_complete``
+        # checks the deck itself.
+        intrigue_deck_instance_ids=ix.intrigue_deck_instance_ids,
     )
     assert ix.reserve_stacks == plain.reserve_stacks
     for table in (

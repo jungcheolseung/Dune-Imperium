@@ -1166,6 +1166,7 @@ def test_the_rise_of_ix_rows_outrank_the_turns_end() -> None:
         "place_intrigue_negotiator",
         "advance_board_freighter",
         "advance_intrigue_freighter",
+        "advance_agent_card_freighter",
         "advance_freighter",
         "resolve_shipping_reward",
         "place_combat_reward_dreadnought",

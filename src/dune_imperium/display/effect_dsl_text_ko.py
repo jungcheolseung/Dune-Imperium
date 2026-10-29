@@ -54,6 +54,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllianceTaken,
     AtBoardSpace,
     AtFactionSpace,
+    AtLeastOfConditions,
     AtMakerSpace,
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
@@ -79,10 +80,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
+    DreadnoughtsAtLeast,
     DuringAgentTurn,
     EachOpponentDiscardsCard,
     EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
+    EachOpponentRetreatsDreadnought,
     EffectSection,
     FactionBond,
     FlipBattleCard,
@@ -92,6 +95,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
+    GainInfluenceWhereAgent,
     GainInfluenceWhereAtMost,
     GainLowestInfluence,
     GainResources,
@@ -595,6 +599,11 @@ def condition_text_ko(condition: Condition) -> str:
         case GarrisonedUnitsAtLeast(count=count):
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return f"{{garrison}}에 부대가 {count} 이상 있다면"
+        case DreadnoughtsAtLeast(count=count):
+            # "2 dreadnoughts" [Grand Conspiracy card, Steam app text], in the
+            # Korean Rise of Ix rulebook's word for the piece (드레드노트
+            # [IX-ko pp. 2, 6]; "보유했다면" from the High Council clause above).
+            return f"드레드노트를 {count}개 보유했다면"
         case DuringAgentTurn():
             # Quotes ``display/bloodlines.py``'s Rapid Dropships line.
             return "{agent_turn}"
@@ -636,6 +645,12 @@ def condition_text_ko(condition: Condition) -> str:
             # already-complete conditional clauses (its own
             # ``reveal_effect_text_ko``).
             return " 그리고 ".join(condition_text_ko(item) for item in conditions)
+        case AtLeastOfConditions(count=count, conditions=conditions):
+            # "If you have any three:" over the card's four items [Grand
+            # Conspiracy card, Steam app text]: the items' own clauses.
+            clauses = ", ".join(condition_text_ko(item) for item in conditions)
+            total = len(conditions)
+            return f"다음 {total}가지 중 {count}가지 이상에 해당한다면 ({clauses})"
         case _:
             assert_never(condition)
 
@@ -1097,6 +1112,11 @@ def reward_text_ko(reward: Reward) -> str:
             # is the whole effect ("commission"), as English's "Commission a
             # dreadnought" draws it, so it stands alone.
             return "{dreadnought}"
+        case EachOpponentRetreatsDreadnought():
+            # Cannon Turrets, in the Korean Rise of Ix rulebook's word for the
+            # piece (드레드노트 [IX-ko pp. 2, 6]) and the base game's 후퇴; no
+            # icon, as English draws none.
+            return "각 상대가 드레드노트 하나를 후퇴시킴"
         case PlaceNegotiator():
             # Rise of Ix's Tech Negotiation icon ("개인 공급처에서 병력 하나를
             # 가져와서 익스 게임판에 놓아도 됩니다. 이 병력은 협상가로
@@ -1116,6 +1136,13 @@ def reward_text_ko(reward: Reward) -> str:
         case GainInfluenceWhereAtMost(maximum=maximum):
             # Quotes ``display/bloodlines.py``'s Panopticon line.
             return f"영향력이 {maximum} 이하인 각 팩션에서 {{influence_any:1}}씩 얻음"
+        case GainInfluenceWhereAgent():
+            # Quid Pro Quo (no Korean edition of Rise of Ix): the Panopticon
+            # line's shape with the Canny line's "게임판 장소에 {agent}가".
+            return (
+                "그 팩션의 게임판 장소에 당신의 {agent}가 하나 이상 있는 "
+                "각 팩션에서 {influence_any:1}씩 얻음"
+            )
         case RecruitUndeployableTroops(count=count):
             # Quotes ``display/leaders_ko.py``'s Piter De Vries Signet line.
             return f"{{troop:{count}}} 이번 차례에는 이 병력을 교전 칸에 배치할 수 없음"

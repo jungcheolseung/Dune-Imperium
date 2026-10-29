@@ -5,6 +5,7 @@ import pytest
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
 from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
+from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS
 from dune_imperium.content.uprising.abilities import AbilityMark, AbilityTiming
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
@@ -65,8 +66,8 @@ def test_every_record_names_a_card_with_its_play_data() -> None:
         cards[entry.card.card_id] = True
     for stack in IMPERIUM_RESERVE_STACKS:
         cards[stack.card.card_id] = True
-    # The original game's Imperium cards (stage P3).
-    for base_entry in IMPERIUM_BASE_CARDS:
+    # The original game's and Rise of Ix's Imperium cards (stages P3/P4d).
+    for base_entry in (*IMPERIUM_BASE_CARDS, *IX_IMPERIUM_CARDS):
         cards[base_entry.card.card_id] = base_entry.play_data_complete
     assert set(REVEAL_GAIN_ABILITIES) <= set(cards)
     assert all(cards[card_id] for card_id in REVEAL_GAIN_ABILITIES)
@@ -76,8 +77,15 @@ def test_every_record_names_a_card_with_its_play_data() -> None:
     # Mother, Smuggler's Thopter, Worm Riders' two lines, Assassination
     # Mission, Reverend Mother Mohiam, Liet Kynes, CHOAM Directorship, Guild
     # Bankers, Carryall, Firm Grip, and the promo Thumper).
-    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 16
-    assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == 55 + 1 + 17
+    # Rise of Ix (stage P4d), one record/line each: Sayyadina's "Fremen
+    # Bond: [3 Persuasion]", Imperial Shock Trooper's "If you have an
+    # Agent on an [Emperor] board space," [+3 swords], Shai-Hulud's "Fremen
+    # Bond: [5 swords]", Water Peddler's Unload box "[1 water]" and CHOAM
+    # Delegate's "[3 Solari]".
+    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 16 + 5
+    assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == (
+        55 + 1 + 17 + 5
+    )
 
 
 def test_reveal_gain_records_are_automatic_lines() -> None:

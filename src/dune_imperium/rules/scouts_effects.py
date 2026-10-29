@@ -1216,8 +1216,10 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
     pick_source = f"{source}:{picked}"
     match action.action_id:
         case "scouts_discard":
+            # A line's discard is its cost: an Unload card's box is paid before
+            # the line's reward (docs/rules/rise-of-ix.md 7).
             return discard_personal_card_from_hand(
-                cursor_state, player, value, source=pick_source
+                cursor_state, player, value, source=pick_source, unload_at_once=True
             )
         case "scouts_trash_card":
             return trash_personal_card(

@@ -71,6 +71,8 @@ const ACTION_LABELS = {
     "2 {spice} 지불 → {shield_wall} 제거 + {sandworm} 부르기",
   pay_agent_card_spice: "{spice} 지불 (카드 효과 비용)",
   pay_agent_card_solari: "{solari} 지불 (카드 효과 비용)",
+  pay_agent_card_spice_for_solari: "{spice} 지불 → {solari}",
+  pay_agent_card_solari_for_spice: "{solari} 지불 → {spice}",
   take_agent_card_from_discard: "{discard_pile}에서 카드를 {hand}로",
   lose_agent_card_influence:
     "{influence_any:1} 잃기 · 2 {spice} 지불 → {influence_any:2} 선택",
@@ -263,6 +265,9 @@ const ACTION_LABELS = {
   recall_freighter: "화물선 귀환",
   decline_freighter: "화물선 이동 안 함",
   resolve_shipping_reward: "화물선 귀환: 운송 보상",
+  /* Rise of Ix's Unload, 처분 [IX-ko pp. 7, 12]; the Reveal box is 공개 칸
+     [Main p. 8]. */
+  resolve_unload_icon: "처분: 공개 칸 효과",
   /* Rise of Ix's four board spaces (stage P4c-4): the Dreadnought icon, the
      Acquire Tech icon, Tech Negotiation's two halves and Spaceport's
      Foldspace on top of the deck, in the words above. */
@@ -272,6 +277,9 @@ const ACTION_LABELS = {
   place_board_negotiator: "협상가 놓기",
   advance_board_freighter: "화물선 1칸 전진",
   recall_board_freighter: "화물선 귀환",
+  /* Landing Rights' Agent box (stage P4d): the same two moves. */
+  advance_agent_card_freighter: "화물선 1칸 전진",
+  recall_agent_card_freighter: "화물선 귀환",
   acquire_foldspace_to_deck_top: "접힘 공간 카드를 덱 위에",
   place_combat_reward_dreadnought: "드레드노트를 놓을 {control} 공간",
   /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep
@@ -494,9 +502,11 @@ const EVENT_LABELS = {
   intrigue_freighter_declined: "화물선 이동 안 함",
   shipping_troops_recruited: "화물선 귀환: {troop} {recruit}",
   shipping_reward_lapsed: "화물선 귀환 운송 보상: 쓰지 않음",
+  card_unloaded: "처분",
   shipping_influence_unavailable: "화물선 귀환: {influence_any} 불가",
   dreadnought_control_placed: "드레드노트가 {control} 공간에",
   dreadnought_returned: "드레드노트 {garrison} 복귀",
+  dreadnought_retreated: "드레드노트 후퇴",
   dreadnought_detonated: "드레드노트를 {supply}로 (Detonation Devices)",
   intrigue_put_on_bottom: "{intrigue_card} → {intrigue} {deck} 맨 아래",
   conflict_end_trigger_declined: "{conflict} 종료 발동 {intrigue_card} 쓰지 않음",
@@ -511,6 +521,7 @@ const EVENT_LABELS = {
   contract_trashed: "{contract} 폐기",
   contracts_revealed: "{contract} 공개",
   corrinth_city_payment_started: "코린트 시티: 첫 카드 선택",
+  agent_card_discard_started: "카드 1장 버리기: 첫 카드 선택",
   endgame_intrigue_passed: "패스",
   endgame_started: "{endgame} 시작",
   endgame_wild_matched: "와일드 {battle_icon} 매칭",

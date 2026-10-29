@@ -33,6 +33,7 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.intrigue_deck import triggered_intrigue_draw
+from dune_imperium.rules.unload import trigger_unload
 
 
 def trash_personal_card(
@@ -42,12 +43,15 @@ def trash_personal_card(
     *,
     source: str,
     allow_deck: bool = False,
+    unload_at_once: bool = False,
 ) -> RuleResult:
     """Remove one owned card from an eligible zone and resolve its trash trigger.
 
     Deck trashing is an explicit exception used by card effects such as Long
     Live the Fighters; ordinary trash callers remain limited to hand, discard,
-    and in-play cards.
+    and in-play cards. A Rise of Ix Unload card gives its Reveal box as it is
+    trashed, whatever trashes it (``rules.unload``; OQ-120): a cost's caller
+    passes ``unload_at_once`` so the box is paid before its arrow's reward.
     """
 
     if not 0 <= player < state.config.players:
@@ -253,7 +257,10 @@ def trash_personal_card(
             result = RuleResult(
                 state=advanced.state, events=(*result.events, *advanced.events)
             )
-    return result
+    unloaded = trigger_unload(
+        result.state, player, card_id, source=source, at_once=unload_at_once
+    )
+    return RuleResult(state=unloaded.state, events=(*result.events, *unloaded.events))
 
 
 def with_recruited_units(

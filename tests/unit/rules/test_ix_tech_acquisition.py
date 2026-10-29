@@ -61,6 +61,7 @@ from dune_imperium.rules.effect_interpreter import rewards_with_no_effect
 from dune_imperium.rules.effects import BOARD_ICON_TECH, OptionalBlockKind
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.negotiators import negotiator_block, place_negotiator
+from dune_imperium.rules.optional_trash import optional_trash_frame, trash_printer
 from dune_imperium.rules.setup import deal_ix_tech_stacks
 from dune_imperium.rules.tech import (
     ix_tech_cost,
@@ -704,6 +705,49 @@ def test_the_rows_run_through_the_engine_and_the_codec() -> None:
         action.action_id == "choose_tech"
         for action in engine.legal_actions(result.state, 0)
     )
+
+
+def test_disposal_facility_acquire_trash_rows_are_in_the_ix_catalog() -> None:
+    """ "| Disposal Facility | 3 | trash 1 |" (docs/rules/rise-of-ix.md 4): the
+    acquire icon's optional trash waits on the owner's turn as a row, or in a
+    window of its own elsewhere (a Conflict reward's acquisition); its row,
+    its refusal and every card it may trash encode and decode to themselves
+    in the original game's Rise of Ix catalog, which holds them only through
+    the tile (the 40-game sweep's seed 14 found the refusal missing)."""
+
+    engine, state = _holding(spice=3, stacks=(("disposal_facility",), (), ()))
+    after, _ = _take(_open(state), _buy("disposal_facility"))
+    assert tech_rules.pending_tech_acquire_effects(after.decision_stack[-1]) == (
+        "disposal_facility:trash",
+    )
+    resolve = DomainAction(
+        "resolve_tech_acquire_effect",
+        0,
+        (("effect", "trash"), ("tech_id", "disposal_facility")),
+    )
+    waiting = apply_whole(engine, after, resolve).state
+    codec = ActionCodec(IX)
+    row = DomainAction(
+        "trash", 0, (("printed", "disposal_facility"), ("source", "tech"))
+    )
+    assert row in engine.legal_actions(waiting, 0)
+    picked = engine.apply(waiting, row).state
+    for action in (row, *engine.legal_actions(picked, 0)):
+        assert codec.decode(codec.encode(action), action.actor) == action
+
+    printer = trash_printer(Source.TECH, "disposal_facility")
+    window = state.push_decision(optional_trash_frame(0, "s", printer=printer))
+    legal = engine.legal_actions(window, 0)
+    assert {action.action_id for action in legal} == {
+        "decline",
+        "choose_personal_card",
+    }
+    for action in legal:
+        assert codec.decode(codec.encode(action), action.actor) == action
+    decline = next(action for action in legal if action.action_id == "decline")
+    declined = engine.apply(window, decline).state
+    assert [frame.kind for frame in declined.decision_stack] == [FrameKind.TURN]
+    assert declined.players == state.players
 
 
 def test_the_rows_of_the_ix_tiles_are_in_the_original_catalog_with_rise_of_ix() -> None:

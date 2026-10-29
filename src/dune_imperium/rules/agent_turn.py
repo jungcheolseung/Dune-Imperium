@@ -570,7 +570,9 @@ def _placements_for_card(
             if candidate.player_id != player
             and space.space_id in candidate.agent_locations
         )
-        if anywhere or opponents_do_not_block(owner, space):
+        if anywhere or opponents_do_not_block(
+            owner, space, card=card if state.config.rise_of_ix else None
+        ):
             # Eyes Everywhere: "상대 Agent가 Landsraad·City 칸에서 내 Agent를
             # 막지 않는다" (docs/rules/imperium-base.md 12); her own Agent
             # still blocks (above), as do requirements and once-per-game
@@ -663,13 +665,23 @@ def _placements_for_card(
     return tuple(actions)
 
 
-def opponents_do_not_block(owner: PlayerState, space: BoardSpace) -> bool:
+def opponents_do_not_block(
+    owner: PlayerState,
+    space: BoardSpace,
+    *,
+    card: PersonalCardDefinition | None = None,
+) -> bool:
     """Whether opponents' Agents on ``space`` stop ``owner``'s Agent: not for
     Helena Richese's Eyes Everywhere on a Landsraad or City space, nor on any
     space for the turn of an Infiltrate Intrigue (``enemy_agents_ignored_turn``).
+    A Rise of Ix card ignores them only at its printed Infiltration icons,
+    never icons granted by Dispatch an Envoy [Rise of Ix p. 7].
     An opponent's Mentat is an Agent like any other and is ignored too."""
 
-    return owner.enemy_agents_ignored_turn or (
+    return (
+        isinstance(card, ImperiumCardEntry)
+        and space.agent_icon in card.infiltration_icons
+    ) or owner.enemy_agents_ignored_turn or (
         owner.leader_id == "helena_richese"
         and space.agent_icon in (AgentIcon.LANDSRAAD, AgentIcon.CITY)
     )
@@ -1017,7 +1029,9 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                         infiltrate_post_id is None
                         # Eyes Everywhere and Infiltrate: opponents' Agents
                         # do not block, so no Infiltrator promise is needed.
-                        and not opponents_do_not_block(owner, space)
+                        and not opponents_do_not_block(
+                            owner, space, card=card if state.config.rise_of_ix else None
+                        )
                         and any(
                             space_id in seat.agent_locations
                             for seat in state.players

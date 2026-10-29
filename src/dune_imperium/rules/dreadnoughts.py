@@ -42,6 +42,23 @@ def space_controller(state: GameState, space_id: str) -> int | None:
     return holders[0] if holders else None
 
 
+def dreadnoughts_owned(state: GameState, seat: int) -> int:
+    """Return how many dreadnoughts ``seat`` has commissioned, wherever they stand.
+
+    A seat's two dreadnoughts are in its supply, its garrison, the Conflict
+    or on a Control space (``GameState.dreadnought_control``); the ones out of
+    the supply are the ones it has. "Grand Conspiracy의 '2 dreadnoughts'는 가진
+    수이고" [OQ-121, docs/rules/open-questions.md]: that card reads this count
+    and not a position.
+    """
+
+    owner = state.players[seat]
+    on_control_spaces = sum(
+        1 for _, holder, _ in state.dreadnought_control if holder == seat
+    )
+    return owner.dreadnoughts_garrison + owner.dreadnoughts_conflict + on_control_spaces
+
+
 def end_combat_dreadnoughts(state: GameState) -> RuleResult:
     """End the Combat phase's turn of the dreadnoughts on Control spaces.
 

@@ -147,8 +147,68 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # against a88a66f3, 2026-10-29). Then Rise of Ix's three Conflicts got their
 # reward rows (stage P4d-1): one column of the conflict table is new (the first
 # place's Freighter icon), only those three rows read it, and every older row
-# and its scales are unchanged (compared against 3767c469, 2026-10-29).
-_GOLDEN_DIGEST = "e1426dfd4e15c7312b7a0e90139392ab8e7f48b42a20b6ee30209f6be8e91ee2"
+# and its scales are unchanged (compared against 3767c469, 2026-10-29). Then
+# Rise of Ix's Intrigue cards got their records (stage P4d), each card's own
+# row only (Blackmail, compared against 7a0c50e4; Cull, compared against
+# 21bebb89; Glimpse the Path, compared against c23fb5bc; Finesse, compared
+# against d1f705b7; Secret Forces, compared against 8a9c8c6a), except Expedite
+# and Strongarm: each adds one column to the intrigue table (Expedite's
+# Freighter reward, compared against 018e7961; Strongarm's visited-space
+# Influence gain, compared against cba9b870), only its own row reads it, and
+# every older row and its scales are unchanged (2026-10-29).
+# Then the Imperium cards' printed Infiltration icons (stage P4d): eight
+# personal-table columns are new (the icon count and one per icon), only the
+# seven Ix cards that print one read them, and every older row and its scales
+# are unchanged (compared against e20b83dc, 2026-10-29).
+# Then Jamis got his play data (stage P4d): only his own row changed, no column
+# and no scale (compared against 49b6dfdc, 2026-10-29).
+# Then Sayyadina got her play data (stage P4d): only her own row changed, no
+# column and no scale (compared against d6a6d909, 2026-10-29).
+# Then Truthsayer got her play data (stage P4d): only her own row changed, no
+# column and no scale (compared against 776f8431, 2026-10-29).
+# Then Ixian Probe got its record (stage P4d): only its own row changed, no
+# column and no scale (compared against 2f6d4af9, 2026-10-29).
+# Then Imperial Shock Trooper got its play data (stage P4d): only its own row
+# changed, and two personal-table columns are new (its Reveal line's
+# Agent-on-space condition and the Emperor icon), read by its row alone; no
+# older scale moved (compared against 87581ad9, 2026-10-29).
+# Then Quid Pro Quo got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (its each-Faction-with-an-Agent Influence
+# gain), read by its row alone; no older scale moved (compared against
+# 331ada67, 2026-10-29).
+# Then Local Fence got its play data (stage P4d): only its own row changed, no
+# column and no scale (compared against 28ab9f72, 2026-10-29).
+# Then Cull's trash became mandatory (stage P4d): only its own row changed (the
+# existing "mandatory" reward column, read by Twisted Devious too), no column
+# and no scale (compared against e7218126, 2026-10-30).
+# Then Landing Rights got its play data (stage P4d): only its own row changed,
+# and one personal-table column is new (the Freighter piece in an Agent box),
+# read by its row alone; no older scale moved (compared against b9c62bf5,
+# 2026-10-30).
+# Then Shai-Hulud got its play data (stage P4d): only its own row changed, and
+# one personal-table column is new (the black Trash icon in an acquire box),
+# read by its row alone; no older scale moved (compared against 706e6f2e,
+# 2026-10-30).
+# Then Water Peddler got its play data (stage P4d): one personal-table column
+# is new (the Unload mark, ``unload``), only its own row reads it, its row is
+# the only one that changed, and no scale moved (compared against 63a61cb0,
+# 2026-10-30).
+# Then CHOAM Delegate got its play data (stage P4d): only its own row changed,
+# no column and no scale (compared against aae8f95c, 2026-10-30).
+# Then Advanced Weaponry got its record (stage P4d): only its own row changed,
+# and one intrigue-table column is new (the Dreadnought commission reward),
+# read by its row alone; no older scale moved (compared against 18d1bb8a,
+# 2026-10-30).
+# Then Grand Conspiracy got its record (stage P4d): only its own row changed,
+# and six intrigue-table columns are new (the "any three of" condition, the
+# dreadnought count, and the Influence-on-tracks and Spice Must Flow items
+# nested in them), read by its row alone; no older scale moved (compared
+# against b8feee68, 2026-10-30).
+# Then Cannon Turrets got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (the opponents' dreadnought retreat reward),
+# read by its row alone; no older scale moved (compared against c30f523b,
+# 2026-10-30).
+_GOLDEN_DIGEST = "6056c1083b118046d7276a4e0bb78f8aec31edc9e03e7d89cc64fc8fcf8d386e"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

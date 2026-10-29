@@ -102,6 +102,7 @@ const PROMPT_KO = {
   "Gain your Contract reward": "{contract} 보상 받기",
   "Move your Freighter": "한 칸 위로 · 회수 · 하지 않음 중 선택",
   "Gain your Shipping track rewards": "회수 보상 받기",
+  "Gain your Unload card's Reveal box": "버리거나 폐기한 카드의 공개 칸 효과 받기",
   "You may retreat two troops for four strength": "병력 2를 {retreat}하고 {strength} 4 획득 가능",
   "You may retreat two troops for two Persuasion": "병력 2를 {retreat}하고 {persuasion} 2 획득 가능",
   "Secret Project: place one bottom Tech tile on your Leader": "비밀 프로젝트: 맨 아래 {tech_tile} 1개를 내 {leader}에 배치",

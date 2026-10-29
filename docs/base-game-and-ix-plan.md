@@ -1433,6 +1433,23 @@ setup이 빠진다 → **정함: P4e 전까지 후보에서 뺀다**(덱 카드�
 열 +1(`Freighter`, 새 Conflict 셋만). **P5·P7 몫:** `display/structs.conflict_row_parts`가 `Freighter`·`TakeMentat`에서 `TypeError`(서버 카탈로그는
 Uprising Conflict만 그려 지금은 닿지 않는다), sandworm이 Freighter를 두 배로 하는지는 Uprising + Ix(P7). 라벨 `b9b2fc7e`(효과 하나에 아이콘 하나).
 
+**P4d 진행(2026-10-29 20:3x~, 사용자 "남은 토큰 3프로 … 적절히 작업을 나눠서"):** 카드 한 장마다 커밋 하나(그 카드 테스트 통과 뒤). 묶음 1 — Ix Intrigue
+Blackmail·Cull·Glimpse the Path(기존 조각만). 다음 후보 — Expedite(Freighter)·Ixian Probe(discard 둘 → 카드 둘)·Finesse(두 면), 그다음 dreadnought·
+unit 카드(Cannon Turrets·Second Wave·Diversion·Grand Conspiracy·Advanced Weaponry), Machine Culture·War Chest·Secret Forces·Quid Pro Quo·
+Strongarm·Strategic Push, 그다음 Imperium 카드. 끊기면: 커밋되지 않은 agent 작업은 버리고(`git checkout --`) 마지막 커밋에서 다시 시작한다.
+- 묶음 1 끝(`21bebb89` Blackmail, `c23fb5bc` Cull, `018e7961` Glimpse the Path). **고칠 것(정함):** Cull은 1 Solari를 낸 뒤 trash를 거절할 수 있게 들어갔다 —
+  rise-of-ix.md 9.3이 채택한 디자이너 판정 "Cull은 trash해야 낸다"(OQ-113 (C)와 같은 방향)와 어긋나므로, 낸 뒤의 trash는 의무로 고친다(다음 Codex
+  묶음). Codex 묶음 2(`codex/p4d-intrigue2`): Expedite·Finesse·Secret Forces·Strongarm 끝(검토 전), Quid Pro Quo는 새 조각("Agent가 놓인 진영마다
+  Influence")이 필요해 멈춤 — astra 묶음으로.
+- Codex 묶음을 들여옴(2026-10-29 22:xx): `d1f705b7` Expedite, `8a9c8c6a` Finesse, `cba9b870` Secret Forces, `e20b83dc` Strongarm(방문 진영
+  `GainInfluence.visited_space` — 진영을 적은 Influence는 전과 같다), `49b6dfdc` 잠입 아이콘(카드 일곱에 표시, 놓기는 `rise_of_ix`에서만), `d6a6d909`
+  Jamis, `ba7abce7`·`b37ef58e` Sayyadina, `3a9a537b` Sayyadina 화면 문구. Ix 카드 완료: Intrigue 7/17(+Cull 의무 trash 수정 대기), Imperium 2/35.
+  다음: Codex discard(Truthsayer·Ixian Probe) 들여오기 → Codex unload(일반 Discard 연결 포함) → sources-trash → conditions.
+- conditions 묶음(Opus, `6fb92642` Disposal Facility 획득 trash의 codec 행 — P4c-2a부터의 빈틈을 소크가 잡음, `331ada67` Imperial Shock Trooper,
+  `28ab9f72` Quid Pro Quo(`GainInfluenceWhereAgent`), `a3b801e2` Local Fence(Agent 칸 "-OR-" 지불 줄 둘, 새 행 `pay_agent_card_spice_for_solari`·
+  `pay_agent_card_solari_for_spice`)). **P4e 몫:** Quid Pro Quo가 여러 진영에 Influence를 주는 순서(지금 Faction 순서) — Tessia의 Snooper가 어느 track이
+  먼저 닿는지를 읽으므로 그때 정한다. **P6 몫:** app_ai의 지불 id 목록에 Local Fence의 두 id. Ix 카드: Intrigue 9/17, Imperium 5/35.
+
 ## 18. P5 계획: 원판 화면 (2026-10-29, 브랜치 `claude/base-ix-p5-8de6c1`, master `6fcb0c16`에서)
 
 **상태: 계획.** 조정자(`local_689d12a1`) 경유 사용자 결정(2026-10-29 "P4 agent 2~3 + P5 세션"). 범위는 지금 **원판 4인 판**(확장 없음; 원판이 지금 받는 옵션은

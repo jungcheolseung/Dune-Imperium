@@ -25,6 +25,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AllConditions,
     AtFactionSpace,
+    AtLeastOfConditions,
     AtMakerSpace,
     CommanderDiscountThisTurn,
     CommissionDreadnought,
@@ -39,6 +40,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
+    DreadnoughtsAtLeast,
+    EachOpponentRetreatsDreadnought,
     EffectSection,
     FactionBond,
     FlipBattleCard,
@@ -46,6 +49,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Freighter,
     GainCombatStrength,
     GainInfluence,
+    GainInfluenceWhereAgent,
     GainResources,
     GainSolariPerUnitType,
     GainVictoryPoints,
@@ -121,6 +125,7 @@ from dune_imperium.rules.contracts import (
     market_contract_ids,
 )
 from dune_imperium.rules.dreadnought_commission import commission_block
+from dune_imperium.rules.dreadnoughts import dreadnoughts_owned
 from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
     agent_turn_space_id,
@@ -161,6 +166,7 @@ from dune_imperium.rules.spy_placement import (
     spy_placement_posts,
 )
 from dune_imperium.rules.unit_loss import opponents_with_conflict_troop
+from dune_imperium.rules.units import retreat_dreadnought
 
 type ChoiceSlot = (
     LoseInfluence
@@ -294,6 +300,17 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             return bool(opponents_with_conflict_troop(state, player))
         case AllConditions(conditions=conditions):
             return all(condition_holds(state, player, item) for item in conditions)
+        case AtLeastOfConditions(count=count, conditions=conditions):
+            # Grand Conspiracy: "If you have any three:" of its four items.
+            return (
+                sum(condition_holds(state, player, item) for item in conditions)
+                >= count
+            )
+        case DreadnoughtsAtLeast(count=count):
+            # Grand Conspiracy's "2 dreadnoughts": the seat's own, wherever
+            # they stand (OQ-121); a Control space holds the game's, so this
+            # reads the state.
+            return dreadnoughts_owned(state, player) >= count
         case MoreSpiceMustFlowThanEachOpponent():
             # Corner the Market: "상대 하나라도 같거나 많으면 둘째 조건 실패"
             # (imperium-base.md 13.2, ``[FAQ p. 2]``): each opponent is
@@ -897,8 +914,16 @@ def reward_can_change_something(
             # "끝까지 가고 나면 뭐 없는 게 맞다" (OQ-048).
             return not tleilaxu_track_finished(owner)
         case GainInfluence() if not reward.requires_choice:
-            assert reward.factions is not None
-            return influence_can_rise(owner, reward.factions[0])
+            faction = fixed_influence_faction(state, player, reward)
+            return faction is not None and influence_can_rise(owner, faction)
+        case GainInfluenceWhereAgent():
+            # Quid Pro Quo's 2 spice buy something only while a Faction with
+            # one of the player's Agents can still rise (rise-of-ix.md 9.3;
+            # OQ-060, OQ-071).
+            return any(
+                influence_can_rise(owner, faction)
+                for faction in factions_with_agents(state, player)
+            )
         case GainInfluence():
             # A line that pays a LoseInfluence first (Change Allegiances,
             # Tenuous Bond) leaves the Faction it lowers free to rise again,
@@ -1128,6 +1153,48 @@ def _choice_reward_block(
             if isinstance(reward, TakeContract) and not state.config.choam_module:
                 return reward
     return None
+
+
+def fixed_influence_faction(
+    state: GameState, player: int, gain: GainInfluence
+) -> Faction | None:
+    """The named Faction, or the one visited this turn (Strongarm).
+
+    "Gain one Influence with a Faction whose board space you sent an Agent
+    to this turn" [Strongarm, Steam app text]. An Intrigue choice can be
+    above the Agent-turn frame; an earlier turn's placement never counts.
+    """
+
+    if gain.visited_space:
+        space_id = agent_turn_space_id(state, player)
+        return next(
+            (
+                space.faction
+                for space in content_for(state.config).board_spaces
+                if space.space_id == space_id
+            ),
+            None,
+        )
+    assert gain.factions is not None
+    return gain.factions[0]
+
+
+def factions_with_agents(state: GameState, player: int) -> tuple[Faction, ...]:
+    """The Factions that have at least one of ``player``'s Agents on their
+    board spaces, in Faction order, each once.
+
+    "Gain one Influence with each Faction that has at least one of your
+    Agents on its board spaces." [Quid Pro Quo, Steam app text]: an Agent
+    sent earlier this round stays on its space until the Recall [DI p. 13].
+    """
+
+    visited = set(state.players[player].agent_locations)
+    held = {
+        space.faction
+        for space in content_for(state.config).board_spaces
+        if space.space_id in visited and space.faction is not None
+    }
+    return tuple(faction for faction in Faction if faction in held)
 
 
 def influence_gain_candidates(
@@ -1395,6 +1462,8 @@ def apply_rewards(
     intrigue_draws = 0
     contracts = 0
     fixed_influence: list[GainInfluence] = []
+    agent_influence = False
+    opponents_retreat_dreadnoughts = False
     # Immortality: Bene Tleilax board moves resolve on the state after the
     # resource gains (a research advance may open a direction choice).
     specimens = 0
@@ -1461,6 +1530,10 @@ def apply_rewards(
                 fixed_influence.append(reward)
             case GainInfluence():
                 raise ValueError("Influence choices must be resolved as choice slots")
+            case GainInfluenceWhereAgent():
+                agent_influence = True
+            case EachOpponentRetreatsDreadnought():
+                opponents_retreat_dreadnoughts = True
             case SummonSandworm(count=count, requires_maker_hooks=needs_hooks) if (
                 replaces_sandworms(owner)
                 and sandworm_block(state, player, needs_hooks=needs_hooks) is None
@@ -1610,8 +1683,9 @@ def apply_rewards(
         events.insert(gain_at, resources_gained_event(source, player, **gains))
     next_state = replace(state, players=replace_player(state.players, owner))
     for index, gain in enumerate(fixed_influence):
-        assert gain.factions is not None
-        faction = gain.factions[0]
+        faction = fixed_influence_faction(next_state, player, gain)
+        if faction is None:
+            continue
         gained = gain_faction_influence(
             next_state,
             player,
@@ -1621,6 +1695,31 @@ def apply_rewards(
         )
         next_state = gained.state
         events.extend(gained.events)
+    if agent_influence:
+        # Quid Pro Quo: one Influence with each Faction where the player has
+        # an Agent, in Faction order (``factions_with_agents``).
+        for faction in factions_with_agents(next_state, player):
+            gained = gain_faction_influence(
+                next_state,
+                player,
+                faction,
+                1,
+                event_prefix=f"{source}:agent_influence:{faction.value}",
+            )
+            next_state = gained.state
+            events.extend(gained.events)
+    if opponents_retreat_dreadnoughts:
+        # Cannon Turrets: each opponent with a dreadnought in the Conflict
+        # sends one to its garrison, clockwise from the next seat; nothing
+        # is chosen (a seat's dreadnoughts are alike).
+        for offset in range(1, state.config.players):
+            seat = (player + offset) % state.config.players
+            if next_state.players[seat].dreadnoughts_conflict:
+                retreated = retreat_dreadnought(
+                    next_state, seat, f"{source}:opponent:{seat}"
+                )
+                next_state = retreated.state
+                events.extend(retreated.events)
     if intrigue_draws:
         # Resolved before the Intrigue card itself is discarded, so the deck
         # reshuffle (if any) never includes the card being played.

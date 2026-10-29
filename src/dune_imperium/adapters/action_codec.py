@@ -83,6 +83,7 @@ from dune_imperium.content.uprising.starting_cards import (
     STARTING_DECK,
     StartingCardEntry,
 )
+from dune_imperium.content.uprising.trigger_abilities import acquisition_ability
 from dune_imperium.content.uprising.types import (
     BLOODLINES_REVEAL_CHOICE_EFFECTS,
     IMMORTALITY_REVEAL_CHOICE_EFFECTS,
@@ -174,6 +175,7 @@ from dune_imperium.rules.tech import (
     tech_acquire_effect_arguments,
 )
 from dune_imperium.rules.units import unit_count_arguments
+from dune_imperium.rules.unload import UNLOAD_ICON_ACTION, unload_icons
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
 # Imperial Privilege, may recall an Into the Fray Agent from the Conflict --
@@ -1068,6 +1070,33 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # back [Rise of Ix p. 6], and the Dreadnought icon an Intrigue slot
         # offers; no catalog without the expansion holds these rows.
         templates.extend(_rise_of_ix_unit_templates())
+        # Local Fence's two Agent-box arrows printed with "-OR-", one row
+        # each (``agent_box_abilities.payment_box``).
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in (
+                "pay_agent_card_spice_for_solari",
+                "pay_agent_card_solari_for_spice",
+            )
+        )
+        # Landing Rights' Freighter icon, an Agent box's two moves
+        # (``agent_effects.apply_agent_card_freighter``).
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in (
+                "advance_agent_card_freighter",
+                "recall_agent_card_freighter",
+            )
+        )
+        # An Unload card's Reveal box icon, a row each (``rules.unload``).
+        templates.extend(
+            ActionTemplate(
+                action_id=UNLOAD_ICON_ACTION,
+                arguments=(("card_id", instance_id), ("effect", name)),
+            )
+            for instance_id in content.imperium_deck_instance_ids
+            for name in dict.fromkeys(name for name, _ in unload_icons(instance_id))
+        )
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
     elif content.base_game is BaseGame.IMPERIUM:
@@ -2478,6 +2507,15 @@ def _spy_placement_printers(
     return tuple(printers)
 
 
+def _acquire_box_trashes(card: ImperiumCardEntry) -> bool:
+    """Whether the Imperium card's acquire box prints the black Trash icon."""
+
+    ability = acquisition_ability(card.acquisition_effect)
+    return ability is not None and any(
+        isinstance(reward, TrashPersonalCard) for reward in ability.sections[0].rewards
+    )
+
+
 def _optional_trash_printers(
     config: RulesetConfig,
     box_cards: Mapping[tuple[str, str], tuple[str, ...]],
@@ -2485,7 +2523,9 @@ def _optional_trash_printers(
 ) -> tuple[tuple[Source, str, int], ...]:
     """The entities that may print an optional trash waiting on the turn
     (``optional_trash.trash_printer``): a card whose Agent box may trash (box
-    1 too with grafting), a Tech tile's acquire or Flip trash, a research
+    1 too with grafting), a Tech tile's acquire or Flip trash (the Tech
+    Module's, and Rise of Ix's Disposal Facility, whose acquire icon trashes),
+    an Imperium card's acquire box (Rise of Ix's Shai-Hulud), a research
     pair's trash, Arrakis Planetologist's leader."""
 
     boxes = (0, 1) if config.immortality else (0,)
@@ -2498,6 +2538,16 @@ def _optional_trash_printers(
         *(
             (Source.TECH, tech_id, 0)
             for tech_id in (optional_trash_tech_ids() if config.tech_module else ())
+        ),
+        *(
+            (Source.TECH, tile.tech_id, 0)
+            for tile in (IX_TECH_TILES if config.rise_of_ix else ())
+            if "trash" in tile.acquire_effect_keys
+        ),
+        *(
+            (Source.ACQUISITION, card.card.card_id, 0)
+            for card in content_for(config).imperium_cards
+            if _acquire_box_trashes(card)
         ),
         *(
             (Source.RESEARCH, space, 0)
@@ -2630,6 +2680,7 @@ _ICON_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "trash": (("trash", ""),),
     "combat": (("gain", "combat"),),
     "spy": (("place_spy", ""), ("recall_spy", "")),
+    "freighter": (("advance", "freighter"), ("collect", "freighter")),
 }
 _HOOK_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "possible_futures": (("gain_influence", ""),),
@@ -3579,6 +3630,11 @@ def _ix_tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     # Disposal Facility's Reveal-turn trash of a card in play (OQ-126); the
     # card is the step row's target.
     templates.append(ActionTemplate(action_id="trash_disposal_facility_card"))
+    # Its acquire icon's trash opens the generic optional-trash frame (a
+    # "trash" key, ``_optional_trash_printers``), which an original game holds
+    # only with other modules; the catalog keeps one copy of each row.
+    templates.append(ActionTemplate(action_id="decline_optional_trash"))
+    templates.extend(_trash_templates(config, "trash_optional_card"))
     # The four Flip tiles (docs/rules/rise-of-ix.md 4, stage P4c-2b): the tile
     # names the whole action, and the card Holoprojectors and Invasion Ships
     # discard is the step row's target.
