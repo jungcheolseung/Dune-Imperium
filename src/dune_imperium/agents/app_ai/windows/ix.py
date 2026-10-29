@@ -237,7 +237,28 @@ def intrigue_bottom_pick(run: DecisionRun) -> DomainAction | None:
     return run.first(_FINISH_BOTTOM)
 
 
+UNLOAD = "resolve_unload_icon"
+
+
+def take_unload(run: DecisionRun) -> DomainAction | None:
+    """The first owed Unload icon (``resolve_unload_icon``): the app's
+    ``UnloadAbility`` family is Triggered with no AI hook, so the engine
+    resolves the box without asking; its icons are taken in order."""
+
+    rows = run.by_id(UNLOAD)
+    return rows[0] if rows else None
+
+
+def unload_icons(run: DecisionRun) -> DomainAction | None:
+    """``unload_icons``: an Unload box gained outside its owner's turn."""
+
+    if any(a.action_id != UNLOAD for a in run.legal):
+        return None
+    return take_unload(run)
+
+
 HANDLERS: dict[str, Handler] = {
+    "unload_icons": unload_icons,
     "dreadnought_control_choice": dreadnought_control_choice,
     "intrigue_bottom_pick": intrigue_bottom_pick,
     "freighter_move": freighter_move,

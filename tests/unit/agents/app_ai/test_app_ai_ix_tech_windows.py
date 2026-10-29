@@ -144,32 +144,41 @@ def test_urgent_mission_recalls_the_agent_its_play_named() -> None:
 def test_troop_transports_answers_a_shipping_deployment_off_a_combat_space(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Seed 8100: Rabban's Freighter recall at Interstellar Shipping recruits
-    three troops that Troop Transports lets deploy (rise-of-ix.md 15; P4's
-    ruling). The app asks ``TroopTransportsAbility``."""
+    """P4's ruling on seed 8100 (P4 ``87581ad9``): a Freighter recall at
+    Interstellar Shipping recruited troops that Troop Transports lets deploy
+    (rise-of-ix.md 15). The app asks ``TroopTransportsAbility``; without the
+    tile, nothing."""
 
-    from typing import Any
-
+    from dune_imperium.agents.app_ai.catalog import space_entity
     from dune_imperium.agents.app_ai.windows import agent_effects
 
-    labels: list[str] = []
-    collect = agent_effects._collect
-
-    def spy(t: Any) -> None:
-        collect(t)
-        labels.extend(s.label for s in t.sources)
-
-    monkeypatch.setattr(agent_effects, "_collect", spy)
-    config = RulesetConfig(
-        base_game=BaseGame.IMPERIUM,
-        promo_cards=True,
-        leader_draft=True,
-        rise_of_ix=True,
+    p = make_profile(first_decision("turn", config=IX))
+    seat = p.ctx.seat
+    rows = tuple(
+        DomainAction(action_id="deploy_troops", actor=seat, arguments=(("count", n),))
+        for n in (1, 2, 3)
     )
-    agents = tuple(AppAIAgent(seed=8100 * 10 + p, level=2) for p in range(4))
-    run_policy_game(UprisingRulesEngine(), config, 8100, agents)
-    assert "Troop Transports" in labels
-    assert [dict(a.fallbacks) for a in agents] == [{}] * 4
+    run = DecisionRun(p.ctx, p, rows, p.rng, Memory())
+
+    def turn() -> agent_effects._Turn:
+        return agent_effects._Turn(
+            run=run,
+            context={"combat_troops_deployed": 0},
+            card_ref=None,
+            card_short=None,
+            card=None,
+            space_id="interstellar_shipping",
+            space=space_entity("interstellar_shipping", p.ctx.board),
+            leader=None,
+        )
+
+    without = turn()
+    agent_effects._deploy(without)
+    assert not without.sources and not without.unmapped
+    monkeypatch.setattr(type(p.ctx), "has_tech", lambda self, tech, seat=None: True)
+    held = turn()
+    agent_effects._deploy(held)
+    assert [s.label for s in held.sources] == ["Troop Transports"]
 
 
 def test_blackmail_cull_and_finesse_get_their_app_targets() -> None:
@@ -203,3 +212,55 @@ def test_finesse_replays_its_exchange_in_the_influence_slots() -> None:
     )
     assert lose is not None and dict(lose.arguments) == {"faction": "emperor"}
     assert gain is not None and dict(gain.arguments) == {"faction": "fremen"}
+
+
+def test_local_fence_takes_the_row_of_the_apps_option(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``LocalFenceAbility::Evaluate``: option 0 "2 spice -> 5 Solari", option
+    1 "5 Solari -> 4 spice" (IntTargetResponse 0 then 1 in the asm)."""
+
+    from dune_imperium.agents.app_ai.abilities import ix_imperium
+    from dune_imperium.agents.app_ai.catalog import card_entity
+    from dune_imperium.agents.app_ai.windows import agent_effects
+
+    p = make_profile(first_decision("turn", config=IX))
+    seat = p.ctx.seat
+    rows = tuple(
+        DomainAction(action_id=a, actor=seat)
+        for a in ("pay_agent_card_spice_for_solari", "pay_agent_card_solari_for_spice")
+    )
+    run = DecisionRun(p.ctx, p, rows, p.rng, Memory())
+    fence = card_entity("imperium:local_fence:0", seat)
+    for spice, solari, expected in ((1.0, 0.1, 1), (0.1, 1.0, 0)):
+        monkeypatch.setattr(p, "spice_value", lambda n, s=spice: s * n)
+        monkeypatch.setattr(p, "solari_value", lambda n, s=solari: s * n)
+        t = agent_effects._Turn(
+            run=run,
+            context={},
+            card_ref=fence.ref,
+            card_short="local_fence",
+            card=fence,
+            space_id=None,
+            space=None,
+            leader=None,
+        )
+        agent_effects._ix_card_rows(t)
+        [source] = t.sources
+        assert source.evaluate is not None
+        _value, action = source.evaluate()
+        assert action is rows[expected]
+    assert ix_imperium.LOCAL_FENCE_SPICE_TO_SOLARI == 0
+
+
+def test_unload_rows_are_taken_in_order() -> None:
+    rows = [
+        DomainAction(
+            action_id="resolve_unload_icon",
+            actor=0,
+            arguments=(("card_id", "imperium:water_peddler:0"), ("effect", e)),
+        )
+        for e in ("water", "spice")
+    ]
+    run = _choice_run(rows)
+    assert ix.unload_icons(run) is rows[0]

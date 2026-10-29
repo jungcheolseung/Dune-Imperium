@@ -545,12 +545,15 @@ def test_cull(turn_state: GameState, prof: ProfileFactory) -> None:
     seat = _seat(turn_state)
     dune = f"player:{seat}:starter:dune_the_desert_planet:0"  # TrashValue 1.0
     argument = f"player:{seat}:starter:convincing_argument:0"  # TrashValue 0.25
-    hand = turn_state.players[seat].hand
+    player = turn_state.players[seat]
+    # Every zone a test card may sit in starts without it: the engine allows
+    # one zone per instance.
+    zones = {
+        zone: tuple(c for c in getattr(player, zone) if c not in (dune, argument))
+        for zone in ("hand", "deck", "discard_pile", "in_play")
+    }
     junk = me(
-        turn_state,
-        resources=Resources(solari=2),
-        hand=tuple(c for c in hand if c not in (dune, argument)),
-        discard_pile=(dune,),
+        turn_state, resources=Resources(solari=2), **{**zones, "discard_pile": (dune,)}
     )
     targets = TargetInfo((card_entity(dune, seat),))
     assert run(ability, prof(junk), targets) == (1.5, ((dune,),))

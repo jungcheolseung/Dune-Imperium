@@ -202,6 +202,7 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         # and a recall's rewards waiting on the turn (``ix.shipping_sources``).
         "trash_tech",
         "resolve_shipping_reward",
+        "resolve_unload_icon",
     }
 )
 #: Navigation Chamber's discount variants of one space, in our legal order
@@ -1234,6 +1235,9 @@ def turn_window(run: DecisionRun) -> DomainAction | None:
         return None
     if owed:
         return decide(run, owed, skip=None)
+    unload = ix.take_unload(run)
+    if unload is not None:
+        return unload  # an Unload box owed in the turn (Triggered, no AI hook)
     shipping = run.by_id("resolve_shipping_reward")
     if shipping:
         # A recall's rewards still owed: the app's Explicit Shipping-track

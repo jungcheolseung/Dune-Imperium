@@ -455,8 +455,10 @@ _REVEAL_ACTIONS = REVEAL_CHOICE_ACTION_IDS | frozenset(
         # Facility's Reveal-turn trash (plan §13).
         "trash_tech",
         "trash_disposal_facility_card",
-        # A Reveal box Freighter's recall rewards (``ix.shipping_sources``).
+        # A Reveal box Freighter's recall rewards (``ix.shipping_sources``),
+        # and an Unload box owed in the turn (``ix.take_unload``).
         "resolve_shipping_reward",
+        "resolve_unload_icon",
         # Arrakeen Scouts (Corrinth City's seat)
         "choose_subcommittee",
         "decline_subcommittee",
@@ -2321,6 +2323,9 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     known = _REVEAL_ACTIONS | TURN_ROW_IDS
     if any(a.action_id not in known for a in run.legal):
         return None  # a Reveal action of another expansion: not mirrored
+    unload = ix.take_unload(run)
+    if unload is not None:
+        return unload
     shipping = run.by_id("resolve_shipping_reward")
     if shipping:
         # A Reveal box Freighter's recall rewards: the app's Explicit

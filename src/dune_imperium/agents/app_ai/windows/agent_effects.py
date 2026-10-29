@@ -658,8 +658,9 @@ _BOOST_DRAW_INDEX = 99
 #: Our trash choice of each card -> its app ability.
 _TRASH_ABILITY: Mapping[str, str] = {
     "calculus_of_power": "TrashAgentAbility",
-    # Rise of Ix: Jamis' generic trash box.
+    # Rise of Ix: Jamis' generic trash box, Shai-Hulud's Optional trash.
     "jamis": "TrashAgentAbility",
+    "shai_hulud": "ShaiHuludAbility",
     "desert_survival": "TrashAgentAbility",
     "shishakli": "ShishakliAgentAbility",
     "tread_in_darkness": "BeneGesseritTrashAbility",
@@ -1035,6 +1036,12 @@ _IX_ACTION_IDS: frozenset[str] = frozenset(
         "withdraw_dreadnoughts",
         # Spaceport's Foldspace on top of the deck (``_board_icons``).
         "acquire_foldspace_to_deck_top",
+        # Rise of Ix cards' boxes (``_ix_card_rows``).
+        "advance_agent_card_freighter",
+        "recall_agent_card_freighter",
+        "pay_agent_card_spice_for_solari",
+        "pay_agent_card_solari_for_spice",
+        "resolve_unload_icon",
         # The Ix Tech tiles' rows (``_flips``, ``_tech_trashes``,
         # ``_tech_acquire_effects``).
         "flip_tech",
@@ -4514,6 +4521,50 @@ def _ix_spaces(t: _Turn) -> None:
             _prompt(t, "Acquire Tech", (board_tech,), acquire, explicit=True)
 
 
+def _ix_card_rows(t: _Turn) -> None:
+    """Rise of Ix cards' Agent boxes (plan §13):
+
+    - a card's Freighter icon (Landing Rights): the card's
+      ``FreighterAgentAbility`` (``ix.freighter_sources``);
+    - Local Fence's exchange: ``LocalFenceAbility`` (Optional), option 0 "2
+      spice -> 5 Solari" or option 1 "5 Solari -> 4 spice", realised by the
+      offered row (an unaffordable option has no row: no key).
+    """
+
+    run = t.run
+    for row in t.by_id("resolve_unload_icon"):
+        # An Unload box owed in the turn: Triggered, no AI hook (taken in
+        # order, before the turn's choices).
+        _automatic(t, "Unload", _FOLLOW_UP, row, -1)
+    advance = t.by_id("advance_agent_card_freighter")
+    recall = t.by_id("recall_agent_card_freighter")
+    if (advance or recall) and t.card is not None:
+        found = _find(t.card, "FreighterAgentAbility")
+        if found is None or not isinstance(found[0], FreighterAbility):
+            t.unmapped.append(f"{t.card_short} freighter")
+        else:
+            t.sources.extend(
+                ix.freighter_sources(run, "Card Freighter", found[0], advance, recall)
+            )
+    to_solari = run.first("pay_agent_card_spice_for_solari")
+    to_spice = run.first("pay_agent_card_solari_for_spice")
+    if (to_solari is not None or to_spice is not None) and t.card is not None:
+        found = _find(t.card, "LocalFenceAbility")
+        if found is None:
+            t.unmapped.append(f"{t.card_short} exchange")
+            return
+        fence = found[0]
+        rows = {0: to_solari, 1: to_spice}
+
+        def evaluate_fence() -> tuple[float, DomainAction | None]:
+            answer = fence.evaluate(t.p, Request())
+            option = _response_ref(answer)
+            return answer.value, rows.get(option) if isinstance(option, int) else None
+
+        uses = tuple(a for a in (to_solari, to_spice) if a is not None)
+        _prompt(t, "Local Fence", uses, evaluate_fence, explicit=False)
+
+
 def _combat_space(t: _Turn) -> bool:
     """Whether the turn's space is a Combat space (``IsCombatSpace``)."""
 
@@ -4867,6 +4918,7 @@ def _collect(t: _Turn) -> None:
     _board_icons(t)
     if t.run.ctx.ix:
         _ix_spaces(t)
+        _ix_card_rows(t)
     _maker(t)
     _sietch_tabr(t)
     _espionage(t)
