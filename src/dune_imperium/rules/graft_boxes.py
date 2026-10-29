@@ -142,6 +142,9 @@ TURN_KEYS: Final = frozenset(
         # finds it gone.
         "turn_agent_recalled",
         "turn_owner",
+        # Weirding Way's extra turns owed after this one (Rise of Ix,
+        # ``effects.close_agent_turn``), whichever box took them.
+        "extra_turns_owed",
         # Ilesa Ecaz's card back in her hand at this turn's start (Rise of
         # Ix, ``one_step_ahead``), read by the turn's placement.
         "one_step_ahead_card",
@@ -257,6 +260,8 @@ BOX_ACTION_IDS: Final = frozenset(
         # Rise of Ix's Landing Rights: the Freighter icon's two moves.
         "advance_agent_card_freighter",
         "recall_agent_card_freighter",
+        # Rise of Ix's Weirding Way: the extra turn.
+        "take_agent_card_extra_turn",
         # Rise of Ix's Local Fence: its two arrows printed with "-OR-".
         "pay_agent_card_spice_for_solari",
         "pay_agent_card_solari_for_spice",

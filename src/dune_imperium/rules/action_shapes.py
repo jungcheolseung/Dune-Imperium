@@ -412,6 +412,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "recall_agent_card_freighter": _row(
         _V.COLLECT, _S.AGENT_CARD, variant="freighter", tag=_BOX
     ),
+    # Weirding Way's extra turn (Rise of Ix); unused, it lapses at the end.
+    "take_agent_card_extra_turn": _row(
+        _V.TAKE, _S.AGENT_CARD, variant="extra_turn", tag=_BOX
+    ),
     # Local Fence's two arrows printed with "-OR-" (Rise of Ix), one each.
     "pay_agent_card_spice_for_solari": _row(
         _V.PAY, _S.AGENT_CARD, variant="spice_for_solari", tag=_BOX

@@ -1118,3 +1118,170 @@ def test_the_deck_bottom_rows_are_in_the_ix_catalog_only() -> None:
     for row in rows:
         template = ActionTemplate(row.action_id, row.arguments)
         assert template in set(CODEC.catalog) - plain
+
+
+# --- Weirding Way ---------------------------------------------------------------
+
+WEIRDING = "imperium:weirding_way:0"
+_EXTRA = "take_agent_card_extra_turn"
+
+
+def _weirding(state: GameState, *hand: str, space: str = "arrakeen") -> GameState:
+    """Weirding Way sent to ``space`` (Arrakeen, its City icon), ``hand`` the
+    rest of the hand; the space's own effects done."""
+
+    state = _give(state, 0, hand=(WEIRDING, *hand))
+    state = _do(state, "choose_agent_card", card_id=WEIRDING).state
+    state = _do(state, "place_agent", space_id=space).state
+    return _space_done(state)
+
+
+def _turn_owner(state: GameState) -> int:
+    decision = ENGINE.current_decision(state)
+    assert not isinstance(decision, ChanceDecision)
+    return decision.owner  # type: ignore[union-attr]
+
+
+def test_weirding_way_matches_the_app_and_joins_the_ix_deck() -> None:
+    """App table: Bene Gesserit, cost 3, one copy; City and Spice Trade
+    icons; Reveal 1 Persuasion, 2 swords. Text: "You may take another turn
+    immediately after this one." """
+    entry = IMPERIUM_CARDS_BY_ID["weirding_way"]
+    assert (entry.copies, entry.acquisition_cost) == (1, 3)
+    assert entry.factions == (Faction.BENE_GESSERIT,)
+    assert entry.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 2)
+    assert entry.play_data_complete
+    assert WEIRDING in content_for(IX).imperium_deck_instance_ids
+    for config in (replace(IX, rise_of_ix=False), RulesetConfig()):
+        assert WEIRDING not in content_for(config).imperium_deck_instance_ids
+    assert (
+        "Agent: You may take another turn immediately after this one"
+        in personal_card_text(entry)
+    )
+    assert len(personal_card_text(entry)) == len(personal_card_text_ko(entry))
+
+
+def test_the_extra_turn_follows_at_once_then_play_goes_on() -> None:
+    """ "You may take another turn immediately after this one": taken, the
+    turn's end opens the owner's next turn (an Agent or a Reveal turn [DI p.
+    8]); that one's end hands the turn to the next seat clockwise."""
+    state = _weirding(_start(), *_start().players[0].hand[:2])
+    assert _offered(state, _EXTRA)
+    taken = _do(state, _EXTRA)
+    assert "extra_turn_taken" in _kinds(taken.events)
+    state = _do(taken.state, "finish_agent_turn").state
+    assert _turn_owner(state) == 0
+    assert _offered(state, "reveal_turn")
+    card = state.players[0].hand[0]
+    state = _do(state, "choose_agent_card", card_id=card).state
+    rows = [
+        row for row in ENGINE.whole_actions(state, 0) if row.action_id == "place_agent"
+    ]
+    state = _do(
+        state, "place_agent", space_id=dict(rows[0].arguments)["space_id"]
+    ).state
+    while not _offered(state, "finish_agent_turn"):
+        row = next(
+            row
+            for row in ENGINE.whole_actions(state, 0)
+            if not row.action_id.startswith(("deploy", "withdraw"))
+        )
+        arguments: dict[str, object] = dict(row.arguments)
+        state = _do(state, row.action_id, 0, **arguments).state
+    state = _do(state, "finish_agent_turn").state
+    assert _turn_owner(state) == 1
+
+
+def test_an_unused_extra_turn_lapses_and_the_next_seat_plays() -> None:
+    """ "you may": no refusal row; the turn's end lapses it (OQ-095 (2))."""
+    state = _weirding(_start())
+    assert not any(
+        row.action_id.startswith("decline_") for row in ENGINE.whole_actions(state, 0)
+    )
+    finished = _do(state, "finish_agent_turn")
+    assert "agent_card_effect_lapsed" in _kinds(finished.events)
+    assert _turn_owner(finished.state) == 1
+
+
+def test_the_voice_does_not_block_the_extra_turn() -> None:
+    """ "Weirding Way의 둘째 turn은 The Voice에 막히지 않음(BGG forum) | 채택"
+    (rise-of-ix.md 9.3; imperium-base.md 13.1, OQ-116: the block lasts to the
+    opponent's next Agent placement this round): blocked from Imperial Basin
+    before this turn, the seat may go there in its extra turn."""
+    state = _start()
+    dune = "player:0:starter:dune_the_desert_planet:1"
+    state = _give(state, 0, voice_blocked_space_ids=("imperial_basin",))
+    state = _weirding(state, dune)
+    assert state.players[0].voice_blocked_space_ids == ()
+    state = _do(state, _EXTRA).state
+    state = _do(state, "finish_agent_turn").state
+    assert _turn_owner(state) == 0
+    state = _do(state, "choose_agent_card", card_id=dune).state
+    assert _offered(state, "place_agent", space_id="imperial_basin")
+
+
+def test_ilesas_extra_turn_is_her_second_turn() -> None:
+    """ "Ilesa Ecaz ... Agent 없는 pass와 Weirding Way 추가 turn 모두 센다(OQ-119
+    사용자 확정)" (rise-of-ix.md 10): her set-aside card returns to her hand
+    at the start of the extra turn that follows her first."""
+    state = _start()
+    kept = "player:0:starter:diplomacy:0"
+    state = _give(
+        state,
+        0,
+        hand=(),
+        leader_id="ilesa_ecaz",
+        leader_face_id="ilesa_ecaz",
+        set_aside_card_id=kept,
+    )
+    state = _weirding(state)
+    assert kept not in state.players[0].hand
+    state = _do(state, _EXTRA).state
+    result = _do(state, "finish_agent_turn")
+    owner = result.state.players[0]
+    assert _turn_owner(result.state) == 0
+    assert kept in owner.hand
+    assert owner.set_aside_card_id is None or owner.set_aside_card_id == ""
+
+
+def test_the_extra_turn_row_is_in_the_ix_catalog_only() -> None:
+    """The row naming the card is in the original game's catalog with Rise of
+    Ix alone [Rise of Ix p. 2]."""
+    state = _weirding(_start())
+    rows = [
+        row
+        for row in ENGINE.legal_actions(state, 0)
+        if dict(row.arguments).get("printed") == "weirding_way"
+    ]
+    assert rows
+    plain = set(ActionCodec(replace(IX, rise_of_ix=False)).catalog)
+    for row in rows:
+        template = ActionTemplate(row.action_id, row.arguments)
+        assert template in set(CODEC.catalog) - plain
+
+
+def test_a_taken_extra_turn_stays_when_the_card_is_trashed() -> None:
+    """ "trash되는 카드의 Unload는 일어난다; Weirding Way처럼 '이미 설치된
+    효과'는 카드가 trash돼도 남는다(BGG Forum) | 채택" (rise-of-ix.md 9.3):
+    Cull trashing Weirding Way after its extra turn was taken leaves the
+    extra turn owed."""
+    cull = "intrigue:cull:0"
+    state = _start()
+    deck = tuple(card for card in state.intrigue_deck if card != cull)
+    state = replace(state, intrigue_deck=deck)
+    owner = state.players[0]
+    state = _give(
+        state,
+        0,
+        intrigue_cards=(cull,),
+        resources=replace(owner.resources, solari=1),
+    )
+    state = _weirding(state)
+    state = _do(state, _EXTRA).state
+    state = _do(state, "play_intrigue", card_id=cull, option=0).state
+    state = _do(state, "trash_intrigue_card", card_id=WEIRDING).state
+    assert WEIRDING in state.players[0].trashed
+    state = _do(state, "finish_agent_turn").state
+    assert _turn_owner(state) == 0

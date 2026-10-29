@@ -191,6 +191,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     StrengthInConflictAtLeast,
     SummonSandworm,
+    TakeAnotherTurn,
     TakeCardFromDiscard,
     TakeContract,
     TakeControl,
@@ -1136,6 +1137,9 @@ def reward_text_ko(reward: Reward) -> str:
             # Korean edition has no Rise of Ix), so the line stays English
             # rather than invented (module docstring).
             return "Place a troop from your supply on the Ix board as a Negotiator"
+        case TakeAnotherTurn():
+            # Quotes ``tokens_ko.py``'s Weirding Way line.
+            return "이 차례 바로 뒤에 차례를 한 번 더 할 수 있음"
         case Freighter():
             # Rise of Ix's Freighter icon: no Korean source names the
             # Freighter or the Shipping track yet (``glossary-ko.md`` has no

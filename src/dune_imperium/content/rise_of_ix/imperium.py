@@ -15,7 +15,7 @@ Infiltration icons are identity metadata. With ``rise_of_ix`` the original
 game's deck takes only completed cards (CHOAM Delegate, Jamis, Sayyadina,
 Truthsayer, Imperial Shock Trooper, Local Fence, Water Peddler, Guild Chief
 Administrator, Negotiated Withdrawal, Desert Ambush, Full-Scale Assault,
-Embedded Agent and Court Intrigue so far),
+Embedded Agent, Court Intrigue and Weirding Way so far),
 while the observation lists every identity from v39. Setup takes Rise of Ix
 on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
@@ -344,6 +344,15 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("weirding_way", "Weirding Way"),
         copies=1,
         acquisition_cost=3,
+        # App table: Bene Gesserit; City and Spice Trade icons; Reveal 1
+        # Persuasion, 2 swords. Text: Agent "You may take another turn
+        # immediately after this one."
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN,
+        reveal_persuasion=1,
+        reveal_strength=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("boundless_ambition", "Boundless Ambition"),

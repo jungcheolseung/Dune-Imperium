@@ -59,6 +59,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallAgent,
     RecruitTroops,
     ReturnOtherGraftedCardAtRevealStart,
+    TakeAnotherTurn,
     TrashCard,
     TrashedCardHasFaction,
     TrashPersonalCard,
@@ -179,9 +180,11 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # [2 troops]"), Guild Chief Administrator ("[Discard] -> [Trash a
     # card]"), Desert Ambush ("For each troop you deploy this turn, you may
     # force an enemy unit to retreat"), Embedded Agent ("If you have another
-    # Bene Gesserit card in play: [Freighter] [Freighter]") and Court Intrigue
-    # ("Put an Intrigue card on the bottom of the deck -> [Intrigue card]").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 8
+    # Bene Gesserit card in play: [Freighter] [Freighter]"), Court Intrigue
+    # ("Put an Intrigue card on the bottom of the deck -> [Intrigue card]")
+    # and Weirding Way ("You may take another turn immediately after this
+    # one").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 9
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -218,6 +221,9 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
             "freighter",
             "freighter_second",
         ),
+        # Weirding Way (Rise of Ix): "You may take another turn immediately
+        # after this one", answered by its own row.
+        _BOX.MAY_TAKE_ANOTHER_TURN: ("extra_turn",),
         _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: ("trash", "cards"),
         # Split per icon (cleanup-2d-5, user decision 2026-10-18).
         _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: ("influence", "intrigue"),
@@ -1372,6 +1378,8 @@ def test_the_optional_icons_are_marked_in_their_records() -> None:
                 or isinstance(reward, RecallAgent) and reward.optional
                 # Landing Rights' Freighter icon is "may" [Rise of Ix p. 5].
                 or isinstance(reward, Freighter)
+                # Weirding Way: "You may take another turn".
+                or isinstance(reward, TakeAnotherTurn)
                 for reward in line.rewards
             )
         )

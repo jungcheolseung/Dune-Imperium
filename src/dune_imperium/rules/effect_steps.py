@@ -433,6 +433,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "recall_agent_card_freighter": _spec(
         _V.COLLECT, _S.AGENT_CARD, _BOX, icon="freighter"
     ),
+    # Weirding Way's extra turn (Rise of Ix).
+    "take_agent_card_extra_turn": _spec(
+        _V.TAKE, _S.AGENT_CARD, _BOX, icon="extra_turn"
+    ),
     # Local Fence's "-OR-" of two arrows (Rise of Ix): which one is paid.
     "pay_agent_card_spice_for_solari": _spec(
         _V.PAY, _S.AGENT_CARD, _BOX, option="spice_for_solari"

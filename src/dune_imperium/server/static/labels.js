@@ -287,6 +287,7 @@ const ACTION_LABELS = {
   /* Landing Rights' Agent box (stage P4d): the same two moves. */
   advance_agent_card_freighter: "Freighter 한 칸 위로",
   recall_agent_card_freighter: "Freighter 회수",
+  take_agent_card_extra_turn: "이 차례 뒤에 차례 한 번 더",
   advance_reveal_freighter: "Freighter 한 칸 위로",
   recall_reveal_freighter: "Freighter 회수",
   retreat_reveal_units_for_influence: "부대 3 후퇴 → {influence_any}",
@@ -512,6 +513,7 @@ const EVENT_LABELS = {
   intrigue_negotiator_declined: "Negotiator 놓지 않음",
   freighter_moved: "Freighter 한 칸 위로",
   freighter_recalled: "Freighter 회수",
+  extra_turn_taken: "이 차례 뒤에 차례 한 번 더",
   freighter_declined: "Freighter 움직이지 않음",
   intrigue_freighter_declined: "Freighter 움직이지 않음",
   shipping_troops_recruited: "Freighter 회수: {troop} {recruit}",

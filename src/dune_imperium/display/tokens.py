@@ -273,6 +273,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If Bene Gesserit Bond: You may move your Freighter up one space or "
             "recall it, You may move your Freighter up one space or recall it"
         ),
+        # Rise of Ix's Weirding Way (stage P4d).
+        PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: (
+            "You may take another turn immediately after this one"
+        ),
         PersonalCardAgentEffect.GENERATE_SPECIMEN: "Generate 1 specimen",
         PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
             "Gain 1 Bene Gesserit Influence, Draw 1 Intrigue card"

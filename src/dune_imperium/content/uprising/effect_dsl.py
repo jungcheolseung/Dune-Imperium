@@ -2070,6 +2070,17 @@ class Freighter:
     """
 
 
+@dataclass(frozen=True, slots=True)
+class TakeAnotherTurn:
+    """"You may take another turn immediately after this one." [Weirding Way
+    card, Steam app text]: the owner's next turn follows this one at once,
+    an Agent or a Reveal turn [DI p. 8]; then play goes on clockwise from
+    the owner. Optional ("may"). The Voice does not block it ("Weirding Way의
+    둘째 turn은 The Voice에 막히지 않음", docs/rules/rise-of-ix.md 9.3;
+    imperium-base.md 13.1, OQ-116), and Ilesa Ecaz counts it as a turn
+    (OQ-119)."""
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -2158,6 +2169,7 @@ type Reward = (
     | PledgeConflictWinSolari
     | PlaceNegotiator
     | Freighter
+    | TakeAnotherTurn
 )
 
 

@@ -288,6 +288,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "shai_hulud",
     "truthsayer",
     "water_peddler",
+    "weirding_way",
 }
 
 

@@ -1096,6 +1096,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "recall_agent_card_freighter",
                 "advance_reveal_freighter",
                 "recall_reveal_freighter",
+                # Weirding Way's extra turn.
+                "take_agent_card_extra_turn",
             )
         )
         # Court Intrigue's arrow: an Intrigue card of the hand under the
@@ -2843,6 +2845,8 @@ _ICON_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "freighter": (("advance", "freighter"), ("collect", "freighter")),
     # Embedded Agent's second Freighter icon: the same two rows.
     "freighter_second": (("advance", "freighter"), ("collect", "freighter")),
+    # Weirding Way's extra turn (Rise of Ix).
+    "extra_turn": (("take", "extra_turn"),),
 }
 _HOOK_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "possible_futures": (("gain_influence", ""),),

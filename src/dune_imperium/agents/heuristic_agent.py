@@ -249,6 +249,8 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "advance_board_freighter": 1.5,
     "advance_intrigue_freighter": 1.5,
     "advance_agent_card_freighter": 1.5,
+    # Weirding Way: another turn at once.
+    "take_agent_card_extra_turn": 3.0,
     "advance_reveal_freighter": 1.5,
     # Negotiated Withdrawal: three units leave the Conflict for one Influence.
     "retreat_reveal_units_for_influence": -1.0,

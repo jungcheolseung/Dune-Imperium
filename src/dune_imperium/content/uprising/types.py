@@ -421,6 +421,9 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND = (
         "may_move_freighter_twice_if_bene_gesserit_bond"
     )
+    # Weirding Way (Rise of Ix): "You may take another turn immediately after
+    # this one."
+    MAY_TAKE_ANOTHER_TURN = "may_take_another_turn"
     # Court Intrigue (Rise of Ix): "Put an Intrigue card on the bottom of the
     # deck -> [Intrigue card]".
     MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE = (

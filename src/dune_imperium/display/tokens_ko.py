@@ -335,6 +335,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "베네 게세리트의 유대감이면: 운송 트랙에서 한 칸 위로 또는 회수 가능, "
         "운송 트랙에서 한 칸 위로 또는 회수 가능"
     ),
+    # Rise of Ix's Weirding Way (stage P4d).
+    PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: (
+        "이 차례 바로 뒤에 차례를 한 번 더 할 수 있음"
+    ),
     PersonalCardAgentEffect.GENERATE_SPECIMEN: "표본 1개 생성",
     PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
         "{influence_bene_gesserit:1}, {intrigue:1}"

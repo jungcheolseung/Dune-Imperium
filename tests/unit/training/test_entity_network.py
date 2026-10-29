@@ -286,7 +286,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # under the deck), read by its row alone; no older scale moved (compared
 # against 560892d9, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against 9260241c (2026-10-30).
-_GOLDEN_DIGEST = "6bc85c18450cd1fdf73cad058bf5eaeb96c5b48e222c8d2e6ec04439de7dea39"
+# Then Weirding Way got its record (stage P4d): only its own row changed, and
+# one personal-table column is new (the extra-turn piece), read by its row
+# alone; no older scale moved (compared against f10bdb6a, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 30fca5c8 (2026-10-30).
+_GOLDEN_DIGEST = "ae2004626db17f48d3e138d3ffb39bd548e558f9f5e74be0efe7a198884f082f"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

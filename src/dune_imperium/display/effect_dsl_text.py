@@ -164,6 +164,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     StrengthInConflictAtLeast,
     SummonSandworm,
+    TakeAnotherTurn,
     TakeCardFromDiscard,
     TakeContract,
     TakeControl,
@@ -840,6 +841,9 @@ def reward_text(reward: Reward) -> str:
             # Rise of Ix's Tech Negotiation icon: "you may take a troop"
             # [Rise of Ix p. 4] (docs/rules/rise-of-ix.md 4).
             return "Place a troop from your supply on the Ix board as a Negotiator"
+        case TakeAnotherTurn():
+            # Rise of Ix's Weirding Way.
+            return "You may take another turn immediately after this one"
         case Freighter():
             # Rise of Ix's Freighter icon: "you may move your Freighter in one
             # of two ways" [Rise of Ix p. 5] (docs/rules/rise-of-ix.md 5).

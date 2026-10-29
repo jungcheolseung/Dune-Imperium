@@ -30,6 +30,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GenerateSpecimens,
     GrantCombatDeployment,
     PlaceSpy,
+    TakeAnotherTurn,
     TakeCardFromDiscard,
 )
 from dune_imperium.content.uprising.leader_abilities import (
@@ -146,6 +147,7 @@ from dune_imperium.rules.contracts import (
     complete_contract_by_effect,
 )
 from dune_imperium.rules.effects import (
+    EXTRA_TURNS_KEY,
     OptionalBlockKind,
     OptionalEffectBlock,
     active_agent_card,
@@ -293,6 +295,9 @@ AGENT_ICON_TRASH: Final = "trash"
 AGENT_ICON_FREIGHTER: Final = "freighter"
 # Embedded Agent's second Freighter icon (Rise of Ix).
 AGENT_ICON_FREIGHTER_SECOND: Final = "freighter_second"
+# Weirding Way's "You may take another turn immediately after this one" (Rise
+# of Ix): ``take_agent_card_extra_turn``; unused, it lapses at the turn's end.
+AGENT_ICON_EXTRA_TURN: Final = "extra_turn"
 
 # Leaders whose Signet Ring ability prints several independent icons, from
 # their records (composed A6c): the Signet Ring card's box (or a Ghola
@@ -1127,6 +1132,49 @@ def legal_agent_card_icon_choice_actions(
         *(_combat_icon_rows(state, player, context, recorded) or ()),
         *(_spy_icon_rows(state, player, context, recorded) or ()),
         *(_freighter_icon_rows(state, player, context, recorded) or ()),
+        *(
+            (DomainAction(action_id="take_agent_card_extra_turn", actor=player),)
+            if icon_line(context, recorded, TakeAnotherTurn) is not None
+            else ()
+        ),
+    )
+
+
+def apply_agent_card_extra_turn(state: GameState, action: DomainAction) -> RuleResult:
+    """Weirding Way (Rise of Ix): "You may take another turn immediately after
+    this one." The icon is spent and the turn's frame owes one more turn of
+    its owner's (``EXTRA_TURNS_KEY``): when this turn closes, the owner's next
+    turn opens at once (``effects.close_agent_turn``), counted as a turn of
+    its own (Ilesa Ecaz's second turn, OQ-119), with no Voice block left on it
+    (OQ-116: the block ends at this turn's Agent placement)."""
+
+    if action not in legal_agent_card_icon_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Weirding Way choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    source = agent_card_source(state.round_number, action.actor, source_card_id)
+    finish_agent_icon(context, AGENT_ICON_EXTRA_TURN)
+    owed = context.get(EXTRA_TURNS_KEY, 0)
+    if isinstance(owed, bool) or not isinstance(owed, int):
+        raise RuntimeError("the owed extra turns are not a number")
+    context[EXTRA_TURNS_KEY] = owed + 1
+    working = advance_after_effect(state, context)
+    return RuleResult(
+        state=working,
+        events=(
+            GameEvent(
+                event_id=f"{source}:extra_turn",
+                kind="extra_turn_taken",
+                payload=(("player", action.actor),),
+            ),
+            agent_box_event(
+                source,
+                source_card_id,
+                action.actor,
+                BoxOutcome.RESOLVED,
+                effect=AGENT_ICON_EXTRA_TURN,
+            ),
+        ),
     )
 
 
@@ -3354,6 +3402,10 @@ OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = 
             # Embedded Agent's two Freighter icons (Rise of Ix, "may" each).
             PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
                 frozenset({AGENT_ICON_FREIGHTER, AGENT_ICON_FREIGHTER_SECOND})
+            ),
+            # Weirding Way's extra turn (Rise of Ix, "may").
+            PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: frozenset(
+                {AGENT_ICON_EXTRA_TURN}
             ),
         }
     )

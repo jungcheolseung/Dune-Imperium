@@ -98,6 +98,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpendSpecimens,
     SpyRecalledThisTurn,
     SummonSandworm,
+    TakeAnotherTurn,
     TakeCardFromDiscard,
     TakeContract,
     TrashCard,
@@ -683,6 +684,14 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 structure=AbilityStructure.SEPARATE,
                 requirement=_BG_BOND,
                 icons=("freighter", "freighter_second"),
+            ),
+            # Weirding Way (Rise of Ix): "You may take another turn immediately
+            # after this one." [Steam app text] -- an optional icon
+            # (``agent_effects.OPTIONAL_AGENT_ICONS``) answered by its row
+            # (``take_agent_card_extra_turn``); unused, the turn's end lapses it
+            # (OQ-095 (2)).
+            _BOX.MAY_TAKE_ANOTHER_TURN: _icons(
+                ("extra_turn", _line(TakeAnotherTurn()))
             ),
             # Tread in Darkness: "If Bene Gesserit Bond: You may trash a card,
             # Draw 1 card" -- the Bond opens the box and is judged again on each
