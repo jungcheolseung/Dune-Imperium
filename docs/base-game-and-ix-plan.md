@@ -1520,7 +1520,8 @@ P5a를 먼저 하는 까닭: 보드 그림(18.5 1)을 기다리지 않고 원판
 **보드의 모양** `[Rise of Ix pp. 3-5]`, [rise-of-ix.md](rules/rise-of-ix.md) 3·5·8: CHOAM 덮개가 원판 보드 오른쪽 위(Landsraad와 CHOAM 구역)를
 덮어 원판 칸 넷(Hall of Oratory, Rally Troops, Secure Contract, Sell Melange)이 빠지고 새 칸 넷(Dreadnought, Tech Negotiation — Landsraad,
 Interstellar Shipping, Smuggling — Spice Trade)과 **Shipping 트랙**("on the CHOAM board overlay", p. 5)이 생긴다. **Ix 보드**는 보드 옆에 따로 놓이고
-Tech 타일 세 더미와 협상가 자리가 있다(pp. 3-4).
+Tech 타일 세 더미와 협상가 자리가 있다(pp. 3-4). 받은 그림(18.6.2 1)에서는 새 칸 가운데 Dreadnought와 Tech Negotiation이 Ix 보드에, Interstellar
+Shipping과 Smuggling이 덮개에 인쇄돼 있고, 덮개는 Landsraad 조각과 CHOAM 조각 둘이다.
 
 **이미 있는 것(재사용):** 원판 보드 그림과 배치(P5b, `display/board_layout_imperium.py`), Uprising + Bloodlines Tech 모듈 화면(Tech 세 더미·앞면·
 획득 창·뒤집기·Kota의 Secret Project 뒷면 — 보기의 `tech_face_up`·`tech_stack_sizes`·`tech_trash`, 좌석의 `tech_ids`·`tech_flipped`, 카탈로그
@@ -1562,17 +1563,21 @@ Tech 타일 세 더미와 협상가 자리가 있다(pp. 3-4).
    Research Station; 2026-10-29 조회)가 있다 — 새 칸 넷과 Shipping 트랙의 **칸 타일**(팝오버 그림)은 `app_board.py`에 이 컨테이너를 더해 P5b의 원판
    19칸처럼 그린다. **보드 그림**은 TTS 모드 2354919205("Dune Imperium + Rise of IX + Immortality")에서 받는다(사용자 답 1). 처음 후보로 적은 작은
    `Custom_Board` 둘(`ugc/1656728601468972086/97AF2ED5…`, `ugc/1656728601468992121/5A33F0A8…`)은 받아 보니 온통 검은 PNG(3000x1000, 1600x1000)였다
-   — 보드가 아니다. 진짜 후보는 모드의 "Rise of IX Expansion" 가방 안 큰 `Custom_Tile` 둘(GUID `dffad3` `ugc/1833531164453656626/A8E354A6…`,
-   `d80d1f` `ugc/1833531164453654026/CCFD863F…`, 배율 5.12 — Immortality 보드와 같은 크기 등급)이고, 주소가 처음 허락받은 것과 달라 다시 묻는다. 덮개는 원판 그림의 해당 구역 위에 겹쳐 그리고(빠진 칸 넷의 hotspot은 원판 판에서만), Ix 보드는 Bene Tleilax 보드처럼 따로 그린다
-   (`boards.imperium.ix`). 대안: 그림 없이 앱 칸 타일과 Shipping 트랙 타일로 덮개 구역을 짠다.
+   — 보드가 아니다. 모드의 "Rise of IX Expansion" 가방 안 큰 `Custom_Tile` 둘(`dffad3`, `d80d1f`)은 라이벌(1·2인용) 규칙 카드였다. 보드는 그 가방의
+   이름 없는 토큰 셋이다(주소마다 이 세션 채팅에서 다시 허락받음): **Ix 보드**(`ab1ce9`, 설명 "IX", 2100x2132 — Tech Negotiation·Dreadnought 칸,
+   Tech 세 더미 자리, 협상가 자리)와 **CHOAM 덮개의 두 조각**(CHOAM 쪽 `e69504` 2100x1324 — Interstellar Shipping·Smuggling·Shipping 트랙과 보상;
+   Landsraad 쪽 `26034a` 2100x1328 — High Council·Mentat·Swordmaster를 다시 인쇄). 에셋 `902e5a8`의 `board/ix_board.png`,
+   `board/ix_overlay_choam.png`, `board/ix_overlay_landsraad.png`(원본 바이트 그대로, README에 출처). 그래서 새 칸 넷 가운데 **Dreadnought와 Tech
+   Negotiation은 Ix 보드에** 인쇄되고, 덮개에는 Interstellar Shipping·Smuggling과 Shipping 트랙이 있다. 덮개 두 조각은 원판 그림의 Landsraad·CHOAM
+   구역 위에 겹쳐 그리고(빠진 칸 넷의 hotspot은 원판 판에서만; 겹칠 자리는 그림의 인쇄 선에 맞춰 잰다), Ix 보드는 Bene Tleilax 보드처럼 따로
+   그린다(`boards.imperium.ix`).
 2. **Tech 타일 18장:** 앱 `UI_crd_TechTile_*`(Bloodlines Tech 렌더와 같은 틀, `app_cards.py`) — 스캔 `cards/en/rise-of-ix/tech/`와 sheet로 대조. 뒷면은 `back_tech`.
 3. **지도자 여섯:** `app_leaders.py`의 원판 틀(`FRAME_KINDS["original"]`)과 섞은 안(앱 그림 + 스캔 채움)을 Ix 지도자에 — 스캔은 `cards/en/rise-of-ix/leader/`
    에 여섯 장이 있다. 앱 그림이 얼마나 덮는지 먼저 잰다.
 4. **카드:** Ix Imperium 35·Intrigue 17·Conflict 3·프로모 Boundless Ambition — `app_cards.py`의 원판 렌더(P5d)를 Ix 세트로 넓히고, manifest의
    `rise-of-ix` 항목에 content_id를 단다(지금은 Epic 두 장만, `display/images.py`).
-5. **dreadnought 말:** 앱 `P_unitView_Dreadnought.prefab`(앱 이미지 우선 — 3D 말이면 렌더 방법을 정해야 한다). 안 되면 TTS `Custom_Token "<색>
-   Dreadnought"`(`ugc/1833531164453610613/4D779824…`, 허락) 또는 그린 말. 크기는 Commander처럼 칸 프레임 높이에 맞춘다(`conflict_units.sizes`에
-   `dreadnought`).
+5. **dreadnought 말:** Uprising의 그린 모래벌레(`board.js` `drawnSandworm`)처럼 코드로 그린다(사용자 답 3). 크기는 Commander처럼 칸 프레임 높이에
+   맞춘다(`conflict_units.sizes`에 `dreadnought`), 좌석 색.
 6. **Freighter·협상가·Snooper:** Freighter는 좌석 disc(`seatDisc`), 협상가는 좌석 큐브(앱 troop 그림), Snooper token은 앱에서 찾고(`FX_unit_SnooperToken
    Removed` 계열) 없으면 그린 표시.
 7. **새 아이콘 여섯(7절):** Dreadnought, Freighter, Tech Negotiation, Unload, Infiltration, Discard — 앱 아이콘을 `icons/`에 더하고, `ICON_RULES`와
