@@ -2,9 +2,14 @@
 
 /* ---------- setup screen ---------- */
 
-function buildSeatSelects() {
+/* `followDefaults`: a base-game change builds them again, and a seat nobody
+   picked takes the new game's default. */
+function buildSeatSelects({ followDefaults = false } = {}) {
   const wrap = el("seat-selects");
-  /* A language switch builds them again: keep what was chosen. */
+  /* A language switch builds them again: keep what was chosen, as long as
+     the chosen base game's table takes it. */
+  const allowed = allowedSeatKinds();
+  const takes = (kind) => Boolean(kind) && (!allowed || allowed.has(kind));
   const selects = [...wrap.querySelectorAll("select")];
   const chosen = selects.map((select) => select.value);
   const picked = selects.map((select) => select.dataset.chosen);
@@ -20,13 +25,15 @@ function buildSeatSelects() {
     for (const [value, text] of SEAT_KINDS) {
       /* The search AI needs the server's network (--search-checkpoint). */
       if (value === "search" && !(state.server && state.server.search_ai)) continue;
+      if (!takes(value)) continue;
       const option = document.createElement("option");
       option.value = value;
       option.textContent = text;
       select.appendChild(option);
     }
-    select.value = chosen[seat] || defaultSeatKind(seat);
-    if (picked[seat]) select.dataset.chosen = picked[seat];
+    const kept = picked[seat] || !followDefaults ? chosen[seat] : null;
+    select.value = takes(kept) ? kept : defaultSeatKind(seat);
+    if (picked[seat] && takes(kept)) select.dataset.chosen = picked[seat];
     select.addEventListener("change", () => {
       select.dataset.chosen = "1";
     });
@@ -37,15 +44,26 @@ function buildSeatSelects() {
   updateSetupSummary();
 }
 
+/* The seat kinds a table of the chosen base game takes, from the server's
+   one table (GET /whoami seat_kinds, server/seat_kinds.py), or null for
+   every kind: the original game seats no app or search AI until the app
+   AI's port of it (stage P6 of docs/base-game-and-ix-plan.md) adds them
+   there. */
+function allowedSeatKinds() {
+  const table = state.server && state.server.seat_kinds;
+  const kinds = table ? table[el("opt-base-game").value] : null;
+  return kinds ? new Set(kinds) : null;
+}
+
 /* Remote games are four friends: an admin who forgets to change three
    dropdowns must not seat AIs where a friend expects to sit. The open
    (local) server seats one human against three app AIs (Hard), the port of
-   the Steam app's computer opponent, or three heuristic AIs in the original
-   game, whose cards the app AI does not know yet (stage P6 of
-   docs/base-game-and-ix-plan.md). */
+   the Steam app's computer opponent, or three heuristic AIs where the
+   chosen base game's table does not take the app AI. */
 function defaultSeatKind(seat) {
   if (isRemote() || seat === 0) return "human";
-  return el("opt-base-game").value === "imperium" ? "heuristic" : "app_ai";
+  const allowed = allowedSeatKinds();
+  return allowed && !allowed.has("app_ai") ? "heuristic" : "app_ai";
 }
 
 /* The options the original game cannot take yet (rules/setup.py's pending
@@ -76,11 +94,9 @@ function syncBaseGameOption() {
     syncTechOption();
     syncGoTo11Option();
   }
-  /* A seat nobody picked follows the base game's default. */
-  for (const select of el("seat-selects").querySelectorAll("select")) {
-    if (!select.dataset.chosen) select.value = defaultSeatKind(Number(select.dataset.seat));
-  }
-  updateSetupSummary();
+  /* The seats offer what the base game's table takes; a seat nobody picked,
+     or whose pick that table does not take, follows the game's default. */
+  buildSeatSelects({ followDefaults: true });
 }
 
 /* The AI paces a game can run at (server/pacing.py AI_PACES), in the

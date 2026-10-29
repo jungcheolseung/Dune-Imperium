@@ -539,6 +539,7 @@ def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
         "ai_pace": "instant",
         "seating": "random",
         "first_player": "player1",
+        "seat_kinds": {"uprising": None, "imperium": ["heuristic", "human", "random"]},
     }
 
     host = _admin_client(app).get("/whoami")
@@ -551,6 +552,7 @@ def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
         "ai_pace": "instant",
         "seating": "random",
         "first_player": "player1",
+        "seat_kinds": {"uprising": None, "imperium": ["heuristic", "human", "random"]},
     }
 
 
@@ -566,6 +568,7 @@ def test_whoami_on_an_open_server_makes_everyone_the_host(tmp_path: Path) -> Non
         "ai_pace": "instant",
         "seating": "random",
         "first_player": "player1",
+        "seat_kinds": {"uprising": None, "imperium": ["heuristic", "human", "random"]},
     }
 
 

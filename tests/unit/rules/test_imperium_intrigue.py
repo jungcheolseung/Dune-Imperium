@@ -2263,7 +2263,7 @@ def test_dispatch_an_envoy_is_one_cost_free_plot_with_two_copies() -> None:
     )
     assert intrigue_card_text(entry) == [
         "Plot — The card you play this turn has the"
-        " emperor, spacing_guild, bene_gesserit, fremen icons"
+        " Emperor, Spacing Guild, Bene Gesserit, Fremen icons"
     ]
     assert "dispatch_an_envoy" not in {
         entry.card.card_id for entry in INTRIGUE_CARDS

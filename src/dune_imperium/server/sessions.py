@@ -131,6 +131,7 @@ from dune_imperium.server.persistence import (
     read_saved_clock,
 )
 from dune_imperium.server.play_clock import PlayClock
+from dune_imperium.server.seat_kinds import seat_kind_allowed
 from dune_imperium.server.session_log import (
     EFFECT_PICKED_EVENT,
     SEALED_ACTION_IDS,
@@ -656,13 +657,7 @@ class GameSessionManager:
             raise SessionError(f"unknown AI pace {pace!r}")
 
         engine = UprisingRulesEngine()
-        try:
-            initial = engine.reset(config, game_seed)
-        except NotImplementedError as error:
-            # Setup refuses a combination whose content is not in the engine
-            # yet (the original game with an option of a later stage of
-            # docs/base-game-and-ix-plan.md); a bad request too.
-            raise SessionError(str(error)) from error
+        initial = _reset(engine, config, game_seed)
         session = GameSession(
             game_id=uuid.uuid4().hex,
             config=config,
@@ -1387,7 +1382,7 @@ class GameSessionManager:
             policy_seed=parsed.policy_seed,
             seats=parsed.seats,
             engine=engine,
-            state=engine.reset(config, parsed.replay.seed),
+            state=_reset(engine, config, parsed.replay.seed),
             chance=ChanceResolver(seed=parsed.replay.seed),
             agents=_build_agents(parsed.seats, parsed.policy_seed, config),
         )
@@ -2426,12 +2421,31 @@ def _clean_player_name(name: str) -> str:
     return cleaned
 
 
+def _reset(engine: UprisingRulesEngine, config: RulesetConfig, seed: int) -> GameState:
+    """The game's first state, for a new game or a save's restore.
+
+    Setup refuses a combination whose content is not in the engine yet (the
+    original game with an option of a later stage of
+    docs/base-game-and-ix-plan.md); that is a bad request or a save this
+    build cannot play, not a server fault.
+    """
+
+    try:
+        return engine.reset(config, seed)
+    except NotImplementedError as error:
+        raise SessionError(str(error)) from error
+
+
 def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
     if len(seats) != config.players:
         raise SessionError("exactly one seat assignment per player is required")
     for assignment in seats:
         if assignment != HUMAN_SEAT and not is_agent_kind(assignment):
             raise SessionError(f"unknown seat assignment: {assignment!r}")
+        # The seats a table of this base game may hold (server/seat_kinds.py,
+        # the table the setup screen offers from too).
+        if not seat_kind_allowed(assignment, config.base_game):
+            raise SessionError(f"this base game cannot seat {assignment!r} yet")
         # A split search seat, or one with a search option other than the
         # flip margin, is a measurement tool; a table seat names one file,
         # which is what the players are shown (``_public_seat_kind``).

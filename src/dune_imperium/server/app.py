@@ -57,6 +57,7 @@ from dune_imperium.server.persistence import (
     UnknownSaveError,
     default_saves_directory,
 )
+from dune_imperium.server.seat_kinds import seat_kinds_payload
 from dune_imperium.server.seating import (
     DEFAULT_FIRST_PLAYER,
     DEFAULT_SEATING,
@@ -603,6 +604,9 @@ def create_app(
             "seating": default_seating,
             # Whether its "Player 1 starts" box opens checked (OQ-132).
             "first_player": default_first_player,
+            # The seats each base game's table takes (server/seat_kinds.py):
+            # the setup screen offers these, the server refuses the rest.
+            "seat_kinds": seat_kinds_payload(),
         }
 
     @app.post("/auth/admin")

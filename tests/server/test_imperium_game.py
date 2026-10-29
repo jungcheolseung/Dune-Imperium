@@ -16,7 +16,9 @@ from typing import Any
 
 import pytest
 
-from dune_imperium.server.sessions import GameSessionManager
+from dune_imperium.config import BaseGame
+from dune_imperium.server.seat_kinds import seat_kind_allowed, seat_kinds_payload
+from dune_imperium.server.sessions import GameSessionManager, SessionError
 
 
 def _play(**options: Any) -> tuple[int, dict[str, Any]]:
@@ -70,3 +72,45 @@ def test_an_original_game_serializes_every_step_to_its_end(
     steps, summary = _play(**options)
     assert summary["finished"], (steps, summary["round_number"])
     assert summary["base_game"] == "imperium"
+
+
+def test_an_original_table_takes_only_the_seats_of_its_row() -> None:
+    # server/seat_kinds.py: the original game seats the human, heuristic
+    # and random seats until the app AI's port of it (plan 18.5 3).
+    manager = GameSessionManager()
+    for refused in ("app_ai", "app_ai_easy", "rollout", "checkpoint:x.pt"):
+        with pytest.raises(SessionError, match="cannot seat"):
+            manager.create_game(
+                ("human", refused, "heuristic", "heuristic"), base_game="imperium"
+            )
+    summary = manager.create_game(
+        ("human", "random", "heuristic", "heuristic"), base_game="imperium"
+    )
+    assert summary["base_game"] == "imperium"
+    # Uprising takes every kind.
+    assert manager.create_game(("human", "app_ai", "app_ai", "app_ai"))
+    payload = seat_kinds_payload()
+    assert payload == {"uprising": None, "imperium": ["heuristic", "human", "random"]}
+    assert all(
+        seat_kind_allowed(kind, BaseGame.IMPERIUM) == (kind in allowed)
+        for kind in ("human", "heuristic", "random", "app_ai", "search:x.pt")
+        for allowed in [payload["imperium"]]
+        if isinstance(allowed, list)
+    )
+
+
+def test_a_save_the_engine_cannot_set_up_is_refused_not_a_fault() -> None:
+    # A save of the original game with an option of a later stage (here
+    # Bloodlines, P7) is refused the way a new game's setup is: a
+    # SessionError (HTTP 400), never a server error.
+    manager = GameSessionManager()
+    summary = manager.create_game(("human",) * 4, base_game="imperium", game_seed=4)
+    document: Any = manager.save_document(str(summary["game_id"]))
+    document["ruleset"] = {**document["ruleset"], "bloodlines": True}
+    with pytest.raises(SessionError, match="bloodlines"):
+        manager.restore_game(document)
+    # A save whose seats the original table does not take is refused too.
+    seated: Any = manager.save_document(str(summary["game_id"]))
+    seated["seats"] = ["human", "app_ai", "human", "human"]
+    with pytest.raises(SessionError, match="cannot seat"):
+        manager.restore_game(seated)

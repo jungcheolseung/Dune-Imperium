@@ -41,10 +41,19 @@ const SERVER_ERROR_KO = {
   "unreadable save file": "읽을 수 없는 저장 파일",
   "a save document must be a JSON object": "저장 파일의 형식이 올바르지 않습니다",
   "not a dune-imperium save document": "이 게임의 저장 파일이 아닙니다",
-  "the replayed save does not reproduce its recorded state hash": "저장본을 다시 재생한 결과가 기록된 상태와 다릅니다"
+  "the replayed save does not reproduce its recorded state hash": "저장본을 다시 재생한 결과가 기록된 상태와 다릅니다",
+  "Rise of Ix has no content in the engine yet": "엔진에 아직 익스의 부상 내용이 없습니다"
 };
 
 const SERVER_ERROR_KO_PATTERNS = [
+  [
+    "^this base game cannot seat (.+) yet$",
+    "이 기본 판에는 아직 $1 좌석을 앉힐 수 없습니다"
+  ],
+  [
+    "^the original game takes (.+) from stage (.+) of the base game plan$",
+    "원판은 아직 $1 옵션과 함께 할 수 없습니다 (계획의 $2 단계)"
+  ],
   [
     "^unknown AI pace (.+)$",
     "알 수 없는 AI 진행 속도입니다: $1"

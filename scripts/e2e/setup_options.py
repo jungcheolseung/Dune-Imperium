@@ -682,6 +682,9 @@ BASE_GAME_JS = """() => {
     want: t("html.base_game_imperium_note"),
     kinds: [...document.querySelectorAll("#seat-selects select")].map(
       (select) => select.value),
+    offered: [...document.querySelectorAll("#seat-selects select")].map(
+      (select) => [...select.options].map((option) => option.value)),
+    table: state.server.seat_kinds,
   };
 }"""
 
@@ -713,10 +716,15 @@ def original_game(base: str, browser) -> None:
     context, page, rec = open_context(browser, "setup-original-game")
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
+    page.wait_for_function(
+        "state.server !== null"
+        " && document.querySelectorAll('#seat-selects select').length === 4"
+    )
     before = page.evaluate(BASE_GAME_JS)
     check.ok(before["base"] == "uprising", "the select opens on Uprising", before)
     check.ok(not before["noteShown"], "Uprising: no note", before)
     page.select_option("#seat-selects select[data-seat='1']", "random")
+    page.select_option("#seat-selects select[data-seat='2']", "app_ai_easy")
     page.select_option("#opt-base-game", "imperium")
     original = page.evaluate(BASE_GAME_JS)
     check.ok(
@@ -732,8 +740,16 @@ def original_game(base: str, browser) -> None:
     )
     check.ok(
         original["kinds"] == ["human", "random", "heuristic", "heuristic"],
-        "unpicked AI seats follow the original game's default; a picked one stays",
+        "unpicked seats and an app AI the original table refuses become heuristic;"
+        " a picked random seat stays",
         original["kinds"],
+    )
+    allowed = sorted(original["table"]["imperium"])
+    check.ok(
+        allowed == ["heuristic", "human", "random"]
+        and all(sorted(kinds) == allowed for kinds in original["offered"]),
+        "every seat offers just the original table's kinds (GET /whoami seat_kinds)",
+        {"table": original["table"], "offered": original["offered"][0]},
     )
     page.select_option("#opt-base-game", "uprising")
     back = page.evaluate(BASE_GAME_JS)
