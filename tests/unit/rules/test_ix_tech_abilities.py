@@ -32,6 +32,7 @@ from dune_imperium.adapters.action_codec import ActionCodec, ActionTemplate
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.rise_of_ix.tech import IX_TECH_TILES
+from dune_imperium.content.uprising.intrigue import twisted_intrigue_instance_ids
 from dune_imperium.core import (
     ChanceDecision,
     ChanceResolver,
@@ -1684,6 +1685,24 @@ def test_a_draw_that_reaches_the_cards_just_put_gives_them_back_known_to_none() 
     assert done.players[0].intrigue_cards == (second, first)
     assert done.intrigue_deck == ()
     assert done.players[0].known_intrigue_ids == ()
+
+
+def test_a_twisted_intrigue_card_is_never_put_on_the_deck() -> None:
+    """A Twisted card must not reach the common deck (OQ-097, user ruling
+    2026-10-04 "다른 사람이 twisted 카드를 뽑는 일은 없도록"): a hand of Twisted
+    cards alone leaves nothing to put, so the trash is not offered, and with
+    another card only that one is a row of the pick."""
+
+    twisted = twisted_intrigue_instance_ids()[0]
+    only = _seat(_turn("sonic_snoopers"), 0, intrigue_cards=(twisted,))
+    assert _trash_rows(only) == []
+    state = _snoopers(1)
+    plain = state.players[0].intrigue_cards[0]
+    mixed = _seat(state, 0, intrigue_cards=(twisted, plain))
+    rows = ENGINE.legal_actions(_stack(mixed, TRASH_SNOOPERS), 0)
+    assert [row for row in rows if row.action_id == "choose_intrigue_card"] == [
+        _put(plain)
+    ]
 
 
 def test_sonic_snoopers_is_offered_in_a_reveal_turn_too() -> None:
