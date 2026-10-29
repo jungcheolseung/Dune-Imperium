@@ -596,8 +596,11 @@ _GENERIC_ICON_BOXES = frozenset(
         # the Influence is a separate graft-conditioned one (engine audit
         # 2026-10-22, P4; the Influence is ``_CARD_INFLUENCE_ABILITY``'s).
         ("interstellar_conspiracy", "spice"),
-        # The original Gurney Halleck's printed ``AgentTroops``.
+        # The original Gurney Halleck's printed ``AgentTroops``, and Gene
+        # Manipulation's Bond spice: its box is ``GeneManipulationAbility``,
+        # an ``AgentAbility`` (its trash is ``_TRASH_ABILITY``'s).
         ("gurney_halleck_card", "troops"),
+        ("gene_manipulation", "spice"),
     }
 )
 #: Cards whose reward icons are armed after an arrow cost: the app answered
