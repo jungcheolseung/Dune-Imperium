@@ -46,6 +46,7 @@ from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
 from dune_imperium.agents.app_ai.data.synthetic import SYNTHETIC
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
+from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS
 from dune_imperium.content.rise_of_ix.tech import IX_TECH_TILES
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.contracts import BLOODLINES_CONTRACTS
@@ -297,6 +298,54 @@ ORIGINAL_CONFLICT_ARCHETYPES = {
 }
 
 
+# Rise of Ix (stage P5f): its Imperium cards and the promo Boundless Ambition,
+# 17 Intrigue cards and the three Conflicts the app AI's catalog lacks (Control
+# the Spice and Economic Supremacy are the Epic cards it lists), found through
+# the same attribute table.
+IX_CARD_ARCHETYPES = {
+    imperium_entries.card_id(a): a.short
+    for a in imperium_entries.set_archetypes("ix", "imperium")
+}
+IX_INTRIGUE_ARCHETYPES = {
+    imperium_entries.card_id(a): a.short
+    for a in imperium_entries.set_archetypes("ix", "intrigue")
+}
+_IX_CONFLICTS = {
+    short.rsplit(".", 1)[1].lower(): short
+    for short in ARCHETYPES
+    if short.startswith("ConflictArchetypes.RiseOfIx.")
+}
+# skirmish_e -> ...SkirmishE, trade_monopoly -> ...TradeMonopoly
+IX_CONFLICT_ARCHETYPES = {
+    c.card.card_id: _IX_CONFLICTS[c.card.card_id.replace("_", "")]
+    for c in IX_CONFLICTS
+}
+# Cards drawn in English only (per kind: an id names one printing): no Korean
+# edition text is read for the original game or Rise of Ix yet.
+ENGLISH_ONLY_IMPERIUM = frozenset({*ORIGINAL_CARD_ARCHETYPES, *IX_CARD_ARCHETYPES})
+ENGLISH_ONLY_INTRIGUE = frozenset(
+    {*ORIGINAL_INTRIGUE_ARCHETYPES, *IX_INTRIGUE_ARCHETYPES}
+)
+ENGLISH_ONLY_CONFLICT = frozenset(
+    {*ORIGINAL_CONFLICT_ARCHETYPES, *IX_CONFLICT_ARCHETYPES}
+)
+
+
+# (kind, content id -> archetype) of each set ``--kind original`` and ``--kind ix``
+# render.
+SET_TABLES = {
+    "original": (
+        ("imperium", ORIGINAL_CARD_ARCHETYPES),
+        ("intrigue", ORIGINAL_INTRIGUE_ARCHETYPES),
+        ("conflict", ORIGINAL_CONFLICT_ARCHETYPES),
+    ),
+    "ix": (
+        ("imperium", IX_CARD_ARCHETYPES),
+        ("intrigue", IX_INTRIGUE_ARCHETYPES),
+        ("conflict", IX_CONFLICT_ARCHETYPES),
+    ),
+}
+
 # Original cards the app cannot draw as printed, which keep their scan: the
 # original game's The Spice Must Flow prints a sandworm over the dunes, while
 # the app ships one painting under that name, Uprising's (the ship and the
@@ -334,21 +383,27 @@ ORIGINAL_APP_TEXT = frozenset(
 
 def card_archetype(content_id):
     return (
-        catalog.CARD_ARCHETYPES.get(content_id) or ORIGINAL_CARD_ARCHETYPES[content_id]
+        catalog.CARD_ARCHETYPES.get(content_id)
+        or ORIGINAL_CARD_ARCHETYPES.get(content_id)
+        or IX_CARD_ARCHETYPES[content_id]
     )
 
 
 def intrigue_archetype(content_id):
     return (
         catalog.INTRIGUE_ARCHETYPES.get(content_id)
-        or ORIGINAL_INTRIGUE_ARCHETYPES[content_id]
+        or ORIGINAL_INTRIGUE_ARCHETYPES.get(content_id)
+        or IX_INTRIGUE_ARCHETYPES[content_id]
     )
 
 
 def conflict_short(content_id):
     if content_id in catalog.CONFLICT_ARCHETYPES:
         return catalog.CONFLICT_ARCHETYPES[content_id][1]
-    return ORIGINAL_CONFLICT_ARCHETYPES[content_id]
+    return (
+        ORIGINAL_CONFLICT_ARCHETYPES.get(content_id)
+        or IX_CONFLICT_ARCHETYPES[content_id]
+    )
 
 
 def imperium_spec(inp, content_id, catalog_kind="imperium"):
@@ -373,7 +428,7 @@ def imperium_spec(inp, content_id, catalog_kind="imperium"):
         "kind": "imperium",
         "id": content_id,
         "skip": ORIGINAL_SCAN_ONLY.get(content_id),
-        "original": content_id in ORIGINAL_CARD_ARCHETYPES,
+        "english_only": content_id in ENGLISH_ONLY_IMPERIUM,
         "arch": short,
         "slug": slug,
         "prefab": prefab,
@@ -947,7 +1002,7 @@ def bind_card_prefab(inp, spec, lang):
         # (Imperium Ceremony's says 5, the card 6)
         for n in R.find_all(t, "PersuasionText"):
             n["text"] = str(spec["cost"])
-    return bind_prefab_texts(inp, t, lang, spec["prefab"], spec.get("original"))
+    return bind_prefab_texts(inp, t, lang, spec["prefab"], spec.get("english_only"))
 
 
 def bind_dynamic(inp, spec, lang):
@@ -1205,9 +1260,25 @@ PRINT_GRAFT_TAB_WIDTH = 383.0  # the tab from the box's left edge (x 22)
 PRINT_GRAFT_ICON_COLUMN = 66.0
 
 
+# Rise of Ix's Infiltration icon (an Agent icon with a profile; the card's
+# ``IconList`` entry is also in ``InfiltrationIconList``): the app has its own
+# sprite per space, a tab with a notch, drawn instead of the plain icon.
+INFILTRATE_ICONS = {
+    "Emperor": "UI_crd_ActionFaction_Infiltrate_Emperor",
+    "SpacingGuild": "UI_crd_ActionFaction_Infiltrate_SpacingGuild",
+    "BeneGesserit": "UI_crd_ActionFaction_Infiltrate_BeneGesserit",
+    "Fremen": "UI_crd_ActionFaction_Infiltrate_Fremen",
+    "Pentagon": "UI_crd_ActionFaction_Infiltrate_Landsraad",
+    "Circle": "UI_crd_ActionFaction_Infiltrate_PopulationCenter",
+    "Triangle": "UI_crd_ActionFaction_Infiltrate_Commerce",
+}
+
+
 def bind_icons(t, icon_tpl, spec):
     col = R.find(t, "UI_crd_Element_ActionColumn_Dynamic")
-    icons = spec["icons"] + spec["infiltrate"]
+    icons = list(spec["icons"]) + [
+        i for i in spec["infiltrate"] if i not in spec["icons"]
+    ]
     n = len(icons)
     col["pref_w"], col["pref_h"] = 80, n * 58 + max(0, n - 1) * 5
     label = R.find_shown(t, "GraftTextElement")  # graft cards only
@@ -1231,7 +1302,10 @@ def bind_icons(t, icon_tpl, spec):
     for ic in icons:
         node = copy.deepcopy(icon_tpl)
         node["active"] = True
-        set_sprite(R.find(node, "Icon"), AGENT_ICONS[ic])
+        set_sprite(
+            R.find(node, "Icon"),
+            INFILTRATE_ICONS[ic] if ic in spec["infiltrate"] else AGENT_ICONS[ic],
+        )
         hl = R.find(node, "Highlight")
         if hl:
             hl["active"] = False
@@ -1301,7 +1375,8 @@ def intrigue_spec(inp, content_id):
     return {
         "kind": "intrigue",
         "id": content_id,
-        "original": content_id in ORIGINAL_INTRIGUE_ARCHETYPES,
+        "english_only": content_id in ENGLISH_ONLY_INTRIGUE,
+        "set_indicator": content_id in IX_INTRIGUE_ARCHETYPES,
         "arch": short,
         "slug": slug,
         "prefab": prefab,
@@ -1496,8 +1571,9 @@ def bind_intrigue_prefab(inp, spec, lang):
     R.comp(R.find(t, "CardTypeText_Anchor"), "RT")["size"][1] = 92.0
     for n in R.find_all(t, "FrameText"):
         n["text"] = "—또는—" if lang == "ko" else "—OR—"
-    for n in R.find_all(t, "SetIndicator"):
-        n["active"] = False
+    if not spec.get("set_indicator"):
+        for n in R.find_all(t, "SetIndicator"):
+            n["active"] = False
     if lang == "ko":
         head["fallback"] = str(KOREAN_FONT_BOLD)
         for n in (
@@ -1506,7 +1582,7 @@ def bind_intrigue_prefab(inp, spec, lang):
         ):
             n["fallback"] = str(KOREAN_FONT_BOLD)
     centre_ink(inp, head, R.comp(t, "RT")["size"], INTRIGUE_BAND_MIDDLE)
-    return bind_prefab_texts(inp, t, lang, spec["prefab"], spec.get("original"))
+    return bind_prefab_texts(inp, t, lang, spec["prefab"], spec.get("english_only"))
 
 
 def bind_intrigue(inp, spec, lang):
@@ -1679,7 +1755,8 @@ def conflict_spec(inp, content_id):
         "kind": "conflict",
         "prefab": prefab,
         "id": content_id,
-        "original": content_id in ORIGINAL_CONFLICT_ARCHETYPES,
+        "english_only": content_id in ENGLISH_ONLY_CONFLICT,
+        "set_indicator": content_id in IX_CONFLICT_ARCHETYPES,
         "arch": short,
         "slug": slug,
         "title": {
@@ -1707,7 +1784,11 @@ def bind_conflict_prefab(inp, spec, lang):
     head["text"] = spec["title"].get(lang) or spec["title"]["en"]
     if lang == "ko":
         head["fallback"] = str(KOREAN_FONT_BOLD)
-    for off in ("crd_3rd_greyout", "Crd_Flash", "SetIndicator"):
+    # Rise of Ix's own cards keep the app's two-dot set mark (Set2), as printed
+    offs = ("crd_3rd_greyout", "Crd_Flash")
+    if not spec.get("set_indicator"):
+        offs += ("SetIndicator",)
+    for off in offs:
         for n in R.find_all(t, off):
             n["active"] = False
     # the face and its contents fade in at run time from alpha 0
@@ -1724,7 +1805,7 @@ def bind_conflict_prefab(inp, spec, lang):
         if lang == "ko":
             suffix["fallback"] = str(KOREAN_FONT_BOLD)
         R.find(a, f"{i + 1}Text")["text"] = str(i + 1)
-    return bind_prefab_texts(inp, t, lang, spec["prefab"], spec.get("original"))
+    return bind_prefab_texts(inp, t, lang, spec["prefab"], spec.get("english_only"))
 
 
 def bind_conflict(inp, spec, lang):
@@ -1824,10 +1905,10 @@ def prefab_text_nodes(t, prefab):
     return out
 
 
-def bind_prefab_texts(inp, t, lang, prefab="", original=False):
+def bind_prefab_texts(inp, t, lang, prefab="", english_only=False):
     """A per-card prefab carries its own texts: draw them, printed English and
-    Korean from the text tables by the node's key. ``original``: the original
-    game's cards (see ``ORIGINAL_APP_TEXT``)."""
+    Korean from the text tables by the node's key. ``english_only``: the
+    original game's and Rise of Ix's cards (see ``ORIGINAL_APP_TEXT``)."""
     keyed = {id(n): k for k, n in prefab_text_nodes(t, prefab)}
 
     def walk(n):
@@ -1841,7 +1922,7 @@ def bind_prefab_texts(inp, t, lang, prefab="", original=False):
                     text = inp.ko[key]
             elif key and key in inp.en:
                 text = inp.en[key]
-            elif original and key in ORIGINAL_APP_TEXT:
+            elif english_only and key in ORIGINAL_APP_TEXT:
                 text = inp.text_en(key)
             n["text"] = text
         for ch in n["children"]:
@@ -2844,17 +2925,9 @@ def render_card(inp, spec, lang, scale):
 
 def card_ids(args):
     """[(kind, content id)] from --kind and --all / --ids."""
-    if args.kind == "original":
-        # only the original game's cards, whichever kind they are
-        return [
-            (kind, cid)
-            for kind, ids in (
-                ("imperium", ORIGINAL_CARD_ARCHETYPES),
-                ("intrigue", ORIGINAL_INTRIGUE_ARCHETYPES),
-                ("conflict", ORIGINAL_CONFLICT_ARCHETYPES),
-            )
-            for cid in ids
-        ]
+    if args.kind in ("original", "ix"):
+        # only the original game's or Rise of Ix's cards, whichever kind they are
+        return [(kind, cid) for kind, ids in SET_TABLES[args.kind] for cid in ids]
     kinds = list(KIND_IDS) if args.kind == "all" else args.kind.split(",")
     out = []
     for kind in kinds:
@@ -2871,8 +2944,9 @@ def text_fields(spec):
 
 def korean_complete(spec):
     """Every English text of the card has its Korean-edition counterpart. The
-    original game has no Korean edition text yet: its cards render in English only."""
-    if spec.get("original"):
+    original game and Rise of Ix have no Korean edition text yet: their cards
+    render in English only."""
+    if spec.get("english_only"):
         return False
     return all(t.get("ko") for t in text_fields(spec) if t.get("en"))
 
@@ -2970,7 +3044,7 @@ def main():
         p.add_argument(
             "--kind",
             default="imperium",
-            help="imperium, intrigue, ..., all, or original (original game only)",
+            help="imperium, intrigue, ..., all, original (original game only) or ix",
         )
         p.set_defaults(fn=fn)
         if name == "render":
