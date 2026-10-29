@@ -709,6 +709,8 @@ MAX_INTRIGUE_DEPLOYMENT = 4
 MAX_COMMANDER_DEPLOYMENT = 7
 # Two dreadnoughts a seat [Rise of Ix p. 6].
 MAX_DREADNOUGHT_DEPLOYMENT = 2
+# Second Wave: "Deploy up to two units from your garrison to the Conflict."
+SECOND_WAVE_UNITS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -1069,7 +1071,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # Rise of Ix's dreadnought, a third kind of unit to deploy and take
         # back [Rise of Ix p. 6], and the Dreadnought icon an Intrigue slot
         # offers; no catalog without the expansion holds these rows.
-        templates.extend(_rise_of_ix_unit_templates())
+        templates.extend(_rise_of_ix_unit_templates(config))
         # Local Fence's two Agent-box arrows printed with "-OR-", one row
         # each (``agent_box_abilities.payment_box``).
         templates.extend(
@@ -1647,6 +1649,40 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for stack in content.reserve_stacks
     )
     templates.extend(_trash_templates(config, "trash_leader_card"))
+    if config.rise_of_ix:
+        # Archduke Armand Ecaz (stage P4e): Coordination's Reveal-turn trash,
+        # and Conscript's card on top of the deck while Spaceport lets him
+        # put it there.
+        templates.extend(_trash_templates(config, "trash_leader_reveal_card"))
+        if not config.immortality:
+            # Viscount Hundro Moritani's Intelligence keeps one of the
+            # Intrigue deck's top two (an Immortality catalog holds the
+            # keep-one rows already, for Imperium Ceremony).
+            templates.extend(
+                ActionTemplate(
+                    action_id="keep_peeked_intrigue",
+                    arguments=(("instance_id", instance_id),),
+                )
+                for instance_id in intrigue_instances
+            )
+        templates.extend(
+            ActionTemplate(
+                action_id="acquire_leader_imperium",
+                arguments=(("instance_id", instance_id), ("to_deck_top", True)),
+            )
+            for instance_id in imperium_instances
+        )
+        # Guild Contacts' Foldspace goes on the deck the same way, so every
+        # Reserve stack has its twin.
+        templates.extend(
+            ActionTemplate(
+                action_id="acquire_leader_reserve",
+                arguments=(("card_id", stack.card.card_id), ("to_deck_top", True)),
+            )
+            for stack in content.reserve_stacks
+        )
+        # Ilesa Ecaz's One Step Ahead: the hand card set aside at Round Start.
+        templates.extend(_trash_templates(config, "set_aside_leader_card"))
     templates.extend(_trash_templates(config, "trash_agent_card"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_draw"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_discard"))
@@ -2400,6 +2436,12 @@ def _window_printers(
                 if config.rise_of_ix
                 else ()
             ),
+            # Prince Rhombur Vernius' Ixian Technology (stage P4e).
+            *(
+                (Source.LEADER, face)
+                for face in faces
+                if config.rise_of_ix and face == "prince_rhombur_vernius"
+            ),
         )
     if action_id == "resolve_opponent_discard_without_card":
         # Covert Operation's, Reverend Mother Mohiam's and Test of Humanity's
@@ -2598,6 +2640,13 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
             # The original game's Prudent Diplomacy and Scheme.
             "duke_leto_atreides",
             "baron_vladimir_harkonnen",
+            # Rise of Ix's Final Delivery, Ixian Technology, Conscript,
+            # Couriers and Guild Contacts.
+            "princess_yuna_moritani",
+            "prince_rhombur_vernius",
+            "archduke_armand_ecaz",
+            "viscount_hundro_moritani",
+            "ilesa_ecaz",
         }
     ),
     "resolve_leader_signet_without_option": frozenset(
@@ -2623,23 +2672,37 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "pay_leader_signet_spice": frozenset(
         {"lady_jessica", "reverend_mother_jessica", "staban_tuek", "gaius_helen_mohiam"}
     ),
-    # Unseen Network's Solari; the original game's Scheme.
+    # Unseen Network's Solari; the original game's Scheme; Rise of Ix's
+    # Final Delivery with every Faction at the top.
     "pay_leader_signet_solari": frozenset(
-        {"staban_tuek", "baron_vladimir_harkonnen"}
+        {"staban_tuek", "baron_vladimir_harkonnen", "princess_yuna_moritani"}
     ),
     "pay_leader_signet_water": frozenset({"chani"}),
     "gain_leader_signet_troop": frozenset({"shaddam_corrino_iv"}),
-    # Shaddam's three Solari; the original game's Prudent Diplomacy.
+    # Shaddam's three Solari; the original game's Prudent Diplomacy; Rise
+    # of Ix's Final Delivery.
     "choose_leader_signet_influence": frozenset(
-        {"shaddam_corrino_iv", "duke_leto_atreides"}
+        {"shaddam_corrino_iv", "duke_leto_atreides", "princess_yuna_moritani"}
     ),
-    "acquire_leader_imperium": frozenset({"princess_irulan"}),
-    "acquire_leader_reserve": frozenset({"princess_irulan"}),
+    # Chronicler's Insight; Rise of Ix's Conscript and Guild Contacts.
+    "acquire_leader_imperium": frozenset({"princess_irulan", "archduke_armand_ecaz"}),
+    "acquire_leader_reserve": frozenset(
+        {"princess_irulan", "archduke_armand_ecaz", "ilesa_ecaz"}
+    ),
+    # Rise of Ix's One Step Ahead.
+    "set_aside_leader_card": frozenset({"ilesa_ecaz"}),
+    # Rise of Ix's Coordination.
+    "trash_leader_reveal_card": frozenset({"archduke_armand_ecaz"}),
     "retreat_leader_troops": frozenset({"chani"}),
     "place_leader_bonus_spice": frozenset({"esmar_tuek"}),
     "take_leader_bonus_spice": frozenset({"esmar_tuek"}),
     "deploy_leader_agent": frozenset({"duncan_idaho"}),
     "gain_leader_signet_spice": frozenset({"kota_odax_of_ix"}),
+    # Rise of Ix's Couriers and Ixian Technology.
+    "advance_leader_freighter": frozenset({"viscount_hundro_moritani"}),
+    "recall_leader_freighter": frozenset({"viscount_hundro_moritani"}),
+    "acquire_leader_tech": frozenset({"prince_rhombur_vernius"}),
+    "place_leader_negotiator": frozenset({"prince_rhombur_vernius"}),
     "trash_leader_tech": frozenset({"kota_odax_of_ix"}),
     "use_other_memories": frozenset({"lady_jessica"}),
     "draw_planetologist_intrigue": frozenset({"liet_kynes"}),
@@ -2760,7 +2823,7 @@ def _leader_faces(config: RulesetConfig) -> tuple[str, ...]:
     return tuple(faces)
 
 
-def _rise_of_ix_unit_templates() -> tuple[ActionTemplate, ...]:
+def _rise_of_ix_unit_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     """Rise of Ix's dreadnought rows (``rules.combat_deployment``,
     ``rules.dreadnought_commission``): the deployment of garrison dreadnoughts
     and its withdrawal, a count each (a seat has two), an Intrigue slot's
@@ -2772,6 +2835,27 @@ def _rise_of_ix_unit_templates() -> tuple[ActionTemplate, ...]:
         for action_id in ("deploy_dreadnoughts", "withdraw_dreadnoughts")
         for count in range(1, MAX_DREADNOUGHT_DEPLOYMENT + 1)
     ]
+    # Second Wave's "up to two units" deployment, dreadnoughts among them
+    # [Rise of Ix p. 6]: the units in all, the share that is dreadnoughts,
+    # and with Bloodlines the Commanders' share (``units.unit_count_arguments``).
+    # The count-only and the Commander-only rows are the base catalog's.
+    templates.extend(
+        ActionTemplate(
+            action_id="deploy_intrigue_troops",
+            arguments=tuple(
+                sorted(
+                    (
+                        *((("commanders", share),) if share else ()),
+                        ("count", count),
+                        ("dreadnoughts", ships),
+                    )
+                )
+            ),
+        )
+        for count in range(1, SECOND_WAVE_UNITS + 1)
+        for ships in range(1, min(count, MAX_DREADNOUGHT_DEPLOYMENT) + 1)
+        for share in range(0, (count - ships + 1) if config.bloodlines else 1)
+    )
     templates.extend(
         ActionTemplate(action_id=action_id)
         for action_id in (
@@ -2791,6 +2875,12 @@ def _rise_of_ix_unit_templates() -> tuple[ActionTemplate, ...]:
             "recall_board_freighter",
             # Spaceport's Foldspace card on top of the deck.
             "acquire_foldspace_to_deck_top",
+            # Prince Rhombur Vernius' Ixian Technology and Viscount Hundro
+            # Moritani's Couriers (stage P4e).
+            "acquire_leader_tech",
+            "place_leader_negotiator",
+            "advance_leader_freighter",
+            "recall_leader_freighter",
         )
     )
     templates.extend(_shipping_track_templates())

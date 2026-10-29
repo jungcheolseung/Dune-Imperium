@@ -223,7 +223,11 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.FACTION: frozenset(
         {"alliance_recipient", "effect", "faction", "gained_faction", "lost_faction"}
     ),
-    Target.UNITS: frozenset({"commanders", "count", "player", "zone", "zones"}),
+    # ``dreadnoughts``: the share of a count that is dreadnoughts, for a card
+    # that moves "units" (Second Wave) [Rise of Ix p. 6].
+    Target.UNITS: frozenset(
+        {"commanders", "count", "dreadnoughts", "player", "zone", "zones"}
+    ),
     Target.RESOURCES: frozenset({"solari", "spice", "water"}),
     Target.OPTION: frozenset(
         {"choice", "effect", "option", "pick", "reward", "section", "slot"}
@@ -231,8 +235,9 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.CONFLICT_CARD: frozenset({"card_id"}),
     Target.SUBCOMMITTEE: frozenset({"subcommittee_id"}),
     Target.MISSION: frozenset({"target"}),
-    # A number of units, the Commanders among them riding along (B3d-2a).
-    Target.COUNT: frozenset({"commanders", "count"}),
+    # A number of units, the Commanders and the dreadnoughts among them
+    # riding along (B3d-2a; Second Wave).
+    Target.COUNT: frozenset({"commanders", "count", "dreadnoughts"}),
     Target.WILD_ICON: frozenset({"matching_card_id", "wild_card_id"}),
     Target.EFFECT: frozenset(
         {
@@ -477,6 +482,8 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "set_aside_leader_imperium": _row(
         _V.SET_ASIDE, _S.LEADER, _T.IMPERIUM_CARD, tag=_BOX
     ),
+    # Rise of Ix's Ilesa Ecaz: One Step Ahead's Round Start hand card.
+    "set_aside_leader_card": _row(_V.SET_ASIDE, _S.LEADER, _T.PERSONAL_CARD),
     # The original game's Earl Memnon Thorvald: Connections' Influence.
     "choose_connections_influence": _row(
         _V.GAIN_INFLUENCE, _S.LEADER, _T.FACTION, variant="connections"
@@ -491,6 +498,19 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "deploy_leader_agent": _row(_V.DEPLOY, _S.LEADER, variant="agent", tag=_BOX),
     "gain_leader_signet_spice": _row(_V.GAIN, _S.LEADER, tag=_BOX),
+    # Rise of Ix's Viscount Hundro Moritani: Couriers' spice for a Freighter
+    # move up or a recall.
+    "advance_leader_freighter": _row(
+        _V.ADVANCE, _S.LEADER, variant="freighter", tag=_BOX
+    ),
+    "recall_leader_freighter": _row(
+        _V.COLLECT, _S.LEADER, variant="freighter", tag=_BOX
+    ),
+    # Rise of Ix's Prince Rhombur Vernius: Ixian Technology's two halves.
+    "acquire_leader_tech": _row(_V.ACQUIRE, _S.LEADER, variant="ix_tech", tag=_BOX),
+    "place_leader_negotiator": _row(
+        _V.RECRUIT, _S.LEADER, variant="negotiator", tag=_BOX
+    ),
     "gain_leader_signet_troop": _row(_V.RECRUIT, _S.LEADER, tag=_BOX),
     "pay_leader_signet_solari": _row(_V.PAY, _S.LEADER, variant="solari", tag=_BOX),
     "pay_leader_signet_spice": _row(_V.PAY, _S.LEADER, variant="spice", tag=_BOX),
@@ -506,6 +526,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "retreat_leader_troop": _row(_V.RETREAT, _S.LEADER, variant="troop"),
     "retreat_leader_troops": _row(_V.RETREAT, _S.LEADER, _T.UNITS, tag=_BOX),
     "trash_leader_card": _row(_V.TRASH, _S.LEADER, _T.PERSONAL_CARD, tag=_BOX),
+    # Rise of Ix's Archduke Armand Ecaz: Coordination's Reveal-turn trash.
+    "trash_leader_reveal_card": _row(
+        _V.TRASH, _S.LEADER, _T.PERSONAL_CARD, variant="coordination"
+    ),
     "trash_leader_tech": _row(_V.TRASH, _S.LEADER, _T.TECH, tag=_BOX),
     "use_other_memories": _row(_V.USE, _S.LEADER),
     "pay_leader_board_repeat": _row(_V.PAY, _S.LEADER, variant="board_repeat"),

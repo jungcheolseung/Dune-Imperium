@@ -834,6 +834,11 @@ def reward_text_ko(reward: Reward) -> str:
             if requires_maker_hooks:
                 text += " ({maker_hooks} 필요)"
             return text
+        case DeployFromGarrison(up_to=int(up_to), dreadnoughts=True):
+            # "Deploy up to two units from your garrison to the Conflict."
+            # [Second Wave card, Steam app text]: the glossary's "units |
+            # 부대" ([Main p. 10]) with the line above's shape.
+            return f"{{garrison}}에서 부대 {up_to}개 이하를 {{conflict}}에 배치"
         case DeployFromGarrison(up_to=up_to):
             # "Deploy up to N troops from your garrison to the Conflict"
             # [Detonation card face] [Counterattack card face] [Twisted

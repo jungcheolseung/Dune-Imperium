@@ -48,13 +48,18 @@ from dune_imperium.rules.effect_steps import completed_whole, presents_steps
 # card at all, so redacting the hidden card ids alone would leave them.
 # The original game's Baron Harkonnen chooses his two Masterstroke Factions
 # in secret too (docs/rules/imperium-base.md 14), until his deployment
-# reveals them.
+# reveals them. Rise of Ix's Ilesa Ecaz sets a hand card aside face down at
+# Round Start, hers alone to know until it returns at her second turn
+# (docs/rules/rise-of-ix.md 13): the card is hidden once aside, so its id is
+# redacted anyway, but the pick is a secret choice as a whole (a hand card
+# the table knew may be the one she set aside).
 SEALED_ACTION_IDS: Final = frozenset(
     {
         "scouts_secret_pick",
         "scouts_bid",
         "choose_agent_card",
         "choose_masterstroke_faction",
+        "set_aside_leader_card",
     }
 )
 # The argument keys a sealed step shows other seats, redacted, when only

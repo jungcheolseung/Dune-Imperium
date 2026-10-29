@@ -99,6 +99,7 @@ from dune_imperium.rules.leader_abilities import (
     apply_smuggle_spice,
     leader_signet_is_implemented,
 )
+from dune_imperium.rules.one_step_ahead import ILESA, one_step_ahead_bonus
 from dune_imperium.rules.scouts_modifiers import (
     ignores_influence_requirements_this_round,
     space_is_combat,
@@ -1132,6 +1133,58 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         *(() if control_event is None else (control_event,)),
         *smuggle_events,
     )
+    # Ilesa Ecaz's One Step Ahead: the card returned at this turn's start
+    # sends the Agent -- a spice for exactly one Agent icon, its printed ones
+    # and those granted to the card played this turn, else a Solari
+    # (``rules.one_step_ahead``).
+    spice, solari = one_step_ahead_bonus(
+        owner,
+        turn_context,
+        card_instance_id,
+        lambda: len(
+            {
+                *effective_agent_icons(
+                    card,
+                    owner,
+                    opponents=tuple(
+                        seat
+                        for seat in state.players
+                        if seat.player_id != action.actor
+                    ),
+                    card_instance_id=card_instance_id,
+                ),
+                *(
+                    AgentIcon(value)
+                    for value in owner.granted_agent_icon_turn.split(",")
+                    if value
+                ),
+            }
+        ),
+    )
+    if spice or solari:
+        ilesa = next_state.players[action.actor]
+        ilesa = replace(
+            ilesa,
+            set_aside_returned_turn=False,
+            resources=replace(
+                ilesa.resources,
+                spice=ilesa.resources.spice + spice,
+                solari=ilesa.resources.solari + solari,
+            ),
+        )
+        next_state = replace(
+            next_state, players=replace_player(next_state.players, ilesa)
+        )
+        events = (
+            *events,
+            resources_gained_event(
+                f"round:{state.round_number}:player:{action.actor}:leader:"
+                f"{ILESA}:bonus",
+                action.actor,
+                spice=spice,
+                solari=solari,
+            ),
+        )
     if space_id == "tuek_sietch":
         # Tuek's Sietch (Esmar Tuek): the owner's own visit pays one Solari,
         # an opponent's visit draws him an Intrigue card [Esmar Tuek card].

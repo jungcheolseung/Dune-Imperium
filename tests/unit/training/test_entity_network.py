@@ -208,7 +208,42 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # one intrigue-table column is new (the opponents' dreadnought retreat reward),
 # read by its row alone; no older scale moved (compared against c30f523b,
 # 2026-10-30).
-_GOLDEN_DIGEST = "6056c1083b118046d7276a4e0bb78f8aec31edc9e03e7d89cc64fc8fcf8d386e"
+# Then Second Wave got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (the "units" flag of its garrison
+# deployment, the dreadnoughts' share), read by its row alone; no older scale
+# moved (compared against 4cdf1e99, 2026-10-30).
+# Then War Chest got its record (stage P4d): only its own row changed, no
+# column and no scale (compared against 3b8cd83c, 2026-10-30).
+# Then Machine Culture got its record (stage P4d): only its own row changed, no
+# column and no scale (compared against 044b4ea1, 2026-10-30).
+# Then Diversion got its record (stage P4d): only its own row changed, and one
+# intrigue-table column is new (the "dreadnoughts" flag of its unit-count
+# condition), read by its row alone; no older scale moved (compared against
+# 257bdcc0, 2026-10-30).
+# Then "Princess" Yuna Moritani got her records (stage P4e): only her row
+# changed, and two Leader-table columns are new (her standing and Signet
+# hooks), read by her row alone. A column no Uprising entity uses now keeps
+# the original entities' scale (``entity_features._table``), so her Signet's
+# 7 Solari leaves Scheme's 1 Solari row as it was; no older scale moved
+# (compared against 0d65eb9c, 2026-10-30).
+# Then Prince Rhombur Vernius got his records (stage P4e): only his row
+# changed, and four Leader-table columns are new (his standing and Signet
+# hooks, the Signet's Negotiator and Acquire Tech pieces), read by his row
+# alone; no older scale moved (compared against 7514cff6, 2026-10-30).
+# Then Archduke Armand Ecaz got his records (stage P4e): only his row
+# changed, and four Leader-table columns are new (Coordination's Reveal hook,
+# Conscript's hook and its AcquireCardUpTo piece with its cost cap), read by
+# his row alone; no older scale moved (compared against d13b81cd,
+# 2026-10-30).
+# Then Viscount Hundro Moritani got his records (stage P4e): only his row
+# changed, and three Leader-table columns are new (Intelligence's standing
+# hook, Couriers' hook and its Freighter piece), read by his row alone; no
+# older scale moved (compared against c426d03d, 2026-10-30).
+# Then Ilesa Ecaz got her records (stage P4e): only her row changed, and three
+# Leader-table columns are new (One Step Ahead's standing hook, Guild
+# Contacts' hook and its AcquireReserveCard piece), read by her row alone; no
+# older scale moved (compared against 4b05d412, 2026-10-30).
+_GOLDEN_DIGEST = "ed08e9233f87525334f5343d39d8061b93f5760dbb132b91f4e89f63e64040ca"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

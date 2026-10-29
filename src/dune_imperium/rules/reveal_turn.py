@@ -153,6 +153,10 @@ from dune_imperium.rules.intrigue_deck import (
     shufflable_intrigue_discard,
 )
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
+from dune_imperium.rules.one_step_ahead import (
+    finish_turn_count,
+    reveal_set_aside_card,
+)
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.reveal_lines import (
     COMMAND_PERSUASION,
@@ -5604,10 +5608,14 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
 
     if action not in legal_reveal_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal turn")
-    returned = _return_chairdog_cards(state, action.actor)
+    # Ilesa Ecaz's card still set aside -- a first-turn Reveal -- joins the
+    # revealed hand (``rules.one_step_ahead``).
+    aside = reveal_set_aside_card(state, action.actor)
+    returned = _return_chairdog_cards(aside.state, action.actor)
     revealed_turn = _begin_reveal_turn(returned.state, action)
     return RuleResult(
-        state=revealed_turn.state, events=(*returned.events, *revealed_turn.events)
+        state=revealed_turn.state,
+        events=(*aside.events, *returned.events, *revealed_turn.events),
     )
 
 
@@ -6216,8 +6224,10 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                 payload=(("count", held_contracts), ("player", action.actor)),
             ),
         )
+    # Ilesa Ecaz's One Step Ahead counts the turns she finished
+    # (``rules.one_step_ahead``).
     next_owner = replace(
-        owner,
+        finish_turn_count(owner),
         has_revealed=True,
         discard_pile=(*owner.discard_pile, *owner.in_play),
         in_play=(),

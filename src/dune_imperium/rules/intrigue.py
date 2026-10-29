@@ -61,6 +61,7 @@ from dune_imperium.rules.combat import (
     refresh_combat_participants,
     winning_intrigue_window_is_open,
 )
+from dune_imperium.rules.combat_deployment import commit_units_with_dreadnoughts
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
     OptionUnplayable,
@@ -295,6 +296,7 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
             section.condition.count
             for section in sections
             if isinstance(section.condition, UnitsDeployedThisTurnAtLeast)
+            and not section.condition.dreadnoughts
         ),
         default=0,
     )
@@ -311,6 +313,21 @@ def apply_intrigue_play(state: GameState, action: DomainAction) -> RuleResult:
     # it resolves and reaches the discard pile only at the end, so a draw it
     # causes cannot reshuffle the card itself and no card leaves every zone.
     played_state = replace(state, players=replace_player(state.players, paid_owner))
+    units_condition = max(
+        (
+            section.condition.count
+            for section in sections
+            if isinstance(section.condition, UnitsDeployedThisTurnAtLeast)
+            and section.condition.dreadnoughts
+        ),
+        default=0,
+    )
+    if units_condition:
+        # Diversion's "four or more units" counts the dreadnoughts too, so
+        # its floor is a count of both kinds together (OQ-029 (3)).
+        played_state = commit_units_with_dreadnoughts(
+            played_state, player, units_condition
+        )
     winning = isinstance(option.trigger, OnConflictWon)
     if (
         option.timing is IntrigueTiming.COMBAT

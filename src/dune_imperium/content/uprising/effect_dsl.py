@@ -157,9 +157,19 @@ class UnitsDeployedThisTurnAtLeast:
     turn's peak, so a later retreat keeps it true, while an OQ-029
     withdrawal undoes the deployment and lowers the peak. Troops, Sardaukar
     Commanders and sandworms are all units [Main p. 12] [Bloodlines p. 4].
+
+    ``dreadnoughts``: Rise of Ix's Diversion ("When you deploy four or more
+    units to the Conflict in a single turn:" [Diversion card, Steam app
+    text]) counts the dreadnoughts of the turn's deployment as well, for a
+    dreadnought is a unit, though no troop [Rise of Ix p. 6]
+    (docs/rules/rise-of-ix.md 6, table row "unit"; 15: the same judgment as
+    Distraction's). The turn's unit count (``units_deployed_turn``) never
+    holds one, so the condition adds the dreadnoughts the turn's frame says
+    its deployment moved (``combat_deployment.dreadnoughts_deployed_this_turn``).
     """
 
     count: int = 3
+    dreadnoughts: bool = False
 
     def __post_init__(self) -> None:
         if self.count < 1:
@@ -1052,9 +1062,16 @@ class DeployFromGarrison:
 
     ``up_to=None`` is a printed "any number" [Rapid Mobilization card]: as
     for a retreat, zero is a choice too [FAQ p. 3].
+
+    ``dreadnoughts``: "Deploy up to two units from your garrison to the
+    Conflict." [Second Wave card, Steam app text] -- a unit is a troop or a
+    dreadnought [Rise of Ix p. 6], so the garrison dreadnoughts are among
+    what the owner may deploy, within the same ``up_to``. Without it a card's
+    "troop" never reaches a dreadnought.
     """
 
     up_to: int | None
+    dreadnoughts: bool = False
 
     def __post_init__(self) -> None:
         if self.up_to is not None and self.up_to < 1:

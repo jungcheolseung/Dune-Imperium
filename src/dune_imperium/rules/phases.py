@@ -21,6 +21,7 @@ from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.dreadnoughts import space_controller
 from dune_imperium.rules.frames import FrameKind, replace_player, reset_turn_counters
 from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.one_step_ahead import push_set_aside
 from dune_imperium.rules.pauses import ROUND_DRAW, push_pause
 from dune_imperium.rules.tech import apply_endgame_tech_effects
 
@@ -240,6 +241,10 @@ def draw_round_hands(state: GameState) -> RuleResult:
             # Flipped Tech tiles return face up at Round Start
             # [Bloodlines pp. 7, 12].
             tech_flipped=(),
+            # One Step Ahead counts Ilesa Ecaz's turns of this round
+            # (``rules.one_step_ahead``).
+            turns_finished_round=0,
+            set_aside_returned_turn=False,
         )
         for player, count in zip(state.players, draw_counts, strict=True)
     )
@@ -311,6 +316,10 @@ def draw_round_hands(state: GameState) -> RuleResult:
         ix = _ix_round_start_effects(next_state)
         next_state = ix.state
         events = (*events, *ix.events)
+        if not scouts:
+            # Ilesa Ecaz's set-aside, after the lines that decide nothing and
+            # before the first turn (OQ-122, ``rules.one_step_ahead``).
+            next_state = push_set_aside(next_state)
     return RuleResult(state=next_state, events=events)
 
 

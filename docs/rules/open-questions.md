@@ -178,6 +178,7 @@
 | [OQ-150](#oq-150--reveal-turn-tech-능력-artillery의-셈과-reveal-도중에-얻은-타일-rise-of-ix) | Reveal turn Tech 능력: Artillery의 셈과 Reveal 도중에 얻은 타일 (Rise of Ix) | `DECIDED` |
 | [OQ-151](#oq-151--combat-해결-중-shipping-회수로-recruit한-troop을-troop-transports로-배치할-수-있는가-rise-of-ix) | Combat 해결 중 Shipping 회수로 recruit한 troop을 Troop Transports로 배치할 수 있는가 (Rise of Ix) | `DECIDED` |
 | [OQ-152](#oq-152--일부만-채워지는-recruit-부족분은-어느-troop부터-채우는가) | 일부만 채워지는 recruit 부족분은 어느 troop부터 채우는가 | `DECIDED` |
+| [OQ-153](#oq-153--한-효과가-여러-진영의-influence를-함께-줄-때의-순서-rise-of-ix) | 한 효과가 여러 진영의 Influence를 함께 줄 때의 순서 (Rise of Ix) | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -207,6 +208,7 @@
 - 확정(2026-09-01): Intrigue 39개 identity 완결 전사에서 census를 재검산했다 — Combat timing 옵션 가운데 unit을 늘리는 효과는 여전히 없고 줄이는 카드는 위 4종(retreat 비용·보상)뿐이다. 따라서 순환 "진입"은 현재 콘텐츠에서 구조적으로 불가능하고, "퇴장"은 위 convention (a)(b)를 최종 판정으로 채택한다. Combat 중 unit을 늘리는 새 콘텐츠가 추가되면 다시 연다.
 - 사용자 재확인(2026-09-01): unit이 배치되지 않은 플레이어는 Combat 단계 자체에 참가하지 않아 Combat Intrigue 기회를 받지 않고, 참가자도 unit 상실·retreat로 배치 unit이 없어지면 즉시 배제된다는 위 판정을 사용자가 그대로 확정했다.
 - 구현 결함 수정(2026-10-02, codec v127): 카드가 순환 위에 자기 창을 남기면(Reach Agreement의 retreat 뒤 Contract 시장, Battlefield Research의 retreat 뒤 Tech 획득 창) 연속 pass 수가 0으로 돌아가지 않았고 배제도 일어나지 않았다 — 앞선 좌석들의 pass가 남아 카드를 쓴 좌석의 다음 pass 하나로 Combat Intrigue가 끝났고, 그 좌석은 마지막 unit을 후퇴시켰어도 pass를 제시받았다. 앞면으로 놓여 trigger를 기다리는 Harvest Cells(Immortality)는 카드 사용을 끝내는 길을 아예 거치지 않아 같은 일이 났다. 근거 문장은 "전투 참여자 전원이 **연속으로** pass했을 때만 카드 플레이 절차를 끝내고 Combat를 해결한다" `[Main p. 14]`([combat-and-round-end.md](combat-and-round-end.md) 2절). 이제 카드 사용이 끝날 때 창 아래의 순환도 연속 pass를 다시 세고, 창이 닫혀 순환으로 돌아오는 순간 unit이 없는 참가자를 (a)대로 뺀다. Harvest Cells를 앞면으로 놓는 것도 카드 사용이라 연속 pass를 다시 센다. `tests/unit/rules/test_intrigue.py`의 Reach Agreement 회귀 둘·Battlefield Research 회귀 하나와 `tests/unit/rules/test_immortality_intrigue.py`의 Harvest Cells 회귀 하나로 고정한다(넷 다 수정 전 코드에서 실패). 참가자가 모두 빠져 순환이 비는 끝도 이제 다른 두 끝(마지막 pass, 아무도 들어오지 않은 Conflict)과 같은 `combat_intrigue_finished` 이벤트를 낸다(이벤트 id가 `:emptied`로 끝나고 payload는 없어, 로그 줄은 아무도 들어오지 않은 Conflict의 끝과 같다) — 전에는 조용히 끝나 로그에 "교전 책략 단계 종료" 줄이 없었다(Go to Ground·Tactical Option에서도). 게임 진행 상태는 그대로이고 이벤트 기록(`event_log`), 따라서 상태 해시에만 이 이벤트가 더해진다 — v127이 아직 푸시 전이라 같은 번호에 묶었다. 처음에는 tip census가 "이벤트 없음"을 전제로 센다는 이유로 그대로 두려 했으나, 측정 도구를 게임에 맞출 일이라 사용자 확인("고치고 푸시해", 2026-10-02) 뒤 census가 이 이벤트에서는 상태를 찍지 않고 정리 단계에서 0 기록을 남기게 바꿨다(1라운드에 순환이 비면 기록이 빠지던 census의 원래 결함도 함께 고침). `tests/unit/rules/test_intrigue.py`의 회귀 셋과 `tests/unit/test_tip_census_combat.py`의 1라운드 회귀로 고정한다.
+- 부기(2026-10-29, Rise of Ix): Second Wave(Combat Intrigue, "Deploy up to two units from your garrison")는 Combat 중에 유닛을 더하는 첫 카드지만, Combat Intrigue라 Conflict에 유닛이 이미 있어야 낸다(rise-of-ix.md 9.1) — 순환 밖 좌석이 이 카드로 들어오는 길은 없어 재개 조건에 닿지 않는다(`a20f8e10`). Cannon Turrets로 마지막 유닛(dreadnought)을 잃은 좌석은 이 판정대로 순환에서 빠진다.
 
 ## OQ-004 — Imperium Deck 완전 고갈
 
@@ -3256,3 +3258,25 @@
 - **판정(2026-10-29, 사용자 "(가) 가 맞다"):** 일부만 채울 때는 소유자에게 유리한 순서 — Reveal 줄 `DeployTheseTroops`의 몫(OQ-140) → Troop
   Transports를 가진 Shipping recruit 몫 → 보통 recruit → Harkonnen Advisor(배치 금지, OQ-038). 엔진은 `d9ff11d3`부터 그렇게 한다
   (`combat_deployment.refill_shipping_troops`).
+
+## OQ-153 — 한 효과가 여러 진영의 Influence를 함께 줄 때의 순서 (Rise of Ix)
+
+- 상태: `DECIDED` (2026-10-30 밤, 기존 원칙 적용 — OQ-027·OQ-112·OQ-141과 2026-10-19 상시 지시 "원칙대로"; project convention, 공식 규칙이
+  아니다. 사용자 확인 전이며 뒤집히면 고친다)
+- 계기: Tessia Vernius의 Careful Observation — "그 token에 도달할 때마다 Snooper track의 맨 위 덮이지 않은 보상을 받는다(① discard → spice 1,
+  ② 그 track의 4칸 보너스, ③ 그 track에 Influence 1, ④ ②와 ③)" (rise-of-ix.md 10). 한 효과가 두 진영 이상에 Influence를 주어 token 둘에
+  닿으면, 어느 진영이 먼저 닿느냐에 따라 어느 track이 ②·③을 받는지가 달라진다. 그런 효과: Quid Pro Quo("Gain one Influence with each Faction
+  that has at least one of your Agents on its board spaces"), Shuttle Fleet 획득("Choose two:" 진영 Influence, OQ-114), 원판 Machinations
+  1위(진영 둘, OQ-114), Conflict·계약 보상 한 줄의 Influence 아이콘 여럿(OQ-112), CHOAM Directorship 획득 상자(OQ-141).
+- 공식 문장: 없다. 카드·룰북·FAQ 어디에도 여러 진영의 순서는 없다.
+- 이미 정한 원칙: 인쇄된 아이콘은 각각 독립된 효과이고 소유자가 순서를 고른다 — Agent box(OQ-027), Conflict·계약 보상 한 줄(OQ-112), 획득
+  상자(OQ-141, 사용자 "CHOAM Directorship을 사면 줄 네 개를 눌러야지").
+- 판정: **소유자가 순서를 고른다.**
+  - 진영을 모두 정해 주는 효과(Quid Pro Quo)는 진영마다 줄 하나를 내고 소유자가 원하는 순서로 받는다(OQ-141과 같은 꼴). 받을 진영이 하나뿐이면
+    줄 하나.
+  - 진영을 고르는 "Choose two:"(Shuttle Fleet, Machinations, OQ-114)는 고른 순서가 받는 순서다 — 순서를 소유자가 이미 정한다.
+  - 보상 한 줄·획득 상자는 OQ-112·OQ-141 그대로(이미 아이콘마다 줄).
+- 같이 정한 것 — Duplicity로 같은 진영을 잃고 얻기: 허용한다. 카드에 "다른 진영"이 없고, Finesse·Shifting Allegiances와 같은 꼴이다(`[FAQ p. 4]`의
+  Shifting Allegiances 판정, imperium-base.md 16). Snooper token이 남은 진영은 Tessia가 Influence 1 이하이므로 잃고 다시 얻어도 결과는 같다.
+- 조합: Bloodlines의 Panopticon(Endgame, Influence 1 이하인 진영마다 Influence 1, OQ-044의 좌석 순서 자동 해결)이 Tessia와 한 판에 들 수
+  있는지는 구현 때 확인한다. 들 수 있으면 같은 원칙(진영마다 줄)을 따르고, 못 들면 그대로 둔다.

@@ -2160,3 +2160,13 @@ title = "A recruit shortfall is made up in the order that suits its owner"
 ruling_ko = "개인 공급처가 모자라 소집하지 못한 병력은 같은 차례에 병력이 돌아오면 채워진다. 일부만 채울 수 있으면 공개 차례 줄이 정한 병력, Troop Transports로 받은 병력, 보통 소집, Harkonnen Advisor 병력 순으로 채운다."
 ruling = "Troops a short supply could not give are made up when troops return to it in the same turn. When only some can be, they are made up in this order: those a Reveal line names, those Troop Transports gives, ordinary recruits, and a Harkonnen Advisor troop last."
 names = ["Troop Transports", "Harkonnen Advisor"]
+
+[[ruling]]
+oq = "OQ-153"
+group = "project"
+game = "base_ix"
+title_ko = "여러 진영을 함께 올리면 순서는 그 플레이어가"
+title = "When one effect raises several Factions, its owner picks the order"
+ruling_ko = "한 효과가 여러 진영의 영향력을 함께 올리면 어느 진영부터 올릴지는 그 플레이어가 고른다. Quid Pro Quo는 진영마다 따로 받고, \"둘을 고른다:\"는 고른 순서대로 받는다. Tessia Vernius의 Snooper 보상은 이 순서대로 닿는 트랙이 받는다. Duplicity로 같은 진영의 영향력을 잃고 다시 얻을 수 있다."
+ruling = "When one effect raises your Influence with several Factions, you pick the order. Quid Pro Quo gives each Faction separately; \"Choose two:\" gives them in the order you chose them. Tessia Vernius' Snooper rewards go to the tracks in that order. Duplicity may lose and regain Influence with the same Faction."
+names = ["Tessia Vernius", "Quid Pro Quo", "Snooper", "Duplicity"]

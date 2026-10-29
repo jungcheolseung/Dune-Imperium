@@ -96,6 +96,14 @@ WITHDRAWABLE_COMMANDERS_KEY: Final = "combat_commanders_withdrawable"
 # for a withdrawal. Neither is part of the troop or Commander counts above.
 DEPLOYED_DREADNOUGHTS_KEY: Final = "combat_dreadnoughts_deployed"
 WITHDRAWABLE_DREADNOUGHTS_KEY: Final = "combat_dreadnoughts_withdrawable"
+# The unit count a played Rise of Ix Diversion used as its condition, troops,
+# Commanders, sandworms and dreadnoughts together (absent means none): a
+# withdrawal of either kind may not take the turn's total below it, as the
+# troops' own floor (``PlayerState.units_deployed_committed``) keeps Distraction
+# and Coercive Negotiation's count (OQ-029 (3)).
+UNITS_COMMITTED_KEY: Final = "combat_units_committed_with_dreadnoughts"
+# A withdrawal bound no withdrawal reaches: more units than a seat owns.
+_UNBOUNDED: Final = 1 << 16
 
 
 # Harkonnen Advisor troops the supply could not give yet: the part of the
@@ -313,6 +321,73 @@ def _shares(
     return max(0, _unit_count(context, units_key) - commanders), commanders
 
 
+def _owner_turn_frame_index(state: GameState, player: int) -> int | None:
+    """The index of the owner's Agent-turn effect frame, the latest one."""
+
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if (
+            frame.kind == FrameKind.AGENT_EFFECTS
+            and isinstance(frame.decision, PlayerDecision)
+            and frame.decision.owner == player
+        ):
+            return index
+    return None
+
+
+def dreadnoughts_deployed_this_turn(state: GameState, player: int) -> int:
+    """The dreadnoughts the owner's turn frame says its deployment moved to the
+    Conflict this turn (a withdrawal lowers it), 0 outside an Agent turn.
+
+    The turn's unit count (``PlayerState.units_deployed_turn``) holds no
+    dreadnought (``_move_dreadnoughts``), so Diversion's "four or more units"
+    adds this to it (``UnitsDeployedThisTurnAtLeast(dreadnoughts=True)``).
+    Like the troops' peak a card's retreat leaves it standing, for only a
+    withdrawal changes the frame's count (``reconcile_deployment_after_retreat``).
+    """
+
+    index = _owner_turn_frame_index(state, player)
+    if index is None:
+        return 0
+    return _unit_count(
+        dict(state.decision_stack[index].context), DEPLOYED_DREADNOUGHTS_KEY
+    )
+
+
+def commit_units_with_dreadnoughts(
+    state: GameState, player: int, count: int
+) -> GameState:
+    """Record that a played card used ``count`` units of the owner's turn,
+    dreadnoughts among them, as its condition (Diversion): no withdrawal may
+    take the turn's total below it (OQ-029 (3), ``_commitment_slack``). Outside
+    an Agent turn no withdrawal exists, so nothing is recorded."""
+
+    index = _owner_turn_frame_index(state, player)
+    if index is None:
+        return state
+    frame = state.decision_stack[index]
+    context = dict(frame.context)
+    context[UNITS_COMMITTED_KEY] = max(_unit_count(context, UNITS_COMMITTED_KEY), count)
+    stack = list(state.decision_stack)
+    stack[index] = with_context(frame, context)
+    return replace(state, decision_stack=tuple(stack))
+
+
+def _commitment_slack(owner: PlayerState, context: dict[str, ActionValue]) -> int:
+    """How many units of the turn's total the owner may still withdraw above
+    the count a Diversion used (``UNITS_COMMITTED_KEY``); unbounded without
+    one."""
+
+    floor = _unit_count(context, UNITS_COMMITTED_KEY)
+    if not floor:
+        return _UNBOUNDED
+    return (
+        owner.units_deployed_turn
+        + _unit_count(context, DEPLOYED_DREADNOUGHTS_KEY)
+        - floor
+    )
+
+
 def _deployment_context(
     state: GameState,
     player: int,
@@ -521,6 +596,7 @@ def legal_troop_withdrawals(
         found.withdrawable_troops,
         owner.units_deployed_turn - owner.units_deployed_committed,
         owner.troops_conflict,
+        _commitment_slack(owner, found.context),
     )
     return tuple(
         DomainAction(
@@ -551,6 +627,7 @@ def legal_commander_withdrawals(
         found.withdrawable_commanders,
         owner.units_deployed_turn - owner.units_deployed_committed,
         owner.commanders_conflict,
+        _commitment_slack(owner, found.context),
     )
     return tuple(
         DomainAction(
@@ -570,9 +647,10 @@ def legal_dreadnought_withdrawals(
 
     The troops' withdrawal for the third kind (OQ-029): only dreadnoughts of
     this turn's basic deployment that no retreat has taken since, and no more
-    than the Conflict holds. The turn's unit count a played card used
-    (``PlayerState.units_deployed_committed``) never holds a dreadnought, so
-    it bounds nothing here.
+    than the Conflict holds. The turn's unit count a played Distraction or
+    Coercive Negotiation used (``PlayerState.units_deployed_committed``) never
+    holds a dreadnought, so it bounds nothing here; a played Diversion counts
+    them and bounds the withdrawal (``UNITS_COMMITTED_KEY``).
     """
 
     if not state.config.rise_of_ix:
@@ -580,8 +658,11 @@ def legal_dreadnought_withdrawals(
     found = _deployment_context(state, player)
     if found is None:
         return ()
+    owner = state.players[player]
     maximum = min(
-        found.withdrawable_dreadnoughts, state.players[player].dreadnoughts_conflict
+        found.withdrawable_dreadnoughts,
+        owner.dreadnoughts_conflict,
+        _commitment_slack(owner, found.context),
     )
     return tuple(
         DomainAction(

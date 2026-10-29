@@ -61,6 +61,7 @@ from dune_imperium.adapters.observation_encoding import (
     CONFLICT_IDS,
     CONTRACT_IDS,
     FACTION_IDS,
+    IMPERIUM_IDENTITIES,
     INTRIGUE_IDS,
     LEADER_IDS,
     NON_UPRISING_IDENTITIES,
@@ -189,7 +190,10 @@ class Vocabulary:
 # entities joined (observation v35, ``IMPERIUM_IDENTITIES``; user approval
 # 2026-10-27: Uprising rows byte-identical, scales included), and Rise of
 # Ix's after them (v39, ``NON_UPRISING_IDENTITIES``); such an entity may then
-# read past 1 in such a column.
+# read past 1 in such a column. Likewise a column no Uprising entity uses but
+# an original one does keeps the original entities' scale, so a Rise of Ix
+# record (stage P4e: Final Delivery's 7 Solari beside Scheme's 1) leaves
+# every original row as it was.
 
 
 def _table(name: str, ids: tuple[str, ...], rows: list[dict[str, float]]) -> Vocabulary:
@@ -207,8 +211,12 @@ def _table(name: str, ids: tuple[str, ...], rows: list[dict[str, float]]) -> Voc
         if entity not in NON_UPRISING_IDENTITIES
     ]
     if len(uprising) < len(ids):
-        own = np.abs(matrix[uprising]).max(axis=0) if uprising else np.zeros_like(scale)
-        scale = np.where(own > 0, own, scale)
+        original = [
+            index for index, entity in enumerate(ids) if entity in IMPERIUM_IDENTITIES
+        ]
+        for tier in (original, uprising):
+            own = np.abs(matrix[tier]).max(axis=0) if tier else np.zeros_like(scale)
+            scale = np.where(own > 0, own, scale)
     keep = scale > 0
     matrix = matrix[:, keep] / scale[keep]
     kept = tuple(column for column, used in zip(columns, keep, strict=True) if used)

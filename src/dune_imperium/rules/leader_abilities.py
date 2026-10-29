@@ -83,11 +83,14 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.acquisition import (
     acquirable_imperium_instance_ids,
+    acquirable_reserve_card_ids,
     acquire_imperium_for_intrigue,
     acquire_reserve_for_intrigue,
+    deck_top_offered,
     open_acquisition_frames,
     take_imperium_row_card,
 )
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.box_events import (
     BoxNeedsRows,
     BoxOutcome,
@@ -95,7 +98,7 @@ from dune_imperium.rules.box_events import (
 )
 from dune_imperium.rules.card_bonds import counted_in_play, trashable_cards
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
-from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
     UNGAINED_UNDEPLOYABLE_KEY,
     reconcile_deployment_after_retreat,
@@ -127,7 +130,11 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
 )
-from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
+from dune_imperium.rules.gain_events import (
+    RESOURCES_GAINED,
+    resources_gained_event,
+    resources_paid_event,
+)
 from dune_imperium.rules.influence import (
     gain_faction_influence,
     influence_amount,
@@ -137,6 +144,7 @@ from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     shufflable_intrigue_discard,
 )
+from dune_imperium.rules.negotiators import negotiator_block, place_negotiator
 from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
     add_reveal_persuasion,
@@ -188,8 +196,45 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "helena_richese",
         "paul_atreides",
         "baron_vladimir_harkonnen",
+        # Rise of Ix's (docs/rules/rise-of-ix.md 10; stage P4e).
+        "princess_yuna_moritani",
+        "prince_rhombur_vernius",
+        "archduke_armand_ecaz",
+        "viscount_hundro_moritani",
+        "ilesa_ecaz",
     }
 )
+
+# "Princess" Yuna Moritani (Rise of Ix): her Leader id, and Final
+# Delivery's price (docs/rules/rise-of-ix.md 10).
+YUNA: Final = "princess_yuna_moritani"
+FINAL_DELIVERY_SOLARI: Final = 7
+# Prince Rhombur Vernius (Rise of Ix): his Leader id and Ixian Technology's
+# two halves.
+RHOMBUR: Final = "prince_rhombur_vernius"
+RHOMBUR_TECH_ACTION: Final = "acquire_leader_tech"
+RHOMBUR_NEGOTIATOR_ACTION: Final = "place_leader_negotiator"
+# Archduke Armand Ecaz (Rise of Ix): his Leader id, Conscript's cost cap, and
+# Coordination's Agent icons, count and Reveal-turn trash
+# (docs/rules/rise-of-ix.md 10, [FAQ p. 1]).
+ARMAND: Final = "archduke_armand_ecaz"
+CONSCRIPT_MAX_COST: Final = 3
+COORDINATION_ICONS: Final = frozenset(
+    {AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE}
+)
+COORDINATION_AGENTS: Final = 2
+COORDINATION_ACTION: Final = "trash_leader_reveal_card"
+# Viscount Hundro Moritani (Rise of Ix): his Leader id and Couriers' two
+# Freighter moves, each paying its spice (docs/rules/rise-of-ix.md 10).
+HUNDRO: Final = "viscount_hundro_moritani"
+COURIERS_SPICE: Final = 1
+COURIERS_ADVANCE_ACTION: Final = "advance_leader_freighter"
+COURIERS_RECALL_ACTION: Final = "recall_leader_freighter"
+# Ilesa Ecaz (Rise of Ix): Guild Contacts' price and the Foldspace it buys
+# (docs/rules/rise-of-ix.md 10).
+ILESA_LEADER: Final = "ilesa_ecaz"
+GUILD_CONTACTS_SOLARI: Final = 1
+FOLDSPACE_CARD: Final = "foldspace_card"
 
 # Always Smiling grants its Persuasion at six or more strength in the
 # four-player game; the printed asterisk raises that to ten only in a
@@ -595,6 +640,11 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         "duke_leto_atreides",
         "helena_richese",
         "baron_vladimir_harkonnen",
+        "princess_yuna_moritani",
+        "prince_rhombur_vernius",
+        "archduke_armand_ecaz",
+        "viscount_hundro_moritani",
+        "ilesa_ecaz",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
@@ -798,6 +848,13 @@ SIGNET_HOOKS: Final = frozenset(
         "prudent_diplomacy",
         "manipulate",
         "scheme",
+        # Rise of Ix's "Princess" Yuna Moritani, Prince Rhombur Vernius and
+        # Archduke Armand Ecaz.
+        "final_delivery",
+        "ixian_technology",
+        "conscript",
+        "couriers",
+        "guild_contacts",
     }
 )
 
@@ -1461,6 +1518,127 @@ def legal_leader_signet_actions(
             ),
         )
 
+    if owner.leader_id == YUNA:
+        # Final Delivery: "7 Solari → Influence 1(골라)·troop 1·spice 1"
+        # (docs/rules/rise-of-ix.md 10), an arrow, so declined freely and
+        # judged now (OQ-028). The Influence is never with a Faction at the
+        # top (OQ-060, rise-of-ix.md 15); with every Faction there it alone
+        # is lost and the payment still buys the troop and the spice
+        # (``pay_leader_signet_solari``).
+        if owner.resources.solari < FINAL_DELIVERY_SOLARI:
+            return (
+                DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            )
+        factions = tuple(
+            faction for faction in Faction if influence_can_rise(owner, faction)
+        )
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                DomainAction(
+                    action_id="choose_leader_signet_influence",
+                    actor=player,
+                    arguments=(("faction", faction.value),),
+                )
+                for faction in factions
+            ),
+            *(
+                ()
+                if factions
+                else (DomainAction(action_id="pay_leader_signet_solari", actor=player),)
+            ),
+        )
+
+    if owner.leader_id == RHOMBUR:
+        # Ixian Technology: "Acquire Tech -OR- Tech Negotiation"
+        # (docs/rules/rise-of-ix.md 10), each half a "may" (rise-of-ix.md 4):
+        # the Acquire Tech (no Tech Discount) while a tile is within reach,
+        # the Negotiator while a troop is in the supply. (``rules.tech``
+        # imports this module, so its helpers are imported here.)
+        from dune_imperium.rules.tech import tech_acquisition_possible
+
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                (DomainAction(action_id=RHOMBUR_TECH_ACTION, actor=player),)
+                if tech_acquisition_possible(state, owner, 0)
+                else ()
+            ),
+            *(
+                (DomainAction(action_id=RHOMBUR_NEGOTIATOR_ACTION, actor=player),)
+                if negotiator_block(state, player) is None
+                else ()
+            ),
+        )
+
+    if owner.leader_id == HUNDRO:
+        # Couriers: "spice 1 → Freighter" (docs/rules/rise-of-ix.md 10), an
+        # arrow, so declined freely; the spice buys one of the Freighter
+        # icon's two moves (rise-of-ix.md 5: up one space, never from the
+        # top, or a recall, never from the bottom), paid with the move, so
+        # the spice is never paid for nothing (section 15, OQ-071).
+        # (``rules.shipping_track`` imports this module through
+        # ``rules.tech``, so its helpers are imported here.)
+        from dune_imperium.rules.shipping_track import (
+            freighter_can_advance,
+            freighter_can_recall,
+        )
+
+        if owner.resources.spice < COURIERS_SPICE:
+            return (
+                DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            )
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                (DomainAction(action_id=COURIERS_ADVANCE_ACTION, actor=player),)
+                if freighter_can_advance(state, player)
+                else ()
+            ),
+            *(
+                (DomainAction(action_id=COURIERS_RECALL_ACTION, actor=player),)
+                if freighter_can_recall(state, player)
+                else ()
+            ),
+        )
+
+    if owner.leader_id == ILESA_LEADER:
+        # Guild Contacts: "1 Solari → Foldspace 획득" (docs/rules/rise-of-ix.md
+        # 10), an arrow, so declined freely, and never paid for nothing
+        # (section 15, OQ-071): not while the Foldspace stack is empty. The
+        # card goes to the discard pile, or on top of the deck while she may
+        # put what she acquires there (Spaceport, ``deck_top_offered``).
+        foldspace = dict(state.reserve_stacks).get(FOLDSPACE_CARD, 0)
+        tops = (False, True) if deck_top_offered(state, player) else (False,)
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                (
+                    DomainAction(
+                        action_id="acquire_leader_reserve",
+                        actor=player,
+                        arguments=(
+                            ("card_id", FOLDSPACE_CARD),
+                            *((("to_deck_top", True),) if top else ()),
+                        ),
+                    )
+                    for top in tops
+                )
+                if foldspace > 0
+                and owner.resources.solari >= GUILD_CONTACTS_SOLARI
+                else ()
+            ),
+        )
+
+    if owner.leader_id == ARMAND:
+        # Conscript: "비용 3 이하 카드 하나를 얻을 수 있다" (docs/rules/rise-of-ix.md
+        # 10), to the discard pile -- or on top of the deck where the owner
+        # may put what he acquires (Spaceport, ``deck_top_offered``).
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *_conscript_choices(state, player),
+        )
+
     if owner.leader_id == "princess_irulan":
         # Chronicler's Insight: acquire a card that costs one to hand, or
         # trash a hand card (two Spice if it costs one or more), or neither
@@ -1693,6 +1871,43 @@ def _chroniclers_insight_choices(
     )
 
 
+def _conscript_choices(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """Conscript's acquisitions: a card that costs 3 or less from the Row or
+    the Reserve, never Foldspace (OQ-125), and the owner's own Manipulate
+    set-aside card at its printed cost [FAQ p. 3]; each also on top of the
+    deck while the owner may put what he acquires there."""
+
+    tops = (False, True) if deck_top_offered(state, player) else (False,)
+    return (
+        *(
+            DomainAction(
+                action_id="acquire_leader_imperium",
+                actor=player,
+                arguments=(
+                    ("instance_id", instance_id),
+                    *((("to_deck_top", True),) if top else ()),
+                ),
+            )
+            for instance_id in acquirable_imperium_instance_ids(
+                state, CONSCRIPT_MAX_COST, player=player
+            )
+            for top in tops
+        ),
+        *(
+            DomainAction(
+                action_id="acquire_leader_reserve",
+                actor=player,
+                arguments=(
+                    ("card_id", card_id),
+                    *((("to_deck_top", True),) if top else ()),
+                ),
+            )
+            for card_id in acquirable_reserve_card_ids(state, CONSCRIPT_MAX_COST)
+            for top in tops
+        ),
+    )
+
+
 def _fedaykin_draw_block(owner: PlayerState) -> OptionalEffectBlock | None:
     """Fedaykin Maneuver's draw: two Fremen Influence and one water [Chani
     card], and a card to draw: a cost line is offered only when its reward
@@ -1802,6 +2017,11 @@ def signet_optional_block(state: GameState, player: int) -> OptionalEffectBlock 
             bonus_post = context.get("staban_bonus_post")
             if isinstance(bonus_post, str):
                 return _unseen_network_block(owner, bonus_post)
+        case "archduke_armand_ecaz":
+            if not _conscript_choices(state, player):
+                return OptionalEffectBlock(
+                    kind.NOTHING_TO_ACQUIRE, needed=CONSCRIPT_MAX_COST
+                )
         case "princess_irulan":
             if not _chroniclers_insight_choices(state, player):
                 return OptionalEffectBlock(
@@ -1892,6 +2112,10 @@ def apply_leader_signet_payment(
         return _apply_staban_bonus_payment(state, context, action)
     if owner.leader_id == "baron_vladimir_harkonnen":
         return _apply_scheme_payment(state, context, player, source)
+    if owner.leader_id == YUNA:
+        # Final Delivery with every Faction at the top: its Influence is
+        # lost (OQ-060), the troop and the spice are not.
+        return _apply_final_delivery(state, context, player, None)
 
     cost, line = _signet_payment(owner)
     if owner.resources.spice < cost.spice:
@@ -2349,6 +2573,128 @@ def _apply_prudent_diplomacy(
     )
 
 
+def _apply_final_delivery(
+    state: GameState,
+    context: dict[str, ActionValue],
+    player: int,
+    faction: Faction | None,
+) -> RuleResult:
+    """Final Delivery: pay 7 Solari, then gain an Influence with ``faction``
+    (none when every Faction is at the top, OQ-060), recruit a troop -- one
+    recruited while visiting a Combat space stays deployable [FAQ p. 4] --
+    and gain a spice ("7 Solari → Influence 1(골라)·troop 1·spice 1",
+    docs/rules/rise-of-ix.md 10)."""
+
+    owner = state.players[player]
+    if owner.resources.solari < FINAL_DELIVERY_SOLARI:
+        raise RuntimeError("Final Delivery requires seven Solari")
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    paid = replace(
+        owner,
+        resources=replace(
+            owner.resources,
+            solari=owner.resources.solari - FINAL_DELIVERY_SOLARI,
+            spice=owner.resources.spice + 1,
+        ),
+    )
+    recruited_owner, recruited = recruit_troops(paid, 1)
+    previous = context.get("troops_recruited")
+    if isinstance(previous, bool) or not isinstance(previous, int):
+        raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+    context["troops_recruited"] = previous + recruited
+    working = replace(state, players=replace_player(state.players, recruited_owner))
+    events: list[GameEvent] = [
+        resources_paid_event(source, player, solari=FINAL_DELIVERY_SOLARI),
+        resources_gained_event(source, player, spice=1),
+        *recruit_shortfall_events(source, player, 1, recruited),
+    ]
+    if faction is not None:
+        gained = gain_faction_influence(
+            working,
+            player,
+            faction,
+            1,
+            event_prefix=f"{source}:influence:{faction.value}",
+        )
+        working = gained.state
+        events.extend(gained.events)
+    next_state = _store_signet(working, context, working.players)
+    events.append(_signet_box(source, context, player, BoxOutcome.RESOLVED))
+    return RuleResult(state=next_state, events=tuple(events))
+
+
+def apply_ixian_technology(state: GameState, action: DomainAction) -> RuleResult:
+    """Ixian Technology: an Acquire Tech without a Tech Discount, or a
+    Negotiator (docs/rules/rise-of-ix.md 4, 10). The box resolves with
+    either half; the Acquire Tech window then opens over the Agent box,
+    with its own refusal, as a board space's does (``rules.tech``)."""
+
+    from dune_imperium.rules.tech import push_tech_acquisition
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Ixian Technology choice")
+    context = _signet_context(state)
+    player = action.actor
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    context["pending_agent_effect"] = False
+    working = _store_signet(state, context, state.players)
+    box = _signet_box(source, context, player, BoxOutcome.RESOLVED)
+    if action.action_id == RHOMBUR_NEGOTIATOR_ACTION:
+        placed = place_negotiator(working, player, source=f"{source}:negotiator")
+        return RuleResult(state=placed.state, events=(*placed.events, box))
+    opened = push_tech_acquisition(
+        working,
+        player,
+        discount=0,
+        source=f"{source}:ix_tech",
+        printer=printer_value(Source.LEADER, RHOMBUR),
+    )
+    return RuleResult(state=opened.state, events=(*opened.events, box))
+
+
+def apply_couriers(state: GameState, action: DomainAction) -> RuleResult:
+    """Couriers: pay 1 spice, then move the Freighter up one space or recall
+    it -- the recall's rewards wait on the turn like any Freighter recall
+    (docs/rules/rise-of-ix.md 5, 10; ``rules.shipping_track``). The box is
+    resolved and written back first, so the recall's rewards are queued on
+    the state the turn frame belongs to."""
+
+    from dune_imperium.rules.shipping_track import (
+        move_freighter_up,
+        recall_freighter,
+    )
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Couriers choice")
+    context = _signet_context(state)
+    player = action.actor
+    owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    context["pending_agent_effect"] = False
+    paid = replace(
+        owner,
+        resources=replace(
+            owner.resources, spice=owner.resources.spice - COURIERS_SPICE
+        ),
+        spice_spent_turn=owner.spice_spent_turn + COURIERS_SPICE,
+    )
+    working = _store_signet(state, context, replace_player(state.players, paid))
+    move = (
+        move_freighter_up
+        if action.action_id == COURIERS_ADVANCE_ACTION
+        else recall_freighter
+    )
+    moved = move(working, player, source=f"{source}:freighter")
+    return RuleResult(
+        state=moved.state,
+        events=(
+            resources_paid_event(source, player, spice=COURIERS_SPICE),
+            *moved.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
+    )
+
+
 def apply_shaddam_signet_choice(
     state: GameState,
     action: DomainAction,
@@ -2400,6 +2746,9 @@ def apply_shaddam_signet_choice(
     if owner.leader_id == "duke_leto_atreides":
         # Prudent Diplomacy's 1 spice (``legal_leader_signet_actions``).
         return _apply_prudent_diplomacy(state, context, player, Faction(faction_value))
+    if owner.leader_id == YUNA:
+        # Final Delivery's 7 Solari (``legal_leader_signet_actions``).
+        return _apply_final_delivery(state, context, player, Faction(faction_value))
     if owner.resources.solari < 3:
         raise RuntimeError("the Signet Ring Influence choice requires three Solari")
     next_owner = replace(
@@ -2552,7 +2901,10 @@ def apply_leader_signet_acquire(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Acquire a one-cost card to hand for Chronicler's Insight."""
+    """Acquire a one-cost card to hand for Chronicler's Insight, a card that
+    costs 3 or less for Conscript, or a Foldspace for Guild Contacts' Solari
+    -- the last two to the discard pile, or on top of the deck
+    (``to_deck_top``, ``_conscript_choices``)."""
 
     if action not in legal_leader_signet_actions(state, action.actor):
         raise ValueError("action is not a legal Leader Signet acquisition")
@@ -2560,6 +2912,25 @@ def apply_leader_signet_acquire(
     player = action.actor
     arguments = dict(action.arguments)
     source = f"round:{state.round_number}:player:{player}:leader_signet"
+    owner = state.players[player]
+    to_hand = owner.leader_id not in (ARMAND, ILESA_LEADER)
+    to_deck_top = arguments.get("to_deck_top") is True
+    paid_events: tuple[GameEvent, ...] = ()
+    if owner.leader_id == ILESA_LEADER:
+        # Guild Contacts' Solari, paid before the Foldspace is acquired.
+        if owner.resources.solari < GUILD_CONTACTS_SOLARI:
+            raise RuntimeError("Guild Contacts requires one Solari")
+        paid = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                solari=owner.resources.solari - GUILD_CONTACTS_SOLARI,
+            ),
+        )
+        state = replace(state, players=replace_player(state.players, paid))
+        paid_events = (
+            resources_paid_event(source, player, solari=GUILD_CONTACTS_SOLARI),
+        )
 
     # The box settles first so an acquire box that opens a frame (a
     # Research direction, Immortality) stacks above the turn.
@@ -2573,8 +2944,9 @@ def apply_leader_signet_acquire(
             settled,
             player,
             card_id,
-            to_hand=True,
+            to_hand=to_hand,
             source=source,
+            to_deck_top=to_deck_top,
         )
     else:
         instance_id = arguments.get("instance_id")
@@ -2584,8 +2956,9 @@ def apply_leader_signet_acquire(
             settled,
             player,
             instance_id,
-            to_hand=True,
+            to_hand=to_hand,
             source=source,
+            to_deck_top=to_deck_top,
         )
     resolved = _signet_box(source, context, player, BoxOutcome.RESOLVED)
     opened = open_acquisition_frames(
@@ -2593,7 +2966,7 @@ def apply_leader_signet_acquire(
     )
     return RuleResult(
         state=opened.state,
-        events=(*acquired.result.events, *opened.events, resolved),
+        events=(*paid_events, *acquired.result.events, *opened.events, resolved),
     )
 
 
@@ -3075,14 +3448,43 @@ def _leader_reveal_retreats(ability: Ability) -> bool:
     )
 
 
+def _leader_reveal_coordinates(ability: Ability) -> bool:
+    """"Reveal turn: If you have at least two Agents on Landsraad/City/Spice
+    Trade board spaces, you may trash one of your cards in play" [Archduke
+    Armand Ecaz card, app text] (docs/rules/rise-of-ix.md 10)."""
+
+    return (
+        ability.timing is AbilityTiming.REVEAL
+        and ability.mark is AbilityMark.OPTIONAL
+        and ability.hook == "coordination"
+    )
+
+
 def _leader_reveal_ability(owner: PlayerState) -> Ability | None:
     """The owner's face's optional Reveal-turn ability, if it has one."""
 
     face = owner.leader_face_id or owner.leader_id
     for ability in LEADER_ABILITIES.get(str(face), ()):
-        if _leader_reveal_swords(ability) or _leader_reveal_retreats(ability):
+        if (
+            _leader_reveal_swords(ability)
+            or _leader_reveal_retreats(ability)
+            or _leader_reveal_coordinates(ability)
+        ):
             return ability
     return None
+
+
+def coordination_agents(owner: PlayerState) -> int:
+    """The owner's Agents on Landsraad, City and Spice Trade board spaces --
+    "세 아이콘 칸 어디든 Agent 둘 이상(같은 아이콘일 필요 없음)" [FAQ p. 1];
+    "Mentat도 그의 Agent로 센다(디자이너 판정)" (docs/rules/rise-of-ix.md 9.2,
+    10): the Mentat stands on its space like any of his Agents."""
+
+    return sum(
+        1
+        for space_id in owner.agent_locations
+        if BOARD_SPACES_BY_ID[space_id].agent_icon in COORDINATION_ICONS
+    )
 
 
 def _leader_ability_slug(owner: PlayerState) -> str:
@@ -3132,6 +3534,12 @@ def leader_reveal_block(state: GameState, player: int) -> OptionalEffectBlock | 
     ability = _leader_reveal_ability(owner)
     if ability is None:
         return None
+    if _leader_reveal_coordinates(ability):
+        # Coordination's Agents are placed before the Reveal and stay put
+        # through it, so the ability either holds the whole Reveal turn or
+        # never; it is not shown waiting (``legal_leader_reveal_actions``
+        # offers it only while it holds).
+        return None
     if _leader_reveal_retreats(ability):
         if owner.troops_conflict >= 1 or owner.commanders_conflict >= 1:
             return None
@@ -3155,6 +3563,20 @@ def legal_leader_reveal_actions(
     ability = _leader_reveal_ability(owner)
     if ability is None:
         return ()
+    if _leader_reveal_coordinates(ability):
+        # Coordination: with two or more Agents on Landsraad, City or Spice
+        # Trade spaces, one of his cards in play may be trashed (a Row card
+        # borrowed with Usurp is not in play, OQ-054).
+        if coordination_agents(owner) < COORDINATION_AGENTS:
+            return ()
+        return tuple(
+            DomainAction(
+                action_id=COORDINATION_ACTION,
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in counted_in_play(owner)
+        )
     if _leader_reveal_retreats(ability):
         # Desert Scouts: "Reveal Turn: You may retreat one of your troops."
         # A Sardaukar Commander is a troop for this purpose [Bloodlines p. 4].
@@ -3200,6 +3622,21 @@ def apply_leader_reveal_action(
         *state.decision_stack[:-1],
         replace(frame, context=tuple(sorted(context.items()))),
     )
+
+    if action.action_id == COORDINATION_ACTION:
+        # Coordination's trash; a card trashed during the Reveal pays nothing
+        # more (OQ-022), and troops it recruits as it goes (an Unload) are
+        # the turn's own (``credit_trash_recruits``).
+        card_id = dict(action.arguments).get("card_id")
+        if not isinstance(card_id, str):
+            raise RuntimeError("Coordination has an invalid card ID")
+        trashed = trash_personal_card(
+            replace(state, decision_stack=decision_stack),
+            action.actor,
+            card_id,
+            source=f"{source}:coordination",
+        )
+        return credit_trash_recruits(trashed, action.actor)
 
     if action.action_id == "recall_spy_for_leader":
         # Devious Strength: the recalled Spy pays for two swords; like other
@@ -3356,6 +3793,79 @@ def grant_hungry_for_spice(
     return RuleResult(state=state, events=tuple(events))
 
 
+# The events that gain a seat Solari (``gain_events``; an Influence track's
+# bonus names its own, ``influence``), and the one that ends a Reveal turn.
+_SOLARI_GAIN_EVENT_KINDS: Final = frozenset(
+    {RESOURCES_GAINED, "influence_track_bonus_gained"}
+)
+
+
+def grant_smuggling_operation(result: RuleResult, before: GameState) -> RuleResult:
+    """Smuggling Operation: one Solari more on each Solari gain in her turn.
+
+    "Whenever you gain [Solari] on your turn, increase the amount gained by
+    1" ["Princess" Yuna Moritani card, app text]; "자기 turn에 Solari를 얻을
+    때마다 +1(예: Freighter 회수의 5 Solari와 Windfall)" [FAQ p. 3], and
+    "Dividends로 남의 turn에 받는 1 Solari에는 붙지 않는다(OQ-042·OQ-063 "your
+    turn")" (docs/rules/rise-of-ix.md 9.2, 10). Her turn is her own Agent or
+    Reveal turn, with whatever decisions are stacked on it (OQ-042); the
+    Combat, Makers and Recall phases are not turns [Main p. 8] (OQ-063).
+
+    Read off the transition's events (``before`` is the state it started
+    from): each event that gained her Solari while her turn was open adds
+    one. A transition begun in her turn counts until her Reveal turn ends
+    in it (``reveal_finished``) -- a closing Reveal may run on into the
+    Combat, whose rewards are no turn's; an Agent turn is always followed by
+    her Reveal turn, so nothing after its close is gained outside her turns.
+    The added Solari is the gain's own increase, not another gain, and is
+    its own ``resources_gained`` named after the Leader.
+    """
+
+    owner = next(
+        (seat for seat in result.state.players if seat.leader_id == YUNA), None
+    )
+    if owner is None or turn_owner_of(before) != owner.player_id:
+        return result
+    player = owner.player_id
+    bonuses: list[GameEvent] = []
+    for event in result.events:
+        payload = dict(event.payload)
+        if payload.get("player") != player:
+            continue
+        if event.kind == "reveal_finished":
+            break
+        solari = payload.get("solari")
+        if (
+            event.kind in _SOLARI_GAIN_EVENT_KINDS
+            and isinstance(solari, int)
+            and not isinstance(solari, bool)
+            and solari > 0
+        ):
+            bonuses.append(
+                resources_gained_event(
+                    f"round:{before.round_number}:player:{player}:leader:{YUNA}:"
+                    f"{event.event_id}",
+                    player,
+                    solari=1,
+                )
+            )
+    if not bonuses:
+        return result
+    owner = result.state.players[player]
+    gained = replace(
+        owner,
+        resources=replace(
+            owner.resources, solari=owner.resources.solari + len(bonuses)
+        ),
+    )
+    return RuleResult(
+        state=replace(
+            result.state, players=replace_player(result.state.players, gained)
+        ),
+        events=(*result.events, *bonuses),
+    )
+
+
 def _hungry_for_spice_event(source: str, player: int) -> GameEvent:
     return GameEvent(
         event_id=f"{source}:resolved",
@@ -3376,6 +3886,8 @@ LEADER_HOOKS: Final = frozenset(
         "reverend_mother",
         "tactician",
         "plot_course",
+        # Rise of Ix's Archduke Armand Ecaz: Coordination's Reveal-turn trash.
+        "coordination",
     }
 )
 

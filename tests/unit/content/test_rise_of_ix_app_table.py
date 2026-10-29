@@ -266,6 +266,10 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "advanced_weaponry",
     "grand_conspiracy",
     "cannon_turrets",
+    "second_wave",
+    "war_chest",
+    "machine_culture",
+    "diversion",
 }
 _IX_IMPERIUM_TRANSCRIBED = {
     "choam_delegate",
@@ -366,12 +370,14 @@ def test_leader_ability_names_match_the_app_and_the_rules() -> None:
         assert leader.alternate_face_id is None, leader.leader_id
 
 
-def test_ix_leaders_are_identities_only() -> None:
-    # Stage P4a lists the Leaders before their setup deviations and abilities
-    # (stage P4e, plan 17.1): Yuna's water, Hundro's Intrigue look and
-    # Tessia's Snooper tokens are not wired, and no printed start differs.
+def test_ix_leaders_print_only_yuna_s_setup_value() -> None:
+    # Stage P4a listed the Leaders before their setup deviations and
+    # abilities (stage P4e, plan 17.1). The one setup value a field holds is
+    # Yuna's: "water 없이 시작" (docs/rules/rise-of-ix.md 3, 10); Hundro's
+    # Intrigue look and Tessia's Snooper tokens are setup steps, not fields.
     for leader in IX_LEADERS:
-        assert leader.starting_water == 1, leader.leader_id
+        water = 0 if leader.leader_id == "princess_yuna_moritani" else 1
+        assert leader.starting_water == water, leader.leader_id
         assert leader.extra_starting_spice == 0, leader.leader_id
         assert leader.extra_starting_solari == 0, leader.leader_id
         assert leader.removed_starting_card_ids == (), leader.leader_id

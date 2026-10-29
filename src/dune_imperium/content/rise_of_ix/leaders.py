@@ -8,14 +8,15 @@ the ability names from the app's ability classes (``…RiseOfIx.CoordinationAbil
 and the like), as ``content.imperium.leaders`` did for the original game; the
 rules behind them are docs/rules/rise-of-ix.md 10.
 
-These are stage P4a identity entries: a name and the two ability names. The
-setup deviations (Yuna's ``starting_water``, Hundro's and Tessia's setup
-steps) and the abilities themselves are not wired yet (stage P4e).
-``rulesets.IMPERIUM_LEADER_IDS`` keeps the original game's eight; with
-``rise_of_ix`` ``content_for`` offers them after those eight [Rise of Ix p. 3]
-as each is wired (``rulesets.IX_LEADER_IDS_OFFERED``, none until stage P4e),
-so the six are defined but not offered yet; setup takes Rise of Ix on the
-original game since stage P4c-5.
+These began as stage P4a identity entries: a name and the two ability
+names. Stage P4e wires each Leader's setup deviation (Yuna's
+``starting_water`` here; Hundro's and Tessia's setup steps in ``rules``) and
+abilities (``content.uprising.leader_abilities``, ``rules.leader_abilities``)
+one at a time. ``rulesets.IMPERIUM_LEADER_IDS`` keeps the original game's
+eight; with ``rise_of_ix`` ``content_for`` offers the wired ones after those
+eight [Rise of Ix p. 3] (``rulesets.IX_LEADER_IDS_OFFERED``), so the others
+are defined but not offered yet; setup takes Rise of Ix on the original game
+since stage P4c-5.
 ``content.uprising.leaders``'s ``LEADERS_BY_ID`` resolves them next to the
 original game's Leaders; code that lists Uprising's Leaders iterates
 ``LEADERS``, and the observation lists them from v39 (plan 17.1, 17.4).
@@ -37,13 +38,21 @@ _SOURCES: Final = (
 _CATALOG: Final = "https://dunecardshub.com/"
 
 
-def _leader(leader_id: str, name: str, ability: str, signet: str) -> LeaderDefinition:
+def _leader(
+    leader_id: str,
+    name: str,
+    ability: str,
+    signet: str,
+    *,
+    starting_water: int = 1,
+) -> LeaderDefinition:
     return LeaderDefinition(
         leader_id,
         name,
         _CATALOG,
         ability_name=ability,
         signet_name=signet,
+        starting_water=starting_water,
         sources=_SOURCES,
     )
 
@@ -68,6 +77,9 @@ IX_LEADERS: Final[tuple[LeaderDefinition, ...]] = (
         '"Princess" Yuna Moritani',
         "Smuggling Operation",
         "Final Delivery",
+        # Smuggling Operation: "You start the game with no water" (app text,
+        # docs/rules/rise-of-ix.md 3 and 10).
+        starting_water=0,
     ),
     _leader("tessia_vernius", "Tessia Vernius", "Careful Observation", "Duplicity"),
     _leader(
