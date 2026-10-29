@@ -24,6 +24,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CompleteContract,
     DrawPersonalCards,
     ForceEnemyRetreat,
+    Freighter,
     GainInfluence,
     GainResources,
     GenerateSpecimens,
@@ -200,6 +201,12 @@ from dune_imperium.rules.leader_abilities import (
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.sandworms import sandworm_block
 from dune_imperium.rules.shield_wall import destroy_shield_wall
+from dune_imperium.rules.shipping_track import (
+    freighter_can_advance,
+    freighter_can_recall,
+    move_freighter_up,
+    recall_freighter,
+)
 from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spy_placement import (
     place_spy,
@@ -280,6 +287,9 @@ AGENT_ICON_RECALL: Final = "recall"  # Steersman: one Agent to recall
 # Tread in Darkness: its optional black trash icon (``trash_agent_card`` or
 # ``decline_agent_card_trash``).
 AGENT_ICON_TRASH: Final = "trash"
+# Landing Rights' Freighter icon (Rise of Ix): ``advance_agent_card_freighter``
+# or ``recall_agent_card_freighter``; unused, it lapses at the turn's end.
+AGENT_ICON_FREIGHTER: Final = "freighter"
 
 # Leaders whose Signet Ring ability prints several independent icons, from
 # their records (composed A6c): the Signet Ring card's box (or a Ghola
@@ -1060,13 +1070,46 @@ def _spy_icon_rows(
     return agent_spy_rows(state, player, spy[1], context)
 
 
+def _freighter_icon_rows(
+    state: GameState,
+    player: int,
+    context: dict[str, ActionValue],
+    recorded: Ability | None,
+) -> tuple[DomainAction, ...] | None:
+    """An icon box's Freighter icon (Landing Rights, Rise of Ix): "you may
+    move your Freighter in one of two ways" [Rise of Ix p. 5] -- up one space
+    (never from the top) or a recall (never from the bottom, where it moves
+    nothing). The icon is "may", so no refusal is offered in the owner's turn:
+    the turn's end lapses it (OQ-095 (2), ``OPTIONAL_AGENT_ICONS``). None when
+    no Freighter icon waits."""
+
+    freighter = icon_line(context, recorded, Freighter)
+    if freighter is None:
+        return None
+    assert recorded is not None
+    if box_icon_block(state.players[player], context, recorded, freighter[0]):
+        return ()
+    return (
+        *(
+            (DomainAction(action_id="advance_agent_card_freighter", actor=player),)
+            if freighter_can_advance(state, player)
+            else ()
+        ),
+        *(
+            (DomainAction(action_id="recall_agent_card_freighter", actor=player),)
+            if freighter_can_recall(state, player)
+            else ()
+        ),
+    )
+
+
 def legal_agent_card_icon_choice_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """The Combat and Spy icons of an icon-by-icon box, answered by the
-    payment and the Spy handlers (cleanup-2d-5); the recall, the Influence
-    and the trash keep their own providers."""
+    """The Combat, Spy and Freighter icons of an icon-by-icon box, answered
+    by the payment, the Spy and the Freighter handlers (cleanup-2d-5); the
+    recall, the Influence and the trash keep their own providers."""
 
     try:
         frame, context = current_agent_effect_context(state)
@@ -1080,7 +1123,40 @@ def legal_agent_card_icon_choice_actions(
     return (
         *(_combat_icon_rows(state, player, context, recorded) or ()),
         *(_spy_icon_rows(state, player, context, recorded) or ()),
+        *(_freighter_icon_rows(state, player, context, recorded) or ()),
     )
+
+
+def apply_agent_card_freighter(state: GameState, action: DomainAction) -> RuleResult:
+    """Move the Freighter for an Agent box's Freighter icon: up one space, or
+    a recall whose rewards wait on the turn (``rules.shipping_track``).
+
+    The icon is retired and the frame written back first, so the recall's
+    rewards are queued on the state the turn frame belongs to
+    (``ix_board_spaces.apply_ix_space_action`` does the same for a space's
+    icon)."""
+
+    if action not in legal_agent_card_icon_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Agent-card Freighter choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    source = agent_card_source(state.round_number, action.actor, source_card_id)
+    finish_agent_icon(context, AGENT_ICON_FREIGHTER)
+    working = advance_after_effect(state, context)
+    move = (
+        move_freighter_up
+        if action.action_id == "advance_agent_card_freighter"
+        else recall_freighter
+    )
+    moved = move(working, action.actor, source=f"{source}:freighter")
+    done = agent_box_event(
+        source,
+        source_card_id,
+        action.actor,
+        BoxOutcome.RESOLVED,
+        effect=AGENT_ICON_FREIGHTER,
+    )
+    return RuleResult(state=moved.state, events=(*moved.events, done))
 
 
 def apply_agent_card_spy_action(
@@ -3213,8 +3289,8 @@ def graft_boxes_are_stalled(state: GameState) -> bool:
 
 
 # The optional icons of boxes resolved icon by icon (OQ-027): Tread in
-# Darkness's black trash icon beside its mandatory draw, and Twisted Mentat's
-# "You may recall the Agent you sent this turn".
+# Darkness's black trash icon beside its mandatory draw, Twisted Mentat's
+# "You may recall the Agent you sent this turn" and Landing Rights' Freighter.
 OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = (
     MappingProxyType(
         {
@@ -3222,6 +3298,10 @@ OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = 
             _TRASH_AND_SPICE_IF_BOND: frozenset({AGENT_ICON_TRASH}),
             PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: frozenset(
                 {AGENT_ICON_RECALL}
+            ),
+            # Landing Rights' Freighter icon (Rise of Ix, "may").
+            PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: frozenset(
+                {AGENT_ICON_FREIGHTER}
             ),
         }
     )

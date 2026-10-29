@@ -1077,6 +1077,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "pay_agent_card_solari_for_spice",
             )
         )
+        # Landing Rights' Freighter icon, an Agent box's two moves
+        # (``agent_effects.apply_agent_card_freighter``).
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in (
+                "advance_agent_card_freighter",
+                "recall_agent_card_freighter",
+            )
+        )
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
     elif content.base_game is BaseGame.IMPERIUM:
@@ -2645,6 +2654,7 @@ _ICON_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "trash": (("trash", ""),),
     "combat": (("gain", "combat"),),
     "spy": (("place_spy", ""), ("recall_spy", "")),
+    "freighter": (("advance", "freighter"), ("collect", "freighter")),
 }
 _HOOK_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "possible_futures": (("gain_influence", ""),),

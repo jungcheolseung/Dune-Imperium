@@ -43,6 +43,7 @@ from dune_imperium.rules.agent_effect_frame import (
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_contract_completion,
     apply_agent_card_discard,
+    apply_agent_card_freighter,
     apply_agent_card_influence,
     apply_agent_card_intrigue_payment,
     apply_agent_card_long_live_action,
@@ -902,6 +903,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_agent_card_spice": apply_agent_card_payment,
     # Firm Grip (original game): "2 Solari -> Choose one Influence".
     "pay_agent_card_solari": apply_agent_card_payment,
+    # Landing Rights (Rise of Ix): the Freighter icon's two moves.
+    "advance_agent_card_freighter": apply_agent_card_freighter,
+    "recall_agent_card_freighter": apply_agent_card_freighter,
     # Local Fence (Rise of Ix): its two arrows printed with "-OR-".
     "pay_agent_card_spice_for_solari": apply_agent_card_payment,
     "pay_agent_card_solari_for_spice": apply_agent_card_payment,

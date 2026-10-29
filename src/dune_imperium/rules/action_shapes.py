@@ -397,6 +397,14 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "pay_agent_card_solari": _row(_V.PAY, _S.AGENT_CARD, variant="solari", tag=_BOX),
     "pay_agent_card_spice": _row(_V.PAY, _S.AGENT_CARD, variant="spice", tag=_BOX),
+    # Landing Rights' Freighter icon (Rise of Ix): up one space or recall,
+    # [Rise of Ix p. 5]; an unused icon lapses at the turn's end.
+    "advance_agent_card_freighter": _row(
+        _V.ADVANCE, _S.AGENT_CARD, variant="freighter", tag=_BOX
+    ),
+    "recall_agent_card_freighter": _row(
+        _V.COLLECT, _S.AGENT_CARD, variant="freighter", tag=_BOX
+    ),
     # Local Fence's two arrows printed with "-OR-" (Rise of Ix), one each.
     "pay_agent_card_spice_for_solari": _row(
         _V.PAY, _S.AGENT_CARD, variant="spice_for_solari", tag=_BOX

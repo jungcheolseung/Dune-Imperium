@@ -41,6 +41,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     FactionBond,
     ForceEnemyRetreat,
+    Freighter,
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
@@ -172,10 +173,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Imperial Spy, Missionaria Protectiva, Gene Manipulation, Reverend Mother
     # Mohiam, Carryall, Test of Humanity, Firm Grip, Shifting Allegiances,
     # Other Memory, The Voice, and the promos Thumper and Jessica of Arrakis),
-    # and Rise of Ix's Sayyadina (stage P4d: "3 water -> 1 Victory Point")
-    # and Local Fence ("[2 spice] -> [5 Solari] -OR- [5 Solari] -> [4
-    # spice]").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 2
+    # and Rise of Ix's Sayyadina (stage P4d: "3 water -> 1 Victory Point"),
+    # Local Fence ("[2 spice] -> [5 Solari] -OR- [5 Solari] -> [4 spice]")
+    # and Landing Rights (the Freighter icon).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 3
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -204,6 +205,9 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         _BOX.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE: ("influence", "trash_self"),
         _BOX.DRAW_ONE_AND_RECALL_AGENT: ("cards", "recall"),
         _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: ("recall",),
+        # Landing Rights (Rise of Ix): the Freighter icon, answered by its own
+        # rows.
+        _BOX.MAY_MOVE_FREIGHTER: ("freighter",),
         _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: ("trash", "cards"),
         # Split per icon (cleanup-2d-5, user decision 2026-10-18).
         _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: ("influence", "intrigue"),
@@ -1329,7 +1333,8 @@ def test_dangerous_rhetoric_trashes_itself_by_its_own_icon() -> None:
 def test_the_optional_icons_are_marked_in_their_records() -> None:
     """The icons ``OPTIONAL_AGENT_ICONS`` lets lapse are the ones their records
     print as optional (Tread in Darkness's black trash icon, Twisted Mentat's
-    "You may recall"), so a later stage can read it from the records."""
+    "You may recall", Landing Rights' Freighter), so a later stage can read it
+    from the records."""
 
     marked = {}
     for effect, ability in AGENT_BOX_ABILITIES.items():
@@ -1339,6 +1344,8 @@ def test_the_optional_icons_are_marked_in_their_records() -> None:
             if any(
                 isinstance(reward, TrashPersonalCard) and not reward.mandatory
                 or isinstance(reward, RecallAgent) and reward.optional
+                # Landing Rights' Freighter icon is "may" [Rise of Ix p. 5].
+                or isinstance(reward, Freighter)
                 for reward in line.rewards
             )
         )

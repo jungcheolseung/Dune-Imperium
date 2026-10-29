@@ -66,6 +66,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     FactionBond,
     ForceEnemyRetreat,
+    Freighter,
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
@@ -612,6 +613,12 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: _icons(
                 ("recall", _line(RecallAgent(sent_this_turn=True, optional=True))),
             ),
+            # Landing Rights (Rise of Ix): the Freighter icon [Steam app screen
+            # pieces]: "you may move your Freighter in one of two ways" [Rise
+            # of Ix p. 5] (docs/rules/rise-of-ix.md 5). An optional icon
+            # (``agent_effects.OPTIONAL_AGENT_ICONS``) answered by its own rows
+            # (``advance_agent_card_freighter``, ``recall_agent_card_freighter``).
+            _BOX.MAY_MOVE_FREIGHTER: _icons(("freighter", _line(Freighter()))),
             # Tread in Darkness: "If Bene Gesserit Bond: You may trash a card,
             # Draw 1 card" -- the Bond opens the box and is judged again on each
             # icon when it resolves (OQ-028); the trash stays optional (OQ-058).

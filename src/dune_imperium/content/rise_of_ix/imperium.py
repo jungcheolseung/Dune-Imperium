@@ -153,6 +153,14 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("landing_rights", "Landing Rights"),
         copies=1,
         acquisition_cost=4,
+        # App table: Spacing Guild, City icon; Reveal 2 Persuasion. Agent: the
+        # Freighter icon [Steam app screen pieces], "you may move your Freighter"
+        # [Rise of Ix p. 5] (docs/rules/rise-of-ix.md 5).
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.MAY_MOVE_FREIGHTER,
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("local_fence", "Local Fence"),

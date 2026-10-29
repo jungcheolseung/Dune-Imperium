@@ -274,6 +274,9 @@ const ACTION_LABELS = {
   place_board_negotiator: "Negotiator 놓기",
   advance_board_freighter: "Freighter 한 칸 위로",
   recall_board_freighter: "Freighter 회수",
+  /* Landing Rights' Agent box (stage P4d): the same two moves. */
+  advance_agent_card_freighter: "Freighter 한 칸 위로",
+  recall_agent_card_freighter: "Freighter 회수",
   acquire_foldspace_to_deck_top: "Foldspace 카드를 덱 위에",
   place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
   /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep

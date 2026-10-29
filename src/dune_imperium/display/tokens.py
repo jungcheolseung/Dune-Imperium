@@ -259,6 +259,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: (
             "You may recall the Agent you sent this turn"
         ),
+        # Rise of Ix's Landing Rights (stage P4d): the Freighter icon.
+        PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: (
+            "You may move your Freighter up one space or recall it"
+        ),
         PersonalCardAgentEffect.GENERATE_SPECIMEN: "Generate 1 specimen",
         PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
             "Gain 1 Bene Gesserit Influence, Draw 1 Intrigue card"

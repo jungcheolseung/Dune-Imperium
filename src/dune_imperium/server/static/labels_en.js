@@ -218,6 +218,8 @@ const LABELS_EN = {
     "place_board_negotiator": "Place a Negotiator",
     "advance_board_freighter": "Move the Freighter up one space",
     "recall_board_freighter": "Recall the Freighter",
+    "advance_agent_card_freighter": "Move the Freighter up one space",
+    "recall_agent_card_freighter": "Recall the Freighter",
     "acquire_foldspace_to_deck_top": "Foldspace card on top of your deck",
     "place_combat_reward_dreadnought": "{control} space for your dreadnought",
     "detonate_combat_reward_dreadnought": "Detonation Devices: dreadnought to the {supply} -> 1 {victory_point}",

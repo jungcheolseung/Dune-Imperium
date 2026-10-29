@@ -241,6 +241,9 @@ BOX_ACTION_IDS: Final = frozenset(
         "pay_agent_card_spice",
         # The original game's Firm Grip: "2 Solari -> Influence" (stage P3).
         "pay_agent_card_solari",
+        # Rise of Ix's Landing Rights: the Freighter icon's two moves.
+        "advance_agent_card_freighter",
+        "recall_agent_card_freighter",
         # Rise of Ix's Local Fence: its two arrows printed with "-OR-".
         "pay_agent_card_spice_for_solari",
         "pay_agent_card_solari_for_spice",

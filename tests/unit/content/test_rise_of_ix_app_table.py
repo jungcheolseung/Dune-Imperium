@@ -267,6 +267,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
 _IX_IMPERIUM_TRANSCRIBED = {
     "imperial_shock_trooper",
     "jamis",
+    "landing_rights",
     "local_fence",
     "sayyadina",
     "truthsayer",

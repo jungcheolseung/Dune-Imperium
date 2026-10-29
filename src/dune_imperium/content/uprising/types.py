@@ -410,6 +410,8 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE = (
         "may_pay_two_spice_for_five_solari_or_five_solari_for_four_spice"
     )
+    # Landing Rights (Rise of Ix): the Freighter icon.
+    MAY_MOVE_FREIGHTER = "may_move_freighter"
 
 
 class PersonalCardTrashEffect(StrEnum):

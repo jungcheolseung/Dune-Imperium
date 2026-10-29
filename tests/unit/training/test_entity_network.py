@@ -181,7 +181,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Then Cull's trash became mandatory (stage P4d): only its own row changed (the
 # existing "mandatory" reward column, read by Twisted Devious too), no column
 # and no scale (compared against e7218126, 2026-10-30).
-_GOLDEN_DIGEST = "302641ffb79d0e229d1397e6bb12b331b8e4f3c4861124371c5362d0c185626c"
+# Then Landing Rights got its play data (stage P4d): only its own row changed,
+# and one personal-table column is new (the Freighter piece in an Agent box),
+# read by its row alone; no older scale moved (compared against b9c62bf5,
+# 2026-10-30).
+_GOLDEN_DIGEST = "0ed2c2541991e940b6ebc0ba728c500022d894fac91a5b49ccef3e1a6f58827c"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

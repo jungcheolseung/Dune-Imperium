@@ -317,6 +317,14 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: (
         "이번 차례에 보낸 {agent} 소환 가능"
     ),
+    # Rise of Ix's Landing Rights (stage P4d): the Freighter has no glossary
+    # entry and a generated Korean line holds no Latin word, so the line names
+    # the track it moves on, the Shipping track (glossary-ko.md "Shipping |
+    # 운송", "track | 트랙"), as the Freighter rows' labels say "한 칸 위로"
+    # and "회수".
+    PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: (
+        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+    ),
     PersonalCardAgentEffect.GENERATE_SPECIMEN: "표본 1개 생성",
     PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
         "{influence_bene_gesserit:1}, {intrigue:1}"
