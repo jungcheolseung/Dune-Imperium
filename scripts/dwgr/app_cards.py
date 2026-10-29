@@ -37,6 +37,7 @@ import sys
 from pathlib import Path
 
 import app_render as R
+import imperium_entries
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -44,6 +45,7 @@ from dune_imperium.agents.app_ai import catalog
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
 from dune_imperium.agents.app_ai.data.synthetic import SYNTHETIC
 from dune_imperium.content.bloodlines.tech import TECH_TILES
+from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.contracts import BLOODLINES_CONTRACTS
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
@@ -259,8 +261,97 @@ def art_key(name):
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
+# ---------------------------------------------------------------- original game
+# The app AI's catalog (``catalog.*_ARCHETYPES``) lists Uprising's cards only.
+# The original game's archetypes (``...BaseSet.*`` and its three promos) are
+# found through the same attribute table ``imperium_entries.py`` derives our
+# ids from; the Reserve's and the Conflicts' ids are not the app's plain names.
+ORIGINAL_RESERVE_ARCHETYPES = {
+    "arrakis_liaison": "ImperiumArchetypes.BaseSet.ArrakisLiaison",
+    "imperium_the_spice_must_flow": "ImperiumArchetypes.BaseSet.TheSpiceMustFlow",
+    "foldspace_card": "ImperiumArchetypes.BaseSet.FoldspaceImperium",
+}
+ORIGINAL_CARD_ARCHETYPES = {
+    **{
+        imperium_entries.card_id(a): a.short
+        for a in imperium_entries.original_archetypes("imperium")
+    },
+    **ORIGINAL_RESERVE_ARCHETYPES,
+}
+ORIGINAL_INTRIGUE_ARCHETYPES = {
+    imperium_entries.card_id(a): a.short
+    for a in imperium_entries.original_archetypes("intrigue")
+}
+_BASE_CONFLICTS = {
+    short.rsplit(".", 1)[1].lower(): short
+    for short in ARCHETYPES
+    if short.startswith("ConflictArchetypes.BaseSet.")
+}
+# skirmish_a -> ...SkirmishA, imperium_siege_of_arrakeen -> ...SiegeofArrakeen
+ORIGINAL_CONFLICT_ARCHETYPES = {
+    c.card.card_id: _BASE_CONFLICTS[
+        re.sub(r"^imperium_|_conflict$", "", c.card.card_id).replace("_", "")
+    ]
+    for c in IMPERIUM_CONFLICTS
+}
+
+
+# Original cards the app cannot draw as printed, which keep their scan: the
+# original game's The Spice Must Flow prints a sandworm over the dunes, while
+# the app ships one painting under that name, Uprising's (the ship and the
+# moons; checked against the scan 2026-10-29).
+ORIGINAL_SCAN_ONLY = {
+    "imperium_the_spice_must_flow": "the app has only Uprising's painting",
+}
+
+
+# The app writes the card's text into its prefab and replaces it at run time with
+# the string of the node's loc key (TMPLocalizer). Where the original game's
+# baked text is a placeholder that lost an inline icon (Gene Manipulation, Guild
+# Bankers), has a typo (Kwisatz Haderach "you Agents", Bindu Suspension "Action
+# or Reveal turn", Gun Thopter "conflict") or a stray mark (Corner the Market's
+# leading "_"), or sets the Persuasion diamond smaller than the print does
+# (Bypass Protocol, Charisma, Recruitment Mission), the app's own string is
+# drawn, as the printed card reads. Every other baked text matches the print.
+# (Checked against the scans, 2026-10-29.)
+ORIGINAL_APP_TEXT = frozenset(
+    {
+        "card.imperium.genemanipulation.agent",
+        "card.imperium.guildbankers.reveal",
+        "card.imperium.gunthopter.reveal",
+        "card.imperium.kwisatzhaderach.agent",
+        "card.intrigue.bindususpension.text2",
+        "card.intrigue.bypassprotocol.text1",
+        "card.intrigue.bypassprotocol.text2",
+        "card.intrigue.charisma.text",
+        "card.intrigue.cornerthemarket.text1",
+        "card.intrigue.cornerthemarket.text2",
+        "card.intrigue.recruitmentmission.text1",
+    }
+)
+
+
+def card_archetype(content_id):
+    return (
+        catalog.CARD_ARCHETYPES.get(content_id) or ORIGINAL_CARD_ARCHETYPES[content_id]
+    )
+
+
+def intrigue_archetype(content_id):
+    return (
+        catalog.INTRIGUE_ARCHETYPES.get(content_id)
+        or ORIGINAL_INTRIGUE_ARCHETYPES[content_id]
+    )
+
+
+def conflict_short(content_id):
+    if content_id in catalog.CONFLICT_ARCHETYPES:
+        return catalog.CONFLICT_ARCHETYPES[content_id][1]
+    return ORIGINAL_CONFLICT_ARCHETYPES[content_id]
+
+
 def imperium_spec(inp, content_id, catalog_kind="imperium"):
-    short = catalog.CARD_ARCHETYPES[content_id]
+    short = card_archetype(content_id)
     arch = ARCHETYPES[short]
     at = arch.attributes
     slug = at["Name"].rsplit(".", 1)[0]  # card.imperium.<slug>
@@ -275,9 +366,13 @@ def imperium_spec(inp, content_id, catalog_kind="imperium"):
         ),
         None,
     )
+    if content_id in ORIGINAL_SCAN_ONLY:
+        art = None
     return {
         "kind": "imperium",
         "id": content_id,
+        "skip": ORIGINAL_SCAN_ONLY.get(content_id),
+        "original": content_id in ORIGINAL_CARD_ARCHETYPES,
         "arch": short,
         "slug": slug,
         "prefab": prefab,
@@ -851,7 +946,7 @@ def bind_card_prefab(inp, spec, lang):
         # (Imperium Ceremony's says 5, the card 6)
         for n in R.find_all(t, "PersuasionText"):
             n["text"] = str(spec["cost"])
-    return bind_prefab_texts(inp, t, lang, spec["prefab"])
+    return bind_prefab_texts(inp, t, lang, spec["prefab"], spec.get("original"))
 
 
 def bind_dynamic(inp, spec, lang):
@@ -1181,7 +1276,7 @@ INTRIGUE_TITLE_MAX = 435.0
 
 
 def intrigue_spec(inp, content_id):
-    short = catalog.INTRIGUE_ARCHETYPES[content_id]
+    short = intrigue_archetype(content_id)
     if short not in ARCHETYPES:
         return bloodlines_intrigue_spec(inp, content_id, SYNTHETIC[short])
     arch = ARCHETYPES[short]
@@ -1205,6 +1300,7 @@ def intrigue_spec(inp, content_id):
     return {
         "kind": "intrigue",
         "id": content_id,
+        "original": content_id in ORIGINAL_INTRIGUE_ARCHETYPES,
         "arch": short,
         "slug": slug,
         "prefab": prefab,
@@ -1409,7 +1505,7 @@ def bind_intrigue_prefab(inp, spec, lang):
         ):
             n["fallback"] = str(KOREAN_FONT_BOLD)
     centre_ink(inp, head, R.comp(t, "RT")["size"], INTRIGUE_BAND_MIDDLE)
-    return bind_prefab_texts(inp, t, lang, spec["prefab"])
+    return bind_prefab_texts(inp, t, lang, spec["prefab"], spec.get("original"))
 
 
 def bind_intrigue(inp, spec, lang):
@@ -1561,7 +1657,7 @@ def conflict_archetype(short):
 
 def conflict_spec(inp, content_id):
     # the printed card is the CHOAM version (contract icons)
-    short = catalog.CONFLICT_ARCHETYPES[content_id][1]
+    short = conflict_short(content_id)
     arch = conflict_archetype(short)
     at = arch.attributes
     last = short.rsplit(".", 1)[1].lower()
@@ -1582,6 +1678,7 @@ def conflict_spec(inp, content_id):
         "kind": "conflict",
         "prefab": prefab,
         "id": content_id,
+        "original": content_id in ORIGINAL_CONFLICT_ARCHETYPES,
         "arch": short,
         "slug": slug,
         "title": {
@@ -1626,7 +1723,7 @@ def bind_conflict_prefab(inp, spec, lang):
         if lang == "ko":
             suffix["fallback"] = str(KOREAN_FONT_BOLD)
         R.find(a, f"{i + 1}Text")["text"] = str(i + 1)
-    return bind_prefab_texts(inp, t, lang, spec["prefab"])
+    return bind_prefab_texts(inp, t, lang, spec["prefab"], spec.get("original"))
 
 
 def bind_conflict(inp, spec, lang):
@@ -1726,9 +1823,10 @@ def prefab_text_nodes(t, prefab):
     return out
 
 
-def bind_prefab_texts(inp, t, lang, prefab=""):
+def bind_prefab_texts(inp, t, lang, prefab="", original=False):
     """A per-card prefab carries its own texts: draw them, printed English and
-    Korean from the text tables by the node's key."""
+    Korean from the text tables by the node's key. ``original``: the original
+    game's cards (see ``ORIGINAL_APP_TEXT``)."""
     keyed = {id(n): k for k, n in prefab_text_nodes(t, prefab)}
 
     def walk(n):
@@ -1742,6 +1840,8 @@ def bind_prefab_texts(inp, t, lang, prefab=""):
                     text = inp.ko[key]
             elif key and key in inp.en:
                 text = inp.en[key]
+            elif original and key in ORIGINAL_APP_TEXT:
+                text = inp.text_en(key)
             n["text"] = text
         for ch in n["children"]:
             walk(ch)
@@ -2658,28 +2758,37 @@ SPECS = {
 EPIC_GAME_MODE_IDS = frozenset({"control_the_spice", "economic_supremacy"})
 
 KIND_IDS = {
-    "imperium": lambda: [
-        cid
-        for cid, short in catalog.CARD_ARCHETYPES.items()
-        if short.split(".")[1] in ("Uprising", "Promo", "Immortality", "BaseSet")
-        or cid in EPIC_GAME_MODE_IDS
-    ],
-    "intrigue": lambda: [
-        cid
-        for cid, short in catalog.INTRIGUE_ARCHETYPES.items()
-        if (
-            short in ARCHETYPES
-            and short.split(".")[1] in ("Uprising", "Promo", "Immortality")
-        )
-        or (short in SYNTHETIC and INTRIGUE_CARDS_BY_ID[cid].bloodlines_only)
-    ],
-    "conflict": lambda: [
-        cid
-        for cid, (short, _six) in catalog.CONFLICT_ARCHETYPES.items()
-        if (short in ARCHETYPES and ".Uprising." in short)
-        or cid in EPIC_GAME_MODE_IDS
-        or "Bloodlines" in conflict_archetype(short).attributes.get("SetList", ())
-    ],
+    "imperium": lambda: (
+        [
+            cid
+            for cid, short in catalog.CARD_ARCHETYPES.items()
+            if short.split(".")[1] in ("Uprising", "Promo", "Immortality", "BaseSet")
+            or cid in EPIC_GAME_MODE_IDS
+        ]
+        + list(ORIGINAL_CARD_ARCHETYPES)
+    ),
+    "intrigue": lambda: (
+        [
+            cid
+            for cid, short in catalog.INTRIGUE_ARCHETYPES.items()
+            if (
+                short in ARCHETYPES
+                and short.split(".")[1] in ("Uprising", "Promo", "Immortality")
+            )
+            or (short in SYNTHETIC and INTRIGUE_CARDS_BY_ID[cid].bloodlines_only)
+        ]
+        + list(ORIGINAL_INTRIGUE_ARCHETYPES)
+    ),
+    "conflict": lambda: (
+        [
+            cid
+            for cid, (short, _six) in catalog.CONFLICT_ARCHETYPES.items()
+            if (short in ARCHETYPES and ".Uprising." in short)
+            or cid in EPIC_GAME_MODE_IDS
+            or "Bloodlines" in conflict_archetype(short).attributes.get("SetList", ())
+        ]
+        + list(ORIGINAL_CONFLICT_ARCHETYPES)
+    ),
     "contract": lambda: (
         [
             cid
@@ -2705,6 +2814,17 @@ def render_card(inp, spec, lang, scale):
 
 def card_ids(args):
     """[(kind, content id)] from --kind and --all / --ids."""
+    if args.kind == "original":
+        # only the original game's cards, whichever kind they are
+        return [
+            (kind, cid)
+            for kind, ids in (
+                ("imperium", ORIGINAL_CARD_ARCHETYPES),
+                ("intrigue", ORIGINAL_INTRIGUE_ARCHETYPES),
+                ("conflict", ORIGINAL_CONFLICT_ARCHETYPES),
+            )
+            for cid in ids
+        ]
     kinds = list(KIND_IDS) if args.kind == "all" else args.kind.split(",")
     out = []
     for kind in kinds:
@@ -2720,7 +2840,10 @@ def text_fields(spec):
 
 
 def korean_complete(spec):
-    """Every English text of the card has its Korean-edition counterpart."""
+    """Every English text of the card has its Korean-edition counterpart. The
+    original game has no Korean edition text yet: its cards render in English only."""
+    if spec.get("original"):
+        return False
     return all(t.get("ko") for t in text_fields(spec) if t.get("en"))
 
 
@@ -2815,7 +2938,9 @@ def main():
         p.add_argument("--ids", default="")
         p.add_argument("--all", action="store_true")
         p.add_argument(
-            "--kind", default="imperium", help="imperium, intrigue, ... or all"
+            "--kind",
+            default="imperium",
+            help="imperium, intrigue, ..., all, or original (original game only)",
         )
         p.set_defaults(fn=fn)
         if name == "render":
