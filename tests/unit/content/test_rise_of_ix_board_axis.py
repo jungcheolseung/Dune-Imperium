@@ -396,8 +396,15 @@ def test_the_decks_take_the_ix_cards_whose_play_data_is_complete(
         if entry.play_data_complete
         for copy in range(entry.copies)
     )
+    # Rise of Ix's starting card too: "시작 카드 | 1 | 좌석마다 1 | Control the
+    # Spice | Epic 전용" (rise-of-ix.md 2, `[Rise of Ix p. 2]`), stage P4e.
     assert content.card_ids == _plain(**options).card_ids | {
-        entry.card.card_id for entry in IX_IMPERIUM_CARDS if entry.play_data_complete
+        "control_the_spice",
+        *(
+            entry.card.card_id
+            for entry in IX_IMPERIUM_CARDS
+            if entry.play_data_complete
+        ),
     }
     # No identity-only Ix card is dealt.
     assert all(entry.play_data_complete for entry in content.imperium_cards)

@@ -56,7 +56,9 @@ _DREADNOUGHTS_PER_PLAYER: Final = 2
 # What the Conflict cards of Rise of Ix leave out of the ten drawn: the
 # printed deck is I 6, II 11, III 5 (22 cards), so 12 stay in the box
 # [Rise of Ix p. 3] (docs/rules/rise-of-ix.md 3 item 3), Epic Game Mode too
-# [Rise of Ix p. 10]. The engine's pool holds a card once its rewards are
+# [Rise of Ix p. 10]: "원판 + Ix의 III은 다섯 장(원판 4 + Economic Supremacy)이라
+# 모두 쓴다" (rise-of-ix.md 11), so its five II over five III leave every
+# Conflict I and six II. The engine's pool holds a card once its rewards are
 # transcribed (``rulesets._imperium_conflicts``); since stage P4d-1 that is
 # all 22, so exactly 12 stay.
 _IX_UNUSED_CONFLICTS: Final = 12
@@ -932,20 +934,19 @@ def create_draft_initial_state(
 
 
 # The options the original game cannot be played with yet, and the stage of
-# docs/base-game-and-ix-plan.md that brings each (15.4): Rise of Ix's Epic Game
-# Mode in P4 (its Leaders, P4e), the Uprising expansions with it in P7 and
-# Arrakeen Scouts in P8. Rise of Ix itself is open on the original game since
-# stage P4c-5 (``_require_content`` still refuses it with Uprising, P7). Its own
-# promo cards (Duncan, Loyal Blade; Jessica of Arrakis; Thumper) are open since
-# stage P3 filled them (plan 16.1); the Leader draft deals six of its eight
-# Leaders (OQ-007), open since P2b brought them all.
+# docs/base-game-and-ix-plan.md that brings each (15.4): the Uprising
+# expansions in P7 and Arrakeen Scouts in P8. Rise of Ix itself is open on the
+# original game since stage P4c-5 (``_require_content`` still refuses it with
+# Uprising, P7), and its Epic Game Mode with it since stage P4e. Its own promo
+# cards (Duncan, Loyal Blade; Jessica of Arrakis; Thumper) are open since stage
+# P3 filled them (plan 16.1); the Leader draft deals six of its eight Leaders
+# (OQ-007), open since P2b brought them all.
 _IMPERIUM_PENDING_OPTIONS: Final = (
     ("choam_module", "P7"),
     ("bloodlines", "P7"),
     ("tech_module", "P7"),
     ("immortality", "P7"),
     ("go_to_11", "P7"),
-    ("epic_game", "P4"),
     ("arrakeen_scouts", "P8"),
 )
 
@@ -955,7 +956,12 @@ def _require_content(config: RulesetConfig) -> None:
     than play it without: Rise of Ix plays on the original game
     (docs/base-game-and-ix-plan.md stage P4) but not yet with Uprising (P7),
     and the original game takes no other option yet
-    (``_IMPERIUM_PENDING_OPTIONS``)."""
+    (``_IMPERIUM_PENDING_OPTIONS``) but Epic Game Mode with Rise of Ix.
+
+    Epic Game Mode is the Rise of Ix rulebook's ("12점까지. ... Uprising 위의
+    구현(epic-game-mode.md)을 다시 쓴다" [Rise of Ix p. 10],
+    docs/rules/rise-of-ix.md 11), so the original game plays it with
+    ``rise_of_ix`` only; Uprising plays it alone by user decision (OQ-092)."""
 
     if not content_for(config).board_spaces:
         message = f"the {config.base_game} base game has no board in the engine yet"
@@ -968,6 +974,12 @@ def _require_content(config: RulesetConfig) -> None:
                     "the base game plan"
                 )
                 raise NotImplementedError(message)
+        if config.epic_game and not config.rise_of_ix:
+            message = (
+                "the original game takes epic_game only with rise_of_ix: Epic "
+                "Game Mode is Rise of Ix's [Rise of Ix p. 10]"
+            )
+            raise NotImplementedError(message)
     elif config.rise_of_ix:
         message = "Rise of Ix has no content in the engine with Uprising yet (stage P7)"
         raise NotImplementedError(message)
