@@ -17,7 +17,6 @@ from dune_imperium.agents.app_ai.abilities import ix_imperium as ix
 from dune_imperium.agents.app_ai.abilities import original_imperium as oi
 from dune_imperium.agents.app_ai.abilities.base import (
     PORTS,
-    UNPORTED,
     Ability,
     Pile,
     Request,
@@ -220,7 +219,7 @@ def test_every_ability_of_every_ix_card_resolves_to_a_port() -> None:
             assert not isinstance(found, UnportedAbility), (card_id, found)
 
 
-def test_the_46_classes_are_registered_under_their_app_names() -> None:
+def test_the_47_classes_are_registered_under_their_app_names() -> None:
     new = {
         cls.APP_CLASS: cls
         for cls in vars(ix).values()
@@ -229,7 +228,8 @@ def test_the_46_classes_are_registered_under_their_app_names() -> None:
         and cls.__module__ == ix.__name__
         and "APP_CLASS" in vars(cls)
     }
-    assert len(new) == 46
+    # The 46 card classes and the playmat's Boundless Ambition custom ability.
+    assert len(new) == 47
     for app_class, cls in new.items():
         assert PORTS[app_class] is cls
     assert "worm.canis.abilities.ActivatedAbilities.BaseSet.EmbeddedAgentAbility" in new
@@ -477,10 +477,27 @@ def test_boundless_ambition_reveal_reads_the_playmat_custom_ability(
     turn_state: GameState, prof: ProfileFactory
 ) -> None:
     reveal = ix.BoundlessAmbitionRevealAbility(imperium("boundless_ambition"))
-    before = UNPORTED[ix.BOUNDLESS_AMBITION_CUSTOM]
-    assert reveal.value_for_player(prof(turn_state)).sum == 0.0
-    assert UNPORTED[ix.BOUNDLESS_AMBITION_CUSTOM] == before + 1  # not ported yet
-    assert answer_of(reveal.evaluate(prof(turn_state), Request())) == (100.0, ())
+    p = prof(turn_state)
+    custom = ix.BoundlessAmbitionCustomAbility(imperium("boundless_ambition"))
+    assert reveal.value_for_player(p).sum == pytest.approx(
+        custom.value_for_player(p).sum
+    )
+    assert answer_of(reveal.evaluate(p, Request())) == (100.0, ())
+
+
+def test_boundless_ambition_custom_takes_the_best_row_card_costing_five_or_less(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    p = prof(turn_state)
+    custom = ix.BoundlessAmbitionCustomAbility(imperium("boundless_ambition"))
+    row = [card_entity(ref) for ref in p.ctx.imperium_row]
+    cheap = [c for c in row if c.int_attr("PersuasionCost", 0) < 6]
+    expected = max((p.acquire_value(c).sum for c in cheap), default=None)
+    got = custom.value_for_player(p).sum
+    assert got == pytest.approx(expected if expected is not None else 0.0)
+    answer = custom.evaluate(p, Request(infos=(TargetInfo(entities=tuple(cheap)),)))
+    if cheap:
+        assert answer.response is not None and answer.response[0] == (0,)
 
 
 # ---------------------------------------------------------------------------

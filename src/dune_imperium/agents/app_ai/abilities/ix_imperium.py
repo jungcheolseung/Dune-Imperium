@@ -87,6 +87,7 @@ from dune_imperium.agents.app_ai.abilities.generic import (
     RevealAbility,
     TriggeredAbility,
     _has_drawable_card,
+    _targets,
     bg_played_pile_value,
     collect_first,
 )
@@ -125,7 +126,7 @@ _AA_PROMO = "worm.canis.abilities.ActivatedAbilities.Promo."
 _TA_PROMO = "worm.canis.abilities.TriggeredAbilities.Promo."
 
 #: The playmat custom ability Boundless Ambition's Reveal reads
-#: (``PlayAbilities.Promo.BoundlessAmbitionCustomAbility``; not ported here).
+#: (``PlayAbilities.Promo.BoundlessAmbitionCustomAbility``, ported below).
 BOUNDLESS_AMBITION_CUSTOM: Final = (
     "worm.canis.abilities.PlayAbilities.Promo.BoundlessAmbitionCustomAbility"
 )
@@ -2141,3 +2142,53 @@ class WeirdingWayAbility(DeferredAbility):
         lower, _upper = p.conflict_posture_bounds()
         option = 1 if lower >= interest else 0
         return Answer(1.0, ((option,),), f"Weirding Way | {option}")
+
+
+@port(BOUNDLESS_AMBITION_CUSTOM)
+class BoundlessAmbitionCustomAbility(DeferredAbility):
+    """``PlayAbilities.Promo.BoundlessAmbitionCustomAbility``: the playmat's
+    "acquire an Imperium Row card costing 5 or less" that Boundless
+    Ambition's Reveal grants (``Cost`` @0x4c5d100: ``HasCustomAbility`` and
+    ``HasImperiumRowCardWithPersuasionCostLessThan``)."""
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``SelectionMode`` @0x4c5d1b0: Optional (``xor eax, eax``)."""
+
+        return SelectionMode.OPTIONAL
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``ValueForPlayer`` @0x4c5d360: the base summer plus, for the row
+        card ``MaxByOrElse(AcquireValue(P).Sum)`` among
+        ``ImperiumRowCards.OfType<WormImperiumPlayable>().Where(b__14_0)``
+        (``b__14_0`` @0x4c5e070: ``PersuasionCost < 6``), its
+        ``AcquireValue`` ("Boundless Ambition Acquire <card>"); none, nothing.
+        """
+
+        v = Summer()
+        best: tuple[Entity, float] | None = None
+        for ref in p.ctx.imperium_row:
+            card = card_entity(ref)
+            if card.int_attr("PersuasionCost", 0) >= 6:
+                continue
+            value = p.acquire_value(card).sum
+            if best is None or value > best[1]:
+                best = (card, value)
+        if best is not None:
+            v.add(f"Boundless Ambition Acquire {best[0].ref}", best[1])
+        return v
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``Evaluate`` @0x4c5d750: each card target at ``AcquireValue(P)
+        .Sum``, answered ``[IntTargetResponse(0), [card]]`` and kept only
+        when strictly better (``UpdateSelectionResponses``)."""
+
+        best: Answer | None = None
+        for card in _targets(request, Kind.CARD):
+            value = p.acquire_value(card).sum
+            if best is None or value > best.value:
+                best = Answer(
+                    value, ((0,), (card.ref,)), f"Boundless Ambition | {card.ref}"
+                )
+        return best if best is not None else Answer(0.0, None, "Boundless Ambition")
