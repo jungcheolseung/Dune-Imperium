@@ -1651,10 +1651,10 @@ class EconomyMixin(ProfileCore):
     # §4.6-4.7 Space costs
     # ===========================================================================
 
-    def _spice_for_sell_melange(self) -> int:
+    def spice_for_sell_melange(self) -> int:
         """``WormAIProfile::GetSpiceForSellMelange @0x490f6c0`` (spec §4.6).
 
-        BaseSet space, not on the Uprising board.
+        The original board's Sell Melange (not on the Uprising board).
         """
 
         c = self.C
@@ -1694,7 +1694,7 @@ class EconomyMixin(ProfileCore):
             # bloodlines-systems.md §1.7, D60), as the app's SolariDiscount.
             need = attribute("SpiceCost") + attribute("SpiceDiscount")
             if space is not None and space.short == _SELL_MELANGE:
-                need = self._spice_for_sell_melange()
+                need = self.spice_for_sell_melange()
             bonus = 0
             if space is not None and space.has("BonusSpice"):
                 # Runtime BonusSpice: our maker spaces' bonus spice.

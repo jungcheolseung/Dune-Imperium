@@ -109,6 +109,9 @@ from dune_imperium.agents.app_ai.abilities.board import (
 )
 from dune_imperium.agents.app_ai.abilities.generic import AgentAbility, SpaceAbility
 from dune_imperium.agents.app_ai.abilities.immortality import graft_card_evaluate
+from dune_imperium.agents.app_ai.abilities.original_board import (
+    SellMelangeSpaceAbility,
+)
 from dune_imperium.agents.app_ai.abilities.tech import MemocordersAcquiredAbility
 from dune_imperium.agents.app_ai.catalog import (
     BLOODLINES_SPACE_ORDER,
@@ -144,6 +147,7 @@ from dune_imperium.agents.app_ai.windows.common import (
 )
 from dune_imperium.agents.app_ai.windows.intrigue import intrigue_play_sources
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
@@ -461,6 +465,40 @@ def _cost_first_ability(
     return None
 
 
+def _sell_melange_ability(space_id: str, board: Board) -> Ability | None:
+    """The original Sell Melange's ``SellMelangeSpaceAbility`` (None
+    elsewhere)."""
+
+    for ability in abilities_of(space_entity(space_id, board)):
+        if isinstance(ability, SellMelangeSpaceAbility):
+            return ability
+    return None
+
+
+def _sell_melange_option(
+    run: DecisionRun,
+    state: GameState,
+    sell: Ability,
+    space_id: str,
+    options: Sequence[int],
+) -> int:
+    """Our Sell Melange ``cost_option`` for the app's answer.
+
+    The app asks the amount at state 400, after the placement
+    (``SellMelangeSpaceAbility::Evaluate`` @0x4bcd9e0, a forced
+    ``IntListTargetResponse(n)`` of the spice sold); our engine asks it with
+    the placement, one cost option per amount (``ResourceCost(spice=n)``),
+    so the same answer on the placed state picks the option.
+    """
+
+    costs = BOARD_SPACES_BY_ID[space_id].cost_options
+    answer = sell.evaluate(_profile_on(run, state), Request(forced=True))
+    spice = answer.response[0][0] if answer.response and answer.response[0] else None
+    picked = [option for option in options if costs[option].spice == spice]
+    named = Answer(answer.value, ((picked[0],),) if picked else None)
+    return _forced_pick(run, named, options)
+
+
 def _forced_pick[T: (int, str)](
     run: DecisionRun, answer: Answer, legal: Sequence[T]
 ) -> T:
@@ -555,6 +593,10 @@ def _realise_costs(
             request = Request(infos=(TargetInfo(options=tuple(options)),), forced=True)
             answer = ability.evaluate(_profile_on(run, state), request)
             option = _forced_pick(run, answer, options)
+        elif len(options) > 1:
+            sell = _sell_melange_ability(space_id, board)
+            if sell is not None:
+                option = _sell_melange_option(run, state, sell, space_id, options)
         variants = [a for a in variants if int_arg(a, "cost_option") == option]
         if ability is not None:
             cost_first = (ability, option)

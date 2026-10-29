@@ -464,8 +464,13 @@ _IRULAN = "LeaderArchetypes.Uprising.PrincessIrulan"
 _FOLLOW_UP = Stage.COST_FIRST
 #: Spaces whose ``SpaceAbility`` is a ``CostFirstSpaceAbility`` (state 220).
 _COST_FIRST_SPACES = ("gather_support", "spice_refinery")
-#: Board icons the space's own ``SpaceAbility`` resolves (state 400).
-_SPACE_ICONS = ("troops", "resources", "high_council", "swordmaster")
+#: Board icons the space's own ``SpaceAbility`` resolves (state 400); the
+#: original Mentat space's ``MentatSpaceAbility`` takes the Mentat itself.
+_SPACE_ICONS = ("troops", "resources", "high_council", "swordmaster", "mentat")
+#: Original spaces whose trash buys a reward of the same visit: Selective
+#: Breeding's two cards (OQ-106) arm after its trash, the rest of the app's
+#: ``SelectiveBreedingDeferredAbility`` answer.
+_ARMED_BOARD_REWARDS = frozenset({("selective_breeding", "cards")})
 
 #: ``GetUsableDeferredAbilities`` @0x49ae890 rows (``12-turn-structure.md``
 #: §2.2): the active cards' then the active space's abilities
@@ -1432,7 +1437,9 @@ def _board_icons(t: _Turn) -> None:
         effect = str_arg(action, "effect") or ""
         order = icons.index(effect) if effect in icons else len(icons)
         label = f"board {effect}"
-        if effect in _SPACE_ICONS:
+        if (t.space_id, effect) in _ARMED_BOARD_REWARDS:
+            _automatic(t, label, _FOLLOW_UP, action, -1)
+        elif effect in _SPACE_ICONS:
             stage = (
                 Stage.COST_FIRST if t.space_id in _COST_FIRST_SPACES else Stage.SPACE
             )
@@ -1447,6 +1454,12 @@ def _board_icons(t: _Turn) -> None:
         elif effect == "cards":
             _ability_source(
                 t, label, _first_of(t.space, DrawAbility), _ROW_SPACE, action
+            )
+        elif effect == "foldspace":
+            # The original Foldspace space: ``FoldspaceDeferredAbility``
+            # (Explicit, E 100; immediate unless the threshold is reached).
+            _ability_source(
+                t, label, _find(t.space, "FoldspaceDeferredAbility"), _ROW_SPACE, action
             )
         elif effect == "contract":
             _ability_source(
@@ -1579,15 +1592,23 @@ def _sietch_tabr(t: _Turn) -> None:
     )
 
 
+#: Maker spaces whose plain ``SpaceAbility`` harvests (state 400): Imperial
+#: Basin on both boards and the original Hagga Basin and The Great Flat
+#: (``SpaceArchetypes.BaseSet``: no ``DesertSpaceDeferredAbility``).
+_SPACE_ABILITY_SPICE = frozenset(
+    {"imperial_basin", "imperium_hagga_basin", "the_great_flat"}
+)
+
+
 def _maker(t: _Turn) -> None:
     harvest = t.run.first("harvest_maker_spice")
     summon = t.run.first("summon_maker_sandworms")
     if harvest is None and summon is None:
         return
-    if t.space_id == "imperial_basin":
+    if t.space_id in _SPACE_ABILITY_SPICE:
         # No DesertSpaceDeferredAbility: the SpaceAbility gives the spice.
         if harvest is not None:
-            _automatic(t, "Imperial Basin spice", Stage.SPACE, harvest)
+            _automatic(t, "Maker space spice", Stage.SPACE, harvest)
         return
     # Arrakeen Scouts swaps Hagga Basin's ability for ``DesertRidingAbility``
     # (a ``HaggaBasinUprisingDeferredAbility``; scouts.md §3.5, §4.2, D27):
@@ -1640,7 +1661,9 @@ def _influence_choice(
 def _desert_tactics(t: _Turn) -> None:
     """Desert Tactics' black trash icon: ``TrashAgentAbility`` (Explicit)
     over the offered cards; its empty pick leaves the trash unused (the turn
-    end lapses it, OQ-095 (2), user ruling 2026-10-14)."""
+    end lapses it, OQ-095 (2), user ruling 2026-10-14). The original
+    Selective Breeding's trash is the same action, answered by its
+    ``SelectiveBreedingDeferredAbility`` (Explicit; its two cards follow)."""
 
     trash = t.by_id("trash_card_for_desert_tactics")
     if not trash:
@@ -1648,10 +1671,15 @@ def _desert_tactics(t: _Turn) -> None:
     request = Request(
         infos=(TargetInfo(entities=_cards(t, _arg_refs(trash, "card_id"))),)
     )
+    name = (
+        "SelectiveBreedingDeferredAbility"
+        if t.space_id == "selective_breeding"
+        else "TrashAgentAbility"
+    )
     _choice_source(
         t,
         "Desert Tactics trash",
-        _find(t.space, "TrashAgentAbility"),
+        _find(t.space, name),
         trash,
         request,
         _ref_or(trash, "card_id", LEFT_UNUSED),

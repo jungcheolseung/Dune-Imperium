@@ -243,6 +243,10 @@ class ProfileCore:
         """``GetSpiceForSpiceRefinery`` @0x490f850."""
         raise NotImplementedError
 
+    def spice_for_sell_melange(self) -> int:
+        """``GetSpiceForSellMelange`` @0x490f6c0."""
+        raise NotImplementedError
+
     def can_agent_ability_be_played_with_space(
         self, space: Entity | None, attr: Attr, amount: int
     ) -> bool:
