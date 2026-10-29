@@ -464,7 +464,7 @@ def _imperium_leaders(rise_of_ix: bool) -> tuple[LeaderDefinition, ...]:
 def _imperium_intrigue_cards(rise_of_ix: bool) -> tuple[IntrigueCardEntry, ...]:
     """The Intrigue cards whose play data is complete; with Rise of Ix its
     17 are "shuffled into the Intrigue Deck" [Rise of Ix p. 3] as they
-    land (none yet)."""
+    land (stage P4d)."""
 
     entries = (
         (*IMPERIUM_INTRIGUE_CARDS, *IX_INTRIGUE_CARDS)

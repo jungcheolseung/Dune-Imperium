@@ -252,6 +252,10 @@ def test_ix_cards_resolve_in_the_merged_tables_only() -> None:
     assert not ix_ids & listed
 
 
+# The Intrigue cards transcribed so far (stage P4d, one per commit).
+_IX_INTRIGUE_TRANSCRIBED = {"blackmail"}
+
+
 def test_ix_entries_are_identities_only() -> None:
     # Stage P4a lists the cards before their play data (plan 17.7); a
     # transcribed card replaces its entry and the deck then takes it.
@@ -259,8 +263,9 @@ def test_ix_entries_are_identities_only() -> None:
         assert not entry.play_data_complete, entry.card.card_id
         assert entry.factions == () and entry.agent_icons == (), entry.card.card_id
     for card in IX_INTRIGUE_CARDS:
-        assert not card.play_data_complete, card.card.card_id
-        assert card.options == (), card.card.card_id
+        done = card.card.card_id in _IX_INTRIGUE_TRANSCRIBED
+        assert card.play_data_complete is done, card.card.card_id
+        assert bool(card.options) is done, card.card.card_id
 
 
 def test_ix_entries_cite_the_component_table() -> None:
