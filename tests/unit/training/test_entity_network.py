@@ -193,7 +193,9 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # is new (the Unload mark, ``unload``), only its own row reads it, its row is
 # the only one that changed, and no scale moved (compared against 63a61cb0,
 # 2026-10-30).
-_GOLDEN_DIGEST = "7e7623cf418dbadee20ea6472df977fcfb63829e69ff54704e2dd32c7771d82e"
+# Then CHOAM Delegate got its play data (stage P4d): only its own row changed,
+# no column and no scale (compared against aae8f95c, 2026-10-30).
+_GOLDEN_DIGEST = "7f1e5aa2dbedcec5c9612aec067717b1437da4215fe4c394e9bf02563b559aa6"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

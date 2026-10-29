@@ -20,7 +20,10 @@ from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.effect_dsl import GainResources
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.reveal_abilities import REVEAL_GAIN_ABILITIES
-from dune_imperium.content.uprising.types import PersonalCardAcquisitionEffect
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAcquisitionEffect,
+)
 from dune_imperium.core import (
     ChanceDecision,
     ChanceResolver,
@@ -445,3 +448,100 @@ def test_shai_hulud_acquire_trash_gives_a_trashed_unload_cards_box() -> None:
     taken = _do(trashed.state, UNLOAD_ROW, card_id=WATER_PEDDLER, effect="water")
     assert taken.state.players[0].resources.water == water + 1
     assert not _offered(taken.state, UNLOAD_ROW)
+
+
+# --- CHOAM Delegate ------------------------------------------------------------
+
+CHOAM_DELEGATE = "imperium:choam_delegate:0"
+
+
+def test_choam_delegate_play_data_matches_the_app() -> None:
+    """App table: cost 1, 1 copy, no Faction, Agent icon Spice Trade with
+    Infiltration (``InfiltrationIconList``), Reveal 3 Solari; screen pieces:
+    Reveal "[Unload] [3 Solari]"."""
+    entry = IMPERIUM_CARDS_BY_ID["choam_delegate"]
+    assert entry.play_data_complete and entry.unload
+    assert (entry.copies, entry.acquisition_cost) == (1, 1)
+    assert entry.factions == ()
+    assert entry.agent_icons == entry.infiltration_icons == (AgentIcon.SPICE_TRADE,)
+    assert entry.agent_effect is None and not entry.has_acquisition_bonus
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    (line,) = REVEAL_GAIN_ABILITIES["choam_delegate"].sections
+    assert line.rewards == (GainResources(solari=3),) and line.condition is None
+    assert unload.unload_icons(CHOAM_DELEGATE) == (("solari", 3),)
+    for config in (IX, replace(IX, rise_of_ix=False), RulesetConfig()):
+        deck = content_for(config).imperium_deck_instance_ids
+        assert (CHOAM_DELEGATE in deck) == config.rise_of_ix
+
+
+def test_choam_delegate_revealed_gives_three_solari_as_usual() -> None:
+    """ "Reveal turn에 공개할 때(보통처럼, Unload 표시는 무시)" (rise-of-ix.md 7)."""
+    state = _give(_start(), 0, hand=(CHOAM_DELEGATE,))
+    revealed = _do(state, "reveal_turn")
+    assert "card_unloaded" not in _kinds(revealed.events)
+    solari = revealed.state.players[0].resources.solari
+    gained = _do(revealed.state, "gain_reveal_resources")
+    assert gained.state.players[0].resources.solari == solari + 3
+    assert not _offered(gained.state, UNLOAD_ROW)
+
+
+def test_choam_delegate_trashed_in_its_owners_turn_waits_as_a_row() -> None:
+    """ "trash할 때 얻는다" [Rise of Ix p. 7]; Jamis: "Trash a card"."""
+    state = _give(_start(), 0, hand=(JAMIS, CHOAM_DELEGATE))
+    state = _do(state, "choose_agent_card", card_id=JAMIS).state
+    state = _do(state, "place_agent", space_id="stillsuits").state
+    solari = state.players[0].resources.solari
+    state = _do(state, "trash_agent_card", card_id=CHOAM_DELEGATE).state
+    assert state.players[0].resources.solari == solari
+    taken = _do(state, UNLOAD_ROW, card_id=CHOAM_DELEGATE, effect="solari")
+    assert taken.state.players[0].resources.solari == solari + 3
+    assert not _offered(taken.state, UNLOAD_ROW)
+
+
+def test_choam_delegate_discarded_by_an_opponent_unloads_in_a_window() -> None:
+    """ "남의 효과로 버려져도 된다(룰북 예: 상대의 Reverend Mother Mohiam)"
+    (rise-of-ix.md 7)."""
+    state = _start()
+    other = state.players[1].hand[0]
+    state = _give(state, 0, hand=(MOHIAM,), in_play=(INITIATE,))
+    state = _give(state, 1, hand=(CHOAM_DELEGATE, other))
+    state = _do(state, "choose_agent_card", card_id=MOHIAM).state
+    state = _do(state, "place_agent", space_id="secrets").state
+    state = _do(state, "resolve_agent_card_effect").state
+    solari = state.players[1].resources.solari
+    state = _do(state, "discard_opponent_card", seat=1, card_id=CHOAM_DELEGATE).state
+    assert state.decision_stack[-1].kind is FrameKind.UNLOAD_ICONS
+    state = _do(
+        state, UNLOAD_ROW, seat=1, card_id=CHOAM_DELEGATE, effect="solari"
+    ).state
+    assert state.players[1].resources.solari == solari + 3
+    assert state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_choam_delegate_infiltrates_a_spice_trade_space() -> None:
+    """ "Agent의 옆얼굴이 든 Agent 아이콘은 그 아이콘의 칸에서 상대 Agent ...를
+    무시하고 보낼 수 있게 한다" [Rise of Ix p. 7]; CHOAM Delegate's icon is
+    Spice Trade (app ``InfiltrationIconList``)."""
+    state = _give(_start(), 0, hand=(CHOAM_DELEGATE,))
+    owner = state.players[1]
+    state = replace(
+        state,
+        players=(
+            state.players[0],
+            replace(
+                owner,
+                agent_locations=("smuggling",),
+                agents_available=owner.agents_available - 1,
+            ),
+            *state.players[2:],
+        ),
+    )
+    state = _do(state, "choose_agent_card", card_id=CHOAM_DELEGATE).state
+    spaces = {
+        str(dict(row.arguments)["space_id"])
+        for row in ENGINE.whole_actions(state, 0)
+        if row.action_id == "place_agent"
+    }
+    assert "smuggling" in spaces
+    placed = _do(state, "place_agent", space_id="smuggling").state
+    assert "smuggling" in placed.players[0].agent_locations

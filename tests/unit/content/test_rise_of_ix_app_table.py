@@ -265,6 +265,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "quid_pro_quo",
 }
 _IX_IMPERIUM_TRANSCRIBED = {
+    "choam_delegate",
     "imperial_shock_trooper",
     "jamis",
     "landing_rights",
