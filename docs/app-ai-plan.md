@@ -545,4 +545,10 @@ P4 브랜치(`51884e8f`)가 지금 가진 결정은 dreadnought 셋(P4b)과 예�
   (rise-of-ix.md 15)라, 앱의 `TroopTransportsAbility`로 답한다(`fcd538be`).
 - agent 토큰: Opus 둘(Imperium 약 862k, 책략 약 537k), Codex Tech 하나(Codex 쪽 한도). 독립 검토는 Codex 5시간 창이 차서
   읽기 전용 리뷰 agent 하나(세션 모델)로 했다.
-- 남은 것: Ix 지도자 6명(P4e 뒤), 원판 + Ix soak과 Hard 대 heuristic 측정.
+- P4d 마지막 Unload 카드 셋(`claude/p4d-imperium-b` `5a006d95`, P4의 Unload 보류 `976aa6a1` 포함, 시험 병합으로 미리 연결):
+  Freighter Fleet의 Reveal·Unload Freighter는 `FreighterRevealAbility`·`FreighterCustomAbility`가, Ix-Guild Compact의 두 장
+  버리기는 `IxGuildCompactAgentAbility`의 한 번의 답(두 번째 카드는 이어서)이, Negotiator 둘은 앱이 묻지 않고 놓으므로 자동 단계가,
+  Boundless Ambition의 카드 얻기(Reveal·Unload 창)는 `BoundlessAmbitionCustomAbility`가 답한다. 이 클래스의 응답 순서는 디컴파일한
+  C로 바로잡았다(카드 먼저, 그다음 목적지 0). Signet 상자는 카드 이름 대신 카드의 `LEADER_SIGNET` 효과로 알아본다. 보류 중에는
+  새 결정이 없다. 시험 트리에서 세 난이도·Epic·원판 단독 census 무작위 0, 같은 수 24/24.
+- 남은 것: 원판 + Ix soak과 Hard 대 heuristic 측정(P4d 카드가 다 들어온 뒤).

@@ -66,6 +66,12 @@ app's prompts.
 | In The Shadows' box (`discard_agent_card`, then `choose_agent_card_influence`) | `InTheShadowsAgentAbility` (Optional): one answer `((card,), (track,))` over the hand and the Emperor, Spacing Guild and Fremen tracks | The track waits in `Memory.intents` for the Influence step. |
 | Treachery's box and Reveal (`deploy_reveal_supply_troops`) | `PowerPlayAgentAbility`, with the Explicit `TreacheryTrashSelfAbility` folded into the one action (as Subversive Advisor's trash); `TreacheryRevealAbility`, a state-300 `RevealAbility` | The Reveal's two troops are an automatic gain (kind `deploy`). |
 | Guild Accord | `GuildAccordUnloadAbility`, `GuildAccordAllianceAbility` | Nothing to choose. |
+| Freighter Fleet's Reveal Freighter (`advance_reveal_freighter` / `recall_reveal_freighter`) | `FreighterRevealAbility` (Explicit): `Item1` 1 recalls, 0 advances | A "may" row beside `finish_reveal`: a prompt key, as the Reveal's other optional choices. A recall's rewards are the Shipping rows above. |
+| Ix-Guild Compact's "[Discard] [Discard] -> [Dreadnought]" (`discard_agent_card` twice) | `IxGuildCompactAgentAbility` (Optional): one answer `((card, card),)` (`GetDiscardOrder(...).Take(2)`) | Our engine asks one card at a time and keeps the first in the box (`DISCARD_FIRST_KEY`). The second card waits in `Memory.intents` and is taken as a follow-up (Corrinth City's shape). In the Late arc the key is unused and lapses. |
+| Ix-Guild Compact's Reveal Negotiators (`place_reveal_negotiator`) | `IxGuildCompactRevealAbility`, a state-300 `RevealAbility`: `AddTechNegotiators(2)` (@0x4bef400) | The app does not ask: each optional row is an automatic step at the card's reveal position. |
+| Boundless Ambition's "[Signet Ring]" box | The Leader's Signet ability, as the Signet Ring card's [Main p. 20] | A box is a Signet's by its card's `LEADER_SIGNET` effect (`_signet_box`), no longer by the Signet Ring's name; a Ghola's copy reads its partner's. |
+| Boundless Ambition's Reveal acquisition (`acquire_reveal_imperium_card` / `acquire_reveal_reserve_card`) | `BoundlessAmbitionCustomAbility` (Optional), which the card's `BoundlessAmbitionRevealAbility` grants (`GainCustomAbility`, @0x4d8dd90) | Targets (@0x4c5cff0): the Row then Reserve cards and the destination picker (option 0 the top of the deck while offered). Answer `((card,), (0,))`. See the judgement calls. |
+| Unload icons that are decisions (`rules.unload`): in the owner's turn `resolve_unload_icon`, taken at once (`ix.take_unload`); then their windows | Freighter: `freighter_move` (`FreighterFleetUnloadAbility` adds a `FreighterCustomAbility`). Tech Negotiation: `unload_icons`, placed (`UnloadAbility` reruns the card's Reveal, `AddTechNegotiators(2)`). Acquisition: `unload_icons`, `BoundlessAmbitionCustomAbility` (both Unload classes add it) | A Tech Negotiation is refused (`decline_unload_icon`) only when the supply cannot pay it. The fizzle's confirm (`skip_unload_acquisition`) is the only row with nothing in reach. P4's hold (an arrow's right side kept back while its cost's Unload is decided, `976aa6a1`) adds no decision: the seat's only rows are these windows, answered as outside the turn. A recall inside the hold opens `shipping_reward_icons`. |
 | Satellite Ban's Reveal "retreat up to two troops" | `SatelliteBanRevealAbility` | The effect is Scout's. Its table entry is the shared `OptionalRetreatAbility`, so each card answers with its own class. |
 | Intrigue slots | Strongarm's zone, Double Cross's victim (`OpponentLosesTroop`), Urgent Mission's Agent (`RecallYourAgent`) | Each comes from the play's recorded answer. Urgent Mission is an original card; Ix's extra Agents exposed its missing case. |
 | Advanced Weaponry's commission (`commission_intrigue_dreadnought`) | `AdvancedWeaponryPlotAbility` commissions as it runs | No prompt in the app: taken; declined only when no commission is offered. |
@@ -129,7 +135,16 @@ is taken first, in `GetAgentSpaceFactions`' board order: the app's
 - **Boundless Ambition** (promo): the Reveal reads the playmat's
   `BoundlessAmbitionCustomAbility`.
   - Value: the AcquireValue of the best Row card costing less than 6.
-  - Answer: the strictly best card, option 0.
+  - Answer: the strictly best card, then option 0 of the destination
+    picker, `((card,), (0,))`. The first port, read from the asm, had the
+    two reversed; the C of `Evaluate` (@0x4c5d750) fixes the order.
+  - The key is Optional, but our acquisition is mandatory: the Reveal holds
+    `finish_reveal`, and the Unload window has no refusal while a card is in
+    reach. Where the app would leave the key unused (End Turn, or a value of
+    0 or less), its own answer is taken.
+  - Its `Cost` reads the Row only (`HasImperiumRowCardWithPersuasionCostLessThan(6)`).
+    With no Row card in reach the app has no key; our engine still offers
+    the Reserve, and the same answer is taken.
 - **Shai-Hulud**: the card lists `ShaiHuludAcquireAbility` (an acquire-time
   trash) before its plain `AcquireAbility`. The Reveal window looks up the
   exact class first, so the purchase is valued by the plain one.
@@ -175,8 +190,9 @@ Left open by the review:
     Withdrawal, Embedded Agent. (Satellite Ban, Spice Trader, Imperial
     Bashar, Bounty Hunter, Web of Power, Ixian Engineer, Esmar Tuek, Guild
     Accord, In The Shadows and Treachery are on P4's `claude/p4d-imperium-b`;
-    their rows are mapped and checked on a trial merge. Freighter Fleet,
-    Ix-Guild Compact and Boundless Ambition wait for P4's Unload hold.)
+    their rows are mapped and checked on a trial merge, as are Freighter
+    Fleet, Ix-Guild Compact and Boundless Ambition with P4's Unload hold,
+    `5a006d95`.)
   - Intrigue: none (Strategic Push landed with P4 `da3cd535`).
   Their response shapes are checked when the engine offers their rows.
   Quid Pro Quo (P4d-6b), Grand Conspiracy, War Chest, Machine Culture and
