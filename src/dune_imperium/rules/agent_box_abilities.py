@@ -3808,6 +3808,15 @@ def apply_influence_loss(
 # (``take_agent_card_combat_icon``). Interstellar Conspiracy's two lines,
 # a sequence whose choice once paid the plain line too, are two icons since
 # the engine audit 2026-10-22 (P4; OQ-027 extension 3).
+#
+# Rise of Ix's Imperial Bashar prints "[Troop] -OR- [Trash a card]": a recruit
+# beside a black trash icon. "Trash ... 비용이거나 카드가 자기를 trash하라고 할
+# 때만 의무" (docs/rules/imperium-base.md 11, [DI p. 16]), so taking the
+# trash line and declining it is doing nothing, and the box is an optional one
+# that reaches exactly the same outcomes: the recruit row (only while a troop
+# can join, OQ-071) and a ``trash_agent_card`` row per trashable card are both
+# offered by the box's provider (``either_rows``), picking either ends the box,
+# and an unused box lapses at the turn's end (OQ-095 (2)).
 
 _PLAIN_ROW: Final = "resolve_agent_card_effect"
 
@@ -3817,7 +3826,6 @@ def either_box(ability: Ability | None) -> bool:
 
     if (
         ability is None
-        or ability.mark is not AbilityMark.MANDATORY
         or ability.icons
         or ability.armed_icons
         or ability.hook is not None
@@ -3838,23 +3846,30 @@ def either_box(ability: Ability | None) -> bool:
             | GrantCombatDeployment()
             | TakeCardFromDiscard()
         ):
-            pass
+            # A printed "Choose one" the owner must settle.
+            if ability.mark is not AbilityMark.MANDATORY:
+                return False
+        case TrashPersonalCard():
+            # A black trash icon is optional (see above), and so is its box.
+            if ability.mark is not AbilityMark.OPTIONAL:
+                return False
         case _:
             return False
     return all(
-        isinstance(reward, (DrawPersonalCards, GainResources))
+        isinstance(reward, (DrawPersonalCards, GainResources, RecruitTroops))
         for reward in plain.rewards
     )
 
 
 def either_choice(
     ability: Ability,
-) -> GainInfluence | GrantCombatDeployment | TakeCardFromDiscard:
+) -> GainInfluence | GrantCombatDeployment | TakeCardFromDiscard | TrashPersonalCard:
     """The choice line's one reward."""
 
     piece = ability.sections[1].rewards[0]
     assert isinstance(
-        piece, (GainInfluence, GrantCombatDeployment, TakeCardFromDiscard)
+        piece,
+        (GainInfluence, GrantCombatDeployment, TakeCardFromDiscard, TrashPersonalCard),
     )
     return piece
 
@@ -3867,9 +3882,11 @@ def either_rows(
 
     _, context = current_agent_effect_context(state)
     choice = ability.sections[1]
+    piece = either_choice(ability)
+    if isinstance(piece, TrashPersonalCard):
+        return _either_trash_rows(state, player, ability, context)
     if not _line_holds(choice, state.players[player], context):
         return ()
-    piece = either_choice(ability)
     if isinstance(piece, GainInfluence):
         rows = piece_rows(
             state,
@@ -3888,6 +3905,93 @@ def either_rows(
     if _line_holds(ability.sections[0], state.players[player], context):
         return (DomainAction(action_id=_PLAIN_ROW, actor=player), *rows)
     return rows
+
+
+def _either_plain_live(
+    state: GameState, player: int, ability: Ability, context: Mapping[str, ActionValue]
+) -> bool:
+    """Whether the plain line of an optional "-OR- trash" box buys anything: its
+    condition, and a troop that can join for a recruit (OQ-071)."""
+
+    plain = ability.sections[0]
+    owner = state.players[player]
+    if not _line_holds(plain, owner, context):
+        return False
+    return not any(isinstance(reward, RecruitTroops) for reward in plain.rewards) or (
+        troop_can_join(state, owner)
+    )
+
+
+def _either_trash_rows(
+    state: GameState,
+    player: int,
+    ability: Ability,
+    context: Mapping[str, ActionValue],
+) -> tuple[DomainAction, ...]:
+    """Imperial Bashar's rows: the recruit while a troop can join, and a trash
+    per card a black trash icon may take; no refusal (OQ-095 (2))."""
+
+    return (
+        *(
+            (DomainAction(action_id=_PLAIN_ROW, actor=player),)
+            if _either_plain_live(state, player, ability, context)
+            else ()
+        ),
+        *(
+            DomainAction(
+                action_id="trash_agent_card",
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in trashable_cards(state.players[player])
+        ),
+    )
+
+
+def either_trash_block(
+    state: GameState,
+    player: int,
+    ability: Ability,
+    context: Mapping[str, ActionValue],
+) -> OptionalEffectBlock | None:
+    """Why an optional "-OR- trash" box offers nothing now: no troop can join
+    and no card can be trashed; None while either is possible."""
+
+    if _either_plain_live(state, player, ability, context) or trashable_cards(
+        state.players[player]
+    ):
+        return None
+    return OptionalEffectBlock(
+        OptionalBlockKind.NO_TROOP_TO_RECRUIT,
+        also=OptionalEffectBlock(OptionalBlockKind.NO_CARD_TO_TRASH),
+    )
+
+
+def apply_either_trash(
+    state: GameState, action: DomainAction, ability: Ability
+) -> RuleResult:
+    """Trash the chosen card: the "-OR-" line taken, so the recruit is gone.
+
+    A black trash icon is no cost, so an Unload card's box waits for the
+    trash trigger as for any icon (``trash_personal_card`` without
+    ``unload_at_once``); the box is done."""
+
+    _, context = current_agent_effect_context(state)
+    player, box_card_id = _subject(context)
+    source = agent_card_source(state.round_number, player, box_card_id)
+    card_id = dict(action.arguments).get("card_id")
+    if not isinstance(card_id, str):
+        raise RuntimeError("Agent-card trash choice has invalid card ID")
+    context["pending_agent_effect"] = False
+    trashed = trash_personal_card(state, player, card_id, source=source)
+    keep_trash_recruits(context, trashed)
+    return RuleResult(
+        state=advance_after_effect(trashed.state, context, trashed.state.players),
+        events=(
+            *trashed.events,
+            agent_box_event(source, box_card_id, player, _RESOLVED),
+        ),
+    )
 
 
 def discard_take_rows(

@@ -32,6 +32,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     TakeAnotherTurn,
     TakeCardFromDiscard,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.leader_abilities import (
     SIGNET_ABILITIES,
@@ -65,6 +66,7 @@ from dune_imperium.rules.agent_box_abilities import (
     apply_discard_pay,
     apply_discard_take,
     apply_either_influence,
+    apply_either_trash,
     apply_influence_loss,
     apply_intrigue_payment,
     apply_lose,
@@ -86,6 +88,7 @@ from dune_imperium.rules.agent_box_abilities import (
     either_box,
     either_choice,
     either_rows,
+    either_trash_block,
     graft_trash_block,
     graft_trash_box,
     graft_trash_rows,
@@ -1740,6 +1743,11 @@ def legal_agent_card_trash_actions(
     if recorded is not None and trash_box(recorded):
         # A trash box, from its record (composed A3e).
         return trash_rows(state, player, recorded)
+    if _either_trash(recorded):
+        # Imperial Bashar's "[Troop] -OR- [Trash a card]": the recruit beside
+        # the trash rows, from its record (stage P4d).
+        assert recorded is not None
+        return either_rows(state, player, recorded)
     if source_card.agent_effect not in (
         *_TRASH_ICON_BOXES,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
@@ -1763,6 +1771,16 @@ def legal_agent_card_trash_actions(
             )
             for card_id in _agent_card_trash_targets(state, player, context)
         ),
+    )
+
+
+def _either_trash(recorded: Ability | None) -> bool:
+    """Whether ``recorded`` is a recruit-or-trash box (Imperial Bashar)."""
+
+    return (
+        recorded is not None
+        and either_box(recorded)
+        and isinstance(either_choice(recorded), TrashPersonalCard)
     )
 
 
@@ -1803,6 +1821,8 @@ def agent_card_trash_block(state: GameState, player: int) -> OptionalEffectBlock
     recorded = box_ability(effect)
     if recorded is not None and trash_box(recorded):
         return trash_block(state, player, recorded, context)
+    if recorded is not None and _either_trash(recorded):
+        return either_trash_block(state, player, recorded, context)
     if effect not in _TRASH_BOXES:
         return None
     if _agent_card_trash_targets(state, player, context):
@@ -1824,6 +1844,8 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
     recorded = box_ability(source_card.agent_effect)
     if recorded is not None and trash_box(recorded):
         return apply_trash(state, action, recorded)
+    if recorded is not None and _either_trash(recorded):
+        return apply_either_trash(state, action, recorded)
     context["pending_agent_effect"] = False
     if action.action_id == "decline_agent_card_trash":
         context.pop("trashes_remaining", None)

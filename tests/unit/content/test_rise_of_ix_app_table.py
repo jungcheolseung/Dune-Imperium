@@ -279,6 +279,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "embedded_agent",
     "full_scale_assault",
     "guild_chief_administrator",
+    "imperial_bashar",
     "imperial_shock_trooper",
     "jamis",
     "landing_rights",

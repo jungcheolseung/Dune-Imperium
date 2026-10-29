@@ -1081,6 +1081,21 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ),
                 structure=AbilityStructure.ONE_OF,
             ),
+            # Imperial Bashar (Rise of Ix): "[Troop] -OR- [Trash a card]" [Steam app
+            # screen pieces and text: "Choose:" with a troop and a trash button].
+            # A printed -OR- beside a black trash icon: "Trash ... 비용이거나
+            # 카드가 자기를 trash하라고 할 때만 의무" (docs/rules/imperium-base.md
+            # 11, [DI p. 16]), so choosing the trash and declining it equals doing
+            # nothing, and the box reaches the same outcomes as an optional one: the
+            # recruit (the plain line) or a trash (the choice line), neither
+            # forced, lapsing unpaid at the turn's end (OQ-095 (2)). Plain
+            # beside choice (``agent_box_abilities.either_box``).
+            _BOX.RECRUIT_ONE_OR_MAY_TRASH_A_CARD: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(_line(RecruitTroops(1)), _line(TrashPersonalCard())),
+                mark=AbilityMark.OPTIONAL,
+                structure=AbilityStructure.ONE_OF,
+            ),
             # The Voice (original game): "Choose any board space. Opponents can't
             # send their next Agents there this round." -- one mandatory target
             # choice among every board space on the table (imperium-base.md 15):

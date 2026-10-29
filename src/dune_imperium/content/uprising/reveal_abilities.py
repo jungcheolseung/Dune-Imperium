@@ -211,6 +211,15 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         ),
         # Leadership.
         "leadership": _reveal(_line(RevealSwords(1, per=_PER_OTHER_SWORD_CARD))),
+        # Imperial Bashar (Rise of Ix): Leadership's words, "+[sword] for each
+        # other revealed card that provides one or more [sword] this turn"
+        # [Steam app text]; only a card that really gave swords counts (Bene
+        # Gesserit Sister's choice of Persuasion does not) [Rise of Ix p. 10]
+        # (docs/rules/rise-of-ix.md 9.1). The card's printed 2 swords are its
+        # entry's.
+        "imperial_bashar": _reveal(
+            _line(RevealSwords(1, per=_PER_OTHER_SWORD_CARD))
+        ),
         # Northern Watermaster.
         "northern_watermaster": _reveal(
             _line(GainResources(spice=2), condition=FactionBond(Faction.FREMEN))

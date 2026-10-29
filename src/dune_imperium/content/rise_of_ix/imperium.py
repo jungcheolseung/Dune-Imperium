@@ -16,9 +16,9 @@ game's deck takes only completed cards (CHOAM Delegate, Jamis, Landing
 Rights, Sayyadina, Shai-Hulud, Truthsayer, Imperial Shock Trooper, Local
 Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
 Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
-Way, Satellite Ban and Spice Trader so far), while the observation lists
-every identity from v39. Setup takes Rise of Ix on the original game since
-stage P4c-5.
+Way, Satellite Ban, Spice Trader and Imperial Bashar so far), while the
+observation lists every identity from v39. Setup takes Rise of Ix on the
+original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
 cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
@@ -184,6 +184,21 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("imperial_bashar", "Imperial Bashar"),
         copies=1,
         acquisition_cost=4,
+        # App table: Emperor, the City icon, Reveal 1 Persuasion and 2 swords.
+        # Reveal: "+[sword] for each other revealed card that provides one or
+        # more [sword] this turn" -- Leadership's, a Reveal record
+        # (``reveal_abilities``) [Steam app text; Rise of Ix p. 10]. Agent:
+        # "[Troop] -OR- [Trash a card]" [Steam app screen pieces and text], a
+        # recruit beside a black trash icon, which is optional ("Trash ...
+        # 비용이거나 카드가 자기를 trash하라고 할 때만 의무", imperium-base.md 11,
+        # [DI p. 16]), so the box is optional too and lapses unused at the
+        # turn's end (OQ-095 (2)).
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_ONE_OR_MAY_TRASH_A_CARD,
+        reveal_persuasion=1,
+        reveal_strength=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("imperial_shock_trooper", "Imperial Shock Trooper"),

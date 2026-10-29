@@ -183,9 +183,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Gesserit card in play: [Freighter] [Freighter]"), Court Intrigue ("Put
     # an Intrigue card on the bottom of the deck -> [Intrigue card]"),
     # Weirding Way ("You may take another turn immediately after this one"),
-    # Satellite Ban ("[Discard] -> [1 spice] [1 water]") and Spice Trader
-    # ("[Fremen] 2 Influence: [Discard] -> [2 spice]").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 11
+    # Satellite Ban ("[Discard] -> [1 spice] [1 water]"), Spice Trader
+    # ("[Fremen] 2 Influence: [Discard] -> [2 spice]") and Imperial Bashar
+    # ("[Troop] -OR- [Trash a card]").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 12
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -1278,7 +1279,8 @@ def test_control_the_spice_is_a_payment_box() -> None:
 
 def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
     """Composed A3f: Southern Faith and High Priority Travel ("Choose one"), and
-    Guild Ambassador's and Other Memory's "-OR-" (stages P3, P3b).
+    Guild Ambassador's, Other Memory's and Imperial Bashar's "-OR-" (stages
+    P3, P3b, P4d).
     The plain line resolves as one action; Possible Futures, whose Bond
     turns its choice into both, is a hook. Interstellar Conspiracy, a plain
     line then a conditioned choice that once paid both, resolves icon by
@@ -1302,6 +1304,9 @@ def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
         # Other Memory (stage P3b): the draw beside a Bene Gesserit card taken
         # from the discard pile, the choice line offered only with one there.
         _BOX.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD: AbilityStructure.ONE_OF,
+        # Imperial Bashar (Rise of Ix, stage P4d): the recruit beside a black
+        # trash icon, an optional box (``[DI p. 16]``).
+        _BOX.RECRUIT_ONE_OR_MAY_TRASH_A_CARD: AbilityStructure.ONE_OF,
     }
     assert AGENT_BOX_ABILITIES[conspiracy].icons == ("spice", "influence")
     futures = AGENT_BOX_ABILITIES[_BOX.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND]

@@ -442,6 +442,9 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO = (
         "may_discard_for_two_spice_if_fremen_influence_two"
     )
+    # Imperial Bashar (Rise of Ix): "[Troop] -OR- [Trash a card]" -- a printed
+    # -OR- between a recruit and a (black, optional) trash icon.
+    RECRUIT_ONE_OR_MAY_TRASH_A_CARD = "recruit_one_or_may_trash_a_card"
 
 
 class PersonalCardTrashEffect(StrEnum):

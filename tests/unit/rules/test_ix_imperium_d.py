@@ -17,6 +17,7 @@ from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.types import (
@@ -35,6 +36,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.display.cards import personal_card_text, personal_card_text_ko
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.agent_box_abilities import either_trash_block
 from dune_imperium.rules.agent_effects import agent_card_cost_block
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.effects import OptionalBlockKind, OptionalEffectBlock
@@ -609,3 +611,287 @@ def test_spice_trader_reveals_two_persuasion_and_a_sword() -> None:
     assert (context["persuasion"], context["sword_strength"]) == (2, 1)
     assert revealed.players[0].combat_strength == 2 + 1
     assert "discard_agent_card" not in _ids(engine, revealed)
+
+
+# --- Imperial Bashar ------------------------------------------------------------
+
+BASHAR = "imperium:imperial_bashar:0"
+JAMIS = "imperium:jamis:0"
+SISTER = "imperium:bene_gesserit_sister:0"
+FENCE = "imperium:local_fence:0"
+_RECRUIT_OR_TRASH = _BOX.RECRUIT_ONE_OR_MAY_TRASH_A_CARD
+_BOX_ROWS = {"resolve_agent_card_effect", "trash_agent_card"}
+
+
+def _bashar(
+    engine: _Engine,
+    state: GameState,
+    hand: tuple[str, ...] = (),
+    space: str = "arrakeen",
+    **changes: object,
+) -> GameState:
+    """Imperial Bashar sent to ``space`` (Arrakeen, its City icon) with
+    ``hand`` besides it, its box pending."""
+
+    state = _seat(state, 0, hand=(BASHAR, *hand), **changes)
+    return _send(engine, state, BASHAR, space)
+
+
+def _box_rows(engine: _Engine, state: GameState) -> list[DomainAction]:
+    return [row for row in _rows(engine, state) if row.action_id in _BOX_ROWS]
+
+
+def _revealed(engine: _Engine, state: GameState, *hand: str) -> GameState:
+    state = _seat(state, 0, hand=hand, troops_conflict=1)
+    return _do(engine, state, "reveal_turn")
+
+
+def test_imperial_bashar_matches_app_attributes_and_only_joins_the_ix_deck() -> None:
+    """ "[Troop] -OR- [Trash a card]" / "+[sword] for each other revealed card
+    that provides one or more [sword] this turn."
+
+    App table: cost 4, one copy, Emperor, the City icon, Reveal 1 Persuasion
+    and 2 swords; the per-card swords are its Reveal record's line.
+    """
+    entry = IMPERIUM_CARDS_BY_ID["imperial_bashar"]
+    assert (entry.copies, entry.acquisition_cost) == (1, 4)
+    assert entry.factions == (Faction.EMPEROR,)
+    assert entry.agent_icons == (AgentIcon.CITY,)
+    assert entry.infiltration_icons == ()
+    assert entry.agent_effect is _RECRUIT_OR_TRASH
+    assert entry.reveal_choice_effects == ()
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 2)
+    assert entry.play_data_complete
+    assert BASHAR in content_for(CONFIG).imperium_deck_instance_ids
+    for config in (
+        replace(CONFIG, rise_of_ix=False),
+        RulesetConfig(),
+        RulesetConfig(rise_of_ix=True),
+    ):
+        assert BASHAR not in content_for(config).imperium_deck_instance_ids
+
+
+def test_imperial_bashar_card_text_prints_the_or_and_the_sword_count() -> None:
+    """ "[Troop] -OR- [Trash a card]" and "+[sword] for each other revealed card
+    that provides one or more [sword] this turn" [Steam app screen pieces and
+    text]."""
+    entry = IMPERIUM_CARDS_BY_ID["imperial_bashar"]
+    assert personal_card_text(entry) == [
+        "Agent: Choose one: Recruit 1 troop / You may trash a card",
+        "Reveal: +1 sword per other revealed sword card",
+    ]
+    assert personal_card_text_ko(entry) == [
+        "에이전트 칸: 하나 선택: {troop:1} / 카드 1장 {trash} 가능",
+        "공개 칸: +{sword:1} (공개한 다른 {sword} 카드마다)",
+    ]
+
+
+def test_imperial_bashar_goes_to_its_one_icon_only() -> None:
+    """The City Agent icon (app attribute table)."""
+    engine, state = _start()
+    state = _seat(state, hand=(BASHAR,))
+    spaces = {
+        str(dict(row.arguments)["space_id"])
+        for row in executable_placements(state, 0)
+        if dict(row.arguments)["card_id"] == BASHAR
+    }
+    assert {"arrakeen", "carthag"} <= spaces
+    assert not spaces & {"wealth", "stillsuits", "foldspace", "imperial_basin"}
+
+
+def test_imperial_bashar_offers_the_recruit_and_a_trash_of_any_card() -> None:
+    """ "Trash ... 비용이거나 카드가 자기를 trash하라고 할 때만 의무"
+    (docs/rules/imperium-base.md 11, [DI p. 16]): the black Trash icon is
+    optional, so the box offers the recruit and a trash of each card in hand,
+    discard pile or play (itself included, "Trash a card from your hand,
+    discard pile, or in play" [Main p. 20]) and no refusal row."""
+    engine, state = _start()
+    held, kept = state.players[0].hand[:2]
+    discarded = state.players[0].deck[0]
+    placed = _bashar(
+        engine,
+        state,
+        (held, kept),
+        deck=state.players[0].deck[1:],
+        discard_pile=(discarded,),
+    )
+    rows = _box_rows(engine, placed)
+    assert sum(row.action_id == "resolve_agent_card_effect" for row in rows) == 1
+    assert {
+        dict(row.arguments)["card_id"]
+        for row in rows
+        if row.action_id == "trash_agent_card"
+    } == {held, kept, discarded, BASHAR}
+    assert not {
+        row.action_id
+        for row in _rows(engine, placed)
+        if row.action_id.startswith("decline_")
+    }
+
+
+def test_imperial_bashar_recruit_takes_the_or_and_ends_the_box() -> None:
+    """ "[Troop] -OR- [Trash a card]": the recruit is one troop to the
+    garrison, deployable this turn at a Combat space ([Main p. 10] [FAQ p. 4]),
+    and the box is done: the trash rows go with it."""
+    engine, state = _start()
+    held = state.players[0].hand[0]
+    placed = _bashar(engine, state, (held,))
+    before = placed.players[0]
+    recruited = _do(engine, placed, "resolve_agent_card_effect")
+    after = recruited.players[0]
+    assert after.troops_garrison == before.troops_garrison + 1
+    assert after.troops_supply == before.troops_supply - 1
+    assert after.trashed == before.trashed
+    assert not _box_rows(engine, recruited)
+    assert max(_deploy_counts(engine, recruited)) == (
+        max(_deploy_counts(engine, placed)) + 1
+    )
+
+
+def _deploy_counts(engine: _Engine, state: GameState) -> set[int]:
+    counts = {
+        dict(row.arguments)["count"]
+        for row in _rows(engine, state)
+        if row.action_id == "deploy_troops"
+    }
+    assert all(isinstance(count, int) for count in counts)
+    return {count for count in counts if isinstance(count, int)}
+
+
+@pytest.mark.parametrize("zone", ["hand", "discard_pile", "in_play"])
+def test_imperial_bashar_trash_takes_the_or_and_ends_the_box(zone: str) -> None:
+    """ "[Troop] -OR- [Trash a card]": the trash is the other line, so no troop
+    comes, and the trash rows and the recruit go with the box."""
+    engine, state = _start()
+    held, kept, other = state.players[0].hand[:3]
+    owner = state.players[0]
+    target = {"hand": held, "discard_pile": other, "in_play": BASHAR}[zone]
+    placed = _bashar(
+        engine,
+        state,
+        (held, kept),
+        discard_pile=(other,),
+    )
+    before = placed.players[0]
+    trashed = _do(engine, placed, "trash_agent_card", card_id=target)
+    after = trashed.players[0]
+    assert after.trashed == (*before.trashed, target)
+    assert target not in (*after.hand, *after.discard_pile, *after.in_play)
+    assert after.troops_garrison == before.troops_garrison
+    assert after.troops_supply == before.troops_supply
+    assert not _box_rows(engine, trashed)
+    assert owner.player_id == 0
+
+
+def test_imperial_bashar_may_stay_unused_and_lapses_at_the_turns_end() -> None:
+    """ "Trash ... 비용이거나 카드가 자기를 trash하라고 할 때만 의무"
+    (imperium-base.md 11, [DI p. 16]): taking the trash and declining it is
+    doing nothing, so the box is optional -- no refusal row, and pressing the
+    turn's end lapses it (OQ-095 (2)) without a recruit or a trash."""
+    engine, state = _start()
+    held = state.players[0].hand[0]
+    placed = _bashar(engine, state, (held,))
+    unused = _finish(engine, placed).players[0]
+    assert unused.trashed == placed.players[0].trashed
+    assert {held, BASHAR} <= {*unused.hand, *unused.in_play, *unused.discard_pile}
+    recruited = _finish(
+        engine, _do(engine, placed, "resolve_agent_card_effect")
+    ).players[0]
+    assert unused.troops_supply == recruited.troops_supply + 1
+
+
+def test_imperial_bashar_offers_no_recruit_without_a_troop_to_join() -> None:
+    """A recruit with no troop in the supply buys nothing and is not offered
+    (OQ-071, ``troop_can_join``); the trash still is, and the box can be left."""
+    engine, state = _start()
+    held = state.players[0].hand[0]
+    placed = _bashar(engine, state, (held,), troops_garrison=12, troops_conflict=0)
+    assert placed.players[0].troops_supply == 0
+    rows = _box_rows(engine, placed)
+    assert "resolve_agent_card_effect" not in {row.action_id for row in rows}
+    assert {dict(row.arguments)["card_id"] for row in rows} >= {held, BASHAR}
+    assert _finish(engine, placed).players[0].trashed == ()
+
+
+def test_imperial_bashar_block_says_what_is_missing() -> None:
+    """Greyed out only when neither line can act: no troop can join and no card
+    can be trashed (``either_trash_block``, read by the page)."""
+    engine, state = _start()
+    ability = AGENT_BOX_ABILITIES[_RECRUIT_OR_TRASH]
+    bare = _seat(
+        state,
+        0,
+        hand=(),
+        discard_pile=(),
+        in_play=(),
+        troops_garrison=12,
+        troops_conflict=0,
+    )
+    block = either_trash_block(bare, 0, ability, {})
+    assert block == OptionalEffectBlock(
+        OptionalBlockKind.NO_TROOP_TO_RECRUIT,
+        also=OptionalEffectBlock(OptionalBlockKind.NO_CARD_TO_TRASH),
+    )
+    with_card = _seat(bare, 0, discard_pile=(state.players[0].hand[0],))
+    assert either_trash_block(with_card, 0, ability, {}) is None
+    with_troop = _seat(bare, 0, troops_garrison=11, troops_supply=1)
+    assert either_trash_block(with_troop, 0, ability, {}) is None
+
+
+def test_imperial_bashar_trashing_an_unload_card_gives_its_box() -> None:
+    """The black Trash icon is no cost, and a trashed Unload card gives its
+    Reveal box while it is trashed (rise-of-ix.md 7): CHOAM Delegate's "[Unload]
+    [3 Solari]" waits as a row of the turn."""
+    engine, state = _start()
+    delegate = "imperium:choam_delegate:0"
+    placed = _bashar(engine, state, (delegate,), resources=Resources())
+    solari = placed.players[0].resources.solari
+    trashed = _do(engine, placed, "trash_agent_card", card_id=delegate)
+    assert trashed.players[0].resources.solari == solari
+    taken = _do(
+        engine, trashed, "resolve_unload_icon", card_id=delegate, effect="solari"
+    )
+    assert taken.players[0].resources.solari == solari + 3
+
+
+def test_imperial_bashar_reveals_one_persuasion_and_two_swords() -> None:
+    """App table: Reveal 1 Persuasion and 2 swords; alone it counts no other
+    card. A sword counts with a troop in the Conflict ("troop 2, sword 1;
+    Conflict에 troop이 하나도 없으면 0" [DI p. 11])."""
+    engine, state = _start()
+    revealed = _revealed(engine, state, BASHAR)
+    context = dict(revealed.decision_stack[-1].context)
+    assert (context["persuasion"], context["sword_strength"]) == (1, 2)
+    assert revealed.players[0].combat_strength == 2 + 2
+    assert not _box_rows(engine, revealed)
+
+
+def test_imperial_bashar_counts_each_other_card_that_gives_swords() -> None:
+    """ "+[sword] for each other revealed card that provides one or more [sword]
+    this turn": Jamis gives 2 swords, so Bashar's 2 + 1 and Jamis' 2; Local
+    Fence gives only Persuasion and adds nothing."""
+    engine, state = _start()
+    with_jamis = _revealed(engine, state, BASHAR, JAMIS)
+    assert dict(with_jamis.decision_stack[-1].context)["sword_strength"] == 2 + 1 + 2
+    assert with_jamis.players[0].combat_strength == 2 + 5
+    with_fence = _revealed(engine, state, BASHAR, FENCE)
+    context = dict(with_fence.decision_stack[-1].context)
+    assert (context["persuasion"], context["sword_strength"]) == (1 + 2, 2)
+
+
+def test_imperial_bashar_counts_only_swords_actually_given() -> None:
+    """Rise of Ix's clarification: "Imperial Bashar" counts only another card
+    that really provided swords, so Bene Gesserit Sister choosing 2 Persuasion
+    is not counted ([Rise of Ix p. 10], docs/rules/rise-of-ix.md 9.1); choosing
+    her 2 swords instead counts her, once."""
+    engine, state = _start()
+    revealed = _revealed(engine, state, BASHAR, SISTER)
+    assert dict(revealed.decision_stack[-1].context)["sword_strength"] == 2
+    persuasion = _do(engine, revealed, "gain_two_reveal_persuasion")
+    context = dict(persuasion.decision_stack[-1].context)
+    assert (context["persuasion"], context["sword_strength"]) == (1 + 2, 2)
+    assert persuasion.players[0].combat_strength == 2 + 2
+    swords = _do(engine, revealed, "gain_two_reveal_swords")
+    assert dict(swords.decision_stack[-1].context)["persuasion"] == 1
+    # One troop (2), Bashar's 2 and 1 for the Sister, and the Sister's 2.
+    assert swords.players[0].combat_strength == 2 + 2 + 1 + 2

@@ -482,6 +482,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If you have 2 or more Fremen Influence: "
             "You may discard a card → Gain 2 spice"
         ),
+        # Rise of Ix's Imperial Bashar (stage P4d): "[Troop] -OR- [Trash a card]".
+        PersonalCardAgentEffect.RECRUIT_ONE_OR_MAY_TRASH_A_CARD: (
+            "Choose one: Recruit 1 troop / You may trash a card"
+        ),
         PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT: "Complete one of your contracts",
         PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: (
             "Each opponent loses one troop. Each opponent spying on the board "
