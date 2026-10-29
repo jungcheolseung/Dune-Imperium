@@ -278,10 +278,10 @@ const ACTION_LABELS = {
      their English names, which no official Korean source translates. */
   detonate_combat_reward_dreadnought:
     "Detonation Devices: dreadnought를 {supply}로 → {victory_point} 1",
-  trash_disposal_facility_card: "Disposal Facility: 플레이 영역 카드 {trash}",
+  trash_disposal_facility_card: "Disposal Facility: 플레이 영역 {trash}",
   /* Rise of Ix (stage P4c-2c): Spy Satellites' and Sonic Snoopers' trash, and
      Sonic Snoopers' pick of Intrigue cards for the bottom of the deck. */
-  trash_tech: "{tech_tile} {trash}",
+  trash_tech: "{tech_tile} 폐기",
   put_intrigue_on_bottom: "Sonic Snoopers: {intrigue_card} → {intrigue} {deck} bottom",
   finish_intrigue_bottom: "Sonic Snoopers: stop, {draw}",
   retreat_leader_commander: "{commander} 1 {retreat} ({leader})",

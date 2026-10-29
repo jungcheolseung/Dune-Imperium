@@ -220,7 +220,7 @@ const LABELS_EN = {
     "place_combat_reward_dreadnought": "{control} space for your dreadnought",
     "detonate_combat_reward_dreadnought": "Detonation Devices: dreadnought to the {supply} -> 1 {victory_point}",
     "trash_disposal_facility_card": "Disposal Facility: {trash} a card in play",
-    "trash_tech": "{trash} {tech_tile}",
+    "trash_tech": "Trash a {tech_tile}",
     "put_intrigue_on_bottom": "Sonic Snoopers: {intrigue_card} to the bottom of the {intrigue} {deck}",
     "finish_intrigue_bottom": "Sonic Snoopers: stop, {draw}",
     "retreat_leader_commander": "{retreat} 1 {commander} ({leader})",
