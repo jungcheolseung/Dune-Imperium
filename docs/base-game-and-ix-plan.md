@@ -1332,3 +1332,26 @@ troop이 아니라 `units_deployed_*`(Masterstroke·Distraction·Coercive Negoti
 영어 임시), 훈련의 `UNDO_ACTION_IDS`에 `withdraw_dreadnoughts`(지금 넣으면 `test_selfplay`가 고정한 집합과 어긋남 — Ix 판 자체 대국 전에). P4d —
 Diversion("four or more units")은 dreadnought를 세야 하므로 frame의 dreadnought 수를 조건에 더한다. P7 — Reveal turn의 Combat 아이콘 배치에
 dreadnought(Bloodlines + Ix), Uprising의 "unit" 조건 카드.
+
+### 17.10 P4c 조각 순서 (초안, 2026-10-29 — 구현 전에 코드 위치를 확인해 다듬는다)
+
+규칙은 [rise-of-ix.md](rules/rise-of-ix.md) 3·4·5·8, OQ-114·122·126. setup은 마지막 조각에서 연다(그 전까지 테스트는 손으로 만든 상태).
+
+1. **P4c-1 Tech 틀을 Ix 타일로.** Bloodlines Tech Module의 틀(더미, 앞면 맨 위, 획득 창, 뒤집기와 Round Start 되돌리기)을 Ix의 세 더미(6장씩)로
+   쓴다 — v39는 Tech 구간을 Tech Module 18 + Ix 18로 이미 넓혔다. 획득은 Acquire Tech 아이콘으로만(아이콘마다 "may", 더미가 비면 고를 것이
+   준다), Tech Discount −1·−2는 그 한 번에만·합치지 못함·의무(OQ-104), Negotiator(아이콘마다 supply troop 하나를 Ix board에, "may"; 획득 때 원하는
+   만큼 돌려 spice 1씩; recruit 불가 `[FAQ p. 4]`, 12 troop 안에 셈). 두 모듈을 함께 쓰는 판(10a)은 P7.
+2. **P4c-2 Tech 18장의 획득 효과와 능력.** 획득 효과 9장은 P4a에서 적었다(water·"서로 다른 둘"은 키가 없어 Windtraps·Shuttle Fleet이 P4c에서).
+   능력은 때마다 묶는다: Reveal turn(Artillery, Disposal Facility OQ-126, Minimic Film, Restricted Ordnance), Round Start(Holtzman Engine,
+   Shuttle Fleet — OQ-122 순서), Conflict 승리(Windtraps, Detonation Devices — `DREADNOUGHT_CONTROL_CHOICE` 안의 "VP 대신"), Endgame(Chaumurky
+   동률, Holtzman Engine, Memocorders, Spy Satellites), 뒤집기 넷(Flagship, Holoprojectors, Invasion Ships, Training Drones — 자기 turn 중 라운드에
+   한 번 `[FAQ p. 1]`), 자기 turn(Sonic Snoopers — `INTRIGUE_BOTTOM_PICK`, 아는 Intrigue는 OQ-149 틀; Spy Satellites 첫 능력), 상시(Spaceport,
+   Troop Transports). card-implementer 묶음(동시 2) — 주간 95% 아래일 때.
+3. **P4c-3 Shipping track과 Freighter.** 새 조각 `FREIGHTER`(아이콘마다 "may": 한 칸 위 또는 회수), 회수 보상(칸 1~3, 원하는 순서 —
+   `SHIPPING_REWARD_ICONS`), 차례 밖 회수(Conflict 보상의 Freighter — `FREIGHTER_MOVE`, Combat 중 recruit는 garrison), Troop Transports.
+4. **P4c-4 덮개 칸 넷.** Dreadnought(3 Solari, commission 그리고/또는 Acquire Tech — P4b의 `CommissionDreadnought`에 칸 출처 행), Tech Negotiation
+   (고르기 + 여기 Agent가 있으면 Reveal에 Persuasion 1), Interstellar Shipping(Guild 2 요구, Freighter 둘; Kwisatz는 요구를 넘지 못함), Smuggling
+   (1 Solari, Freighter 하나). Duke Leto의 Landsraad 할인.
+5. **P4c-5 setup을 연다.** `_IMPERIUM_PENDING_OPTIONS`에서 `rise_of_ix`를 빼고: 좌석마다 dreadnought 둘을 supply에, Freighter를 맨 아래에, Tech
+   18장을 섞어 세 더미, `ConflictSetup`의 남는 장수(원판 + Ix 12, Epic도 12), 휴리스틱이 새 결정을 모두 답하는지(소크), P4b가 넘긴 화면·훈련
+   몫(17.9). 그다음 원판 + Ix 소크와 관문.
