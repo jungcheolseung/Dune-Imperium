@@ -1441,3 +1441,7 @@ Strongarm·Strategic Push, 그다음 Imperium 카드. 끊기면: 커밋되지 �
   rise-of-ix.md 9.3이 채택한 디자이너 판정 "Cull은 trash해야 낸다"(OQ-113 (C)와 같은 방향)와 어긋나므로, 낸 뒤의 trash는 의무로 고친다(다음 Codex
   묶음). Codex 묶음 2(`codex/p4d-intrigue2`): Expedite·Finesse·Secret Forces·Strongarm 끝(검토 전), Quid Pro Quo는 새 조각("Agent가 놓인 진영마다
   Influence")이 필요해 멈춤 — astra 묶음으로.
+- Codex 묶음을 들여옴(2026-10-29 22:xx): `d1f705b7` Expedite, `8a9c8c6a` Finesse, `cba9b870` Secret Forces, `e20b83dc` Strongarm(방문 진영
+  `GainInfluence.visited_space` — 진영을 적은 Influence는 전과 같다), `49b6dfdc` 잠입 아이콘(카드 일곱에 표시, 놓기는 `rise_of_ix`에서만), `d6a6d909`
+  Jamis, `ba7abce7`·`b37ef58e` Sayyadina, `3a9a537b` Sayyadina 화면 문구. Ix 카드 완료: Intrigue 7/17(+Cull 의무 trash 수정 대기), Imperium 2/35.
+  다음: Codex discard(Truthsayer·Ixian Probe) 들여오기 → Codex unload(일반 Discard 연결 포함) → sources-trash → conditions.
