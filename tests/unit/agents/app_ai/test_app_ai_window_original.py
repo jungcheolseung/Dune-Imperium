@@ -183,3 +183,75 @@ def test_second_ability_of_a_class_is_found_by_its_index() -> None:
     assert first is not None and second is not None
     assert first[1] < second[1]
     assert agent_effects._find(jessica, "BeneGesseritDrawAbility#3") is None
+
+
+def test_kwisatz_haderach_is_valued_with_the_agent_it_sends() -> None:
+    """The turn window gives ``KwisatzHaderachAbility::Evaluate`` its two
+    infos (spaces, then P's Agents: one still in P's area, the placed ones)
+    and plays the answer's Agent as ``from_space``."""
+
+    import random
+    from dataclasses import replace
+
+    from dune_imperium.agents.agent_turn_steps import placements_for_steps
+    from dune_imperium.agents.app_ai.context import AppContext
+    from dune_imperium.agents.app_ai.data.constants import TABLES
+    from dune_imperium.agents.app_ai.profile import Profile
+    from dune_imperium.agents.app_ai.testing import ENGINE as TEST_ENGINE
+    from dune_imperium.agents.app_ai.testing import play_until, with_player
+    from dune_imperium.agents.app_ai.windows import turn
+    from dune_imperium.agents.app_ai.windows.run import DecisionRun, Memory
+    from dune_imperium.core.decisions import PlayerDecision
+
+    config = RulesetConfig(base_game=BaseGame.IMPERIUM)
+    state = play_until(
+        lambda s, owner: (
+            s.decision_stack[-1].kind == "turn"
+            and s.round_number >= 3
+            and len(s.players[owner].agent_locations) >= 1
+        ),
+        config=config,
+        seed=5,
+    )
+    decision = TEST_ENGINE.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    seat = decision.owner
+    kwisatz = next(
+        c for c in (*state.imperium_deck, *state.imperium_row) if "kwisatz" in c
+    )
+    me = state.players[seat]
+    state = replace(
+        state,
+        imperium_deck=tuple(c for c in state.imperium_deck if c != kwisatz),
+        imperium_row=tuple(c for c in state.imperium_row if c != kwisatz),
+    )
+    state = with_player(
+        state,
+        seat,
+        hand=(kwisatz, *me.hand[1:]),
+        discard_pile=(*me.discard_pile, me.hand[0]),
+    )
+    shown = placements_for_steps(state, seat, TEST_ENGINE.legal_actions(state, seat))
+    assert shown is not None
+    placements = [
+        a
+        for a in shown[0]
+        if a.action_id == "agent_turn" and dict(a.arguments)["card_id"] == kwisatz
+    ]
+    origins = {dict(a.arguments).get("from_space") for a in placements}
+    assert None in origins and len(origins) >= 2
+    view = TEST_ENGINE.observe(state, seat)
+    ctx = AppContext(state, seat, view)
+    run = DecisionRun(
+        ctx,
+        Profile(ctx, TABLES[2], random.Random(0)),
+        tuple(shown[0]),
+        random.Random(0),
+        Memory(),
+    )
+    agents = turn._kwisatz_agents(run, placements)
+    assert agents[0].ref == "player_area"
+    assert {a.ref for a in agents[1:]} == origins - {None}
+    value, action = turn._card_evaluate(run, kwisatz, placements)()
+    assert action in placements
+    assert value != 0.0

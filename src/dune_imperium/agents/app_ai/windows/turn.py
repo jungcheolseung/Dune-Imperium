@@ -112,6 +112,9 @@ from dune_imperium.agents.app_ai.abilities.immortality import graft_card_evaluat
 from dune_imperium.agents.app_ai.abilities.original_board import (
     SellMelangeSpaceAbility,
 )
+from dune_imperium.agents.app_ai.abilities.original_imperium import (
+    KwisatzHaderachAbility,
+)
 from dune_imperium.agents.app_ai.abilities.tech import MemocordersAcquiredAbility
 from dune_imperium.agents.app_ai.catalog import (
     BLOODLINES_SPACE_ORDER,
@@ -120,7 +123,9 @@ from dune_imperium.agents.app_ai.catalog import (
     ORIGINAL_SPACE_ARCHETYPES,
     POST_INDEX,
     SPACE_ARCHETYPES,
+    SWORDMASTER_SPACE_ARCHETYPES,
     TECH_ARCHETYPES,
+    agent_entity,
     card_entity,
     space_entity,
     spy_entity,
@@ -130,7 +135,7 @@ from dune_imperium.agents.app_ai.catalog import (
 from dune_imperium.agents.app_ai.choice import default_random_choice
 from dune_imperium.agents.app_ai.context import AppContext, Board, card_id
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
-from dune_imperium.agents.app_ai.entities import Entity
+from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.profile.bloodlines import space_with_cost_cut
 from dune_imperium.agents.app_ai.windows.common import (
@@ -547,6 +552,9 @@ def _realise(run: DecisionRun, chosen: DomainAction) -> DomainAction:
     # Navigation Chamber (D60): the discount variant the card's key chose.
     discount = str_arg(chosen, "discount")
     variants = [a for a in variants if str_arg(a, "discount") == discount] or variants
+    # The original Kwisatz Haderach: the Agent its key sent (``from_space``).
+    origin = str_arg(chosen, "from_space")
+    variants = [a for a in variants if str_arg(a, "from_space") == origin] or variants
     graft = _graft_choice(run, card_ref, variants)
     if graft is not None:
         variants = [a for a in variants if (arg(a, "graft") is True) is graft]
@@ -808,9 +816,10 @@ def _card_evaluate(
         )
         if not spaces:
             return 0.0, None
-        answer = ability.evaluate(
-            run.profile, Request(infos=(TargetInfo(entities=spaces),))
-        )
+        infos: tuple[TargetInfo, ...] = (TargetInfo(entities=spaces),)
+        if isinstance(ability, KwisatzHaderachAbility):
+            infos = (*infos, TargetInfo(entities=_kwisatz_agents(run, actions)))
+        answer = ability.evaluate(run.profile, Request(infos=infos))
         if not answer.response or not answer.response[0]:
             # GetResponse after MakeChoice picked this key: the empty answer.
             return answer.value, run.first("reveal_turn")
@@ -823,15 +832,59 @@ def _card_evaluate(
             if variants
             else None
         )
+        origin = _kwisatz_origin(answer)
         for action in actions:
             if (
                 str_arg(action, "space_id") == space_id
                 and str_arg(action, "discount") == discount
+                and str_arg(action, "from_space") == origin
             ):
                 return answer.value, action
         return answer.value, None
 
     return evaluate
+
+
+#: The ref of an Agent still in the player's area (``from_space`` None).
+_KWISATZ_HOME = "player_area"
+
+
+def _kwisatz_agents(
+    run: DecisionRun, actions: Sequence[DomainAction]
+) -> tuple[Entity, ...]:
+    """``KwisatzHaderachAbility::GetAgentTargets`` @0x4ca13a0: every Agent of
+    P (``Playmat.Descendents``), not one on the Swordmaster space unless P
+    holds the Swordmaster (``b__0`` @0x4ca2690), as far as our variants send
+    it (``from_space``; none: one still in P's area). UNTRACED: the
+    descendants' order; ours puts an Agent in P's area first, then the board
+    in its order."""
+
+    origins = {str_arg(a, "from_space") for a in actions}
+    seat = run.ctx.seat
+    board = run.ctx.board
+    sword = run.ctx.me.swordmaster_acquired
+    agents: list[Entity] = []
+    if None in origins:
+        agents.append(Entity(Kind.AGENT, _KWISATZ_HOME, None, seat))
+    for space_id in board_space_order(board):
+        if space_id not in origins:
+            continue
+        if not sword and space_entity(space_id, board).short in (
+            SWORDMASTER_SPACE_ARCHETYPES
+        ):
+            continue
+        agents.append(agent_entity(space_id, seat))
+    return tuple(agents)
+
+
+def _kwisatz_origin(answer: Answer) -> str | None:
+    """The ``from_space`` of the Agent a Kwisatz Haderach answer sends
+    (None: an Agent from P's area, or another card)."""
+
+    if not answer.response or len(answer.response) < 2 or not answer.response[1]:
+        return None
+    ref = answer.response[1][0]
+    return None if ref == _KWISATZ_HOME else str(ref)
 
 
 def _discount_of(target: Entity) -> str | None:

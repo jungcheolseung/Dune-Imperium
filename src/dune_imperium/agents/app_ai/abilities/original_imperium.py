@@ -89,6 +89,7 @@ from dune_imperium.agents.app_ai.catalog import (
     FACTION_NAMES,
     card_entity,
     conflict_entity,
+    is_board_space,
     space_entity,
 )
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
@@ -2030,6 +2031,10 @@ def agent_retrieval_value(p: Profile, agent: Entity) -> float:
     (``<AgentRetrievalValue>b__0`` @0x4931470; f64 literals 1000.0, 500.0).
     """
 
+    if not is_board_space(agent.ref):
+        # An Agent not on a board space (still in P's area): its parent is no
+        # Combat space, has ``Factions.None`` and no abilities.
+        return 1000.0
     space = space_entity(agent.ref, p.ctx.board)
     if space.attr("CombatSpace", False) is True:  # IsCombatSpace @0x482e130
         base = 0.0
