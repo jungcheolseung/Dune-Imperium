@@ -523,21 +523,21 @@ Tech 타일 이름은 한글판 카드 사진을 찾을 때까지 영어다. 룰
 | --- | --- | --- | --- |
 | Rise of Ix | 익스의 부상 | `[IX-ko pp. 2-3]` | 적용 예정 |
 | CHOAM board overlay | 초암 게임판 덮개 | `[IX-ko pp. 2-3, 5]` | 적용 예정 |
-| Ix board | 익스 게임판 | `[IX-ko pp. 2-4]` | 적용 예정 |
+| Ix board | 익스 게임판 | `[IX-ko pp. 2-4]` | 적용 |
 | Dreadnought (공간) | 드레드노트 | `[IX-ko p. 12]` | 적용 예정(공간 이름) |
 | Tech Negotiation (공간·아이콘) | 기술 협상 | `[IX-ko pp. 4, 12]` | 적용 예정(공간 이름) |
 | Interstellar Shipping | 성간 거래 | `[IX-ko pp. 5, 12]` | 적용 예정(공간 이름) |
 | Smuggling | 밀수 | `[IX-ko pp. 7, 12]` | 적용 예정(공간 이름) |
-| dreadnought (말) | 드레드노트 | `[IX-ko pp. 2, 6]` | 적용 예정 |
-| commission (a dreadnought) | 취역(시키다) | `[IX-ko pp. 6, 12]` ("당신의 드레드노트 하나가 취역합니다") | 적용 예정 |
+| dreadnought (말) | 드레드노트 | `[IX-ko pp. 2, 6]` | 적용 |
+| commission (a dreadnought) | 취역(시키다) | `[IX-ko pp. 6, 12]` ("당신의 드레드노트 하나가 취역합니다") | 적용 |
 | units (troops + dreadnoughts) | 부대 | `[IX-ko pp. 6, 12]` ("병력과 드레드노트를 모두 아우르는 단어") | 적용 예정 |
-| Freighter | 화물선 (구성물은 화물선 토큰) | `[IX-ko pp. 2, 5, 12]` | 적용 예정 |
-| Shipping track | 운송 트랙 | `[IX-ko pp. 3, 5, 12]` | 적용 예정 — Uprising의 Shipping 공간(운송)과 다르다 |
-| Shipping reward | 운송 보상 | `[IX-ko pp. 5, 12]` | 적용 예정 |
+| Freighter | 화물선 (구성물은 화물선 토큰) | `[IX-ko pp. 2, 5, 12]` | 적용 |
+| Shipping track | 운송 트랙 | `[IX-ko pp. 3, 5, 12]` | 적용 — Uprising의 Shipping 공간(운송)과 다르다 |
+| Shipping reward | 운송 보상 | `[IX-ko pp. 5, 12]` | 적용 |
 | Tech tile | 기술 타일 | `[IX-ko pp. 2, 4, 12]` | 적용(위 Bloodlines 표와 같다) |
 | Acquire Tech | 기술 획득 | `[IX-ko pp. 4, 12]` | 적용 예정 |
 | Tech Discount | 기술 할인 | `[IX-ko pp. 4, 12]` | 적용 예정 |
-| Negotiator | 협상가 | `[IX-ko pp. 4, 12]` | 적용 예정 |
+| Negotiator | 협상가 | `[IX-ko pp. 4, 12]` | 적용 |
 | Infiltration (아이콘) | 침투 | `[IX-ko pp. 7, 12]` | 적용 예정 — Uprising Spy의 Infiltrate(침투, `[Main p. 11]`)와 같은 말이라 화면에서 아이콘으로 가른다 |
 | Unload | 처분 | `[IX-ko pp. 7, 12]` | 적용 예정 |
 | Discard (아이콘) | 버림 | `[IX-ko pp. 7, 12]` | 적용 예정 |

@@ -242,48 +242,48 @@ const ACTION_LABELS = {
   trash_skill_for_strength: "{commander_skill} 폐기 → 검 3",
   deploy_commanders: "{commander} 배치",
   withdraw_commanders: "{commander} 회수",
-  /* Rise of Ix (stage P4b): no official Korean source names the dreadnought
-     (docs/rules/glossary-ko.md has no row), so the labels keep the English
-     word and no TERMS entry is made for it. */
-  commission_intrigue_dreadnought: "dreadnought 얻기",
-  decline_intrigue_dreadnought: "dreadnought 얻지 않음",
-  deploy_dreadnoughts: "dreadnought 배치",
-  withdraw_dreadnoughts: "dreadnought 회수",
-  /* Rise of Ix's Tech Negotiation icon (stage P4c-1): "Negotiator" has no
-     glossary row either, so it stays English. */
-  place_intrigue_negotiator: "Negotiator 놓기",
-  decline_intrigue_negotiator: "Negotiator 놓지 않음",
-  /* Rise of Ix's Freighter and Shipping track (stage P4c-3): no official
-     Korean source names them either, so they stay English. */
-  advance_intrigue_freighter: "Freighter 한 칸 위로",
-  recall_intrigue_freighter: "Freighter 회수",
-  decline_intrigue_freighter: "Freighter 움직이지 않음",
-  advance_freighter: "Freighter 한 칸 위로",
-  recall_freighter: "Freighter 회수",
-  decline_freighter: "Freighter 움직이지 않음",
-  resolve_shipping_reward: "Freighter 회수 보상",
+  /* Rise of Ix (stage P4b): the official Korean rulebook's words
+     (docs/rules/glossary-ko.md, Rise of Ix): a dreadnought "취역합니다" when
+     commissioned [IX-ko p. 12], deployed and withdrawn like troops. */
+  commission_intrigue_dreadnought: "드레드노트 취역",
+  decline_intrigue_dreadnought: "드레드노트 취역 안 함",
+  deploy_dreadnoughts: "드레드노트 배치",
+  withdraw_dreadnoughts: "드레드노트 회수",
+  /* Rise of Ix's Tech Negotiation icon (stage P4c-1): a troop placed on the
+     Ix board as a 협상가 [IX-ko pp. 4, 12]. */
+  place_intrigue_negotiator: "협상가 놓기",
+  decline_intrigue_negotiator: "협상가 놓지 않음",
+  /* Rise of Ix's Freighter and Shipping track (stage P4c-3): the 화물선
+     "1칸 전진" or "맨 밑칸으로 귀환", which takes the 운송 보상 of its
+     space and every one below [IX-ko pp. 5, 12]. */
+  advance_intrigue_freighter: "화물선 1칸 전진",
+  recall_intrigue_freighter: "화물선 귀환",
+  decline_intrigue_freighter: "화물선 이동 안 함",
+  advance_freighter: "화물선 1칸 전진",
+  recall_freighter: "화물선 귀환",
+  decline_freighter: "화물선 이동 안 함",
+  resolve_shipping_reward: "화물선 귀환: 운송 보상",
   /* Rise of Ix's four board spaces (stage P4c-4): the Dreadnought icon, the
      Acquire Tech icon, Tech Negotiation's two halves and Spaceport's
-     Foldspace on top of the deck; the dreadnought and the Negotiator stay
-     English like the rows above. */
-  commission_board_dreadnought: "dreadnought 얻기",
+     Foldspace on top of the deck, in the words above. */
+  commission_board_dreadnought: "드레드노트 취역",
   acquire_board_tech: "{tech_tile} 획득",
   acquire_negotiation_tech: "{tech_tile} 획득 (할인 1)",
-  place_board_negotiator: "Negotiator 놓기",
-  advance_board_freighter: "Freighter 한 칸 위로",
-  recall_board_freighter: "Freighter 회수",
+  place_board_negotiator: "협상가 놓기",
+  advance_board_freighter: "화물선 1칸 전진",
+  recall_board_freighter: "화물선 귀환",
   acquire_foldspace_to_deck_top: "접힘 공간 카드를 덱 위에",
-  place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
+  place_combat_reward_dreadnought: "드레드노트를 놓을 {control} 공간",
   /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep
      their English names, which no official Korean source translates. */
   detonate_combat_reward_dreadnought:
-    "Detonation Devices: dreadnought를 {supply}로 → {victory_point} 1",
+    "Detonation Devices: 드레드노트를 {supply}로 → {victory_point} 1",
   trash_disposal_facility_card: "Disposal Facility: 플레이 영역 {trash}",
   /* Rise of Ix (stage P4c-2c): Spy Satellites' and Sonic Snoopers' trash, and
      Sonic Snoopers' pick of Intrigue cards for the bottom of the deck. */
   trash_tech: "{tech_tile} 폐기",
-  put_intrigue_on_bottom: "Sonic Snoopers: {intrigue_card} → {intrigue} {deck} bottom",
-  finish_intrigue_bottom: "Sonic Snoopers: stop, {draw}",
+  put_intrigue_on_bottom: "Sonic Snoopers: {intrigue_card} → {intrigue} {deck} 맨 아래",
+  finish_intrigue_bottom: "Sonic Snoopers: 그만두고 {draw}",
   retreat_leader_commander: "{commander} 1 {retreat} ({leader})",
   gain_reveal_influence: "{influence_any} 1 획득",
   retreat_opponent_troop: "상대 {troop} 강제 {retreat}",
@@ -482,23 +482,23 @@ const EVENT_LABELS = {
   combat_strength_gained: "{strength} 획득",
   commanders_deployed: "{commander} 배치",
   commanders_withdrawn: "{commander} 회수",
-  dreadnought_commissioned: "dreadnought 얻음",
-  intrigue_dreadnought_declined: "dreadnought 얻지 않음",
-  dreadnoughts_deployed: "dreadnought 배치",
-  dreadnoughts_withdrawn: "dreadnought 회수",
-  negotiator_placed: "Negotiator 놓음",
-  intrigue_negotiator_declined: "Negotiator 놓지 않음",
-  freighter_moved: "Freighter 한 칸 위로",
-  freighter_recalled: "Freighter 회수",
-  freighter_declined: "Freighter 움직이지 않음",
-  intrigue_freighter_declined: "Freighter 움직이지 않음",
-  shipping_troops_recruited: "Freighter 회수: {troop} {recruit}",
-  shipping_reward_lapsed: "Freighter 회수 보상: 쓰지 않음",
-  shipping_influence_unavailable: "Freighter 회수: {influence_any} 불가",
-  dreadnought_control_placed: "dreadnought가 {control} 공간에",
-  dreadnought_returned: "dreadnought {garrison} 복귀",
-  dreadnought_detonated: "dreadnought를 {supply}로 (Detonation Devices)",
-  intrigue_put_on_bottom: "{intrigue_card} → {intrigue} {deck} bottom",
+  dreadnought_commissioned: "드레드노트 취역",
+  intrigue_dreadnought_declined: "드레드노트 취역 안 함",
+  dreadnoughts_deployed: "드레드노트 배치",
+  dreadnoughts_withdrawn: "드레드노트 회수",
+  negotiator_placed: "협상가 놓음",
+  intrigue_negotiator_declined: "협상가 놓지 않음",
+  freighter_moved: "화물선 1칸 전진",
+  freighter_recalled: "화물선 귀환",
+  freighter_declined: "화물선 이동 안 함",
+  intrigue_freighter_declined: "화물선 이동 안 함",
+  shipping_troops_recruited: "화물선 귀환: {troop} {recruit}",
+  shipping_reward_lapsed: "화물선 귀환 운송 보상: 쓰지 않음",
+  shipping_influence_unavailable: "화물선 귀환: {influence_any} 불가",
+  dreadnought_control_placed: "드레드노트가 {control} 공간에",
+  dreadnought_returned: "드레드노트 {garrison} 복귀",
+  dreadnought_detonated: "드레드노트를 {supply}로 (Detonation Devices)",
+  intrigue_put_on_bottom: "{intrigue_card} → {intrigue} {deck} 맨 아래",
   conflict_end_trigger_declined: "{conflict} 종료 발동 {intrigue_card} 쓰지 않음",
   conflict_end_trigger_finished: "{conflict} 종료 발동 {intrigue_card} 끝내기",
   conflict_end_trigger_offered: "{conflict} 종료 발동 {intrigue_card} 제안",
