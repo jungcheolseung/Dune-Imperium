@@ -40,8 +40,12 @@ from dune_imperium.core.state import GameState
 # to a sampled policy, the pair is a free loop inside one turn: on
 # 2026-09-17 a full-expansion run spent 80% of its decisions on it and hit
 # the decision cap in 13 of 32 games (docs/rl-environment.md). The engine,
-# the rules and human play keep both actions.
-UNDO_ACTION_IDS: Final = frozenset({"withdraw_troops", "withdraw_commanders"})
+# the rules and human play keep both actions. Rise of Ix's dreadnoughts are a
+# third kind of unit with the same deploy/withdraw pair [Rise of Ix p. 6]
+# (OQ-121, ``rules.combat_deployment``), so its withdrawal is withheld too.
+UNDO_ACTION_IDS: Final = frozenset(
+    {"withdraw_troops", "withdraw_commanders", "withdraw_dreadnoughts"}
+)
 
 
 def without_undo_actions(

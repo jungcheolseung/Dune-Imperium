@@ -51,6 +51,8 @@ def _opening() -> GameState:
     players = list(state.players)
     players[2] = replace(players[2], intrigue_cards=deck[:2])
     players[3] = replace(players[3], intrigue_cards=deck[2:4])
+    # Setup gives each seat its two dreadnoughts [Rise of Ix p. 3].
+    players = [replace(player, dreadnoughts_supply=2) for player in players]
     return replace(
         state,
         config=replace(state.config, rise_of_ix=True),

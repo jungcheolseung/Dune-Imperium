@@ -49,11 +49,11 @@ def _original() -> GameState:
 
 
 def _ix() -> GameState:
-    """An original game's opening state under the Rise of Ix option (its
-    setup is stage P4's; the fields are what is checked here)."""
+    """An original game's opening state under the Rise of Ix option (stage
+    P4c-5's setup: two dreadnoughts in each supply, the Freighter at the
+    bottom)."""
 
-    state = _original()
-    return replace(state, config=replace(state.config, rise_of_ix=True))
+    return ENGINE.reset(replace(ORIGINAL, rise_of_ix=True), 3)
 
 
 def _seat(state: GameState, seat: int, **changes: Any) -> GameState:
@@ -96,6 +96,9 @@ def test_a_field_off_its_default_moves_the_hash(name: str) -> None:
     if name == "dreadnoughts_conflict":
         value = 1
     changes: dict[str, Any] = {name: value}
+    if name in ("dreadnoughts_garrison", "dreadnoughts_conflict"):
+        # Setup holds both dreadnoughts in the supply; one moves out of it.
+        changes["dreadnoughts_supply"] = 1
     if name == "negotiators":
         changes["troops_supply"] = state.players[1].troops_supply - 1
     moved = _seat(state, 1, **changes)
@@ -103,7 +106,7 @@ def test_a_field_off_its_default_moves_the_hash(name: str) -> None:
     assert f'"{name}"' in json.dumps(_canonicalize(moved))
 
 
-def test_the_dreadnought_supply_starts_empty_until_the_setup_gives_two() -> None:
+def test_the_dreadnought_supply_starts_with_two_only_in_rise_of_ix() -> None:
     # Rise of Ix's setup puts two dreadnoughts in each supply [Rise of Ix
     # p. 3] (docs/rules/rise-of-ix.md 3 item 5); the field's default is the
     # absent 0 so that no other game holds any.
@@ -111,6 +114,8 @@ def test_the_dreadnought_supply_starts_empty_until_the_setup_gives_two() -> None
         assert player.dreadnoughts_supply == 0
     for player in ENGINE.reset(RulesetConfig(), 3).players:
         assert player.dreadnoughts_supply == 0
+    for player in _ix().players:
+        assert player.dreadnoughts_supply == 2
 
 
 def test_a_seat_holds_two_dreadnoughts_and_three_shipping_spaces() -> None:
@@ -183,16 +188,20 @@ def test_the_sweep_counts_a_dreadnought_on_a_control_space_among_the_two() -> No
     ix = _ix()
     census = CardCensus.from_state(ix)
     two = replace(
-        _seat(ix, 0, dreadnoughts_garrison=1),
+        _seat(ix, 0, dreadnoughts_supply=1),
         dreadnought_control=(("carthag", 0, True),),
     )
     check_state_invariants(two, census)
     three = replace(
-        _seat(ix, 0, dreadnoughts_garrison=2),
+        _seat(ix, 0, dreadnoughts_supply=2),
         dreadnought_control=(("carthag", 0, True),),
     )
     with pytest.raises(InvariantViolation, match="owns 3 dreadnoughts"):
         check_state_invariants(three, census)
+    # Setup gives each seat its two [Rise of Ix p. 3] and none is ever lost.
+    one = _seat(ix, 0, dreadnoughts_supply=1)
+    with pytest.raises(InvariantViolation, match="owns 1 dreadnoughts"):
+        check_state_invariants(one, census)
 
 
 def test_a_known_intrigue_card_is_in_the_deck_or_another_seats_hand() -> None:

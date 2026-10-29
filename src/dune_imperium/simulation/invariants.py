@@ -250,8 +250,8 @@ def _check_rise_of_ix(state: GameState) -> None:
     hashes are those of the engine before the fields existed
     (``PlayerState.HASH_OMITTED_AT_DEFAULT``). In a Rise of Ix game a seat
     owns two dreadnoughts at most, the one on a Control space included
-    [Rise of Ix p. 6]. The Intrigue cards a seat knows are
-    ``_check_known_intrigue``'s.
+    [Rise of Ix p. 6]; setup gives it exactly two [Rise of Ix p. 3]. The
+    Intrigue cards a seat knows are ``_check_known_intrigue``'s.
     """
 
     tiles = frozenset(_all_tech_ids(state))
@@ -283,7 +283,10 @@ def _check_rise_of_ix(state: GameState) -> None:
             + player.dreadnoughts_conflict
             + on_spaces
         )
-        if owned > 2:
+        # Setup gives each seat its two [Rise of Ix p. 3] and none is ever
+        # lost: one is in the supply, the garrison, the Conflict or on a
+        # Control space (``PlayerState`` bounds the first three at two).
+        if owned != 2:
             raise InvariantViolation(
                 f"player {player.player_id} owns {owned} dreadnoughts"
             )

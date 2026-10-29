@@ -231,6 +231,28 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "choose_subcommittee": 1.0,
     "gain_leader_signet_spice": 1.5,
     "trash_leader_tech": 0.5,
+    # Rise of Ix (docs/rules/rise-of-ix.md): a dreadnought is a free 3-strength
+    # unit and a tile a permanent upgrade, so commissioning and acquiring
+    # outrank the turn's end (0.5) like ``acquire_tech``; the Freighter climbs
+    # before it recalls (``recall_*`` ranks at ``_MINOR_ACTION_SCORE``), so a
+    # recall waits for the top space; a Negotiator is a plain troop of the
+    # supply sent to the Ix board, taken when nothing better is offered; a
+    # shipping reward and the winner's dreadnought are mandatory picks, and
+    # Detonation Devices' 1 VP outranks a Control space. Taking dreadnoughts
+    # back ranks last, as for troops.
+    "commission_board_dreadnought": 2.5,
+    "commission_intrigue_dreadnought": 2.5,
+    "acquire_board_tech": 2.5,
+    "acquire_negotiation_tech": 2.5,
+    "place_board_negotiator": 1.0,
+    "place_intrigue_negotiator": 1.0,
+    "advance_board_freighter": 1.5,
+    "advance_intrigue_freighter": 1.5,
+    "advance_freighter": 1.5,
+    "resolve_shipping_reward": 2.0,
+    "place_combat_reward_dreadnought": 2.0,
+    "detonate_combat_reward_dreadnought": 3.0,
+    "withdraw_dreadnoughts": -10.0,
 }
 
 _IMPERIUM_ACQUISITIONS: Final = frozenset(
@@ -252,7 +274,12 @@ _RESERVE_ACQUISITIONS: Final = frozenset(
     }
 )
 _COUNT_DEPLOYMENTS: Final = frozenset(
-    {"deploy_troops", "deploy_intrigue_troops", "deploy_commanders"}
+    {
+        "deploy_troops",
+        "deploy_intrigue_troops",
+        "deploy_commanders",
+        "deploy_dreadnoughts",
+    }
 )
 # Intrigue unit moves whose ``count`` may be zero since codec v137: "Deploy
 # up to N troops" (Counterattack, Detonation, Twisted Devious) and Tactical

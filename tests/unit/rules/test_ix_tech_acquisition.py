@@ -1,9 +1,9 @@
 """Rise of Ix Tech tiles: the acquisition framework on Ix's stacks (stage P4c-1).
 
 Rules: docs/rules/rise-of-ix.md 4 ("Tech tile"), ``[Rise of Ix p. 4]``
-``[FAQ p. 4]`` and docs/base-game-and-ix-plan.md 17.10 item 1. Setup refuses
-``rise_of_ix`` until stage P4c-5, so every state is the original game's
-round one at seat 0's first turn with its config switched to
+``[FAQ p. 4]`` and docs/base-game-and-ix-plan.md 17.10 item 1. Written before
+setup took ``rise_of_ix`` (stage P4c-5), every state here is the original
+game's round one at seat 0's first turn with its config switched to
 ``rise_of_ix=True`` and Ix's tiles laid on ``tech_stacks`` by
 ``dataclasses.replace`` (the state checks accept them). No space or card
 prints the Acquire Tech or Tech Negotiation icon yet (stages P4c-4 and P4d),
@@ -837,7 +837,14 @@ def test_negotiators_and_tiles_are_conserved() -> None:
     pays only spice."""
 
     _, state = _start()
-    state = replace(state, tech_stacks=deal_ix_tech_stacks(IX_TECH_IDS))
+    state = replace(
+        state,
+        tech_stacks=deal_ix_tech_stacks(IX_TECH_IDS),
+        # Setup gives each seat its two dreadnoughts [Rise of Ix p. 3].
+        players=tuple(
+            replace(player, dreadnoughts_supply=2) for player in state.players
+        ),
+    )
     census = CardCensus.from_state(state)
     assert census.tech == frozenset(IX_TECH_IDS)
     state = _seat(state, resources=Resources(spice=10))

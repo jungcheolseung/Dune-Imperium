@@ -1147,3 +1147,50 @@ def test_the_reveal_choices_it_takes_come_before_a_purchase() -> None:
 
     order = sorted(range(len(legal)), key=lambda i: ranked[i], reverse=True)
     assert [legal[i] for i in order] == [sandworm, persuasion, buy, end, unused]
+
+
+def test_the_rise_of_ix_rows_outrank_the_turns_end() -> None:
+    """Stage P4c-5: the heuristic seat takes the pieces of Rise of Ix's board
+    spaces instead of ending the turn over them (an unscored row ties at zero
+    and lost to ``finish_agent_turn``'s 0.5, so the Dreadnought space went
+    unused): a commission, an Acquire Tech, a Negotiator, a Freighter step and
+    a shipping reward (docs/rules/rise-of-ix.md 4-6, 8)."""
+
+    end = score_action(_action("finish_agent_turn"))
+    for action_id in (
+        "commission_board_dreadnought",
+        "commission_intrigue_dreadnought",
+        "acquire_board_tech",
+        "acquire_negotiation_tech",
+        "place_board_negotiator",
+        "place_intrigue_negotiator",
+        "advance_board_freighter",
+        "advance_intrigue_freighter",
+        "advance_freighter",
+        "resolve_shipping_reward",
+        "place_combat_reward_dreadnought",
+        "detonate_combat_reward_dreadnought",
+    ):
+        assert score_action(_action(action_id)) > end, action_id
+    # The Freighter climbs before it recalls (a recall waits for the top).
+    assert score_action(_action("advance_board_freighter")) > score_action(
+        _action("recall_board_freighter")
+    )
+    # Detonation Devices' VP outranks a Control space for the dreadnought.
+    assert score_action(_action("detonate_combat_reward_dreadnought")) > score_action(
+        _action("place_combat_reward_dreadnought")
+    )
+
+
+def test_dreadnoughts_deploy_by_count_and_never_cycle_back() -> None:
+    """A dreadnought is a third kind of unit beside the troop and the Commander
+    [Rise of Ix p. 6]: deploying scores by count as theirs do, and taking one
+    back ranks below every decline and pass, so a seat never cycles
+    deploy/withdraw (OQ-029)."""
+
+    one = score_action(_action("deploy_dreadnoughts", ("count", 1)))
+    two = score_action(_action("deploy_dreadnoughts", ("count", 2)))
+    assert two > one > score_action(_action("finish_agent_turn"))
+    back = score_action(_action("withdraw_dreadnoughts", ("count", 1)))
+    assert back == score_action(_action("withdraw_troops", ("count", 1)))
+    assert back < score_action(_action("pass_combat_intrigue")) < 0

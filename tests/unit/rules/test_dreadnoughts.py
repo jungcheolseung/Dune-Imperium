@@ -75,6 +75,27 @@ def _seat(state: GameState, seat: int, **changes: Any) -> GameState:
     return replace(state, players=tuple(players))
 
 
+def _holding_both(state: GameState) -> GameState:
+    """``state`` with each seat's supply holding the dreadnoughts it has not
+    placed elsewhere: setup gives every seat its two [Rise of Ix p. 3], and
+    the sweep's invariants count both (these states are built by hand)."""
+
+    on_spaces = [seat for _, seat, _ in state.dreadnought_control]
+    return replace(
+        state,
+        players=tuple(
+            replace(
+                player,
+                dreadnoughts_supply=2
+                - player.dreadnoughts_garrison
+                - player.dreadnoughts_conflict
+                - on_spaces.count(player.player_id),
+            )
+            for player in state.players
+        ),
+    )
+
+
 def _pulled(state: GameState, conflict_id: str) -> GameState:
     """The state without ``conflict_id`` in the Conflict decks (a card is in
     one zone)."""
@@ -307,7 +328,9 @@ def test_the_cleanup_sends_conflict_dreadnoughts_to_the_garrison() -> None:
     finished = finish_combat(offered).state
     assert [seat.dreadnoughts_garrison for seat in finished.players] == [1, 1, 0, 0]
     assert [seat.combat_strength for seat in finished.players] == [0, 0, 0, 0]
-    check_state_invariants(finished, CardCensus.from_state(_original()))
+    check_state_invariants(
+        _holding_both(finished), CardCensus.from_state(_original())
+    )
 
 
 def test_a_dreadnought_is_not_a_lost_troop() -> None:
@@ -483,7 +506,9 @@ def test_the_combat_phases_end_returns_the_leaving_dreadnoughts() -> None:
         "dreadnought_returned",
     ]
     assert dict(finished.events[1].payload) == {"player": 1, "space_id": "arrakeen"}
-    check_state_invariants(finished.state, CardCensus.from_state(_original()))
+    check_state_invariants(
+        _holding_both(finished.state), CardCensus.from_state(_original())
+    )
 
 
 def test_a_dreadnought_stays_through_the_next_combat_phase() -> None:

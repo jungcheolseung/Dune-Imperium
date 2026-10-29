@@ -5,8 +5,9 @@ docs/base-game-and-ix-plan.md 17.1 and 17.7 (stage P4a, the board axis): with
 spaces for four of its own (docs/rules/rise-of-ix.md 3 item 1, 8), the three
 new Conflict cards and Economic Supremacy (3 item 3, 12), the six new Leaders
 (3 item 4, 10) and the Ix cards whose play data is complete (none yet). It
-adds no rules: the spaces have no effects before stage P4c, so setup still
-refuses the option.
+adds no rules itself; setup takes the option on the original game from stage
+P4c-5 (``tests/unit/rules/test_ix_setup.py``) and still refuses it with
+Uprising (stage P7).
 """
 
 from dataclasses import replace
@@ -419,13 +420,14 @@ def test_uprising_content_does_not_see_rise_of_ix(options: dict[str, Any]) -> No
 
 
 @pytest.mark.parametrize("options", _IX_OPTIONS, ids=lambda options: str(options))
-def test_setup_still_refuses_rise_of_ix(options: dict[str, Any]) -> None:
-    """The overlay's spaces have no effects before stage P4c, so the original
-    game still takes ``rise_of_ix`` from stage P4 only (plan 15.4, 17.7) and
-    Uprising plus Rise of Ix from stage P7."""
+def test_setup_takes_rise_of_ix_on_the_original_game_only(
+    options: dict[str, Any],
+) -> None:
+    """The original game plays Rise of Ix from stage P4c-5 (plan 15.4, 17.10
+    item 5); Uprising plus Rise of Ix stays refused until stage P7."""
 
     config = RulesetConfig(base_game=BaseGame.IMPERIUM, rise_of_ix=True, **options)
-    with pytest.raises(NotImplementedError, match="rise_of_ix from stage P4"):
-        UprisingRulesEngine().reset(config, 0)
+    state = UprisingRulesEngine().reset(config, 0)
+    assert state.config.rise_of_ix
     with pytest.raises(NotImplementedError, match="Rise of Ix has no content"):
         UprisingRulesEngine().reset(RulesetConfig(rise_of_ix=True, **options), 0)

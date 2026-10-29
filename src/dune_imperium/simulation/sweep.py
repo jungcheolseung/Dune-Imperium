@@ -278,6 +278,8 @@ class _GameSpec:
     leader_ids: tuple[str, ...] | None = None
     # The original Dune: Imperium (docs/base-game-and-ix-plan.md 15.6).
     base_game: BaseGame = BaseGame.UPRISING
+    # Rise of Ix, which the original game plays with from stage P4c-5.
+    rise_of_ix: bool = False
 
 
 def _run_spec(spec: _GameSpec) -> GameCheckReport | SweepFailure:
@@ -292,6 +294,7 @@ def _run_spec(spec: _GameSpec) -> GameCheckReport | SweepFailure:
         go_to_11=spec.go_to_11,
         epic_game=spec.epic_game,
         arrakeen_scouts=spec.arrakeen_scouts,
+        rise_of_ix=spec.rise_of_ix,
     )
     engine = (
         UprisingRulesEngine(leader_ids=spec.leader_ids)
@@ -365,6 +368,7 @@ def sweep_specs(
     rotate_leaders: bool = False,
     collect_coverage: bool = False,
     base_game: BaseGame = BaseGame.UPRISING,
+    rise_of_ix: bool = False,
 ) -> tuple[_GameSpec, ...]:
     """Build the seeded per-game specs for a sweep."""
 
@@ -386,6 +390,7 @@ def sweep_specs(
         immortality=immortality,
         go_to_11=go_to_11,
         epic_game=epic_game,
+        rise_of_ix=rise_of_ix,
     )
     return tuple(
         _GameSpec(
@@ -407,6 +412,7 @@ def sweep_specs(
             arrakeen_scouts=arrakeen_scouts,
             collect_coverage=collect_coverage,
             base_game=base_game,
+            rise_of_ix=rise_of_ix,
             leader_ids=(
                 tuple(
                     random.Random(seed).sample(
