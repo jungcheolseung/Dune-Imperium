@@ -64,6 +64,7 @@ from dune_imperium.agents.app_ai.abilities.generic import (
     gain_any_influence_value,
 )
 from dune_imperium.agents.app_ai.abilities.leaders import SignetAbility
+from dune_imperium.agents.app_ai.catalog import is_high_council_space
 from dune_imperium.agents.app_ai.context import FACTIONS
 from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.summer import Summer
@@ -193,7 +194,7 @@ class AcquireTechAbility(DeferredAbility):
         if (
             p.ctx.tech_module
             and self.owner.kind is Kind.SPACE
-            and self.owner.ref == HIGH_COUNCIL_SPACE
+            and is_high_council_space(self.owner)
             and not p.ctx.me.high_council
         ):
             return self.tech_discount + HIGH_COUNCIL_TECH_DISCOUNT

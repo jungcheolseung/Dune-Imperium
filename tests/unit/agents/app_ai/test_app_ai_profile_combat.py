@@ -125,12 +125,18 @@ class FakeAbility(Ability):
     """An ability port with a fixed value and Intrigue strength."""
 
     def __init__(
-        self, owner: Entity, value: float = 0.0, strength: int | None = None
+        self,
+        owner: Entity,
+        value: float = 0.0,
+        strength: int | None = None,
+        place: int | None = None,
     ) -> None:
         super().__init__(owner)
         self.value = value
         if strength is not None:
             self.strength = strength
+        if place is not None:
+            self.place = place  # ``ConflictAbility.place``
 
     def value_for_player(
         self, p: Profile, with_entities: Sequence[Entity] = ()
@@ -143,6 +149,14 @@ class FakeAbility(Ability):
 
 class NoStrengthPort(Ability):
     """A port that forgot ``strength_value``."""
+
+
+# The ``ConflictPlace`` the port of a place class carries (``ConflictAbility.place``).
+PLACES = {
+    "GenericConflictFirstAbility": 1,
+    "GenericConflictSecondAbility": 2,
+    "GenericConflictThirdAbility": 3,
+}
 
 
 def install(
@@ -167,7 +181,9 @@ def install(
             if name in strengths:
                 made.append(FakeAbility(owner, strength=strengths[name]))
             elif name in values:
-                made.append(FakeAbility(owner, value=values[name]))
+                made.append(
+                    FakeAbility(owner, value=values[name], place=PLACES.get(name))
+                )
             elif name in bare:
                 made.append(NoStrengthPort(owner))
             else:

@@ -29,7 +29,7 @@ from collections.abc import Mapping
 from functools import cached_property, lru_cache
 from typing import NamedTuple
 
-from dune_imperium.config import RulesetConfig
+from dune_imperium.config import BaseGame, RulesetConfig
 from dune_imperium.content.arrakeen_scouts.types import RoundModifier
 from dune_imperium.content.immortality.board import (
     RESEARCH_SPACES,
@@ -41,7 +41,7 @@ from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.acquisition import revealer_persuasion
-from dune_imperium.rules.effects import spice_gained_this_turn
+from dune_imperium.rules.effects import mentat_rests, spice_gained_this_turn
 from dune_imperium.rules.sardaukar import commander_cost, eligible_face_up_skill_ids
 from dune_imperium.rules.scouts_effects import (
     joinable_subcommittees as _joinable_subcommittees,
@@ -96,6 +96,10 @@ class Board(NamedTuple):
     #: expansion's spaces). Public (leaders are public); set by
     #: ``AppContext.board``.
     tueks_sietch: bool = False
+    #: The original Dune: Imperium board (``BaseGame.IMPERIUM``): the app's
+    #: ``BaseSet`` space archetypes instead of the Uprising ones
+    #: (``catalog.ORIGINAL_SPACE_ARCHETYPES``).
+    original: bool = False
 
     @staticmethod
     def of(config: RulesetConfig) -> Board:
@@ -105,6 +109,7 @@ class Board(NamedTuple):
             bloodlines=config.bloodlines,
             tech_module=config.tech_module,
             scouts=config.arrakeen_scouts,
+            original=config.base_game is BaseGame.IMPERIUM,
         )
 
 
@@ -147,6 +152,13 @@ class AppContext:
         """The CHOAM module (the app's ``IsSetEnabled(CHOAMModule)``)."""
 
         return self.state.config.choam_module
+
+    @property
+    def uprising(self) -> bool:
+        """The app's ``IsSetEnabled(Uprising = 4)`` (``WormMatch::IsSetEnabled``
+        @0x47fe130): an Uprising game; false on the original board."""
+
+        return self.state.config.base_game is BaseGame.UPRISING
 
     @property
     def board(self) -> Board:
@@ -292,6 +304,13 @@ class AppContext:
     @property
     def shield_wall_present(self) -> bool:
         return self.state.shield_wall_present
+
+    @property
+    def mentat_rests(self) -> bool:
+        """The original game's Mentat rests on its space (public: who took it
+        and who is owed it are on the board)."""
+
+        return mentat_rests(self.state)
 
     def space_occupants(self, space_id: str) -> tuple[int, ...]:
         """Seats with an Agent on ``space_id``, in seat order."""

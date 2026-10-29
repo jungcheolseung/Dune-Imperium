@@ -1,15 +1,18 @@
 """Save files read as records (records.saves) and the check command."""
 
 import json
-import shutil
+from functools import cache
 from pathlib import Path
+from typing import Any
 
 import pytest
+from tests.support.records import older_steps, played_steps, save_document
 
+from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.cli import records as records_cli
 from dune_imperium.cli.records import main
 from dune_imperium.core.actions import DomainAction
-from dune_imperium.core.replay import GameReplay
+from dune_imperium.core.replay import GameReplay, ReplayStep
 from dune_imperium.records.migration import MigratedRecord, migrate_record
 from dune_imperium.records.saves import (
     human_decisions,
@@ -18,8 +21,19 @@ from dune_imperium.records.saves import (
 )
 from dune_imperium.rules import UprisingRulesEngine
 
-DATA = Path(__file__).parent / "data"
-OLD = "v135-app_ai-3"
+SEED = 3
+OLDER = ACTION_CODEC_VERSION - 1
+
+
+@cache
+def _played() -> tuple[ReplayStep, ...]:
+    """Three rounds of an app AI game on this engine."""
+
+    return played_steps(SEED, agents=("app_ai",) * 4, rounds=3)
+
+
+def _document(**extra: Any) -> dict[str, Any]:
+    return save_document(SEED, _played(), **extra)
 
 
 def _save(
@@ -30,10 +44,9 @@ def _save(
     steps: int | None = None,
     **extra: object,
 ) -> Path:
-    """Copy an old-engine record into ``directory`` as a save of ``seats``."""
+    """Write a save of this engine's game into ``directory`` with ``seats``."""
 
-    document = json.loads((DATA / f"{OLD}.json").read_text(encoding="utf-8"))
-    document["seats"] = seats
+    document = _document(seats=seats)
     if steps is not None:
         document["steps"] = document["steps"][:steps]
     document.update(extra)
@@ -43,11 +56,17 @@ def _save(
 
 
 def test_a_saved_game_reads_with_its_own_versions(tmp_path: Path) -> None:
-    path = _save(tmp_path, "a" * 32, seats=["human", "app_ai", "human", "app_ai"])
+    path = _save(
+        tmp_path,
+        "a" * 32,
+        seats=["human", "app_ai", "human", "app_ai"],
+        action_codec_version=OLDER,
+        source_game_id=None,
+    )
 
     game = read_saved_game(path)
 
-    assert game.parsed.replay.action_codec_version == 135
+    assert game.parsed.replay.action_codec_version == OLDER
     assert game.human_seats == (0, 2)
     assert game.game_id == path.stem
     assert not game.finished
@@ -144,41 +163,51 @@ def test_a_finished_save_anchors_its_game(tmp_path: Path) -> None:
 def test_human_decisions_are_the_recorded_actions_of_human_seats(
     tmp_path: Path,
 ) -> None:
-    game = read_saved_game(
-        _save(tmp_path, "a" * 32, seats=["human", "app_ai", "app_ai", "human"])
+    # An older engine's record without its pauses: the steps the ``pause``
+    # bridge answers are no one's decisions.
+    path = tmp_path / f"{'a' * 32}.json"
+    older = older_steps(SEED, _played())
+    document = save_document(
+        SEED,
+        older,
+        seats=["human", "app_ai", "app_ai", "human"],
+        codec=OLDER,
+        reached=_played(),
     )
+    path.write_text(json.dumps(document), encoding="utf-8")
+    game = read_saved_game(path)
     record = migrate_record(game.parsed.replay)
-    assert record.complete and record.bridge_counts()
+    assert record.complete and record.bridge_counts()["pause"] > 0
 
     decisions = list(human_decisions(game, record))
 
-    # A recorded step the migration drops has no counterpart on this engine,
-    # so it is no decision this engine asks. Since codec v146 (OQ-095 (2))
-    # that includes a refusal of an optional effect, which this engine no
-    # longer offers (``optional_refusal``): four of the human seats' steps
-    # of this v135 record (``decline_sardaukar_commander``, ``decline_tech``).
-    dropped = {index for index, _ in record.dropped}
     humans = [
         index
-        for index, step in enumerate(game.parsed.replay.steps)
+        for index, step in enumerate(older)
         if isinstance(step, DomainAction) and step.actor in (0, 3)
     ]
-    assert dropped & set(humans)
-    recorded = [index for index in humans if index not in dropped]
-    assert [decision.recorded_index for decision in decisions] == recorded
+    assert [decision.recorded_index for decision in decisions] == humans
     for decision in decisions:
         assert decision.seat in (0, 3)
+        assert decision.chosen == older[decision.recorded_index]
         assert decision.chosen in decision.legal_actions
 
 
-def test_check_reports_migrated_diverged_and_unreadable_saves(
+def test_check_reports_exact_migrated_diverged_and_unreadable_saves(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     seats = ["human", "app_ai", "app_ai", "app_ai"]
-    _save(tmp_path, "a" * 32, seats=seats, source_game_id="g1", name="옛 판")
-    broken = json.loads((DATA / f"{OLD}.json").read_text(encoding="utf-8"))
-    broken["seats"] = seats
-    broken["source_game_id"] = "g2"
+    older = save_document(
+        SEED,
+        older_steps(SEED, _played()),
+        seats=seats,
+        codec=OLDER,
+        reached=_played(),
+        source_game_id="g1",
+        name="옛 판",
+    )
+    (tmp_path / f"{'a' * 32}.json").write_text(json.dumps(older), encoding="utf-8")
+    broken = _document(seats=seats, source_game_id="g2")
     broken["steps"][40] = {
         "type": "action",
         "action_id": "agent_turn",
@@ -186,7 +215,8 @@ def test_check_reports_migrated_diverged_and_unreadable_saves(
         "arguments": {"card_id": "player:0:starter:dagger:0", "space_id": "nowhere"},
     }
     (tmp_path / f"{'b' * 32}.json").write_text(json.dumps(broken), encoding="utf-8")
-    shutil.copy(DATA / "v139-heuristic-1.json", tmp_path / f"{'c' * 32}.json")
+    other = save_document(4, played_steps(4, rounds=1), seats=["heuristic"] * 4)
+    (tmp_path / f"{'c' * 32}.json").write_text(json.dumps(other), encoding="utf-8")
     (tmp_path / "notes.json").write_text("[]", encoding="utf-8")
 
     # Every save: the broken copy is a branch of the same game.
@@ -194,11 +224,14 @@ def test_check_reports_migrated_diverged_and_unreadable_saves(
 
     out = capsys.readouterr().out
     assert "옛 판" in out
-    assert "migrated: every step applies; bridges:" in out
-    assert "diverged at step 40 of 268 (round 1): seat 0 agent_turn(" in out
+    assert "migrated: every step applies; bridges: pause " in out
+    assert f"diverged at step 40 of {len(_played())} (round 1): seat 0 agent_turn(" in (
+        out
+    )
     assert "this engine waits for: seat" in out
+    assert "exact: replays as recorded" in out
     assert "unreadable notes.json" in out
-    assert "3 games: 0 exact, 2 migrated, 1 diverged, 1 unreadable files" in out
+    assert "3 games: 1 exact, 1 migrated, 1 diverged, 1 unreadable files" in out
 
 
 def test_check_reports_an_engine_error_and_goes_on(

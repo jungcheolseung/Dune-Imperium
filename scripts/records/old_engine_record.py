@@ -1,9 +1,11 @@
 """Write AI-game records with an *older* engine, cut after a few rounds.
 
-The records in ``tests/unit/records/data`` were made this way, so the
-migration tests replay records an older engine really wrote instead of
-records edited to look old. Run it with the older engine's code on the
-import path and this checkout's virtual environment:
+A bridge from the previous codec (``records.migration``) is protected with
+records that engine really wrote, made this way, instead of records edited
+to look old (docs/human-records.md; the bridges of codecs v135-v155 and
+their records were removed when every kept record was converted to v156).
+Run it with the older engine's code on the import path and this checkout's
+virtual environment:
 
     git worktree add --detach tmp/old-engine <commit>
     cd tmp/old-engine

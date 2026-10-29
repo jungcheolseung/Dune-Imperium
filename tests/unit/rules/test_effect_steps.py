@@ -1176,12 +1176,11 @@ def test_a_triggered_draw_is_one_action_per_entity_that_earned_it() -> None:
     # Stage B3e-1 (user decision 2026-10-20, "그래 모두 나누자"; decision 3 of
     # docs/stage-b-plan.md): two draws of one deck that different entities
     # earned are two actions, each taking its own (OQ-106 held them as one
-    # action per deck taking the oldest). The scripted agents and older
-    # records keep the older engine's press, the oldest.
+    # action per deck taking the oldest). The scripted agents keep the older
+    # engine's press, the oldest.
     from tests.unit.rules.test_owed_draws import _at_desert_tactics, _first_turn
 
     from dune_imperium.agents.engine_order import older_engine_wholes
-    from dune_imperium.records.migration import _named_pick
     from dune_imperium.rules.frames import OWED_INTRIGUE, hold_draw
 
     state = _first_turn()
@@ -1198,8 +1197,6 @@ def test_a_triggered_draw_is_one_action_per_entity_that_earned_it() -> None:
     rows = ENGINE.legal_actions(waiting, 0)
     assert first_step(waiting, trash) in rows and first_step(waiting, track) in rows
     assert older_engine_wholes(waiting, 0, wholes).count(trash) == 0
-    unnamed = DomainAction("draw_owed_intrigue", 0)
-    assert _named_pick(waiting, unnamed) == track
 
     drawn = apply_whole(ENGINE, waiting, trash).state
     assert [entry[1] for entry in drawn.players[0].owed_draws] == ["tleilaxu_track"]
@@ -1249,9 +1246,8 @@ def test_a_reveal_gain_is_one_action_per_entity_that_printed_it() -> None:
     # what printed it -- a revealed card, a Skill, a Tech tile -- a copy of
     # the same card once; a bundle is its printer's own, so the row does not
     # repeat it. Where one action per kind, bundle and Faction took the
-    # oldest, the scripted agents and older records still take that one.
+    # oldest, the scripted agents still take that one.
     from dune_imperium.agents.engine_order import older_engine_wholes
-    from dune_imperium.records.migration import _named_pick
 
     state = _reveal_gains(
         "troops|1|imperium:overthrow:0",
@@ -1303,11 +1299,6 @@ def test_a_reveal_gain_is_one_action_per_entity_that_printed_it() -> None:
     assert {first_step(state, whole) for whole in gains} <= rows
     shown = older_engine_wholes(state, 0, wholes)
     assert [w for w in shown if w in gains] == [troops[0], resources[0], resources[3]]
-    assert _named_pick(state, DomainAction("recruit_reveal_troops", 0)) == troops[0]
-    bundle = DomainAction(
-        "gain_reveal_resources", 0, tuple(sorted(spice.items()))
-    )
-    assert _named_pick(state, bundle) == resources[0]
 
     # I Believe's two troops before Overthrow's one; the two copies of The
     # Spice Must Flow are one action, taken oldest first.

@@ -629,7 +629,7 @@ def test_maker_space_spice_or_sandworm(worm: float, expected: str) -> None:
 def test_imperial_basin_harvest_is_the_space_ability() -> None:
     state, seat, _ = _place("dune_the_desert_planet", "imperial_basin")
     labels = {s.label: s.stage for s in _sources_with(state, seat, ae._maker)}
-    assert labels == {"Imperial Basin spice": Stage.SPACE}
+    assert labels == {"Maker space spice": Stage.SPACE}
 
 
 def _sources_with(

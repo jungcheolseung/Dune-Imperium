@@ -80,8 +80,10 @@ from dune_imperium.agents.app_ai.catalog import (
     CARD_ARCHETYPES,
     card_entity,
     conflict_entity,
+    high_council_space_id,
     intrigue_entity,
     space_entity,
+    swordmaster_space_id,
 )
 from dune_imperium.agents.app_ai.context import FACTIONS, card_id
 from dune_imperium.agents.app_ai.entities import Entity, Kind
@@ -129,8 +131,10 @@ _ANY_FACTION: Final = "none"
 #: the app's own budget never binds below about 7 cards (<= 127 combinations).
 GET_COMBINATIONS_BUDGET: Final = 4096
 
-_SWORDMASTER: Final = "swordmaster"
-_HIGH_COUNCIL: Final = "high_council"
+#: ``PrivateArmy.archID`` (``IntrigueArchetypes.BaseSet.PrivateArmy``), the
+#: one card ``StrengthIntrigueAbility::Evaluate`` names by archetype.
+PRIVATE_ARMY_ARCHETYPE: Final = "IntrigueArchetypes.BaseSet.PrivateArmy"
+
 _TSMF_ARCHETYPES: Final = (
     "ImperiumArchetypes.BaseSet.TheSpiceMustFlow",
     "ImperiumArchetypes.Uprising.TheSpiceMustFlowUP",
@@ -231,6 +235,18 @@ def _open_to(p: Profile, space_id: str) -> bool:
     """``!space.HasAgent || space.HasObservingSpy(P)`` (any seat's agent)."""
 
     return not p.ctx.space_occupants(space_id) or _observes(p, space_id)
+
+
+def _swordmaster(p: Profile) -> str:
+    """``BoardSpaces.FirstOrDefault(IsSwordmasterSpace)`` (every board has one)."""
+
+    return swordmaster_space_id(p.ctx.board)
+
+
+def _high_council(p: Profile) -> str:
+    """``BoardSpaces.FirstOrDefault(IsHighCouncilSpace)`` (every board has one)."""
+
+    return high_council_space_id(p.ctx.board)
 
 
 def _space_cost(p: Profile, space_id: str) -> int:
@@ -571,8 +587,13 @@ class StrengthIntrigueAbility(IntrigueAbility):
         if r is not None and r < 2:
             value = -1.0  # sole first now: hold (0x4bddef9)
         elif p.ctx.conflict_deck_size == 0 or self._decisive(p, conflict):
-            # PrivateArmy (base set, 50.0) is never dealt in Uprising.
-            value = 100.0 - self.combat_value(p)
+            # ``Owner.ArchID == PrivateArmy.archID ? 50.0 : 100.0 - CombatValue``
+            # (0x4bde141 ``ArchID``, 0x4bde185 ``f64=50.0``, 0x4bde1c5
+            # ``f64=100.0``): the original game's Private Army (a literal).
+            if self.owner.short == PRIVATE_ARMY_ARCHETYPE:
+                value = 50.0
+            else:
+                value = 100.0 - self.combat_value(p)
         else:
             value = self._first_improving_value(p, conflict, rank)
         choice.update_responses(value, ())
@@ -973,12 +994,12 @@ class BackedByCHOAMPlotAbility(IntrigueAbility):
         if not (_in_player_turn(p, _UNDETERMINED) and me.agents_available > 0):
             return choice.answer("Backed by CHOAM")
         solari = me.resources.solari
-        d = solari - _space_cost(p, _SWORDMASTER)
-        if -4 <= d <= -1 and _open_to(p, _SWORDMASTER):  # unsigned range 0x4cbe429
+        d = solari - _space_cost(p, _swordmaster(p))
+        if -4 <= d <= -1 and _open_to(p, _swordmaster(p)):  # unsigned range 0x4cbe429
             reason = "Swordmaster"
         elif p.ctx.round_number <= 5 and not me.high_council:
-            if -4 <= solari - _space_cost(p, _HIGH_COUNCIL) <= -1 and _open_to(
-                p, _HIGH_COUNCIL
+            if -4 <= solari - _space_cost(p, _high_council(p)) <= -1 and _open_to(
+                p, _high_council(p)
             ):
                 reason = "High Council"
             else:
@@ -1153,16 +1174,16 @@ class ContingencyPlanPlotAbility(IntrigueAbility):
             return choice.answer("Contingency Plan")
         solari = me.resources.solari
         # unsigned compare at 0x4cc33b4: shortfall of exactly 1 or 2 Solari.
-        if solari - _space_cost(p, _SWORDMASTER) in (-2, -1) and _open_to(
-            p, _SWORDMASTER
+        if solari - _space_cost(p, _swordmaster(p)) in (-2, -1) and _open_to(
+            p, _swordmaster(p)
         ):
             choice.update_targets(100.0, None)
             return choice.answer("Contingency Plan (Swordmaster) | 100")
         if (
             p.ctx.round_number <= 5
             and not me.high_council
-            and solari - _space_cost(p, _HIGH_COUNCIL) in (-2, -1)
-            and _open_to(p, _HIGH_COUNCIL)
+            and solari - _space_cost(p, _high_council(p)) in (-2, -1)
+            and _open_to(p, _high_council(p))
         ):
             choice.update_targets(100.0, None)
             return choice.answer("Contingency Plan (High Council) | 100")
@@ -1690,8 +1711,8 @@ class MarketOpportunityAbility(IntrigueAbility):
         if (
             spice >= 2
             and not me.swordmaster_acquired
-            and solari <= _space_cost(p, _SWORDMASTER)
-            and _open_to(p, _SWORDMASTER)
+            and solari <= _space_cost(p, _swordmaster(p))
+            and _open_to(p, _swordmaster(p))
         ):
             choice.update_responses(100.0, ((0,),))
             return choice.answer("Market Opportunity | !Swordmaster")

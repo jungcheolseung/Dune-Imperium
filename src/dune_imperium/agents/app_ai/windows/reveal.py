@@ -240,6 +240,20 @@ from dune_imperium.agents.app_ai.abilities.leaders import (
     DesertScoutsAbility,
     DeviousStrengthAbility,
 )
+from dune_imperium.agents.app_ai.abilities.original_imperium import (
+    BeneGesseritSisterAbility,
+    ChaniRevealAbility,
+    DuncanLoyalBladeAbility,
+    DuncanLoyalBladeDeployAbility,
+    DuncanLoyalBladeRetreatAbility,
+    GuildAmbassadorRevealAbility,
+    GunThopterRevealAbility,
+    GurneyHalleckAbility,
+    LadyJessicaAcquireAbility,
+    OpulenceAbility,
+    SardaukarLegionAbility,
+    ScoutAbility,
+)
 from dune_imperium.agents.app_ai.abilities.scouts import (
     CorrinthCityRevealScoutsAbility,
     SubcommitteeOfferAbility,
@@ -249,6 +263,7 @@ from dune_imperium.agents.app_ai.catalog import (
     LEADER_ARCHETYPES,
     SKILL_ARCHETYPES,
     card_entity,
+    high_council_space_id,
     leader_entity,
     skill_entity,
     skill_id_of,
@@ -343,6 +358,36 @@ _CHOICE_ABILITIES: Mapping[str, type[DeferredAbility]] = {
     "may_trash_self_for_four_influence_if_four_contracts": CHOAMDemandsRevealAbility,
     "persuasion_or_contract": DeliveryLogisticsRevealAbility,
     "gain_chosen_influence_if_two_tech": IxianAmbassadorRevealAbility,
+    # The original game (abilities/original_imperium.py).
+    "may_deploy_one_troop": GunThopterRevealAbility,
+    "choose_two_persuasion_or_two_strength": BeneGesseritSisterAbility,
+    "may_retreat_any_number_of_troops": ChaniRevealAbility,
+    "may_retreat_up_to_two_troops": ScoutAbility,
+    "may_deploy_up_to_three_troops": SardaukarLegionAbility,
+    "may_pay_three_solari_for_two_troops_and_deploy": GurneyHalleckAbility,
+    "may_pay_six_solari_for_victory_point": OpulenceAbility,
+    "may_pay_three_spice_for_victory_point_if_spacing_guild_alliance": (
+        GuildAmbassadorRevealAbility
+    ),
+    "may_trash_self_to_move_any_number_of_troops": DuncanLoyalBladeAbility,
+}
+
+#: The original game's troop-count choices: (our row action, the zone the
+#: app's troop prompt lists, one option per troop): deploys from the
+#: garrison, retreats from the Conflict.
+_ORIGINAL_TROOP_ROWS: Mapping[str, tuple[str, str]] = {
+    "may_retreat_any_number_of_troops": ("retreat_reveal_card_troops", "conflict"),
+    "may_retreat_up_to_two_troops": ("retreat_reveal_card_troops", "conflict"),
+    "may_deploy_up_to_three_troops": ("deploy_reveal_card_troops", "garrison"),
+}
+#: The original game's one-row "use" choices (no sub-target).
+_ORIGINAL_SINGLE_ROWS: Mapping[str, str] = {
+    "may_deploy_one_troop": "deploy_reveal_card_troop",
+    "may_pay_six_solari_for_victory_point": "pay_reveal_solari_for_vp",
+    "may_pay_three_spice_for_victory_point_if_spacing_guild_alliance": (
+        "pay_reveal_spice_for_vp"
+    ),
+    "may_pay_three_solari_for_two_troops_and_deploy": "pay_reveal_solari_for_troops",
 }
 
 _SPY_EFFECTS = frozenset({"place_spy", "place_two_spies", "command_place_spy"})
@@ -683,6 +728,9 @@ def _choice_request(run: DecisionRun, effect: str, card_ref: str) -> Request:
     """
 
     me = run.ctx.me
+    original = _original_request(run, effect)
+    if original is not None:
+        return original
     if effect in (
         "recall_spy_to_draw_intrigue_if_two_placed",
         "may_recall_two_spies_for_three_persuasion",
@@ -733,6 +781,43 @@ def _choice_request(run: DecisionRun, effect: str, card_ref: str) -> Request:
     ):
         return Request((TargetInfo(options=(0, 1)),))
     return _bloodlines_request(run, effect, card_ref)
+
+
+def _row_counts(run: DecisionRun, action_id: str) -> list[int]:
+    return [n for n in (int_arg(a, "count") for a in run.by_id(action_id)) if n]
+
+
+def _original_request(run: DecisionRun, effect: str) -> Request | None:
+    """The target infos of the original game's choices (abilities/
+    original_imperium.py encodings), None for another effect.
+
+    - Chani, Scout, Sardaukar Legion: the app's troop prompt, one option
+      per troop of the zone (``_ORIGINAL_TROOP_ROWS``), at most the largest
+      count our rows offer;
+    - Gurney Halleck: the two troops the 3 Solari buy (``NumberToSelect``
+      2);
+    - Bene Gesserit Sister: options 0 (Persuasion) and 1 (swords);
+    - Gun Thopter, Opulence, Guild Ambassador, Duncan Loyal Blade: none
+      (their Evaluate reads no target).
+    """
+
+    me = run.ctx.me
+    rows = _ORIGINAL_TROOP_ROWS.get(effect)
+    if rows is not None:
+        action_id, zone = rows
+        troops = me.troops_conflict if zone == "conflict" else me.troops_garrison
+        counts = _row_counts(run, action_id)
+        most = min(troops, max(counts)) if counts else troops
+        return Request((TargetInfo(options=tuple(range(troops)), max_select=most),))
+    if effect == "may_pay_three_solari_for_two_troops_and_deploy":
+        return Request((TargetInfo(options=(0, 1), max_select=2),))
+    if effect == "choose_two_persuasion_or_two_strength":
+        return Request((TargetInfo(options=(0, 1)),))
+    if effect in _ORIGINAL_SINGLE_ROWS or effect == (
+        "may_trash_self_to_move_any_number_of_troops"
+    ):
+        return Request()
+    return None
 
 
 def _bloodlines_request(run: DecisionRun, effect: str, card_ref: str) -> Request:
@@ -1038,6 +1123,9 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
             None if chosen_track is None else with_arg(gains, "faction", chosen_track)
         )
         return gain if gain is not None else (gains[0] if gains else None)
+    original = _realise_original(run, effect, answer)
+    if original is not None:
+        return original
     action: DomainAction | None = None
     chosen = _option(answer)
     if effect == "recall_spy_to_draw_intrigue_if_two_placed":
@@ -1126,6 +1214,105 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
                 run.by_id("lose_reveal_troops_for_specimens"), "zones", zones
             )
     return action
+
+
+def _realise_original(
+    run: DecisionRun, effect: str, answer: Answer
+) -> DomainAction | None:
+    """The row of an original-game choice's answer (None: not one of them,
+    or the answer uses none of its rows).
+
+    A troop answer of ``n`` options is the row of count ``n``; Duncan Loyal
+    Blade's mode (0 deploy, 1 retreat) is followed by its half's own troop
+    count (``DuncanLoyalBlade{Deploy,Retreat}Ability``, the prompt the app
+    asks next); a non-empty answer of a one-row choice is that row."""
+
+    if answer.response is None:
+        return None
+    rows = _ORIGINAL_TROOP_ROWS.get(effect)
+    if rows is not None:
+        n = len(answer.response[0]) if answer.response else 0
+        return with_arg(run.by_id(rows[0]), "count", n) if n > 0 else None
+    single = _ORIGINAL_SINGLE_ROWS.get(effect)
+    if single is not None:
+        return run.first(single)
+    if effect == "choose_two_persuasion_or_two_strength":
+        if _option(answer) == 1:
+            return run.first("gain_two_reveal_swords")
+        return run.first("gain_two_reveal_persuasion")
+    if effect == "may_trash_self_to_move_any_number_of_troops":
+        return _duncan_loyal_blade(run, _option(answer))
+    return None
+
+
+def _duncan_loyal_blade(
+    run: DecisionRun, mode: ActionValue | None
+) -> DomainAction | None:
+    """Duncan Loyal Blade's move: the deploy (mode 0) or retreat (1) half,
+    each with its own troop prompt (``DeployUnitsAbility`` /
+    ``OptionalRetreatAbility`` encodings) over the troops of its zone."""
+
+    me = run.ctx.me
+    owner = Entity(Kind.CARD, "duncan_loyal_blade", None, run.ctx.seat)
+    if mode == 0:
+        half: DeferredAbility = DuncanLoyalBladeDeployAbility(owner)
+        action_id, troops = "deploy_reveal_card_troops", me.troops_garrison
+    elif mode == 1:
+        half = DuncanLoyalBladeRetreatAbility(owner)
+        action_id, troops = "retreat_reveal_card_troops", me.troops_conflict
+    else:
+        return None
+    counts = _row_counts(run, action_id)
+    if not counts:
+        return None
+    request = Request(
+        (TargetInfo(options=tuple(range(troops)), max_select=min(troops, max(counts))),)
+    )
+    answer = half.evaluate(run.profile, request)
+    n = len(answer.response[0]) if answer.response else 0
+    return with_arg(run.by_id(action_id), "count", n) if n > 0 else None
+
+
+def _acquire_icon(run: DecisionRun) -> DomainAction | None:
+    """A bought card's acquire icons (``resolve_acquire_icon``), before
+    anything else: the app's ``AcquireAbility`` runs them as part of the
+    purchase, without asking (CHOAM Directorship's four Influence, in its
+    ``AcquireEffectList`` order RankE, RankSG, RankBG, RankF = ``FACTIONS``),
+    except Lady Jessica's "any" Influence, which her
+    ``LadyJessicaAcquireAbility`` picks (a forced prompt: a non-positive or
+    empty answer is ``DefaultRandomChoice``)."""
+
+    icons = run.by_id("resolve_acquire_icon")
+    if not icons:
+        return None
+    fixed = [a for a in icons if str_arg(a, "effect") != "influence_any"]
+    if fixed:
+
+        def rank(action: DomainAction) -> int:
+            effect = str_arg(action, "effect") or ""
+            faction = effect.removeprefix("influence_")
+            return FACTIONS.index(faction) if faction in FACTIONS else len(FACTIONS)
+
+        return min(fixed, key=rank)
+    card_ref = str_arg(icons[0], "acquired_card_id") or ""
+    card = card_entity(f"imperium:{card_ref}:0", run.ctx.seat)
+    ability = next(
+        (a for a in abilities_of(card) if isinstance(a, LadyJessicaAcquireAbility)),
+        None,
+    )
+    if ability is not None:
+        offered = set(_arg_refs(icons, "faction"))
+        tracks = tuple(track_entity(f) for f in FACTIONS if f in offered)
+        answer = ability.evaluate(run.profile, Request((TargetInfo(entities=tracks),)))
+        faction = _option(answer)
+        chosen = with_arg(icons, "faction", faction) if answer.value > 0.0 else None
+        if chosen is not None:
+            return chosen
+    return default_random_choice(list(icons), run.rng)
+
+
+def _arg_refs(actions: Sequence[DomainAction], name: str) -> list[str]:
+    return [ref for ref in (str_arg(a, name) for a in actions) if ref is not None]
 
 
 def _note_choice(run: DecisionRun, effect: str, answer: Answer) -> None:
@@ -1932,7 +2119,9 @@ def _subcommittee_sources(
     offer = next(
         (
             a
-            for a in abilities_of(space_entity("high_council", run.ctx.board))
+            for a in abilities_of(
+                space_entity(high_council_space_id(run.ctx.board), run.ctx.board)
+            )
             if isinstance(a, SubcommitteeOfferAbility)
         ),
         None,
@@ -2079,6 +2268,9 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
         return None
     if waiting is not None:
         return waiting
+    icon = _acquire_icon(run)
+    if icon is not None:
+        return icon
     known = _REVEAL_ACTIONS | TURN_ROW_IDS
     if any(a.action_id not in known for a in run.legal):
         return None  # a Reveal action of another expansion: not mirrored

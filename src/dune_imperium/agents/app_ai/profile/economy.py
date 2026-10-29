@@ -30,6 +30,10 @@ from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 
+from dune_imperium.agents.app_ai.abilities.generic import (
+    ConflictAbility,
+    GenericConflictAbility,
+)
 from dune_imperium.agents.app_ai.catalog import (
     CONTRACT_ARCHETYPES,
     INTRIGUE_ARCHETYPES,
@@ -102,6 +106,7 @@ _ES_FIRST = (
 )
 
 # Leader archetypes (P.Leader == X).
+_PAUL_ATREIDES = "LeaderArchetypes.BaseSet.PaulAtreides"
 _GLOSSU_RABBAN = "LeaderArchetypes.BaseSet.GlossuTheBeastRabban"
 _DUKE_LETO = "LeaderArchetypes.BaseSet.DukeLetoAtreides"
 _EARL_MEMNON = "LeaderArchetypes.BaseSet.EarlMemnonThorvald"
@@ -136,6 +141,15 @@ _LIET_KYNES_REVEAL = _PLAY + "BaseSet.LietKynesRevealAbility"
 _THUFIR_REVEAL = _PLAY + "BaseSet.ThufirHawatRevealAbility"
 _IN_HIGH_PLACES_REVEAL = _PLAY + "BaseSet.InHighPlacesRevealAbility"
 _UNDERCOVER_REVEAL = _PLAY + "BaseSet.UndercoverAssetRevealAbility"
+# The original game's Reveal boxes (``abilities/original_imperium``). Guild
+# Bankers' ``GuildBankersAbility`` is its only Reveal box and keeps the base
+# preview.
+_BG_SISTER_REVEAL = _PLAY + "BaseSet.BeneGesseritSisterRevealAbility"
+_FEDAYKIN_REVEAL = _PLAY + "BaseSet.FedaykinDeathCommandoRevealAbility"
+_FIRM_GRIP_REVEAL = _PLAY + "BaseSet.FirmGripRevealAbility"
+_GUILD_BANKERS_REVEAL = _PLAY + "BaseSet.GuildBankersAbility"
+_SIETCH_RM_REVEAL = _PLAY + "BaseSet.SietchReverendMotherRevealAbility"
+_WORM_RIDERS_REVEAL = _PLAY + "BaseSet.WormRidersRevealAbility"
 # Immortality RevealAbility subclasses overriding GetRevealPreviewValue.
 _BT_RESEARCHER_REVEAL = _PLAY + "Immortality.BeneTleilaxResearcherRevealAbility"
 _LISAN_AL_GAIB_PREVIEW = _PLAY + "Immortality.LisanAlGaibRevealPreviewAbility"
@@ -165,6 +179,12 @@ _REVEAL_CLASSES = _APPSTYLE_PREVIEW_REVEALS | frozenset(
         _THUFIR_REVEAL,
         _IN_HIGH_PLACES_REVEAL,
         _UNDERCOVER_REVEAL,
+        _BG_SISTER_REVEAL,
+        _FEDAYKIN_REVEAL,
+        _FIRM_GRIP_REVEAL,
+        _GUILD_BANKERS_REVEAL,
+        _SIETCH_RM_REVEAL,
+        _WORM_RIDERS_REVEAL,
         _BT_RESEARCHER_REVEAL,
         _LISAN_AL_GAIB_PREVIEW,
         _THRONE_ROOM_REVEAL,
@@ -175,6 +195,13 @@ _AGENT_CLASSES = frozenset(
         _PLAY + "AgentAbility",
         _PLAY + "BaseSet.PowerPlayAgentAbility",
         _PLAY + "BaseSet.SeekAlliesAgentAbility",
+        # The original game's Agent boxes of cards without a generic one.
+        _PLAY + "BaseSet.CarryAllAgentAbility",
+        _PLAY + "BaseSet.GeneManipulationAbility",
+        _PLAY + "BaseSet.GunThopterAgentAbility",
+        _PLAY + "BaseSet.KwisatzHaderachAbility",
+        _PLAY + "BaseSet.ReverendMotherMohiamAbility",
+        _PLAY + "BaseSet.TestOfHumanityAbility",
         _PLAY + "Uprising.WeirdingWomanAgentAbility",
         # Immortality: GraftAgentAbility and its subclasses, the specimen boxes.
         _PLAY + "Immortality.GraftAgentAbility",
@@ -527,7 +554,8 @@ class EconomyMixin(ProfileCore):
         if conflict is None:
             return score
         score += self._possible_combat_reward_vp(conflict, player, False)
-        # SetOn(4) (Uprising) is on in every game we play.
+        if not self.ctx.uprising:  # SetOn(4): the sandworm and battle-icon terms
+            return score
         if player.sandworms_conflict > 0:  # any(p.ConflictSandworms)
             # The 1st-place reward again, with doubleCost = true.
             score += self._possible_combat_reward_vp(conflict, player, True)
@@ -549,12 +577,18 @@ class EconomyMixin(ProfileCore):
         ``GetPossibleCombatRewardVP`` dispatches to ``AbilityForPlacement(1)``
         (``@0x4829c40``); Epic's Economic Supremacy overrides it with
         ``EconomicSupremacyFirstAbility::GetPossibleRewardVP @0x4b792d0``
-        (spec/epic-goto11-promo-draft.md §2.4).
+        (spec/epic-goto11-promo-draft.md §2.4), and the original game's
+        ``BaseSet.<Card>FirstAbility`` leave it to the base
+        ``ConflictAbility::GetPossibleRewardVP @0x4b6ea00`` (the card's
+        ``VictoryPoints``, whatever ``player`` holds).
         """
 
         card = conflict_entity(conflict, self.ctx.choam)
         if _ES_FIRST in card.ability_ids:
             return self._economic_supremacy_first_reward_vp(player, double_cost)
+        place_one = self._place_one_ability(card)
+        if place_one is not None and not isinstance(place_one, GenericConflictAbility):
+            return place_one.possible_reward_vp(self._profile(), double_cost)
         rewards = conflict_reward_entities(conflict, self.ctx.choam)
         if not rewards:
             return 0
@@ -579,6 +613,15 @@ class EconomyMixin(ProfileCore):
             ):
                 vp += 1
         return vp
+
+    def _place_one_ability(self, card: Entity) -> ConflictAbility | None:
+        """``WormConflictPlayable::AbilityForPlacement(1) @0x4829c40``: the
+        first ``ConflictAbility`` of the card with ``ConflictPlace`` 1."""
+
+        for ability in self._abilities(card):
+            if isinstance(ability, ConflictAbility) and ability.place == 1:
+                return ability
+        return None
 
     @staticmethod
     def _economic_supremacy_first_reward_vp(
@@ -606,6 +649,43 @@ class EconomyMixin(ProfileCore):
         if len(choices) < 3:  # strict <
             return 0.0
         return choices[self.game_arc()]
+
+    # ===========================================================================
+    # §4.5 "Short"/"Long" flags (read by the BaseSet intrigue evaluators)
+    # ===========================================================================
+
+    def is_solari_short(self) -> bool:
+        """``get_IsSolariShort`` @0x4912010: ``GetResourceValue(Solari, 1,
+        false) >= SolariShortValue`` (``setae``)."""
+
+        return self.resource_value(Attr.SOLARI, 1, False) >= self.C.SolariShortValue
+
+    def is_solari_long(self) -> bool:
+        """``get_IsSolariLong`` @0x49120b0: ``!IsSolariShort``."""
+
+        return not self.is_solari_short()
+
+    def is_spice_short(self) -> bool:
+        """``get_IsSpiceShort`` @0x49120c0: the Swordmaster holder (the
+        ``Swordmaster`` attribute; false without it) with ``SpiceShortAmount
+        >= Spice`` (``ucomisd; setae``)."""
+
+        me = self.ctx.me
+        return me.swordmaster_acquired and self.C.SpiceShortAmount >= me.resources.spice
+
+    def is_troop_short(self) -> bool:
+        """``get_IsTroopShort`` @0x4912190: ``TroopShortAmount >=
+        GarrisonTroops`` (``setae``; Bloodlines Commanders count, D1)."""
+
+        return self.C.TroopShortAmount >= self._profile().garrison_troop_count()
+
+    def is_water_long(self) -> bool:
+        """``get_IsWaterLong`` @0x49121f0: not the Early arc and ``Water >=
+        WaterShortAmount`` (``ucomisd water, thr; setae``)."""
+
+        if self.game_arc() == 0:
+            return False
+        return self.ctx.me.resources.water >= self.C.WaterShortAmount
 
     # ===========================================================================
     # §2 Tables and abundance
@@ -788,13 +868,13 @@ class EconomyMixin(ProfileCore):
                     and self._has_intrigue(_ECONOMIC_POSITIONING)
                 ):
                     _mul(s, c.EconomicPositioningSolariMod, "Economic Positioning Mod")
-                # SetOn(4):
-                if self._has_intrigue(_BUY_ACCESS):
-                    _mul(s, c.BuyAccessSolariMod, "Buy Access Mod")
-                if self._has_intrigue(_MARKET_OPPORTUNITY):
-                    _mul(s, c.MarketOpportunitySolariMod, "Market Opportunity Mod")
-                if self._has_intrigue(_MERCENARIES):
-                    _mul(s, c.MercenariesSolariMod, "Mercenaries Mod")
+                if self.ctx.uprising:  # SetOn(4)
+                    if self._has_intrigue(_BUY_ACCESS):
+                        _mul(s, c.BuyAccessSolariMod, "Buy Access Mod")
+                    if self._has_intrigue(_MARKET_OPPORTUNITY):
+                        _mul(s, c.MarketOpportunitySolariMod, "Market Opportunity Mod")
+                    if self._has_intrigue(_MERCENARIES):
+                        _mul(s, c.MercenariesSolariMod, "Mercenaries Mod")
 
             if include_combat_posture_mod and attr in (
                 Attr.STRENGTH,
@@ -818,33 +898,33 @@ class EconomyMixin(ProfileCore):
                     _mul(s, c.TheSleeperMustAwakenSpiceMod, "Sleeper Must Awaken")
                 if self._has_intrigue(_PRIVATE_ARMY):
                     _mul(s, c.PrivateArmySpiceMod, "Private Army")
-                # SetOn(4):
-                if self._has_intrigue(_MARKET_OPPORTUNITY):
-                    _mul(s, c.MarketOpportunitySpiceMod, "Market Opportunity Mod")
-                if self._has_intrigue(_STRATEGIC_STOCKPILING):
-                    _mul(
-                        s,
-                        c.StrategicStockpilingSpiceMod,
-                        "Strategic Stockpiling Mod",
-                    )
+                if self.ctx.uprising:  # SetOn(4)
+                    if self._has_intrigue(_MARKET_OPPORTUNITY):
+                        _mul(s, c.MarketOpportunitySpiceMod, "Market Opportunity Mod")
+                    if self._has_intrigue(_STRATEGIC_STOCKPILING):
+                        _mul(
+                            s,
+                            c.StrategicStockpilingSpiceMod,
+                            "Strategic Stockpiling Mod",
+                        )
 
             if attr is Attr.WATER:
                 if leader == _COUNTESS_ARIANA:
                     _mul(s, c.CountessArianaThorvaldWaterValueMod, "Countess Ariana")
-                # SetOn(4):
-                if me.maker_hooks:
-                    _mul(s, c.WaterHooksMod, "Water Hooks Mod")
-                if (
-                    self._has_intrigue(_STRATEGIC_STOCKPILING)
-                    and self._influence(me, "fremen") >= 2
-                ):
-                    _mul(
-                        s,
-                        c.StrategicStockpilingWaterMod,
-                        "Strategic Stockpiling Mod",
-                    )
-                if self._has_intrigue(_UNEXPECTED_ALLIES):
-                    _mul(s, c.UnexpectedAlliesWaterMod, "Unexpected Allies Mod")
+                if self.ctx.uprising:  # SetOn(4)
+                    if me.maker_hooks:
+                        _mul(s, c.WaterHooksMod, "Water Hooks Mod")
+                    if (
+                        self._has_intrigue(_STRATEGIC_STOCKPILING)
+                        and self._influence(me, "fremen") >= 2
+                    ):
+                        _mul(
+                            s,
+                            c.StrategicStockpilingWaterMod,
+                            "Strategic Stockpiling Mod",
+                        )
+                    if self._has_intrigue(_UNEXPECTED_ALLIES):
+                        _mul(s, c.UnexpectedAlliesWaterMod, "Unexpected Allies Mod")
 
             if attr is Attr.TROOPS:
                 if self._has_intrigue(_RAPID_MOBILIZATION):
@@ -889,7 +969,7 @@ class EconomyMixin(ProfileCore):
                             c.SpecimenGoodTleilaxuBonus,
                         )
 
-            if attr is Attr.SANDWORMS:  # SetOn(4)
+            if attr is Attr.SANDWORMS and self.ctx.uprising:  # SetOn(4)
                 interest = self.current_conflict_interest().sum  # always computed
                 if leader == _MUAD_DIB:
                     s.add("Muad'Dib Intrigue", self.intrigue_value())
@@ -991,11 +1071,21 @@ class EconomyMixin(ProfileCore):
     def card_draw_value(self) -> float:
         """``WormAIProfile::get_CardDrawValue @0x4908cc0`` (spec §4.2).
 
-        Paul Atreides' deck-top branch (BaseSet leader) never occurs with our
-        content, and would read the deck order; it is not ported.
+        Paul Atreides (``LeaderArchetypes.BaseSet.PaulAtreides``, the
+        original game's leader) reads the card on top of his own deck
+        (``Deck.children.FirstOrDefault``): ``v * (PersuasionCost / 10.0 +
+        1.0)`` (0 for an empty deck; ``divsd 10.0``, ``addsd 1.0``). His
+        Prescience shows him that card at any time [DI p. 13], so it is in his
+        ``PlayerView`` (``peeked_card_id``, ``core.observation``), not a read
+        of the deck order.
         """
 
         value = self.C.CardDrawValue
+        if self._leader_short() == _PAUL_ATREIDES:
+            private = self.ctx.view.private
+            top = private.peeked_card_id if private is not None else ""
+            cost = card_entity(top).int_attr("PersuasionCost") if top else 0
+            return value * (cost / 10.0 + 1.0)
         return value * 1.0
 
     def card_draw_value_with_buy_gains(self) -> float:
@@ -1195,6 +1285,25 @@ class EconomyMixin(ProfileCore):
             return 1
         if ability_class == _UNDERCOVER_REVEAL:  # @0x4cce1c0
             return 0  # only {"OptionalStrength": 2}
+        if ability_class in (_BG_SISTER_REVEAL, _WORM_RIDERS_REVEAL):
+            # @0x4c854a0 {OptionalPersuasion 2, OptionalStrength 2}, @0x4cbdb70
+            # {Strength}: no Persuasion key.
+            return 0
+        if ability_class == _FIRM_GRIP_REVEAL:  # @0x4c996b0: InAlliance(Emperor) << 2
+            return 4 if "emperor" in me.alliance_faction_ids else 0
+        if ability_class == _FEDAYKIN_REVEAL:  # @0x4c991b0 {Persuasion 1, Strength}
+            return 1  # literal
+        if ability_class == _SIETCH_RM_REVEAL:  # @0x4cb4a50
+            # 3 with another own Fremen card in play or in hand (the same
+            # test as Southern Elders').
+            others = (
+                other
+                for other in self._own_cards(me.in_play, me.hand)
+                if other.ref != card.ref
+            )
+            return (
+                3 if any("Fremen" in o.list_attr("FactionList") for o in others) else 0
+            )
         if ability_class == _BT_RESEARCHER_REVEAL:  # @0x4c637e0
             return self.ctx.genetic_markers() + 1  # get_GeneticMarkers; inc
         if ability_class == _LISAN_AL_GAIB_PREVIEW:  # @0x4c790e0
@@ -1229,6 +1338,10 @@ class EconomyMixin(ProfileCore):
         if not in_reveal_turn:
             if me.high_council:
                 persuasion += 2
+            # ``FindSpace(BaseSet.HallofOratory)`` (the original board) and
+            # ``FindSpace(Uprising.AssemblyHall)``: an own Agent there.
+            if "hall_of_oratory" in me.agent_locations:
+                persuasion += 1
             if "assembly_hall" in me.agent_locations:
                 persuasion += 1
             if self.ctx.bloodlines:
@@ -1483,7 +1596,7 @@ class EconomyMixin(ProfileCore):
             guild_spy = any(
                 played.short == _GUILD_SPY for played in self._own_cards(me.in_play)
             )
-            contract_open = any(
+            contract_open = self.ctx.uprising and any(  # SetOn(4)
                 CONTRACT_ARCHETYPES.get(card_id(contract)) == _CONTRACT_BASE_20
                 for contract in me.active_contract_ids
             )
@@ -1501,9 +1614,11 @@ class EconomyMixin(ProfileCore):
                     )
             if SYNERGY_READS_HELD_CARD_ABILITIES:
                 held = [intrigue_entity(i, self.ctx.seat) for i in me.intrigue_cards]
-                held += [
-                    contract_entity(i, self.ctx.seat) for i in me.active_contract_ids
-                ]
+                if self.ctx.uprising:  # SetOn(4): the ContractArea
+                    held += [
+                        contract_entity(i, self.ctx.seat)
+                        for i in me.active_contract_ids
+                    ]
                 for owned in held:
                     for ability in self._abilities(owned):
                         concat.merge(
@@ -1647,10 +1762,10 @@ class EconomyMixin(ProfileCore):
     # §4.6-4.7 Space costs
     # ===========================================================================
 
-    def _spice_for_sell_melange(self) -> int:
+    def spice_for_sell_melange(self) -> int:
         """``WormAIProfile::GetSpiceForSellMelange @0x490f6c0`` (spec §4.6).
 
-        BaseSet space, not on the Uprising board.
+        The original board's Sell Melange (not on the Uprising board).
         """
 
         c = self.C
@@ -1690,7 +1805,7 @@ class EconomyMixin(ProfileCore):
             # bloodlines-systems.md §1.7, D60), as the app's SolariDiscount.
             need = attribute("SpiceCost") + attribute("SpiceDiscount")
             if space is not None and space.short == _SELL_MELANGE:
-                need = self._spice_for_sell_melange()
+                need = self.spice_for_sell_melange()
             bonus = 0
             if space is not None and space.has("BonusSpice"):
                 # Runtime BonusSpice: our maker spaces' bonus spice.

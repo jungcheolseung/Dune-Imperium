@@ -1,65 +1,74 @@
 """Suites of judged human positions (records.problems)."""
 
 import json
-from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.support.records import played_steps, save_document
 
+from dune_imperium.adapters.action_codec import ACTION_CODEC_VERSION
 from dune_imperium.cli.records import main
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.decisions import Decision
 from dune_imperium.core.replay import ReplayStep
 from dune_imperium.core.state import GameState
-from dune_imperium.records.migration import migrate_record, walk
+from dune_imperium.records import migration
+from dune_imperium.records.migration import Bridge, migrate_record, walk
 from dune_imperium.records.problems import (
     HumanProblem,
     Resolved,
-    Suite,
     answer,
     build_mistake_suite,
     build_suite,
     load_suite,
     merge_suites,
-    position_state,
     resolve,
     save_suite,
     summarize,
 )
 from dune_imperium.records.saves import SavedGame, human_decisions, read_saved_game
 from dune_imperium.rules import UprisingRulesEngine
-from dune_imperium.rules.agent_turn import (
-    CARD_PICK_ACTION,
-    agent_card_pick_actions,
-    executable_placements,
-)
-from dune_imperium.rules.effect_steps import (
-    STEP_SPECS,
-    TARGET_SPECS,
-    first_step,
-    path_of,
-)
 from dune_imperium.server.persistence import serialize_step
 from dune_imperium.training.policy import without_undo_actions
 
-DATA = Path(__file__).parent / "data"
 GAME = "a" * 32
+SEED = 3
 
 
 def _text(action: DomainAction) -> dict[str, object]:
     return {"id": action.action_id, "args": dict(action.arguments)}
 
 
-@pytest.fixture
-def game(tmp_path: Path) -> SavedGame:
-    """An old-engine record read as a game a person played at seat 0."""
+@pytest.fixture(scope="module")
+def played() -> tuple[ReplayStep, ...]:
+    """Three rounds of an app AI game on this engine."""
 
-    document = json.loads((DATA / "v135-app_ai-3.json").read_text(encoding="utf-8"))
-    document["seats"] = ["human", "app_ai", "app_ai", "app_ai"]
-    document["log"] = [{"type": "undo", "seat": 0, "count": 1}]
-    path = tmp_path / f"{GAME}.json"
+    return played_steps(SEED, agents=("app_ai",) * 4, rounds=3)
+
+
+def _game(
+    directory: Path,
+    played: tuple[ReplayStep, ...],
+    seats: list[str],
+    *,
+    codec: int = ACTION_CODEC_VERSION,
+    reached: tuple[ReplayStep, ...] | None = None,
+) -> SavedGame:
+    # The game is named after its file, as a save without a source game.
+    document = save_document(
+        SEED, played, seats=seats, codec=codec, reached=reached, source_game_id=None
+    )
+    path = directory / f"{GAME}.json"
     path.write_text(json.dumps(document), encoding="utf-8")
     return read_saved_game(path)
+
+
+@pytest.fixture
+def game(tmp_path: Path, played: tuple[ReplayStep, ...]) -> SavedGame:
+    """This engine's game read as one a person played at seat 0."""
+
+    return _game(tmp_path, played, ["human", "app_ai", "app_ai", "app_ai"])
 
 
 def _rows(
@@ -131,27 +140,12 @@ def test_a_suite_keeps_the_agreed_positions_and_their_record(
     ]
     record = loaded.records[GAME]
     assert "log" not in record and record["format_version"] == 1
-    # The person's move is the one the judge saw: the recorded step as the
-    # migration replays it (a recorded placement is this engine's space pick
-    # once its card is picked, codec v150; a recorded whole action is the last
-    # of its effect and target steps, stage B3, and a window opened for one
-    # effect shows its whole action by its target rows, stage B3d-2a).
+    # The person's move is the one the judge saw: the recorded step.
     judged_moves = {row["step"]: row["human"] for row in judged}
-    migrated = {
-        step.recorded_index: step.step
-        for step in migrate_record(game.parsed.replay).steps
-        if step.recorded_index is not None
-    }
     for problem in loaded.problems:
         recorded = game.parsed.replay.steps[problem.recorded_index]
-        assert isinstance(recorded, DomainAction)
         assert _text(problem.person) == judged_moves[problem.recorded_index]
-        assert problem.person == migrated[problem.recorded_index]
-        assert problem.person == recorded or (
-            recorded.action_id == "agent_turn"
-            or recorded.action_id in STEP_SPECS
-            or recorded.action_id in TARGET_SPECS
-        )
+        assert problem.person == recorded
         assert (problem.right == problem.person) == (problem.family == "human_right")
 
 
@@ -275,75 +269,6 @@ def test_the_cli_checks_and_scores_a_suite(
     assert len(report["random"]["answers"]) == 2
 
 
-def _game_with_human(tmp_path: Path, seat: int) -> SavedGame:
-    document = json.loads((DATA / "v135-app_ai-3.json").read_text(encoding="utf-8"))
-    document["seats"] = ["app_ai"] * 4
-    document["seats"][seat] = "human"
-    path = tmp_path / f"{'b' * 32}.json"
-    path.write_text(json.dumps(document), encoding="utf-8")
-    return read_saved_game(path)
-
-
-def test_a_person_move_a_bridge_rewrote_is_frozen_in_its_migrated_form(
-    tmp_path: Path,
-) -> None:
-    game = _game_with_human(tmp_path, 3)
-    recorded = game.parsed.replay.steps
-    # A placement's space pick and every whole action's last step are
-    # rewritten too (codec v150); this test is about the box resolution the
-    # cleanup bridge rewrites: step 134, seat 3's Signet Ring resolved with no
-    # icon named (``agent_card_effect_named``), which is its solari icon here.
-    assert recorded[134] == DomainAction("resolve_agent_card_effect", 3)
-    decision = next(
-        decision
-        for decision in human_decisions(game)
-        if decision.recorded_index == 134
-    )
-    assert decision.chosen == DomainAction(
-        "gain",
-        3,
-        (
-            ("icon", "solari"),
-            ("printed", "lady_amber_metulli"),
-            ("source", "leader"),
-        ),
-    )
-    other = next(
-        action
-        for action in without_undo_actions(decision.legal_actions)
-        if action != decision.chosen
-    )
-    common = {
-        "game": "bbbbbbbb",
-        "step": decision.recorded_index,
-        "round": decision.state.round_number,
-        "seat": 3,
-        "human": _text(decision.chosen),
-    }
-    judged = [
-        {**common, "effect_order": True, "values": [[0, 1], [0, 1]], "human_col": 1}
-    ]
-    confirmed = [
-        {
-            **common,
-            "first": "human",
-            "second": "human",
-            "mean": 0.1,
-            "error": 0.01,
-            "p_human": 0.1,
-            "net_first": _text(other),
-        }
-    ]
-
-    suite = build_suite([game], judged, confirmed, "test")
-
-    (problem,) = suite.problems
-    assert problem.person == decision.chosen
-    position = resolve(suite)[problem.problem_id]
-    assert isinstance(position, Resolved)
-    assert position.right == decision.chosen
-
-
 def test_a_position_an_engine_change_moved_does_not_resolve(game: SavedGame) -> None:
     judged, confirmed = _rows(game, ["human", "net"])
     suite = build_suite([game], judged, confirmed, "test")
@@ -394,63 +319,85 @@ def test_the_position_state_keeps_every_seat_field_and_ignores_new_ones(
     assert isinstance(resolves(older), Resolved)
 
 
-def test_the_network_move_goes_through_the_rewrite_bridges(tmp_path: Path) -> None:
-    from dune_imperium.records.migration import migrate_record, walk
-    from dune_imperium.rules import UprisingRulesEngine
+def _renamed(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    decision: Decision,
+    step: ReplayStep,
+) -> ReplayStep | None:
+    """A made-up rewrite bridge: an older engine's ``old_<id>`` is ``<id>``."""
 
-    game = _game_with_human(tmp_path, 0)
+    del engine, state, decision
+    if isinstance(step, DomainAction) and step.action_id.startswith("old_"):
+        return replace(step, action_id=step.action_id.removeprefix("old_"))
+    return None
+
+
+def test_both_moves_of_an_older_record_go_through_the_rewrite_bridge(
+    tmp_path: Path, played: tuple[ReplayStep, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A record of the previous codec whose person's move, and the network's
+    # move judged beside it, are in that engine's terms: the person's move is
+    # frozen as the migration replays it, and the network's goes through the
+    # same rewrite bridge when the position is resolved.
+    rename = Bridge(
+        "test_rename", _renamed, before_codec=ACTION_CODEC_VERSION, rewrites=True
+    )
+    monkeypatch.setattr(migration, "BRIDGES", (*migration.BRIDGES, rename))
     engine = UprisingRulesEngine()
-    record = migrate_record(game.parsed.replay, engine)
-    # A position where one named card effect is offered and the seat did
-    # something else: the network's move, judged in old terms, is the
-    # argument-less effect (a whole action here; the rows it stands for are
-    # what the position offers, stage B3).
-    for state, migrated in walk(record, engine):
-        step = migrated.step
-        if not isinstance(step, DomainAction) or migrated.recorded_index is None:
-            continue
-        named = [
-            action
-            for action in engine.whole_actions(state, step.actor)
-            if action.action_id == "resolve_agent_card_effect" and action.arguments
-        ]
-        if len(named) == 1 and step not in (path_of(state, named[0]) or ()):
-            break
-    else:
-        pytest.fail("no position with one named card effect in the record")
-    seat = step.actor
-    document = json.loads(game.path.read_text(encoding="utf-8"))
-    document["seats"] = ["app_ai"] * 4
-    document["seats"][seat] = "human"
-    game.path.write_text(json.dumps(document), encoding="utf-8")
-    game = read_saved_game(game.path)
+    current = _game(tmp_path, played, ["human", "app_ai", "app_ai", "app_ai"])
+    decision = next(
+        decision
+        for decision in human_decisions(current, engine=engine)
+        if len(without_undo_actions(decision.legal_actions)) >= 2
+        and decision.chosen.action_id != "choose_leader"
+    )
+    other = next(
+        action
+        for action in without_undo_actions(decision.legal_actions)
+        if action != decision.chosen
+    )
+    old = replace(decision.chosen, action_id=f"old_{decision.chosen.action_id}")
+    steps = list(played)
+    steps[decision.recorded_index] = old
+    game = _game(
+        tmp_path,
+        tuple(steps),
+        ["human", "app_ai", "app_ai", "app_ai"],
+        codec=ACTION_CODEC_VERSION - 1,
+        reached=played,
+    )
     common = {
-        "game": "bbbbbbbb",
-        "step": migrated.recorded_index,
-        "round": state.round_number,
-        "seat": seat,
-        "human": _text(step),
+        "game": GAME[:8],
+        "step": decision.recorded_index,
+        "round": decision.state.round_number,
+        "seat": 0,
+        "human": _text(decision.chosen),
     }
     judged = [
-        {**common, "effect_order": True, "values": [[0, 1], [0, 1]], "human_col": 1}
+        {**common, "effect_order": False, "values": [[0, 1], [0, 1]], "human_col": 1}
     ]
+    old_other = replace(other, action_id=f"old_{other.action_id}")
     confirmed = [
         {
             **common,
-            "first": "human",
-            "second": "human",
-            "mean": 0.1,
+            "first": "net",
+            "second": "net",
+            "mean": -0.1,
             "error": 0.01,
             "p_human": 0.1,
-            "net_first": {"id": "resolve_agent_card_effect", "args": {}},
+            "net_first": _text(old_other),
         }
     ]
+
     suite = build_suite([game], judged, confirmed, "test")
 
-    (position,) = resolve(suite).values()
-
+    (problem,) = suite.problems
+    assert problem.person == decision.chosen
+    assert problem.right == old_other
+    position = resolve(suite, engine)[problem.problem_id]
     assert isinstance(position, Resolved), position
-    assert position.wrong == first_step(state, named[0])
+    assert (position.right, position.wrong) == (other, decision.chosen)
 
 
 def test_a_decision_confirmed_twice_is_refused(game: SavedGame) -> None:
@@ -460,7 +407,9 @@ def test_a_decision_confirmed_twice_is_refused(game: SavedGame) -> None:
         build_suite([game], judged, confirmed + confirmed, "test")
 
 
-def test_untrained_network_rows_give_no_probabilities(tmp_path: Path) -> None:
+def test_untrained_network_rows_give_no_probabilities(
+    tmp_path: Path, played: tuple[ReplayStep, ...]
+) -> None:
     torch = pytest.importorskip("torch")
     from dune_imperium.adapters.action_codec import ActionCodec
     from dune_imperium.training.checkpoint import save_checkpoint
@@ -468,11 +417,7 @@ def test_untrained_network_rows_give_no_probabilities(tmp_path: Path) -> None:
 
     # A file trained without Arrakeen Scouts plays a Scouts game: every
     # Scouts row is untrained, and such a decision goes to its heuristic.
-    document = json.loads((DATA / "v135-app_ai-3.json").read_text(encoding="utf-8"))
-    document["seats"] = ["human"] * 4
-    path = tmp_path / f"{GAME}.json"
-    path.write_text(json.dumps(document), encoding="utf-8")
-    game = read_saved_game(path)
+    game = _game(tmp_path, played, ["human"] * 4)
     without = replace(game.parsed.replay.ruleset, arrakeen_scouts=False)
     codec = ActionCodec(without)
     torch.manual_seed(0)
@@ -634,463 +579,3 @@ def test_an_ai_seat_s_mistakes_are_frozen_and_scored_by_kind(
         )
     with pytest.raises(ValueError, match="picked twice"):
         build_mistake_suite([game], [picks[0], picks[0]], note="test")
-
-
-def _effect_problem(
-    tmp_path: Path, same_effect: bool
-) -> tuple[Resolved | str, GameState, tuple[DomainAction, ...], DomainAction]:
-    """A problem at a recorded whole action with a target (stage B3: the
-    migration takes it as its effect step and then its target step), the
-    network's move another effect (``same_effect`` False) or the same effect
-    with another target. Returns the resolution, the state before the
-    effect step, the person's steps and the network's whole action."""
-
-    from dune_imperium.records.migration import migrate_record, walk
-    from dune_imperium.rules import UprisingRulesEngine
-
-    for seat in range(4):
-        game = _game_with_human(tmp_path, seat)
-        engine = UprisingRulesEngine()
-        record = migrate_record(game.parsed.replay, engine)
-        base: GameState | None = None
-        mine: list[DomainAction] = []
-        for state, migrated in walk(record, engine):
-            step = migrated.step
-            if not isinstance(step, DomainAction):
-                continue
-            if migrated.recorded_index is None and migrated.bridge == "effect_step":
-                base = state if not mine else base
-                mine.append(step)
-                continue
-            if (
-                migrated.bridge != "effect_last_step"
-                or base is None
-                or step.actor != seat
-            ):
-                base, mine = None, []
-                continue
-            mine.append(step)
-            wholes = engine.whole_actions(base, seat)
-            for whole in wholes:
-                path = path_of(base, whole) or (whole,)
-                if path == tuple(mine) or len(path) < 2 and same_effect:
-                    continue
-                if (path[0] == mine[0]) != same_effect:
-                    continue
-                assert migrated.recorded_index is not None
-                recorded = game.parsed.replay.steps[migrated.recorded_index]
-                assert isinstance(recorded, DomainAction)
-                common = {
-                    "game": "bbbbbbbb",
-                    "step": migrated.recorded_index,
-                    "round": state.round_number,
-                    "seat": seat,
-                    "human": _text(recorded),
-                }
-                judged = [
-                    {
-                        **common,
-                        "effect_order": True,
-                        "values": [[0, 1], [0, 1]],
-                        "human_col": 1,
-                    }
-                ]
-                confirmed = [
-                    {
-                        **common,
-                        "first": "human",
-                        "second": "human",
-                        "mean": 0.1,
-                        "error": 0.01,
-                        "p_human": 0.1,
-                        "net_first": _text(whole),
-                    }
-                ]
-                suite = build_suite([game], judged, confirmed, "test")
-                (position,) = resolve(suite).values()
-                return position, base, tuple(mine), whole
-            base, mine = None, []
-    pytest.fail("no whole action with a target in the record")
-
-
-def test_a_problem_at_another_effect_is_asked_before_the_effect_step(
-    tmp_path: Path,
-) -> None:
-    # Stage B3: the person's whole action is its effect and then its target;
-    # the network resolving another effect parts from it at the effect, so
-    # the position is the decision before the person picked theirs.
-    position, base, mine, whole = _effect_problem(tmp_path, same_effect=False)
-
-    assert isinstance(position, Resolved), position
-    assert position.state == base
-    assert position.right == mine[0]
-    assert position.wrong == first_step(base, whole)
-
-
-def test_a_problem_at_another_target_is_asked_at_the_target_step(
-    tmp_path: Path,
-) -> None:
-    # The same effect with another target parts at the target: asked once the
-    # person's effect is picked.
-    position, base, mine, whole = _effect_problem(tmp_path, same_effect=True)
-
-    assert isinstance(position, Resolved), position
-    assert position.state != base
-    assert position.right == mine[-1]
-    path = path_of(base, whole)
-    assert path is not None and position.wrong == path[len(mine) - 1]
-
-
-def test_a_problem_at_a_named_reveal_choice_is_asked_before_its_effect_step(
-    tmp_path: Path,
-) -> None:
-    # Stage B3b-2: a record before codec v147 names a Reveal choice's card
-    # (``reveal_source_by_order``) and this engine takes the named whole
-    # action as its effect steps; the step that ends it stays the
-    # ``effect_last_step`` bridge's, so a problem there is asked where the
-    # two moves part, before the person picked the effect. Step 830 of this
-    # v141 record: seat 2's Calculus of Power trash, beside Shrouded
-    # Counsel's.
-    from dune_imperium.records.migration import migrate_record, walk
-    from dune_imperium.rules import UprisingRulesEngine
-
-    document = json.loads(
-        (DATA / "v141-no-immortality-no-go_to_11-heuristic-1211.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    document["seats"] = ["heuristic"] * 4
-    document["seats"][2] = "human"
-    path = tmp_path / f"{'c' * 32}.json"
-    path.write_text(json.dumps(document), encoding="utf-8")
-    game = read_saved_game(path)
-    engine = UprisingRulesEngine()
-    record = migrate_record(game.parsed.replay, engine)
-    base: GameState | None = None
-    mine: list[DomainAction] = []
-    for state, migrated in walk(record, engine):
-        step = migrated.step
-        if migrated.recorded_index is None and migrated.bridge == "effect_step":
-            if not mine:
-                base = state
-            assert isinstance(step, DomainAction)
-            mine.append(step)
-            continue
-        if migrated.recorded_index == 830:
-            assert migrated.bridge == "effect_last_step"
-            assert migrated.named_by == "reveal_source_by_order"
-            assert isinstance(step, DomainAction)
-            mine.append(step)
-            break
-        base, mine = None, []
-    assert base is not None and len(mine) == 2
-    other = next(
-        whole
-        for whole in engine.whole_actions(base, 2)
-        if whole.action_id == "acquire_reserve"
-    )
-    recorded = game.parsed.replay.steps[830]
-    assert isinstance(recorded, DomainAction)
-    common = {
-        "game": "c" * 8,
-        "step": 830,
-        "round": base.round_number,
-        "seat": 2,
-        "human": _text(recorded),
-    }
-    judged = [
-        {**common, "effect_order": True, "values": [[0, 1], [0, 1]], "human_col": 1}
-    ]
-    confirmed = [
-        {
-            **common,
-            "first": "human",
-            "second": "human",
-            "mean": 0.1,
-            "error": 0.01,
-            "p_human": 0.1,
-            "net_first": _text(other),
-        }
-    ]
-    suite = build_suite([game], judged, confirmed, "test")
-    (position,) = resolve(suite).values()
-
-    assert isinstance(position, Resolved), position
-    assert position.state == base
-    assert position.right == mine[0]
-    assert position.wrong == first_step(base, other)
-
-
-def _turn_effect_problem(
-    tmp_path: Path, network: Callable[[GameState, int], DomainAction]
-) -> tuple[Resolved | str, GameState, tuple[DomainAction, ...], DomainAction]:
-    """A problem at a whole action the migration takes as steps (a Plot
-    Intrigue card: its effect, its card, its option) at a turn where this
-    engine also offers the card picks; the network's move is ``network`` of
-    the state before the first step and the seat. Returns the resolution,
-    that state, the person's steps and the network's move."""
-
-    for seat in range(4):
-        game = _game_with_human(tmp_path, seat)
-        engine = UprisingRulesEngine()
-        record = migrate_record(game.parsed.replay, engine)
-        base: GameState | None = None
-        mine: list[DomainAction] = []
-        for state, migrated in walk(record, engine):
-            step = migrated.step
-            if not isinstance(step, DomainAction):
-                continue
-            if migrated.recorded_index is None and migrated.bridge == "effect_step":
-                base = state if not mine else base
-                mine.append(step)
-                continue
-            if (
-                migrated.bridge != "effect_last_step"
-                or base is None
-                or step.actor != seat
-                or not any(
-                    action.action_id == CARD_PICK_ACTION
-                    for action in engine.legal_actions(base, seat)
-                )
-            ):
-                base, mine = None, []
-                continue
-            mine.append(step)
-            move = network(base, seat)
-            assert migrated.recorded_index is not None
-            recorded = game.parsed.replay.steps[migrated.recorded_index]
-            assert isinstance(recorded, DomainAction)
-            common = {
-                "game": "bbbbbbbb",
-                "step": migrated.recorded_index,
-                "round": state.round_number,
-                "seat": seat,
-                "human": _text(recorded),
-            }
-            judged = [
-                {
-                    **common,
-                    "effect_order": True,
-                    "values": [[0, 1], [0, 1]],
-                    "human_col": 1,
-                }
-            ]
-            confirmed = [
-                {
-                    **common,
-                    "first": "human",
-                    "second": "human",
-                    "mean": 0.1,
-                    "error": 0.01,
-                    "p_human": 0.1,
-                    "net_first": _text(move),
-                }
-            ]
-            suite = build_suite([game], judged, confirmed, "test")
-            (position,) = resolve(suite).values()
-            return position, base, tuple(mine), move
-    pytest.fail("no whole action taken as steps beside the card picks")
-
-
-def test_a_placement_against_steps_is_asked_before_the_first_step(
-    tmp_path: Path,
-) -> None:
-    # Codec v150: the person's Plot card is three steps and the network's
-    # placement a card pick; the two part at the first step, where the card
-    # picks are offered beside it. At the last step only the Plot's option
-    # was offered, so the card pick was "not legal" (the Insider Information
-    # AI mistakes, found by the Reveal totals cleanup's gate, 2026-10-21).
-    position, base, mine, placement = _turn_effect_problem(
-        tmp_path, lambda state, seat: executable_placements(state, seat)[0]
-    )
-
-    assert isinstance(position, Resolved), position
-    assert position.state == base
-    assert position.right == mine[0]
-    assert (position.wrong,) == agent_card_pick_actions(placement.actor, (placement,))
-
-
-@pytest.mark.parametrize(
-    ("refusal", "reason"),
-    [
-        ("decline_optional_trash", "turn_row_refusal"),
-        ("decline_tech", "optional_refusal"),
-    ],
-)
-def test_a_refusal_this_engine_no_longer_has_is_reported_not_raised(
-    tmp_path: Path, refusal: str, reason: str
-) -> None:
-    # Since codec v149 an in-turn optional trash has no refusal, and since
-    # v146 an Agent turn's optional effect (the turn's end lapses it), so a
-    # network's refusal names a window this state is not in. It used to stop
-    # the whole check with a ValueError, then read "not legal"; it is
-    # reported as having no counterpart (c3adefb4:471, fb716981:607).
-    position, _, _, _ = _turn_effect_problem(
-        tmp_path, lambda state, seat: DomainAction(refusal, seat)
-    )
-
-    assert position == (
-        f"the network's move {refusal} has no counterpart on this engine ({reason})"
-    )
-
-
-def _record_game(tmp_path: Path, name: str, letter: str) -> SavedGame:
-    path = tmp_path / f"{letter * 32}.json"
-    path.write_text((DATA / name).read_text(encoding="utf-8"), encoding="utf-8")
-    return read_saved_game(path)
-
-
-def _states(game: SavedGame, engine: UprisingRulesEngine) -> dict[int, GameState]:
-    """The state each recorded step was migrated from, by its index."""
-
-    record = migrate_record(game.parsed.replay, engine)
-    return {
-        migrated.recorded_index: state
-        for state, migrated in walk(record, engine)
-        if migrated.recorded_index is not None
-    }
-
-
-def _move(steps: Sequence[ReplayStep], index: int) -> DomainAction:
-    step = steps[index]
-    assert isinstance(step, DomainAction)
-    return step
-
-
-def _hand_problem(
-    game: SavedGame,
-    index: int,
-    state: GameState,
-    right: DomainAction,
-    wrong: DomainAction,
-) -> HumanProblem:
-    """A ``human_right`` problem at recorded step ``index``, judged at
-    ``state``: built by hand, as ``build_suite`` finds no position at a
-    step this engine drops."""
-
-    return HumanProblem(
-        problem_id=f"{game.game_id[:8]}:{index}",
-        game=game.game_id,
-        recorded_index=index,
-        seat=right.actor,
-        round_number=state.round_number,
-        kind="effect_order",
-        family="human_right",
-        right=right,
-        wrong=wrong,
-        evidence={},
-        judged_state=position_state(state),
-    )
-
-
-def _suite(game: SavedGame, *problems: HumanProblem) -> Suite:
-    record = json.loads(game.path.read_text(encoding="utf-8"))
-    return Suite(note="test", records={game.game_id: record}, problems=problems)
-
-
-def test_a_person_s_refusals_and_turn_end_are_asked_at_the_turn_end(
-    tmp_path: Path,
-) -> None:
-    # Before codec v146 an Agent turn's optional effect had a refusal; this
-    # engine lapses the effect at the turn's end and the migration drops the
-    # refusal (OQ-095 (2)). A person who refused and then ended the turn
-    # made one decision here, ending the turn, in the state the refusal was
-    # judged in (885ed2f0:578 and :756); so did one who refused two effects
-    # in a row. A network's refusal has no single move here.
-    engine = UprisingRulesEngine()
-    game = _record_game(tmp_path, "v135-app_ai-3.json", "b")
-    steps = game.parsed.replay.steps
-    before = _states(game, engine)
-    refusal, finish = _move(steps, 42), _move(steps, 43)
-    assert (refusal.action_id, finish.action_id) == (
-        "decline_sardaukar_commander",
-        "finish_agent_turn",
-    )
-    assert [_move(steps, index).action_id for index in (121, 122, 123)] == [
-        "decline_tech",
-        "decline_sardaukar_commander",
-        "finish_agent_turn",
-    ]
-    seat = refusal.actor
-    asked = {42: (before[43], finish), 121: (before[123], _move(steps, 123))}
-    other = {
-        index: next(
-            action for action in engine.whole_actions(state, seat) if action != end
-        )
-        for index, (state, end) in asked.items()
-    }
-    problems = (
-        _hand_problem(game, 42, before[43], refusal, other[42]),
-        # The network's refusal against the person's turn end itself.
-        _hand_problem(game, 43, before[43], finish, refusal),
-        _hand_problem(game, 121, before[123], _move(steps, 121), other[121]),
-    )
-
-    resolved = resolve(_suite(game, *problems), engine)
-
-    for index, (state, end) in asked.items():
-        position = resolved[f"{game.game_id[:8]}:{index}"]
-        assert isinstance(position, Resolved), position
-        assert position.state == state
-        assert position.right == end
-        assert position.wrong == (
-            other[index]
-            if other[index] in position.legal
-            else first_step(state, other[index])
-        )
-    assert resolved[problems[1].problem_id] == (
-        "the network's move decline_sardaukar_commander has no counterpart on "
-        "this engine (optional_refusal)"
-    )
-
-
-def test_a_person_s_refusal_before_another_move_has_no_counterpart(
-    tmp_path: Path,
-) -> None:
-    # A refusal followed by another move left the effect and played on; here
-    # the effect stays pending through that move, and no move stands for the
-    # refusal.
-    engine = UprisingRulesEngine()
-    game = _record_game(tmp_path, "v141-random-3038.json", "c")
-    steps = game.parsed.replay.steps
-    refusal, following = _move(steps, 42), _move(steps, 43)
-    assert (refusal.action_id, following.action_id) == (
-        "decline_sardaukar_commander",
-        "use_family_atomics",
-    )
-    state = _states(game, engine)[43]
-    other = next(
-        action
-        for action in engine.whole_actions(state, refusal.actor)
-        if action != following
-    )
-
-    (position,) = resolve(
-        _suite(game, _hand_problem(game, 42, state, refusal, other)), engine
-    ).values()
-
-    assert position == (
-        "the person's move at step 42 has no counterpart on this engine "
-        "(optional_refusal)"
-    )
-
-
-def test_a_refusal_this_engine_still_offers_is_asked(tmp_path: Path) -> None:
-    # Outside its owner's turn an optional trash keeps its window and its
-    # refusal (codec v149, cleanup-2b): Water Discipline, a Scouts card, has a
-    # seat trash a card while others draw. A network's
-    # ``decline_optional_trash`` there is asked as a move of this engine.
-    engine = UprisingRulesEngine()
-    game = _record_game(tmp_path, "v141-app_ai-1009.json", "d")
-    trash = _move(game.parsed.replay.steps, 259)
-    assert trash.action_id == "trash_optional_card"
-    state = _states(game, engine)[259]
-    decline = DomainAction("decline_optional_trash", trash.actor)
-
-    (position,) = resolve(
-        _suite(game, _hand_problem(game, 259, state, trash, decline)), engine
-    ).values()
-
-    assert isinstance(position, Resolved), position
-    assert position.wrong in position.legal
-    assert position.wrong.action_id == "decline"

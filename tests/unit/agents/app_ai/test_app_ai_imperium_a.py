@@ -30,6 +30,7 @@ from dune_imperium.agents.app_ai.abilities.base import (
 )
 from dune_imperium.agents.app_ai.catalog import (
     CARD_ARCHETYPES,
+    ORIGINAL_CARD_ARCHETYPES,
     card_entity,
     contract_entity,
     intrigue_entity,
@@ -526,6 +527,8 @@ def test_every_ability_of_an_a_to_l_card_resolves_to_a_port() -> None:
         catalogued = ARCHETYPES.get(short)
         if catalogued is None or not _in_scope(catalogued):
             continue
+        if card_id in ORIGINAL_CARD_ARCHETYPES:
+            continue  # the original game's Foldspace: its own tests
         for ability in abilities_of(card_entity(f"imperium:{card_id}:0", SEAT)):
             assert not isinstance(ability, UnportedAbility), (card_id, ability)
         checked += 1

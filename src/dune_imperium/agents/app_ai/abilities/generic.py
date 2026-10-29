@@ -50,6 +50,7 @@ from dune_imperium.agents.app_ai.catalog import (
     conflict_entity,
     contract_entity,
     intrigue_entity,
+    is_high_council_space,
     leader_entity,
     space_archetype,
     space_entity,
@@ -192,6 +193,24 @@ def _leader_arch_id(p: Profile) -> str | None:
 def _leader_flipped(p: Profile) -> bool:
     leader = _leader(p)
     return leader is not None and leader.attr("Flipped") is True
+
+
+def baron_has_secret_factions(p: Profile) -> bool:
+    """``P.Leader.ArchID == BaronVladimirHarkonnen && P.PrivateInformation
+    .Has(BaronHarkonnenSecretFactions)``.
+
+    The Baron's two Factions chosen in secret (``MasterstrokeAbility1``);
+    ``ResolveMasterstroke`` removes the attribute when Masterstroke reveals
+    them (``RemoveAttribute<List<Factions>>``, 0x4988c95 and 0x49890a8). Ours:
+    ``masterstroke_factions`` held and not yet ``masterstroke_revealed``.
+    """
+
+    me = p.ctx.me
+    return (
+        _leader_arch_id(p) == _BARON
+        and bool(me.masterstroke_factions)
+        and not me.masterstroke_revealed
+    )
 
 
 def _hand_cards(p: Profile) -> list[Entity]:
@@ -401,8 +420,9 @@ def deferred_threshold_reached(p: Profile) -> bool:
     prompt (``DrawAbility``/``GainInfluenceAbility``/``GainContractAbility``/
     ``Draw2ContractAbility.can_run_immediately``).
 
-    Leader extras (first matching branch only): Baron +2, Earl Memnon +2,
-    Countess Ariana +1, Count Ilban +1 are base-game leaders (dead here);
+    Leader extras (first matching branch only): Baron +2 (while his secret
+    Factions are held), Earl Memnon +2, Countess Ariana +1 and Count Ilban +1
+    are the original game's leaders (``LEADER_ARCHETYPES`` holds them there);
     Princess Irulan +2 at an Emperor-icon space while her Emperor influence is
     below 2 or she holds the ``ImperialBirthrightDeferredAbility`` grant.
     Judgement: our engine resolves Imperial Birthright automatically, so the
@@ -414,9 +434,9 @@ def deferred_threshold_reached(p: Profile) -> bool:
     for entity in (*cards, *_intrigue_hand(p), *spaces):
         n += entity.int_attr("DeferValue")
     leader = _leader_arch_id(p)
-    if leader == _BARON:  # needs P.PrivateInformation BaronHarkonnenSecretFactions
-        pass
-    elif leader == _MEMNON and any(s.ref == "high_council" for s in spaces):
+    if baron_has_secret_factions(p):  # the Baron before his Masterstroke
+        n += 2
+    elif leader == _MEMNON and any(is_high_council_space(s) for s in spaces):
         n += 2
     elif leader == _ARIANA and any(
         s.int_attr("Spice") > 0 and s.has("BonusSpice") for s in spaces
@@ -1892,9 +1912,24 @@ class SpaceAbility(Ability):
             )
             if hungry > 0:
                 v.add("Hungry for Spice", hungry)
-        # Baron (needs BaronHarkonnenSecretFactions) and Archduke Armand Ecaz
-        # (Rise of Ix) are never dealt in Uprising: no term.
-        # --- Uprising block (IsSetEnabled(4) is true) ---
+        # The Baron holding his secret Factions, with a Combat space of two
+        # or more troops (``space.IsCombatSpace``, the ``CombatSpace``
+        # attribute): ``BaronVladimirHarkonnenGetTroopsBonus`` (@0x4bb0578
+        # tests ``BaronHarkonnenSecretFactions``). Archduke Armand Ecaz
+        # (Rise of Ix) is never dealt: no term.
+        if (
+            baron_has_secret_factions(p)
+            and troops >= 2
+            and space.attr("CombatSpace", False) is True
+        ):
+            v.add(
+                "Baron Vladimir Harkonnen Gain Troops",
+                c.BaronVladimirHarkonnenGetTroopsBonus,
+            )
+        # --- Uprising block: ``S is WormSpace && IsSetEnabled(4)`` (board.md
+        # §1.3); none of it on the original board. ---
+        if not p.ctx.uprising:
+            return v
         for contract in _contracts_for_space(p, space):
             completion = _first_contract_ability(contract)
             if completion is not None:

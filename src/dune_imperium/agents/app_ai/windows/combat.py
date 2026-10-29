@@ -29,6 +29,16 @@ App side (``analysis/ai/15-combat-phase.md`` incl. Errata, ``spec/engine-order.m
   the reward archetype's ``CustomAbilityIDs``, or Economic Supremacy's
   charges), Pivotal Gambit's extra Influence by
   ``GainAnyInfluenceConflictAbility``.
+- The original game's Conflicts (``BaseSet`` place classes, no reward
+  archetypes, ``abilities/original_conflicts.py``) answer their own choices
+  where an Uprising card's prompts belong to the custom abilities it grants:
+  the faction track of Skirmish C/D, Cloak and Dagger 1st and Grand Vision
+  1st (``combat_reward_influence``), Machinations' two tracks
+  (``combat_reward_distinct_influence``), Terrible Purpose's trash
+  (``combat_reward_trash``), and the printed "-OR-" / "Choose two:" of Cloak
+  and Dagger 3rd and Battle for Arrakeen 2nd (``combat_reward_icons``: the
+  window's other rows are paid in the engine's older order, taken before any
+  window by ``AppAIAgent``; only the line picks come here).
 - ``control_defense``: ``GenerateConflictPhase/<DeployControlTroops>d__8``
   asks nothing and always deploys; with an empty troop supply (Immortality)
   ``<ConvertSpecimens>d__7`` first converts a specimen
@@ -70,12 +80,14 @@ from dune_imperium.agents.app_ai.abilities.bloodlines_cards import (
 from dune_imperium.agents.app_ai.abilities.board import (
     GainAnyTwoInfluenceConflictAbility,
     granted_reward_abilities,
+    place_reward_ability,
 )
 from dune_imperium.agents.app_ai.abilities.epic_promo import (
     EconomicSupremacySolariAbility,
     EconomicSupremacySpiceAbility,
 )
 from dune_imperium.agents.app_ai.abilities.generic import (
+    ConflictAbility,
     DeferredAbility,
     GainAnyInfluenceConflictAbility,
     PayAttributeToGainVPAbility,
@@ -91,6 +103,14 @@ from dune_imperium.agents.app_ai.abilities.intrigue import (
     endgame_auto_plays,
     endgame_wild_pairs,
     score_battle_icons_pairs,
+)
+from dune_imperium.agents.app_ai.abilities.original_conflicts import (
+    TRACK_CHOICE_ABILITIES,
+    BattleForArrakeenSecondAbility,
+    CloakAndDaggerThirdAbility,
+    MachinationsFirstAbility,
+    TerriblePurposeFirstAbility,
+    track_choice_answer,
 )
 from dune_imperium.agents.app_ai.catalog import (
     CONFLICT_ARCHETYPES,
@@ -113,12 +133,20 @@ from dune_imperium.agents.app_ai.windows.common import (
 from dune_imperium.agents.app_ai.windows.intrigue import intrigue_play_sources
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler
 from dune_imperium.core.actions import DomainAction
-from dune_imperium.rules.combat import rank_combat
+from dune_imperium.rules.combat import (
+    REWARD_ICON_ACTION,
+    REWARD_LINE_KINDS,
+    rank_combat,
+)
 
 #: ``Memory.intents`` key prefix of a planned "choose two" Influence answer:
 #: ``(DISTINCT_INFLUENCE_INTENT, round, seat, group)`` -> the app's factions
 #: in pick order (``combat_reward_distinct_influence``).
 DISTINCT_INFLUENCE_INTENT = "combat_reward_distinct_influence"
+#: ``Memory.intents`` key prefix of a planned "choose two" row of the original
+#: game (Battle for Arrakeen 2nd): ``(REWARD_LINES_INTENT, round, seat, rank)``
+#: -> the app's option indices in pick order (``combat_reward_icons``).
+REWARD_LINES_INTENT = "combat_reward_lines"
 
 #: Owner of the playmat abilities (Return Specimen): the app builds them on
 #: the player's playmat; no hook here reads its owner.
@@ -217,6 +245,20 @@ def _conflict(run: DecisionRun) -> Entity | None:
     if conflict_id is None or conflict_id not in CONFLICT_ARCHETYPES:
         return None
     return conflict_entity(conflict_id, run.ctx.choam)
+
+
+def _place_ability(run: DecisionRun) -> ConflictAbility | None:
+    """The place ability the current Conflict runs for this seat's reward row
+    (``AbilityForPlacement(place) @0x4829c40``): the original game's
+    ``BaseSet.<Card>First/Second/ThirdAbility`` answer their own choices
+    (``abilities/original_conflicts.py``), where an Uprising card's prompts
+    belong to the custom abilities its reward grants."""
+
+    conflict = _conflict(run)
+    place = _reward_place(run)
+    if conflict is None or place is None:
+        return None
+    return place_reward_ability(conflict, place)
 
 
 def _reward_ability[A: Ability](
@@ -446,7 +488,8 @@ def combat_reward_spy_recall(run: DecisionRun) -> DomainAction | None:
 
 
 def combat_reward_trash(run: DecisionRun) -> DomainAction | None:
-    """``TrashConflictCustomAbility`` (Trade Dispute 1st and 2nd).
+    """``TrashConflictCustomAbility`` (Trade Dispute 1st and 2nd) and the
+    original game's Terrible Purpose 1st.
 
     15 §3.4: ``TrashAbility::SelectionMode`` Explicit -> the resolution prompt
     is **forced**; ``TrashAbility::Evaluate @0x4ce98a0`` =
@@ -454,12 +497,20 @@ def combat_reward_trash(run: DecisionRun) -> DomainAction | None:
     at 1.0 (our ``decline_combat_reward_trash``). Targets in our legal order
     (hand, discard pile, cards in play); ``GetCardToTrash`` shuffles them.
     The value is always >= 1.0, so the forced fallback never fires.
+
+    Terrible Purpose 1st (original game; the black-X trash is optional):
+    ``TerriblePurposeFirstAbility::Evaluate @0x4ba9c20`` answers the same
+    prompt with ``GetCardToTrash(targets, 1.0) + 10.0`` or "nothing" at 10.0.
     """
 
     run = app_reward_run(run)
     decline = run.first("decline_combat_reward_trash")
     trashes = run.by_id("trash_combat_reward_card")
-    ability = _reward_ability(run, TrashConflictCustomAbility)
+    ability: Ability | None = _reward_ability(run, TrashConflictCustomAbility)
+    if ability is None:
+        place_ability = _place_ability(run)
+        if isinstance(place_ability, TerriblePurposeFirstAbility):
+            ability = place_ability
     if ability is None:
         return None
     p = run.profile
@@ -522,13 +573,23 @@ def combat_reward_influence(run: DecisionRun) -> DomainAction | None:
     With Economic Supremacy the app has no such ability and silently loses
     the Influence (§4.4 Errata); our engine still asks (OQ-025), and the
     frame is answered with the same ``Evaluate`` (the best track).
+
+    The original game's cards answer through their own place ability: Skirmish
+    C/D 1st (``Evaluate``, ``Targets`` = ``MakeGainAnyFactionInfluence
+    Targeting``), Cloak and Dagger 1st and Grand Vision 1st (the
+    ``SelectFaction`` prompt, ``EvaluateFaction``; Grand Vision values two
+    Influence, our frame has ``times`` 2), ``abilities/original_conflicts.py``.
     """
 
     run = app_reward_run(run)
     choices, factions = _faction_actions(run, "choose_combat_reward_influence")
     if not choices:
         return run.first("resolve_combat_influence_without_faction")
-    ability = _reward_ability(run, GainAnyInfluenceConflictAbility)
+    ability: Ability | None = _reward_ability(run, GainAnyInfluenceConflictAbility)
+    if ability is None:
+        place_ability = _place_ability(run)
+        if isinstance(place_ability, TRACK_CHOICE_ABILITIES):
+            ability = place_ability
     if ability is None:
         ability = _pivotal_gambit_influence(run)
     if ability is None:
@@ -537,8 +598,13 @@ def combat_reward_influence(run: DecisionRun) -> DomainAction | None:
     tracks = tuple(track_entity(f) for f in factions)
 
     def evaluate() -> tuple[float, DomainAction | None]:
-        info = TargetInfo(entities=tracks)
-        answer = ability.evaluate(p, Request((info,), forced=True))
+        request = Request((TargetInfo(entities=tracks),), forced=True)
+        track_answer = (
+            track_choice_answer(ability, p, request)
+            if isinstance(ability, ConflictAbility)
+            else None
+        )
+        answer = track_answer or ability.evaluate(p, request)
         if answer.response is None or not answer.response[0]:
             return answer.value, None
         return answer.value, with_arg(choices, "faction", answer.response[0][0])
@@ -548,7 +614,8 @@ def combat_reward_influence(run: DecisionRun) -> DomainAction | None:
 
 
 def combat_reward_distinct_influence(run: DecisionRun) -> DomainAction | None:
-    """``GainAnyTwoInfluenceConflictAbility`` (Propaganda 1st: two tracks).
+    """``GainAnyTwoInfluenceConflictAbility`` (Propaganda 1st: two tracks) and
+    the original game's ``MachinationsFirstAbility`` (the same ``Evaluate``).
 
     15 §3.4 step 2: a non-deferred Combat-Resolution ability run without a
     prompt; its targets come from ``Evaluate @0x4b6f3f0`` (shuffled tracks,
@@ -589,7 +656,11 @@ def combat_reward_distinct_influence(run: DecisionRun) -> DomainAction | None:
                 action = with_arg(choices, "faction", faction)
                 if action is not None:
                     return action
-    ability = _reward_ability(run, GainAnyTwoInfluenceConflictAbility)
+    ability: Ability | None = _reward_ability(run, GainAnyTwoInfluenceConflictAbility)
+    if ability is None:
+        place_ability = _place_ability(run)
+        if isinstance(place_ability, MachinationsFirstAbility):
+            ability = place_ability
     if ability is None:
         return None
     tracks = tuple(track_entity(f) for f in factions)
@@ -621,6 +692,73 @@ def combat_reward_spy(run: DecisionRun) -> DomainAction | None:
         run.by_id("recall_spy_for_combat_reward"),
         run.first("decline_combat_reward_spy"),
     )
+
+
+def combat_reward_icons(run: DecisionRun) -> DomainAction | None:
+    """The row of alternatives of an original Conflict reward ("-OR-" and
+    "Choose two:", ``resolve_combat_reward_icon`` with a ``line_<n>`` effect).
+
+    Every other row of the window the app pays without asking, which is the
+    engine's older fixed order (``agents.engine_order``, taken before any
+    window: ``AppAIAgent`` hands only the line picks here). The app asks the
+    printed choice through the place ability's own prompt:
+
+    - Cloak and Dagger 3rd, "draw 1 Intrigue -OR- 1 Spice":
+      ``CloakAndDaggerThirdAbility::Evaluate @0x4b90e20``, option 0 (the
+      Intrigue) or 1 (the Spice), our ``line_0`` / ``line_1``;
+    - Battle for Arrakeen 2nd, "choose two of Intrigue, 2 Spice, 3 Solari":
+      ``BattleForArrakeenSecondAbility::Evaluate @0x4b88e50``, two option
+      indices at once (our ``line_0`` .. ``line_2``). Both lines are named
+      before either is paid (OQ-114), so the answer is computed on the first
+      pick and kept in ``Memory.intents`` (plan §4 item 6); the second pick
+      plays its second index (or, with no usable intent, recomputes).
+
+    Both prompts are forced custom choices: the value is positive, and the
+    choice always stands.
+    """
+
+    run = app_reward_run(run)
+    picks = {
+        effect: action
+        for action in run.by_id(REWARD_ICON_ACTION)
+        if (effect := str_arg(action, "effect")) in REWARD_LINE_KINDS
+    }
+    ability = _place_ability(run)
+    options: tuple[int, ...]
+    if isinstance(ability, CloakAndDaggerThirdAbility):
+        options, takes = (0, 1), 1
+    elif isinstance(ability, BattleForArrakeenSecondAbility):
+        options, takes = (0, 1, 2), 2
+    else:
+        return None
+    if not picks:
+        return None
+    context = run.ctx.top_frame_context
+    chosen = tuple(
+        int(index) for index in str(context.get("chosen_lines", "")).split(",") if index
+    )
+    key = (REWARD_LINES_INTENT, run.ctx.round_number, run.ctx.seat, context.get("rank"))
+    if chosen:
+        plan = run.memory.intents.pop(key, None)
+        if isinstance(plan, tuple) and plan[: len(chosen)] == chosen:
+            for line in plan[len(chosen) :]:
+                action = picks.get(f"line_{line}")
+                if action is not None:
+                    return action
+    info = TargetInfo(options=options, min_select=takes, max_select=takes, forced=True)
+    answer = ability.evaluate(run.profile, Request((info,), forced=True))
+    lines = tuple(int(index) for index in answer.response[0]) if answer.response else ()
+    if len(lines) <= len(chosen):
+        return None
+    if not chosen and len(lines) > 1:
+        run.memory.intents[key] = lines
+    action = picks.get(f"line_{lines[len(chosen)]}")
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        return answer.value, action
+
+    source = Source(ability.APP_CLASS, Stage.PROMPT, tuple(picks.values()), evaluate)
+    return decide(run, [source], skip=None, forced=True)
 
 
 # ---------------------------------------------------------------------------
@@ -732,6 +870,7 @@ HANDLERS: dict[str, Handler] = {
     "combat_intrigue": combat_intrigue,
     "combat_reward_optional": combat_reward_optional,
     "combat_reward_distinct_influence": combat_reward_distinct_influence,
+    "combat_reward_icons": combat_reward_icons,
     "combat_reward_influence": combat_reward_influence,
     "combat_reward_spy": combat_reward_spy,
     "combat_reward_spy_recall": combat_reward_spy_recall,

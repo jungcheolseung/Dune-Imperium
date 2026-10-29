@@ -32,12 +32,10 @@ from functools import cache
 from typing import TYPE_CHECKING, Final, cast
 
 from dune_imperium.agents.app_ai.catalog import (
-    BLOODLINES_SPACE_ARCHETYPES,
     FACTION_NAMES,
     INTRIGUE_ARCHETYPES,
     LEADER_ARCHETYPES,
     POST_INDEX,
-    SPACE_ARCHETYPES,
     board_space_ids,
     card_entity,
     intrigue_entity,
@@ -60,9 +58,9 @@ if TYPE_CHECKING:
 # The app's ``Factions.None``: "any faction" for ``GetGainInfluenceValue``.
 NO_FACTION: Final = "none"
 
-# ``IsSetEnabled`` for the sets this port can meet: the target is the
-# 4-player Uprising game (with or without CHOAM), never Rise of Ix.
-_UPRISING_ENABLED: Final = True
+# ``IsSetEnabled(RiseOfIx)``: never in the games this port plays.
+# ``IsSetEnabled(Uprising)`` is ``AppContext.uprising`` (false on the
+# original board).
 _RISE_OF_IX_ENABLED: Final = False
 
 _APP_FACTION: Final = {app: ours for ours, app in FACTION_NAMES.items()}
@@ -136,7 +134,8 @@ _DESERT_DEFERRED_ABILITIES: Final = frozenset(
     }
 )
 # ``GainInfluenceIntrigueAbility`` subclasses and the faction each grants
-# (all BaseSet intrigues: the "+1 influence intrigue" bump is dead here).
+# (all BaseSet intrigues: the "+1 influence intrigue" bump is live in the
+# original game, where those cards are held).
 _GAIN_INFLUENCE_INTRIGUE_ABILITIES: Final = {
     "worm.canis.abilities.PlayAbilities.BaseSet.FavoredSubjectAbility": "emperor",
     "worm.canis.abilities.PlayAbilities.BaseSet.GuildAuthorizationAbility": (
@@ -148,7 +147,8 @@ _GAIN_INFLUENCE_INTRIGUE_ABILITIES: Final = {
     ),
 }
 # ``AllianceAbility`` subclasses on Imperium cards and their faction (BaseSet
-# and Rise of Ix only: the "Abilities Bonus" is dead here).
+# and Rise of Ix only: the "Abilities Bonus" is live in the original
+# game, where those Imperium cards are bought).
 _ALLIANCE_ABILITIES: Final = {
     "worm.canis.abilities.PlayAbilities.BaseSet.FirmGripAbility2": "emperor",
     "worm.canis.abilities.PlayAbilities.BaseSet.WormRidersAllianceAbility": "fremen",
@@ -637,7 +637,7 @@ class InfluenceMixin(ProfileCore):
         if current_rank < 0:
             cur = _influence(me, faction)
             has_alliance = faction in me.alliance_faction_ids
-            # b__0: a held intrigue whose influence ability names F (dead here).
+            # b__0: a held intrigue whose influence ability names F (original game).
             if any(
                 _intrigue_grants_influence(iid, faction) for iid in ctx.intrigue_cards
             ):
@@ -656,7 +656,7 @@ class InfluenceMixin(ProfileCore):
         else:
             self._loss_multiplier(s, amount, cur, new_rank, opp_max, has_alliance)
 
-        # (B) "Abilities Bonus": Alliance-keyword Imperium cards (dead here).
+        # (B) "Abilities Bonus": Alliance-keyword Imperium cards (original game).
         n = sum(
             1
             for cid in _own_card_ids(ctx)
@@ -679,7 +679,7 @@ class InfluenceMixin(ProfileCore):
                     cast("Profile", self).any_faction_four_bonus_value(),
                 )
             elif faction == "emperor":
-                if _UPRISING_ENABLED:
+                if ctx.uprising:
                     s.add("Resource Bonus(Spy)", self.spy_value().sum)
                 else:
                     s.add("Resource Bonus (Troops)", 3.0)  # literal
@@ -723,7 +723,7 @@ class InfluenceMixin(ProfileCore):
                 s.multiply("Tessia Vernius", c.TessiaVerniusInfluenceMod)
 
         # (E) Uprising block.
-        if not _UPRISING_ENABLED:
+        if not ctx.uprising:
             return s
         leader = me.leader_id
         if leader == _MARGOT and faction == "bene_gesserit" and cur <= 1:
@@ -1295,10 +1295,7 @@ class InfluenceMixin(ProfileCore):
         for agent in shuffled:
             # a.Parent is not a WormSpace (Duncan's Conflict Agent, D55);
             # Esmar's Tuek's Sietch is a space (bloodlines-systems.md §6).
-            if (
-                agent.ref not in SPACE_ARCHETYPES
-                and agent.ref not in BLOODLINES_SPACE_ARCHETYPES
-            ):
+            if not is_board_space(agent.ref):
                 continue
             space = space_entity(agent.ref, ctx.board)
             combat = space.attr("CombatSpace", False) is True
