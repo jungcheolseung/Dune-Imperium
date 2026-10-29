@@ -740,6 +740,62 @@ def test_troop_transports_troops_deploy_in_a_reveal_turn_without_a_combat_icon()
     assert counts(reveal(())) == []
 
 
+def _with_context(state: GameState, **changes: bool | int | str) -> GameState:
+    """``state`` with ``changes`` written into its top frame's context."""
+
+    frame = state.decision_stack[-1]
+    context = {**dict(frame.context), **changes}
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+
+
+def test_the_troop_transports_window_closes_with_the_press_and_with_a_block() -> None:
+    """The press closes the deployment window (OQ-029): a turn that is finishing
+    offers no deployment, with Troop Transports' troops too; and a turn whose
+    deployment is blocked ("can't", [Main p. 17]) keeps the block over the
+    card's "may" (a choice the documents do not settle, reported)."""
+
+    quiet = _agent_turn(
+        "wealth", troops_garrison=0, troops_supply=12, tech_ids=("troop_transports",)
+    )
+    quiet = _claim(_recalled_from(2)(quiet), "recruit")
+    assert _deployable(quiet) == [1, 2, 3]
+    assert _deployable(_with_context(quiet, finishing=True)) == []
+    assert _deployable(_with_context(quiet, units_deploy_blocked=True)) == []
+
+
+def test_a_recall_before_a_reveal_carries_the_troop_transports_troops() -> None:
+    """The recall made on the turn frame before the Reveal carries the troops
+    into the Reveal turn (docs/rules/rise-of-ix.md 15): they deploy there with
+    no Combat icon, and without Troop Transports they do not."""
+
+    def counts(tiles: tuple[str, ...]) -> list[int]:
+        state = _seat(
+            _start(),
+            freighter_space=2,
+            hand=(f"imperium:{STANDARD}:0",),
+            troops_garrison=2,
+            troops_supply=10,
+            tech_ids=tiles,
+        )
+        state = _claim(recall_freighter(state, 0, source="s").state, "recruit")
+        opened = ENGINE.apply(state, DomainAction("reveal_turn", 0)).state
+        assert opened.decision_stack[-1].kind == FrameKind.REVEAL
+        return [
+            cast(int, dict(action.arguments)["count"])
+            for action in ENGINE.legal_actions(opened, 0)
+            if action.action_id == "deploy_troops"
+        ]
+
+    assert counts(("troop_transports",)) == [1, 2, 3]
+    assert counts(()) == []
+
+
 def test_the_turns_end_leaves_undeployed_troop_transports_troops_in_the_garrison() -> (
     None
 ):
