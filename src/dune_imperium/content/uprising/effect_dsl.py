@@ -645,7 +645,12 @@ class LoseInfluence:
 
 @dataclass(frozen=True, slots=True)
 class DiscardFromHand:
-    """Discard ``count`` personal cards chosen from hand."""
+    """Discard ``count`` personal cards chosen from hand.
+
+    Also the Rise of Ix Discard cost icon: each icon costs one hand card,
+    never an Intrigue card [Rise of Ix p. 7] [FAQ p. 2]. Repeated icons on
+    one line are written as one counted cost (Ixian Probe: ``count=2``).
+    """
 
     count: int = 1
 

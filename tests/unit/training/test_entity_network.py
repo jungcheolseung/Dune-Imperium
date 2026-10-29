@@ -147,8 +147,28 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # against a88a66f3, 2026-10-29). Then Rise of Ix's three Conflicts got their
 # reward rows (stage P4d-1): one column of the conflict table is new (the first
 # place's Freighter icon), only those three rows read it, and every older row
-# and its scales are unchanged (compared against 3767c469, 2026-10-29).
-_GOLDEN_DIGEST = "e1426dfd4e15c7312b7a0e90139392ab8e7f48b42a20b6ee30209f6be8e91ee2"
+# and its scales are unchanged (compared against 3767c469, 2026-10-29). Then
+# Rise of Ix's Intrigue cards got their records (stage P4d), each card's own
+# row only (Blackmail, compared against 7a0c50e4; Cull, compared against
+# 21bebb89; Glimpse the Path, compared against c23fb5bc; Finesse, compared
+# against d1f705b7; Secret Forces, compared against 8a9c8c6a), except Expedite
+# and Strongarm: each adds one column to the intrigue table (Expedite's
+# Freighter reward, compared against 018e7961; Strongarm's visited-space
+# Influence gain, compared against cba9b870), only its own row reads it, and
+# every older row and its scales are unchanged (2026-10-29).
+# Then the Imperium cards' printed Infiltration icons (stage P4d): eight
+# personal-table columns are new (the icon count and one per icon), only the
+# seven Ix cards that print one read them, and every older row and its scales
+# are unchanged (compared against e20b83dc, 2026-10-29).
+# Then Jamis got his play data (stage P4d): only his own row changed, no column
+# and no scale (compared against 49b6dfdc, 2026-10-29).
+# Then Sayyadina got her play data (stage P4d): only her own row changed, no
+# column and no scale (compared against d6a6d909, 2026-10-29).
+# Then Truthsayer got her play data (stage P4d): only her own row changed, no
+# column and no scale (compared against 776f8431, 2026-10-29).
+# Then Ixian Probe got its record (stage P4d): only its own row changed, no
+# column and no scale (compared against 2f6d4af9, 2026-10-29).
+_GOLDEN_DIGEST = "0558a93ec6225625a85b1acbc69926c55676b8701d4f5d4aa804b68a32d25901"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

@@ -194,6 +194,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP: (
         "{spice:4} 지불 가능 {arrow_right} {victory_point:1}"
     ),
+    # Rise of Ix's Sayyadina (stage P4d): the same generated icon line.
+    PersonalCardAgentEffect.MAY_PAY_THREE_WATER_FOR_VP: (
+        "{water:3} 지불 가능 {arrow_right} {victory_point:1}"
+    ),
     PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP: (
         "카드 2장 {discard}·{solari:5} 지불 가능 {arrow_right} {victory_point:1}"
     ),

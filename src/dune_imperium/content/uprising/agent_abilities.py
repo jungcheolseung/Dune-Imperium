@@ -229,6 +229,11 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.GAIN_THREE_SOLARI: _box(GainResources(solari=3)),
             _BOX.GAIN_ONE_SPICE: _box(GainResources(spice=1)),
             _BOX.GAIN_WATER: _box(GainResources(water=1)),
+            # Sayyadina (Rise of Ix): "[3 water] -> [1 Victory Point]".
+            # An optional arrow, once per turn [DI p. 9] [FAQ p. 3].
+            _BOX.MAY_PAY_THREE_WATER_FOR_VP: _pay(
+                PayResources(water=3), GainVictoryPoints(1)
+            ),
             _BOX.RECRUIT_TWO_TROOPS: _box(RecruitTroops(2)),
             # Arrakis Recruiter (original game): one troop; a Combat space
             # lets the owner deploy it [DI p. 10] [FAQ p. 4].

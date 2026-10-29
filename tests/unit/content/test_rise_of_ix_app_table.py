@@ -252,15 +252,32 @@ def test_ix_cards_resolve_in_the_merged_tables_only() -> None:
     assert not ix_ids & listed
 
 
+# The cards transcribed so far (stage P4d, one per commit).
+_IX_INTRIGUE_TRANSCRIBED = {
+    "blackmail",
+    "cull",
+    "glimpse_the_path",
+    "expedite",
+    "finesse",
+    "secret_forces",
+    "strongarm",
+    "ixian_probe",
+}
+_IX_IMPERIUM_TRANSCRIBED = {"jamis", "sayyadina", "truthsayer"}
+
+
 def test_ix_entries_are_identities_only() -> None:
     # Stage P4a lists the cards before their play data (plan 17.7); a
     # transcribed card replaces its entry and the deck then takes it.
     for entry in IX_IMPERIUM_CARDS:
-        assert not entry.play_data_complete, entry.card.card_id
-        assert entry.factions == () and entry.agent_icons == (), entry.card.card_id
+        done = entry.card.card_id in _IX_IMPERIUM_TRANSCRIBED
+        assert entry.play_data_complete is done, entry.card.card_id
+        if not done:
+            assert entry.factions == () and entry.agent_icons == (), entry.card.card_id
     for card in IX_INTRIGUE_CARDS:
-        assert not card.play_data_complete, card.card.card_id
-        assert card.options == (), card.card.card_id
+        done = card.card.card_id in _IX_INTRIGUE_TRANSCRIBED
+        assert card.play_data_complete is done, card.card.card_id
+        assert bool(card.options) is done, card.card.card_id
 
 
 def test_ix_entries_cite_the_component_table() -> None:
@@ -769,3 +786,26 @@ def test_ix_spaces_resolve_by_id_and_print_their_icons() -> None:
     # The observation lists them after every other space (v39, plan 17.8).
     assert SPACE_IDS[-4:] == IX_SPACE_IDS
     assert not set(IX_SPACE_IDS) & set(SPACE_IDS[:-4])
+
+
+def test_infiltration_icons_match_the_app_table() -> None:
+    """'그 아이콘의 칸에서 상대 Agent(여럿이어도)를 무시' [Rise of Ix p. 7]."""
+    icons = {
+        "Circle": AgentIcon.CITY,
+        "Triangle": AgentIcon.SPICE_TRADE,
+        "Pentagon": AgentIcon.LANDSRAAD,
+        "Emperor": AgentIcon.EMPEROR,
+        "SpacingGuild": AgentIcon.SPACING_GUILD,
+        "BeneGesserit": AgentIcon.BENE_GESSERIT,
+        "Fremen": AgentIcon.FREMEN,
+    }
+    table = _imperium_archetypes()
+    for entry in IX_IMPERIUM_CARDS:
+        printed = table[entry.card.card_id].attributes.get("InfiltrationIconList", ())
+        assert isinstance(printed, tuple)
+        assert entry.infiltration_icons == tuple(icons[name] for name in printed)
+    assert sum(bool(entry.infiltration_icons) for entry in IX_IMPERIUM_CARDS) == 7
+    assert all(
+        not entry.infiltration_icons
+        for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS)
+    )

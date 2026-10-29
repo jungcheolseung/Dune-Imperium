@@ -100,6 +100,10 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "chani_clever_tactician": _reveal(
             _line(RevealPersuasion(2), condition=FactionBond(Faction.FREMEN))
         ),
+        # Sayyadina (Rise of Ix): "Fremen Bond: [3 Persuasion]".
+        "sayyadina": _reveal(
+            _line(RevealPersuasion(3), condition=FactionBond(Faction.FREMEN))
+        ),
         # Delivery Agreement.
         "delivery_agreement": _reveal(_line(GainResources(spice=1))),
         # Ecological Testing Station.

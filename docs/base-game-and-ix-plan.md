@@ -1432,3 +1432,16 @@ setup이 빠진다 → **정함: P4e 전까지 후보에서 뺀다**(덱 카드�
 (rise-of-ix.md 12의 디자이너 판정). 풀이 I 6·II 11·III 5, `ConflictSetup` 남는 장수는 정확히 12. 원판 + Ix 카탈로그 +23행. 엔티티 특성 conflict 표
 열 +1(`Freighter`, 새 Conflict 셋만). **P5·P7 몫:** `display/structs.conflict_row_parts`가 `Freighter`·`TakeMentat`에서 `TypeError`(서버 카탈로그는
 Uprising Conflict만 그려 지금은 닿지 않는다), sandworm이 Freighter를 두 배로 하는지는 Uprising + Ix(P7). 라벨 `b9b2fc7e`(효과 하나에 아이콘 하나).
+
+**P4d 진행(2026-10-29 20:3x~, 사용자 "남은 토큰 3프로 … 적절히 작업을 나눠서"):** 카드 한 장마다 커밋 하나(그 카드 테스트 통과 뒤). 묶음 1 — Ix Intrigue
+Blackmail·Cull·Glimpse the Path(기존 조각만). 다음 후보 — Expedite(Freighter)·Ixian Probe(discard 둘 → 카드 둘)·Finesse(두 면), 그다음 dreadnought·
+unit 카드(Cannon Turrets·Second Wave·Diversion·Grand Conspiracy·Advanced Weaponry), Machine Culture·War Chest·Secret Forces·Quid Pro Quo·
+Strongarm·Strategic Push, 그다음 Imperium 카드. 끊기면: 커밋되지 않은 agent 작업은 버리고(`git checkout --`) 마지막 커밋에서 다시 시작한다.
+- 묶음 1 끝(`21bebb89` Blackmail, `c23fb5bc` Cull, `018e7961` Glimpse the Path). **고칠 것(정함):** Cull은 1 Solari를 낸 뒤 trash를 거절할 수 있게 들어갔다 —
+  rise-of-ix.md 9.3이 채택한 디자이너 판정 "Cull은 trash해야 낸다"(OQ-113 (C)와 같은 방향)와 어긋나므로, 낸 뒤의 trash는 의무로 고친다(다음 Codex
+  묶음). Codex 묶음 2(`codex/p4d-intrigue2`): Expedite·Finesse·Secret Forces·Strongarm 끝(검토 전), Quid Pro Quo는 새 조각("Agent가 놓인 진영마다
+  Influence")이 필요해 멈춤 — astra 묶음으로.
+- Codex 묶음을 들여옴(2026-10-29 22:xx): `d1f705b7` Expedite, `8a9c8c6a` Finesse, `cba9b870` Secret Forces, `e20b83dc` Strongarm(방문 진영
+  `GainInfluence.visited_space` — 진영을 적은 Influence는 전과 같다), `49b6dfdc` 잠입 아이콘(카드 일곱에 표시, 놓기는 `rise_of_ix`에서만), `d6a6d909`
+  Jamis, `ba7abce7`·`b37ef58e` Sayyadina, `3a9a537b` Sayyadina 화면 문구. Ix 카드 완료: Intrigue 7/17(+Cull 의무 trash 수정 대기), Imperium 2/35.
+  다음: Codex discard(Truthsayer·Ixian Probe) 들여오기 → Codex unload(일반 Discard 연결 포함) → sources-trash → conditions.

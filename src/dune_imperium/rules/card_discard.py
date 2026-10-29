@@ -28,7 +28,13 @@ def discard_personal_card_from_hand(
     *,
     source: str,
 ) -> RuleResult:
-    """Move one hand card to discard and resolve its discard trigger."""
+    """Move one hand card to discard and resolve its discard trigger.
+
+    Shared by arrow costs (Agent, Intrigue and Tech) and discard effects.
+    Rise of Ix's future Unload continuation belongs at this boundary: finish
+    the discarded card's Unload before the caller resumes its arrow reward
+    (docs/rules/rise-of-ix.md 7). Clean Up must not use this transition.
+    """
 
     if not 0 <= player < state.config.players:
         raise ValueError("discard player must identify a configured seat")

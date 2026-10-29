@@ -256,6 +256,10 @@ _PAYMENT_TEXT: dict[tuple[str, PersonalCardAgentEffect], tuple[str, str]] = {
         "Pay 4 spice → Gain 1 VP",
         "{spice:4} 지불 {arrow_right} {victory_point:1}",
     ),
+    ("pay_agent_card_water", _BOX.MAY_PAY_THREE_WATER_FOR_VP): (
+        "Pay 3 water → Gain 1 VP",
+        "{water:3} 지불 {arrow_right} {victory_point:1}",
+    ),
     ("pay_agent_card_spice", _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT): (
         "Pay 1 spice → Trash a card (optional) + Recruit 1 troop",
         "{spice:1} 지불 {arrow_right} {trash} (선택) + {troop:1}",
