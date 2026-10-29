@@ -42,6 +42,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquireTleilaxuCard,
+    CommissionDreadnought,
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
@@ -50,6 +51,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     FlipBattleCard,
     FlipFaceUpConflictCard,
+    Freighter,
     GainInfluence,
     GiveIntrigueToOpponent,
     LoseInfluence,
@@ -57,6 +59,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     OpponentLosesTroop,
     PassTurn,
     PeekTopCard,
+    PlaceNegotiator,
     PlaceSpy,
     RecallSpy,
     RecallYourAgent,
@@ -103,6 +106,10 @@ from dune_imperium.rules.combat_deployment import (
     grant_recruit_deployment,
     reconcile_deployment_after_retreat,
 )
+from dune_imperium.rules.dreadnought_commission import (
+    commission_block,
+    commission_dreadnought,
+)
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
     apply_rewards,
@@ -141,6 +148,8 @@ from dune_imperium.rules.influence import (
     lose_faction_influence,
 )
 from dune_imperium.rules.intrigue_deck import with_trashed_intrigue
+from dune_imperium.rules.intrigue_knowledge import forget_intrigue_cards
+from dune_imperium.rules.negotiators import negotiator_block, place_negotiator
 from dune_imperium.rules.planetologist import replace_sandworms
 from dune_imperium.rules.reveal_turn import (
     add_reveal_persuasion,
@@ -149,6 +158,12 @@ from dune_imperium.rules.reveal_turn import (
     reveal_late_arrivals,
 )
 from dune_imperium.rules.shield_wall import destroy_shield_wall
+from dune_imperium.rules.shipping_track import (
+    freighter_can_advance,
+    freighter_can_recall,
+    move_freighter_up,
+    recall_freighter,
+)
 from dune_imperium.rules.spy_moves import (
     connected_post_ids,
     spy_placement_frame,
@@ -690,6 +705,38 @@ def piece_rows(
                 # Nothing within the cap: the acquisition alone fizzles
                 # (designer ruling, Impress; OQ-057).
                 rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.ACQUIRE))
+        case CommissionDreadnought():
+            # "you may commission" [Rise of Ix p. 6]: the icon is taken or
+            # left. With no dreadnought in the supply it has nothing to take
+            # (``commission_block``); an own turn then offers no row and the
+            # turn's end lapses the icon (OQ-095 (2)), a stacked frame its
+            # refusal.
+            if commission_block(state, player) is None:
+                rows.append(row(Verb.RECRUIT, variant="dreadnought"))
+            if refusals:
+                rows.append(row(Verb.DECLINE, of=Verb.RECRUIT, variant="dreadnought"))
+        case PlaceNegotiator():
+            # "you may take a troop" [Rise of Ix p. 4]: the icon is taken or
+            # left, like the Dreadnought icon above. With no troop in the
+            # supply it has nothing to take (``negotiator_block``): an own
+            # turn offers no row and the turn's end lapses the icon (OQ-095
+            # (2)), a stacked frame its refusal.
+            if negotiator_block(state, player) is None:
+                rows.append(row(Verb.RECRUIT, variant="negotiator"))
+            if refusals:
+                rows.append(row(Verb.DECLINE, of=Verb.RECRUIT, variant="negotiator"))
+        case Freighter():
+            # "you may move your Freighter in one of two ways" [Rise of Ix
+            # p. 5]: up one space (never from the top), recall (never from
+            # the bottom, where it moves nothing), or neither. An own turn
+            # offers no refusal and the turn's end lapses the icon (OQ-095
+            # (2)), a stacked frame its refusal.
+            if freighter_can_advance(state, player):
+                rows.append(row(Verb.ADVANCE, variant="freighter"))
+            if freighter_can_recall(state, player):
+                rows.append(row(Verb.COLLECT, variant="freighter"))
+            if refusals:
+                rows.append(row(Verb.DECLINE, of=Verb.ADVANCE, variant="freighter"))
         case PassTurn(optional=True):
             # Bindu Suspension: after the draw, "you may pass your turn" or
             # play it normally (OQ-117); the refusal is the normal turn.
@@ -815,6 +862,21 @@ _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
     ),
     "decline_intrigue_spy": ("spy_declined", "intrigue_spy_declined"),
     "keep_shield_wall": ("shield_wall_kept", "shield_wall_kept"),
+    # A Dreadnought icon left unused (Rise of Ix).
+    "decline_intrigue_dreadnought": (
+        "dreadnought_declined",
+        "intrigue_dreadnought_declined",
+    ),
+    # A Tech Negotiation icon left unused (Rise of Ix).
+    "decline_intrigue_negotiator": (
+        "negotiator_declined",
+        "intrigue_negotiator_declined",
+    ),
+    # A Freighter icon left unused (Rise of Ix).
+    "decline_intrigue_freighter": (
+        "freighter_declined",
+        "intrigue_freighter_declined",
+    ),
     "resolve_intrigue_influence_without_faction": (
         "influence_unavailable",
         "intrigue_influence_unavailable",
@@ -1221,6 +1283,20 @@ def apply_piece(
             # The Spy placement is passed up only when it cannot be made
             # (``piece_rows``).
             result = _passed(state, player, action, step_source)
+        case CommissionDreadnought() if shape.verb is Verb.DECLINE:
+            result = _passed(state, player, action, step_source)
+        case CommissionDreadnought():
+            result = commission_dreadnought(state, player, source=step_source)
+        case PlaceNegotiator() if shape.verb is Verb.DECLINE:
+            result = _passed(state, player, action, step_source)
+        case PlaceNegotiator():
+            result = place_negotiator(state, player, source=step_source)
+        case Freighter() if shape.verb is Verb.DECLINE:
+            result = _passed(state, player, action, step_source)
+        case Freighter() if shape.verb is Verb.ADVANCE:
+            result = move_freighter_up(state, player, source=step_source)
+        case Freighter():
+            result = recall_freighter(state, player, source=step_source)
         case RecallYourAgent() if shape.verb is Verb.CONFIRM_EMPTY:
             result = _passed(state, player, action, step_source)
         case RecallYourAgent():
@@ -1357,7 +1433,13 @@ def _give_intrigue_card(
     receiver = replace(target, intrigue_cards=(*target.intrigue_cards, card_id))
     players = replace_player(replace_player(state.players, giver), receiver)
     return RuleResult(
-        state=replace(state, players=players),
+        # The other seats cannot tell which card moved: they lose track of
+        # the giver's cards they knew (OQ-149).
+        state=forget_intrigue_cards(
+            replace(state, players=players),
+            owner.intrigue_cards,
+            keeping=(player, recipient),
+        ),
         events=(
             # The table sees a card change hands; only the two seats
             # involved learn which one [Main p. 7].

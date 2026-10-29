@@ -29,6 +29,7 @@ from dune_imperium.content.immortality.tleilaxu import (
     tleilaxu_cards_for,
     tleilaxu_deck_instance_ids,
 )
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_TILES
 from dune_imperium.content.rulesets import TUEK_SIETCH, RulesetContent, content_for
 from dune_imperium.content.uprising.abilities import AbilityStructure
 from dune_imperium.content.uprising.agent_abilities import agent_box_ability
@@ -112,7 +113,12 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.combat import (
     COMBAT_REWARD_ICON_KINDS,
+    DREADNOUGHT_CONTROL,
+    DREADNOUGHT_CONTROL_ACTION,
+    DREADNOUGHT_DETONATE_ACTION,
     IMPERIUM_REWARD_ICON_KINDS,
+    IX_REWARD_ICON_KINDS,
+    WINDTRAPS,
     conflict_reward_icon_kinds,
 )
 from dune_imperium.rules.contracts import (
@@ -139,6 +145,7 @@ from dune_imperium.rules.immortality import (
     research_icon_spaces,
     research_trash_spaces,
 )
+from dune_imperium.rules.intrigue_bottom import FINISH_ACTION, PUT_ACTION
 from dune_imperium.rules.planetologist import PLANETOLOGIST_LEADER
 from dune_imperium.rules.reveal_lines import RevealLine, reveal_lines
 from dune_imperium.rules.reveal_turn import (
@@ -149,7 +156,23 @@ from dune_imperium.rules.reveal_turn import (
 )
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
-from dune_imperium.rules.tech import optional_trash_tech_ids
+from dune_imperium.rules.shipping_track import (
+    ADVANCE_ACTION,
+    DECLINE_ACTION,
+    DIVIDENDS,
+    INFLUENCE,
+    RECALL_ACTION,
+    RECRUIT,
+    REWARD_ACTION,
+    SPICE,
+    TECH,
+)
+from dune_imperium.rules.shipping_track import PRINTED as SHIPPING_PRINTED
+from dune_imperium.rules.tech import (
+    TRASH_ABILITIES,
+    optional_trash_tech_ids,
+    tech_acquire_effect_arguments,
+)
 from dune_imperium.rules.units import unit_count_arguments
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
@@ -682,6 +705,8 @@ MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
 MAX_COMMANDER_DEPLOYMENT = 7
+# Two dreadnoughts a seat [Rise of Ix p. 6].
+MAX_DREADNOUGHT_DEPLOYMENT = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -940,8 +965,12 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="resolve_combat_reward_icon", arguments=(("effect", kind),)
         )
         for kind in COMBAT_REWARD_ICON_KINDS
-        # The original game's kinds only where its Conflicts print them.
-        if (kind not in IMPERIUM_REWARD_ICON_KINDS or kind in printed_reward_kinds)
+        # The original game's and Rise of Ix's kinds only where the
+        # Conflicts print them.
+        if (
+            kind not in IMPERIUM_REWARD_ICON_KINDS | IX_REWARD_ICON_KINDS
+            or kind in printed_reward_kinds
+        )
         and (kind != "deep_cover_spy" or config.bloodlines)
         and (kind not in _SPY_REWARD_ICONS or content.observation_posts)
         and (kind != "contract" or content.contract_instance_ids)
@@ -950,6 +979,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # The original game's winning Intrigue closes the winner's window
         # (OQ-121 decision 6); Uprising's catalogs hold no such row.
         and (kind != "winning_intrigue" or content.base_game is BaseGame.IMPERIUM)
+        # Rise of Ix's winner's dreadnought, set on a Control space (OQ-121
+        # ruling 6 (1)); no catalog without the expansion holds its row.
+        and (kind != DREADNOUGHT_CONTROL or config.rise_of_ix)
+        # Windtraps' water, a row of the same window (Rise of Ix).
+        and (kind != WINDTRAPS or config.rise_of_ix)
     )
     # One board-effect resolution per printed automatic icon (OQ-027).
     templates.extend(
@@ -1029,6 +1063,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
     )
     templates.append(ActionTemplate(action_id="finish_agent_turn"))
+    if config.rise_of_ix:
+        # Rise of Ix's dreadnought, a third kind of unit to deploy and take
+        # back [Rise of Ix p. 6], and the Dreadnought icon an Intrigue slot
+        # offers; no catalog without the expansion holds these rows.
+        templates.extend(_rise_of_ix_unit_templates())
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
     elif content.base_game is BaseGame.IMPERIUM:
@@ -1037,12 +1076,6 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # with none confirms it (OQ-036 (a)).
         templates.extend(_unit_loss_templates())
         templates.append(ActionTemplate("resolve_unit_loss_without_unit"))
-        # Unswerving Loyalty (every ruleset) and Shadout Mapes (Immortality)
-        # may move a Sardaukar Commander: it "is a 'troop'" [Bloodlines p. 4].
-        templates.extend(
-            ActionTemplate(action_id=action_id, arguments=(("commanders", 1),))
-            for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
-        )
     if content.base_game is BaseGame.IMPERIUM:
         # The original game's Poison Snooper: draw the card it looked at or
         # trash it, or confirm an empty deck (stage P3); only in its catalog,
@@ -1074,6 +1107,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
     if config.tech_module:
         templates.extend(_tech_templates(config))
+    if config.rise_of_ix:
+        templates.extend(_ix_tech_templates(config))
     if config.immortality:
         templates.extend(_immortality_templates(config))
     if config.arrakeen_scouts:
@@ -1303,9 +1338,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="flip_battle_card",
             arguments=(("card_id", conflict.card.card_id),),
         )
-        for conflict in content.conflicts
-        if (config.bloodlines or not conflict.bloodlines_only)
-        and (config.epic_game or not conflict.epic_only)
+        for conflict in content.conflicts_in_play()
     )
     # An Objective "counts as a Conflict card you've already won" [Objective
     # card], so the flip effects may take it too (OQ-005, codec v130).
@@ -1419,6 +1452,18 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for index, first_post_id in enumerate(post_ids)
         for second_post_id in post_ids[index + 1 :]
     )
+    if config.rise_of_ix:
+        # The Control space the winner's dreadnought is set on, one row for
+        # each space of the base game (``content.control_visit_bonuses``).
+        templates.extend(
+            ActionTemplate(
+                action_id=DREADNOUGHT_CONTROL_ACTION,
+                arguments=(("space_id", space_id),),
+            )
+            for space_id in content.control_visit_bonuses
+        )
+        # Detonation Devices' answer in the same choice (OQ-121 ruling 3).
+        templates.append(ActionTemplate(action_id=DREADNOUGHT_DETONATE_ACTION))
     templates.extend(
         ActionTemplate(
             action_id="recall_spies_for_combat_reward",
@@ -1748,14 +1793,10 @@ def _effect_step_templates(
             # (B3d-3), by each icon whose window offers it and each Conflict
             # printing that icon.
             for icon in _REWARD_WINDOW_REFUSALS[template.action_id]:
-                for conflict in content_for(config).conflicts:
+                for conflict in content_for(config).conflicts_in_play():
                     if not (
-                        (config.bloodlines or not conflict.bloodlines_only)
-                        and (config.epic_game or not conflict.epic_only)
-                        and (
-                            icon in conflict_reward_icon_kinds(conflict.card.card_id)
-                            or (icon == "choose_influence" and config.promo_cards)
-                        )
+                        icon in conflict_reward_icon_kinds(conflict.card.card_id)
+                        or (icon == "choose_influence" and config.promo_cards)
                     ):
                         continue
                     for row in steps_for(whole, conflict.card.card_id, icon=icon):
@@ -1772,16 +1813,20 @@ def _effect_step_templates(
             kinds = _WINDOW_REWARD_ICONS.get(template.action_id, (kind,))
             named = tuple(
                 (None, conflict.card.card_id)
-                for conflict in content_for(config).conflicts
-                if (config.bloodlines or not conflict.bloodlines_only)
-                and (config.epic_game or not conflict.epic_only)
-                and (
+                for conflict in content_for(config).conflicts_in_play()
+                if (
                     any(
                         printed in conflict_reward_icon_kinds(conflict.card.card_id)
                         for printed in kinds
                     )
                     or (kind == "choose_influence" and config.promo_cards)
-                    or kind in ("planetary_array", "winning_intrigue")
+                    or kind
+                    in (
+                        "planetary_array",
+                        "winning_intrigue",
+                        DREADNOUGHT_CONTROL,
+                        WINDTRAPS,
+                    )
                 )
             )
         elif spec.printed == Printed.CONTRACT:
@@ -1852,8 +1897,12 @@ def _effect_step_templates(
         elif spec.printed == Printed.TECH_PENDING:
             named = tuple(
                 (None, tile.tech_id)
-                for tile in TECH_TILES
+                for tile in (TECH_TILES if config.tech_module else ())
                 if "influence" in tile.acquire_effect_keys
+            ) + tuple(
+                (None, tile.tech_id)
+                for tile in (IX_TECH_TILES if config.rise_of_ix else ())
+                if {"influence", "distinct_influence"} & set(tile.acquire_effect_keys)
             )
         elif spec.printed == Printed.MISSION:
             # A Scouts mission's plain way in (B3d-2b); the specimen return
@@ -1935,6 +1984,15 @@ _CARD_SOURCES: Final = frozenset({Source.REVEAL_CARD, Source.AGENT_CARD})
 _VISITED_SPACES: Final[Mapping[str, tuple[str, ...]]] = {
     "resolve_espionage_without_spy": ("espionage",),
     "resolve_imperial_privilege_without_recall": ("imperial_privilege",),
+    # Rise of Ix's four spaces' icons (stage P4c-4, ``rules.ix_board_spaces``)
+    # and Spaceport's Foldspace card on top of the deck.
+    "commission_board_dreadnought": ("dreadnought",),
+    "acquire_board_tech": ("dreadnought",),
+    "acquire_negotiation_tech": ("tech_negotiation",),
+    "place_board_negotiator": ("tech_negotiation",),
+    "advance_board_freighter": ("interstellar_shipping", "smuggling"),
+    "recall_board_freighter": ("interstellar_shipping", "smuggling"),
+    "acquire_foldspace_to_deck_top": ("foldspace",),
 }
 # A controlled space's defending troop (B3d-2a): a space a Conflict card's
 # control reward names.
@@ -1976,6 +2034,19 @@ _RECALL_AGENT_EFFECTS: Final = (
 _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
     "PlaceSpy": ("recall_spy_for_intrigue", "decline_intrigue_spy"),
     "DestroyShieldWall": ("detonate_shield_wall", "keep_shield_wall"),
+    "CommissionDreadnought": (
+        "commission_intrigue_dreadnought",
+        "decline_intrigue_dreadnought",
+    ),
+    "PlaceNegotiator": (
+        "place_intrigue_negotiator",
+        "decline_intrigue_negotiator",
+    ),
+    "Freighter": (
+        "advance_intrigue_freighter",
+        "recall_intrigue_freighter",
+        "decline_intrigue_freighter",
+    ),
     "PeekTopCard": (
         "put_back_top_card",
         "discard_top_card",
@@ -2283,10 +2354,23 @@ def _window_printers(
     if action_id in ("recall_spy_for_placement", "decline_spy_placement"):
         return _spy_placement_printers(config)
     if action_id == "decline_tech":
-        # Battlefield Research, Rapid Engineering.
-        return tuple(
-            (Source.INTRIGUE, card)
-            for card in _intrigue_reward_cards(config, AcquireTech)
+        # Battlefield Research, Rapid Engineering, and the Shipping track's
+        # space 3 and the two Landsraad spaces of the overlay (Rise of Ix).
+        return (
+            *(
+                (Source.INTRIGUE, card)
+                for card in _intrigue_reward_cards(config, AcquireTech)
+            ),
+            *(
+                (
+                    (Source.BOARD_SPACE, SHIPPING_PRINTED),
+                    # The Dreadnought and Tech Negotiation spaces' Acquire Tech.
+                    (Source.BOARD_SPACE, "dreadnought"),
+                    (Source.BOARD_SPACE, "tech_negotiation"),
+                )
+                if config.rise_of_ix
+                else ()
+            ),
         )
     if action_id == "resolve_opponent_discard_without_card":
         # Covert Operation's, Reverend Mother Mohiam's and Test of Humanity's
@@ -2623,6 +2707,69 @@ def _leader_faces(config: RulesetConfig) -> tuple[str, ...]:
         if leader.alternate_face_id is not None:
             faces.setdefault(leader.alternate_face_id, None)
     return tuple(faces)
+
+
+def _rise_of_ix_unit_templates() -> tuple[ActionTemplate, ...]:
+    """Rise of Ix's dreadnought rows (``rules.combat_deployment``,
+    ``rules.dreadnought_commission``): the deployment of garrison dreadnoughts
+    and its withdrawal, a count each (a seat has two), an Intrigue slot's
+    commission and its refusal, and the Tech Negotiation icon's Negotiator
+    and its refusal (``rules.negotiators``)."""
+
+    templates: list[ActionTemplate] = [
+        ActionTemplate(action_id=action_id, arguments=(("count", count),))
+        for action_id in ("deploy_dreadnoughts", "withdraw_dreadnoughts")
+        for count in range(1, MAX_DREADNOUGHT_DEPLOYMENT + 1)
+    ]
+    templates.extend(
+        ActionTemplate(action_id=action_id)
+        for action_id in (
+            "commission_intrigue_dreadnought",
+            "decline_intrigue_dreadnought",
+            "place_intrigue_negotiator",
+            "decline_intrigue_negotiator",
+            "advance_intrigue_freighter",
+            "recall_intrigue_freighter",
+            "decline_intrigue_freighter",
+            # The icons of the four spaces the overlay prints (stage P4c-4).
+            "commission_board_dreadnought",
+            "acquire_board_tech",
+            "acquire_negotiation_tech",
+            "place_board_negotiator",
+            "advance_board_freighter",
+            "recall_board_freighter",
+            # Spaceport's Foldspace card on top of the deck.
+            "acquire_foldspace_to_deck_top",
+        )
+    )
+    templates.extend(_shipping_track_templates())
+    return tuple(templates)
+
+
+def _shipping_track_templates() -> tuple[ActionTemplate, ...]:
+    """The Freighter's own window and the Shipping track's rewards
+    (``rules.shipping_track``): up, recall or neither outside the owner's
+    turn, and a row for each reward a recall owes -- Dividends, spice, the
+    recruit, the Influence once for each Faction that gains it (and once
+    without, every cube at the top, OQ-060) and the discounted Acquire
+    Tech."""
+
+    templates = [
+        ActionTemplate(action_id=action_id)
+        for action_id in (ADVANCE_ACTION, RECALL_ACTION, DECLINE_ACTION)
+    ]
+    for effect in (DIVIDENDS, SPICE, RECRUIT, INFLUENCE, TECH):
+        templates.append(
+            ActionTemplate(action_id=REWARD_ACTION, arguments=(("effect", effect),))
+        )
+    templates.extend(
+        ActionTemplate(
+            action_id=REWARD_ACTION,
+            arguments=(("effect", INFLUENCE), ("faction", faction.value)),
+        )
+        for faction in Faction
+    )
+    return tuple(templates)
 
 
 def _unit_loss_templates() -> tuple[ActionTemplate, ...]:
@@ -3393,6 +3540,69 @@ def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     return tuple(templates)
 
 
+def _ix_tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    """Rise of Ix's Tech tile rows (``rules.tech``, stage P4c-1).
+
+    An Acquire Tech buys an Ix tile ("아이콘마다 ... 하나를 얻을 수 있다"
+    [Rise of Ix p. 4]) with its Negotiators returned: ``acquire_tech`` names
+    the tile alone for none, and adds ``negotiators`` for one up to the tile's
+    price (a Negotiator beyond it lowers nothing). Each tile's acquire icons
+    are the Tech Module's rows (``resolve_tech_acquire_effect``; Windtraps'
+    water and Shuttle Fleet's two Factions have keys of their own, stage
+    P4c-2a). Rows a game with the Tech Module already holds are not repeated.
+    """
+
+    templates: list[ActionTemplate] = []
+    if not config.tech_module:
+        templates.extend(
+            (
+                ActionTemplate(action_id="decline_tech"),
+                # An acquire Influence with every Faction at the top.
+                ActionTemplate(action_id="resolve_tech_influence_without_faction"),
+            )
+        )
+    for tile in IX_TECH_TILES:
+        base: tuple[tuple[str, ActionValue], ...] = (("tech_id", tile.tech_id),)
+        templates.append(ActionTemplate(action_id="acquire_tech", arguments=base))
+        templates.extend(
+            ActionTemplate(
+                action_id="acquire_tech",
+                arguments=tuple(sorted((("negotiators", returned), *base))),
+            )
+            for returned in range(1, tile.cost + 1)
+        )
+        for effect in tile.acquire_effect_keys:
+            templates.extend(
+                ActionTemplate(action_id="resolve_tech_acquire_effect", arguments=args)
+                for args in tech_acquire_effect_arguments(tile, effect)
+            )
+    # Disposal Facility's Reveal-turn trash of a card in play (OQ-126); the
+    # card is the step row's target.
+    templates.append(ActionTemplate(action_id="trash_disposal_facility_card"))
+    # The four Flip tiles (docs/rules/rise-of-ix.md 4, stage P4c-2b): the tile
+    # names the whole action, and the card Holoprojectors and Invasion Ships
+    # discard is the step row's target.
+    templates.extend(
+        ActionTemplate(action_id="flip_tech", arguments=(("tech_id", tile.tech_id),))
+        for tile in IX_TECH_TILES
+        if tile.flips
+    )
+    # The tiles used by trashing them (stage P4c-2c): Spy Satellites' VP and
+    # Sonic Snoopers, whose pick has a row per Intrigue card of the game's deck
+    # for the deck's bottom (a Twisted card is never put, OQ-097) and the stop.
+    templates.extend(
+        ActionTemplate(action_id="trash_tech", arguments=(("tech_id", tile.tech_id),))
+        for tile in IX_TECH_TILES
+        if tile.ability in TRASH_ABILITIES
+    )
+    templates.extend(
+        ActionTemplate(action_id=PUT_ACTION, arguments=(("card_id", card_id),))
+        for card_id in content_for(config).intrigue_deck_instance_ids
+    )
+    templates.append(ActionTemplate(action_id=FINISH_ACTION))
+    return tuple(templates)
+
+
 def _reveal_resource_templates() -> tuple[ActionTemplate, ...]:
     """One ``gain_reveal_resources`` per distinct printed Reveal resource bundle.
 
@@ -3719,9 +3929,7 @@ def _endgame_wild_templates(
     battle_cards = (
         *(
             (conflict.card.card_id, conflict.battle_icon)
-            for conflict in content_for(config).conflicts
-            if (config.bloodlines or not conflict.bloodlines_only)
-            and (config.epic_game or not conflict.epic_only)
+            for conflict in content_for(config).conflicts_in_play()
         ),
         *(
             (objective.objective_id, objective.battle_icon)

@@ -8,9 +8,13 @@ deck order, each opponent's secret hand cards together with their deck, the
 opponents' held Intrigue together with the Intrigue deck, the Imperium deck,
 the Contract bank, and the Conflict deck together with the boxed Conflict
 cards of each tier — so the result is one plausible world the observer
-cannot distinguish from the real one. The observer's own ``observe_state``
-view of the sampled state equals its view of the real state, which the
-tests pin.
+cannot distinguish from the real one. What Rise of Ix lets a seat know stays
+put (docs/rules/rise-of-ix.md 13): the Intrigue cards the observer knows
+(``PlayerState.known_intrigue_ids``) keep their place in the deck or in
+another seat's hand, and an opponent's face-down set-aside card (Ilesa Ecaz)
+is dealt from the same pool as its hidden hand and deck. The observer's own
+``observe_state`` view of the sampled state equals its view of the real
+state, which the tests pin.
 """
 
 import random
@@ -118,6 +122,25 @@ def _redeal_conflicts(
     return deck, unused
 
 
+def _intrigue_deck(
+    deck: tuple[str, ...],
+    peeked: int,
+    known: frozenset[str],
+    dealt: list[str],
+) -> tuple[str, ...]:
+    """The sampled Intrigue deck: its first ``peeked`` cards and the cards the
+    observer knows where they are, every other place from ``dealt`` in
+    order."""
+
+    if not known:
+        return (*deck[:peeked], *dealt)
+    rest = iter(dealt)
+    return tuple(
+        card if index < peeked or card in known else next(rest)
+        for index, card in enumerate(deck)
+    )
+
+
 def determinize(state: GameState, observer: int, rng: random.Random) -> GameState:
     """Return ``state`` with every zone hidden from ``observer`` re-dealt."""
 
@@ -125,9 +148,16 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
         raise ValueError("observer must identify a configured player")
     resolving = frozenset(resolving_intrigue_ids(state))
     players = list(state.players)
-    # Imperium Ceremony's peek keeps the deck's top cards in place.
+    # Imperium Ceremony's peek keeps the deck's top cards in place, and so do
+    # the Intrigue cards the observer knows (Rise of Ix): in the deck, at
+    # their depth, and in another seat's hand.
     peeked_intrigue = peeked_intrigue_ids(state, observer)
-    intrigue_pool: list[str] = list(state.intrigue_deck[len(peeked_intrigue) :])
+    known_intrigue = frozenset(state.players[observer].known_intrigue_ids)
+    intrigue_pool: list[str] = [
+        card
+        for card in state.intrigue_deck[len(peeked_intrigue) :]
+        if card not in known_intrigue
+    ]
 
     for seat, player in enumerate(players):
         if seat == observer:
@@ -154,15 +184,28 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
         secret_hand = [card for card in player.hand if card not in known]
         public_top = player.deck_public_top
         pool = [*secret_hand, *player.deck[len(public_top) :]]
+        # Rise of Ix: Ilesa Ecaz's face-down card came from that hidden hand.
+        # Only a seat with one changes its pool, so no other game's sampling
+        # moves.
+        set_aside = player.set_aside_card_id
+        if set_aside:
+            pool.append(set_aside)
         rng.shuffle(pool)
         hand = (*player.hand_public, *pool[: len(secret_hand)])
+        if set_aside:
+            set_aside = pool.pop()
         deck = (*public_top, *pool[len(secret_hand) :])
         # A played Intrigue is public while its choices resolve; the rest of
-        # an opponent's hand is indistinguishable from the deck.
+        # an opponent's hand is indistinguishable from the deck, but for the
+        # cards the observer knows it holds.
         intrigue_pool.extend(
-            card for card in player.intrigue_cards if card not in resolving
+            card
+            for card in player.intrigue_cards
+            if card not in resolving and card not in known_intrigue
         )
-        players[seat] = replace(player, hand=hand, deck=deck)
+        players[seat] = replace(
+            player, hand=hand, deck=deck, set_aside_card_id=set_aside
+        )
         if player.masterstroke_factions and not player.masterstroke_revealed:
             # The original game's Baron: his unrevealed Masterstroke Factions
             # are his alone (docs/rules/imperium-base.md 14). Only such a seat
@@ -189,24 +232,58 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
         for seat, player in enumerate(state.players)
         if seat != observer
         for card in player.intrigue_cards
-        if card not in resolving
+        if card not in resolving and card not in known_intrigue
     )
     _keep_twisted_in_hands(intrigue_pool, len(board_intrigue), hidden_held, rng)
     board_cards = {
         row: intrigue_pool[index] for index, row in enumerate(board_intrigue)
     }
     cursor = len(board_intrigue)
+    # Rise of Ix: another seat knows a card by its place (a deck depth, a
+    # seat's hand), not by the identity the observer cannot see, so in the
+    # sampled world it knows the card dealt to that place: which card now
+    # stands in each re-dealt card's place. Only a game where another seat
+    # knows one builds it.
+    remap = any(
+        player.known_intrigue_ids
+        for seat, player in enumerate(state.players)
+        if seat != observer
+    )
+    redealt: dict[str, str] = (
+        {row[2]: card for row, card in board_cards.items()} if remap else {}
+    )
     for seat, player in enumerate(players):
         if seat == observer:
             continue
         original = state.players[seat].intrigue_cards
-        kept = tuple(card for card in original if card in resolving)
+        kept = tuple(
+            card for card in original if card in resolving or card in known_intrigue
+        )
         held = len(original) - len(kept)
+        dealt = intrigue_pool[cursor : cursor + held]
+        players[seat] = replace(player, intrigue_cards=(*kept, *dealt))
+        if remap:
+            redealt.update(
+                zip((card for card in original if card not in kept), dealt, strict=True)
+            )
+        cursor += held
+    intrigue_deck = _intrigue_deck(
+        state.intrigue_deck,
+        len(peeked_intrigue),
+        known_intrigue,
+        intrigue_pool[cursor:],
+    )
+    if remap:
+        redealt.update(zip(state.intrigue_deck, intrigue_deck, strict=True))
+    for seat, player in enumerate(players):
+        if seat == observer or not player.known_intrigue_ids:
+            continue
         players[seat] = replace(
             player,
-            intrigue_cards=(*kept, *intrigue_pool[cursor : cursor + held]),
+            known_intrigue_ids=tuple(
+                redealt.get(card, card) for card in player.known_intrigue_ids
+            ),
         )
-        cursor += held
 
     imperium_deck = list(state.imperium_deck)
     rng.shuffle(imperium_deck)
@@ -280,7 +357,7 @@ def determinize(state: GameState, observer: int, rng: random.Random) -> GameStat
             (row[0], row[1], board_cards.get(row, row[2]))
             for row in state.scouts_goods_cards
         ),
-        intrigue_deck=(*peeked_intrigue, *intrigue_pool[cursor:]),
+        intrigue_deck=intrigue_deck,
         imperium_deck=tuple(imperium_deck),
         contract_bank=tuple(contract_bank),
         conflict_deck=conflict_deck,

@@ -10,6 +10,7 @@ from dune_imperium.content.uprising.conflict_abilities import (
 )
 from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
+    Freighter,
     GainInfluence,
     GainResources,
     GainVictoryPoints,
@@ -81,9 +82,9 @@ def check_conflict_reward_row(row: Ability) -> None:
     lines give resources, Intrigue cards, troops, Spies (with or without Deep
     Cover), Contracts, trashes, VP, chosen, distinct or one Faction's
     Influence, or control of a space; each is printed once on the row but
-    Spies, trashes and chosen Influence, which may repeat. A row gives
-    something. (The checks the compiled ``ConflictReward`` ran until the
-    reward totals cleanup, 2026-10-21.)
+    Spies, trashes, Rise of Ix's Freighters and chosen Influence, which may
+    repeat. A row gives something. (The checks the compiled ``ConflictReward``
+    ran until the reward totals cleanup, 2026-10-21.)
 
     The original game adds the Mentat icon, one Faction's two Influence and
     rows of alternatives: a printed "-OR-" (``ONE_OF``) or "Choose two:"
@@ -146,6 +147,10 @@ def check_conflict_reward_row(row: Ability) -> None:
                 case RecruitTroops():
                     once("troops")
                 case PlaceSpy() if reward in (PlaceSpy(), PlaceSpy(shared_post=True)):
+                    pass
+                case Freighter():
+                    # Rise of Ix's icon, printed once or twice on a row
+                    # (Trade Monopoly's first place).
                     pass
                 case TakeContract():
                     once("contracts")
@@ -419,12 +424,16 @@ def conflicts_by_tier(
 
 
 # One table for both base games (docs/base-game-and-ix-plan.md 4.2 item 7):
-# the original game's cards follow Uprising's. Imported last, as they are
-# built from ``ConflictDefinition`` (``content.imperium``).
+# the original game's cards follow Uprising's, and Rise of Ix's three new
+# Conflicts (stage P4a, plan 17; Economic Supremacy is in ``CONFLICTS``) join
+# them. Imported last, as they are built from ``ConflictDefinition``
+# (``content.imperium``, ``content.rise_of_ix``).
 from dune_imperium.content.imperium.conflicts import (  # noqa: E402
     IMPERIUM_CONFLICTS,
 )
+from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS  # noqa: E402
 
 CONFLICTS_BY_ID: Final = {
-    conflict.card.card_id: conflict for conflict in (*CONFLICTS, *IMPERIUM_CONFLICTS)
+    conflict.card.card_id: conflict
+    for conflict in (*CONFLICTS, *IMPERIUM_CONFLICTS, *IX_CONFLICTS)
 }

@@ -3,6 +3,7 @@
 import pytest
 
 from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
+from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS
 from dune_imperium.content.uprising.abilities import AbilityTiming
 from dune_imperium.content.uprising.conflict_abilities import CONFLICT_REWARD_ABILITIES
 from dune_imperium.content.uprising.conflicts import CONFLICTS
@@ -47,8 +48,8 @@ def test_every_contract_tile_takes_its_terms_from_its_record() -> None:
 
 def test_every_conflict_takes_its_three_rows_from_its_records() -> None:
     # The original game's cards share the table (docs/base-game-and-ix-plan.md
-    # 4.2 item 7).
-    conflicts = (*CONFLICTS, *IMPERIUM_CONFLICTS)
+    # 4.2 item 7), and so do Rise of Ix's three (stage P4d-1).
+    conflicts = (*CONFLICTS, *IMPERIUM_CONFLICTS, *IX_CONFLICTS)
     assert {
         conflict.card.card_id for conflict in conflicts if conflict.reward_rows
     } == set(CONFLICT_REWARD_ABILITIES)

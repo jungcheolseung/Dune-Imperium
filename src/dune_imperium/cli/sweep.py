@@ -170,6 +170,15 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--rise-of-ix",
+        action="store_true",
+        help=(
+            "play with the Rise of Ix expansion (docs/rules/rise-of-ix.md); "
+            "with --base-game imperium only (Uprising plus Rise of Ix is "
+            "stage P7)"
+        ),
+    )
+    parser.add_argument(
         "--max-steps",
         type=int,
         default=30_000,
@@ -252,6 +261,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         rotate_leaders=arguments.rotate_leaders,
         collect_coverage=arguments.coverage_json is not None,
         base_game=BaseGame(arguments.base_game),
+        rise_of_ix=arguments.rise_of_ix,
     )
     report = run_sweep(specs, workers=arguments.workers)
 

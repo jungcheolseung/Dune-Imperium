@@ -282,6 +282,13 @@ from dune_imperium.rules.intrigue import (
     intrigue_play_block,
     intrigue_window,
 )
+from dune_imperium.rules.ix_board_spaces import (
+    BOARD_ICON_COMMISSION,
+    BOARD_ICON_FREIGHTER,
+    BOARD_ICON_IX_TECH,
+    BOARD_ICON_TECH_NEGOTIATION,
+    ix_icon_offered,
+)
 from dune_imperium.rules.leader_abilities import (
     leader_board_repeat_block,
     leader_reveal_block,
@@ -3009,6 +3016,16 @@ def _one_optional_reason(block: OptionalEffectBlock) -> Reason:
     return _OPTIONAL_REASONS.get(kind, NOT_NOW)
 
 
+IX_SPACE_ICONS: Final = frozenset(
+    {
+        BOARD_ICON_COMMISSION,
+        BOARD_ICON_FREIGHTER,
+        BOARD_ICON_IX_TECH,
+        BOARD_ICON_TECH_NEGOTIATION,
+    }
+)
+
+
 def _board_icon_offered(state: GameState, seat: int, key: str) -> bool:
     """Whether the visit's optional icon ``key`` offers a row now."""
 
@@ -3020,6 +3037,9 @@ def _board_icon_offered(state: GameState, seat: int, key: str) -> bool:
         return sardaukar_commander_block(state, seat) is None
     if key == BOARD_ICON_TECH:
         return landsraad_tech_block(state, seat) is None
+    if key in IX_SPACE_ICONS:
+        # Rise of Ix's four spaces' icons (stage P4c-4).
+        return ix_icon_offered(state, seat, key)
     return bool(legal_subcommittee_choice_actions(state, seat))
 
 

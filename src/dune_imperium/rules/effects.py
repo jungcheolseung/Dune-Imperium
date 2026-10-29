@@ -398,6 +398,14 @@ OPTIONAL_BOARD_ICONS: Final = frozenset(
         BOARD_ICON_COMMANDER,
         BOARD_ICON_TECH,
         "scouts_subcommittee",
+        # Rise of Ix's four spaces' icons, each a "may" [Rise of Ix pp. 4-6,
+        # 12] (``ix_board_spaces.BOARD_ICON_*``, spelled here like the ids
+        # above): the Dreadnought icon, an Acquire Tech, the Tech Negotiation
+        # "OR" box and a Freighter icon.
+        "commission",
+        "ix_tech",
+        "tech_negotiation",
+        "freighter",
     }
 )
 # The visit's effects that are not printed on the space, which a repeat of
@@ -453,6 +461,10 @@ class OptionalBlockKind(StrEnum):
     NO_CARD_TO_DRAW = "no_card_to_draw"
     NO_INTRIGUE_TO_DRAW = "no_intrigue_to_draw"  # deck and shufflable discard
     NO_TROOP_TO_RECRUIT = "no_troop_to_recruit"  # no supply troop nor specimen
+    # No dreadnought in the supply to commission [Rise of Ix p. 6].
+    NO_DREADNOUGHT_TO_COMMISSION = "no_dreadnought_to_commission"
+    # No troop in the supply to place as a Negotiator [Rise of Ix p. 4].
+    NO_TROOP_FOR_NEGOTIATOR = "no_troop_for_negotiator"
     TECH_UNAFFORDABLE = "tech_unaffordable"  # ``needed``: cheapest tile
     TECH_NEEDS_SPY = "tech_needs_spy"  # Advanced Data Analysis only
     # Never again in this turn.

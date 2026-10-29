@@ -33,6 +33,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CommandReached,
+    CommissionDreadnought,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -60,6 +61,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     FlipBattleCard,
     FlipFaceUpConflictCard,
     ForceEnemyRetreat,
+    Freighter,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
@@ -121,6 +123,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PeekTopCard,
     PermanentRevealPersuasion,
+    PlaceNegotiator,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
     RecallAgent,
@@ -806,6 +809,18 @@ def reward_text(reward: Reward) -> str:
         case TakeMentat():
             # The original game's Mentat icon [DI p. 16].
             return "Take the Mentat from its space"
+        case CommissionDreadnought():
+            # Rise of Ix's Dreadnought icon: "you may commission" [Rise of Ix
+            # p. 6] (docs/rules/rise-of-ix.md 6).
+            return "Commission a dreadnought"
+        case PlaceNegotiator():
+            # Rise of Ix's Tech Negotiation icon: "you may take a troop"
+            # [Rise of Ix p. 4] (docs/rules/rise-of-ix.md 4).
+            return "Place a troop from your supply on the Ix board as a Negotiator"
+        case Freighter():
+            # Rise of Ix's Freighter icon: "you may move your Freighter in one
+            # of two ways" [Rise of Ix p. 5] (docs/rules/rise-of-ix.md 5).
+            return "Move your Freighter up one space or recall it"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "Use your Leader's Signet Ring ability"

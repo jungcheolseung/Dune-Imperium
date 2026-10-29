@@ -29,6 +29,8 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, replace
 from typing import Final
 
+from dune_imperium.content.bloodlines.tech import TECH_IDS
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
@@ -70,6 +72,9 @@ def _personal_zone_instances(player: PlayerState) -> Iterator[str]:
     yield from player.in_play
     yield from player.trashed
     yield from player.imperium_set_aside
+    # Rise of Ix: Ilesa Ecaz's face-down set-aside card.
+    if player.set_aside_card_id:
+        yield player.set_aside_card_id
 
 
 def _all_personal_instances(state: GameState) -> Iterator[str]:
@@ -222,6 +227,106 @@ def _require_unique(instance_ids: Iterable[str], zone_name: str) -> tuple[str, .
     return instances
 
 
+def _ix_fields_absent(player: PlayerState) -> bool:
+    """Whether every Rise of Ix seat field is at its default."""
+
+    return not (
+        player.dreadnoughts_supply
+        or player.dreadnoughts_garrison
+        or player.dreadnoughts_conflict
+        or player.freighter_space
+        or player.negotiators
+        or player.snooper_faction_ids
+        or player.set_aside_card_id
+        or player.set_aside_returned_turn
+        or player.turns_finished_round
+    )
+
+
+def _check_rise_of_ix(state: GameState) -> None:
+    """Rise of Ix's seat fields (observation v39, stage P4a).
+
+    A game without the option leaves every one at its default, so its state
+    hashes are those of the engine before the fields existed
+    (``PlayerState.HASH_OMITTED_AT_DEFAULT``). In a Rise of Ix game a seat
+    owns two dreadnoughts at most, the one on a Control space included
+    [Rise of Ix p. 6]; setup gives it exactly two [Rise of Ix p. 3]. The
+    Intrigue cards a seat knows are ``_check_known_intrigue``'s.
+    """
+
+    tiles = frozenset(_all_tech_ids(state))
+    if not state.config.rise_of_ix:
+        for player in state.players:
+            if not _ix_fields_absent(player):
+                raise InvariantViolation(
+                    f"player {player.player_id} holds Rise of Ix state "
+                    "outside a Rise of Ix game"
+                )
+        if tiles & frozenset(IX_TECH_IDS):
+            raise InvariantViolation(
+                "a Rise of Ix Tech tile is in play outside a Rise of Ix game"
+            )
+        return
+    if not state.config.tech_module and tiles & frozenset(TECH_IDS):
+        # The Ix board holds the Tech tiles of a Rise of Ix game without the
+        # Tech Module [Rise of Ix p. 4]; the Ixian Embassy's are not in play.
+        raise InvariantViolation(
+            "a Tech Module tile is in play in a Rise of Ix game without the Tech Module"
+        )
+    for player in state.players:
+        on_spaces = sum(
+            1 for _, seat, _ in state.dreadnought_control if seat == player.player_id
+        )
+        owned = (
+            player.dreadnoughts_supply
+            + player.dreadnoughts_garrison
+            + player.dreadnoughts_conflict
+            + on_spaces
+        )
+        # Setup gives each seat its two [Rise of Ix p. 3] and none is ever
+        # lost: one is in the supply, the garrison, the Conflict or on a
+        # Control space (``PlayerState`` bounds the first three at two).
+        if owned != 2:
+            raise InvariantViolation(
+                f"player {player.player_id} owns {owned} dreadnoughts"
+            )
+
+
+def _check_known_intrigue(state: GameState) -> None:
+    """The Intrigue cards a seat knows and another seat does not (OQ-149,
+    ``rules.intrigue_knowledge``): only Imperium Ceremony (Immortality) and
+    Rise of Ix record them, and every one is in the Intrigue deck or in
+    another seat's held Intrigue -- a card that reached a public zone (a
+    played one resolving included) or the seat's own hand has left the record
+    by the end of the transition."""
+
+    recorded = state.config.immortality or state.config.rise_of_ix
+    deck = frozenset(state.intrigue_deck)
+    resolving = frozenset(resolving_intrigue_ids(state))
+    for player in state.players:
+        if player.known_intrigue_ids and not recorded:
+            raise InvariantViolation(
+                f"player {player.player_id} records known Intrigue in a game "
+                "without Immortality or Rise of Ix"
+            )
+        held_elsewhere = frozenset(
+            card
+            for other in state.players
+            if other.player_id != player.player_id
+            for card in other.intrigue_cards
+        )
+        stale = [
+            card
+            for card in player.known_intrigue_ids
+            if card in resolving or (card not in deck and card not in held_elsewhere)
+        ]
+        if stale:
+            raise InvariantViolation(
+                f"player {player.player_id} still records known Intrigue {stale} "
+                "played face up or outside the deck and the other seats' hands"
+            )
+
+
 def check_state_invariants(state: GameState, census: CardCensus) -> None:
     """Check every ``GameState`` invariant, then global conservation of every
     tracked card population."""
@@ -237,6 +342,8 @@ def check_state_invariants(state: GameState, census: CardCensus) -> None:
                 f"player {player.player_id}'s public deck top {top} is not "
                 f"the top of the deck {player.deck[: len(top) + 1]}"
             )
+    _check_rise_of_ix(state)
+    _check_known_intrigue(state)
     personal = _require_unique(_all_personal_instances(state), "personal cards")
     fixed_personal = frozenset(
         instance_id
@@ -511,12 +618,38 @@ def _scramble_conflicts(state: GameState) -> tuple[tuple[str, ...], tuple[str, .
     return deck, unused
 
 
+def _keep_known_intrigue(
+    deck: tuple[str, ...],
+    peeked: int,
+    known: frozenset[str],
+    dealt: tuple[str, ...],
+) -> tuple[str, ...]:
+    """The scrambled Intrigue deck: the first ``peeked`` cards and the cards
+    the observer knows stay where they are, every other place takes the
+    next card of ``dealt``."""
+
+    if not known:
+        return (*deck[:peeked], *dealt)
+    rest = iter(dealt)
+    return tuple(
+        card if index < peeked or card in known else next(rest)
+        for index, card in enumerate(deck)
+    )
+
+
 def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
     # Imperium Ceremony shows the observer the deck's top cards, which
-    # therefore stay in place.
+    # therefore stay in place, and so do the Intrigue cards the observer
+    # knows (Rise of Ix, ``PlayerState.known_intrigue_ids``): in the deck at
+    # their depth, and in another seat's hand.
     peeked_intrigue = peeked_intrigue_ids(state, observer)
+    known_intrigue = frozenset(state.players[observer].known_intrigue_ids)
     revealed_contracts = revealed_contract_ids(state)
-    intrigue_pool: list[str] = list(state.intrigue_deck[len(peeked_intrigue) :])
+    intrigue_pool: list[str] = [
+        card
+        for card in state.intrigue_deck[len(peeked_intrigue) :]
+        if card not in known_intrigue
+    ]
     scrambled_conflict_deck, scrambled_unused_conflicts = _scramble_conflicts(state)
     players = list(state.players)
     resolving = set(resolving_intrigue_ids(state))
@@ -545,19 +678,32 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
             continue
         # Publicly known hand cards stay in the hand, and the deck's public
         # top cards (OQ-145) stay on top; only the face-down draws trade
-        # places with the rest of the deck.
+        # places with the rest of the deck, and with Ilesa Ecaz's face-down
+        # set-aside card (Rise of Ix), which came from that hand.
         known = set(player.hand_public)
         secret_hand = tuple(card for card in player.hand if card not in known)
         public_top = player.deck_public_top
+        aside = player.set_aside_card_id
+        pool = (*secret_hand, *player.deck[len(public_top) :])
         secret, rest = _split_reversed(
-            (*secret_hand, *player.deck[len(public_top) :]), len(secret_hand)
+            (*pool, aside) if aside else pool, len(secret_hand)
         )
+        if aside:
+            aside, rest = rest[-1], rest[:-1]
         hand = (*player.hand_public, *secret)
         deck = (*public_top, *rest)
         intrigue_pool.extend(
-            card for card in player.intrigue_cards if card not in resolving
+            card
+            for card in player.intrigue_cards
+            if card not in resolving and card not in known_intrigue
         )
-        players[seat] = replace(player, hand=hand, deck=deck, twisted_deck=twisted)
+        players[seat] = replace(
+            player,
+            hand=hand,
+            deck=deck,
+            twisted_deck=twisted,
+            set_aside_card_id=aside,
+        )
 
     # Arrakeen Scouts: the board's face-down Intrigue cards are as unknown
     # as the deck, so they join the pool and take its first cards back.
@@ -574,7 +720,9 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         if seat == observer:
             continue
         kept = tuple(
-            card for card in state.players[seat].intrigue_cards if card in resolving
+            card
+            for card in state.players[seat].intrigue_cards
+            if card in resolving or card in known_intrigue
         )
         held = len(state.players[seat].intrigue_cards) - len(kept)
         players[seat] = replace(
@@ -625,7 +773,12 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         scouts_goods_cards=scouts_goods_cards,
         scouts_secret_picks=tuple(secret_picks),
         scouts_bids=bids,
-        intrigue_deck=(*peeked_intrigue, *reordered_intrigue[cursor:]),
+        intrigue_deck=_keep_known_intrigue(
+            state.intrigue_deck,
+            len(peeked_intrigue),
+            known_intrigue,
+            reordered_intrigue[cursor:],
+        ),
         imperium_deck=tuple(reversed(state.imperium_deck)),
         # The Contracts an open Coercive Negotiation revealed are face up to
         # the whole table [Coercive Negotiation card] and stay on top of the

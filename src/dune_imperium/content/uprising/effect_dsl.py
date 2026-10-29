@@ -1229,7 +1229,13 @@ class AcquireReserveCard:
 class AcquireTech:
     """The Acquire Tech icon with a ``discount`` (Tech Module): open the
     owner's choice of a face-up Tech tile at ``discount`` spice off
-    [Bloodlines pp. 7, 12]."""
+    [Bloodlines pp. 7, 12].
+
+    In a Rise of Ix game it is the Ix board's Acquire Tech icon
+    ("아이콘마다 ... 하나를 얻을 수 있다("may")", [Rise of Ix p. 4],
+    docs/rules/rise-of-ix.md 4): the same piece, one per icon, opening the
+    choice of an Ix tile that the owner may also decline, at ``discount`` off
+    and with any Negotiators returned (``rules.tech``)."""
 
     discount: int = 1
 
@@ -1885,6 +1891,49 @@ class ReserveCostDiscount:
             raise ValueError("a Reserve discount must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class CommissionDreadnought:
+    """Commission one of the owner's dreadnoughts: one from its supply to its
+    garrison for each Dreadnought icon ("you may commission", [Rise of Ix
+    p. 6], docs/rules/rise-of-ix.md 6).
+
+    An optional piece ("may"): the owner takes the icon or leaves it. With
+    no dreadnought in the supply -- a seat has two at most, and "supply에
+    없으면 더 얻지 못한다" -- the icon has no effect and the space or card
+    that prints it is still played (designer ruling, BGG forum). A second
+    icon is a second piece; the piece has no field.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class PlaceNegotiator:
+    """Tech Negotiation: send one of the owner's troops from its supply to
+    the Ix board as a Negotiator, for each Tech Negotiation icon ("you may
+    take a troop", [Rise of Ix p. 4], docs/rules/rise-of-ix.md 4).
+
+    An optional piece ("may"): the owner takes the icon or leaves it. With
+    no troop in the supply the icon has no effect ("supply가 비면 아무 일도
+    없다") and the space or card that prints it is still played. A later
+    Acquire Tech may return any number of Negotiators for one spice off
+    each (``rules.tech``). A second icon is a second piece; the piece has
+    no field.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class Freighter:
+    """The Freighter icon: move the owner's Freighter on the Shipping track,
+    one choice for each icon ("Freighter 아이콘마다 Freighter를 둘 가운데
+    하나로 움직일 수 있다("may"): 한 칸 위로(맨 위면 불가) 또는 맨 아래로
+    회수", [Rise of Ix p. 5], docs/rules/rise-of-ix.md 5).
+
+    An optional piece: the owner moves up one space (never from the top),
+    recalls the Freighter to the bottom -- taking the rewards of its space and
+    of every space below, in the order it chooses (``rules.shipping_track``)
+    -- or neither. A second icon is a second piece; the piece has no field.
+    """
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -1967,6 +2016,9 @@ type Reward = (
     | ReserveCostDiscount
     | DoubleBaseHarvestSpice
     | DoubleBonusHarvestSpice
+    | CommissionDreadnought
+    | PlaceNegotiator
+    | Freighter
 )
 
 

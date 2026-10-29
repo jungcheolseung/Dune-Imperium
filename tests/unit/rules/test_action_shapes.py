@@ -40,11 +40,16 @@ _FULL = RulesetConfig(
 
 @cache
 def _catalog_arguments() -> dict[str, frozenset[str]]:
-    """Each catalog id's argument names, every option enabled, and the
-    original Dune: Imperium's (its own ids, plan 15.4)."""
+    """Each catalog id's argument names, every option enabled, the original
+    Dune: Imperium's (its own ids, plan 15.4) and the original with Rise of
+    Ix (the dreadnought rows, stage P4b)."""
 
     names: dict[str, set[str]] = {}
-    catalogs = (_FULL, RulesetConfig(base_game=BaseGame.IMPERIUM))
+    catalogs = (
+        _FULL,
+        RulesetConfig(base_game=BaseGame.IMPERIUM),
+        RulesetConfig(base_game=BaseGame.IMPERIUM, rise_of_ix=True),
+    )
     for template in (t for config in catalogs for t in ActionCodec(config).catalog):
         names.setdefault(template.action_id, set()).update(
             key for key, _ in template.arguments

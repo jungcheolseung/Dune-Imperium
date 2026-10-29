@@ -42,7 +42,7 @@ const SERVER_ERROR_KO = {
   "a save document must be a JSON object": "저장 파일의 형식이 올바르지 않습니다",
   "not a dune-imperium save document": "이 게임의 저장 파일이 아닙니다",
   "the replayed save does not reproduce its recorded state hash": "저장본을 다시 재생한 결과가 기록된 상태와 다릅니다",
-  "Rise of Ix has no content in the engine yet": "엔진에 아직 익스의 부상 내용이 없습니다"
+  "Rise of Ix has no content in the engine with Uprising yet (stage P7)": "엔진에 아직 봉기와 함께 두는 익스의 부상 내용이 없습니다(이후 단계)"
 };
 
 const SERVER_ERROR_KO_PATTERNS = [

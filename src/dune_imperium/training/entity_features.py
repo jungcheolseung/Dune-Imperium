@@ -61,18 +61,19 @@ from dune_imperium.adapters.observation_encoding import (
     CONFLICT_IDS,
     CONTRACT_IDS,
     FACTION_IDS,
-    IMPERIUM_IDENTITIES,
     INTRIGUE_IDS,
     LEADER_IDS,
+    NON_UPRISING_IDENTITIES,
     PERSONAL_CARD_IDS,
     POST_IDS,
     RESEARCH_SPACE_IDS,
     SCOUTS_ITEM_IDS,
     SKILL_IDS,
     SPACE_IDS,
+    TECH_IDS,
 )
 from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
-from dune_imperium.content.bloodlines.tech import TECH_IDS, TECH_TILES_BY_ID
+from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.bloodlines.tech_abilities import (
     TECH_ABILITIES,
     TECH_ACQUIRE_ABILITIES,
@@ -186,8 +187,9 @@ class Vocabulary:
 # A column some Uprising entity uses keeps the scale Uprising's entities give
 # it, so every Uprising row reads exactly as before the original game's own
 # entities joined (observation v35, ``IMPERIUM_IDENTITIES``; user approval
-# 2026-10-27: Uprising rows byte-identical, scales included); an original
-# entity may then read past 1 in such a column.
+# 2026-10-27: Uprising rows byte-identical, scales included), and Rise of
+# Ix's after them (v39, ``NON_UPRISING_IDENTITIES``); such an entity may then
+# read past 1 in such a column.
 
 
 def _table(name: str, ids: tuple[str, ...], rows: list[dict[str, float]]) -> Vocabulary:
@@ -200,7 +202,9 @@ def _table(name: str, ids: tuple[str, ...], rows: list[dict[str, float]]) -> Voc
                 matrix[index, position[key]] = amount
     scale = np.abs(matrix).max(axis=0)
     uprising = [
-        index for index, entity in enumerate(ids) if entity not in IMPERIUM_IDENTITIES
+        index
+        for index, entity in enumerate(ids)
+        if entity not in NON_UPRISING_IDENTITIES
     ]
     if len(uprising) < len(ids):
         own = np.abs(matrix[uprising]).max(axis=0) if uprising else np.zeros_like(scale)
@@ -346,11 +350,12 @@ def _leader_records(leader: Any) -> dict[str, float]:
 
 
 def _tech_records(tech_id: str) -> dict[str, float]:
+    # A Rise of Ix tile prints no ability record before stage P4c (v39).
     return _records(
         ("acquire", TECH_ACQUIRE_ABILITIES.get(tech_id)),
         *(
             (f"tile_{ability.timing.value}", ability)
-            for ability in TECH_ABILITIES[tech_id]
+            for ability in TECH_ABILITIES.get(tech_id, ())
         ),
     )
 

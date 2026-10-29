@@ -22,6 +22,22 @@ Each unit recruited this turn reserves a deploy slot for its own kind: a
 recruited Commander's slot is filled only by a Commander and a recruited
 troop's only by a troop, and the garrison extra (normally two) is shared by
 both kinds on top of those (user ruling OQ-070, ``deployment_rooms``).
+
+Rise of Ix dreadnoughts are a third kind (``deploy_dreadnoughts`` /
+``withdraw_dreadnoughts``): "You may deploy any or all units recruited during
+your current turn ... plus up to two more units from your garrison" and "If
+you commissioned the dreadnought while sending an Agent to a Combat space, you
+may deploy it to the Conflict" [Rise of Ix p. 6] (docs/rules/rise-of-ix.md 6,
+docs/base-game-and-ix-plan.md 17.6 item 2). Each dreadnought commissioned this
+turn (``frames.DREADNOUGHTS_COMMISSIONED_KEY``) reserves a slot for a
+dreadnought outside the garrison share, and the garrison share of two is
+shared by the troops, the Commanders and the dreadnoughts together
+(``unit_deployment_rooms``). A dreadnought is a unit but no troop
+(docs/rules/rise-of-ix.md 6, the table): the turn's unit count
+(``PlayerState.units_deployed_turn`` and its peak and committed floor, which
+Distraction, Coercive Negotiation and the Baron's Masterstroke read) never
+holds one, and the frame keeps its own deployed and withdrawable counts
+(``DEPLOYED_DREADNOUGHTS_KEY``, ``WITHDRAWABLE_DREADNOUGHTS_KEY``).
 """
 
 from collections.abc import Mapping
@@ -43,12 +59,17 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
+    SHIPPING_TROOPS_KEY,
+    UNGAINED_SHIPPING_TROOPS_KEY,
     FrameKind,
+    commissioned_dreadnought_count,
     owes_held_draw,
     owes_track_spy,
     own_turn_frame_index,
     recruited_commander_count,
     replace_player,
+    shipping_troop_count,
+    ungained_shipping_troop_count,
     with_context,
 )
 
@@ -70,6 +91,11 @@ DEPLOYED_UNITS_KEY: Final = "combat_troops_deployed"
 DEPLOYED_COMMANDERS_KEY: Final = "combat_commanders_deployed"
 WITHDRAWABLE_UNITS_KEY: Final = "combat_troops_withdrawable"
 WITHDRAWABLE_COMMANDERS_KEY: Final = "combat_commanders_withdrawable"
+# Rise of Ix dreadnoughts, counted on their own (absent means none): the
+# dreadnoughts the turn's basic deployment moved and the ones still eligible
+# for a withdrawal. Neither is part of the troop or Commander counts above.
+DEPLOYED_DREADNOUGHTS_KEY: Final = "combat_dreadnoughts_deployed"
+WITHDRAWABLE_DREADNOUGHTS_KEY: Final = "combat_dreadnoughts_withdrawable"
 
 
 # Harkonnen Advisor troops the supply could not give yet: the part of the
@@ -219,13 +245,41 @@ def deployment_rooms(
     availability (garrison contents, undeployable troops) is the caller's.
     """
 
-    troop_excess = max(0, troops_deployed - troops_recruited)
-    commander_excess = max(0, commanders_deployed - commanders_recruited)
-    shared = max(0, existing_limit - troop_excess - commander_excess)
-    return (
-        max(0, troops_recruited - troops_deployed) + shared,
-        max(0, commanders_recruited - commanders_deployed) + shared,
+    troop_room, commander_room, _ = unit_deployment_rooms(
+        recruited=(troops_recruited, commanders_recruited, 0),
+        deployed=(troops_deployed, commanders_deployed, 0),
+        existing_limit=existing_limit,
     )
+    return troop_room, commander_room
+
+
+def unit_deployment_rooms(
+    *,
+    recruited: tuple[int, int, int],
+    deployed: tuple[int, int, int],
+    existing_limit: int,
+) -> tuple[int, int, int]:
+    """Return how many more troops, Commanders and dreadnoughts may deploy.
+
+    ``deployment_rooms``' rule for the three kinds of unit, each triple in
+    that order. "You may deploy any or all units recruited during your
+    current turn ..., plus up to two more units from your garrison."
+    [Rise of Ix p. 6]: a dreadnought commissioned this turn reserves a slot
+    for a dreadnought, as a recruited Commander does for a Commander
+    (docs/base-game-and-ix-plan.md 17.6 item 2), and the garrison extra is
+    shared by all three kinds on top of those -- a deployment is legal iff
+    ``sum(max(0, d - r)) <= existing_limit``. Each room is the kind's own
+    unfilled recruit slots plus the unused garrison extra; availability is
+    the caller's.
+    """
+
+    pairs = tuple(zip(recruited, deployed, strict=True))
+    excess = sum(max(0, done - slots) for slots, done in pairs)
+    shared = max(0, existing_limit - excess)
+    troops, commanders, dreadnoughts = (
+        max(0, slots - done) + shared for slots, done in pairs
+    )
+    return troops, commanders, dreadnoughts
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,8 +289,10 @@ class _Deployment:
     context: dict[str, ActionValue]
     troop_room: int
     commander_room: int
+    dreadnought_room: int
     withdrawable_troops: int
     withdrawable_commanders: int
+    withdrawable_dreadnoughts: int
 
 
 def _unit_count(context: dict[str, ActionValue], key: str) -> int:
@@ -272,7 +328,7 @@ def _deployment_context(
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return None
     if context["pending_combat_deployment"] is not True:
-        return None
+        return _shipping_deployment(context)
     recruited = context["troops_recruited"]
     if isinstance(recruited, bool) or not isinstance(recruited, int):
         raise RuntimeError("Agent-turn effect frame has invalid recruit count")
@@ -284,14 +340,18 @@ def _deployment_context(
     # The room reads the allowance used, which a card retreat or loss leaves
     # alone (OQ-029, ``reconcile_deployment_after_retreat``).
     troops, commanders = _shares(context, DEPLOYED_UNITS_KEY, DEPLOYED_COMMANDERS_KEY)
-    troop_room, commander_room = deployment_rooms(
-        troops_recruited=recruited,
-        commanders_recruited=recruited_commander_count(
-            context, COMMANDERS_RECRUITED_KEY
+    troop_room, commander_room, dreadnought_room = unit_deployment_rooms(
+        recruited=(
+            recruited,
+            recruited_commander_count(context, COMMANDERS_RECRUITED_KEY),
+            commissioned_dreadnought_count(context),
+        ),
+        deployed=(
+            troops,
+            commanders,
+            _unit_count(context, DEPLOYED_DREADNOUGHTS_KEY),
         ),
         existing_limit=existing_limit,
-        troops_deployed=troops,
-        commanders_deployed=commanders,
     )
     withdrawable_troops, withdrawable_commanders = _shares(
         context, WITHDRAWABLE_UNITS_KEY, WITHDRAWABLE_COMMANDERS_KEY
@@ -300,8 +360,42 @@ def _deployment_context(
         context,
         troop_room,
         commander_room,
+        dreadnought_room,
         withdrawable_troops,
         withdrawable_commanders,
+        _unit_count(context, WITHDRAWABLE_DREADNOUGHTS_KEY),
+    )
+
+
+def _shipping_deployment(context: dict[str, ActionValue]) -> _Deployment | None:
+    """The deployment window of an Agent turn with no Combat space, which
+    only the troops a Shipping recruit brought in with Troop Transports open:
+    "You may deploy any of them to the Conflict" -- the card's sentence allows
+    the deployment, and "카드는 일반 규칙을 바꾼다 [DI p. 6]"
+    (docs/rules/rise-of-ix.md 15). Those troops have a room of their own, with
+    no garrison share of two and no Commander or dreadnought slot, and the
+    window closes with the turn's press. None without such troops, or while
+    the turn's deployment is blocked [Main p. 17]."""
+
+    shipping = shipping_troop_count(context)
+    if (
+        shipping < 1
+        or context.get("units_deploy_blocked") is True
+        or agent_turn_is_finishing(context)
+    ):
+        return None
+    troops, _commanders = _shares(context, DEPLOYED_UNITS_KEY, DEPLOYED_COMMANDERS_KEY)
+    withdrawable_troops, withdrawable_commanders = _shares(
+        context, WITHDRAWABLE_UNITS_KEY, WITHDRAWABLE_COMMANDERS_KEY
+    )
+    return _Deployment(
+        context,
+        max(0, shipping - troops),
+        0,
+        0,
+        withdrawable_troops,
+        withdrawable_commanders,
+        _unit_count(context, WITHDRAWABLE_DREADNOUGHTS_KEY),
     )
 
 
@@ -361,6 +455,38 @@ def legal_commander_deployments(
     return tuple(
         DomainAction(
             action_id="deploy_commanders",
+            actor=player,
+            arguments=(("count", count),),
+        )
+        for count in range(1, maximum + 1)
+    )
+
+
+def legal_dreadnought_deployments(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Enumerate the garrison dreadnought counts that may still deploy.
+
+    "If you commissioned the dreadnought while sending an Agent to a Combat
+    space, you may deploy it to the Conflict" [Rise of Ix p. 6], and a
+    dreadnought already in the garrison may be one of the "up to two more
+    units from your garrison" [Rise of Ix p. 6]. The window is the troops'
+    own (an Agent turn at a Combat space, or a Combat icon): each
+    dreadnought commissioned this turn keeps a slot for a dreadnought outside
+    the garrison share, which all three kinds of unit share
+    (``unit_deployment_rooms``).
+    """
+
+    if not state.config.rise_of_ix:
+        return ()
+    found = _deployment_context(state, player)
+    if found is None:
+        return ()
+    maximum = min(state.players[player].dreadnoughts_garrison, found.dreadnought_room)
+    return tuple(
+        DomainAction(
+            action_id="deploy_dreadnoughts",
             actor=player,
             arguments=(("count", count),),
         )
@@ -429,6 +555,37 @@ def legal_commander_withdrawals(
     return tuple(
         DomainAction(
             action_id="withdraw_commanders",
+            actor=player,
+            arguments=(("count", count),),
+        )
+        for count in range(1, maximum + 1)
+    )
+
+
+def legal_dreadnought_withdrawals(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Enumerate how many of this turn's deployed dreadnoughts may return.
+
+    The troops' withdrawal for the third kind (OQ-029): only dreadnoughts of
+    this turn's basic deployment that no retreat has taken since, and no more
+    than the Conflict holds. The turn's unit count a played card used
+    (``PlayerState.units_deployed_committed``) never holds a dreadnought, so
+    it bounds nothing here.
+    """
+
+    if not state.config.rise_of_ix:
+        return ()
+    found = _deployment_context(state, player)
+    if found is None:
+        return ()
+    maximum = min(
+        found.withdrawable_dreadnoughts, state.players[player].dreadnoughts_conflict
+    )
+    return tuple(
+        DomainAction(
+            action_id="withdraw_dreadnoughts",
             actor=player,
             arguments=(("count", count),),
         )
@@ -596,12 +753,92 @@ def apply_combat_deployment(
     return RuleResult(state=next_state, events=(event,))
 
 
+def _move_dreadnoughts(
+    state: GameState,
+    context: dict[str, ActionValue],
+    player: int,
+    delta: int,
+) -> GameState:
+    """Move ``delta`` dreadnoughts garrison→Conflict (negative: back).
+
+    A deployment adds to the dreadnoughts' allowance used and withdrawable
+    count, a withdrawal lowers both and gives its room back, as for the
+    troops (OQ-029). The turn's unit count, its peak and its committed
+    floor are left alone: a dreadnought is no troop (docs/rules/rise-of-ix.md
+    6, the table), so the Baron's Masterstroke, Distraction and Coercive
+    Negotiation never see it here.
+    """
+
+    owner = state.players[player]
+    next_owner = replace(
+        owner,
+        dreadnoughts_garrison=owner.dreadnoughts_garrison - delta,
+        dreadnoughts_conflict=owner.dreadnoughts_conflict + delta,
+    )
+    for key in (DEPLOYED_DREADNOUGHTS_KEY, WITHDRAWABLE_DREADNOUGHTS_KEY):
+        context[key] = _unit_count(context, key) + delta
+    frame = state.decision_stack[-1]
+    return replace(
+        state,
+        players=replace_player(state.players, next_owner),
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+
+
+def apply_dreadnought_deployment(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Deploy the selected count of garrison dreadnoughts to the Conflict."""
+
+    if action not in legal_dreadnought_deployments(state, action.actor):
+        raise ValueError("action is not a legal dreadnought deployment")
+    count = _count_argument(action)
+    _, context = current_agent_effect_context(state)
+    next_state = _move_dreadnoughts(state, context, action.actor, count)
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:deploy_dreadnoughts:"
+            f"{next_state.players[action.actor].dreadnoughts_conflict}"
+        ),
+        kind="dreadnoughts_deployed",
+        payload=(("count", count), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def apply_dreadnought_withdrawal(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Return dreadnoughts deployed this turn from the Conflict to the garrison."""
+
+    if action not in legal_dreadnought_withdrawals(state, action.actor):
+        raise ValueError("action is not a legal dreadnought withdrawal")
+    count = _count_argument(action)
+    _, context = current_agent_effect_context(state)
+    next_state = _move_dreadnoughts(state, context, action.actor, -count)
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:player:{action.actor}:withdraw_dreadnoughts:"
+            f"{next_state.players[action.actor].dreadnoughts_conflict}"
+        ),
+        kind="dreadnoughts_withdrawn",
+        payload=(("count", count), ("player", action.actor)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
 def reconcile_deployment_after_retreat(
     state: GameState,
     player: int,
     *,
     troops: int,
     commanders: int = 0,
+    dreadnoughts: int = 0,
 ) -> GameState:
     """Follow a card retreat or loss from the Conflict in the turn's counters.
 
@@ -624,25 +861,31 @@ def reconcile_deployment_after_retreat(
 
     Each kind's withdrawable share shrinks only by its own retreated units:
     a retreated troop (perhaps one deployed in an earlier turn) never takes
-    a Commander out of the window (user ruling OQ-070).
+    a Commander out of the window (user ruling OQ-070). A retreated
+    dreadnought lowers only the dreadnoughts' share and no unit count: the
+    turn's unit count holds no dreadnought (``_move_dreadnoughts``).
     """
 
     total = troops + commanders
-    if total < 1:
+    if total < 1 and dreadnoughts < 1:
         return state
     owner = state.players[player]
-    players = replace_player(
-        state.players,
-        replace(
-            owner,
-            # Floored at the count a played card used, but a retreat never
-            # raises it: a card may have been played off the turn's peak with
-            # fewer units left in the Conflict (OQ-016).
-            units_deployed_turn=max(
-                min(owner.units_deployed_committed, owner.units_deployed_turn),
-                owner.units_deployed_turn - total,
+    players = (
+        replace_player(
+            state.players,
+            replace(
+                owner,
+                # Floored at the count a played card used, but a retreat never
+                # raises it: a card may have been played off the turn's peak
+                # with fewer units left in the Conflict (OQ-016).
+                units_deployed_turn=max(
+                    min(owner.units_deployed_committed, owner.units_deployed_turn),
+                    owner.units_deployed_turn - total,
+                ),
             ),
-        ),
+        )
+        if total
+        else state.players
     )
     frames = list(state.decision_stack)
     for index in range(len(frames) - 1, -1, -1):
@@ -657,13 +900,18 @@ def reconcile_deployment_after_retreat(
         troop_share, commander_share = _shares(
             context, WITHDRAWABLE_UNITS_KEY, WITHDRAWABLE_COMMANDERS_KEY
         )
-        if not troop_share and not commander_share:
+        dreadnought_share = _unit_count(context, WITHDRAWABLE_DREADNOUGHTS_KEY)
+        if not troop_share and not commander_share and not dreadnought_share:
             break
         next_commanders = max(0, commander_share - commanders)
         context[WITHDRAWABLE_UNITS_KEY] = (
             max(0, troop_share - troops) + next_commanders
         )
         context[WITHDRAWABLE_COMMANDERS_KEY] = next_commanders
+        if dreadnought_share:
+            context[WITHDRAWABLE_DREADNOUGHTS_KEY] = max(
+                0, dreadnought_share - dreadnoughts
+            )
         frames[index] = replace(frame, context=tuple(sorted(context.items())))
         break
     return replace(state, players=players, decision_stack=tuple(frames))
@@ -815,20 +1063,135 @@ def grant_recruit_deployment(
     return _with_reveal_counts(state, index, recruited=recruited, owed=owed)
 
 
-def credit_owed_recruits(state: GameState, player: int, troops: int) -> GameState:
+def grant_shipping_troop_deployment(
+    state: GameState, player: int, troops: int
+) -> GameState:
+    """Let ``player`` deploy the ``troops`` a Shipping recruit just brought in
+    with Troop Transports, in its own turn, wherever the Agent went
+    (``frames.SHIPPING_TROOPS_KEY``): in a Reveal turn they are "these
+    troops" (``RECRUITS_DEPLOYABLE_KEY``, any of them, no Combat icon
+    needed); in an Agent turn, or on the turn frame before the placement
+    carries them over, a count of their own."""
+
+    if troops < 1:
+        return state
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if not isinstance(frame.decision, PlayerDecision) or (
+            frame.decision.owner != player
+        ):
+            continue
+        if frame.kind == FrameKind.REVEAL:
+            return _with_reveal_counts(state, index, recruited=troops, owed=0)
+        if frame.kind in (FrameKind.AGENT_EFFECTS, FrameKind.TURN):
+            context = dict(frame.context)
+            context[SHIPPING_TROOPS_KEY] = shipping_troop_count(context) + troops
+            return replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:index],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                    *state.decision_stack[index + 1 :],
+                ),
+            )
+    return state
+
+
+def note_ungained_shipping_troops(
+    state: GameState, player: int, troops: int
+) -> GameState:
+    """Record the ``troops`` a Shipping recruit with Troop Transports could
+    not get from the supply, on ``player``'s own turn frame.
+
+    They stay in the seat's shortfall (``PlayerState.ungained_troops``,
+    OQ-030); the frame remembers which part of it is theirs so a later refill
+    can give them Troop Transports' allowance (``refill_shipping_troops``),
+    as ``UNGAINED_UNDEPLOYABLE_KEY`` does for a Harkonnen Advisor troop
+    (OQ-038). Outside the owner's turn nothing is kept: the shortfall is
+    dropped there and nothing refills it."""
+
+    index = own_turn_frame_index(state, player)
+    if index is None or troops < 1:
+        return state
+    frame = state.decision_stack[index]
+    context = dict(frame.context)
+    context[UNGAINED_SHIPPING_TROOPS_KEY] = (
+        ungained_shipping_troop_count(context) + troops
+    )
+    return _with_frame_context(state, index, context)
+
+
+def refill_shipping_troops(
+    state: GameState, player: int, troops: int, *, ungained: int
+) -> GameState:
+    """Give a refilled Shipping recruit's troops Troop Transports' allowance.
+
+    "Refilled troops are this turn's recruits" (OQ-030, re-ruling 2026-10-04:
+    "이 troop은 이번 turn의 recruit이므로 turn 주인의 좌석이면 Combat 배치
+    몫에 들어간다"), so the part of the shortfall that came from a Shipping
+    recruit with Troop Transports joins the allowance its troops would have
+    had (``grant_shipping_troop_deployment``: "You may deploy any of them to
+    the Conflict", docs/rules/rise-of-ix.md 15). ``troops`` are the refilled
+    troops that are deployable at all (a Harkonnen Advisor troop is not);
+    ``ungained`` is the seat's shortfall before this refill. Troops are
+    indistinguishable, so a partial refill gives the Troop Transports troops
+    before the plain recruits, as it gives the deployable recruits before the
+    undeployable one (``refill_undeployable_troops``; the documents are
+    silent, a project convention in the owner's favour); in a Reveal turn the
+    ``DeployTheseTroops`` lines' owed troops come before both (OQ-140,
+    ``credit_owed_recruits``), so the caller passes what those left."""
+
+    index = own_turn_frame_index(state, player)
+    if index is None or troops < 1:
+        return state
+    context = dict(state.decision_stack[index].context)
+    waiting = min(ungained_shipping_troop_count(context), ungained)
+    paid = min(waiting, troops)
+    if not paid:
+        return state
+    if waiting - paid:
+        context[UNGAINED_SHIPPING_TROOPS_KEY] = waiting - paid
+    else:
+        context.pop(UNGAINED_SHIPPING_TROOPS_KEY, None)
+    return grant_shipping_troop_deployment(
+        _with_frame_context(state, index, context), player, paid
+    )
+
+
+def _with_frame_context(
+    state: GameState, index: int, context: dict[str, ActionValue]
+) -> GameState:
+    frame = state.decision_stack[index]
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:index],
+            replace(frame, context=tuple(sorted(context.items()))),
+            *state.decision_stack[index + 1 :],
+        ),
+    )
+
+
+def credit_owed_recruits(
+    state: GameState, player: int, troops: int
+) -> tuple[GameState, int]:
     """Count ``troops`` refilled into ``player``'s garrison in their Reveal
     turn as the ``DeployTheseTroops`` lines' troops first, as many as those
     lines still owe (OQ-140, user ruling 2026-10-28: "이 카드들 몫 먼저" --
-    a refill goes to these cards' owed troops before another effect's)."""
+    a refill goes to these cards' owed troops before another effect's).
+    Returns the state and how many of the ``troops`` it credited."""
 
     index = own_reveal_frame_index(state, player)
     if index is None or troops < 1:
-        return state
+        return state, 0
     owed = recruits_owed(dict(state.decision_stack[index].context))
     credited = min(troops, owed)
     if not credited:
-        return state
-    return _with_reveal_counts(state, index, recruited=credited, owed=-credited)
+        return state, 0
+    return (
+        _with_reveal_counts(state, index, recruited=credited, owed=-credited),
+        credited,
+    )
 
 
 def recruits_deployable(context: Mapping[str, object]) -> int:
@@ -1058,6 +1421,7 @@ def _recruited_units(context: dict[str, ActionValue], owner: PlayerState) -> int
         troops
         + owner.track_troops_recruited_turn
         + recruited_commander_count(context, COMMANDERS_RECRUITED_KEY)
+        + commissioned_dreadnought_count(context)
     )
 
 
@@ -1118,6 +1482,7 @@ def settle_finishing_agent_turn(result: RuleResult) -> RuleResult:
             and (
                 legal_combat_deployments(reopened_state, owner)
                 or legal_commander_deployments(reopened_state, owner)
+                or legal_dreadnought_deployments(reopened_state, owner)
             )
         )
     ):

@@ -4,6 +4,7 @@ from copy import replace
 from dataclasses import dataclass
 from enum import StrEnum
 
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.abilities import Ability, AbilityMark
@@ -129,10 +130,21 @@ def deck_top_offered(state: GameState, player: int) -> bool:
     (``PlayerState.acquire_to_deck_top_round``); a card acquired before the
     Plot was played is unaffected (13.3), which holds as it is the Plot's
     play that sets the flag.
+
+    Rise of Ix's Spaceport: "얻는 카드를 덱 위에 놓을 수 있다"
+    (docs/rules/rise-of-ix.md 4) -- the same choice for every card its owner
+    acquires, whenever it is acquired: the tile prints no round or turn, so
+    it needs no open Reveal (stage P4c-2c). Both can apply at once; the card
+    is placed once, where the owner chooses, and a Bypass Protocol card that
+    is forced on top (``AcquireCardUpTo.to_deck_top``) has no choice to make.
     """
 
-    return state.players[player].acquire_to_deck_top_round and reveal_is_open_for(
-        state, player
+    owner = state.players[player]
+    return (
+        owner.acquire_to_deck_top_round and reveal_is_open_for(state, player)
+    ) or (
+        state.config.rise_of_ix
+        and has_tech(owner.tech_ids, TechAbility.ACQUIRED_CARDS_ON_DECK)
     )
 
 

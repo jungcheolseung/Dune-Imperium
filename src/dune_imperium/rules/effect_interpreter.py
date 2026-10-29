@@ -27,6 +27,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AtFactionSpace,
     AtMakerSpace,
     CommanderDiscountThisTurn,
+    CommissionDreadnought,
     Condition,
     ContractCompletedThisTurn,
     Cost,
@@ -42,6 +43,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     FactionBond,
     FlipBattleCard,
     FlipFaceUpConflictCard,
+    Freighter,
     GainCombatStrength,
     GainInfluence,
     GainResources,
@@ -69,6 +71,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PeekTopCard,
     PermanentRevealPersuasion,
+    PlaceNegotiator,
     PlaceSpy,
     RecallSpy,
     RecallYourAgent,
@@ -117,6 +120,7 @@ from dune_imperium.rules.contracts import (
     contract_gain_opens_market,
     market_contract_ids,
 )
+from dune_imperium.rules.dreadnought_commission import commission_block
 from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
     agent_turn_space_id,
@@ -143,6 +147,7 @@ from dune_imperium.rules.intrigue_deck import (
     shufflable_intrigue_discard,
 )
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
+from dune_imperium.rules.negotiators import negotiator_block
 from dune_imperium.rules.ornithopter import has_ornithopter_fleet
 from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.sandworms import sandworm_block
@@ -180,6 +185,9 @@ type ChoiceSlot = (
     | PassTurn
     | OpponentLosesTroop
     | RecallYourAgent
+    | CommissionDreadnought
+    | PlaceNegotiator
+    | Freighter
 )
 
 
@@ -453,6 +461,12 @@ def choice_slots(
                     slots.append(reward)
                 case RecallYourAgent():
                     # Urgent Mission: the owner names the Agent that returns.
+                    slots.append(reward)
+                case CommissionDreadnought() | PlaceNegotiator() | Freighter():
+                    # "you may commission" [Rise of Ix p. 6], "you may take a
+                    # troop" [Rise of Ix p. 4], "you may move your Freighter"
+                    # [Rise of Ix p. 5]: the owner takes the icon or leaves it,
+                    # one choice for each icon.
                     slots.append(reward)
                 case _:
                     pass
@@ -991,6 +1005,20 @@ def reward_can_change_something(
             # could change something: an Agent on a board space or in the
             # Conflict to return.
             return bool(owner.agent_locations) or owner.agent_in_conflict > 0
+        case CommissionDreadnought():
+            # "supply에 없으면 더 얻지 못한다" (docs/rules/rise-of-ix.md 6): a
+            # line paying for the icon (Advanced Weaponry's 3 Solari,
+            # OQ-113 (C)) is played only while a dreadnought is in the supply.
+            return commission_block(state, player) is None
+        case PlaceNegotiator():
+            # "supply가 비면 아무 일도 없다" (docs/rules/rise-of-ix.md 4): a
+            # line paying for the icon is played only while a troop is in
+            # the supply.
+            return negotiator_block(state, player) is None
+        case Freighter():
+            # The Freighter can always move: up from any space but the top,
+            # or recalled from the top (``rules.shipping_track``).
+            return True
         case TakeMentat():
             # Calculated Hire's "[1 spice] -> Take the Mentat": the Mentat
             # is taken only from its own space [DI p. 13], so the cost line
@@ -1328,6 +1356,9 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | AcquireTleilaxuCard
             | OpponentLosesTroop
             | RecallYourAgent
+            | CommissionDreadnought
+            | PlaceNegotiator
+            | Freighter
             | RevealContractsTakeOne,
         )
     )

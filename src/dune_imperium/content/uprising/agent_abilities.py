@@ -631,13 +631,24 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 SpendSpecimens(2), AdvanceTleilaxu(2)
             ),
             # Spice Smugglers (original game): "[2 spice] -> [Spacing Guild
-            # Influence] [3 Solari]" -- a paid arrow whose first reward is a
-            # fixed Faction's Influence (no choice) and whose Solari keep it
-            # worth paying at the top of the track (OQ-060, OQ-071).
-            _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI: _pay(
-                PayResources(spice=2),
-                GainInfluence(factions=(Faction.SPACING_GUILD,)),
-                GainResources(solari=3),
+            # Influence] [3 Solari]" -- a paid arrow whose two rewards wait as
+            # icons once the spice is paid, each its own step in the owner's
+            # order: user ruling 2026-10-29 (OQ-148 (가)), as Duncan Idaho's
+            # (OQ-027, OQ-106). The Solari keep it worth paying at the top of
+            # the Guild's track (OQ-060, OQ-071).
+            _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI: (
+                Ability(
+                    timing=AbilityTiming.AGENT_BOX,
+                    sections=(
+                        EffectSection(
+                            rewards=(GainInfluence(factions=(Faction.SPACING_GUILD,)),),
+                            costs=(PayResources(spice=2),),
+                        ),
+                        _line(GainResources(solari=3)),
+                    ),
+                    mark=AbilityMark.OPTIONAL,
+                    armed_icons=("influence", "solari"),
+                )
             ),
             # Fremen Camp (original game): "[2 spice] -> [3 troops]" -- a paid
             # arrow, the troops recruited at once [DI p. 9] [FAQ p. 3].

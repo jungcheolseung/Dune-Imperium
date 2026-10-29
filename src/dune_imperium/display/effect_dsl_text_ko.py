@@ -60,6 +60,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CommandReached,
+    CommissionDreadnought,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -87,6 +88,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     FlipBattleCard,
     FlipFaceUpConflictCard,
     ForceEnemyRetreat,
+    Freighter,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
@@ -148,6 +150,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PeekTopCard,
     PermanentRevealPersuasion,
+    PlaceNegotiator,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
     RecallAgent,
@@ -1075,6 +1078,21 @@ def reward_text_ko(reward: Reward) -> str:
             # The original game's Mentat, as its Korean rulebook names it
             # ("멘타트를 가져와 지도자 위에 놓습니다" [DI-ko p. 16]).
             return "장소에서 멘타트 가져옴"
+        case CommissionDreadnought():
+            # Rise of Ix's Dreadnought icon, in the Korean Rise of Ix
+            # rulebook's words ("당신의 드레드노트 하나가 취역합니다"
+            # [IX-ko p. 12]; glossary-ko.md "Rise of Ix (원판 위)").
+            return "드레드노트 하나 취역"
+        case PlaceNegotiator():
+            # Rise of Ix's Tech Negotiation icon ("개인 공급처에서 병력 하나를
+            # 가져와서 익스 게임판에 놓아도 됩니다. 이 병력은 협상가로
+            # 사용됩니다" [IX-ko p. 12]).
+            return "개인 공급처의 {troop} 하나를 익스 게임판에 협상가로 놓음"
+        case Freighter():
+            # Rise of Ix's Freighter icon ("운송 트랙에서 화물선을 1칸
+            # 전진시킵니다 ... 화물선을 운송 트랙 맨 밑칸으로 귀환시키면서"
+            # [IX-ko p. 12]).
+            return "화물선을 1칸 전진시키거나 귀환시킴"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "당신 {leader}의 {signet_ring} 능력 사용"

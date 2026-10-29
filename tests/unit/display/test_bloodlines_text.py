@@ -10,6 +10,7 @@ from dune_imperium.content.bloodlines.tech import (
     TechAbility,
 )
 from dune_imperium.content.bloodlines.tech_abilities import TECH_ACQUIRE_ABILITIES
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_TILES
 from dune_imperium.display.bloodlines import (
     TECH_ABILITY_TEXT,
     TECH_ABILITY_TEXT_KO,
@@ -32,9 +33,16 @@ from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
     terms_keys,
 )
 
+# Rise of Ix's tiles (stage P4a, ``content.rise_of_ix.tech``) name their
+# abilities with members of their own; their texts come with their abilities
+# in stage P4c, and no catalog, view or log shows an Ix tile before.
+_TECH_MODULE_ABILITIES = {tile.ability for tile in TECH_TILES}
+_IX_ABILITIES = {tile.ability for tile in IX_TECH_TILES}
+
 
 def test_every_tech_ability_has_text() -> None:
-    assert set(TECH_ABILITY_TEXT) == set(TechAbility)
+    assert set(TECH_ABILITY_TEXT) == _TECH_MODULE_ABILITIES
+    assert set(TechAbility) == _TECH_MODULE_ABILITIES | _IX_ABILITIES
     assert all(text for text in TECH_ABILITY_TEXT.values())
     assert len(TECH_TILES) == 18
     assert all(tech_ability_text(tile) for tile in TECH_TILES)
@@ -81,7 +89,7 @@ def test_tech_text_goldens() -> None:
 
 def test_every_tech_ability_ko_has_valid_korean_text() -> None:
     terms = terms_keys()
-    assert set(TECH_ABILITY_TEXT_KO) == set(TechAbility)
+    assert set(TECH_ABILITY_TEXT_KO) == _TECH_MODULE_ABILITIES
     for ability, english in TECH_ABILITY_TEXT.items():
         korean = TECH_ABILITY_TEXT_KO[ability]
         assert isinstance(korean, str) and korean.strip(), ability

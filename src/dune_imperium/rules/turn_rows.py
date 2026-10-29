@@ -41,6 +41,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.observation import SHIPPING_REWARD_ROW, TURN_ROWS_KEY
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import (
@@ -52,7 +53,7 @@ from dune_imperium.rules.frames import (
 )
 from dune_imperium.rules.influence import influence_can_rise
 
-PENDING_KEY: Final = "pending_turn_rows"
+PENDING_KEY: Final = TURN_ROWS_KEY
 """The turn frame's waiting effects: a JSON list of ``[kind, source, value]``."""
 
 RESEARCH_BONUS: Final = "research_bonus"
@@ -83,6 +84,14 @@ ACQUIRE_ICON: Final = "acquire_icon"
 is ``"<card id>|<icon>"`` (``rules.acquire_icons``). A fixed Faction's icon is
 mandatory; the chosen-Faction icon is too while a Faction can rise, and with
 every cube at the top it waits and the press lapses it (OQ-060, OQ-057 (1))."""
+
+SHIPPING_REWARD: Final = SHIPPING_REWARD_ROW
+"""One reward of a Shipping track recall the owner took in its own turn (Rise
+of Ix, stage P4c-3, ``rules.shipping_track``): ``value`` is the Shipping space
+whose reward it is (``"1"``, ``"2:recruit"``, ``"2:influence"``, ``"3"``:
+space 2 prints two rewards, each its own, OQ-148). All but space 3's are
+mandatory; its Acquire Tech is "may" ([Rise of Ix p. 4]), so it holds no turn
+end back and the press lapses it (OQ-095 (2))."""
 
 CHOSEN_INFLUENCE_ICON: Final = "influence_any"
 """The acquire icon ``value`` of an Influence with a Faction of the owner's
@@ -234,6 +243,7 @@ def holds_the_end(state: GameState, player: int) -> bool:
     owner = state.players[player]
     return any(
         kind in (PLANETOLOGIST_INTRIGUE, RESEARCH_ICON, CONTRACT_ICON)
+        or (kind == SHIPPING_REWARD and value != _OPTIONAL_SHIPPING_REWARD)
         or (
             kind == RESEARCH_BONUS
             and ResearchBonus(value) is ResearchBonus.INFLUENCE_ANY
@@ -242,6 +252,9 @@ def holds_the_end(state: GameState, player: int) -> bool:
         or (kind == ACQUIRE_ICON and not acquire_icon_blocked(value, owner))
         for kind, _source, value in pending(frame)
     )
+
+
+_OPTIONAL_SHIPPING_REWARD: Final = "3"
 
 
 def _tech_acquire_keys(context: Mapping[str, object]) -> tuple[str, ...]:
@@ -255,12 +268,12 @@ def _tech_acquire_keys(context: Mapping[str, object]) -> tuple[str, ...]:
 
 def tech_influence_blocked(key: str, owner: PlayerState) -> bool:
     """Whether an owed Tech acquire icon ``key`` (``<tech_id>:<effect>``) is
-    an "Influence with any Faction" (Glowglobes, Navigation Chamber) with
-    every Faction at the top, where it offers none (OQ-060; user decision
-    2026-10-17, composed-effects plan 5, rule decision 1)."""
+    an "Influence with any Faction" (Glowglobes, Navigation Chamber; Shuttle
+    Fleet's two) with every Faction at the top, where it offers none (OQ-060;
+    user decision 2026-10-17, composed-effects plan 5, rule decision 1)."""
 
     _tech_id, effect = key.split(":")
-    return effect == "influence" and not any(
+    return effect in ("influence", "distinct_influence") and not any(
         influence_can_rise(owner, faction) for faction in Faction
     )
 
@@ -314,6 +327,13 @@ def _lapsed(player: int, item: Pending) -> GameEvent:
             event_id=f"{source}:{icon}_lapsed",
             kind="acquire_icon_lapsed",
             payload=(("card_id", card_id), ("effect", icon), ("player", player)),
+        )
+    if kind == SHIPPING_REWARD:
+        # Only space 3's Acquire Tech reaches the press (``holds_the_end``).
+        return GameEvent(
+            event_id=f"{source}:shipping_reward_lapsed",
+            kind="shipping_reward_lapsed",
+            payload=(("player", player), ("space", int(value.split(":")[0]))),
         )
     # Arrakis Planetologist's Intrigue card and a research space's icon hold
     # the end (``holds_the_end``).

@@ -2847,6 +2847,9 @@ def agent_icon_block(
             # Fill Coffers judges its icons from its record (composed A6c).
             return box_icon_block(owner, context, signet, key)
     if key == AGENT_ICON_SOLARI:
+        # Spice Smugglers' armed 3 Solari (OQ-148); no other box prints it.
+        if ability is not None and key in ability.armed_icons:
+            return None
         return _NOT_PRINTED
     if key == AGENT_ICON_SPICE:
         if effect is _BRANCHING_PATH:
@@ -2975,9 +2978,15 @@ def resolve_agent_card_icon(
                 next_owner = recruit(1)
         case "solari":
             if available:
-                # Fill Coffers' Solari (the Signet Ring's box), as its record
-                # prints it.
-                next_owner = gain(solari=_signet_icon_gain(owner, key).solari)
+                # Spice Smugglers' armed line (OQ-148), or Fill Coffers'
+                # Solari (the Signet Ring's box), as its record prints it.
+                next_owner = gain(
+                    solari=(
+                        _armed_gain(recorded, key)
+                        if recorded is not None and key in recorded.armed_icons
+                        else _signet_icon_gain(owner, key)
+                    ).solari
+                )
         case "spice":
             if available:
                 # Branching Path's "[Intrigue card] [2 spice]" [Main p. 20];
@@ -3229,6 +3238,15 @@ _OPTIONAL_PROGRESS_KEYS: Final = (
 _STAGED_SIGNETS: Final = frozenset(
     {"unseen_network", "corrino_liaison", "listeners", "personal_training"}
 )
+
+
+def _armed_gain(ability: Ability, key: str) -> GainResources:
+    """What an arrow's armed resource icon pays (Spice Smugglers' Solari)."""
+
+    (reward,) = ability.sections[ability.armed_icons.index(key)].rewards
+    if not isinstance(reward, GainResources):
+        raise RuntimeError(f"the armed {key} icon pays no resources")
+    return reward
 
 
 def _signet_icon_gain(owner: PlayerState, key: str) -> GainResources:

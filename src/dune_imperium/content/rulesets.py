@@ -14,6 +14,15 @@ Conflicts, Reserve and Leaders (stage P2, ``content.imperium``); its
 Imperium and Intrigue decks arrive in stage P3 and are empty until then. Its
 starting deck is Uprising's printing [DI p. 3] (docs/rules/imperium-base.md
 2).
+
+With ``rise_of_ix`` the original game's content takes Rise of Ix's board
+axis (stage P4a, docs/base-game-and-ix-plan.md 17.1 and 17.7;
+``content.rise_of_ix``): the CHOAM overlay swaps four board spaces, the
+Conflicts take Economic Supremacy and the new cards whose rewards are
+transcribed, the Leaders offered take the new ones whose abilities are wired
+(``IX_LEADER_IDS_OFFERED``, none until stage P4e) and the decks take the Ix
+cards whose play data is complete. Setup takes the option on the original
+game since stage P4c-5 (``rules.setup``); with Uprising it is stage P7's.
 """
 
 from collections.abc import Mapping
@@ -32,6 +41,11 @@ from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
 from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
 from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
+from dune_imperium.content.rise_of_ix.board import IX_BOARD_SPACES
+from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS
+from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS
+from dune_imperium.content.rise_of_ix.intrigue import IX_INTRIGUE_CARDS
+from dune_imperium.content.rise_of_ix.leaders import IX_LEADERS
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
@@ -41,6 +55,7 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.conflicts import (
     CONFLICTS,
+    CONFLICTS_BY_ID,
     ConflictDefinition,
     conflicts_by_tier,
 )
@@ -57,7 +72,10 @@ from dune_imperium.content.uprising.imperium import (
     imperium_cards_for_choam,
     imperium_deck_instance_ids,
 )
-from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
+from dune_imperium.content.uprising.intrigue import (
+    IntrigueCardEntry,
+    intrigue_deck_instance_ids,
+)
 from dune_imperium.content.uprising.leaders import (
     LEADERS_BY_ID,
     LeaderDefinition,
@@ -147,6 +165,34 @@ IMPERIUM_LEADER_IDS: Final = (
     "countess_ariana_thorvald",
 )
 
+# Rise of Ix's Leaders the engine plays end to end (their setup deviation and
+# both abilities wired, stage P4e). A Leader joins the offer -- the fixed
+# roster, the rotation and the draft pool of an original + Rise of Ix game --
+# only once it is on this list, as a deck card joins its deck only once its
+# play data is complete: a Leader with no setup or abilities would make a
+# wrong game (Yuna would start with water 1, where docs/rules/rise-of-ix.md 3
+# prints 0). ``content.rise_of_ix.leaders.IX_LEADERS`` keeps all six (by-id
+# lookups and the observation vocabulary read them), and P4e adds each id
+# here as its Leader's abilities land.
+IX_LEADER_IDS_OFFERED: Final[frozenset[str]] = frozenset()
+
+# The four original board spaces the CHOAM overlay covers: "Place the CHOAM
+# board overlay on top of the upper right corner of your original game board
+# (covering the original Landsraad and CHOAM sections)" [Rise of Ix p. 3]
+# (docs/rules/rise-of-ix.md 3 item 1). The Steam app removes these four from
+# the set (``RemovedFromSetList``) and the overlay prints Rise of Ix's four
+# [Rise of Ix p. 12] (``content.rise_of_ix.board``); Mentat, Swordmaster and
+# High Council stay.
+IX_OVERLAID_SPACE_IDS: Final = (
+    "hall_of_oratory",
+    "rally_troops",
+    "secure_contract",
+    "sell_melange",
+)
+# Rise of Ix's Conflict III is Economic Supremacy, which Uprising's table
+# already holds as its Epic card (``content.uprising.conflicts``).
+_IX_CONFLICT_THREE_ID: Final = "economic_supremacy"
+
 
 @dataclass(frozen=True, slots=True)
 class RulesetContent:
@@ -164,8 +210,11 @@ class RulesetContent:
     # (a game holds one only while its Leader plays).
     board_spaces: tuple[BoardSpace, ...]
     observation_posts: tuple[ObservationPost, ...]
-    # Every Conflict card the base game prints, expansions' included; and
-    # the ones this configuration's tiers are drawn from.
+    # Every Conflict card the engine plays with this base game, expansions'
+    # included; and the ones this configuration's tiers are drawn from. An
+    # original-game Conflict from Rise of Ix joins both only once its reward
+    # rows are transcribed (``reward_rows``), as a deck card joins its deck
+    # only once its play data is complete.
     conflicts: tuple[ConflictDefinition, ...]
     conflict_pool: tuple[ConflictDefinition, ...]
     reserve_stacks: tuple[ReserveStackDefinition, ...]
@@ -185,6 +234,18 @@ class RulesetContent:
     objectives: tuple[ObjectiveDefinition, ...]
     starting_deck_entries: tuple[StartingCardEntry, ...]
     starting_discard_entries: tuple[StartingCardEntry, ...]
+
+    def conflicts_in_play(self) -> tuple[ConflictDefinition, ...]:
+        """The ``conflicts`` this configuration's deck can draw, in their
+        order: Uprising's Bloodlines and Epic cards only with their option,
+        and Economic Supremacy in every original game with Rise of Ix [Rise
+        of Ix p. 3] (docs/rules/rise-of-ix.md 3 item 3), which the pool holds
+        and the Uprising flags would not."""
+
+        in_pool = {conflict.card.card_id for conflict in self.conflict_pool}
+        return tuple(
+            conflict for conflict in self.conflicts if conflict.card.card_id in in_pool
+        )
 
     def conflicts_by_tier(self, tier: ConflictTier) -> tuple[ConflictDefinition, ...]:
         """The tier's Conflict cards this configuration's deck is drawn from."""
@@ -295,32 +356,35 @@ def _imperium_content(config: RulesetConfig) -> RulesetContent:
     """The original game's content (module docstring): its board, Conflicts,
     Reserve and Leaders, none of the Objectives, observation posts,
     Contracts or sandworms Uprising prints; its Imperium and Intrigue decks
-    hold the cards transcribed so far (stage P3)."""
+    hold the cards transcribed so far (stage P3). With ``rise_of_ix`` the
+    board, Conflicts, Leaders and decks take Rise of Ix's (stage P4a)."""
 
+    rise_of_ix = config.rise_of_ix
+    conflicts = _imperium_conflicts(rise_of_ix)
+    imperium_cards = _imperium_deck_cards(config.promo_cards, rise_of_ix)
     return RulesetContent(
         config=config,
         base_game=BaseGame.IMPERIUM,
-        board_spaces=IMPERIUM_BOARD_SPACES,
+        board_spaces=_imperium_board_spaces(rise_of_ix),
         observation_posts=(),
-        conflicts=IMPERIUM_CONFLICTS,
-        conflict_pool=IMPERIUM_CONFLICTS,
+        conflicts=conflicts,
+        conflict_pool=conflicts,
         reserve_stacks=IMPERIUM_RESERVE_STACKS,
         maker_space_ids=IMPERIUM_MAKER_SPACE_IDS,
         sandworm_space_ids=(),
         control_visit_bonuses=IMPERIUM_CONTROL_VISIT_BONUSES,
         influence_four_bonuses=IMPERIUM_INFLUENCE_FOUR_BONUSES,
-        card_ids=_IMPERIUM_CARD_IDS,
-        leaders=tuple(LEADERS_BY_ID[leader_id] for leader_id in IMPERIUM_LEADER_IDS),
-        imperium_cards=_imperium_deck_cards(config.promo_cards),
+        card_ids=_imperium_card_ids(rise_of_ix),
+        leaders=_imperium_leaders(rise_of_ix),
+        imperium_cards=imperium_cards,
         imperium_deck_instance_ids=tuple(
             f"imperium:{entry.card.card_id}:{copy}"
-            for entry in _imperium_deck_cards(config.promo_cards)
+            for entry in imperium_cards
             for copy in range(entry.copies)
         ),
         intrigue_deck_instance_ids=tuple(
             f"intrigue:{entry.card.card_id}:{copy}"
-            for entry in IMPERIUM_INTRIGUE_CARDS
-            if entry.play_data_complete
+            for entry in _imperium_intrigue_cards(rise_of_ix)
             for copy in range(entry.copies)
         ),
         contract_instance_ids=(),
@@ -330,25 +394,117 @@ def _imperium_content(config: RulesetConfig) -> RulesetContent:
     )
 
 
+@cache
+def _imperium_board_spaces(rise_of_ix: bool) -> tuple[BoardSpace, ...]:
+    """The original board; with Rise of Ix the original order with the four
+    overlaid spaces removed, then the overlay's four as it prints them
+    (Dreadnought, Tech Negotiation, Interstellar Shipping, Smuggling)."""
+
+    if not rise_of_ix:
+        return IMPERIUM_BOARD_SPACES
+    return (
+        *(
+            space
+            for space in IMPERIUM_BOARD_SPACES
+            if space.space_id not in IX_OVERLAID_SPACE_IDS
+        ),
+        *IX_BOARD_SPACES,
+    )
+
+
+@cache
+def _imperium_conflicts(rise_of_ix: bool) -> tuple[ConflictDefinition, ...]:
+    """The Conflict cards the game draws its tiers from: the original 18
+    (I 4, II 10, III 4 [DI p. 3]); with Rise of Ix its four more are added
+    "to those you already have", I 6, II 11, III 5, and the deck keeps the
+    shape I 1, II 5, III 4 with one III returned to the box [Rise of Ix
+    p. 3] (docs/rules/rise-of-ix.md 3 item 3). Economic Supremacy, Rise of
+    Ix's Conflict III, is in every such game, Epic or not. The two Skirmishes
+    and Trade Monopoly are in it since their reward rows are transcribed (stage
+    P4d-1), so the pool is the printed I 6, II 11, III 5; a card without
+    ``reward_rows`` would stay out, as the decks take a card only once its play
+    data is complete. Tier by tier: the original cards, then Rise of Ix's in
+    printed order."""
+
+    if not rise_of_ix:
+        return IMPERIUM_CONFLICTS
+    added = (
+        *(conflict for conflict in IX_CONFLICTS if conflict.reward_rows is not None),
+        CONFLICTS_BY_ID[_IX_CONFLICT_THREE_ID],
+    )
+    return tuple(
+        conflict
+        for tier in ConflictTier
+        for conflict in (*IMPERIUM_CONFLICTS, *added)
+        if conflict.tier is tier
+    )
+
+
+@cache
+def _imperium_leaders(rise_of_ix: bool) -> tuple[LeaderDefinition, ...]:
+    """The Leaders the engine plays; with Rise of Ix the new ones follow
+    ("players may choose any combination of new or existing Leaders" [Rise
+    of Ix p. 3]) as they are complete (``IX_LEADER_IDS_OFFERED``; none
+    yet, so the offer is the original eight)."""
+
+    original = tuple(LEADERS_BY_ID[leader_id] for leader_id in IMPERIUM_LEADER_IDS)
+    if not rise_of_ix:
+        return original
+    return (
+        *original,
+        *(
+            leader
+            for leader in IX_LEADERS
+            if leader.leader_id in IX_LEADER_IDS_OFFERED
+        ),
+    )
+
+
+@cache
+def _imperium_intrigue_cards(rise_of_ix: bool) -> tuple[IntrigueCardEntry, ...]:
+    """The Intrigue cards whose play data is complete; with Rise of Ix its
+    17 are "shuffled into the Intrigue Deck" [Rise of Ix p. 3] as they
+    land (none yet)."""
+
+    entries = (
+        (*IMPERIUM_INTRIGUE_CARDS, *IX_INTRIGUE_CARDS)
+        if rise_of_ix
+        else IMPERIUM_INTRIGUE_CARDS
+    )
+    return tuple(entry for entry in entries if entry.play_data_complete)
+
+
 # Stage P3 (plan 16.1): the original decks hold the cards transcribed so far,
 # so a soak plays each one as it lands; the three promos (Duncan, Loyal Blade;
 # Jessica of Arrakis; Thumper) are shuffled in only with ``promo_cards`` (plan
-# 9 8), as Uprising's promos are (``imperium_cards_for_choam``).
+# 9 8), as Uprising's promos are (``imperium_cards_for_choam``). With Rise of
+# Ix its 35 Imperium cards are shuffled in before the Row is formed [Rise of
+# Ix p. 3], those transcribed so far, and its promo (Boundless Ambition)
+# behind ``promo_cards`` too (plan 9 8).
 @cache
-def _imperium_deck_cards(promo_cards: bool) -> tuple[ImperiumCardEntry, ...]:
+def _imperium_deck_cards(
+    promo_cards: bool, rise_of_ix: bool = False
+) -> tuple[ImperiumCardEntry, ...]:
+    entries = (
+        (*IMPERIUM_BASE_CARDS, *IX_IMPERIUM_CARDS)
+        if rise_of_ix
+        else IMPERIUM_BASE_CARDS
+    )
     return tuple(
         entry
-        for entry in IMPERIUM_BASE_CARDS
+        for entry in entries
         if entry.play_data_complete and (promo_cards or not entry.promo)
     )
 
 
 # Every personal card id the base game prints, the promos' whatever the
-# options (as ``_UPRISING_CARD_IDS``).
-_IMPERIUM_CARD_IDS: Final = frozenset(
-    {
-        *(entry.card.card_id for entry in starting_deck_entries()),
-        *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
-        *(entry.card.card_id for entry in _imperium_deck_cards(True)),
-    }
-)
+# options (as ``_UPRISING_CARD_IDS``); Rise of Ix's with its option.
+@cache
+def _imperium_card_ids(rise_of_ix: bool) -> frozenset[str]:
+    return frozenset(
+        {
+            *(entry.card.card_id for entry in starting_deck_entries()),
+            *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
+            *(entry.card.card_id for entry in _imperium_deck_cards(True, rise_of_ix)),
+        }
+    )

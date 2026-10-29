@@ -68,6 +68,7 @@ from dune_imperium.rules.combat_deployment import (
     ungained_undeployable_troops,
 )
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
+from dune_imperium.rules.dreadnoughts import space_controller
 from dune_imperium.rules.effects import (
     BOOST_DRAW_KEY,
     BOOSTED_CARDS_KEY,
@@ -75,15 +76,21 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
+    DREADNOUGHTS_COMMISSIONED_KEY,
     OWED_CARD,
+    SHIPPING_TROOPS_KEY,
     TECH_ACQUIRE_PENDING_KEY,
+    UNGAINED_SHIPPING_TROOPS_KEY,
     FrameKind,
+    commissioned_dreadnought_count,
     hold_draw,
     owned_top_frame,
     recruited_commander_count,
     replace_player,
     replace_top_frame,
+    shipping_troop_count,
     turn_start_is_open,
+    ungained_shipping_troop_count,
     with_context,
 )
 from dune_imperium.rules.gain_events import resources_gained_event
@@ -757,6 +764,9 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         raise RuntimeError("turn frame has an invalid undeployable count")
     ungained_undeployable = ungained_undeployable_troops(turn_context)
     commanders_before = _commanders_recruited_before_placement(state)
+    dreadnoughts_before = commissioned_dreadnought_count(turn_context)
+    shipping_before = shipping_troop_count(turn_context)
+    ungained_shipping = ungained_shipping_troop_count(turn_context)
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
         raise ValueError("Agent action infiltrate_post_id must be a string")
@@ -948,6 +958,30 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     *(
                         ((COMMANDERS_RECRUITED_KEY, commanders_before),)
                         if commanders_before
+                        else ()
+                    ),
+                    # So does a dreadnought commissioned before the
+                    # placement: it may deploy if the Agent goes to a Combat
+                    # space [Rise of Ix p. 6].
+                    *(
+                        ((DREADNOUGHTS_COMMISSIONED_KEY, dreadnoughts_before),)
+                        if dreadnoughts_before
+                        else ()
+                    ),
+                    # And Troop Transports' Shipping troops recruited before
+                    # the placement, which deploy wherever the Agent goes
+                    # (docs/rules/rise-of-ix.md 15).
+                    *(
+                        ((SHIPPING_TROOPS_KEY, shipping_before),)
+                        if shipping_before
+                        else ()
+                    ),
+                    # With the part of that recruit the supply could not give
+                    # yet, which a later refill moves into the allowance
+                    # (OQ-030).
+                    *(
+                        ((UNGAINED_SHIPPING_TROOPS_KEY, ungained_shipping),)
+                        if ungained_shipping
                         else ()
                     ),
                     ("units_deploy_blocked", units_deploy_blocked),
@@ -1562,15 +1596,13 @@ def _apply_control_visit_bonus(
     resource = content_for(state.config).control_visit_bonuses.get(space_id)
     if resource is None:
         return state, None
-    controllers = tuple(
-        player for player in state.players if space_id in player.control_space_ids
-    )
-    if not controllers:
+    # A dreadnought on the space controls it ahead of the Control marker it
+    # covers, so its owner takes the bonus [Rise of Ix p. 6].
+    controller_seat = space_controller(state, space_id)
+    if controller_seat is None:
         return state, None
-    if len(controllers) > 1:
-        raise RuntimeError("a critical location cannot have multiple controllers")
 
-    controller = controllers[0]
+    controller = state.players[controller_seat]
     next_controller = replace(
         controller,
         resources=replace(

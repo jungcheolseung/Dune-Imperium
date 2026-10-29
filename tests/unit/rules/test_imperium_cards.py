@@ -126,6 +126,14 @@ def _do(
     return apply_whole(engine, state, action).state
 
 
+def _research_drawn(engine: UprisingRulesEngine, state: GameState) -> GameState:
+    """Research Station's three cards, drawn one at a time (OQ-147)."""
+
+    for _ in range(3):
+        state = _do(engine, state, "resolve_board_effect", effect="cards")
+    return state
+
+
 def _reveal(engine: UprisingRulesEngine, state: GameState) -> dict[str, object]:
     """The Reveal frame's context after seat 0 reveals its hand."""
 
@@ -221,6 +229,16 @@ def _smugglers_placed(
     return _place(engine, seated, "imperium_research_station", "spice_smugglers")
 
 
+def _smugglers_rewarded(engine: UprisingRulesEngine, paid: GameState) -> GameState:
+    """Spice Smugglers' two armed icons once the spice is paid, the Influence
+    first (either order is the owner's, OQ-148)."""
+
+    influenced = _do(
+        engine, paid, "choose_agent_card_influence", faction="spacing_guild"
+    )
+    return _do(engine, influenced, "resolve_agent_card_effect", effect="solari")
+
+
 def test_spice_smugglers_matches_the_app_table() -> None:
     # App attribute table: cost 2, 2 copies, Spacing Guild, City, Reveal 1
     # Persuasion and 1 sword.
@@ -247,12 +265,46 @@ def test_spice_smugglers_pays_two_spice_for_influence_and_three_solari() -> None
     before = placed.players[0]
     assert "pay_agent_card_spice" in _ids(engine, placed)
     paid = _do(engine, placed, "pay_agent_card_spice")
-    after = paid.players[0]
+    # The spice is paid; the Influence and the Solari wait as icons (OQ-148).
+    assert paid.players[0].resources.solari == before.resources.solari
+    assert paid.players[0].influence == before.influence
+    after = _smugglers_rewarded(engine, paid).players[0]
     assert after.resources.spice == before.resources.spice - 2
     assert after.resources.solari == before.resources.solari + 3
     assert after.influence.spacing_guild == before.influence.spacing_guild + 1
     assert after.influence == replace(before.influence, spacing_guild=1)
     assert after.spice_spent_turn == before.spice_spent_turn + 2
+
+
+def test_spice_smugglers_rewards_are_taken_in_the_owner_s_order() -> None:
+    """Once the 2 spice are paid, the Spacing Guild Influence and the 3 Solari
+    are two icons the owner takes in either order -- user ruling 2026-10-29
+    (OQ-148 (가)): "비용 지불 후 influence 받는거랑 solari 획득인 플레이어가
+    원하는 순서로 할 수 있어야", as Duncan Idaho's troop and card (OQ-027)."""
+
+    engine, state = _start()
+    placed = _smugglers_placed(engine, state)
+    before = placed.players[0]
+    paid = _do(engine, placed, "pay_agent_card_spice")
+    rows = {
+        (action.action_id, action.arguments)
+        for action in _wholes(engine, paid)
+        if action.action_id
+        in ("choose_agent_card_influence", "resolve_agent_card_effect")
+    }
+    assert rows == {
+        ("choose_agent_card_influence", (("faction", "spacing_guild"),)),
+        ("resolve_agent_card_effect", (("effect", "solari"),)),
+    }
+    solari_first = _do(engine, paid, "resolve_agent_card_effect", effect="solari")
+    assert solari_first.players[0].resources.solari == before.resources.solari + 3
+    assert solari_first.players[0].influence == before.influence
+    both = _do(
+        engine, solari_first, "choose_agent_card_influence", faction="spacing_guild"
+    ).players[0]
+    other = _smugglers_rewarded(engine, paid).players[0]
+    assert (both.resources, both.influence) == (other.resources, other.influence)
+    assert both.influence.spacing_guild == before.influence.spacing_guild + 1
 
 
 def test_spice_smugglers_arrow_is_paid_once() -> None:
@@ -274,7 +326,7 @@ def test_spice_smugglers_arrow_is_optional() -> None:
     engine, state = _start()
     placed = _smugglers_placed(engine, state)
     before = placed.players[0]
-    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    resolved = _research_drawn(engine, placed)
     assert "pay_agent_card_spice" in _ids(engine, resolved)
     finished = _do(engine, resolved, "finish_agent_turn")
     after = finished.players[0]
@@ -303,7 +355,8 @@ def test_spice_smugglers_at_the_top_of_the_track_still_pays_its_solari() -> None
     placed = _smugglers_placed(engine, state, Influence(spacing_guild=6))
     before = placed.players[0]
     assert "pay_agent_card_spice" in _ids(engine, placed)
-    after = _do(engine, placed, "pay_agent_card_spice").players[0]
+    paid = _do(engine, placed, "pay_agent_card_spice")
+    after = _smugglers_rewarded(engine, paid).players[0]
     assert after.influence.spacing_guild == 6
     assert after.resources.solari == before.resources.solari + 3
     assert after.resources.spice == before.resources.spice - 2
@@ -316,8 +369,11 @@ def test_spice_smugglers_influence_takes_the_normal_influence_path() -> None:
     placed = _smugglers_placed(engine, state, Influence(spacing_guild=3))
     assert placed.players[0].alliance_faction_ids == ()
     paid = _do(engine, placed, "pay_agent_card_spice")
-    assert paid.players[0].influence.spacing_guild == 4
-    assert paid.players[0].alliance_faction_ids == ("spacing_guild",)
+    influenced = _do(
+        engine, paid, "choose_agent_card_influence", faction="spacing_guild"
+    )
+    assert influenced.players[0].influence.spacing_guild == 4
+    assert influenced.players[0].alliance_faction_ids == ("spacing_guild",)
 
 
 def test_spice_smugglers_reveals_one_persuasion_and_one_sword() -> None:
@@ -877,7 +933,7 @@ def test_duncan_idaho_arrow_is_optional() -> None:
     engine, state = _start()
     placed = _duncan_placed(engine, state)
     before = placed.players[0]
-    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    resolved = _research_drawn(engine, placed)
     assert "pay_agent_card_water" in _ids(engine, resolved)
     finished = _do(engine, resolved, "finish_agent_turn")
     after = finished.players[0]
@@ -1017,7 +1073,7 @@ def test_fedaykin_death_commando_trash_is_optional() -> None:
     engine, state = _start()
     placed = _commando_placed(engine, state)
     before = placed.players[0]
-    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    resolved = _research_drawn(engine, placed)
     assert _trash_rows(engine, resolved)
     finished = _do(engine, resolved, "finish_agent_turn")
     assert finished.players[0].trashed == before.trashed
@@ -2727,7 +2783,7 @@ def test_missionaria_protectiva_alone_gains_nothing() -> None:
     engine, state = _start()
     placed = _missionaria_placed(engine, state, bene_gesserit=False)
     assert not _influence_rows(engine, placed)
-    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    resolved = _research_drawn(engine, placed)
     finished = _do(engine, resolved, "finish_agent_turn")
     assert finished.players[0].influence == placed.players[0].influence
 
@@ -2845,7 +2901,7 @@ def test_gene_manipulation_without_another_bene_gesserit_gains_no_spice() -> Non
     assert not _spice_icon(engine, placed)
     assert _trash_rows(engine, placed)
     # The trash is optional: the box is done once it is left unused.
-    resolved = _do(engine, placed, "resolve_board_effect", effect="cards")
+    resolved = _research_drawn(engine, placed)
     finished = _do(engine, resolved, "finish_agent_turn")
     assert finished.players[0].trashed == placed.players[0].trashed
     assert finished.players[0].resources.spice == placed.players[0].resources.spice

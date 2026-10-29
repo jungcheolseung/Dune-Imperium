@@ -2101,3 +2101,62 @@ title = "Kwisatz Haderach may move the Agent in the Conflict"
 ruling_ko = "전투 속으로로 교전 칸에 간 에이전트도 여전히 자기 에이전트라서, Kwisatz Haderach의 \"어디에 있든\"에 든다. 옮기면 그 에이전트는 교전 칸을 떠나 고른 칸으로 가고 전투력에서 빠진다. 제국 특권으로 소환할 때와 같다."
 ruling = "An Agent sent to the Conflict with Into the Fray is still one of your Agents, so Kwisatz Haderach's \"from anywhere\" includes it. Moved, it leaves the Conflict for the chosen space and no longer adds strength, as when Imperial Privilege recalls it."
 names = ["Kwisatz Haderach"]
+
+[[ruling]]
+oq = "OQ-147"
+group = "project"
+game = "base_ix"
+title_ko = "Research Station은 카드를 한 장씩 세 번 뽑는다"
+title = "Research Station draws its three cards one at a time"
+ruling_ko = "원판 Research Station의 카드 셋은 한 번에 뽑지 않고 한 장씩 세 번 뽑는다. 한 장마다 그 방문의 효과 하나라서, 다른 효과와 원하는 순서로 섞어 해결할 수 있다."
+ruling = "The original game's Research Station draws its three cards one at a time, not all at once. Each card is one effect of the visit, ordered freely with the visit's other effects."
+names = ["Research Station"]
+
+[[ruling]]
+oq = "OQ-148"
+group = "project"
+game = "base_ix"
+title_ko = "Spice Smugglers의 보상은 원하는 순서로"
+title = "Spice Smugglers' rewards in the order you choose"
+ruling_ko = "Spice Smugglers에 스파이스 2를 내면 스페이싱 길드 영향력 1과 솔라리 3을 따로 받고, 어느 쪽을 먼저 받을지는 그 플레이어가 고른다. 길드 트랙이 맨 위여도 솔라리 때문에 낼 수 있다."
+ruling = "Paying Spice Smugglers' 2 spice gives the Spacing Guild Influence and the 3 Solari as two separate effects, taken in the order you choose. It may be paid with the Guild track at the top, for the Solari."
+names = ["Spice Smugglers"]
+
+[[ruling]]
+oq = "OQ-149"
+group = "project"
+game = "uprising"
+title_ko = "임페리움 의식으로 되돌린 책략 카드는 그 플레이어가 안다"
+title = "The Intrigue card Imperium Ceremony puts back is known to its player"
+ruling_ko = "임페리움 의식으로 책략 카드덱 맨 위 두 장을 보고 한 장을 가지면, 맨 위에 되돌린 카드는 그 플레이어가 안다. 다른 플레이어가 그 카드를 뽑으면 그 플레이어의 핸드에 있는 것으로 계속 알고, 카드가 공개되거나 자기 핸드에 들어오면 더는 따로 기억하지 않는다. 다른 플레이어가 맨 위 두 장을 보고 한 장을 되돌리거나, 그 카드를 가진 플레이어의 책략 카드가 무작위로 빼앗기거나 건네지면 어느 카드인지 알 수 없으므로 잊는다."
+ruling = "When Imperium Ceremony looks at the top two Intrigue cards and keeps one, the player knows the card put back on top. If another player draws it, the player still knows it is in that hand; once it is revealed or reaches the player's own hand, there is nothing more to remember. It is forgotten when another player looks at the top two and puts one back, or when an Intrigue card is stolen at random from, or given away by, the player holding it, since which card moved is not known."
+
+[[ruling]]
+oq = "OQ-150"
+group = "project"
+game = "base_ix"
+title_ko = "공개 차례 도중에 얻은 기술 타일도 그 차례에 쓴다"
+title = "A Tech tile acquired during a Reveal turn works in that turn"
+ruling_ko = "공개 차례 도중에 기술 타일을 얻으면, 그 타일의 공개 차례 능력(Artillery, Minimic Film, Restricted Ordnance, Disposal Facility)도 그 차례에 쓴다."
+ruling = "A Tech tile acquired during your Reveal turn applies its Reveal turn ability (Artillery, Minimic Film, Restricted Ordnance, Disposal Facility) in that same turn."
+names = ["Artillery", "Minimic Film", "Restricted Ordnance", "Disposal Facility"]
+
+[[ruling]]
+oq = "OQ-151"
+group = "project"
+game = "base_ix"
+title_ko = "교전 보상으로 회수해 소집한 병력은 주둔지로"
+title = "Troops recruited by a Freighter recall during Combat go to the garrison"
+ruling_ko = "교전 보상의 Freighter로 회수해 소집한 병력은 Troop Transports가 있어도 교전에 배치하지 않고 주둔지로 간다. 자기 차례에 회수로 소집한 병력은 Troop Transports가 있으면 전투 장소에 에이전트를 보내지 않았어도 교전에 배치할 수 있다."
+ruling = "Troops recruited by a Freighter recall from a Conflict reward go to the garrison, even with Troop Transports. On your own turn, Troop Transports lets the troops a recall recruits deploy to the Conflict even when your Agent went to no Combat space."
+names = ["Troop Transports", "Freighter"]
+
+[[ruling]]
+oq = "OQ-152"
+group = "project"
+game = "base_ix"
+title_ko = "모자랐던 병력은 배치하기 좋은 것부터 채운다"
+title = "A recruit shortfall is made up in the order that suits its owner"
+ruling_ko = "개인 공급처가 모자라 소집하지 못한 병력은 같은 차례에 병력이 돌아오면 채워진다. 일부만 채울 수 있으면 공개 차례 줄이 정한 병력, Troop Transports로 받은 병력, 보통 소집, Harkonnen Advisor 병력 순으로 채운다."
+ruling = "Troops a short supply could not give are made up when troops return to it in the same turn. When only some can be, they are made up in this order: those a Reveal line names, those Troop Transports gives, ordinary recruits, and a Harkonnen Advisor troop last."
+names = ["Troop Transports", "Harkonnen Advisor"]

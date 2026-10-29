@@ -119,6 +119,59 @@ class FrameKind(StrEnum):
     # The original game's Baron Harkonnen chooses his two Masterstroke
     # Factions in secret before the first round (``rules/masterstroke.py``).
     MASTERSTROKE_SETUP = "masterstroke_setup"
+    # Rise of Ix (observation v39, stage P4a; docs/rules/rise-of-ix.md 14):
+    # reserved for the decisions of stages P4b to P4e that no frame above
+    # holds, appended last so every older kind keeps its observation index.
+    # No engine path opens them yet (``LEGAL_ACTION_PROVIDERS`` names none,
+    # so a pushed one fails loudly).
+    # A Freighter icon resolved where it is no row of its owner's turn (a
+    # Conflict reward's, Skirmish or Trade Monopoly [FAQ p. 3]): move up one
+    # space, recall, or neither [Rise of Ix p. 5] -- an icon whose answer
+    # is a choice opens a window of its own there, as ``choose_influence``
+    # or an optional payment do (``rules/combat.py``).
+    FREIGHTER_MOVE = "freighter_move"
+    # A Shipping track recall's rewards outside its owner's turn, one row
+    # each in any order [Rise of Ix p. 5], as a Contract's reward has its
+    # window outside its owner's turn (``CONTRACT_REWARD_ICONS``).
+    SHIPPING_REWARD_ICONS = "shipping_reward_icons"
+    # The Conflict winner's dreadnought: the Control space without a
+    # dreadnought it must take [Rise of Ix p. 6], or Detonation Devices'
+    # VP instead (OQ-121), answering that row of the winner's window.
+    DREADNOUGHT_CONTROL_CHOICE = "dreadnought_control_choice"
+    # Ilesa Ecaz's One Step Ahead: the hand card set aside face down at
+    # Round Start, after the draw (OQ-122) [Ilesa Ecaz card]; no Round
+    # Start frame picks a hand card, and a discard goes face up.
+    ROUND_START_SET_ASIDE = "round_start_set_aside"
+    # An Unload card's Reveal box gained outside its owner's turn, when an
+    # opponent's effect discards it [Rise of Ix p. 7] or a Combat reward
+    # trashes it (OQ-127): one row each in any order, its choices and costs
+    # with them, as ``CONTRACT_REWARD_ICONS`` holds a reward box.
+    UNLOAD_ICONS = "unload_icons"
+    # An optional "[discard] ->" cost outside its owner's turn: a hand card
+    # (no Intrigue) or none [Rise of Ix p. 7] -- Tessia Vernius' first
+    # Snooper reward, "discard -> 1 spice" [Tessia Vernius card], reached
+    # through an Influence gained in Combat. The discard counterpart of
+    # ``OPTIONAL_TRASH``, whose window also serves only outside the turn.
+    OPTIONAL_DISCARD = "optional_discard"
+    # Sonic Snoopers: "Put any number of your Intrigue cards on the bottom of
+    # the Intrigue deck, then draw that many" [Sonic Snoopers Tech tile] --
+    # one card at a time in the order chosen (the seat knows that order,
+    # plan 17.8 review item 6) until it stops, then the draw; a pick of
+    # its own, as ``LONG_LIVE_FIGHTERS``, so no other effect interleaves.
+    # Court Intrigue's single card is a row with one target, no window.
+    INTRIGUE_BOTTOM_PICK = "intrigue_bottom_pick"
+
+
+# The kinds observation v39 reserved for Rise of Ix (stage P4a), in order.
+IX_FRAME_KINDS: tuple[FrameKind, ...] = (
+    FrameKind.FREIGHTER_MOVE,
+    FrameKind.SHIPPING_REWARD_ICONS,
+    FrameKind.DREADNOUGHT_CONTROL_CHOICE,
+    FrameKind.ROUND_START_SET_ASIDE,
+    FrameKind.UNLOAD_ICONS,
+    FrameKind.OPTIONAL_DISCARD,
+    FrameKind.INTRIGUE_BOTTOM_PICK,
+)
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:
@@ -190,6 +243,35 @@ the Agent-turn effect frame and on the turn frame before the placement
 REVEAL_COMMANDERS_RECRUITED_KEY = "reveal_commanders_recruited"
 """The Reveal frame's Commanders recruited this turn (absent means none)."""
 
+DREADNOUGHTS_COMMISSIONED_KEY = "dreadnoughts_commissioned"
+"""Rise of Ix dreadnoughts commissioned this Agent turn, kept on the Agent-turn
+effect frame and on the turn frame before the placement (absent means none),
+apart from the troops and the Commanders: "If you commissioned the dreadnought
+while sending an Agent to a Combat space, you may deploy it to the Conflict"
+[Rise of Ix p. 6], and each reserves a deploy slot for a dreadnought outside
+the garrison share of two (docs/base-game-and-ix-plan.md 17.6 item 2). A Reveal
+turn has no such window, so nothing is kept there."""
+
+
+SHIPPING_TROOPS_KEY = "shipping_troops_recruited"
+"""Troops a Shipping track recruit brought in with Troop Transports in this
+Agent turn, kept on the Agent-turn effect frame and on the turn frame before
+the placement (absent means none), apart from the other recruits: "You may
+deploy any of them to the Conflict" lets every one deploy even where the Agent
+went to no Combat space (docs/rules/rise-of-ix.md 15), each with a slot of its
+own and none of the garrison share of two (``combat_deployment``). In a
+Combat-space turn they are plain recruits of the turn, and a Reveal turn keeps
+them as ``combat_deployment.RECRUITS_DEPLOYABLE_KEY``."""
+
+UNGAINED_SHIPPING_TROOPS_KEY = "shipping_troops_ungained"
+"""The part of the owner's recruit shortfall (``PlayerState.ungained_troops``,
+OQ-030) that a Shipping track recruit with Troop Transports could not get from
+the supply, kept on the turn's own frame (absent means none). A refill gives
+them as the turn's recruits, so each one joins ``SHIPPING_TROOPS_KEY``'s
+allowance as the refill pays it (``combat_deployment.refill_shipping_troops``),
+and the frame carries the count over the placement and into the Reveal as it
+does ``combat_deployment.UNGAINED_UNDEPLOYABLE_KEY`` (OQ-038)."""
+
 
 def recruited_commander_count(context: FrameContext, key: str) -> int:
     """Return the Commander recruit count kept under ``key`` (0 when absent)."""
@@ -197,6 +279,35 @@ def recruited_commander_count(context: FrameContext, key: str) -> int:
     value = context.get(key, 0)
     if isinstance(value, bool) or not isinstance(value, int):
         raise RuntimeError(f"turn frame has invalid {key}")
+    return value
+
+
+def commissioned_dreadnought_count(context: FrameContext) -> int:
+    """Return the dreadnoughts commissioned this Agent turn (0 when absent)."""
+
+    value = context.get(DREADNOUGHTS_COMMISSIONED_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"turn frame has invalid {DREADNOUGHTS_COMMISSIONED_KEY}")
+    return value
+
+
+def shipping_troop_count(context: FrameContext) -> int:
+    """Return the Troop Transports troops recruited this Agent turn (0 when
+    absent)."""
+
+    value = context.get(SHIPPING_TROOPS_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"turn frame has invalid {SHIPPING_TROOPS_KEY}")
+    return value
+
+
+def ungained_shipping_troop_count(context: FrameContext) -> int:
+    """Return the Troop Transports troops still waiting in the shortfall (0
+    when absent)."""
+
+    value = context.get(UNGAINED_SHIPPING_TROOPS_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"turn frame has invalid {UNGAINED_SHIPPING_TROOPS_KEY}")
     return value
 
 
@@ -363,6 +474,40 @@ def own_turn_frame_index(state: GameState, player: int) -> int | None:
             return index
         return None
     return None
+
+
+def credit_commissioned_dreadnoughts(
+    state: GameState, player: int, count: int
+) -> GameState:
+    """Count ``count`` dreadnoughts commissioned in ``player``'s own Agent turn.
+
+    Credited on the owner's turn frame -- the one before the Agent is placed
+    (the placement carries the count over) or the Agent-turn effect frame --
+    the way a recruited Commander is (``update_turn_recruits``), and only in
+    the owner's own turn: nothing is kept outside it, and nothing in a Reveal
+    turn, which has no deployment of a dreadnought ("If you commissioned the
+    dreadnought while sending an Agent to a Combat space, you may deploy it to
+    the Conflict" [Rise of Ix p. 6]).
+    """
+
+    index = own_turn_frame_index(state, player)
+    if index is None or count < 1:
+        return state
+    frame = state.decision_stack[index]
+    if frame.kind not in (FrameKind.TURN, FrameKind.AGENT_EFFECTS):
+        return state
+    context = frame_context(frame)
+    context[DREADNOUGHTS_COMMISSIONED_KEY] = (
+        commissioned_dreadnought_count(context) + count
+    )
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:index],
+            with_context(frame, context),
+            *state.decision_stack[index + 1 :],
+        ),
+    )
 
 
 TECH_ACQUIRE_PENDING_KEY = "pending_tech_acquire_effects"

@@ -52,13 +52,13 @@ from torch import Tensor, nn
 from dune_imperium.adapters.action_codec import ActionCodec
 from dune_imperium.adapters.observation_encoding import (
     CONTRACT_SEGMENTS,
-    IMPERIUM_IDENTITIES,
+    NON_UPRISING_IDENTITIES,
     OBSERVATION_SEGMENTS,
     OBSERVATION_SIZE,
 )
 from dune_imperium.config import RulesetConfig
 from dune_imperium.rules.action_shapes import ACTION_SHAPES
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import IX_FRAME_KINDS, FrameKind
 from dune_imperium.training.entity_features import (
     FEATURE_DIGEST,
     SLOT_HINTS,
@@ -102,6 +102,11 @@ _ZONE_VOCABULARY: Final = {
     "private_effect_pick_battle": "battle",
     "private_effect_pick_second_faction": "faction",
     "private_effect_pick_personal": "personal",
+    # v39 (Rise of Ix): the observer's known Intrigue deck top, the Intrigue
+    # cards it knows each opponent holds, and its set-aside card.
+    "private_intrigue_top": "intrigue",
+    **{f"private_known_intrigue_seat{seat}": "intrigue" for seat in range(1, _SEATS)},
+    "private_set_aside": "personal",
     "imperium_removed": "personal",
     "intrigue_resolving": "intrigue",
     "intrigue_discard": "intrigue",
@@ -204,9 +209,9 @@ def action_vocabulary(templates: Iterable[TemplateKey]) -> ActionVocabulary:
 # computes the same function: its new inputs start at zero.
 FIELDS_KEPT_RAW: Final = frozenset({"decision_owner", "leader_draft_pool", "agent_box"})
 # Slot keys a later observation version added to a field a v31 file already
-# embedded: the decision kinds of stage B2's reward windows (v33) and of the
-# Baron's Masterstroke choice (v36), and every key naming one of the original
-# game's identities (v35).
+# embedded: the decision kinds of stage B2's reward windows (v33), of the
+# Baron's Masterstroke choice (v36) and of Rise of Ix (v39), and every key
+# naming one of the original game's identities (v35) or Rise of Ix's (v39).
 _KEYS_SINCE_V31: Final = frozenset(
     {
         *(
@@ -215,13 +220,14 @@ _KEYS_SINCE_V31: Final = frozenset(
                 FrameKind.COMBAT_REWARD_ICONS,
                 FrameKind.CONTRACT_REWARD_ICONS,
                 FrameKind.MASTERSTROKE_SETUP,
+                *IX_FRAME_KINDS,
             )
         ),
         *(
             key
             for field in SLOT_FIELDS
             for key in field.keys
-            if key.rsplit(":", 1)[-1] in IMPERIUM_IDENTITIES
+            if key.rsplit(":", 1)[-1] in NON_UPRISING_IDENTITIES
         ),
     }
 )

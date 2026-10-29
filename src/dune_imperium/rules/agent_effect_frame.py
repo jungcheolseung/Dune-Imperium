@@ -51,6 +51,7 @@ from dune_imperium.rules.board_effects import (
     legal_connections_actions,
     legal_desert_tactics_actions,
     legal_espionage_actions,
+    legal_foldspace_deck_top_actions,
     legal_imperial_privilege_actions,
     legal_maker_space_actions,
     legal_shipping_actions,
@@ -63,6 +64,8 @@ from dune_imperium.rules.combat_deployment import (
     legal_combat_deployments,
     legal_commander_deployments,
     legal_commander_withdrawals,
+    legal_dreadnought_deployments,
+    legal_dreadnought_withdrawals,
     legal_troop_withdrawals,
 )
 from dune_imperium.rules.contracts import (
@@ -89,6 +92,7 @@ from dune_imperium.rules.immortality import (
     legal_specimen_return_actions,
 )
 from dune_imperium.rules.intrigue import legal_intrigue_play_actions
+from dune_imperium.rules.ix_board_spaces import legal_ix_space_actions
 from dune_imperium.rules.leader_abilities import (
     legal_feyd_track_actions,
     legal_leader_board_repeat_actions,
@@ -103,12 +107,14 @@ from dune_imperium.rules.sardaukar import (
 )
 from dune_imperium.rules.scouts_effects import legal_subcommittee_choice_actions
 from dune_imperium.rules.scouts_missions import legal_mission_collect_actions
+from dune_imperium.rules.shipping_track import legal_shipping_reward_row_actions
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
 from dune_imperium.rules.spy_moves import legal_track_spy_actions
 from dune_imperium.rules.tech import (
     legal_tech_acquire_effect_actions,
     legal_tech_acquisition_actions,
     legal_tech_flip_actions,
+    legal_tech_trash_actions,
 )
 
 _RESOLVE_BOX = "resolve_agent_card_effect"
@@ -166,6 +172,12 @@ def legal_agent_effect_frame_actions(
         *legal_contract_icon_row_actions(state, player),
         # And an acquire box's icons, a row each (OQ-141).
         *legal_acquire_icon_actions(state, player),
+        # A Shipping track recall's rewards (Rise of Ix, stage P4c-3).
+        *legal_shipping_reward_row_actions(state, player),
+        # Rise of Ix's four spaces' icons and the Foldspace space's deck-top
+        # twin (stage P4c-4).
+        *legal_ix_space_actions(state, player),
+        *legal_foldspace_deck_top_actions(state, player),
         *legal_leader_placement_ability_actions(state, player),
         *legal_leader_board_repeat_actions(state, player),
         *legal_contract_completion_actions(state, player),
@@ -185,6 +197,7 @@ def legal_agent_effect_frame_actions(
         *legal_subcommittee_choice_actions(state, player),
         *legal_tech_acquisition_actions(state, player),
         *legal_tech_flip_actions(state, player),
+        *legal_tech_trash_actions(state, player),
         *legal_tech_acquire_effect_actions(state, player),
         # A research bonus or trash icon raised in the turn waits on it as
         # rows, with no refusal (user decision 2026-10-17, cleanup-2b).
@@ -193,6 +206,7 @@ def legal_agent_effect_frame_actions(
         *legal_commander_recruit_actions(state, player),
         *legal_combat_deployments(state, player),
         *legal_commander_deployments(state, player),
+        *legal_dreadnought_deployments(state, player),
         *legal_intrigue_play_actions(state, player),
         *legal_specimen_return_actions(state, player),
         *legal_family_atomics_actions(state, player),
@@ -201,6 +215,7 @@ def legal_agent_effect_frame_actions(
         # to the limit and finishes instead of cycling deploy/withdraw.
         *legal_troop_withdrawals(state, player),
         *legal_commander_withdrawals(state, player),
+        *legal_dreadnought_withdrawals(state, player),
     )
 
 

@@ -7,8 +7,10 @@ from functools import cache
 from typing import TYPE_CHECKING, Final
 
 from dune_imperium.config import BaseGame
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.bloodlines.tech_abilities import tech_draws_on
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.abilities import Ability, AbilityStructure
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflict_abilities import (
@@ -19,6 +21,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireTleilaxuCard,
     DrawIntrigueCards,
     EffectSection,
+    Freighter,
     GainInfluence,
     GainResources,
     GainVictoryPoints,
@@ -49,6 +52,7 @@ from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import contract_choice_frame
+from dune_imperium.rules.dreadnoughts import end_combat_dreadnoughts
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
     OptionalEffectBlock,
@@ -486,6 +490,15 @@ COMBAT_REWARD_ICON_KINDS: Final = (
     # card", a row of the sole winner's window (OQ-121, user ruling
     # 2026-10-25, "PA는 승자의 창 (추천)").
     "planetary_array",
+    # Not a reward icon either: the sole winner's dreadnought, set on a
+    # Control space holding none ("you must", OQ-121 ruling 6 (1)), a row of
+    # its window like Planetary Array's. Only Rise of Ix's catalogs hold its
+    # row (``action_codec``).
+    "dreadnought_control",
+    # Not a reward icon either: Windtraps' "When you win a Conflict: water 1"
+    # (Rise of Ix), an automatic row of the same window (OQ-121 ruling 6
+    # (1)). Only Rise of Ix's catalogs hold its row.
+    "windtraps",
     # Not a reward icon either: the sole winner's close of the window once
     # every other row is resolved, the press that says "no more winning
     # Intrigue" (OQ-121 decision 6: "안 내도 창이 닫힌다"). Only the original
@@ -501,6 +514,10 @@ COMBAT_REWARD_ICON_KINDS: Final = (
     "line_0",
     "line_1",
     "line_2",
+    # Rise of Ix's (docs/rules/rise-of-ix.md 12): the Freighter icon of the
+    # Skirmishes' and Trade Monopoly's first place, which opens the
+    # recipient's Freighter window (``FREIGHTER``).
+    "freighter",
 )
 # The kinds only the original game's Conflicts print: a catalog holds their
 # rows only when one of its Conflicts prints them (docs/base-game-and-ix-plan.md
@@ -509,9 +526,32 @@ REWARD_LINE_KINDS: Final = ("line_0", "line_1", "line_2")
 # The window's own closing row (see ``COMBAT_REWARD_ICON_KINDS``); always the
 # last of the window's icons, offered when it is the only one left.
 WINNING_INTRIGUE: Final = "winning_intrigue"
+# The sole winner's dreadnought row (see ``COMBAT_REWARD_ICON_KINDS``): one
+# a win, whatever the number of dreadnoughts in the Conflict and whatever the
+# sandworm multiplier, since only one dreadnought goes to a Control space.
+DREADNOUGHT_CONTROL: Final = "dreadnought_control"
+# The action that answers it: the Control space the dreadnought is set on.
+DREADNOUGHT_CONTROL_ACTION: Final = "place_combat_reward_dreadnought"
+# Detonation Devices' answer inside the same frame: "dreadnought로 이겼을 때
+# 칸을 지배하는 대신 dreadnought 하나를 supply로 돌려 1 VP" (OQ-121 ruling 3).
+DREADNOUGHT_DETONATE_ACTION: Final = "detonate_combat_reward_dreadnought"
+# Windtraps' row of the sole winner's window: "Conflict를 이기면 water 1"
+# (docs/rules/rise-of-ix.md 4).
+WINDTRAPS: Final = "windtraps"
 IMPERIUM_REWARD_ICON_KINDS: Final = frozenset(
     {"mentat", "one_faction_influence", *REWARD_LINE_KINDS}
 )
+# Rise of Ix's Freighter icon in a Conflict reward (stage P4d-1): "Freighter
+# 아이콘마다 Freighter를 둘 가운데 하나로 움직일 수 있다("may")" [Rise of Ix
+# p. 5] (docs/rules/rise-of-ix.md 5), outside its owner's turn "자기 turn 밖"
+# [FAQ p. 3]: the icon opens the recipient's own Freighter window
+# (``shipping_track.freighter_move_frame``) and the recall's rewards follow in
+# their windows above the reward window. One window for each icon -- Trade Monopoly's
+# first place prints two -- and no sandworm doubles it (that board has none;
+# Uprising plus Rise of Ix is stage P7). A catalog holds its row only when a
+# Conflict of the pool prints it.
+FREIGHTER: Final = "freighter"
+IX_REWARD_ICON_KINDS: Final = frozenset({FREIGHTER})
 # Frame context keys of the window: the icons still to resolve, in the order
 # the engine paid them before stage B2 (``LEGACY_ICON_ORDER``: an older
 # record's, and the AI seats', order), the row's kinds in printed order, the
@@ -604,6 +644,8 @@ def _icon_kind(piece: Reward) -> str:
             return "faction_influence"
         case GainInfluence():
             return "choose_influence"
+        case Freighter():
+            return FREIGHTER
     raise TypeError(f"{piece!r} is not a Conflict reward icon")
 
 
@@ -718,7 +760,7 @@ def _reward_window(
         icons.extend([kind] * (counts.get(kind, 0) * multiplier))
     # The original game's kinds, after every older one (no sandworm doubles
     # them: that board has none).
-    for kind in ("mentat", "one_faction_influence", *REWARD_LINE_KINDS):
+    for kind in ("mentat", "one_faction_influence", *REWARD_LINE_KINDS, FREIGHTER):
         icons.extend([kind] * counts.get(kind, 0))
     if assignment.rank is RewardRank.FIRST:
         # The first-place reward goes to a sole winner only (a tie for first
@@ -732,6 +774,28 @@ def _reward_window(
         if draws:
             icons.extend(["planetary_array"] * draws)
             printed.append("planetary_array")
+        if state.config.rise_of_ix and has_tech(
+            state.players[assignment.player].tech_ids, TechAbility.CONFLICT_WIN_WATER
+        ):
+            # Windtraps: "Conflict를 이기면 water 1" [Rise of Ix p. 4]
+            # (docs/rules/rise-of-ix.md 4), an automatic row of the sole
+            # winner's window like Planetary Array's (OQ-121 ruling 6 (1)):
+            # "고를 것 없는 자동 줄". Not doubled by a sandworm: it is no reward.
+            icons.append(WINDTRAPS)
+            printed.append(WINDTRAPS)
+        if (
+            state.config.rise_of_ix
+            and state.players[assignment.player].dreadnoughts_conflict > 0
+        ):
+            # "dreadnought가 하나라도 있는 Conflict를 이기면 ... dreadnought가 없는
+            # 칸 하나를 골라(의무)" [Rise of Ix p. 6]: the choice is a row of the
+            # sole winner's window, ordered with the icons and before the
+            # second place is paid (OQ-121 ruling 6 (1), docs/rules/
+            # rise-of-ix.md 6). One a win: only one dreadnought goes to a
+            # space, and the second one in the Conflict goes to the garrison
+            # with the troops (``_return_conflict_units``).
+            icons.append(DREADNOUGHT_CONTROL)
+            printed.append(DREADNOUGHT_CONTROL)
         if winning_intrigue_is_hidden(state):
             # "When you win a Conflict" Intrigue (To the Victor..., Demand
             # Respect) is played in this window, in the winner's order with
@@ -830,6 +894,90 @@ def winning_intrigue_is_hidden(state: GameState) -> bool:
     return any(card in winning for card in state.intrigue_deck) or any(
         card in winning for seat in state.players for card in seat.intrigue_cards
     )
+
+
+def add_late_windtraps_row(state: GameState, player: int) -> GameState:
+    """Give the sole winner Windtraps' row of this win when the tile came
+    after its reward window opened.
+
+    "Freighter 보상으로 그 자리에서 Windtraps를 얻으면 이번 승리에도 water를
+    받는다 -- 디자이너 판정(BGG forum, "one from the Acquire effect and one for
+    winning the combat") ... Detonation Devices도 같다" (docs/rules/
+    rise-of-ix.md 12). The acquire effect's water is paid with the tile
+    (``tech.apply_tech_acquire_effect``); this adds the second one, the
+    winner's row for "Conflict를 이기면 water 1" (rise-of-ix.md 4, OQ-121
+    ruling 6 (1)), to the first-place window that is open, in the order
+    ``_reward_window`` lays the rows. Called when ``player`` takes a tile with
+    that ability. When the window has closed already -- the Freighter was its
+    last icon -- the row waits in a window of its own at the bottom of the
+    stack, which surfaces once the frames the Freighter opened are answered.
+    Only the sole winner's own reward counts: a tile taken in any other
+    seat's window or outside the Combat rewards adds nothing.
+
+    Detonation Devices needs no such row: its option is read from the
+    seat's tiles when the dreadnought's Control space is chosen
+    (``legal_dreadnought_control_actions``), so a tile taken first shows it.
+    """
+
+    if (
+        not state.config.rise_of_ix
+        or state.phase is not GamePhase.COMBAT
+        or state.combat_rewards_resolved
+        or not state.current_conflict_ids
+        or state.combat_rewards_paid < 1
+    ):
+        return state
+    ranking = rank_combat(state.players, first_player=state.first_player)
+    if state.combat_rewards_paid > len(ranking.rewards):
+        return state
+    paying = ranking.rewards[state.combat_rewards_paid - 1]
+    if paying.player != player or paying.rank is not RewardRank.FIRST:
+        return state
+    for index, frame in enumerate(state.decision_stack):
+        if (
+            frame.kind is not FrameKind.COMBAT_REWARD_ICONS
+            or not isinstance(frame.decision, PlayerDecision)
+            or frame.decision.owner != player
+        ):
+            continue
+        context = dict(frame.context)
+        printed = str(context[_PRINTED_KEY]).split(",")
+        if WINDTRAPS in printed:
+            return state
+        icons = [icon for icon in str(context[_ICONS_KEY]).split(",") if icon]
+        # The window's order: before the dreadnought's row and the closing
+        # row, which stays last (``legal_combat_reward_icon_actions``).
+        later = (DREADNOUGHT_CONTROL, WINNING_INTRIGUE)
+        icons.insert(
+            next((i for i, icon in enumerate(icons) if icon in later), len(icons)),
+            WINDTRAPS,
+        )
+        printed.insert(
+            next((i for i, icon in enumerate(printed) if icon in later), len(printed)),
+            WINDTRAPS,
+        )
+        context[_ICONS_KEY] = ",".join(icons)
+        context[_PRINTED_KEY] = ",".join(printed)
+        stack = list(state.decision_stack)
+        stack[index] = with_context(frame, context)
+        return replace(state, decision_stack=tuple(stack))
+    late: dict[str, ActionValue] = {
+        _ICONS_KEY: WINDTRAPS,
+        _PRINTED_KEY: WINDTRAPS,
+        _RANK_KEY: RewardRank.FIRST.value,
+        _MULTIPLIER_KEY: 1,
+        _CHOICE_INDEX_KEY: 0,
+    }
+    window = DecisionFrame(
+        kind=FrameKind.COMBAT_REWARD_ICONS,
+        frame_id=(
+            f"round:{state.round_number}:combat_reward_icons:{player}:"
+            f"{RewardRank.FIRST.value}:windtraps"
+        ),
+        decision=PlayerDecision(owner=player, prompt="Resolve your Conflict reward"),
+        context=tuple(sorted(late.items())),
+    )
+    return replace(state, decision_stack=(window, *state.decision_stack))
 
 
 def winning_intrigue_window_is_open(state: GameState, player: int) -> bool:
@@ -959,6 +1107,17 @@ def apply_combat_reward_icon(state: GameState, action: DomainAction) -> RuleResu
                 _spy_placement_frame(
                     state, player, index, deep_cover=kind == "deep_cover_spy"
                 )
+            )
+        case "dreadnought_control":
+            opened.append(_dreadnought_control_frame(state, player, index))
+        case "freighter":
+            # "you may move your Freighter": the recipient's own window, a
+            # source of its own for each icon (``index`` counts the frames the
+            # window has opened).
+            from dune_imperium.rules.shipping_track import freighter_move_frame
+
+            opened.append(
+                freighter_move_frame(player, source=f"{source}:freighter:{index}")
             )
         case "contract" if state.config.choam_module:
             assert isinstance(piece, TakeContract)
@@ -1211,6 +1370,16 @@ def _resolve_automatic_icon(
             # The window's own close: nothing is gained (the plays it ends
             # were cards of their own, ``intrigue.apply_intrigue_play``).
             return RuleResult(state=state)
+        case "windtraps", None:
+            # "Conflict를 이기면 water 1" [Rise of Ix p. 4]: gained as this
+            # row resolves, in the winner's order with its other rows.
+            gained = replace(owner.resources, water=owner.resources.water + 1)
+            return RuleResult(
+                state=_with_owner(state, replace(owner, resources=gained)),
+                events=(
+                    resources_gained_event(f"{source}:windtraps", player, water=1),
+                ),
+            )
         case "planetary_array", None:
             # "When you win a Conflict: draw a card" [Planetary Array Tech
             # tile], drawn as this row resolves, before the next place is
@@ -2186,7 +2355,13 @@ def _return_conflict_units(
     considered 'lost.'" [FAQ p. 1]. The Tactician token advances once by the
     whole loss, the cleanup being one source [Chani card]. The Conflict card
     went to its winner just before (``_award_conflict``, OQ-108); sandworms
-    and the Combat markers wait for ``finish_combat``."""
+    and the Combat markers wait for ``finish_combat``.
+
+    A dreadnought never goes to the supply: "끈질김. Combat이 해결되면
+    Conflict의 dreadnought는 supply로 가지 않는다" and it goes to the garrison
+    "troop을 supply로 돌리는 정리 단계에서 함께" (OQ-121 ruling 2,
+    docs/rules/rise-of-ix.md 6) [Rise of Ix p. 6]. It is no troop, so it is not
+    "lost" (``_conflict_losses`` counts troops and Commanders only)."""
 
     players = tuple(
         replace(
@@ -2195,6 +2370,10 @@ def _return_conflict_units(
             troops_conflict=0,
             commanders_supply=player.commanders_supply + player.commanders_conflict,
             commanders_conflict=0,
+            dreadnoughts_garrison=(
+                player.dreadnoughts_garrison + player.dreadnoughts_conflict
+            ),
+            dreadnoughts_conflict=0,
         )
         for player in state.players
     )
@@ -2554,7 +2733,11 @@ def finish_combat(state: GameState) -> RuleResult:
     The Conflict card went to its winner and the troops and Sardaukar
     Commanders back to the supply as the Conflict-end windows opened
     (``offer_conflict_end_triggers``); sandworms return to the bank and
-    every Combat marker to 0 now [Main p. 14].
+    every Combat marker to 0 now [Main p. 14]. Rise of Ix's dreadnoughts on
+    Control spaces take their turn last: the ones leaving go back to their
+    garrisons and the rest become leaving, winner or none
+    (``dreadnoughts.end_combat_dreadnoughts``) [Rise of Ix p. 6]
+    (docs/rules/rise-of-ix.md 6, OQ-121 ruling 1).
     """
 
     if state.phase is not GamePhase.COMBAT:
@@ -2564,7 +2747,9 @@ def finish_combat(state: GameState) -> RuleResult:
     if state.decision_stack:
         raise ValueError("Combat cannot finish with a pending decision")
     if any(
-        player.troops_conflict or player.commanders_conflict
+        player.troops_conflict
+        or player.commanders_conflict
+        or player.dreadnoughts_conflict
         for player in state.players
     ):
         raise RuntimeError("the Conflict's units return before the cleanup")
@@ -2587,13 +2772,16 @@ def finish_combat(state: GameState) -> RuleResult:
         players=players,
         combat_intrigue_players=(),
     )
+    # The Combat phase's last act (OQ-121 ruling 1).
+    ended = end_combat_dreadnoughts(next_state)
     return RuleResult(
-        state=next_state,
+        state=ended.state,
         events=(
             GameEvent(
                 event_id=f"round:{state.round_number}:combat_cleanup",
                 kind="combat_cleaned_up",
             ),
+            *ended.events,
         ),
     )
 
@@ -2834,6 +3022,184 @@ def _spy_placement_frame(
             (("choice_index", index), ("deep_cover", True), ("player", player))
             if deep_cover
             else (("choice_index", index), ("player", player))
+        ),
+    )
+
+
+def _dreadnought_control_frame(
+    state: GameState, player: int, index: int
+) -> DecisionFrame:
+    """The winner's choice of the Control space its dreadnought is set on.
+
+    "dreadnought가 하나라도 있는 Conflict를 이기면 Arrakeen·Carthag·Imperial
+    Basin 가운데 dreadnought가 없는 칸 하나를 골라(의무, "must")" [Rise of
+    Ix p. 6] (docs/rules/rise-of-ix.md 6): one space always remains (two
+    dreadnoughts at most stand on spaces, the one that leaves at this Combat
+    phase's end and the one placed now), so an empty list is a bug.
+    """
+
+    if not dreadnought_control_spaces(state):
+        raise RuntimeError("every Control space holds a dreadnought")
+    return DecisionFrame(
+        kind=FrameKind.DREADNOUGHT_CONTROL_CHOICE,
+        frame_id=(
+            f"round:{state.round_number}:dreadnought_control_choice:{index}:{player}"
+        ),
+        decision=PlayerDecision(
+            owner=player,
+            prompt="Choose a Control space that holds no dreadnought for yours",
+        ),
+        context=(("choice_index", index), ("player", player)),
+    )
+
+
+def dreadnought_control_spaces(state: GameState) -> tuple[str, ...]:
+    """The base game's Control spaces holding no dreadnought, in board order:
+    where a winner may set a dreadnought [Rise of Ix p. 6]. The Control
+    marker on a space does not bar it: the dreadnought covers it."""
+
+    held = {space_id for space_id, _, _ in state.dreadnought_control}
+    return tuple(
+        space_id
+        for space_id in content_for(state.config).control_visit_bonuses
+        if space_id not in held
+    )
+
+
+def legal_dreadnought_control_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """The Control spaces the winner may set its dreadnought on now: one row
+    each, the choice being mandatory ("must", [Rise of Ix p. 6]).
+
+    Detonation Devices adds its "may" beside them: "dreadnought로 이겼을 때
+    칸을 지배하는 대신 dreadnought 하나를 supply로 돌려 1 VP"
+    ([Rise of Ix p. 4], docs/rules/rise-of-ix.md 4), a row of the same choice
+    since the dreadnought goes to a space *or* back to the supply (OQ-121
+    ruling 3). Only the Conflict's dreadnought can be sent back, never one on
+    a space or in the garrison, and this frame holds only it."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.DREADNOUGHT_CONTROL_CHOICE:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    detonation = (
+        (DomainAction(action_id=DREADNOUGHT_DETONATE_ACTION, actor=player),)
+        if has_tech(state.players[player].tech_ids, TechAbility.DREADNOUGHT_DETONATION)
+        else ()
+    )
+    return (
+        *(
+            DomainAction(
+                action_id=DREADNOUGHT_CONTROL_ACTION,
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+            for space_id in dreadnought_control_spaces(state)
+        ),
+        *detonation,
+    )
+
+
+def apply_dreadnought_control(state: GameState, action: DomainAction) -> RuleResult:
+    """Set one of the winner's Conflict dreadnoughts on the chosen space.
+
+    It leaves the Conflict and controls the space until the end of the next
+    Combat phase (``dreadnought_control`` with ``leaving`` False, turned
+    leaving by this phase's end, ``dreadnoughts.end_combat_dreadnoughts``);
+    the Control marker it covers stays where it is [Rise of Ix p. 6]. The
+    winner's second dreadnought, if any, stays in the Conflict and goes to
+    the garrison with the troops (``_return_conflict_units``).
+    """
+
+    if action not in legal_dreadnought_control_actions(state, action.actor):
+        raise ValueError("action is not a legal dreadnought Control space")
+    space_id = dict(action.arguments)["space_id"]
+    if not isinstance(space_id, str):
+        raise RuntimeError("dreadnought Control choice has invalid space ID")
+    owner = state.players[action.actor]
+    if owner.dreadnoughts_conflict < 1:
+        raise RuntimeError("the winner has no dreadnought in the Conflict")
+    frame = state.decision_stack[-1]
+    choice_index = context_int(dict(frame.context), "choice_index")
+    remaining = state.decision_stack[:-1]
+    next_state = replace(
+        state,
+        players=replace_player(
+            state.players,
+            replace(owner, dreadnoughts_conflict=owner.dreadnoughts_conflict - 1),
+        ),
+        dreadnought_control=(
+            *state.dreadnought_control,
+            (space_id, action.actor, False),
+        ),
+        decision_stack=remaining,
+        combat_rewards_resolved=combat_rewards_done(state, remaining),
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:combat_reward:dreadnought_control:"
+            f"{choice_index}:{action.actor}:{space_id}"
+        ),
+        kind="dreadnought_control_placed",
+        payload=(("player", action.actor), ("space_id", space_id)),
+    )
+    return RuleResult(state=next_state, events=(event,))
+
+
+def apply_dreadnought_detonation(
+    state: GameState, action: DomainAction
+) -> RuleResult:
+    """Detonation Devices: return the winner's Conflict dreadnought to the
+    supply for 1 VP instead of setting it on a space.
+
+    "dreadnought로 이겼을 때 칸을 지배하는 대신 dreadnought 하나를 supply로
+    돌려 1 VP("may")" (docs/rules/rise-of-ix.md 4, [Detonation Devices
+    tile]); OQ-121 ruling 3: it is the Conflict dreadnought that would have
+    gone to a space. Nothing is set on a space, the Control marker stays, and
+    the winner's second dreadnought (if any) goes to the garrison with the
+    troops as it does after a placement (``_return_conflict_units``).
+    """
+
+    if action not in legal_dreadnought_control_actions(state, action.actor):
+        raise ValueError("action is not a legal Detonation Devices choice")
+    owner = state.players[action.actor]
+    if owner.dreadnoughts_conflict < 1:
+        raise RuntimeError("the winner has no dreadnought in the Conflict")
+    frame = state.decision_stack[-1]
+    choice_index = context_int(dict(frame.context), "choice_index")
+    remaining = state.decision_stack[:-1]
+    next_state = replace(
+        state,
+        players=replace_player(
+            state.players,
+            replace(
+                owner,
+                dreadnoughts_conflict=owner.dreadnoughts_conflict - 1,
+                dreadnoughts_supply=owner.dreadnoughts_supply + 1,
+                victory_points=owner.victory_points + 1,
+            ),
+        ),
+        decision_stack=remaining,
+        combat_rewards_resolved=combat_rewards_done(state, remaining),
+    )
+    source = (
+        f"round:{state.round_number}:combat_reward:dreadnought_detonation:"
+        f"{choice_index}:{action.actor}"
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=source,
+                kind="dreadnought_detonated",
+                payload=(("player", action.actor),),
+            ),
+            resources_gained_event(source, action.actor, victory_points=1),
         ),
     )
 

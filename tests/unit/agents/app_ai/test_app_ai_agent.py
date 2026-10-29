@@ -5,7 +5,7 @@ import random
 
 import pytest
 
-from dune_imperium import RulesetConfig
+from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.determinize import determinize
 from dune_imperium.agents.registry import make_agent
@@ -208,3 +208,29 @@ def test_immediate_draws_are_answered_before_any_window(
     pick = app.choose_action_with_state(state, engine.observe(state, 0), actions)
     assert pick in actions
     assert not app.fallbacks
+
+
+@pytest.mark.usefixtures("app_ai_errors_expected")
+@pytest.mark.parametrize("leader_draft", [False, True])
+def test_four_app_seats_finish_an_original_game_with_rise_of_ix(
+    leader_draft: bool,
+) -> None:
+    """The original game's cards are not ported yet (stage P6) and Rise of
+    Ix's frames (the winner's dreadnought, Tech acquisition, Sonic Snoopers'
+    bottom pick) have no window: each is answered at random, as every
+    decision no window mirrors (``fallbacks``), as is a window that raises on
+    an original card's id (hence ``app_ai_errors_expected``), and the game
+    still finishes and replays exactly (stage P4c-5)."""
+
+    config = RulesetConfig(
+        base_game=BaseGame.IMPERIUM, rise_of_ix=True, leader_draft=leader_draft
+    )
+    engine = UprisingRulesEngine()
+
+    def play() -> tuple[object, ...]:
+        agents = tuple(AppAIAgent(seed=300 + seat) for seat in range(4))
+        result = run_policy_game(engine, config, 11, agents)
+        assert result.state.phase is GamePhase.FINISHED
+        return tuple(result.replay.steps)
+
+    assert play() == play()

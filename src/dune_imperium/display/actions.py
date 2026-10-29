@@ -71,6 +71,7 @@ from dune_imperium.rules.agent_effects import (
 from dune_imperium.rules.agent_turn import CARD_PICK_ACTION, executable_placements
 from dune_imperium.rules.combat import (
     REWARD_ICON_ACTION,
+    WINDTRAPS,
     WINNING_INTRIGUE,
     reward_icon_piece,
 )
@@ -706,6 +707,14 @@ def combat_reward_icon_action_text(
             f"{_PLANETARY_ARRAY}: {reward_text(draw)}",
             f"{_PLANETARY_ARRAY_KO}: {reward_text_ko(draw)}",
         )
+    if kind == WINDTRAPS:
+        # Windtraps' "Conflict를 이기면 water 1", a row of the winner's window
+        # (Rise of Ix, OQ-121 ruling 6 (1)); never doubled by a sandworm.
+        water = GainResources(water=1)
+        return (
+            f"{_WINDTRAPS}: {reward_text(water)}",
+            f"{_WINDTRAPS}: {reward_text_ko(water)}",
+        )
     if kind == WINNING_INTRIGUE:
         # The sole winner's close of its window once every other row is
         # resolved: no more "When you win a Conflict" Intrigue (OQ-121
@@ -823,6 +832,15 @@ def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
             return f"Gain {count} contract", f"{{contract:{count}}}"
         case "influence":
             return "Gain 1 Influence", "{influence_any:1}"
+        case "distinct_influence":
+            # Shuttle Fleet's "Choose two:" (OQ-114).
+            return (
+                "Gain 1 Influence with each of two different Factions",
+                "서로 다른 진영의 {influence_any:1}",
+            )
+        case "water":
+            count = tile.acquire_water
+            return f"Gain {count} water", f"{{water:{count}}}"
         case "intrigue_or_card":
             if args["choice"] == "intrigue":
                 return "Draw 1 Intrigue card", "{intrigue:1}"
@@ -852,6 +870,7 @@ def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
 # name.
 _CHOAM_TRANSPORTS = TECH_TILES_BY_ID["choam_transports"].name
 _PLANETARY_ARRAY = TECH_TILES_BY_ID["planetary_array"].name
+_WINDTRAPS = TECH_TILES_BY_ID["windtraps"].name
 _PLANETARY_ARRAY_KO = KOREAN_CARD_NAMES["tech"].get("planetary_array", _PLANETARY_ARRAY)
 _OWED_ORIGINS: dict[str, tuple[str, str]] = {
     "bene_gesserit_4": (

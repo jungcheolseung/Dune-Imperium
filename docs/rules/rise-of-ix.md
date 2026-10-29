@@ -59,6 +59,8 @@
 - **쓰기.** 능력마다 쓰는 때가 적혀 있다(Reveal turn, Conflict 승리, Round Start, Endgame 등). 뒤집기 아이콘이 있는 능력은 자기 turn(Agent·Reveal)
   가운데 라운드에 한 번, 쓰면 뒷면으로 뒤집고 다음 라운드 Round Start에 되돌린다 `[Rise of Ix p. 4]` `[FAQ p. 1]`(첫 영어판은 Agent turn만이라고
   잘못 적었다). 때를 적지 않은 능력은 자기 turn 가운데 쓴다 `[FAQ p. 4]`(예: Spy Satellites의 첫 능력).
+  Reveal turn 도중 Acquire Tech로 얻은 타일의 "Reveal turn" 능력도 그 turn에 듣는다(OQ-150 (가), 2026-10-29 사용자 — Artillery·Minimic Film·Restricted
+  Ordnance·Disposal Facility 모두).
 - **Round Start 순서**(OQ-122, 2026-10-23 사용자 확정, 앱과 같음): Conflict 공개 → Control 방어 → 각자 5장(뒤집은 Tech 되돌리기를 함께) →
   Holtzman Engine의 카드 1장·Shuttle Fleet의 2 Solari → Ilesa의 따로 두기(Holtzman Engine으로 뽑은 카드까지 든 손에서) → 첫 turn. 좌석 사이는
   First Player부터.
@@ -233,6 +235,20 @@ Duke Leto의 Landsraad 할인은 Dreadnought 칸에도 든다(3 → 2). Kwisatz 
 | Tessia Vernius (4) | Careful Observation: 시작에 Snooper token을 각 track의 Influence 2 칸에. 그 token에 도달할 때마다 Snooper track의 맨 위 덮이지 않은 보상을 받는다(① discard → spice 1, ② 그 track의 4칸 보너스, ③ 그 track에 Influence 1, ④ ②와 ③) | Duplicity: Influence 1 잃기 → Snooper token이 있는 진영에 Influence 1 | 디자이너 판정 9.3. "도달"은 Influence를 한꺼번에 얻으며 지나가도 도달(Uprising과 같다, [uprising-systems.md](uprising-systems.md)) |
 | Viscount Hundro Moritani (1) | Intelligence: 게임 시작에 Intrigue 덱 위 두 장을 보고 하나를 갖고 하나를 위에 되돌린다 | Couriers: spice 1 → Freighter | Signet 아이콘이 Freighter인 근거: Rival 문장 "spend 1 spice … for the Freighter icon" `[Rise of Ix p. 8]` |
 
+## 10a. Bloodlines Tech Module과 함께 (`[Bloodlines p. 7]`, P7)
+
+2026-10-29, 사용자 지시("assets/rulebooks 에 룰북 다 있을텐데")로 로컬 Bloodlines 룰북의 해당 쪽만 읽었다. "Combining the Tech Module with RISE OF IX":
+
+- 두 모듈의 Tech 타일을 모두 섞어 될 수 있는 대로 고르게 큰 더미 셋으로 나눈다.
+- Rise of Ix의 Tech 타일만 쓸 때(Ix의 다른 구성물 없이): Detonation Devices와 Troop Transports를 빼고 나머지 16장을 Bloodlines 타일과 섞는다.
+- Rise of Ix를 모두 쓸 때: Bloodlines의 Ixian Embassy 보드를 쓰지 않고 세 더미를 Ix 보드에 둔다. Tech Negotiation의 할인은 쓰고, High Council
+  자리에 따른 Ixian Embassy 할인은 없다.
+- Rise of Ix를 모두 쓸 때 CHOAM 덮개가 Sardaukar Commander 자리 둘을 덮으므로, setup에서 Commander 하나를 Dreadnought 칸에, 4인 판이면 다른 하나를
+  Tech Negotiation 칸에 둔다.
+
+엔진에는 "Ix의 Tech만" 쓰는 옵션이 없다(`rise_of_ix`는 Ix 전부). 그래서 Bloodlines(Tech Module) + Rise of Ix 판은 셋째·넷째 줄대로다: 타일 36장을 한 묶음으로
+섞어 세 더미(12장씩), Ixian Embassy 없음, Commander 자리 옮김. 원판 + Bloodlines가 열리는 P7에서 구현한다(그때까지 setup이 거절).
+
 ## 11. Epic Game Mode (원판 + Ix, `[Rise of Ix p. 10]`)
 
 12점까지. Conflict I을 쓰지 않고 무작위 II 다섯 장을 III 다섯 장 위에 놓는다 — 원판 + Ix의 III은 다섯 장(원판 4 + Economic Supremacy)이라 모두 쓴다. 좌석마다
@@ -258,7 +274,7 @@ for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판
 
 | 효과 | 아는 좌석 | 언제까지 | 비고 |
 | --- | --- | --- | --- |
-| Hundro Moritani의 Intelligence | Hundro 좌석이 Intrigue 덱 맨 위 카드 | 그 카드가 뽑힐 때까지 | 갖는 카드는 손(숨김). 비공개 결정이고 지도자 고르기와 묶지 않는다(lessons 2026-10-05). Epic에서는 모두 뽑은 뒤 |
+| Hundro Moritani의 Intelligence | Hundro 좌석이 Intrigue 덱 맨 위 카드 | 공개 영역이나 Hundro의 손에 들어갈 때까지(다른 좌석이 뽑으면 그 손에 있는 것으로 계속 안다), 섞이면 지운다 — OQ-149 (가), Imperium Ceremony도 같다 | 갖는 카드는 손(숨김). 비공개 결정이고 지도자 고르기와 묶지 않는다(lessons 2026-10-05). Epic에서는 모두 뽑은 뒤 |
 | Court Intrigue, Sonic Snoopers | 놓은 좌석이 Intrigue 덱 맨 아래 카드(들) | 그 카드가 뽑힐 때까지(뽑히면 누가 가졌는지 안다), 또는 덱을 다시 섞을 때까지 `[FAQ p. 2]` | 공개하지 않는다 `[Rise of Ix p. 10]` |
 | Ilesa Ecaz의 따로 둔 카드 | Ilesa 좌석 | 둘째 turn에 공개(그 뒤 손에 있지만 공개 경로로 들어온 카드 — OQ-010) | 따로 둔 카드는 손·discard·in play가 아니어서 trash·discard 대상이 아니다(디자이너 판정) |
 | Tech 더미의 다음 타일 | 아무도 | 앞면으로 뒤집을 때까지 | chance. 앞면 타일 셋은 공개 |
@@ -308,7 +324,7 @@ for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판
 - 비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다(OQ-071의 사용자 원칙 일반화) — 버릴 카드에 Unload가 있어도 같다(Ix-Guild Compact에서 dreadnought가
   둘 다 나가 있을 때, Invasion Ships를 Agent를 보낸 뒤에; 앱도 같다).
 - Troop Transports의 "You may deploy any of them to the Conflict"는 카드 문장이 배치를 허락하므로 Combat 칸에 Agent를 보내지 않은 turn에도 배치할 수 있다
-  (카드는 일반 규칙을 바꾼다 `[DI p. 6]`; 디자이너 판정도 Combat 해결 중의 배치가 가능하다는 쪽).
+  (카드는 일반 규칙을 바꾼다 `[DI p. 6]`). Combat 해결 중의 회수로 recruit한 troop은 Troop Transports가 있어도 garrison으로 간다(OQ-151 (가), 2026-10-29 사용자).
 - "Reveal Turn:" Tech를 Reveal turn 도중에 얻으면 그 turn에 쓴다(타일 문장; 지금 엔진은 Bloodlines의 Command 타일만 그렇게 한다 — P4 구현 메모).
 
 ## 16. 새 질문

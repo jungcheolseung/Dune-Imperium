@@ -24,8 +24,12 @@ def retreat_units(
 
     Each troop or Sardaukar Commander carried two strength; a player left
     without units keeps no strength at all [Main pp. 12, 14] [Bloodlines
-    p. 4]. ``advance_tactics=False`` leaves Chani's Tactics token to a caller
-    that moves several units for one source and advances it once.
+    p. 4]. A dreadnought in the Conflict is a unit too and a card's
+    "troop" does not retreat it [Rise of Ix p. 6]: it stays, and its 3
+    strength stays in the running total, so a seat whose troops all retreat
+    keeps the strength of its dreadnought (no effect retreats a dreadnought
+    yet). ``advance_tactics=False`` leaves Chani's Tactics token to
+    a caller that moves several units for one source and advances it once.
     """
 
     owner = state.players[player]

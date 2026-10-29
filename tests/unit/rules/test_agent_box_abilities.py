@@ -116,6 +116,7 @@ from dune_imperium.rules.agent_effects import (
     AGENT_ICON_INTRIGUE,
     AGENT_ICON_PLEDGE,
     AGENT_ICON_RESEARCH,
+    AGENT_ICON_SOLARI,
     AGENT_ICON_SPICE,
     AGENT_ICON_TROOPS,
     AUTOMATIC_AGENT_ICONS,
@@ -1065,6 +1066,9 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     # Shifting Allegiances: the Influence lost and the spice are the cost, the
     # one Faction's two Influence is the same armed icon.
     shifting = _BOX.MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE
+    # Spice Smugglers: its Influence and its Solari armed once the spice is
+    # paid, in the owner's order (OQ-148).
+    smugglers = _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
     assert users == {
         AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy},
         AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy, duncan},
@@ -1072,7 +1076,8 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
         AGENT_ICON_TROOPS: {gambit, elite, duncan},
         AGENT_ICON_PLEDGE: {gambit},
         AGENT_ICON_RESEARCH: {piter},
-        AGENT_ICON_INFLUENCE: {grip, shifting},
+        AGENT_ICON_INFLUENCE: {grip, shifting, smugglers},
+        AGENT_ICON_SOLARI: {smugglers},
     }
 
 

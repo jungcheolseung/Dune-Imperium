@@ -201,8 +201,18 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     ),
     Target.NAVIGATION_CARD: frozenset({"card_id"}),
     Target.CONTRACT: frozenset({"instance_id"}),
+    # ``negotiators``: the Negotiators a Rise of Ix Acquire Tech returns to
+    # the supply, one spice off each [Rise of Ix p. 4] (absent for none).
     Target.TECH: frozenset(
-        {"choice", "destroy_shield_wall", "effect", "faction", "post_id", "tech_id"}
+        {
+            "choice",
+            "destroy_shield_wall",
+            "effect",
+            "faction",
+            "negotiators",
+            "post_id",
+            "tech_id",
+        }
     ),
     Target.SKILL: frozenset({"skill_id"}),
     Target.LEADER: frozenset({"leader_id"}),
@@ -295,6 +305,14 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "deploy_commanders": _row(_V.DEPLOY, _S.TURN, _T.UNITS, variant="commanders"),
     "withdraw_troops": _row(_V.WITHDRAW, _S.TURN, _T.UNITS),
     "withdraw_commanders": _row(_V.WITHDRAW, _S.TURN, _T.UNITS, variant="commanders"),
+    # Rise of Ix: a dreadnought is a third kind of unit beside the troop and
+    # the Commander [Rise of Ix p. 6].
+    "deploy_dreadnoughts": _row(
+        _V.DEPLOY, _S.TURN, _T.UNITS, variant="dreadnoughts"
+    ),
+    "withdraw_dreadnoughts": _row(
+        _V.WITHDRAW, _S.TURN, _T.UNITS, variant="dreadnoughts"
+    ),
     "pass_combat_intrigue": _row(_V.PASS, _S.TURN, variant="combat"),
     "pass_endgame_intrigue": _row(_V.PASS, _S.TURN, variant="endgame"),
     "play_turn_start_card": _row(_V.PLAY, _S.TURN, _T.PERSONAL_CARD),
@@ -512,6 +530,30 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "choose_intrigue_discard": _row(_V.DISCARD, _S.INTRIGUE, _T.PERSONAL_CARD),
     "detonate_shield_wall": _row(_V.DESTROY_SHIELD_WALL, _S.INTRIGUE),
     "keep_shield_wall": _row(_V.DECLINE, _S.INTRIGUE, of=_V.DESTROY_SHIELD_WALL),
+    # Rise of Ix's Dreadnought icon ("you may commission", [Rise of Ix p. 6]),
+    # as a recruit: a new verb would widen the observation's effect-pick verb
+    # segment (``len(Verb)``).
+    "commission_intrigue_dreadnought": _row(
+        _V.RECRUIT, _S.INTRIGUE, variant="dreadnought"
+    ),
+    "decline_intrigue_dreadnought": _row(
+        _V.DECLINE, _S.INTRIGUE, of=_V.RECRUIT, variant="dreadnought"
+    ),
+    # Rise of Ix's Tech Negotiation icon ("you may take a troop", [Rise of Ix
+    # p. 4]), a recruit-shaped row for the same reason as the Dreadnought's.
+    "place_intrigue_negotiator": _row(_V.RECRUIT, _S.INTRIGUE, variant="negotiator"),
+    "decline_intrigue_negotiator": _row(
+        _V.DECLINE, _S.INTRIGUE, of=_V.RECRUIT, variant="negotiator"
+    ),
+    # Rise of Ix's Freighter icon ("you may move your Freighter", [Rise of Ix
+    # p. 5]): up one space, recall (collect the spaces' rewards), or neither.
+    "advance_intrigue_freighter": _row(
+        _V.ADVANCE, _S.INTRIGUE, variant="freighter"
+    ),
+    "recall_intrigue_freighter": _row(_V.COLLECT, _S.INTRIGUE, variant="freighter"),
+    "decline_intrigue_freighter": _row(
+        _V.DECLINE, _S.INTRIGUE, of=_V.ADVANCE, variant="freighter"
+    ),
     "deploy_intrigue_troops": _row(_V.DEPLOY, _S.INTRIGUE, _T.UNITS),
     "retreat_intrigue_troops": _row(_V.RETREAT, _S.INTRIGUE, _T.UNITS),
     "lose_intrigue_troop": _row(_V.LOSE_UNIT, _S.INTRIGUE, _T.UNITS),
@@ -641,6 +683,16 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.RECALL_SPY, _S.CONFLICT, _T.POST, variant="two"
     ),
     "decline_combat_reward_spy": _row(_V.DECLINE, _S.CONFLICT, of=_V.PLACE_SPY),
+    # The winner's dreadnought on a Control space (Rise of Ix): "take
+    # control", as the Control icon's verb (a new verb would widen the
+    # observation's effect-pick verb segment, ``len(Verb)``).
+    "place_combat_reward_dreadnought": _row(_V.TAKE, _S.CONFLICT, _T.SPACE),
+    # Detonation Devices' answer in the same choice: the dreadnought back to
+    # the supply for 1 VP instead of a space ("gain", as the VP icon's verb);
+    # the tile prints it.
+    "detonate_combat_reward_dreadnought": _row(
+        _V.GAIN, _S.TECH, variant="detonation"
+    ),
     "trash_combat_reward_card": _row(_V.TRASH, _S.CONFLICT, _T.PERSONAL_CARD),
     "decline_combat_reward_trash": _row(_V.DECLINE, _S.CONFLICT, of=_V.TRASH),
     "resolve_combat_trash_without_card": _row(
@@ -790,10 +842,56 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "decline_tech": _row(_V.DECLINE, _S.TECH, of=_V.ACQUIRE),
     "flip_tech": _row(_V.FLIP, _S.TECH, _T.TECH),
+    # Rise of Ix's tiles used by trashing them (stage P4c-2c): Spy Satellites'
+    # VP and Sonic Snoopers, whose pick puts Intrigue cards on the Intrigue
+    # deck's bottom ("set aside", the nearest verb: a new one would widen the
+    # observation's effect-pick verb segment) and stops with the draw.
+    "trash_tech": _row(_V.TRASH, _S.TECH, _T.TECH),
+    "put_intrigue_on_bottom": _row(
+        _V.SET_ASIDE, _S.TECH, _T.INTRIGUE_CARD, variant="deck_bottom"
+    ),
+    "finish_intrigue_bottom": _row(_V.FINISH, _S.TECH, variant="intrigue_bottom"),
+    # The Freighter's own window outside its owner's turn, and one reward of a
+    # Shipping track recall (a row of its owner's turn or of its window): the
+    # track is on the Ix board (stage P4c-3, ``rules.shipping_track``).
+    "advance_freighter": _row(_V.ADVANCE, _S.BOARD_SPACE, variant="freighter"),
+    "recall_freighter": _row(_V.COLLECT, _S.BOARD_SPACE, variant="freighter"),
+    "decline_freighter": _row(
+        _V.DECLINE, _S.BOARD_SPACE, of=_V.ADVANCE, variant="freighter"
+    ),
+    "resolve_shipping_reward": _row(
+        _V.RESOLVE, _S.BOARD_SPACE, _T.FACTION, variant="shipping_reward"
+    ),
+    # The icons of Rise of Ix's four spaces (stage P4c-4,
+    # ``rules.ix_board_spaces``): the Dreadnought icon, the Acquire Tech icon
+    # and the Tech Negotiation "OR" box's two halves, and the Freighter icon's
+    # two moves. Spaceport's Foldspace card on top of the deck is the
+    # Foldspace space's own variant.
+    "commission_board_dreadnought": _row(
+        _V.RECRUIT, _S.BOARD_SPACE, variant="dreadnought"
+    ),
+    "acquire_board_tech": _row(_V.ACQUIRE, _S.BOARD_SPACE, variant="ix_tech"),
+    "acquire_negotiation_tech": _row(
+        _V.ACQUIRE, _S.BOARD_SPACE, variant="negotiation_tech"
+    ),
+    "place_board_negotiator": _row(_V.RECRUIT, _S.BOARD_SPACE, variant="negotiator"),
+    "advance_board_freighter": _row(
+        _V.ADVANCE, _S.BOARD_SPACE, variant="board_freighter"
+    ),
+    "recall_board_freighter": _row(
+        _V.COLLECT, _S.BOARD_SPACE, variant="board_freighter"
+    ),
+    "acquire_foldspace_to_deck_top": _row(
+        _V.ACQUIRE, _S.BOARD_SPACE, variant="foldspace_deck_top"
+    ),
     # Forbidden Weapons: the swords and an Influence lost, or the trash.
     "choose_tech_strength": _row(_V.CHOOSE, _S.TECH, _T.FACTION),
     "choose_tech_trash": _row(_V.CHOOSE, _S.TECH, variant="trash"),
     "place_tech_spy": _row(_V.PLACE_SPY, _S.TECH),
+    # Disposal Facility's Reveal-turn trash of a card in play (Rise of Ix).
+    "trash_disposal_facility_card": _row(
+        _V.TRASH, _S.TECH, _T.PERSONAL_CARD, variant="disposal_facility"
+    ),
     # --- Research ------------------------------------------------------------
     "choose_research_space": _row(_V.ADVANCE, _S.RESEARCH, _T.TRACK_SPACE),
     "choose_research_influence": _row(_V.GAIN_INFLUENCE, _S.RESEARCH, _T.FACTION),
@@ -909,6 +1007,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
             # Stage P3: the original game's Bindu Suspension, which may pass
             # the turn after its draw (OQ-117).
             _V.PASS,
+            # Stage P4c-2c: Sonic Snoopers' stop (the pick's own effect has
+            # no target, so it keeps its effect row).
+            _V.FINISH,
         )
     },
     # A target row picks one target of the effect its seat picked.

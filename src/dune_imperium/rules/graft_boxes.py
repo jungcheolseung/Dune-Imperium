@@ -90,10 +90,15 @@ TURN_KEYS: Final = frozenset(
         "board_icons",
         "combat_commanders_deployed",
         "combat_commanders_withdrawable",
+        # Rise of Ix's dreadnoughts, the turn's third kind of unit
+        # (``combat_deployment``).
+        "combat_dreadnoughts_deployed",
+        "combat_dreadnoughts_withdrawable",
         "combat_troops_deployed",
         "combat_troops_withdrawable",
         "commanders_recruited",
         "cost_option",
+        "dreadnoughts_commissioned",
         "espionage_spy_recalled",
         "existing_troop_deployment_limit",
         "finish_deployment_window",
@@ -110,6 +115,11 @@ TURN_KEYS: Final = frozenset(
         "pending_tech_acquire_effects",
         # Effects waiting on the turn as rows (cleanup-2b, ``turn_rows``).
         "pending_turn_rows",
+        # Troop Transports' Shipping troops, deployable wherever the Agent
+        # went (Rise of Ix, ``combat_deployment``).
+        "shipping_troops_recruited",
+        # The part of the shortfall such a recruit could not get (OQ-030).
+        "shipping_troops_ungained",
         # The rows picked toward one waiting effect (stage B3,
         # ``effect_steps``), whichever box's effect it is.
         "effect_pick",

@@ -1875,13 +1875,18 @@ IMPERIUM_CARDS: Final = (
 
 # The original game's cards resolve here too (stage P3, plan 16): this is a
 # lookup table across both base games, as ``BOARD_SPACES_BY_ID`` is; code that
-# lists Uprising's own cards iterates ``IMPERIUM_CARDS``.
+# lists Uprising's own cards iterates ``IMPERIUM_CARDS``. Rise of Ix's identity
+# entries (stage P4a, plan 17) join it the same way.
 from dune_imperium.content.imperium.imperium import (  # noqa: E402
     IMPERIUM_BASE_CARDS,
 )
+from dune_imperium.content.rise_of_ix.imperium import (  # noqa: E402
+    IX_IMPERIUM_CARDS,
+)
 
 IMPERIUM_CARDS_BY_ID: Final = {
-    entry.card.card_id: entry for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS)
+    entry.card.card_id: entry
+    for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS, *IX_IMPERIUM_CARDS)
 }
 
 

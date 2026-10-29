@@ -1294,24 +1294,9 @@ def payment_reward_block(
     if ability.armed_icons:
         # Rewards waiting as icons: the arrow is dead only when none of them
         # can pay. A recruit pays while a troop can join (``troop_can_join``,
-        # OQ-071's recruit criterion, user ruling 2026-10-06 "효과 없음").
-        if any(
-            isinstance(reward, GainInfluence)
-            for line in ability.sections
-            for reward in line.rewards
-        ):
-            # A chosen Faction's Influence pays while one of its Factions can
-            # rise (OQ-060, OQ-071).
-            owner = state.players[player]
-            if any(
-                influence_can_rise(owner, faction)
-                for line in ability.sections
-                for reward in line.rewards
-                if isinstance(reward, GainInfluence)
-                for faction in (reward.factions or tuple(Faction))
-            ):
-                return None
-            return AgentPaymentBlock.NO_FACTION_TO_RAISE
+        # OQ-071's recruit criterion, user ruling 2026-10-06 "효과 없음"); a
+        # Faction's Influence while one of its Factions can rise (OQ-060) --
+        # Spice Smugglers' Solari keep its arrow live at the Guild's top.
         blocks = [
             _armed_reward_block(state, player, reward)
             for line in ability.sections
@@ -1347,9 +1332,20 @@ def _armed_reward_block(
 ) -> AgentPaymentBlock | None:
     """Why one of an armed arrow's rewards would change nothing now, or None:
     a draw from an empty deck and discard pile, a recruit with no troop to
-    take (Duncan Idaho's "[water] -> [troop][draw]", OQ-071). Every other
+    take (Duncan Idaho's "[water] -> [troop][draw]"), a Faction's Influence
+    with every track it may raise at the top (OQ-060, OQ-071). Every other
     reward pays."""
 
+    if isinstance(reward, GainInfluence):
+        owner = state.players[player]
+        return (
+            None
+            if any(
+                influence_can_rise(owner, faction)
+                for faction in (reward.factions or tuple(Faction))
+            )
+            else AgentPaymentBlock.NO_FACTION_TO_RAISE
+        )
     if isinstance(reward, DrawPersonalCards) and not (
         gather_intelligence_draw_available(state, player)
     ):
@@ -1823,6 +1819,8 @@ _ARMED_REWARDS: Final[Mapping[str, tuple[Reward, ...]]] = {
     # Piter's ``cards`` draws two.
     "cards": (DrawPersonalCards(1), DrawPersonalCards(2)),
     "spice": (GainResources(spice=2),),
+    # Spice Smugglers' 3 Solari (OQ-148).
+    "solari": (GainResources(solari=3),),
     "troops": (RecruitTroops(1),),
     "pledge": (PledgeFirstPlaceInfluence(),),
     "research": (Research(),),
@@ -1838,13 +1836,16 @@ def _armed_line(key: str, line: EffectSection) -> bool:
         # ``choose_agent_card_influence`` (never a track at the top, OQ-060).
         # Shifting Allegiances' two Influence with one chosen Faction is the
         # same row, one pick for both ([DI p. 16], imperium-base.md 13.3).
-        return (
-            len(line.rewards) == 1
-            and isinstance(line.rewards[0], GainInfluence)
-            and line.rewards[0].requires_choice
-            and not line.rewards[0].distinct
-            and (line.rewards[0].times == 1 or line.rewards[0].one_faction)
-        )
+        # Spice Smugglers' fixed Spacing Guild Influence is that row with its
+        # one Faction (OQ-148), as Clandestine Meeting's printed Faction is.
+        if len(line.rewards) != 1 or not isinstance(line.rewards[0], GainInfluence):
+            return False
+        gain = line.rewards[0]
+        if not gain.requires_choice:
+            return gain.factions is not None and len(gain.factions) == 1 and (
+                gain.times == 1
+            )
+        return not gain.distinct and (gain.times == 1 or gain.one_faction)
     return len(line.rewards) == 1 and line.rewards[0] in _ARMED_REWARDS.get(key, ())
 
 

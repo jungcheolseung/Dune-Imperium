@@ -18,13 +18,16 @@ the stack's next tile face up. The tile's acquire effect pays once
 within the current turn. ``decline_tech`` refuses the offer.
 """
 
+from collections.abc import Mapping
 from copy import replace
 from typing import Final
 
 from dune_imperium.content.bloodlines.tech import (
     HIGH_COUNCIL_TECH_DISCOUNT,
+    IX_FLIP_ABILITIES,
     TECH_TILES,
     TECH_TILES_BY_ID,
+    TechAbility,
     TechTile,
     has_tech,
 )
@@ -58,11 +61,17 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.observation import TECH_DISCOUNT_KEY, TECH_PAYMENT_KEY
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, printer_value
+from dune_imperium.rules.card_bonds import counted_in_play
+from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
+from dune_imperium.rules.combat import add_late_windtraps_row
 from dune_imperium.rules.combat_deployment import grant_combat_icon
+from dune_imperium.rules.conditions import spice_must_flow_copies
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
     BOARD_ICON_TECH,
@@ -86,13 +95,18 @@ from dune_imperium.rules.frames import (
     update_turn_recruits,
     with_context,
 )
-from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
+from dune_imperium.rules.immortality import troop_can_join
 from dune_imperium.rules.influence import (
     alliance_recipients_after_influence_loss,
     gain_faction_influence,
     influence_amount,
     influence_can_rise,
     lose_faction_influence,
+)
+from dune_imperium.rules.intrigue_bottom import (
+    begin_intrigue_bottom_pick,
+    puttable_intrigue,
 )
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import (
@@ -109,12 +123,37 @@ from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
     add_reveal_strength,
     add_units_to_reveal,
+    reveal_generated_persuasion,
     tech_reveal_pending,
 )
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_moves import spy_placement_frame
 from dune_imperium.rules.turn_rows import tech_influence_blocked, tech_influence_lapsed
 
+# Disposal Facility: "[Persuasion 6] or more" (OQ-126).
+DISPOSAL_FACILITY_PERSUASION: Final = 6
+# Rise of Ix's Flip tiles: Flagship "4 Solari -> troop 3", Training Drones
+# "troop 1" (docs/rules/rise-of-ix.md 4).
+FLAGSHIP_SOLARI: Final = 4
+FLAGSHIP_TROOPS: Final = 3
+TRAINING_DRONES_TROOPS: Final = 1
+# Rise of Ix's Endgame lines (docs/rules/rise-of-ix.md 4): each is 1 VP
+# (Spy Satellites: for each Faction where the owner has 1 or less Influence;
+# Holtzman Engine: with at least two The Spice Must Flow, OQ-123; Memocorders:
+# with 3 or more Influence on every track).
+ENDGAME_TILE_VP: Final = 1
+HOLTZMAN_ENGINE_SPICE_MUST_FLOW: Final = 2
+MEMOCORDERS_INFLUENCE: Final = 3
+SPY_SATELLITES_INFLUENCE: Final = 1
+# Rise of Ix's two tiles used by trashing them in their owner's turn
+# (docs/rules/rise-of-ix.md 4, ``legal_tech_trash_actions``): Spy Satellites
+# "spice 3 + 이 타일 trash -> 1 VP", Sonic Snoopers' Intrigue cycle
+# (``rules.intrigue_bottom``).
+SPY_SATELLITES_SPICE: Final = 3
+SPY_SATELLITES_TRASH_VP: Final = 1
+TRASH_ABILITIES: Final = frozenset(
+    {TechAbility.SPY_SATELLITES, TechAbility.TRASH_CYCLE_INTRIGUE}
+)
 _FRAME_LABEL = "Agent-turn effect frame"
 _ACQUISITION_LABEL = "Tech acquisition frame"
 # Kota Odax's Secret Project: "Whenever you could acquire a Tech tile, you
@@ -136,6 +175,32 @@ def tech_acquire_effect_arguments(
     if effect == "influence":
         return tuple(
             tuple(sorted((*base, ("faction", faction.value)))) for faction in Faction
+        )
+    if effect == "distinct_influence":
+        # Shuttle Fleet's "Choose two:" (OQ-114): two different Factions
+        # named before either Influence is paid, one action naming both
+        # (every ordered pair, so the seat picks them in either order), or
+        # the one Faction that can still rise when the other three are at the
+        # top (OQ-060).
+        return (
+            *(
+                tuple(
+                    sorted(
+                        (
+                            *base,
+                            ("faction", first.value),
+                            ("second_faction", second.value),
+                        )
+                    )
+                )
+                for first in Faction
+                for second in Faction
+                if first is not second
+            ),
+            *(
+                tuple(sorted((*base, ("faction", faction.value))))
+                for faction in Faction
+            ),
         )
     if effect == "intrigue_or_card":
         choices = ("card", "intrigue")
@@ -223,6 +288,10 @@ def legal_tech_acquire_effect_actions(
                 owner, Faction(str(values["faction"]))
             ):
                 continue
+            if effect == "distinct_influence" and not _names_distinct_pair(
+                owner, values
+            ):
+                continue
             actions.append(
                 DomainAction(
                     action_id="resolve_tech_acquire_effect",
@@ -240,6 +309,24 @@ def legal_tech_acquire_effect_actions(
             )
         )
     return tuple(actions)
+
+
+def _names_distinct_pair(owner: PlayerState, values: Mapping[str, ActionValue]) -> bool:
+    """Whether a Shuttle Fleet row names the two different Factions "Choose
+    two:" takes (OQ-114): both able to rise (OQ-060), or the only one that
+    can when the other three sit at the top of their tracks."""
+
+    named = tuple(
+        Faction(str(values[key]))
+        for key in ("faction", "second_faction")
+        if key in values
+    )
+    rising = tuple(
+        faction for faction in Faction if influence_can_rise(owner, faction)
+    )
+    return len(named) == min(2, len(rising)) and all(
+        faction in rising for faction in named
+    )
 
 
 def apply_tech_influence_without_faction(
@@ -280,16 +367,20 @@ def tech_cost(
     *,
     discount: int = 0,
     secret_project: bool = False,
+    high_council_discount: bool = True,
 ) -> int:
     """Return the spice the tile costs the owner now.
 
     The Ixian Embassy takes one off with a High Council seat, a card's Tech
     Discount icon one more, and Kota Odax's Secret Project tile one more;
-    "the cost can never be less than 0" [Bloodlines p. 7].
+    "the cost can never be less than 0" [Bloodlines p. 7]. A Rise of Ix tile
+    has no Ixian Embassy: ``high_council_discount=False``, and its
+    Negotiators returned count in ``discount`` ("비용은 0보다 낮아지지
+    않는다", docs/rules/rise-of-ix.md 4, [Rise of Ix p. 4]).
     """
 
     cost = tile.cost - discount
-    if owner.high_council:
+    if owner.high_council and high_council_discount:
         cost -= HIGH_COUNCIL_TECH_DISCOUNT
     if secret_project:
         cost -= SECRET_PROJECT_DISCOUNT
@@ -303,21 +394,32 @@ def face_up_tech_ids(state: GameState) -> tuple[str, ...]:
 
 
 def tech_acquisition_frame(
-    player: int, *, discount: int, source: str, printer: str
+    player: int,
+    *,
+    discount: int,
+    source: str,
+    printer: str,
+    extra: tuple[tuple[str, ActionValue], ...] = (),
 ) -> DecisionFrame:
     """Return the frame of a card-granted Acquire Tech with ``discount``;
     ``printer`` is the card that grants it (``action_shapes.printer_value``),
-    its refusal's entity (stage B3d-3)."""
+    its refusal's entity (stage B3d-3). ``extra`` is the context a Rise of Ix
+    game adds (``ix_acquisition_context``)."""
 
     return DecisionFrame(
         kind=FrameKind.TECH_ACQUISITION,
         frame_id=f"{source}:tech_acquisition",
         decision=PlayerDecision(owner=player, prompt="Acquire a Tech tile or decline"),
-        context=(
-            ("discount", discount),
-            ("player", player),
-            (PRINTER_KEY, printer),
-            ("source", source),
+        context=tuple(
+            sorted(
+                (
+                    ("discount", discount),
+                    ("player", player),
+                    (PRINTER_KEY, printer),
+                    ("source", source),
+                    *extra,
+                )
+            )
         ),
     )
 
@@ -338,12 +440,13 @@ def push_tech_acquisition(
     모두 결정 창을 연다"; OQ-057 (9) "살 수 없으면 거절만").
     """
 
-    if not state.config.tech_module:
-        raise ValueError("Acquire Tech requires the Tech Module")
+    if not (state.config.tech_module or state.config.rise_of_ix):
+        raise ValueError("Acquire Tech requires the Tech Module or Rise of Ix")
+    extra = ix_acquisition_context(discount) if state.config.rise_of_ix else ()
     return RuleResult(
         state=state.push_decision(
             tech_acquisition_frame(
-                player, discount=discount, source=source, printer=printer
+                player, discount=discount, source=source, printer=printer, extra=extra
             )
         )
     )
@@ -352,8 +455,13 @@ def push_tech_acquisition(
 def _pending_board_context(
     state: GameState, player: int
 ) -> dict[str, ActionValue] | None:
-    """Return the owner's effect-frame context while its Tech offer is pending."""
+    """Return the owner's effect-frame context while its Tech offer is pending.
 
+    Only the Tech Module's Landsraad visit offers one; a Rise of Ix game
+    without the module has no such icon on its board (stage P4c-1)."""
+
+    if not state.config.tech_module:
+        return None
     try:
         frame, context = current_agent_effect_context(state)
     except ValueError:
@@ -449,8 +557,84 @@ def tech_acquisition_possible(
     (``legal_tech_acquisition_actions``).
     """
 
+    if state.config.rise_of_ix:
+        return bool(ix_tech_acquisitions(state, owner, discount))
     return state.config.tech_module and bool(
         _affordable_acquisitions(state, owner, discount)
+    )
+
+
+# --- Rise of Ix's Tech tiles (stage P4c-1) ---------------------------------
+#
+# "Acquire Tech 아이콘이 유일한 길이다. 아이콘마다 Ix board의 세 더미 맨 위
+# 앞면 타일 하나를 얻을 수 있다("may"). spice 비용을 내고 supply에 공개로 두고,
+# 그 더미의 다음 타일을 앞면으로 뒤집는다. 더미가 비면 고를 것이 줄 뿐이다.
+# 개수 제한 없음." (docs/rules/rise-of-ix.md 4, [Rise of Ix p. 4]). The framework
+# is the Tech Module's: ``tech_stacks`` (here Ix's three stacks of six, the top
+# face up), the acquisition frame, ``_take_tile`` and the acquire effects. A
+# Rise of Ix game differs in three ways: the acquisition is a "may" (its
+# refusal is always offered), Negotiators returned lower the cost, and there is
+# no Ixian Embassy (no High Council discount) and no Secret Project.
+
+
+def ix_tech_cost(
+    owner: PlayerState, tile: TechTile, *, discount: int, negotiators: int
+) -> int:
+    """The spice an Ix tile costs the owner at a Tech Discount of ``discount``
+    with ``negotiators`` of its Negotiators returned.
+
+    "비용은 0보다 낮아지지 않는다. Tech Discount: −1·−2가 붙은 Acquire Tech
+    아이콘은 그 한 번의 구매를 깎는다. ... Negotiator를 supply로 돌려 하나에
+    spice 1씩 깎는다. Tech Discount와 합칠 수 있다." (docs/rules/rise-of-ix.md
+    4, [Rise of Ix p. 4]).
+    """
+
+    return tech_cost(
+        owner,
+        tile,
+        discount=discount + negotiators,
+        high_council_discount=False,
+    )
+
+
+def _ix_tops(state: GameState) -> tuple[TechTile, ...]:
+    return tuple(TECH_TILES_BY_ID[tech_id] for tech_id in face_up_tech_ids(state))
+
+
+def ix_tech_acquisitions(
+    state: GameState, owner: PlayerState, discount: int
+) -> tuple[tuple[TechTile, int], ...]:
+    """Each (tile, Negotiators returned) the owner can pay for now.
+
+    The face-up top of every non-empty stack; the owner picks the tile and
+    how many Negotiators to return, from none up to the most that still
+    lowers its cost ("원하는 만큼"; the most over every tile on offer is
+    ``core.observation.ix_negotiators_returnable``), and the rest of the price
+    is spice it holds.
+    """
+
+    return tuple(
+        (tile, returned)
+        for tile in _ix_tops(state)
+        for returned in range(
+            min(owner.negotiators, max(tile.cost - discount, 0)) + 1
+        )
+        if owner.resources.spice
+        >= ix_tech_cost(owner, tile, discount=discount, negotiators=returned)
+    )
+
+
+def ix_acquisition_context(discount: int) -> tuple[tuple[str, ActionValue], ...]:
+    """The open Acquire Tech's state the seat's own view shows
+    (``core.observation.ix_pending_of``): its Tech Discount and its payment
+    (spice; Appropriate's Solari is stage P4c's later slice). The Negotiators
+    the seat may still return are not kept: the view counts them from the state
+    each time (``core.observation.ix_negotiators_returnable``), as an
+    acquisition stacked under another must not show the count it opened with."""
+
+    return (
+        (TECH_DISCOUNT_KEY, discount),
+        (TECH_PAYMENT_KEY, "spice"),
     )
 
 
@@ -501,7 +685,7 @@ def legal_tech_acquisition_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    if not state.config.tech_module:
+    if not (state.config.tech_module or state.config.rise_of_ix):
         return ()
     offer = _offer(state, player)
     if offer is None:
@@ -509,6 +693,28 @@ def legal_tech_acquisition_actions(
     discount, _ = offer
     owner = state.players[player]
     actions = [DomainAction(action_id="decline_tech", actor=player)]
+    if state.config.rise_of_ix:
+        # "아이콘마다 ... 하나를 얻을 수 있다("may")" [Rise of Ix p. 4]: the
+        # refusal is always there, beside each tile at each number of
+        # Negotiators returned that the owner can pay for. A returned count
+        # of none is the Tech Module's row, ``negotiators`` is named only
+        # for one or more.
+        actions.extend(
+            DomainAction(
+                action_id="acquire_tech",
+                actor=player,
+                arguments=tuple(
+                    sorted(
+                        (
+                            ("tech_id", tile.tech_id),
+                            *((("negotiators", returned),) if returned else ()),
+                        )
+                    )
+                ),
+            )
+            for tile, returned in ix_tech_acquisitions(state, owner, discount)
+        )
+        return tuple(actions)
     actions.extend(
         DomainAction(
             action_id="acquire_tech",
@@ -603,23 +809,40 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
     tile = TECH_TILES_BY_ID[tech_id]
     owner = state.players[player]
     secret = owner.secret_project_tech_id == tech_id
-    cost = tech_cost(owner, tile, discount=discount, secret_project=secret)
+    ix = state.config.rise_of_ix
+    # Rise of Ix: the Negotiators returned to the supply, one spice off each
+    # [Rise of Ix p. 4] (``ix_tech_cost``).
+    returned = int(arguments.get("negotiators", 0)) if ix else 0
+    cost = (
+        ix_tech_cost(owner, tile, discount=discount, negotiators=returned)
+        if ix
+        else tech_cost(owner, tile, discount=discount, secret_project=secret)
+    )
+    payload: list[tuple[str, ActionValue]] = [
+        ("player", player),
+        ("secret_project", secret),
+        ("spice", cost),
+        ("tech_id", tech_id),
+    ]
+    if ix:
+        payload.append(("negotiators", returned))
     events: list[GameEvent] = [
         GameEvent(
             event_id=f"{source}:{tech_id}",
             kind="tech_acquired",
-            payload=(
-                ("player", player),
-                ("secret_project", secret),
-                ("spice", cost),
-                ("tech_id", tech_id),
-            ),
+            payload=tuple(sorted(payload)),
         )
     ]
     working, next_owner, reveal_events, _ = _take_tile(
         state, owner, tech_id, source=source
     )
     events.extend(reveal_events)
+    if returned:
+        next_owner = replace(
+            next_owner,
+            negotiators=next_owner.negotiators - returned,
+            troops_supply=next_owner.troops_supply + returned,
+        )
     # The price is Spice spent, not Spice never gained: "If you gained spice
     # this turn" (Leverage) and Harvest Contracts count every gain of the
     # turn [Main p. 16], so the spend is recorded like any other payment.
@@ -672,6 +895,11 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         working = working.pop_decision()
 
     working = _queue_acquire_effects(working, player, tile)
+    if has_tech((tech_id,), TechAbility.CONFLICT_WIN_WATER):
+        # Windtraps taken in the winner's own Conflict reward (a Freighter's
+        # Acquire Tech) still pays this win's water (docs/rules/rise-of-ix.md
+        # 12).
+        working = add_late_windtraps_row(working, player)
     return RuleResult(state=working, events=tuple(events))
 
 
@@ -713,6 +941,7 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
     # amount gained, is a key of the source event's payload).
     amounts = {
         "solari": tile.acquire_solari if effect == "solari" else 0,
+        "water": tile.acquire_water if effect == "water" else 0,
         "victory_points": (
             tile.acquire_victory_points if effect == "victory_points" else 0
         ),
@@ -745,6 +974,14 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
         owner = replace(
             owner, victory_points=owner.victory_points + tile.acquire_victory_points
         )
+    if effect == "water":
+        # Windtraps: "water 1" on acquiring it [Rise of Ix p. 4].
+        owner = replace(
+            owner,
+            resources=replace(
+                owner.resources, water=owner.resources.water + tile.acquire_water
+            ),
+        )
     if effect == "troops":
         owner, recruited = recruit_troops(owner, tile.acquire_troops)
         events.extend(
@@ -769,6 +1006,23 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
         )
         working = gained.state
         events.extend(gained.events)
+    if effect == "distinct_influence":
+        # Shuttle Fleet: both Factions were named before either is paid, so
+        # the second pick never saw what the first one drew (OQ-114, OQ-057
+        # (4)).
+        for key in ("faction", "second_faction"):
+            if key not in arguments:
+                continue
+            faction_value = str(arguments[key])
+            gained = gain_faction_influence(
+                working,
+                player,
+                Faction(faction_value),
+                1,
+                event_prefix=f"{source}:influence:{faction_value}",
+            )
+            working = gained.state
+            events.extend(gained.events)
     if effect == "contracts":
         contracts = begin_contract_gain(
             working, player, tile.acquire_contracts, source=source
@@ -847,7 +1101,7 @@ def legal_tech_flip_actions(state: GameState, player: int) -> tuple[DomainAction
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    if not state.config.tech_module:
+    if not (state.config.tech_module or state.config.rise_of_ix):
         return ()
     frame = _owned_turn_frame(state, player)
     if frame is None:
@@ -857,6 +1111,9 @@ def legal_tech_flip_actions(state: GameState, player: int) -> tuple[DomainAction
     for tech_id in owner.tech_ids:
         tile = TECH_TILES_BY_ID[tech_id]
         if not tile.flips or tech_id in owner.tech_flipped:
+            continue
+        if tile.ability in IX_FLIP_ABILITIES:
+            actions.extend(_ix_flip_actions(state, owner, frame, tile))
             continue
         flip = _flip_ability(tech_id)
         if (
@@ -894,6 +1151,8 @@ def apply_tech_flip(state: GameState, action: DomainAction) -> RuleResult:
         )
     ]
     working = replace(state, players=replace_player(state.players, flipped))
+    if TECH_TILES_BY_ID[tech_id].ability in IX_FLIP_ABILITIES:
+        return _apply_ix_flip(working, action, source, events)
     for line in _flip_ability(tech_id).sections:
         # Spy Drones: "and if you recalled a Spy this turn: trash a card"
         # (OQ-101; the trash icon is optional, like every printed trash).
@@ -936,6 +1195,130 @@ def apply_tech_flip(state: GameState, action: DomainAction) -> RuleResult:
     return RuleResult(state=working, events=tuple(events))
 
 
+def _ix_flip_actions(
+    state: GameState, owner: PlayerState, frame: DecisionFrame, tile: TechTile
+) -> tuple[DomainAction, ...]:
+    """The rows of one of Rise of Ix's unflipped Flip tiles.
+
+    "뒤집기 아이콘이 있는 능력은 자기 turn(Agent·Reveal) 가운데 라운드에 한 번,
+    쓰면 뒷면으로 뒤집고 다음 라운드 Round Start에 되돌린다" [Rise of Ix p. 4]
+    [FAQ p. 1] (docs/rules/rise-of-ix.md 4). Training Drones' "troop 1" costs
+    nothing. Flagship's "4 Solari -> troop 3" is a paid line, offered only
+    when the Solari are there and a troop can join (OQ-071: nothing is paid
+    for a recruit that changes nothing). A "discard ->" cost is one hand card
+    named in the row (an Intrigue card is not a card here); Holoprojectors'
+    draw always changes something, the discarded card being shuffled back at
+    worst, as Twisted Discerning's. Invasion Ships' "이번 turn 상대 Agent가 내
+    Agent를 막지 않는다" can matter only before the turn's Agent is placed, so
+    it is offered on the turn frame, not after the placement or in a Reveal.
+    A Reveal turn has revealed the whole hand: no card is left to discard.
+    """
+
+    player = owner.player_id
+    tech_id = tile.tech_id
+
+    def row(*extra: tuple[str, ActionValue]) -> DomainAction:
+        return DomainAction(
+            action_id="flip_tech",
+            actor=player,
+            arguments=tuple(sorted((("tech_id", tech_id), *extra))),
+        )
+
+    match tile.ability:
+        case TechAbility.FLIP_TROOP:
+            return (row(),)
+        case TechAbility.FLIP_SOLARI_FOR_TROOPS:
+            if owner.resources.solari >= FLAGSHIP_SOLARI and troop_can_join(
+                state, owner
+            ):
+                return (row(),)
+            return ()
+        case TechAbility.FLIP_DISCARD_FOR_CARD:
+            return tuple(row(("card_id", card_id)) for card_id in owner.hand)
+        case TechAbility.FLIP_DISCARD_IGNORE_BLOCKS:
+            if frame.kind != FrameKind.TURN:
+                return ()
+            return tuple(row(("card_id", card_id)) for card_id in owner.hand)
+    raise ValueError(f"{tech_id}: not a Rise of Ix Flip tile")
+
+
+def _apply_ix_flip(
+    working: GameState,
+    action: DomainAction,
+    source: str,
+    events: list[GameEvent],
+) -> RuleResult:
+    """Resolve a Rise of Ix Flip tile whose tile is already turned face down
+    (``apply_tech_flip``): pay its cost, then its effect."""
+
+    player = action.actor
+    arguments = dict(action.arguments)
+    tech_id = str(arguments["tech_id"])
+    match TECH_TILES_BY_ID[tech_id].ability:
+        case TechAbility.FLIP_TROOP:
+            working, gained = _flip_recruit(
+                working, player, TRAINING_DRONES_TROOPS, source
+            )
+            events.extend(gained)
+        case TechAbility.FLIP_SOLARI_FOR_TROOPS:
+            owner = working.players[player]
+            paid = replace(
+                owner,
+                resources=replace(
+                    owner.resources, solari=owner.resources.solari - FLAGSHIP_SOLARI
+                ),
+            )
+            working = replace(working, players=replace_player(working.players, paid))
+            events.append(resources_paid_event(source, player, solari=FLAGSHIP_SOLARI))
+            working, gained = _flip_recruit(working, player, FLAGSHIP_TROOPS, source)
+            events.extend(gained)
+        case TechAbility.FLIP_DISCARD_FOR_CARD:
+            discarded = discard_personal_card_from_hand(
+                working, player, str(arguments["card_id"]), source=f"{source}:discard"
+            )
+            events.extend(discarded.events)
+            drawn = draw_or_request_personal_cards(
+                discarded.state, player, 1, source=f"{source}:draw"
+            )
+            working = drawn.state
+            events.extend(drawn.events)
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:draw",
+                    kind="cards_drawn",
+                    payload=(("count", 1), ("player", player)),
+                )
+            )
+        case TechAbility.FLIP_DISCARD_IGNORE_BLOCKS:
+            discarded = discard_personal_card_from_hand(
+                working, player, str(arguments["card_id"]), source=f"{source}:discard"
+            )
+            events.extend(discarded.events)
+            # The Infiltrate mechanism: spent by the turn's Agent placement,
+            # gone when any turn opens (``PlayerState.enemy_agents_ignored_turn``).
+            owner = discarded.state.players[player]
+            working = replace(
+                discarded.state,
+                players=replace_player(
+                    discarded.state.players,
+                    replace(owner, enemy_agents_ignored_turn=True),
+                ),
+            )
+    return RuleResult(state=working, events=tuple(events))
+
+
+def _flip_recruit(
+    state: GameState, player: int, count: int, source: str
+) -> tuple[GameState, tuple[GameEvent, ...]]:
+    """A Flip tile's "troop" icons: recruit to the garrison, the part the
+    supply lacks owed as every recruit's (OQ-030)."""
+
+    owner, recruited = recruit_troops(state.players[player], count)
+    working = replace(state, players=replace_player(state.players, owner))
+    working = update_turn_recruits(working, troops_recruited=recruited)
+    return working, recruit_shortfall_events(source, player, count, recruited)
+
+
 def _flip_ability(tech_id: str) -> Ability:
     """The tile's Flip record (composed A6b)."""
 
@@ -945,6 +1328,94 @@ def _flip_ability(tech_id: str) -> Ability:
         if record.timing is AbilityTiming.FLIP
     )
     return flip
+
+
+def legal_tech_trash_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """The owner's Rise of Ix tiles that are used by trashing them, in their
+    own turn.
+
+    "Spy Satellites: spice 3 + 이 타일 trash -> 1 VP(자기 turn에)" and "Sonic
+    Snoopers: 이 타일 trash -> Intrigue 몇 장이든 덱 맨 아래로, 그만큼 뽑기"
+    (docs/rules/rise-of-ix.md 4, [Rise of Ix p. 10]); "때를 적지 않은 능력은
+    자기 turn 가운데 쓴다" [FAQ p. 4], so the turn, Agent-effect or Reveal frame
+    offers them. The trash is a cost that must buy something (OQ-071): Spy
+    Satellites needs its 3 spice, Sonic Snoopers an Intrigue card it may put
+    (a Twisted one is never put, OQ-097).
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    if not state.config.rise_of_ix or _owned_turn_frame(state, player) is None:
+        return ()
+    owner = state.players[player]
+    actions: list[DomainAction] = []
+    for tech_id in owner.tech_ids:
+        ability = TECH_TILES_BY_ID[tech_id].ability
+        if ability not in TRASH_ABILITIES:
+            continue
+        if ability is TechAbility.SPY_SATELLITES:
+            if owner.resources.spice < SPY_SATELLITES_SPICE:
+                continue
+        elif not puttable_intrigue(state, player):
+            continue
+        actions.append(
+            DomainAction(
+                action_id="trash_tech", actor=player, arguments=(("tech_id", tech_id),)
+            )
+        )
+    return tuple(actions)
+
+
+def apply_tech_trash(state: GameState, action: DomainAction) -> RuleResult:
+    """Trash the tile (the cost), then resolve its ability.
+
+    Spy Satellites pays 3 spice for 1 VP; Sonic Snoopers opens its pick of
+    Intrigue cards for the deck's bottom (``rules.intrigue_bottom``). The tile
+    goes to the Tech trash zone, as every trashed tile does.
+    """
+
+    if action not in legal_tech_trash_actions(state, action.actor):
+        raise ValueError("action is not a legal Tech trash")
+    player = action.actor
+    tech_id = str(dict(action.arguments)["tech_id"])
+    owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:tech:{tech_id}:trash"
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:tech_trashed",
+            kind="tech_trashed",
+            payload=(("player", player), ("tech_id", tech_id)),
+        )
+    ]
+    trashed = replace(
+        owner,
+        tech_ids=tuple(held for held in owner.tech_ids if held != tech_id),
+        tech_flipped=tuple(held for held in owner.tech_flipped if held != tech_id),
+    )
+    if TECH_TILES_BY_ID[tech_id].ability is TechAbility.SPY_SATELLITES:
+        trashed = replace(
+            trashed,
+            resources=replace(
+                trashed.resources, spice=trashed.resources.spice - SPY_SATELLITES_SPICE
+            ),
+            # Every spend adds to ``spice_spent_turn`` (``effects``).
+            spice_spent_turn=trashed.spice_spent_turn + SPY_SATELLITES_SPICE,
+            victory_points=trashed.victory_points + SPY_SATELLITES_TRASH_VP,
+        )
+        events.append(resources_paid_event(source, player, spice=SPY_SATELLITES_SPICE))
+        events.append(
+            resources_gained_event(
+                source, player, victory_points=SPY_SATELLITES_TRASH_VP
+            )
+        )
+    working = replace(
+        state,
+        players=replace_player(state.players, trashed),
+        tech_trash=(*state.tech_trash, tech_id),
+    )
+    if TECH_TILES_BY_ID[tech_id].ability is TechAbility.TRASH_CYCLE_INTRIGUE:
+        working = begin_intrigue_bottom_pick(working, player, source=source)
+    return RuleResult(state=working, events=tuple(events))
 
 
 def optional_trash_tech_ids() -> tuple[str, ...]:
@@ -999,7 +1470,7 @@ def legal_tech_reveal_actions(
     Influence at all.
     """
 
-    if not state.config.tech_module:
+    if not (state.config.tech_module or state.config.rise_of_ix):
         return ()
     frame = _reveal_top(state, player)
     if frame is None:
@@ -1007,6 +1478,21 @@ def legal_tech_reveal_actions(
     pending = tech_reveal_pending(dict(frame.context))
     owner = state.players[player]
     actions: list[DomainAction] = []
+    if "disposal_facility" in pending:
+        # "Reveal turn: ... 얻은 Persuasion 합계(쓴 것 포함)가 6 이상이면 in play
+        # 카드 하나를 trash할 수 있다" (OQ-126, [Disposal Facility tile]): the
+        # total only grows, so the rows open the moment it reaches 6, even in
+        # the Reveal turn's later steps; a "may" lapses at the turn's end.
+        generated = reveal_generated_persuasion(dict(frame.context))
+        if generated is not None and generated >= DISPOSAL_FACILITY_PERSUASION:
+            actions.extend(
+                DomainAction(
+                    action_id="trash_disposal_facility_card",
+                    actor=player,
+                    arguments=(("card_id", card_id),),
+                )
+                for card_id in counted_in_play(owner)
+            )
     if "forbidden_weapons" in pending:
         strength: list[DomainAction] = []
         for faction in Faction:
@@ -1040,6 +1526,28 @@ def legal_tech_reveal_actions(
     if "panopticon" in pending:
         actions.append(DomainAction(action_id="place_tech_spy", actor=player))
     return tuple(actions)
+
+
+def apply_disposal_facility_trash(
+    state: GameState, action: DomainAction
+) -> RuleResult:
+    """Disposal Facility: trash one of the owner's cards in play.
+
+    "Reveal Turn: If you have [Persuasion 6] or more, you may trash one of
+    your cards in play." [Disposal Facility tile]; the Persuasion is the
+    turn's generated total, spent or not (OQ-126). The tile's effect is used
+    once a Reveal turn.
+    """
+
+    if action not in legal_tech_reveal_actions(state, action.actor):
+        raise ValueError("action is not a legal Disposal Facility trash")
+    player = action.actor
+    card_id = str(dict(action.arguments)["card_id"])
+    source = f"round:{state.round_number}:player:{player}:reveal:disposal_facility"
+    settled = _settle_tech_reveal(state, player, "disposal_facility")
+    return credit_trash_recruits(
+        trash_personal_card(settled, player, card_id, source=source), player
+    )
 
 
 def _settle_tech_reveal(state: GameState, player: int, tech_id: str) -> GameState:
@@ -1386,7 +1894,55 @@ def apply_endgame_tech_effects(state: GameState) -> RuleResult:
                         )
                         state = gained.state
                         events.extend(gained.events)
+        # Rise of Ix's tiles, after the Tech Module's (OQ-040's convention:
+        # as the Endgame opens, before the Endgame Intrigue window).
+        for tech_id, points in ix_endgame_points(state.players[player]):
+            scored = replace(
+                state.players[player],
+                victory_points=state.players[player].victory_points + points,
+            )
+            state = replace(state, players=replace_player(state.players, scored))
+            events.append(
+                resources_gained_event(
+                    f"{source}:{tech_id}", player, victory_points=points
+                )
+            )
     return RuleResult(state=state, events=tuple(events))
+
+
+def ix_endgame_points(owner: PlayerState) -> tuple[tuple[str, int], ...]:
+    """The Victory Points each of Rise of Ix's Endgame tiles the owner holds
+    pays now, as (tile, VP) pairs for the ones that pay (docs/rules/
+    rise-of-ix.md 4), in the table's order.
+
+    - Holtzman Engine, "Endgame: The Spice Must Flow 2장 이상이면 1 VP": the
+      copies counted as OQ-123 rules (deck, hand, discard pile and in play;
+      not trashed).
+    - Memocorders, "Endgame: 네 track 모두 Influence 3 이상이면 1 VP".
+    - Spy Satellites, "Endgame: Influence 1 이하인 진영마다 1 VP".
+
+    Chaumurky's "동률을 이긴다" pays nothing; it is the first tie-break of
+    ``rules.endgame``.
+    """
+
+    points: list[tuple[str, int]] = []
+    if has_tech(owner.tech_ids, TechAbility.HOLTZMAN_ENGINE) and (
+        spice_must_flow_copies(owner) >= HOLTZMAN_ENGINE_SPICE_MUST_FLOW
+    ):
+        points.append(("holtzman_engine", ENDGAME_TILE_VP))
+    if has_tech(owner.tech_ids, TechAbility.ENDGAME_INFLUENCE_THREE_VP) and all(
+        influence_amount(owner.influence, faction) >= MEMOCORDERS_INFLUENCE
+        for faction in Faction
+    ):
+        points.append(("memocorders", ENDGAME_TILE_VP))
+    if has_tech(owner.tech_ids, TechAbility.SPY_SATELLITES):
+        low = sum(
+            influence_amount(owner.influence, faction) <= SPY_SATELLITES_INFLUENCE
+            for faction in Faction
+        )
+        if low:
+            points.append(("spy_satellites", ENDGAME_TILE_VP * low))
+    return tuple(points)
 
 
 # The tiles' Endgame lines in tile order (composed A6b): CHOAM Transports'

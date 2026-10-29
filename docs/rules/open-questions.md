@@ -172,6 +172,12 @@
 | [OQ-144](#oq-144--double-cross의-supply-배치와-sardaukar-commander-원판--bloodlines) | Double Cross의 supply 배치와 Sardaukar Commander (원판 + Bloodlines) | `DECIDED` |
 | [OQ-145](#oq-145--덱-위에-앞면으로-놓은-카드는-누가-아는가-원판--immortality) | 덱 위에 앞면으로 놓은 카드는 누가 아는가 (원판 + Immortality) | `DECIDED` |
 | [OQ-146](#oq-146--kwisatz-haderach의-from-anywhere와-conflict에-있는-into-the-fray의-agent-원판--bloodlines) | Kwisatz Haderach의 "from anywhere"와 Conflict에 있는 Into the Fray의 Agent (원판 + Bloodlines) | `DECIDED` |
+| [OQ-147](#oq-147--research-station의-카드-셋-원판) | Research Station의 카드 셋 (원판) | `DECIDED` |
+| [OQ-148](#oq-148--spice-smugglers의-화살표-보상-순서-원판) | Spice Smugglers의 화살표 보상 순서 (원판) | `DECIDED` |
+| [OQ-149](#oq-149--intrigue-덱-맨-위를-보고-하나를-남긴-좌석은-그-카드를-아는가-immortality--rise-of-ix) | Intrigue 덱 맨 위를 보고 하나를 남긴 좌석은 그 카드를 아는가 (Immortality · Rise of Ix) | `DECIDED` |
+| [OQ-150](#oq-150--reveal-turn-tech-능력-artillery의-셈과-reveal-도중에-얻은-타일-rise-of-ix) | Reveal turn Tech 능력: Artillery의 셈과 Reveal 도중에 얻은 타일 (Rise of Ix) | `DECIDED` |
+| [OQ-151](#oq-151--combat-해결-중-shipping-회수로-recruit한-troop을-troop-transports로-배치할-수-있는가-rise-of-ix) | Combat 해결 중 Shipping 회수로 recruit한 troop을 Troop Transports로 배치할 수 있는가 (Rise of Ix) | `DECIDED` |
+| [OQ-152](#oq-152--일부만-채워지는-recruit-부족분은-어느-troop부터-채우는가) | 일부만 채워지는 recruit 부족분은 어느 troop부터 채우는가 | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3139,3 +3145,114 @@
 - 판정(2026-10-28 23:2x 사용자, 조정자 경유): **(가)** — "OQ-146 이건 (가) 가 맞다. 소환도 되는데 퀴사츠 헤더락도 가능하지." Conflict에 있는
   Into the Fray의 Agent도 Kwisatz Haderach의 출발점이고, 옮기면 유닛으로서 Conflict를 떠난다(recall과 같은 처리, 전투력 갱신).
 - 구현: 판정대로 P7(원판 + Bloodlines를 여는 단계)에서.
+
+## OQ-147 — Research Station의 카드 셋 (원판)
+
+- 상태: `DECIDED` (2026-10-29 사용자 판정, 조정자 경유)
+- 인쇄: Research Station "2 water → 카드 셋을 뽑는다" `[DI p. 18]`.
+- 앱 처리(Steam `dad97e20`, 보조 증거, P3d 앱 대조): 칸의 능력 목록에 `DrawAbility`가 세 번 들어 있다 — 한 장씩 세 번 뽑는다.
+- P3d에서 내가 둔 것: 한 번에 셋(plan 16.12 "내 판단으로 그대로 둔 것").
+- 판정(2026-10-29 07시대 사용자, 조정자 경유): **"연구 기지는 한 장씩 뽑아야지"** — 카드 셋을 한 장씩 세 번, 각자 그 방문의 효과 하나로
+  (아이콘마다 독립·순서 자유, OQ-027). 구현: `content/imperium/board_abilities`의 `DrawPersonalCards(1)` 셋, `rules/board_effects.REPEATED_BOARD_ICONS`
+  (같은 아이콘을 인쇄된 만큼 대기시키고 행동 줄은 하나). 테스트 `tests/unit/rules/test_imperium_board.py`
+  (`test_research_station_draws_its_three_cards_one_at_a_time`).
+
+## OQ-148 — Spice Smugglers의 화살표 보상 순서 (원판)
+
+- 상태: `DECIDED` (2026-10-29 사용자 판정 (가), 이 세션에서 직접)
+- 인쇄: Spice Smugglers "[2 spice] → [Spacing Guild Influence] [3 Solari]"(앱 문구). 앱은 Influence를 먼저, Solari를 나중에 준다(P3d 앱 대조).
+- 지금 엔진: 화살표 지불 함수가 Solari를 먼저 주고 Influence를 나중에 준다(Influence가 여는 창이 넘긴 frame 위에 쌓이게 하려는 구조). 결과에는 차이가 없다.
+- 경과: 조정자 경유 사용자 답(2026-10-29 07시대) "인쇄 앱 순서로 고쳐" 뒤, 사용자가 이 세션에서 다시 물었다: "사건 순서가 꼭 고정이어야해? 비용 지불
+  후 influence 받는거랑 solari 획득인 플레이어가 원하는 순서로 할 수 있어야 하는거 아닌가".
+- 이미 정한 원칙: 인쇄된 아이콘은 각각 독립된 효과이고 소유자가 순서를 고른다 — Agent box(OQ-027), Conflict·계약 보상 한 줄(OQ-112), 화살표 비용 뒤의
+  보상을 아이콘마다 따로 두는 선례(Duncan Idaho의 "troop, 카드", OQ-106; Uprising의 화살표 몇 장도 `armed_icons`).
+- 선택지: (가) 비용을 낸 뒤 Influence와 Solari를 아이콘 둘로 두고 소유자가 순서를 고른다(`armed_icons`, Duncan Idaho와 같은 길) — 인쇄·앱 순서는 그
+  가운데 하나. (나) 인쇄·앱 순서로 고정(Influence 먼저).
+- 추천: **(가).** 위 원칙과 같고, 고정 순서를 따로 둘 근거(카드 문구의 "then" 등)가 없다.
+- 판정(2026-10-29 사용자, 이 세션에서 직접 — 질문 "Spice Smugglers: let the owner order the Influence and the Solari after paying?"에 답 "Owner's order"):
+  **(가)** — 2 spice를 낸 뒤 Spacing Guild Influence와 3 Solari는 아이콘 둘이고 소유자가 순서를 고른다(인쇄·앱 순서는 그 가운데 하나). 앞서 조정자 경유로
+  받은 "인쇄 앱 순서로 고쳐"를 이 판정이 대신한다. 구현: `content/uprising/agent_abilities`의 무장 아이콘("influence", "solari"), Influence는 정해진 진영 하나의
+  `choose_agent_card_influence` 행(Clandestine Meeting과 같은 길; 6칸이면 그 획득만 버림, OQ-060), Solari는 그 줄의 값. 화살표는 둘 중 하나라도 무언가를
+  바꿀 수 있으면 열린다(OQ-071). 원판 카탈로그에 Solari 행 하나가 더해졌고(codec은 P4 병합 때), Uprising 카탈로그 144개는 그대로다. 테스트
+  `tests/unit/rules/test_imperium_cards.py`(`test_spice_smugglers_rewards_are_taken_in_the_owner_s_order` 등).
+
+## OQ-149 — Intrigue 덱 맨 위를 보고 하나를 남긴 좌석은 그 카드를 아는가 (Immortality · Rise of Ix)
+
+- 상태: `DECIDED` (2026-10-29 사용자, 조정자가 물어 받음: **"(가) 둘 다 기록"**) — 아래 "판정"
+- 인쇄·문서:
+  - Immortality의 Imperium Ceremony: "Intrigue deck 맨 위 두 장을 보고 한 장을 keep, 나머지는 맨 위로" `[card face]`(OQ-052).
+  - Rise of Ix의 Viscount Hundro Moritani, Intelligence: 게임 시작에 Intrigue 덱 위 두 장을 보고 하나를 갖고 하나를 위에 되돌린다 `[Leader card]`.
+    [rise-of-ix.md](rise-of-ix.md) 13(P0 명세, 사용자 판정 없음): "Hundro 좌석이 Intrigue 덱 맨 위 카드 | 그 카드가 뽑힐 때까지".
+  - 재확인 원칙(OQ-010, 2026-09-01 사용자 "한 번 공개된 정보는 다시 확인할 수 있어야 한다"): 한 번 본 정보는 그 좌석이 계속 안다.
+- 지금 엔진: Imperium Ceremony는 `intrigue_peek` 창으로 두 장을 보여 주고 하나를 갖게 하지만, 맨 위에 남긴 카드를 그 좌석이 아는 것으로 기록하지
+  않는다(`known_card_seats`·관측에 없음). P4에서 Hundro도 같은 창을 쓴다(관측 v39는 `known_intrigue_ids`로 좌석이 아는 Intrigue를 담을 수 있다).
+- 질문: 맨 위에 남긴 카드를 그 카드가 뽑히거나 덱이 섞일 때까지 그 좌석이 아는 것으로 기록하는가.
+- 선택지:
+  - (가) 둘 다 기록한다 — Hundro와 Imperium Ceremony 모두. Uprising + Immortality 판의 숨은 정보 처리(관측, 결정 표본)가 바뀐다.
+  - (나) Hundro만 기록한다(rise-of-ix.md 13대로), Imperium Ceremony는 지금대로.
+  - (다) 둘 다 기록하지 않는다(rise-of-ix.md 13을 고친다).
+- 추천: **(가).** 같은 상황(맨 위 둘을 보고 하나를 되돌림)이면 같은 지식이고, 재확인 원칙(OQ-010)에 맞는다. 섞으면 지식은 지운다(Codex 리뷰의
+  주의, plan 17.8). 판정 전에는 엔진을 바꾸지 않는다.
+- **판정(2026-10-29, 사용자 "(가) 둘 다 기록"):** Imperium Ceremony와 Hundro의 Intelligence 모두, 맨 위에 되돌린 카드를 그 좌석이 아는
+  것으로 기록한다(`PlayerState.known_intrigue_ids`, `rules.intrigue_knowledge`). 구현(이 판정의 적용, 프로젝트 관례):
+  - 다른 좌석이 맨 위에서 뽑으면 그 좌석의 손에 있는 것으로 계속 안다(rise-of-ix.md 13). 그 카드가 공개 영역(사용·버림·trash)이나 아는 좌석
+    자신의 손에 들어가면 기록에서 빠진다 — 엔진의 단계마다 끝에서 정리한다(`settle_known_intrigue`, OQ-145의 공개 덱 위와 같은 자리).
+  - 섞으면 지운다: 섞이는 카드의 지식이 지워진다. 지금 엔진의 모든 다시 섞기는 버림 더미를 덱에 남은 카드 **아래에** 섞어 넣고(OQ-052)
+    아는 카드는 버림 더미에 없으므로, 지금은 다시 섞기가 아는 카드를 옮기지 않는다.
+  - 그 좌석이 따라갈 수 없는 숨은 이동은 그 자리에서 지운다(`forget_intrigue_cards`): 다른 좌석이 맨 위 둘을 보고 하나를 갖고 하나를 되돌릴 때
+    (어느 것을 되돌렸는지 모른다), Secrets의 무작위 가져가기와 Insidious의 건네기(카드가 옮긴 것은 모두 보지만 어느 카드인지는 두 좌석만
+    본다, OQ-010 판정 3) — 이때 그 두 좌석이 아닌 좌석은 주는 좌석의 손에 있던 아는 카드를 잊는다.
+  - Uprising + Immortality 판의 숨은 정보 처리(관측의 `private_intrigue_top`·`private_known_intrigue_seat*`, 결정 표본, `known_card_seats`와
+    되돌리기 경계)가 바뀐다. 같음 확인의 의도한 차이는 `scripts/ab/differences/`에 선언한다.
+
+
+## OQ-150 — Reveal turn Tech 능력: Artillery의 셈과 Reveal 도중에 얻은 타일 (Rise of Ix)
+
+- 상태: `DECIDED` (2026-10-29 사용자, 질문 (2): **"(가) 모두 듣기"**) — 아래 "판정". 질문 (1)은 따로 묻지 않았고 추천(지금 구현)대로 둔다
+- 인쇄·문서: [rise-of-ix.md](rise-of-ix.md) 4의 표 — Artillery "Reveal turn: sword를 주는 공개 카드마다 sword 1", Minimic Film "Reveal turn:
+  Persuasion 1", Restricted Ordnance "Reveal turn: High Council 자리가 있으면 sword 4", Disposal Facility "Reveal turn: 그 turn에 얻은 Persuasion
+  합계가 6 이상이면 in play 카드 하나를 trash할 수 있다"(OQ-126). 룰북·FAQ는 아래 두 점을 말하지 않는다.
+- 질문 (1) Artillery: "sword를 주는 공개 카드"를 언제 세는가 — Reveal 도중 조건이 채워져 sword를 주게 된 카드(예: 다른 카드에 기대는 sword)도
+  세는가, trash된 카드는 빼는가.
+- 질문 (2) Reveal 도중에 얻은 타일: 같은 Reveal turn에 Acquire Tech로 얻은 타일의 "Reveal turn" 능력이 그 turn에 듣는가. 원판 + Ix에서는 Ix
+  Reveal 카드가 Acquire Tech를 인쇄할 때(P4d)부터 생긴다.
+- 지금 구현(`00f3a312`, agent 판단 — 판정 아님): (1) Leadership의 셈처럼 이미 준 sword를 되돌리지 않고 늘어날 때만 채우며(높은 물 표시), trash된
+  카드는 세지 않는다(Leadership 셈은 그 카드에 대한 디자이너 판정이다). (2) Restricted Ordnance는 늦게 든 High Council 자리에도 준다(OQ-095 (7)의
+  순서 자유 원칙, Tech Module의 Command 타일과 같다). Artillery·Minimic Film·Disposal Facility는 Reveal이 시작될 때 가진 타일만 듣는다 — 둘이
+  어긋난다.
+- 선택지 (2): (가) Reveal 도중에 얻은 타일도 그 turn의 Reveal 능력이 모두 듣는다(Restricted Ordnance·Command 타일과 같게); (나) Reveal이
+  시작될 때 가진 타일만 — Restricted Ordnance도 그렇게 고친다; (다) 지금대로 섞어 둔다.
+- 추천: (2)는 **(가)** — 한 원칙으로 맞추고(늦게 든 것도 그 turn에 듣는다, OQ-095 (7)), Command 타일과 같다. (1)은 지금 구현(채우기만, trash 제외)
+  — 앱 동작은 P4f 대조(디컴파일)에서 확인한다.
+- **판정(2026-10-29, 사용자 "(가) 모두 듣기"):** (2) Reveal 도중 Acquire Tech로 얻은 타일도 그 Reveal turn의 Reveal 능력이 모두 듣는다 —
+  Artillery·Minimic Film·Disposal Facility도 Restricted Ordnance·Tech Module의 Command 타일처럼 늦게 들어도 그 turn에 준다(OQ-095 (7)의 원칙).
+  (1) Artillery의 셈은 추천대로 지금 구현(늘어날 때만 채움, trash된 카드 제외)을 둔다 — 별도 판정은 없고, P4f의 앱 대조(디컴파일)에서 확인한다.
+
+## OQ-151 — Combat 해결 중 Shipping 회수로 recruit한 troop을 Troop Transports로 배치할 수 있는가 (Rise of Ix)
+
+- 상태: `DECIDED` (2026-10-29 사용자: **"(가) garrison으로. 당연한거 아니냐"**) — 아래 "판정"
+- 문서끼리 어긋난다: [rise-of-ix.md](rise-of-ix.md) 5는 "Combat 중에 recruit한 troop은 garrison으로(디자이너 판정, BGG forum — Trade Monopoly로
+  얻은 Troop Transports)"라고 적고, 같은 문서 15는 Troop Transports의 "You may deploy any of them to the Conflict"를 두고 "디자이너 판정도 Combat
+  해결 중의 배치가 가능하다는 쪽"이라고 적는다. 원문(BGG 글)은 저장소에 없다.
+- 상황: Conflict 보상의 Freighter(Skirmish·Trade Monopoly, P4d)로 Combat 해결 중에 회수해 2번 칸에서 troop을 recruit하고, 그 좌석이 Troop Transports를
+  가졌다(같은 보상으로 막 얻은 경우 포함). 그 troop을 이미 해결 중인 Conflict에 배치할 수 있는가.
+- 지금 구현(P4c-3): garrison으로 간다(5의 문장). 자기 Agent·Reveal turn에서는 Troop Transports가 Combat 칸이 아니어도 배치를 허락한다(15, P4c-3b).
+- 선택지: (가) garrison으로 — 이미 강도를 겨룬 뒤이므로 배치해도 결과가 바뀌지 않는다는 읽기; (나) 배치할 수 있다 — 카드 문장이 시점을 묻지 않는다는 읽기
+  (보상 계산 뒤라 strength에는 영향이 없고, "Conflict 끝에 잃는" troop만 는다).
+- 추천: (가) — 보상 순위가 이미 정해진 뒤의 배치는 효과가 없고, 5의 문장이 그 경우를 직접 말한다. BGG 원문을 찾으면 다시 본다.
+- **판정(2026-10-29, 사용자 "(가) garrison으로. 당연한거 아니냐"):** Combat 해결 중 회수로 recruit한 troop은 Troop Transports가 있어도 garrison으로
+  간다(rise-of-ix.md 5의 문장). 15의 "Combat 해결 중의 배치" 언급은 이 판정으로 대신한다. 엔진은 P4c-3부터 그렇게 한다.
+
+## OQ-152 — 일부만 채워지는 recruit 부족분은 어느 troop부터 채우는가
+
+- 상태: `DECIDED` (2026-10-29 사용자: **"(가) 가 맞다"**) — 아래 "판정"
+- 배경: OQ-030 재판정(2026-10-04)으로 같은 turn에 supply가 돌아오면 부족분이 채워지고, 채워진 troop은 이번 turn의 recruit라 배치 몫에 든다.
+  부족분은 출처마다 배치 자격이 다르다 — Reveal 줄 `DeployTheseTroops`의 "이 troop들"(OQ-140), Troop Transports를 가진 Shipping recruit(어디서든
+  배치, rise-of-ix.md 15), 보통 recruit(Combat 칸 turn에만), Harkonnen Advisor(배치 금지, OQ-038).
+- 질문: supply가 부족분 일부만 채울 때 어느 출처의 troop부터 채우는가. 문서는 말하지 않는다. 순서에 따라 배치할 수 있는 troop 수가 달라진다.
+- 지금 구현: OQ-140의 "이 카드들 몫 먼저" → Troop Transports 몫 → 보통 recruit → Harkonnen Advisor(마지막, OQ-038) — 소유자에게 유리한 쪽.
+- 선택지: (가) 지금 구현(소유자에게 유리한 순서); (나) recruit한 순서대로; (다) 소유자가 고른다(결정 창이 하나 는다).
+- 추천: (가) — 앱은 출처를 가리지 않는 카운터 하나라 순서가 없고(OQ-030 보조 증거), 프로젝트가 정한 OQ-140·OQ-038의 방향과 같다.
+- **판정(2026-10-29, 사용자 "(가) 가 맞다"):** 일부만 채울 때는 소유자에게 유리한 순서 — Reveal 줄 `DeployTheseTroops`의 몫(OQ-140) → Troop
+  Transports를 가진 Shipping recruit 몫 → 보통 recruit → Harkonnen Advisor(배치 금지, OQ-038). 엔진은 `d9ff11d3`부터 그렇게 한다
+  (`combat_deployment.refill_shipping_troops`).

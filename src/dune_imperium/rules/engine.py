@@ -75,6 +75,7 @@ from dune_imperium.rules.board_effects import (
     apply_connections_action,
     apply_desert_tactics_action,
     apply_espionage_action,
+    apply_foldspace_deck_top,
     apply_imperial_privilege_action,
     apply_maker_space_action,
     apply_secrets_steal,
@@ -99,6 +100,8 @@ from dune_imperium.rules.combat import (
     apply_combat_reward_trash,
     apply_conflict_end_trigger,
     apply_distinct_combat_reward_influence,
+    apply_dreadnought_control,
+    apply_dreadnought_detonation,
     begin_combat_intrigue,
     close_spent_conflict_end_window,
     combat_participants_are_stale,
@@ -112,6 +115,7 @@ from dune_imperium.rules.combat import (
     legal_combat_reward_trash_actions,
     legal_conflict_end_trigger_actions,
     legal_distinct_combat_reward_influence_actions,
+    legal_dreadnought_control_actions,
     offer_conflict_end_triggers,
     pay_combat_rewards,
     refresh_combat_participants,
@@ -123,6 +127,8 @@ from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
     apply_commander_deployment,
     apply_commander_withdrawal,
+    apply_dreadnought_deployment,
+    apply_dreadnought_withdrawal,
     apply_troop_withdrawal,
     record_deployment_peak,
     settle_finishing_agent_turn,
@@ -197,12 +203,17 @@ from dune_imperium.rules.intrigue import (
     legal_intrigue_play_actions,
     plays_turn_start_option,
 )
+from dune_imperium.rules.intrigue_bottom import (
+    apply_intrigue_bottom_action,
+    legal_intrigue_bottom_actions,
+)
 from dune_imperium.rules.intrigue_deck import (
     apply_intrigue_reshuffle,
     intrigue_draw_is_queued,
     intrigue_reshuffle_is_pending,
     resolve_pending_intrigue_draw,
 )
+from dune_imperium.rules.intrigue_knowledge import settle_known_intrigue
 from dune_imperium.rules.intrigue_peek import (
     apply_intrigue_peek,
     legal_intrigue_peek_actions,
@@ -213,6 +224,7 @@ from dune_imperium.rules.intrigue_triggers import (
     fire_deferred_acquisition_trigger,
     legal_trigger_contract_actions,
 )
+from dune_imperium.rules.ix_board_spaces import apply_ix_space_action
 from dune_imperium.rules.leader_abilities import (
     apply_feyd_track_action,
     apply_kota_signet_action,
@@ -366,6 +378,13 @@ from dune_imperium.rules.scouts_secrets import (
     legal_secret_pick_actions,
 )
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
+from dune_imperium.rules.shipping_track import (
+    apply_freighter_move_action,
+    apply_shipping_reward,
+    legal_freighter_move_actions,
+    legal_shipping_reward_row_actions,
+    legal_shipping_reward_window_actions,
+)
 from dune_imperium.rules.shortfall import (
     drop_stale_shortfalls,
     refill_shortfall,
@@ -385,6 +404,7 @@ from dune_imperium.rules.spy_moves import (
 )
 from dune_imperium.rules.strength import refresh_pre_reveal_strength
 from dune_imperium.rules.tech import (
+    apply_disposal_facility_trash,
     apply_place_tech_spy,
     apply_secret_project,
     apply_tech_acquire_effect,
@@ -392,6 +412,7 @@ from dune_imperium.rules.tech import (
     apply_tech_choice,
     apply_tech_flip,
     apply_tech_influence_without_faction,
+    apply_tech_trash,
     deploy_suspensor_troops,
     draw_owed_tech_cards,
     legal_secret_project_actions,
@@ -399,6 +420,7 @@ from dune_imperium.rules.tech import (
     legal_tech_acquisition_actions,
     legal_tech_flip_actions,
     legal_tech_reveal_actions,
+    legal_tech_trash_actions,
 )
 from dune_imperium.rules.tleilaxu_row import (
     apply_tleilaxu_acquisition,
@@ -466,6 +488,8 @@ def _apply_deployment(state: GameState, action: DomainAction) -> RuleResult:
         return apply_reveal_deployment(state, action)
     if action.action_id == "deploy_commanders":
         return apply_commander_deployment(state, action)
+    if action.action_id == "deploy_dreadnoughts":
+        return apply_dreadnought_deployment(state, action)
     return apply_combat_deployment(state, action)
 
 
@@ -492,6 +516,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
+        legal_tech_trash_actions,
         legal_tech_acquire_effect_actions,
         legal_specimen_return_actions,
         legal_family_atomics_actions,
@@ -504,6 +529,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_contract_icon_row_actions,
         # So does an acquire box's icon, a row each (OQ-141).
         legal_acquire_icon_actions,
+        # And a Shipping track recall's rewards (Rise of Ix, stage P4c-3).
+        legal_shipping_reward_row_actions,
         # A research bonus or trash icon a Plot raised waits on the turn
         # (cleanup-2b).
         legal_research_bonus_actions,
@@ -533,9 +560,12 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_contract_icon_row_actions,
         # So does an acquire box's icon, a row each (OQ-141).
         legal_acquire_icon_actions,
+        # And a Shipping track recall's rewards (Rise of Ix, stage P4c-3).
+        legal_shipping_reward_row_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
+        legal_tech_trash_actions,
         legal_tech_reveal_actions,
         legal_tech_acquire_effect_actions,
         legal_reveal_gain_actions,
@@ -577,6 +607,9 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.COMBAT_REWARD_TRASH: (legal_combat_reward_trash_actions,),
     FrameKind.CONFLICT_END_TRIGGER: (legal_conflict_end_trigger_actions,),
     FrameKind.COMBAT_REWARD_SPY: (legal_combat_reward_spy_actions,),
+    # The sole winner's dreadnought set on a Control space (Rise of Ix;
+    # OQ-121 ruling 6 (1)).
+    FrameKind.DREADNOUGHT_CONTROL_CHOICE: (legal_dreadnought_control_actions,),
     FrameKind.COMBAT_REWARD_ICONS: (
         legal_combat_reward_icon_actions,
         # The sole winner's "When you win a Conflict" Intrigue, a row of its
@@ -635,6 +668,12 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     ),
     FrameKind.GRAFT_PARTNER: (legal_graft_partner_actions,),
     FrameKind.INTRIGUE_PEEK: (legal_intrigue_peek_actions,),
+    # Rise of Ix's Sonic Snoopers (stage P4c-2c).
+    FrameKind.INTRIGUE_BOTTOM_PICK: (legal_intrigue_bottom_actions,),
+    # Rise of Ix's Freighter outside its owner's turn and its recall's
+    # rewards (stage P4c-3, ``rules.shipping_track``).
+    FrameKind.FREIGHTER_MOVE: (legal_freighter_move_actions,),
+    FrameKind.SHIPPING_REWARD_ICONS: (legal_shipping_reward_window_actions,),
     # Servo-Receivers: the Leader's Signet Ring ability outside its box.
     FrameKind.LEADER_SIGNET: (legal_feyd_track_actions, legal_leader_signet_actions),
     # Arrakeen Scouts: Friends Everywhere's choice of Influence 4 bonus.
@@ -720,6 +759,13 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "choose_intrigue_discard": apply_intrigue_choice,
     "detonate_shield_wall": apply_intrigue_choice,
     "keep_shield_wall": apply_intrigue_choice,
+    "commission_intrigue_dreadnought": apply_intrigue_choice,
+    "decline_intrigue_dreadnought": apply_intrigue_choice,
+    "advance_intrigue_freighter": apply_intrigue_choice,
+    "recall_intrigue_freighter": apply_intrigue_choice,
+    "decline_intrigue_freighter": apply_intrigue_choice,
+    "place_intrigue_negotiator": apply_intrigue_choice,
+    "decline_intrigue_negotiator": apply_intrigue_choice,
     "deploy_intrigue_troops": apply_intrigue_choice,
     "trash_intrigue_card": apply_intrigue_choice,
     "decline_intrigue_trash": apply_intrigue_choice,
@@ -786,6 +832,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "withdraw_troops": apply_troop_withdrawal,
     "deploy_commanders": _apply_deployment,
     "withdraw_commanders": apply_commander_withdrawal,
+    "deploy_dreadnoughts": _apply_deployment,
+    "withdraw_dreadnoughts": apply_dreadnought_withdrawal,
     "finish_agent_turn": apply_agent_turn_finish,
     # Immortality: the Bene Tleilax board and Family Atomics
     "choose_research_space": apply_research_advance,
@@ -807,12 +855,32 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "resolve_tech_influence_without_faction": apply_tech_influence_without_faction,
     "decline_tech": apply_tech_acquisition,
     "flip_tech": apply_tech_flip,
+    # Rise of Ix's tiles used by trashing them (stage P4c-2c).
+    "trash_tech": apply_tech_trash,
+    # The Freighter and the Shipping track's rewards (Rise of Ix, P4c-3).
+    "advance_freighter": apply_freighter_move_action,
+    "recall_freighter": apply_freighter_move_action,
+    "decline_freighter": apply_freighter_move_action,
+    # The four spaces' icons (stage P4c-4, ``rules.ix_board_spaces``): the
+    # Freighter icon of Interstellar Shipping and Smuggling beside the others.
+    "advance_board_freighter": apply_ix_space_action,
+    "recall_board_freighter": apply_ix_space_action,
+    "commission_board_dreadnought": apply_ix_space_action,
+    "acquire_board_tech": apply_ix_space_action,
+    "acquire_negotiation_tech": apply_ix_space_action,
+    "place_board_negotiator": apply_ix_space_action,
+    # Spaceport's Foldspace card on top of the deck (stage P4c-4).
+    "acquire_foldspace_to_deck_top": apply_foldspace_deck_top,
+    "resolve_shipping_reward": apply_shipping_reward,
+    "put_intrigue_on_bottom": apply_intrigue_bottom_action,
+    "finish_intrigue_bottom": apply_intrigue_bottom_action,
     "choose_secret_project": apply_secret_project,
     "gain_leader_signet_spice": apply_kota_signet_action,
     "trash_leader_tech": apply_kota_signet_action,
     "choose_tech_strength": apply_tech_choice,
     "choose_tech_trash": apply_tech_choice,
     "place_tech_spy": apply_place_tech_spy,
+    "trash_disposal_facility_card": apply_disposal_facility_trash,
     "place_track_spy": apply_place_track_spy,
     # A triggered draw held as the owner's own step (OQ-106).
     "draw_owed_intrigue": apply_owed_draw,
@@ -980,6 +1048,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "place_combat_reward_spy": apply_combat_reward_spy,
     "recall_spy_for_combat_reward": apply_combat_reward_spy,
     "decline_combat_reward_spy": apply_combat_reward_spy,
+    "place_combat_reward_dreadnought": apply_dreadnought_control,
+    "detonate_combat_reward_dreadnought": apply_dreadnought_detonation,
     "choose_combat_reward_influence": apply_combat_reward_influence,
     "choose_distinct_combat_reward_influence": (apply_distinct_combat_reward_influence),
     # Every eligible Faction at the top: the owner confirms the loss (OQ-060).
@@ -1001,13 +1071,15 @@ def _reveal_masterstroke(result: RuleResult) -> RuleResult:
     return peaked if revealed is peaked else _advance_automatic(revealed)
 
 
-def _settle_deck_tops(result: RuleResult) -> RuleResult:
-    """Bring every seat's public deck top in line with its deck, once the
-    transition's draws, trashes and discards are all done (OQ-145,
-    ``rules.deck_top``); a transition that leaves every record as it was is
-    returned itself."""
+def _settle_card_knowledge(result: RuleResult) -> RuleResult:
+    """Bring every seat's public deck top in line with its deck (OQ-145,
+    ``rules.deck_top``) and its known Intrigue cards in line with the
+    Intrigue deck and the other seats' hands (OQ-149,
+    ``rules.intrigue_knowledge``), once the transition's draws, trashes,
+    plays and discards are all done; a transition that leaves every record
+    as it was is returned itself."""
 
-    settled = settle_public_deck_tops(result.state)
+    settled = settle_known_intrigue(settle_public_deck_tops(result.state))
     if settled is result.state:
         return result
     return RuleResult(state=settled, events=result.events)
@@ -1088,7 +1160,7 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
-        return _settle_deck_tops(
+        return _settle_card_knowledge(
             refresh_pre_reveal_strength(
                 _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
             )
@@ -1202,7 +1274,7 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
-        return _settle_deck_tops(
+        return _settle_card_knowledge(
             refresh_pre_reveal_strength(
                 _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
             )
