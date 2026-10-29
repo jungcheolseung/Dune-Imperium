@@ -469,6 +469,8 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO = (
         "may_discard_for_chosen_influence_if_bene_gesserit_influence_two"
     )
+    # Ix-Guild Compact (Rise of Ix): "[Discard] [Discard] -> [Dreadnought]".
+    MAY_DISCARD_TWO_FOR_DREADNOUGHT = "may_discard_two_for_dreadnought"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -678,6 +680,11 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES = (
         "may_trash_self_for_victory_point_if_three_tech_tiles"
     )
+    # Ix-Guild Compact (Rise of Ix): two Tech Negotiation icons, "you may take
+    # a troop from your supply and place it on the Ix board" each [Rise of Ix
+    # p. 4]; the first resolved, the second waits as a plain icon.
+    MAY_PLACE_TWO_NEGOTIATORS = "may_place_two_negotiators"
+    MAY_PLACE_NEGOTIATOR = "may_place_negotiator"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -716,6 +723,8 @@ IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = froz
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS,
         PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE,
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES,
+        PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS,
+        PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR,
     }
 )
 

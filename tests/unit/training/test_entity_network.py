@@ -335,7 +335,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # row is the only one that changed, and no scale moved (compared against
 # 976aa6a1, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against e632d087 (2026-10-30).
-_GOLDEN_DIGEST = "90e8e697a2a49527e2ea6a2ff216c96733e5ac4968bcbbaa7f9d1f37bb0ab4b9"
+# Then Ix-Guild Compact got its play data (stage P4d): two personal-table
+# columns are new (an Agent box's dreadnought and a Reveal choice's Negotiator),
+# only its own row reads them, its row is the only one that changed, and no
+# scale moved (compared against 4890e9c2, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 5a60e3cd (2026-10-30).
+_GOLDEN_DIGEST = "4481e0e83b3fd69f989624b8466651809b018e438f513dd2e8449e66a7df2227"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

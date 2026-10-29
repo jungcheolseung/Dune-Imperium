@@ -149,10 +149,11 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
     # Guild Ambassador's Victory Point, Gurney Halleck's troops, and Sardaukar
     # Legion's, Scout's and Chani's counts of troops (stage P3), and the promo
     # Duncan, Loyal Blade's trash for a count of troops; Rise of Ix's Guild
-    # Chief Administrator's Freighter icon ("may" [Rise of Ix p. 5]),
-    # Negotiated Withdrawal's arrow and Ixian Engineer's trash for a Victory
-    # Point (stage P4d).
-    assert len(optional) == 16 + 8 + 3
+    # Chief Administrator's and Freighter Fleet's Freighter icon ("may"
+    # [Rise of Ix p. 5]), Negotiated Withdrawal's arrow, Ixian Engineer's
+    # trash for a Victory Point and Ix-Guild Compact's two Tech Negotiation
+    # icons, then its second alone (stage P4d).
+    assert len(optional) == 16 + 8 + 5
     # Ten of the Uprising family's, Bene Gesserit Sister's -OR- (stage P3) and
     # Rise of Ix's Web of Power's wild Influence icon (stage P4d).
     assert len(mandatory) == 10 + 1 + 1
@@ -307,6 +308,8 @@ def test_an_id_two_cards_produce_always_names_its_card() -> None:
         "advance_reveal_freighter",
         "recall_reveal_freighter",
         "retreat_reveal_units_for_influence",
+        # And its Ix-Guild Compact.
+        "place_reveal_negotiator",
     }
     assert set(produced) == REVEAL_CHOICE_ACTION_IDS - original_only
     for action_id, by_card in produced.items():

@@ -192,9 +192,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Agent to a board space with an enemy Agent: [2 Solari]"), Web of Power
     # (three Influence thresholds over three icons), Ixian Engineer (the
     # Acquire Tech icon), Esmar Tuek ("[1 spice] -> [Spacing Guild Influence]
-    # [draw 1 card]") and In The Shadows ("[Bene Gesserit] 2 Influence:
-    # [Discard] -> Choose one: [Emperor] [Spacing Guild] [Fremen] Influence").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 17
+    # [draw 1 card]"), In The Shadows ("[Bene Gesserit] 2 Influence: [Discard]
+    # -> Choose one: [Emperor] [Spacing Guild] [Fremen] Influence") and
+    # Ix-Guild Compact ("[Discard] [Discard] -> [Dreadnought]").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 18
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -961,6 +962,9 @@ def test_ten_discard_arrows_read_the_discarded_card() -> None:
         # Rise of Ix's In The Shadows (stage P4d): the same threshold, its
         # chosen Influence armed once the card is discarded.
         _SHADOWS: AbilityMark.OPTIONAL,
+        # Its Ix-Guild Compact: two Discard icons paid together for a
+        # dreadnought.
+        _BOX.MAY_DISCARD_TWO_FOR_DREADNOUGHT: AbilityMark.OPTIONAL,
         _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: AbilityMark.OPTIONAL,
         _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: AbilityMark.MANDATORY,
         _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: AbilityMark.OPTIONAL,
@@ -993,7 +997,11 @@ def test_ten_discard_arrows_read_the_discarded_card() -> None:
     }
     for effect, mark in discards.items():
         ability = AGENT_BOX_ABILITIES[effect]
-        assert ability.sections[0].costs == (DiscardFromHand(),)
+        assert ability.sections[0].costs == (
+            (DiscardFromHand(2),)
+            if effect is _BOX.MAY_DISCARD_TWO_FOR_DREADNOUGHT
+            else (DiscardFromHand(),)
+        )
         assert not payment_box(ability) and target_piece(ability) is None
         # An optional arrow resolves only through its rows.
         assert optional_arrow(ability) is (mark is AbilityMark.OPTIONAL)

@@ -286,6 +286,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "imperial_bashar",
     "imperial_shock_trooper",
     "in_the_shadows",
+    "ix_guild_compact",
     "ixian_engineer",
     "jamis",
     "landing_rights",

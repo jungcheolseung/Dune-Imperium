@@ -101,9 +101,10 @@ mandatory, a gain [Rise of Ix p. 7] -- but an icon of ``OPTIONAL_UNLOAD_ICONS``,
 whose row opens its own window: "may", it holds no turn end back and the
 press lapses it (OQ-095 (2))."""
 
-OPTIONAL_UNLOAD_ICONS: Final = frozenset({"freighter"})
+OPTIONAL_UNLOAD_ICONS: Final = frozenset({"freighter", "negotiator"})
 """The Unload icons the owner "may" use (``rules.unload``'s decision icons):
-the Freighter icon, "you may move your Freighter" [Rise of Ix p. 5]."""
+the Freighter icon, "you may move your Freighter" [Rise of Ix p. 5], and the
+Tech Negotiation icon, "you may take a troop" [Rise of Ix p. 4]."""
 
 EFFECT_INFLUENCE: Final = "effect_influence"
 """One Faction's Influence of an effect that raises several Factions it

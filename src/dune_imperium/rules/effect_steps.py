@@ -764,6 +764,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         ),
     ),
     "pay_reveal_solari_for_vp": _spec(_V.PAY, _S.REVEAL_CARD, "=opulence"),
+    # Ix-Guild Compact's Tech Negotiation icons (Rise of Ix).
+    "place_reveal_negotiator": _spec(
+        _V.RECRUIT, _S.REVEAL_CARD, "=ix_guild_compact", icon="negotiator"
+    ),
     "pay_reveal_spice_for_vp": _spec(_V.PAY, _S.REVEAL_CARD, "=guild_ambassador"),
     "pay_reveal_solari_for_troops": _spec(
         _V.PAY, _S.REVEAL_CARD, "=gurney_halleck_card"

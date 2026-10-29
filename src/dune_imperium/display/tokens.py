@@ -509,6 +509,11 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             PersonalCardAgentEffect
             .MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
         ): "You may pay 1 spice → Gain 1 Spacing Guild Influence, Draw 1 card",
+        # Rise of Ix's Ix-Guild Compact (stage P4d): "[Discard] [Discard] ->
+        # [Dreadnought]".
+        PersonalCardAgentEffect.MAY_DISCARD_TWO_FOR_DREADNOUGHT: (
+            "You may discard two cards → Commission a dreadnought"
+        ),
         # Rise of Ix's In The Shadows (stage P4d): "[Bene Gesserit] 2
         # Influence: [Discard] -> Choose one: [Emperor] [Spacing Guild]
         # [Fremen] Influence".
@@ -748,6 +753,16 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
                 .MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES
             ): (
                 "If you have 3 or more Tech tiles: Trash this card → Gain 1 VP"
+            ),
+            # Rise of Ix's Ix-Guild Compact (stage P4d): two Tech Negotiation
+            # icons, the second of them alone once the first is resolved.
+            PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS: (
+                "You may place a troop from your supply on the Ix board as a "
+                "Negotiator, twice"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR: (
+                "You may place a troop from your supply on the Ix board as a "
+                "Negotiator"
             ),
             # Rise of Ix's Web of Power (stage P4d): the wild Influence icon.
             PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE: (

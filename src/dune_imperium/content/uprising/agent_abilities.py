@@ -49,6 +49,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommandersInConflictAtLeast,
+    CommissionDreadnought,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -136,6 +137,7 @@ _JUNCTION_HEADQUARTERS = (
 _LOCAL_FENCE = _BOX.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
 _ESMAR_TUEK = _BOX.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
 _IN_THE_SHADOWS = _BOX.MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO
+_IX_GUILD_COMPACT = _BOX.MAY_DISCARD_TWO_FOR_DREADNOUGHT
 
 
 def _line(*rewards: Reward, condition: Condition | None = None) -> EffectSection:
@@ -445,6 +447,23 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                     condition=_BG_TWO,
                 ),
                 armed=("influence",),
+            ),
+            # Ix-Guild Compact (Rise of Ix): "[Discard] [Discard] ->
+            # [Dreadnought]" [Steam app screen pieces and button text] -- an
+            # optional arrow of two Discard icons, both paid together; what
+            # they buy is commissioned once both are paid. With no
+            # dreadnought left in the supply the arrow buys nothing and is not
+            # offered (OQ-071), also when a card to discard has an Unload box
+            # (docs/rules/rise-of-ix.md 15).
+            _IX_GUILD_COMPACT: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(CommissionDreadnought(),),
+                        costs=(DiscardFromHand(2),),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
             ),
             # Space-time Folding: "Draw 1 card (2 if the discarded card has
             # Spacing Guild affiliation)".

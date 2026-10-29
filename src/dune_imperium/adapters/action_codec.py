@@ -176,8 +176,13 @@ from dune_imperium.rules.tech import (
     optional_trash_tech_ids,
     tech_acquire_effect_arguments,
 )
+from dune_imperium.rules.turn_rows import OPTIONAL_UNLOAD_ICONS
 from dune_imperium.rules.units import unit_count_arguments
-from dune_imperium.rules.unload import UNLOAD_ICON_ACTION, unload_icons
+from dune_imperium.rules.unload import (
+    UNLOAD_DECLINE_ACTION,
+    UNLOAD_ICON_ACTION,
+    unload_icons,
+)
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
 # Imperial Privilege, may recall an Into the Fray Agent from the Conflict --
@@ -1103,6 +1108,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "take_agent_card_extra_turn",
                 # Treachery's Reveal troops deployed from the supply.
                 "deploy_reveal_supply_troops",
+                # Ix-Guild Compact's Reveal Tech Negotiation icons
+                # (``reveal_turn.apply_reveal_negotiator``).
+                "place_reveal_negotiator",
             )
         )
         # Court Intrigue's arrow: an Intrigue card of the hand under the
@@ -1159,6 +1167,17 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for instance_id in content.imperium_deck_instance_ids
             for name in dict.fromkeys(name for name, _ in unload_icons(instance_id))
+        )
+        # A "may" icon's refusal in an Unload window (Ix-Guild Compact's Tech
+        # Negotiation).
+        templates.extend(
+            ActionTemplate(
+                action_id=UNLOAD_DECLINE_ACTION,
+                arguments=(("card_id", instance_id), ("effect", name)),
+            )
+            for instance_id in content.imperium_deck_instance_ids
+            for name in dict.fromkeys(name for name, _ in unload_icons(instance_id))
+            if name in OPTIONAL_UNLOAD_ICONS
         )
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))

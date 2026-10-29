@@ -68,6 +68,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommandersInConflictAtLeast,
+    CommissionDreadnought,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -157,6 +158,10 @@ from dune_imperium.rules.combat_deployment import (
     reconcile_deployment_after_retreat,
 )
 from dune_imperium.rules.contracts import begin_contract_gain
+from dune_imperium.rules.dreadnought_commission import (
+    commission_block,
+    commission_dreadnought,
+)
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
     OptionalEffectBlock,
@@ -281,6 +286,10 @@ class AgentPaymentBlock(StrEnum):
     # specimen to return, so the cost would buy nothing (OQ-071's recruit
     # criterion, user ruling 2026-10-06 "효과 없음"; P3d app comparison).
     NO_TROOP_TO_RECRUIT = "no_troop_to_recruit"
+    # Ix-Guild Compact's dreadnought: none left in the supply ("supply에 없으면
+    # 더 얻지 못한다", docs/rules/rise-of-ix.md 6), so the two discards would
+    # buy nothing (OQ-071, rise-of-ix.md 15).
+    NO_DREADNOUGHT_TO_COMMISSION = "no_dreadnought_to_commission"
 
 
 def box_ability(effect: PersonalCardAgentEffect | None) -> Ability | None:
@@ -2003,6 +2012,7 @@ _DISCARD_REWARDS = (
     DrawPersonalCards,
     PlaceSpy,
     TrashPersonalCard,
+    CommissionDreadnought,
 )
 # The reward each armed key resolves (``agent_effects.resolve_agent_card_icon``).
 # That path offers and pays a key per effect (Branching Path's 2 spice), so
@@ -2204,9 +2214,18 @@ def discard_reward_block(
     draw), as before.
     """
 
-    if ability.mark is not AbilityMark.OPTIONAL or not ability.armed_icons:
+    if ability.mark is not AbilityMark.OPTIONAL:
         return None
     rewards = [reward for line in ability.sections for reward in line.rewards]
+    if rewards and all(isinstance(reward, CommissionDreadnought) for reward in rewards):
+        # Ix-Guild Compact: no dreadnought left to commission.
+        return (
+            AgentPaymentBlock.NO_DREADNOUGHT_TO_COMMISSION
+            if commission_block(state, player) is not None
+            else None
+        )
+    if not ability.armed_icons:
+        return None
     if not rewards or not all(isinstance(reward, GainInfluence) for reward in rewards):
         return None
     blocks = [_armed_reward_block(state, player, reward) for reward in rewards]
@@ -2426,6 +2445,14 @@ def _discard_right_side(
             )
             next_state = contracts.state
             events.extend(contracts.events)
+    for reward in rewards:
+        if isinstance(reward, CommissionDreadnought):
+            # Ix-Guild Compact: after the write-back, so the commission is
+            # credited on the turn's frame for a Combat space's deployment
+            # [Rise of Ix p. 6] (``dreadnought_commission``).
+            commissioned = commission_dreadnought(next_state, player, source=source)
+            next_state = commissioned.state
+            events.extend(commissioned.events)
     if draws := sum(
         reward.count for reward in rewards if isinstance(reward, DrawPersonalCards)
     ):

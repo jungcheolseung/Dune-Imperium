@@ -2709,6 +2709,12 @@ _PAYMENT_BLOCK_REASONS: Final[Mapping[AgentPaymentBlock, Reason]] = {
     AgentPaymentBlock.TLEILAXU_TRACK_END: _TLEILAXU_TRACK_END,
     AgentPaymentBlock.NO_FACTION_TO_RAISE: _ALL_AT_THE_TOP,
     AgentPaymentBlock.NO_TROOP_TO_RECRUIT: _NO_TROOP_TO_RECRUIT,
+    # Ix-Guild Compact's two discards with no dreadnought left to commission.
+    AgentPaymentBlock.NO_DREADNOUGHT_TO_COMMISSION: (
+        "No dreadnought is left in your supply to commission",
+        "{supply}에 남은 dreadnought 없음",
+        "reward",
+    ),
 }
 # The payment an ``AgentPaymentBlock`` withholds, by the box's effect.
 _WITHHELD_PAYMENTS: Final[Mapping[PersonalCardAgentEffect, str]] = {

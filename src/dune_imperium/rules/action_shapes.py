@@ -810,6 +810,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "resolve_unload_icon": _row(
         _V.RESOLVE, _S.REVEAL_CARD, _T.PERSONAL_CARD, variant="unload"
     ),
+    # A "may" Unload icon left unused in its window (a Tech Negotiation).
+    "decline_unload_icon": _row(
+        _V.DECLINE, _S.REVEAL_CARD, _T.PERSONAL_CARD, of=_V.RESOLVE, variant="unload"
+    ),
     "gain_reveal_resources": _row(_V.GAIN, _S.REVEAL_CARD, _T.RESOURCES),
     "gain_reveal_faction_influence": _row(
         _V.GAIN_INFLUENCE, _S.REVEAL_CARD, _T.FACTION, variant="pending_gain"
@@ -861,6 +865,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "pay_reveal_spice_influence": _row(_V.PAY, _S.REVEAL_CARD, _T.FACTION),
     "pay_reveal_solari_for_vp": _row(_V.PAY, _S.REVEAL_CARD, variant="solari_for_vp"),
+    # Ix-Guild Compact's Tech Negotiation icons (Rise of Ix).
+    "place_reveal_negotiator": _row(
+        _V.RECRUIT, _S.REVEAL_CARD, variant="negotiator"
+    ),
     "pay_reveal_spice_for_vp": _row(_V.PAY, _S.REVEAL_CARD, variant="spice_for_vp"),
     "pay_reveal_solari_for_troops": _row(
         _V.PAY, _S.REVEAL_CARD, variant="solari_for_troops"

@@ -1221,3 +1221,210 @@ def test_clean_up_moves_freighter_fleet_without_unloading_it() -> None:
     assert state.phase is GamePhase.ROUND_START
     assert FLEET in state.players[0].discard_pile
     assert unloaded == []
+
+
+# --- Ix-Guild Compact ---------------------------------------------------------
+
+COMPACT = "imperium:ix_guild_compact:0"
+WATER_PEDDLER = "imperium:water_peddler:0"
+CHOAM_DELEGATE = "imperium:choam_delegate:0"
+_NEGOTIATOR = "negotiator"
+
+
+def _compact_placed(state: GameState, *hand: str) -> GameState:
+    state = _give(state, 0, hand=(COMPACT, *hand))
+    state = _do(state, "choose_agent_card", card_id=COMPACT).state
+    return _do(state, "place_agent", space_id="foldspace").state
+
+
+def test_ix_guild_compact_play_data_matches_the_app() -> None:
+    """App table: cost 3, 1 copy, Spacing Guild, the Spacing Guild icon;
+    screen pieces: Agent "[Discard] [Discard] -> [Dreadnought]", Reveal
+    "[Unload] [Tech Negotiation] [Tech Negotiation]"."""
+    entry = IMPERIUM_CARDS_BY_ID["ix_guild_compact"]
+    assert entry.play_data_complete and entry.unload
+    assert (entry.copies, entry.acquisition_cost) == (1, 3)
+    assert entry.factions == (Faction.SPACING_GUILD,)
+    assert entry.agent_icons == (AgentIcon.SPACING_GUILD,)
+    assert entry.agent_effect is PersonalCardAgentEffect.MAY_DISCARD_TWO_FOR_DREADNOUGHT
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS,
+    )
+    assert unload.unload_icons(COMPACT) == ((_NEGOTIATOR, 1), (_NEGOTIATOR, 1))
+    for config in (IX, replace(IX, rise_of_ix=False), RulesetConfig()):
+        deck = content_for(config).imperium_deck_instance_ids
+        assert (COMPACT in deck) == config.rise_of_ix
+
+
+def test_ix_guild_compact_discards_two_for_a_dreadnought() -> None:
+    """ "[Discard] [Discard] -> [Dreadnought]": both cards are the cost
+    [Rise of Ix p. 7] ("비용으로 두 장을 버리는 효과는 ... 비용 전액을 내야
+    한다", OQ-118), the dreadnought commissioned once both are paid [Rise of
+    Ix p. 6]."""
+    state = _start()
+    first, second = state.players[0].hand[:2]
+    placed = _compact_placed(state, first, second)
+    before = placed.players[0]
+    picked = _do(placed, "discard_agent_card", card_id=first)
+    assert "dreadnought_commissioned" not in _kinds(picked.events)
+    assert first in picked.state.players[0].hand
+    paid = _do(picked.state, "discard_agent_card", card_id=second)
+    after = paid.state.players[0]
+    assert {first, second} <= set(after.discard_pile)
+    assert after.dreadnoughts_supply == before.dreadnoughts_supply - 1
+    assert after.dreadnoughts_garrison == before.dreadnoughts_garrison + 1
+    kinds = _kinds(paid.events)
+    assert kinds.index("dreadnought_commissioned") < kinds.index(
+        "agent_card_effect_resolved"
+    )
+
+
+def test_ix_guild_compact_arrow_needs_a_dreadnought_to_commission() -> None:
+    """ "비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다 ... 버릴 카드에
+    Unload가 있어도 같다(Ix-Guild Compact에서 dreadnought가 둘 다 나가 있을 때"
+    (docs/rules/rise-of-ix.md 15, OQ-071)."""
+    state = _seat(_start(), 0, dreadnoughts_supply=0, dreadnoughts_garrison=2)
+    placed = _compact_placed(state, WATER_PEDDLER, CHOAM_DELEGATE)
+    assert not _offered(placed, "discard_agent_card")
+    assert (
+        agent_card_payment_block(placed, 0, _BOX.MAY_DISCARD_TWO_FOR_DREADNOUGHT)
+        is AgentPaymentBlock.NO_DREADNOUGHT_TO_COMMISSION
+    )
+    one = _seat(placed, 0, dreadnoughts_supply=1, dreadnoughts_garrison=1)
+    assert _offered(one, "discard_agent_card")
+
+
+def test_ix_guild_compact_holds_its_dreadnought_for_a_discarded_freighter() -> None:
+    """Two discarded Unload cards: Water Peddler's water is paid inside the
+    payment, Freighter Fleet's Freighter is a decision -- the dreadnought
+    waits under the hold until it is answered ("Unload를 끝까지 해결한 뒤
+    오른쪽으로 간다", rise-of-ix.md 7)."""
+    placed = _compact_placed(_start(), WATER_PEDDLER, FLEET)
+    water = placed.players[0].resources.water
+    supply = placed.players[0].dreadnoughts_supply
+    state = _do(placed, "discard_agent_card", card_id=WATER_PEDDLER).state
+    paid = _do(state, "discard_agent_card", card_id=FLEET)
+    state = paid.state
+    assert state.players[0].resources.water == water + 1
+    assert state.players[0].dreadnoughts_supply == supply
+    assert _freighter_rows(state) == {"advance_freighter", "decline_freighter"}
+    done = _do(state, "advance_freighter").state
+    assert done.players[0].dreadnoughts_supply == supply - 1
+    assert done.players[0].freighter_space == 1
+
+
+def test_ix_guild_compact_revealed_may_place_two_negotiators() -> None:
+    """ "Reveal turn에 공개할 때(보통처럼)": each Tech Negotiation icon "you may
+    take a troop from your supply" [Rise of Ix p. 4], one row each, in any
+    order with the Reveal's others, optional (OQ-095 (2)); none with an empty
+    supply ("supply가 비면 아무 일도 없다")."""
+    state = _give(_start(), 0, hand=(COMPACT,))
+    state = _do(state, "reveal_turn").state
+    supply = state.players[0].troops_supply
+    assert _offered(state, "place_reveal_negotiator")
+    assert _offered(state, "finish_reveal")
+    once = _do(state, "place_reveal_negotiator").state
+    assert once.players[0].negotiators == state.players[0].negotiators + 1
+    assert _offered(once, "place_reveal_negotiator")
+    twice = _do(once, "place_reveal_negotiator").state
+    assert twice.players[0].negotiators == state.players[0].negotiators + 2
+    assert twice.players[0].troops_supply == supply - 2
+    assert not _offered(twice, "place_reveal_negotiator")
+    owner = state.players[0]
+    empty = _seat(
+        state,
+        0,
+        troops_supply=0,
+        troops_garrison=owner.troops_garrison + owner.troops_supply,
+    )
+    assert not _offered(empty, "place_reveal_negotiator")
+
+
+def test_ix_guild_compact_discarded_as_a_cost_holds_the_draw() -> None:
+    """Truthsayer's "[Discard] -> [draw 1 card]": the two Tech Negotiation
+    icons are decisions, each placed or refused in a window above the hold,
+    and only then the card is drawn."""
+    state = _start()
+    kept = state.players[0].hand[0]
+    state = _give(state, 0, hand=(TRUTHSAYER, COMPACT, kept))
+    state = _do(state, "choose_agent_card", card_id=TRUTHSAYER).state
+    state = _do(state, "place_agent", space_id="wealth").state
+    state = _do(state, "discard_agent_card", card_id=COMPACT).state
+    assert state.decision_stack[-1].kind is FrameKind.UNLOAD_ICONS
+    rows = {(row.action_id, row.arguments) for row in _rows(state)}
+    value = (("card_id", COMPACT), ("effect", _NEGOTIATOR))
+    assert rows == {(UNLOAD_ROW, value), ("decline_unload_icon", value)}
+    hand = len(state.players[0].hand)
+    negotiators = state.players[0].negotiators
+    state = _do(state, UNLOAD_ROW, card_id=COMPACT, effect=_NEGOTIATOR).state
+    assert len(state.players[0].hand) == hand
+    declined = _do(state, "decline_unload_icon", card_id=COMPACT, effect=_NEGOTIATOR)
+    assert "unload_icon_declined" in _kinds(declined.events)
+    after = declined.state.players[0]
+    assert after.negotiators == negotiators + 1
+    assert len(after.hand) == hand + 1
+
+
+def test_ix_guild_compact_trashed_by_jamis_waits_as_may_rows() -> None:
+    """ "trash할 때 얻는다" [Rise of Ix p. 7]; in its owner's turn each Tech
+    Negotiation is a "may" row of the turn, holding no turn end back and
+    lapsing at the press."""
+    state = _give(_start(), 0, hand=(JAMIS, COMPACT))
+    state = _do(state, "choose_agent_card", card_id=JAMIS).state
+    state = _do(state, "place_agent", space_id="stillsuits").state
+    state = _do(state, "trash_agent_card", card_id=COMPACT).state
+    state = _do(state, "resolve_board_effect", effect="resources").state
+    state = _do(state, "resolve_faction_influence").state
+    assert _offered(state, "finish_agent_turn")
+    negotiators = state.players[0].negotiators
+    state = _do(state, UNLOAD_ROW, card_id=COMPACT, effect=_NEGOTIATOR).state
+    assert state.players[0].negotiators == negotiators + 1
+    assert _offered(state, UNLOAD_ROW)
+    finished = _do(state, "finish_agent_turn")
+    assert _kinds(finished.events).count("unload_icon_lapsed") == 1
+
+
+def test_ix_guild_compact_discarded_by_an_opponent_unloads_in_its_owners_window() -> (
+    None
+):
+    """ "남의 효과로 버려져도 된다(룰북 예: 상대의 Reverend Mother Mohiam)"
+    (rise-of-ix.md 7): seat 1's window offers each icon and its refusal."""
+    state = _start()
+    other = state.players[1].hand[0]
+    state = _mohiam_asks_seat_one(state, COMPACT, other)
+    state = _do(state, "discard_opponent_card", seat=1, card_id=COMPACT).state
+    top = state.decision_stack[-1]
+    assert top.kind is FrameKind.UNLOAD_ICONS
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 1
+    assert {row.action_id for row in _rows(state, 1)} == {
+        UNLOAD_ROW,
+        "decline_unload_icon",
+    }
+    negotiators = state.players[1].negotiators
+    state = _do(state, UNLOAD_ROW, seat=1, card_id=COMPACT, effect=_NEGOTIATOR).state
+    state = _do(state, UNLOAD_ROW, seat=1, card_id=COMPACT, effect=_NEGOTIATOR).state
+    assert state.players[1].negotiators == negotiators + 2
+    assert state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_ix_guild_compact_revealed_then_trashed_negotiates_again() -> None:
+    """OQ-120: "공개한 Unload 카드를 같은 Reveal turn에 trash하면 다시 얻는다"."""
+    state = _with_cull(_give(_start(), 0, hand=(COMPACT,)))
+    state = _do(state, "reveal_turn").state
+    negotiators = state.players[0].negotiators
+    state = _do(state, "place_reveal_negotiator").state
+    state = _do(state, "place_reveal_negotiator").state
+    state = _do(state, "play_intrigue", card_id=CULL, option=0).state
+    state = _do(state, "trash_intrigue_card", card_id=COMPACT).state
+    state = _do(state, UNLOAD_ROW, card_id=COMPACT, effect=_NEGOTIATOR).state
+    assert state.players[0].negotiators == negotiators + 3
+    assert _offered(state, "finish_reveal")
+
+
+def test_clean_up_moves_ix_guild_compact_without_unloading_it() -> None:
+    """ "Clean Up에서 in play 카드를 discard pile로 옮기는 것은 discard가 아니다"
+    (rise-of-ix.md 7, [FAQ p. 2])."""
+    state, unloaded = _clean_up_round(_give(_start(), 0, in_play=(COMPACT,)))
+    assert state.phase is GamePhase.ROUND_START
+    assert COMPACT in state.players[0].discard_pile
+    assert unloaded == []

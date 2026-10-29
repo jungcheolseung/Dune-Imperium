@@ -257,6 +257,7 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "advance_reveal_freighter": 1.5,
     # Negotiated Withdrawal: three units leave the Conflict for one Influence.
     "retreat_reveal_units_for_influence": -1.0,
+    "place_reveal_negotiator": 1.0,
     "advance_freighter": 1.5,
     "resolve_shipping_reward": 2.0,
     "place_combat_reward_dreadnought": 2.0,

@@ -563,6 +563,11 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         PersonalCardAgentEffect
         .MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
     ): "{spice:1} 지불 가능 {arrow_right} {influence_spacing_guild:1}, {draw:1}",
+    # Rise of Ix's Ix-Guild Compact (stage P4d): the dreadnought stays English
+    # (``effect_dsl_text_ko``'s CommissionDreadnought).
+    PersonalCardAgentEffect.MAY_DISCARD_TWO_FOR_DREADNOUGHT: (
+        "카드 2장 {discard} 가능 {arrow_right} Commission a dreadnought"
+    ),
     # Rise of Ix's In The Shadows (stage P4d).
     (
         PersonalCardAgentEffect
@@ -772,6 +777,14 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
         .MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES
     ): (
         "{tech_tile} 3 이상이면: 이 카드 {trash} {arrow_right} {victory_point:1}"
+    ),
+    # Rise of Ix's Ix-Guild Compact (stage P4d): no Korean source names the
+    # Negotiator (``effect_dsl_text_ko``'s PlaceNegotiator), so English stays.
+    PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS: (
+        "Place a troop from your supply on the Ix board as a Negotiator ×2"
+    ),
+    PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR: (
+        "Place a troop from your supply on the Ix board as a Negotiator"
     ),
     # Rise of Ix's Web of Power (stage P4d).
     PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE: "{influence_any:1} 선택",

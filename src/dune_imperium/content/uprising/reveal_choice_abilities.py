@@ -52,6 +52,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     PayResources,
+    PlaceNegotiator,
     PlaceSpy,
     PrintedRevealValue,
     RecallSpy,
@@ -193,6 +194,17 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                     condition=TechTilesAtLeast(3),
                 ),
                 mark=_OPTIONAL,
+            ),
+            # Ix-Guild Compact (Rise of Ix): two Tech Negotiation icons [Steam
+            # app screen pieces; P0 face reading], each "you may take a troop
+            # from your supply and place it on the Ix board" [Rise of Ix p. 4]:
+            # each its own optional choice, so the first resolved, the second
+            # waits as a plain icon (Covert Operation's two Spies' shape).
+            _CHOICE.MAY_PLACE_TWO_NEGOTIATORS: _choice(
+                _line(PlaceNegotiator(), PlaceNegotiator()), mark=_OPTIONAL
+            ),
+            _CHOICE.MAY_PLACE_NEGOTIATOR: _choice(
+                _line(PlaceNegotiator()), mark=_OPTIONAL
             ),
             # For Humanity: "Bene Gesserit Alliance: You may lose 2 Influence with
             # one Faction -> Gain 1 VP" -- a "?" Influence diamond with two red

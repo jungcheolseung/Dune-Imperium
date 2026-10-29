@@ -17,9 +17,10 @@ Rights, Sayyadina, Shai-Hulud, Truthsayer, Imperial Shock Trooper, Local
 Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
 Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
 Way, Satellite Ban, Spice Trader, Imperial Bashar, Bounty Hunter, Web of
-Power, Ixian Engineer, Esmar Tuek, Guild Accord, In The Shadows, Treachery
-and Freighter Fleet so far), while the observation lists every identity from
-v39. Setup takes Rise of Ix on the original game since stage P4c-5.
+Power, Ixian Engineer, Esmar Tuek, Guild Accord, In The Shadows, Treachery,
+Freighter Fleet and Ix-Guild Compact so far), while the observation lists
+every identity from v39. Setup takes Rise of Ix on the original game since
+stage P4c-5.
 from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
@@ -293,6 +294,24 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("ix_guild_compact", "Ix-Guild Compact"),
         copies=1,
         acquisition_cost=3,
+        # App table: Spacing Guild, the Spacing Guild icon, no fixed Reveal
+        # values. Screen pieces: Agent "[Discard] [Discard] -> [Dreadnought]",
+        # an optional arrow [Rise of Ix p. 7], not offered with no dreadnought
+        # to commission (OQ-071, docs/rules/rise-of-ix.md 15); Reveal
+        # "[Unload] [Tech Negotiation] [Tech Negotiation]" (the
+        # ``TechCost_Reduce`` sprite, the Hagal Tech Negotiation card's; P0
+        # face reading), each "you may take a troop" [Rise of Ix p. 4] --
+        # gained also when the card is discarded or trashed [Rise of Ix p. 7]
+        # (``rules.unload``: decisions, so as an arrow's cost they hold its
+        # right side).
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD,),
+        agent_effect=PersonalCardAgentEffect.MAY_DISCARD_TWO_FOR_DREADNOUGHT,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS,
+        ),
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("ixian_engineer", "Ixian Engineer"),

@@ -153,6 +153,7 @@ from dune_imperium.rules.intrigue_deck import (
     shufflable_intrigue_discard,
 )
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
+from dune_imperium.rules.negotiators import negotiator_block, place_negotiator
 from dune_imperium.rules.one_step_ahead import (
     finish_turn_count,
     reveal_set_aside_card,
@@ -300,6 +301,8 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     _Choice.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE: frozenset(
         {"retreat_reveal_units_for_influence"}
     ),
+    _Choice.MAY_PLACE_TWO_NEGOTIATORS: frozenset({"place_reveal_negotiator"}),
+    _Choice.MAY_PLACE_NEGOTIATOR: frozenset({"place_reveal_negotiator"}),
 }
 REVEAL_CHOICE_ACTION_IDS: Final = frozenset().union(
     *REVEAL_CHOICE_EFFECT_ACTIONS.values()
@@ -2084,6 +2087,62 @@ def apply_reveal_vp_payment(
     )
 
 
+_NEGOTIATOR_CHOICES: Final = frozenset(
+    {
+        PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS,
+        PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR,
+    }
+)
+
+
+def legal_reveal_negotiator_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Ix-Guild Compact's Tech Negotiation icons: "you may take a troop from
+    your supply and place it on the Ix board" [Rise of Ix p. 4], one per icon,
+    while a troop is in the supply ("supply가 비면 아무 일도 없다",
+    docs/rules/rise-of-ix.md 4). Optional: no refusal, and an unused icon
+    lapses at the Reveal's end (OQ-095 (2))."""
+
+    pending = pending_choice_rows(state, player, legal_reveal_negotiator_actions)
+    if pending is not None:
+        return pending
+    opened = _choice_frame_effect(state, player)
+    if opened is None or opened[1] not in _NEGOTIATOR_CHOICES:
+        return ()
+    if negotiator_block(state, player) is not None:
+        return ()
+    return (DomainAction(action_id="place_reveal_negotiator", actor=player),)
+
+
+def apply_reveal_negotiator(state: GameState, action: DomainAction) -> RuleResult:
+    """Place one Negotiator for a Tech Negotiation icon; the second of Ix-Guild
+    Compact's two then waits as a plain icon of the same card."""
+
+    state = _open_pending(state, action, legal_reveal_negotiator_actions)
+    if action not in legal_reveal_negotiator_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal Negotiator placement")
+    context = dict(state.decision_stack[-1].context)
+    card_id = context.get("reveal_card_id")
+    effect = _effect_value(context)
+    if not isinstance(card_id, str) or effect is None:
+        raise RuntimeError("Reveal Negotiator frame has invalid context")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{card_id}:negotiator"
+    )
+    remaining = state.decision_stack[:-1]
+    if effect == PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS.value:
+        remaining = _queue_pending_choices(
+            remaining,
+            ((card_id, PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR.value),),
+        )
+    return place_negotiator(
+        replace(state, decision_stack=remaining), action.actor, source=source
+    )
+
+
 def legal_reveal_troop_purchase_actions(
     state: GameState,
     player: int,
@@ -2634,6 +2693,9 @@ _RESOLVES_AS: Mapping[
     ),
     _FREMEN_BOND_TROOP_MOVE: (
         PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
+    ),
+    PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS: (
+        PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR
     ),
 }
 
@@ -4941,6 +5003,8 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         is PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH
         else "You may pay six Solari for a Victory Point"
         if effect is PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT
+        else "You may place a Negotiator on the Ix board"
+        if effect in _NEGOTIATOR_CHOICES
         else "You may pay three Solari for two troops"
         if effect
         is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY
@@ -5172,6 +5236,9 @@ def _reveal_choice_effect_is_available(
         # Opulence's and Guild Ambassador's Victory Point: the cost is there
         # (and the Alliance held) when the choice opens.
         or vp_payment_affordable(owner, effect)
+        # Ix-Guild Compact's Tech Negotiation icons: the rows ask for a troop
+        # in the supply (``legal_reveal_negotiator_actions``).
+        or effect in _NEGOTIATOR_CHOICES
         # Gurney Halleck's troops: the Solari are there when the choice opens,
         # and a troop to take (OQ-071's recruit criterion).
         or (
@@ -5385,6 +5452,7 @@ def reveal_choice_providers() -> tuple[ChoiceProvider, ...]:
         legal_reveal_sandworm_actions,
         legal_reveal_spice_influence_actions,
         legal_reveal_vp_payment_actions,
+        legal_reveal_negotiator_actions,
         legal_reveal_troop_purchase_actions,
         legal_reveal_troop_retreat_actions,
         legal_reveal_influence_loss_actions,

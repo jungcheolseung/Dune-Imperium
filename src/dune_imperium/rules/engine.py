@@ -320,6 +320,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_influence_exchange,
     apply_reveal_influence_gain,
     apply_reveal_influence_loss,
+    apply_reveal_negotiator,
     apply_reveal_persuasion_or_contract,
     apply_reveal_sandworm_action,
     apply_reveal_spice_influence,
@@ -925,6 +926,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_foldspace_to_deck_top": apply_foldspace_deck_top,
     "resolve_shipping_reward": apply_shipping_reward,
     "resolve_unload_icon": apply_unload_icon,
+    "decline_unload_icon": apply_unload_icon,
     "put_intrigue_on_bottom": apply_intrigue_bottom_action,
     "finish_intrigue_bottom": apply_intrigue_bottom_action,
     "choose_secret_project": apply_secret_project,
@@ -1084,6 +1086,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Opulence (original game): "6 Solari -> 1 Victory Point"; Guild
     # Ambassador: "Spacing Guild Alliance: 3 spice -> 1 Victory Point".
     "pay_reveal_solari_for_vp": apply_reveal_vp_payment,
+    # Ix-Guild Compact's Tech Negotiation icons (Rise of Ix).
+    "place_reveal_negotiator": apply_reveal_negotiator,
     "pay_reveal_spice_for_vp": apply_reveal_vp_payment,
     # Gurney Halleck (original game): "3 Solari -> 2 troops".
     "pay_reveal_solari_for_troops": apply_reveal_troop_purchase,
