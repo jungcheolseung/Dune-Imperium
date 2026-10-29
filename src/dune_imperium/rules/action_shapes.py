@@ -862,6 +862,28 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "resolve_shipping_reward": _row(
         _V.RESOLVE, _S.BOARD_SPACE, _T.FACTION, variant="shipping_reward"
     ),
+    # The icons of Rise of Ix's four spaces (stage P4c-4,
+    # ``rules.ix_board_spaces``): the Dreadnought icon, the Acquire Tech icon
+    # and the Tech Negotiation "OR" box's two halves, and the Freighter icon's
+    # two moves. Spaceport's Foldspace card on top of the deck is the
+    # Foldspace space's own variant.
+    "commission_board_dreadnought": _row(
+        _V.RECRUIT, _S.BOARD_SPACE, variant="dreadnought"
+    ),
+    "acquire_board_tech": _row(_V.ACQUIRE, _S.BOARD_SPACE, variant="ix_tech"),
+    "acquire_negotiation_tech": _row(
+        _V.ACQUIRE, _S.BOARD_SPACE, variant="negotiation_tech"
+    ),
+    "place_board_negotiator": _row(_V.RECRUIT, _S.BOARD_SPACE, variant="negotiator"),
+    "advance_board_freighter": _row(
+        _V.ADVANCE, _S.BOARD_SPACE, variant="board_freighter"
+    ),
+    "recall_board_freighter": _row(
+        _V.COLLECT, _S.BOARD_SPACE, variant="board_freighter"
+    ),
+    "acquire_foldspace_to_deck_top": _row(
+        _V.ACQUIRE, _S.BOARD_SPACE, variant="foldspace_deck_top"
+    ),
     # Forbidden Weapons: the swords and an Influence lost, or the trash.
     "choose_tech_strength": _row(_V.CHOOSE, _S.TECH, _T.FACTION),
     "choose_tech_trash": _row(_V.CHOOSE, _S.TECH, variant="trash"),

@@ -601,6 +601,33 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         icon="tech",
         targets=(("tech_id", _C.TECH), ("post_id", _C.POST)),
     ),
+    # The icons of Rise of Ix's four spaces (stage P4c-4): the Dreadnought
+    # space's two, the Tech Negotiation "OR" box's halves (``option``), and a
+    # Freighter icon's moves of the two Spice Trade spaces. Spaceport's Foldspace
+    # card on top of the deck is the Foldspace icon's other option.
+    "commission_board_dreadnought": _spec(
+        _V.RECRUIT, _S.BOARD_SPACE, _SPACE, icon="commission"
+    ),
+    "acquire_board_tech": _spec(_V.ACQUIRE, _S.BOARD_SPACE, _SPACE, icon="ix_tech"),
+    "acquire_negotiation_tech": _spec(
+        _V.ACQUIRE, _S.BOARD_SPACE, _SPACE, icon="tech_negotiation", option="tech"
+    ),
+    "place_board_negotiator": _spec(
+        _V.RECRUIT,
+        _S.BOARD_SPACE,
+        _SPACE,
+        icon="tech_negotiation",
+        option="negotiator",
+    ),
+    "advance_board_freighter": _spec(
+        _V.ADVANCE, _S.BOARD_SPACE, _SPACE, icon="freighter"
+    ),
+    "recall_board_freighter": _spec(
+        _V.COLLECT, _S.BOARD_SPACE, _SPACE, icon="freighter"
+    ),
+    "acquire_foldspace_to_deck_top": _spec(
+        _V.ACQUIRE, _S.BOARD_SPACE, _SPACE, icon="foldspace", option="deck_top"
+    ),
     # Gather Intelligence: a Spy connected to the visited space [Main p. 11].
     "gather_intelligence": _spec(_V.RECALL_SPY, _S.SPY, _SPACE, targets=_POST),
     # --- A Contract, a Tech tile ---------------------------------------------

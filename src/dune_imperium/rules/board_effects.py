@@ -25,15 +25,19 @@ from dune_imperium.content.uprising.board_abilities import (
 )
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireReserveCard,
+    AcquireTech,
+    CommissionDreadnought,
     DoubleBaseHarvestSpice,
     DoubleBonusHarvestSpice,
     DrawIntrigueCards,
     DrawPersonalCards,
     EffectSection,
+    Freighter,
     GainInfluence,
     GainResources,
     OnHighCouncilSeatTaken,
     OnMakerSpiceHarvested,
+    PlaceNegotiator,
     PlaceSpy,
     RecallAgent,
     RecruitTroops,
@@ -102,6 +106,7 @@ from dune_imperium.rules.intrigue_deck import (
     with_trashed_intrigue,
 )
 from dune_imperium.rules.intrigue_knowledge import forget_intrigue_cards
+from dune_imperium.rules.ix_board_spaces import ix_space_icons
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.sandworms import sandworm_block
 from dune_imperium.rules.scouts_missions import (
@@ -165,7 +170,7 @@ IMPERIUM_ONLY_BOARD_ICONS: Final = frozenset({BOARD_ICON_FOLDSPACE, BOARD_ICON_M
 # ruling 2026-10-29 "연구 기지는 한 장씩 뽑아야지" (OQ-147). The visit's
 # list holds the key once per printed icon, ``finish_board_icon`` retires one
 # at a time, and the legal list names the key once while any is pending.
-REPEATED_BOARD_ICONS: Final = frozenset({BOARD_ICON_CARDS})
+REPEATED_BOARD_ICONS: Final = frozenset({BOARD_ICON_CARDS, "freighter"})
 IMPERIUM_BOARD_ICONS: Final = frozenset(
     {
         BOARD_ICON_CARDS,
@@ -407,6 +412,15 @@ def _gains(ability: Ability) -> tuple[AutomaticEffect, ...]:
                     | AcquireReserveCard()
                 ):
                     pass
+                case (
+                    CommissionDreadnought()
+                    | AcquireTech()
+                    | PlaceNegotiator()
+                    | Freighter()
+                ):
+                    # Rise of Ix's four spaces' own icons, each an effect of
+                    # its own (``rules.ix_board_spaces``).
+                    pass
                 case _:
                     raise TypeError(f"{reward!r} is not a board space icon")
     return tuple(effects)
@@ -537,6 +551,15 @@ def board_icons_for(
                 )
             ]
             match space_id:
+                case (
+                    "dreadnought"
+                    | "tech_negotiation"
+                    | "interstellar_shipping"
+                    | "smuggling"
+                ):
+                    # Rise of Ix's spaces: their pieces, read off the records
+                    # [Rise of Ix p. 12] (``rules.ix_board_spaces``).
+                    icons.extend(ix_space_icons(space_id))
                 case "mentat" if mentat_rests(state):
                     # "If the Mentat is here, take it" [DI p. 18].
                     icons.append(BOARD_ICON_MENTAT)
@@ -915,6 +938,77 @@ def resolve_board_effect(state: GameState, action: DomainAction) -> RuleResult:
             *contract_events,
             *steal_events,
             event,
+        ),
+    )
+
+
+FOLDSPACE_TO_DECK_TOP: Final = "acquire_foldspace_to_deck_top"
+
+
+def legal_foldspace_deck_top_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """The Foldspace space's acquisition placed on top of the owner's deck.
+
+    Rise of Ix's Spaceport: "얻는 카드를 덱 위에 놓을 수 있다"
+    (docs/rules/rise-of-ix.md 4, [Rise of Ix p. 4]): the Foldspace card the
+    space acquires is a card acquired, so its owner may put it on top of the
+    deck instead of the discard pile, where every seat knows it until it is
+    drawn (OQ-145). The row stands beside the plain ``foldspace`` icon's, only
+    in a Rise of Ix game, only for an owner of the tile and only while a
+    Foldspace card is left to acquire; the plain row remains the discard.
+    """
+
+    if not state.config.rise_of_ix:
+        return ()
+    owner = state.players[player]
+    if not has_tech(owner.tech_ids, TechAbility.ACQUIRED_CARDS_ON_DECK):
+        return ()
+    try:
+        frame, context = current_agent_effect_context(state)
+    except ValueError:
+        return ()
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if not board_icon_is_pending(context, BOARD_ICON_FOLDSPACE):
+        return ()
+    if dict(state.reserve_stacks).get(FOLDSPACE_CARD, 0) <= 0:
+        return ()
+    return (DomainAction(action_id=FOLDSPACE_TO_DECK_TOP, actor=player),)
+
+
+def apply_foldspace_deck_top(state: GameState, action: DomainAction) -> RuleResult:
+    """Acquire the Foldspace card onto the top of the owner's deck."""
+
+    player = action.actor
+    if action not in legal_foldspace_deck_top_actions(state, player):
+        raise ValueError("action is not a legal Foldspace deck-top acquisition")
+    _, context = current_agent_effect_context(state)
+    space_id = context_str(context, "space_id", owner=_FRAME_LABEL)
+    source = f"round:{state.round_number}:player:{player}:board:{space_id}"
+    finish_board_icon(context, BOARD_ICON_FOLDSPACE)
+    next_state = advance_after_effect(state, context)
+    acquired = acquire_reserve_for_intrigue(
+        next_state,
+        player,
+        FOLDSPACE_CARD,
+        to_hand=False,
+        source=source,
+        to_deck_top=True,
+    )
+    return RuleResult(
+        state=acquired.result.state,
+        events=(
+            *acquired.result.events,
+            GameEvent(
+                event_id=f"{source}:{BOARD_ICON_FOLDSPACE}",
+                kind="board_effect_resolved",
+                payload=(
+                    ("effect", BOARD_ICON_FOLDSPACE),
+                    ("player", player),
+                    ("space_id", space_id),
+                ),
+            ),
         ),
     )
 

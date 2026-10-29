@@ -75,6 +75,7 @@ from dune_imperium.rules.board_effects import (
     apply_connections_action,
     apply_desert_tactics_action,
     apply_espionage_action,
+    apply_foldspace_deck_top,
     apply_imperial_privilege_action,
     apply_maker_space_action,
     apply_secrets_steal,
@@ -223,6 +224,7 @@ from dune_imperium.rules.intrigue_triggers import (
     fire_deferred_acquisition_trigger,
     legal_trigger_contract_actions,
 )
+from dune_imperium.rules.ix_board_spaces import apply_ix_space_action
 from dune_imperium.rules.leader_abilities import (
     apply_feyd_track_action,
     apply_kota_signet_action,
@@ -859,6 +861,16 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "advance_freighter": apply_freighter_move_action,
     "recall_freighter": apply_freighter_move_action,
     "decline_freighter": apply_freighter_move_action,
+    # The four spaces' icons (stage P4c-4, ``rules.ix_board_spaces``): the
+    # Freighter icon of Interstellar Shipping and Smuggling beside the others.
+    "advance_board_freighter": apply_ix_space_action,
+    "recall_board_freighter": apply_ix_space_action,
+    "commission_board_dreadnought": apply_ix_space_action,
+    "acquire_board_tech": apply_ix_space_action,
+    "acquire_negotiation_tech": apply_ix_space_action,
+    "place_board_negotiator": apply_ix_space_action,
+    # Spaceport's Foldspace card on top of the deck (stage P4c-4).
+    "acquire_foldspace_to_deck_top": apply_foldspace_deck_top,
     "resolve_shipping_reward": apply_shipping_reward,
     "put_intrigue_on_bottom": apply_intrigue_bottom_action,
     "finish_intrigue_bottom": apply_intrigue_bottom_action,

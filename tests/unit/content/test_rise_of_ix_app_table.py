@@ -732,16 +732,16 @@ def test_ix_spaces_match_the_rules_table_and_the_app() -> None:
     assert by_id["dreadnought"].cost_options == (ResourceCost(solari=3),)
 
 
-def test_ix_spaces_resolve_by_id_and_print_no_effect_yet() -> None:
+def test_ix_spaces_resolve_by_id_and_print_their_icons() -> None:
     for space in IX_BOARD_SPACES:
         assert BOARD_SPACES_BY_ID[space.space_id] is space
     assert not set(IX_SPACE_IDS) & {s.space_id for s in IMPERIUM_BOARD_SPACES}
     assert not set(IX_SPACE_IDS) & {s.space_id for s in BOARD_SPACES}
-    # Their effects need stages P4b and P4c's pieces.
-    printed = {space for space, _, _ in BOARD_SPACE_ABILITIES} | {
-        space for space, _ in BOARD_CHOICE_ABILITIES
-    }
-    assert not set(IX_SPACE_IDS) & printed
+    # Their printed icons are records since stage P4c-4
+    # (``content.rise_of_ix.board_abilities``), none of them a choice flow.
+    printed = {space for space, _, _ in BOARD_SPACE_ABILITIES}
+    assert set(IX_SPACE_IDS) <= printed
+    assert not set(IX_SPACE_IDS) & {space for space, _ in BOARD_CHOICE_ABILITIES}
     # Only the original game with ``rise_of_ix`` lists them (the CHOAM
     # overlay's swap, stage P4a's board axis, ``test_rise_of_ix_board_axis``);
     # Uprising plus Rise of Ix is stage P7.

@@ -51,6 +51,7 @@ from dune_imperium.rules.board_effects import (
     legal_connections_actions,
     legal_desert_tactics_actions,
     legal_espionage_actions,
+    legal_foldspace_deck_top_actions,
     legal_imperial_privilege_actions,
     legal_maker_space_actions,
     legal_shipping_actions,
@@ -91,6 +92,7 @@ from dune_imperium.rules.immortality import (
     legal_specimen_return_actions,
 )
 from dune_imperium.rules.intrigue import legal_intrigue_play_actions
+from dune_imperium.rules.ix_board_spaces import legal_ix_space_actions
 from dune_imperium.rules.leader_abilities import (
     legal_feyd_track_actions,
     legal_leader_board_repeat_actions,
@@ -172,6 +174,10 @@ def legal_agent_effect_frame_actions(
         *legal_acquire_icon_actions(state, player),
         # A Shipping track recall's rewards (Rise of Ix, stage P4c-3).
         *legal_shipping_reward_row_actions(state, player),
+        # Rise of Ix's four spaces' icons and the Foldspace space's deck-top
+        # twin (stage P4c-4).
+        *legal_ix_space_actions(state, player),
+        *legal_foldspace_deck_top_actions(state, player),
         *legal_leader_placement_ability_actions(state, player),
         *legal_leader_board_repeat_actions(state, player),
         *legal_contract_completion_actions(state, player),

@@ -262,6 +262,17 @@ const ACTION_LABELS = {
   recall_freighter: "Freighter 회수",
   decline_freighter: "Freighter 움직이지 않음",
   resolve_shipping_reward: "Freighter 회수 보상",
+  /* Rise of Ix's four board spaces (stage P4c-4): the Dreadnought icon, the
+     Acquire Tech icon, Tech Negotiation's two halves and Spaceport's
+     Foldspace on top of the deck; the dreadnought and the Negotiator stay
+     English like the rows above. */
+  commission_board_dreadnought: "dreadnought 얻기",
+  acquire_board_tech: "{tech_tile} 획득",
+  acquire_negotiation_tech: "{tech_tile} 획득 (할인 1)",
+  place_board_negotiator: "Negotiator 놓기",
+  advance_board_freighter: "Freighter 한 칸 위로",
+  recall_board_freighter: "Freighter 회수",
+  acquire_foldspace_to_deck_top: "Foldspace 카드를 덱 위에",
   place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
   /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep
      their English names, which no official Korean source translates. */

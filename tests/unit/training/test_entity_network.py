@@ -139,8 +139,13 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # and four board spaces join theirs, each tile with its acquire record where
 # an existing piece prints it: two tech columns are new (Windtraps' water,
 # Shuttle Fleet's ``distinct`` Influence); the 589 older rows and their
-# scales are unchanged (compared against 78c00bac, 2026-10-29).
-_GOLDEN_DIGEST = "a842f73eafccb96cb33eca7d796cc2f1ad51f55a2f268ea5ceabcbec83141433"
+# scales are unchanged (compared against 78c00bac, 2026-10-29). Then the four
+# board spaces' icons became records (stage P4c-4): six columns of the space
+# table are new (Acquire Tech and its discount, the dreadnought commission,
+# the Negotiator, the Freighter, the "OR" structure), only those four spaces'
+# rows read them, and every older row and its scales are unchanged (compared
+# against a88a66f3, 2026-10-29).
+_GOLDEN_DIGEST = "73c5e3ac405843be5e0ef89933974ac4c2ac9853119cb38d5f5e5d12995a97d2"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

@@ -31,6 +31,7 @@ from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.action_codec import ActionCodec, ActionTemplate
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.bloodlines.tech import TECH_TILES
+from dune_imperium.content.rise_of_ix.board import IX_SPACE_IDS
 from dune_imperium.content.rise_of_ix.tech import IX_TECH_TILES
 from dune_imperium.content.uprising.intrigue import twisted_intrigue_instance_ids
 from dune_imperium.core import (
@@ -1273,10 +1274,12 @@ def test_invasion_ships_lets_the_agent_go_where_an_opponent_stands_this_turn() -
             state,
             DomainAction("choose_agent_card", 0, (("card_id", DESERT_0),)),
         ).state
+        # Rise of Ix's four spaces (stage P4c-4) are no concern of this tile.
         return {
             dict(action.arguments)["space_id"]
             for action in ENGINE.whole_actions(chosen, 0)
             if action.action_id == "place_agent"
+            and dict(action.arguments)["space_id"] not in IX_SPACE_IDS
         }
 
     state = _seat(_turn(tile), 1, **occupied)

@@ -1979,6 +1979,15 @@ _CARD_SOURCES: Final = frozenset({Source.REVEAL_CARD, Source.AGENT_CARD})
 _VISITED_SPACES: Final[Mapping[str, tuple[str, ...]]] = {
     "resolve_espionage_without_spy": ("espionage",),
     "resolve_imperial_privilege_without_recall": ("imperial_privilege",),
+    # Rise of Ix's four spaces' icons (stage P4c-4, ``rules.ix_board_spaces``)
+    # and Spaceport's Foldspace card on top of the deck.
+    "commission_board_dreadnought": ("dreadnought",),
+    "acquire_board_tech": ("dreadnought",),
+    "acquire_negotiation_tech": ("tech_negotiation",),
+    "place_board_negotiator": ("tech_negotiation",),
+    "advance_board_freighter": ("interstellar_shipping", "smuggling"),
+    "recall_board_freighter": ("interstellar_shipping", "smuggling"),
+    "acquire_foldspace_to_deck_top": ("foldspace",),
 }
 # A controlled space's defending troop (B3d-2a): a space a Conflict card's
 # control reward names.
@@ -2341,14 +2350,19 @@ def _window_printers(
         return _spy_placement_printers(config)
     if action_id == "decline_tech":
         # Battlefield Research, Rapid Engineering, and the Shipping track's
-        # space 3 (Rise of Ix).
+        # space 3 and the two Landsraad spaces of the overlay (Rise of Ix).
         return (
             *(
                 (Source.INTRIGUE, card)
                 for card in _intrigue_reward_cards(config, AcquireTech)
             ),
             *(
-                ((Source.BOARD_SPACE, SHIPPING_PRINTED),)
+                (
+                    (Source.BOARD_SPACE, SHIPPING_PRINTED),
+                    # The Dreadnought and Tech Negotiation spaces' Acquire Tech.
+                    (Source.BOARD_SPACE, "dreadnought"),
+                    (Source.BOARD_SPACE, "tech_negotiation"),
+                )
                 if config.rise_of_ix
                 else ()
             ),
@@ -2712,6 +2726,15 @@ def _rise_of_ix_unit_templates() -> tuple[ActionTemplate, ...]:
             "advance_intrigue_freighter",
             "recall_intrigue_freighter",
             "decline_intrigue_freighter",
+            # The icons of the four spaces the overlay prints (stage P4c-4).
+            "commission_board_dreadnought",
+            "acquire_board_tech",
+            "acquire_negotiation_tech",
+            "place_board_negotiator",
+            "advance_board_freighter",
+            "recall_board_freighter",
+            # Spaceport's Foldspace card on top of the deck.
+            "acquire_foldspace_to_deck_top",
         )
     )
     templates.extend(_shipping_track_templates())

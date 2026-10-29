@@ -398,6 +398,14 @@ OPTIONAL_BOARD_ICONS: Final = frozenset(
         BOARD_ICON_COMMANDER,
         BOARD_ICON_TECH,
         "scouts_subcommittee",
+        # Rise of Ix's four spaces' icons, each a "may" [Rise of Ix pp. 4-6,
+        # 12] (``ix_board_spaces.BOARD_ICON_*``, spelled here like the ids
+        # above): the Dreadnought icon, an Acquire Tech, the Tech Negotiation
+        # "OR" box and a Freighter icon.
+        "commission",
+        "ix_tech",
+        "tech_negotiation",
+        "freighter",
     }
 )
 # The visit's effects that are not printed on the space, which a repeat of
