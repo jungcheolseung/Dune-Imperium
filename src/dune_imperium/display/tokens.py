@@ -24,6 +24,7 @@ from typing import Final
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
+    AgentOnSpaceWithIcon,
     CommandersInConflictAtLeast,
     CommandReached,
     DrawIntrigueCards,
@@ -50,6 +51,7 @@ from dune_imperium.content.uprising.effect_dsl import (
 )
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import (
+    AgentIcon,
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardBond,
@@ -60,6 +62,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
+from dune_imperium.display.effect_dsl_text import condition_text
 from dune_imperium.rules.reveal_lines import RevealLine
 
 _BOND_NAMES: dict[PersonalCardBond, str] = {
@@ -101,6 +104,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE: (
             "You may trash a card → Draw 1 card"
         ),
+        # Rise of Ix's Shai-Hulud (stage P4d): "[Trash a card] -> [2 troops]".
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_RECRUIT_TWO: (
+            "You may trash a card → Recruit 2 troops"
+        ),
         # Tread in Darkness: two icons side by side with no arrow between
         # them (OQ-058) — the draw always happens, even if the trash is
         # declined (agent_effects.py), unlike Shishakli's real arrow above.
@@ -138,6 +145,14 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         # Rise of Ix's Sayyadina (stage P4d).
         PersonalCardAgentEffect.MAY_PAY_THREE_WATER_FOR_VP: (
             "You may pay 3 water → Gain 1 VP"
+        ),
+        # Rise of Ix's Local Fence (stage P4d): two arrows printed with -OR-.
+        (
+            PersonalCardAgentEffect
+            .MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
+        ): (
+            "Choose one: You may pay 2 spice → Gain 5 solari / "
+            "You may pay 5 solari → Gain 4 spice"
         ),
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP: (
             "You may discard 2 cards and pay 5 solari → Gain 1 VP"
@@ -247,6 +262,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         ),
         PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: (
             "You may recall the Agent you sent this turn"
+        ),
+        # Rise of Ix's Landing Rights (stage P4d): the Freighter icon.
+        PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: (
+            "You may move your Freighter up one space or recall it"
         ),
         PersonalCardAgentEffect.GENERATE_SPECIMEN: "Generate 1 specimen",
         PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
@@ -603,6 +622,9 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
             PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_CHOSEN_FACTION: (
                 "Gain 1 Influence (choose any Faction)"
             ),
+            # Rise of Ix's Shai-Hulud: the black Trash icon, as its record
+            # renders (the icon is optional, which the text does not say).
+            PersonalCardAcquisitionEffect.MAY_TRASH_A_CARD: "Trash a card",
         }
     )
 )
@@ -783,6 +805,7 @@ HANDLED_REVEAL_CONDITIONS: Final[frozenset[type]] = frozenset(
         CommandReached,
         InfluenceAtLeast,
         HasAlliance,
+        AgentOnSpaceWithIcon,
     }
 )
 HANDLED_REVEAL_REWARDS: Final[frozenset[type]] = frozenset(
@@ -820,6 +843,9 @@ class RevealLineConditions:
     influence: tuple[Faction, int] | None = None
     # "Fremen Alliance" (Worm Riders).
     alliance: Faction | None = None
+    # "If you have an Agent on an [Emperor] board space" (Imperial Shock
+    # Trooper): the board space's icon.
+    agent_on_space: AgentIcon | None = None
 
 
 def reveal_line_conditions(line: RevealLine) -> RevealLineConditions:
@@ -850,6 +876,8 @@ def reveal_line_conditions(line: RevealLine) -> RevealLineConditions:
                 found["influence"] = (faction, amount)
             case HasAlliance(faction=faction) if faction is not None:
                 found["alliance"] = faction
+            case AgentOnSpaceWithIcon(icon=icon):
+                found["agent_on_space"] = icon
             case _:
                 raise TypeError(f"{condition!r} is not a Reveal line condition")
     return RevealLineConditions(**found)  # type: ignore[arg-type]
@@ -896,6 +924,10 @@ def reveal_effect_text(line: RevealLine) -> str:
         conditions.append(f"you have {amount} or more {name} Influence")
     if held.alliance is not None:
         conditions.append(f"you have the {_faction_name(held.alliance)} Alliance")
+    if held.agent_on_space is not None:
+        # "If you have an Agent on an [Emperor] board space," [Imperial Shock
+        # Trooper, Steam app text]: the Canny line's words.
+        conditions.append(condition_text(AgentOnSpaceWithIcon(held.agent_on_space)))
 
     count = line.faction_count
     per_faction = (

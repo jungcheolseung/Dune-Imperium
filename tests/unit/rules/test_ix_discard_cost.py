@@ -6,6 +6,7 @@ OQ-071 application: costs need a live reward, including a cost-fed draw.
 """
 
 from dataclasses import replace
+from types import MappingProxyType
 
 import pytest
 
@@ -13,19 +14,27 @@ from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.agents.agent_turn_steps import steps_after
 from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.uprising import agent_abilities
+from dune_imperium.content.uprising.abilities import (
+    Ability,
+    AbilityMark,
+    AbilityTiming,
+)
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     DrawPersonalCards,
     EffectSection,
     GainInfluence,
+    GainResources,
+    HasAlliance,
 )
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.intrigue import (
     INTRIGUE_CARDS_BY_INSTANCE,
     intrigue_card_for_instance,
 )
-from dune_imperium.content.uprising.types import AgentIcon
+from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
 from dune_imperium.core import (
     ChanceDecision,
     ChanceResolver,
@@ -301,3 +310,146 @@ def test_discard_cost_line_is_not_offered_when_its_reward_is_dead(
         row.action_id == "play_intrigue" and dict(row.arguments).get("card_id") == PROBE
         for row in ENGINE.whole_actions(short, 0)
     )
+
+
+# --- The Discard cost in other Agent boxes (P4d Unload brief, item 0) ---------
+#
+# Hand-built Agent boxes stand in for the Ix cards that print them (their own
+# card briefs transcribe them): Truthsayer's box record is replaced for the
+# test, so the card is played as usual and only its arrow differs.
+
+
+def _box(monkeypatch: pytest.MonkeyPatch, *lines: EffectSection) -> None:
+    table = dict(agent_abilities.AGENT_BOX_ABILITIES)
+    table[PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE] = Ability(
+        timing=AbilityTiming.AGENT_BOX, sections=lines, mark=AbilityMark.OPTIONAL
+    )
+    monkeypatch.setattr(agent_abilities, "AGENT_BOX_ABILITIES", MappingProxyType(table))
+
+
+def _discard_rows(state: GameState) -> set[DomainAction]:
+    _rows(state)
+    return {
+        row
+        for row in ENGINE.whole_actions(state, 0)
+        if row.action_id in ("discard_agent_card", "decline_agent_card_discard")
+    }
+
+
+def test_a_discard_arrow_pays_spice_and_water_together(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Satellite Ban: "Discard -> 1 spice, 1 water" (app screen pieces); the
+    Discard icon costs one hand card [Rise of Ix p. 7]."""
+    _box(
+        monkeypatch,
+        EffectSection(
+            costs=(DiscardFromHand(),), rewards=(GainResources(spice=1, water=1),)
+        ),
+    )
+    state = _start()
+    paid, kept = state.players[0].hand[:2]
+    state = _truthsayer(_seat(state, hand=(TRUTHSAYER, paid, kept)))
+    before = state.players[0].resources
+    owner = _do(state, "discard_agent_card", card_id=paid).state.players[0]
+    assert (owner.resources.spice, owner.resources.water) == (
+        before.spice + 1,
+        before.water + 1,
+    )
+    assert owner.hand == (kept,) and owner.discard_pile[-1] == paid
+
+
+def test_an_alliance_discard_arrow_needs_the_alliance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Spice Trader: "Fremen Alliance: Discard -> 2 spice" (app screen
+    pieces). "내지 않으면 효과도 없다" [Rise of Ix p. 7]; the condition is
+    judged when the cost is paid (OQ-028), so without the Alliance no card
+    pays it (an unused optional arrow lapses at the turn's end, OQ-095 (2))."""
+    _box(
+        monkeypatch,
+        EffectSection(
+            costs=(DiscardFromHand(),),
+            rewards=(GainResources(spice=2),),
+            condition=HasAlliance(Faction.FREMEN),
+        ),
+    )
+    state = _start()
+    paid, kept = state.players[0].hand[:2]
+    played = _truthsayer(_seat(state, hand=(TRUTHSAYER, paid, kept)))
+    assert _discard_rows(played) == set()
+    allied = _truthsayer(
+        _seat(
+            state,
+            hand=(TRUTHSAYER, paid, kept),
+            influence=Influence(fremen=4),
+            alliance_faction_ids=("fremen",),
+        )
+    )
+    assert {dict(row.arguments).get("card_id") for row in _discard_rows(allied)} == {
+        paid,
+        kept,
+    }
+    spice = allied.players[0].resources.spice
+    owner = _do(allied, "discard_agent_card", card_id=paid).state.players[0]
+    assert owner.resources.spice == spice + 2
+
+
+def test_two_discard_icons_take_two_hand_cards_before_the_reward(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ix-Guild Compact: "Discard, Discard -> ..." (app screen pieces): each
+    Discard icon costs one hand card, and an unpaid arrow gives nothing
+    [Rise of Ix p. 7]. The first pick waits in hand (as Corrinth City's),
+    the second discards both. Its dreadnought is not wired here, so 2 spice
+    stands in for it."""
+    _box(
+        monkeypatch,
+        EffectSection(costs=(DiscardFromHand(2),), rewards=(GainResources(spice=2),)),
+    )
+    state = _start()
+    first, second, kept = state.players[0].hand[:3]
+    short = _truthsayer(_seat(state, hand=(TRUTHSAYER, first)))
+    assert _discard_rows(short) == set()
+    state = _truthsayer(_seat(state, hand=(TRUTHSAYER, first, second, kept)))
+    spice = state.players[0].resources.spice
+    picked = _do(state, "discard_agent_card", card_id=first)
+    owner = picked.state.players[0]
+    assert owner.hand == (first, second, kept)
+    assert owner.resources.spice == spice
+    assert first not in observe_state(picked.state, 1).players[0].discard_pile
+    assert not any(event.kind == "card_discarded" for event in picked.events)
+    assert {
+        dict(row.arguments).get("card_id") for row in _discard_rows(picked.state)
+    } == {second, kept}
+    paid = _do(picked.state, "discard_agent_card", card_id=kept)
+    owner = paid.state.players[0]
+    assert owner.hand == (second,)
+    assert owner.discard_pile[-2:] == (first, kept)
+    assert owner.resources.spice == spice + 2
+    assert [
+        dict(event.payload)["card_id"]
+        for event in paid.events
+        if event.kind == "card_discarded"
+    ] == [first, kept]
+
+
+def test_two_discard_icons_can_still_be_left_unpaid_after_the_first_pick(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ "손의 카드 하나(Intrigue 아님) -OR- 내지 않음" [Rise of Ix p. 7]:
+    nothing is paid before the second pick, and the turn can end there."""
+    _box(
+        monkeypatch,
+        EffectSection(costs=(DiscardFromHand(2),), rewards=(GainResources(spice=2),)),
+    )
+    state = _start()
+    first, second = state.players[0].hand[:2]
+    state = _truthsayer(_seat(state, hand=(TRUTHSAYER, first, second)))
+    state = _do(state, "discard_agent_card", card_id=first).state
+    state = _do(state, "resolve_board_effect", effect="resources").state
+    state = _do(state, "resolve_faction_influence").state
+    result = _do(state, "finish_agent_turn")
+    owner = result.state.players[0]
+    assert owner.hand == (first, second)
+    assert not any(event.kind == "card_discarded" for event in result.events)

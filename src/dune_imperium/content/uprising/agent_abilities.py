@@ -66,6 +66,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     FactionBond,
     ForceEnemyRetreat,
+    Freighter,
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
@@ -128,6 +129,7 @@ _BRANCHING_PATH = (
 _JUNCTION_HEADQUARTERS = (
     _BOX.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
 )
+_LOCAL_FENCE = _BOX.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
 
 
 def _line(*rewards: Reward, condition: Condition | None = None) -> EffectSection:
@@ -233,6 +235,26 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # An optional arrow, once per turn [DI p. 9] [FAQ p. 3].
             _BOX.MAY_PAY_THREE_WATER_FOR_VP: _pay(
                 PayResources(water=3), GainVictoryPoints(1)
+            ),
+            # Local Fence (Rise of Ix): "[2 spice] -> [5 Solari] -OR- [5
+            # Solari] -> [4 spice]" [Steam app screen pieces and text]: two
+            # arrows, each optional (player-turns.md [Main p. 9] [FAQ p. 3]),
+            # and "-OR-" takes one (imperium-base.md 10.1), so the owner pays
+            # one or neither; each line is its own row (``payment_box``).
+            _LOCAL_FENCE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(GainResources(solari=5),),
+                        costs=(PayResources(spice=2),),
+                    ),
+                    EffectSection(
+                        rewards=(GainResources(spice=4),),
+                        costs=(PayResources(solari=5),),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                structure=AbilityStructure.ONE_OF,
             ),
             _BOX.RECRUIT_TWO_TROOPS: _box(RecruitTroops(2)),
             # Arrakis Recruiter (original game): one troop; a Combat space
@@ -437,6 +459,13 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE: _trash(
                 EffectSection(rewards=(DrawPersonalCards(1),), costs=(TrashCard(),))
             ),
+            # Shai-Hulud (Rise of Ix): "[Trash a card] -> [2 troops]" [Steam app
+            # screen pieces and log text]: an arrow whose cost is a trashed card,
+            # optional like every arrow cost [FAQ p. 3]; the troops come at once
+            # (``agent_box_abilities.apply_trash``).
+            _BOX.TRASH_PERSONAL_CARD_TO_RECRUIT_TWO: _trash(
+                EffectSection(rewards=(RecruitTroops(2),), costs=(TrashCard(),))
+            ),
             # Pivotal Gambit: the card trashes itself as the cost, then its troop
             # and the first-place pledge are armed as icons (OQ-022, OQ-027).
             _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE: _trash(
@@ -591,6 +620,12 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: _icons(
                 ("recall", _line(RecallAgent(sent_this_turn=True, optional=True))),
             ),
+            # Landing Rights (Rise of Ix): the Freighter icon [Steam app screen
+            # pieces]: "you may move your Freighter in one of two ways" [Rise
+            # of Ix p. 5] (docs/rules/rise-of-ix.md 5). An optional icon
+            # (``agent_effects.OPTIONAL_AGENT_ICONS``) answered by its own rows
+            # (``advance_agent_card_freighter``, ``recall_agent_card_freighter``).
+            _BOX.MAY_MOVE_FREIGHTER: _icons(("freighter", _line(Freighter()))),
             # Tread in Darkness: "If Bene Gesserit Bond: You may trash a card,
             # Draw 1 card" -- the Bond opens the box and is judged again on each
             # icon when it resolves (OQ-028); the trash stays optional (OQ-058).

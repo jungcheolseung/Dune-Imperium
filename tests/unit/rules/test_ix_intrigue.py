@@ -392,14 +392,14 @@ def test_cull_pays_one_solari_then_trashes_the_chosen_card() -> None:
 
 def test_cull_trashes_from_the_hand_the_discard_pile_or_play() -> None:
     # The Trash icon takes a card "from your hand, discard pile or in play"
-    # `[DI p. 16]` (imperium-base.md 11).
+    # `[DI p. 16]` (imperium-base.md 11); Cull's trash is mandatory once it is
+    # played, so the three cards are all that is offered (no decline row).
     engine, state = _cull_hand(
         hand=(DIPLOMACY,), discard_pile=(SEEK_ALLIES,), in_play=(DAGGER,)
     )
     opened = apply_whole(engine, state, _play(CULL)).state
     offered = engine.whole_actions(opened, 0)
     assert set(offered) == {
-        DECLINE_TRASH,
         _trash(DIPLOMACY),
         _trash(SEEK_ALLIES),
         _trash(DAGGER),
@@ -412,18 +412,23 @@ def test_cull_trashes_from_the_hand_the_discard_pile_or_play() -> None:
     assert SEEK_ALLIES in done.trashed
 
 
-def test_cull_trash_is_optional_once_the_solari_is_paid() -> None:
-    # The Trash definition "비용이거나 카드가 자기를 trash하라고 할 때만 의무"
-    # (imperium-base.md 11, `[DI p. 16]`): a Trash icon that is a reward is not
-    # forced, so the seat may decline it. The Solari stays spent (the arrow
-    # cost is required once the card is played, `[FAQ p. 3]`).
+def test_cull_trash_is_mandatory_once_the_solari_is_paid() -> None:
+    # "Cull은 trash해야 낸다" (docs/rules/rise-of-ix.md 9.3, the "Message from
+    # designer" row, adopted; OQ-113 (C)): the 1 Solari buys a trash that must
+    # happen, so once Cull is played no decline row is offered (a Trash icon
+    # that is a cost, or that the card makes mandatory, is forced,
+    # imperium-base.md 11 `[DI p. 16]`). The only way out of the trash is the
+    # one card to take: the Solari is spent and the card is gone.
     engine, state = _cull_hand(hand=(DIPLOMACY,))
     opened = apply_whole(engine, state, _play(CULL)).state
-    assert DECLINE_TRASH in engine.whole_actions(opened, 0)
+    offered = engine.whole_actions(opened, 0)
+    assert DECLINE_TRASH not in offered
+    assert set(offered) == {_trash(DIPLOMACY)}
+    assert DECLINE_TRASH not in engine.legal_actions(opened, 0)
 
-    done = apply_whole(engine, opened, DECLINE_TRASH).state.players[0]
-    assert done.hand == (DIPLOMACY,)
-    assert done.trashed == ()
+    done = apply_whole(engine, opened, _trash(DIPLOMACY)).state.players[0]
+    assert done.hand == ()
+    assert DIPLOMACY in done.trashed
     assert done.resources.solari == 1
 
 

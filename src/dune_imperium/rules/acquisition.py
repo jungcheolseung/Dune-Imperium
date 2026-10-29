@@ -23,6 +23,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Research,
     Reward,
     TakeContract,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
@@ -46,6 +47,7 @@ from dune_imperium.rules.acquire_icons import (
     acquire_box_icons,
     queue_acquire_icons,
 )
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.contracts import (
@@ -82,6 +84,7 @@ from dune_imperium.rules.intrigue_deck import (
     triggered_intrigue_draw,
 )
 from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
+from dune_imperium.rules.optional_trash import open_optional_trash, trash_printer
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
     fire_guild_spy_on_spice_must_flow,
@@ -1168,10 +1171,40 @@ def _acquisition_effects(
     state, events = influenced.state, influenced.events
     tracked = apply_acquisition_track_effects(state, player, definition, source=source)
     completed = complete_acquire_contracts(
-        tracked.state, player, definition.card.card_id, source=source
+        _acquisition_trash(tracked.state, player, definition, source=source),
+        player,
+        definition.card.card_id,
+        source=source,
     )
     return RuleResult(
         state=completed.state, events=(*events, *tracked.events, *completed.events)
+    )
+
+
+def _acquisition_trash(
+    state: GameState, player: int, definition: ImperiumCardEntry, *, source: str
+) -> GameState:
+    """The acquire box's black Trash icon (Shai-Hulud, Rise of Ix).
+
+    "When you acquire a card, you immediately resolve its acquire box, once"
+    [Main p. 20] (docs/rules/player-turns.md), so the trash is offered the
+    moment the card sits in its zone, as a row waiting on the owner's own
+    turn or a window of its own elsewhere (``optional_trash``). The icon is
+    optional: "Trash ... 비용이거나 카드가 자기를 trash하라고 할 때만 의무"
+    [DI p. 16] (docs/rules/imperium-base.md 11), and neither applies to an
+    acquire box's icon. It takes a card of the hand, the discard pile or
+    play, the acquired card included once it is there.
+    """
+
+    if not any(
+        isinstance(reward, TrashPersonalCard) for reward in _acquire_rewards(definition)
+    ):
+        return state
+    return open_optional_trash(
+        state,
+        player,
+        f"{source}:trash",
+        printer=trash_printer(Source.ACQUISITION, definition.card.card_id),
     )
 
 
@@ -1318,9 +1351,17 @@ def _resolve_imperium_acquisition_bonus(
                     ),
                     *recruit_shortfall_events(troop_source, player, wanted, recruited),
                 )
-            case PlaceSpy() | TakeContract() | GainInfluence() | Research():
+            case (
+                PlaceSpy()
+                | TakeContract()
+                | GainInfluence()
+                | Research()
+                | TrashPersonalCard()
+            ):
                 # Left to the purchase path: its Spy choice or Contract
-                # market, the Influence, the track after the card's zone.
+                # market, the Influence, the track after the card's zone, the
+                # optional trash once the card sits in its zone
+                # (``_acquisition_trash``).
                 pass
             case AdvanceTleilaxu():
                 pass

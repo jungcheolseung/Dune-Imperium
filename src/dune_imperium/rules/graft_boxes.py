@@ -55,6 +55,8 @@ BOX_KEY_PAIRS: Final[tuple[tuple[str, str], ...]] = (
     ("trashes_remaining", "graft_trashes_remaining"),
     # Corrinth City's first discard before the second.
     ("corrinth_first_card_id", "graft_corrinth_first_card_id"),
+    # A two-card Discard arrow's first pick (Rise of Ix).
+    ("discard_first_card_id", "graft_discard_first_card_id"),
     # Arrakis Observer's Spy after its discard.
     ("agent_card_spy_pending", "graft_agent_card_spy_pending"),
     ("agent_card_spy_recalled", "graft_agent_card_spy_recalled"),
@@ -241,6 +243,12 @@ BOX_ACTION_IDS: Final = frozenset(
         "pay_agent_card_spice",
         # The original game's Firm Grip: "2 Solari -> Influence" (stage P3).
         "pay_agent_card_solari",
+        # Rise of Ix's Landing Rights: the Freighter icon's two moves.
+        "advance_agent_card_freighter",
+        "recall_agent_card_freighter",
+        # Rise of Ix's Local Fence: its two arrows printed with "-OR-".
+        "pay_agent_card_spice_for_solari",
+        "pay_agent_card_solari_for_spice",
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",
         "pay_agent_card_specimen",

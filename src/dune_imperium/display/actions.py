@@ -105,6 +105,8 @@ _SHIGAWIRE = "Urgent Shigawire"
 # Piter, Genius Advisor's reward icons, armed after its troop cost (OQ-106):
 # its card draw draws two and its Research generates no specimen.
 _PITER = _BOX.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
+# Local Fence's "-OR-" of two arrows (Rise of Ix): a payment row each.
+_LOCAL_FENCE = _BOX.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
 _SHIGAWIRE_KO = KOREAN_CARD_NAMES["cards"]["urgent_shigawire"]
 # The boxes whose ``spice`` icon pays 2 (the others pay 1): Branching Path's
 # and the original game's Gene Manipulation's.
@@ -263,6 +265,15 @@ _PAYMENT_TEXT: dict[tuple[str, PersonalCardAgentEffect], tuple[str, str]] = {
     ("pay_agent_card_spice", _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT): (
         "Pay 1 spice → Trash a card (optional) + Recruit 1 troop",
         "{spice:1} 지불 {arrow_right} {trash} (선택) + {troop:1}",
+    ),
+    # Local Fence's two arrows (Rise of Ix), one row each.
+    ("pay_agent_card_spice_for_solari", _LOCAL_FENCE): (
+        "Pay 2 spice → Gain 5 solari",
+        "{spice:2} 지불 {arrow_right} {solari:5}",
+    ),
+    ("pay_agent_card_solari_for_spice", _LOCAL_FENCE): (
+        "Pay 5 solari → Gain 4 spice",
+        "{solari:5} 지불 {arrow_right} {spice:4}",
     ),
 }
 _PAYMENT_ACTION_IDS = frozenset(action_id for action_id, _ in _PAYMENT_TEXT)

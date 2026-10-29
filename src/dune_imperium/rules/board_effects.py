@@ -1580,6 +1580,9 @@ def apply_desert_tactics_action(
         action.actor,
         card_value,
         source=(f"round:{state.round_number}:player:{action.actor}:board:{space_id}"),
+        # Selective Breeding's trash is the cost of its draw: an Unload card's
+        # box comes first (docs/rules/rise-of-ix.md 7).
+        unload_at_once=bool(line.costs),
     )
     # Eliminate Allies' "2 troops" lands in this AGENT_EFFECTS frame's own
     # context (``_with_recruited_troops``), which the write-back below would

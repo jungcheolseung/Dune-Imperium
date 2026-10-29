@@ -1445,3 +1445,7 @@ Strongarm·Strategic Push, 그다음 Imperium 카드. 끊기면: 커밋되지 �
   `GainInfluence.visited_space` — 진영을 적은 Influence는 전과 같다), `49b6dfdc` 잠입 아이콘(카드 일곱에 표시, 놓기는 `rise_of_ix`에서만), `d6a6d909`
   Jamis, `ba7abce7`·`b37ef58e` Sayyadina, `3a9a537b` Sayyadina 화면 문구. Ix 카드 완료: Intrigue 7/17(+Cull 의무 trash 수정 대기), Imperium 2/35.
   다음: Codex discard(Truthsayer·Ixian Probe) 들여오기 → Codex unload(일반 Discard 연결 포함) → sources-trash → conditions.
+- conditions 묶음(Opus, `6fb92642` Disposal Facility 획득 trash의 codec 행 — P4c-2a부터의 빈틈을 소크가 잡음, `331ada67` Imperial Shock Trooper,
+  `28ab9f72` Quid Pro Quo(`GainInfluenceWhereAgent`), `a3b801e2` Local Fence(Agent 칸 "-OR-" 지불 줄 둘, 새 행 `pay_agent_card_spice_for_solari`·
+  `pay_agent_card_solari_for_spice`)). **P4e 몫:** Quid Pro Quo가 여러 진영에 Influence를 주는 순서(지금 Faction 순서) — Tessia의 Snooper가 어느 track이
+  먼저 닿는지를 읽으므로 그때 정한다. **P6 몫:** app_ai의 지불 id 목록에 Local Fence의 두 id. Ix 카드: Intrigue 9/17, Imperium 5/35.

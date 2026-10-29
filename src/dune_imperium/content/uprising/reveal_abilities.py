@@ -30,6 +30,7 @@ from dune_imperium.content.uprising.abilities import (
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
+    AgentOnSpaceWithIcon,
     AllConditions,
     CommandersInConflictAtLeast,
     CommandReached,
@@ -59,6 +60,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyingOnMakerSpace,
     TrashThisCard,
 )
+from dune_imperium.content.uprising.types import AgentIcon
 
 _COMMAND = CommandReached()
 _PER_COMPLETED_CONTRACT = RevealCount(RevealCountKind.COMPLETED_CONTRACT)
@@ -104,6 +106,13 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "sayyadina": _reveal(
             _line(RevealPersuasion(3), condition=FactionBond(Faction.FREMEN))
         ),
+        # Imperial Shock Trooper (Rise of Ix): "If you have an Agent on an
+        # [Emperor] board space," [+3 swords] beside its printed 1 Persuasion
+        # and 2 swords [Steam app text and screen pieces]; an Agent sent
+        # earlier this round counts (``conditions.owner_condition_holds``).
+        "imperial_shock_trooper": _reveal(
+            _line(RevealSwords(3), condition=AgentOnSpaceWithIcon(AgentIcon.EMPEROR))
+        ),
         # Delivery Agreement.
         "delivery_agreement": _reveal(_line(GainResources(spice=1))),
         # Ecological Testing Station.
@@ -126,6 +135,11 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         # Fedaykin Death Commando (original game): "Fremen Bond: 3 swords".
         "fedaykin_death_commando": _reveal(
             _line(RevealSwords(3), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Shai-Hulud (Rise of Ix): "Fremen Bond: [5 swords]" [Steam app screen
+        # pieces]; the card prints no other Reveal value.
+        "shai_hulud": _reveal(
+            _line(RevealSwords(5), condition=FactionBond(Faction.FREMEN))
         ),
         # Duncan Idaho (original game): "1 water" beside its printed swords.
         "duncan_idaho_card": _reveal(_line(GainResources(water=1))),
@@ -268,6 +282,11 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         ),
         # Possible Futures.
         "possible_futures": _reveal(_line(GainResources(water=1))),
+        # Water Peddler (Rise of Ix): "[Unload] [1 water]", its Unload box too
+        # (``rules.unload``).
+        "water_peddler": _reveal(_line(GainResources(water=1))),
+        # CHOAM Delegate (Rise of Ix): "[Unload] [3 Solari]", likewise.
+        "choam_delegate": _reveal(_line(GainResources(solari=3))),
         # Quash Rebellion.
         "quash_rebellion": _reveal(
             _line(RevealPersuasion(2), condition=CommandersInConflictAtLeast(1))
@@ -349,6 +368,7 @@ REVEAL_LINE_CONDITIONS: Final[frozenset[type]] = frozenset(
         CommandReached,
         InfluenceAtLeast,
         HasAlliance,
+        AgentOnSpaceWithIcon,
     }
 )
 REVEAL_LINE_REWARDS: Final[frozenset[type]] = frozenset(

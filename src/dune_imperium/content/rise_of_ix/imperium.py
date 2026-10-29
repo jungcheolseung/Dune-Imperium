@@ -12,9 +12,10 @@ These began as stage P4a identity entries (name, copies and cost), generated
 by ``scripts/dwgr/imperium_entries.py --set ix skeleton``. Incomplete entries
 keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
-game's deck takes only completed cards (Jamis, Sayyadina and Truthsayer so
-far), while the observation lists every identity from v39. Setup takes Rise
-of Ix on the original game since stage P4c-5.
+game's deck takes only completed cards (CHOAM Delegate, Jamis, Sayyadina,
+Truthsayer, Imperial Shock Trooper, Local Fence and Water Peddler so far),
+while the observation lists every identity from v39. Setup takes Rise of Ix
+on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
 cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
@@ -26,11 +27,18 @@ from typing import Final
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
-from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAcquisitionEffect,
+    PersonalCardAgentEffect,
+)
 
 # The component table lists the cards [Rise of Ix p. 2]; the printed values
 # are the app's (plan 2.4, D1).
 IX_IMPERIUM_SOURCES: Final = (SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2,)),)
+_LOCAL_FENCE = (
+    PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
+)
 
 
 def ix_imperium_card(card_id: str, name: str) -> CardDefinition:
@@ -58,6 +66,14 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=1,
         infiltration_icons=(AgentIcon.SPICE_TRADE,),
+        # App table: no Faction, Agent icon Spice Trade (its Infiltration
+        # icon, ``InfiltrationIconList``), Reveal 3 Solari; no Agent box.
+        # Screen pieces: Reveal "[Unload] [3 Solari]" -- the box is gained
+        # also when the card is discarded or trashed [Rise of Ix p. 7]
+        # (``rules.unload``); its record is ``REVEAL_GAIN_ABILITIES``.
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("court_intrigue", "Court Intrigue"),
@@ -111,6 +127,13 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("imperial_shock_trooper", "Imperial Shock Trooper"),
         copies=1,
         acquisition_cost=3,
+        # App table: Emperor, no Agent icon; Reveal 1 Persuasion, 2 swords.
+        # "If you have an Agent on an [Emperor] board space," [+3 swords] is
+        # its Reveal record (``reveal_abilities``) [Steam app text].
+        factions=(Faction.EMPEROR,),
+        reveal_persuasion=1,
+        reveal_strength=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("in_the_shadows", "In The Shadows"),
@@ -143,11 +166,26 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("landing_rights", "Landing Rights"),
         copies=1,
         acquisition_cost=4,
+        # App table: Spacing Guild, City icon; Reveal 2 Persuasion. Agent: the
+        # Freighter icon [Steam app screen pieces], "you may move your Freighter"
+        # [Rise of Ix p. 5] (docs/rules/rise-of-ix.md 5).
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.MAY_MOVE_FREIGHTER,
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("local_fence", "Local Fence"),
         copies=1,
         acquisition_cost=3,
+        # App table: no Faction, City icon; Reveal 2 Persuasion. Agent: "[2
+        # spice] -> [5 Solari] -OR- [5 Solari] -> [4 spice]" [Steam app
+        # screen pieces and text], two optional arrows of which one is paid.
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=_LOCAL_FENCE,
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("negotiated_withdrawal", "Negotiated Withdrawal"),
@@ -175,6 +213,17 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("shai_hulud", "Shai-Hulud"),
         copies=1,
         acquisition_cost=7,
+        # App table: Fremen, Spice Trade icon, AcquireEffectList Trash; no
+        # fixed Reveal values. Acquire: the black Trash icon, optional like any
+        # Trash icon [DI p. 16] and resolved at once [Main p. 20]. Agent: "[Trash
+        # a card] -> [2 troops]". Reveal: "Fremen Bond: [5 swords]" (a Reveal
+        # record), another Fremen card in play [DI p. 16].
+        has_acquisition_bonus=True,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_RECRUIT_TWO,
+        acquisition_effect=PersonalCardAcquisitionEffect.MAY_TRASH_A_CARD,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("spice_trader", "Spice Trader"),
@@ -204,6 +253,15 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("water_peddler", "Water Peddler"),
         copies=1,
         acquisition_cost=1,
+        # App table: no Faction, no Agent icon (a Reveal-only card [DI p. 9]),
+        # AcquireEffect Water, Reveal 1 water. Screen pieces: acquire
+        # "[1 water]"; Reveal "[Unload] [1 water]" -- the box is gained also
+        # when the card is discarded or trashed [Rise of Ix p. 7]
+        # (``rules.unload``); its record is ``REVEAL_GAIN_ABILITIES``.
+        has_acquisition_bonus=True,
+        acquisition_effect=PersonalCardAcquisitionEffect.GAIN_ONE_WATER,
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("web_of_power", "Web of Power"),

@@ -71,6 +71,8 @@ const ACTION_LABELS = {
     "2 {spice} 지불 → {shield_wall} 제거 + {sandworm} 부르기",
   pay_agent_card_spice: "{spice} 지불 (카드 효과 비용)",
   pay_agent_card_solari: "{solari} 지불 (카드 효과 비용)",
+  pay_agent_card_spice_for_solari: "{spice} 지불 → {solari}",
+  pay_agent_card_solari_for_spice: "{solari} 지불 → {spice}",
   take_agent_card_from_discard: "{discard_pile}에서 카드를 {hand}로",
   lose_agent_card_influence:
     "{influence_any:1} 잃기 · 2 {spice} 지불 → {influence_any:2} 선택",
@@ -262,6 +264,9 @@ const ACTION_LABELS = {
   recall_freighter: "Freighter 회수",
   decline_freighter: "Freighter 움직이지 않음",
   resolve_shipping_reward: "Freighter 회수 보상",
+  /* Rise of Ix's Unload keeps its English name, which no official Korean
+     source translates; the Reveal box is 공개 칸 [Main p. 8]. */
+  resolve_unload_icon: "Unload: 공개 칸 효과",
   /* Rise of Ix's four board spaces (stage P4c-4): the Dreadnought icon, the
      Acquire Tech icon, Tech Negotiation's two halves and Spaceport's
      Foldspace on top of the deck; the dreadnought and the Negotiator stay
@@ -272,6 +277,9 @@ const ACTION_LABELS = {
   place_board_negotiator: "Negotiator 놓기",
   advance_board_freighter: "Freighter 한 칸 위로",
   recall_board_freighter: "Freighter 회수",
+  /* Landing Rights' Agent box (stage P4d): the same two moves. */
+  advance_agent_card_freighter: "Freighter 한 칸 위로",
+  recall_agent_card_freighter: "Freighter 회수",
   acquire_foldspace_to_deck_top: "Foldspace 카드를 덱 위에",
   place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
   /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep
@@ -494,6 +502,7 @@ const EVENT_LABELS = {
   intrigue_freighter_declined: "Freighter 움직이지 않음",
   shipping_troops_recruited: "Freighter 회수: {troop} {recruit}",
   shipping_reward_lapsed: "Freighter 회수 보상: 쓰지 않음",
+  card_unloaded: "Unload",
   shipping_influence_unavailable: "Freighter 회수: {influence_any} 불가",
   dreadnought_control_placed: "dreadnought가 {control} 공간에",
   dreadnought_returned: "dreadnought {garrison} 복귀",
@@ -511,6 +520,7 @@ const EVENT_LABELS = {
   contract_trashed: "{contract} 폐기",
   contracts_revealed: "{contract} 공개",
   corrinth_city_payment_started: "코린트 시티: 첫 카드 선택",
+  agent_card_discard_started: "카드 1장 버리기: 첫 카드 선택",
   endgame_intrigue_passed: "패스",
   endgame_started: "{endgame} 시작",
   endgame_wild_matched: "와일드 {battle_icon} 매칭",

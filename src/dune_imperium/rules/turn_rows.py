@@ -93,6 +93,11 @@ space 2 prints two rewards, each its own, OQ-148). All but space 3's are
 mandatory; its Acquire Tech is "may" ([Rise of Ix p. 4]), so it holds no turn
 end back and the press lapses it (OQ-095 (2))."""
 
+UNLOAD_ICON: Final = "unload_icon"
+"""One icon of an Unload card's Reveal box an effect triggered in its owner's
+own turn (Rise of Ix, ``rules.unload``): ``value`` is ``"<card instance>|<icon>"``;
+mandatory, a gain [Rise of Ix p. 7]."""
+
 CHOSEN_INFLUENCE_ICON: Final = "influence_any"
 """The acquire icon ``value`` of an Influence with a Faction of the owner's
 choice."""
@@ -233,16 +238,17 @@ def holds_the_end(state: GameState, player: int) -> bool:
     """Whether a waiting effect still offers a mandatory row: c6r6 with a
     Faction it can raise ("획득은 의무다", OQ-060 2026-09-30 addition),
     Arrakis Planetologist's Intrigue card, a research pair's icon, a
-    completed Contract's icon (OQ-112 (4)), or an acquire box's icon that
-    offers a row (OQ-141). Read from public facts only (the frame's context,
-    the seat's Influence), so the server's turn-end mirror may ask it too."""
+    completed Contract's icon (OQ-112 (4)), an acquire box's icon that
+    offers a row (OQ-141), or an Unload icon (Rise of Ix). Read from public
+    facts only (the frame's context, the seat's Influence), so the server's
+    turn-end mirror may ask it too."""
 
     frame = rows_frame(state, player)
     if frame is None:
         return False
     owner = state.players[player]
     return any(
-        kind in (PLANETOLOGIST_INTRIGUE, RESEARCH_ICON, CONTRACT_ICON)
+        kind in (PLANETOLOGIST_INTRIGUE, RESEARCH_ICON, CONTRACT_ICON, UNLOAD_ICON)
         or (kind == SHIPPING_REWARD and value != _OPTIONAL_SHIPPING_REWARD)
         or (
             kind == RESEARCH_BONUS

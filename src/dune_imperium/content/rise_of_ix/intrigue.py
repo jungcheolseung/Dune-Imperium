@@ -29,6 +29,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Freighter,
     GainCombatStrength,
     GainInfluence,
+    GainInfluenceWhereAgent,
     GainResources,
     HasHighCouncil,
     LoseInfluence,
@@ -84,15 +85,17 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
         copies=1,
         # "Played Cull and spent 1 Solari to trash [card]" [Cull card, app log
         # line; the card prints icons only]: one Plot cost line, 1 Solari ->
-        # the black Trash icon. The trash is optional like any Trash icon
-        # [Main p. 20], but the line is offered only when a card can be
-        # trashed (OQ-071, OQ-113 (C); rise-of-ix.md 9: "Cull is played only
-        # if it trashes"), from the hand, the discard pile or play.
+        # the black Trash icon, from the hand, the discard pile or play. The
+        # trash is mandatory once Cull is played: the designer's "Cull은
+        # trash해야 낸다" (rise-of-ix.md 9.3, OQ-113 (C)) -- the Solari buys a
+        # trash that must happen, so no decline row follows the payment
+        # (``TrashPersonalCard(mandatory=True)``, as Twisted Devious's), and
+        # the line is offered only when a card can be trashed (OQ-071).
         options=(
             _plot(
                 EffectSection(
                     costs=(PayResources(solari=1),),
-                    rewards=(TrashPersonalCard(),),
+                    rewards=(TrashPersonalCard(mandatory=True),),
                 )
             ),
         ),
@@ -168,6 +171,19 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("quid_pro_quo", "Quid Pro Quo"),
         copies=1,
+        # [2 spice] -> "Gain one Influence with each Faction that has at least
+        # one of your Agents on its board spaces." [Steam app text and screen
+        # pieces]: one Plot cost line. Without an Agent on a Faction's space
+        # the cost cannot be paid (rise-of-ix.md 9.3, Message from designer),
+        # and a Faction that can still rise keeps the reward live (OQ-071).
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(spice=2),),
+                    rewards=(GainInfluenceWhereAgent(),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("second_wave", "Second Wave"),

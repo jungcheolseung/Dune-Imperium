@@ -168,7 +168,34 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # column and no scale (compared against 776f8431, 2026-10-29).
 # Then Ixian Probe got its record (stage P4d): only its own row changed, no
 # column and no scale (compared against 2f6d4af9, 2026-10-29).
-_GOLDEN_DIGEST = "0558a93ec6225625a85b1acbc69926c55676b8701d4f5d4aa804b68a32d25901"
+# Then Imperial Shock Trooper got its play data (stage P4d): only its own row
+# changed, and two personal-table columns are new (its Reveal line's
+# Agent-on-space condition and the Emperor icon), read by its row alone; no
+# older scale moved (compared against 87581ad9, 2026-10-29).
+# Then Quid Pro Quo got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (its each-Faction-with-an-Agent Influence
+# gain), read by its row alone; no older scale moved (compared against
+# 331ada67, 2026-10-29).
+# Then Local Fence got its play data (stage P4d): only its own row changed, no
+# column and no scale (compared against 28ab9f72, 2026-10-29).
+# Then Cull's trash became mandatory (stage P4d): only its own row changed (the
+# existing "mandatory" reward column, read by Twisted Devious too), no column
+# and no scale (compared against e7218126, 2026-10-30).
+# Then Landing Rights got its play data (stage P4d): only its own row changed,
+# and one personal-table column is new (the Freighter piece in an Agent box),
+# read by its row alone; no older scale moved (compared against b9c62bf5,
+# 2026-10-30).
+# Then Shai-Hulud got its play data (stage P4d): only its own row changed, and
+# one personal-table column is new (the black Trash icon in an acquire box),
+# read by its row alone; no older scale moved (compared against 706e6f2e,
+# 2026-10-30).
+# Then Water Peddler got its play data (stage P4d): one personal-table column
+# is new (the Unload mark, ``unload``), only its own row reads it, its row is
+# the only one that changed, and no scale moved (compared against 63a61cb0,
+# 2026-10-30).
+# Then CHOAM Delegate got its play data (stage P4d): only its own row changed,
+# no column and no scale (compared against aae8f95c, 2026-10-30).
+_GOLDEN_DIGEST = "7f1e5aa2dbedcec5c9612aec067717b1437da4215fe4c394e9bf02563b559aa6"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

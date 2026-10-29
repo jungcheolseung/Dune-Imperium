@@ -92,6 +92,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
+    GainInfluenceWhereAgent,
     GainInfluenceWhereAtMost,
     GainLowestInfluence,
     GainResources,
@@ -1102,6 +1103,13 @@ def reward_text_ko(reward: Reward) -> str:
         case GainInfluenceWhereAtMost(maximum=maximum):
             # Quotes ``display/bloodlines.py``'s Panopticon line.
             return f"영향력이 {maximum} 이하인 각 팩션에서 {{influence_any:1}}씩 얻음"
+        case GainInfluenceWhereAgent():
+            # Quid Pro Quo (no Korean edition of Rise of Ix): the Panopticon
+            # line's shape with the Canny line's "게임판 장소에 {agent}가".
+            return (
+                "그 팩션의 게임판 장소에 당신의 {agent}가 하나 이상 있는 "
+                "각 팩션에서 {influence_any:1}씩 얻음"
+            )
         case RecruitUndeployableTroops(count=count):
             # Quotes ``display/leaders_ko.py``'s Piter De Vries Signet line.
             return f"{{troop:{count}}} 이번 차례에는 이 병력을 교전 칸에 배치할 수 없음"

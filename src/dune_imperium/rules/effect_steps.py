@@ -421,6 +421,20 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "pay_agent_card_specimen": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
     "pay_agent_card_two_specimens": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
     "pay_agent_card_five_solari_for_tleilaxu": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
+    # Landing Rights' Freighter icon (Rise of Ix): its two moves.
+    "advance_agent_card_freighter": _spec(
+        _V.ADVANCE, _S.AGENT_CARD, _BOX, icon="freighter"
+    ),
+    "recall_agent_card_freighter": _spec(
+        _V.COLLECT, _S.AGENT_CARD, _BOX, icon="freighter"
+    ),
+    # Local Fence's "-OR-" of two arrows (Rise of Ix): which one is paid.
+    "pay_agent_card_spice_for_solari": _spec(
+        _V.PAY, _S.AGENT_CARD, _BOX, option="spice_for_solari"
+    ),
+    "pay_agent_card_solari_for_spice": _spec(
+        _V.PAY, _S.AGENT_CARD, _BOX, option="solari_for_spice"
+    ),
     # Arrakis Revolt's two payments: keep the Shield Wall or remove it.
     "pay_agent_card_spice_for_sandworm": _spec(
         _V.PAY, _S.AGENT_CARD, _BOX, option="sandworm"

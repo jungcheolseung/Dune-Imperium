@@ -114,7 +114,10 @@ term neither source uses.
 from typing import Final
 
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.effect_dsl import RevealCountKind
+from dune_imperium.content.uprising.effect_dsl import (
+    AgentOnSpaceWithIcon,
+    RevealCountKind,
+)
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
@@ -126,6 +129,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
+from dune_imperium.display.effect_dsl_text_ko import condition_text_ko
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.tokens import reveal_line_conditions
 from dune_imperium.rules.reveal_lines import RevealLine
@@ -158,6 +162,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.TRASH_PERSONAL_CARD: "카드 1장 {trash} 가능",
     PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE: (
         "카드 1장 {trash} 가능 {arrow_right} {draw:1}"
+    ),
+    # Rise of Ix's Shai-Hulud (stage P4d).
+    PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_RECRUIT_TWO: (
+        "카드 1장 {trash} 가능 {arrow_right} {troop:2}"
     ),
     # Tread in Darkness's own condition box reads "당신의 플레이 영역에 다른
     # 베네 게세리트 카드가 있다면:" [KO card: Tread in Darkness] rather than
@@ -197,6 +205,15 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     # Rise of Ix's Sayyadina (stage P4d): the same generated icon line.
     PersonalCardAgentEffect.MAY_PAY_THREE_WATER_FOR_VP: (
         "{water:3} 지불 가능 {arrow_right} {victory_point:1}"
+    ),
+    # Rise of Ix's Local Fence (stage P4d): the same arrows, joined as Guild
+    # Ambassador's "하나 선택: ... / ...".
+    (
+        PersonalCardAgentEffect
+        .MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
+    ): (
+        "하나 선택: {spice:2} 지불 가능 {arrow_right} {solari:5} / "
+        "{solari:5} 지불 가능 {arrow_right} {spice:4}"
     ),
     PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP: (
         "카드 2장 {discard}·{solari:5} 지불 가능 {arrow_right} {victory_point:1}"
@@ -303,6 +320,14 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     ),
     PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: (
         "이번 차례에 보낸 {agent} 소환 가능"
+    ),
+    # Rise of Ix's Landing Rights (stage P4d): the Freighter has no glossary
+    # entry and a generated Korean line holds no Latin word, so the line names
+    # the track it moves on, the Shipping track (glossary-ko.md "Shipping |
+    # 운송", "track | 트랙"), as the Freighter rows' labels say "한 칸 위로"
+    # and "회수".
+    PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: (
+        "운송 트랙에서 한 칸 위로 또는 회수 가능"
     ),
     PersonalCardAgentEffect.GENERATE_SPECIMEN: "표본 1개 생성",
     PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
@@ -640,6 +665,9 @@ ACQUISITION_EFFECT_TEXT_KO: Final[dict[PersonalCardAcquisitionEffect, str]] = {
     PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_CHOSEN_FACTION: (
         "{influence_any:1} (4개의 팩션 중 하나 선택)"
     ),
+    # Rise of Ix's Shai-Hulud (stage P4d): the black Trash icon, as its record
+    # renders.
+    PersonalCardAcquisitionEffect.MAY_TRASH_A_CARD: "카드 1장 {trash}",
 }
 
 # The one transcribed member is specific to The Spice Must Flow; cards.py
@@ -833,6 +861,12 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
         conditions.append(f"{{influence_{faction.value}}} {amount} 이상이면")
     if held.alliance is not None:
         conditions.append(f"{_faction_name_ko(held.alliance)} {{alliance}}이면")
+    if held.agent_on_space is not None:
+        # The Canny line's words (``effect_dsl_text_ko``): "황제 게임판 장소에
+        # {agent}가 있다면" (Imperial Shock Trooper).
+        conditions.append(
+            condition_text_ko(AgentOnSpaceWithIcon(held.agent_on_space))
+        )
 
     count = line.faction_count
     per_faction = (
