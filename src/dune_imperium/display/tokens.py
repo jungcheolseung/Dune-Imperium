@@ -135,6 +135,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP: (
             "You may pay 4 spice → Gain 1 VP"
         ),
+        # Rise of Ix's Sayyadina (stage P4d).
+        PersonalCardAgentEffect.MAY_PAY_THREE_WATER_FOR_VP: (
+            "You may pay 3 water → Gain 1 VP"
+        ),
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP: (
             "You may discard 2 cards and pay 5 solari → Gain 1 VP"
         ),
