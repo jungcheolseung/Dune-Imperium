@@ -19,9 +19,10 @@ With ``rise_of_ix`` the original game's content takes Rise of Ix's board
 axis (stage P4a, docs/base-game-and-ix-plan.md 17.1 and 17.7;
 ``content.rise_of_ix``): the CHOAM overlay swaps four board spaces, the
 Conflicts take Economic Supremacy and the new cards whose rewards are
-transcribed, the Leaders offered take the six new ones and the decks take
-the Ix cards whose play data is complete. The overlay's spaces have no
-effects yet, so setup still refuses the option (``rules.setup``).
+transcribed, the Leaders offered take the new ones whose abilities are wired
+(``IX_LEADER_IDS_OFFERED``, none until stage P4e) and the decks take the Ix
+cards whose play data is complete. Setup takes the option on the original
+game since stage P4c-5 (``rules.setup``); with Uprising it is stage P7's.
 """
 
 from collections.abc import Mapping

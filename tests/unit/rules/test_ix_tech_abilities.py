@@ -4,10 +4,11 @@ Rules: docs/rules/rise-of-ix.md 4 (the tile table and its "쓰기" and "Round
 Start 순서" bullets), ``[Rise of Ix p. 4]``, OQ-114 (Shuttle Fleet's two
 different Factions), OQ-121 ruling 3 (Detonation Devices), OQ-122 (Round Start
 order) and OQ-126 (Disposal Facility), and docs/base-game-and-ix-plan.md 17.10
-item 2. Setup refuses ``rise_of_ix`` until stage P4c-5, so every state is built
-by hand: the original game's opening state (or round one at seat 0's first
-turn) with its config switched to ``rise_of_ix=True`` and the tiles put on a
-seat by ``dataclasses.replace`` (the state checks accept them).
+item 2. Setup takes ``rise_of_ix`` on the original game since stage P4c-5, but
+these tests build their states by hand: the original game's opening state (or
+round one at seat 0's first turn) with its config switched to
+``rise_of_ix=True`` and the tiles put on a seat by ``dataclasses.replace`` (the
+state checks accept them).
 
 Stage P4c-2b adds the four Endgame tiles, the four Flip tiles and OQ-150 (2)'s
 late Reveal tiles (the sections at the end of this file).

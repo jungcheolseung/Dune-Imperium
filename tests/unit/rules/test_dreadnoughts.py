@@ -1,9 +1,9 @@
 """Rise of Ix dreadnoughts in the Conflict and on Control spaces (stage P4b-1a).
 
 Rules: docs/rules/rise-of-ix.md 6, ``[Rise of Ix p. 6]`` ``[FAQ p. 2]`` and
-OQ-121 (rulings 1 and 2). Setup refuses ``rise_of_ix`` until stage P4c, so
-every state here is built by hand: an original game's opening state
-(``UprisingRulesEngine().reset``) with its config switched to
+OQ-121 (rulings 1 and 2). Setup takes ``rise_of_ix`` on the original game
+since stage P4c-5, but every state here is built by hand: an original game's
+opening state (``UprisingRulesEngine().reset``) with its config switched to
 ``rise_of_ix=True``, moved into the phase a test needs, and its seats given
 the units by ``dataclasses.replace`` (the state checks accept them). The
 winner's choice of a Control space for its dreadnought (stage P4b-1b) runs

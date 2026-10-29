@@ -2,14 +2,15 @@
 
 Rules: docs/rules/rise-of-ix.md 5 ("Shipping track"), ``[Rise of Ix p. 5]``
 ``[FAQ p. 3]`` ``[FAQ p. 4]``, the Troop Transports row of its section 4 and
-docs/base-game-and-ix-plan.md 17.10 item 3. Setup refuses ``rise_of_ix`` until
-stage P4c-5, so every state is the original game's round one at seat 0's first
-turn with its config switched to ``rise_of_ix=True`` and the Freighter, tiles
-and troops laid on the seats by ``dataclasses.replace``. No space or card
-prints the Freighter icon yet (stages P4c-4 and P4d), so the icon goes through
-the executor with hand-built abilities, a recall's rewards are taken as the
-rows the engine offers, and the out-of-turn window opens the way a Conflict
-reward's icon will.
+docs/base-game-and-ix-plan.md 17.10 item 3. Setup takes ``rise_of_ix`` on the
+original game since stage P4c-5, but these tests build their states by hand:
+the original game's round one at seat 0's first turn with its config switched
+to ``rise_of_ix=True`` and the Freighter, tiles and troops laid on the seats by
+``dataclasses.replace``. No card prints the Freighter icon yet (stage P4d), and
+the two spaces that do (stage P4c-4, in ``test_ix_board_spaces.py``) are not
+visited here, so the icon goes through the executor with hand-built abilities,
+a recall's rewards are taken as the rows the engine offers, and the
+out-of-turn window opens the way a Conflict reward's icon will.
 """
 
 from collections.abc import Callable, MutableMapping

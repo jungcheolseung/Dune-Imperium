@@ -22,8 +22,8 @@ its rewards are transcribed, as its decks take a card once its play data is
 complete (``rulesets._imperium_conflicts``), and Economic Supremacy at once:
 the printed deck is drawn from I 6, II 11, III 5 [Rise of Ix p. 3]
 (docs/rules/rise-of-ix.md 3 item 3), of which the pool holds what is
-transcribed. Setup still refuses Rise of Ix; the observation lists all of
-them from v39 (plan 17.1, 17.4).
+transcribed. Setup takes Rise of Ix on the original game since stage P4c-5;
+the observation lists all of them from v39 (plan 17.1, 17.4).
 ``content.uprising.conflicts``'s ``CONFLICTS_BY_ID`` resolves them next to
 the original game's cards; code that lists Uprising's or the original game's
 own Conflicts iterates ``CONFLICTS`` or ``IMPERIUM_CONFLICTS``.

@@ -1,14 +1,15 @@
 """Rise of Ix dreadnoughts: commissioning and deploying them (stage P4b-2).
 
 Rules: docs/rules/rise-of-ix.md 6, ``[Rise of Ix p. 6]`` and
-docs/base-game-and-ix-plan.md 17.6 item 2 and 17.9 (P4b-2). Setup refuses
-``rise_of_ix`` until stage P4c, so every state is the original game's round
-one at seat 0's first turn with its config switched to ``rise_of_ix=True``
-and its seats given the dreadnoughts by ``dataclasses.replace`` (the state
-checks accept them). No card or space prints the Dreadnought icon yet (stages
-P4c and P4d), so the commission goes through the executor's piece with a
-hand-built ability, and the Agent turn's own checks through a commission made
-on the turn frame directly.
+docs/base-game-and-ix-plan.md 17.6 item 2 and 17.9 (P4b-2). Setup takes
+``rise_of_ix`` on the original game since stage P4c-5, but these tests build
+their states by hand: the original game's round one at seat 0's first turn
+with its config switched to ``rise_of_ix=True`` and its seats given the
+dreadnoughts by ``dataclasses.replace`` (the state checks accept them). No card
+prints the Dreadnought icon yet (stage P4d), and the space that does (stage
+P4c-4, in ``test_ix_board_spaces.py``) is not visited here, so the commission
+goes through the executor's piece with a hand-built ability, and the Agent
+turn's own checks through a commission made on the turn frame directly.
 """
 
 from collections.abc import Callable, MutableMapping

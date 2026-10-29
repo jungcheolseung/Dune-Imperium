@@ -15,13 +15,15 @@ These are stage P4a identity entries, built from the Tech Module's
 
 - each tile names its ability with a ``TechAbility`` member of its own, and
   has no ability record (``TECH_ABILITIES``): its flips, Reveal and Endgame
-  lines and hooks come in stage P4c, and nothing resolves the ability before;
+  lines and hooks are rule code keyed by that member (``rules.tech``, stage
+  P4c);
 - an acquire effect an existing piece prints is a record of
   ``TECH_ACQUIRE_ABILITIES`` (``content.bloodlines.tech_abilities``), checked
   here as the Tech Module's are. Windtraps' water and Shuttle Fleet's two
   different Factions (OQ-114) have keys of their own since stage P4c-2a
   (``water``, ``distinct_influence``; ``TechTile.acquire_effect_keys``);
-- no stack, setup or deck holds them, and setup still refuses Rise of Ix.
+- no deck holds them; since stage P4c-5 setup shuffles them into the Ix
+  board's three stacks (``rules.setup.deal_ix_tech_stacks``).
   ``content.bloodlines.tech``'s ``TECH_TILES_BY_ID`` resolves them; code that
   lists the Tech Module's own tiles iterates ``TECH_TILES``. The observation
   lists them after the Tech Module's from v39 (``adapters.

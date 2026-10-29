@@ -12,8 +12,10 @@ These are stage P4a identity entries: a name and the two ability names. The
 setup deviations (Yuna's ``starting_water``, Hundro's and Tessia's setup
 steps) and the abilities themselves are not wired yet (stage P4e).
 ``rulesets.IMPERIUM_LEADER_IDS`` keeps the original game's eight; with
-``rise_of_ix`` ``content_for`` offers these six after them [Rise of Ix p. 3]
-(stage P4a's board axis), and setup still refuses Rise of Ix.
+``rise_of_ix`` ``content_for`` offers them after those eight [Rise of Ix p. 3]
+as each is wired (``rulesets.IX_LEADER_IDS_OFFERED``, none until stage P4e),
+so the six are defined but not offered yet; setup takes Rise of Ix on the
+original game since stage P4c-5.
 ``content.uprising.leaders``'s ``LEADERS_BY_ID`` resolves them next to the
 original game's Leaders; code that lists Uprising's Leaders iterates
 ``LEADERS``, and the observation lists them from v39 (plan 17.1, 17.4).

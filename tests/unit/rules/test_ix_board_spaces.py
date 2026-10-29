@@ -2,12 +2,12 @@
 
 Rules: docs/rules/rise-of-ix.md 8 ("새 보드 칸", ``[Rise of Ix p. 12]``) and its
 sections 4-6 (``[Rise of Ix pp. 4-6]``), docs/base-game-and-ix-plan.md 17.10
-item 4. Setup refuses ``rise_of_ix`` until stage P4c-5, so every state is the
-original game's round one at seat 0's first turn with its config switched to
-``rise_of_ix=True`` and the Ix stacks, dreadnoughts and tiles laid on the
-seats by ``dataclasses.replace``. Each space is visited through the engine's
-own Agent placement and its icons are answered as the whole actions the
-engine offers.
+item 4. Setup takes ``rise_of_ix`` on the original game since stage P4c-5, but
+these tests build their states by hand: the original game's round one at seat
+0's first turn with its config switched to ``rise_of_ix=True`` and the Ix
+stacks, dreadnoughts and tiles laid on the seats by ``dataclasses.replace``.
+Each space is visited through the engine's own Agent placement and its icons
+are answered as the whole actions the engine offers.
 """
 
 from dataclasses import replace
