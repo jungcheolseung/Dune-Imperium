@@ -17,20 +17,27 @@ needs Immortality, which the original game takes from stage P7.
 
 from collections import Counter
 from dataclasses import replace
+from functools import cache
 
 import pytest
 
 from dune_imperium import BaseGame, RulesetConfig
+from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.starting_cards import starting_card_for_instance
 from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core import (
+    ChanceDecision,
+    ChanceResolver,
+    DomainAction,
     GamePhase,
     GameState,
     PlayerDecision,
 )
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.leader_draft import remaining_draft_pool
 from dune_imperium.rules.setup import (
     SetupResult,
@@ -38,6 +45,7 @@ from dune_imperium.rules.setup import (
     create_draft_initial_state,
     create_initial_state,
 )
+from dune_imperium.simulation.invariants import check_observation_privacy
 
 IX = RulesetConfig(base_game=BaseGame.IMPERIUM, rise_of_ix=True)
 IX_EPIC = replace(IX, epic_game=True)
@@ -49,6 +57,39 @@ LEADERS = (
     "glossu_rabban",
     "count_ilban_richese",
 )
+HUNDRO = "viscount_hundro_moritani"
+BARON = "baron_vladimir_harkonnen"
+# Seed 1 makes seat 3 the First Player, so Hundro at seat 2 draws last.
+HUNDRO_LEADERS = (
+    "glossu_rabban",
+    "count_ilban_richese",
+    HUNDRO,
+    "earl_memnon_thorvald",
+)
+
+
+@cache
+def _codec(config: RulesetConfig) -> ActionCodec:
+    return ActionCodec(config)
+
+
+class _Engine(UprisingRulesEngine):
+    """Check every offered row, the setup-time ones included (a draft pick,
+    the Intelligence keep, the Baron's Factions), through ``ActionCodec``."""
+
+    def legal_actions(self, state: GameState, player: int) -> tuple[DomainAction, ...]:
+        rows = super().legal_actions(state, player)
+        codec = _codec(state.config)
+        for row in rows:
+            assert codec.decode(codec.encode(row), player) == row
+        return rows
+
+
+def _settle(engine: UprisingRulesEngine, state: GameState, seed: int = 3) -> GameState:
+    chance = ChanceResolver(seed=seed)
+    while isinstance(decision := engine.current_decision(state), ChanceDecision):
+        state = engine.apply(state, chance.resolve(decision)).state
+    return state
 
 
 def _card_ids(instance_ids: tuple[str, ...]) -> Counter[str]:
@@ -312,3 +353,163 @@ def test_the_draft_deals_the_epic_intrigue_after_the_last_pick() -> None:
         assert live.players[seat].intrigue_cards == (shuffled[position],)
     assert live.intrigue_deck == shuffled[4:]
     _assert_epic_setup(live)
+
+
+# -- Viscount Hundro Moritani's Intelligence ----------------------------------------
+def _keep_rows(engine: _Engine, state: GameState, seat: int) -> list[DomainAction]:
+    """The keep-one choices (whole actions; the frame offers each card's step)."""
+
+    engine.legal_actions(state, seat)
+    return [
+        row
+        for row in engine.whole_actions(state, seat)
+        if row.action_id == "keep_peeked_intrigue"
+    ]
+
+
+def _peeked(
+    engine: UprisingRulesEngine, state: GameState, seat: int
+) -> tuple[str, ...]:
+    private = engine.observe(state, seat).private
+    assert private is not None
+    return tuple(private.peeked_intrigue_ids)
+
+
+def _assert_dealt_from_the_first_player(
+    state: GameState, shuffled: tuple[str, ...], *, hundro: int, kept: str = ""
+) -> None:
+    assert state.first_player is not None
+    for position in range(4):
+        seat = (state.first_player + position) % 4
+        held = (shuffled[position], *((kept,) if kept and seat == hundro else ()))
+        assert state.players[seat].intrigue_cards == held
+
+
+def test_hundro_looks_once_every_seat_has_drawn_its_intrigue_card() -> None:
+    """ "모두 Intrigue 1장을 뽑고(Hundro는 모두 뽑은 뒤 Intelligence)"
+    (rise-of-ix.md 11); "Epic에서는 Hundro가 모두가 Intrigue를 뽑은 뒤 쓴다고
+    룰북이 정한다 `[Rise of Ix p. 10]`" (rise-of-ix.md 3). Every seat holds its
+    card, Hundro's dealt last here, and his look is at the two cards then on
+    top: the shuffled deck's fifth and sixth. The kept card joins his own; the
+    other goes back on top, his alone to know (rise-of-ix.md 13, OQ-149 (가))."""
+
+    setup = create_initial_state(IX_EPIC, 1, HUNDRO_LEADERS)
+    shuffled = _outcome_values(setup, "setup:intrigue_deck")
+    engine = _Engine(leader_ids=HUNDRO_LEADERS)
+    state = engine.reset(IX_EPIC, 1)
+    assert state == setup.state
+    assert state.first_player == 3
+    assert state.phase is GamePhase.SETUP
+    assert [frame.kind for frame in state.decision_stack] == [FrameKind.INTRIGUE_PEEK]
+    _assert_dealt_from_the_first_player(state, shuffled, hundro=2)
+    assert state.intrigue_deck == shuffled[4:]
+    assert _peeked(engine, state, 2) == shuffled[4:6]
+    for seat in (0, 1, 3):
+        assert _peeked(engine, state, seat) == ()
+    check_observation_privacy(state)
+
+    rows = _keep_rows(engine, state, 2)
+    assert [dict(row.arguments)["instance_id"] for row in rows] == list(shuffled[4:6])
+    kept = apply_whole(engine, state, rows[1]).state
+    _assert_dealt_from_the_first_player(kept, shuffled, hundro=2, kept=shuffled[5])
+    assert kept.intrigue_deck == (shuffled[4], *shuffled[6:])
+    assert kept.players[2].known_intrigue_ids == (shuffled[4],)
+    assert all(
+        not seat.known_intrigue_ids for seat in kept.players if seat.player_id != 2
+    )
+    check_observation_privacy(kept)
+
+    started = _settle(engine, kept)
+    assert started.phase is GamePhase.PLAYER_TURNS
+    assert started.players[2].known_intrigue_ids == (shuffled[4],)
+    private = engine.observe(started, 2).private
+    assert private is not None and private.known_intrigue_top == shuffled[4]
+    for seat in (0, 1, 3):
+        other = engine.observe(started, seat).private
+        assert other is not None and other.known_intrigue_top == ""
+    check_observation_privacy(started)
+
+
+def test_a_drafted_hundro_looks_after_the_epic_draw() -> None:
+    """The draft path keeps the same order: nobody holds an Intrigue card or
+    looks during the OQ-007 picks; the last pick's turn-end press deals the
+    cards from the First Player (epic-game-mode.md 7) and then Hundro looks
+    at the deck's new top two (rise-of-ix.md 3 and 11)."""
+
+    setup = create_draft_initial_state(IX_EPIC_DRAFT, 1)
+    shuffled = _outcome_values(setup, "setup:intrigue_deck")
+    assert HUNDRO in setup.state.leader_draft_pool
+    engine = _Engine()
+    live = engine.reset(IX_EPIC_DRAFT, 1)
+    first_pick = True
+    while live.decision_stack[-1].kind is FrameKind.LEADER_DRAFT:
+        assert all(player.intrigue_cards == () for player in live.players)
+        assert live.intrigue_deck == shuffled
+        decision = live.decision_stack[-1].decision
+        assert isinstance(decision, PlayerDecision)
+        rows = engine.legal_actions(live, decision.owner)
+        wanted = (
+            HUNDRO
+            if first_pick
+            else next(
+                leader
+                for leader in remaining_draft_pool(live)
+                if leader not in (HUNDRO, BARON)
+            )
+        )
+        first_pick = False
+        live = engine.apply(
+            live,
+            next(
+                row
+                for row in rows
+                if row.action_id == "finish_leader_draft"
+                or dict(row.arguments).get("leader_id") == wanted
+            ),
+        ).state
+
+    (hundro,) = (seat.player_id for seat in live.players if seat.leader_id == HUNDRO)
+    assert live.phase is GamePhase.SETUP
+    assert live.decision_stack[-1].kind is FrameKind.INTRIGUE_PEEK
+    _assert_dealt_from_the_first_player(live, shuffled, hundro=hundro)
+    assert _peeked(engine, live, hundro) == shuffled[4:6]
+    check_observation_privacy(live)
+    kept = apply_whole(engine, live, _keep_rows(engine, live, hundro)[0]).state
+    assert kept.players[hundro].known_intrigue_ids == (shuffled[5],)
+    started = _settle(engine, kept)
+    assert started.phase is GamePhase.PLAYER_TURNS
+    assert [len(seat.intrigue_cards) for seat in started.players] == [
+        2 if seat.player_id == hundro else 1 for seat in started.players
+    ]
+    check_observation_privacy(started)
+
+
+def test_the_baron_and_hundro_both_follow_the_epic_draw() -> None:
+    """The Baron's Factions and Hundro's look both come "모든 setup 뒤, 첫 라운드
+    전" (rise-of-ix.md 3, [FAQ p. 1]), the Epic draw being a setup step: each
+    seat holds its card while the Baron chooses and Hundro looks, and the
+    round begins once both are done."""
+
+    leaders = (BARON, "count_ilban_richese", HUNDRO, "earl_memnon_thorvald")
+    setup = create_initial_state(IX_EPIC, 1, leaders)
+    shuffled = _outcome_values(setup, "setup:intrigue_deck")
+    engine = _Engine(leader_ids=leaders)
+    state = engine.reset(IX_EPIC, 1)
+    assert [frame.kind for frame in state.decision_stack] == [
+        FrameKind.MASTERSTROKE_SETUP,
+        FrameKind.INTRIGUE_PEEK,
+    ]
+    _assert_dealt_from_the_first_player(state, shuffled, hundro=2)
+    assert _peeked(engine, state, 2) == shuffled[4:6]
+    check_observation_privacy(state)
+    state = apply_whole(engine, state, _keep_rows(engine, state, 2)[0]).state
+    assert state.phase is GamePhase.SETUP
+    for faction in ("emperor", "fremen"):
+        engine.legal_actions(state, 0)
+        state = engine.apply(
+            state,
+            DomainAction("choose_masterstroke_faction", 0, (("faction", faction),)),
+        ).state
+    started = _settle(engine, state)
+    assert started.phase is GamePhase.PLAYER_TURNS
+    check_observation_privacy(started)
