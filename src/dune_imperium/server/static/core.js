@@ -1406,6 +1406,9 @@ const REVEAL_SOURCE_ACTIONS = new Set([
   "deploy_reveal_card_troops",
   "retreat_reveal_card_troops",
   "decline_reveal_spy_recall",
+  /* Guild Chief Administrator's and Freighter Fleet's Freighter icon. */
+  "advance_reveal_freighter",
+  "recall_reveal_freighter",
 ]);
 
 function revealSourceEntry(action) {
