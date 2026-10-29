@@ -1025,6 +1025,11 @@ Ghidra는 launch.sh 대신 JDK 25로 직접 띄워 `-Duser.home`·`-Djava.io.tmp
 3. **차례 밖 획득의 창(그 조합을 열 때):** OQ-141 조합 — Scouts의 Critical Moment로 얻은 CHOAM Directorship·Lady Jessica. 차례 밖에서 Imperium 카드를
    얻는 길은 Impress(비용 3 이하라 닿지 않음)와 Critical Moment뿐이고, 획득 상자의 Influence는 한 곳(`_acquisition_influence`)을 지나 거절이 모든 길을
    덮는다(2026-10-28 Codex 리뷰 뒤 OQ-141에 적음).
+   Rise of Ix(2026-10-30 추가): 결정이 든 획득 상자에 Full-Scale Assault(비용 8, 획득 dreadnought — 차례 밖으로는 Scouts의 Critical Moment로만
+   닿고, 원판의 Scouts는 setup이 P8까지 거절)와 Appropriate(비용 5, 획득 Freighter)가 더해진다. 그리고 원판 + Ix에 차례 밖 획득 길이 하나 는다:
+   상대의 Reverend Mother Mohiam이 버린 Boundless Ambition의 Unload "Acquire a card that costs 5 or less"(rise-of-ix.md 7). 그 길로 Appropriate를
+   얻으면 Freighter 획득 아이콘은 차례 밖 Freighter 창(`FREIGHTER_MOVE`)으로 받아야 한다 — Appropriate와 Boundless Ambition이 함께 들어올 때
+   구현하고 시험한다(지금은 두 카드가 서로 다른 브랜치에 있다).
 4. **OQ-144(사용자 확인 대기):** Double Cross의 supply 배치에 Commander를 쓸 수 있는가.
 5. **Guild Bankers:** 할인은 원판·Uprising의 The Spice Must Flow 두 인쇄를 모두 이름하고(`ReserveCostDiscount.card_ids`), Scouts의 Reserve 비용
    수정도 같은 값을 읽어(`scouts_modifiers.reserve_discount`) 조합에서도 같다.
