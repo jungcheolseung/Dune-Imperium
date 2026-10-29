@@ -162,7 +162,9 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # are unchanged (compared against e20b83dc, 2026-10-29).
 # Then Jamis got his play data (stage P4d): only his own row changed, no column
 # and no scale (compared against 49b6dfdc, 2026-10-29).
-_GOLDEN_DIGEST = "ef0a02bdf03bea5616e2112c3d44e4d51b0e448bc050d4e28a05059a6f7dd561"
+# Then Sayyadina got her play data (stage P4d): only her own row changed, no
+# column and no scale (compared against d6a6d909, 2026-10-29).
+_GOLDEN_DIGEST = "46a4d846c8af71cf6e1ce2d58da0589cd022ea23f15f7ebafae6e4bfc8583847"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

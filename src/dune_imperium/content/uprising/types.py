@@ -403,6 +403,8 @@ class PersonalCardAgentEffect(StrEnum):
     BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT = (
         "block_chosen_space_for_opponents_next_agent"
     )
+    # Sayyadina (Rise of Ix): "[3 water] -> [1 Victory Point]".
+    MAY_PAY_THREE_WATER_FOR_VP = "may_pay_three_water_for_vp"
 
 
 class PersonalCardTrashEffect(StrEnum):
