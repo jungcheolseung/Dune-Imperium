@@ -1226,8 +1226,10 @@ def test_ilesas_extra_turn_is_her_second_turn() -> None:
     """ "Ilesa Ecaz ... Agent 없는 pass와 Weirding Way 추가 turn 모두 센다(OQ-119
     사용자 확정)" (rise-of-ix.md 10): her set-aside card returns to her hand
     at the start of the extra turn that follows her first."""
-    state = _start()
     kept = "player:0:starter:diplomacy:0"
+    # Taken out of whichever zone the seed dealt it to first, so it is held
+    # once, set aside.
+    state = _give(_start(), 0, hand=(kept,))
     state = _give(
         state,
         0,
