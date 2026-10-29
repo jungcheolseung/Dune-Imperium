@@ -247,7 +247,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # four Leader-table columns are new (Careful Observation's standing hook,
 # Duplicity's hook and its LoseInfluence cost with its count), read by her
 # row alone; no older scale moved (compared against 2a8bc1ea, 2026-10-30).
-_GOLDEN_DIGEST = "601cb3a20c1580e6ebbbaa5a6723c49c5968af43fe3393e0a73fce41ddcfbd86"
+# Then Strategic Push got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (the pledged "If you win this Conflict"
+# Solari reward), read by its row alone; no older scale moved (compared against
+# 0d65eb9c and again against 556e57ea when it landed on claude/base-ix-p4,
+# 2026-10-30).
+_GOLDEN_DIGEST = "92974e016a828043dac14b186129ee66ed3e753ce555fe969e4e9764437dd5d9"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

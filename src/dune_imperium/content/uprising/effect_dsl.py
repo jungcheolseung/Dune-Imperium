@@ -1982,6 +1982,28 @@ class EachOpponentRetreatsDreadnought:
 
 
 @dataclass(frozen=True, slots=True)
+class PledgeConflictWinSolari:
+    """"If you win this Conflict:" ``solari`` Solari [Strategic Push card,
+    Steam app text; its log: "If they win the Conflict they will gain" the
+    Solari], pledged as the Combat card resolves and gained only by the
+    Conflict's sole winner.
+
+    The pledge waits on the seat (``PlayerState.strategic_push_solari``) and
+    is paid as an automatic row of the sole winner's window, in the order
+    the winner chooses among that window's rows (OQ-121 ruling 6 (1):
+    "Strategic Push의 'If you win this Conflict' 몫(Solari 2)은 고를 것 없는
+    자동 줄이다"). A tie for first has no win effect row [FAQ p. 4], and a
+    pledge that is not paid lapses when the Conflict ends.
+    """
+
+    solari: int = 2
+
+    def __post_init__(self) -> None:
+        if self.solari < 1:
+            raise ValueError("a pledged Solari amount must be positive")
+
+
+@dataclass(frozen=True, slots=True)
 class PlaceNegotiator:
     """Tech Negotiation: send one of the owner's troops from its supply to
     the Ix board as a Negotiator, for each Tech Negotiation icon ("you may
@@ -2095,6 +2117,7 @@ type Reward = (
     | DoubleBonusHarvestSpice
     | CommissionDreadnought
     | EachOpponentRetreatsDreadnought
+    | PledgeConflictWinSolari
     | PlaceNegotiator
     | Freighter
 )

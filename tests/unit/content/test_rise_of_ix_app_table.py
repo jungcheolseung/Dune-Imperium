@@ -270,6 +270,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "war_chest",
     "machine_culture",
     "diversion",
+    "strategic_push",
 }
 _IX_IMPERIUM_TRANSCRIBED = {
     "choam_delegate",

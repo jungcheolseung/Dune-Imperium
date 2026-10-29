@@ -424,6 +424,7 @@ const LABELS_EN = {
     "deep_cover_spy": "Place {spy} with Deep Cover",
     "planetary_array": "Planetary Array: {draw} 1",
     "windtraps": "Windtraps: {water} 1",
+    "strategic_push": "Strategic Push: {solari} 2",
     "winning_intrigue": "Finish: no more winning {intrigue}",
     "recall_agent": "Recall {agent}"
   },

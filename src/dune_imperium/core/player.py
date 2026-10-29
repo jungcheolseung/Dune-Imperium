@@ -305,6 +305,13 @@ class PlayerState:
     # public zone or this seat's own hand, and a reshuffle of the Intrigue
     # deck forgets the deck's entries.
     known_intrigue_ids: tuple[str, ...] = ()
+    # Strategic Push's "If you win this Conflict:" Solari, pledged when the
+    # Combat card resolved and paid to the Conflict's sole winner as an
+    # automatic row of its window (OQ-121 ruling 6 (1),
+    # ``combat.STRATEGIC_PUSH``); a pledge not paid lapses as the Combat phase
+    # is cleaned up. Public: the played Combat card is face up. Not in
+    # observation v39 (a P6 note).
+    strategic_push_solari: int = 0
     deck: tuple[str, ...] = ()
     # The deck's top cards every seat knows, top first (OQ-145, user ruling
     # 2026-10-28): cards put face up on top of the deck (Bypass Protocol,
@@ -359,6 +366,8 @@ class PlayerState:
             "set_aside_returned_turn",
             "turns_finished_round",
             "known_intrigue_ids",
+            # Rise of Ix's Strategic Push (stage P4d).
+            "strategic_push_solari",
         }
     )
 
@@ -431,6 +440,7 @@ class PlayerState:
             self.freighter_space,
             self.negotiators,
             self.turns_finished_round,
+            self.strategic_push_solari,
         )
         if min(quantities) < 0:
             raise ValueError("player component quantities must not be negative")
