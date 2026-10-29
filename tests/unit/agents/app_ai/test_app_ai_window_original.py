@@ -7,7 +7,6 @@ check that the Agent-turn window found an app ability for every mapped item
 §12.2).
 """
 
-import logging
 from collections import Counter
 from typing import Any
 
@@ -59,7 +58,6 @@ def fallbacks() -> Counter[str]:
     """The random answers of four app_ai seats over six original games."""
 
     counted: Counter[str] = Counter()
-    logging.getLogger("dune_imperium.agents.app_ai.agent").setLevel(logging.ERROR)
     for seed in (31, 32, 33, 34, 35, 36):
         agents = tuple(AppAIAgent(seed=seed * 10 + seat) for seat in range(4))
         run_policy_game(ENGINE, ORIGINAL, seed, agents)
@@ -121,7 +119,6 @@ def unmapped() -> Counter[str]:
         reasons.update(t.unmapped)
 
     agent_effects._collect = spy
-    logging.getLogger("dune_imperium.agents.app_ai.agent").setLevel(logging.ERROR)
     try:
         for seed in (21, 22, 23, 24, 25, 26):
             agents = tuple(AppAIAgent(seed=seed * 10 + seat) for seat in range(4))

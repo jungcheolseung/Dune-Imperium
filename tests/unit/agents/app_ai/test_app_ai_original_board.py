@@ -6,7 +6,6 @@ own terms against the generic ``SpaceAbility`` value of the same space, so
 each branch of the decompiled method is pinned by hand.
 """
 
-import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -301,7 +300,6 @@ def test_original_spaces_leave_no_agent_turn_unmapped(
         reasons.extend(t.unmapped)
 
     monkeypatch.setattr(agent_effects, "_collect", spy)
-    logging.getLogger("dune_imperium.agents.app_ai.agent").setLevel(logging.ERROR)
     for seed in (3, 4):
         agents = tuple(AppAIAgent(seed=seed * 10 + seat) for seat in range(4))
         run_policy_game(ENGINE, ORIGINAL, seed, agents)
