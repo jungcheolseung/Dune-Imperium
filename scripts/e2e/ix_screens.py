@@ -40,23 +40,27 @@ For each hidden value, at the moment it is real:
   snapshot have no such field or card, its page shows none of the lines and
   holds no view at all.
 
-Then a hot-seat hand-over, once per table on an open server, where one page
-plays every seat: the page shows the owner and draws its line, the owner ends
-its turn, and the page that now shows the next seat holds none of the owner's
-lines or cards (the view replaced, the containers emptied).
+Then, step [5], hot-seat hand-overs on an open server, where one page plays
+every seat (``Table.handovers``: one each for tables 1 and 2, Hundro to Ilesa
+and Ilesa to the first player on table 3): the page shows the owner and draws
+its hidden lines, the owner's turn ends, and the page that now shows the next
+seat holds none of the owner's lines or cards (the view replaced, the
+containers emptied).
 
-Two tables, each a fresh game on the same server:
+Three tables, each a fresh game on the same server:
 
 1. Original game + Rise of Ix, four human seats (seed 4):
-   a. ``known_intrigue_bottom``: seat 2 buys Sonic Snoopers and puts an
+   a. ``ix_pending.tech_discount`` / ``tech_payment``: seat 2 sends an Agent
+      to Tech Negotiation, and its Acquire Tech (Tech Discount 1, spice) is
+      open.
+   b. ``known_intrigue_bottom``: seat 2 buys Sonic Snoopers and puts an
       Intrigue card at the Intrigue deck's bottom, which only it then knows.
       (Checked again at the two later moments: still known, still hidden.)
-   b. ``ix_pending.shipping_rewards``: seat 0 recalls its Freighter from
+   c. ``ix_pending.shipping_rewards``: seat 0 recalls its Freighter from
       Shipping step 1; the step-1 reward is owed.
-   c. ``ix_pending.tech_discount`` / ``tech_payment`` /
-      ``negotiators_returnable``: seat 2 sends an Agent to Tech Negotiation
-      holding a Negotiator, and its Acquire Tech (Tech Discount 1, spice, one
-      Negotiator returnable) is open.
+   d. ``ix_pending.negotiators_returnable``: seat 0 sends an Agent to the
+      Dreadnought space holding a Negotiator, and its Acquire Tech (spice,
+      one Negotiator returnable) is open.
 2. Uprising + Immortality, four human seats (seed 143), sent as the setup
    screen sends it with only the Immortality box checked:
    a. ``peeked_intrigue_ids``: seat 0 plays Imperium Ceremony and sees the
@@ -67,14 +71,27 @@ Two tables, each a fresh game on the same server:
       view says seat 1 holds it, and seat 0's page marks seat 1's panel. Seat 1
       holds the card in its own hand, and the other two seats and the
       spectator carry its id nowhere.
+3. Original game + Rise of Ix with the leader draft (seed 4; without the draft
+   the original game deals its own first four Leaders), seat 1 Viscount Hundro
+   Moritani and seat 0 Ilesa Ecaz:
+   a. ``peeked_intrigue_ids``: Hundro's Intelligence shows him the Intrigue
+      deck's top two cards while he keeps one.
+   b. ``known_intrigue_top``: he keeps one (his hand) and knows the other back
+      on top, and the log shows other seats only that he kept one.
+   c. ``set_aside_card_id``: Ilesa sets a card aside at Round Start (her turn
+      end held). Other seats see ``has_set_aside_card`` (her panel's "one card
+      set aside") and ``(비공개)`` in the log; she sees her card.
+   d. Her second turn starts and the card comes back to her hand, public:
+      every seat's view and log name it, and every page says it came back;
+      the set-aside's log entry stays ``(비공개)`` to the others.
+   Her card is one of her starter cards, whose name and picture every seat's
+   own starter cards share, so it is looked for by its id alone.
 
-Not reachable, and named here so the gap stays visible: Hundro Moritani's
-Intelligence (``known_intrigue_top`` too) and Ilesa Ecaz's set-aside card
-(``set_aside_card_id``) are not in the engine yet. POST /games refuses
+Not reached, and named here so the gap stays visible: POST /games refuses
 ``base_game: "imperium"`` with ``immortality`` ("the original game takes
 immortality from stage P7") and Rise of Ix on Uprising (also P7), so no table
 combines the original game, Rise of Ix and Immortality; that is why table 2 is
-Uprising. Step [3] asserts that the original game still refuses Immortality.
+Uprising. Step [4] asserts that the original game still refuses Immortality.
 
 The plans are pinned, not searched: each table's seed, its POST body and its
 ``PLAN``, the exact whole actions to take (seat, action id, arguments) in
@@ -96,8 +113,11 @@ and read each state for the targets.
   Shipping reward owed, an Acquire Tech open with a returnable Negotiator and a
   bottom-known Intrigue card. Re-run after P4 4cdf1e99 was merged (its Ix card
   data changed the deal and the first plan, seed 41, missed at step 3): over
-  seeds 1-119 (at most 220 actions) two playouts got there; the shorter, seed 4
-  with answer stream 4 * 1000 + 0, is ``IX_PLAN`` (178 actions).
+  seeds 1-119 (at most 220 actions) two playouts got there; the shorter was
+  seed 4 with answer stream 4 * 1000 + 0 (178 actions). Re-run after P4
+  c8a44cfd (new Ix Intrigue cards changed the deal; the plan missed at step
+  48): seed 4 and the same answer stream got there again, in 184 actions, now
+  ``IX_PLAN``; ``replay5.py`` printed its checkpoints.
 - Table 2: ``find2.py`` weights Imperium Ceremony (to buy it, then to play it)
   up by 300, and, once a seat knows the top card, Intrigue-drawing spaces up
   for every seat but the knower. It was run over the eight seeds below 200
@@ -106,9 +126,17 @@ and read each state for the targets.
   200 playouts reached a peek, a known top card and a known held card. The
   shortest, seed 143 with answer stream 143 * 1000 + 24, is ``CEREMONY_PLAN``
   (91 actions).
-- ``emit_plan.py`` / ``emit_plan2.py`` wrote the plans out, and ``replay.py``
-  replays the first and prints every seat's private block at its checkpoints.
-  The checkpoint values below were read from the server's views.
+- Table 3: ``find4.py`` plays the leader draft taking Hundro and Ilesa when
+  offered (never the Baron) and random answers after it, until Ilesa's card
+  comes back; over seeds 1-5, seeds 3 and 4 dealt both, and seed 4 (answer
+  stream 4) brings the card back at her second turn's start, not with a
+  first-turn Reveal, with Ilesa not the first player (a first-player fix is
+  still open in P4). ``show4.py`` prints every seat's private block step by
+  step; the plan is ``LEADERS_PLAN`` (38 actions).
+- ``emit_plan.py`` / ``emit_plan2.py`` / ``emit_plan4.py`` wrote the plans out,
+  and ``replay.py`` replays the first and prints every seat's private block at
+  its checkpoints. The checkpoint values below were read from the server's
+  views.
 """
 
 from __future__ import annotations
@@ -140,6 +168,17 @@ class Checkpoint:
     what: str
     private: dict[int, dict[str, Any]]
     hands: dict[int, list[str]] = field(default_factory=dict)
+    # The seat whose turn end the server holds at the checkpoint, if any.
+    held: int | None = None
+    # Cards every seat now knows (a returned set-aside card in a hand, public);
+    # every seat's payloads and page state must name them.
+    public: list[str] = field(default_factory=list)
+    # Ilesa Ecaz's public set-aside flag per seat: "aside" (a card set aside)
+    # or "returned" (it came back this turn).
+    aside: dict[int, str] = field(default_factory=dict)
+    # Sealed log entries: (action id, argument, value). Every seat's log holds
+    # the entry once, naming the value to its actor and "(비공개)" to others.
+    sealed: list[tuple[str, str, str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -161,7 +200,7 @@ class Table:
     body: dict[str, Any]
     plan: list[Step]
     checkpoints: dict[int, Checkpoint]
-    handover: Handover
+    handovers: tuple[Handover, ...]
 
 
 # Table 1: the original game with Rise of Ix, as the setup screen's boxes would
@@ -192,13 +231,25 @@ CEREMONY_BODY = {
     "game_seed": 143,
 }
 
+# Table 3: the original game with Rise of Ix and the leader draft, the only way
+# an original game deals Rise of Ix's Leaders (without the draft it deals the
+# original game's first four, ``rules.engine.UprisingRulesEngine``).
+LEADERS_BODY = {
+    "seats": ["human", "human", "human", "human"],
+    "base_game": "imperium",
+    "rise_of_ix": True,
+    "leader_draft": True,
+    "game_seed": 4,
+}
+
 # (seat, action id, arguments), in order; the number after each is its index
 # (the checkpoints count the actions applied).
 IX_PLAN: list[Step] = [
-    # Found on the engine as merged with P4 4cdf1e99 (seed 4, answer stream
-    # 4 * 1000 + 0): seat 2 buys Sonic Snoopers and puts an Intrigue card at
-    # the bottom (29), seat 0 recalls its Freighter from step 1 (95), seat 2
-    # opens an Acquire Tech at Tech Negotiation holding a Negotiator (178).
+    # Found on the engine as merged with P4 c8a44cfd (seed 4, answer stream
+    # 4 * 1000 + 0): seat 2 opens an Acquire Tech at Tech Negotiation (25),
+    # buys Sonic Snoopers and puts an Intrigue card at the bottom (29), seat 0
+    # recalls its Freighter from step 1 (160), seat 0 opens an Acquire Tech at
+    # the Dreadnought space holding a Negotiator (184).
     (3, "choose_masterstroke_faction", {"faction": "spacing_guild"}),  # 0
     (3, "choose_masterstroke_faction", {"faction": "bene_gesserit"}),  # 1
     (2, "choose_agent_card", {"card_id": "player:2:starter:diplomacy:0"}),  # 2
@@ -262,23 +313,23 @@ IX_PLAN: list[Step] = [
     (0, "reveal_turn", {}),  # 44
     (0, "acquire_imperium", {"instance_id": "imperium:guild_administrator:1"}),  # 45
     (0, "finish_reveal", {}),  # 46
-    (2, "play_intrigue", {"card_id": "intrigue:master_tactician:2", "option": 1}),  # 47
-    (2, "retreat_intrigue_troops", {"count": 0}),  # 48
-    (2, "pass_combat_intrigue", {}),  # 49
-    (0, "pass_combat_intrigue", {}),  # 50
-    (2, "pass_combat_intrigue", {}),  # 51
-    (0, "resolve_combat_reward_icon", {"effect": "resources"}),  # 52
-    (0, "resolve_combat_reward_icon", {"effect": "choose_influence"}),  # 53
-    (0, "choose_combat_reward_influence", {"faction": "emperor"}),  # 54
-    (0, "resolve_combat_reward_icon", {"effect": "winning_intrigue"}),  # 55
-    (2, "resolve_combat_reward_icon", {"effect": "resources"}),  # 56
-    (3, "reveal_turn", {}),  # 57
-    (3, "finish_reveal", {}),  # 58
-    (0, "choose_agent_card", {"card_id": "player:0:starter:signet_ring:0"}),  # 59
-    (0, "place_agent", {"space_id": "smuggling"}),  # 60
-    (0, "advance_board_freighter", {}),  # 61
-    (0, "resolve_agent_card_effect", {}),  # 62
-    (0, "resolve_board_effect", {"effect": "resources"}),  # 63
+    (2, "pass_combat_intrigue", {}),  # 47
+    (0, "pass_combat_intrigue", {}),  # 48
+    (0, "resolve_combat_reward_icon", {"effect": "resources"}),  # 49
+    (0, "resolve_combat_reward_icon", {"effect": "choose_influence"}),  # 50
+    (0, "choose_combat_reward_influence", {"faction": "emperor"}),  # 51
+    (0, "resolve_combat_reward_icon", {"effect": "winning_intrigue"}),  # 52
+    (2, "resolve_combat_reward_icon", {"effect": "resources"}),  # 53
+    (3, "choose_agent_card", {"card_id": "player:3:starter:reconnaissance:0"}),  # 54
+    (3, "place_agent", {"space_id": "carthag"}),  # 55
+    (3, "deploy_troops", {"count": 2}),  # 56
+    (3, "resolve_board_effect", {"effect": "intrigue"}),  # 57
+    (3, "withdraw_troops", {"count": 1}),  # 58
+    (3, "resolve_board_effect", {"effect": "troops"}),  # 59
+    (3, "finish_agent_turn", {}),  # 60
+    (0, "choose_agent_card", {"card_id": "player:0:starter:dagger:0"}),  # 61
+    (0, "place_agent", {"space_id": "tech_negotiation"}),  # 62
+    (0, "place_board_negotiator", {}),  # 63
     (0, "finish_agent_turn", {}),  # 64
     (1, "reveal_turn", {}),  # 65
     (1, "acquire_imperium", {"instance_id": "imperium:spice_smugglers:1"}),  # 66
@@ -289,36 +340,52 @@ IX_PLAN: list[Step] = [
         "choose_agent_card",
         {"card_id": "player:2:starter:dune_the_desert_planet:0"},
     ),  # 69
-    (2, "place_agent", {"space_id": "the_great_flat"}),  # 70
-    (2, "harvest_maker_spice", {"space_id": "the_great_flat"}),  # 71
-    (2, "deploy_troops", {"count": 1}),  # 72
+    (2, "place_agent", {"space_id": "smuggling"}),  # 70
+    (2, "advance_board_freighter", {}),  # 71
+    (2, "resolve_board_effect", {"effect": "resources"}),  # 72
     (2, "finish_agent_turn", {}),  # 73
-    (0, "choose_agent_card", {"card_id": "player:0:starter:dagger:1"}),  # 74
-    (0, "place_agent", {"space_id": "dreadnought"}),  # 75
-    (0, "finish_agent_turn", {}),  # 76
-    (2, "choose_agent_card", {"card_id": "player:2:starter:dagger:1"}),  # 77
-    (2, "place_agent", {"space_id": "tech_negotiation"}),  # 78
-    (2, "place_board_negotiator", {}),  # 79
-    (2, "finish_agent_turn", {}),  # 80
-    (0, "reveal_turn", {}),  # 81
-    (0, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 82
-    (0, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 83
-    (0, "finish_reveal", {}),  # 84
-    (2, "reveal_turn", {}),  # 85
-    (2, "finish_reveal", {}),  # 86
-    (2, "pass_combat_intrigue", {}),  # 87
-    (2, "resolve_combat_reward_icon", {"effect": "control"}),  # 88
-    (2, "resolve_combat_reward_icon", {"effect": "victory_points"}),  # 89
-    (2, "resolve_combat_reward_icon", {"effect": "winning_intrigue"}),  # 90
-    (0, "choose_agent_card", {"card_id": "imperium:guild_administrator:1"}),  # 91
-    (0, "place_agent", {"space_id": "smuggling"}),  # 92
-    (0, "trash_agent_card", {"card_id": "player:0:starter:reconnaissance:0"}),  # 93
-    (0, "recall_board_freighter", {}),  # 94
-    (0, "resolve_shipping_reward", {"effect": "dividends"}),  # 95
-    (0, "resolve_board_effect", {"effect": "resources"}),  # 96
-    (0, "finish_agent_turn", {}),  # 97
-    (1, "reveal_turn", {}),  # 98
-    (1, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 99
+    (
+        3,
+        "choose_agent_card",
+        {"card_id": "player:3:starter:dune_the_desert_planet:1"},
+    ),  # 74
+    (3, "place_agent", {"space_id": "imperial_basin"}),  # 75
+    (3, "deploy_troops", {"count": 1}),  # 76
+    (3, "harvest_maker_spice", {"space_id": "imperial_basin"}),  # 77
+    (3, "deploy_troops", {"count": 1}),  # 78
+    (3, "finish_agent_turn", {}),  # 79
+    (0, "choose_agent_card", {"card_id": "player:0:starter:reconnaissance:0"}),  # 80
+    (0, "place_agent", {"space_id": "arrakeen"}),  # 81
+    (0, "resolve_board_effect", {"effect": "troops"}),  # 82
+    (0, "resolve_board_effect", {"effect": "cards"}),  # 83
+    (0, "finish_agent_turn", {}),  # 84
+    (2, "choose_agent_card", {"card_id": "player:2:starter:seek_allies:0"}),  # 85
+    (2, "place_agent", {"space_id": "secrets"}),  # 86
+    (2, "resolve_board_effect", {"effect": "intrigue"}),  # 87
+    (2, "resolve_faction_influence", {}),  # 88
+    (2, "resolve_agent_card_effect", {}),  # 89
+    (2, "finish_agent_turn", {}),  # 90
+    (3, "reveal_turn", {}),  # 91
+    (3, "finish_reveal", {}),  # 92
+    (0, "reveal_turn", {}),  # 93
+    (0, "finish_reveal", {}),  # 94
+    (2, "reveal_turn", {}),  # 95
+    (2, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 96
+    (2, "finish_reveal", {}),  # 97
+    (3, "play_intrigue", {"card_id": "intrigue:master_tactician:2", "option": 1}),  # 98
+    (3, "retreat_intrigue_troops", {"count": 1}),  # 99
+    (3, "pass_combat_intrigue", {}),  # 100
+    (3, "resolve_combat_reward_icon", {"effect": "victory_points"}),  # 101
+    (3, "resolve_combat_reward_icon", {"effect": "control"}),  # 102
+    (3, "resolve_combat_reward_icon", {"effect": "winning_intrigue"}),  # 103
+    (0, "choose_agent_card", {"card_id": "imperium:guild_administrator:1"}),  # 104
+    (0, "place_agent", {"space_id": "smuggling"}),  # 105
+    (0, "trash_agent_card", {"card_id": "player:0:starter:dagger:0"}),  # 106
+    (0, "advance_board_freighter", {}),  # 107
+    (0, "resolve_board_effect", {"effect": "resources"}),  # 108
+    (0, "finish_agent_turn", {}),  # 109
+    (1, "reveal_turn", {}),  # 110
+    (1, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 111
     (
         1,
         "gain_reveal_resources",
@@ -329,88 +396,86 @@ IX_PLAN: list[Step] = [
             "spice": 0,
             "water": 0,
         },
-    ),  # 100
-    (1, "finish_reveal", {}),  # 101
-    (2, "reveal_turn", {}),  # 102
-    (2, "finish_reveal", {}),  # 103
-    (3, "choose_agent_card", {"card_id": "player:3:starter:dagger:0"}),  # 104
-    (3, "place_agent", {"space_id": "tech_negotiation"}),  # 105
-    (3, "place_board_negotiator", {}),  # 106
-    (3, "finish_agent_turn", {}),  # 107
-    (0, "reveal_turn", {}),  # 108
-    (0, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 109
-    (0, "finish_reveal", {}),  # 110
+    ),  # 112
+    (1, "finish_reveal", {}),  # 113
+    (2, "reveal_turn", {}),  # 114
+    (2, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 115
+    (2, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 116
+    (2, "finish_reveal", {}),  # 117
     (
         3,
         "choose_agent_card",
         {"card_id": "player:3:starter:dune_the_desert_planet:1"},
-    ),  # 111
-    (3, "place_agent", {"space_id": "imperial_basin"}),  # 112
-    (3, "deploy_troops", {"count": 1}),  # 113
-    (3, "deploy_troops", {"count": 1}),  # 114
-    (3, "harvest_maker_spice", {"space_id": "imperial_basin"}),  # 115
-    (3, "finish_agent_turn", {}),  # 116
-    (3, "reveal_turn", {}),  # 117
-    (3, "finish_reveal", {}),  # 118
-    (3, "pass_combat_intrigue", {}),  # 119
-    (3, "resolve_combat_reward_icon", {"effect": "resources"}),  # 120
-    (3, "resolve_combat_reward_icon", {"effect": "winning_intrigue"}),  # 121
-    (1, "choose_agent_card", {"card_id": "player:1:starter:dagger:1"}),  # 122
-    (1, "place_agent", {"space_id": "tech_negotiation"}),  # 123
-    (1, "place_board_negotiator", {}),  # 124
-    (1, "finish_agent_turn", {}),  # 125
-    (2, "choose_agent_card", {"card_id": "reserve:arrakis_liaison:7"}),  # 126
-    (2, "place_agent", {"space_id": "imperium_high_council"}),  # 127
-    (2, "resolve_board_effect", {"effect": "high_council"}),  # 128
-    (2, "finish_agent_turn", {}),  # 129
-    (3, "reveal_turn", {}),  # 130
-    (3, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 131
-    (3, "finish_reveal", {}),  # 132
-    (0, "choose_agent_card", {"card_id": "player:0:starter:seek_allies:0"}),  # 133
-    (0, "place_agent", {"space_id": "stillsuits"}),  # 134
-    (0, "resolve_agent_card_effect", {}),  # 135
-    (0, "resolve_board_effect", {"effect": "resources"}),  # 136
-    (0, "resolve_faction_influence", {}),  # 137
-    (0, "finish_agent_turn", {}),  # 138
-    (1, "reveal_turn", {}),  # 139
-    (1, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 140
-    (1, "finish_reveal", {}),  # 141
-    (2, "choose_agent_card", {"card_id": "player:2:starter:seek_allies:0"}),  # 142
-    (2, "place_agent", {"space_id": "secrets"}),  # 143
-    (2, "resolve_board_effect", {"effect": "intrigue"}),  # 144
-    (2, "resolve_agent_card_effect", {}),  # 145
-    (2, "resolve_faction_influence", {}),  # 146
-    (2, "play_intrigue", {"card_id": "intrigue:finesse:0", "option": 0}),  # 147
-    (2, "choose_intrigue_faction", {"faction": "fremen"}),  # 148
-    (2, "choose_intrigue_faction", {"faction": "bene_gesserit"}),  # 149
-    (2, "finish_agent_turn", {}),  # 150
-    (0, "reveal_turn", {}),  # 151
-    (0, "finish_reveal", {}),  # 152
-    (2, "reveal_turn", {}),  # 153
-    (2, "acquire_imperium", {"instance_id": "imperium:liet_kynes_card:0"}),  # 154
-    (2, "finish_reveal", {}),  # 155
-    (2, "choose_agent_card", {"card_id": "player:2:starter:signet_ring:0"}),  # 156
-    (2, "place_agent", {"space_id": "imperial_basin"}),  # 157
-    (2, "resolve_agent_card_effect", {}),  # 158
-    (2, "deploy_troops", {"count": 2}),  # 159
-    (2, "harvest_maker_spice", {"space_id": "imperial_basin"}),  # 160
-    (2, "finish_agent_turn", {}),  # 161
-    (3, "choose_agent_card", {"card_id": "player:3:starter:reconnaissance:0"}),  # 162
-    (3, "place_agent", {"space_id": "arrakeen"}),  # 163
-    (3, "resolve_board_effect", {"effect": "troops"}),  # 164
-    (3, "resolve_board_effect", {"effect": "cards"}),  # 165
-    (3, "deploy_troops", {"count": 1}),  # 166
-    (3, "finish_agent_turn", {}),  # 167
-    (0, "choose_agent_card", {"card_id": "player:0:starter:diplomacy:0"}),  # 168
-    (0, "place_agent", {"space_id": "stillsuits"}),  # 169
-    (0, "resolve_board_effect", {"effect": "resources"}),  # 170
-    (0, "resolve_faction_influence", {}),  # 171
-    (0, "finish_agent_turn", {}),  # 172
-    (1, "reveal_turn", {}),  # 173
-    (1, "finish_reveal", {}),  # 174
-    (2, "choose_agent_card", {"card_id": "player:2:starter:dagger:1"}),  # 175
-    (2, "place_agent", {"space_id": "tech_negotiation"}),  # 176
-    (2, "acquire_negotiation_tech", {}),  # 177
+    ),  # 118
+    (3, "place_agent", {"space_id": "imperium_hagga_basin"}),  # 119
+    (3, "deploy_troops", {"count": 1}),  # 120
+    (3, "harvest_maker_spice", {"space_id": "imperium_hagga_basin"}),  # 121
+    (3, "finish_agent_turn", {}),  # 122
+    (0, "choose_agent_card", {"card_id": "player:0:starter:seek_allies:0"}),  # 123
+    (0, "place_agent", {"space_id": "foldspace"}),  # 124
+    (0, "resolve_board_effect", {"effect": "foldspace"}),  # 125
+    (0, "resolve_agent_card_effect", {}),  # 126
+    (0, "resolve_faction_influence", {}),  # 127
+    (0, "finish_agent_turn", {}),  # 128
+    (3, "choose_agent_card", {"card_id": "player:3:starter:seek_allies:0"}),  # 129
+    (3, "place_agent", {"space_id": "stillsuits"}),  # 130
+    (3, "resolve_agent_card_effect", {}),  # 131
+    (3, "resolve_faction_influence", {}),  # 132
+    (3, "resolve_board_effect", {"effect": "resources"}),  # 133
+    (3, "finish_agent_turn", {}),  # 134
+    (0, "reveal_turn", {}),  # 135
+    (0, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 136
+    (0, "finish_reveal", {}),  # 137
+    (3, "reveal_turn", {}),  # 138
+    (3, "finish_reveal", {}),  # 139
+    (3, "pass_combat_intrigue", {}),  # 140
+    (3, "resolve_combat_reward_icon", {"effect": "resources"}),  # 141
+    (3, "resolve_combat_reward_icon", {"effect": "winning_intrigue"}),  # 142
+    (1, "reveal_turn", {}),  # 143
+    (1, "acquire_imperium", {"instance_id": "imperium:liet_kynes_card:0"}),  # 144
+    (1, "finish_reveal", {}),  # 145
+    (2, "choose_agent_card", {"card_id": "reserve:arrakis_liaison:7"}),  # 146
+    (2, "place_agent", {"space_id": "carthag"}),  # 147
+    (2, "resolve_board_effect", {"effect": "intrigue"}),  # 148
+    (2, "deploy_troops", {"count": 1}),  # 149
+    (2, "resolve_board_effect", {"effect": "troops"}),  # 150
+    (2, "finish_agent_turn", {}),  # 151
+    (3, "choose_agent_card", {"card_id": "player:3:starter:diplomacy:0"}),  # 152
+    (3, "place_agent", {"space_id": "foldspace"}),  # 153
+    (3, "resolve_board_effect", {"effect": "foldspace"}),  # 154
+    (3, "resolve_faction_influence", {}),  # 155
+    (3, "finish_agent_turn", {}),  # 156
+    (
+        0,
+        "choose_agent_card",
+        {"card_id": "player:0:starter:dune_the_desert_planet:1"},
+    ),  # 157
+    (0, "place_agent", {"space_id": "smuggling"}),  # 158
+    (0, "recall_board_freighter", {}),  # 159
+    (0, "resolve_board_effect", {"effect": "resources"}),  # 160
+    (0, "resolve_shipping_reward", {"effect": "dividends"}),  # 161
+    (0, "finish_agent_turn", {}),  # 162
+    (2, "choose_agent_card", {"card_id": "reserve:arrakis_liaison:5"}),  # 163
+    (2, "place_agent", {"space_id": "imperium_research_station"}),  # 164
+    (2, "resolve_board_effect", {"effect": "cards"}),  # 165
+    (2, "resolve_board_effect", {"effect": "cards"}),  # 166
+    (2, "deploy_troops", {"count": 2}),  # 167
+    (2, "resolve_board_effect", {"effect": "cards"}),  # 168
+    (2, "withdraw_troops", {"count": 1}),  # 169
+    (2, "finish_agent_turn", {}),  # 170
+    (3, "choose_agent_card", {"card_id": "player:3:starter:signet_ring:0"}),  # 171
+    (3, "place_agent", {"space_id": "imperial_basin"}),  # 172
+    (3, "harvest_maker_spice", {"space_id": "imperial_basin"}),  # 173
+    (3, "pay_leader_signet_solari", {}),  # 174
+    (3, "play_intrigue", {"card_id": "intrigue:double_cross:0", "option": 0}),  # 175
+    (3, "choose_opponent_troop_loss", {"player": 2}),  # 176
+    (2, "lose_unit", {"zone": "conflict"}),  # 177
+    (3, "finish_agent_turn", {}),  # 178
+    (0, "choose_agent_card", {"card_id": "player:0:starter:signet_ring:0"}),  # 179
+    (0, "place_agent", {"space_id": "dreadnought"}),  # 180
+    (0, "resolve_agent_card_effect", {}),  # 181
+    (0, "commission_board_dreadnought", {}),  # 182
+    (0, "acquire_board_tech", {}),  # 183
 ]
 
 # (seat, action id, arguments), in order; the number after each is its index.
@@ -547,6 +612,61 @@ CEREMONY_PLAN: list[Step] = [
     (1, "resolve_board_effect", {"effect": "intrigue"}),  # 90
 ]
 
+# (seat, action id, arguments), in order; the number after each is its index.
+LEADERS_PLAN: list[Step] = [
+    # Found on the engine as merged with P4 c8a44cfd (seed 4, answer stream 4).
+    # The draft: seat 1 Hundro, seat 0 Ilesa, seat 3 Paul, seat 2 Helena.
+    (1, "pick_leader", {"leader_id": "viscount_hundro_moritani"}),  # 0
+    (0, "pick_leader", {"leader_id": "ilesa_ecaz"}),  # 1
+    (3, "pick_leader", {"leader_id": "paul_atreides"}),  # 2
+    (2, "pick_leader", {"leader_id": "helena_richese"}),  # 3
+    (2, "finish_leader_draft", {}),  # 4
+    # Hundro's Intelligence (checkpoint 5: he sees the top two); he keeps Know
+    # Their Ways
+    (1, "keep_peeked_intrigue", {"instance_id": "intrigue:know_their_ways:0"}),  # 5
+    # and Charisma goes back on top; Ilesa sets a card aside (checkpoint 7).
+    (
+        0,
+        "set_aside_leader_card",
+        {"card_id": "player:0:starter:dune_the_desert_planet:1"},
+    ),  # 6
+    # Round 1: seat 2, seat 3, Ilesa's first turn, seat 1 (it plays Know Their
+    # Ways), seat 2;
+    (2, "choose_agent_card", {"card_id": "player:2:starter:reconnaissance:0"}),  # 7
+    (2, "place_agent", {"space_id": "arrakeen"}),  # 8
+    (2, "deploy_troops", {"count": 2}),  # 9
+    (2, "withdraw_troops", {"count": 1}),  # 10
+    (2, "resolve_board_effect", {"effect": "troops"}),  # 11
+    (2, "deploy_troops", {"count": 1}),  # 12
+    (2, "withdraw_troops", {"count": 1}),  # 13
+    (2, "deploy_troops", {"count": 2}),  # 14
+    (2, "withdraw_troops", {"count": 1}),  # 15
+    (2, "resolve_board_effect", {"effect": "cards"}),  # 16
+    (2, "withdraw_troops", {"count": 1}),  # 17
+    (2, "deploy_troops", {"count": 2}),  # 18
+    (2, "finish_agent_turn", {}),  # 19
+    (3, "reveal_turn", {}),  # 20
+    (3, "acquire_imperium", {"instance_id": "imperium:guild_administrator:1"}),  # 21
+    (3, "finish_reveal", {}),  # 22
+    (0, "choose_agent_card", {"card_id": "player:0:starter:dagger:1"}),  # 23
+    (0, "place_agent", {"space_id": "tech_negotiation"}),  # 24
+    (0, "finish_agent_turn", {}),  # 25
+    (1, "reveal_turn", {}),  # 26
+    (1, "acquire_imperium", {"instance_id": "imperium:spice_smugglers:1"}),  # 27
+    (1, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 28
+    (1, "play_intrigue", {"card_id": "intrigue:know_their_ways:0", "option": 0}),  # 29
+    (1, "finish_reveal", {}),  # 30
+    (2, "choose_agent_card", {"card_id": "player:2:starter:signet_ring:0"}),  # 31
+    (2, "place_agent", {"space_id": "imperial_basin"}),  # 32
+    (2, "set_aside_leader_imperium", {"instance_id": "imperium:fremen_camp:0"}),  # 33
+    (2, "deploy_troops", {"count": 1}),  # 34
+    (2, "withdraw_troops", {"count": 1}),  # 35
+    (2, "harvest_maker_spice", {"space_id": "imperial_basin"}),  # 36
+    # seat 2's turn ends and Ilesa's second turn starts: her card comes back
+    # (checkpoint 38).
+    (2, "finish_agent_turn", {}),  # 37
+]
+
 EMPTY_PENDING = {
     "shipping_rewards": [],
     "tech_discount": 0,
@@ -559,10 +679,17 @@ EMPTY_PRIVATE = {
     "known_intrigue_bottom": [],
     "known_intrigue_held": [],
     "peeked_intrigue_ids": [],
+    "set_aside_card_id": "",
 }
-TECH_PENDING = {
+DISCOUNT_PENDING = {
     "shipping_rewards": [],
     "tech_discount": 1,
+    "tech_payment": "spice",
+    "negotiators_returnable": 0,
+}
+NEGOTIATOR_PENDING = {
+    "shipping_rewards": [],
+    "tech_discount": 0,
     "tech_payment": "spice",
     "negotiators_returnable": 1,
 }
@@ -572,17 +699,30 @@ KNOWN_BOTTOM = [[0, SECRET_CARD]]
 PEEKED = ["intrigue:gruesome_sacrifice:1", "intrigue:imperium_politics:0"]
 KEPT = "intrigue:gruesome_sacrifice:1"
 TOP_CARD = "intrigue:imperium_politics:0"
+HUNDRO_PEEKED = ["intrigue:know_their_ways:0", "intrigue:charisma:0"]
+HUNDRO_KEPT = "intrigue:know_their_ways:0"
+HUNDRO_TOP = "intrigue:charisma:0"
+# The top card of a 55-card deck is 54 above the bottom one (as table 2's).
+HUNDRO_KNOWS = {
+    "known_intrigue_top": HUNDRO_TOP,
+    "known_intrigue_bottom": [[54, HUNDRO_TOP]],
+}
+SET_ASIDE = "player:0:starter:dune_the_desert_planet:1"
 
 IX_TABLE = Table(
     "original + Rise of Ix",
     IX_BODY,
     IX_PLAN,
     {
+        25: Checkpoint(
+            "Acquire Tech open for seat 2 (Tech Negotiation, Tech Discount 1, spice)",
+            {2: {"ix_pending": DISCOUNT_PENDING}},
+        ),
         29: Checkpoint(
             "seat 2 put an Intrigue card at the deck's bottom (Sonic Snoopers)",
             {2: {"known_intrigue_bottom": KNOWN_BOTTOM}},
         ),
-        95: Checkpoint(
+        160: Checkpoint(
             "seat 0 recalled its Freighter from step 1: the step-1 reward is"
             " owed (seat 2 still knows its bottom card)",
             {
@@ -590,14 +730,17 @@ IX_TABLE = Table(
                 2: {"known_intrigue_bottom": KNOWN_BOTTOM},
             },
         ),
-        178: Checkpoint(
-            "Acquire Tech open for seat 2 (Tech Negotiation, Tech Discount 1,"
-            " spice, one Negotiator returnable; it still knows its bottom card)",
-            {2: {"ix_pending": TECH_PENDING, "known_intrigue_bottom": KNOWN_BOTTOM}},
+        184: Checkpoint(
+            "Acquire Tech open for seat 0 (the Dreadnought space, spice, one"
+            " Negotiator returnable; seat 2 still knows its bottom card)",
+            {
+                0: {"ix_pending": NEGOTIATOR_PENDING},
+                2: {"known_intrigue_bottom": KNOWN_BOTTOM},
+            },
         ),
     },
     # Seat 2 knows its bottom card; it ends its turn (30) and seat 3 reveals (31).
-    Handover(shown=29, owner=2, passed=31, viewer=3),
+    (Handover(shown=29, owner=2, passed=31, viewer=3),),
 )
 CEREMONY_TABLE = Table(
     "Uprising + Immortality",
@@ -631,10 +774,58 @@ CEREMONY_TABLE = Table(
     },
     # Seat 0 knows the top card and holds the other; it ends its turn (86) and
     # seat 1 sends an Agent (87).
-    Handover(shown=84, owner=0, passed=87, viewer=1),
+    (Handover(shown=84, owner=0, passed=87, viewer=1),),
+)
+LEADERS_TABLE = Table(
+    "original + Rise of Ix, Hundro and Ilesa",
+    LEADERS_BODY,
+    LEADERS_PLAN,
+    {
+        5: Checkpoint(
+            "Hundro's Intelligence: he sees the Intrigue deck's top two cards while"
+            " he keeps one",
+            {1: {"peeked_intrigue_ids": HUNDRO_PEEKED}},
+        ),
+        6: Checkpoint(
+            "Hundro kept one and put the other back on top: he knows the top card;"
+            " Ilesa is to set a card aside",
+            {1: HUNDRO_KNOWS},
+            {1: [HUNDRO_KEPT]},
+            sealed=[("keep_peeked_intrigue", "instance_id", HUNDRO_KEPT)],
+        ),
+        7: Checkpoint(
+            "Ilesa set a card aside (her turn end held): hers alone, the table"
+            " sees one card aside and (비공개) in the log",
+            {0: {"set_aside_card_id": SET_ASIDE}, 1: HUNDRO_KNOWS},
+            {1: [HUNDRO_KEPT]},
+            held=0,
+            aside={0: "aside"},
+            sealed=[
+                ("keep_peeked_intrigue", "instance_id", HUNDRO_KEPT),
+                ("set_aside_leader_card", "card_id", SET_ASIDE),
+            ],
+        ),
+        # Hundro played Know Their Ways in his Reveal turn (29): public since.
+        38: Checkpoint(
+            "Ilesa's second turn starts: her card is back in her hand, public;"
+            " Hundro still knows the top card",
+            {1: HUNDRO_KNOWS},
+            public=[SET_ASIDE],
+            aside={0: "returned"},
+            sealed=[("set_aside_leader_card", "card_id", SET_ASIDE)],
+        ),
+    },
+    (
+        # Hundro picks (5 -> 6) and Ilesa decides at once (the pick opens the
+        # round, a reveal, so no turn end is held); Ilesa's set-aside holds her
+        # turn end (7), and once it is pressed seat 2, the first player, acts.
+        Handover(shown=5, owner=1, passed=6, viewer=0),
+        Handover(shown=7, owner=0, passed=7, viewer=2),
+    ),
 )
 
 SECRET_KEYS = (
+    "set_aside_card_id",
     "ix_pending",
     "shipping_rewards",
     "tech_payment",
@@ -707,13 +898,31 @@ WORDS_JS = """(args) => {
     top: t("board.known_intrigue_top", {card: name(args.top)}),
     topHead: head("board.known_intrigue_top", {card: mark}),
     peeked: args.peeked.map(name),
+    setAsideOwn: t("panels.set_aside_own", {card: name(args.setAside)}),
+    setAsideOwnHead: head("panels.set_aside_own", {card: mark}),
+    setAsideHidden: t("panels.set_aside_hidden"),
+    setAsideReturned: t("panels.set_aside_returned"),
   };
 }"""
 
+# The heads of the lines a seat's own hidden fields draw: none may be on a page
+# that does not show that seat.
+HEADS = (
+    "shippingHead",
+    "techHead",
+    "heldHead",
+    "bottomHead",
+    "topHead",
+    "setAsideOwnHead",
+)
+
 
 # Each tracked card's marks: its id, its English and Korean names and the
-# paths of its English and Korean pictures (the catalog's own entry).
+# paths of its English and Korean pictures (the catalog's own entry). A tracked
+# Imperium card (Ilesa's set-aside one) is a starter card, whose name and
+# picture every seat's own starter cards share: its id alone marks it.
 MARKS_JS = """(ids) => ids.map((id) => {
+  if (!id.startsWith("intrigue:")) return [id];
   const entry = state.catalog.intrigue[baseId(id)];
   const path = (url) => (url ? url.split("?")[0] : null);
   return [id, entry.name, entry.name_ko || null, path(entry.image),
@@ -811,16 +1020,25 @@ def may_carry(point: Checkpoint) -> dict[int, set[str]]:
             card for _depth, card in fields.get("known_intrigue_bottom", [])
         )
         may[seat].update(fields.get("peeked_intrigue_ids", []))
+        if fields.get("set_aside_card_id"):
+            may[seat].add(fields["set_aside_card_id"])
         for holder, card in fields.get("known_intrigue_held", []):
             may[seat].add(card)
             may[holder].add(card)
     for seat, cards in point.hands.items():
         may[seat].update(cards)
+    for cards in may.values():
+        cards.update(point.public)
     return may
 
 
 def tracked_cards(point: Checkpoint) -> list[str]:
     return sorted({card for cards in may_carry(point).values() for card in cards})
+
+
+def hidden_cards(point: Checkpoint) -> list[str]:
+    """The tracked cards some seat may not know (not the public ones)."""
+    return [card for card in tracked_cards(point) if card not in point.public]
 
 
 def shown_bottom(mine: dict[str, Any]) -> list[list[Any]]:
@@ -844,7 +1062,21 @@ def word_args(mine: dict[str, Any]) -> dict[str, Any]:
         "top": mine.get("known_intrigue_top", ""),
         "held": [card for _holder, card in mine.get("known_intrigue_held", [])],
         "peeked": mine.get("peeked_intrigue_ids", []),
+        "setAside": mine.get("set_aside_card_id", ""),
     }
+
+
+def drawn_lines(mine: dict[str, Any], words: dict[str, Any]) -> list[str]:
+    """Every line a page draws for its own seat's hidden fields ``mine``."""
+    pending = mine.get("ix_pending", EMPTY_PENDING)
+    return [
+        *([words["shipping"]] if pending["shipping_rewards"] else []),
+        *([words["tech"]] if pending["tech_payment"] else []),
+        *(line for _kind, line in known_lines(mine, words)),
+        *([words["held"]] if mine.get("known_intrigue_held") else []),
+        *words["peeked"],
+        *([words["setAsideOwn"]] if mine.get("set_aside_card_id") else []),
+    ]
 
 
 def known_lines(mine: dict[str, Any], words: dict[str, Any]) -> list[list[str]]:
@@ -979,6 +1211,20 @@ def check_views(
             f" picture of {unknown or 'a card'} it may not know",
             named,
         )
+        for action_id, key, value in point.sealed:
+            entries = [
+                entry
+                for entry in data["log"]["entries"]
+                if entry.get("action_id") == action_id and not entry.get("undone")
+            ]
+            mine = len(entries) == 1 and entries[0]["actor"] == seat
+            check.ok(
+                len(entries) == 1
+                and entries[0]["arguments"].get(key) == (value if mine else "(비공개)"),
+                f"{label}: seat {seat}'s log shows {action_id}'s {key} as "
+                + (value if mine else "(비공개)"),
+                [entry["arguments"] for entry in entries],
+            )
     answers = {
         "summary": api(spectator, "GET", f"/games/{game_id}"),
         "seatless": api(spectator, "GET", f"/games/{game_id}/snapshot"),
@@ -989,7 +1235,7 @@ def check_views(
     # has finished; what it says when it opens is looked at all the same.
     data = {name: body for name, (status, body) in answers.items() if status == 200}
     text = json.dumps(data, ensure_ascii=False)
-    named = marks_found(spectator, secrets, text)
+    named = marks_found(spectator, hidden_cards(point), text)
     check.ok(
         statuses["summary"] == statuses["seatless"] == 200
         and statuses["ledger"] in (200, 403)
@@ -1007,7 +1253,10 @@ def check_views(
     }
     # Every seat with a hidden value (a pending Ix choice alone counts) or a
     # hidden card.
-    owners = sorted(set(point.private) | {seat for seat, cards in may.items() if cards})
+    owners = sorted(
+        set(point.private)
+        | {seat for seat, cards in may.items() if cards - set(point.public)}
+    )
     refused: list[str] = []
     for owner in owners:
         for name, page in readers.items():
@@ -1149,6 +1398,34 @@ def check_pages(
             f" {unknown or 'a card'} it may not know",
             leaks,
         )
+        # Ilesa's set-aside, on every seat panel of this page: her own line on
+        # her own page, "one card set aside" on the others, "came back this
+        # turn" on all once it is back; nothing on any other panel.
+        wrong = []
+        for holder in range(4):
+            panel = shown["panels"][str(holder)]
+            flag = point.aside.get(holder)
+            want = {
+                "setAsideOwnHead": flag == "aside" and holder == seat,
+                "setAsideHidden": flag == "aside" and holder != seat,
+                "setAsideReturned": flag == "returned",
+            }
+            wrong += [
+                f"seat {holder}'s panel: {key} {'missing' if expected else 'shown'}"
+                for key, expected in want.items()
+                if (words[key] in panel) != expected
+            ]
+        if flag_own := (point.aside.get(seat) == "aside"):
+            if words["setAsideOwn"] not in own_panel:
+                wrong.append(f"own panel lacks {words['setAsideOwn']}")
+        check.ok(
+            not wrong,
+            f"{tag}: seat {seat}'s page shows the set-aside flags"
+            + (f" {point.aside}" if point.aside else ": none")
+            + (" with its own card" if flag_own else ""),
+            wrong,
+        )
+    hidden = hidden_cards(point)
     shown = spectator.evaluate(PAGE_JS)
     words = spectator.evaluate(
         WORDS_JS,
@@ -1162,48 +1439,38 @@ def check_pages(
             "top": TOP_CARD,
             "held": [TOP_CARD],
             "peeked": [],
+            "setAside": "",
         },
     )
-    lines = [
-        words[key]
-        for key in ("shippingHead", "techHead", "heldHead", "bottomHead", "topHead")
-    ]
+    lines = [words[key] for key in HEADS]
     check.ok(
         shown["mine"] == []
         and shown["viewer"] is None
         and shown["known"] == []
         and shown["pending"] is None
         and not any(line in shown["body"] for line in lines)
-        and not any(card in shown["stateText"] for card in secrets),
+        and not any(card in shown["stateText"] for card in hidden),
         f"{tag}: the spectator's page holds no view, shows none of the lines and"
-        " holds no tracked card",
+        " holds no hidden tracked card",
         {key: shown[key] for key in ("mine", "viewer", "known", "pending")},
     )
-    leaks = document_leaks(spectator, secrets, shown["stateText"])
+    leaks = document_leaks(spectator, hidden, shown["stateText"])
     check.ok(
         not leaks,
-        f"{tag}: the spectator's document holds no id, name or picture of {secrets}",
+        f"{tag}: the spectator's document holds no id, name or picture of {hidden}",
         leaks,
     )
 
 
 def hand_over(base: str, browser, table: Table) -> None:
     """The hot-seat table: on an open server one page plays every seat and
-    shows whichever must act (``session.js`` ``pickViewSeat``). It shows the
-    owner and draws its hidden line; once the owner's turn is over (its
-    turn-end press, when one is held) it shows the next seat, and must hold
-    none of the owner's lines or cards."""
-    handover = table.handover
-    point = table.checkpoints[handover.shown]
-    secrets = tracked_cards(point)
-    unknown = [
-        card for card in secrets if card not in may_carry(point)[handover.viewer]
-    ]
-    mine = point.private[handover.owner]
-    print(
-        f"[{table.name}: hot seat] seat {handover.owner}'s line, then seat"
-        f" {handover.viewer} on the same page"
-    )
+    shows whichever must act (``session.js`` ``pickViewSeat``). At each of the
+    table's hand-overs it shows the owner and draws its hidden lines; once the
+    owner's turn is over (its turn-end press, when one is held) it shows the
+    next seat, which holds nothing hidden of its own then, and must hold none
+    of the owner's lines or cards."""
+    names = ", ".join(f"{h.owner} -> {h.viewer}" for h in table.handovers)
+    print(f"[{table.name}: hot seat] seats {names} on one page")
     context, page, recorder = open_context(browser, "hotseat", VIEWPORT)
     table_page = {"hotseat": (page, recorder)}
     page.goto(f"{base}/")
@@ -1220,24 +1487,67 @@ def hand_over(base: str, browser, table: Table) -> None:
         "the hot-seat page plays all four seats",
     )
     pages = dict.fromkeys(range(4), page)
-    for index in range(handover.passed):
-        take_plan_step(table, pages, game_id, index)
-        if index + 1 != handover.shown:
-            continue
-        check.ok(
-            converge(table_page, game_id, f"hot seat {handover.shown}", timeout=15),
-            "the hot-seat page has caught up to the server",
-        )
-        words = page.evaluate(WORDS_JS, word_args(mine))
-        shown = page.evaluate(PAGE_JS)
-        lines = [line for _kind, line in known_lines(mine, words)]
-        check.ok(
-            shown["viewer"] == handover.owner
-            and [line for _kind, line in shown["known"]] == lines,
-            f"{table.name}: the hot-seat page shows seat {handover.owner} and draws"
-            " its known-Intrigue line",
-            (shown["viewer"], shown["known"], lines),
-        )
+    done = 0
+    for handover in table.handovers:
+        point = table.checkpoints[handover.shown]
+        unknown = [
+            card
+            for card in tracked_cards(point)
+            if card not in may_carry(point)[handover.viewer]
+        ]
+        mine = point.private[handover.owner]
+        while done < handover.passed:
+            take_plan_step(table, pages, game_id, done)
+            done += 1
+            if done != handover.shown:
+                continue
+            check.ok(
+                converge(table_page, game_id, f"hot seat {done}", timeout=15),
+                "the hot-seat page has caught up to the server",
+            )
+            words = page.evaluate(WORDS_JS, word_args(mine))
+            shown = page.evaluate(PAGE_JS)
+            lines = drawn_lines(mine, words)
+            check.ok(
+                shown["viewer"] == handover.owner
+                and bool(lines)
+                and all(line in shown["body"] for line in lines),
+                f"{table.name}: after {done} the hot-seat page shows seat"
+                f" {handover.owner} and draws its hidden lines",
+                (shown["viewer"], lines, shown["body"][:300]),
+            )
+        hand_on(table, page, table_page, game_id, handover)
+        for language in ("ko", "en"):
+            page.evaluate(f"setLanguage('{language}')")
+            settled(page)
+            words = page.evaluate(WORDS_JS, word_args(mine))
+            shown = page.evaluate(PAGE_JS)
+            heads = [words[key] for key in HEADS]
+            check.ok(
+                shown["viewer"] == handover.viewer
+                and shown["known"] == []
+                and not any(head in shown["body"] for head in heads)
+                and not any(card in shown["stateText"] for card in unknown),
+                f"{table.name} [{language}]: the hot-seat page now shows seat"
+                f" {handover.viewer}, with none of seat {handover.owner}'s lines"
+                " and no tracked card in its state",
+                (shown["viewer"], shown["known"]),
+            )
+            leaks = document_leaks(page, unknown, shown["stateText"])
+            check.ok(
+                bool(unknown) and not leaks,
+                f"{table.name} [{language}]: seat {handover.viewer}'s document holds"
+                f" no trace of {unknown}",
+                leaks,
+            )
+        page.evaluate("setLanguage('ko')")
+        settled(page)
+    context.close()
+
+
+def hand_on(table: Table, page, table_page, game_id: str, handover: Handover) -> None:
+    """End the owner's turn (pressing its held turn end, if any): the viewer
+    must decide then, and the page catch up."""
     _, summary = api(page, "GET", f"/games/{game_id}")
     held = summary["confirmation"]
     if held == handover.owner:
@@ -1268,30 +1578,6 @@ def hand_over(base: str, browser, table: Table) -> None:
         + (" (its turn end pressed)" if held == handover.owner else "")
         + f", seat {handover.viewer} decides, and the page catches up",
     )
-    for language in ("ko", "en"):
-        page.evaluate(f"setLanguage('{language}')")
-        settled(page)
-        words = page.evaluate(WORDS_JS, word_args(mine))
-        shown = page.evaluate(PAGE_JS)
-        heads = [words[key] for key in ("bottomHead", "topHead", "heldHead")]
-        check.ok(
-            shown["viewer"] == handover.viewer
-            and shown["known"] == []
-            and not any(head in shown["body"] for head in heads)
-            and not any(card in shown["stateText"] for card in unknown),
-            f"{table.name} [{language}]: the hot-seat page now shows seat"
-            f" {handover.viewer}, with no known-Intrigue line and no tracked card in"
-            " its state",
-            (shown["viewer"], shown["known"]),
-        )
-        leaks = document_leaks(page, unknown, shown["stateText"])
-        check.ok(
-            bool(unknown) and not leaks,
-            f"{table.name} [{language}]: seat {handover.viewer}'s document holds no"
-            f" id, name or picture of {unknown}",
-            leaks,
-        )
-    context.close()
 
 
 def run_checkpoint(
@@ -1307,8 +1593,10 @@ def run_checkpoint(
     print(f"[{table.name}: checkpoint after {done} actions] {point.what}")
     _, summary = api(pages[0], "GET", f"/games/{game_id}")
     check.ok(
-        not isinstance(summary["confirmation"], int),
-        "no turn end waits for a press at the checkpoint",
+        summary["confirmation"] == point.held,
+        "no turn end waits for a press at the checkpoint"
+        if point.held is None
+        else f"seat {point.held}'s turn end is held at the checkpoint",
         summary["confirmation"],
     )
     check.ok(
@@ -1426,10 +1714,13 @@ def play_table(base: str, browser, table: Table) -> None:
         context.close()
 
 
+TABLES = (IX_TABLE, CEREMONY_TABLE, LEADERS_TABLE)
+
+
 def check_original_refuses_immortality(base: str, browser) -> None:
     """The original game takes no Immortality until stage P7, which is why the
     Imperium Ceremony table is an Uprising one."""
-    print("[3] the original game still does not take Immortality (stage P7)")
+    print("[4] the original game still does not take Immortality (stage P7)")
     context, page, _ = open_context(browser, "host", VIEWPORT)
     page.goto(f"{base}/#admin={KEY}")
     wait_for_setup(page)
@@ -1448,24 +1739,26 @@ def main() -> None:
         chrome() as browser,
     ):
         try:
-            for number, table in enumerate((IX_TABLE, CEREMONY_TABLE), start=1):
+            # A table whose plan is missed fails alone; the others still run.
+            for number, table in enumerate(TABLES, start=1):
                 print(f"[{number}] {table.name}")
-                play_table(base, browser, table)
+                try:
+                    play_table(base, browser, table)
+                except PlanMissed as missed:
+                    check.ok(False, f"the pinned plan was missed: {missed}")
             check_original_refuses_immortality(base, browser)
-        except PlanMissed as missed:
-            check.ok(False, f"the pinned plan was missed: {missed}")
         finally:
             shutil.copy(server_log, SERVER_LOG_COPY)
         log_text = server_log.read_text()
         bad = "Traceback" in log_text or "ERROR" in log_text
         check.ok(not bad, f"no server errors (see {SERVER_LOG_COPY})")
-        print("[4] the hot-seat hand-over, on an open server")
+        print("[5] the hot-seat hand-overs, on an open server")
         with server() as (open_base, open_log):
-            try:
-                for table in (IX_TABLE, CEREMONY_TABLE):
+            for table in TABLES:
+                try:
                     hand_over(open_base, browser, table)
-            except PlanMissed as missed:
-                check.ok(False, f"the pinned plan was missed: {missed}")
+                except PlanMissed as missed:
+                    check.ok(False, f"the pinned plan was missed: {missed}")
             log_text = open_log.read_text()
             check.ok(
                 "Traceback" not in log_text and "ERROR" not in log_text,
