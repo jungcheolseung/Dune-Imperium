@@ -496,19 +496,25 @@ P4 브랜치(`51884e8f`)가 지금 가진 결정은 dreadnought 셋(P4b)과 예�
 
 ### 13.4 슬라이스 (12.3과 같은 방식: 클래스 포트 + 창 대응 + 분기·상수를 고정하는 단위 테스트 + census 사유 0 + 같은 수 확인)
 
-| # | 슬라이스 | 내용 |
-|---|---|---|
-| 1 | 틀 | `AppContext.ix`, `Board`의 Ix 칸 넷·덮인 칸 넷, catalog의 Ix 표(카드·책략·Conflict·지도자·Tech 실제 아키타입), 원판 + Ix census(오류 0까지) |
-| 2 | 프로필 | `SetOn(2)` 자리 18곳, `tech.py`의 협상가·supply dreadnought, `get_FreighterValue`·`GetFreighterSelections` |
-| 3 | 유닛 | dreadnought 지배·commission·배치(13.3 첫 세 줄) |
-| 4 | 칸과 Shipping | Ix 칸 6클래스, `FreighterAbility`·`ShippingTrackAbility1/2/3`, `freighter_move`·`shipping_reward_icons` 창 |
-| 5 | Tech | 타일 17클래스, Tech 창을 실제 Ix 타일로, Sonic Snoopers 창 |
-| 6 | Imperium | 48클래스, Unload·Discard·잠입 |
-| 7 | 책략 | 21클래스 |
-| 8 | Conflict | 9클래스 |
-| 9 | 지도자 | 20클래스, `round_start_set_aside`·`optional_discard`, Tessia·Hundro의 setup |
-| 10 | 마무리 | 세 난이도 census 0, Uprising·원판 같은 수, 원판 + Ix soak, Hard 대 heuristic 측정, 문서·P5 알림 |
+| # | 슬라이스 | 내용 | 상태 |
+|---|---|---|---|
+| 1 | 틀 | `AppContext.ix`, `Board`의 Ix 칸 넷·덮인 칸 넷, catalog의 Ix 표(카드·책략·Conflict·지도자·Tech 실제 아키타입), 원판 + Ix census(오류 0까지) | 완료 `0afb1705` |
+| 2 | 프로필 | `SetOn(2)` 자리 18곳, `tech.py`의 협상가·supply dreadnought, `get_FreighterValue`·`GetFreighterSelections` | Freighter·협상가·dreadnought 완료 `f94e850b`; Tech 항은 Codex(`codex-p6ix-tech`) |
+| 3 | 유닛 | dreadnought 지배·commission·배치(13.3 첫 세 줄) | 완료 `318b7c13`(`GetUnitsToDeploy`의 강한 유닛 먼저·Baron 교체·Diversion, `DeployValue` Ix 항), `3880c3e3`(지배) |
+| 4 | 칸과 Shipping | Ix 칸 6클래스, `FreighterAbility`·`ShippingTrackAbility1/2/3`, `freighter_move`·`shipping_reward_icons` 창 | 완료 `f94e850b`, `de9ffbed`; Tech 획득 창(할인별 앱 클래스, 협상가 먼저) `3880c3e3` |
+| 5 | Tech | 타일 17클래스, Tech 창을 실제 Ix 타일로, Sonic Snoopers 창 | 클래스: Codex(`codex-p6ix-tech`, 10-30 01:58 재실행); 창은 그 뒤 |
+| 6 | Imperium | 48클래스, Unload·Discard·잠입 | 클래스: Codex(`codex-p6ix-imperium`, 46); 창은 그 뒤 |
+| 7 | 책략 | 21클래스 | 클래스: Codex(`codex-p6ix-intrigue`); 창은 그 뒤 |
+| 8 | Conflict | 9클래스 | 완료 `c2838e5d` |
+| 9 | 지도자 | 20클래스, `round_start_set_aside`·`optional_discard`, Tessia·Hundro의 setup | P4e(지도자 후보) 뒤 |
+| 10 | 마무리 | 세 난이도 census 0, Uprising·원판 같은 수, 원판 + Ix soak, Hard 대 heuristic 측정, 문서·P5 알림 | 같은 수는 조각마다 확인(24판) |
 
+- 진행(2026-10-29 밤, 브랜치 `claude/base-ix-p6-ix` = P4 `7a0c50e4` + P6 브랜치 `e7af766f` 병합, 그 뒤 P4 `87581ad9`를 따라
+  병합): 원판 + Ix Hard 10판 census에서 남은 무작위는 Tech 타일 자체의 줄과 P4d가 덱에 넣기 시작한 Ix 카드뿐이다. Ix 클래스
+  디컴파일(127클래스·3,406함수와 프로필 함수 7)은 assets `ghidra/p6ix/`(색인 `targets-named.tsv`, `targets2-named.tsv`).
+- 같은 브랜치에서 고친 Uprising 건(대규모 소크 2026-10-29의 쉬움 무작위 6번, `b8eb54a4`): Possible Futures 상자가 영향력 고르기
+  없이 나올 때, Sardaukar II 회수에 Into the Fray의 Conflict Agent가 있을 때(bloodlines-systems §8 D55와 같이 마지막 후보).
+- Codex 몫(클래스 + 단위 테스트만, 창 연결은 이 세션): Tech 17, Imperium 46, 책략 21. 지시문은 `tmp/coordination/codex-p6ix-*.md`.
 - agent: 원판 이식은 Sonnet 셋이 약 1.7M 토큰(Conflict 662k, 책략 + 지도자 119k, Imperium 955k)을 썼다. Ix 6~9는 크기가 비슷해
   둘이면 약 1.5M로 본다. 띄우기 전에 조정 세션을 거쳐 사용자 승인을 받는다(동시 상한은 승인이 아니다).
 - P4와 병합: P4는 `6352199d`(P6 병합 전)에서 땄고 `windows/turn.py`의 `_after_send`(dreadnought가 칸의 controller, `space_controller`)를
