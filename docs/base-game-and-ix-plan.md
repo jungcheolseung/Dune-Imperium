@@ -1271,8 +1271,9 @@ Interstellar Shipping의 Spacing Guild 2 — 효과 기록은 P4b·c)을 by-id �
 없다; `voice_blocks_ix`는 어휘로 색인하고 열은 그대로) → 10,189 → 10,297열, 155구간. FrameKind 다섯을 끝에 예약했다(`frames.IX_FRAME_KINDS`,
 엔진 경로 없음): `freighter_move`(차례 밖 Freighter 아이콘의 답 — Conflict 보상 창의 선택 아이콘처럼), `shipping_reward_icons`(차례 밖 회수 보상,
 `contract_reward_icons`처럼), `dreadnought_control_choice`(승자의 지배 칸 또는 Detonation), `round_start_set_aside`(Ilesa), `unload_icons`(차례
-밖 Unload의 Reveal box). 재사용: Acquire Tech·협상가 반환은 `tech_acquisition`, Hundro의 Intelligence는 `intrigue_peek`(Imperium Ceremony와 같은
-결정), 나머지(Duplicity, 협상가, Tech Negotiation 칸, commission·배치, Discard 비용, 뒤집기)는 차례의 줄. 움직인 고정값: slot 키 1,957 → 2,018
+밖 Unload의 Reveal box). 조정자 go로 둘을 더해 일곱(`5bbb196d`): `optional_discard`(차례 밖의 선택 "버리기 →" 비용 — Conflict
+보상의 Influence로 닿은 Tessia의 첫 Snooper 보상, `optional_trash`의 버리기 짝), `intrigue_bottom_pick`(Sonic Snoopers의 "몇 장이든" Intrigue를
+고른 순서로 덱 맨 아래에 — `long_live_fighters`처럼 따로 고르는 창; Court Intrigue는 한 장이라 줄 하나의 대상). 재사용: Acquire Tech·협상가 반환은 `tech_acquisition`, Hundro의 Intelligence는 `intrigue_peek`(Imperium Ceremony와 같은
+결정), 나머지(Duplicity, 협상가, Tech Negotiation 칸, commission·배치, 차례 안의 Discard 비용, 뒤집기)는 차례의 줄. 움직인 고정값: slot 키 1,957 → 2,020
 (옛 키 순서 그대로), 엔티티 특성(+22 개체, tech 열 2개 — water·distinct; 옛 589행 차이 0), `test_teacher`의 teacher seed 1 → 2. v38 열의 골든
-digest·고정 두 판, 카탈로그 288개, 상태 해시 6판은 그대로. 예약하지 않고 남긴 것: Tessia의 Snooper ①(버리기 → spice)이 차례 밖(Conflict 보상의
-Influence)에서 열릴 때의 창, Sonic Snoopers의 "몇 장이든" 맨 아래 놓기의 결정 단위 — P4e·P4c 설계 때 정하고, 새 kind가 필요하면 그때 묻는다(17.1).
+digest·고정 두 판, 카탈로그 288개, 상태 해시 6판은 그대로.
