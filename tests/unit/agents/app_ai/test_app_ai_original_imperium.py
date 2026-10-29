@@ -27,6 +27,7 @@ from dune_imperium.agents.app_ai.abilities.base import (
 )
 from dune_imperium.agents.app_ai.catalog import (
     ORIGINAL_CARD_ARCHETYPES,
+    agent_entity,
     card_entity,
     space_entity,
     track_entity,
@@ -1109,3 +1110,554 @@ def test_lady_jessica_acquire_takes_the_best_faction_track(
     tie = prof(turn_state, gain_influence_value=lambda f, n, r=-1, a=False: Summer(2.0))
     assert acquire.evaluate(tie, Request((info,))).response == (("emperor",),)
     assert acquire.evaluate(p, Request()).response is None
+
+
+# ---------------------------------------------------------------------------
+# Bene Gesserit Sister and Gurney Halleck: the conflict-reading Evaluate
+# ---------------------------------------------------------------------------
+
+
+def test_bene_gesserit_sister_values_the_better_of_persuasion_and_strength(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    sister = oi.BeneGesseritSisterAbility(imperium("bene_gesserit_sister"))
+    assert sister.value_for_player(prof(turn_state)).sum == pytest.approx(1.5)
+    cheap = prof(turn_state, persuasion_value=lambda n: 0.5 * n)
+    assert sister.value_for_player(cheap).sum == pytest.approx(1.32)  # 2 * 0.66
+
+
+# (units, rcv, own EstStrength, GetBuyGains(2), expected option); the strongest
+# opponent is 6, so the strength difference is ``own - 6``.
+_SISTER_CASES = (
+    (0, 1.0, 5, 0.2, 0),  # no unit in the Conflict
+    (2, 1.0, 5, 0.2, 1),  # rcv >= 0.9, |diff| <= 3, buy gains <= 2.5
+    (2, 0.8, 5, 0.2, 0),  # rcv < 0.9 then rcv < 1.2
+    (2, 0.9, 5, 0.2, 1),  # rcv == 0.9 counts
+    (2, 1.5, 5, 3.0, 1),  # buy gains too high, then rcv >= 1.2 and |diff| <= 5
+    (2, 1.5, 13, 0.2, 0),  # |diff| = 7 > 5
+    (2, 1.5, 10, 0.2, 1),  # |diff| = 4: out of the first test, within 5
+    (2, 1.0, 11, 0.2, 0),  # |diff| = 5, rcv < 1.2
+    (2, 1.2, 11, 0.2, 1),  # rcv == 1.2 and |diff| = 5 <= 5
+    (2, 1.2, 12, 0.2, 0),  # |diff| = 6 > 5
+    (2, 1.0, 9, 2.5, 1),  # |diff| = 3 and buy gains == 2.5 (<=)
+)
+
+
+@pytest.mark.parametrize(("units", "rcv", "own", "gains", "option"), _SISTER_CASES)
+def test_bene_gesserit_sister_picks_persuasion_or_strength_by_the_conflict(
+    units: int,
+    rcv: float,
+    own: int,
+    gains: float,
+    option: int,
+    turn_state: GameState,
+    prof: ProfileFactory,
+) -> None:
+    sister = oi.BeneGesseritSisterAbility(imperium("bene_gesserit_sister"))
+    p = prof(
+        with_units(turn_state, conflict=units),
+        relative_conflict_value=lambda: Summer(rcv),
+        est_strength=lambda: IntSummer(own),
+        buy_gains=lambda n: gains,
+    )
+    answer = sister.evaluate(p, Request())
+    assert (answer.value, answer.response) == (50.0, ((option,),))
+
+
+def test_gurney_halleck_pays_three_solari_to_deploy(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    gurney = oi.GurneyHalleckAbility(imperium("gurney_halleck_card"))
+    rich = with_player(turn_state, SEAT, resources=Resources(solari=3))
+    assert prof(rich).C.GurneyHalleckRevealBonus == 1.5
+    assert gurney.value_for_player(prof(rich)).sum == 1.5
+    poor = with_player(turn_state, SEAT, resources=Resources(solari=2))
+    assert gurney.value_for_player(prof(poor)).sum == 0.0
+
+
+def _conflict(state: GameState, card: str) -> GameState:
+    """``card`` face up as the current Conflict (taken out of the deck)."""
+
+    return with_state(
+        state,
+        current_conflict_ids=(card,),
+        conflict_deck=tuple(c for c in state.conflict_deck if c != card),
+        unused_conflict_ids=tuple(c for c in state.unused_conflict_ids if c != card),
+    )
+
+
+def test_gurney_halleck_deploys_at_once_with_the_swordmaster(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    gurney = oi.GurneyHalleckAbility(imperium("gurney_halleck_card"))
+    asked: list[tuple[int, int]] = []
+
+    def deploy(units: int, max_units: int) -> int:
+        asked.append((units, max_units))
+        return 1
+
+    armed = with_player(
+        _conflict(turn_state, "skirmish_a"),  # level 1: irrelevant
+        SEAT,
+        swordmaster_acquired=True,
+        agents_available=3,
+    )
+    answer = gurney.evaluate(
+        prof(armed, units_to_deploy=deploy), req(options=(0, 1), max_select=2)
+    )
+    assert (answer.value, answer.response) == (100.0, ((0,),))
+    assert asked == [(2, 2)]
+    nothing = prof(armed, units_to_deploy=lambda units, max_units: 0)
+    assert gurney.evaluate(nothing, req(options=(0, 1))).response is None
+    assert gurney.evaluate(prof(armed), Request()).response is None
+
+
+@pytest.mark.parametrize(
+    ("card", "own", "deploys"),
+    (
+        ("siege_of_carthag", 5, False),  # level 2
+        ("battle_for_carthag", 5, True),  # level 3, top 6: |6 - 5| < 5
+        ("battle_for_carthag", 9, True),  # |6 - 9| = 3
+        ("battle_for_carthag", 10, True),  # |6 - 10| = 4 < 5
+        ("battle_for_carthag", 11, False),  # 5 is not < 5; |4 - 11| > 4
+        ("battle_for_carthag", 14, False),
+        ("battle_for_carthag", 1, True),  # |6 - 1| = 5 but |4 - 1| = 3 <= 4
+        ("battle_for_carthag", 0, True),  # |4 - 0| = 4 <= 4
+    ),
+)
+def test_gurney_halleck_without_the_swordmaster_wants_a_close_level_three_conflict(
+    card: str, own: int, deploys: bool, turn_state: GameState, prof: ProfileFactory
+) -> None:
+    gurney = oi.GurneyHalleckAbility(imperium("gurney_halleck_card"))
+    p = prof(_conflict(turn_state, card), est_strength=lambda: IntSummer(own))
+    answer = gurney.evaluate(p, req(options=(0, 1), max_select=2))
+    assert (answer.response is not None) is deploys
+    if deploys:
+        assert (answer.value, answer.response) == (100.0, ((0, 1),))
+
+
+# ---------------------------------------------------------------------------
+# Shifting Allegiances
+# ---------------------------------------------------------------------------
+
+
+def test_shifting_allegiances_values_the_exchange_less_two_spice(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    shifting = oi.ShiftingAllegiancesAbility(imperium("shifting_allegiances"))
+    asked: list[Any] = []
+
+    def exchange(lose: int, gain: int, lf: Any = None, gf: Any = None) -> Any:
+        asked.append((lose, gain, lf, gf))
+        return ("emperor", "fremen", 3.0)
+
+    rich = with_player(turn_state, SEAT, resources=Resources(spice=2))
+    p = prof(rich, best_influence_exchange=exchange)
+    wealth = space("wealth")
+    # Math.Max(0.0, exchange - GetSpiceValue(1) * 2)
+    assert shifting.value_for_player(p, (wealth,)).sum == pytest.approx(3.0 - 1.0)
+    assert asked == [(-1, 2, None, None)]
+    low = prof(rich, best_influence_exchange=lambda *a: (None, None, 0.5))
+    assert shifting.value_for_player(low, (wealth,)).sum == 0.0
+    poor = prof(
+        with_player(turn_state, SEAT, resources=Resources(spice=1)),
+        best_influence_exchange=exchange,
+    )
+    assert shifting.value_for_player(poor, (wealth,)).sum == 0.0
+    stuck = prof(
+        rich,
+        best_influence_exchange=exchange,
+        can_agent_ability_be_played_with_space=lambda s, a, n: False,
+    )
+    assert shifting.value_for_player(stuck, (wealth,)).sum == 0.0
+    assert shifting.meets_cost(
+        prof(with_player(rich, SEAT, influence=Influence(fremen=1)))
+    )
+    assert not shifting.meets_cost(prof(rich))  # no influence anywhere
+    assert not shifting.meets_cost(
+        prof(
+            with_player(
+                turn_state,
+                SEAT,
+                resources=Resources(spice=1),
+                influence=Influence(fremen=1),
+            )
+        )
+    )
+
+
+def test_shifting_allegiances_evaluate_names_the_two_tracks(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    shifting = oi.ShiftingAllegiancesAbility(imperium("shifting_allegiances"))
+    factions = ("emperor", "spacing_guild", "bene_gesserit", "fremen")
+    lose = TargetInfo(tuple(track_entity(f) for f in factions[:2]))
+    gain = TargetInfo(tuple(track_entity(f) for f in factions[2:]))
+    asked: list[Any] = []
+
+    def exchange(lose_amount: int, gain_amount: int, lf: Any, gf: Any) -> Any:
+        asked.append((lose_amount, gain_amount, lf, gf))
+        return ("spacing_guild", "fremen", 4.0)
+
+    p = prof(turn_state, spice_value=_steep_spice, best_influence_exchange=exchange)
+    answer = shifting.evaluate(p, Request((lose, gain)))
+    assert answer.response == (("spacing_guild",), ("fremen",))
+    assert answer.value == pytest.approx(-1.4 + 4.0)  # GetSpiceValue(-2) + exchange
+    assert asked == [(-1, 2, ["emperor", "spacing_guild"], ["bene_gesserit", "fremen"])]
+    none = prof(turn_state, best_influence_exchange=lambda *a: (None, None, 0.0))
+    assert shifting.evaluate(none, Request((lose, gain))).response is None
+    outside = prof(
+        turn_state, best_influence_exchange=lambda *a: ("fremen", "emperor", 1.0)
+    )  # neither track is among the offered ones
+    assert shifting.evaluate(outside, Request((lose, gain))).response is None
+    assert shifting.evaluate(p, Request((lose,))).response is None
+    assert shifting.TARGET_INFLUENCE_DELTAS == (-1, 2)
+
+
+# ---------------------------------------------------------------------------
+# Reverend Mother Mohiam and Test of Humanity
+# ---------------------------------------------------------------------------
+
+
+def test_reverend_mother_mohiam_discard_is_worth_five_per_opponent_ratio(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    owner = imperium("reverend_mother_mohiam")
+    mohiam = oi.ReverendMotherMohiamDeferredAbility(owner)
+    helper = imperium("bene_gesserit_initiate")
+    base = prof(turn_state)
+    assert mohiam.value_for_player(base).sum == 0.0  # no other Bene Gesserit card
+    ready = prof(in_play(turn_state, helper))
+    assert mohiam.value_for_player(ready).sum == pytest.approx(5.0)  # 3 of 3
+    bare = with_player(with_player(turn_state, 0, hand=()), 2, hand=())
+    thin = prof(in_play(bare, helper))
+    assert mohiam.value_for_player(thin).sum == pytest.approx(5.0 / 3.0)
+    assert mohiam.meets_cost(ready)
+    assert not mohiam.meets_cost(base)
+    assert not mohiam.meets_cost(prof(in_play(turn_state, owner)))  # not itself
+    assert mohiam.can_run_immediately(base)  # a computer seat has no client version
+    answer = mohiam.evaluate(ready, Request())  # DeferredAbility's: DeferValue 1
+    assert (answer.value, answer.response) == (1.0, ())
+
+
+def test_reverend_mother_mohiam_pile_synergy_is_the_bene_gesserit_pattern(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    mohiam = oi.ReverendMotherMohiamDeferredAbility(imperium("reverend_mother_mohiam"))
+    candidate = imperium("bene_gesserit_initiate")
+    p = prof(turn_state)
+    played = mohiam.value_in_pile_for_other_play(p, Pile.PLAY_AREA, candidate).sum
+    assert played == pytest.approx(1.0 * 5.0 * 0.75)
+    deck = mohiam.value_in_pile_for_other_play(p, Pile.DECK, candidate).sum
+    assert deck == pytest.approx(p.C.SynergyBeneGesseritWithBondInDeck)
+    assert (
+        mohiam.value_in_pile_for_other_play(p, Pile.PLAY_AREA, imperium("scout")).sum
+        == 0.0
+    )
+
+
+def test_test_of_humanity_values_the_relevant_opponents(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    owner = imperium("test_of_humanity")
+    test = oi.TestOfHumanityDeferredAbility(owner)
+    mod = prof(turn_state).C.TestOfHumanityRelevantOpponentMod
+    assert mod == 2.0
+    assert test.value_for_player(prof(turn_state)).sum == pytest.approx(mod)
+    # An opponent without cards and without units is not relevant.
+    empty = with_player(turn_state, 0, hand=())
+    assert test.value_for_player(prof(empty)).sum == pytest.approx(mod * 2 / 3)
+    # ...unless it has a unit in the Conflict.
+    fighting = with_player(empty, 0, troops_conflict=1, troops_supply=8)
+    assert test.value_for_player(prof(fighting)).sum == pytest.approx(mod)
+    assert test.can_run_immediately(prof(turn_state))
+
+
+def test_test_of_humanity_resolution_discards_unless_a_troop_is_cheap(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    test = oi.TestOfHumanityDeferredAbility(imperium("test_of_humanity"))
+    scouts = (imperium("scout", 0), imperium("scout", 1))
+    plain = imperium("sardaukar_infantry")  # no agent icons
+    busy = hand(turn_state, *scouts, imperium("gun_thopter"))  # 3 > 2 Agents
+    answer = test.evaluate_resolution_choice(prof(busy))
+    assert (answer.value, answer.response) == (1.0, ((0,),))  # discard
+    easy = hand(turn_state, *scouts, plain)  # 2 icon cards <= 2 Agents
+    answer = test.evaluate_resolution_choice(prof(easy))
+    assert (answer.value, answer.response) == (5.0, ((1,),))  # lose a troop
+    # Conflict not worth holding (interest below the lower bound): with more
+    # than one unit in it the troop goes, with one the hand decides.
+    low = {"current_conflict_interest": lambda: Summer(1.0)}
+    two = prof(with_units(busy, conflict=2), **low)
+    assert test.evaluate_resolution_choice(two).response == ((1,),)
+    one = prof(with_units(busy, conflict=1), **low)
+    assert test.evaluate_resolution_choice(one).response == ((0,),)
+    high = prof(with_units(busy, conflict=2))  # interest 3 >= lower 2.0
+    assert test.evaluate_resolution_choice(high).response == ((0,),)
+    equal = prof(
+        with_units(busy, conflict=2), current_conflict_interest=lambda: Summer(2.0)
+    )
+    assert test.evaluate_resolution_choice(equal).response == ((0,),)  # strict
+
+
+# ---------------------------------------------------------------------------
+# Other Memory
+# ---------------------------------------------------------------------------
+
+
+def test_other_memory_prices_the_dearest_bene_gesserit_card_of_the_discard(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    memory = oi.OtherMemoryAbility(imperium("other_memory"))
+    cards = (
+        imperium("bene_gesserit_initiate"),  # cost 3
+        imperium("kwisatz_haderach"),  # cost 8
+        imperium("scout"),  # not Bene Gesserit
+        imperium("fremen_camp"),  # not Bene Gesserit, dearer than the initiate
+    )
+    p = prof(discard(turn_state, *cards))
+    assert p.C.OtherMemoryPlayBonusMod == 0.66
+    assert memory.value_for_player(p).sum == pytest.approx(0.66 * 8)
+    only = prof(discard(turn_state, cards[0], cards[2]))
+    assert memory.value_for_player(only).sum == pytest.approx(0.66 * 3)
+    assert memory.value_for_player(prof(discard(turn_state))).sum == 0.0
+    deck = memory.value_in_pile_for_other_play(p, Pile.DECK, cards[0])
+    assert deck.sum == pytest.approx(p.C.SynergyBeneGesseritWithBondInDeck)
+    assert memory.value_in_pile_for_other_play(p, Pile.PLAY_AREA, cards[0]).sum == 0.0
+    assert memory.value_in_pile_for_other_play(p, Pile.DECK, cards[2]).sum == 0.0
+    assert (
+        memory.value_in_pile_for_other_play(
+            prof(turn_state, is_climax=lambda: True), Pile.DECK, cards[0]
+        ).sum
+        == 0.0
+    )
+
+
+def _first_box(card: Entity, kind: type[Ability], p: Profile) -> float:
+    box = next(a for a in abilities_of(card) if isinstance(a, kind))
+    return box.value_for_player(p, ()).sum
+
+
+def test_other_memory_takes_the_kwisatz_or_the_best_card_for_the_phase(
+    turn_state: GameState, prof: ProfileFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    memory = oi.OtherMemoryAbility(imperium("other_memory"))
+    gene = imperium("gene_manipulation")
+    initiate = imperium("bene_gesserit_initiate")
+    kwisatz = imperium("kwisatz_haderach")
+    p = prof(turn_state)
+    agent = {c.ref: _first_box(c, g.AgentAbility, p) for c in (gene, initiate)}
+    best = max(agent, key=lambda ref: agent[ref])
+    assert agent[gene.ref] != agent[initiate.ref]
+    answer = memory.evaluate(p, req(gene, initiate))
+    assert answer.response == ((best,),)  # for the Agent turn
+    assert answer.value == pytest.approx(max(agent.values()))
+    # The Kwisatz Haderach goes first at 100.
+    answer = memory.evaluate(p, req(gene, kwisatz, initiate))
+    assert (answer.value, answer.response) == (100.0, ((kwisatz.ref,),))
+    # With no Agent left the Reveal box is read.
+    spent = prof(
+        with_player(
+            turn_state, SEAT, agents_available=0, agent_locations=("wealth", "conspire")
+        )
+    )
+    reveal = {c.ref: _first_box(c, g.RevealAbility, spent) for c in (gene, initiate)}
+    answer = memory.evaluate(spent, req(gene, initiate))
+    top = max(reveal.values())
+    assert answer.value == pytest.approx(max(1.0, top))
+    # Nothing beats the default pick (the first target at 1.0) when all are low.
+    monkeypatch.setattr(
+        g.AgentAbility,
+        "value_for_player",
+        lambda self, p, with_entities=(): Summer(0.5),
+    )
+    answer = memory.evaluate(p, req(initiate, gene))
+    assert (answer.value, answer.response) == (1.0, ((initiate.ref,),))
+    answer = memory.evaluate(p, Request())
+    assert (answer.value, answer.response) == (1.0, ())
+
+
+# ---------------------------------------------------------------------------
+# Kwisatz Haderach
+# ---------------------------------------------------------------------------
+
+
+def _space_total(p: Profile, sp: Entity, entities: Sequence[Entity] = ()) -> float:
+    """The sum of ``ValueForPlayer`` of the abilities of ``sp``."""
+
+    total = 0.0
+    for found in abilities_of(sp):
+        total += found.value_for_player(p, tuple(entities)).sum
+    return total
+
+
+def test_agent_retrieval_value_prefers_unfactioned_and_trailing_spaces(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    p = prof(turn_state)
+    # A combat space is worth nothing but the cost of leaving it.
+    arrakeen = space("arrakeen")
+    assert oi.agent_retrieval_value(p, agent_entity("arrakeen", SEAT)) == (
+        pytest.approx(-_space_total(p, arrakeen))
+    )
+    hardy = space("hardy_warriors")  # a faction space, but a combat space
+    assert oi.agent_retrieval_value(p, agent_entity("hardy_warriors", SEAT)) == (
+        pytest.approx(-_space_total(p, hardy))
+    )
+    # No faction, no combat: 1000.
+    oratory = space("hall_of_oratory")
+    assert oi.agent_retrieval_value(p, agent_entity("hall_of_oratory", SEAT)) == (
+        pytest.approx(1000.0 - _space_total(p, oratory))
+    )
+    # A faction space: 500 when the best opponent leads our rank by 3.
+    wealth = space("wealth")
+    lead3 = with_player(turn_state, 2, influence=Influence(emperor=3))
+    assert oi.agent_retrieval_value(prof(lead3), agent_entity("wealth", SEAT)) == (
+        pytest.approx(500.0 - _space_total(p, wealth))
+    )
+    lead2 = with_player(turn_state, 2, influence=Influence(emperor=2))
+    assert oi.agent_retrieval_value(prof(lead2), agent_entity("wealth", SEAT)) == (
+        pytest.approx(-_space_total(p, wealth))
+    )
+    own = with_player(lead3, SEAT, influence=Influence(emperor=1))
+    assert oi.agent_retrieval_value(prof(own), agent_entity("wealth", SEAT)) == (
+        pytest.approx(-_space_total(p, wealth))  # 3 - 1 < 3
+    )
+
+
+def test_kwisatz_haderach_is_delayed_while_another_card_can_be_played(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    owner = imperium("kwisatz_haderach")
+    kwisatz = oi.KwisatzHaderachAbility(owner)
+    penalty = prof(turn_state).C.KwisatzHaderachDelayPenalty
+    assert penalty == -50.0
+    scout = imperium("scout")
+    both = prof(hand(turn_state, owner, scout))
+    base = g.AgentAbility(owner).value_for_player(both, ()).sum
+    assert kwisatz.value_for_player(both, ()).sum == pytest.approx(base + penalty)
+    alone = prof(hand(turn_state, owner))
+    base = g.AgentAbility(owner).value_for_player(alone, ()).sum
+    assert kwisatz.value_for_player(alone, ()).sum == pytest.approx(base)
+    spent = with_player(
+        hand(turn_state, owner, scout),
+        SEAT,
+        agents_available=0,
+        agent_locations=("wealth", "conspire"),
+    )
+    base = g.AgentAbility(owner).value_for_player(prof(spent), ()).sum
+    assert kwisatz.value_for_player(prof(spent), ()).sum == pytest.approx(base)
+    # Another copy of itself is no other card.
+    twins = prof(hand(turn_state, owner, imperium("kwisatz_haderach", 1)))
+    assert kwisatz.value_for_player(twins, ()).sum == pytest.approx(
+        g.AgentAbility(owner).value_for_player(twins, ()).sum
+    )
+
+
+def test_kwisatz_haderach_picks_the_best_space_and_the_best_agent_to_retrieve(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    owner = imperium("kwisatz_haderach")
+    kwisatz = oi.KwisatzHaderachAbility(owner)
+    p = prof(hand(turn_state, owner))
+    spaces = (space("arrakeen"), space("hall_of_oratory"), space("carthag"))
+    agents = (agent_entity("wealth", SEAT), agent_entity("hall_of_oratory", SEAT))
+    request = Request((TargetInfo(spaces), TargetInfo(agents)))
+    card_value = kwisatz.value_for_player(p, ()).sum
+    totals = {sp.ref: _space_total(p, sp, (owner,)) + card_value for sp in spaces}
+    best = max(spaces, key=lambda sp: totals[sp.ref])  # the first of equals
+    assert len({v for v in totals.values()}) == len(totals)  # no tie to guess
+    answer = kwisatz.evaluate(p, request)
+    # Hall of Oratory has no faction: 1000 beats the Emperor space.
+    assert answer.response == ((best.ref,), ("hall_of_oratory",))
+    assert answer.value == pytest.approx(totals[best.ref])
+    assert kwisatz.evaluate(p, Request((TargetInfo(spaces),))).response is None
+    assert kwisatz.evaluate(p, Request()).response is None
+    nothing = Request((TargetInfo(()), TargetInfo(agents)))
+    assert kwisatz.evaluate(p, nothing).response is None
+    no_agents = Request((TargetInfo(spaces), TargetInfo(())))
+    assert kwisatz.evaluate(p, no_agents).response is None
+
+
+# ---------------------------------------------------------------------------
+# The Voice
+# ---------------------------------------------------------------------------
+
+
+def _last_agent(
+    state: GameState, seat: int, space_id: str, **changes: object
+) -> GameState:
+    """``seat`` down to its last Agent, the other one standing on a space."""
+
+    return with_player(
+        state, seat, agents_available=1, agent_locations=(space_id,), **changes
+    )
+
+
+def test_the_voice_blocks_the_heighliner_before_a_rich_last_agent(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    voice = oi.TheVoiceAbility(imperium("the_voice"))
+    bonus = prof(turn_state).C.TheVoiceBlockHeighlinerBonus
+    assert bonus == 2.0
+    assert voice.value_for_player(prof(turn_state)).sum == bonus  # 2 Agents left
+    mine = _last_agent(turn_state, SEAT, "wealth")
+    assert voice.value_for_player(prof(mine)).sum == 0.0
+    rich = _last_agent(mine, 0, "conspire", resources=Resources(spice=6))
+    assert voice.value_for_player(prof(rich)).sum == bonus
+    poor = _last_agent(mine, 0, "conspire", resources=Resources(spice=5))
+    assert voice.value_for_player(prof(poor)).sum == 0.0
+    occupied = _last_agent(rich, 2, "imperium_heighliner")
+    assert voice.value_for_player(prof(occupied)).sum == 0.0
+    two = with_player(rich, 0, agents_available=2, agent_locations=())
+    assert voice.value_for_player(prof(two)).sum == 0.0  # not the last Agent
+
+
+def test_the_voice_evaluate_takes_the_heighliner_or_hardy_warriors_first(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    voice = oi.TheVoiceAbility(imperium("the_voice"))
+    names = ("imperium_heighliner", "hardy_warriors", "rally_troops", "wealth")
+    request = Request((TargetInfo(tuple(space(n) for n in names)),))
+    spice = _last_agent(turn_state, 0, "wealth", resources=Resources(spice=6))
+    answer = voice.evaluate(prof(spice), request)
+    assert (answer.value, answer.response) == (100.0, (("imperium_heighliner",),))
+    water = _last_agent(turn_state, 2, "conspire", resources=Resources(water=1))
+    answer = voice.evaluate(prof(water), request)
+    assert (answer.value, answer.response) == (99.0, (("hardy_warriors",),))
+    both = _last_agent(spice, 2, "conspire", resources=Resources(water=1))
+    answer = voice.evaluate(prof(both), request)
+    assert (answer.value, answer.response) == (100.0, (("imperium_heighliner",),))
+    # Not while the Conflict is dull (interest not above the lower bound).
+    dull = prof(spice, current_conflict_interest=lambda: Summer(2.0))
+    answer = voice.evaluate(dull, request)
+    assert answer.value != 100.0
+
+
+def test_the_voice_evaluate_values_a_free_space_with_the_agent_play_option(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    voice = oi.TheVoiceAbility(imperium("the_voice"))
+    names = ("rally_troops", "imperium_swordmaster", "wealth", "conspire")
+    blocked = _last_agent(turn_state, 0, "wealth")
+    p = prof(blocked, current_conflict_interest=lambda: Summer(1.0))  # no specials
+    request = Request((TargetInfo(tuple(space(n) for n in names)),))
+    free = [space(n) for n in names if n != "wealth"]
+    totals = {sp.ref: _space_total(p, sp) + 50.0 for sp in free}  # Agents left
+    best = max(free, key=lambda sp: totals[sp.ref])
+    answer = voice.evaluate(p, request)
+    assert answer.response == ((best.ref,),)
+    assert answer.value == pytest.approx(totals[best.ref])
+    # "wealth" holds an Agent: it is never offered.
+    wealth_only = Request((TargetInfo((space("wealth"),)),))
+    assert voice.evaluate(p, wealth_only).response is None
+    # Without an Agent left there is no play option.
+    spent = with_player(
+        blocked, SEAT, agents_available=0, agent_locations=("secrets", "stillsuits")
+    )
+    q = prof(spent, current_conflict_interest=lambda: Summer(1.0))
+    plain = {sp.ref: _space_total(q, sp) for sp in free}
+    top = max(free, key=lambda sp: plain[sp.ref])
+    answer = voice.evaluate(q, request)
+    assert answer.response == ((top.ref,),)
+    assert answer.value == pytest.approx(plain[top.ref])
