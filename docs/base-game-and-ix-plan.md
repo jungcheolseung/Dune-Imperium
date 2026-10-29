@@ -1285,3 +1285,31 @@ Interstellar Shipping의 Spacing Guild 2 — 효과 기록은 P4b·c)을 by-id �
 결정), 나머지(Duplicity, 협상가, Tech Negotiation 칸, commission·배치, 차례 안의 Discard 비용, 뒤집기)는 차례의 줄. 움직인 고정값: slot 키 1,957 → 2,020
 (옛 키 순서 그대로), 엔티티 특성(+22 개체, tech 열 2개 — water·distinct; 옛 589행 차이 0), `test_teacher`의 teacher seed 1 → 2. v38 열의 골든
 digest·고정 두 판, 카탈로그 288개, 상태 해시 6판은 그대로.
+
+### 17.9 P4b 설계: 유닛과 dreadnought (2026-10-29)
+
+규칙은 [rise-of-ix.md](rules/rise-of-ix.md) 6과 OQ-121(판정 1~6)이 정한다. setup은 P4c까지 Rise of Ix를 거절하므로 P4b의 동작은 손으로 만든 상태의
+테스트로 고정하고, 관문은 Ix 없는 판이 그대로인지(같음 확인·카탈로그 288·엔티티 특성)를 본다. 상태 칸은 v39에 이미 있다(`PlayerState.dreadnoughts_*`,
+`GameState.dreadnought_control`).
+
+**`units_in_conflict` 감사(21곳).** 모두 "유닛"을 읽는 자리(`UnitsInConflictAtLeast`, 보상 받을 좌석, Conflict 끝 창의 좌석, Agent 회수 뒤 strength
+0 규칙, swords가 세지는 조건, Recall 앞 확인, Reveal의 strength 공식)이고, 카드의 "troop"은 `troops_conflict`를 따로 읽는다. 그래서
+`units_in_conflict`에 `dreadnoughts_conflict`를 더한다 — strength 0 규칙과 Combat Intrigue 자격에 dreadnought가 든다 `[Rise of Ix p. 6]` `[FAQ p. 2]`.
+`GainSolariPerUnitType`(Uprising 카드)의 "유닛 종류"에 dreadnought가 드는지는 Uprising + Ix(P7)에서 판정한다.
+
+1. **P4b-1 Conflict의 dreadnought.** strength 3(`DREADNOUGHT_STRENGTH`, 좌석별 함수로 — Prince Rhombur의 4는 P4e), 유닛 strength를 더하는 공식 모두.
+   Combat 끝 정리에서 Conflict의 dreadnought는 supply가 아니라 garrison으로 가고 "잃은" 유닛에 들지 않는다(끈질김, OQ-121 판정 2·5 (2)). 지배:
+   dreadnought가 하나라도 있는 Conflict의 승자에게 승자의 창(1위 보상과 같은 창)의 **의무 줄**이 생기고(OQ-121 판정 6 (1)), 그 줄에서 본판의 Control
+   칸 가운데 dreadnought가 없는 칸 하나를 골라 dreadnought 하나를 놓는다(`dreadnought_control`에 `leaving` False). 칸의 controller는 dreadnought의
+   주인이 marker보다 먼저다(앱 `WormSpace::get_ControllingPlayer`, 17.5 5) — 방문 보너스와 방어 배치가 그 좌석에. Combat 단계의 마지막 일로
+   `leaving`인 것은 주인의 garrison으로 돌아가고 나머지는 `leaving`이 된다(승자가 없어도, OQ-121 판정 1). Detonation Devices의 "지배 대신 VP"는 그
+   줄 안의 선택으로 P4c(Tech)에서 더한다.
+2. **P4b-2 commission과 배치.** 새 DSL 조각 `CommissionDreadnought`(아이콘마다 "may", supply → garrison; supply가 비면 그 아이콘만 불발 — 칸은 갈 수
+   있다, 디자이너 판정). 배치: "any or all units recruited during your current turn … plus up to two more units from your garrison" `[Rise of Ix
+   p. 6]` — Commander의 틀(OQ-070, `deployment_rooms`)에 셋째 종류를 더한다: 이번 turn에 commission한 dreadnought는 제 종류의 자리, garrison 몫
+   둘은 troop·Commander·dreadnought가 함께 쓴다(17.6 2). Masterstroke의 "4+ troops"는 dreadnought를 세지 않는다(16.10 12, rise-of-ix.md 6 표의
+   Baron 줄) — `units_deployed_*` 셈과 따로 확인한다.
+3. **P4b-3 마무리.** 스윕 불변식(dreadnought 둘, `dreadnought_control`과 좌석 칸의 합), rise-of-ix.md 6 룰북 예를 좌석별 문자 그대로 테스트(OQ-121),
+   codec 행(원판 + Ix 카탈로그만), 관문(17.1 "단계마다 엔진 관문 전체"; 첫 P4 관문은 6352199d에서 새 같음 기준을 잡는다).
+
+setup이 좌석마다 supply에 dreadnought 둘을 주는 일 `[Rise of Ix p. 3]`(rise-of-ix.md 3의 5)은 setup을 여는 P4c에서 한다.
