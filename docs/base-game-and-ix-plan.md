@@ -1422,3 +1422,6 @@ Ix 선택이 없어(P5) 사람 판에는 닿지 않고, 능력은 P4e. app_ai는
 setup이 빠진다 → **정함: P4e 전까지 후보에서 뺀다**(덱 카드가 효과를 다 적을 때까지 빠지는 것과 같은 원칙; setup 값만 맞추면 능력 없는
 지도자가 여전히 틀린 판을 만든다). 리셋 뒤 첫 일. (2) Ix Conflict 셋이 전사 전이라 더미가 I/II/III 4/10/5에서 뽑힌다(규칙 6/11/5) — 덱 모양
 1/5/4는 맞고 확률만 다르다. **P4d 확인 항목:** 셋을 전사하면 풀이 6/11/5가 되고 `ConflictSetup`의 하한 9가 12로 좁혀지는지.
+**P4c 후속(2026-10-29, `a4ce4d23`·`d9ff11d3`·`6b793541`·`bac61f7a`):** (1) Ix 지도자 여섯을 P4e까지 후보에서 뺌(`IX_LEADER_IDS_OFFERED`, P4e가 지도자마다
+더한다). (2) Troop Transports 부족분 — Shipping recruit의 모자란 몫을 `UNGAINED_SHIPPING_TROOPS_KEY`에 세고 채워질 때 배치 몫으로(OQ-030); 일부만
+채울 때의 순서는 OQ-152(OPEN). (3) 낡은 docstring. (4) 돌려받을 Negotiator 계산은 `core.observation` 하나, frame에 적지 않는다.
