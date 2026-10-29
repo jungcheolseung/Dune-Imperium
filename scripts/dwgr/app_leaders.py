@@ -24,8 +24,9 @@ gold ability box, the black Signet box with the app's ring
 Allies box, Feyd's Training track, and the app's topographic lines
 (``bg_TopoLines_1``) faint in the upper painting as on the print. The tabs'
 shades are read off each card's English scan (``print_shades``). The only
-pixels taken from the scans are those measurements; the pictures are the
-app's. Icons are the app's
+pixels taken from the scans are those measurements, with one exception for
+the original game's Leaders (below); the pictures are the app's. Icons are
+the app's
 (the card renderer's ``HIRES`` pictures, else its TextMeshPro glyphs) and
 are laid out as printed: icon rows, big icons beside text, small icons in
 the text.
@@ -52,8 +53,13 @@ frame (``FRAME_KINDS``): the Uprising frame's shape with its own shades and no
 set mark. Their scans are cropped less evenly (``SCAN_FIT`` maps each onto the
 frame's window), their names are the print's (``PRINT_NAMES``), and, unlike
 the Uprising ones, their app backgrounds are only a patch of the painting
-(``ORIGINAL_ART``): the rest of the art window is filled smooth from the
-patch's edge colours, not drawn. The faces go to
+(``ORIGINAL_ART``). The rest of the art window, which is in no app picture,
+is the English scan's painting: the patch gives way to the scan over a soft
+seam inside its edge (``scan_seam``), and the figure, the frame, the text and
+the icons stay the app's. This is the one place where scan pixels enter a
+face, by the user's decision of 2026-10-29 ("(다) 섞은 안으로 한번 해보자",
+docs/base-game-and-ix-plan.md 18.7); filled smooth from the patch's edge
+colours instead, half of each painting was invented. The faces go to
 ``assets/cards/app/en/base/leader/<scan file name>.webp``.
 
 Inputs go to the assets checkout's git-ignored
@@ -2348,8 +2354,13 @@ def draw_track(p):
 # each to the gold box's shape (the right side is transparent) and shows the
 # painting's middle part at 2.9-4.9x (the Uprising ones are whole, 5.5-6x),
 # so the layers cover 35-60% of the art window; the rest (the upper part and
-# the sides) is in no app picture. It is filled from the patch's own edge
-# colours (PATCH_FILL), smooth, never from the scans.
+# the sides) is in no app picture. It comes from the English scan (the
+# user's decision of 2026-10-29, see the module docstring): the graded patch
+# gives way to the scan over a seam inside its edge, a ramp from 0 at the
+# edge to 1 about 2.5 SEAM_SIGMA in (scan_seam). The smooth fill from the
+# patch's own edge colours (push_pull_fill) still backs the patch's soft rim
+# before the seam takes over.
+SEAM_SIGMA = 12.0
 PATCH_ERODE = 4  # px of the patch's rim that are not trusted (resampling)
 PATCH_SOFT = 14.0  # blur of the patch's mask where it meets the fill
 FILL_SIGMAS = (250, 110, 48, 20, 8)  # coarse to fine
@@ -2419,6 +2430,15 @@ def placed_patch(inp, cid):
     out = fill * (1 - soft) + patch * soft
     out = np.ascontiguousarray(np.clip(np.round(out), 0, 255).astype(np.uint8))
     return out, mask > 0.5
+
+
+def scan_seam(covered):
+    """How much of the app's background shows against the scan, (H, W, 1):
+    1 well inside the patch's trusted pixels (``covered``), 0 at their edge
+    and beyond, a smooth ramp in between."""
+    return np.clip(2 * gauss_fft(covered.astype(float), SEAM_SIGMA) - 1, 0, 1)[
+        ..., None
+    ]
 
 
 def placed_background(inp, cid):
@@ -2552,6 +2572,13 @@ def art_layer(inp, cid):
     fig, own = placed_figure(inp, cid)
     bg_grade, fig_grade = print_grade(inp, cid, bg, covered, fig, own)
     bg = add_grain(apply_grade(bg, bg_grade), cid)
+    seam = None
+    if cid in ORIGINAL_IDS:
+        # the painting the app lacks is the scan's (module docstring)
+        seam = scan_seam(covered)
+        scan = np.asarray(english_scan(inp, cid), float)
+        mixed = scan * (1 - seam) + bg.astype(float) * seam
+        bg = np.clip(np.round(mixed), 0, 255).astype(np.uint8)
     f = np.array(fig)
     f[..., :3] = apply_grade(f[..., :3], fig_grade)
     fig = Image.fromarray(f, "RGBA")
@@ -2559,7 +2586,7 @@ def art_layer(inp, cid):
     # strip) its edge is carried out, blurred, and darkened like the print's
     full = Image.fromarray(bg)
     if cid in ORIGINAL_IDS:
-        art = full.convert("RGBA")  # already filled where the patch ends
+        art = full.convert("RGBA")  # the scan already fills where the patch ends
     else:
         soft = full.filter(ImageFilter.GaussianBlur(10))
         soft = Image.eval(soft, lambda v: int(v * UNCOVERED_SHADE))
@@ -2574,6 +2601,8 @@ def art_layer(inp, cid):
     top, bottom = TOPO_FADE
     fade = np.clip((bottom - np.arange(H, dtype=float)) / (bottom - top), 0, 1)
     alpha = np.asarray(topo.getchannel("A"), float)[:H] * TOPO_ALPHA
+    if seam is not None:
+        alpha = alpha * seam[..., 0]  # the scan prints its own lines
     lines = np.zeros((H, W, 4), np.uint8)
     lines[..., :3] = 235
     lines[..., 3] = np.clip(alpha * fade[:, None], 0, 255).astype(np.uint8)
