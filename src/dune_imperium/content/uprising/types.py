@@ -685,6 +685,11 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # p. 4]; the first resolved, the second waits as a plain icon.
     MAY_PLACE_TWO_NEGOTIATORS = "may_place_two_negotiators"
     MAY_PLACE_NEGOTIATOR = "may_place_negotiator"
+    # Boundless Ambition (Rise of Ix promo): "Acquire a card that costs [5] or
+    # less." [Steam app text] -- an Imperium Row or Reserve card, never
+    # Foldspace (OQ-125); no "may", so it holds the Reveal's end while it has
+    # a card to take.
+    ACQUIRE_CARD_UP_TO_FIVE = "acquire_card_up_to_five"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -725,6 +730,7 @@ IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = froz
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES,
         PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS,
         PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR,
+        PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE,
     }
 )
 

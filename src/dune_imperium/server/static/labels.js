@@ -294,6 +294,13 @@ const ACTION_LABELS = {
   retreat_reveal_units_for_influence: "부대 3 후퇴 → {influence_any}",
   /* Ix-Guild Compact's Reveal Tech Negotiation icons (stage P4d). */
   place_reveal_negotiator: "{reveal_turn}: Negotiator 놓기",
+  /* Boundless Ambition's acquisition by cost cap (stage P4d): revealed, and
+     in its Unload's window. */
+  acquire_reveal_imperium_card: "{reveal_turn}: 비용이 5 이하인 카드 획득",
+  acquire_reveal_reserve_card: "{reveal_turn}: 비용이 5 이하인 카드 획득",
+  acquire_unload_imperium_card: "Unload: 비용이 5 이하인 카드 획득",
+  acquire_unload_reserve_card: "Unload: 비용이 5 이하인 카드 획득",
+  skip_unload_acquisition: "Unload: 획득할 카드 없음 (건너뛰기)",
   acquire_agent_card_tech: "{tech_tile} 획득",
   acquire_foldspace_to_deck_top: "Foldspace 카드를 덱 위에",
   place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
@@ -527,6 +534,7 @@ const EVENT_LABELS = {
   card_unloaded: "Unload",
   unload_icon_lapsed: "Unload: 공개 칸 효과 쓰지 않음",
   unload_icon_declined: "Unload: 공개 칸 효과 쓰지 않음",
+  unload_acquisition_empty: "Unload: 획득할 카드 없음",
   shipping_influence_unavailable: "Freighter 회수: {influence_any} 불가",
   dreadnought_control_placed: "dreadnought가 {control} 공간에",
   dreadnought_returned: "dreadnought {garrison} 복귀",

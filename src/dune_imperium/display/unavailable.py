@@ -1514,6 +1514,14 @@ def _reveal_choice_block(
                 "{spy}를 놓을 빈 {observation_post} 없음",
                 "waiting",
             )
+        if effect is _Choice.ACQUIRE_CARD_UP_TO_FIVE:
+            # Boundless Ambition (Rise of Ix promo): no Row or Reserve card
+            # within its cap (``acquisition.acquisitions_up_to``).
+            return (
+                "No card costing 5 or less to acquire",
+                "획득할 수 있는 비용 5 이하 카드 없음",
+                "waiting",
+            )
         return _NOTHING_TO_CHOOSE
     units_conflict = owner.troops_conflict + owner.commanders_conflict
     match effect:

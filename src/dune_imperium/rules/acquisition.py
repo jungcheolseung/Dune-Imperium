@@ -3,6 +3,7 @@
 from copy import replace
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 
 from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.immortality.board import genetic_markers_reached
@@ -31,6 +32,9 @@ from dune_imperium.content.uprising.imperium import (
     imperium_card_for_instance,
 )
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
+from dune_imperium.content.uprising.reveal_choice_abilities import (
+    reveal_choice_ability,
+)
 from dune_imperium.content.uprising.trigger_abilities import (
     acquisition_ability,
 )
@@ -1903,6 +1907,162 @@ def apply_reveal_command_acquisition(
         state=opened.state,
         events=(*trashed.events, *acquired.result.events, *opened.events),
     )
+
+
+# --- A card's "Acquire a card that costs N or less" ---------------------------
+# Boundless Ambition (Rise of Ix promo): revealed, a mandatory Reveal choice;
+# discarded or trashed, the acquisition window of its Unload (``rules.unload``).
+
+_REVEAL_UP_TO: Final = PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE
+
+
+def acquisition_cap(effect: PersonalCardRevealChoiceEffect) -> int | None:
+    """The cost cap of a Reveal choice whose record is one "Acquire a card
+    that costs N or less" (``AcquireCardUpTo``), else None."""
+
+    ability = reveal_choice_ability(effect)
+    if len(ability.sections) != 1:
+        return None
+    (line,) = ability.sections
+    if line.costs or line.condition is not None or len(line.rewards) != 1:
+        return None
+    (piece,) = line.rewards
+    return piece.max_cost if isinstance(piece, AcquireCardUpTo) else None
+
+
+def acquisitions_up_to(
+    state: GameState,
+    player: int,
+    max_cost: int,
+    *,
+    imperium_action: str,
+    reserve_action: str,
+) -> tuple[DomainAction, ...]:
+    """The rows of a free "Acquire a card that costs ``max_cost`` or less"
+    for ``player``: each Reserve card and each Imperium Row card within the
+    cap (and the seat's own Manipulate set-aside card, at its printed cost
+    [FAQ p. 3]), never Foldspace (OQ-125), each followed by its deck-top twin
+    while one is offered (Recruitment Mission, Spaceport)."""
+
+    return with_deck_top_twins(
+        state,
+        player,
+        (
+            *(
+                DomainAction(
+                    action_id=reserve_action,
+                    actor=player,
+                    arguments=(("card_id", card_id),),
+                )
+                for card_id in acquirable_reserve_card_ids(state, max_cost)
+            ),
+            *(
+                DomainAction(
+                    action_id=imperium_action,
+                    actor=player,
+                    arguments=(("instance_id", instance_id),),
+                )
+                for instance_id in acquirable_imperium_instance_ids(
+                    state, max_cost, player=player
+                )
+            ),
+        ),
+    )
+
+
+def acquire_by_row(
+    state: GameState, player: int, action: DomainAction, *, source: str
+) -> RuleResult:
+    """Acquire the card an ``acquisitions_up_to`` row names -- to the discard
+    pile, or for its twin on top of the deck -- and open what the acquisition
+    leaves its caller (``open_acquisition_frames``), named after ``source``."""
+
+    arguments = dict(action.arguments)
+    to_deck_top = _wants_deck_top(action)
+    if "instance_id" in arguments:
+        acquired = acquire_imperium_for_intrigue(
+            state,
+            player,
+            str(arguments["instance_id"]),
+            to_hand=False,
+            source=source,
+            to_deck_top=to_deck_top,
+        )
+    else:
+        acquired = acquire_reserve_for_intrigue(
+            state,
+            player,
+            str(arguments["card_id"]),
+            to_hand=False,
+            source=source,
+            to_deck_top=to_deck_top,
+        )
+    opened = open_acquisition_frames(
+        acquired.result.state, player, acquired, source=source
+    )
+    return RuleResult(
+        state=opened.state, events=(*acquired.result.events, *opened.events)
+    )
+
+
+def legal_reveal_card_acquisition_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Boundless Ambition's Reveal: "Acquire a card that costs [5] or less."
+    [Steam app text], from the Row or the Reserve (OQ-125).
+
+    Mandatory: it holds ``finish_reveal`` while a card is in reach, and with
+    none it offers nothing and lapses there, as every mandatory choice with
+    nothing to choose does (``mandatory_choice_is_pending``).
+    """
+
+    pending = pending_choice_rows(
+        state, player, legal_reveal_card_acquisition_actions
+    )
+    if pending is not None:
+        return pending
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("reveal_choice_effect") != _REVEAL_UP_TO.value:
+        return ()
+    if context.get("reveal_card_id") not in state.players[player].in_play:
+        # Another effect trashed the card while the choice waited (OQ-022).
+        return ()
+    max_cost = acquisition_cap(_REVEAL_UP_TO)
+    assert max_cost is not None
+    return acquisitions_up_to(
+        state,
+        player,
+        max_cost,
+        imperium_action="acquire_reveal_imperium_card",
+        reserve_action="acquire_reveal_reserve_card",
+    )
+
+
+def apply_reveal_card_acquisition(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Acquire the chosen card for a revealed card's acquisition; the choice
+    is used up."""
+
+    state = open_pending_reveal_choice(state, action)
+    if action not in legal_reveal_card_acquisition_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal acquisition")
+    context = dict(state.decision_stack[-1].context)
+    source_card_id = context.get("reveal_card_id")
+    if not isinstance(source_card_id, str):
+        raise RuntimeError("Reveal acquisition frame has invalid card ID")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{source_card_id}:acquisition"
+    )
+    return acquire_by_row(state.pop_decision(), action.actor, action, source=source)
 
 
 def acquire_imperium_for_intrigue(

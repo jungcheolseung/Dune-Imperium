@@ -843,6 +843,24 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "trash_reveal_card": _row(_V.TRASH, _S.REVEAL_CARD, _T.PERSONAL_CARD, tag=_SOURCE),
     "command_acquire_row_card": _row(_V.ACQUIRE, _S.REVEAL_CARD, _T.IMPERIUM_CARD),
+    # Boundless Ambition (Rise of Ix promo): "Acquire a card that costs 5 or
+    # less", from the Row or the Reserve (OQ-125) -- revealed, and in its
+    # Unload's window, which confirms a fizzle when none is in reach.
+    "acquire_reveal_imperium_card": _row(
+        _V.ACQUIRE, _S.REVEAL_CARD, _T.IMPERIUM_CARD, variant="up_to"
+    ),
+    "acquire_reveal_reserve_card": _row(
+        _V.ACQUIRE, _S.REVEAL_CARD, _T.RESERVE_CARD, variant="up_to"
+    ),
+    "acquire_unload_imperium_card": _row(
+        _V.ACQUIRE, _S.REVEAL_CARD, _T.IMPERIUM_CARD, variant="unload"
+    ),
+    "acquire_unload_reserve_card": _row(
+        _V.ACQUIRE, _S.REVEAL_CARD, _T.RESERVE_CARD, variant="unload"
+    ),
+    "skip_unload_acquisition": _row(
+        _V.CONFIRM_EMPTY, _S.REVEAL_CARD, of=_V.ACQUIRE, variant="unload"
+    ),
     "place_reveal_spy": _row(_V.PLACE_SPY, _S.REVEAL_CARD, _T.POST, tag=_SOURCE),
     "recall_spy_for_reveal": _row(_V.RECALL_SPY, _S.REVEAL_CARD, _T.POST, tag=_SOURCE),
     "recall_spy_for_reveal_placement": _row(

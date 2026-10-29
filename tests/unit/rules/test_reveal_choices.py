@@ -155,8 +155,9 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
     # icons, then its second alone (stage P4d).
     assert len(optional) == 16 + 8 + 5
     # Ten of the Uprising family's, Bene Gesserit Sister's -OR- (stage P3) and
-    # Rise of Ix's Web of Power's wild Influence icon (stage P4d).
-    assert len(mandatory) == 10 + 1 + 1
+    # Rise of Ix's Web of Power's wild Influence icon and its promo Boundless
+    # Ambition's acquisition (stage P4d).
+    assert len(mandatory) == 10 + 1 + 2
     assert set(REVEAL_CHOICE_EFFECT_ACTIONS) == set(PersonalCardRevealChoiceEffect)
     # A printed "-OR-" choice and a gain are mandatory; the Spy icons too
     # (OQ-057 (14)); "may" and arrows are optional [FAQ p. 3].
@@ -173,8 +174,11 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
         _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
         # The original game's (stage P3): Bene Gesserit Sister.
         _Choice.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
-        # Rise of Ix's (stage P4d): Web of Power's wild Influence icon.
+        # Rise of Ix's (stage P4d): Web of Power's wild Influence icon and
+        # Boundless Ambition's "Acquire a card that costs 5 or less" (no
+        # "may").
         _Choice.GAIN_CHOSEN_INFLUENCE,
+        _Choice.ACQUIRE_CARD_UP_TO_FIVE,
     } == mandatory
 
 
@@ -310,6 +314,9 @@ def test_an_id_two_cards_produce_always_names_its_card() -> None:
         "retreat_reveal_units_for_influence",
         # And its Ix-Guild Compact.
         "place_reveal_negotiator",
+        # And its promo Boundless Ambition, its one card.
+        "acquire_reveal_imperium_card",
+        "acquire_reveal_reserve_card",
     }
     assert set(produced) == REVEAL_CHOICE_ACTION_IDS - original_only
     for action_id, by_card in produced.items():

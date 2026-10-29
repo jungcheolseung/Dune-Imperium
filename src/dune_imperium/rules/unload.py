@@ -22,17 +22,18 @@ How the icons are taken:
   Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer ruling, rise-of-ix.md 7).
   The cost's caller passes ``at_once``: the box is paid inside the payment,
   before the line's reward. A decision icon (``is_decision_icon``: the
-  Freighter's move) cannot be paid there: the announcement holds it
-  (``unload_holds``), and the caller stops before its right side, writes its
-  frame as the cost left it and pushes the hold (``push_unload_hold``) naming
-  how to pay the rest later (a payer registered with ``hold_payer`` and its
-  plain values). The engine then opens the held icons' windows above the
-  hold; while any is open, they are the seat's only rows, and an effect of
-  the seat opens its own window rather than waiting on its turn
-  (``turn_rows.waits_on_turn``), so the Unload is resolved to the end. Once
-  the hold is on top again (and no immediate owed draw of its seat waits) it
-  closes and its payer pays the right side as the path would have
-  (``settle_unloads``). A box with no decision icon is paid as before.
+  Freighter's move, a Tech Negotiation, an acquisition) cannot be paid
+  there: the announcement holds it (``unload_holds``), and the caller stops
+  before its right side, writes its frame as the cost left it and pushes the
+  hold (``push_unload_hold``) naming how to pay the rest later (a payer
+  registered with ``hold_payer`` and its plain values). The engine then
+  opens the held icons' windows above the hold; while any is open, they are
+  the seat's only rows, and an effect of the seat opens its own window rather
+  than waiting on its turn (``turn_rows.waits_on_turn``), so the Unload is
+  resolved to the end. Once the hold is on top again (and no immediate owed
+  draw of its seat waits) it closes and its payer pays the right side as the
+  path would have (``settle_unloads``). A box with no decision icon is paid
+  as before.
 - Triggered by an effect inside its owner's own turn: each icon waits on the
   turn's frame as a mandatory row (``turn_rows.UNLOAD_ICON``), as a Contract's
   icons do (OQ-112 (4)), and holds the turn's end until taken; a decision
@@ -40,8 +41,9 @@ How the icons are taken:
   (``turn_rows.OPTIONAL_UNLOAD_ICONS``, OQ-095 (2)).
 - Outside its owner's turn (an opponent's effect discards it, a Combat reward
   trashes it): the window ``FrameKind.UNLOAD_ICONS``, one row per icon, in the
-  owner's order; a decision icon opens its own window (the Freighter's,
-  ``FrameKind.FREIGHTER_MOVE``) above it.
+  owner's order; a decision icon opens its own window above it (the
+  Freighter's ``FrameKind.FREIGHTER_MOVE``, an acquisition's Unload window
+  marked ``UNLOAD_ACQUIRE_KEY``).
 
 The transitions only announce an Unload owed by an effect (the event
 ``card_unloaded`` with ``pending``); the engine queues its rows or opens its
@@ -49,18 +51,20 @@ window once the action's handler is done (``settle_unloads``), because the
 callers write their own frame back after the transition and would drop a
 row or a window put there before.
 
-Wired so far: Reveal boxes of plain resource gains (Water Peddler, CHOAM
-Delegate, Esmar Tuek), of a printed Faction's Influence (In The Shadows), of
-troops deployed from the supply (Treachery, also during Combat, OQ-127) and
-of the Freighter icon, a Reveal choice and a decision (Freighter Fleet), also
+Wired: Reveal boxes of plain resource gains (Water Peddler, CHOAM Delegate,
+Esmar Tuek), of a printed Faction's Influence (In The Shadows), of troops
+deployed from the supply (Treachery, also during Combat, OQ-127), and the
+Reveal choices that are decisions: the Freighter icon (Freighter Fleet), two
+Tech Negotiation icons (Ix-Guild Compact) and an acquisition by cost cap (the
+promo Boundless Ambition, whose window offers the Row and the Reserve,
+OQ-125, with the deck-top twins of Recruitment Mission and Spaceport, and
+whose acquired card's acquire box resolves as any acquisition's does) -- also
 on a line with a condition the owner's seat alone settles (Guild Accord's
-"[Spacing Guild] Alliance: [3 spice]"). A conditioned
-icon is gained when its condition holds as the card is discarded or trashed:
-the Unload happens then ("trash되는 카드의 Unload는 trash되는 중에 일어난다"),
-and the rows and the window only let the owner order what it gained. A box
-with another choice, a cost, Persuasion or swords belongs to its card's brief
-(Ix-Guild Compact and the promo Boundless Ambition): ``unload_icons`` refuses
-it.
+"[Spacing Guild] Alliance: [3 spice]"). A conditioned icon is gained when its
+condition holds as the card is discarded or trashed: the Unload happens then
+("trash되는 카드의 Unload는 trash되는 중에 일어난다"), and the rows and the
+window only let the owner order what it gained. A box with another choice, a
+cost, Persuasion or swords is not wired: ``unload_icons`` refuses it.
 """
 
 import json
@@ -72,6 +76,7 @@ from typing import Final
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
     CommandReached,
     Condition,
     DeployFromSupply,
@@ -85,6 +90,9 @@ from dune_imperium.content.uprising.imperium import (
     imperium_card_for_instance,
 )
 from dune_imperium.content.uprising.reveal_abilities import REVEAL_GAIN_ABILITIES
+from dune_imperium.content.uprising.reveal_choice_abilities import (
+    reveal_choice_ability,
+)
 from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
@@ -96,6 +104,7 @@ from dune_imperium.rules.conditions import owner_condition_holds
 from dune_imperium.rules.frames import (
     UNLOAD_HOLD_KEY,
     FrameKind,
+    context_int,
     context_str,
     draw_is_immediate,
     is_unload_hold,
@@ -130,9 +139,18 @@ NEGOTIATOR_ICON: Final = "negotiator"
 """The Tech Negotiation icon: "you may take a troop from your supply and
 place it on the Ix board" [Rise of Ix p. 4] -- a decision, answered by its
 own row (and, in a window, by its refusal)."""
-_WINDOW_ICONS: Final = frozenset({FREIGHTER_ICON})
+ACQUIRE_ICON: Final = "acquisition"
+"""Boundless Ambition's "Acquire a card that costs [5] or less." [Steam app
+text]: a decision, answered in an acquisition window of its own
+(``UNLOAD_ACQUIRE_KEY``); its amount is the cost cap. (Not "acquire", which
+is the id of an Uprising Contract.)"""
+UNLOAD_ACQUIRE_KEY: Final = "unload_acquire"
+"""Marks an Unload window that is an ``ACQUIRE_ICON``'s acquisition: the card
+instance whose box it is (``max_cost`` beside it)."""
+UNLOAD_ACQUIRE_PROMPT: Final = "Acquire a card that costs 5 or less"
+_WINDOW_ICONS: Final = frozenset({FREIGHTER_ICON, ACQUIRE_ICON})
 """The decision icons a window of their own answers."""
-_DECISION_ICONS: Final = frozenset({FREIGHTER_ICON, NEGOTIATOR_ICON})
+_DECISION_ICONS: Final = frozenset({FREIGHTER_ICON, NEGOTIATOR_ICON, ACQUIRE_ICON})
 _HELD_KEY: Final = "held"
 """The ``card_unloaded`` payload's decision icons a cost held (comma-joined,
 only when there are any)."""
@@ -172,7 +190,22 @@ _CHOICE_ICONS: Final = {
         NEGOTIATOR_ICON,
         NEGOTIATOR_ICON,
     ),
+    # Boundless Ambition: its acquisition, the record's cost cap its amount.
+    PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE: (ACQUIRE_ICON,),
 }
+
+
+def _choice_amount(choice: PersonalCardRevealChoiceEffect, name: str) -> int:
+    """How much a decision icon of a Reveal choice gives: an acquisition's
+    cost cap (its record's ``AcquireCardUpTo``), else one."""
+
+    if name != ACQUIRE_ICON:
+        return 1
+    (line,) = reveal_choice_ability(choice).sections
+    (piece,) = line.rewards
+    if not isinstance(piece, AcquireCardUpTo):
+        raise NotImplementedError(f"{choice}: an acquisition icon of {piece!r}")
+    return piece.max_cost
 
 
 @cache
@@ -192,7 +225,10 @@ def _box(definition_id: str) -> tuple[_BoxIcon, ...]:
             raise NotImplementedError(
                 f"{definition_id}: an Unload box choice {choice} is not wired"
             )
-        icons.extend(_BoxIcon(name, 1, None) for name in _CHOICE_ICONS[choice])
+        icons.extend(
+            _BoxIcon(name, _choice_amount(choice, name), None)
+            for name in _CHOICE_ICONS[choice]
+        )
     for line in () if ability is None else ability.sections:
         if line.costs:
             raise NotImplementedError(
@@ -377,9 +413,11 @@ def _value(card_id: str, name: str) -> str:
     return f"{card_id}|{name}"
 
 
-def _open_decision(state: GameState, player: int, name: str, source: str) -> GameState:
-    """Open the window that answers the decision icon ``name`` for ``player``
-    on top of ``state`` (``is_decision_icon``)."""
+def _open_decision(
+    state: GameState, player: int, card_id: str, name: str, source: str
+) -> GameState:
+    """Open the window that answers the decision icon ``name`` of
+    ``card_id``'s box for ``player`` on top of ``state`` (``is_decision_icon``)."""
 
     if name == FREIGHTER_ICON:
         # Imported here: the Shipping track imports the Tech module, which
@@ -387,6 +425,26 @@ def _open_decision(state: GameState, player: int, name: str, source: str) -> Gam
         from dune_imperium.rules.shipping_track import open_freighter_move
 
         return open_freighter_move(state, player, source=source)
+    if name == ACQUIRE_ICON:
+        # An acquisition outside its card's Reveal: its own window, which
+        # names the card and the cost cap.
+        return state.push_decision(
+            DecisionFrame(
+                kind=FrameKind.UNLOAD_ICONS,
+                frame_id=f"{source}:window",
+                decision=PlayerDecision(owner=player, prompt=UNLOAD_ACQUIRE_PROMPT),
+                context=tuple(
+                    sorted(
+                        (
+                            (UNLOAD_ACQUIRE_KEY, card_id),
+                            (UNLOAD_ICONS_KEY, ""),
+                            ("max_cost", dict(unload_icons(card_id))[ACQUIRE_ICON]),
+                            ("source", source),
+                        )
+                    )
+                ),
+            )
+        )
     raise RuntimeError(f"{name} is not an Unload decision icon")
 
 
@@ -426,7 +484,7 @@ def _owe(
         )
     # The last pushed is answered first: the printed first decision on top.
     for name in reversed(tuple(name for name in names if name in _WINDOW_ICONS)):
-        state = _open_decision(state, player, name, f"{source}:{name}")
+        state = _open_decision(state, player, card_id, name, f"{source}:{name}")
     return state
 
 
@@ -539,7 +597,9 @@ def _open_held(state: GameState, event: GameEvent) -> GameState:
             )
         )
     for name in reversed(tuple(name for name in names if name in _WINDOW_ICONS)):
-        state = _open_decision(state, player, name, f"{event.event_id}:{name}")
+        state = _open_decision(
+            state, player, card_id, name, f"{event.event_id}:{name}"
+        )
     return state
 
 
@@ -650,6 +710,8 @@ def legal_unload_window_actions(
     frame = owned_top_frame(state, FrameKind.UNLOAD_ICONS, player)
     if frame is None:
         return ()
+    if UNLOAD_ACQUIRE_KEY in dict(frame.context):
+        return _acquisition_rows(state, player, frame)
     rows: list[DomainAction] = []
     for value in dict.fromkeys(_window_values(frame)):
         name = value.split("|")[1]
@@ -659,6 +721,61 @@ def legal_unload_window_actions(
             # "may": the window's own refusal, the press of a turn's row.
             rows.append(_row(player, value, UNLOAD_DECLINE_ACTION))
     return tuple(rows)
+
+
+def _acquisition_rows(
+    state: GameState, player: int, frame: DecisionFrame
+) -> tuple[DomainAction, ...]:
+    """An acquisition window's rows: each card within the cap from the Row or
+    the Reserve, never Foldspace (OQ-125), with its deck-top twin while one is
+    offered; with none in reach, that part of the effect fizzles ("That part
+    of the effect fizzles", the designer's ruling on Impress, OQ-057 (6)),
+    confirmed by its own row."""
+
+    # Imported here: acquisition imports the card trash, which imports this
+    # module.
+    from dune_imperium.rules.acquisition import acquisitions_up_to
+
+    rows = acquisitions_up_to(
+        state,
+        player,
+        context_int(dict(frame.context), "max_cost", owner=_FRAME),
+        imperium_action="acquire_unload_imperium_card",
+        reserve_action="acquire_unload_reserve_card",
+    )
+    return rows or (DomainAction(action_id="skip_unload_acquisition", actor=player),)
+
+
+def apply_unload_acquisition(state: GameState, action: DomainAction) -> RuleResult:
+    """Acquire the card an Unload acquisition window offers, or confirm that
+    none is in reach; the window closes either way."""
+
+    player = action.actor
+    frame = owned_top_frame(state, FrameKind.UNLOAD_ICONS, player)
+    if (
+        frame is None
+        or UNLOAD_ACQUIRE_KEY not in dict(frame.context)
+        or action not in legal_unload_window_actions(state, player)
+    ):
+        raise ValueError("action is not a legal Unload acquisition")
+    context = dict(frame.context)
+    source = context_str(context, "source", owner=_FRAME)
+    card_id = context_str(context, UNLOAD_ACQUIRE_KEY, owner=_FRAME)
+    state = state.pop_decision()
+    if action.action_id == "skip_unload_acquisition":
+        return RuleResult(
+            state=state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:nothing_acquired",
+                    kind="unload_acquisition_empty",
+                    payload=(("card_id", card_id), ("player", player)),
+                ),
+            ),
+        )
+    from dune_imperium.rules.acquisition import acquire_by_row
+
+    return acquire_by_row(state, player, action, source=source)
 
 
 def legal_unload_row_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -727,6 +844,8 @@ def apply_unload_icon(state: GameState, action: DomainAction) -> RuleResult:
         state = turn_rows.take(state, player, item)
     if name in _WINDOW_ICONS:
         # A row of its owner's turn: its window answers it.
-        return RuleResult(state=_open_decision(state, player, name, f"{source}:{name}"))
+        return RuleResult(
+            state=_open_decision(state, player, card_id, name, f"{source}:{name}")
+        )
     amount = dict(unload_icons(card_id))[name]
     return _gain(state, player, name, amount, source=f"{source}:{name}")

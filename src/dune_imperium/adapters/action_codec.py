@@ -860,6 +860,55 @@ def _withheld_rows(content: RulesetContent) -> frozenset[str]:
     return frozenset(withheld)
 
 
+def _cost_cap_acquisition_templates(
+    content: RulesetContent,
+) -> tuple[ActionTemplate, ...]:
+    """Boundless Ambition's "Acquire a card that costs 5 or less" (Rise of Ix
+    promo), in the catalogs whose deck holds it: revealed
+    (``acquisition.apply_reveal_card_acquisition``) and in its Unload's
+    window (``unload.apply_unload_acquisition``) -- every Imperium card and
+    every Reserve card but Foldspace (OQ-125), each with its deck-top twin
+    (Recruitment Mission, Spaceport) -- and the window's fizzle with none in
+    reach."""
+
+    imperium_instances = content.imperium_deck_instance_ids
+    if not any(
+        instance_id.startswith("imperium:boundless_ambition:")
+        for instance_id in imperium_instances
+    ):
+        return ()
+    reserve = tuple(
+        stack.card.card_id for stack in content.reserve_stacks if not stack.icon_only
+    )
+    tops: tuple[tuple[tuple[str, ActionValue], ...], ...] = (
+        (),
+        (("to_deck_top", True),),
+    )
+    templates: list[ActionTemplate] = []
+    for imperium_action, reserve_action in (
+        ("acquire_reveal_imperium_card", "acquire_reveal_reserve_card"),
+        ("acquire_unload_imperium_card", "acquire_unload_reserve_card"),
+    ):
+        templates.extend(
+            ActionTemplate(
+                action_id=reserve_action,
+                arguments=(("card_id", card_id), *top),
+            )
+            for card_id in reserve
+            for top in tops
+        )
+        templates.extend(
+            ActionTemplate(
+                action_id=imperium_action,
+                arguments=(("instance_id", instance_id), *top),
+            )
+            for instance_id in imperium_instances
+            for top in tops
+        )
+    templates.append(ActionTemplate(action_id="skip_unload_acquisition"))
+    return tuple(templates)
+
+
 def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     content = content_for(config)
     withheld = _withheld_rows(content)
@@ -1179,6 +1228,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             for name in dict.fromkeys(name for name, _ in unload_icons(instance_id))
             if name in OPTIONAL_UNLOAD_ICONS
         )
+        templates.extend(_cost_cap_acquisition_templates(content))
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
     elif content.base_game is BaseGame.IMPERIUM:

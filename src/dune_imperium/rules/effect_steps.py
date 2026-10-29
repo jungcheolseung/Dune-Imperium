@@ -831,6 +831,13 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "command_acquire_row_card": _spec(
         _V.ACQUIRE, _S.REVEAL_CARD, "=engineered_miracle", targets=_IMPERIUM
     ),
+    # Boundless Ambition (Rise of Ix promo): its acquisition by cost cap.
+    "acquire_reveal_imperium_card": _spec(
+        _V.ACQUIRE, _S.REVEAL_CARD, "=boundless_ambition", targets=_IMPERIUM
+    ),
+    "acquire_reveal_reserve_card": _spec(
+        _V.ACQUIRE, _S.REVEAL_CARD, "=boundless_ambition", targets=_RESERVE
+    ),
     # --- The leader, a Commander's Skill and Tech tiles in the Reveal ------
     "retreat_leader_troop": _spec(_V.RETREAT, _S.LEADER, _LEADER, option="troop"),
     "retreat_leader_commander": _spec(

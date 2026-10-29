@@ -32,6 +32,7 @@ from dune_imperium.content.uprising.abilities import (
 )
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
     CommandReached,
     CompletedContractsAtLeast,
     Condition,
@@ -205,6 +206,13 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             ),
             _CHOICE.MAY_PLACE_NEGOTIATOR: _choice(
                 _line(PlaceNegotiator()), mark=_OPTIONAL
+            ),
+            # Boundless Ambition (Rise of Ix promo): "Acquire a card that costs
+            # [5] or less." [Steam app text] -- a Row or Reserve card, not
+            # Foldspace (OQ-125). No "may": it holds the Reveal's end while a
+            # card is in reach, and lapses with it when none is.
+            _CHOICE.ACQUIRE_CARD_UP_TO_FIVE: _choice(
+                _line(AcquireCardUpTo(5)), mark=_MANDATORY
             ),
             # For Humanity: "Bene Gesserit Alliance: You may lose 2 Influence with
             # one Faction -> Gain 1 VP" -- a "?" Influence diamond with two red

@@ -273,6 +273,9 @@ _IMPERIUM_ACQUISITIONS: Final = frozenset(
         "acquire_intrigue_imperium",
         "acquire_leader_imperium",
         "acquire_manipulated_imperium",
+        # Boundless Ambition, revealed and in its Unload's window.
+        "acquire_reveal_imperium_card",
+        "acquire_unload_imperium_card",
     }
 )
 _RESERVE_ACQUISITIONS: Final = frozenset(
@@ -281,6 +284,8 @@ _RESERVE_ACQUISITIONS: Final = frozenset(
         "acquire_reserve_with_solari",
         "acquire_intrigue_reserve",
         "acquire_leader_reserve",
+        "acquire_reveal_reserve_card",
+        "acquire_unload_reserve_card",
     }
 )
 _COUNT_DEPLOYMENTS: Final = frozenset(

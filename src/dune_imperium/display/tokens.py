@@ -764,6 +764,11 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
                 "You may place a troop from your supply on the Ix board as a "
                 "Negotiator"
             ),
+            # Rise of Ix's promo Boundless Ambition (stage P4d): the effect DSL's
+            # words for its acquisition (``effect_dsl_text``).
+            PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE: (
+                "Acquire a card costing 5 or less"
+            ),
             # Rise of Ix's Web of Power (stage P4d): the wild Influence icon.
             PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE: (
                 "Gain 1 Influence with a chosen Faction"

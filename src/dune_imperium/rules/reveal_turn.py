@@ -303,6 +303,9 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     ),
     _Choice.MAY_PLACE_TWO_NEGOTIATORS: frozenset({"place_reveal_negotiator"}),
     _Choice.MAY_PLACE_NEGOTIATOR: frozenset({"place_reveal_negotiator"}),
+    _Choice.ACQUIRE_CARD_UP_TO_FIVE: frozenset(
+        {"acquire_reveal_imperium_card", "acquire_reveal_reserve_card"}
+    ),
 }
 REVEAL_CHOICE_ACTION_IDS: Final = frozenset().union(
     *REVEAL_CHOICE_EFFECT_ACTIONS.values()
@@ -5005,6 +5008,8 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect is PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT
         else "You may place a Negotiator on the Ix board"
         if effect in _NEGOTIATOR_CHOICES
+        else "Acquire a card that costs 5 or less"
+        if effect is PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE
         else "You may pay three Solari for two troops"
         if effect
         is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY
@@ -5239,6 +5244,9 @@ def _reveal_choice_effect_is_available(
         # Ix-Guild Compact's Tech Negotiation icons: the rows ask for a troop
         # in the supply (``legal_reveal_negotiator_actions``).
         or effect in _NEGOTIATOR_CHOICES
+        # Boundless Ambition's acquisition: the rows name the cards in reach
+        # (``legal_reveal_card_acquisition_actions``).
+        or effect is PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE
         # Gurney Halleck's troops: the Solari are there when the choice opens,
         # and a troop to take (OQ-071's recruit criterion).
         or (
@@ -5437,11 +5445,13 @@ def reveal_choice_providers() -> tuple[ChoiceProvider, ...]:
     """
 
     from dune_imperium.rules.acquisition import (
+        legal_reveal_card_acquisition_actions,
         legal_reveal_command_acquisition_actions,
     )
 
     return (
         legal_reveal_command_acquisition_actions,
+        legal_reveal_card_acquisition_actions,
         legal_reveal_persuasion_or_contract_actions,
         legal_corrinth_city_reveal_actions,
         legal_contract_reveal_choice_actions,

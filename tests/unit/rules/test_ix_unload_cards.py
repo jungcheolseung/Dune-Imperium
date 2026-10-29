@@ -15,6 +15,8 @@ Rise of Ix.
 import random
 from dataclasses import replace
 
+import pytest
+
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.agents.agent_turn_steps import steps_after
@@ -26,7 +28,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     HasAlliance,
 )
-from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
+from dune_imperium.content.uprising.imperium import (
+    IMPERIUM_CARDS_BY_ID,
+    imperium_card_for_instance,
+)
+from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.reveal_abilities import REVEAL_GAIN_ABILITIES
 from dune_imperium.content.uprising.types import (
     AgentIcon,
@@ -44,6 +50,7 @@ from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase
+from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine, unload
 from dune_imperium.rules.agent_box_abilities import AgentPaymentBlock
 from dune_imperium.rules.agent_effects import agent_card_payment_block
@@ -68,6 +75,7 @@ LEADERS = (
 )
 ENGINE = UprisingRulesEngine(leader_ids=LEADERS)
 CODEC = ActionCodec(IX)
+_CODECS: dict[RulesetConfig, ActionCodec] = {IX: CODEC}
 TRUTHSAYER = "imperium:truthsayer:0"
 JAMIS = "imperium:jamis:0"
 MOHIAM = "imperium:reverend_mother_mohiam:0"
@@ -77,11 +85,15 @@ UNLOAD_ROW = "resolve_unload_icon"
 
 
 def _rows(state: GameState, seat: int = 0) -> tuple[DomainAction, ...]:
-    """The seat's legal rows, each round-tripped through the action codec."""
+    """The seat's legal rows, each round-tripped through the action codec of
+    the game's options."""
 
+    if state.config not in _CODECS:
+        _CODECS[state.config] = ActionCodec(state.config)
+    codec = _CODECS[state.config]
     rows = ENGINE.legal_actions(state, seat)
     for row in rows:
-        assert CODEC.decode(CODEC.encode(row), seat) == row
+        assert codec.decode(codec.encode(row), seat) == row
     return rows
 
 
@@ -133,8 +145,8 @@ def _with_cull(state: GameState, seat: int = 0, solari: int = 1) -> GameState:
     )
 
 
-def _start(seed: int = 3) -> GameState:
-    state = ENGINE.reset(IX, seed)
+def _start(seed: int = 3, config: RulesetConfig = IX) -> GameState:
+    state = ENGINE.reset(config, seed)
     chance = ChanceResolver(seed=seed)
     while isinstance(decision := ENGINE.current_decision(state), ChanceDecision):
         state = ENGINE.apply(state, chance.resolve(decision)).state
@@ -1427,4 +1439,386 @@ def test_clean_up_moves_ix_guild_compact_without_unloading_it() -> None:
     state, unloaded = _clean_up_round(_give(_start(), 0, in_play=(COMPACT,)))
     assert state.phase is GamePhase.ROUND_START
     assert COMPACT in state.players[0].discard_pile
+    assert unloaded == []
+
+
+# --- Boundless Ambition (promo) ------------------------------------------------
+
+IX_PROMOS = replace(IX, promo_cards=True)
+AMBITION = "imperium:boundless_ambition:0"
+SIGNET_RING = "player:0:starter:signet_ring:0"
+LIET_KYNES = "imperium:liet_kynes_card:0"
+_ACQUIRE = "acquisition"
+_REVEAL_ACQUISITIONS = ("acquire_reveal_imperium_card", "acquire_reveal_reserve_card")
+_UNLOAD_ACQUISITIONS = ("acquire_unload_imperium_card", "acquire_unload_reserve_card")
+type _Row = tuple[str, tuple[tuple[str, ActionValue], ...]]
+
+
+def _cost(instance_id: str) -> int:
+    cost = imperium_card_for_instance(instance_id).acquisition_cost
+    assert cost is not None
+    return cost
+
+
+def _within_five(state: GameState, prefix: str) -> set[_Row]:
+    """The rows "Acquire a card that costs [5] or less" should offer: each
+    Row card and each Reserve card within 5, never Foldspace (OQ-125)."""
+
+    return {
+        (f"acquire_{prefix}_imperium_card", (("instance_id", instance_id),))
+        for instance_id in state.imperium_row
+        if _cost(instance_id) <= 5
+    } | {
+        (f"acquire_{prefix}_reserve_card", (("card_id", card_id),))
+        for card_id, count in state.reserve_stacks
+        if count
+        and not RESERVE_STACKS_BY_ID[card_id].icon_only
+        and RESERVE_STACKS_BY_ID[card_id].acquisition_cost <= 5
+    }
+
+
+def _acquisition_rows(state: GameState, seat: int = 0) -> set[_Row]:
+    _rows(state, seat)
+    return {
+        (row.action_id, row.arguments)
+        for row in ENGINE.whole_actions(state, seat)
+        if row.action_id in (*_REVEAL_ACQUISITIONS, *_UNLOAD_ACQUISITIONS)
+    }
+
+
+def _with_spaceport(state: GameState, seat: int) -> GameState:
+    """``seat`` holding Spaceport, taken from its Tech stack."""
+
+    stacks = tuple(
+        tuple(tile for tile in stack if tile != "spaceport")
+        for stack in state.tech_stacks
+    )
+    held = (*state.players[seat].tech_ids, "spaceport")
+    return _seat(replace(state, tech_stacks=stacks), seat, tech_ids=held)
+
+
+def _cheap_row_card(state: GameState) -> str:
+    return next(card for card in state.imperium_row if _cost(card) <= 5)
+
+
+def _nothing_within_five(state: GameState) -> GameState:
+    """Every Row card costs more than 5 and no Reserve card within 5 is
+    left (an emptied Arrakis Liaison stack)."""
+
+    dear = [card for card in state.imperium_deck if _cost(card) > 5]
+    row = tuple(card if _cost(card) > 5 else dear.pop(0) for card in state.imperium_row)
+    deck = tuple(
+        card
+        for card in (*state.imperium_deck, *state.imperium_row)
+        if card not in row
+    )
+    reserve = tuple(
+        (card_id, 0 if RESERVE_STACKS_BY_ID[card_id].acquisition_cost <= 5 else count)
+        for card_id, count in state.reserve_stacks
+    )
+    return replace(state, imperium_row=row, imperium_deck=deck, reserve_stacks=reserve)
+
+
+def _in_row(state: GameState, card: str) -> GameState:
+    """``card`` takes the Row's first position, whose card goes to its place
+    in the Imperium deck."""
+
+    assert card in state.imperium_deck
+    first = state.imperium_row[0]
+    return replace(
+        state,
+        imperium_row=(card, *state.imperium_row[1:]),
+        imperium_deck=tuple(first if c == card else c for c in state.imperium_deck),
+    )
+
+
+def _acquisition_window(state: GameState, seat: int) -> None:
+    top = state.decision_stack[-1]
+    assert top.kind is FrameKind.UNLOAD_ICONS
+    assert dict(top.context)[unload.UNLOAD_ACQUIRE_KEY] == AMBITION
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == seat
+
+
+def test_boundless_ambition_play_data_matches_the_app() -> None:
+    """App table: cost 5, 1 copy, no Faction, the four Faction icons, one
+    Signet Ring icon; text: Agent "[Signet Ring]", Reveal "[Unload] Acquire a
+    card that costs [5] or less." -- a promo, shuffled in with
+    ``promo_cards`` only (rise-of-ix.md 1)."""
+    entry = IMPERIUM_CARDS_BY_ID["boundless_ambition"]
+    assert entry.play_data_complete and entry.unload and entry.promo
+    assert (entry.copies, entry.acquisition_cost) == (1, 5)
+    assert entry.factions == ()
+    assert entry.agent_icons == (
+        AgentIcon.EMPEROR,
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.FREMEN,
+    )
+    assert entry.agent_effect is PersonalCardAgentEffect.LEADER_SIGNET
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE,
+    )
+    assert "boundless_ambition" not in REVEAL_GAIN_ABILITIES
+    assert unload.unload_icons(AMBITION) == ((_ACQUIRE, 5),)
+    for config in (IX_PROMOS, IX, replace(IX_PROMOS, rise_of_ix=False)):
+        deck = content_for(config).imperium_deck_instance_ids
+        assert (AMBITION in deck) == (config.rise_of_ix and config.promo_cards)
+
+
+def test_boundless_ambition_uses_the_leaders_signet_ring_ability() -> None:
+    """ "When you play your Signet Ring card on an Agent turn, you use the
+    Signet Ring ability (with the corresponding icon) on your Leader." [Main
+    p. 20]: its box is the Signet Ring card's -- Rabban's Brutality, "troop
+    1" (docs/rules/imperium-base.md 12) -- sent with one of its four Faction
+    icons."""
+    state = _give(_start(config=IX_PROMOS), 0, hand=(AMBITION, SIGNET_RING))
+    picked = _do(state, "choose_agent_card", card_id=AMBITION).state
+    assert {
+        dict(row.arguments)["space_id"]
+        for row in ENGINE.whole_actions(picked, 0)
+        if row.action_id == "place_agent"
+    } >= {"secrets", "stillsuits", "wealth", "foldspace"}
+    placed = _do(picked, "place_agent", space_id="secrets").state
+    garrison = placed.players[0].troops_garrison
+    resolved = _do(placed, "resolve_agent_card_effect")
+    assert "leader_signet_resolved" in _kinds(resolved.events)
+    assert resolved.state.players[0].troops_garrison == garrison + 1
+
+
+def test_boundless_ambition_revealed_acquires_a_card_within_five() -> None:
+    """ "Acquire a card that costs [5] or less." from the Row or the Reserve,
+    not Foldspace (OQ-125); no "may", so it holds the Reveal's end while a
+    card is in reach; free of Persuasion, the Row refills from the deck [Main
+    p. 13]."""
+    state = _give(_start(config=IX_PROMOS), 0, hand=(AMBITION,))
+    revealed = _do(state, "reveal_turn")
+    assert "card_unloaded" not in _kinds(revealed.events)
+    state = revealed.state
+    assert _acquisition_rows(state) == _within_five(state, "reveal")
+    assert not _offered(state, "finish_reveal")
+    card = _cheap_row_card(state)
+    refill = state.imperium_deck[0]
+    position = state.imperium_row.index(card)
+    acquired = _do(state, "acquire_reveal_imperium_card", instance_id=card)
+    assert "card_acquired" in _kinds(acquired.events)
+    state = acquired.state
+    assert card in state.players[0].discard_pile
+    assert state.imperium_row[position] == refill
+    assert not _acquisition_rows(state)
+    assert _offered(state, "finish_reveal")
+
+
+def test_boundless_ambition_revealed_with_nothing_in_reach_lapses() -> None:
+    """A mandatory choice with nothing to choose does not hold the Reveal's
+    end and lapses with it (``reveal_turn.mandatory_choice_is_pending``); the
+    page shows it waiting, with why."""
+    state = _nothing_within_five(_give(_start(config=IX_PROMOS), 0, hand=(AMBITION,)))
+    state = _do(state, "reveal_turn").state
+    assert not _acquisition_rows(state)
+    assert _offered(state, "finish_reveal")
+    shown = unavailable_choices(state, 0, ENGINE.legal_actions(state, 0))
+    assert shown is not None
+    rows = shown["rows"]
+    assert isinstance(rows, list)
+    waiting = [row for row in rows if row["surface"] == "waiting"]
+    assert [row["reason"] for row in waiting] == [
+        "No card costing 5 or less to acquire; it lapses if still unmet when the "
+        "Reveal turn ends"
+    ]
+
+
+def test_boundless_ambition_revealed_with_spaceport_may_go_on_the_deck() -> None:
+    """Spaceport: "얻는 카드를 덱 위에 놓을 수 있다" (rise-of-ix.md 4) -- each
+    acquisition row has its deck-top twin."""
+    state = _with_spaceport(_give(_start(config=IX_PROMOS), 0, hand=(AMBITION,)), 0)
+    state = _do(state, "reveal_turn").state
+    rows = _acquisition_rows(state)
+    plain = _within_five(state, "reveal")
+    assert rows == plain | {
+        (action_id, (*arguments, ("to_deck_top", True)))
+        for action_id, arguments in plain
+    }
+    card = _cheap_row_card(state)
+    on_top = _do(
+        state, "acquire_reveal_imperium_card", instance_id=card, to_deck_top=True
+    ).state
+    assert on_top.players[0].deck[0] == card
+    assert card not in on_top.players[0].discard_pile
+
+
+def test_boundless_ambition_discarded_as_a_cost_holds_the_draw() -> None:
+    """Truthsayer's "[Discard] -> [draw 1 card]": "Unload를 끝까지 해결한 뒤
+    오른쪽으로 간다" (designer ruling, rise-of-ix.md 7) -- the acquisition is a
+    decision, so the draw waits under a hold until a card is acquired."""
+    state = _start(config=IX_PROMOS)
+    kept = state.players[0].hand[0]
+    state = _give(state, 0, hand=(TRUTHSAYER, AMBITION, kept))
+    state = _do(state, "choose_agent_card", card_id=TRUTHSAYER).state
+    state = _do(state, "place_agent", space_id="wealth").state
+    paid = _do(state, "discard_agent_card", card_id=AMBITION)
+    state = paid.state
+    assert "agent_card_effect_resolved" not in _kinds(paid.events)
+    _acquisition_window(state, 0)
+    assert {(row.action_id, row.arguments) for row in _rows(state)} == _within_five(
+        state, "unload"
+    )
+    hand = len(state.players[0].hand)
+    check_observation_privacy(state)
+    acquired = _do(state, "acquire_unload_reserve_card", card_id="arrakis_liaison")
+    after = acquired.state.players[0]
+    liaisons = [card for card in after.discard_pile if "arrakis_liaison" in card]
+    assert len(liaisons) == 1
+    assert len(after.hand) == hand + 1
+    kinds = _kinds(acquired.events)
+    assert kinds.index("card_acquired") < kinds.index("agent_card_effect_resolved")
+
+
+def test_boundless_ambition_trashed_as_a_cost_holds_what_the_trash_buys() -> None:
+    """Shai-Hulud's "[Trash a card] -> [2 troops]": the troops wait for the
+    acquisition."""
+    state = _give(_start(config=IX_PROMOS), 0, hand=(SHAI_HULUD, AMBITION))
+    state = _do(state, "choose_agent_card", card_id=SHAI_HULUD).state
+    state = _do(state, "place_agent", space_id="imperial_basin").state
+    garrison = state.players[0].troops_garrison
+    state = _do(state, "trash_agent_card", card_id=AMBITION).state
+    assert AMBITION in state.players[0].trashed
+    assert state.players[0].troops_garrison == garrison
+    _acquisition_window(state, 0)
+    card = _cheap_row_card(state)
+    state = _do(state, "acquire_unload_imperium_card", instance_id=card).state
+    assert card in state.players[0].discard_pile
+    assert state.players[0].troops_garrison == garrison + 2
+
+
+def test_boundless_ambition_trashed_by_jamis_holds_the_turns_end() -> None:
+    """ "trash할 때 얻는다" [Rise of Ix p. 7]; in its owner's turn the
+    acquisition is a mandatory row of the turn (no "may"), opening its
+    window."""
+    state = _give(_start(config=IX_PROMOS), 0, hand=(JAMIS, AMBITION))
+    state = _do(state, "choose_agent_card", card_id=JAMIS).state
+    state = _do(state, "place_agent", space_id="stillsuits").state
+    state = _do(state, "trash_agent_card", card_id=AMBITION).state
+    state = _do(state, "resolve_board_effect", effect="resources").state
+    state = _do(state, "resolve_faction_influence").state
+    assert _arguments(state, UNLOAD_ROW) == {
+        (("card_id", AMBITION), ("effect", _ACQUIRE))
+    }
+    assert not _offered(state, "finish_agent_turn")
+    opened = _do(state, UNLOAD_ROW, card_id=AMBITION, effect=_ACQUIRE).state
+    _acquisition_window(opened, 0)
+    assert _acquisition_rows(opened) == _within_five(opened, "unload")
+    card = _cheap_row_card(opened)
+    done = _do(opened, "acquire_unload_imperium_card", instance_id=card).state
+    assert card in done.players[0].discard_pile
+    assert done.decision_stack[-1].kind is FrameKind.AGENT_EFFECTS
+    assert _offered(done, "finish_agent_turn")
+
+
+def test_boundless_ambition_discarded_by_an_opponent_acquires_in_its_window() -> None:
+    """ "남의 효과로 버려져도 된다(룰북 예: 상대의 Reverend Mother Mohiam)"
+    (rise-of-ix.md 7): an acquisition outside its owner's turn, in seat 1's
+    own window; the Row refills from the deck [Main p. 13], then back to the
+    discard."""
+    state = _start(config=IX_PROMOS)
+    other = state.players[1].hand[0]
+    state = _mohiam_asks_seat_one(state, AMBITION, other)
+    state = _do(state, "discard_opponent_card", seat=1, card_id=AMBITION).state
+    _acquisition_window(state, 1)
+    assert not _rows(state, 0)
+    assert _acquisition_rows(state, 1) == _within_five(state, "unload")
+    check_observation_privacy(state)
+    card = _cheap_row_card(state)
+    refill = state.imperium_deck[0]
+    position = state.imperium_row.index(card)
+    state = _do(state, "acquire_unload_imperium_card", seat=1, instance_id=card).state
+    assert card in state.players[1].discard_pile
+    assert state.imperium_row[position] == refill
+    assert state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_boundless_ambition_out_of_turn_keeps_spaceport_and_acquire_boxes() -> None:
+    """Outside its owner's turn, Spaceport's deck-top choice (rise-of-ix.md 4)
+    stands as anywhere, and an acquire box of one icon is gained at once
+    (OQ-141: "아이콘 하나에 고를 것이 없는 지금의 획득 보너스는 그대로 즉시
+    받는다") -- Liet Kynes' Emperor Influence."""
+    state = _in_row(_start(config=IX_PROMOS), LIET_KYNES)
+    state = _with_spaceport(state, 1)
+    other = state.players[1].hand[0]
+    state = _mohiam_asks_seat_one(state, AMBITION, other)
+    state = _do(state, "discard_opponent_card", seat=1, card_id=AMBITION).state
+    rows = _acquisition_rows(state, 1)
+    plain = _within_five(state, "unload")
+    assert rows == plain | {
+        (action_id, (*arguments, ("to_deck_top", True)))
+        for action_id, arguments in plain
+    }
+    emperor = state.players[1].influence.emperor
+    state = _do(
+        state,
+        "acquire_unload_imperium_card",
+        seat=1,
+        instance_id=LIET_KYNES,
+        to_deck_top=True,
+    ).state
+    assert state.players[1].deck[0] == LIET_KYNES
+    assert state.players[1].influence.emperor == emperor + 1
+    assert state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+@pytest.mark.parametrize(
+    "card", ["imperium:chani_card:0", "imperium:water_peddler:0"]
+)
+def test_boundless_ambition_out_of_turn_gains_a_water_acquire_box(card: str) -> None:
+    """Chani's and Water Peddler's acquire box, one water, is gained at once
+    outside its owner's turn too (OQ-141)."""
+    state = _in_row(_start(config=IX_PROMOS), card)
+    other = state.players[1].hand[0]
+    state = _mohiam_asks_seat_one(state, AMBITION, other)
+    state = _do(state, "discard_opponent_card", seat=1, card_id=AMBITION).state
+    water = state.players[1].resources.water
+    state = _do(state, "acquire_unload_imperium_card", seat=1, instance_id=card).state
+    assert card in state.players[1].discard_pile
+    assert state.players[1].resources.water == water + 1
+    assert state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_boundless_ambition_with_nothing_in_reach_fizzles_in_its_window() -> None:
+    """ "That part of the effect fizzles" (the designer's ruling on Impress,
+    OQ-057 (6)): with no card within 5 the window confirms it and closes."""
+    state = _nothing_within_five(_start(config=IX_PROMOS))
+    other = state.players[1].hand[0]
+    state = _mohiam_asks_seat_one(state, AMBITION, other)
+    state = _do(state, "discard_opponent_card", seat=1, card_id=AMBITION).state
+    _acquisition_window(state, 1)
+    assert {row.action_id for row in _rows(state, 1)} == {"skip_unload_acquisition"}
+    skipped = _do(state, "skip_unload_acquisition", seat=1)
+    assert "unload_acquisition_empty" in _kinds(skipped.events)
+    assert skipped.state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_boundless_ambition_revealed_then_trashed_acquires_again() -> None:
+    """OQ-120: "공개한 Unload 카드를 같은 Reveal turn에 trash하면 다시 얻는다"."""
+    state = _with_cull(_give(_start(config=IX_PROMOS), 0, hand=(AMBITION,)))
+    state = _do(state, "reveal_turn").state
+    first = _cheap_row_card(state)
+    state = _do(state, "acquire_reveal_imperium_card", instance_id=first).state
+    state = _do(state, "play_intrigue", card_id=CULL, option=0).state
+    state = _do(state, "trash_intrigue_card", card_id=AMBITION).state
+    assert not _offered(state, "finish_reveal")
+    state = _do(state, UNLOAD_ROW, card_id=AMBITION, effect=_ACQUIRE).state
+    _acquisition_window(state, 0)
+    second = _cheap_row_card(state)
+    state = _do(state, "acquire_unload_imperium_card", instance_id=second).state
+    assert {first, second} <= set(state.players[0].discard_pile)
+    assert state.decision_stack[-1].kind is FrameKind.REVEAL
+    assert _offered(state, "finish_reveal")
+
+
+def test_clean_up_moves_boundless_ambition_without_unloading_it() -> None:
+    """ "Clean Up에서 in play 카드를 discard pile로 옮기는 것은 discard가 아니다"
+    (rise-of-ix.md 7, [FAQ p. 2])."""
+    state = _give(_start(config=IX_PROMOS), 0, in_play=(AMBITION,))
+    state, unloaded = _clean_up_round(state)
+    assert state.phase is GamePhase.ROUND_START
+    assert AMBITION in state.players[0].discard_pile
     assert unloaded == []

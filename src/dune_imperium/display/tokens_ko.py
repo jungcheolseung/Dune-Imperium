@@ -786,6 +786,11 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR: (
         "Place a troop from your supply on the Ix board as a Negotiator"
     ),
+    # Rise of Ix's promo Boundless Ambition (stage P4d): ``effect_dsl_text_ko``'s
+    # words for its acquisition.
+    PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE: (
+        "비용이 5 이하인 카드 {acquire}"
+    ),
     # Rise of Ix's Web of Power (stage P4d).
     PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE: "{influence_any:1} 선택",
     PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH: (

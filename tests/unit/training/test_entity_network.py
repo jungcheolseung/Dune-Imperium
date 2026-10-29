@@ -340,7 +340,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # only its own row reads them, its row is the only one that changed, and no
 # scale moved (compared against 4890e9c2, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against 5a60e3cd (2026-10-30).
-_GOLDEN_DIGEST = "4481e0e83b3fd69f989624b8466651809b018e438f513dd2e8449e66a7df2227"
+# Then the promo Boundless Ambition got its play data (stage P4d): two
+# personal-table columns are new (a Reveal choice's acquisition and its cost
+# cap), only its own row reads them, its row is the only one that changed, and
+# no scale moved (compared against 23f086aa, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against be07d962 (2026-10-30).
+_GOLDEN_DIGEST = "41713f256c48dea4b0903eec0718b8baa1bd935489088befd1ffa16b47fd7791"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

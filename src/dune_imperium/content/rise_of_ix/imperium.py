@@ -18,9 +18,9 @@ Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
 Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
 Way, Satellite Ban, Spice Trader, Imperial Bashar, Bounty Hunter, Web of
 Power, Ixian Engineer, Esmar Tuek, Guild Accord, In The Shadows, Treachery,
-Freighter Fleet and Ix-Guild Compact so far), while the observation lists
-every identity from v39. Setup takes Rise of Ix on the original game since
-stage P4c-5.
+Freighter Fleet and Ix-Guild Compact so far, and with ``promo_cards``
+Boundless Ambition), while the observation lists every identity from v39.
+Setup takes Rise of Ix on the original game since stage P4c-5.
 from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
@@ -541,5 +541,28 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=5,
         promo=True,
+        # App table: no Faction, the Emperor, Spacing Guild, Bene Gesserit and
+        # Fremen icons, no fixed Reveal values, one Signet Ring icon
+        # ("SignetIcons", as the starting Signet Ring's). Agent: "[Signet
+        # Ring]" [Steam app text] -- "you use the Signet Ring ability (with
+        # the corresponding icon) on your Leader" [Main p. 20], the Signet
+        # Ring card's own box. Reveal: "[Unload] Acquire a card that costs [5]
+        # or less." [Steam app screen pieces and text] -- a Row or Reserve
+        # card, not Foldspace (OQ-125), a mandatory Reveal choice; gained also
+        # when the card is discarded or trashed [Rise of Ix p. 7]
+        # (``rules.unload``: a decision icon, so as an arrow's cost it holds
+        # the arrow's right side).
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        ),
+        agent_effect=PersonalCardAgentEffect.LEADER_SIGNET,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE,
+        ),
+        unload=True,
+        play_data_complete=True,
     ),
 )
