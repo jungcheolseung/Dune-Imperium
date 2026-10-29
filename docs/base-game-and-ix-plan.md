@@ -1449,3 +1449,7 @@ Strongarm·Strategic Push, 그다음 Imperium 카드. 끊기면: 커밋되지 �
   `28ab9f72` Quid Pro Quo(`GainInfluenceWhereAgent`), `a3b801e2` Local Fence(Agent 칸 "-OR-" 지불 줄 둘, 새 행 `pay_agent_card_spice_for_solari`·
   `pay_agent_card_solari_for_spice`)). **P4e 몫:** Quid Pro Quo가 여러 진영에 Influence를 주는 순서(지금 Faction 순서) — Tessia의 Snooper가 어느 track이
   먼저 닿는지를 읽으므로 그때 정한다. **P6 몫:** app_ai의 지불 id 목록에 Local Fence의 두 id. Ix 카드: Intrigue 9/17, Imperium 5/35.
+- Intrigue 묶음 d(`b8feee68` Advanced Weaponry, `c30f523b` Grand Conspiracy — 셋이면 1 VP -OR- 넷이면 2 VP(앱 화면 배치, OQ-058), `4cdf1e99` Cannon Turrets
+  (`EachOpponentRetreatsDreadnought`), `a20f8e10` Second Wave(`DeployFromGarrison(dreadnoughts=True)`)); Imperium 묶음 d(브랜치 `claude/p4d-imperium-b`:
+  `adacdc42` Satellite Ban, `0d7862d6` Spice Trader — 조건은 Fremen Alliance가 아니라 Fremen 2 Influence; Imperial Bashar는 선택 -OR- 칸으로 진행 중).
+  Ix 카드(P4 위): Intrigue 13/17, Imperium 9/35.
