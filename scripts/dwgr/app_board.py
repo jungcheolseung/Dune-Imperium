@@ -29,6 +29,10 @@ translation is never used). Tuek's Sietch (Bloodlines) is not in the app; it
 is composed from app parts in the layout of the app's Hagga Basin with the
 printed tile's art (``tueks_sietch_tree``).
 
+The original Dune: Imperium's own 19 spaces (``BASE_SPACE_OBJECTS``) come from
+the Playmat's sibling container ``BASE_SPACES_PATH`` and are drawn the same
+way, in English only (``tile_langs``) under ``<lang>/base/location/``.
+
 Inputs go to the assets checkout's git-ignored
 ``reference/dune-steam-app/<build-guid>/render/boardspaces/``; tiles go to
 ``assets/cards/app/<lang>/<manifest path>.webp`` with their sources in
@@ -67,6 +71,10 @@ SPACES_PATH = (
     "Visible Objects Connected to Entities",
     "P_Spaces_Uprising_ChildOrderMattersForGamepad",
 )
+# The original game's spaces sit in the sibling container (the Uprising one
+# holds the same-named objects with an ``_Uprising`` suffix where the print
+# changed).
+BASE_SPACES_PATH = (*SPACES_PATH[:-1], "P_Spaces_ChildOrderMattersForGamepad")
 # The icon mesh library (G_icon_BoardSpaces_1.fbx) the scene's icons come from;
 # it also holds icons the scene fills in at run time.
 ICON_MESH_CAB = "CAB-046df7124d06112c0fd9107e63b7dcf0"
@@ -103,6 +111,32 @@ SPACE_OBJECTS = {
     "spice_refinery": "P_Space_SpiceRefinery",
     "swordmaster": "P_Space_Swordmaster_Uprising",
     "research_station_overlay": "P_Space_ResearchStation_Immo",
+}
+# The 19 spaces only the original game prints (engine content
+# ``IMPERIUM_ONLY_BOARD_SPACES``) -> their objects in ``BASE_SPACES_PATH``.
+# Arrakeen, Imperial Basin and Secrets print as Uprising's do and already have
+# tiles. Tiles are English only: the Korean edition's words are not in the
+# app, so ``cmd_render`` skips Korean for these (``tile_langs``).
+BASE_SPACE_OBJECTS = {
+    "carthag": "P_Space_Carthag",
+    "conspire": "P_Space_Conspire",
+    "foldspace": "P_Space_Foldspace",
+    "hall_of_oratory": "P_Space_HallOfOratory",
+    "hardy_warriors": "P_Space_HardyWarriors",
+    "imperium_hagga_basin": "P_Space_HaggaBasin",
+    "imperium_heighliner": "P_Space_Heighliner",
+    "imperium_high_council": "P_Space_HighCouncil",
+    "imperium_research_station": "P_Space_ResearchStation",
+    "imperium_sietch_tabr": "P_Space_SietchTabr",
+    "imperium_swordmaster": "P_Space_Swordmaster",
+    "mentat": "P_Space_Mentat",
+    "rally_troops": "P_Space_RallyTroops",
+    "secure_contract": "P_Space_SecureContact",  # sic
+    "selective_breeding": "P_Space_SelectiveBreeding",
+    "sell_melange": "P_Space_SellMelange",
+    "stillsuits": "P_Space_Stillsuites",  # sic
+    "the_great_flat": "P_Space_TheGreatFlat",
+    "wealth": "P_Space_Wealth",
 }
 # Tile content id -> the engine board space whose rules it shows.
 ENGINE_SPACE = {"research_station_overlay": "research_station"}
@@ -360,6 +394,13 @@ def child(app, tr_reader, name):
     raise SystemExit(f"no child {name}")
 
 
+def space_container(app, sf, path):
+    container = scene_root(app, sf, path[0])
+    for name in path[1:]:
+        container = child(app, container, name)
+    return container
+
+
 def cmd_inputs(_args):
     from app_assets import App  # needs UnityPy; render does not
 
@@ -368,14 +409,16 @@ def cmd_inputs(_args):
     app = App()
     app.load(SCENE_BUNDLE)
     sf = app.serialized(SCENE_CAB)
-    container = scene_root(app, sf, SPACES_PATH[0])
-    for name in SPACES_PATH[1:]:
-        container = child(app, container, name)
     dump = SceneDump(app, out)
     spaces = {}
-    for obj_name in sorted(set(SPACE_OBJECTS.values())):
-        spaces[obj_name] = dump.node(child(app, container, obj_name))
-        print("space", obj_name, flush=True)
+    for path, objects in (
+        (SPACES_PATH, SPACE_OBJECTS),
+        (BASE_SPACES_PATH, BASE_SPACE_OBJECTS),
+    ):
+        container = space_container(app, sf, path)
+        for obj_name in sorted(set(objects.values())):
+            spaces[obj_name] = dump.node(child(app, container, obj_name))
+            print("space", obj_name, flush=True)
     extra = {name: dump.extra_mesh(name) for name in EXTRA_MESHES}
     dump.save_textures()
     dump.save_fonts()
@@ -384,6 +427,7 @@ def cmd_inputs(_args):
         {
             "build_guid": build_guid(),
             "scene": [SCENE_BUNDLE, SCENE_CAB, "/".join(SPACES_PATH)],
+            "base_scene": "/".join(BASE_SPACES_PATH),
             "spaces": spaces,
             "materials": dump.materials,
             "extra_meshes": extra,
@@ -409,6 +453,9 @@ def cmd_inputs(_args):
 PX_PER_UNIT = 256  # tile pixels per Unity unit (a regular frame: 3.01 x 1.27)
 SUPERSAMPLE = 2
 OVERHANG_PX = 64  # tile px searched around the frame for icons standing over it
+# Carthag's control flag hangs below its frame on the original board (the
+# Uprising spaces keep theirs inside), 0.57 units, so the whole flag needs more.
+OVERHANG_BY_TILE = {"carthag": 160}
 VISIBLE_ALPHA = 0.02  # what counts as drawn (the combat X's quad is clear around it)
 # Animator-driven layers: present and active in the scene, drawn only while a
 # hint, highlight, tutorial or effect animation runs.
@@ -437,9 +484,13 @@ QUAD = {  # Unity's built-in Quad: 1x1 in XY, centred
 # - the worm slash (on while the Conflict is behind the Shield Wall) and the
 #   bonus-spice counter (WormBonusSpiceRenderer) are game state, not print;
 # - Swordmaster's Reward_Anchor is filled at run time with its icon, a mesh of
-#   the icon library cut from the same atlas as the other reward icons.
+#   the icon library cut from the same atlas as the other reward icons (the
+#   original game's Swordmaster is the same);
+# - the original Mentat space shows its pawn ("Filled") or the bare slot
+#   ("Empty") by game state; the printed board shows the slot.
 COMBAT_ICON = "G_icon_Combat"
 HIDDEN_NODES = frozenset({"G_icon_Reward_WormSlash", "UI_icon_Bonus_Spice"})
+MENTAT_PAWN_NODES = frozenset({"Filled", "Empty"})
 REWARD_ICON_MATERIAL = "M_icon_BoardSpaces_1"  # the reward icons' atlas
 # Where every space but Swordmaster centres its rewards (Reward_Anchor at x 0.2,
 # y -0.04 in Root, a lone icon on it). Swordmaster's anchor sits at x -0.174
@@ -821,7 +872,7 @@ def frame_item(items):
     raise SystemExit("space without Root/Frame")
 
 
-def render_tile(inp, tree, lang):
+def render_tile(inp, tree, lang, overhang=OVERHANG_PX):
     """One space tree -> RGBA tile at PX_PER_UNIT: the frame's box, grown
     where icons overhang the frame (Imperial Privilege's and Shipping's cost
     stand over its lower edge, as on the app's board); transparent around
@@ -834,7 +885,7 @@ def render_tile(inp, tree, lang):
     fv = transform(frame[4], inp.meshes[frame[3]["mesh"]]["v"])
     fw = round((fv[:, 0].max() - fv[:, 0].min()) * PX_PER_UNIT)
     fh = round((fv[:, 1].max() - fv[:, 1].min()) * PX_PER_UNIT)
-    m, ss = OVERHANG_PX, SUPERSAMPLE
+    m, ss = overhang, SUPERSAMPLE
     grow = m / PX_PER_UNIT
     box = (
         fv[:, 0].min() - grow,
@@ -884,7 +935,14 @@ def fix_static_state(inp, tree, content_id):
             node["active"] = False
 
     walk(tree, fix)
-    if content_id == "swordmaster":
+    if content_id == "mentat":
+
+        def slot(node, _path):
+            if node["name"] in MENTAT_PAWN_NODES:
+                node["active"] = node["name"] == "Empty"
+
+        walk(tree, slot)
+    if content_id in ("swordmaster", "imperium_swordmaster"):
         for anchor in find_node(tree, "Reward_Anchor"):
             if not anchor["children"]:
                 (ax, ay, _az), scale = anchor["pos"], anchor["scale"][0]
@@ -1078,8 +1136,14 @@ def tueks_sietch_tree(inp):
 
 # ---------------------------------------------------------------- commands
 def tile_ids(args):
-    ids = [*SPACE_OBJECTS, TUEK_ID]
+    ids = [*SPACE_OBJECTS, TUEK_ID, *BASE_SPACE_OBJECTS]
     return [i for i in args.ids.split(",") if i] if args.ids else ids
+
+
+def tile_langs(args, content_id):
+    """The languages of one tile: the original game's are English only."""
+    langs = [lang for lang in args.lang.split(",") if lang]
+    return ["en"] if content_id in BASE_SPACE_OBJECTS else langs
 
 
 def tile_tree(inp, content_id):
@@ -1093,7 +1157,7 @@ def tile_tree(inp, content_id):
             "frame_texture": TUEK_FRAME[0],
             "half": TUEK_FRAME[1],
         }
-    obj = SPACE_OBJECTS[content_id]
+    obj = SPACE_OBJECTS.get(content_id) or BASE_SPACE_OBJECTS[content_id]
     tree = fix_static_state(inp, inp.space(obj), content_id)
     texture, half = frame_source(inp, tree)
     return tree, {"object": obj, "frame_texture": texture, "half": half}
@@ -1116,8 +1180,8 @@ def cmd_render(args):
         # the tile's own path under app/<lang>/ (the manifest names the scan)
         source["path"] = tile_path(inp, cid, "").relative_to(CARDS / "app").as_posix()
         source["sha256"] = {}
-        for lang in args.lang.split(","):
-            img = render_tile(inp, tree, lang)
+        for lang in tile_langs(args, cid):
+            img = render_tile(inp, tree, lang, OVERHANG_BY_TILE.get(cid, OVERHANG_PX))
             dest = tile_path(inp, cid, lang, args.out)
             dest.parent.mkdir(parents=True, exist_ok=True)
             img.save(dest, "WEBP", quality=92, method=6)
@@ -1158,11 +1222,12 @@ def cmd_compare(args):
     for cid in tile_ids(args):
         icon = str(engine_space(cid).agent_icon.value)
         group = "overlays" if cid in ENGINE_SPACE or cid == TUEK_ID else icon
+        if cid in BASE_SPACE_OBJECTS:  # the original game's sheets come last
+            group = f"base-{icon}"
         groups.setdefault(group, []).append(cid)
+    order = (*GROUP_ORDER, "overlays", *(f"base-{icon}" for icon in GROUP_ORDER))
     h, pad, label = 230, 12, 22
-    for group, ids in sorted(
-        groups.items(), key=lambda g: (GROUP_ORDER + ("overlays",)).index(g[0])
-    ):
+    for group, ids in sorted(groups.items(), key=lambda g: order.index(g[0])):
         rows = []
         for cid in ids:
             cells = []
