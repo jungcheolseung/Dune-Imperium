@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS
 from dune_imperium.content.uprising.conflicts import (
     CONFLICTS,
     ConflictDefinition,
@@ -386,3 +387,37 @@ def test_conflict_rewards_texts_ko_skirmish_crysknife() -> None:
         "2등: {spice:1}, {intrigue:1}",
         "3등: {spice:1}",
     ]
+
+
+def test_rise_of_ix_conflict_rewards_name_the_freighter_icon_once_per_move() -> None:
+    # "Freighter icon ... may move" [Rise of Ix p. 5]; the client's
+    # ``ICON_RULES`` take English's "Move your Freighter once"/"N times" as one
+    # Freighter icon / a counted one, and the Korean twin writes the same
+    # (``{freighter}``/``{freighter:N}``, the verb going with the icon).
+    ix = {conflict.card.card_id: conflict for conflict in IX_CONFLICTS}
+
+    assert conflict_rewards_texts(ix["skirmish_e"]) == [
+        "1st: Move your Freighter once, Recruit 1 troop",
+        "2nd: Gain 2 spice",
+        "3rd: Gain 1 spice",
+    ]
+    assert conflict_rewards_texts_ko(ix["skirmish_e"]) == [
+        "1등: {freighter}, {troop:1}",
+        "2등: {spice:2}",
+        "3등: {spice:1}",
+    ]
+    assert conflict_rewards_texts(ix["trade_monopoly"]) == [
+        "1st: Move your Freighter 2 times, Recruit 1 troop",
+        "2nd: Gain 1 water, Draw 1 Intrigue card",
+        "3rd: Choose one: Draw 1 Intrigue card / Gain 1 water",
+    ]
+    assert conflict_rewards_texts_ko(ix["trade_monopoly"]) == [
+        "1등: {freighter:2}, {troop:1}",
+        "2등: {water:1}, {intrigue:1}",
+        "3등: 하나 선택: {intrigue:1} / {water:1}",
+    ]
+    terms = terms_keys()
+    for conflict in IX_CONFLICTS:
+        for line in conflict_rewards_texts_ko(conflict) or []:
+            assert_placeholders_are_terms(line, terms)
+            assert_no_stray_latin(line)

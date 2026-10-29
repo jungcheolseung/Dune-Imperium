@@ -671,8 +671,14 @@ def conflict_reward_text_ko(row: Ability) -> str:
         # [DI-ko p. 16].
         parts.append("다음 라운드 시작에 멘타트 가져옴 (그 장소에 있으면)")
     if reward.freighter:
-        # "화물선을 1번 이동시킵니다" (Smuggling) [IX-ko p. 12].
-        parts.append(f"화물선을 {reward.freighter}번 이동")
+        # "화물선을 1번 이동시킵니다" (Smuggling) [IX-ko p. 12]. English's
+        # "Move your Freighter once" draws one Freighter icon and "N times" a
+        # counted one, the verb going with the icon (``ICON_RULES``).
+        parts.append(
+            "{freighter}"
+            if reward.freighter == 1
+            else f"{{freighter:{reward.freighter}}}"
+        )
     if reward.solari:
         parts.append(f"{{solari:{reward.solari}}}")
     if reward.spice:

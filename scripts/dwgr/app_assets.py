@@ -12,7 +12,7 @@ assets repository (user decision, 2026-10-07).
 Usage (from ``scripts/dwgr``)::
 
     uv run --no-project --with UnityPy python app_assets.py index
-    uv run --no-project --with UnityPy python app_assets.py icons
+    uv run --no-project --with UnityPy python app_assets.py icons [--only NAME...]
     uv run --no-project --with UnityPy python app_assets.py pieces [--only NAME...]
     uv run --no-project --with UnityPy --with numpy python app_assets.py strength
     uv run --no-project --with UnityPy python app_assets.py backs
@@ -51,6 +51,8 @@ MAX_BUNDLE_BYTES = 100_000_000
 # Play UI icon name (dune_imperium.display.icons.ICON_NAMES) -> app sprite.
 # Same artwork as the rulebook icons, 2-3x the pixels. Names missing here keep
 # the rulebook crop (scripts/extract_rulebook_icons.py); none is missing now.
+# The last seven (dune_imperium.display.icons.APP_ONLY_ICON_NAMES) are Rise of
+# Ix's: they have no rulebook crop, the app's picture is their only source.
 APP_ICON_SOURCES = {
     "agent": "Agent",
     "battle_crysknife": "hud_Icon_Conflict_Knife",
@@ -100,6 +102,18 @@ APP_ICON_SOURCES = {
     "agent_icon_spice_trade": "UI_crd_ActionAct_Commerce",
     "agent_icon_spy": "UI_crd_ActionFaction_Spy",
     "specimen": "Specimen",
+    # Rise of Ix's card icons (2026-10-30), each checked by its pixels.
+    "dreadnought": "UI_crd_Icon_Dreadnought",
+    "freighter": "UI_Icon_crd_freighter",
+    "tech_negotiation": "UI_crd_Icon_Negotiator",
+    "acquire_tech": "UI_crd_Icon_buytech",
+    "acquire_tech_minus1": "UI_crd_Icon_buytech_minus1",
+    "acquire_tech_minus2": "UI_crd_Icon_buytech_minus2",
+    # The app's inline text sprite "Unload" (164x120: a discard card and a
+    # trash card on the red arrow), not the card-face "UI_crd_Unload", which
+    # is the Reveal box's 684x165 banner with the same mark at its left and
+    # an empty panel beside it.
+    "unload": "Unload",
 }
 
 
@@ -349,19 +363,17 @@ def cmd_icons(args):
     app = App()
     out = args.out or os.path.join(ASSETS, "icons")
     os.makedirs(out, exist_ok=True)
+    only = args.only or []
     rows = {}
     for name, sprite in APP_ICON_SOURCES.items():
+        if not wanted(name, only):
+            continue
         path = os.path.join(out, name + ".png")
         if app.save_picture(sprite, path) is None:
             print("missing", name, sprite)
             continue
         rows[name] = {"sprite": sprite, "sha256": sha256(path)}
-    json.dump(
-        {"build_guid": build_guid(), "icons": rows},
-        open(os.path.join(out, "app_sources.json"), "w"),
-        indent=1,
-        sort_keys=True,
-    )
+    write_sources(out, "icons", rows, merge=bool(only))
     print("icons:", len(rows), "->", out)
 
 
@@ -1157,6 +1169,11 @@ def main():
     p.set_defaults(fn=cmd_sprites)
     p = sub.add_parser("icons")
     p.add_argument("--out")
+    p.add_argument(
+        "--only",
+        nargs="+",
+        help="make only the icons whose names start so (unload, acquire_tech)",
+    )
     p.set_defaults(fn=cmd_icons)
     p = sub.add_parser("sprite-meta")
     p.add_argument("out")

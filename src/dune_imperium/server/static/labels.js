@@ -974,9 +974,29 @@ const TERMS = {
   troop: { icon: "troop", ko: "병력", en: "troop" },
   recruit: { icon: null, ko: "소집", en: "Recruit" },
   sandworm: { icon: "sandworm", ko: "모래벌레", en: "sandworm" },
-  /* Rise of Ix's dreadnought, a word: the expansion prints no icon for the
-     figure itself (glossary-ko.md, Rise of Ix). */
-  dreadnought: { icon: null, ko: "드레드노트", en: "dreadnought" },
+  /* Rise of Ix's Dreadnought icon, "commission a dreadnought" ([Rise of Ix
+     p. 6], glossary-ko.md "Dreadnought (공간)"/"commission"): the icon names
+     the effect, not the figure, so a printed sentence about the figure
+     itself ("Your dreadnoughts have 4 strength") stays words and only the
+     engine's "Commission a dreadnought" draws it. `{dreadnought:N}` in
+     board.js's unit counts goes through phraseText(), which is text only. */
+  dreadnought: { icon: "dreadnought", ko: "드레드노트", en: "dreadnought" },
+  /* The rest of Rise of Ix's card icons ([Rise of Ix pp. 4-7, 12]; the app's
+     pictures, display/icons.py APP_ONLY_ICON_NAMES). The two discounted
+     Acquire Tech icons are named by their badge, the Tech Discount: the
+     glossary has no word for "Acquire Tech with a discount of 1". A term's
+     name is letters and underscores only (`{name:count}` in phrase()), so
+     the icons' "minus1"/"minus2" are spelt out here. */
+  freighter: { icon: "freighter", ko: "화물선", en: "Freighter" },
+  tech_negotiation: { icon: "tech_negotiation", ko: "기술 협상", en: "Tech Negotiation" },
+  acquire_tech: { icon: "acquire_tech", ko: "기술 획득", en: "Acquire Tech" },
+  acquire_tech_minus_one: {
+    icon: "acquire_tech_minus1", ko: "기술 할인", en: "Acquire Tech (Tech Discount 1)",
+  },
+  acquire_tech_minus_two: {
+    icon: "acquire_tech_minus2", ko: "기술 할인", en: "Acquire Tech (Tech Discount 2)",
+  },
+  unload: { icon: "unload", ko: "처분", en: "Unload" },
   agent: { icon: "agent", ko: "에이전트", en: "Agent" },
   recall_agent: { icon: "recall_agent", ko: "에이전트 소환", en: "Recall Agent" },
   spy: { icon: "spy", ko: "스파이", en: "Spy" },

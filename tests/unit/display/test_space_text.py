@@ -502,3 +502,40 @@ def test_notes_ko_cover_the_same_spaces_as_english() -> None:
             assert_no_summon_for_sandworm(english, korean)
     assert "{persuasion:1}" in space_notes_ko("assembly_hall")[0]
     assert "지배권을 가진 플레이어" in space_notes_ko("imperial_basin")[0]
+
+
+def test_rise_of_ix_spaces_name_their_icons_in_both_languages() -> None:
+    """The four new spaces' printed icons [Rise of Ix pp. 4, 5, 12]
+    (docs/rules/rise-of-ix.md 8; the records of
+    ``content.rise_of_ix.board_abilities``), each written with the phrase the
+    client draws as that icon (``ICON_RULES``) and the Korean twin's
+    placeholder for the same icon."""
+
+    expected = {
+        "dreadnought": (
+            "Commission a dreadnought and/or Acquire a Tech tile",
+            "{dreadnought} 그리고/또는 {acquire_tech}",
+        ),
+        "tech_negotiation": (
+            "Acquire a Tech tile (1 spice off) -OR- Place a troop from your"
+            " supply on the Ix board as a Negotiator",
+            "{acquire_tech_minus_one} —또는— {tech_negotiation}",
+        ),
+        "interstellar_shipping": ("Move your Freighter 2 times", "{freighter:2}"),
+        "smuggling": (
+            "Gain 1 solari, Move your Freighter once",
+            "{solari:1}, {freighter}",
+        ),
+    }
+    terms = terms_keys()
+    for space_id, (english, korean) in expected.items():
+        for choam_module in (False, True):
+            assert space_option_effects(space_id, choam_module=choam_module) == (
+                english,
+            )
+            assert space_option_effects_ko(space_id, choam_module=choam_module) == (
+                korean,
+            )
+        assert space_option_count(space_id) == 1
+        assert_placeholders_are_terms(korean, terms)
+        assert_no_stray_latin(korean)

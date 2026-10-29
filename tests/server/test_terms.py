@@ -15,6 +15,8 @@ official Korean rulebook uses, not one someone made up here — ``lessons.md``
 import re
 from pathlib import Path
 
+from dune_imperium.display.icons import APP_ONLY_ICON_NAMES
+
 _REPO = Path(__file__).resolve().parents[2]
 _STATIC_DIR = _REPO / "src" / "dune_imperium" / "server" / "static"
 _GLOSSARY = _REPO / "docs" / "rules" / "glossary-ko.md"
@@ -100,3 +102,68 @@ def test_korean_terms_come_from_the_glossary() -> None:
         "terms whose Korean is not in docs/rules/glossary-ko.md — add the row "
         f"with its rulebook citation instead of inventing a word: {missing}"
     )
+
+
+def test_rise_of_ix_terms_draw_the_app_only_icons() -> None:
+    """Each icon only the app draws (``APP_ONLY_ICON_NAMES``) is a ``TERMS``
+    row's icon, so a Korean ``{term}`` and an English ``ICON_RULES`` rule can
+    name it. The two discounted Acquire Tech icons are spelt out in the term
+    names (``{name:count}`` allows letters and underscores only)."""
+
+    terms = _terms()
+    drawn = {
+        name: terms[name]["icon"]
+        for name in (
+            "dreadnought",
+            "freighter",
+            "tech_negotiation",
+            "acquire_tech",
+            "acquire_tech_minus_one",
+            "acquire_tech_minus_two",
+            "unload",
+        )
+    }
+
+    assert drawn == {
+        "dreadnought": "dreadnought",
+        "freighter": "freighter",
+        "tech_negotiation": "tech_negotiation",
+        "acquire_tech": "acquire_tech",
+        "acquire_tech_minus_one": "acquire_tech_minus1",
+        "acquire_tech_minus_two": "acquire_tech_minus2",
+        "unload": "unload",
+    }
+    assert set(drawn.values()) == set(APP_ONLY_ICON_NAMES)
+
+
+def test_client_icon_rules_take_the_engine_phrases_of_rise_of_ix_whole() -> None:
+    """``ICON_RULES`` (static/render.js) draw an icon for the exact phrases
+    the engine's English text writes for it (``display/effect_dsl_text.py``,
+    ``structs.py``, ``spaces.py``); the Korean twins name the same icons. A
+    phrase reworded on one side only would draw words in English and an icon
+    in Korean, so each is checked against the rules' own patterns here
+    (``scripts/e2e/effect_text.py`` checks the drawn icons themselves)."""
+
+    source = (_STATIC_DIR / "render.js").read_text()
+    block = re.search(r"const ICON_RULES = \[(.*?)\n\];", source, re.DOTALL)
+    assert block, "ICON_RULES not found in render.js"
+    patterns: list[re.Pattern[str]] = []
+    for literal in re.findall(r"(?<![\w)\]])/((?:[^/\n\\]|\\.)+)/y\b", block.group(1)):
+        try:
+            patterns.append(re.compile(literal))
+        except re.error:  # a JavaScript-only pattern; none of these phrases
+            continue
+    phrases = (
+        "Commission a dreadnought",
+        "Acquire a Tech tile",
+        "Acquire a Tech tile (1 spice off)",
+        "Acquire a Tech tile (2 spice off)",
+        "Place a troop from your supply on the Ix board as a Negotiator",
+        "Move your Freighter once",
+        "Move your Freighter 2 times",
+        "Move your Freighter",
+        "Tech Negotiation",
+    )
+
+    for phrase in phrases:
+        assert any(pattern.fullmatch(phrase) for pattern in patterns), phrase

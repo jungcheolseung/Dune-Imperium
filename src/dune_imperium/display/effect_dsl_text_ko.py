@@ -920,10 +920,22 @@ def reward_text_ko(reward: Reward) -> str:
             # docstring names it "Navigation card 4").
             return f"{_reserve_card_name_ko(card_id)} {{acquire}}"
         case AcquireTech(discount=0):
-            # "Acquire Tech | 기술 획득" [Bloodlines p. 12].
-            return "{tech_tile} {acquire}"
+            # "Acquire Tech | 기술 획득" [Bloodlines p. 12] [IX-ko pp. 4, 12],
+            # drawn as the Acquire Tech icon the way English's "Acquire a Tech
+            # tile" is (``ICON_RULES``): the icon names the whole effect, so
+            # no word goes beside it.
+            return "{acquire_tech}"
+        case AcquireTech(discount=1):
+            # "Tech Discount | 기술 할인" [IX-ko pp. 4, 12]: the Acquire Tech
+            # icon with its -1 or -2 badge is one picture, which English's
+            # "(N spice off)" is part of.
+            return "{acquire_tech_minus_one}"
+        case AcquireTech(discount=2):
+            return "{acquire_tech_minus_two}"
         case AcquireTech(discount=discount):
-            return f"{{tech_tile}} {{acquire}} ({{spice:{discount}}} 할인)"
+            # A discount with no picture: the plain icon, then the amount in
+            # words, as English's own rule leaves it.
+            return f"{{acquire_tech}} ({{spice:{discount}}} 할인)"
         case RedirectSpiesOnTurnSpace():
             # Vocabulary quotes ``tokens_ko.py``'s
             # ``EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY`` entry (same
@@ -1081,18 +1093,23 @@ def reward_text_ko(reward: Reward) -> str:
         case CommissionDreadnought():
             # Rise of Ix's Dreadnought icon, in the Korean Rise of Ix
             # rulebook's words ("당신의 드레드노트 하나가 취역합니다"
-            # [IX-ko p. 12]; glossary-ko.md "Rise of Ix (원판 위)").
-            return "드레드노트 하나 취역"
+            # [IX-ko p. 12]; glossary-ko.md "Rise of Ix (원판 위)"). The icon
+            # is the whole effect ("commission"), as English's "Commission a
+            # dreadnought" draws it, so it stands alone.
+            return "{dreadnought}"
         case PlaceNegotiator():
             # Rise of Ix's Tech Negotiation icon ("개인 공급처에서 병력 하나를
             # 가져와서 익스 게임판에 놓아도 됩니다. 이 병력은 협상가로
-            # 사용됩니다" [IX-ko p. 12]).
-            return "개인 공급처의 {troop} 하나를 익스 게임판에 협상가로 놓음"
+            # 사용됩니다" [IX-ko p. 12]); English's sentence draws the same one
+            # icon (and no Troop icon), so this is the icon alone.
+            return "{tech_negotiation}"
         case Freighter():
             # Rise of Ix's Freighter icon ("운송 트랙에서 화물선을 1칸
             # 전진시킵니다 ... 화물선을 운송 트랙 맨 밑칸으로 귀환시키면서"
-            # [IX-ko p. 12]).
-            return "화물선을 1칸 전진시키거나 귀환시킴"
+            # [IX-ko p. 12]). English's "Move your Freighter" draws the icon,
+            # the rest of its sentence staying words; so here the icon takes
+            # 화물선 and the sentence goes on.
+            return "{freighter}을 1칸 전진시키거나 귀환시킴"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "당신 {leader}의 {signet_ring} 능력 사용"

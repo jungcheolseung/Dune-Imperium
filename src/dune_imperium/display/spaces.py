@@ -157,6 +157,23 @@ _AUTHORED_OPTION_EFFECTS: Mapping[
         ),
         ("imperium_hagga_basin", None): ("Gain 2 spice plus all bonus spice here",),
         ("the_great_flat", None): ("Gain 3 spice plus all bonus spice here",),
+        # Rise of Ix's four spaces, one line per printed row of
+        # docs/rules/rise-of-ix.md 8 [Rise of Ix pp. 4, 5, 12] (the ability
+        # records of ``content.rise_of_ix.board_abilities``, resolved by
+        # ``rules.ix_board_spaces``): each names its icons by the phrase the
+        # engine's text uses for them (``effect_dsl_text``, ``structs``), so
+        # the client draws the Dreadnought, Acquire Tech, Tech Negotiation and
+        # Freighter icons. Tech Negotiation's Reveal-turn Persuasion for an
+        # Agent there is its note (``SPACE_NOTES``).
+        ("dreadnought", None): (
+            "Commission a dreadnought and/or Acquire a Tech tile",
+        ),
+        ("tech_negotiation", None): (
+            "Acquire a Tech tile (1 spice off) -OR- Place a troop from your"
+            " supply on the Ix board as a Negotiator",
+        ),
+        ("interstellar_shipping", None): ("Move your Freighter 2 times",),
+        ("smuggling", None): ("Gain 1 solari, Move your Freighter once",),
     }
 )
 
@@ -280,6 +297,19 @@ _AUTHORED_OPTION_EFFECTS_KO: Mapping[
             "{spice:2} 및 여기 있는 보너스 {spice} 모두 얻음",
         ),
         ("the_great_flat", None): ("{spice:3} 및 여기 있는 보너스 {spice} 모두 얻음",),
+        # Rise of Ix's four spaces (the English table's comment). The Korean
+        # rulebook's words for each icon are the TERMS rows' labels (드레드노트,
+        # 기술 획득, 기술 할인, 기술 협상, 화물선 [IX-ko pp. 4, 5, 12]); each
+        # icon is written where English's phrase draws it, the verb going with
+        # the icon (``display/tokens_ko.py``'s placeholder policy). "그리고/또는"
+        # and "—또는—" are docs/rules/rise-of-ix.md 8's and the Leader faces'
+        # words for the printed "and/or" and "-OR-".
+        ("dreadnought", None): ("{dreadnought} 그리고/또는 {acquire_tech}",),
+        ("tech_negotiation", None): (
+            "{acquire_tech_minus_one} —또는— {tech_negotiation}",
+        ),
+        ("interstellar_shipping", None): ("{freighter:2}",),
+        ("smuggling", None): ("{solari:1}, {freighter}",),
     }
 )
 
@@ -319,6 +349,11 @@ SPACE_NOTES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         # The original game's Hall of Oratory prints the same passive
         # [DI p. 17].
         "hall_of_oratory": (
+            "While your Agent is here: +1 Persuasion at your Reveal turn",
+        ),
+        # So does Rise of Ix's Tech Negotiation (docs/rules/rise-of-ix.md 8,
+        # [Rise of Ix pp. 4, 12]).
+        "tech_negotiation": (
             "While your Agent is here: +1 Persuasion at your Reveal turn",
         ),
         "arrakeen": (
@@ -380,6 +415,10 @@ SPACE_NOTES_KO: Mapping[str, tuple[str, ...]] = MappingProxyType(
             " +{persuasion:1}",
         ),
         "hall_of_oratory": (
+            "당신의 {agent}가 여기 있는 동안, 당신의 {reveal_turn}에"
+            " +{persuasion:1}",
+        ),
+        "tech_negotiation": (
             "당신의 {agent}가 여기 있는 동안, 당신의 {reveal_turn}에"
             " +{persuasion:1}",
         ),
