@@ -321,19 +321,19 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: (
         "이번 차례에 보낸 {agent} 소환 가능"
     ),
-    # Rise of Ix's Landing Rights (stage P4d): the Freighter has no glossary
-    # entry and a generated Korean line holds no Latin word, so the line names
-    # the track it moves on, the Shipping track (glossary-ko.md "Shipping |
-    # 운송", "track | 트랙"), as the Freighter rows' labels say "한 칸 위로"
-    # and "회수".
+    # Rise of Ix's Landing Rights (stage P4d), in the Korean Rise of Ix
+    # rulebook's words for the Freighter icon ("운송 트랙에서 화물선을 1칸
+    # 전진시킵니다 ... 화물선을 운송 트랙 맨 밑칸으로 귀환시키면서"
+    # [IX-ko p. 12]), as the Freighter rows' labels say "화물선 1칸 전진" and
+    # "화물선 귀환". Words, not the icon, as English's line is words.
     PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: (
-        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+        "운송 트랙에서 화물선 1칸 전진 또는 귀환 가능"
     ),
     # Rise of Ix's Embedded Agent: Landing Rights' line for each of its two
     # Freighter icons, behind the Bond.
     PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
-        "베네 게세리트의 유대감이면: 운송 트랙에서 한 칸 위로 또는 회수 가능, "
-        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+        "베네 게세리트의 유대감이면: 운송 트랙에서 화물선 1칸 전진 또는 귀환 가능, "
+        "운송 트랙에서 화물선 1칸 전진 또는 귀환 가능"
     ),
     # Rise of Ix's Weirding Way (stage P4d).
     PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: (
@@ -771,7 +771,7 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     # Rise of Ix's Guild Chief Administrator (stage P4d): Landing Rights'
     # Freighter line.
     PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER: (
-        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+        "운송 트랙에서 화물선 1칸 전진 또는 귀환 가능"
     ),
     # Rise of Ix's Negotiated Withdrawal (stage P4d): units are "부대"
     # (glossary-ko.md, [Main p. 10]).

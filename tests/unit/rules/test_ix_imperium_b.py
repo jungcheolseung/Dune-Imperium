@@ -168,7 +168,7 @@ def test_landing_rights_card_text_prints_the_freighter_icon() -> None:
         "Agent: You may move your Freighter up one space or recall it"
         in personal_card_text(entry)
     )
-    assert "에이전트 칸: 운송 트랙에서 한 칸 위로 또는 회수 가능" in (
+    assert "에이전트 칸: 운송 트랙에서 화물선 1칸 전진 또는 귀환 가능" in (
         personal_card_text_ko(entry)
     )
 
