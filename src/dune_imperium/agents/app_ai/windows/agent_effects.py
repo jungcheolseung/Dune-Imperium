@@ -493,10 +493,23 @@ _AGENT_BOX_CARDS = (
     "stilgar_the_devoted",
     "overthrow",
     "subversive_advisor",
+    # The original game's printed ``AgentTroops``/``AgentWater``/
+    # ``AgentSolari``/``AgentSpice`` boxes, Power Play's
+    # ``PowerPlayAgentAbility`` and the promo Thumper's plain box (its
+    # doubled bonus spice is the engine's).
+    "arrakis_recruiter",
+    "stilgar",
+    "opulence",
+    "worm_riders",
+    "sardaukar_legion",
+    "crysknife_card",
+    "duncan_loyal_blade",
+    "power_play",
+    "thumper",
 )
 #: Cards whose generic agent box is ``PowerPlayAgentAbility`` (it sets
 #: ``player.AdditionalSpaceInfluence``; archetypes ``WormAbilityIDs``).
-_POWER_PLAY_CARDS = ("overthrow", "subversive_advisor")
+_POWER_PLAY_CARDS = ("overthrow", "subversive_advisor", "power_play")
 #: Single boxes resolved by the card's own deferred ability (app class short
 #: name); the stage follows from the port's ``CanRunImmediately``.
 _BOX_ABILITY: Mapping[str, str] = {
@@ -516,6 +529,16 @@ _BOX_ABILITY: Mapping[str, str] = {
     "covert_operation": "CovertOperationAbility",
     "priority_contracts": "GainContractAbility",
     "long_live_the_fighters": "LongLiveTheFightersStartAbility",
+    # The original game: one-line draw boxes (``DrawAbility``; Lady
+    # Jessica's two cards are one action of ours over the app's two
+    # ``DrawAbility`` keys: the first stands for both) and Piter's Intrigue.
+    "dr_yueh": "DrawAbility",
+    "space_travel": "DrawAbility",
+    "bene_gesserit_initiate": "DrawAbility",
+    "thufir_hawat": "DrawAbility",
+    "kwisatz_haderach": "DrawAbility",
+    "lady_jessica_card": "DrawAbility",
+    "piter_de_vries_card": "AgentGainIntrigueAbility",
 }
 #: Multi-icon boxes: (card, our icon key) -> the app ability of that icon.
 _ICON_ABILITY: Mapping[tuple[str, str], str] = {
@@ -555,6 +578,11 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
     ("in_high_places", "cards"): "BeneGesseritDrawAbility",
     ("clandestine_meeting", "intrigue"): "AgentGainIntrigueAbility",
     ("occupation", "cards"): "DrawAbility",
+    # The original game (``#n``: the n-th ability of that class).
+    ("gurney_halleck_card", "cards"): "DrawAbility",
+    ("foldspace_card", "cards"): "DrawAbility",
+    ("jessica_of_arrakis", "cards"): "BeneGesseritDrawAbility",
+    ("jessica_of_arrakis", "cards_second"): "BeneGesseritDrawAbility#2",
 }
 #: Multi-icon boxes whose icon ability is gated by its ``Cost`` (a failing
 #: Cost has no app key: the icon is a chore), as ``_gated_ability_source``.
@@ -568,6 +596,8 @@ _GENERIC_ICON_BOXES = frozenset(
         # the Influence is a separate graft-conditioned one (engine audit
         # 2026-10-22, P4; the Influence is ``_CARD_INFLUENCE_ABILITY``'s).
         ("interstellar_conspiracy", "spice"),
+        # The original Gurney Halleck's printed ``AgentTroops``.
+        ("gurney_halleck_card", "troops"),
     }
 )
 #: Cards whose reward icons are armed after an arrow cost: the app answered
@@ -608,6 +638,11 @@ _TRASH_ABILITY: Mapping[str, str] = {
     "ruthless_leadership": "RuthlessLeadershipTrashAbility",
     "eliminate_allies": "TrashAgentAbility",
     "elite_forces": "EliteForcesAgentAbility",
+    # The original game's generic ``TrashAgentAbility`` boxes.
+    "guild_administrator": "TrashAgentAbility",
+    "fedaykin_death_commando": "TrashAgentAbility",
+    "sietch_reverend_mother": "TrashAgentAbility",
+    "gene_manipulation": "TrashAgentAbility",
 }
 _DISCARD_ABILITY: Mapping[str, str] = {
     "captured_mentat": "CapturedMentatAgentAbility",
@@ -1121,13 +1156,19 @@ def _additional_space_influence(t: _Turn) -> bool:
 
 
 def _find(owner: Entity | None, short: str) -> tuple[Ability, int] | None:
-    """The first ability of ``owner`` whose app class name is ``short``."""
+    """The first ability of ``owner`` whose app class name is ``short``
+    (``"<name>#<n>"``: the n-th, for a card with two of one class)."""
 
     if owner is None:
         return None
+    name, _, nth = short.partition("#")
+    wanted = int(nth) if nth else 1
+    seen = 0
     for index, ability in enumerate(abilities_of(owner)):
-        if ability_id(ability).rsplit(".", 1)[-1] == short:
-            return ability, index
+        if ability_id(ability).rsplit(".", 1)[-1] == name:
+            seen += 1
+            if seen == wanted:
+                return ability, index
     return None
 
 
