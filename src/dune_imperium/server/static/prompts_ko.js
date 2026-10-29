@@ -77,6 +77,7 @@ const PROMPT_KO = {
   "Gain the Sardaukar Commander without a Skill": "{commander_skill} 없이 {commander} 획득",
   "Gain two Persuasion or pay one Water for a sandworm": "{persuasion} 2 획득 또는 {water} 1 지불하고 {sandworm} 획득",
   "Keep one of the two Intrigue cards": "{intrigue_card} 2장 중 1장 보관",
+  "Put Intrigue cards on the bottom of the Intrigue deck, then draw as many": "{intrigue_card}를 {intrigue} {deck}의 맨 아래에 놓은 뒤 같은 수만큼 {draw}",
   "Keep the last Intrigue card": "남은 {intrigue_card} 1장 보관",
   "Choose a Control space that holds no dreadnought for yours": "{control} 공간 선택 (이미 놓인 곳 제외)",
   "You may lose two troops for two specimens": "병력 2를 잃고 {specimen} 2 획득 가능",

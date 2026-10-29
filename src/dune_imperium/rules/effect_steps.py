@@ -624,6 +624,9 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     # Holoprojectors' and Invasion Ships' discarded card is the target row
     # (Rise of Ix, stage P4c-2b); the other tiles name none.
     "flip_tech": _spec(_V.FLIP, _S.TECH, "tech_id", targets=_CARD),
+    # Rise of Ix's Spy Satellites and Sonic Snoopers: the tile named is the
+    # trash (its cost) that opens the ability (stage P4c-2c).
+    "trash_tech": _spec(_V.TRASH, _S.TECH, "tech_id"),
     "resolve_tech_acquire_effect": _spec(
         _TECH_ICON_VERBS,
         _S.TECH,
@@ -1050,6 +1053,9 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "lose_moved_spy": _spec(_E, _S.REF, Printed.WINDOW, of=_V.MOVE_SPY),
     # An optional trash window's trash icon.
     "decline_optional_trash": _spec(_D, _S.REF, Printed.WINDOW, of=_V.TRASH),
+    # Sonic Snoopers' stop: no more Intrigue cards for the bottom, then the
+    # draw (the window's own effect with no target keeps its effect row).
+    "finish_intrigue_bottom": _spec(_V.FINISH, _S.TECH, "=sonic_snoopers"),
     # Arrakeen Scouts: a subcommittee, a mission, a choice, a market card.
     "decline_subcommittee": _spec(_D, _S.SCOUTS, "=high_council", of=_V.JOIN),
     "scouts_decline_mission": _spec(_D, _S.SCOUTS, Printed.MISSION, of=_V.JOIN),
@@ -1156,6 +1162,9 @@ TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxy
     "discard_opponent_card": _CARD,
     "choose_graft_partner": _CARD,
     "keep_peeked_intrigue": (("instance_id", _C.INTRIGUE_CARD),),
+    # Sonic Snoopers' pick: each card put on the Intrigue deck's bottom is a
+    # target row of the window (the stop is its effect row, ``finish_*``).
+    "put_intrigue_on_bottom": (("card_id", _C.INTRIGUE_CARD),),
     "select_long_live_fighters_draw": _CARD,
     "select_long_live_fighters_discard": _CARD,
     # Holy War's unit an opponent loses.
@@ -1265,6 +1274,7 @@ TARGET_STEP_FRAMES: Final = frozenset({
     FrameKind.RESEARCH_BONUS,
     FrameKind.GRAFT_PARTNER,
     FrameKind.INTRIGUE_PEEK,
+    FrameKind.INTRIGUE_BOTTOM_PICK,
     FrameKind.LONG_LIVE_FIGHTERS,
     # Stage B3d-2b: Arrakeen Scouts.
     FrameKind.SCOUTS_FOUR_BONUS,

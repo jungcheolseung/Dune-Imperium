@@ -259,6 +259,11 @@ const ACTION_LABELS = {
   detonate_combat_reward_dreadnought:
     "Detonation Devices: dreadnought를 {supply}로 → {victory_point} 1",
   trash_disposal_facility_card: "Disposal Facility: 플레이 영역 카드 {trash}",
+  /* Rise of Ix (stage P4c-2c): Spy Satellites' and Sonic Snoopers' trash, and
+     Sonic Snoopers' pick of Intrigue cards for the bottom of the deck. */
+  trash_tech: "{tech_tile} {trash}",
+  put_intrigue_on_bottom: "Sonic Snoopers: {intrigue_card} → {intrigue} {deck} bottom",
+  finish_intrigue_bottom: "Sonic Snoopers: stop, {draw}",
   retreat_leader_commander: "{commander} 1 {retreat} ({leader})",
   gain_reveal_influence: "{influence_any} 1 획득",
   retreat_opponent_troop: "상대 {troop} 강제 {retreat}",
@@ -466,6 +471,7 @@ const EVENT_LABELS = {
   dreadnought_control_placed: "dreadnought가 {control} 공간에",
   dreadnought_returned: "dreadnought {garrison} 복귀",
   dreadnought_detonated: "dreadnought를 {supply}로 (Detonation Devices)",
+  intrigue_put_on_bottom: "{intrigue_card} → {intrigue} {deck} bottom",
   conflict_end_trigger_declined: "{conflict} 종료 발동 {intrigue_card} 쓰지 않음",
   conflict_end_trigger_finished: "{conflict} 종료 발동 {intrigue_card} 끝내기",
   conflict_end_trigger_offered: "{conflict} 종료 발동 {intrigue_card} 제안",

@@ -111,6 +111,7 @@ from dune_imperium.rules.tech import (
     legal_tech_acquire_effect_actions,
     legal_tech_acquisition_actions,
     legal_tech_flip_actions,
+    legal_tech_trash_actions,
 )
 
 _RESOLVE_BOX = "resolve_agent_card_effect"
@@ -187,6 +188,7 @@ def legal_agent_effect_frame_actions(
         *legal_subcommittee_choice_actions(state, player),
         *legal_tech_acquisition_actions(state, player),
         *legal_tech_flip_actions(state, player),
+        *legal_tech_trash_actions(state, player),
         *legal_tech_acquire_effect_actions(state, player),
         # A research bonus or trash icon raised in the turn waits on it as
         # rows, with no refusal (user decision 2026-10-17, cleanup-2b).

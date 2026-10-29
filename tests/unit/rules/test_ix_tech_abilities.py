@@ -12,8 +12,10 @@ seat by ``dataclasses.replace`` (the state checks accept them).
 Stage P4c-2b adds the four Endgame tiles, the four Flip tiles and OQ-150 (2)'s
 late Reveal tiles (the sections at the end of this file).
 
-Not in these slices (stages P4c-2c and P4c-3): Sonic Snoopers, Spy Satellites'
-first ability, Spaceport and Troop Transports. The designer ruling of
+Stage P4c-2c adds Sonic Snoopers, Spy Satellites' first ability and Spaceport
+(the section at the end of this file).
+
+Not in these slices (stage P4c-3): Troop Transports. The designer ruling of
 docs/rules/rise-of-ix.md 12 -- a Windtraps taken through a Freighter reward in
 the same win also gives this win's water -- needs the Freighter reward (stage
 P4c-3) and is tested there.
@@ -37,16 +39,20 @@ from dune_imperium.core import (
     GamePhase,
     GameState,
     Influence,
+    Resources,
 )
 from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.observation import known_card_seats, known_intrigue_places
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules import tech as tech_rules
+from dune_imperium.rules.acquisition import deck_top_offered
 from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.combat import (
     begin_combat_intrigue,
     legacy_combat_reward_icon,
 )
+from dune_imperium.rules.deck_top import settle_public_deck_tops
 from dune_imperium.rules.endgame import final_standings
 from dune_imperium.rules.frames import FrameKind, reset_turn_counters
 from dune_imperium.rules.pauses import pause_is_pending
@@ -68,6 +74,7 @@ from dune_imperium.rules.tech import (
     push_tech_acquisition,
 )
 from dune_imperium.rules.turn_rows import tech_influence_blocked
+from dune_imperium.simulation.invariants import check_observation_privacy
 
 ORIGINAL = RulesetConfig(base_game=BaseGame.IMPERIUM, first_player_seat_zero=True)
 IX = RulesetConfig(base_game=BaseGame.IMPERIUM, rise_of_ix=True)
@@ -1506,3 +1513,362 @@ def test_disposal_facility_acquired_in_the_reveal_opens_its_trash_then() -> None
     low = _acquired_late(_revealing(), "disposal_facility")
     assert _rows(low.state) == []
     assert _context(low.state)["tech_reveal_pending"] == "disposal_facility"
+
+
+# --- Sonic Snoopers, Spy Satellites' trade and Spaceport (stage P4c-2c) ------
+
+BYPASS = "intrigue:bypass_protocol:0"
+TRASH_SNOOPERS = DomainAction(
+    "trash", 0, (("printed", "sonic_snoopers"), ("source", "tech"))
+)
+TRASH_SATELLITES = DomainAction(
+    "trash", 0, (("printed", "spy_satellites"), ("source", "tech"))
+)
+STOP_SNOOPERS = DomainAction(
+    "finish", 0, (("printed", "sonic_snoopers"), ("source", "tech"))
+)
+
+
+def _holding(state: GameState, count: int, seat: int = 0) -> GameState:
+    """``seat`` also holds the Intrigue deck's top ``count`` cards."""
+
+    taken = state.intrigue_deck[:count]
+    held = state.players[seat].intrigue_cards
+    return _seat(
+        replace(state, intrigue_deck=state.intrigue_deck[count:]),
+        seat,
+        intrigue_cards=(*held, *taken),
+    )
+
+
+def _put(card: str) -> DomainAction:
+    return DomainAction("choose_intrigue_card", 0, (("card_id", card),))
+
+
+def _snoopers(count: int, **seat: Any) -> GameState:
+    """Seat 0's turn holding Sonic Snoopers and ``count`` Intrigue cards."""
+
+    return _holding(_turn("sonic_snoopers", **seat), count)
+
+
+def _stack(state: GameState, *actions: DomainAction) -> GameState:
+    for action in actions:
+        state = ENGINE.apply(state, action).state
+    return state
+
+
+def _trash_rows(state: GameState, seat: int = 0) -> list[DomainAction]:
+    return [
+        action
+        for action in ENGINE.legal_actions(state, seat)
+        if action.action_id == "trash"
+    ]
+
+
+def test_sonic_snoopers_is_offered_in_its_owners_turn_with_an_intrigue_card() -> None:
+    """"때를 적지 않은 능력은 자기 turn 가운데 쓴다" [FAQ p. 4] (rise-of-ix.md
+    4): the turn frame and the Agent-effect frame offer the trash; an opponent's
+    turn, a hand with no Intrigue card to put (OQ-071: the trash would buy
+    nothing) and a game without Rise of Ix do not."""
+
+    state = _snoopers(1)
+    assert _trash_rows(state) == [TRASH_SNOOPERS]
+    assert _trash_rows(_placed(state)) == [TRASH_SNOOPERS]
+    assert _trash_rows(state, 1) == []
+    opponent = _holding(_seat(_turn(), 1, tech_ids=("sonic_snoopers",)), 1, seat=1)
+    assert tech_rules.legal_tech_trash_actions(opponent, 1) == ()
+    assert _trash_rows(_snoopers(0)) == []
+    # A game without Rise of Ix cannot even hold the tile.
+    plain = replace(_turn(), config=ORIGINAL)
+    assert tech_rules.legal_tech_trash_actions(plain, 0) == ()
+
+
+def test_sonic_snoopers_may_put_no_card_and_draws_none() -> None:
+    """"Intrigue 몇 장이든 덱 맨 아래로, 그만큼 뽑기": any number, none too. The
+    tile is trashed first, the cost."""
+
+    state = _snoopers(2)
+    hand, deck = state.players[0].intrigue_cards, state.intrigue_deck
+    opened = ENGINE.apply(state, TRASH_SNOOPERS)
+    assert opened.state.decision_stack[-1].kind == FrameKind.INTRIGUE_BOTTOM_PICK
+    assert opened.state.players[0].tech_ids == ()
+    assert opened.state.tech_trash == ("sonic_snoopers",)
+    assert [event.kind for event in opened.events] == ["tech_trashed"]
+    done = ENGINE.apply(opened.state, STOP_SNOOPERS).state
+    assert done.decision_stack[-1].kind == FrameKind.TURN
+    assert done.players[0].intrigue_cards == hand
+    assert done.intrigue_deck == deck
+    assert done.players[0].known_intrigue_ids == ()
+
+
+def test_sonic_snoopers_puts_one_card_under_the_deck_and_draws_one() -> None:
+    """One card goes to the bottom, one is drawn from the top. Its seat knows
+    the card now at the bottom, nobody else does (rise-of-ix.md 13)."""
+
+    state = _snoopers(2)
+    first, second = state.players[0].intrigue_cards
+    top = state.intrigue_deck[0]
+    opened = _stack(state, TRASH_SNOOPERS)
+    putting = ENGINE.apply(opened, _put(first))
+    assert [event.kind for event in putting.events] == ["intrigue_put_on_bottom"]
+    assert "card_id" not in dict(putting.events[0].payload)
+    assert putting.state.intrigue_deck[-1] == first
+    assert putting.state.players[0].intrigue_cards == (second,)
+    done = _stack(putting.state, STOP_SNOOPERS)
+    assert done.players[0].intrigue_cards == (second, top)
+    assert done.intrigue_deck[-1] == first and top not in done.intrigue_deck
+    assert known_intrigue_places(done, done.players[0])[1] == ((0, first),)
+    assert done.players[0].known_intrigue_ids == (first,)
+    assert all(not done.players[seat].known_intrigue_ids for seat in (1, 2, 3))
+    assert known_card_seats(done)[first] == frozenset({0})
+    check_observation_privacy(done)
+
+
+def test_sonic_snoopers_keeps_the_order_it_was_put_in_and_draws_that_many() -> None:
+    """Several cards, one at a time in the order chosen, each under the last;
+    the seat knows each one's depth from the bottom and draws as many from the
+    top."""
+
+    state = _snoopers(3)
+    first, second, third = state.players[0].intrigue_cards
+    top = state.intrigue_deck[:3]
+    opened = _stack(state, TRASH_SNOOPERS)
+    putting = _stack(opened, _put(third), _put(first))
+    assert putting.intrigue_deck[-2:] == (third, first)
+    assert putting.decision_stack[-1].kind == FrameKind.INTRIGUE_BOTTOM_PICK
+    putting = _stack(putting, _put(second))
+    assert putting.players[0].intrigue_cards == ()
+    # With no card left in the hand only the stop remains.
+    assert [row.action_id for row in ENGINE.legal_actions(putting, 0)] == ["finish"]
+    done = _stack(putting, STOP_SNOOPERS)
+    assert done.intrigue_deck[-3:] == (third, first, second)
+    assert done.players[0].intrigue_cards == top
+    assert known_intrigue_places(done, done.players[0])[1] == (
+        (0, second),
+        (1, first),
+        (2, third),
+    )
+    assert all(not done.players[seat].known_intrigue_ids for seat in (1, 2, 3))
+    check_observation_privacy(putting)
+    check_observation_privacy(done)
+
+
+def test_the_other_seats_forget_the_cards_they_knew_in_its_hand() -> None:
+    """The other seats cannot tell which cards went down: what they knew of
+    this hand is lost, so a card they knew there that stays is still known."""
+
+    state = _snoopers(2)
+    first, second = state.players[0].intrigue_cards
+    state = _seat(state, 1, known_intrigue_ids=(first, second))
+    state = _seat(state, 2, known_intrigue_ids=(first,))
+    opened = _stack(state, TRASH_SNOOPERS)
+    assert known_card_seats(opened)[first] == frozenset({0, 1, 2})
+    putting = _stack(opened, _put(first))
+    assert putting.players[1].known_intrigue_ids == (second,)
+    assert putting.players[2].known_intrigue_ids == ()
+    assert known_card_seats(putting)[first] == frozenset({0})
+    assert known_card_seats(putting)[second] == frozenset({0, 1})
+    check_observation_privacy(putting)
+
+
+def test_a_draw_that_reaches_the_cards_just_put_gives_them_back_known_to_none() -> None:
+    """With no card left in the deck the draw takes the cards just put, in the
+    order they went down; once in its own hand the seat's record of them is
+    dropped (``settle_known_intrigue``)."""
+
+    state = replace(_snoopers(2), intrigue_deck=())
+    first, second = state.players[0].intrigue_cards
+    putting = _stack(_stack(state, TRASH_SNOOPERS), _put(second), _put(first))
+    assert putting.players[0].known_intrigue_ids == (second, first)
+    done = _stack(putting, STOP_SNOOPERS)
+    assert done.players[0].intrigue_cards == (second, first)
+    assert done.intrigue_deck == ()
+    assert done.players[0].known_intrigue_ids == ()
+
+
+def test_sonic_snoopers_is_offered_in_a_reveal_turn_too() -> None:
+    """The Reveal turn is one of its owner's turns."""
+
+    state = _holding(_revealing(tiles=("sonic_snoopers",)), 1)
+    assert _trash_rows(state) == [TRASH_SNOOPERS]
+    opened = _stack(state, TRASH_SNOOPERS)
+    done = _stack(opened, STOP_SNOOPERS)
+    assert done.decision_stack[-1].kind == FrameKind.REVEAL
+
+
+def _satellites(spice: int, **seat: Any) -> GameState:
+    state = _turn("spy_satellites", **seat)
+    return _seat(
+        state, 0, resources=replace(state.players[0].resources, spice=spice)
+    )
+
+
+def test_spy_satellites_pays_three_spice_and_the_tile_for_a_victory_point() -> None:
+    """"spice 3 + 이 타일 trash → 1 VP (자기 turn에)" (rise-of-ix.md 4)."""
+
+    state = _satellites(4)
+    owner = state.players[0]
+    assert _trash_rows(state) == [TRASH_SATELLITES]
+    result = ENGINE.apply(state, TRASH_SATELLITES)
+    paid = result.state.players[0]
+    assert paid.resources.spice == 1
+    assert paid.victory_points == owner.victory_points + 1
+    assert paid.tech_ids == () and result.state.tech_trash == ("spy_satellites",)
+    # The spice left counts as spent in this turn (``spice_spent_turn``).
+    assert paid.spice_spent_turn == owner.spice_spent_turn + 3
+    assert [event.kind for event in result.events] == [
+        "tech_trashed",
+        "resources_paid",
+        "resources_gained",
+    ]
+    assert dict(result.events[1].payload)["spice"] == 3
+    assert dict(result.events[2].payload)["victory_points"] == 1
+    assert result.state.decision_stack[-1].kind == FrameKind.TURN
+
+
+def test_spy_satellites_needs_its_three_spice() -> None:
+    """Without the 3 spice the trade is not offered, nor to a seat whose turn
+    it is not; the Reveal turn is one of its owner's turns."""
+
+    assert _trash_rows(_satellites(2)) == []
+    state = _satellites(3)
+    assert _trash_rows(state) == [TRASH_SATELLITES]
+    assert _trash_rows(state, 1) == []
+    reveal = _revealing(tiles=("spy_satellites",))
+    owner = reveal.players[0]
+    reveal = _seat(
+        reveal, 0, resources=replace(owner.resources, spice=3)
+    )
+    assert _trash_rows(reveal) == [TRASH_SATELLITES]
+
+
+def test_the_trash_rows_run_through_the_engine_and_the_codec() -> None:
+    """Both tiles drive through ``UprisingRulesEngine`` as an effect row and,
+    for Sonic Snoopers, the pick's target rows and its stop; every row
+    encodes and decodes to itself in the original game with Rise of Ix's
+    catalog, which alone holds them."""
+
+    state = _holding(_turn("sonic_snoopers", "spy_satellites"), 2)
+    state = _seat(
+        state, 0, resources=replace(state.players[0].resources, spice=3)
+    )
+    assert _trash_rows(state) == [TRASH_SNOOPERS, TRASH_SATELLITES]
+    opened = _stack(state, TRASH_SNOOPERS)
+    first = state.players[0].intrigue_cards[0]
+    assert [row.action_id for row in ENGINE.legal_actions(opened, 0)] == [
+        "choose_intrigue_card",
+        "choose_intrigue_card",
+        "finish",
+    ]
+    putting = _stack(opened, _put(first))
+    for seen in (state, opened, putting):
+        _round_trips(seen, 0)
+    rows = (
+        ActionTemplate("trash", (("printed", "sonic_snoopers"), ("source", "tech"))),
+        ActionTemplate("trash", (("printed", "spy_satellites"), ("source", "tech"))),
+        ActionTemplate("finish", (("printed", "sonic_snoopers"), ("source", "tech"))),
+    )
+    assert not set(rows) & set(ActionCodec(ORIGINAL).catalog)
+    assert set(rows) <= set(ActionCodec(IX).catalog)
+
+
+def _reserve_rows(state: GameState) -> list[DomainAction]:
+    return [
+        row
+        for row in ENGINE.whole_actions(state, 0)
+        if row.action_id == "acquire_reserve"
+        and dict(row.arguments)["card_id"] == "arrakis_liaison"
+    ]
+
+
+def test_spaceport_lets_its_owner_put_an_acquired_card_on_top_of_its_deck() -> None:
+    """"얻는 카드를 덱 위에 놓을 수 있다" (rise-of-ix.md 4): every card its owner
+    acquires has the deck-top twin beside the plain row, and a card put there
+    is public until it is drawn (OQ-145, ``rules.deck_top``)."""
+
+    without = _reserve_rows(_revealing())
+    assert [dict(row.arguments).get("to_deck_top") for row in without] == [None]
+    state = _revealing(tiles=("spaceport",))
+    plain, twin = _reserve_rows(state)
+    assert dict(twin.arguments)["to_deck_top"] is True and plain.arguments == (
+        ("card_id", "arrakis_liaison"),
+    )
+    before = state.players[0]
+    taken = apply_whole(ENGINE, state, twin).state
+    owner = taken.players[0]
+    card = owner.deck[0]
+    assert card.startswith("reserve:arrakis_liaison:")
+    assert owner.deck_public_top == (card,)
+    assert owner.discard_pile == before.discard_pile
+    assert card not in known_card_seats(taken)  # public: every seat knows it
+    check_observation_privacy(taken)
+    # Drawn outside a Reveal (a drawn card is revealed at once in one), it
+    # stays public in the hand.
+    turn = replace(taken, decision_stack=(turn_frame(1, 0),))
+    drawn = settle_public_deck_tops(
+        draw_or_request_personal_cards(turn, 0, 1, source="s").state
+    )
+    assert drawn.players[0].hand[-1] == card
+    assert card in drawn.players[0].hand_public
+    discarded = apply_whole(ENGINE, state, plain).state.players[0]
+    assert card not in discarded.deck and discarded.deck_public_top == ()
+    assert discarded.discard_pile[-1].startswith("reserve:arrakis_liaison:")
+
+
+def test_spaceport_needs_no_open_reveal_and_the_tile() -> None:
+    """The tile prints no round or turn: its choice stands outside the Reveal
+    too, and only with the tile in a game with Rise of Ix."""
+
+    state = _turn("spaceport")
+    assert deck_top_offered(state, 0)
+    assert not deck_top_offered(state, 1)
+    assert not deck_top_offered(_turn(), 0)
+    assert not deck_top_offered(_seat(state, 0, tech_ids=()), 0)
+
+
+def test_bypass_protocol_and_spaceport_both_apply_without_doubling() -> None:
+    """Bypass Protocol's second option puts its card on top by its own text, so
+    Spaceport adds no row to it; the first option, which has no destination of
+    its own, gains the deck-top twin. Either way a card is placed once."""
+
+    state = _turn("spaceport", intrigue_cards=(BYPASS,), resources=Resources(spice=2))
+    first = apply_whole(ENGINE, state, _bypass_play(0)).state
+    rows = [
+        row
+        for row in ENGINE.whole_actions(first, 0)
+        if row.action_id in ("acquire_intrigue_imperium", "acquire_intrigue_reserve")
+    ]
+    plain = [row for row in rows if "to_deck_top" not in dict(row.arguments)]
+    twins = [row for row in rows if dict(row.arguments).get("to_deck_top")]
+    assert plain and len(twins) == len(plain)
+    second = apply_whole(ENGINE, state, _bypass_play(1)).state
+    forced = [
+        row
+        for row in ENGINE.whole_actions(second, 0)
+        if row.action_id in ("acquire_intrigue_imperium", "acquire_intrigue_reserve")
+    ]
+    assert forced and all(dict(row.arguments).get("to_deck_top") for row in forced)
+    assert len(forced) == len(set(forced))
+    taken = apply_whole(ENGINE, second, forced[0]).state.players[0]
+    assert len(taken.deck_public_top) == 1 and taken.deck[0] == taken.deck_public_top[0]
+
+
+def _bypass_play(option: int) -> DomainAction:
+    return DomainAction("play_intrigue", 0, (("card_id", BYPASS), ("option", option)))
+
+
+def test_the_deck_top_twins_are_the_original_games_rows_without_spaceport() -> None:
+    """Nothing changes without Rise of Ix: a game without the tile offers the
+    rows it always did, and the original game's catalog holds the twin rows
+    Spaceport uses already (the catalogs gain no row for it)."""
+
+    plain = replace(_revealing(), config=ORIGINAL)
+    assert not any(
+        dict(row.arguments).get("to_deck_top") for row in _reserve_rows(plain)
+    )
+    twin = ActionTemplate(
+        "choose_reserve_card", (("card_id", "arrakis_liaison"), ("to_deck_top", True))
+    )
+    assert twin in set(ActionCodec(ORIGINAL).catalog)
+    state = _revealing(tiles=("spaceport",))
+    _round_trips(state, 0)

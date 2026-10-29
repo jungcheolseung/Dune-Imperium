@@ -705,8 +705,9 @@ def test_the_rows_of_the_ix_tiles_are_in_the_original_catalog_with_rise_of_ix() 
     with no Negotiator or with one up to its price, and the acquire icons that
     a key pays (every tile's since stage P4c-2a), with the two rows of a tile's
     ability that choose (Detonation Devices, Disposal Facility) and the four
-    Flip tiles' effect rows (stage P4c-2b); the original game alone has none
-    of them [Rise of Ix p. 4]."""
+    Flip tiles' effect rows (stage P4c-2b), and the trash rows of Spy
+    Satellites and Sonic Snoopers (stage P4c-2c); the original game alone has
+    none of them [Rise of Ix p. 4]."""
 
     plain = ActionCodec(ORIGINAL).catalog
     ix = ActionCodec(IX).catalog
@@ -740,6 +741,8 @@ def test_the_rows_of_the_ix_tiles_are_in_the_original_catalog_with_rise_of_ix() 
         "shuttle_fleet",
         "sonic_snoopers",
         "spaceport",
+        # Spy Satellites' trash for a VP (stage P4c-2c).
+        "spy_satellites",
         "training_drones",
         "windtraps",
     }

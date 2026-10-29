@@ -107,6 +107,10 @@ from dune_imperium.rules.influence import (
     influence_can_rise,
     lose_faction_influence,
 )
+from dune_imperium.rules.intrigue_bottom import (
+    begin_intrigue_bottom_pick,
+    puttable_intrigue,
+)
 from dune_imperium.rules.intrigue_deck import draw_or_queue_intrigue_cards
 from dune_imperium.rules.leader_abilities import (
     units_deployment_blocked,
@@ -144,6 +148,15 @@ ENDGAME_TILE_VP: Final = 1
 HOLTZMAN_ENGINE_SPICE_MUST_FLOW: Final = 2
 MEMOCORDERS_INFLUENCE: Final = 3
 SPY_SATELLITES_INFLUENCE: Final = 1
+# Rise of Ix's two tiles used by trashing them in their owner's turn
+# (docs/rules/rise-of-ix.md 4, ``legal_tech_trash_actions``): Spy Satellites
+# "spice 3 + 이 타일 trash -> 1 VP", Sonic Snoopers' Intrigue cycle
+# (``rules.intrigue_bottom``).
+SPY_SATELLITES_SPICE: Final = 3
+SPY_SATELLITES_TRASH_VP: Final = 1
+TRASH_ABILITIES: Final = frozenset(
+    {TechAbility.SPY_SATELLITES, TechAbility.TRASH_CYCLE_INTRIGUE}
+)
 _FRAME_LABEL = "Agent-turn effect frame"
 _ACQUISITION_LABEL = "Tech acquisition frame"
 # Kota Odax's Secret Project: "Whenever you could acquire a Tech tile, you
@@ -1332,6 +1345,94 @@ def _flip_ability(tech_id: str) -> Ability:
         if record.timing is AbilityTiming.FLIP
     )
     return flip
+
+
+def legal_tech_trash_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """The owner's Rise of Ix tiles that are used by trashing them, in their
+    own turn.
+
+    "Spy Satellites: spice 3 + 이 타일 trash -> 1 VP(자기 turn에)" and "Sonic
+    Snoopers: 이 타일 trash -> Intrigue 몇 장이든 덱 맨 아래로, 그만큼 뽑기"
+    (docs/rules/rise-of-ix.md 4, [Rise of Ix p. 10]); "때를 적지 않은 능력은
+    자기 turn 가운데 쓴다" [FAQ p. 4], so the turn, Agent-effect or Reveal frame
+    offers them. The trash is a cost that must buy something (OQ-071): Spy
+    Satellites needs its 3 spice, Sonic Snoopers an Intrigue card it may put
+    (a Twisted one is never put, OQ-097).
+    """
+
+    if not 0 <= player < state.config.players:
+        raise ValueError("player must identify a configured seat")
+    if not state.config.rise_of_ix or _owned_turn_frame(state, player) is None:
+        return ()
+    owner = state.players[player]
+    actions: list[DomainAction] = []
+    for tech_id in owner.tech_ids:
+        ability = TECH_TILES_BY_ID[tech_id].ability
+        if ability not in TRASH_ABILITIES:
+            continue
+        if ability is TechAbility.SPY_SATELLITES:
+            if owner.resources.spice < SPY_SATELLITES_SPICE:
+                continue
+        elif not puttable_intrigue(state, player):
+            continue
+        actions.append(
+            DomainAction(
+                action_id="trash_tech", actor=player, arguments=(("tech_id", tech_id),)
+            )
+        )
+    return tuple(actions)
+
+
+def apply_tech_trash(state: GameState, action: DomainAction) -> RuleResult:
+    """Trash the tile (the cost), then resolve its ability.
+
+    Spy Satellites pays 3 spice for 1 VP; Sonic Snoopers opens its pick of
+    Intrigue cards for the deck's bottom (``rules.intrigue_bottom``). The tile
+    goes to the Tech trash zone, as every trashed tile does.
+    """
+
+    if action not in legal_tech_trash_actions(state, action.actor):
+        raise ValueError("action is not a legal Tech trash")
+    player = action.actor
+    tech_id = str(dict(action.arguments)["tech_id"])
+    owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:tech:{tech_id}:trash"
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=f"{source}:tech_trashed",
+            kind="tech_trashed",
+            payload=(("player", player), ("tech_id", tech_id)),
+        )
+    ]
+    trashed = replace(
+        owner,
+        tech_ids=tuple(held for held in owner.tech_ids if held != tech_id),
+        tech_flipped=tuple(held for held in owner.tech_flipped if held != tech_id),
+    )
+    if TECH_TILES_BY_ID[tech_id].ability is TechAbility.SPY_SATELLITES:
+        trashed = replace(
+            trashed,
+            resources=replace(
+                trashed.resources, spice=trashed.resources.spice - SPY_SATELLITES_SPICE
+            ),
+            # Every spend adds to ``spice_spent_turn`` (``effects``).
+            spice_spent_turn=trashed.spice_spent_turn + SPY_SATELLITES_SPICE,
+            victory_points=trashed.victory_points + SPY_SATELLITES_TRASH_VP,
+        )
+        events.append(resources_paid_event(source, player, spice=SPY_SATELLITES_SPICE))
+        events.append(
+            resources_gained_event(
+                source, player, victory_points=SPY_SATELLITES_TRASH_VP
+            )
+        )
+    working = replace(
+        state,
+        players=replace_player(state.players, trashed),
+        tech_trash=(*state.tech_trash, tech_id),
+    )
+    if TECH_TILES_BY_ID[tech_id].ability is TechAbility.TRASH_CYCLE_INTRIGUE:
+        working = begin_intrigue_bottom_pick(working, player, source=source)
+    return RuleResult(state=working, events=tuple(events))
 
 
 def optional_trash_tech_ids() -> tuple[str, ...]:

@@ -144,6 +144,7 @@ from dune_imperium.rules.immortality import (
     research_icon_spaces,
     research_trash_spaces,
 )
+from dune_imperium.rules.intrigue_bottom import FINISH_ACTION, PUT_ACTION
 from dune_imperium.rules.planetologist import PLANETOLOGIST_LEADER
 from dune_imperium.rules.reveal_lines import RevealLine, reveal_lines
 from dune_imperium.rules.reveal_turn import (
@@ -155,6 +156,7 @@ from dune_imperium.rules.reveal_turn import (
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
 from dune_imperium.rules.tech import (
+    TRASH_ABILITIES,
     optional_trash_tech_ids,
     tech_acquire_effect_arguments,
 )
@@ -3502,6 +3504,19 @@ def _ix_tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for tile in IX_TECH_TILES
         if tile.flips
     )
+    # The tiles used by trashing them (stage P4c-2c): Spy Satellites' VP and
+    # Sonic Snoopers, whose pick has a row per Intrigue card of the game's deck
+    # for the deck's bottom (a Twisted card is never put, OQ-097) and the stop.
+    templates.extend(
+        ActionTemplate(action_id="trash_tech", arguments=(("tech_id", tile.tech_id),))
+        for tile in IX_TECH_TILES
+        if tile.ability in TRASH_ABILITIES
+    )
+    templates.extend(
+        ActionTemplate(action_id=PUT_ACTION, arguments=(("card_id", card_id),))
+        for card_id in content_for(config).intrigue_deck_instance_ids
+    )
+    templates.append(ActionTemplate(action_id=FINISH_ACTION))
     return tuple(templates)
 
 

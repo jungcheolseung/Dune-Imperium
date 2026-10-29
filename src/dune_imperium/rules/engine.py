@@ -202,6 +202,10 @@ from dune_imperium.rules.intrigue import (
     legal_intrigue_play_actions,
     plays_turn_start_option,
 )
+from dune_imperium.rules.intrigue_bottom import (
+    apply_intrigue_bottom_action,
+    legal_intrigue_bottom_actions,
+)
 from dune_imperium.rules.intrigue_deck import (
     apply_intrigue_reshuffle,
     intrigue_draw_is_queued,
@@ -399,6 +403,7 @@ from dune_imperium.rules.tech import (
     apply_tech_choice,
     apply_tech_flip,
     apply_tech_influence_without_faction,
+    apply_tech_trash,
     deploy_suspensor_troops,
     draw_owed_tech_cards,
     legal_secret_project_actions,
@@ -406,6 +411,7 @@ from dune_imperium.rules.tech import (
     legal_tech_acquisition_actions,
     legal_tech_flip_actions,
     legal_tech_reveal_actions,
+    legal_tech_trash_actions,
 )
 from dune_imperium.rules.tleilaxu_row import (
     apply_tleilaxu_acquisition,
@@ -501,6 +507,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
+        legal_tech_trash_actions,
         legal_tech_acquire_effect_actions,
         legal_specimen_return_actions,
         legal_family_atomics_actions,
@@ -545,6 +552,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
+        legal_tech_trash_actions,
         legal_tech_reveal_actions,
         legal_tech_acquire_effect_actions,
         legal_reveal_gain_actions,
@@ -647,6 +655,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     ),
     FrameKind.GRAFT_PARTNER: (legal_graft_partner_actions,),
     FrameKind.INTRIGUE_PEEK: (legal_intrigue_peek_actions,),
+    # Rise of Ix's Sonic Snoopers (stage P4c-2c).
+    FrameKind.INTRIGUE_BOTTOM_PICK: (legal_intrigue_bottom_actions,),
     # Servo-Receivers: the Leader's Signet Ring ability outside its box.
     FrameKind.LEADER_SIGNET: (legal_feyd_track_actions, legal_leader_signet_actions),
     # Arrakeen Scouts: Friends Everywhere's choice of Influence 4 bonus.
@@ -825,6 +835,10 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "resolve_tech_influence_without_faction": apply_tech_influence_without_faction,
     "decline_tech": apply_tech_acquisition,
     "flip_tech": apply_tech_flip,
+    # Rise of Ix's tiles used by trashing them (stage P4c-2c).
+    "trash_tech": apply_tech_trash,
+    "put_intrigue_on_bottom": apply_intrigue_bottom_action,
+    "finish_intrigue_bottom": apply_intrigue_bottom_action,
     "choose_secret_project": apply_secret_project,
     "gain_leader_signet_spice": apply_kota_signet_action,
     "trash_leader_tech": apply_kota_signet_action,

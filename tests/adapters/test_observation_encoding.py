@@ -1823,8 +1823,9 @@ def test_v39_reserves_the_rise_of_ix_frame_kinds_after_every_other() -> None:
     assert kinds[-len(IX_FRAME_KINDS) - 1] is FrameKind.MASTERSTROKE_SETUP
     # No engine path opens them yet, but the ones a stage has opened since:
     # none else has legal-action providers. Stage P4b-1b opens the winner's
-    # dreadnought choice (docs/rules/rise-of-ix.md 6, OQ-121 ruling 6 (1)).
-    opened = {FrameKind.DREADNOUGHT_CONTROL_CHOICE}
+    # dreadnought choice (docs/rules/rise-of-ix.md 6, OQ-121 ruling 6 (1)); stage
+    # P4c-2c opens Sonic Snoopers' pick of Intrigue cards for the deck's bottom.
+    opened = {FrameKind.DREADNOUGHT_CONTROL_CHOICE, FrameKind.INTRIGUE_BOTTOM_PICK}
     assert not (set(IX_FRAME_KINDS) - opened) & set(LEGAL_ACTION_PROVIDERS)
     assert opened <= set(LEGAL_ACTION_PROVIDERS)
     # Each encodes as its index + 1, as every kind does.

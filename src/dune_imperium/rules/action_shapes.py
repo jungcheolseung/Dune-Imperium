@@ -833,6 +833,15 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "decline_tech": _row(_V.DECLINE, _S.TECH, of=_V.ACQUIRE),
     "flip_tech": _row(_V.FLIP, _S.TECH, _T.TECH),
+    # Rise of Ix's tiles used by trashing them (stage P4c-2c): Spy Satellites'
+    # VP and Sonic Snoopers, whose pick puts Intrigue cards on the Intrigue
+    # deck's bottom ("set aside", the nearest verb: a new one would widen the
+    # observation's effect-pick verb segment) and stops with the draw.
+    "trash_tech": _row(_V.TRASH, _S.TECH, _T.TECH),
+    "put_intrigue_on_bottom": _row(
+        _V.SET_ASIDE, _S.TECH, _T.INTRIGUE_CARD, variant="deck_bottom"
+    ),
+    "finish_intrigue_bottom": _row(_V.FINISH, _S.TECH, variant="intrigue_bottom"),
     # Forbidden Weapons: the swords and an Influence lost, or the trash.
     "choose_tech_strength": _row(_V.CHOOSE, _S.TECH, _T.FACTION),
     "choose_tech_trash": _row(_V.CHOOSE, _S.TECH, variant="trash"),
@@ -956,6 +965,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
             # Stage P3: the original game's Bindu Suspension, which may pass
             # the turn after its draw (OQ-117).
             _V.PASS,
+            # Stage P4c-2c: Sonic Snoopers' stop (the pick's own effect has
+            # no target, so it keeps its effect row).
+            _V.FINISH,
         )
     },
     # A target row picks one target of the effect its seat picked.
