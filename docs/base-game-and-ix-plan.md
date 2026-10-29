@@ -1232,12 +1232,18 @@ Infiltration, Discard; 7절), Ix 카드·지도자 6·Conflict 4 앞면, Hundro 
   `app_board.py`의 원판 Playmat 묶음으로 그렸다(에셋 `4f5520e`, 커밋 `a88ff4ca`). `c109ae96`가 판마다 자기 보드 그림·배치를 읽게 하고(카탈로그
   `boards.imperium`, `core.js` `boardLayout`·`spaceBox`·`boardScan`, Uprising 전용 방벽은 Uprising만), `a4545a9d`가 원판 그림 위에 칸 22개의 누를 곳,
   Control 깃발 셋, Maker 보너스 스파이스 셋, Mentat 말, The Voice 막힘 칩을 그린다(`display/board_layout_imperium.py`, 그림 픽셀에서 잰 값, 오버레이로 확인).
-  트랙(영향력·점수·전투력·Conflict·원로회)은 아직 재지 않았다 — 그때까지 좌석 패널이 글 보드처럼 수를 보인다(`6ed13327` `textBoardStats`; 글 보드에서는 전에
-  이 수가 어디에도 없었다).
+  트랙은 `0fd94426`이 그린다: 영향력 띠·Alliance 고리, 점수 트랙, 전투력 트랙, garrison 고리와 Conflict, 원로회 의자, Conflict 덱·카드 자리(덱은 왼쪽 —
+  공식 규칙서 설정 그림 B `[DI p. 4]`, 공개한 카드는 "next to the Conflict Deck" `[DI p. 8]`), Conflict 위 병력 조절 띠. card-implementer 하나가 픽셀에서
+  Uprising과 같은 모양으로 재고, 내가 오버레이와 실제 판 스크린숏으로 확인했다. 원판은 Conflict 사분면을 인쇄하지 않아 좌석마다 자기 garrison에 가까운 4분의 1에
+  병력을 둔다(표시 관례, 규칙 아님). 전투력 0은 "1"·"2" 위에 인쇄된 고리라 Uprising의 2x2가 칸 2의 부채꼴처럼 읽혀, 고리를 한 칸처럼 다뤄(`zero_point`) 그 위에
+  부채꼴로 놓는다. 그림이 있으면 좌석 패널은 이제 이 수를 되풀이하지 않는다(`6ed13327`의 `textBoardStats`는 글 보드에서만).
 - **묶음 확인(2026-10-29 오전, 브랜치 HEAD `a4545a9d`):** pytest `-n 8` 9,304, ruff, mypy; e2e `run_all.py -j 4` 70 통과·1 실패 — `effect_text`가 원판 카드
   넷의 영어·한국어 아이콘 차이를 찾았다(Spice Smugglers의 대문자 "Solari", Refocus의 소문자 "draw" — 인쇄는 "then: [draw 1]", Gurney Halleck·Reinforcements
   한국어 "이 병력"에 병력 아이콘 없음). `fcc003db`가 표시 문구만 고쳤고 `effect_text` 727/0.
 - **확인:** pytest `-n 8` 9,304(좌석 표 커밋 때와 묶음 확인 때), ruff, mypy 606; e2e `imperium_game` [1]-[5], `setup_options` [8], 그 밖에 화면을 다루는
   스크립트들(묶음 71개).
-- **남은 것:** 보드 트랙 재기와 그 위 표시(진행 중), 원판 지도자 앞면 앱 렌더(원판 지도자 틀을 새로 재야 함), 한국어 카드 앞면(공식 한글판 사진 뒤),
-  Rise of Ix 화면(18.6, P4 병합 뒤), worklog·handoff(병합 때).
+- **트랙 확인:** 새 `tests/unit/display/test_imperium_board_layout.py` 9개(garrison 배치 포팅은 `tests/support/board_layout.py`로 옮겨 두 보드가 같이 씀),
+  `tests/unit/display`·`tests/server` 1,491, e2e `imperium_game` 52(말 수가 보기와 같고 모두 그림 안), `setup_options` 81, `board_tokens` 608,
+  `turn_controls` 48.
+- **남은 것:** 원판 지도자 앞면 앱 렌더(원판 지도자 틀을 새로 재야 함), 한국어 카드 앞면(공식 한글판 사진 뒤), Rise of Ix 화면(18.6, P4 병합 뒤),
+  worklog·handoff(병합 때).
