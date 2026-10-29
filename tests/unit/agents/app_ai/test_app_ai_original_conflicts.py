@@ -9,12 +9,17 @@ affine ones (so a price taken at 3 is not mistaken for three prices at 1) and
 checks the terms against values worked out by hand from the decompiled code.
 """
 
+from collections import Counter
 from collections.abc import Callable, Sequence
+from dataclasses import replace
+from functools import cache
 from typing import Any
 
 import pytest
 
 from dune_imperium import RulesetConfig
+from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai.abilities import original_conflicts as oc
 from dune_imperium.agents.app_ai.abilities.base import (
     Request,
@@ -41,12 +46,25 @@ from dune_imperium.agents.app_ai.testing import (
     ENGINE,
     first_decision,
     make_profile,
+    play_until,
     with_player,
     with_state,
 )
+from dune_imperium.agents.app_ai.windows import combat as W
+from dune_imperium.agents.app_ai.windows.run import DecisionRun, Memory
+from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.config import BaseGame
-from dune_imperium.core.decisions import PlayerDecision
-from dune_imperium.core.state import GameState
+from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.chance import ChanceResolver
+from dune_imperium.core.decisions import ChanceDecision, PlayerDecision
+from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.combat import (
+    REWARD_LINE_KINDS,
+    chosen_reward_lines,
+    legacy_combat_reward_icon,
+)
+from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.simulation.runner import run_policy_game
 
 ORIGINAL = RulesetConfig(base_game=BaseGame.IMPERIUM)
 CA = "worm.canis.abilities.ConflictAbilities.BaseSet."
@@ -841,3 +859,309 @@ def test_demand_respect_and_to_the_victor_add_to_the_relative_value(
     assert prof(held).relative_conflict_value().sum == pytest.approx(
         base + (any_influence(1) + 1.0) + _resource_value(SP, 1) * 3.0
     )
+
+
+# ---------------------------------------------------------------------------
+# The reward windows (windows/combat.py)
+# ---------------------------------------------------------------------------
+
+
+@cache
+def _combat_state() -> GameState:
+    """The first original ``combat_intrigue`` decision (round 1)."""
+
+    return play_until(
+        lambda state, owner: state.decision_stack[-1].kind == "combat_intrigue",
+        config=ORIGINAL,
+        seed=1,
+    )
+
+
+def _is_line_pick(state: GameState) -> bool:
+    frame = state.decision_stack[-1]
+    if frame.kind != "combat_reward_icons":
+        return False
+    legacy = legacy_combat_reward_icon(state, _seat(state))
+    return legacy is not None and dict(legacy.arguments)["effect"] in REWARD_LINE_KINDS
+
+
+def _reward_window(
+    conflict_id: str,
+    strengths: tuple[int, int, int, int],
+    until: Callable[[GameState], bool],
+) -> GameState:
+    """The first state satisfying ``until`` once ``conflict_id`` is resolved
+    with ``strengths`` (combatants pass; reward rows are answered in the
+    engine's older order, any other frame by its first action)."""
+
+    state = with_conflict(_combat_state(), conflict_id)
+    for seat, strength in enumerate(strengths):
+        state = with_player(state, seat, combat_strength=strength)
+    for _ in range(200):
+        if until(state):
+            return state
+        decision = ENGINE.current_decision(state)
+        if isinstance(decision, ChanceDecision):  # the pause between recipients
+            state = ENGINE.apply(state, ChanceResolver(seed=1).resolve(decision)).state
+            continue
+        seat = _seat(state)
+        kind = state.decision_stack[-1].kind
+        if kind == "combat_intrigue":
+            action = DomainAction("pass_combat_intrigue", seat)
+        elif kind == "combat_reward_icons":
+            assert not _is_line_pick(state)
+            legacy = legacy_combat_reward_icon(state, seat)
+            assert legacy is not None
+            action = legacy
+        else:
+            action = ENGINE.whole_actions(state, seat)[0]
+        state = apply_whole(ENGINE, state, action).state
+    raise AssertionError(f"{conflict_id} never reached the window")
+
+
+def _kind(kind: str) -> Callable[[GameState], bool]:
+    return lambda state: state.decision_stack[-1].kind == kind
+
+
+def _run(
+    state: GameState, *, memory: Memory | None = None, rng_seed: int = 0
+) -> DecisionRun:
+    seat = _seat(state)
+    profile = make_profile(state, seat, rng_seed=rng_seed)
+    legal = tuple(ENGINE.whole_actions(state, seat))
+    return DecisionRun(profile.ctx, profile, legal, profile.rng, memory or Memory())
+
+
+def _args(action: DomainAction | None) -> tuple[str, dict[str, object]]:
+    assert action is not None
+    return action.action_id, dict(action.arguments)
+
+
+@pytest.fixture
+def linear_influence(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, int]]:
+    """Real profiles with ``GetGainInfluenceValue`` replaced by strict weights
+    (Bene Gesserit > Spacing Guild > Emperor > Fremen); returns the calls."""
+
+    calls: list[tuple[str, int]] = []
+
+    def gain(
+        self: Profile, f: str, n: int, rank: int = -1, alliance: bool = False
+    ) -> Summer:
+        calls.append((f, n))
+        return influence(f, n)
+
+    monkeypatch.setattr(Profile, "gain_influence_value", gain)
+    return calls
+
+
+@pytest.mark.parametrize(
+    ("card_id", "amount"),
+    [
+        ("skirmish_c", 1),
+        ("skirmish_d", 1),
+        ("cloak_and_dagger", 1),
+        ("grand_vision", 2),
+    ],
+)
+def test_the_faction_reward_takes_the_best_track_for_the_cards_amount(
+    linear_influence: list[tuple[str, int]], card_id: str, amount: int
+) -> None:
+    state = _reward_window(card_id, (9, 5, 3, 1), _kind("combat_reward_influence"))
+    run = _run(state)
+    assert [dict(a.arguments)["faction"] for a in run.legal] == list(FACTIONS)
+    del linear_influence[:]
+    assert _args(W.combat_reward_influence(run)) == (
+        "choose_combat_reward_influence",
+        {"faction": "bene_gesserit"},
+    )
+    assert {n for _, n in linear_influence} == {amount}
+    assert {f for f, _ in linear_influence} == set(FACTIONS)
+
+
+def test_the_faction_reward_skips_a_track_the_frame_does_not_offer(
+    linear_influence: list[tuple[str, int]],
+) -> None:
+    state = _reward_window("skirmish_c", (9, 5, 3, 1), _kind("combat_reward_influence"))
+    seat = _seat(state)
+    full = with_player(
+        state,
+        seat,
+        influence=replace(state.players[seat].influence, bene_gesserit=6),
+    )
+    run = _run(full)
+    assert [dict(a.arguments)["faction"] for a in run.legal] == [
+        "emperor",
+        "spacing_guild",
+        "fremen",
+    ]
+    assert _args(W.combat_reward_influence(run))[1] == {"faction": "spacing_guild"}
+
+
+def test_machinations_names_both_tracks_in_one_answer(
+    linear_influence: list[tuple[str, int]],
+) -> None:
+    state = _reward_window(
+        "machinations", (9, 5, 3, 1), _kind("combat_reward_distinct_influence")
+    )
+    memory = Memory()
+    first = W.combat_reward_distinct_influence(_run(state, memory=memory))
+    context = dict(state.decision_stack[-1].context)
+    key = (
+        W.DISTINCT_INFLUENCE_INTENT,
+        state.round_number,
+        _seat(state),
+        context["group"],
+    )
+    assert memory.intents[key] == ("bene_gesserit", "spacing_guild")
+    assert _args(first) == (
+        "choose_distinct_combat_reward_influence",
+        {"faction": "bene_gesserit"},
+    )
+    assert first is not None
+    second_state = apply_whole(ENGINE, state, first).state
+    assert second_state.decision_stack[-1].kind == "combat_reward_distinct_influence"
+    second = W.combat_reward_distinct_influence(_run(second_state, memory=memory))
+    assert _args(second) == (
+        "choose_distinct_combat_reward_influence",
+        {"faction": "spacing_guild"},
+    )
+    assert key not in memory.intents
+
+
+def _trash_state(*starters: str) -> GameState:
+    state = _reward_window(
+        "terrible_purpose", (9, 5, 3, 1), _kind("combat_reward_trash")
+    )
+    seat = _seat(state)
+    cards = tuple(f"player:{seat}:starter:{name}:0" for name in starters)
+    deck = tuple(c for c in state.players[seat].deck if c not in cards)
+    return with_player(state, seat, deck=deck, hand=(), in_play=(), discard_pile=cards)
+
+
+def test_terrible_purpose_trashes_the_junk_card() -> None:
+    state = _trash_state("diplomacy", "dagger", "signet_ring")
+    seat = _seat(state)
+    assert _args(W.combat_reward_trash(_run(state))) == (
+        "trash_combat_reward_card",
+        {"card_id": f"player:{seat}:starter:dagger:0"},
+    )
+
+
+def test_terrible_purpose_trashes_nothing_without_junk() -> None:
+    state = _trash_state("diplomacy", "signet_ring")
+    assert _args(W.combat_reward_trash(_run(state))) == (
+        "decline_combat_reward_trash",
+        {},
+    )
+
+
+@pytest.fixture
+def prices(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
+    """Replace ``Profile`` prices by constants (a method's new value)."""
+
+    def install(**values: float) -> None:
+        for name, value in values.items():
+            if name in ("spice_value", "solari_value"):
+                monkeypatch.setattr(Profile, name, lambda self, n, _v=value: _v * n)
+            else:
+                monkeypatch.setattr(Profile, name, lambda self, _v=value: _v)
+
+    return install
+
+
+def _line(action: DomainAction | None) -> str:
+    assert action is not None
+    assert action.action_id == "resolve_combat_reward_icon"
+    return str(dict(action.arguments)["effect"])
+
+
+@pytest.mark.parametrize(
+    ("prices_", "line"),
+    [
+        ({"intrigue_value": 3.0, "spice_value": 1.0}, "line_0"),
+        ({"intrigue_value": 1.0, "spice_value": 3.0}, "line_1"),
+        ({"intrigue_value": 2.0, "spice_value": 2.0}, "line_0"),
+    ],
+)
+def test_cloak_and_dagger_third_takes_the_better_of_the_two(
+    prices: Callable[..., None], prices_: dict[str, float], line: str
+) -> None:
+    state = _reward_window("cloak_and_dagger", (9, 5, 3, 0), _is_line_pick)
+    prices(**prices_)
+    run = _run(state)
+    assert sorted(_line(a) for a in run.legal if a.action_id.startswith("resolve")) == [
+        "line_0",
+        "line_1",
+    ]
+    assert _line(W.combat_reward_icons(run)) == line
+
+
+def test_battle_for_arrakeen_second_names_two_lines_in_the_apps_order(
+    prices: Callable[..., None],
+) -> None:
+    state = _reward_window("imperium_battle_for_arrakeen", (9, 5, 0, 0), _is_line_pick)
+    prices(intrigue_value=1.0, spice_value=2.0, solari_value=1.0)
+    # Intrigue 1.0, 2 Spice 4.0, 3 Solari 3.0: option 1, then option 2.
+    memory = Memory()
+    first = W.combat_reward_icons(_run(state, memory=memory))
+    assert _line(first) == "line_1"
+    context = dict(state.decision_stack[-1].context)
+    key = (W.REWARD_LINES_INTENT, state.round_number, _seat(state), context["rank"])
+    assert memory.intents[key] == (1, 2)
+    assert first is not None
+    second_state = apply_whole(ENGINE, state, first).state
+    assert chosen_reward_lines(second_state.decision_stack[-1]) == (1,)
+    second = W.combat_reward_icons(_run(second_state, memory=memory))
+    assert _line(second) == "line_2"
+    assert key not in memory.intents
+    # Without the plan the second pick asks the ability again.
+    again = W.combat_reward_icons(_run(second_state, memory=Memory()))
+    assert _line(again) == "line_2"
+
+
+def test_the_agent_asks_the_line_window_instead_of_the_engine_order(
+    prices: Callable[..., None],
+) -> None:
+    state = _reward_window("cloak_and_dagger", (9, 5, 3, 0), _is_line_pick)
+    seat = _seat(state)
+    legacy = legacy_combat_reward_icon(state, seat)
+    assert legacy is not None and dict(legacy.arguments)["effect"] == "line_0"
+    prices(intrigue_value=1.0, spice_value=3.0)
+    legal = ENGINE.legal_actions(state, seat)
+    action = AppAIAgent(seed=1).choose_action_with_state(
+        state, ENGINE.observe(state, seat), legal
+    )
+    after = ENGINE.apply(state, action, legal_actions=legal).state
+    assert chosen_reward_lines(after.decision_stack[-1]) == (1,)
+
+
+def test_the_agent_still_pays_the_other_rows_in_the_engine_order() -> None:
+    state = _reward_window(
+        "cloak_and_dagger", (9, 5, 3, 0), _kind("combat_reward_icons")
+    )
+    seat = _seat(state)
+    legal = ENGINE.legal_actions(state, seat)
+    agent = AppAIAgent(seed=1)
+    action = agent.choose_action_with_state(state, ENGINE.observe(state, seat), legal)
+    assert action == engine_order_answer(state, seat, legal)
+    assert not agent.fallbacks
+
+
+def test_original_games_answer_every_conflict_reward_window() -> None:
+    """Eight original games, four app_ai seats: no reward window falls back or
+    fails (the line windows, the faction, two-faction and trash choices)."""
+
+    engine = UprisingRulesEngine()
+    config = RulesetConfig(base_game=BaseGame.IMPERIUM, leader_draft=True)
+    mirrored: Counter[str] = Counter()
+    fallbacks: Counter[str] = Counter()
+    for seed in range(3000, 3008):
+        agents = tuple(AppAIAgent(seed=seed * 10 + s, level=s % 3) for s in range(4))
+        result = run_policy_game(engine, config, seed, agents)
+        assert result.state.phase is GamePhase.FINISHED
+        for agent in agents:
+            mirrored.update(agent.mirrored)
+            fallbacks.update(agent.fallbacks)
+    assert not {k: n for k, n in fallbacks.items() if k.startswith("combat_reward")}
+    assert not {k: n for k, n in fallbacks.items() if k.startswith("error:")}
+    assert "combat_reward_influence" in mirrored
