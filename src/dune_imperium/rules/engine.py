@@ -1363,10 +1363,24 @@ def _end_turn_start(
     frame (the seat's own again when every other seat has revealed) opens
     with its start still open. Marked on the handler's result, before the
     automatic steps, so a turn those steps open is a fresh one.
+
+    A Round Start choice laid above the round's first turn frame is no
+    action of that turn: Ilesa Ecaz's set-aside ("Round Start 순서 ... →
+    Ilesa의 따로 두기(Holtzman Engine으로 뽑은 카드까지 든 손에서) → 첫 turn",
+    docs/rules/rise-of-ix.md 4, OQ-122) leaves a First Player Ilesa's first
+    turn with its start open (Bindu Suspension, "Agent·Reveal을 시작하기 전 차례
+    시작의 첫 행동으로만", OQ-117). It is the one such choice: Holtzman Engine's
+    reshuffle above that frame is a chance step, and the Control defense,
+    Hundro's Intelligence and the Arrakeen Scouts step all come before the
+    first turn frame opens.
     """
 
     if (
         not turn_start_is_open(state, action.actor)
+        or (
+            bool(state.decision_stack)
+            and state.decision_stack[-1].kind == FrameKind.ROUND_START_SET_ASIDE
+        )
         or action.action_id == "play_turn_start_card"
         or plays_turn_start_option(action)
         # An answer that passes the turn (Bindu Suspension's pass, after its

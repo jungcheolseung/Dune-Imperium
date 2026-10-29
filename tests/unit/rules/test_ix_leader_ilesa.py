@@ -448,3 +448,34 @@ def test_a_set_aside_reserve_card_keeps_its_instance_to_itself() -> None:
     )
     assert dict(aside.reserve_stacks)["arrakis_liaison"] == count - 1
     assert next_reserve_instance_id(aside, "arrakis_liaison") != taken
+
+
+BINDU = "intrigue:bindu_suspension:0"
+
+
+def test_a_first_player_ilesa_keeps_her_first_turns_start_after_the_set_aside() -> None:
+    """ "Round Start 순서 ... → Ilesa의 따로 두기(Holtzman Engine으로 뽑은 카드까지
+    든 손에서) → 첫 turn" (rise-of-ix.md 4, OQ-122): the set-aside is a Round
+    Start step, no action of the first turn, so a First Player Ilesa may still
+    open that turn with Bindu Suspension, "Agent·Reveal을 시작하기 전 차례
+    시작의 첫 행동으로만" (OQ-117); her first real action of the turn closes
+    its start."""
+
+    engine, state = _opened()
+    assert state.first_player == 0
+    state = replace(
+        _seat(state, intrigue_cards=(BINDU,)),
+        intrigue_deck=tuple(card for card in state.intrigue_deck if card != BINDU),
+    )
+    bindu = DomainAction("play_intrigue", 0, (("card_id", BINDU), ("option", 0)))
+    aside = _set_aside(engine, state)
+    assert aside.decision_stack[-1].kind == FrameKind.TURN
+    engine.legal_actions(aside, 0)
+    assert bindu in engine.whole_actions(aside, 0)
+    pick = next(
+        row
+        for row in engine.whole_actions(aside, 0)
+        if row.action_id == "choose_agent_card"
+    )
+    picked = apply_whole(engine, aside, pick).state
+    assert bindu not in engine.whole_actions(picked, 0)
