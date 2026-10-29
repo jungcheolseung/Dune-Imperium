@@ -89,7 +89,9 @@ from dune_imperium.agents.app_ai.abilities.generic import (
     contract_evaluate,
 )
 from dune_imperium.agents.app_ai.abilities.tech import (
+    AcquireTechAbility,
     AcquireTechAbilityDiscount1,
+    AcquireTechAbilityShippingTrack2,
     MemocordersAcquiredAbility,
 )
 from dune_imperium.agents.app_ai.catalog import (
@@ -552,16 +554,22 @@ def tech_acquisition(run: DecisionRun) -> DomainAction | None:
     decline = run.first("decline_tech")
     if not acquires:
         return decline
-    if run.ctx.top_frame_context.get("discount") != (
-        AcquireTechAbilityDiscount1.tech_discount
-    ):
-        return None  # no app-style source for another discount
+    discount = run.ctx.top_frame_context.get("discount")
+    source = (
+        _IX_TECH_SOURCES.get(discount)
+        if run.ctx.ix and isinstance(discount, int)
+        else None
+    )
+    if source is None:
+        if discount != AcquireTechAbilityDiscount1.tech_discount:
+            return None  # no app-style source for another discount
+        source = AcquireTechAbilityDiscount1
     tech_ids = _refs(acquires, "tech_id")
     if any(t not in TECH_ARCHETYPES for t in tech_ids):
         return None
     p = run.profile
     tiles = tuple(tech_entity(t, run.ctx.seat) for t in tech_ids)
-    ability = AcquireTechAbilityDiscount1(_RUNTIME_OWNER)
+    ability = source(_RUNTIME_OWNER)
     answer = ability.evaluate(p, Request((TargetInfo(entities=tiles),)))
     ref = _first_ref(answer)
     tile: str | None = ref if isinstance(ref, str) and answer.value > 0.0 else None
@@ -575,15 +583,32 @@ def tech_acquisition(run: DecisionRun) -> DomainAction | None:
     return _tile_action(run, acquires, tile)
 
 
+#: Rise of Ix (plan §13): the acquisition's app source by its Tech Discount --
+#: the Dreadnought space's ``AcquireTechAbility`` (0), Tech Negotiation's
+#: tile (1, the tile its negotiate-or-buy answer named: the same
+#: ``AcquireValue`` argmax) and the Shipping track's
+#: ``AcquireTechAbilityShippingTrack2`` (2).
+_IX_TECH_SOURCES: Final[dict[int, type[AcquireTechAbility]]] = {
+    0: AcquireTechAbility,
+    1: AcquireTechAbilityDiscount1,
+    2: AcquireTechAbilityShippingTrack2,
+}
+
+
 def _tile_action(
     run: DecisionRun, acquires: Sequence[DomainAction], tech_id: str
 ) -> DomainAction | None:
     """``acquire_tech`` of ``tech_id``; Advanced Data Analysis boxes the Spy
-    ``GetRecallSpy`` names (the one on the worst post, D14)."""
+    ``GetRecallSpy`` names (the one on the worst post, D14). Rise of Ix:
+    the app spends Negotiators before spice without asking, ``Min(cost,
+    Negotiators)`` (``AcquireTechAbility/<BeginExecution>d__14`` @0x4d97e30,
+    rix-tech.md §7.1): the variant returning the most."""
 
     variants = [a for a in acquires if str_arg(a, "tech_id") == tech_id]
     if len(variants) <= 1:
         return variants[0] if variants else None
+    if any("negotiators" in dict(a.arguments) for a in variants):
+        return max(variants, key=lambda a: int_arg(a, "negotiators") or 0)
     return worst_recall_action(run, variants)
 
 

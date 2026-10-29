@@ -89,3 +89,50 @@ def test_the_turn_window_maps_every_ix_space_row(unmapped: Counter[str]) -> None
     assert not [
         r for r in unmapped if r.startswith(("tech_negotiation", "dreadnought "))
     ]
+
+
+def _control_answer(
+    controllers: dict[str, int | None], vp: int = 0
+) -> tuple[str, float]:
+    from dune_imperium.agents.app_ai.abilities.base import Request, TargetInfo
+
+    state = first_decision("turn", config=IX)
+    p = make_profile(state)
+    entities = tuple(space_entity(s, BOARD) for s in controllers)
+    ability = ib.DreadnoughtControlAbility(entities[0], controllers)
+    p.ctx.vp = lambda player: vp  # type: ignore[method-assign]
+    answer = ability.evaluate(p, Request(infos=(TargetInfo(entities=entities),)))
+    assert answer.response is not None and answer.response[0] == (ib.DREADNOUGHT_PLACE,)
+    return str(answer.response[1][0]), answer.value
+
+
+def test_dreadnought_control_prefers_an_open_imperial_basin() -> None:
+    seat = make_profile(first_decision("turn", config=IX)).ctx.seat
+    ref, value = _control_answer(
+        {"arrakeen": None, "carthag": seat, "imperial_basin": None}
+    )
+    assert (ref, value) == ("imperial_basin", 3.0)
+
+
+def test_dreadnought_control_blocks_a_leader_with_more_vp_than_three() -> None:
+    seat = make_profile(first_decision("turn", config=IX)).ctx.seat
+    other = (seat + 1) % 4
+    ref, value = _control_answer(
+        {"arrakeen": other, "carthag": None, "imperial_basin": None}, vp=5
+    )
+    assert (ref, value) == ("arrakeen", 5.0)
+
+
+def test_tech_acquisition_spends_negotiators_first() -> None:
+    from dune_imperium.agents.app_ai.windows.bloodlines import _tile_action
+    from dune_imperium.core.actions import DomainAction
+
+    plain = DomainAction(
+        action_id="acquire_tech", actor=0, arguments=(("tech_id", "artillery"),)
+    )
+    paid = DomainAction(
+        action_id="acquire_tech",
+        actor=0,
+        arguments=(("negotiators", 1), ("tech_id", "artillery")),
+    )
+    assert _tile_action(None, [plain, paid], "artillery") is paid  # type: ignore[arg-type]

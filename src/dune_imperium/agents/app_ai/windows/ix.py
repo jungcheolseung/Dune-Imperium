@@ -24,15 +24,17 @@ from collections.abc import Sequence
 
 from dune_imperium.agents.app_ai.abilities.base import Request, TargetInfo
 from dune_imperium.agents.app_ai.abilities.ix_board import (
+    DREADNOUGHT_DETONATE,
     FREIGHTER_RECALL,
     SHIPPING_SOLARI,
+    DreadnoughtControlAbility,
     FreighterAbility,
     FreighterCustomAbility,
     ShippingTrackAbility1,
     ShippingTrackAbility2,
     ShippingTrackAbility3,
 )
-from dune_imperium.agents.app_ai.catalog import track_entity
+from dune_imperium.agents.app_ai.catalog import space_entity, track_entity
 from dune_imperium.agents.app_ai.context import FACTIONS
 from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.windows.common import (
@@ -43,6 +45,7 @@ from dune_imperium.agents.app_ai.windows.common import (
 )
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.rules.dreadnoughts import space_controller
 
 ADVANCE = "advance_freighter"
 RECALL = "recall_freighter"
@@ -173,7 +176,46 @@ def shipping_reward_icons(run: DecisionRun) -> DomainAction | None:
     return decide(run, shipping_sources(run, run.legal), skip=None, forced=True)
 
 
+_PLACE_DREADNOUGHT = "place_combat_reward_dreadnought"
+_DETONATE_DREADNOUGHT = "detonate_combat_reward_dreadnought"
+
+
+def dreadnought_control_choice(run: DecisionRun) -> DomainAction | None:
+    """``dreadnought_control_choice``: the app's ``DreadnoughtControlAbility``
+    prompt (Explicit) over the offered Control spaces, and Detonation
+    Devices' VP when offered (``abilities/ix_board.py``)."""
+
+    ids = {_PLACE_DREADNOUGHT, _DETONATE_DREADNOUGHT}
+    if any(a.action_id not in ids for a in run.legal):
+        return None
+    places = run.by_id(_PLACE_DREADNOUGHT)
+    detonate = run.first(_DETONATE_DREADNOUGHT)
+    state = run.ctx.state
+    spaces = [str_arg(a, "space_id") for a in places]
+    entities = tuple(space_entity(s, run.ctx.board) for s in spaces if s is not None)
+    ability = DreadnoughtControlAbility(
+        _track_owner(run.ctx.seat),
+        {e.ref: space_controller(state, e.ref) for e in entities},
+    )
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        answer = ability.evaluate(
+            run.profile, Request(infos=(TargetInfo(entities=entities),))
+        )
+        if not answer.response:
+            return answer.value, None
+        if answer.response[0][0] == DREADNOUGHT_DETONATE:
+            return answer.value, detonate
+        ref = answer.response[1][0] if len(answer.response) > 1 else None
+        chosen = [a for a in places if str_arg(a, "space_id") == ref]
+        return answer.value, (chosen[0] if chosen else None)
+
+    source = Source("Dreadnought Control", Stage.PROMPT, tuple(run.legal), evaluate)
+    return decide(run, [source], skip=None, forced=True)
+
+
 HANDLERS: dict[str, Handler] = {
+    "dreadnought_control_choice": dreadnought_control_choice,
     "freighter_move": freighter_move,
     "shipping_reward_icons": shipping_reward_icons,
 }

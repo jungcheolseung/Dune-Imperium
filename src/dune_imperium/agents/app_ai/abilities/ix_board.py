@@ -53,6 +53,12 @@ if TYPE_CHECKING:
 _AA = "worm.canis.abilities.ActivatedAbilities.RiseOfIx."
 _SA = "worm.canis.abilities.SpaceAbilities.RiseOfIx."
 _TA = "worm.canis.abilities.TriggeredAbilities.RiseOfIx."
+_CA = "worm.canis.abilities.ConflictAbilities.RiseOfIx."
+
+#: ``DreadnoughtControlAbility::Evaluate``'s first response: 0 places the
+#: dreadnought on the space named second, 1 is Detonation Devices' VP.
+DREADNOUGHT_PLACE = 0
+DREADNOUGHT_DETONATE = 1
 
 #: ``FreighterAbility::Evaluate``'s response: ``Item1`` of
 #: ``GetFreighterSelections`` (log 'Recall' / 'Advance', spec §4.7).
@@ -237,3 +243,64 @@ class TechNegotiationTriggeredAbility(TriggeredAbility):
         v = Summer()
         v.add("Tech Negotiation Persuasion", p.persuasion_value(1))
         return v
+
+
+# -- the Conflict winner's dreadnought ----------------------------------------------
+
+
+@port(_CA + "DreadnoughtControlAbility")
+class DreadnoughtControlAbility(DeferredAbility):
+    """``ConflictAbilities.RiseOfIx.DreadnoughtControlAbility``: the winner
+    places a dreadnought from the Conflict on a Control space without one
+    [Rise of Ix p. 6], or (Detonation Devices) takes 1 VP instead."""
+
+    def selection_mode(self, p: Profile) -> SelectionMode:
+        """``DreadnoughtControlAbility::SelectionMode`` @0x4b74f70: Explicit (3)."""
+
+        return SelectionMode.EXPLICIT
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``DreadnoughtControlAbility::Evaluate`` @0x4b75520.
+
+        With Detonation Devices held, ``IntTargetResponse(1)`` at the f64
+        100.0 first ("Detonation Devices | 100"). Then the spaces of
+        ``request.infos[0]`` (``ValidEntities``), shuffled
+        (``ListUtil.Shuffle``, the seat's RNG here), each answered
+        ``[IntTargetResponse(0), space]`` and kept only when strictly
+        better: a space another seat controls at that seat's
+        ``VictoryPoints``, the seat's own at 1.0 ("Already controlled"), an
+        uncontrolled Imperial Basin at 3.0 and any other uncontrolled space
+        at 2.0 ("not controlled"; ``ArchID == BaseSet.ImperialBasin``).
+        ``controllers`` maps each space ref to its ``ControllingPlayer``
+        seat (a dreadnought ahead of the marker).
+        """
+
+        best: Answer | None = None
+        if p.ctx.has_tech("detonation_devices"):
+            best = Answer(100.0, ((DREADNOUGHT_DETONATE,),), "Detonation Devices | 100")
+        spaces = list(request.infos[0].entities) if request.infos else []
+        p.rng.shuffle(spaces)
+        for space in spaces:
+            controller = self.controllers.get(space.ref)
+            if controller is None:
+                basin = space.short == "SpaceArchetypes.BaseSet.ImperialBasin"
+                value = 3.0 if basin else 2.0
+                log = (
+                    f"Dreadnought Control | {int(value)} | {space.ref} | not controlled"
+                )
+            elif controller == p.ctx.seat:
+                value = 1.0
+                log = f"Dreadnought Control | 1 | {space.ref} | Already controlled"
+            else:
+                value = float(p.ctx.vp(p.ctx.players[controller]))
+                log = f"Dreadnought Control | {int(value)} | {space.ref} | controlled"
+            if best is None or value > best.value:
+                best = Answer(value, ((DREADNOUGHT_PLACE,), (space.ref,)), log)
+        return best if best is not None else Answer(0.0, None, "Dreadnought Control")
+
+    def __init__(
+        self, owner: Entity, controllers: dict[str, int | None] | None = None
+    ) -> None:
+        super().__init__(owner)
+        #: Each offered space's ``ControllingPlayer`` (the window's).
+        self.controllers = controllers or {}
