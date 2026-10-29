@@ -243,6 +243,7 @@ from dune_imperium.rules.leader_abilities import (
     apply_shaddam_signet_choice,
     grant_hungry_for_spice,
     grant_leader_reveal_passives,
+    grant_smuggling_operation,
     legal_feyd_track_actions,
     legal_leader_reveal_actions,
     legal_leader_signet_actions,
@@ -1181,10 +1182,14 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
-        return _settle_card_knowledge(
-            refresh_pre_reveal_strength(
-                _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
-            )
+        # Smuggling Operation reads the whole transition's gains (Rise of Ix).
+        return grant_smuggling_operation(
+            _settle_card_knowledge(
+                refresh_pre_reveal_strength(
+                    _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
+                )
+            ),
+            state,
         )
 
     def legal_actions(
@@ -1299,10 +1304,14 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
-        return _settle_card_knowledge(
-            refresh_pre_reveal_strength(
-                _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
-            )
+        # Smuggling Operation reads the whole transition's gains (Rise of Ix).
+        return grant_smuggling_operation(
+            _settle_card_knowledge(
+                refresh_pre_reveal_strength(
+                    _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
+                )
+            ),
+            state,
         )
 
     def observe(self, state: GameState, player: int) -> PlayerView:

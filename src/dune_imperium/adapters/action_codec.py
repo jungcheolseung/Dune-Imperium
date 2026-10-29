@@ -2600,6 +2600,8 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
             # The original game's Prudent Diplomacy and Scheme.
             "duke_leto_atreides",
             "baron_vladimir_harkonnen",
+            # Rise of Ix's Final Delivery.
+            "princess_yuna_moritani",
         }
     ),
     "resolve_leader_signet_without_option": frozenset(
@@ -2625,15 +2627,17 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "pay_leader_signet_spice": frozenset(
         {"lady_jessica", "reverend_mother_jessica", "staban_tuek", "gaius_helen_mohiam"}
     ),
-    # Unseen Network's Solari; the original game's Scheme.
+    # Unseen Network's Solari; the original game's Scheme; Rise of Ix's
+    # Final Delivery with every Faction at the top.
     "pay_leader_signet_solari": frozenset(
-        {"staban_tuek", "baron_vladimir_harkonnen"}
+        {"staban_tuek", "baron_vladimir_harkonnen", "princess_yuna_moritani"}
     ),
     "pay_leader_signet_water": frozenset({"chani"}),
     "gain_leader_signet_troop": frozenset({"shaddam_corrino_iv"}),
-    # Shaddam's three Solari; the original game's Prudent Diplomacy.
+    # Shaddam's three Solari; the original game's Prudent Diplomacy; Rise
+    # of Ix's Final Delivery.
     "choose_leader_signet_influence": frozenset(
-        {"shaddam_corrino_iv", "duke_leto_atreides"}
+        {"shaddam_corrino_iv", "duke_leto_atreides", "princess_yuna_moritani"}
     ),
     "acquire_leader_imperium": frozenset({"princess_irulan"}),
     "acquire_leader_reserve": frozenset({"princess_irulan"}),

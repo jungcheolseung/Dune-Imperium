@@ -127,7 +127,11 @@ from dune_imperium.rules.frames import (
     replace_player,
     turn_owner_of,
 )
-from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
+from dune_imperium.rules.gain_events import (
+    RESOURCES_GAINED,
+    resources_gained_event,
+    resources_paid_event,
+)
 from dune_imperium.rules.influence import (
     gain_faction_influence,
     influence_amount,
@@ -188,8 +192,15 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "helena_richese",
         "paul_atreides",
         "baron_vladimir_harkonnen",
+        # Rise of Ix's (docs/rules/rise-of-ix.md 10; stage P4e).
+        "princess_yuna_moritani",
     }
 )
+
+# "Princess" Yuna Moritani (Rise of Ix): her Leader id, and Final
+# Delivery's price (docs/rules/rise-of-ix.md 10).
+YUNA: Final = "princess_yuna_moritani"
+FINAL_DELIVERY_SOLARI: Final = 7
 
 # Always Smiling grants its Persuasion at six or more strength in the
 # four-player game; the printed asterisk raises that to ten only in a
@@ -595,6 +606,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         "duke_leto_atreides",
         "helena_richese",
         "baron_vladimir_harkonnen",
+        "princess_yuna_moritani",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
@@ -798,6 +810,8 @@ SIGNET_HOOKS: Final = frozenset(
         "prudent_diplomacy",
         "manipulate",
         "scheme",
+        # Rise of Ix's "Princess" Yuna Moritani.
+        "final_delivery",
     }
 )
 
@@ -1461,6 +1475,37 @@ def legal_leader_signet_actions(
             ),
         )
 
+    if owner.leader_id == YUNA:
+        # Final Delivery: "7 Solari → Influence 1(골라)·troop 1·spice 1"
+        # (docs/rules/rise-of-ix.md 10), an arrow, so declined freely and
+        # judged now (OQ-028). The Influence is never with a Faction at the
+        # top (OQ-060, rise-of-ix.md 15); with every Faction there it alone
+        # is lost and the payment still buys the troop and the spice
+        # (``pay_leader_signet_solari``).
+        if owner.resources.solari < FINAL_DELIVERY_SOLARI:
+            return (
+                DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            )
+        factions = tuple(
+            faction for faction in Faction if influence_can_rise(owner, faction)
+        )
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                DomainAction(
+                    action_id="choose_leader_signet_influence",
+                    actor=player,
+                    arguments=(("faction", faction.value),),
+                )
+                for faction in factions
+            ),
+            *(
+                ()
+                if factions
+                else (DomainAction(action_id="pay_leader_signet_solari", actor=player),)
+            ),
+        )
+
     if owner.leader_id == "princess_irulan":
         # Chronicler's Insight: acquire a card that costs one to hand, or
         # trash a hand card (two Spice if it costs one or more), or neither
@@ -1892,6 +1937,10 @@ def apply_leader_signet_payment(
         return _apply_staban_bonus_payment(state, context, action)
     if owner.leader_id == "baron_vladimir_harkonnen":
         return _apply_scheme_payment(state, context, player, source)
+    if owner.leader_id == YUNA:
+        # Final Delivery with every Faction at the top: its Influence is
+        # lost (OQ-060), the troop and the spice are not.
+        return _apply_final_delivery(state, context, player, None)
 
     cost, line = _signet_payment(owner)
     if owner.resources.spice < cost.spice:
@@ -2349,6 +2398,56 @@ def _apply_prudent_diplomacy(
     )
 
 
+def _apply_final_delivery(
+    state: GameState,
+    context: dict[str, ActionValue],
+    player: int,
+    faction: Faction | None,
+) -> RuleResult:
+    """Final Delivery: pay 7 Solari, then gain an Influence with ``faction``
+    (none when every Faction is at the top, OQ-060), recruit a troop -- one
+    recruited while visiting a Combat space stays deployable [FAQ p. 4] --
+    and gain a spice ("7 Solari → Influence 1(골라)·troop 1·spice 1",
+    docs/rules/rise-of-ix.md 10)."""
+
+    owner = state.players[player]
+    if owner.resources.solari < FINAL_DELIVERY_SOLARI:
+        raise RuntimeError("Final Delivery requires seven Solari")
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    paid = replace(
+        owner,
+        resources=replace(
+            owner.resources,
+            solari=owner.resources.solari - FINAL_DELIVERY_SOLARI,
+            spice=owner.resources.spice + 1,
+        ),
+    )
+    recruited_owner, recruited = recruit_troops(paid, 1)
+    previous = context.get("troops_recruited")
+    if isinstance(previous, bool) or not isinstance(previous, int):
+        raise RuntimeError("Agent-turn effect frame has invalid recruit count")
+    context["troops_recruited"] = previous + recruited
+    working = replace(state, players=replace_player(state.players, recruited_owner))
+    events: list[GameEvent] = [
+        resources_paid_event(source, player, solari=FINAL_DELIVERY_SOLARI),
+        resources_gained_event(source, player, spice=1),
+        *recruit_shortfall_events(source, player, 1, recruited),
+    ]
+    if faction is not None:
+        gained = gain_faction_influence(
+            working,
+            player,
+            faction,
+            1,
+            event_prefix=f"{source}:influence:{faction.value}",
+        )
+        working = gained.state
+        events.extend(gained.events)
+    next_state = _store_signet(working, context, working.players)
+    events.append(_signet_box(source, context, player, BoxOutcome.RESOLVED))
+    return RuleResult(state=next_state, events=tuple(events))
+
+
 def apply_shaddam_signet_choice(
     state: GameState,
     action: DomainAction,
@@ -2400,6 +2499,9 @@ def apply_shaddam_signet_choice(
     if owner.leader_id == "duke_leto_atreides":
         # Prudent Diplomacy's 1 spice (``legal_leader_signet_actions``).
         return _apply_prudent_diplomacy(state, context, player, Faction(faction_value))
+    if owner.leader_id == YUNA:
+        # Final Delivery's 7 Solari (``legal_leader_signet_actions``).
+        return _apply_final_delivery(state, context, player, Faction(faction_value))
     if owner.resources.solari < 3:
         raise RuntimeError("the Signet Ring Influence choice requires three Solari")
     next_owner = replace(
@@ -3354,6 +3456,79 @@ def grant_hungry_for_spice(
         events.extend(drawn.events)
         events.append(_hungry_for_spice_event(source, seat.player_id))
     return RuleResult(state=state, events=tuple(events))
+
+
+# The events that gain a seat Solari (``gain_events``; an Influence track's
+# bonus names its own, ``influence``), and the one that ends a Reveal turn.
+_SOLARI_GAIN_EVENT_KINDS: Final = frozenset(
+    {RESOURCES_GAINED, "influence_track_bonus_gained"}
+)
+
+
+def grant_smuggling_operation(result: RuleResult, before: GameState) -> RuleResult:
+    """Smuggling Operation: one Solari more on each Solari gain in her turn.
+
+    "Whenever you gain [Solari] on your turn, increase the amount gained by
+    1" ["Princess" Yuna Moritani card, app text]; "자기 turn에 Solari를 얻을
+    때마다 +1(예: Freighter 회수의 5 Solari와 Windfall)" [FAQ p. 3], and
+    "Dividends로 남의 turn에 받는 1 Solari에는 붙지 않는다(OQ-042·OQ-063 "your
+    turn")" (docs/rules/rise-of-ix.md 9.2, 10). Her turn is her own Agent or
+    Reveal turn, with whatever decisions are stacked on it (OQ-042); the
+    Combat, Makers and Recall phases are not turns [Main p. 8] (OQ-063).
+
+    Read off the transition's events (``before`` is the state it started
+    from): each event that gained her Solari while her turn was open adds
+    one. A transition begun in her turn counts until her Reveal turn ends
+    in it (``reveal_finished``) -- a closing Reveal may run on into the
+    Combat, whose rewards are no turn's; an Agent turn is always followed by
+    her Reveal turn, so nothing after its close is gained outside her turns.
+    The added Solari is the gain's own increase, not another gain, and is
+    its own ``resources_gained`` named after the Leader.
+    """
+
+    owner = next(
+        (seat for seat in result.state.players if seat.leader_id == YUNA), None
+    )
+    if owner is None or turn_owner_of(before) != owner.player_id:
+        return result
+    player = owner.player_id
+    bonuses: list[GameEvent] = []
+    for event in result.events:
+        payload = dict(event.payload)
+        if payload.get("player") != player:
+            continue
+        if event.kind == "reveal_finished":
+            break
+        solari = payload.get("solari")
+        if (
+            event.kind in _SOLARI_GAIN_EVENT_KINDS
+            and isinstance(solari, int)
+            and not isinstance(solari, bool)
+            and solari > 0
+        ):
+            bonuses.append(
+                resources_gained_event(
+                    f"round:{before.round_number}:player:{player}:leader:{YUNA}:"
+                    f"{event.event_id}",
+                    player,
+                    solari=1,
+                )
+            )
+    if not bonuses:
+        return result
+    owner = result.state.players[player]
+    gained = replace(
+        owner,
+        resources=replace(
+            owner.resources, solari=owner.resources.solari + len(bonuses)
+        ),
+    )
+    return RuleResult(
+        state=replace(
+            result.state, players=replace_player(result.state.players, gained)
+        ),
+        events=(*result.events, *bonuses),
+    )
 
 
 def _hungry_for_spice_event(source: str, player: int) -> GameEvent:

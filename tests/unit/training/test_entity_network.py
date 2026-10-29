@@ -220,7 +220,13 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # intrigue-table column is new (the "dreadnoughts" flag of its unit-count
 # condition), read by its row alone; no older scale moved (compared against
 # 257bdcc0, 2026-10-30).
-_GOLDEN_DIGEST = "e4efb969a0680675d0e9606f2a8b0be4c170ace80ad6f594a2c2d7a9d3006eb4"
+# Then "Princess" Yuna Moritani got her records (stage P4e): only her row
+# changed, and two Leader-table columns are new (her standing and Signet
+# hooks), read by her row alone. A column no Uprising entity uses now keeps
+# the original entities' scale (``entity_features._table``), so her Signet's
+# 7 Solari leaves Scheme's 1 Solari row as it was; no older scale moved
+# (compared against 0d65eb9c, 2026-10-30).
+_GOLDEN_DIGEST = "09955dd905f1c549890936714b1a528de630670f3125179edc5a7b724f451dfc"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

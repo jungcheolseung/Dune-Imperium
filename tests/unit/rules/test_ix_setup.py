@@ -22,8 +22,13 @@ from dataclasses import replace
 import pytest
 
 from dune_imperium import BaseGame, RulesetConfig
+from dune_imperium.content.rise_of_ix.leaders import IX_LEADERS
 from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
-from dune_imperium.content.rulesets import IMPERIUM_LEADER_IDS, content_for
+from dune_imperium.content.rulesets import (
+    IMPERIUM_LEADER_IDS,
+    IX_LEADER_IDS_OFFERED,
+    content_for,
+)
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core import ChanceResolver, GamePhase, GameState
@@ -260,19 +265,35 @@ def test_an_original_game_with_rise_of_ix_finishes_under_every_invariant(
             assert events.get(kind, 0) > 0, kind
 
 
-def test_the_ix_leaders_are_held_back_from_every_way_a_game_offers_leaders() -> None:
-    """The six Ix Leaders have no setup or abilities until stage P4e (plan 17.10
-    "P4c-5 Codex 리뷰" (1); ``rulesets.IX_LEADER_IDS_OFFERED``), so a game with
-    Rise of Ix offers the original eight: Yuna would start with water 1 where
-    docs/rules/rise-of-ix.md 3 prints 0 (`[Rise of Ix p. 3]`). A fixed roster
-    naming one is refused, the draft's six face-up Leaders come from the eight,
-    and a rotated roster draws from them."""
+def test_the_ix_leaders_join_every_way_a_game_offers_leaders_once_wired() -> None:
+    """An Ix Leader is offered only once stage P4e wires its setup and
+    abilities (plan 17.10 "P4c-5 Codex 리뷰" (1);
+    ``rulesets.IX_LEADER_IDS_OFFERED``): an unwired one would make a wrong
+    game -- Yuna would start with water 1 where docs/rules/rise-of-ix.md 3
+    prints 0 (`[Rise of Ix p. 3]`). A fixed roster naming a held-back one is
+    refused, the draft's six face-up Leaders come from the original eight and
+    the wired Ix ones, and a rotated roster draws from them."""
 
-    ix_leader = "princess_yuna_moritani"
-    with pytest.raises(ValueError, match="not available in this ruleset"):
-        create_initial_state(IX, 5, (*LEADERS[:3], ix_leader))
+    offered = (
+        *IMPERIUM_LEADER_IDS,
+        *(
+            leader.leader_id
+            for leader in IX_LEADERS
+            if leader.leader_id in IX_LEADER_IDS_OFFERED
+        ),
+    )
+    held = [
+        leader.leader_id
+        for leader in IX_LEADERS
+        if leader.leader_id not in IX_LEADER_IDS_OFFERED
+    ]
+    for leader_id in held:
+        with pytest.raises(ValueError, match="not available in this ruleset"):
+            create_initial_state(IX, 5, (*LEADERS[:3], leader_id))
+    for leader_id in IX_LEADER_IDS_OFFERED:
+        create_initial_state(IX, 5, (*LEADERS[:3], leader_id))
     decision = leader_draft_pool_decision(IX_DRAFT)
-    assert decision.options == IMPERIUM_LEADER_IDS
+    assert decision.options == offered
     for seed in range(1, 21):
         pool = next(
             outcome
@@ -280,7 +301,7 @@ def test_the_ix_leaders_are_held_back_from_every_way_a_game_offers_leaders() -> 
             if outcome.decision_id == decision.decision_id
         )
         assert len(pool.values) == 6
-        assert set(pool.values) <= set(IMPERIUM_LEADER_IDS)
+        assert set(pool.values) <= set(offered)
     specs = sweep_specs(
         games=20,
         rulesets=(False,),
@@ -291,4 +312,4 @@ def test_the_ix_leaders_are_held_back_from_every_way_a_game_offers_leaders() -> 
     )
     for spec in specs:
         assert spec.leader_ids is not None
-        assert set(spec.leader_ids) <= set(IMPERIUM_LEADER_IDS)
+        assert set(spec.leader_ids) <= set(offered)

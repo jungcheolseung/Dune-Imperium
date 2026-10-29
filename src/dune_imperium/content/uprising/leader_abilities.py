@@ -276,6 +276,18 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
                 costs=(PayResources(spice=1),),
             ),
         ),
+        # Rise of Ix's (docs/rules/rise-of-ix.md 10; stage P4e). Final
+        # Delivery: "7 Solari → Influence 1(골라)·troop 1·spice 1" -- an arrow,
+        # so never forced; no Faction at the top is offered (OQ-060,
+        # rise-of-ix.md 15).
+        "princess_yuna_moritani": _hook(
+            "final_delivery",
+            AbilityMark.OPTIONAL,
+            EffectSection(
+                rewards=(GainInfluence(), RecruitTroops(1), GainResources(spice=1)),
+                costs=(PayResources(solari=7),),
+            ),
+        ),
     }
 )
 
@@ -464,6 +476,12 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         # Prescience (stage P2b): he sees his deck's top card at any time,
         # none while the deck is empty [DI p. 13] (``core.observation``).
         "paul_atreides": (_standing("prescience"),),
+        # Rise of Ix's (docs/rules/rise-of-ix.md 10; stage P4e). Smuggling
+        # Operation: no water at setup (a ``LeaderDefinition`` field), and
+        # "자기 turn에 Solari를 얻을 때마다 1 더" [FAQ p. 3] -- her own Agent or
+        # Reveal turn only (OQ-042, OQ-063; ``rules.leader_abilities.
+        # grant_smuggling_operation``).
+        "princess_yuna_moritani": (_standing("smuggling_operation"),),
     }
 )
 
