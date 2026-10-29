@@ -69,7 +69,11 @@ eight's. Some are scanned crooked (``SCAN_SKEW``: turned back before the window
 is fitted) or cropped tighter (``FIT_RANGES``). Hundro's figure is turned 15.5
 degrees against the app's picture (``PLACEMENT``'s fourth number). Where a
 cut-out ends above the boxes (Ilesa's by 60 px), the carried-on cloth is the
-scan's painting too. Ilesa's ability box is tall (``LAYOUTS["tall"]``).
+scan's painting too. Ilesa's ability box is tall (``LAYOUTS["tall"]``), and
+the app lacks her raised forearm, hand and bracelets altogether: the scan's
+pixels of the arm alone (``ARM_PATCH``, a tight colour mask feathered like
+``scan_seam``) cover the app's art there, the one such case, by the user's
+decision of 2026-10-29 ("(가) 팔만 스캔으로 덧댐 (추천) 으로 가자").
 Tessia's card prints the Snooper track, four dark panels over the painting
 (``draw_snoopers``). Where the app's strings differ from the cards (bold
 keywords, italics, bullets, two icons' order, Tessia's wording)
@@ -2895,6 +2899,73 @@ def scan_seam(covered):
     ]
 
 
+# Ilesa Ecaz's raised arm. The app has no picture of her forearm, hand and
+# bracelets (its cut-out ends at the shoulder, and its background patch is the
+# branch and the leaves where the arm stands), so there the scan's own pixels
+# cover app art: the one case of that, by the user's decision of 2026-10-29
+# ("(가) 팔만 스캔으로 덧댐 (추천) 으로 가자"). The patch is only the arm, not a
+# rectangle of the scan's background: ``area`` is a loose polygon around it
+# (card px) inside which the arm's pixels are told from the teal and grey
+# painting by colour (skin and gold: red above green by 3 and above blue by
+# ``warm`` levels), cleaned, grown ``grow`` px and feathered with a Gaussian
+# of ``sigma`` px like ``scan_seam``'s.
+ARM_PATCH = {
+    "ilesa_ecaz": {
+        "area": [
+            (458, 245),
+            (655, 245),
+            (668, 330),
+            (684, 395),
+            (696, 445),
+            (722, 505),
+            (752, 575),
+            (785, 650),
+            (640, 650),
+            (622, 560),
+            (606, 500),
+            (578, 455),
+            (566, 420),
+            (540, 372),
+            (496, 332),
+            (460, 302),
+            (449, 262),
+        ],
+        "warm": 8,
+        "grow": 5,
+        "sigma": 2.0,
+    }
+}
+
+
+def arm_patch_weight(cid, scan):
+    """How much of the scan covers the app's art, (H, W): 1 on the arm and
+    0 away from it (``ARM_PATCH``)."""
+    from PIL import Image, ImageDraw, ImageFilter
+
+    spec = ARM_PATCH[cid]
+    area = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(area).polygon([tuple(p) for p in spec["area"]], fill=255)
+    r, g, b = scan[..., 0], scan[..., 1], scan[..., 2]
+    warm = (r >= g + 3) & (r - b > spec["warm"])
+    mask = Image.fromarray(((np.asarray(area) > 127) & warm).astype(np.uint8) * 255)
+    # no specks, no small gaps between the bracelets' loops
+    mask = mask.filter(ImageFilter.MedianFilter(5))
+    mask = mask.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.MinFilter(9))
+    # the dark spots on the hand are inside the arm: fill what the outside
+    # cannot reach
+    box = mask.getbbox()
+    pad = Image.new("L", (box[2] - box[0] + 2, box[3] - box[1] + 2), 0)
+    pad.paste(mask.crop(box), (1, 1))
+    ImageDraw.floodfill(pad, (0, 0), 128)
+    filled = np.asarray(pad) != 128
+    whole = np.zeros((H, W), np.uint8)
+    whole[box[1] : box[3], box[0] : box[2]] = filled[1:-1, 1:-1] * 255
+    grown = Image.fromarray(whole).filter(ImageFilter.MaxFilter(2 * spec["grow"] + 1))
+    return np.clip(
+        2 * gauss_fft(np.asarray(grown, float) / 255, spec["sigma"]) - 1, 0, 1
+    )
+
+
 def placed_background(inp, cid):
     """The app's background scaled into place on the card: (RGB array, the
     columns it covers). Below and above it the picture is mirrored on (the
@@ -3031,12 +3102,15 @@ def art_layer(inp, cid):
     fig, own = placed_figure(inp, cid)
     bg_grade, fig_grade = print_grade(inp, cid, bg, covered, fig, own)
     bg = add_grain(apply_grade(bg, bg_grade), cid)
-    seam = None
+    seam, arm = None, None
     if cid in ORIGINAL_IDS:
         # the painting the app lacks is the scan's (module docstring)
         seam = scan_seam(covered)
         scan = np.asarray(english_scan(inp, cid), float)
         mixed = scan * (1 - seam) + bg.astype(float) * seam
+        if cid in ARM_PATCH:
+            arm = arm_patch_weight(cid, scan)
+            mixed = mixed * (1 - arm[..., None]) + scan * arm[..., None]
         bg = np.clip(np.round(mixed), 0, 255).astype(np.uint8)
     f = np.array(fig)
     f[..., :3] = apply_grade(f[..., :3], fig_grade)
@@ -3070,6 +3144,8 @@ def art_layer(inp, cid):
     alpha = np.asarray(topo.getchannel("A"), float)[:H] * TOPO_ALPHA
     if seam is not None:
         alpha = alpha * seam[..., 0]  # the scan prints its own lines
+    if arm is not None:
+        alpha = alpha * (1 - arm)
     lines = np.zeros((H, W, 4), np.uint8)
     lines[..., :3] = 235
     lines[..., 3] = np.clip(alpha * fade[:, None], 0, 255).astype(np.uint8)
@@ -3216,6 +3292,12 @@ def cmd_render(args):
             source["scan_fit"] = list(SCAN_FIT[cid])
             if cid in SCAN_SKEW:
                 source["scan_skew"] = SCAN_SKEW[cid]
+            if cid in ARM_PATCH:
+                # the scan's pixels over the app's art (module docstring)
+                source["arm_patch"] = {
+                    **ARM_PATCH[cid],
+                    "area": [list(p) for p in ARM_PATCH[cid]["area"]],
+                }
         if LEADERS[cid].get("track"):
             from dune_imperium.display.leader_layout import FEYD_TRACK_BOXES
 
