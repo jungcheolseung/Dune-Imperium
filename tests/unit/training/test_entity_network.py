@@ -12,7 +12,14 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from tests.support.observation_growth import NEW_SEGMENTS, growth_since_v34
+from tests.support.observation_growth import (
+    NEW_SEGMENTS,
+    V38_SIZE,
+    V39_NEW_SEGMENTS,
+    growth_in_v39,
+    growth_since_v34,
+    v38_layout,
+)
 
 torch = pytest.importorskip("torch")
 
@@ -25,9 +32,10 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     CONFLICT_IDS,
     CONTRACT_IDS,
     FACTION_IDS,
-    IMPERIUM_IDENTITIES,
     INTRIGUE_IDS,
+    IX_IDENTITIES,
     LEADER_IDS,
+    NON_UPRISING_IDENTITIES,
     OBSERVATION_SEGMENTS,
     OBSERVATION_SIZE,
     OBSERVATION_VERSION,
@@ -44,12 +52,18 @@ from dune_imperium.agents.registry import CHECKPOINT_PREFIX, make_agent  # noqa:
 from dune_imperium.content.bloodlines.tech import TECH_IDS  # noqa: E402
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS  # noqa: E402
 from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS  # noqa: E402
+from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS  # noqa: E402
+from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS  # noqa: E402
+from dune_imperium.content.rise_of_ix.leaders import IX_LEADERS  # noqa: E402
 from dune_imperium.content.rulesets import content_for  # noqa: E402
 from dune_imperium.core.chance import ChanceResolver  # noqa: E402
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision  # noqa: E402
 from dune_imperium.core.state import GamePhase  # noqa: E402
 from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
 from dune_imperium.rules.action_shapes import Source, Verb  # noqa: E402
+from dune_imperium.rules.leader_abilities import (  # noqa: E402
+    IMPLEMENTED_ABILITY_LEADER_IDS,
+)
 from dune_imperium.simulation.runner import run_policy_game  # noqa: E402
 from dune_imperium.training import (  # noqa: E402
     RandomBatchPolicy,
@@ -114,8 +128,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # every original card transcribed in stage P3: Kwisatz Haderach's row and its
 # ``sends_agent_anywhere`` column, and the ``from_space`` argument read as a
 # board space (``ARGUMENT_HINTS``); Urgent Mission, Calculated Hire and the
-# three promos.
-_GOLDEN_DIGEST = "44b4fdaee178877f9fa5c9874f4518bddd45b662193e13c48f94de655fd97b48"
+# three promos. Observation v39 (stage P4a): Rise of Ix's 30 Imperium cards,
+# 17 Intrigue cards, three Conflicts and six Leaders join their vocabularies
+# at the end, identity entries without records yet, and add no column; the
+# 533 older rows (Uprising's and the original game's) and their scales are
+# unchanged (compared against 7b4c65be, 2026-10-29).
+_GOLDEN_DIGEST = "ab198901a803aa3c43685ad4ac4768880319ec1ddf7ecf1be2b5b728cb3df2cb"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -206,12 +224,12 @@ def test_feature_tables_follow_the_observation_and_are_pinned() -> None:
     for name, table in tables.items():
         assert table.features.shape == (table.size, len(table.columns)), name
         assert np.all(np.isfinite(table.features)), name
-        # Uprising's entities set the scales (v35): an original entity may
-        # read past 1 in a column an Uprising one uses.
+        # Uprising's entities set the scales (v35): an original or a Rise of
+        # Ix entity (v39) may read past 1 in a column an Uprising one uses.
         uprising = [
             index
             for index, entity in enumerate(table.ids)
-            if entity not in IMPERIUM_IDENTITIES
+            if entity not in NON_UPRISING_IDENTITIES
         ]
         assert np.abs(table.features[uprising]).max() <= 1.0, name
         # A column no member uses is dropped.
@@ -256,6 +274,25 @@ def test_what_an_entity_does_is_read_from_its_records() -> None:
         entry.card.card_id
         for entry in IMPERIUM_BASE_CARDS
         if not entry.play_data_complete
+    }
+    # So has Rise of Ix's (stage P4a): its cards, Conflicts and Leaders until
+    # stages P4d and P4e transcribe them.
+    untranscribed |= {
+        *(
+            entry.card.card_id
+            for entry in IX_IMPERIUM_CARDS
+            if not entry.play_data_complete
+        ),
+        *(
+            conflict.card.card_id
+            for conflict in IX_CONFLICTS
+            if conflict.reward_rows is None
+        ),
+        *(
+            leader.leader_id
+            for leader in IX_LEADERS
+            if leader.leader_id not in IMPLEMENTED_ABILITY_LEADER_IDS
+        ),
     }
     for name in ("personal", "leader", "tech", "space", "conflict"):
         table = tables[name]
@@ -483,6 +520,13 @@ _COUNTED = {
     "private_effect_pick_second_faction": "faction",
     # Stage B3d-2a: Long Live the Fighters' card to draw.
     "private_effect_pick_personal": "personal",
+    # v39 (Rise of Ix): the known Intrigue deck top, the Intrigue cards the
+    # observer knows each opponent holds, its set-aside card.
+    "private_intrigue_top": "intrigue",
+    "private_known_intrigue_seat1": "intrigue",
+    "private_known_intrigue_seat2": "intrigue",
+    "private_known_intrigue_seat3": "intrigue",
+    "private_set_aside": "personal",
 }
 
 
@@ -972,14 +1016,15 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     # seat fields, v36's raw Masterstroke columns (four seats on the board,
     # four Factions private) and v38's: the public deck-top zone of a seat,
     # the 42 barred spaces and two turn flags of four seats (raw, on the
-    # board) are the inputs the file never had.
+    # board), and v39's (``V39_ENTITY_INPUTS``) are the inputs the file
+    # never had.
     assert info.migration.observation_new == network.entity_width * (1 + 3) + (
         network.entity_width + 1
     ) + network.entity_width + len(Verb) + len(Source) + 2 + 7 * (
         network.entity_width
     ) + 1 + (1 + 3 + 2 + 1) + 2 * network.entity_width + (4 + 4) + (
         network.entity_width + 4 * 42 + 4 * 2
-    )
+    ) + _v39_entity_inputs(network.entity_width)
     assert info.migration.observation_dropped == 0
     observations = _observations(recorded).clone()
     pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)
@@ -1021,6 +1066,32 @@ _V38_SEGMENTS = (
     "voice_blocks",
     "card_turn_flags",
 )
+# The encoder inputs observation v39 added (stage P4a, Rise of Ix), by name
+# prefix: a seat's dreadnought and Shipping columns (raw, seat encoder), the
+# Intrigue deck's size, the dreadnoughts on Control spaces, the bars on the
+# Ix spaces, the pending decision and the flag (raw, board), and the known
+# Intrigue top, the three opponents' known Intrigue and the set-aside card
+# (zones) and the known bottom depths (raw) of the private encoder. The
+# grown universes add entity rows, not inputs (a zone is a weighted sum).
+_V39_INPUTS = (
+    "raw:global_scalars:12",
+    "raw:units:",
+    "raw:ix:",
+    "raw:dreadnought_control:",
+    "raw:voice_blocks_ix:",
+    "raw:ix_pending:",
+    "raw:ix_flags:",
+    "raw:private_intrigue_bottom:",
+    "zone:private_intrigue_top:",
+    "zone:private_known_intrigue_seat",
+    "zone:private_set_aside:",
+)
+
+
+def _v39_entity_inputs(width: int) -> int:
+    """How many encoder inputs v39 added for an entity width."""
+
+    return (3 + 9) + (1 + 8 + 16 + 7 + 1) + 8 + 5 * width
 
 
 def test_a_v37_entity_file_moves_onto_v38_with_the_new_inputs_at_zero(
@@ -1045,14 +1116,22 @@ def test_a_v37_entity_file_moves_onto_v38_with_the_new_inputs_at_zero(
             index
             for index, name in enumerate(names)
             if not name.startswith(
-                ("zone:deck_public_top:", "raw:voice_blocks:", "raw:card_turn_flags:")
+                (
+                    "zone:deck_public_top:",
+                    "raw:voice_blocks:",
+                    "raw:card_turn_flags:",
+                    *_V39_INPUTS,
+                )
             )
         ]
         state[key] = state[key][:, kept]
         inputs[encoder] = [names[index] for index in kept]
-    layout = [
-        row for row in document["observation_layout"] if row[0] not in _V38_SEGMENTS
-    ]
+    grown = {segment.name: growth_in_v39(segment) for segment in OBSERVATION_SEGMENTS}
+    layout: list[tuple[str, int, int]] = []
+    for name, _, length in document["observation_layout"]:
+        if name not in _V38_SEGMENTS and name not in V39_NEW_SEGMENTS:
+            offset = layout[-1][1] + layout[-1][2] if layout else 0
+            layout.append((name, offset, length - grown[name]))
     document.update(
         state_dict=state,
         entity_inputs=inputs,
@@ -1067,8 +1146,11 @@ def test_a_v37_entity_file_moves_onto_v38_with_the_new_inputs_at_zero(
     assert info.migration is not None
     assert info.migration.from_observation_version == 37
     assert info.migration.to_observation_version == OBSERVATION_VERSION
-    # One zone of a seat, 42 spaces and two flags for each of four seats.
-    assert info.migration.observation_new == moved.entity_width + 4 * 42 + 4 * 2
+    # One zone of a seat, 42 spaces and two flags for each of four seats,
+    # and v39's inputs.
+    assert info.migration.observation_new == (
+        moved.entity_width + 4 * 42 + 4 * 2 + _v39_entity_inputs(moved.entity_width)
+    )
     assert info.migration.observation_dropped == 0
     assert layout[-1][0] == "private_masterstroke"
 
@@ -1076,10 +1158,111 @@ def test_a_v37_entity_file_moves_onto_v38_with_the_new_inputs_at_zero(
     new = torch.cat(
         [
             torch.arange(segment_slice(name).start, segment_slice(name).stop)
-            for name in _V38_SEGMENTS
+            for name in (*_V38_SEGMENTS, *V39_NEW_SEGMENTS)
         ]
+        + [torch.tensor([segment_slice("global_scalars").start + 12])]
     )
     # Uprising's own columns: a game without a public top has none of them.
+    cut = observations.clone()
+    cut[:, new] = 0
+    noisy = observations.clone()
+    noisy[:, new] = 3
+    original = _network(_FULL)
+    actions = torch.arange(0, moved.action_size, 211)
+    with torch.no_grad():
+        hidden = original.trunk(cut)
+        assert torch.equal(moved.trunk(cut), hidden)
+        assert torch.equal(moved.trunk(noisy), hidden)
+        assert torch.equal(
+            moved.action_logits(moved.trunk(noisy), actions),
+            original.action_logits(hidden, actions),
+        )
+
+
+def test_a_v38_entity_file_moves_onto_v39_with_the_new_inputs_at_zero(
+    tmp_path: Path, recorded: list[tuple[np.ndarray, np.ndarray, int]]
+) -> None:
+    """A file written under observation v38 knows none of v39's inputs, none
+    of Rise of Ix's entities and none of the slot keys naming them (stage
+    P4a, plan 17.8): every older input, entity and key keeps its place by
+    name, the new ones start at zero, so the file computes its own function
+    on every game without Rise of Ix, whatever the new columns read."""
+
+    path = _saved(tmp_path, _FULL)
+    document = checkpoint_module._read(path)
+    state = dict(document["state_dict"])
+    inputs: dict[str, list[str]] = {}
+    for encoder, key in (
+        ("seat", "seat_encoder.0.weight"),
+        ("board", "board_encoder.0.weight"),
+        ("private", "private_encoder.0.weight"),
+    ):
+        names = document["entity_inputs"][encoder]
+        kept = [
+            index
+            for index, name in enumerate(names)
+            if not name.startswith(_V39_INPUTS)
+        ]
+        state[key] = state[key][:, kept]
+        inputs[encoder] = [names[index] for index in kept]
+    # Rise of Ix's entities and the slot keys naming them.
+    tables = {}
+    for name, table in document["entity_tables"].items():
+        rows = [
+            index
+            for index, entity in enumerate(table["ids"])
+            if entity not in IX_IDENTITIES
+        ]
+        tables[name] = {**table, "ids": [table["ids"][index] for index in rows]}
+        state[f"entity_own.{name}"] = state[f"entity_own.{name}"][rows]
+    old_keys = [
+        key
+        for key in document["slot_keys"]
+        if key.rsplit(":", 1)[-1] not in IX_IDENTITIES
+    ]
+    key_index = {key: index for index, key in enumerate(document["slot_keys"])}
+    state["slot_key_own"] = state["slot_key_own"][
+        [*(key_index[key] for key in old_keys), len(key_index)]
+    ]
+    layout = v38_layout()
+    arch = dict(document["arch"])
+    arch["feature_digest"] = "v38"
+    document.update(
+        state_dict=state,
+        entity_inputs=inputs,
+        entity_tables=tables,
+        slot_keys=old_keys,
+        arch=arch,
+        observation_version=38,
+        observation_layout=layout,
+        observation_size=V38_SIZE,
+    )
+    torch.save(document, path)
+
+    moved, info = load_checkpoint(path)
+    assert isinstance(moved, EntityNetwork)
+    report = info.migration
+    assert report is not None
+    assert (report.from_observation_version, report.to_observation_version) == (
+        38,
+        OBSERVATION_VERSION,
+    )
+    assert report.observation_new == _v39_entity_inputs(moved.entity_width)
+    assert report.observation_dropped == 0
+    # 30 Imperium and 17 Intrigue cards, three Conflicts and six Leaders; no
+    # feature column is new (the 533 older rows are unchanged).
+    assert report.features_moved
+    assert report.entities_new == 30 + 17 + 3 + 6
+    assert (report.feature_columns_new, report.feature_columns_dropped) == (0, 0)
+
+    observations = _observations(recorded).clone()
+    new = torch.cat(
+        [
+            torch.arange(segment_slice(name).start, segment_slice(name).stop)
+            for name in V39_NEW_SEGMENTS
+        ]
+        + [torch.tensor([segment_slice("global_scalars").start + 12])]
+    )
     cut = observations.clone()
     cut[:, new] = 0
     noisy = observations.clone()

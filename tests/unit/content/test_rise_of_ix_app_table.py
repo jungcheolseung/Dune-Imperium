@@ -429,10 +429,10 @@ def test_ix_leaders_and_conflicts_resolve_in_the_merged_tables() -> None:
 
 def test_no_uprising_or_original_game_pool_lists_an_ix_leader_or_conflict() -> None:
     # Code that lists Uprising's or the original game's own Leaders and
-    # Conflicts iterates these tuples, the draft pools, the deck pools and the
-    # observation's universes; none holds the Ix entries before their stages
-    # (plan 17.1: the observation takes them at v39, setup still refuses Rise
-    # of Ix).
+    # Conflicts iterates these tuples, the draft pools and the deck pools;
+    # none holds the Ix entries before their stages (setup still refuses
+    # Rise of Ix). The observation's universes list them at their end since
+    # v39 (plan 17.1, 17.8), after every older identity.
     leader_ids = {leader.leader_id for leader in IX_LEADERS}
     conflict_ids = {conflict.card.card_id for conflict in IX_CONFLICTS}
     listed_leaders = {leader.leader_id for leader in (*LEADERS, *IMPERIUM_LEADERS)}
@@ -440,8 +440,14 @@ def test_no_uprising_or_original_game_pool_lists_an_ix_leader_or_conflict() -> N
     assert not leader_ids & listed_leaders
     assert not conflict_ids & listed_conflicts
     assert not leader_ids & set(IMPERIUM_LEADER_IDS)
-    assert not leader_ids & set(LEADER_IDS)
-    assert not conflict_ids & set(CONFLICT_IDS)
+    assert LEADER_IDS[-len(IX_LEADERS) :] == tuple(
+        leader.leader_id for leader in IX_LEADERS
+    )
+    assert not leader_ids & set(LEADER_IDS[: -len(IX_LEADERS)])
+    assert CONFLICT_IDS[-len(IX_CONFLICTS) :] == tuple(
+        conflict.card.card_id for conflict in IX_CONFLICTS
+    )
+    assert not conflict_ids & set(CONFLICT_IDS[: -len(IX_CONFLICTS)])
     assert not conflict_ids & set(BATTLE_CARD_IDS)
     for choam_module in (False, True):
         for bloodlines in (False, True):

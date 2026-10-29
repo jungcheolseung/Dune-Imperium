@@ -585,12 +585,38 @@ def _scramble_conflicts(state: GameState) -> tuple[tuple[str, ...], tuple[str, .
     return deck, unused
 
 
+def _keep_known_intrigue(
+    deck: tuple[str, ...],
+    peeked: int,
+    known: frozenset[str],
+    dealt: tuple[str, ...],
+) -> tuple[str, ...]:
+    """The scrambled Intrigue deck: the first ``peeked`` cards and the cards
+    the observer knows stay where they are, every other place takes the
+    next card of ``dealt``."""
+
+    if not known:
+        return (*deck[:peeked], *dealt)
+    rest = iter(dealt)
+    return tuple(
+        card if index < peeked or card in known else next(rest)
+        for index, card in enumerate(deck)
+    )
+
+
 def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
     # Imperium Ceremony shows the observer the deck's top cards, which
-    # therefore stay in place.
+    # therefore stay in place, and so do the Intrigue cards the observer
+    # knows (Rise of Ix, ``PlayerState.known_intrigue_ids``): in the deck at
+    # their depth, and in another seat's hand.
     peeked_intrigue = peeked_intrigue_ids(state, observer)
+    known_intrigue = frozenset(state.players[observer].known_intrigue_ids)
     revealed_contracts = revealed_contract_ids(state)
-    intrigue_pool: list[str] = list(state.intrigue_deck[len(peeked_intrigue) :])
+    intrigue_pool: list[str] = [
+        card
+        for card in state.intrigue_deck[len(peeked_intrigue) :]
+        if card not in known_intrigue
+    ]
     scrambled_conflict_deck, scrambled_unused_conflicts = _scramble_conflicts(state)
     players = list(state.players)
     resolving = set(resolving_intrigue_ids(state))
@@ -619,19 +645,32 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
             continue
         # Publicly known hand cards stay in the hand, and the deck's public
         # top cards (OQ-145) stay on top; only the face-down draws trade
-        # places with the rest of the deck.
+        # places with the rest of the deck, and with Ilesa Ecaz's face-down
+        # set-aside card (Rise of Ix), which came from that hand.
         known = set(player.hand_public)
         secret_hand = tuple(card for card in player.hand if card not in known)
         public_top = player.deck_public_top
+        aside = player.set_aside_card_id
+        pool = (*secret_hand, *player.deck[len(public_top) :])
         secret, rest = _split_reversed(
-            (*secret_hand, *player.deck[len(public_top) :]), len(secret_hand)
+            (*pool, aside) if aside else pool, len(secret_hand)
         )
+        if aside:
+            aside, rest = rest[-1], rest[:-1]
         hand = (*player.hand_public, *secret)
         deck = (*public_top, *rest)
         intrigue_pool.extend(
-            card for card in player.intrigue_cards if card not in resolving
+            card
+            for card in player.intrigue_cards
+            if card not in resolving and card not in known_intrigue
         )
-        players[seat] = replace(player, hand=hand, deck=deck, twisted_deck=twisted)
+        players[seat] = replace(
+            player,
+            hand=hand,
+            deck=deck,
+            twisted_deck=twisted,
+            set_aside_card_id=aside,
+        )
 
     # Arrakeen Scouts: the board's face-down Intrigue cards are as unknown
     # as the deck, so they join the pool and take its first cards back.
@@ -648,7 +687,9 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         if seat == observer:
             continue
         kept = tuple(
-            card for card in state.players[seat].intrigue_cards if card in resolving
+            card
+            for card in state.players[seat].intrigue_cards
+            if card in resolving or card in known_intrigue
         )
         held = len(state.players[seat].intrigue_cards) - len(kept)
         players[seat] = replace(
@@ -699,7 +740,12 @@ def _scramble_hidden_information(state: GameState, observer: int) -> GameState:
         scouts_goods_cards=scouts_goods_cards,
         scouts_secret_picks=tuple(secret_picks),
         scouts_bids=bids,
-        intrigue_deck=(*peeked_intrigue, *reordered_intrigue[cursor:]),
+        intrigue_deck=_keep_known_intrigue(
+            state.intrigue_deck,
+            len(peeked_intrigue),
+            known_intrigue,
+            reordered_intrigue[cursor:],
+        ),
         imperium_deck=tuple(reversed(state.imperium_deck)),
         # The Contracts an open Coercive Negotiation revealed are face up to
         # the whole table [Coercive Negotiation card] and stay on top of the

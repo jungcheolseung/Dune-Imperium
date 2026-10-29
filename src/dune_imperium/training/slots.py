@@ -56,6 +56,7 @@ from dune_imperium.content.bloodlines.tech import TECH_IDS
 from dune_imperium.content.immortality.board import TLEILAXU_TRACK_END
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
+from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS
 from dune_imperium.core.state import GamePhase
@@ -110,7 +111,14 @@ SLOT_VERSION: Final = 1
 # v38 appends the public deck-top counts, the Voice's barred spaces and the
 # card turn flags; no slot field reads them (the entity network reads the
 # deck-top counts as a zone, ``entity_network``).
-SLOT_OBSERVATION_VERSION: Final = 38
+# v39 (stage P4a, Rise of Ix) lists Rise of Ix's Imperium cards after the
+# original game's in every Imperium-card field and its Conflicts and Leaders
+# at the end of theirs (keys appended, so a migrated network starts them at
+# 0); its new segments are counts, flags, seats and one slot segment (the
+# Intrigue deck's known depths from the bottom), which no field reads yet:
+# the ``mlp`` trunk reads them through ``log1p`` and the entity network its
+# count zones as zones (``entity_network``).
+SLOT_OBSERVATION_VERSION: Final = 39
 VALUE_RANGE: Final = 256
 
 # Positions inside ``global_scalars`` (``encode_player_view``).
@@ -217,9 +225,11 @@ def _relative_seat(name: str, segment: str, columns: tuple[int, ...]) -> SlotFie
 
 
 def _build_fields() -> tuple[SlotField, ...]:
-    # Uprising's own cards, then (observation v37) the original game's.
+    # Uprising's own cards, then (observation v37) the original game's and
+    # (v39) Rise of Ix's.
     imperium = tuple(
-        entry.card.card_id for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS)
+        entry.card.card_id
+        for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS, *IX_IMPERIUM_CARDS)
     )
     tleilaxu = tuple(TLEILAXU_CARDS_BY_ID)
     navigation = tuple(

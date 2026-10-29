@@ -36,6 +36,18 @@ def test_snapshot_contains_current_players_view_and_legal_actions() -> None:
         "effect_pick": (),
         # The original game's Baron Harkonnen: his secret Masterstroke Factions.
         "masterstroke_factions": (),
+        # Rise of Ix (observation v39): Ilesa Ecaz's set-aside card, the
+        # Intrigue cards the seat knows by place, its open Rise of Ix choice.
+        "set_aside_card_id": "",
+        "known_intrigue_top": "",
+        "known_intrigue_bottom": (),
+        "known_intrigue_held": (),
+        "ix_pending": {
+            "shipping_rewards": (),
+            "tech_discount": 0,
+            "tech_payment": "",
+            "negotiators_returnable": 0,
+        },
     }
     actions = snapshot["legal_actions"]
     assert isinstance(actions, list)
