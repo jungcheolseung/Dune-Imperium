@@ -29,6 +29,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AtFactionSpace,
     AtLeastOfConditions,
     AtMakerSpace,
+    AtSpaceWithEnemyAgent,
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
@@ -383,6 +384,10 @@ def condition_text(condition: Condition) -> str:
         case AtFactionSpace():
             # Never printed: a visited Faction's gain needs one (OQ-046).
             return "you are at a Faction space"
+        case AtSpaceWithEnemyAgent():
+            # "If used to send an Agent to a board space with an enemy Agent:"
+            # [Bounty Hunter card].
+            return "you sent an Agent to a board space with an enemy Agent"
         case FactionBond(faction=faction):
             # "If Bene Gesserit Bond:" (display/tokens.py, Southern Elders).
             return f"{_faction_name(faction)} Bond"

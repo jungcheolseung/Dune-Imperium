@@ -64,6 +64,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllConditions,
     AtFactionSpace,
     AtMakerSpace,
+    AtSpaceWithEnemyAgent,
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommandersInConflictAtLeast,
@@ -291,15 +292,24 @@ def box_ability(effect: PersonalCardAgentEffect | None) -> Ability | None:
 
 
 def _requirement_holds(
-    condition: Condition, owner: PlayerState, space: BoardSpace, card_id: str
+    condition: Condition,
+    owner: PlayerState,
+    space: BoardSpace,
+    card_id: str,
+    enemy_agent: bool,
 ) -> bool:
-    """A condition fixed by the placement, judged as the card is played."""
+    """A condition fixed by the placement, judged as the card is played;
+    ``enemy_agent`` is whether an opponent's Agent stands on ``space``."""
 
     match condition:
         case AtMakerSpace():
             return space.maker
         case AtFactionSpace():
             return space.faction is not None
+        case AtSpaceWithEnemyAgent():
+            # Bounty Hunter: "a board space with an enemy Agent" -- one the
+            # Agent could only enter by ignoring it (Infiltration).
+            return enemy_agent
         case FactionBond(faction=faction):
             # A Row card borrowed with Usurp is not "in play" (OQ-054,
             # ``counted_in_play``), so it never gives another card its Bond.
@@ -308,15 +318,22 @@ def _requirement_holds(
             )
         case AllConditions(conditions=conditions):
             return all(
-                _requirement_holds(item, owner, space, card_id) for item in conditions
+                _requirement_holds(item, owner, space, card_id, enemy_agent)
+                for item in conditions
             )
     raise TypeError(f"{condition!r} is not fixed by the placement")
 
 
 def opens_at_placement(
-    ability: Ability, owner: PlayerState, space: BoardSpace, card_id: str
+    ability: Ability,
+    owner: PlayerState,
+    space: BoardSpace,
+    card_id: str,
+    *,
+    enemy_agent: bool = False,
 ) -> bool:
-    """Whether the box is pending once ``card_id`` is played on ``space``.
+    """Whether the box is pending once ``card_id`` is played on ``space``;
+    ``enemy_agent`` says an opponent's Agent stands there too.
 
     An automatic box has nothing to resolve and never opens: it modifies a
     step another effect takes (Carryall's doubled harvest).
@@ -326,7 +343,7 @@ def opens_at_placement(
         return False
     if ability.requirement is None:
         return True
-    return _requirement_holds(ability.requirement, owner, space, card_id)
+    return _requirement_holds(ability.requirement, owner, space, card_id, enemy_agent)
 
 
 def condition_block(

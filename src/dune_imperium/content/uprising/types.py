@@ -445,6 +445,11 @@ class PersonalCardAgentEffect(StrEnum):
     # Imperial Bashar (Rise of Ix): "[Troop] -OR- [Trash a card]" -- a printed
     # -OR- between a recruit and a (black, optional) trash icon.
     RECRUIT_ONE_OR_MAY_TRASH_A_CARD = "recruit_one_or_may_trash_a_card"
+    # Bounty Hunter (Rise of Ix): "If used to send an Agent to a board space
+    # with an enemy Agent: [2 Solari]".
+    GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE = (
+        "gain_two_solari_if_enemy_agent_on_space"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

@@ -27,6 +27,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AtFactionSpace,
     AtLeastOfConditions,
     AtMakerSpace,
+    AtSpaceWithEnemyAgent,
     CommanderDiscountThisTurn,
     CommissionDreadnought,
     Condition,
@@ -352,6 +353,7 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
         case (
             AtMakerSpace()
             | AtFactionSpace()
+            | AtSpaceWithEnemyAgent()
             | FactionBond()
             | Grafted()
             | SpyRecalledThisTurn()

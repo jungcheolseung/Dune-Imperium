@@ -16,9 +16,9 @@ game's deck takes only completed cards (CHOAM Delegate, Jamis, Landing
 Rights, Sayyadina, Shai-Hulud, Truthsayer, Imperial Shock Trooper, Local
 Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
 Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
-Way, Satellite Ban, Spice Trader and Imperial Bashar so far), while the
-observation lists every identity from v39. Setup takes Rise of Ix on the
-original game since stage P4c-5.
+Way, Satellite Ban, Spice Trader, Imperial Bashar and Bounty Hunter so far),
+while the observation lists every identity from v39. Setup takes Rise of Ix
+on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
 cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
@@ -43,6 +43,7 @@ IX_IMPERIUM_SOURCES: Final = (SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2,)
 _LOCAL_FENCE = (
     PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
 )
+_BOUNTY_HUNTER = PersonalCardAgentEffect.GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE
 _SPICE_TRADER = (
     PersonalCardAgentEffect.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO
 )
@@ -67,6 +68,16 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=1,
         infiltration_icons=(AgentIcon.CITY,),
+        # App table: no Faction, the City icon (also its Infiltration icon),
+        # Reveal 1 Persuasion and 1 sword. Agent: "If used to send an Agent to
+        # a board space with an enemy Agent: [2 Solari]" [Steam app screen
+        # pieces and text] -- a condition on the space the Agent goes to, fixed
+        # by the placement, so the box is judged when the card is played.
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=_BOUNTY_HUNTER,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("choam_delegate", "CHOAM Delegate"),

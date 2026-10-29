@@ -214,6 +214,12 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If you are at a Maker space: Gain 2 spice"
         ),
         PersonalCardAgentEffect.GAIN_TWO_SOLARI: "Gain 2 solari",
+        # Rise of Ix's Bounty Hunter (stage P4d): "If used to send an Agent to
+        # a board space with an enemy Agent: [2 Solari]".
+        PersonalCardAgentEffect.GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE: (
+            "If used to send an Agent to a board space with an enemy Agent: "
+            "Gain 2 solari"
+        ),
         PersonalCardAgentEffect.GAIN_ONE_SPICE: "Gain 1 spice",
         PersonalCardAgentEffect.PLACE_SPY: "Place a Spy",
         PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE: (

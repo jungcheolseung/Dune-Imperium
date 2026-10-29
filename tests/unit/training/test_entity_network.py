@@ -299,7 +299,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Then Imperial Bashar got its play data (stage P4d): only its own row changed,
 # no column and no scale (compared against 0d7862d6, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against f9afc027 (2026-10-30).
-_GOLDEN_DIGEST = "53a78797e9b805599301d41f9b22cee68a16cf089ad04cd06e2837e068d76532"
+# Then Bounty Hunter got its play data (stage P4d): one personal-table column is
+# new (the Agent box's requirement ``AtSpaceWithEnemyAgent``), only its own row
+# reads it, its row is the only one that changed, and no scale moved (compared
+# against f446b631, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against a6defaba (2026-10-30).
+_GOLDEN_DIGEST = "8363e7879c26078e585b15fbda2e8dcd0d7cc7d08ff95678f045f3a4e62cf411"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

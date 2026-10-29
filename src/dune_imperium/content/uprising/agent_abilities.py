@@ -44,6 +44,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AtFactionSpace,
     AtMakerSpace,
+    AtSpaceWithEnemyAgent,
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommandersInConflictAtLeast,
@@ -273,6 +274,13 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             _BOX.RECRUIT_ONE_IF_MAKER_SPACE: _box(
                 RecruitTroops(1), requirement=AtMakerSpace()
+            ),
+            # Bounty Hunter (Rise of Ix): "If used to send an Agent to a board
+            # space with an enemy Agent: [2 Solari]" [Steam app text]: the
+            # space the Agent goes to is fixed by the placement, so the box is
+            # judged when the card is played, as a Maker space's is.
+            _BOX.GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE: _box(
+                GainResources(solari=2), requirement=AtSpaceWithEnemyAgent()
             ),
             _BOX.RECRUIT_ONE_IF_EMPEROR_INFLUENCE_TWO: _box(
                 RecruitTroops(1), condition=InfluenceAtLeast(Faction.EMPEROR, 2)

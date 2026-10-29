@@ -32,6 +32,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AtFactionSpace,
     AtMakerSpace,
+    AtSpaceWithEnemyAgent,
     BlockChosenSpaceForOpponentsNextAgent,
     CompleteContract,
     DiscardedCardHasFaction,
@@ -184,9 +185,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # an Intrigue card on the bottom of the deck -> [Intrigue card]"),
     # Weirding Way ("You may take another turn immediately after this one"),
     # Satellite Ban ("[Discard] -> [1 spice] [1 water]"), Spice Trader
-    # ("[Fremen] 2 Influence: [Discard] -> [2 spice]") and Imperial Bashar
-    # ("[Troop] -OR- [Trash a card]").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 12
+    # ("[Fremen] 2 Influence: [Discard] -> [2 spice]"), Imperial Bashar
+    # ("[Troop] -OR- [Trash a card]") and Bounty Hunter ("If used to send an
+    # Agent to a board space with an enemy Agent: [2 Solari]").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 13
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -254,15 +256,21 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
 
 
 def test_placement_requirements_are_fixed_by_the_placement() -> None:
-    """Only the visited space and a Bond among cards in play are judged when
-    the card is played (OQ-028 (a)); every other condition when it resolves."""
+    """Only the visited space (its icons, an enemy Agent on it) and a Bond
+    among cards in play are judged when the card is played (OQ-028 (a)); every
+    other condition when it resolves."""
 
     requirements = {
         type(ability.requirement)
         for ability in AGENT_BOX_ABILITIES.values()
         if ability.requirement is not None
     }
-    assert requirements == {AtMakerSpace, AtFactionSpace, FactionBond}
+    assert requirements == {
+        AtMakerSpace,
+        AtFactionSpace,
+        AtSpaceWithEnemyAgent,
+        FactionBond,
+    }
     harvester = AGENT_BOX_ABILITIES[_BOX.GAIN_SPICE_IF_MAKER_SPACE]
     owner = PlayerState(player_id=0)
     maker = next(space for space in BOARD_SPACES if space.maker)
@@ -274,6 +282,10 @@ def test_placement_requirements_are_fixed_by_the_placement() -> None:
     assert not opens_at_placement(elders, owner, city, elders_id)
     bonded = replace(owner, in_play=("imperium:weirding_woman:0",))
     assert opens_at_placement(elders, bonded, city, elders_id)
+    # Bounty Hunter (Rise of Ix): an enemy Agent on the space it goes to.
+    hunter = AGENT_BOX_ABILITIES[_BOX.GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE]
+    assert not opens_at_placement(hunter, owner, city, "imperium:x:0")
+    assert opens_at_placement(hunter, owner, city, "imperium:x:0", enemy_agent=True)
 
 
 def test_every_icon_condition_has_a_block() -> None:

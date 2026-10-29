@@ -273,6 +273,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "strategic_push",
 }
 _IX_IMPERIUM_TRANSCRIBED = {
+    "bounty_hunter",
     "choam_delegate",
     "court_intrigue",
     "desert_ambush",

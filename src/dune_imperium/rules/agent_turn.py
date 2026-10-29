@@ -856,6 +856,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         replace(owner, resources=next_owner.resources),
         space,
         card_instance_id,
+        enemy_agent=enemy_agent_on_space(state, action.actor, space_id),
     )
     # A multi-icon Agent box queues its printed icons for their own actions
     # (OQ-027); single-effect boxes keep the plain resolution.
@@ -1383,17 +1384,32 @@ def apply_turn_start_card(state: GameState, action: DomainAction) -> RuleResult:
     )
 
 
+def enemy_agent_on_space(state: GameState, player: int, space_id: str) -> bool:
+    """Whether an opponent of ``player`` has an Agent on ``space_id`` (the
+    Mentat among them): an Agent that Infiltration, or another effect that
+    ignores enemy Agents, let the owner's Agent share the space with."""
+
+    return any(
+        space_id in seat.agent_locations
+        for seat in state.players
+        if seat.player_id != player
+    )
+
+
 def agent_effect_is_available(
     effect: PersonalCardAgentEffect | None,
     owner: PlayerState,
     space: BoardSpace,
     card_instance_id: str,
+    *,
+    enemy_agent: bool = False,
 ) -> bool:
     """Return whether the played card's Agent box stays pending after placement.
 
     Only conditions that no later effect of the same turn can change are
-    judged here: the visited space (its Faction, its Maker status) and
-    Faction Bonds among the cards already in play, which can only shrink.
+    judged here: the visited space (its Faction, its Maker status, an enemy
+    Agent on it -- ``enemy_agent``, Bounty Hunter) and Faction Bonds among the
+    cards already in play, which can only shrink.
     Every other printed condition — an Influence threshold, a resource,
     hand-size or Intrigue cost, an Alliance, sandworms in the Conflict — is
     judged when the box is actually resolved, in the owner's chosen order
@@ -1415,7 +1431,9 @@ def agent_effect_is_available(
     if ability is not None:
         # A box written as an ability record judges its placement condition
         # (a Maker space, the Bene Gesserit Bond) from the record (OQ-028 (a)).
-        return opens_at_placement(ability, owner, space, card_instance_id)
+        return opens_at_placement(
+            ability, owner, space, card_instance_id, enemy_agent=enemy_agent
+        )
     return True
 
 

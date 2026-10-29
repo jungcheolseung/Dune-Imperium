@@ -270,6 +270,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "메이커 장소에 있다면: {spice:2}"
     ),
     PersonalCardAgentEffect.GAIN_TWO_SOLARI: "{solari:2}",
+    # Rise of Ix's Bounty Hunter (stage P4d).
+    PersonalCardAgentEffect.GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE: (
+        "다른 플레이어의 {agent}가 있는 장소로 {agent}를 보냈다면: {solari:2}"
+    ),
     PersonalCardAgentEffect.GAIN_ONE_SPICE: "{spice:1}",
     PersonalCardAgentEffect.PLACE_SPY: "{spy} 배치",
     # "Place a Spy on a post connected to the space you sent an Agent to
