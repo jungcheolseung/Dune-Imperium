@@ -77,10 +77,12 @@ def test_every_record_names_a_card_with_its_play_data() -> None:
     # Mother, Smuggler's Thopter, Worm Riders' two lines, Assassination
     # Mission, Reverend Mother Mohiam, Liet Kynes, CHOAM Directorship, Guild
     # Bankers, Carryall, Firm Grip, and the promo Thumper).
-    # Sayyadina: "Fremen Bond: [3 Persuasion]" adds one Ix record/line.
-    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 16 + 1
+    # Rise of Ix (stage P4d), one record/line each: Sayyadina's "Fremen
+    # Bond: [3 Persuasion]" and Imperial Shock Trooper's "If you have an
+    # Agent on an [Emperor] board space," [+3 swords].
+    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 16 + 2
     assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == (
-        55 + 1 + 17 + 1
+        55 + 1 + 17 + 2
     )
 
 

@@ -263,7 +263,12 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "strongarm",
     "ixian_probe",
 }
-_IX_IMPERIUM_TRANSCRIBED = {"jamis", "sayyadina", "truthsayer"}
+_IX_IMPERIUM_TRANSCRIBED = {
+    "imperial_shock_trooper",
+    "jamis",
+    "sayyadina",
+    "truthsayer",
+}
 
 
 def test_ix_entries_are_identities_only() -> None:

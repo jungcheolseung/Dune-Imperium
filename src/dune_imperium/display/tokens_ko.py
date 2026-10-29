@@ -114,7 +114,10 @@ term neither source uses.
 from typing import Final
 
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.effect_dsl import RevealCountKind
+from dune_imperium.content.uprising.effect_dsl import (
+    AgentOnSpaceWithIcon,
+    RevealCountKind,
+)
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
@@ -126,6 +129,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
+from dune_imperium.display.effect_dsl_text_ko import condition_text_ko
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.tokens import reveal_line_conditions
 from dune_imperium.rules.reveal_lines import RevealLine
@@ -833,6 +837,12 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
         conditions.append(f"{{influence_{faction.value}}} {amount} 이상이면")
     if held.alliance is not None:
         conditions.append(f"{_faction_name_ko(held.alliance)} {{alliance}}이면")
+    if held.agent_on_space is not None:
+        # The Canny line's words (``effect_dsl_text_ko``): "황제 게임판 장소에
+        # {agent}가 있다면" (Imperial Shock Trooper).
+        conditions.append(
+            condition_text_ko(AgentOnSpaceWithIcon(held.agent_on_space))
+        )
 
     count = line.faction_count
     per_faction = (

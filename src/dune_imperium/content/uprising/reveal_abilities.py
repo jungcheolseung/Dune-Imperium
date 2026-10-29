@@ -30,6 +30,7 @@ from dune_imperium.content.uprising.abilities import (
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
+    AgentOnSpaceWithIcon,
     AllConditions,
     CommandersInConflictAtLeast,
     CommandReached,
@@ -59,6 +60,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyingOnMakerSpace,
     TrashThisCard,
 )
+from dune_imperium.content.uprising.types import AgentIcon
 
 _COMMAND = CommandReached()
 _PER_COMPLETED_CONTRACT = RevealCount(RevealCountKind.COMPLETED_CONTRACT)
@@ -103,6 +105,13 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         # Sayyadina (Rise of Ix): "Fremen Bond: [3 Persuasion]".
         "sayyadina": _reveal(
             _line(RevealPersuasion(3), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Imperial Shock Trooper (Rise of Ix): "If you have an Agent on an
+        # [Emperor] board space," [+3 swords] beside its printed 1 Persuasion
+        # and 2 swords [Steam app text and screen pieces]; an Agent sent
+        # earlier this round counts (``conditions.owner_condition_holds``).
+        "imperial_shock_trooper": _reveal(
+            _line(RevealSwords(3), condition=AgentOnSpaceWithIcon(AgentIcon.EMPEROR))
         ),
         # Delivery Agreement.
         "delivery_agreement": _reveal(_line(GainResources(spice=1))),
@@ -349,6 +358,7 @@ REVEAL_LINE_CONDITIONS: Final[frozenset[type]] = frozenset(
         CommandReached,
         InfluenceAtLeast,
         HasAlliance,
+        AgentOnSpaceWithIcon,
     }
 )
 REVEAL_LINE_REWARDS: Final[frozenset[type]] = frozenset(

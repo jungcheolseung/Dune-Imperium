@@ -12,9 +12,9 @@ These began as stage P4a identity entries (name, copies and cost), generated
 by ``scripts/dwgr/imperium_entries.py --set ix skeleton``. Incomplete entries
 keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
-game's deck takes only completed cards (Jamis, Sayyadina and Truthsayer so
-far), while the observation lists every identity from v39. Setup takes Rise
-of Ix on the original game since stage P4c-5.
+game's deck takes only completed cards (Jamis, Sayyadina, Truthsayer and
+Imperial Shock Trooper so far), while the observation lists every identity
+from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
 cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
@@ -111,6 +111,13 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("imperial_shock_trooper", "Imperial Shock Trooper"),
         copies=1,
         acquisition_cost=3,
+        # App table: Emperor, no Agent icon; Reveal 1 Persuasion, 2 swords.
+        # "If you have an Agent on an [Emperor] board space," [+3 swords] is
+        # its Reveal record (``reveal_abilities``) [Steam app text].
+        factions=(Faction.EMPEROR,),
+        reveal_persuasion=1,
+        reveal_strength=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("in_the_shadows", "In The Shadows"),

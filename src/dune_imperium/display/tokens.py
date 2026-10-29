@@ -24,6 +24,7 @@ from typing import Final
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
+    AgentOnSpaceWithIcon,
     CommandersInConflictAtLeast,
     CommandReached,
     DrawIntrigueCards,
@@ -50,6 +51,7 @@ from dune_imperium.content.uprising.effect_dsl import (
 )
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
 from dune_imperium.content.uprising.types import (
+    AgentIcon,
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
     PersonalCardBond,
@@ -60,6 +62,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
+from dune_imperium.display.effect_dsl_text import condition_text
 from dune_imperium.rules.reveal_lines import RevealLine
 
 _BOND_NAMES: dict[PersonalCardBond, str] = {
@@ -783,6 +786,7 @@ HANDLED_REVEAL_CONDITIONS: Final[frozenset[type]] = frozenset(
         CommandReached,
         InfluenceAtLeast,
         HasAlliance,
+        AgentOnSpaceWithIcon,
     }
 )
 HANDLED_REVEAL_REWARDS: Final[frozenset[type]] = frozenset(
@@ -820,6 +824,9 @@ class RevealLineConditions:
     influence: tuple[Faction, int] | None = None
     # "Fremen Alliance" (Worm Riders).
     alliance: Faction | None = None
+    # "If you have an Agent on an [Emperor] board space" (Imperial Shock
+    # Trooper): the board space's icon.
+    agent_on_space: AgentIcon | None = None
 
 
 def reveal_line_conditions(line: RevealLine) -> RevealLineConditions:
@@ -850,6 +857,8 @@ def reveal_line_conditions(line: RevealLine) -> RevealLineConditions:
                 found["influence"] = (faction, amount)
             case HasAlliance(faction=faction) if faction is not None:
                 found["alliance"] = faction
+            case AgentOnSpaceWithIcon(icon=icon):
+                found["agent_on_space"] = icon
             case _:
                 raise TypeError(f"{condition!r} is not a Reveal line condition")
     return RevealLineConditions(**found)  # type: ignore[arg-type]
@@ -896,6 +905,10 @@ def reveal_effect_text(line: RevealLine) -> str:
         conditions.append(f"you have {amount} or more {name} Influence")
     if held.alliance is not None:
         conditions.append(f"you have the {_faction_name(held.alliance)} Alliance")
+    if held.agent_on_space is not None:
+        # "If you have an Agent on an [Emperor] board space," [Imperial Shock
+        # Trooper, Steam app text]: the Canny line's words.
+        conditions.append(condition_text(AgentOnSpaceWithIcon(held.agent_on_space)))
 
     count = line.faction_count
     per_faction = (
