@@ -417,7 +417,7 @@ from dune_imperium.agents.app_ai.catalog import (
 )
 from dune_imperium.agents.app_ai.choice import default_random_choice
 from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, card_id
-from dune_imperium.agents.app_ai.entities import Entity
+from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.profile.immortality import research_space_entity
 from dune_imperium.agents.app_ai.windows import ix
@@ -4243,9 +4243,31 @@ def _deploy(t: _Turn) -> None:
     if found is None:
         found, garrison = _card_deploy_ability(t, maximum)
     if found is None and t.run.ctx.ix and not _combat_space(t):
-        # Rise of Ix: troops a Shipping recall recruited off a Combat space.
-        # The app's ``DeployUnitsAbility`` is a Combat space's, so it asks
-        # nothing here: the deployment is left unused (a "may").
+        # Rise of Ix: troops a Shipping recall recruited off a Combat space,
+        # deployable only by Troop Transports (rise-of-ix.md 15). The app
+        # asks its ``TroopTransportsAbility`` (Optional, E: the first
+        # ``GetUnitsToDeploy`` units of the offered ones under
+        # ``NumberToSelect``); without the tile it asks nothing.
+        if not t.run.ctx.has_tech("troop_transports"):
+            return
+        tile = _find(tech_entity("troop_transports", t.seat), "TroopTransportsAbility")
+        if tile is None:
+            t.unmapped.append("troop_transports deploy")
+            return
+        transports = tile[0]
+        units = tuple(
+            Entity(Kind.AGENT, f"troop:{i}", None, t.seat) for i in range(garrison)
+        )
+        request = Request(infos=(TargetInfo(entities=units, max_select=maximum),))
+
+        def evaluate_transports() -> tuple[float, DomainAction | None]:
+            answer = transports.evaluate(t.p, request)
+            if answer.response is None or not answer.response[0]:
+                return answer.value, None
+            count = min(len(answer.response[0]), maximum)
+            return answer.value, with_arg(actions, "count", count)
+
+        _prompt(t, "Troop Transports", actions, evaluate_transports, explicit=False)
         return
     if found is None:
         t.unmapped.append("deploy_troops off a Combat space")

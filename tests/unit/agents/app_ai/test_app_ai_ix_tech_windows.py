@@ -139,3 +139,34 @@ def test_urgent_mission_recalls_the_agent_its_play_named() -> None:
     assert named is not None and dict(named.arguments) == {"space_id": "dreadnought"}
     again = intrigue._recall_your_agent(run, lambda: Answer(0.0, None, ""))
     assert again in rows
+
+
+def test_troop_transports_answers_a_shipping_deployment_off_a_combat_space(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Seed 8100: Rabban's Freighter recall at Interstellar Shipping recruits
+    three troops that Troop Transports lets deploy (rise-of-ix.md 15; P4's
+    ruling). The app asks ``TroopTransportsAbility``."""
+
+    from typing import Any
+
+    from dune_imperium.agents.app_ai.windows import agent_effects
+
+    labels: list[str] = []
+    collect = agent_effects._collect
+
+    def spy(t: Any) -> None:
+        collect(t)
+        labels.extend(s.label for s in t.sources)
+
+    monkeypatch.setattr(agent_effects, "_collect", spy)
+    config = RulesetConfig(
+        base_game=BaseGame.IMPERIUM,
+        promo_cards=True,
+        leader_draft=True,
+        rise_of_ix=True,
+    )
+    agents = tuple(AppAIAgent(seed=8100 * 10 + p, level=2) for p in range(4))
+    run_policy_game(UprisingRulesEngine(), config, 8100, agents)
+    assert "Troop Transports" in labels
+    assert [dict(a.fallbacks) for a in agents] == [{}] * 4
