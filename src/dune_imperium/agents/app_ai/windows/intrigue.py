@@ -576,6 +576,15 @@ def intrigue_request(
         infos = (_ents(_row_cards(ctx)),)
     elif cid == "devour":
         infos = (_ents(_trash_cards(ctx)),)
+    # Rise of Ix (review 2026-10-30): Blackmail's ``<Targets>b__0`` @0x4be0fe0
+    # (tracks with Influence), Cull's ``FindTrashTargets``, Finesse's two
+    # ``InfluenceDelta`` infos (-1, then +1).
+    elif cid == "blackmail" and combat:
+        infos = (_ents(_lose_tracks(ctx)),)
+    elif cid == "cull":
+        infos = (_ents(_trash_cards(ctx)),)
+    elif cid == "finesse" and not combat:
+        infos = (_ents(_lose_tracks(ctx)), _ents(_gain_tracks(ctx)))
     elif cid in ("find_weakness", "spring_the_trap"):
         infos = (_ents(_own_spies(ctx)),)
     elif cid == "leverage":
@@ -945,6 +954,8 @@ def _lose_influence(
         "change_allegiances",
         "questionable_methods",
         "tenuous_bond",
+        "blackmail",  # Rise of Ix: ((track,),)
+        "finesse",  # Rise of Ix: ((lose,), (gain,))
     ):
         intended = _first_ref(_item(intent(), 0))
     elif cid == "opportunism":  # [t1], [t2]: the k-th loss
@@ -971,7 +982,7 @@ def _gain_influence(
         intended = ref if isinstance(ref, str) else None
     elif cid in ("imperium_politics", "disguised_bureaucrat"):
         intended = _first_ref(_item(intent(), 0))
-    elif cid == "sietch_ritual":
+    elif cid in ("sietch_ritual", "finesse"):  # Finesse: ((lose,), (gain,))
         intended = _first_ref(_item(intent(), 1))
     elif cid == "rapid_engineering":  # ((1,), (t1, t2)): the k-th gain
         refs = _item(intent(), 1) or ()

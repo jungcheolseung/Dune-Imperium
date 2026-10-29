@@ -170,3 +170,36 @@ def test_troop_transports_answers_a_shipping_deployment_off_a_combat_space(
     run_policy_game(UprisingRulesEngine(), config, 8100, agents)
     assert "Troop Transports" in labels
     assert [dict(a.fallbacks) for a in agents] == [{}] * 4
+
+
+def test_blackmail_cull_and_finesse_get_their_app_targets() -> None:
+    """Review 2026-10-30: without infos the three evaluates were empty, so the
+    cards were never played."""
+
+    from dune_imperium.agents.app_ai.windows.intrigue import intrigue_request
+
+    p = make_profile(first_decision("turn", config=IX))
+    assert len(intrigue_request(p.ctx, "intrigue:blackmail:0", True).infos) == 1
+    assert len(intrigue_request(p.ctx, "intrigue:cull:0", False).infos) == 1
+    finesse = intrigue_request(p.ctx, "intrigue:finesse:0", False).infos
+    assert len(finesse) == 2 and finesse[1].entities
+
+
+def test_finesse_replays_its_exchange_in_the_influence_slots() -> None:
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.windows import intrigue
+
+    rows = [
+        DomainAction(
+            action_id="choose_intrigue_faction", actor=0, arguments=(("faction", f),)
+        )
+        for f in ("emperor", "fremen")
+    ]
+    run = _choice_run(rows)
+    exchange = Answer(3.0, (("emperor",), ("fremen",)), "")
+    lose = intrigue._lose_influence(run, "finesse", lambda: exchange, 0)
+    gain = intrigue._gain_influence(
+        run, "finesse", "intrigue:finesse:0", lambda: exchange, 0
+    )
+    assert lose is not None and dict(lose.arguments) == {"faction": "emperor"}
+    assert gain is not None and dict(gain.arguments) == {"faction": "fremen"}

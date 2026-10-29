@@ -275,7 +275,7 @@ class BlackmailAbility(StrengthIntrigueAbility):
 
         choice = _Choice()
         v = self._strength_choice(p).value
-        if v <= 0.0:
+        if not v > 0.0:  # ``ucomisd v, 0.0; jbe`` @0x4be0b9f: NaN returns too
             return choice.answer("Blackmail")
         tracks = list(_targets(request, 0, Kind.TRACK))
         p.rng.shuffle(tracks)
@@ -558,7 +558,7 @@ class FinessePlotAbility(IntrigueAbility):
         gain_track = next((t for t in gain_tracks if t.ref == gain_faction), None)
         if lose_track is None or gain_track is None:
             return choice.answer("Finesse (plot)")
-        if exchange < 2.0:
+        if not exchange >= 2.0:  # ``ucomisd; jb`` @0x4be81d1: NaN returns too
             return choice.answer("Finesse (plot)")
         v = Summer()
         v.add("Best Influence Exchange Value", exchange)
@@ -792,7 +792,8 @@ class StrongarmAbility(IntrigueAbility):
         faction = _space_faction(space)
         if faction is None:
             return choice.answer("Strongarm")
-        if p.gain_influence_value(faction, 1, -1, False).sum < 3.5:
+        # ``ucomisd G, 3.5; jb`` @0x4bfa5f3: NaN returns too.
+        if not p.gain_influence_value(faction, 1, -1, False).sum >= 3.5:
             return choice.answer("Strongarm")
         if p.estimated_conflict_rank(0) is not None:
             deployed = p.garrison_troop_count() <= 0

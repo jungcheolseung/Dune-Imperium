@@ -887,3 +887,25 @@ def test_ixian_probe_discards_the_first_two_of_the_discard_order(
     answer = ix.IxianProbeAbility(card("ixian_probe")).evaluate(p, request)
     assert answer.value == pytest.approx(2 * 1.0 + 2 * 2.0 + 2 * 0.5)
     assert answer.response == (("c2", "c1"),)
+
+
+def test_strongarm_returns_on_a_nan_influence_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``ucomisd G, 3.5; jb`` @0x4bfa5f3 takes NaN as the early return."""
+
+    p = make_profile(first_decision("turn", config=IX))
+    monkeypatch.setattr(
+        ix, "_active_space", lambda p: space_entity("imperium_hagga_basin", p.ctx.board)
+    )
+    monkeypatch.setattr(ix, "_space_faction", lambda space: "fremen")
+    high = Summer()
+    high.add("high", 10.0)
+    monkeypatch.setattr(p, "gain_influence_value", lambda *a, **k: high)
+    played = ix.StrongarmAbility(card("strongarm")).evaluate(p, Request())
+    assert played.response is not None  # the gate passes on a real value
+    nan = Summer()
+    nan.add("nan", float("nan"))
+    monkeypatch.setattr(p, "gain_influence_value", lambda *a, **k: nan)
+    answer = ix.StrongarmAbility(card("strongarm")).evaluate(p, Request())
+    assert answer.response is None
