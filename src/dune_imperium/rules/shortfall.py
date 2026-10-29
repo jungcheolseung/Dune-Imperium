@@ -10,7 +10,9 @@ from them at once: troops first, then specimens (OQ-030, OQ-049; user ruling
 2026-10-04, "앱 구현 방식으로 가자", following the Steam app). Refilled troops
 are this turn's recruits, so on the turn owner's seat they raise the Combat
 deployment allowance like any other recruit -- except a Harkonnen Advisor
-troop, which stays undeployable however it arrives (OQ-038, 2026-10-26).
+troop, which stays undeployable however it arrives (OQ-038, 2026-10-26), and
+the troops a Shipping recruit with Troop Transports could not get, which join
+that tile's allowance when refilled (``combat_deployment.refill_shipping_troops``).
 Suspensor Suits troops the supply could not cover (``ungained_conflict_troops``)
 are made up after the recruit shortfall and before the specimens, and go to
 the Conflict as they come (OQ-042, user re-ruling 2026-10-25), in the Steam
@@ -28,6 +30,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.combat_deployment import (
     credit_owed_recruits,
+    refill_shipping_troops,
     refill_undeployable_troops,
 )
 from dune_imperium.rules.frames import (
@@ -96,8 +99,17 @@ def refill_shortfall(state: GameState, player: int) -> RuleResult:
             )
             # Reinforcements' and Gurney Halleck's owed troops come first: in
             # the Reveal turn they may then deploy (OQ-140).
-            next_state = credit_owed_recruits(
+            next_state, credited = credit_owed_recruits(
                 next_state, player, troops - undeployable
+            )
+            # The part of the shortfall a Shipping recruit with Troop
+            # Transports left joins that tile's allowance too, from the
+            # troops no Reveal line took as its own owed ones.
+            next_state = refill_shipping_troops(
+                next_state,
+                player,
+                troops - undeployable - credited,
+                ungained=owner.ungained_troops - credited,
             )
     placed: tuple[GameEvent, ...] = ()
     if conflict:

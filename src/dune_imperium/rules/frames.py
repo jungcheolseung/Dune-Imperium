@@ -263,6 +263,15 @@ own and none of the garrison share of two (``combat_deployment``). In a
 Combat-space turn they are plain recruits of the turn, and a Reveal turn keeps
 them as ``combat_deployment.RECRUITS_DEPLOYABLE_KEY``."""
 
+UNGAINED_SHIPPING_TROOPS_KEY = "shipping_troops_ungained"
+"""The part of the owner's recruit shortfall (``PlayerState.ungained_troops``,
+OQ-030) that a Shipping track recruit with Troop Transports could not get from
+the supply, kept on the turn's own frame (absent means none). A refill gives
+them as the turn's recruits, so each one joins ``SHIPPING_TROOPS_KEY``'s
+allowance as the refill pays it (``combat_deployment.refill_shipping_troops``),
+and the frame carries the count over the placement and into the Reveal as it
+does ``combat_deployment.UNGAINED_UNDEPLOYABLE_KEY`` (OQ-038)."""
+
 
 def recruited_commander_count(context: FrameContext, key: str) -> int:
     """Return the Commander recruit count kept under ``key`` (0 when absent)."""
@@ -289,6 +298,16 @@ def shipping_troop_count(context: FrameContext) -> int:
     value = context.get(SHIPPING_TROOPS_KEY, 0)
     if isinstance(value, bool) or not isinstance(value, int):
         raise RuntimeError(f"turn frame has invalid {SHIPPING_TROOPS_KEY}")
+    return value
+
+
+def ungained_shipping_troop_count(context: FrameContext) -> int:
+    """Return the Troop Transports troops still waiting in the shortfall (0
+    when absent)."""
+
+    value = context.get(UNGAINED_SHIPPING_TROOPS_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"turn frame has invalid {UNGAINED_SHIPPING_TROOPS_KEY}")
     return value
 
 

@@ -60,6 +60,7 @@ from dune_imperium.rules.effects import (
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
     SHIPPING_TROOPS_KEY,
+    UNGAINED_SHIPPING_TROOPS_KEY,
     FrameKind,
     commissioned_dreadnought_count,
     owes_held_draw,
@@ -68,6 +69,7 @@ from dune_imperium.rules.frames import (
     recruited_commander_count,
     replace_player,
     shipping_troop_count,
+    ungained_shipping_troop_count,
     with_context,
 )
 
@@ -1095,20 +1097,101 @@ def grant_shipping_troop_deployment(
     return state
 
 
-def credit_owed_recruits(state: GameState, player: int, troops: int) -> GameState:
+def note_ungained_shipping_troops(
+    state: GameState, player: int, troops: int
+) -> GameState:
+    """Record the ``troops`` a Shipping recruit with Troop Transports could
+    not get from the supply, on ``player``'s own turn frame.
+
+    They stay in the seat's shortfall (``PlayerState.ungained_troops``,
+    OQ-030); the frame remembers which part of it is theirs so a later refill
+    can give them Troop Transports' allowance (``refill_shipping_troops``),
+    as ``UNGAINED_UNDEPLOYABLE_KEY`` does for a Harkonnen Advisor troop
+    (OQ-038). Outside the owner's turn nothing is kept: the shortfall is
+    dropped there and nothing refills it."""
+
+    index = own_turn_frame_index(state, player)
+    if index is None or troops < 1:
+        return state
+    frame = state.decision_stack[index]
+    context = dict(frame.context)
+    context[UNGAINED_SHIPPING_TROOPS_KEY] = (
+        ungained_shipping_troop_count(context) + troops
+    )
+    return _with_frame_context(state, index, context)
+
+
+def refill_shipping_troops(
+    state: GameState, player: int, troops: int, *, ungained: int
+) -> GameState:
+    """Give a refilled Shipping recruit's troops Troop Transports' allowance.
+
+    "Refilled troops are this turn's recruits" (OQ-030, re-ruling 2026-10-04:
+    "이 troop은 이번 turn의 recruit이므로 turn 주인의 좌석이면 Combat 배치
+    몫에 들어간다"), so the part of the shortfall that came from a Shipping
+    recruit with Troop Transports joins the allowance its troops would have
+    had (``grant_shipping_troop_deployment``: "You may deploy any of them to
+    the Conflict", docs/rules/rise-of-ix.md 15). ``troops`` are the refilled
+    troops that are deployable at all (a Harkonnen Advisor troop is not);
+    ``ungained`` is the seat's shortfall before this refill. Troops are
+    indistinguishable, so a partial refill gives the Troop Transports troops
+    before the plain recruits, as it gives the deployable recruits before the
+    undeployable one (``refill_undeployable_troops``; the documents are
+    silent, a project convention in the owner's favour); in a Reveal turn the
+    ``DeployTheseTroops`` lines' owed troops come before both (OQ-140,
+    ``credit_owed_recruits``), so the caller passes what those left."""
+
+    index = own_turn_frame_index(state, player)
+    if index is None or troops < 1:
+        return state
+    context = dict(state.decision_stack[index].context)
+    waiting = min(ungained_shipping_troop_count(context), ungained)
+    paid = min(waiting, troops)
+    if not paid:
+        return state
+    if waiting - paid:
+        context[UNGAINED_SHIPPING_TROOPS_KEY] = waiting - paid
+    else:
+        context.pop(UNGAINED_SHIPPING_TROOPS_KEY, None)
+    return grant_shipping_troop_deployment(
+        _with_frame_context(state, index, context), player, paid
+    )
+
+
+def _with_frame_context(
+    state: GameState, index: int, context: dict[str, ActionValue]
+) -> GameState:
+    frame = state.decision_stack[index]
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:index],
+            replace(frame, context=tuple(sorted(context.items()))),
+            *state.decision_stack[index + 1 :],
+        ),
+    )
+
+
+def credit_owed_recruits(
+    state: GameState, player: int, troops: int
+) -> tuple[GameState, int]:
     """Count ``troops`` refilled into ``player``'s garrison in their Reveal
     turn as the ``DeployTheseTroops`` lines' troops first, as many as those
     lines still owe (OQ-140, user ruling 2026-10-28: "이 카드들 몫 먼저" --
-    a refill goes to these cards' owed troops before another effect's)."""
+    a refill goes to these cards' owed troops before another effect's).
+    Returns the state and how many of the ``troops`` it credited."""
 
     index = own_reveal_frame_index(state, player)
     if index is None or troops < 1:
-        return state
+        return state, 0
     owed = recruits_owed(dict(state.decision_stack[index].context))
     credited = min(troops, owed)
     if not credited:
-        return state
-    return _with_reveal_counts(state, index, recruited=credited, owed=-credited)
+        return state, 0
+    return (
+        _with_reveal_counts(state, index, recruited=credited, owed=-credited),
+        credited,
+    )
 
 
 def recruits_deployable(context: Mapping[str, object]) -> int:

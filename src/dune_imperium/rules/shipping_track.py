@@ -46,7 +46,10 @@ from dune_imperium.core.observation import SHIPPING_REWARDS_KEY
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
 from dune_imperium.rules.action_shapes import Source, printer_value
-from dune_imperium.rules.combat_deployment import grant_shipping_troop_deployment
+from dune_imperium.rules.combat_deployment import (
+    grant_shipping_troop_deployment,
+    note_ungained_shipping_troops,
+)
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -402,6 +405,11 @@ def _recruit(state: GameState, player: int, source: str) -> RuleResult:
         working = update_turn_recruits(working, troops_recruited=recruited)
         if extra:
             working = grant_shipping_troop_deployment(working, player, recruited)
+            # What the supply could not give joins that allowance when a
+            # later refill pays it (OQ-030, ``shortfall.refill_shortfall``).
+            working = note_ungained_shipping_troops(
+                working, player, count - recruited
+            )
     events: list[GameEvent] = [
         GameEvent(
             event_id=f"{source}:troops",

@@ -47,7 +47,12 @@ from dune_imperium.rules.ability_executor import (
 )
 from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.agent_turn import executable_placements
-from dune_imperium.rules.combat_deployment import legal_combat_deployments
+from dune_imperium.rules.combat_deployment import (
+    RECRUITS_DEPLOYABLE_KEY,
+    RECRUITS_OWED_KEY,
+    legal_combat_deployments,
+)
+from dune_imperium.rules.effects import recruit_troops
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.shipping_track import (
     freighter_can_advance,
@@ -57,6 +62,7 @@ from dune_imperium.rules.shipping_track import (
     recall_freighter,
     shipping_troops,
 )
+from dune_imperium.rules.shortfall import refill_shortfall
 
 LEADERS = (
     "earl_memnon_thorvald",
@@ -820,6 +826,238 @@ def test_the_turns_end_leaves_undeployed_troop_transports_troops_in_the_garrison
     assert after.players[0].troops_garrison == 3
     assert after.players[0].troops_conflict == 0
     assert dict(after.decision_stack[-1].context)["turn_owner"] != 0
+
+
+# --- A recruit the supply could not give ---------------------------------------
+
+TROOP_TRANSPORTS = ("troop_transports",)
+
+
+def _after_a_short_recruit(tiles: tuple[str, ...]) -> GameState:
+    """Seat 0's Agent turn at a space with no Combat icon, one troop in its
+    supply, two Negotiators and nine in the garrison; the Freighter recalled
+    from space 3 and its recruit taken: Troop Transports' three troops (two
+    without it) of which the supply gives the one it holds."""
+
+    state = _agent_turn(
+        "wealth",
+        troops_garrison=9,
+        troops_supply=1,
+        negotiators=2,
+        tech_ids=tiles,
+    )
+    state = _seat(state, resources=Resources(water=2, spice=2))
+    return _claim(_recalled_from(3)(state), "recruit")
+
+
+def _bought_returning_both(state: GameState) -> GameState:
+    """Space 3's Acquire Tech (discount 2) taking Holtzman Engine, 6 less 2 and
+    less the two Negotiators it returns to the supply."""
+
+    state = _claim(state, "tech")
+    buy = DomainAction(
+        "choose_tech", 0, (("negotiators", 2), ("tech_id", "holtzman_engine"))
+    )
+    assert buy in ENGINE.legal_actions(state, 0)
+    return ENGINE.apply(state, buy).state
+
+
+def _refilled(state: GameState, troops: int) -> GameState:
+    """``troops`` return to seat 0's supply from its garrison and the engine's
+    refill takes the shortfall from them (``shortfall.refill_shortfall``)."""
+
+    owner = state.players[0]
+    state = _seat(
+        state,
+        troops_supply=owner.troops_supply + troops,
+        troops_garrison=owner.troops_garrison - troops,
+    )
+    return refill_shortfall(state, 0).state
+
+
+def test_the_shortfall_of_a_troop_transports_recruit_joins_its_allowance() -> None:
+    """OQ-030's re-ruling (2026-10-04): a refilled troop is "이번 turn의
+    recruit이므로 turn 주인의 좌석이면 Combat 배치 몫(troops_recruited)에
+    들어간다"; Troop Transports' "You may deploy any of them to the Conflict"
+    lets every troop of a Shipping recruit deploy (docs/rules/rise-of-ix.md
+    15). So the troops the supply could not give join that allowance when a
+    later refill pays them (Codex's example): one supply troop and two
+    Negotiators, a recall from space 3 on the seat's own turn at a space with no
+    Combat icon recruits 1 of 3 at once, and the tile bought with both
+    Negotiators makes the two refilled troops deployable too."""
+
+    short = _after_a_short_recruit(TROOP_TRANSPORTS)
+    owner = short.players[0]
+    assert (owner.troops_garrison, owner.troops_supply) == (10, 0)
+    assert owner.ungained_troops == 2
+    assert _context_of(short)["shipping_troops_recruited"] == 1
+    assert _context_of(short)["shipping_troops_ungained"] == 2
+    assert _deployable(short) == [1]
+
+    bought = _bought_returning_both(short)
+    owner = bought.players[0]
+    assert owner.tech_ids == ("troop_transports", "holtzman_engine")
+    assert (owner.troops_garrison, owner.troops_supply, owner.negotiators) == (12, 0, 0)
+    assert owner.ungained_troops == 0
+    context = _context_of(bought)
+    assert context["shipping_troops_recruited"] == 3
+    assert "shipping_troops_ungained" not in context
+    assert _deployable(bought) == [1, 2, 3]
+    deployed = _deploy(bought, 3)
+    assert deployed.players[0].troops_conflict == 3
+    assert _deployable(deployed) == []
+
+
+def test_without_troop_transports_a_refilled_recruit_gets_no_allowance() -> None:
+    """Without Troop Transports nothing changes: the recall's recruit is two
+    troops, the supply's one comes at once and the other waits, and the refilled
+    troop is a plain recruit that cannot deploy at a space with no Combat icon
+    ([FAQ p. 4]); nothing is kept on the frame."""
+
+    short = _after_a_short_recruit(())
+    assert short.players[0].ungained_troops == 1
+    assert "shipping_troops_ungained" not in _context_of(short)
+    assert "shipping_troops_recruited" not in _context_of(short)
+    bought = _bought_returning_both(short)
+    owner = bought.players[0]
+    assert (owner.troops_garrison, owner.troops_supply) == (11, 1)
+    assert owner.ungained_troops == 0
+    assert "shipping_troops_recruited" not in _context_of(bought)
+    assert "shipping_troops_ungained" not in _context_of(bought)
+    assert _deployable(bought) == []
+
+
+def test_a_plain_shortfall_beside_it_is_not_added_to_the_allowance() -> None:
+    """Only the part of the shortfall a Shipping recruit left joins Troop
+    Transports' allowance: a plain recruit the empty supply could not give
+    either waits beside it and, once refilled, stays a plain recruit (no Combat
+    icon, so no deployment). A partial refill takes Troop Transports' troops
+    first (the documents are silent; the order follows OQ-038's, in the owner's
+    favour)."""
+
+    short = _after_a_short_recruit(TROOP_TRANSPORTS)
+    owner, recruited = recruit_troops(short.players[0], 2)
+    assert recruited == 0
+    both = _seat(short, ungained_troops=owner.ungained_troops)
+    assert both.players[0].ungained_troops == 4
+
+    one = _refilled(both, 1)
+    assert _context_of(one)["shipping_troops_recruited"] == 2
+    assert _context_of(one)["shipping_troops_ungained"] == 1
+    assert one.players[0].ungained_troops == 3
+    three = _refilled(one, 2)
+    assert _context_of(three)["shipping_troops_recruited"] == 3
+    assert "shipping_troops_ungained" not in _context_of(three)
+    assert three.players[0].ungained_troops == 1
+    rest = _refilled(three, 1)
+    assert rest.players[0].ungained_troops == 0
+    assert _context_of(rest)["shipping_troops_recruited"] == 3
+    assert _deployable(rest) == [1, 2, 3]
+
+
+def test_the_shortfall_noted_before_the_placement_carries_over_it() -> None:
+    """The recall made on the turn frame before the Agent is sent keeps both
+    counts over the placement (as ``shipping_troops_recruited`` and a Harkonnen
+    Advisor troop's ``undeployable_troops_ungained`` are), so a refill at a
+    space with no Combat icon still gives the allowance."""
+
+    quiet = _agent_turn(
+        "wealth",
+        lambda state: _claim(_recalled_from(3)(state), "recruit"),
+        troops_garrison=9,
+        troops_supply=1,
+        negotiators=2,
+        tech_ids=TROOP_TRANSPORTS,
+    )
+    assert _context_of(quiet)["shipping_troops_recruited"] == 1
+    assert _context_of(quiet)["shipping_troops_ungained"] == 2
+    assert _deployable(quiet) == [1]
+    refilled = _refilled(quiet, 2)
+    assert _context_of(refilled)["shipping_troops_recruited"] == 3
+    assert "shipping_troops_ungained" not in _context_of(refilled)
+    assert _deployable(refilled) == [1, 2, 3]
+
+
+def _reveal_after_a_short_recruit(*, before_the_reveal: bool) -> GameState:
+    """Seat 0's Reveal turn with Troop Transports, Freighter on space 3, one
+    supply troop and two Negotiators: the recall's recruit (1 of 3) made on the
+    turn frame before the Reveal, or inside the Reveal turn."""
+
+    state = _seat(
+        _start(),
+        freighter_space=3,
+        hand=(f"imperium:{STANDARD}:0",),
+        troops_garrison=9,
+        troops_supply=1,
+        negotiators=2,
+        tech_ids=TROOP_TRANSPORTS,
+    )
+    if before_the_reveal:
+        state = _claim(recall_freighter(state, 0, source="s").state, "recruit")
+    state = ENGINE.apply(state, DomainAction("reveal_turn", 0)).state
+    assert state.decision_stack[-1].kind == FrameKind.REVEAL
+    if before_the_reveal:
+        return state
+    return _claim(recall_freighter(state, 0, source="s").state, "recruit")
+
+
+def _reveal_counts(state: GameState) -> list[int]:
+    return [
+        cast(int, dict(action.arguments)["count"])
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "deploy_troops"
+    ]
+
+
+@pytest.mark.parametrize("before_the_reveal", [False, True])
+def test_a_refilled_troop_transports_recruit_deploys_in_a_reveal_turn(
+    before_the_reveal: bool,
+) -> None:
+    """The same in the owner's Reveal turn (docs/rules/rise-of-ix.md 15): the
+    count waits on the Reveal frame, whether the recall was made inside the
+    Reveal or on the turn frame before it, and the refilled troops deploy as
+    "these troops" (``RECRUITS_DEPLOYABLE_KEY``) with no Combat icon."""
+
+    state = _reveal_after_a_short_recruit(before_the_reveal=before_the_reveal)
+    context = _context_of(state)
+    assert context["shipping_troops_ungained"] == 2
+    assert context[RECRUITS_DEPLOYABLE_KEY] == 1
+    assert _reveal_counts(state) == [1]
+    refilled = _refilled(state, 2)
+    context = _context_of(refilled)
+    assert "shipping_troops_ungained" not in context
+    assert context[RECRUITS_DEPLOYABLE_KEY] == 3
+    assert _reveal_counts(refilled) == [1, 2, 3]
+
+
+def test_a_reveal_lines_owed_troops_come_before_troop_transports() -> None:
+    """In a Reveal turn a refill goes to the ``DeployTheseTroops`` lines' owed
+    troops first (OQ-140, "이 카드들 몫 먼저"), and a troop is counted once: the
+    one the owed line takes does not also join Troop Transports' allowance."""
+
+    state = _reveal_after_a_short_recruit(before_the_reveal=False)
+    # One more troop owed to a line, as an empty supply leaves it.
+    frame = state.decision_stack[-1]
+    owing = {**dict(frame.context), RECRUITS_OWED_KEY: 1}
+    state = replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(owing.items()))),
+        ),
+    )
+    state = _seat(state, ungained_troops=state.players[0].ungained_troops + 1)
+
+    first = _refilled(state, 1)
+    context = _context_of(first)
+    assert context[RECRUITS_DEPLOYABLE_KEY] == 2
+    assert RECRUITS_OWED_KEY not in context
+    assert context["shipping_troops_ungained"] == 2
+    second = _refilled(first, 2)
+    context = _context_of(second)
+    assert context[RECRUITS_DEPLOYABLE_KEY] == 4
+    assert "shipping_troops_ungained" not in context
+    assert second.players[0].ungained_troops == 0
 
 
 # --- Outside the owner's turn -------------------------------------------------

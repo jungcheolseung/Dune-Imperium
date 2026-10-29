@@ -118,6 +118,8 @@ TURN_KEYS: Final = frozenset(
         # Troop Transports' Shipping troops, deployable wherever the Agent
         # went (Rise of Ix, ``combat_deployment``).
         "shipping_troops_recruited",
+        # The part of the shortfall such a recruit could not get (OQ-030).
+        "shipping_troops_ungained",
         # The rows picked toward one waiting effect (stage B3,
         # ``effect_steps``), whichever box's effect it is.
         "effect_pick",

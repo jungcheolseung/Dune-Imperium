@@ -80,6 +80,7 @@ from dune_imperium.rules.frames import (
     OWED_CARD,
     SHIPPING_TROOPS_KEY,
     TECH_ACQUIRE_PENDING_KEY,
+    UNGAINED_SHIPPING_TROOPS_KEY,
     FrameKind,
     commissioned_dreadnought_count,
     hold_draw,
@@ -89,6 +90,7 @@ from dune_imperium.rules.frames import (
     replace_top_frame,
     shipping_troop_count,
     turn_start_is_open,
+    ungained_shipping_troop_count,
     with_context,
 )
 from dune_imperium.rules.gain_events import resources_gained_event
@@ -764,6 +766,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     commanders_before = _commanders_recruited_before_placement(state)
     dreadnoughts_before = commissioned_dreadnought_count(turn_context)
     shipping_before = shipping_troop_count(turn_context)
+    ungained_shipping = ungained_shipping_troop_count(turn_context)
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
         raise ValueError("Agent action infiltrate_post_id must be a string")
@@ -971,6 +974,14 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     *(
                         ((SHIPPING_TROOPS_KEY, shipping_before),)
                         if shipping_before
+                        else ()
+                    ),
+                    # With the part of that recruit the supply could not give
+                    # yet, which a later refill moves into the allowance
+                    # (OQ-030).
+                    *(
+                        ((UNGAINED_SHIPPING_TROOPS_KEY, ungained_shipping),)
+                        if ungained_shipping
                         else ()
                     ),
                     ("units_deploy_blocked", units_deploy_blocked),

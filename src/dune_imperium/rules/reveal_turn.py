@@ -122,6 +122,7 @@ from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
     REVEAL_COMMANDERS_RECRUITED_KEY,
     TECH_ACQUIRE_PENDING_KEY,
+    UNGAINED_SHIPPING_TROOPS_KEY,
     FrameKind,
     context_int,
     context_str,
@@ -135,6 +136,7 @@ from dune_imperium.rules.frames import (
     reset_turn_counters,
     reveal_is_open_for,
     shipping_troop_count,
+    ungained_shipping_troop_count,
     with_context,
 )
 from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
@@ -5958,6 +5960,11 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     carried_shipping = shipping_troop_count(turn_context)
     if carried_shipping:
         context.append((RECRUITS_DEPLOYABLE_KEY, carried_shipping))
+    # With the part of such a recruit the supply could not give yet, which a
+    # later refill moves into the same count (OQ-030).
+    carried_ungained_shipping = ungained_shipping_troop_count(turn_context)
+    if carried_ungained_shipping:
+        context.append((UNGAINED_SHIPPING_TROOPS_KEY, carried_ungained_shipping))
     context.extend(
         (f"revealed_card_{index:03d}", card_id)
         for index, card_id in enumerate(revealed)
