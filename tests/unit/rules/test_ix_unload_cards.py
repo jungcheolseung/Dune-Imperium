@@ -1,0 +1,410 @@
+"""Rise of Ix's Unload cards transcribed in stage P4d (one section per card).
+
+Rules: docs/rules/rise-of-ix.md 7 "Unload" [Rise of Ix p. 7]: "Unload 표시가
+있는 Reveal box는 Reveal turn에 공개할 때(보통처럼, Unload 표시는 무시) 말고도,
+그 카드를 **discard할 때**와 **trash할 때** 얻는다. 남의 효과로 버려져도 된다";
+"discard"는 손의 카드이고 Clean Up은 discard가 아니다 [FAQ p. 2]; the designer
+ruling "비용 → 효과 줄의 왼쪽(비용)이 Unload를 일으키면 Unload를 끝까지 해결한 뒤
+오른쪽으로 간다"; OQ-120 (a revealed Unload card trashed in the same Reveal
+turn gives its box again) and OQ-022 (no effect from an already-trashed card).
+The mechanism itself is tested in ``test_ix_unload.py``; these tests drive
+each card's own data through ``UprisingRulesEngine`` in an original game with
+Rise of Ix.
+"""
+
+import random
+from dataclasses import replace
+
+from dune_imperium import BaseGame, RulesetConfig
+from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents.agent_turn_steps import steps_after
+from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import GainResources
+from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
+from dune_imperium.content.uprising.reveal_abilities import REVEAL_GAIN_ABILITIES
+from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
+from dune_imperium.core import (
+    ChanceDecision,
+    ChanceResolver,
+    DomainAction,
+    GameState,
+    PlayerDecision,
+)
+from dune_imperium.core.actions import ActionValue
+from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.events import GameEvent
+from dune_imperium.core.state import GamePhase
+from dune_imperium.rules import UprisingRulesEngine, unload
+from dune_imperium.rules.effect_steps import first_step
+from dune_imperium.rules.frames import FrameKind
+from dune_imperium.simulation.invariants import check_observation_privacy
+
+IX = RulesetConfig(
+    base_game=BaseGame.IMPERIUM, rise_of_ix=True, first_player_seat_zero=True
+)
+LEADERS = (
+    "glossu_rabban",
+    "count_ilban_richese",
+    "earl_memnon_thorvald",
+    "countess_ariana_thorvald",
+)
+ENGINE = UprisingRulesEngine(leader_ids=LEADERS)
+CODEC = ActionCodec(IX)
+TRUTHSAYER = "imperium:truthsayer:0"
+JAMIS = "imperium:jamis:0"
+MOHIAM = "imperium:reverend_mother_mohiam:0"
+INITIATE = "imperium:bene_gesserit_initiate:0"
+CULL = "intrigue:cull:0"
+UNLOAD_ROW = "resolve_unload_icon"
+
+
+def _rows(state: GameState, seat: int = 0) -> tuple[DomainAction, ...]:
+    """The seat's legal rows, each round-tripped through the action codec."""
+
+    rows = ENGINE.legal_actions(state, seat)
+    for row in rows:
+        assert CODEC.decode(CODEC.encode(row), seat) == row
+    return rows
+
+
+def _give(state: GameState, seat: int, **zones: tuple[str, ...]) -> GameState:
+    """Put the named cards in ``seat``'s zones, taking them out of the
+    Imperium deck and Row and of every seat's zones first (seeded decks)."""
+
+    named = {card for cards in zones.values() for card in cards}
+    players = []
+    for player in state.players:
+        cleaned = replace(
+            player,
+            deck=tuple(c for c in player.deck if c not in named),
+            hand=tuple(c for c in player.hand if c not in named),
+            discard_pile=tuple(c for c in player.discard_pile if c not in named),
+            in_play=tuple(c for c in player.in_play if c not in named),
+        )
+        if player.player_id == seat:
+            cleaned = replace(cleaned, **zones)  # type: ignore[arg-type]
+        players.append(cleaned)
+    return replace(
+        state,
+        players=tuple(players),
+        imperium_deck=tuple(c for c in state.imperium_deck if c not in named),
+        imperium_row=tuple(c for c in state.imperium_row if c not in named),
+    )
+
+
+def _seat(state: GameState, seat: int, **fields: object) -> GameState:
+    owner = replace(state.players[seat], **fields)  # type: ignore[arg-type]
+    return replace(
+        state,
+        players=(*state.players[:seat], owner, *state.players[seat + 1 :]),
+    )
+
+
+def _with_cull(state: GameState, seat: int = 0, solari: int = 1) -> GameState:
+    """``seat`` holds Cull ("[1 Solari] -> [trash a card]") and ``solari``."""
+
+    state = replace(
+        state, intrigue_deck=tuple(c for c in state.intrigue_deck if c != CULL)
+    )
+    owner = state.players[seat]
+    return _seat(
+        state,
+        seat,
+        intrigue_cards=(CULL,),
+        resources=replace(owner.resources, solari=solari),
+    )
+
+
+def _start(seed: int = 3) -> GameState:
+    state = ENGINE.reset(IX, seed)
+    chance = ChanceResolver(seed=seed)
+    while isinstance(decision := ENGINE.current_decision(state), ChanceDecision):
+        state = ENGINE.apply(state, chance.resolve(decision)).state
+    return state
+
+
+def _do(
+    state: GameState, action_id: str, seat: int = 0, **arguments: object
+) -> RuleResult:
+    whole = next(
+        row
+        for row in ENGINE.whole_actions(state, seat)
+        if row.action_id == action_id
+        and all(
+            dict(row.arguments).get(key) == value for key, value in arguments.items()
+        )
+    )
+    events: list[GameEvent] = []
+    while True:
+        rows = _rows(state, seat)
+        left = 0 if whole in rows else steps_after(state, whole)
+        row = whole if whole in rows else first_step(state, whole)
+        assert row in rows
+        result = ENGINE.apply(state, row)
+        events.extend(result.events)
+        state = result.state
+        if left == 0:
+            return RuleResult(state=state, events=tuple(events))
+
+
+def _offered(state: GameState, action_id: str, seat: int = 0) -> bool:
+    _rows(state, seat)
+    return any(row.action_id == action_id for row in ENGINE.whole_actions(state, seat))
+
+
+def _arguments(
+    state: GameState, action_id: str, seat: int = 0
+) -> set[tuple[tuple[str, ActionValue], ...]]:
+    _rows(state, seat)
+    return {
+        row.arguments
+        for row in ENGINE.whole_actions(state, seat)
+        if row.action_id == action_id
+    }
+
+
+def _kinds(events: tuple[GameEvent, ...]) -> list[str]:
+    return [event.kind for event in events]
+
+
+def _clean_up_round(state: GameState) -> tuple[GameState, list[GameEvent]]:
+    """Play the round out at random; return the next round's state and every
+    ``card_unloaded`` event on the way."""
+
+    chance = ChanceResolver(seed=3)
+    rng = random.Random(3)
+    unloaded: list[GameEvent] = []
+    while state.round_number == 1 and state.phase is not GamePhase.FINISHED:
+        decision = ENGINE.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            result = ENGINE.apply(state, chance.resolve(decision))
+        else:
+            assert isinstance(decision, PlayerDecision)
+            result = ENGINE.apply(
+                state, rng.choice(ENGINE.legal_actions(state, decision.owner))
+            )
+        unloaded.extend(e for e in result.events if e.kind == "card_unloaded")
+        state = result.state
+    return state, unloaded
+
+
+def _mohiam_asks_seat_one(state: GameState, *hand: str) -> GameState:
+    """Seat 0 plays Reverend Mother Mohiam with another Bene Gesserit card in
+    play ("each opponent discards two cards", OQ-118); seat 1 holds ``hand``
+    and is the first asked [FAQ p. 3]."""
+
+    state = _give(state, 0, hand=(MOHIAM,), in_play=(INITIATE,))
+    state = _give(state, 1, hand=hand)
+    state = _do(state, "choose_agent_card", card_id=MOHIAM).state
+    state = _do(state, "place_agent", space_id="secrets").state
+    state = _do(state, "resolve_agent_card_effect").state
+    assert state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+    return state
+
+
+# --- Esmar Tuek ---------------------------------------------------------------
+
+ESMAR = "imperium:esmar_tuek_card:0"
+_ESMAR_BOX = (
+    PersonalCardAgentEffect.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
+)
+
+
+def test_esmar_tuek_play_data_matches_the_app() -> None:
+    """App table: cost 5, 1 copy, Spacing Guild, the City and Spice Trade
+    icons, Reveal 2 spice and 2 Solari; screen pieces: Agent "[1 spice] ->
+    [Spacing Guild Influence] [draw 1 card]", Reveal "[Unload] [2 spice] [2
+    Solari]". The card is not Bloodlines' Leader Esmar Tuek (plan 17.2)."""
+    entry = IMPERIUM_CARDS_BY_ID["esmar_tuek_card"]
+    assert "esmar_tuek" not in IMPERIUM_CARDS_BY_ID
+    assert entry.play_data_complete and entry.unload
+    assert (entry.copies, entry.acquisition_cost) == (1, 5)
+    assert entry.factions == (Faction.SPACING_GUILD,)
+    assert entry.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is _ESMAR_BOX
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    (line,) = REVEAL_GAIN_ABILITIES["esmar_tuek_card"].sections
+    assert line.rewards == (GainResources(solari=2, spice=2),)
+    assert line.condition is None
+    assert unload.unload_icons(ESMAR) == (("solari", 2), ("spice", 2))
+    for config in (IX, replace(IX, rise_of_ix=False), RulesetConfig()):
+        deck = content_for(config).imperium_deck_instance_ids
+        assert (ESMAR in deck) == config.rise_of_ix
+
+
+def _esmar_placed(state: GameState, space_id: str = "arrakeen") -> GameState:
+    state = _give(state, 0, hand=(ESMAR,))
+    state = _do(state, "choose_agent_card", card_id=ESMAR).state
+    return _do(state, "place_agent", space_id=space_id).state
+
+
+def test_esmar_tuek_pays_one_spice_for_guild_influence_and_a_card() -> None:
+    """ "[1 spice] -> [Spacing Guild Influence] [draw 1 card]": the arrow is
+    optional [DI p. 9] [FAQ p. 3]; once the spice is paid, the Influence and
+    the hidden draw are two steps in the owner's order (OQ-027, OQ-106,
+    OQ-148), and the turn cannot end while either waits."""
+    state = _esmar_placed(_start())
+    before = state.players[0]
+    assert before.resources.spice >= 1
+    assert _offered(state, "pay_agent_card_spice")
+    paid = _do(state, "pay_agent_card_spice").state
+    assert paid.players[0].resources.spice == before.resources.spice - 1
+    assert paid.players[0].influence == before.influence
+    assert _arguments(paid, "choose_agent_card_influence") == {
+        (("faction", "spacing_guild"),)
+    }
+    assert (("effect", "cards"),) in _arguments(paid, "resolve_agent_card_effect")
+    assert not _offered(paid, "finish_agent_turn")
+    drawn = _do(paid, "resolve_agent_card_effect", effect="cards").state
+    assert len(drawn.players[0].hand) == len(paid.players[0].hand) + 1
+    check_observation_privacy(drawn)
+    done = _do(drawn, "choose_agent_card_influence", faction="spacing_guild").state
+    assert done.players[0].influence.spacing_guild == before.influence.spacing_guild + 1
+
+
+def test_esmar_tuek_revealed_gives_its_box_as_usual() -> None:
+    """ "Reveal turn에 공개할 때(보통처럼, Unload 표시는 무시)" (rise-of-ix.md 7)."""
+    state = _give(_start(), 0, hand=(ESMAR,))
+    revealed = _do(state, "reveal_turn")
+    assert "card_unloaded" not in _kinds(revealed.events)
+    owner = revealed.state.players[0]
+    gained = _do(revealed.state, "gain_reveal_resources")
+    after = gained.state.players[0]
+    assert after.resources.solari == owner.resources.solari + 2
+    assert after.resources.spice == owner.resources.spice + 2
+    assert not _offered(gained.state, UNLOAD_ROW)
+
+
+def test_esmar_tuek_discarded_as_a_cost_pays_its_box_before_the_draw() -> None:
+    """Truthsayer's "[Discard] -> [draw 1 card]": "비용 → 효과 줄의 왼쪽(비용)이
+    Unload를 일으키면 Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer
+    ruling, rise-of-ix.md 7)."""
+    state = _start()
+    kept = state.players[0].hand[0]
+    state = _give(state, 0, hand=(TRUTHSAYER, ESMAR, kept))
+    state = _do(state, "choose_agent_card", card_id=TRUTHSAYER).state
+    state = _do(state, "place_agent", space_id="wealth").state
+    before = state.players[0]
+    result = _do(state, "discard_agent_card", card_id=ESMAR)
+    after = result.state.players[0]
+    assert ESMAR in after.discard_pile
+    assert after.resources.solari == before.resources.solari + 2
+    assert after.resources.spice == before.resources.spice + 2
+    kinds = _kinds(result.events)
+    unload_gain = next(
+        index
+        for index, event in enumerate(result.events)
+        if event.kind == "resources_gained" and ":unload:" in event.event_id
+    )
+    assert (
+        kinds.index("card_discarded")
+        < kinds.index("card_unloaded")
+        < unload_gain
+        < kinds.index("agent_card_effect_resolved")
+    )
+    assert not _offered(result.state, UNLOAD_ROW)
+    check_observation_privacy(result.state)
+
+
+def test_esmar_tuek_trashed_by_jamis_waits_as_rows_of_the_turn() -> None:
+    """ "trash할 때 얻는다" [Rise of Ix p. 7]; Jamis: "Trash a card" -- an
+    effect in the owner's own turn, so each icon is a row of the turn that
+    holds its end until taken, in the owner's order."""
+    state = _give(_start(), 0, hand=(JAMIS, ESMAR))
+    state = _do(state, "choose_agent_card", card_id=JAMIS).state
+    state = _do(state, "place_agent", space_id="stillsuits").state
+    before = state.players[0].resources
+    trashed = _do(state, "trash_agent_card", card_id=ESMAR)
+    assert ESMAR in trashed.state.players[0].trashed
+    assert "card_unloaded" in _kinds(trashed.events)
+    state = trashed.state
+    assert state.players[0].resources == before
+    assert _arguments(state, UNLOAD_ROW) == {
+        (("card_id", ESMAR), ("effect", "solari")),
+        (("card_id", ESMAR), ("effect", "spice")),
+    }
+    state = _do(state, "resolve_board_effect", effect="resources").state
+    state = _do(state, "resolve_faction_influence").state
+    assert not _offered(state, "finish_agent_turn")
+    spice = state.players[0].resources.spice
+    state = _do(state, UNLOAD_ROW, card_id=ESMAR, effect="spice").state
+    assert state.players[0].resources.spice == spice + 2
+    assert not _offered(state, "finish_agent_turn")
+    solari = state.players[0].resources.solari
+    state = _do(state, UNLOAD_ROW, card_id=ESMAR, effect="solari").state
+    assert state.players[0].resources.solari == solari + 2
+    assert not _offered(state, UNLOAD_ROW)
+    assert _offered(state, "finish_agent_turn")
+
+
+def test_esmar_tuek_discarded_by_an_opponent_unloads_in_its_owners_window() -> None:
+    """ "남의 효과로 버려져도 된다(룰북 예: 상대의 Reverend Mother Mohiam)"
+    (rise-of-ix.md 7): outside its owner's turn the box is a window of the
+    owner's, who takes its icons in its own order before the discard goes on."""
+    state = _start()
+    other = state.players[1].hand[0]
+    state = _mohiam_asks_seat_one(state, ESMAR, other)
+    before = state.players[1].resources
+    state = _do(state, "discard_opponent_card", seat=1, card_id=ESMAR).state
+    top = state.decision_stack[-1]
+    assert top.kind is FrameKind.UNLOAD_ICONS
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 1
+    assert not _rows(state, 0)
+    assert {row.arguments for row in _rows(state, 1)} == {
+        (("card_id", ESMAR), ("effect", "solari")),
+        (("card_id", ESMAR), ("effect", "spice")),
+    }
+    state = _do(state, UNLOAD_ROW, seat=1, card_id=ESMAR, effect="spice").state
+    assert state.decision_stack[-1].kind is FrameKind.UNLOAD_ICONS
+    state = _do(state, UNLOAD_ROW, seat=1, card_id=ESMAR, effect="solari").state
+    after = state.players[1].resources
+    assert (after.solari, after.spice) == (before.solari + 2, before.spice + 2)
+    assert state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_esmar_tuek_revealed_then_trashed_gives_its_box_again() -> None:
+    """OQ-120: "공개한 Unload 카드를 같은 Reveal turn에 trash하면 다시 얻는다";
+    Cull: "[1 Solari] -> [trash a card]"."""
+    state = _with_cull(_give(_start(), 0, hand=(ESMAR,)))
+    state = _do(state, "reveal_turn").state
+    before = state.players[0].resources
+    state = _do(state, "gain_reveal_resources").state
+    state = _do(state, "play_intrigue", card_id=CULL, option=0).state
+    trashed = _do(state, "trash_intrigue_card", card_id=ESMAR)
+    assert ESMAR in trashed.state.players[0].trashed
+    assert "card_unloaded" in _kinds(trashed.events)
+    assert not _offered(trashed.state, "finish_reveal")
+    state = _do(trashed.state, UNLOAD_ROW, card_id=ESMAR, effect="spice").state
+    state = _do(state, UNLOAD_ROW, card_id=ESMAR, effect="solari").state
+    after = state.players[0].resources
+    assert after.spice == before.spice + 4
+    assert after.solari == before.solari + 4 - 1
+    assert _offered(state, "finish_reveal")
+
+
+def test_esmar_tuek_trashed_before_its_box_cannot_pay_it_with_its_spice() -> None:
+    """ "Esmar Tuek를 Cull로 trash해 얻은 spice로 그 Agent box를 낼 수 없다"
+    (OQ-022, rise-of-ix.md 7 and 9.3): the Unload comes while the card is
+    trashed, and the card's box, not yet resolved, expires with it."""
+    state = _esmar_placed(_with_cull(_start()), "arrakeen")
+    state = _seat(
+        state, 0, resources=replace(state.players[0].resources, spice=0, solari=1)
+    )
+    assert not _offered(state, "pay_agent_card_spice")
+    state = _do(state, "play_intrigue", card_id=CULL, option=0).state
+    trashed = _do(state, "trash_intrigue_card", card_id=ESMAR)
+    assert ESMAR in trashed.state.players[0].trashed
+    assert "agent_card_effect_expired" in _kinds(trashed.events)
+    state = _do(trashed.state, UNLOAD_ROW, card_id=ESMAR, effect="spice").state
+    assert state.players[0].resources.spice == 2
+    assert not _offered(state, "pay_agent_card_spice")
+
+
+def test_clean_up_moves_esmar_tuek_without_unloading_it() -> None:
+    """ "Clean Up에서 in play 카드를 discard pile로 옮기는 것은 discard가 아니다"
+    (rise-of-ix.md 7, [FAQ p. 2]; OQ-120)."""
+    state, unloaded = _clean_up_round(_give(_start(), 0, in_play=(ESMAR,)))
+    assert state.round_number == 2
+    assert ESMAR in state.players[0].discard_pile
+    assert unloaded == []

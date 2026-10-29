@@ -312,7 +312,10 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # its row is the only one that changed, and no scale moved (compared against
 # 2d742367, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against d47ea6c3 (2026-10-30).
-_GOLDEN_DIGEST = "d09c2b788f34b3c28835564cb815f24f2ae10d3cb7d7be593c21c486c3a46726"
+# Then Esmar Tuek got its play data (stage P4d): only its own row changed, no
+# column and no scale (compared against 74aab0c3, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 86830dd0 (2026-10-30).
+_GOLDEN_DIGEST = "b82454498cfb46734c116e7e8c0531054df137ebfede8e82565afea7d148e5b5"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

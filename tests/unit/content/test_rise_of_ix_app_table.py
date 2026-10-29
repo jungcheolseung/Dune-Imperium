@@ -278,6 +278,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "court_intrigue",
     "desert_ambush",
     "embedded_agent",
+    "esmar_tuek_card",
     "full_scale_assault",
     "guild_chief_administrator",
     "imperial_bashar",

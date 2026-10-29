@@ -306,6 +306,8 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "water_peddler": _reveal(_line(GainResources(water=1))),
         # CHOAM Delegate (Rise of Ix): "[Unload] [3 Solari]", likewise.
         "choam_delegate": _reveal(_line(GainResources(solari=3))),
+        # Esmar Tuek (Rise of Ix): "[Unload] [2 spice] [2 Solari]", likewise.
+        "esmar_tuek_card": _reveal(_line(GainResources(solari=2, spice=2))),
         # Quash Rebellion.
         "quash_rebellion": _reveal(
             _line(RevealPersuasion(2), condition=CommandersInConflictAtLeast(1))

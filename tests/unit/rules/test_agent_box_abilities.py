@@ -189,9 +189,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # ("[Fremen] 2 Influence: [Discard] -> [2 spice]"), Imperial Bashar
     # ("[Troop] -OR- [Trash a card]"), Bounty Hunter ("If used to send an
     # Agent to a board space with an enemy Agent: [2 Solari]"), Web of Power
-    # (three Influence thresholds over three icons) and Ixian Engineer (the
-    # Acquire Tech icon).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 15
+    # (three Influence thresholds over three icons), Ixian Engineer (the
+    # Acquire Tech icon) and Esmar Tuek ("[1 spice] -> [Spacing Guild
+    # Influence] [draw 1 card]").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 16
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -682,8 +683,9 @@ def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
     stage P3, whose reward is one fixed Faction's Influence, its Duncan
     Idaho, whose troop and draw wait as armed icons, its Fremen Camp, and its
     Firm Grip, whose Influence of three named Factions waits as an armed
-    icon, and Rise of Ix's Sayyadina since stage P4d, and its Local Fence,
-    two arrows printed with "-OR-", one row each named by its exchange), and
+    icon, and Rise of Ix's Sayyadina since stage P4d, its Local Fence,
+    two arrows printed with "-OR-", one row each named by its exchange, and
+    its Esmar Tuek, whose Influence and draw wait as armed icons), and
     refuses a record it would pay wrongly (a reward it does not give -- a
     chosen or the visited Faction's Influence --, a cost no row names, an
     "-OR-" arrow whose exchange no row names): such a box keeps its own
@@ -706,6 +708,7 @@ def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
         _BOX.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE,
         _BOX.MAY_PAY_THREE_WATER_FOR_VP,
         _BOX.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE,
+        _BOX.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE,
     }
     unnamed = Ability(
         AbilityTiming.AGENT_BOX,
@@ -1157,14 +1160,17 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     # Rise of Ix's Court Intrigue: its Intrigue draw once the card is under
     # the deck.
     court = _BOX.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE
+    # Rise of Ix's Esmar Tuek (stage P4d): its Influence and its draw armed
+    # once the spice is paid, as Spice Smugglers' and Duncan Idaho's.
+    esmar = _BOX.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
     assert users == {
         AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy, court},
-        AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy, duncan},
+        AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy, duncan, esmar},
         AGENT_ICON_SPICE: {branching},
         AGENT_ICON_TROOPS: {gambit, elite, duncan},
         AGENT_ICON_PLEDGE: {gambit},
         AGENT_ICON_RESEARCH: {piter},
-        AGENT_ICON_INFLUENCE: {grip, shifting, smugglers},
+        AGENT_ICON_INFLUENCE: {grip, shifting, smugglers, esmar},
         AGENT_ICON_SOLARI: {smugglers},
     }
 

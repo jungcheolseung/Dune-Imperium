@@ -457,6 +457,13 @@ class PersonalCardAgentEffect(StrEnum):
     GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE = (
         "gain_two_solari_if_enemy_agent_on_space"
     )
+    # Esmar Tuek (Rise of Ix): "[1 spice] -> [Spacing Guild Influence] [draw 1
+    # card]"; the arrow cost is optional and paid once [DI p. 9] [FAQ p. 3],
+    # and the Influence and the hidden draw are separate steps (OQ-027,
+    # OQ-106, OQ-148).
+    MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE = (
+        "may_pay_one_spice_for_spacing_guild_influence_and_draw_one"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

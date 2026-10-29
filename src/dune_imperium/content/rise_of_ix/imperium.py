@@ -17,7 +17,9 @@ Rights, Sayyadina, Shai-Hulud, Truthsayer, Imperial Shock Trooper, Local
 Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
 Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
 Way, Satellite Ban, Spice Trader, Imperial Bashar, Bounty Hunter, Web of
-Power and Ixian Engineer so far), while the observation lists every identity
+Power, Ixian Engineer and Esmar Tuek so far), while the observation lists
+every identity from v39. Setup takes Rise of Ix on the original game since
+stage P4c-5.
 from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
@@ -49,6 +51,9 @@ _WEB_OF_POWER = (
 )
 _SPICE_TRADER = (
     PersonalCardAgentEffect.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO
+)
+_ESMAR_TUEK = (
+    PersonalCardAgentEffect.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
 )
 
 
@@ -149,6 +154,21 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("esmar_tuek_card", "Esmar Tuek"),
         copies=1,
         acquisition_cost=5,
+        # Not Bloodlines' Leader Esmar Tuek (``esmar_tuek``): the card id
+        # carries ``_card`` (plan 17.2). App table: Spacing Guild, the City
+        # and Spice Trade icons (``Circle``, ``Triangle``), Reveal 2 spice and
+        # 2 Solari. Screen pieces: Agent "[1 spice] -> [Spacing Guild
+        # Influence] [draw 1 card]", an optional arrow [DI p. 9] [FAQ p. 3];
+        # Reveal "[Unload] [2 spice] [2 Solari]" -- the box is gained also
+        # when the card is discarded or trashed [Rise of Ix p. 7]
+        # (``rules.unload``); its record is ``REVEAL_GAIN_ABILITIES``. Trashed
+        # before its Agent box resolves, the box expires and the Unload's
+        # spice cannot pay it (OQ-022, docs/rules/rise-of-ix.md 7).
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=_ESMAR_TUEK,
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("freighter_fleet", "Freighter Fleet"),

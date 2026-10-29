@@ -134,6 +134,7 @@ _JUNCTION_HEADQUARTERS = (
     _BOX.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
 )
 _LOCAL_FENCE = _BOX.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
+_ESMAR_TUEK = _BOX.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
 
 
 def _line(*rewards: Reward, condition: Condition | None = None) -> EffectSection:
@@ -809,6 +810,23 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ),
                 mark=AbilityMark.OPTIONAL,
                 armed_icons=("troops", "cards"),
+            ),
+            # Esmar Tuek (Rise of Ix): "[1 spice] -> [Spacing Guild Influence]
+            # [draw 1 card]" [Steam app screen pieces and button text] -- a
+            # paid arrow whose two rewards wait as icons once the spice is
+            # paid, each its own step in the owner's order, as Spice
+            # Smugglers' and Duncan Idaho's (OQ-148 (가), OQ-027 (b), OQ-106).
+            _ESMAR_TUEK: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(GainInfluence(factions=(Faction.SPACING_GUILD,)),),
+                        costs=(PayResources(spice=1),),
+                    ),
+                    _line(DrawPersonalCards(1)),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("influence", "cards"),
             ),
             # --- One action with follow-ups for the opponents (composed A3g) -----
             # Covert Operation: "Each opponent discards a card" -- one frame per

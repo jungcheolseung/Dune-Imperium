@@ -502,6 +502,12 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.RECRUIT_ONE_OR_MAY_TRASH_A_CARD: (
             "Choose one: Recruit 1 troop / You may trash a card"
         ),
+        # Rise of Ix's Esmar Tuek (stage P4d): "[1 spice] -> [Spacing Guild
+        # Influence] [draw 1 card]".
+        (
+            PersonalCardAgentEffect
+            .MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
+        ): "You may pay 1 spice → Gain 1 Spacing Guild Influence, Draw 1 card",
         PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT: "Complete one of your contracts",
         PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: (
             "Each opponent loses one troop. Each opponent spying on the board "

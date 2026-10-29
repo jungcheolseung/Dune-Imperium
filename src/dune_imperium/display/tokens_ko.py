@@ -558,6 +558,11 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.RECRUIT_ONE_OR_MAY_TRASH_A_CARD: (
         "하나 선택: {troop:1} / 카드 1장 {trash} 가능"
     ),
+    # Rise of Ix's Esmar Tuek (stage P4d).
+    (
+        PersonalCardAgentEffect
+        .MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
+    ): "{spice:1} 지불 가능 {arrow_right} {influence_spacing_guild:1}, {draw:1}",
     PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT: "당신의 계약 하나 완수",
     PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: (
         "다른 플레이어 각자 {troop} 하나 잃음. 이번 차례에 당신이 {agent}를 "
