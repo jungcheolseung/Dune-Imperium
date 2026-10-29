@@ -1391,3 +1391,7 @@ OQ-095 (2)); 차례 밖은 `FREIGHTER_MOVE`·`SHIPPING_REWARD_ICONS` 창. Troop 
 칸이 아니어도 그 troop을 따로 센 몫으로 배치(rise-of-ix.md 15, `SHIPPING_TROOPS_KEY`), 배치를 막는 효과는 "may"보다 먼저, Combat 해결 중의
 회수는 garrison(OQ-151 (가)). 원판 + Ix 1,905행. **넘기는 일:** 화면 문구(`display/actions.py`에 `resolve_shipping_reward` 설명 없음, P5와
 나눔), 칸·카드 출처의 Freighter 행(P4c-4·P4d), Windtraps를 Freighter 보상으로 얻은 승리의 water(Conflict 보상을 붙일 때, rise-of-ix.md 12).
+**P4c-2c Codex 리뷰(2026-10-29):** (1) Sonic Snoopers로 한 장을 몰래 아래로 넣을 때 다른 좌석이 그 카드만 잊어 어느 카드가 움직였는지 드러남 →
+`5c60e908`(그 손에서 알던 카드를 모두 잊는다 — Secrets·Insidious와 같다, OQ-149). (2) Spaceport의 덱 위 선택이 Agent 칸의 카드 획득 길
+(`_acquire_by_agent_card`)에는 닿지 않는다 — 원판 카드의 획득은 Intrigue(Bypass Protocol)뿐이라 지금 원판 + Ix에는 닿지 않는다. **P4d에서** Ix
+카드를 전사할 때 Agent 칸 획득이 있으면 함께 고치고, Immortality의 Tleilaxu Master 같은 조합은 **P7**에서 고친다.
