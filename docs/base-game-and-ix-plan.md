@@ -1560,9 +1560,10 @@ Tech 타일 세 더미와 협상가 자리가 있다(pp. 3-4).
 1. **CHOAM 덮개와 Ix 보드:** 앱에는 보드 그림이 없다(3D Playmat). 앱 장면 `Board/Visible Objects Connected to Entities`에는 원판 + Ix 판의 칸 묶음
    `P_Spaces_IX_ChildOrderMattersForGamepad`(29: 새 칸 넷, `P_ShippingTrack`(자식 11), 원판 칸들의 Ix 판 상태, `HighlightBoxCHOAMAnchor`, Immortality
    Research Station; 2026-10-29 조회)가 있다 — 새 칸 넷과 Shipping 트랙의 **칸 타일**(팝오버 그림)은 `app_board.py`에 이 컨테이너를 더해 P5b의 원판
-   19칸처럼 그린다. **보드 그림**은 TTS 모드 2354919205("Dune Imperium + Rise of IX + Immortality")의 작은 `Custom_Board` 둘
-   (`ugc/1656728601468972086/97AF2ED5…`, `ugc/1656728601468992121/5A33F0A8…`; 캐시에 없음, 크기 모름)이 덮개·Ix 보드 후보다 — 내려받기는 파일을 보이고
-   허락을 받는다. 덮개는 원판 그림의 해당 구역 위에 겹쳐 그리고(빠진 칸 넷의 hotspot은 원판 판에서만), Ix 보드는 Bene Tleilax 보드처럼 따로 그린다
+   19칸처럼 그린다. **보드 그림**은 TTS 모드 2354919205("Dune Imperium + Rise of IX + Immortality")에서 받는다(사용자 답 1). 처음 후보로 적은 작은
+   `Custom_Board` 둘(`ugc/1656728601468972086/97AF2ED5…`, `ugc/1656728601468992121/5A33F0A8…`)은 받아 보니 온통 검은 PNG(3000x1000, 1600x1000)였다
+   — 보드가 아니다. 진짜 후보는 모드의 "Rise of IX Expansion" 가방 안 큰 `Custom_Tile` 둘(GUID `dffad3` `ugc/1833531164453656626/A8E354A6…`,
+   `d80d1f` `ugc/1833531164453654026/CCFD863F…`, 배율 5.12 — Immortality 보드와 같은 크기 등급)이고, 주소가 처음 허락받은 것과 달라 다시 묻는다. 덮개는 원판 그림의 해당 구역 위에 겹쳐 그리고(빠진 칸 넷의 hotspot은 원판 판에서만), Ix 보드는 Bene Tleilax 보드처럼 따로 그린다
    (`boards.imperium.ix`). 대안: 그림 없이 앱 칸 타일과 Shipping 트랙 타일로 덮개 구역을 짠다.
 2. **Tech 타일 18장:** 앱 `UI_crd_TechTile_*`(Bloodlines Tech 렌더와 같은 틀, `app_cards.py`) — 스캔 `cards/en/rise-of-ix/tech/`와 sheet로 대조. 뒷면은 `back_tech`.
 3. **지도자 여섯:** `app_leaders.py`의 원판 틀(`FRAME_KINDS["original"]`)과 섞은 안(앱 그림 + 스캔 채움)을 Ix 지도자에 — 스캔은 `cards/en/rise-of-ix/leader/`
@@ -1605,6 +1606,9 @@ Tech 타일 세 더미와 협상가 자리가 있다(pp. 3-4).
 - 단계마다 그 단계가 닿는 테스트와 e2e만, 병합 전에는 tier 2 묶음(합친 트리 pytest·ruff·mypy, 닿는 e2e 전체).
 
 #### 18.6.6 사용자 결정 (모아서)
+
+**사용자 답(2026-10-29, 이 세션 채팅):** 1 "TTS 모드에서 내려받기", 2 "룰북 읽어. 허락함", 3 "uprising에서 샌드웜 그린 것처럼 하면 될 듯" —
+dreadnought 말은 앱 그림이나 TTS 토큰이 아니라 Uprising의 그린 모래벌레(`board.js` `drawnSandworm`)처럼 코드로 그린다. 아래는 물었던 그대로다.
 
 1. **덮개·Ix 보드 그림:** (가) TTS 모드 2354919205의 두 보드 그림 내려받기(파일을 보이고 이 세션 채팅에서 허락) — 원판 보드와 같은 길, 추천,
    (나) 그림 없이 앱 칸 타일로 덮개 구역을 짬.
