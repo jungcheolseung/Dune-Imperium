@@ -85,6 +85,7 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
     DestroyShieldWall,
     DiscardFromHand,
     EffectSection,
@@ -708,9 +709,14 @@ def _old_any_effect(
     # that can change something now, judged after its own resource cost
     # (``reward_can_change_something``), while a line without a cost is played
     # even when every reward fizzles -- rule changes made after the copy.
+    # Updated on purpose 2026-10-30 (stage P4d, OQ-113 (C): "Tech 획득은 그
+    # 타일 값(spice)을 내고 타일을 받는다"): a line whose reward is an Acquire
+    # Tech is a line with a cost too (Rise of Ix's Machine Culture).
     owner = state.players[player]
     for section in sections:
-        if not section.costs:
+        if not section.costs and not any(
+            isinstance(reward, AcquireTech) for reward in section.rewards
+        ):
             continue
         cost = resource_cost((section,))
         after = pay_cost(owner, cost) if can_afford(owner, cost) else owner

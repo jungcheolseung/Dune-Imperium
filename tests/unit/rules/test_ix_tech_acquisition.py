@@ -84,9 +84,11 @@ LEADERS = (
 )
 ORIGINAL = RulesetConfig(base_game=BaseGame.IMPERIUM, first_player_seat_zero=True)
 IX = RulesetConfig(base_game=BaseGame.IMPERIUM, rise_of_ix=True)
-# A card's refusal names its printer (stage B3d-3); no card of the original
-# game prints the icon yet, so the frame borrows a Bloodlines Intrigue's.
-PRINTER = printer_value(Source.INTRIGUE, "battlefield_research")
+# A card's refusal names its printer (stage B3d-3). The frames here are an
+# icon's "may", so they borrow the Dreadnought space's: an Intrigue card's
+# icon (Machine Culture's) is no "may" while a tile is in reach, see
+# ``test_ix_intrigue_e.py`` (designer ruling, OQ-057 (9)).
+PRINTER = printer_value(Source.BOARD_SPACE, "dreadnought")
 # Costs: Detonation Devices 3, Artillery 1, Chaumurky 4 | Holtzman Engine 6,
 # Invasion Ships 5, Memocorders 2 | Restricted Ordnance 4, Minimic Film 2,
 # Flagship 8.
@@ -654,7 +656,14 @@ def test_an_acquire_tech_icon_opens_the_ix_acquisition() -> None:
     assert ix_pending_of(opened, 0) == IxPending(
         tech_discount=1, tech_payment="spice", negotiators_returnable=2
     )
-    assert DECLINE in engine.whole_actions(opened, 0)
+    # The executor opens an Intrigue card's icon, which must be used once a
+    # tile is in reach (Machine Culture, OQ-057 (9)): no refusal beside the
+    # purchases, and only the refusal once none is.
+    assert DECLINE not in engine.whole_actions(opened, 0)
+    broke_open = apply_automatic_rewards(
+        _holding(spice=0)[1], 0, (section,), "s", played_card_id=state.intrigue_deck[0]
+    ).state
+    assert engine.whole_actions(broke_open, 0) == (DECLINE,)
 
     owner = state.players[0]
     assert rewards_with_no_effect(state, 0, (section,)) == ()

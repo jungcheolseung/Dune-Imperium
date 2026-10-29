@@ -212,7 +212,15 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # one intrigue-table column is new (the "units" flag of its garrison
 # deployment, the dreadnoughts' share), read by its row alone; no older scale
 # moved (compared against 4cdf1e99, 2026-10-30).
-_GOLDEN_DIGEST = "b281810556772086c0fb91ffc890c2a97f73c72b8e5c4e504fdbfa7418449241"
+# Then War Chest got its record (stage P4d): only its own row changed, no
+# column and no scale (compared against 3b8cd83c, 2026-10-30).
+# Then Machine Culture got its record (stage P4d): only its own row changed, no
+# column and no scale (compared against 044b4ea1, 2026-10-30).
+# Then Diversion got its record (stage P4d): only its own row changed, and one
+# intrigue-table column is new (the "dreadnoughts" flag of its unit-count
+# condition), read by its row alone; no older scale moved (compared against
+# 257bdcc0, 2026-10-30).
+_GOLDEN_DIGEST = "e4efb969a0680675d0e9606f2a8b0be4c170ace80ad6f594a2c2d7a9d3006eb4"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

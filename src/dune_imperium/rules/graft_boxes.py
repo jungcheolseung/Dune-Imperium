@@ -98,6 +98,9 @@ TURN_KEYS: Final = frozenset(
         "combat_dreadnoughts_withdrawable",
         "combat_troops_deployed",
         "combat_troops_withdrawable",
+        # The unit count a played Diversion used, dreadnoughts among them
+        # (``combat_deployment``).
+        "combat_units_committed_with_dreadnoughts",
         "commanders_recruited",
         "cost_option",
         "dreadnoughts_commissioned",

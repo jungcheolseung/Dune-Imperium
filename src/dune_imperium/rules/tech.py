@@ -64,7 +64,12 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import TECH_DISCOUNT_KEY, TECH_PAYMENT_KEY
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
-from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, printer_value
+from dune_imperium.rules.action_shapes import (
+    PRINTER_KEY,
+    Source,
+    printer_parts,
+    printer_value,
+)
 from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
@@ -492,6 +497,17 @@ def _offer(state: GameState, player: int) -> tuple[int, str] | None:
     )
 
 
+def _opened_by_intrigue(state: GameState, player: int) -> bool:
+    """Whether the owner's open Acquire Tech frame was opened by an Intrigue
+    card (its recorded printer, ``PRINTER_KEY``)."""
+
+    frame = owned_top_frame(state, FrameKind.TECH_ACQUISITION, player)
+    if frame is None:
+        return False
+    printer = dict(frame.context).get(PRINTER_KEY)
+    return isinstance(printer, str) and printer_parts(printer)[0] is Source.INTRIGUE
+
+
 def tech_candidates(
     state: GameState, owner: PlayerState
 ) -> tuple[tuple[TechTile, bool], ...]:
@@ -714,6 +730,14 @@ def legal_tech_acquisition_actions(
             )
             for tile, returned in ix_tech_acquisitions(state, owner, discount)
         )
+        if len(actions) > 1 and _opened_by_intrigue(state, player):
+            # Machine Culture "must acquire once played" (designer ruling,
+            # OQ-057 (9); docs/rules/designer-rulings-audit.md 9: "Intrigue
+            # 출처 frame에서만 decline 제거"; rise-of-ix.md 9.3 and 15, OQ-113
+            # (C): the tile's price is the card's cost): an Intrigue card's
+            # Acquire Tech keeps its refusal only when no tile is in reach,
+            # as the Tech Module's (below).
+            actions = actions[1:]
         return tuple(actions)
     actions.extend(
         DomainAction(

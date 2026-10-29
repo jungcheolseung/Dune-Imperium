@@ -23,6 +23,7 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
     AllConditions,
     AtLeastOfConditions,
     CommissionDreadnought,
@@ -45,9 +46,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseTroops,
     PayResources,
     RecruitTroops,
+    SolariAtLeast,
     SpiceMustFlowCardsAtLeast,
     TechTilesAtLeast,
     TrashPersonalCard,
+    UnitsDeployedThisTurnAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
@@ -164,6 +167,23 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("diversion", "Diversion"),
         copies=1,
+        # [PLOT] "When you deploy four or more units to the Conflict in a single
+        # turn:" the Freighter icon [Steam app text, log line "Played Diversion
+        # to gain Freighter" and screen pieces]. A play condition judged as
+        # Distraction's (OQ-016: the turn's peak of units; rise-of-ix.md 15),
+        # but a unit is a troop or a dreadnought [Rise of Ix p. 6]
+        # (rise-of-ix.md 6, table row "unit": "Diversion(four or more
+        # units)"), so the dreadnoughts of the turn's deployment are counted
+        # with the troops (``dreadnoughts=True``). The Freighter icon is a
+        # "may" [Rise of Ix p. 5], as Expedite's.
+        options=(
+            _plot(
+                EffectSection(
+                    condition=UnitsDeployedThisTurnAtLeast(4, dreadnoughts=True),
+                    rewards=(Freighter(),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("expedite", "Expedite"),
@@ -251,6 +271,26 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("machine_culture", "Machine Culture"),
         copies=1,
+        # [PLOT / ENDGAME] the Acquire Tech icon -OR- "If you have three or
+        # more Tech tiles: 1 VP" [Steam app text, log line and screen pieces:
+        # the Plot band prints the icon alone, with no discount number
+        # (rise-of-ix.md 9.3 and OQ-113 (C): 'Acquire Tech, 할인 없음'), so the
+        # discount is stated: 0, not the piece's default of 1]. The Plot half
+        # has no resource cost, but the tile's price is its cost: "Machine
+        # Culture는 Tech를 얻어야 낸다" (the designer, rise-of-ix.md 9.3), so it is
+        # played only while a tile can be bought, Negotiators counted
+        # (``effect_interpreter._line_has_cost``), and once played the tile is
+        # taken (``tech.legal_tech_acquisition_actions``). The Endgame half is
+        # Battlefield Research's Tech condition.
+        options=(
+            _plot(EffectSection(rewards=(AcquireTech(discount=0),))),
+            _endgame(
+                EffectSection(
+                    condition=TechTilesAtLeast(3),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("quid_pro_quo", "Quid Pro Quo"),
@@ -326,5 +366,28 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("war_chest", "War Chest"),
         copies=1,
+        # [COMBAT / ENDGAME] "2 Solari -> 4 swords" -OR- "If you have 10 or
+        # more Solari: 1 VP" [Steam app text, log lines and screen pieces; the
+        # prefab sets the -OR- frame between the two halves, and the log tells
+        # the arrow's side: "played War Chest and spent 2 Solari to gain 4
+        # swords"]. The Combat half is one cost line, so it is played only
+        # with the 2 Solari in hand ("To play an Intrigue card, you must meet
+        # its conditions and pay its costs." [FAQ p. 2]); the swords are always
+        # live in a Conflict (OQ-071). The Endgame half is Economic
+        # Positioning's: a Solari condition, 1 VP.
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(PayResources(solari=2),),
+                    rewards=(GainCombatStrength(4),),
+                )
+            ),
+            _endgame(
+                EffectSection(
+                    condition=SolariAtLeast(10),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
     ),
 )
