@@ -2140,3 +2140,13 @@ title = "A Tech tile acquired during a Reveal turn works in that turn"
 ruling_ko = "공개 차례 도중에 기술 타일을 얻으면, 그 타일의 공개 차례 능력(Artillery, Minimic Film, Restricted Ordnance, Disposal Facility)도 그 차례에 쓴다."
 ruling = "A Tech tile acquired during your Reveal turn applies its Reveal turn ability (Artillery, Minimic Film, Restricted Ordnance, Disposal Facility) in that same turn."
 names = ["Artillery", "Minimic Film", "Restricted Ordnance", "Disposal Facility"]
+
+[[ruling]]
+oq = "OQ-151"
+group = "project"
+game = "base_ix"
+title_ko = "교전 보상으로 회수해 소집한 병력은 주둔지로"
+title = "Troops recruited by a Freighter recall during Combat go to the garrison"
+ruling_ko = "교전 보상의 Freighter로 회수해 소집한 병력은 Troop Transports가 있어도 교전에 배치하지 않고 주둔지로 간다. 자기 차례에 회수로 소집한 병력은 Troop Transports가 있으면 전투 장소에 에이전트를 보내지 않았어도 교전에 배치할 수 있다."
+ruling = "Troops recruited by a Freighter recall from a Conflict reward go to the garrison, even with Troop Transports. On your own turn, Troop Transports lets the troops a recall recruits deploy to the Conflict even when your Agent went to no Combat space."
+names = ["Troop Transports", "Freighter"]

@@ -324,7 +324,7 @@ for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판
 - 비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다(OQ-071의 사용자 원칙 일반화) — 버릴 카드에 Unload가 있어도 같다(Ix-Guild Compact에서 dreadnought가
   둘 다 나가 있을 때, Invasion Ships를 Agent를 보낸 뒤에; 앱도 같다).
 - Troop Transports의 "You may deploy any of them to the Conflict"는 카드 문장이 배치를 허락하므로 Combat 칸에 Agent를 보내지 않은 turn에도 배치할 수 있다
-  (카드는 일반 규칙을 바꾼다 `[DI p. 6]`; 디자이너 판정도 Combat 해결 중의 배치가 가능하다는 쪽).
+  (카드는 일반 규칙을 바꾼다 `[DI p. 6]`). Combat 해결 중의 회수로 recruit한 troop은 Troop Transports가 있어도 garrison으로 간다(OQ-151 (가), 2026-10-29 사용자).
 - "Reveal Turn:" Tech를 Reveal turn 도중에 얻으면 그 turn에 쓴다(타일 문장; 지금 엔진은 Bloodlines의 Command 타일만 그렇게 한다 — P4 구현 메모).
 
 ## 16. 새 질문

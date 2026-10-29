@@ -354,6 +354,7 @@ _BASE_IX_NAMES = (
     "Spice Smugglers",
     "The Voice",
     "Treachery",
+    "Troop Transports",
     "Unload",
     "Urgent Mission",
     "Water of Life",
