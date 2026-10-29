@@ -1370,3 +1370,12 @@ Ix 콘텐츠는 `discount=0`/`1`을 늘 적는다(Dreadnought 칸은 0, Tech Neg
 `NEGOTIATORS_RETURNABLE_KEY`를 core 함수 하나로 합친다. (2)·(3) **P7 몫(Ix + Tech Module 함께):** Ix 갈래가 `_acquisition_variants()`를
 건너뛰어 Advanced Data Analysis를 `post_id` 없이 내고(고르면 `KeyError`), codec의 Negotiator 구매 행이 Ix 타일에만 있어 Bloodlines 타일의
 Negotiator 변형(예: Glowglobes를 Negotiator 1로)을 담지 못한다 — 두 모듈을 함께 여는 단계에서 갈래를 합친다(10a).
+
+**P4c-2a·2b 끝(2026-10-29, `00f3a312`·`d3324e1c`; Codex 2a 지적 0):** Tech 18장 가운데 15장 — 획득 키(Windtraps water, Shuttle Fleet 서로 다른 둘),
+Round Start(Holtzman Engine·Shuttle Fleet, OQ-122), Reveal(Artillery·Minimic Film·Restricted Ordnance·Disposal Facility, OQ-126), 승자의 창
+(Windtraps 줄, Detonation Devices), Endgame(Chaumurky 동률이 VP 다음 첫 기준, Holtzman·Memocorders·Spy Satellites — Tech Module 줄 뒤 좌석
+순서, OQ-040의 관례), 뒤집기 넷(Flagship 4 Solari·troop 3, Holoprojectors, Invasion Ships — 놓기 전 turn frame에서만, Training Drones; "discard →"
+비용은 손 카드라 Reveal turn에는 없다). OQ-150 (가): Reveal 도중 얻은 Ix 타일도 그 turn에 듣는다. 원판 + Ix 카탈로그 1,889행. **P7 몫:** Tech
+Module의 Self-Destroying Messages·Panopticon도 OQ-150의 같은 원칙으로 늦게 줘야 한다 — Uprising + Bloodlines만으로는 Reveal 도중 Tech를 얻을
+길이 없어 지금은 닿지 않고(OQ-102 "같은 모양 전수"), Ix와 함께 여는 단계에서 맞춘다. **남은 P4c-2c:** Sonic Snoopers(`INTRIGUE_BOTTOM_PICK`,
+아는 Intrigue는 OQ-149 틀), Spy Satellites 첫 능력, Spaceport(얻은 카드를 덱 위에 — OQ-145의 공개 덱 위). Troop Transports는 P4c-3.
