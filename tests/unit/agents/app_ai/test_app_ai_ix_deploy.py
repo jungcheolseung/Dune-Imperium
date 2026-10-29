@@ -89,3 +89,28 @@ def test_deploy_value_counts_garrisoned_dreadnoughts(
     none = _profile(monkeypatch, dreadnoughts_garrison=0, dreadnoughts_supply=2)
     two = _profile(monkeypatch, dreadnoughts_garrison=2, dreadnoughts_supply=0)
     assert two.deploy_value(space) - none.deploy_value(space) == pytest.approx(3.0)
+
+
+@pytest.mark.parametrize(
+    ("leader_id", "expected"),
+    [("prince_rhombur_vernius", (1, 0)), ("archduke_armand_ecaz", (1, 1))],
+)
+def test_rhombur_dreadnoughts_count_four_in_the_take_while(
+    monkeypatch: pytest.MonkeyPatch, leader_id: str, expected: tuple[int, int]
+) -> None:
+    """``HeavyLasgunCannonsAbility`` sets Rhombur's dreadnoughts' ``Strength``
+    to 4 at ``GameStarted``: "Mid can win" asks 3 - 0 + 1 = 4, which his one
+    dreadnought meets alone; anyone else's (3) takes a troop too."""
+
+    p = _profile(monkeypatch, leader_id=leader_id)
+    first = p.ctx.opponents[0].player_id
+    monkeypatch.setattr(p, "is_climax", lambda: False)
+    monkeypatch.setattr(p, "conflict_posture_bounds", lambda: (-1e9, 1e9))
+    monkeypatch.setattr(p, "current_conflict_interest", lambda: _Sum(0.0))
+    monkeypatch.setattr(p, "est_strength", lambda: _Sum(0))
+    monkeypatch.setattr(p, "potential_strength", lambda n: _Sum(10))
+    monkeypatch.setattr(
+        p, "est_opponent_strength", lambda seat: _Sum(3 if seat == first else 0)
+    )
+    monkeypatch.setattr(p, "_conflict_rewards_allowed", lambda: 3)
+    assert p.units_to_deploy_split(3, 1, 4) == expected

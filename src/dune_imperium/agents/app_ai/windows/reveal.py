@@ -240,6 +240,7 @@ from dune_imperium.agents.app_ai.abilities.ix_imperium import (
     IxianEngineerAbility,
     WebOfPowerRevealAbility,
 )
+from dune_imperium.agents.app_ai.abilities.ix_leaders import CoordinationAbility
 from dune_imperium.agents.app_ai.abilities.leaders import (
     DesertScoutsAbility,
     DeviousStrengthAbility,
@@ -468,6 +469,8 @@ _REVEAL_ACTIONS = REVEAL_CHOICE_ACTION_IDS | frozenset(
         # Rise of Ix Tech: Spy Satellites' / Sonic Snoopers' trash, Disposal
         # Facility's Reveal-turn trash (plan §13).
         "trash_tech",
+        # Archduke Armand Ecaz's Coordination (``_leader_sources``).
+        "trash_leader_reveal_card",
         "trash_disposal_facility_card",
         # A Reveal box Freighter's recall rewards (``ix.shipping_sources``),
         # and an Unload box owed in the turn (``ix.take_unload``).
@@ -1821,8 +1824,9 @@ def _return_batch(run: DecisionRun) -> DomainAction | None:
 
 def _leader_sources(run: DecisionRun) -> list[Source]:
     """Leader abilities with Reveal timing (``GetUsableDeferredAbilities`` row
-    3: ``HasMatchingTiming && CanBeRun``): Amber's Desert Scouts and Feyd's
-    Devious Strength. A key whose app ``Cost`` fails is not in the list.
+    3: ``HasMatchingTiming && CanBeRun``): Amber's Desert Scouts, Feyd's
+    Devious Strength and Rise of Ix's Archduke Armand Ecaz's Coordination. A
+    key whose app ``Cost`` fails is not in the list.
 
     Desert Scouts retreats ``OfType<WormTroop>().Take(1)``: a troop while one
     fights, a Sardaukar Commander only without one (plan §11.5,
@@ -1843,6 +1847,10 @@ def _leader_sources(run: DecisionRun) -> list[Source]:
                 _leader_evaluate(run, scouts, scouts_actions, None),
             )
         )
+    trash_actions = run.by_id("trash_leader_reveal_card")
+    coordination = _leader_ability(run, CoordinationAbility)
+    if trash_actions and coordination is not None and coordination.meets_cost(p):
+        sources.append(_coordination_source(run, coordination, trash_actions))
     recall_actions = run.by_id("recall_spy_for_leader")
     devious = _leader_ability(run, DeviousStrengthAbility)
     if recall_actions and devious is not None and devious.meets_cost(p):
@@ -1855,6 +1863,32 @@ def _leader_sources(run: DecisionRun) -> list[Source]:
             )
         )
     return sources
+
+
+def _coordination_source(
+    run: DecisionRun,
+    ability: CoordinationAbility,
+    actions: tuple[DomainAction, ...],
+) -> Source:
+    """Archduke Armand Ecaz's Coordination (Optional): ``GetCardToTrash``
+    over the cards in play we offer (``infos[0]``); its "trash nothing"
+    answer (``((),)``) uses the key on nothing, so it is no candidate."""
+
+    seat = run.ctx.seat
+    cards = tuple(
+        card_entity(ref, seat)
+        for ref in (str_arg(a, "card_id") for a in actions)
+        if ref is not None
+    )
+    request = Request((TargetInfo(entities=cards),))
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        answer = ability.evaluate(run.profile, request)
+        ref = _option(answer)
+        chosen = None if ref is None else with_arg(actions, "card_id", ref)
+        return answer.value, chosen
+
+    return Source("Coordination", Stage.PROMPT, actions, evaluate)
 
 
 def _leader_evaluate(

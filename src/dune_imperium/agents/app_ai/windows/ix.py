@@ -22,7 +22,11 @@ window (``agent_effects``), where the same rows wait on the owner's turn.
 
 from collections.abc import Sequence
 
-from dune_imperium.agents.app_ai.abilities.base import Request, TargetInfo
+from dune_imperium.agents.app_ai.abilities.base import (
+    Request,
+    TargetInfo,
+    abilities_of,
+)
 from dune_imperium.agents.app_ai.abilities.ix_board import (
     DREADNOUGHT_DETONATE,
     FREIGHTER_RECALL,
@@ -34,7 +38,13 @@ from dune_imperium.agents.app_ai.abilities.ix_board import (
     ShippingTrackAbility2,
     ShippingTrackAbility3,
 )
-from dune_imperium.agents.app_ai.catalog import space_entity, track_entity
+from dune_imperium.agents.app_ai.abilities.ix_leaders import OneStepAheadRoundAbility
+from dune_imperium.agents.app_ai.catalog import (
+    card_entity,
+    leader_entity,
+    space_entity,
+    track_entity,
+)
 from dune_imperium.agents.app_ai.context import FACTIONS
 from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.windows.common import (
@@ -257,8 +267,47 @@ def unload_icons(run: DecisionRun) -> DomainAction | None:
     return take_unload(run)
 
 
+_SET_ASIDE = "set_aside_leader_card"
+
+
+def round_start_set_aside(run: DecisionRun) -> DomainAction | None:
+    """Ilesa Ecaz's One Step Ahead at Round Start: the hand card
+    ``OneStepAheadRoundAbility::Evaluate`` sets aside (a forced
+    ``KeepCard`` prompt over the hand, ``<Targets>d__7`` @0x4b01d90); an
+    empty answer is ``DefaultRandomChoice``."""
+
+    actions = run.by_id(_SET_ASIDE)
+    me = run.ctx.me
+    if not actions or len(actions) != len(run.legal) or me.leader_id is None:
+        return None
+    ability = next(
+        (
+            a
+            for a in abilities_of(leader_entity(me.leader_id, me.leader_face_id))
+            if isinstance(a, OneStepAheadRoundAbility)
+        ),
+        None,
+    )
+    if ability is None:
+        return None
+    seat = run.ctx.seat
+    refs = [ref for a in actions if (ref := str_arg(a, "card_id")) is not None]
+    hand = tuple(card_entity(ref, seat) for ref in refs)
+    request = Request((TargetInfo(entities=hand),), forced=True)
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        answer = ability.evaluate(run.profile, request)
+        ref = answer.response[0][0] if answer.response and answer.response[0] else None
+        chosen = next((a for a in actions if str_arg(a, "card_id") == ref), None)
+        return answer.value, chosen
+
+    source = Source("One Step Ahead", Stage.PROMPT, actions, evaluate)
+    return decide(run, [source], skip=None, forced=True)
+
+
 HANDLERS: dict[str, Handler] = {
     "unload_icons": unload_icons,
+    "round_start_set_aside": round_start_set_aside,
     "dreadnought_control_choice": dreadnought_control_choice,
     "intrigue_bottom_pick": intrigue_bottom_pick,
     "freighter_move": freighter_move,

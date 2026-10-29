@@ -18,6 +18,7 @@ from dune_imperium.agents.app_ai.abilities import (  # noqa: F401  (registration
     ix_conflicts,
     ix_imperium,
     ix_intrigue,
+    ix_leaders,
     leaders,
     original_board,
     original_conflicts,

@@ -146,6 +146,10 @@ _DIVERSION = "diversion"  # Rise of Ix
 _NEGOTIATED_WITHDRAWAL = "negotiated_withdrawal"  # Rise of Ix Imperium card
 #: A dreadnought's strength [Rise of Ix p. 6] (the unit's ``Strength``).
 _DREADNOUGHT_STRENGTH = 3
+#: Prince Rhombur Vernius' dreadnoughts: ``HeavyLasgunCannonsAbility`` sets
+#: their ``Strength`` to 4 at ``GameStarted`` (``mov esi, 4``).
+_RHOMBUR = "prince_rhombur_vernius"
+_RHOMBUR_DREADNOUGHT_STRENGTH = 4
 _ECONOMIC_POSITIONING = "economic_positioning"  # our Intrigue card id
 # The space archetypes the worm potentials look up (``ArchID ==
 # Uprising.HaggaBasinUP`` / ``Uprising.DeepDesert``): only on the Uprising
@@ -1018,9 +1022,15 @@ class CombatMixin(ProfileCore):
         )
         all_ = sorted([*opp, my_exp], reverse=True)
         req = 0
+        # The units' ``Strength``: Rhombur's dreadnoughts are 4.
+        dreadnought_strength = (
+            _RHOMBUR_DREADNOUGHT_STRENGTH
+            if me.leader_id == _RHOMBUR
+            else _DREADNOUGHT_STRENGTH
+        )
         sum_strength = (
             garrison_troops * _TROOP_STRENGTH
-            + garrison_dreadnoughts * _DREADNOUGHT_STRENGTH
+            + garrison_dreadnoughts * dreadnought_strength
         )
         lb, ub = self.conflict_posture_bounds()
         slots = self._conflict_rewards_allowed()
@@ -1066,7 +1076,7 @@ class CombatMixin(ProfileCore):
                 elif slots > in_conflict and _conflict_units(me) == 0:
                     req = 1  # unreachable in 4p
         # Selection: strongest first; TakeWhile tests the sum before the unit.
-        strengths = [_DREADNOUGHT_STRENGTH] * garrison_dreadnoughts + [
+        strengths = [dreadnought_strength] * garrison_dreadnoughts + [
             _TROOP_STRENGTH
         ] * garrison_troops
         total = 0

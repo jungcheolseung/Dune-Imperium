@@ -136,6 +136,7 @@ from dune_imperium.agents.app_ai.abilities.intrigue import (
     IntrigueAbility,
     ability_for_prompt,
 )
+from dune_imperium.agents.app_ai.abilities.ix_leaders import IntelligenceAbility
 from dune_imperium.agents.app_ai.catalog import (
     CARD_ARCHETYPES,
     INTRIGUE_ARCHETYPES,
@@ -151,6 +152,7 @@ from dune_imperium.agents.app_ai.context import (
     card_id,
 )
 from dune_imperium.agents.app_ai.entities import Entity, Kind
+from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.profile.immortality import research_space_entity
 from dune_imperium.agents.app_ai.windows.agent_effects import (
     CONTROL_THE_SPICE_TRASH_INTENT,
@@ -587,8 +589,16 @@ def optional_trash_now(run: DecisionRun) -> DomainAction | None:
 # ---------------------------------------------------------------------------
 
 
+#: The frame source of Viscount Hundro Moritani's game-start peek
+#: (``rules.intrigue_peek.assign_intelligence``).
+_INTELLIGENCE_SOURCE = "setup:intelligence:"
+
+
 def intrigue_peek(run: DecisionRun) -> DomainAction | None:
-    """Imperium Ceremony: keep one of the Intrigue deck's top two."""
+    """Keep one of the Intrigue deck's top two: Imperium Ceremony's
+    ``ImperiumCeremonyAbility::EvaluateIntrigue``, or at the game start
+    Rise of Ix's Hundro Moritani's ``IntelligenceAbility::EvaluateIntrigue``
+    (the higher ``Rating``)."""
 
     actions = run.by_id("keep_peeked_intrigue")
     refs = _refs(actions, "instance_id")
@@ -596,11 +606,18 @@ def intrigue_peek(run: DecisionRun) -> DomainAction | None:
         return None
     seat = run.ctx.seat
     cards = tuple(intrigue_entity(ref, seat) for ref in refs)
-    ability = ImperiumCeremonyAbility(Entity(Kind.CARD, _frame_source(run), None, seat))
+    source = _frame_source(run)
+    evaluate_intrigue: Callable[[Profile, Request], Answer]
+    if source.startswith(_INTELLIGENCE_SOURCE):
+        leader = Entity(Kind.LEADER, run.ctx.me.leader_id or "", None, seat)
+        evaluate_intrigue = IntelligenceAbility(leader).evaluate_intrigue
+    else:
+        ceremony = ImperiumCeremonyAbility(Entity(Kind.CARD, source, None, seat))
+        evaluate_intrigue = ceremony.evaluate_intrigue
     request = Request((TargetInfo(cards, (), 1, 1, True),), forced=True)
 
     def evaluate() -> tuple[float, DomainAction | None]:
-        answer = ability.evaluate_intrigue(run.profile, request)
+        answer = evaluate_intrigue(run.profile, request)
         ref = _first_ref(answer)
         if ref is None:
             return answer.value, None

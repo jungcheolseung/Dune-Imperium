@@ -391,6 +391,7 @@ from dune_imperium.agents.app_ai.abilities.intrigue import (
     _can_gain_faction_influence,
 )
 from dune_imperium.agents.app_ai.abilities.ix_board import (
+    FREIGHTER_RECALL,
     FreighterAbility,
     FreighterAgentAbility,
 )
@@ -1058,6 +1059,12 @@ _IX_ACTION_IDS: frozenset[str] = frozenset(
         "pay_agent_card_solari_for_spice",
         "resolve_unload_icon",
         "acquire_agent_card_tech",
+        # The Ix Leaders' Signets (``_ix_signets``).
+        "acquire_leader_reserve",
+        "acquire_leader_tech",
+        "place_leader_negotiator",
+        "advance_leader_freighter",
+        "recall_leader_freighter",
         # The Ix Tech tiles' rows (``_flips``, ``_tech_trashes``,
         # ``_tech_acquire_effects``).
         "flip_tech",
@@ -3638,6 +3645,8 @@ def _leader_choices(t: _Turn) -> None:
             else "SpiceAgonyAbility"
         )
         _signet_payment(t, name, "pay_leader_signet_spice")
+    elif leader_id is not None and leader_id in _IX_SIGNETS:
+        _IX_SIGNETS[leader_id](t)
     else:
         bloodlines = _BLOODLINES_SIGNETS.get(leader_id or "")
         if bloodlines is not None:
@@ -3645,6 +3654,170 @@ def _leader_choices(t: _Turn) -> None:
     _connections(t)
     _other_memories(t)
     _board_repeat(t)
+
+
+# -- the Rise of Ix Leaders' Signets (abilities/ix_leaders.py) ---------------------
+
+
+def _deck_top_variant(
+    variants: Sequence[DomainAction], destination: str | int | None
+) -> DomainAction | None:
+    """The acquire row of the app's destination answer: option 0 is the top
+    of the deck while our engine offers it (Spaceport's
+    ``GetAcquireArchIDAndPickerKind`` picker, generic-abilities.md §4.2),
+    else the discard pile."""
+
+    deck_top = next((a for a in variants if arg(a, "to_deck_top") is True), None)
+    plain = next((a for a in variants if arg(a, "to_deck_top") is not True), None)
+    if destination == 0 and deck_top is not None:
+        return deck_top
+    return plain
+
+
+def _destinations(variants: Sequence[DomainAction]) -> TargetInfo:
+    """The destination picker's options: the deck (0) only when offered."""
+
+    if any(arg(a, "to_deck_top") is True for a in variants):
+        return TargetInfo(options=(0, 1))
+    return TargetInfo(options=(0,))
+
+
+def _conscript(t: _Turn) -> None:
+    """Archduke Armand Ecaz's Conscript (``ConscriptAbility``, Optional): its
+    Evaluate over the Row, then the Reserve cards we offer (cost 3 or less),
+    answering ``((card,), (destination,))``; an unused key lapses."""
+
+    row = t.by_id("acquire_leader_imperium")
+    reserve = t.by_id("acquire_leader_reserve")
+    decline = t.run.first("decline_leader_signet_payment")
+    plain_row = [a for a in row if arg(a, "to_deck_top") is not True]
+    plain_reserve = [a for a in reserve if arg(a, "to_deck_top") is not True]
+    request = Request(
+        infos=(
+            TargetInfo(entities=_acquire_entities(t, plain_row, plain_reserve)),
+            _destinations((*row, *reserve)),
+        )
+    )
+
+    def answer(ans: Answer) -> DomainAction | None:
+        ref = _response_ref(ans)
+        if not isinstance(ref, str):
+            return None
+        if ref.startswith("reserve:"):
+            variants = [a for a in reserve if str_arg(a, "card_id") == card_id(ref)]
+        else:
+            variants = [a for a in row if str_arg(a, "instance_id") == ref]
+        return _deck_top_variant(variants, _response_ref(ans, 1))
+
+    _choice_source(
+        t,
+        "Conscript",
+        _find(t.leader, "ConscriptAbility"),
+        (*row, *reserve),
+        request,
+        answer,
+        decline,
+    )
+
+
+def _guild_contacts(t: _Turn) -> None:
+    """Ilesa Ecaz's Guild Contacts (``GuildContactsAbility``, Optional): 1
+    Solari for a Foldspace, answered ``((0,),)`` (the first destination)
+    before the Late arc and the climax; an unused key lapses."""
+
+    foldspace = t.by_id("acquire_leader_reserve")
+    decline = t.run.first("decline_leader_signet_payment")
+    request = Request(infos=(_destinations(foldspace),))
+
+    def answer(ans: Answer) -> DomainAction | None:
+        return _deck_top_variant(foldspace, _response_ref(ans))
+
+    _choice_source(
+        t,
+        "Guild Contacts",
+        _find(t.leader, "GuildContactsAbility"),
+        foldspace,
+        request,
+        answer,
+        decline,
+    )
+
+
+def _ixian_technology(t: _Turn) -> None:
+    """Prince Rhombur Vernius' Ixian Technology (``IxianTechnologyAbility``,
+    the Tech Negotiation space's negotiate-or-buy Evaluate): the
+    Negotiation area places a negotiator, a tile buys the Tech (no
+    discount: ``GetAcquireTechTileTargets(M, P, 0, false)``); the Acquire
+    Tech frame then asks ``AcquireTechAbility``, the same argmax."""
+
+    negotiator = t.run.first("place_leader_negotiator")
+    tech = t.run.first("acquire_leader_tech")
+    decline = t.run.first("decline_leader_signet_payment")
+    tiles = tuple(t.p.tech_acquire_targets(0, False))
+    request = Request(infos=(TargetInfo(entities=tiles),))
+
+    def answer(ans: Answer) -> DomainAction | None:
+        ref = _response_ref(ans)
+        if ref == TECH_NEGOTIATION_AREA:
+            return negotiator
+        return tech if isinstance(ref, str) else None
+
+    _choice_source(
+        t,
+        "Ixian Technology",
+        _find(t.leader, "IxianTechnologyAbility"),
+        tuple(a for a in (negotiator, tech) if a is not None),
+        request,
+        answer,
+        decline,
+    )
+
+
+def _couriers(t: _Turn) -> None:
+    """Viscount Hundro Moritani's Couriers (``CouriersAbility``, Optional): a
+    spice for the Freighter move ``GetFreighterSelections(-1)`` names (1 the
+    recall, 0 the advance), at ``FreighterValue``."""
+
+    advance = t.run.first("advance_leader_freighter")
+    recall = t.run.first("recall_leader_freighter")
+    decline = t.run.first("decline_leader_signet_payment")
+
+    def answer(ans: Answer) -> DomainAction | None:
+        return recall if _response_ref(ans) == FREIGHTER_RECALL else advance
+
+    _choice_source(
+        t,
+        "Couriers",
+        _find(t.leader, "CouriersAbility"),
+        tuple(a for a in (advance, recall) if a is not None),
+        Request(),
+        answer,
+        decline,
+    )
+
+
+def _final_delivery(t: _Turn) -> None:
+    """"Princess" Yuna Moritani's Final Delivery (``FinalDeliveryAbility``,
+    Optional): 7 Solari, its Evaluate over the offered Faction tracks
+    (``choose_leader_signet_influence``). With every Faction at the top our
+    engine offers the payment alone (``pay_leader_signet_solari``): the app
+    has no track to answer, so the key lapses."""
+
+    choices = t.by_id("choose_leader_signet_influence")
+    decline = t.run.first("decline_leader_signet_payment")
+    if decline is not None:
+        t.declines.append(decline)
+    found = _find(t.leader, "FinalDeliveryAbility")
+    _influence_choice(t, "Final Delivery", found, choices)
+
+
+_IX_SIGNETS: Mapping[str, Callable[[_Turn], None]] = {
+    "archduke_armand_ecaz": _conscript,
+    "ilesa_ecaz": _guild_contacts,
+    "prince_rhombur_vernius": _ixian_technology,
+    "viscount_hundro_moritani": _couriers,
+    "princess_yuna_moritani": _final_delivery,
+}
 
 
 def _manipulate(t: _Turn) -> None:
