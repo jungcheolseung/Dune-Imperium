@@ -32,9 +32,12 @@ games never hold): the tech terms inside ``GetResourceValue``,
 ``get_IntrigueValue``, ``TrashMod``/``GetCardToTrash``, ``WormImperiumPlayable::
 AcquireValue``, ``GetGainInfluenceValue``, ``GetRevealPreview``,
 ``RelativeConflictValue``, ``AgentAbility::ValueForPlayer`` and
-``HighCouncilSpaceAbility::ValueForPlayer``; and the Freighter methods
-(``get_FreighterValue``, ``GetFreighterSelections``, spec §4.6-4.7: no shipping
-track in our games).
+``HighCouncilSpaceAbility::ValueForPlayer``.
+
+Rise of Ix on the original board (docs/app-ai-plan.md §13): the stack tops,
+Negotiators and supply dreadnoughts read the game, and the Freighter methods
+(``get_FreighterValue``, ``GetFreighterSelections``, spec §4.6-4.7) the
+Shipping track (``PlayerState.freighter_space``).
 """
 
 import math
@@ -162,29 +165,88 @@ class TechMixin(ProfileCore):
         entities (bloodlines-systems.md §3.1); empty without the option.
         """
 
-        if not self.ctx.tech_module:
+        if not (self.ctx.tech_module or self.ctx.ix):
             return []
         return [tech_entity(tech_id) for tech_id in self.ctx.tech_face_up_ids]
 
     def tech_negotiator_count(self) -> int:
         """``Board.TechNegotiationArea.GetPlayerNegotiators(P).children.Count``.
 
-        Rise of Ix only (the Tech Negotiation space): 0 in our games. The
-        Bloodlines High Council seat's −1 stands for the negotiators inside
-        the Tech Module's affordability (``tech_acquire_targets``), so this
-        stays 0 there too (bloodlines-systems.md §3.1, D12).
+        Rise of Ix only (the Tech Negotiation space): ``PlayerState.negotiators``,
+        0 in every other game. The Bloodlines High Council seat's −1 stands
+        for the negotiators inside the Tech Module's affordability
+        (``tech_acquire_targets``), so this stays 0 there (bloodlines-systems.md
+        §3.1, D12).
         """
 
-        return 0
+        return self.ctx.me.negotiators
 
     def tech_dreadnoughts_in_supply(self) -> int:
         """``P.Supply.children.OfType<WormDreadnought>().Count()``.
 
-        Rise of Ix only: no dreadnought exists in our games, Bloodlines
-        included.
+        Rise of Ix only (``PlayerState.dreadnoughts_supply``); 0 in every
+        other game, Bloodlines included.
         """
 
-        return 0
+        return self.ctx.me.dreadnoughts_supply
+
+    # ===========================================================================
+    # The Freighter (spec §4.6-4.7)
+    # ===========================================================================
+
+    def freighter_selections(self, space: int = -1) -> tuple[int, int, str]:
+        """``WormAIProfile::GetFreighterSelections(int space) @0x491ad70``.
+
+        ``(Item1, Item2, log)``: Item1 1 = Recall, 0 = Advance (what
+        ``FreighterAbility::Evaluate`` answers); Item2 the Shipping track
+        space 1 choice (``ShippingTrackAbility1::Evaluate``: 0 Solari, 1
+        spice). ``space == -1`` reads the seat's Freighter. Level 2 before
+        the climax draws ``M.Random.Next(2)`` from the match RNG: the seat's
+        seeded RNG here (plan §4 9). The Hagal branches are unreachable.
+        """
+
+        me = self.ctx.me
+        if space == -1:
+            space = me.freighter_space
+        not_short = int(not self.is_solari_short())
+        if space == 3:
+            return (1, not_short, "Level 3")
+        if space == 2:
+            if self.is_climax():
+                return (1, not_short, "Level 2 - Climax")
+            return (self.rng.randrange(2), not_short, "Level 2 - Before Climax")
+        if space == 1:
+            if not me.swordmaster_acquired and 3 <= me.resources.solari <= 7:
+                return (1, 0, "Level 1 - No Swordmaster")
+            if any(self._tile_just_out_of_reach(t) for t in self.tech_face_up_tiles()):
+                return (1, 1, "Level 1 - Available Tech")
+            if self.is_final_round():
+                return (1, 1, "Level 1 - Final Round")
+            return (0, 0, "Level 1 - Advance")
+        return (0, 0, "Level 0")
+
+    def _tile_just_out_of_reach(self, tile: Entity) -> bool:
+        """``<GetFreighterSelections>b__140_1 @0x491f420``: a tile worth
+        ``>= 8.0`` that costs one or two spice more than the seat holds."""
+
+        spice = self.ctx.me.resources.spice
+        cost = spice_cost(tile)
+        return (
+            self.tech_tile_acquire_value(tile).sum >= 8.0
+            and spice < cost <= spice + 2
+        )
+
+    def freighter_value(self) -> float:
+        """``WormAIProfile::get_FreighterValue @0x491abd0``:
+        ``Max(ImmediacyModValue x Item1, 1.0) x [FreighterEarly, Mid,
+        Late][arc]`` -- 6.3 when the selection recalls, else 4.2."""
+
+        recall, _, _ = self.freighter_selections(-1)
+        c = self.C
+        value = max(c.ImmediacyModValue * float(recall), 1.0)
+        return value * (c.FreighterEarly, c.FreighterMid, c.FreighterLate)[
+            self.game_arc()
+        ]
 
     def _tech_profile(self) -> Profile:
         """``self`` as the full ``Profile`` the ability hooks expect."""

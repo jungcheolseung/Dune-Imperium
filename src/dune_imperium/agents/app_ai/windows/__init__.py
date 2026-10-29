@@ -6,6 +6,7 @@ from dune_imperium.agents.app_ai.windows import (
     combat,
     immortality,
     intrigue,
+    ix,
     reveal,
     scouts,
     setup,
@@ -28,6 +29,7 @@ def _merged() -> dict[str, Handler]:
         immortality,
         scouts,
         bloodlines,
+        ix,
     ):
         for kind, handler in module.HANDLERS.items():
             if kind in handlers:
