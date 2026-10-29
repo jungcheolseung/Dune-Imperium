@@ -41,6 +41,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardForSolari,
     AcquireCardUpTo,
+    AcquireTech,
     AdvanceTleilaxu,
     AtFactionSpace,
     AtMakerSpace,
@@ -718,6 +719,14 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.MAY_TAKE_ANOTHER_TURN: _icons(
                 ("extra_turn", _line(TakeAnotherTurn()))
             ),
+            # Ixian Engineer (Rise of Ix): the Acquire Tech icon [Steam app
+            # screen pieces]. The card prints no Tech Discount sprite (the
+            # Reveal of Ix-Guild Compact prints two), so the icon is the plain
+            # one of the Dreadnought space: discount 0. "아이콘마다 ... 하나를
+            # 얻을 수 있다("may")" [Rise of Ix p. 4], so the owner may leave it;
+            # it opens the Acquire Tech window with its own refusal
+            # (``agent_effects.apply_agent_card_tech``).
+            _BOX.MAY_ACQUIRE_TECH: _icons(("tech", _line(AcquireTech(discount=0)))),
             # Tread in Darkness: "If Bene Gesserit Bond: You may trash a card,
             # Draw 1 card" -- the Bond opens the box and is judged again on each
             # icon when it resolves (OQ-028); the trash stays optional (OQ-058).

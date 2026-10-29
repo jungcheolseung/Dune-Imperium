@@ -283,6 +283,8 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: (
             "You may take another turn immediately after this one"
         ),
+        # Rise of Ix's Ixian Engineer (stage P4d): the Acquire Tech icon.
+        PersonalCardAgentEffect.MAY_ACQUIRE_TECH: "You may acquire a Tech tile",
         PersonalCardAgentEffect.GENERATE_SPECIMEN: "Generate 1 specimen",
         PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
             "Gain 1 Bene Gesserit Influence, Draw 1 Intrigue card"
@@ -720,6 +722,14 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: (
                 "If you have 2 or more Tech tiles: "
                 "Gain 1 Influence with a chosen Faction"
+            ),
+            # Rise of Ix's Ixian Engineer (stage P4d): CHOAM Demands' arrow with
+            # a Victory Point.
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES
+            ): (
+                "If you have 3 or more Tech tiles: Trash this card → Gain 1 VP"
             ),
             # Rise of Ix's Web of Power (stage P4d): the wild Influence icon.
             PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE: (

@@ -307,7 +307,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Then Web of Power got its play data (stage P4d): only its own row changed, no
 # column and no scale (compared against 374e8c1d, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against a0eecb65 (2026-10-30).
-_GOLDEN_DIGEST = "3ecbfc3dc843e77c3e3d720cea25d8e01f543066965f997a102175a90dd7a001"
+# Then Ixian Engineer got its play data (stage P4d): one personal-table column
+# is new (the Acquire Tech piece in an Agent box), only its own row reads it,
+# its row is the only one that changed, and no scale moved (compared against
+# 2d742367, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against d47ea6c3 (2026-10-30).
+_GOLDEN_DIGEST = "d09c2b788f34b3c28835564cb815f24f2ae10d3cb7d7be593c21c486c3a46726"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

@@ -416,6 +416,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "take_agent_card_extra_turn": _row(
         _V.TAKE, _S.AGENT_CARD, variant="extra_turn", tag=_BOX
     ),
+    # Ixian Engineer's Acquire Tech icon (Rise of Ix): it opens the window.
+    "acquire_agent_card_tech": _row(
+        _V.ACQUIRE, _S.AGENT_CARD, variant="tech", tag=_BOX
+    ),
     # Local Fence's two arrows printed with "-OR-" (Rise of Ix), one each.
     "pay_agent_card_spice_for_solari": _row(
         _V.PAY, _S.AGENT_CARD, variant="spice_for_solari", tag=_BOX

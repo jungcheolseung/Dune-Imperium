@@ -64,6 +64,7 @@ const PROMPT_KO = {
   "No card to discard": "버릴 카드 없음",
   "Choose where to place a Spy for this Reveal effect": "이 {reveal_turn} 효과로 {spy}를 배치할 위치 선택",
   "Choose a Faction to gain one Influence with": "{influence_any}을 얻을 {faction} 선택",
+  "Three or more Tech tiles: you may trash this card for a Victory Point": "{tech_tile} 3개 이상: 이 카드를 폐기하고 {victory_point} 1 획득 가능",
   "Command: choose a Faction to gain one Influence with": "{command}: {influence_any}을 얻을 {faction} 선택",
   "Command: choose where to place a Spy": "{command}: {spy}를 배치할 위치 선택",
   "Command: you may trash a card": "{command}: 카드 1장 폐기 가능",

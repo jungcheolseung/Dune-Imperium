@@ -20,6 +20,7 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
     BlockChosenSpaceForOpponentsNextAgent,
     CompleteContract,
     DrawPersonalCards,
@@ -52,7 +53,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
-from dune_imperium.rules.action_shapes import Source, printer_parts
+from dune_imperium.rules.action_shapes import Source, printer_parts, printer_value
 from dune_imperium.rules.agent_box_abilities import (
     NOT_PRINTED_BLOCK,
     RETREATS_FOR_DEPLOYMENT_KEY,
@@ -218,6 +219,7 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
+from dune_imperium.rules.tech import push_tech_acquisition, tech_acquisition_possible
 from dune_imperium.rules.unit_loss import lose_unit, unit_loss_options
 from dune_imperium.rules.units import retreat_dreadnought, retreat_units
 
@@ -301,6 +303,9 @@ AGENT_ICON_FREIGHTER_SECOND: Final = "freighter_second"
 # Weirding Way's "You may take another turn immediately after this one" (Rise
 # of Ix): ``take_agent_card_extra_turn``; unused, it lapses at the turn's end.
 AGENT_ICON_EXTRA_TURN: Final = "extra_turn"
+# Ixian Engineer's Acquire Tech icon (Rise of Ix): ``acquire_agent_card_tech``
+# opens the Acquire Tech window; unused, it lapses at the turn's end.
+AGENT_ICON_TECH: Final = "tech"
 
 # Leaders whose Signet Ring ability prints several independent icons, from
 # their records (composed A6c): the Signet Ring card's box (or a Ghola
@@ -1114,13 +1119,42 @@ def _freighter_icon_rows(
     )
 
 
+def _tech_icon_rows(
+    state: GameState,
+    player: int,
+    context: dict[str, ActionValue],
+    recorded: Ability | None,
+) -> tuple[DomainAction, ...] | None:
+    """An icon box's Acquire Tech icon (Ixian Engineer, Rise of Ix): "아이콘마다
+    Ix board의 세 더미 맨 위 앞면 타일 하나를 얻을 수 있다("may")" [Rise of Ix
+    p. 4] at the Tech Discount the icon prints. Its row opens the Acquire Tech
+    window, which offers the tiles and its own refusal; the icon itself offers
+    no refusal in the owner's turn, and the turn's end lapses it (OQ-095 (2),
+    ``OPTIONAL_AGENT_ICONS``). Nothing is offered while no tile can be paid
+    for (``tech_acquisition_possible``), as at the Dreadnought space. None when
+    no Acquire Tech icon waits."""
+
+    tech = icon_line(context, recorded, AcquireTech)
+    if tech is None:
+        return None
+    assert recorded is not None
+    if box_icon_block(state.players[player], context, recorded, tech[0]):
+        return ()
+    if not state.config.rise_of_ix or not tech_acquisition_possible(
+        state, state.players[player], tech[1].discount
+    ):
+        return ()
+    return (DomainAction(action_id="acquire_agent_card_tech", actor=player),)
+
+
 def legal_agent_card_icon_choice_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """The Combat, Spy and Freighter icons of an icon-by-icon box, answered
-    by the payment, the Spy and the Freighter handlers (cleanup-2d-5); the
-    recall, the Influence and the trash keep their own providers."""
+    """The Combat, Spy, Freighter and Acquire Tech icons of an icon-by-icon
+    box, answered by the payment, the Spy, the Freighter and the Tech
+    handlers (cleanup-2d-5); the recall, the Influence and the trash keep their
+    own providers."""
 
     try:
         frame, context = current_agent_effect_context(state)
@@ -1140,6 +1174,7 @@ def legal_agent_card_icon_choice_actions(
             if icon_line(context, recorded, TakeAnotherTurn) is not None
             else ()
         ),
+        *(_tech_icon_rows(state, player, context, recorded) or ()),
     )
 
 
@@ -1179,6 +1214,46 @@ def apply_agent_card_extra_turn(state: GameState, action: DomainAction) -> RuleR
             ),
         ),
     )
+
+
+def apply_agent_card_tech(state: GameState, action: DomainAction) -> RuleResult:
+    """Open the Acquire Tech window for an Agent box's Acquire Tech icon.
+
+    The icon is retired and the frame written back first, so the window stacks
+    on the state the turn frame belongs to (``ix_board_spaces.
+    apply_ix_space_action`` does the same for a space's icon); the window's
+    refusal names the card that printed the icon (``printer_value``)."""
+
+    if action not in legal_agent_card_icon_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Agent-card Acquire Tech choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    source = agent_card_source(state.round_number, action.actor, source_card_id)
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    tech = icon_line(context, recorded, AcquireTech)
+    assert tech is not None
+    printer = printer_value(
+        Source.AGENT_CARD,
+        active_agent_card(context).card.card_id,
+        active_box(context),
+    )
+    finish_agent_icon(context, AGENT_ICON_TECH)
+    working = advance_after_effect(state, context)
+    opened = push_tech_acquisition(
+        working,
+        action.actor,
+        discount=tech[1].discount,
+        source=f"{source}:tech",
+        printer=printer,
+    )
+    done = agent_box_event(
+        source,
+        source_card_id,
+        action.actor,
+        BoxOutcome.RESOLVED,
+        effect=AGENT_ICON_TECH,
+    )
+    return RuleResult(state=opened.state, events=(*opened.events, done))
 
 
 def apply_agent_card_freighter(state: GameState, action: DomainAction) -> RuleResult:
@@ -3429,6 +3504,8 @@ OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = 
             PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: frozenset(
                 {AGENT_ICON_EXTRA_TURN}
             ),
+            # Ixian Engineer's Acquire Tech icon (Rise of Ix, "may").
+            PersonalCardAgentEffect.MAY_ACQUIRE_TECH: frozenset({AGENT_ICON_TECH}),
         }
     )
 )

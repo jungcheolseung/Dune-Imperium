@@ -232,6 +232,7 @@ const LABELS_EN = {
     "advance_reveal_freighter": "Move the Freighter up one space",
     "recall_reveal_freighter": "Recall the Freighter",
     "retreat_reveal_units_for_influence": "Retreat 3 units -> {influence_any}",
+    "acquire_agent_card_tech": "Acquire {tech_tile}",
     "acquire_foldspace_to_deck_top": "Foldspace card on top of your deck",
     "place_combat_reward_dreadnought": "{control} space for your dreadnought",
     "detonate_combat_reward_dreadnought": "Detonation Devices: dreadnought to the {supply} -> 1 {victory_point}",

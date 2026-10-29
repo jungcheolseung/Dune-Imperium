@@ -1588,6 +1588,15 @@ def _reveal_choice_block(
             return english, korean, "waiting"
         case choice if choice in _TWO_SPY_RECALLS:
             return _spies_reason(2, len(owner.spy_post_ids))
+        case _Choice.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES if (
+            len(owner.tech_ids) < 3
+        ):
+            en, ko = held_text(len(owner.tech_ids))
+            return (
+                f"Needs 3 Tech tiles{en}",
+                f"{{tech_tile}} 3개 필요{ko}",
+                "waiting",
+            )
         case _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS if (
             len(owner.completed_contract_ids) < 4
         ):

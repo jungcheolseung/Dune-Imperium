@@ -15,15 +15,23 @@ import pytest
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.adapters.action_codec import ActionTemplate
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.agent_abilities import AGENT_BOX_ABILITIES
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
     AtSpaceWithEnemyAgent,
+    GainVictoryPoints,
     InfluenceAtLeast,
+    TechTilesAtLeast,
+    TrashCard,
 )
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
+from dune_imperium.content.uprising.reveal_choice_abilities import (
+    REVEAL_CHOICE_ABILITIES,
+)
 from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAgentEffect,
@@ -176,6 +184,26 @@ def _send(engine: _Engine, state: GameState, card_id: str, space_id: str) -> Gam
     result = apply_placement(engine, state, placement).state
     engine.legal_actions(result, 0)
     return result
+
+
+def _finish(engine: _Engine, state: GameState) -> GameState:
+    """The Agent turn closed with every board effect settled and every
+    optional icon left unused (an unused optional effect lapses at the turn's
+    end, OQ-095 (2))."""
+
+    while True:
+        ids = _ids(engine, state)
+        step = next(
+            (
+                action_id
+                for action_id in ("resolve_board_effect", "resolve_faction_influence")
+                if action_id in ids
+            ),
+            None,
+        )
+        if step is None:
+            return _do(engine, state, "finish_agent_turn")
+        state = _do(engine, state, step)
 
 
 # --- Bounty Hunter --------------------------------------------------------------
@@ -482,20 +510,7 @@ def test_web_of_power_icon_waits_below_two_influence(
     )
     assert not _icon_rows(engine, placed)
     unmet = placed.players[0]
-    while True:
-        ids = _ids(engine, placed)
-        step = next(
-            (
-                action_id
-                for action_id in ("resolve_board_effect", "resolve_faction_influence")
-                if action_id in ids
-            ),
-            None,
-        )
-        if step is None:
-            break
-        placed = _do(engine, placed, step)
-    done = _do(engine, placed, "finish_agent_turn").players[0]
+    done = _finish(engine, placed).players[0]
     assert done.resources.solari == unmet.resources.solari
     assert done.resources.water == unmet.resources.water
     assert len(done.hand) == len(unmet.hand)
@@ -591,3 +606,308 @@ def test_web_of_power_never_offers_a_faction_at_the_top_of_its_track() -> None:
     )
     assert "gain_reveal_influence" not in _ids(engine, full)
     assert "finish_reveal" in _ids(engine, full)
+
+
+# --- Ixian Engineer -------------------------------------------------------------
+
+ENGINEER = "imperium:ixian_engineer:0"
+ENGINEER_TWIN = "imperium:ixian_engineer:1"
+_ENGINEER_REVEAL = _REVEAL.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES
+# Costs: Detonation Devices 3, Artillery 1, Chaumurky 4 | Holtzman Engine 6,
+# Invasion Ships 5, Memocorders 2 | Restricted Ordnance 4, Minimic Film 2,
+# Flagship 8. The tops are Detonation Devices, Holtzman Engine and Restricted
+# Ordnance.
+STACKS = (
+    ("detonation_devices", "artillery", "chaumurky"),
+    ("holtzman_engine", "invasion_ships", "memocorders"),
+    ("restricted_ordnance", "minimic_film", "flagship"),
+)
+# Three tiles the seat may own (the Reveal's condition), none of which adds to
+# the Reveal turn (Memocorders and Chaumurky count at the game's end, Windtraps
+# when a Conflict is won) and none on the stacks above.
+OWNED = ("memocorders", "chaumurky", "windtraps")
+
+
+def _engineer(
+    engine: _Engine, state: GameState, spice: int, **changes: object
+) -> GameState:
+    """Ixian Engineer sent to Smuggling (its Spice Trade icon; the space gives
+    1 Solari and a Freighter icon, no spice) with ``spice`` and the Ix stacks
+    laid, its Acquire Tech icon pending."""
+
+    state = replace(state, tech_stacks=STACKS)
+    state = _seat(
+        state, 0, hand=(ENGINEER,), resources=Resources(spice=spice), **changes
+    )
+    return _send(engine, state, ENGINEER, "smuggling")
+
+
+def _tiles(engine: _Engine, state: GameState) -> set[object]:
+    return {
+        dict(row.arguments).get("tech_id")
+        for row in _rows(engine, state)
+        if row.action_id == "acquire_tech"
+    }
+
+
+def test_ixian_engineer_matches_app_attributes_and_only_joins_the_ix_deck() -> None:
+    """ "Acquire Tech" on the Agent box and "If you have three or more Techs:
+    Trash this card -> 1 Victory Point" on the Reveal [Steam app screen pieces
+    and text].
+
+    App table: cost 5, two copies, no Faction, the Spice Trade icon, no
+    Infiltration icon, no fixed Reveal values.
+    """
+    entry = IMPERIUM_CARDS_BY_ID["ixian_engineer"]
+    assert (entry.copies, entry.acquisition_cost) == (2, 5)
+    assert entry.factions == ()
+    assert entry.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert entry.infiltration_icons == ()
+    assert entry.agent_effect is _BOX.MAY_ACQUIRE_TECH
+    assert entry.reveal_choice_effects == (_ENGINEER_REVEAL,)
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    assert entry.play_data_complete
+    for instance in (ENGINEER, ENGINEER_TWIN):
+        assert instance in content_for(CONFIG).imperium_deck_instance_ids
+    for config in (
+        replace(CONFIG, rise_of_ix=False),
+        RulesetConfig(),
+        RulesetConfig(rise_of_ix=True),
+    ):
+        assert ENGINEER not in content_for(config).imperium_deck_instance_ids
+
+
+def test_ixian_engineer_card_text_prints_the_icon_and_the_arrow() -> None:
+    """The Acquire Tech icon ("may" [Rise of Ix p. 4]) and the Reveal's "Have
+    3+ Tech tiles: Trash this -> VP" [Steam app text]."""
+    entry = IMPERIUM_CARDS_BY_ID["ixian_engineer"]
+    assert personal_card_text(entry) == [
+        "Agent: You may acquire a Tech tile",
+        "Reveal: If you have 3 or more Tech tiles: Trash this card → Gain 1 VP",
+    ]
+    assert personal_card_text_ko(entry) == [
+        "에이전트 칸: {tech_tile} {acquire} 가능",
+        "공개 칸: {tech_tile} 3 이상이면: 이 카드 {trash} {arrow_right} "
+        "{victory_point:1}",
+    ]
+
+
+def test_ixian_engineer_records_state_the_tech_discount_and_the_arrow() -> None:
+    """The icon prints no Tech Discount sprite, so its discount is stated as 0
+    (the plain icon of the Dreadnought space); the Reveal is CHOAM Demands'
+    shape, an optional arrow paying the card's own trash for a Victory
+    Point behind three Tech tiles."""
+    ability = AGENT_BOX_ABILITIES[_BOX.MAY_ACQUIRE_TECH]
+    assert ability.requirement is None
+    assert ability.icons == ("tech",)
+    (line,) = ability.sections
+    assert line.rewards == (AcquireTech(discount=0),)
+    reveal = REVEAL_CHOICE_ABILITIES[_ENGINEER_REVEAL]
+    (arrow,) = reveal.sections
+    assert arrow.costs == (TrashCard(this_card=True),)
+    assert arrow.rewards == (GainVictoryPoints(1),)
+    assert arrow.condition == TechTilesAtLeast(3)
+
+
+def test_ixian_engineer_goes_to_a_spice_trade_space_only() -> None:
+    """The Spice Trade icon (app attribute table)."""
+    _, state = _start()
+    state = _seat(state, hand=(ENGINEER,))
+    spaces = _spaces(state, ENGINEER)
+    assert {"imperial_basin", "smuggling"} <= spaces
+    assert not spaces & {"arrakeen", "carthag", "wealth", "stillsuits", "mentat"}
+
+
+def test_ixian_engineer_acquires_a_tile_at_no_discount() -> None:
+    """The plain Acquire Tech icon (rise-of-ix.md 4: "아이콘마다 ... 하나를 얻을
+    수 있다", Tech Discount only where the icon prints one): the window offers
+    exactly the tiles the seat can pay full price for, the refusal beside
+    them, and the purchase takes its spice and the tile."""
+    engine, state = _start()
+    placed = _engineer(engine, state, 4)
+    assert "acquire_agent_card_tech" in _ids(engine, placed)
+    opened = _do(engine, placed, "acquire_agent_card_tech")
+    assert _tiles(engine, opened) == {"detonation_devices", "restricted_ordnance"}
+    assert "decline_tech" in _ids(engine, opened)
+    bought = _do(engine, opened, "acquire_tech", tech_id="restricted_ordnance")
+    owner = bought.players[0]
+    assert owner.tech_ids == ("restricted_ordnance",)
+    assert owner.resources.spice == 0
+    assert "acquire_agent_card_tech" not in _ids(engine, bought)
+    assert "decline_tech" not in _ids(engine, bought)
+
+
+def test_ixian_engineer_icon_offers_nothing_when_no_tile_is_affordable() -> None:
+    """Detonation Devices costs 3: at a Tech Discount of 1 two spice would
+    buy it, so a missing row at 2 spice shows the icon's discount is 0
+    (``tech_acquisition_possible``); the turn can end with the icon unused."""
+    engine, state = _start()
+    placed = _engineer(engine, state, 2)
+    assert "acquire_agent_card_tech" not in _ids(engine, placed)
+    finished = _finish(engine, placed).players[0]
+    assert finished.tech_ids == ()
+    assert finished.resources.spice == 2
+
+
+def test_ixian_engineer_negotiators_lower_the_price() -> None:
+    """ "Negotiator를 supply로 돌려 하나에 spice 1씩 깎는다" (rise-of-ix.md 4,
+    [Rise of Ix p. 4]): with 2 spice and a Negotiator the 3-spice Detonation
+    Devices is in reach, and the purchase returns the Negotiator."""
+    engine, state = _start()
+    supply = state.players[0].troops_supply
+    placed = _engineer(engine, state, 2, negotiators=1, troops_supply=supply - 1)
+    assert "acquire_agent_card_tech" in _ids(engine, placed)
+    opened = _do(engine, placed, "acquire_agent_card_tech")
+    bought = _do(
+        engine, opened, "acquire_tech", tech_id="detonation_devices", negotiators=1
+    )
+    owner = bought.players[0]
+    assert owner.tech_ids == ("detonation_devices",)
+    assert (owner.resources.spice, owner.negotiators) == (0, 0)
+
+
+def test_ixian_engineer_window_may_be_declined_and_spends_the_icon() -> None:
+    """ "하나를 얻을 수 있다("may")" [Rise of Ix p. 4]: the window offers its
+    refusal, and the icon is spent either way."""
+    engine, state = _start()
+    placed = _engineer(engine, state, 4)
+    opened = _do(engine, placed, "acquire_agent_card_tech")
+    declined = _do(engine, opened, "decline_tech")
+    assert declined.players[0].tech_ids == ()
+    assert declined.players[0].resources.spice == 4
+    assert "acquire_agent_card_tech" not in _ids(engine, declined)
+
+
+def test_ixian_engineer_icon_is_optional_and_lapses_at_the_turns_end() -> None:
+    """The icon is "may": it offers no refusal of its own and the turn's end
+    lapses it unused (OQ-095 (2), ``OPTIONAL_AGENT_ICONS``)."""
+    engine, state = _start()
+    placed = _engineer(engine, state, 4)
+    ids = _ids(engine, placed)
+    assert "acquire_agent_card_tech" in ids
+    assert not any(row.startswith("decline_") for row in ids)
+    finished = _finish(engine, placed).players[0]
+    assert finished.tech_ids == ()
+    assert finished.resources.spice == 4
+
+
+def test_ixian_engineer_tech_rows_are_in_the_ix_catalog_only() -> None:
+    """The icon and its window are shown by effect rows naming the card that
+    prints them, in the original game with Rise of Ix only; no other catalog
+    holds them [Rise of Ix p. 2]."""
+    engine, state = _start()
+    placed = _engineer(engine, state, 4)
+    icon_rows = [
+        row
+        for row in engine.legal_actions(placed, 0)
+        if dict(row.arguments).get("printed") == "ixian_engineer"
+    ]
+    assert {(row.action_id, dict(row.arguments)["icon"]) for row in icon_rows} == {
+        ("acquire", "tech")
+    }
+    opened = _do(engine, placed, "acquire_agent_card_tech")
+    window = [
+        row
+        for row in engine.legal_actions(opened, 0)
+        if dict(row.arguments).get("printed") == "ixian_engineer"
+    ]
+    assert {row.action_id for row in window} == {"decline"}
+    plain = ActionCodec(replace(CONFIG, rise_of_ix=False)).catalog
+    ix = set(_codec(CONFIG).catalog) - set(plain)
+    for row in (*icon_rows, *window):
+        assert ActionTemplate(row.action_id, row.arguments) in ix
+    assert not any(
+        dict(template.arguments).get("printed") == "ixian_engineer"
+        for template in ActionCodec(RulesetConfig()).catalog
+    )
+
+
+def _engineer_reveal(
+    engine: _Engine, state: GameState, tiles: tuple[str, ...], *hand: str
+) -> GameState:
+    # The tiles the seat may hold are off the stacks.
+    stacks = tuple(
+        tuple(tech_id for tech_id in stack if tech_id not in OWNED) for stack in STACKS
+    )
+    state = _seat(replace(state, tech_stacks=stacks), 0, hand=hand or (ENGINEER,))
+    return _do(engine, _seat(state, 0, tech_ids=tiles), "reveal_turn")
+
+
+def _trash_rows(engine: _Engine, state: GameState) -> list[DomainAction]:
+    return [row for row in _rows(engine, state) if row.action_id == "trash_reveal_card"]
+
+
+def test_ixian_engineer_reveal_offers_the_trash_only_with_three_tech_tiles() -> None:
+    """ "If you have three or more Techs:" [Steam app text]: with two Tech tiles
+    the arrow waits (judged whenever its row is asked, OQ-028), with three its
+    row names the card to trash and the Reveal can still end unused (an arrow
+    cost is optional [FAQ p. 3])."""
+    engine, state = _start()
+    two = _engineer_reveal(engine, state, OWNED[:2])
+    assert not _trash_rows(engine, two)
+    assert "finish_reveal" in _ids(engine, two)
+    three = _engineer_reveal(engine, state, OWNED)
+    (row,) = _trash_rows(engine, three)
+    assert dict(row.arguments) == {"card_id": ENGINEER, "source": "ixian_engineer"}
+    assert "finish_reveal" in _ids(engine, three)
+    unused = _do(engine, three, "finish_reveal").players[0]
+    assert (unused.victory_points, unused.trashed) == (
+        three.players[0].victory_points,
+        (),
+    )
+
+
+def test_ixian_engineer_reveal_trashes_itself_for_a_victory_point() -> None:
+    """ "Trash this -> Victory Point": the card leaves the game, the seat gains
+    1 VP, and the arrow is spent."""
+    engine, state = _start()
+    revealed = _engineer_reveal(engine, state, OWNED)
+    before = revealed.players[0]
+    paid = _do(engine, revealed, "trash_reveal_card", card_id=ENGINEER)
+    owner = paid.players[0]
+    assert owner.victory_points == before.victory_points + 1
+    assert ENGINEER in owner.trashed
+    assert ENGINEER not in (*owner.hand, *owner.in_play, *owner.discard_pile)
+    assert not _trash_rows(engine, paid)
+
+
+def test_ixian_engineer_reveal_judges_the_tiles_when_the_row_is_asked() -> None:
+    """A third Tech tile gained later in the Reveal turn opens the arrow, and
+    one lost closes it (OQ-028)."""
+    engine, state = _start()
+    waiting = _engineer_reveal(engine, state, OWNED[:2])
+    assert not _trash_rows(engine, waiting)
+    risen = _seat(waiting, 0, tech_ids=OWNED)
+    assert len(_trash_rows(engine, risen)) == 1
+    fallen = _seat(risen, 0, tech_ids=OWNED[:2])
+    assert not _trash_rows(engine, fallen)
+
+
+def test_two_ixian_engineers_each_trash_only_themselves() -> None:
+    """Two copies revealed together: each arrow pays its own card's trash and
+    the other copy stays in play for its own arrow."""
+    engine, state = _start()
+    revealed = _engineer_reveal(engine, state, OWNED, ENGINEER, ENGINEER_TWIN)
+    assert {
+        dict(row.arguments)["card_id"] for row in _trash_rows(engine, revealed)
+    } == {
+        ENGINEER,
+        ENGINEER_TWIN,
+    }
+    first = _do(engine, revealed, "trash_reveal_card", card_id=ENGINEER)
+    assert first.players[0].victory_points == revealed.players[0].victory_points + 1
+    assert ENGINEER_TWIN in first.players[0].in_play
+    assert {dict(row.arguments)["card_id"] for row in _trash_rows(engine, first)} == {
+        ENGINEER_TWIN
+    }
+    second = _do(engine, first, "trash_reveal_card", card_id=ENGINEER_TWIN)
+    assert second.players[0].victory_points == revealed.players[0].victory_points + 2
+
+
+def test_ixian_engineer_reveal_values_are_only_the_arrow() -> None:
+    """App table: no fixed Persuasion or swords, so the Reveal adds nothing
+    beside the arrow."""
+    engine, state = _start()
+    revealed = _engineer_reveal(engine, state, OWNED[:2])
+    context = dict(revealed.decision_stack[-1].context)
+    assert (context["persuasion"], context["sword_strength"]) == (0, 0)

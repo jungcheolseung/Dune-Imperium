@@ -29,6 +29,7 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
     AdvanceTleilaxu,
     AtFactionSpace,
     AtMakerSpace,
@@ -187,9 +188,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Satellite Ban ("[Discard] -> [1 spice] [1 water]"), Spice Trader
     # ("[Fremen] 2 Influence: [Discard] -> [2 spice]"), Imperial Bashar
     # ("[Troop] -OR- [Trash a card]"), Bounty Hunter ("If used to send an
-    # Agent to a board space with an enemy Agent: [2 Solari]") and Web of
-    # Power (three Influence thresholds over three icons).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 14
+    # Agent to a board space with an enemy Agent: [2 Solari]"), Web of Power
+    # (three Influence thresholds over three icons) and Ixian Engineer (the
+    # Acquire Tech icon).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 15
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -235,6 +237,9 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         # Weirding Way (Rise of Ix): "You may take another turn immediately
         # after this one", answered by its own row.
         _BOX.MAY_TAKE_ANOTHER_TURN: ("extra_turn",),
+        # Ixian Engineer (Rise of Ix): the Acquire Tech icon, answered by its
+        # own row.
+        _BOX.MAY_ACQUIRE_TECH: ("tech",),
         _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: ("trash", "cards"),
         # Split per icon (cleanup-2d-5, user decision 2026-10-18).
         _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: ("influence", "intrigue"),
@@ -1395,8 +1400,8 @@ def test_dangerous_rhetoric_trashes_itself_by_its_own_icon() -> None:
 def test_the_optional_icons_are_marked_in_their_records() -> None:
     """The icons ``OPTIONAL_AGENT_ICONS`` lets lapse are the ones their records
     print as optional (Tread in Darkness's black trash icon, Twisted Mentat's
-    "You may recall", Landing Rights' Freighter), so a later stage can read it
-    from the records."""
+    "You may recall", Landing Rights' Freighter, Ixian Engineer's Acquire
+    Tech), so a later stage can read it from the records."""
 
     marked = {}
     for effect, ability in AGENT_BOX_ABILITIES.items():
@@ -1410,6 +1415,8 @@ def test_the_optional_icons_are_marked_in_their_records() -> None:
                 or isinstance(reward, Freighter)
                 # Weirding Way: "You may take another turn".
                 or isinstance(reward, TakeAnotherTurn)
+                # Ixian Engineer's Acquire Tech icon is "may" [Rise of Ix p. 4].
+                or isinstance(reward, AcquireTech)
                 for reward in line.rewards
             )
         )

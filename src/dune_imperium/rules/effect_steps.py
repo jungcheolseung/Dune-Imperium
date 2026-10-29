@@ -437,6 +437,8 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "take_agent_card_extra_turn": _spec(
         _V.TAKE, _S.AGENT_CARD, _BOX, icon="extra_turn"
     ),
+    # Ixian Engineer's Acquire Tech icon (Rise of Ix): the window it opens.
+    "acquire_agent_card_tech": _spec(_V.ACQUIRE, _S.AGENT_CARD, _BOX, icon="tech"),
     # Local Fence's "-OR-" of two arrows (Rise of Ix): which one is paid.
     "pay_agent_card_spice_for_solari": _spec(
         _V.PAY, _S.AGENT_CARD, _BOX, option="spice_for_solari"

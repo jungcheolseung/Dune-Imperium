@@ -417,6 +417,8 @@ class PersonalCardAgentEffect(StrEnum):
     )
     # Landing Rights (Rise of Ix): the Freighter icon.
     MAY_MOVE_FREIGHTER = "may_move_freighter"
+    # Ixian Engineer (Rise of Ix): the Acquire Tech icon, with no Tech Discount.
+    MAY_ACQUIRE_TECH = "may_acquire_tech"
     # Shai-Hulud (Rise of Ix): "[Trash a card] -> [2 troops]".
     TRASH_PERSONAL_CARD_TO_RECRUIT_TWO = "trash_personal_card_to_recruit_two"
     # Guild Chief Administrator (Rise of Ix): "[Discard] -> [Trash a card]".
@@ -659,6 +661,11 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # Web of Power (Rise of Ix): the wild Influence icon, "Choose a Faction to
     # gain 1 Influence with".
     GAIN_CHOSEN_INFLUENCE = "gain_chosen_influence"
+    # Ixian Engineer (Rise of Ix): "If you have three or more Tech tiles: Trash
+    # this card -> 1 Victory Point".
+    MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES = (
+        "may_trash_self_for_victory_point_if_three_tech_tiles"
+    )
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -696,6 +703,7 @@ IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = froz
         PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS,
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS,
         PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES,
     }
 )
 

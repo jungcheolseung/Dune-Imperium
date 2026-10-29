@@ -343,6 +343,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: (
         "이 차례 바로 뒤에 차례를 한 번 더 할 수 있음"
     ),
+    # Rise of Ix's Ixian Engineer (stage P4d): the Acquire Tech icon, in the
+    # words of ``effect_dsl_text_ko`` ("Acquire Tech | 기술 획득" [Bloodlines
+    # p. 12]) with the "may" of [Rise of Ix p. 4].
+    PersonalCardAgentEffect.MAY_ACQUIRE_TECH: "{tech_tile} {acquire} 가능",
     PersonalCardAgentEffect.GENERATE_SPECIMEN: "표본 1개 생성",
     PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
         "{influence_bene_gesserit:1}, {intrigue:1}"
@@ -746,6 +750,14 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES: "{spy} 2 배치",
     PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: (
         "{tech_tile} 2 이상이면: {influence_any:1} 선택"
+    ),
+    # Rise of Ix's Ixian Engineer (stage P4d): CHOAM Demands' arrow with a
+    # Victory Point.
+    (
+        PersonalCardRevealChoiceEffect
+        .MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES
+    ): (
+        "{tech_tile} 3 이상이면: 이 카드 {trash} {arrow_right} {victory_point:1}"
     ),
     # Rise of Ix's Web of Power (stage P4d).
     PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE: "{influence_any:1} 선택",

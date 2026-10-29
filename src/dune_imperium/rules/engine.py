@@ -53,6 +53,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_recall,
     apply_agent_card_space_block,
     apply_agent_card_spy_action,
+    apply_agent_card_tech,
     apply_agent_card_trash,
     apply_corrinth_city_payment,
     apply_opponent_card_discard,
@@ -959,6 +960,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Weirding Way (Rise of Ix): "You may take another turn immediately after
     # this one."
     "take_agent_card_extra_turn": apply_agent_card_extra_turn,
+    # Ixian Engineer (Rise of Ix): the Acquire Tech icon opens its window.
+    "acquire_agent_card_tech": apply_agent_card_tech,
     # Local Fence (Rise of Ix): its two arrows printed with "-OR-".
     "pay_agent_card_spice_for_solari": apply_agent_card_payment,
     "pay_agent_card_solari_for_spice": apply_agent_card_payment,

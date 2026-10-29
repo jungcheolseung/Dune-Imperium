@@ -181,6 +181,19 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                 ),
                 mark=_OPTIONAL,
             ),
+            # Ixian Engineer (Rise of Ix): "If you have three or more Tech
+            # tiles: Trash this card -> 1 Victory Point" [Steam app text] --
+            # CHOAM Demands' shape, an optional arrow whose cost is the card's
+            # own trash and whose condition is judged whenever its row is
+            # asked (OQ-028).
+            _CHOICE.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES: _choice(
+                _line(
+                    GainVictoryPoints(1),
+                    costs=(TrashCard(this_card=True),),
+                    condition=TechTilesAtLeast(3),
+                ),
+                mark=_OPTIONAL,
+            ),
             # For Humanity: "Bene Gesserit Alliance: You may lose 2 Influence with
             # one Faction -> Gain 1 VP" -- a "?" Influence diamond with two red
             # chevrons; like gaining two, the steps are not split between

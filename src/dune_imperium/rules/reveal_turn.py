@@ -246,6 +246,7 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     _Choice.COMMAND_MAY_TRASH_CARD: _TRASH_ACTIONS,
     _Choice.MAY_TRASH_SELF_FOR_COMBAT_ICON: _TRASH_ACTIONS,
     _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS: _TRASH_ACTIONS,
+    _Choice.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES: _TRASH_ACTIONS,
     _Choice.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH: _RETREAT_ACTIONS,
     _Choice.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION: _RETREAT_ACTIONS,
     _Choice.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: frozenset(
@@ -399,12 +400,14 @@ def target_reward_choice(ability: Ability | None) -> bool:
         case _:
             return False
     # Only the rewards the shape pays as printed: flat Reveal swords, one
-    # Intrigue card, the Combat icon, one Influence with a fixed Faction.
+    # Intrigue card, the Combat icon, a Victory Point, one Influence with a
+    # fixed Faction.
     return all(
         isinstance(reward, RevealSwords)
         and reward.per is None
         or reward == DrawIntrigueCards(1)
         or reward == GrantCombatDeployment()
+        or isinstance(reward, GainVictoryPoints)
         or isinstance(reward, GainInfluence)
         and reward.times == 1
         and reward.factions is not None
@@ -1135,6 +1138,28 @@ def resolve_target_reward(state: GameState, action: DomainAction) -> RuleResult:
                 )
                 working = gained.state
                 events.extend(gained.events)
+            case GainVictoryPoints(amount=points):
+                # Ixian Engineer: the Victory Point the trash pays for, after
+                # the trash (the cost) as every arrow's reward is.
+                owner = working.players[player]
+                working = replace(
+                    working,
+                    players=replace_player(
+                        working.players,
+                        replace(owner, victory_points=owner.victory_points + points),
+                    ),
+                )
+                events.append(
+                    GameEvent(
+                        event_id=f"{source}:victory_point",
+                        kind="reveal_victory_point_gained",
+                        payload=(
+                            ("card_id", card_id),
+                            ("player", player),
+                            ("victory_points", points),
+                        ),
+                    )
+                )
             case TrashPersonalCard():
                 pass  # Shrouded Counsel: the trash is the whole reward.
             case _:
@@ -2308,9 +2333,9 @@ def legal_reveal_card_trash_actions(
     """Return the optional trash choices of the current Reveal card.
 
     Calculus of Power's other Emperor card, Shrouded Counsel's Command
-    trash, Disruption Tactics' and CHOAM Demands' self-trash: arrows or a
-    black trash icon, so no refusal is offered (OQ-095 (7) addition), and
-    ``source`` names the card whose choice the trash pays.
+    trash, Disruption Tactics', CHOAM Demands' and Ixian Engineer's self-trash:
+    arrows or a black trash icon, so no refusal is offered (OQ-095 (7)
+    addition), and ``source`` names the card whose choice the trash pays.
     """
 
     pending = pending_choice_rows(state, player, legal_reveal_card_trash_actions)
@@ -2322,6 +2347,7 @@ def legal_reveal_card_trash_actions(
         PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD,
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON,
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES,
     ):
         return ()
     # Their records (composed A4d).
@@ -4883,6 +4909,12 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect is PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH
         else "Choose a Faction to gain one Influence with"
         if effect is PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE
+        else "Three or more Tech tiles: you may trash this card for a Victory Point"
+        if effect
+        is (
+            PersonalCardRevealChoiceEffect
+            .MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES
+        )
         else "You may retreat two troops for two Persuasion"
         if effect
         is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION

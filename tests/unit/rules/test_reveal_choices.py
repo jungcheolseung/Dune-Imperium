@@ -149,9 +149,10 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
     # Guild Ambassador's Victory Point, Gurney Halleck's troops, and Sardaukar
     # Legion's, Scout's and Chani's counts of troops (stage P3), and the promo
     # Duncan, Loyal Blade's trash for a count of troops; Rise of Ix's Guild
-    # Chief Administrator's Freighter icon ("may" [Rise of Ix p. 5]) and
-    # Negotiated Withdrawal's arrow.
-    assert len(optional) == 16 + 8 + 2
+    # Chief Administrator's Freighter icon ("may" [Rise of Ix p. 5]),
+    # Negotiated Withdrawal's arrow and Ixian Engineer's trash for a Victory
+    # Point (stage P4d).
+    assert len(optional) == 16 + 8 + 3
     # Ten of the Uprising family's, Bene Gesserit Sister's -OR- (stage P3) and
     # Rise of Ix's Web of Power's wild Influence icon (stage P4d).
     assert len(mandatory) == 10 + 1 + 1
@@ -857,4 +858,7 @@ def test_the_reveal_choices_paying_one_target_for_their_reward() -> None:
         _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
         # Rise of Ix's Web of Power (stage P4d): the wild Influence icon.
         _Choice.GAIN_CHOSEN_INFLUENCE,
+        # Rise of Ix's Ixian Engineer (stage P4d): CHOAM Demands' arrow with a
+        # Victory Point.
+        _Choice.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES,
     }

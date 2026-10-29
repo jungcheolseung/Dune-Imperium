@@ -1087,13 +1087,16 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
         )
         # Landing Rights' Freighter icon, an Agent box's two moves
-        # (``agent_effects.apply_agent_card_freighter``), and Guild Chief
-        # Administrator's, a Reveal choice's (``reveal_turn``).
+        # (``agent_effects.apply_agent_card_freighter``), Ixian Engineer's
+        # Acquire Tech icon (``agent_effects.apply_agent_card_tech``), and
+        # Guild Chief Administrator's Freighter, a Reveal choice's
+        # (``reveal_turn``).
         templates.extend(
             ActionTemplate(action_id=action_id)
             for action_id in (
                 "advance_agent_card_freighter",
                 "recall_agent_card_freighter",
+                "acquire_agent_card_tech",
                 "advance_reveal_freighter",
                 "recall_reveal_freighter",
                 # Weirding Way's extra turn.
@@ -2509,7 +2512,9 @@ def _window_printers(
         return _spy_placement_printers(config)
     if action_id == "decline_tech":
         # Battlefield Research, Rapid Engineering, and the Shipping track's
-        # space 3 and the two Landsraad spaces of the overlay (Rise of Ix).
+        # space 3, the two Landsraad spaces of the overlay, Prince Rhombur
+        # Vernius' Ixian Technology and Ixian Engineer's Agent box (Rise of
+        # Ix), in that fixed order.
         return (
             *(
                 (Source.INTRIGUE, card)
@@ -2530,6 +2535,13 @@ def _window_printers(
                 (Source.LEADER, face)
                 for face in faces
                 if config.rise_of_ix and face == "prince_rhombur_vernius"
+            ),
+            # Ixian Engineer's Agent box (stage P4d).
+            *(
+                (Source.AGENT_CARD, card)
+                for card in (
+                    _box_reward_cards(config, AcquireTech) if config.rise_of_ix else ()
+                )
             ),
         )
     if action_id == "resolve_opponent_discard_without_card":
@@ -2847,6 +2859,7 @@ _ICON_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "freighter_second": (("advance", "freighter"), ("collect", "freighter")),
     # Weirding Way's extra turn (Rise of Ix).
     "extra_turn": (("take", "extra_turn"),),
+    "tech": (("acquire", "tech"),),
 }
 _HOOK_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "possible_futures": (("gain_influence", ""),),
@@ -4277,6 +4290,10 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
         "trash_reveal_card",
     ),
     _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS: (
+        "trash_reveal_card",
+    ),
+    # Ixian Engineer (Rise of Ix): the card's own trash.
+    _Choice.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES: (
         "trash_reveal_card",
     ),
 }

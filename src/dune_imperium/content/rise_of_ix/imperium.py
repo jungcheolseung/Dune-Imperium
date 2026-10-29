@@ -16,9 +16,9 @@ game's deck takes only completed cards (CHOAM Delegate, Jamis, Landing
 Rights, Sayyadina, Shai-Hulud, Truthsayer, Imperial Shock Trooper, Local
 Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
 Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
-Way, Satellite Ban, Spice Trader, Imperial Bashar, Bounty Hunter and Web of
-Power so far), while the observation lists every identity from v39. Setup
-takes Rise of Ix on the original game since stage P4c-5.
+Way, Satellite Ban, Spice Trader, Imperial Bashar, Bounty Hunter, Web of
+Power and Ixian Engineer so far), while the observation lists every identity
+from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
 cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
@@ -240,6 +240,19 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("ixian_engineer", "Ixian Engineer"),
         copies=2,
         acquisition_cost=5,
+        # App table: no Faction, the Spice Trade icon, no fixed Reveal values.
+        # Agent: the Acquire Tech icon, which the screen pieces print without a
+        # Tech Discount sprite, so a discount of 0 -- the plain icon of the
+        # Dreadnought space (``AcquireTechAgentAbility`` sets no discount)
+        # [Steam app screen pieces]. Reveal: "If you have three or more Techs:
+        # Trash this card -> 1 Victory Point" [Steam app text], an optional
+        # arrow (a Reveal choice) whose cost is the card's own trash.
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.MAY_ACQUIRE_TECH,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("jamis", "Jamis"),
