@@ -2150,3 +2150,13 @@ title = "Troops recruited by a Freighter recall during Combat go to the garrison
 ruling_ko = "교전 보상의 Freighter로 회수해 소집한 병력은 Troop Transports가 있어도 교전에 배치하지 않고 주둔지로 간다. 자기 차례에 회수로 소집한 병력은 Troop Transports가 있으면 전투 장소에 에이전트를 보내지 않았어도 교전에 배치할 수 있다."
 ruling = "Troops recruited by a Freighter recall from a Conflict reward go to the garrison, even with Troop Transports. On your own turn, Troop Transports lets the troops a recall recruits deploy to the Conflict even when your Agent went to no Combat space."
 names = ["Troop Transports", "Freighter"]
+
+[[ruling]]
+oq = "OQ-152"
+group = "project"
+game = "base_ix"
+title_ko = "모자랐던 병력은 배치하기 좋은 것부터 채운다"
+title = "A recruit shortfall is made up in the order that suits its owner"
+ruling_ko = "개인 공급처가 모자라 소집하지 못한 병력은 같은 차례에 병력이 돌아오면 채워진다. 일부만 채울 수 있으면 공개 차례 줄이 정한 병력, Troop Transports로 받은 병력, 보통 소집, Harkonnen Advisor 병력 순으로 채운다."
+ruling = "Troops a short supply could not give are made up when troops return to it in the same turn. When only some can be, they are made up in this order: those a Reveal line names, those Troop Transports gives, ordinary recruits, and a Harkonnen Advisor troop last."
+names = ["Troop Transports", "Harkonnen Advisor"]

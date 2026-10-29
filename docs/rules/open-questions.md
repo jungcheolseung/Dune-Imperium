@@ -177,7 +177,7 @@
 | [OQ-149](#oq-149--intrigue-덱-맨-위를-보고-하나를-남긴-좌석은-그-카드를-아는가-immortality--rise-of-ix) | Intrigue 덱 맨 위를 보고 하나를 남긴 좌석은 그 카드를 아는가 (Immortality · Rise of Ix) | `DECIDED` |
 | [OQ-150](#oq-150--reveal-turn-tech-능력-artillery의-셈과-reveal-도중에-얻은-타일-rise-of-ix) | Reveal turn Tech 능력: Artillery의 셈과 Reveal 도중에 얻은 타일 (Rise of Ix) | `DECIDED` |
 | [OQ-151](#oq-151--combat-해결-중-shipping-회수로-recruit한-troop을-troop-transports로-배치할-수-있는가-rise-of-ix) | Combat 해결 중 Shipping 회수로 recruit한 troop을 Troop Transports로 배치할 수 있는가 (Rise of Ix) | `DECIDED` |
-| [OQ-152](#oq-152--일부만-채워지는-recruit-부족분은-어느-troop부터-채우는가) | 일부만 채워지는 recruit 부족분은 어느 troop부터 채우는가 | `OPEN` |
+| [OQ-152](#oq-152--일부만-채워지는-recruit-부족분은-어느-troop부터-채우는가) | 일부만 채워지는 recruit 부족분은 어느 troop부터 채우는가 | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3245,7 +3245,7 @@
 
 ## OQ-152 — 일부만 채워지는 recruit 부족분은 어느 troop부터 채우는가
 
-- 상태: `OPEN` (2026-10-29, `d9ff11d3`이 아래 "지금 구현"대로 넣었다 — 사용자 판정을 기다린다)
+- 상태: `DECIDED` (2026-10-29 사용자: **"(가) 가 맞다"**) — 아래 "판정"
 - 배경: OQ-030 재판정(2026-10-04)으로 같은 turn에 supply가 돌아오면 부족분이 채워지고, 채워진 troop은 이번 turn의 recruit라 배치 몫에 든다.
   부족분은 출처마다 배치 자격이 다르다 — Reveal 줄 `DeployTheseTroops`의 "이 troop들"(OQ-140), Troop Transports를 가진 Shipping recruit(어디서든
   배치, rise-of-ix.md 15), 보통 recruit(Combat 칸 turn에만), Harkonnen Advisor(배치 금지, OQ-038).
@@ -3253,3 +3253,6 @@
 - 지금 구현: OQ-140의 "이 카드들 몫 먼저" → Troop Transports 몫 → 보통 recruit → Harkonnen Advisor(마지막, OQ-038) — 소유자에게 유리한 쪽.
 - 선택지: (가) 지금 구현(소유자에게 유리한 순서); (나) recruit한 순서대로; (다) 소유자가 고른다(결정 창이 하나 는다).
 - 추천: (가) — 앱은 출처를 가리지 않는 카운터 하나라 순서가 없고(OQ-030 보조 증거), 프로젝트가 정한 OQ-140·OQ-038의 방향과 같다.
+- **판정(2026-10-29, 사용자 "(가) 가 맞다"):** 일부만 채울 때는 소유자에게 유리한 순서 — Reveal 줄 `DeployTheseTroops`의 몫(OQ-140) → Troop
+  Transports를 가진 Shipping recruit 몫 → 보통 recruit → Harkonnen Advisor(배치 금지, OQ-038). 엔진은 `d9ff11d3`부터 그렇게 한다
+  (`combat_deployment.refill_shipping_troops`).
