@@ -736,6 +736,10 @@ const UI_TEXT = {
     "ko": "프로모 카드 (원판 3장: Duncan, Loyal Blade · Jessica of Arrakis · Thumper)",
     "en": "Promo cards (3 in the original game: Duncan, Loyal Blade · Jessica of Arrakis · Thumper)"
   },
+  "html.opt_rise_of_ix": {
+    "ko": "익스의 부상 확장 (원판에서만: 드레드노트·기술 타일·운송 트랙·새 카드·지도자 6종)",
+    "en": "Rise of Ix expansion (original game only: dreadnoughts · Tech tiles · Shipping track · new cards · 6 Leaders)"
+  },
   "html.opt_shuffle_seats": {
     "ko": "자리 무작위 배치",
     "en": "Random seating"

@@ -246,6 +246,10 @@ class CreateGameRequest(BaseModel):
     # garrison troops [Rise of Ix p. 10]. Needs no other option; omitted
     # means off, while the browser setup box is checked by default (OQ-092).
     epic_game: bool = False
+    # Rise of Ix on the original game (docs/rules/rise-of-ix.md; stage P5f of
+    # docs/base-game-and-ix-plan.md). The engine refuses it with Uprising
+    # until stage P7.
+    rise_of_ix: bool = False
     # The Arrakeen Scouts module (docs/rules/arrakeen-scouts.md).
     arrakeen_scouts: bool = False
     # OQ-132 project convention: seat 0 takes the First Player Objective.
@@ -672,6 +676,7 @@ def create_app(
                 epic_game=body.epic_game,
                 arrakeen_scouts=body.arrakeen_scouts,
                 first_player_seat_zero=body.first_player_seat_zero,
+                rise_of_ix=body.rise_of_ix,
                 seats_at_start=body.seats_at_start,
                 game_seed=body.game_seed,
                 policy_seed=body.policy_seed,

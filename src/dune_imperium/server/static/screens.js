@@ -76,6 +76,10 @@ const UPRISING_ONLY_OPTIONS = [
 function syncBaseGameOption() {
   const original = el("opt-base-game").value === "imperium";
   el("opt-base-game-note").hidden = !original;
+  /* Rise of Ix sits on the original game only (Uprising's is stage P7). */
+  const ix = el("opt-rise-of-ix");
+  ix.disabled = !original;
+  if (!original) ix.checked = false;
   /* The promo box names the chosen base game's own promo cards. */
   el("opt-promo-uprising").hidden = original;
   el("opt-promo-imperium").hidden = !original;
@@ -385,6 +389,7 @@ async function createGame(event) {
     // Epic Game Mode depends on no other box and opens checked (OQ-092 user
     // decision); the engine and the CLIs keep it off.
     epic_game: el("opt-epic-game").checked,
+    rise_of_ix: el("opt-rise-of-ix").checked,
     ai_pace: el("opt-ai-pace").value,
   };
   const seed = el("opt-seed").value;

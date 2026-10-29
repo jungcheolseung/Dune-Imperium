@@ -689,6 +689,10 @@ BASE_GAME_JS = """() => {
     promo: [...document.querySelectorAll("#opt-promo ~ span")]
       .filter((span) => !span.hidden).map((span) => span.textContent.trim()),
     promoWant: {uprising: t("html.opt_promo"), imperium: t("html.opt_promo_imperium")},
+    ix: (() => {
+      const box = document.getElementById("opt-rise-of-ix");
+      return {checked: box.checked, disabled: box.disabled};
+    })(),
   };
 }"""
 
@@ -751,6 +755,12 @@ def original_game(base: str, browser) -> None:
         original,
     )
     check.ok(
+        before["ix"] == {"checked": False, "disabled": True}
+        and original["ix"] == {"checked": False, "disabled": False},
+        "Rise of Ix is offered on the original game only, unchecked",
+        {"uprising": before["ix"], "original": original["ix"]},
+    )
+    check.ok(
         original["promo"] == [original["promoWant"]["imperium"]],
         "the original game: the promo box names its own three promos",
         original["promo"],
@@ -775,7 +785,8 @@ def original_game(base: str, browser) -> None:
     check.ok(
         back["boxes"] == before["boxes"] and back["kinds"] == [
             "human", "random", "app_ai_easy", "app_ai"]
-        and back["promo"] == before["promo"],
+        and back["promo"] == before["promo"]
+        and back["ix"] == {"checked": False, "disabled": True},
         "back on Uprising: the boxes come back, the picked seats stay and the"
         " refused one keeps the default",
         {"before": before, "back": back},
