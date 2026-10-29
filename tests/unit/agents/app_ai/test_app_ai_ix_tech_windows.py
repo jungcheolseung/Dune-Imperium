@@ -10,6 +10,7 @@ import pytest
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.app_ai import AppAIAgent
 from dune_imperium.agents.app_ai.entities import Entity, Kind
+from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.testing import first_decision, make_profile
 from dune_imperium.agents.app_ai.windows import ix
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Memory
@@ -264,3 +265,107 @@ def test_unload_rows_are_taken_in_order() -> None:
     ]
     run = _choice_run(rows)
     assert ix.unload_icons(run) is rows[0]
+
+
+def _garrison_run(
+    troops: int, dreadnoughts: int, rows: tuple[DomainAction, ...]
+) -> tuple[Profile, DecisionRun]:
+    from dune_imperium.agents.app_ai.testing import ENGINE, with_player
+    from dune_imperium.core.decisions import PlayerDecision
+
+    state = first_decision("turn", config=IX)
+    decision = ENGINE.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    seat = decision.owner
+    changed = with_player(
+        state,
+        seat,
+        troops_garrison=troops,
+        dreadnoughts_garrison=dreadnoughts,
+        dreadnoughts_supply=2 - dreadnoughts,
+    )
+    p = make_profile(changed, seat)
+    return p, DecisionRun(p.ctx, p, rows, p.rng, Memory())
+
+
+def test_second_wave_offers_every_garrison_unit_and_picks_the_strongest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``<Targets>`` @0x4bf7d40: every garrison unit, ``NumberToSelect =
+    Min(count, 2)``; ``SecondWaveAbility::Evaluate`` takes ``GetUnitsToDeploy``
+    over them, the dreadnought first."""
+
+    from dune_imperium.agents.app_ai.abilities.ix_intrigue import SecondWaveAbility
+    from dune_imperium.agents.app_ai.catalog import intrigue_entity
+    from dune_imperium.agents.app_ai.windows.intrigue import intrigue_request
+
+    p, _run = _garrison_run(3, 1, ())
+    request = intrigue_request(p.ctx, "intrigue:second_wave:0", True)
+    [info] = request.infos
+    assert info.options == (0, 1, 2, 3) and info.max_select == 2
+    monkeypatch.setattr(p, "is_climax", lambda: True)  # "Climax": every unit
+    monkeypatch.setattr(p, "_baron_holds_secret_factions", lambda: False)
+    monkeypatch.setattr(p, "_holds_intrigue", lambda card: False)
+    card = intrigue_entity("intrigue:second_wave:0", p.ctx.seat)
+    answer = SecondWaveAbility(card).evaluate(p, request)
+    assert answer.response == ((0, 1),)
+
+
+def test_second_wave_deploys_the_row_of_its_answered_units() -> None:
+    from dune_imperium.agents.app_ai.windows import intrigue
+
+    shares = ((0, 0), (1, 0), (1, 1), (2, 0), (2, 1))
+    rows = tuple(
+        DomainAction(
+            action_id="deploy_intrigue_troops",
+            actor=0,
+            arguments=(("count", n), *((("dreadnoughts", d),) if d else ())),
+        )
+        for n, d in shares
+    )
+    _p, run = _garrison_run(3, 1, rows)
+    # Index 0 is the garrisoned dreadnought (the options list it first).
+    assert intrigue._second_wave_deploy(run, rows, (0, 1)) is rows[4]
+    assert intrigue._second_wave_deploy(run, rows, (1, 2)) is rows[3]
+    assert intrigue._second_wave_deploy(run, rows, ()) is rows[0]
+
+
+def test_an_intrigue_commission_is_taken(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Advanced Weaponry's Plot: the app's ability commissions as it runs (no
+    prompt); declined only when no commission is offered."""
+
+    from dune_imperium.agents.app_ai.windows import intrigue
+    from dune_imperium.content.uprising.effect_dsl import CommissionDreadnought
+    from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
+
+    instance = "intrigue:advanced_weaponry:0"
+    option = intrigue_card_for_instance(instance).options[0]
+    frame = (instance, option, CommissionDreadnought(), 0)
+    monkeypatch.setattr(intrigue, "_choice_frame", lambda run: frame)
+    take, decline = (
+        DomainAction(action_id=a, actor=0)
+        for a in ("commission_intrigue_dreadnought", "decline_intrigue_dreadnought")
+    )
+    assert intrigue.intrigue_choice(_choice_run([take, decline])) is take
+    assert intrigue.intrigue_choice(_choice_run([decline])) is decline
+
+
+@pytest.mark.parametrize("cid", ["grand_conspiracy", "plans_within_plans"])
+def test_an_endgame_count_card_takes_the_option_the_app_scores(cid: str) -> None:
+    """``CountTotalPoints`` @0x4bec350 / @0x4ca8030: four items or tracks
+    score 2 VP, so with both -OR- options offered the 2 VP one is played."""
+
+    from dune_imperium.agents.app_ai.windows import combat
+
+    ref = f"intrigue:{cid}:0"
+    plays = tuple(
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", ref), ("option", o)),
+        )
+        for o in (0, 1)
+    )
+    assert combat._endgame_play(plays, ref) is plays[1]
+    assert combat._endgame_play(plays[:1], ref) is plays[0]
+    assert combat._endgame_play(plays, "intrigue:other:0") is None

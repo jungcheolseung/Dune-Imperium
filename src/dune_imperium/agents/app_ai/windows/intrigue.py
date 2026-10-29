@@ -261,6 +261,7 @@ from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquireTleilaxuCard,
+    CommissionDreadnought,
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
@@ -585,6 +586,12 @@ def intrigue_request(
         infos = (_ents(_trash_cards(ctx)),)
     elif cid == "finesse" and not combat:
         infos = (_ents(_lose_tracks(ctx)), _ents(_gain_tracks(ctx)))
+    elif cid == "second_wave" and combat:
+        # ``<Targets>`` @0x4bf7d40: every garrison unit, ``NumberToSelect =
+        # Min(count, 2)``; the dreadnoughts first (SecondWaveAbility reads
+        # them so).
+        units = ctx.me.troops_garrison + ctx.me.dreadnoughts_garrison
+        infos = (TargetInfo(options=tuple(range(units)), max_select=min(units, 2)),)
     elif cid in ("find_weakness", "spring_the_trap"):
         infos = (_ents(_own_spies(ctx)),)
     elif cid == "leverage":
@@ -1110,6 +1117,8 @@ def _deploy(
     elif cid == "counterattack":  # [units]: GetUnitsToDeploy(units, <= 2)
         units = _item(intent(), 0)
         count = len(units) if units is not None else None
+    elif cid == "second_wave":  # ((unit indices, dreadnoughts first),)
+        return _second_wave_deploy(run, actions, _item(intent(), 0))
     elif cid == "twisted_devious":  # ((1,), (units,))
         answer = intent()
         if _first_int(_item(answer, 0)) == 1:
@@ -1119,6 +1128,30 @@ def _deploy(
         garrison = _indices(_garrison_units(run.ctx))
         count = intrigue_deploy_troops(run.profile, garrison)
     return _count_action(actions, count, _deploy_share(run, actions))
+
+
+def _second_wave_deploy(
+    run: DecisionRun,
+    actions: Sequence[DomainAction],
+    units: tuple[str | int, ...] | None,
+) -> DomainAction | None:
+    """Rise of Ix's Second Wave: the units its play answered
+    (``SecondWaveAbility::Evaluate``: ``GetUnitsToDeploy`` over the garrison
+    units, dreadnoughts first), as the row of that many units with that many
+    dreadnoughts (``dreadnoughts`` argument, absent = 0). An empty answer
+    deploys nothing (the smallest row)."""
+
+    chosen = [u for u in (units or ()) if isinstance(u, int)]
+    dreadnoughts = run.ctx.me.dreadnoughts_garrison
+    ships = sum(1 for u in chosen if u < dreadnoughts)
+    count = len(chosen)
+    for action in actions:
+        if (
+            int_arg(action, "count") == count
+            and (int_arg(action, "dreadnoughts") or 0) == ships
+        ):
+            return action
+    return _count_action(actions, count)
 
 
 def _trash(
@@ -1613,6 +1646,13 @@ def intrigue_choice(run: DecisionRun) -> DomainAction | None:
             return _intrigue_freighter(run, intent)
         case OpponentLosesTroop():
             return _opponent_troop_loss(run, intent)
+        case CommissionDreadnought():
+            # Rise of Ix: an Intrigue's "commission a dreadnought" is part of
+            # the played ability's execution in the app (no prompt): taken,
+            # declined only when no commission is offered.
+            return run.first("commission_intrigue_dreadnought") or run.first(
+                "decline_intrigue_dreadnought"
+            )
         case RecallYourAgent():
             return _recall_your_agent(run, intent)
     return None

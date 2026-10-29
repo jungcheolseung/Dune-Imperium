@@ -127,12 +127,15 @@ from dune_imperium.agents.app_ai.windows.common import (
     Source,
     Stage,
     decide,
+    int_arg,
     spy_answer,
     str_arg,
     with_arg,
 )
 from dune_imperium.agents.app_ai.windows.intrigue import intrigue_play_sources
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler
+from dune_imperium.content.uprising.effect_dsl import GainVictoryPoints
+from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.rules.combat import (
     REWARD_ICON_ACTION,
@@ -835,7 +838,7 @@ def endgame_intrigue(run: DecisionRun) -> DomainAction | None:
         if isinstance(ability, GraspArrakisEndgameAbility):
             after_pairs.append(card)
             continue
-        action = with_arg(plays, "card_id", card.ref)
+        action = _endgame_play(plays, card.ref)
         if action is not None:
             return action
     matches = run.by_id("match_endgame_wild_icon")
@@ -849,10 +852,39 @@ def endgame_intrigue(run: DecisionRun) -> DomainAction | None:
             if offered == pair or (pair in wild_wild and set(offered) == set(pair)):
                 return action
     for card in after_pairs:
-        action = with_arg(plays, "card_id", card.ref)
+        action = _endgame_play(plays, card.ref)
         if action is not None:
             return action
     return run.first("pass_endgame_intrigue")
+
+
+def _endgame_play(plays: tuple[DomainAction, ...], ref: str) -> DomainAction | None:
+    """The card's play whose Victory Points the app's engine pays.
+
+    Plans Within Plans and Grand Conspiracy score their own count
+    (``CountTotalPoints`` @0x4ca8030 / @0x4bec350: three -> 1 VP, four -> 2
+    VP), where our engine offers each count as its own -OR- option (OQ-058)
+    and four tracks or items offer both. Among the card's offered options the
+    one with the most VP; the first on a tie (every one-option card).
+    """
+
+    card_plays = [a for a in plays if str_arg(a, "card_id") == ref]
+    if not card_plays:
+        return None
+    options = intrigue_card_for_instance(ref).options
+
+    def vp(action: DomainAction) -> int:
+        index = int_arg(action, "option")
+        if index is None:
+            return 0
+        return sum(
+            reward.amount
+            for section in options[index].sections
+            for reward in section.rewards
+            if isinstance(reward, GainVictoryPoints)
+        )
+
+    return max(card_plays, key=vp)
 
 
 def _wild_wild_pairs(run: DecisionRun) -> list[tuple[str, str]]:
