@@ -30,6 +30,7 @@ from dune_imperium.core import (
 )
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_turn import executable_placements
+from dune_imperium.rules.combat import begin_combat_intrigue
 
 CONFIG = RulesetConfig(
     base_game=BaseGame.IMPERIUM, rise_of_ix=True, first_player_seat_zero=True
@@ -175,7 +176,85 @@ def test_expedite_can_decline_the_freighter_after_paying() -> None:
     assert "intrigue:expedite:0" in done.intrigue_discard
 
 
-@pytest.mark.parametrize("card", ["expedite"])
+# Finesse ------------------------------------------------------------------
+
+
+def test_finesse_plot_loses_then_gains_influence() -> None:
+    """ "Lose 1 Influence -> gain 1 Influence" -OR- "2 swords" [Steam UI]."""
+    state = _start("finesse", influence=Influence(emperor=1))
+    assert _options(state, "finesse") == {0}
+    state = _play(state, "finesse")
+    assert {dict(row.arguments)["faction"] for row in _rows(state)} == {"emperor"}
+    state = _take(state, "choose_intrigue_faction", faction="emperor")
+    assert state.players[0].influence.emperor == 0
+    assert {dict(row.arguments)["faction"] for row in _rows(state)} == {
+        "emperor",
+        "spacing_guild",
+        "bene_gesserit",
+        "fremen",
+    }
+    done = _take(state, "choose_intrigue_faction", faction="fremen")
+    assert done.players[0].influence.fremen == 1
+    assert done.players[0].combat_strength == 0
+    assert "intrigue:finesse:0" in done.intrigue_discard
+
+
+def test_finesse_plot_requires_influence_to_lose() -> None:
+    """ "Lose 1 Influence -> gain 1 Influence" needs an Influence to lose."""
+    assert _options(_start("finesse", influence=Influence()), "finesse") == set()
+
+
+def test_finesse_can_regain_the_same_faction_even_with_every_track_full() -> None:
+    """ "Lose 1 Influence -> gain 1 Influence": same Faction [FAQ p. 4]."""
+    state = _start(
+        "finesse",
+        influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
+    )
+    state = _take(_play(state, "finesse"), "choose_intrigue_faction", faction="emperor")
+    assert state.players[0].influence.emperor == 5
+    assert {dict(row.arguments)["faction"] for row in _rows(state)} == {"emperor"}
+    done = _take(state, "choose_intrigue_faction", faction="emperor")
+    assert done.players[0].influence.emperor == 6
+
+
+def test_finesse_regaining_four_repeats_the_faction_bonus() -> None:
+    """ "Lose 1 Influence -> gain 1 Influence": regain 4's bonus [DI p. 7]."""
+    state = _start(
+        "finesse", influence=Influence(spacing_guild=4), resources=Resources()
+    )
+    state = _take(
+        _play(state, "finesse"), "choose_intrigue_faction", faction="spacing_guild"
+    )
+    done = _take(state, "choose_intrigue_faction", faction="spacing_guild")
+    assert done.players[0].influence.spacing_guild == 4
+    assert done.players[0].resources.solari == 3
+
+
+@pytest.mark.parametrize("troops,dreadnoughts", [(1, 0), (0, 1), (0, 0)])
+def test_finesse_combat_uses_only_the_swords(troops: int, dreadnoughts: int) -> None:
+    """ "2 swords" is Finesse's Combat half; Ix dreadnoughts qualify [Ix p. 6]."""
+    state = _start(
+        "finesse",
+        influence=Influence(),
+        troops_conflict=troops,
+        dreadnoughts_conflict=dreadnoughts,
+        combat_strength=2 * troops + 3 * dreadnoughts,
+    )
+    state = _seat(state, 1, troops_conflict=1, combat_strength=2)
+    state = replace(state, phase=GamePhase.COMBAT, decision_stack=())
+    state = begin_combat_intrigue(state).state
+    if troops or dreadnoughts:
+        assert _options(state, "finesse") == {1}
+        before = state.players[0].combat_strength
+        done = _play(state, "finesse", 1)
+        assert done.players[0].combat_strength == before + 2
+        assert done.players[0].influence == Influence()
+        assert "intrigue:finesse:0" in done.intrigue_discard
+    else:
+        assert _options(state, "finesse") == set()
+
+
+@pytest.mark.parametrize("card", ["expedite", "finesse"])
 def test_completed_cards_join_the_original_ix_deck(card: str) -> None:
     """ "Expedite / Finesse / Secret Forces / Strongarm" [Steam English titles]."""
     entry = intrigue_card_for_instance(f"intrigue:{card}:0")
@@ -184,7 +263,7 @@ def test_completed_cards_join_the_original_ix_deck(card: str) -> None:
     assert f"intrigue:{card}:0" in content_for(CONFIG).intrigue_deck_instance_ids
 
 
-@pytest.mark.parametrize("card", ["expedite"])
+@pytest.mark.parametrize("card", ["expedite", "finesse"])
 def test_plot_halves_are_playable_in_the_reveal_turn(card: str) -> None:
     """ "1 spice -> Freighter" / "Lose 1 Influence -> gain 1 Influence" /
     "If you have a seat on the High Council:" recruit 2 [Steam UI]."""

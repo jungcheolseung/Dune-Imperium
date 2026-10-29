@@ -253,7 +253,13 @@ def test_ix_cards_resolve_in_the_merged_tables_only() -> None:
 
 
 # The Intrigue cards transcribed so far (stage P4d, one per commit).
-_IX_INTRIGUE_TRANSCRIBED = {"blackmail", "cull", "glimpse_the_path", "expedite"}
+_IX_INTRIGUE_TRANSCRIBED = {
+    "blackmail",
+    "cull",
+    "glimpse_the_path",
+    "expedite",
+    "finesse",
+}
 
 
 def test_ix_entries_are_identities_only() -> None:

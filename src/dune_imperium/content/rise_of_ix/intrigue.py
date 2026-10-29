@@ -27,6 +27,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     Freighter,
     GainCombatStrength,
+    GainInfluence,
     GainResources,
     LoseInfluence,
     PayResources,
@@ -110,6 +111,15 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("finesse", "Finesse"),
         copies=1,
+        # Plot: lose 1 Influence -> gain 1 Influence; -OR- Combat: 2 swords
+        # [Steam app screen pieces]. The same Faction may be lost and gained
+        # (imperium-base.md 16, [FAQ p. 4]); the cost resolves first.
+        options=(
+            _plot(
+                EffectSection(costs=(LoseInfluence(1),), rewards=(GainInfluence(),))
+            ),
+            _combat(EffectSection(rewards=(GainCombatStrength(2),))),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("glimpse_the_path", "Glimpse the Path"),
