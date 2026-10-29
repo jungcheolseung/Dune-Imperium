@@ -658,6 +658,8 @@ _BOOST_DRAW_INDEX = 99
 #: Our trash choice of each card -> its app ability.
 _TRASH_ABILITY: Mapping[str, str] = {
     "calculus_of_power": "TrashAgentAbility",
+    # Rise of Ix: Jamis' generic trash box.
+    "jamis": "TrashAgentAbility",
     "desert_survival": "TrashAgentAbility",
     "shishakli": "ShishakliAgentAbility",
     "tread_in_darkness": "BeneGesseritTrashAbility",
@@ -683,6 +685,8 @@ _TRASH_ABILITY: Mapping[str, str] = {
 }
 _DISCARD_ABILITY: Mapping[str, str] = {
     "captured_mentat": "CapturedMentatAgentAbility",
+    # Rise of Ix: Truthsayer's Optional discard (abilities/ix_imperium.py).
+    "truthsayer": "TruthsayerAbility",
     "guild_spy": "GuildSpyAgentAbility",
     "space_time_folding": "SpacetimeFoldingAbility",
     "guild_envoy": "GuildEnvoyAbility",
@@ -700,6 +704,8 @@ _PAYMENT_ABILITY: Mapping[str, str] = {
     "spice_smugglers": "SpiceSmugglersAbility",
     "fremen_camp": "FremenCampAbility",
     "duncan_idaho_card": "DuncanIdahoAbility",
+    # Rise of Ix: Sayyadina's water payment (abilities/ix_imperium.py).
+    "sayyadina": "SayyadinaAbility",
 }
 _INTRIGUE_PAYMENT_ABILITY: Mapping[str, str] = {
     "branching_path": "BranchingPathAbility",
@@ -1027,6 +1033,8 @@ _IX_ACTION_IDS: frozenset[str] = frozenset(
         "deploy_dreadnoughts",
         # The app never withdraws (``DeployUnitsAbility`` only deploys).
         "withdraw_dreadnoughts",
+        # Spaceport's Foldspace on top of the deck (``_board_icons``).
+        "acquire_foldspace_to_deck_top",
         # The Ix Tech tiles' rows (``_flips``, ``_tech_trashes``,
         # ``_tech_acquire_effects``).
         "flip_tech",
@@ -1589,8 +1597,17 @@ def _board_icons(t: _Turn) -> None:
         elif effect == "foldspace":
             # The original Foldspace space: ``FoldspaceDeferredAbility``
             # (Explicit, E 100; immediate unless the threshold is reached).
+            # With Rise of Ix's Spaceport the acquire has the destination
+            # picker and the AI answers option 0, the top of its deck, for
+            # every card but The Spice Must Flow (generic-abilities.md §4.2,
+            # ``GetAcquireArchIDAndPickerKind`` @0x48447a0).
+            deck_top = t.run.first("acquire_foldspace_to_deck_top")
             _ability_source(
-                t, label, _find(t.space, "FoldspaceDeferredAbility"), _ROW_SPACE, action
+                t,
+                label,
+                _find(t.space, "FoldspaceDeferredAbility"),
+                _ROW_SPACE,
+                deck_top if deck_top is not None else action,
             )
         elif effect == "contract":
             _ability_source(
@@ -4225,6 +4242,11 @@ def _deploy(t: _Turn) -> None:
         garrison = maximum
     if found is None:
         found, garrison = _card_deploy_ability(t, maximum)
+    if found is None and t.run.ctx.ix and not _combat_space(t):
+        # Rise of Ix: troops a Shipping recall recruited off a Combat space.
+        # The app's ``DeployUnitsAbility`` is a Combat space's, so it asks
+        # nothing here: the deployment is left unused (a "may").
+        return
     if found is None:
         t.unmapped.append("deploy_troops off a Combat space")
         return
@@ -4468,6 +4490,12 @@ def _ix_spaces(t: _Turn) -> None:
                 return answer.value, (board_tech if _response_ref(answer) else None)
 
             _prompt(t, "Acquire Tech", (board_tech,), acquire, explicit=True)
+
+
+def _combat_space(t: _Turn) -> bool:
+    """Whether the turn's space is a Combat space (``IsCombatSpace``)."""
+
+    return t.space is not None and t.space.attr("CombatSpace", False) is True
 
 
 def _deploy_ix(t: _Turn) -> None:

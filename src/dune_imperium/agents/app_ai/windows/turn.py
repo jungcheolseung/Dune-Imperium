@@ -149,6 +149,7 @@ from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
 from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.profile.bloodlines import space_with_cost_cut
+from dune_imperium.agents.app_ai.windows import ix
 from dune_imperium.agents.app_ai.windows.common import (
     TURN_ROW_IDS,
     Source,
@@ -197,8 +198,10 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "play_turn_start_card",
         "flip_tech",
         "resolve_tech_acquire_effect",
-        # Rise of Ix: Spy Satellites' and Sonic Snoopers' trash (plan §13).
+        # Rise of Ix: Spy Satellites' and Sonic Snoopers' trash (plan §13),
+        # and a recall's rewards waiting on the turn (``ix.shipping_sources``).
         "trash_tech",
+        "resolve_shipping_reward",
     }
 )
 #: Navigation Chamber's discount variants of one space, in our legal order
@@ -1231,6 +1234,12 @@ def turn_window(run: DecisionRun) -> DomainAction | None:
         return None
     if owed:
         return decide(run, owed, skip=None)
+    shipping = run.by_id("resolve_shipping_reward")
+    if shipping:
+        # A recall's rewards still owed: the app's Explicit Shipping-track
+        # sources hold the prompt until answered (rix-tech.md §7.4), so they
+        # come before the turn's next action.
+        return decide(run, ix.shipping_sources(run, shipping), skip=None, forced=True)
     # ``place_track_spy`` is never a source. UNTRACED: 12 §1.3 finds nothing in
     # the playmat ability container (DetermineTurn row 4), while engine-order
     # §3.6 lists custom abilities there; a custom PlaceSpy (timing None) would

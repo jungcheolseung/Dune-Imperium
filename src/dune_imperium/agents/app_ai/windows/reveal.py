@@ -281,6 +281,7 @@ from dune_imperium.agents.app_ai.context import (
 )
 from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.profile.immortality import research_space_entity
+from dune_imperium.agents.app_ai.windows import ix
 from dune_imperium.agents.app_ai.windows.common import (
     TURN_ROW_IDS,
     Source,
@@ -454,6 +455,8 @@ _REVEAL_ACTIONS = REVEAL_CHOICE_ACTION_IDS | frozenset(
         # Facility's Reveal-turn trash (plan §13).
         "trash_tech",
         "trash_disposal_facility_card",
+        # A Reveal box Freighter's recall rewards (``ix.shipping_sources``).
+        "resolve_shipping_reward",
         # Arrakeen Scouts (Corrinth City's seat)
         "choose_subcommittee",
         "decline_subcommittee",
@@ -2318,6 +2321,12 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     known = _REVEAL_ACTIONS | TURN_ROW_IDS
     if any(a.action_id not in known for a in run.legal):
         return None  # a Reveal action of another expansion: not mirrored
+    shipping = run.by_id("resolve_shipping_reward")
+    if shipping:
+        # A Reveal box Freighter's recall rewards: the app's Explicit
+        # Shipping-track sources force the prompt until answered
+        # (rix-tech.md §7.4), so they come first.
+        return decide(run, ix.shipping_sources(run, shipping), skip=None, forced=True)
     batch = _return_batch(run)
     if batch is not None:
         return batch
