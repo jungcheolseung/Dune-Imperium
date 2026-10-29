@@ -96,6 +96,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
+    UnitsDeployedThisTurnAtLeast,
     UnitsInConflictAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import (
@@ -113,7 +114,10 @@ from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
     shuffle_discard_into_deck,
 )
-from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
+from dune_imperium.rules.combat_deployment import (
+    dreadnoughts_deployed_this_turn,
+    undeployable_troops_this_turn,
+)
 from dune_imperium.rules.conditions import (
     owner_condition_holds,
     spice_must_flow_copies,
@@ -311,6 +315,18 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             # they stand (OQ-121); a Control space holds the game's, so this
             # reads the state.
             return dreadnoughts_owned(state, player) >= count
+        case UnitsDeployedThisTurnAtLeast(count=count, dreadnoughts=True):
+            # Diversion's "four or more units" (rise-of-ix.md 6, table row
+            # "unit"; 15: Distraction's judgment): the turn's peak of troops,
+            # Commanders and sandworms the seat's own state holds
+            # (``owner_condition_holds``), plus the dreadnoughts the turn's
+            # deployment moved, which only the turn's frame counts (a
+            # dreadnought is a unit but no troop [Rise of Ix p. 6]).
+            return (
+                max(owner.units_deployed_turn, owner.units_deployed_peak)
+                + dreadnoughts_deployed_this_turn(state, player)
+                >= count
+            )
         case MoreSpiceMustFlowThanEachOpponent():
             # Corner the Market: "상대 하나라도 같거나 많으면 둘째 조건 실패"
             # (imperium-base.md 13.2, ``[FAQ p. 2]``): each opponent is

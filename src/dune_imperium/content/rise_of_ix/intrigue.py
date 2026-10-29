@@ -50,6 +50,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpiceMustFlowCardsAtLeast,
     TechTilesAtLeast,
     TrashPersonalCard,
+    UnitsDeployedThisTurnAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
@@ -166,6 +167,23 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("diversion", "Diversion"),
         copies=1,
+        # [PLOT] "When you deploy four or more units to the Conflict in a single
+        # turn:" the Freighter icon [Steam app text, log line "Played Diversion
+        # to gain Freighter" and screen pieces]. A play condition judged as
+        # Distraction's (OQ-016: the turn's peak of units; rise-of-ix.md 15),
+        # but a unit is a troop or a dreadnought [Rise of Ix p. 6]
+        # (rise-of-ix.md 6, table row "unit": "Diversion(four or more
+        # units)"), so the dreadnoughts of the turn's deployment are counted
+        # with the troops (``dreadnoughts=True``). The Freighter icon is a
+        # "may" [Rise of Ix p. 5], as Expedite's.
+        options=(
+            _plot(
+                EffectSection(
+                    condition=UnitsDeployedThisTurnAtLeast(4, dreadnoughts=True),
+                    rewards=(Freighter(),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("expedite", "Expedite"),

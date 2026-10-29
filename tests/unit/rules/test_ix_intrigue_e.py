@@ -18,9 +18,12 @@ import pytest
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.action_codec import ActionCodec
-from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
 from dune_imperium.content.rulesets import content_for
-from dune_imperium.content.uprising.effect_dsl import AcquireTech
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
+    UnitsDeployedThisTurnAtLeast,
+)
 from dune_imperium.content.uprising.intrigue import intrigue_card_for_instance
 from dune_imperium.core import (
     ChanceDecision,
@@ -35,8 +38,18 @@ from dune_imperium.display.effect_dsl_text import intrigue_card_text
 from dune_imperium.display.effect_dsl_text_ko import intrigue_card_text_ko
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.action_shapes import Source, printer_value
+from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat import begin_combat_intrigue
-from dune_imperium.rules.effect_interpreter import option_unplayable_reason
+from dune_imperium.rules.combat_deployment import (
+    UNITS_COMMITTED_KEY,
+    commit_units_with_dreadnoughts,
+    dreadnoughts_deployed_this_turn,
+    reconcile_deployment_after_retreat,
+)
+from dune_imperium.rules.effect_interpreter import (
+    condition_holds,
+    option_unplayable_reason,
+)
 from dune_imperium.rules.endgame import begin_endgame_intrigue
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.intrigue import legal_intrigue_play_actions
@@ -561,3 +574,237 @@ def test_machine_culture_endgame_is_not_played_in_a_turn() -> None:
     with three tiles is not offered the Endgame half in its Agent turn."""
     state = _tech_game(spice=0, tech_ids=THREE_TECHS)
     assert _options(state, MACHINE) == set()
+
+
+# Diversion ----------------------------------------------------------------------
+
+DIVERSION = "diversion"
+
+
+def _visit(state: GameState, space: str, card: str = "diplomacy") -> GameState:
+    card_id = f"player:0:starter:{card}:0"
+    state = _seat(
+        state,
+        hand=(card_id,),
+        deck=tuple(card for card in state.players[0].deck if card != card_id),
+    )
+    (placement,) = [
+        row
+        for row in executable_placements(state, 0)
+        if dict(row.arguments)["space_id"] == space
+    ]
+    return apply_placement(ENGINE, state, placement).state
+
+
+def _hardy(troops: int, ships: int, **changes: Any) -> GameState:
+    """Seat 0 holds Diversion, three troops and both dreadnoughts at home, and
+    sends an Agent to Hardy Warriors (a Combat space that recruits two
+    troops), deploying ``troops`` troops and ``ships`` dreadnoughts: the
+    deployment window stays open, the turn not yet ended [Main p. 10]."""
+
+    state = _start(
+        DIVERSION,
+        resources=Resources(solari=5, spice=5, water=5),
+        troops_garrison=3,
+        troops_supply=9,
+        troops_conflict=0,
+        dreadnoughts_garrison=2,
+        **changes,
+    )
+    state = _take(
+        _visit(state, "hardy_warriors"), "resolve_board_effect", effect="troops"
+    )
+    state = _take(state, "resolve_faction_influence")
+    if troops:
+        state = _take(state, "deploy_troops", count=troops)
+    if ships:
+        state = _take(state, "deploy_dreadnoughts", count=ships)
+    return state
+
+
+def _withdrawals(state: GameState) -> dict[str, set[int]]:
+    found: dict[str, set[int]] = {}
+    for row in _rows(state):
+        if row.action_id.startswith("withdraw_"):
+            found.setdefault(row.action_id, set()).add(
+                int(dict(row.arguments)["count"])
+            )
+    return found
+
+
+def test_diversion_is_a_plot_card_in_the_ix_deck() -> None:
+    """ "When you deploy four or more units to the Conflict in a single turn:"
+    the Freighter icon [Diversion card, Steam app text, log line "Played
+    Diversion to gain Freighter" and screen pieces]; one copy, shuffled in
+    with Rise of Ix only [Rise of Ix p. 2]."""
+    entry = intrigue_card_for_instance("intrigue:diversion:0")
+    assert entry.play_data_complete
+    assert entry.copies == 1
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    (section,) = entry.options[0].sections
+    assert section.condition == UnitsDeployedThisTurnAtLeast(4, dreadnoughts=True)
+    assert section.costs == ()
+    assert _in_deck(DIVERSION, CONFIG)
+    assert not _in_deck(DIVERSION, ORIGINAL)
+    assert intrigue_card_text(entry) == [
+        "Plot — If you have deployed 4 or more units to the Conflict this turn:"
+        " Move your Freighter up one space or recall it"
+    ]
+    assert len(intrigue_card_text_ko(entry)) == 1
+
+
+@pytest.mark.parametrize(
+    ("troops", "ships", "offered"),
+    [
+        (0, 0, set()),
+        (3, 0, set()),
+        (2, 1, set()),
+        (0, 2, set()),
+        # "four or more units": a dreadnought is a unit, though no troop
+        # [Rise of Ix p. 6] (rise-of-ix.md 6, table row "unit").
+        (4, 0, {0}),
+        (3, 1, {0}),
+        (2, 2, {0}),
+    ],
+)
+def test_diversion_counts_the_dreadnoughts_with_the_troops(
+    troops: int, ships: int, offered: set[int]
+) -> None:
+    """The units deployed this turn, troops and dreadnoughts together, are the
+    condition: "To play an Intrigue card, you must meet its conditions"
+    [FAQ p. 2], met once the units are deployed [Board Guide p. 10]
+    (OQ-016)."""
+    assert _options(_hardy(troops, ships), DIVERSION) == offered
+
+
+def test_diversion_counts_only_the_deployment_of_this_turn() -> None:
+    """ "in a single turn": units that stood in the Conflict before the turn,
+    dreadnoughts among them, are no deployment of this turn."""
+    state = _start(
+        DIVERSION,
+        troops_conflict=3,
+        troops_supply=9,
+        troops_garrison=0,
+        dreadnoughts_conflict=2,
+        combat_strength=12,
+    )
+    assert _options(state, DIVERSION) == set()
+    assert dreadnoughts_deployed_this_turn(state, 0) == 0
+
+
+def test_the_plain_unit_condition_still_leaves_the_dreadnoughts_out() -> None:
+    """Distraction's and Coercive Negotiation's count is the turn's troops,
+    Commanders and sandworms: only a condition that says ``dreadnoughts``
+    adds the turn's dreadnoughts (the same deployment, two troops and two
+    dreadnoughts)."""
+    state = _hardy(2, 2)
+    assert dreadnoughts_deployed_this_turn(state, 0) == 2
+    assert condition_holds(state, 0, UnitsDeployedThisTurnAtLeast(2))
+    assert not condition_holds(state, 0, UnitsDeployedThisTurnAtLeast(3))
+    assert condition_holds(state, 0, UnitsDeployedThisTurnAtLeast(4, dreadnoughts=True))
+    assert not condition_holds(
+        state, 0, UnitsDeployedThisTurnAtLeast(5, dreadnoughts=True)
+    )
+
+
+def test_a_withdrawal_undoes_the_deployment_diversion_needs() -> None:
+    """Before the card is played nothing is committed, so the deployment may
+    still be taken back (OQ-029) and a withdrawal undoes it: with a dreadnought
+    back in the garrison the card is no longer playable until four units are
+    deployed again."""
+    state = _hardy(2, 2)
+    assert _options(state, DIVERSION) == {0}
+    assert _withdrawals(state) == {
+        "withdraw_troops": {1, 2},
+        "withdraw_dreadnoughts": {1, 2},
+    }
+    back = _take(state, "withdraw_dreadnoughts", count=1)
+    assert dreadnoughts_deployed_this_turn(back, 0) == 1
+    assert _options(back, DIVERSION) == set()
+    again = _take(back, "deploy_dreadnoughts", count=1)
+    assert _options(again, DIVERSION) == {0}
+
+
+def test_a_retreat_after_the_deployment_keeps_diversion_playable() -> None:
+    """ "a moment in time when there are [N] units in the conflict that were
+    deployed to the conflict this turn, then that requirement becomes true"
+    (Message from designer, OQ-016; rise-of-ix.md 15): a card's retreat leaves
+    the turn's count standing, the dreadnoughts' too -- only a withdrawal
+    lowers the frame's count."""
+    state = _hardy(2, 2)
+    retreated = reconcile_deployment_after_retreat(state, 0, troops=0, dreadnoughts=1)
+    assert dreadnoughts_deployed_this_turn(retreated, 0) == 2
+    assert _options(retreated, DIVERSION) == {0}
+
+
+def test_diversion_reads_the_troops_alone_outside_an_agent_turn() -> None:
+    """A Reveal turn has no dreadnought deployment, so its four units are the
+    turn's count (``units_deployed_turn``) alone, and a Plot is played in the
+    owner's Agent or Reveal turn [DI pp. 7-8]."""
+    state = _start(
+        DIVERSION,
+        troops_conflict=4,
+        troops_supply=8,
+        troops_garrison=0,
+        units_deployed_turn=4,
+        units_deployed_peak=4,
+        combat_strength=8,
+    )
+    assert _options(state, DIVERSION) == {0}
+    assert _options(_take(state, "reveal_turn"), DIVERSION) == {0}
+
+
+def test_diversion_gains_a_freighter_move_that_may_be_declined() -> None:
+    """The Freighter icon: a move up or a recall, "you may" [Rise of Ix p. 5],
+    as Expedite's: the played card is discarded whichever the seat answers."""
+    state = _hardy(2, 2)
+    opened = _play(state, DIVERSION)
+    ids = {row.action_id for row in _rows(opened)}
+    assert {"advance_intrigue_freighter", "decline_intrigue_freighter"} <= ids
+    done = _take(opened, "advance_intrigue_freighter")
+    assert done.players[0].freighter_space == 1
+    assert "intrigue:diversion:0" in done.intrigue_discard
+    declined = _take(_play(state, DIVERSION), "decline_intrigue_freighter")
+    assert declined.players[0].freighter_space == 0
+    assert "intrigue:diversion:0" in declined.intrigue_discard
+    # The deployment itself is untouched by the card.
+    assert done.players[0].troops_conflict == 2
+    assert done.players[0].dreadnoughts_conflict == 2
+
+
+@pytest.mark.parametrize(("troops", "ships"), [(4, 0), (3, 1), (2, 2)])
+def test_a_played_diversion_keeps_its_four_units_deployed(
+    troops: int, ships: int
+) -> None:
+    """ "배치 수를 그 조건(최소 수) 아래로 내리는 회수는 허용하지 않는다"
+    (OQ-029 (3)): the four units the card used, troops and dreadnoughts
+    together, may not be withdrawn below four, whichever kind goes first."""
+    state = _hardy(troops, ships)
+    played = _take(_play(state, DIVERSION), "decline_intrigue_freighter")
+    assert _withdrawals(played) == {}
+    frame = played.decision_stack[-1]
+    assert dict(frame.context)[UNITS_COMMITTED_KEY] == 4
+    # The troops' own floor is Distraction's and Coercive Negotiation's.
+    assert played.players[0].units_deployed_committed == 0
+    done = _take(played, "finish_agent_turn")
+    assert done.players[0].troops_conflict == troops
+    assert done.players[0].dreadnoughts_conflict == ships
+
+
+def test_a_commitment_below_the_total_leaves_the_rest_to_withdraw() -> None:
+    """The floor is on the total: with four units deployed and three
+    committed, one unit of either kind may still go back, and only one."""
+    state = commit_units_with_dreadnoughts(_hardy(2, 2), 0, 3)
+    assert _withdrawals(state) == {
+        "withdraw_troops": {1},
+        "withdraw_dreadnoughts": {1},
+    }
+    # The commitment only ever rises.
+    again = commit_units_with_dreadnoughts(state, 0, 2)
+    assert dict(again.decision_stack[-1].context)[UNITS_COMMITTED_KEY] == 3
+
+
+def test_a_commitment_outside_an_agent_turn_records_nothing() -> None:
+    """No withdrawal exists outside an Agent turn's deployment window."""
+    state = _start(DIVERSION)
+    assert commit_units_with_dreadnoughts(state, 0, 4) is state
