@@ -1377,5 +1377,5 @@ Round Start(Holtzman Engine·Shuttle Fleet, OQ-122), Reveal(Artillery·Minimic F
 순서, OQ-040의 관례), 뒤집기 넷(Flagship 4 Solari·troop 3, Holoprojectors, Invasion Ships — 놓기 전 turn frame에서만, Training Drones; "discard →"
 비용은 손 카드라 Reveal turn에는 없다). OQ-150 (가): Reveal 도중 얻은 Ix 타일도 그 turn에 듣는다. 원판 + Ix 카탈로그 1,889행. **P7 몫:** Tech
 Module의 Self-Destroying Messages·Panopticon도 OQ-150의 같은 원칙으로 늦게 줘야 한다 — Uprising + Bloodlines만으로는 Reveal 도중 Tech를 얻을
-길이 없어 지금은 닿지 않고(OQ-102 "같은 모양 전수"), Ix와 함께 여는 단계에서 맞춘다. **남은 P4c-2c:** Sonic Snoopers(`INTRIGUE_BOTTOM_PICK`,
+길이 없어 지금은 닿지 않고(OQ-110 "같은 모양 전수"), Ix와 함께 여는 단계에서 맞춘다. **남은 P4c-2c:** Sonic Snoopers(`INTRIGUE_BOTTOM_PICK`,
 아는 Intrigue는 OQ-149 틀), Spy Satellites 첫 능력, Spaceport(얻은 카드를 덱 위에 — OQ-145의 공개 덱 위). Troop Transports는 P4c-3.
