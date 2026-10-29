@@ -171,8 +171,18 @@ def test_coordination_counts_the_mentat_as_one_of_his_agents() -> None:
 
 
 def _signet(engine: _Engine, state: GameState) -> GameState:
-    """Seat 0 sends the Signet Ring to Arrakeen."""
+    """Seat 0 sends the Signet Ring to Arrakeen -- in hand first, swapped with
+    the hand's first card wherever the seed dealt it."""
 
+    owner = state.players[0]
+    ring = next(card for card in (*owner.hand, *owner.deck) if ":signet_ring:" in card)
+    if ring not in owner.hand:
+        first = owner.hand[0]
+        state = _seat(
+            state,
+            hand=(ring, *owner.hand[1:]),
+            deck=tuple(first if card == ring else card for card in owner.deck),
+        )
     engine.legal_actions(state, 0)
     placement = next(
         placement
