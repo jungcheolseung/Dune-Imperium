@@ -524,9 +524,13 @@ P4 브랜치(`51884e8f`)가 지금 가진 결정은 dreadnought 셋(P4b)과 예�
 ### 13.5 결과와 알려진 차이 (2026-10-30)
 
 - census: 원판 + Ix(드래프트·프로모) 세 난이도 15판씩(시드 8100–8114) 무작위 0·미포팅 0, 원판 단독 Hard 10판 0. app_ai 테스트
-  3,872개. Uprising·원판 고정 시드 24판의 수는 조각마다 같았다(Spice Smugglers 순서 수정 `e49c1568` 뒤의 기준선, 그 카드가 나오는 원판
+  3,882개. Uprising·원판 고정 시드 24판의 수는 조각마다 같았다(Spice Smugglers 순서 수정 `e49c1568` 뒤의 기준선, 그 카드가 나오는 원판
   2판만 그 수정으로 바뀜).
 - 결정마다 어느 앱 클래스가 답하는지와 판단 사항은 [docs/app-ai/rise-of-ix.md](app-ai/rise-of-ix.md)에 있다.
+- P4 책략 묶음 d(`3b8cd83c`, 병합 `284628a9`): Advanced Weaponry의 commission은 앱처럼 묻지 않고 받는다. Second Wave의 배치는
+  `SecondWaveAbility`가 고른 유닛 수와 dreadnought 수가 같은 행이다. Cannon Turrets는 고를 것이 없다. Endgame의 Plans Within
+  Plans·Grand Conspiracy는 넷을 채우면 2 VP 선택지를 낸다(앱 `CountTotalPoints`: 셋 1 VP, 넷 2 VP). 전에는 첫 선택지(1 VP)를
+  냈고, 이 수정으로 원판 고정 시드 1판(`original:501:L1`)이 그 한 수만 바뀐다.
 - Interstellar Shipping에서 Shipping 회수로 recruit한 병력의 배치(시드 8100): P4 판정으로 Troop Transports가 허락하는 합법 배치
   (rise-of-ix.md 15)라, 앱의 `TroopTransportsAbility`로 답한다(`fcd538be`).
 - agent 토큰: Opus 둘(Imperium 약 862k, 책략 약 537k), Codex Tech 하나(Codex 쪽 한도). 독립 검토는 Codex 5시간 창이 차서

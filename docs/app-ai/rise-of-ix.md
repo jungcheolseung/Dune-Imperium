@@ -56,6 +56,9 @@ app's prompts.
 | Spaceport's Foldspace | The destination picker: option 0, top of deck, for every card except The Spice Must Flow (generic-abilities §4.2) | |
 | Ix Imperium boxes | `_DISCARD_ABILITY` (Truthsayer), `_PAYMENT_ABILITY` (Sayyadina), `_TRASH_ABILITY` (Jamis) | |
 | Intrigue slots | Strongarm's zone, Double Cross's victim (`OpponentLosesTroop`), Urgent Mission's Agent (`RecallYourAgent`) | Each comes from the play's recorded answer. Urgent Mission is an original card; Ix's extra Agents exposed its missing case. |
+| Advanced Weaponry's commission (`commission_intrigue_dreadnought`) | `AdvancedWeaponryPlotAbility` commissions as it runs | No prompt in the app: taken; declined only when no commission is offered. |
+| Second Wave's `deploy_intrigue_troops` | `SecondWaveAbility`: `GetUnitsToDeploy` over the garrison units | The request lists one index per garrison unit, dreadnoughts first, `NumberToSelect = Min(count, 2)` (`<Targets>` @0x4bf7d40). The row has as many units, with as many `dreadnoughts`, as the answer chose. An empty answer deploys none: the swords alone. |
+| Endgame plays of Plans Within Plans and Grand Conspiracy | Played without a prompt (`EndgamePhase`). The app's engine scores the count: `CountTotalPoints` gives 1 VP for three, 2 VP for four (@0x4ca8030, @0x4bec350) | Our engine offers each count as an exclusive -OR- option (OQ-058), both when four are met. The window plays the option with the most VP. Before 2026-10-30 it took the first (1 VP); this also changes original games. |
 
 ## Profile
 
@@ -121,11 +124,14 @@ It confirmed two problems, both fixed in `16d6acda`:
   `ucomisd; jb(e)` does.
 
 Left open by the review:
-- Some cards still have no window consumer: Spice Trader, Guild Chief
-  Administrator, Imperial Bashar, Weirding Way, Negotiated Withdrawal,
-  Embedded Agent, Quid Pro Quo, Grand Conspiracy and War Chest. Their engine
-  entries have no play data yet (P4d). Their response shapes are checked
-  when the engine offers their rows.
+- Some cards still have no window consumer, because their engine entries
+  have no play data yet (P4d, as of P4 `3b8cd83c`):
+  - Imperium: Spice Trader, Guild Chief Administrator, Imperial Bashar,
+    Weirding Way, Negotiated Withdrawal, Embedded Agent.
+  - Intrigue: Diversion, Machine Culture, Strategic Push, War Chest.
+  Their response shapes are checked when the engine offers their rows.
+  Quid Pro Quo (P4d-6b) and Grand Conspiracy (P4d) are now played and
+  answered.
 - The `Cost`s of Imperial Bashar and Negotiated Withdrawal are not ported as
   `meets_cost`.
 - `GetBestInfluenceExchange`'s bool argument has no counterpart in
