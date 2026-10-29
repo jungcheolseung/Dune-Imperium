@@ -642,12 +642,17 @@ def test_machine_culture_plot(
     assert not ability.is_bad_intrigue(prof(turn_state))
     tiles = make_profile(turn_state).tech_face_up_tiles()
     offered = TargetInfo((*tiles, track_entity("emperor")))
-    found = {"tech_tile_to_acquire": lambda discount, allow: tiles[0]}
+    # The last face-up tile is the best (5.0, the others 3.0), whichever the
+    # setup laid out.
+    best = tiles[-1].ref
+    found = {
+        "tech_tile_to_acquire": lambda discount, allow: tiles[0],
+        "tech_tile_acquire_value": lambda tile: Summer(
+            5.0 if tile.ref == best else 3.0
+        ),
+    }
     # 0 or 1 tile with a tile to acquire: each offered tile at its value.
-    assert run(ability, prof(turn_state, **found), offered) == (
-        5.0,
-        (("sonic_snoopers",),),
-    )
+    assert run(ability, prof(turn_state, **found), offered) == (5.0, ((best,),))
     # No tile to acquire with fewer than 2 tiles.
     assert run(ability, prof(turn_state), offered) == (0.0, None)
     # More than 2 tiles: never.
@@ -662,7 +667,7 @@ def test_machine_culture_plot(
     assert run(ability, prof(reveal_two, **final), offered) == (0.0, None)
     assert run(ability, prof(reveal_two, **found, **final), offered) == (
         5.0,
-        (("sonic_snoopers",),),
+        ((best,),),
     )
 
 

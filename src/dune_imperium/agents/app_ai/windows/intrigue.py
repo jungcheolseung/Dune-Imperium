@@ -241,13 +241,18 @@ from dune_imperium.agents.app_ai.catalog import (
     contract_entity,
     intrigue_entity,
     spy_entity,
+    tech_entity,
     track_entity,
 )
-from dune_imperium.agents.app_ai.choice import first_strictly_best
+from dune_imperium.agents.app_ai.choice import (
+    default_random_choice,
+    first_strictly_best,
+)
 from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, card_id
 from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.profile.bloodlines import navigation_number
 from dune_imperium.agents.app_ai.profile.immortality import research_space_entity
+from dune_imperium.agents.app_ai.profile.tech import acquire_tech_tile_targets
 from dune_imperium.agents.app_ai.windows.common import (
     Source,
     Stage,
@@ -592,6 +597,19 @@ def intrigue_request(
         # them so).
         units = ctx.me.troops_garrison + ctx.me.dreadnoughts_garrison
         infos = (TargetInfo(options=tuple(range(units)), max_select=min(units, 2)),)
+    elif cid == "machine_culture" and not combat and ctx.ix:
+        # ``<Targets>d__6`` @0x4bf4970: ``AcquireTechAbility.
+        # GetAcquireTechTileTargets(M, P, 0, false)`` (no discount, no Solari).
+        me = ctx.me
+        tiles = acquire_tech_tile_targets(
+            [tech_entity(t) for t in ctx.tech_face_up_ids],
+            spice=me.resources.spice,
+            solari=me.resources.solari,
+            negotiators=me.negotiators,
+            discount=0,
+            allow_solari=False,
+        )
+        infos = (_ents(tiles),)
     elif cid in ("find_weakness", "spring_the_trap"):
         infos = (_ents(_own_spies(ctx)),)
     elif cid == "leverage":
@@ -886,6 +904,45 @@ def _intent(run: DecisionRun, instance: str, option: IntrigueOption) -> Answer:
         answer = ability.evaluate(run.profile, request)
     _record(run, instance, answer, played_at)
     return answer
+
+
+def intrigue_tech_tile(run: DecisionRun, card: str) -> str | None:
+    """The Tech tile the seat's latest play of Intrigue ``card`` answered.
+
+    Rise of Ix's Machine Culture: ``MachineCulturePlotAbility::Evaluate``
+    names the tile and the app's ``RunImmediateEffects`` acquires that
+    target without asking again, while our engine opens an Acquire Tech
+    frame (printer ``intrigue|machine_culture``, no refusal while a tile is
+    in reach). The play's answer (``_intent``: recorded, else evaluated
+    now); None without a play or a tile.
+    """
+
+    prefix = f"intrigue:{card}:"
+    instance: str | None = None
+    for event in reversed(run.ctx.state.event_log):
+        payload = dict(event.payload)
+        ref = payload.get("card_id")
+        if (
+            event.kind == "intrigue_played"
+            and payload.get("player") == run.ctx.seat
+            and isinstance(ref, str)
+            and ref.startswith(prefix)
+        ):
+            instance = ref
+            break
+    if instance is None:
+        return None
+    plot = next(
+        (
+            o
+            for o in intrigue_card_for_instance(instance).options
+            if o.timing is IntrigueTiming.PLOT
+        ),
+        None,
+    )
+    if plot is None:
+        return None
+    return _first_ref(_item(_intent(run, instance, plot), 0))
 
 
 def _flat_refs(answer: Answer) -> list[str]:
@@ -1683,11 +1740,21 @@ def _opponent_troop_loss(
 ) -> DomainAction | None:
     """Double Cross's "an opponent loses one troop in the Conflict"
     (``choose_opponent_troop_loss(player)``): the seat the play's answer
-    named (``DoubleCrossAbility::Evaluate``'s player target)."""
+    named (``DoubleCrossAbility::Evaluate``'s player target).
 
+    A play whose answer named no seat came from the app's
+    ``DefaultRandomChoice`` over a forced prompt's keys (an Agent turn's key
+    answered at 0 or less drew the card's key; seed 8112): the forced target
+    prompt that follows is ``DefaultRandomChoice`` too, over the offered
+    opponents."""
+
+    rows = run.by_id("choose_opponent_troop_loss")
     answer = intent()
     seat = answer.response[0][0] if answer.response else None
-    return with_arg(run.by_id("choose_opponent_troop_loss"), "player", seat)
+    chosen = with_arg(rows, "player", seat) if seat is not None else None
+    if chosen is not None or not rows:
+        return chosen
+    return default_random_choice(rows, run.rng)
 
 
 def _intrigue_freighter(

@@ -128,10 +128,15 @@ from dune_imperium.agents.app_ai.windows.common import (
     with_arg,
     worst_recall_action,
 )
-from dune_imperium.agents.app_ai.windows.intrigue import NAVIGATION_INTENT
+from dune_imperium.agents.app_ai.windows.intrigue import (
+    NAVIGATION_INTENT,
+    intrigue_tech_tile,
+)
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
 from dune_imperium.agents.app_ai.windows.turn import board_space_order
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.rules.action_shapes import PRINTER_KEY, printer_parts
+from dune_imperium.rules.action_shapes import Source as Printer
 from dune_imperium.rules.unit_loss import UNIT_LOSS_CANDIDATES
 
 #: The owner of the abilities the app builds at run time (a card-granted
@@ -567,6 +572,9 @@ def tech_acquisition(run: DecisionRun) -> DomainAction | None:
     tech_ids = _refs(acquires, "tech_id")
     if any(t not in TECH_ARCHETYPES for t in tech_ids):
         return None
+    played = _intrigue_tile(run)
+    if played is not None and played in tech_ids:
+        return _tile_action(run, acquires, played)
     p = run.profile
     tiles = tuple(tech_entity(t, run.ctx.seat) for t in tech_ids)
     ability = source(_RUNTIME_OWNER)
@@ -593,6 +601,23 @@ _IX_TECH_SOURCES: Final[dict[int, type[AcquireTechAbility]]] = {
     1: AcquireTechAbilityDiscount1,
     2: AcquireTechAbilityShippingTrack2,
 }
+
+
+#: Rise of Ix Intrigue cards whose play names the Tech tile it acquires.
+_INTRIGUE_TECH_CARDS: Final = frozenset({"machine_culture"})
+
+
+def _intrigue_tile(run: DecisionRun) -> str | None:
+    """The tile of an Acquire Tech frame an Intrigue card opened (printer
+    ``intrigue|<card>``): its play's answer (``intrigue_tech_tile``)."""
+
+    printer = run.ctx.top_frame_context.get(PRINTER_KEY)
+    if not run.ctx.ix or not isinstance(printer, str):
+        return None
+    source, printed, _box = printer_parts(printer)
+    if source is not Printer.INTRIGUE or printed not in _INTRIGUE_TECH_CARDS:
+        return None
+    return intrigue_tech_tile(run, printed)
 
 
 def _tile_action(

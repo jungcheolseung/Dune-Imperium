@@ -369,3 +369,86 @@ def test_an_endgame_count_card_takes_the_option_the_app_scores(cid: str) -> None
     assert combat._endgame_play(plays, ref) is plays[1]
     assert combat._endgame_play(plays[:1], ref) is plays[0]
     assert combat._endgame_play(plays, "intrigue:other:0") is None
+
+
+def test_machine_culture_targets_the_tiles_in_reach_without_a_discount() -> None:
+    """``<Targets>d__6`` @0x4bf4970: ``GetAcquireTechTileTargets(M, P, 0,
+    false)``: a face-up tile whose cost the spice and Negotiators reach."""
+
+    from dune_imperium.agents.app_ai.testing import with_player
+    from dune_imperium.agents.app_ai.windows.intrigue import intrigue_request
+    from dune_imperium.core.player import Resources
+
+    state = first_decision("turn", config=IX)
+    seat = make_profile(state).ctx.seat
+    poor = make_profile(with_player(state, seat, resources=Resources(solari=20)), seat)
+    rich = make_profile(with_player(state, seat, resources=Resources(spice=20)), seat)
+    instance = "intrigue:machine_culture:0"
+    [none] = intrigue_request(poor.ctx, instance, False).infos
+    [every] = intrigue_request(rich.ctx, instance, False).infos
+    assert none.entities == ()  # Solari do not count (allowSolari false)
+    assert [e.ref for e in every.entities] == list(rich.ctx.tech_face_up_ids)
+
+
+def test_machine_culture_buys_the_tile_its_play_named(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The app's ``RunImmediateEffects`` acquires the target its Evaluate
+    named; our Acquire Tech frame (printer ``intrigue|machine_culture``)
+    replays that answer."""
+
+    from dataclasses import replace
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.context import AppContext
+    from dune_imperium.agents.app_ai.windows import bloodlines, intrigue
+    from dune_imperium.core.events import GameEvent
+
+    state = first_decision("turn", config=IX)
+    seat = make_profile(state).ctx.seat
+    instance = "intrigue:machine_culture:0"
+    played = GameEvent(
+        event_id="test:machine_culture",
+        kind="intrigue_played",
+        payload=(("card_id", instance), ("player", seat)),
+    )
+    state = replace(state, event_log=(*state.event_log, played))
+    p = make_profile(state, seat)
+    tiles = list(p.ctx.tech_face_up_ids)
+    rows = tuple(
+        DomainAction(action_id="acquire_tech", actor=seat, arguments=(("tech_id", t),))
+        for t in tiles
+    )
+    memory = Memory()
+    memory.intents[(intrigue.INTENT, instance)] = Answer(5.0, ((tiles[-1],),), "")
+    memory.intents[(intrigue.INTENT_AT, instance)] = intrigue.play_event_index(
+        p.ctx, instance
+    )
+    run = DecisionRun(p.ctx, p, rows, p.rng, memory)
+    assert intrigue.intrigue_tech_tile(run, "machine_culture") == tiles[-1]
+    monkeypatch.setattr(
+        AppContext,
+        "top_frame_context",
+        property(lambda self: {"printer": "intrigue|machine_culture", "discount": 0}),
+    )
+    assert bloodlines._intrigue_tile(run) == tiles[-1]
+
+
+def test_double_cross_without_a_named_seat_picks_at_random() -> None:
+    """A Double Cross the app's ``DefaultRandomChoice`` played (its Evaluate
+    named no seat; seed 8112): the forced target prompt is
+    ``DefaultRandomChoice`` over the offered opponents."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.windows import intrigue
+
+    rows = [
+        DomainAction(
+            action_id="choose_opponent_troop_loss", actor=0, arguments=(("player", s),)
+        )
+        for s in (1, 3)
+    ]
+    run = _choice_run(rows)
+    named = intrigue._opponent_troop_loss(run, lambda: Answer(2.0, ((3,),), ""))
+    assert named is rows[1]
+    assert intrigue._opponent_troop_loss(run, lambda: Answer(0.0, None, "")) in rows
