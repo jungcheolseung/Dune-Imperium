@@ -1121,6 +1121,9 @@ C를 먼저 읽고 결론을 가르는 줄은 주석 asm으로 확인했다. 20�
 - **P4 점검 목록(앱 코드에서 본 Ix 상호작용):** Guild Accord의 Heighliner spice 할인(2, Ghola와 4), Spaceport의 Foldspace 카드 덱 위, Combat 칸 배치 몫의
   dreadnought, Rise of Ix가 Hall of Oratory·Rally Troops·Secure Contract·Sell Melange를 보드에서 뺌, Yuna Moritani의 Smuggling Operation이 Windfall에도 +1
   Solari, dreadnought가 Control marker보다 먼저 칸의 controller가 됨(`WormSpace::get_ControllingPlayer`).
+- **P7 점검 목록(Ix를 Uprising·Immortality와 묶을 때, 2026-10-30 추가):** Spaceport("얻는 카드를 덱 위에 놓을 수 있다", rise-of-ix.md 4)와 한 판이
+  되는 획득마다 덱 위 쌍둥이 줄이 있는지 — Uprising 지도자의 `acquire_leader_*`, Tleilaxu Master(Immortality)의 Agent 칸 획득
+  (`acquisition._agent_card_acquisition_targets`). Armand Ecaz의 Conscript는 `deck_top_offered`로 이미 있다(`test_conscript_puts_the_card_on_the_deck_with_spaceport`).
 
 ## 17. P4 계획 초안: Rise of Ix (원판 위) (2026-10-29, 브랜치 `claude/base-ix-p4`, P3 병합 master에서)
 
