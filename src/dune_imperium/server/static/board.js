@@ -1581,6 +1581,7 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   if (makerSpice.get(spaceId)) {
     status.push(t("board.bonus_spice", { count: makerSpice.get(spaceId) }));
   }
+  for (const words of originalSpaceStatus(spaceId)) status.push(words);
   if (status.length) {
     const line = document.createElement("div");
     line.className = "space-status";
@@ -1594,6 +1595,36 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   });
   hoverPopover(row, () => entry);
   return row;
+}
+
+/* The original game's state on a space of the text board: the Mentat lying
+   on its own space while no seat holds it [DI pp. 4, 13] (and who takes it
+   at the next round's start after Sort Through the Chaos [FAQ p. 4]), and
+   the seats The Voice bars from the space (OQ-116). */
+function originalSpaceStatus(spaceId) {
+  const view = state.view;
+  if (!view || viewBaseGame(view) !== "imperium") return [];
+  const words = [];
+  const players = view.players || [];
+  if (spaceId === "mentat" && !players.some((player) => player.mentat)) {
+    words.push(t("board.mentat_here"));
+    if (view.mentat_owed_to !== null && view.mentat_owed_to !== undefined) {
+      words.push(t("board.mentat_owed", {
+        seat: t("common.seat", { seat: view.mentat_owed_to }),
+      }));
+    }
+  }
+  const barred = players
+    .filter((player) => (player.voice_blocked_space_ids || []).includes(spaceId))
+    .map((player) => t("common.seat", { seat: player.player }));
+  if (barred.length) {
+    const voice = lookup("the_voice", "cards");
+    words.push(t("board.voice_blocked", {
+      card: voice ? voice.name : "The Voice",
+      seats: barred.join(", "),
+    }));
+  }
+  return words;
 }
 
 /* ---------- market strip (shared table zones) ---------- */

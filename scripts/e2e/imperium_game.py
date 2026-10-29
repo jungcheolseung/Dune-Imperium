@@ -26,12 +26,21 @@ words, the way log_words.py checks Uprising's:
     show at the end.
 [3] The finished game's review screen in both languages, titles included,
     shows no engine id (log_words.check_page).
+[4] The original game's markers (P5c) on a four-human game's first
+    decision, its view edited in the browser the way deck_contents.py's
+    scenario C does: The Voice's barred space on the seat panel and the
+    text board, Infiltrate's turn and Recruitment Mission's round,
+    Masterstroke's secret (to the others), its Factions (to the Baron's own
+    seat only, from the view's private block) and once revealed, and the
+    Mentat lying on its space with the seat that takes it next round; in
+    both languages, with no placeholder left.
 Every page: no JS errors; the server logs no Traceback or ERROR.
 """
 
 from __future__ import annotations
 
 import json
+import re
 
 from common import SERVER_LOG_COPY, Check, chrome, client_state, open_context, server
 from log_words import (
@@ -235,6 +244,132 @@ def play_human(page, rec) -> None:
     page.evaluate("setLanguage('ko')")
 
 
+# The markers' view: seat 1 barred from Carthag by The Voice and under
+# Infiltrate and Recruitment Mission; seat 2 holding a Masterstroke secret;
+# seat 3's revealed Factions; the observing seat's own secret Factions; the
+# Mentat on its space, owed to seat 1 next round.
+MARKERS_JS = """() => {
+  window.__markersReal = state.view;
+  const view = structuredClone(state.view);
+  for (const player of view.players) {
+    player.mentat = false;
+    player.voice_blocked_space_ids = [];
+    player.enemy_agents_ignored_turn = false;
+    player.acquire_to_deck_top_round = false;
+    player.masterstroke_secret = false;
+    player.masterstroke_revealed_factions = [];
+  }
+  const me = view.player;
+  const other = (n) => (me + n) % 4;
+  view.players[other(1)].voice_blocked_space_ids = ["carthag"];
+  view.players[other(1)].enemy_agents_ignored_turn = true;
+  view.players[other(1)].acquire_to_deck_top_round = true;
+  view.players[other(2)].masterstroke_secret = true;
+  view.players[other(3)].masterstroke_revealed_factions = ["emperor", "fremen"];
+  view.players[me].masterstroke_secret = true;
+  view.private.masterstroke_factions = ["bene_gesserit", "spacing_guild"];
+  view.mentat_owed_to = other(1);
+  state.view = view;
+  render();
+  const panel = (seat) => {
+    const card = document.querySelector(`article.seat[data-seat="${seat}"]`);
+    const detail = card && card.querySelector('.seat-detail');
+    return detail ? detail.innerText : '';
+  };
+  const row = (space) => {
+    const node = document.querySelector(`#board .space-row[data-space="${space}"]`);
+    return node ? node.innerText : '';
+  };
+  const out = {
+    me, other1: other(1),
+    panels: [0, 1, 2, 3].map(panel),
+    mentatRow: row("mentat"), carthagRow: row("carthag"),
+    names: {
+      voice: lookup("the_voice", "cards").name,
+      infiltrate: lookup("infiltrate", "intrigue").name,
+      recruitment: lookup("recruitment_mission", "intrigue").name,
+      seat1: t("common.seat", {seat: other(1)}),
+      emperor: FACTION_LABELS.emperor, fremen: FACTION_LABELS.fremen,
+      bg: FACTION_LABELS.bene_gesserit, guild: FACTION_LABELS.spacing_guild,
+    },
+  };
+  state.view = window.__markersReal;
+  render();
+  return out;
+}"""
+
+PLACEHOLDER = re.compile(r"\{[a-z_]+(?::\d+)?\}|\[object|undefined")
+
+
+def check_markers(page) -> None:
+    print("[4] the original game's markers on the seat panels and the text board")
+    created = page.evaluate(
+        """async (body) => {
+          const r = await fetch('/games', {method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)});
+          return await r.json();
+        }""",
+        {"seats": ["human"] * 4, "game_seed": HUMAN_SEED, **ORIGINAL},
+    )
+    page.evaluate("(id) => openGame(id)", created["game_id"])
+    page.wait_for_function(
+        "state.view !== null && refreshFlight === null"
+        " && state.gameId === %s" % json.dumps(created["game_id"])
+    )
+    settled(page)
+    for lang in ("ko", "en"):
+        page.evaluate(f"setLanguage('{lang}')")
+        page.wait_for_function("refreshFlight === null")
+        shown = page.evaluate(MARKERS_JS)
+        names = shown["names"]
+        me, other1 = shown["me"], shown["other1"]
+        panels = shown["panels"]
+        barred = panels[other1]
+        check.ok(
+            names["voice"] in barred and "Carthag" in barred
+            and names["infiltrate"] in barred and names["recruitment"] in barred,
+            f"{lang}: The Voice, Infiltrate and Recruitment Mission on their seat",
+            barred,
+        )
+        mine = panels[me]
+        check.ok(
+            names["bg"] in mine and names["guild"] in mine,
+            f"{lang}: the Baron's own seat names its secret Factions",
+            mine,
+        )
+        secret = panels[(me + 2) % 4]
+        check.ok(
+            "Masterstroke" in secret and names["bg"] not in secret
+            and names["guild"] not in secret,
+            f"{lang}: another Baron's secret shows as held, never which",
+            secret,
+        )
+        revealed = panels[(me + 3) % 4]
+        check.ok(
+            names["emperor"] in revealed and names["fremen"] in revealed,
+            f"{lang}: revealed Factions are named",
+            revealed,
+        )
+        check.ok(
+            names["seat1"] in shown["mentatRow"] and "Mentat" in shown["mentatRow"],
+            f"{lang}: the Mentat on its space, owed to the next round's seat",
+            shown["mentatRow"],
+        )
+        check.ok(
+            names["voice"] in shown["carthagRow"]
+            and names["seat1"] in shown["carthagRow"],
+            f"{lang}: the text board marks the space The Voice bars",
+            shown["carthagRow"],
+        )
+        leaks = [
+            text for text in (*panels, shown["mentatRow"], shown["carthagRow"])
+            if PLACEHOLDER.search(text)
+        ]
+        check.ok(not leaks, f"{lang}: no placeholder left in the markers", leaks[:2])
+    page.evaluate("setLanguage('ko')")
+
+
 def main() -> None:
     with server() as (base, log_path), chrome() as browser:
         _, page, rec = open_context(browser, "imperium-game")
@@ -249,6 +384,7 @@ def main() -> None:
         print("[3] the whole screen at the end of the first game's review")
         if game_ids:
             check_page(page, base, game_ids[0], posts, names)
+        check_markers(page)
         errors = [
             line
             for line in log_path.read_text().splitlines()

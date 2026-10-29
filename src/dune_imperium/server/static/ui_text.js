@@ -148,6 +148,18 @@ const UI_TEXT = {
     "ko": "아직 공개되지 않음",
     "en": "Not revealed yet"
   },
+  "board.mentat_here": {
+    "ko": "Mentat 있음",
+    "en": "The Mentat is here"
+  },
+  "board.mentat_owed": {
+    "ko": "다음 라운드에 {{seat}}",
+    "en": "{{seat}} next round"
+  },
+  "board.voice_blocked": {
+    "ko": "{{card}}: {{seats}} 막힘",
+    "en": "{{card}}: barred to {{seats}}"
+  },
   "board.control_seat": {
     "ko": "{control}: 플레이어{{seat}}",
     "en": "{control}: Player {{seat}}"
@@ -1015,6 +1027,34 @@ const UI_TEXT = {
   "panels.mentat_at": {
     "ko": "멘타트: {{where}}",
     "en": "Mentat: {{where}}"
+  },
+  "panels.mentat_next_round": {
+    "ko": "다음 라운드에 Mentat",
+    "en": "the Mentat next round"
+  },
+  "panels.voice_blocked": {
+    "ko": "{{card}}: 다음 {agent}는 {{spaces}} 불가",
+    "en": "{{card}}: next {agent} not to {{spaces}}"
+  },
+  "panels.infiltrate_turn": {
+    "ko": "{{card}}: 이번 차례 다른 플레이어의 {agent}가 막지 않음",
+    "en": "{{card}}: other players' {agent}s do not block this turn"
+  },
+  "panels.deck_top_round": {
+    "ko": "{{card}}: 이번 라운드 획득한 카드를 {deck} 맨 위에 놓을 수 있음",
+    "en": "{{card}}: cards acquired this round may go on top of the {deck}"
+  },
+  "panels.masterstroke_secret": {
+    "ko": "{{ability}}: 비밀 진영 둘",
+    "en": "{{ability}}: two secret Factions"
+  },
+  "panels.masterstroke_own": {
+    "ko": "{{ability}}: {{factions}} (나만 봄)",
+    "en": "{{ability}}: {{factions}} (only you see this)"
+  },
+  "panels.masterstroke_revealed": {
+    "ko": "{{ability}}: {{factions}} 공개",
+    "en": "{{ability}}: {{factions}} revealed"
   },
   "panels.mentat_on_leader": {
     "ko": "지도자 위",

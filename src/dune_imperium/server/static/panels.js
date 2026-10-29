@@ -364,6 +364,10 @@ function renderSeats() {
         })
       );
     }
+    /* The Sort Through the Chaos winner takes the Mentat at the next
+       round's start [FAQ p. 4] (view.mentat_owed_to, public). */
+    if (view.mentat_owed_to === seat) flags.push(tNode("panels.mentat_next_round"));
+    for (const flag of originalMarkers(player, seat, view)) flags.push(flag);
     if (player.has_revealed) flags.push(tNode("panels.revealed"));
     /* Bloodlines Leader state: Piter's Twisted deck. Chani's Tactics space,
        Y'rkoon's Navigation cards and Kota's Secret Project tile are drawn
@@ -2550,6 +2554,53 @@ function mentatSpace(player) {
   const own = 2 + (player.swordmaster_acquired ? 1 : 0);
   const placed = player.agent_locations || [];
   return placed.length > own ? placed[placed.length - 1] : "";
+}
+
+/* The original game's public markers on a seat (docs/rules/imperium-base.md):
+   the spaces The Voice bars its next Agent from (OQ-116: shown apart from
+   any Control marker), Infiltrate's turn and Recruitment Mission's round,
+   and Baron Harkonnen's Masterstroke -- that he holds two secret Factions,
+   which ones once revealed, and to his own seat alone (the view's private
+   block, which only the observing seat's view carries) which ones before
+   that (imperium-base.md 14). */
+function originalMarkers(player, seat, view) {
+  const flags = [];
+  const card = (id, kind) => {
+    const entry = lookup(id, kind);
+    return entry ? entry.name : prettify(id);
+  };
+  const blocked = player.voice_blocked_space_ids || [];
+  if (blocked.length) {
+    flags.push(tNode("panels.voice_blocked", {
+      card: card("the_voice", "cards"),
+      spaces: blocked.map(spaceName).join(", "),
+    }));
+  }
+  if (player.enemy_agents_ignored_turn) {
+    flags.push(tNode("panels.infiltrate_turn", { card: card("infiltrate", "intrigue") }));
+  }
+  if (player.acquire_to_deck_top_round) {
+    flags.push(tNode("panels.deck_top_round", {
+      card: card("recruitment_mission", "intrigue"),
+    }));
+  }
+  /* Masterstroke is Baron Harkonnen's ability, named as his face prints it. */
+  const baron = lookup("baron_vladimir_harkonnen", "leaders");
+  const ability = baron && baron.ability ? baron.ability : "Masterstroke";
+  const factions = (ids) => ids.map((id) => FACTION_LABELS[id] || id).join(", ");
+  const own = view.player === seat && view.private
+    ? view.private.masterstroke_factions || []
+    : [];
+  if ((player.masterstroke_revealed_factions || []).length) {
+    flags.push(tNode("panels.masterstroke_revealed", {
+      ability, factions: factions(player.masterstroke_revealed_factions),
+    }));
+  } else if (own.length) {
+    flags.push(tNode("panels.masterstroke_own", { ability, factions: factions(own) }));
+  } else if (player.masterstroke_secret) {
+    flags.push(tNode("panels.masterstroke_secret", { ability }));
+  }
+  return flags;
 }
 
 function deckTopSource(glowglobes, leaderId) {
