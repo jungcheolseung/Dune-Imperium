@@ -304,7 +304,10 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # reads it, its row is the only one that changed, and no scale moved (compared
 # against f446b631, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against a6defaba (2026-10-30).
-_GOLDEN_DIGEST = "8363e7879c26078e585b15fbda2e8dcd0d7cc7d08ff95678f045f3a4e62cf411"
+# Then Web of Power got its play data (stage P4d): only its own row changed, no
+# column and no scale (compared against 374e8c1d, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against a0eecb65 (2026-10-30).
+_GOLDEN_DIGEST = "3ecbfc3dc843e77c3e3d720cea25d8e01f543066965f997a102175a90dd7a001"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

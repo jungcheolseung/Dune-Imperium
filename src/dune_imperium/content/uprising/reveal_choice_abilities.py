@@ -383,6 +383,13 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                 _line(GainInfluence(), condition=TechTilesAtLeast(2)),
                 mark=_MANDATORY,
             ),
+            # Web of Power (Rise of Ix): the wild Influence icon, "Choose a
+            # Faction to gain 1 Influence with" [Steam app text] -- no "may"
+            # and no condition, so Pointing the Way's choice without its
+            # Command.
+            _CHOICE.GAIN_CHOSEN_INFLUENCE: _choice(
+                _line(GainInfluence()), mark=_MANDATORY
+            ),
         }
     )
 )

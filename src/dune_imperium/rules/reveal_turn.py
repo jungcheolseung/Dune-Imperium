@@ -262,6 +262,7 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     ),
     _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE: _INFLUENCE_GAIN_ACTIONS,
     _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: _INFLUENCE_GAIN_ACTIONS,
+    _Choice.GAIN_CHOSEN_INFLUENCE: _INFLUENCE_GAIN_ACTIONS,
     _Choice.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD: frozenset(
         {"command_acquire_row_card"}
     ),
@@ -1656,10 +1657,11 @@ def legal_reveal_influence_gain_actions(
     if opened is None or opened[1] not in (
         PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
+        PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE,
     ):
         return ()
-    # Pointing the Way, Ixian Ambassador: never a cube already at the top
-    # (OQ-060); their record (composed A4d).
+    # Pointing the Way, Ixian Ambassador, Web of Power: never a cube already
+    # at the top (OQ-060); their record (composed A4d).
     return target_reward_rows(state, player, *opened)
 
 
@@ -4879,6 +4881,8 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect is PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE
         else "Two or more Tech tiles: choose a Faction to gain one Influence with"
         if effect is PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH
+        else "Choose a Faction to gain one Influence with"
+        if effect is PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE
         else "You may retreat two troops for two Persuasion"
         if effect
         is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION
@@ -4924,6 +4928,7 @@ _INFLUENCE_GAIN_CHOICES: Final = frozenset(
     {
         PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
+        PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE,
     }
 )
 

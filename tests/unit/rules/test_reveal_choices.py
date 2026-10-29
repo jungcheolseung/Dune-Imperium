@@ -152,8 +152,9 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
     # Chief Administrator's Freighter icon ("may" [Rise of Ix p. 5]) and
     # Negotiated Withdrawal's arrow.
     assert len(optional) == 16 + 8 + 2
-    # Ten of the Uprising family's and Bene Gesserit Sister's -OR- (stage P3).
-    assert len(mandatory) == 10 + 1
+    # Ten of the Uprising family's, Bene Gesserit Sister's -OR- (stage P3) and
+    # Rise of Ix's Web of Power's wild Influence icon (stage P4d).
+    assert len(mandatory) == 10 + 1 + 1
     assert set(REVEAL_CHOICE_EFFECT_ACTIONS) == set(PersonalCardRevealChoiceEffect)
     # A printed "-OR-" choice and a gain are mandatory; the Spy icons too
     # (OQ-057 (14)); "may" and arrows are optional [FAQ p. 3].
@@ -170,6 +171,8 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
         _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
         # The original game's (stage P3): Bene Gesserit Sister.
         _Choice.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
+        # Rise of Ix's (stage P4d): Web of Power's wild Influence icon.
+        _Choice.GAIN_CHOSEN_INFLUENCE,
     } == mandatory
 
 
@@ -834,7 +837,7 @@ def test_the_new_reveal_choice_pieces_read_as_the_cards_print_them() -> None:
     assert reward_text_ko(seat) in REVEAL_CHOICE_EFFECT_TEXT_KO[corrinth]
 
 
-def test_eight_reveal_choices_pay_one_target_for_their_reward() -> None:
+def test_the_reveal_choices_paying_one_target_for_their_reward() -> None:
     """Composed A4d: the choices that recall a Spy, trash a card or name a
     Faction for their reward resolve by the shared "target -> reward" shape;
     the Spy icons, the printed "-OR-"s and the hooks do not."""
@@ -852,4 +855,6 @@ def test_eight_reveal_choices_pay_one_target_for_their_reward() -> None:
         _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
         _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE,
         _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
+        # Rise of Ix's Web of Power (stage P4d): the wild Influence icon.
+        _Choice.GAIN_CHOSEN_INFLUENCE,
     }

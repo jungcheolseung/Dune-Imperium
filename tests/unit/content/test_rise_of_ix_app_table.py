@@ -292,6 +292,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "spice_trader",
     "truthsayer",
     "water_peddler",
+    "web_of_power",
     "weirding_way",
 }
 

@@ -63,6 +63,7 @@ const PROMPT_KO = {
   "No unit to lose": "잃을 유닛 없음",
   "No card to discard": "버릴 카드 없음",
   "Choose where to place a Spy for this Reveal effect": "이 {reveal_turn} 효과로 {spy}를 배치할 위치 선택",
+  "Choose a Faction to gain one Influence with": "{influence_any}을 얻을 {faction} 선택",
   "Command: choose a Faction to gain one Influence with": "{command}: {influence_any}을 얻을 {faction} 선택",
   "Command: choose where to place a Spy": "{command}: {spy}를 배치할 위치 선택",
   "Command: you may trash a card": "{command}: 카드 1장 폐기 가능",

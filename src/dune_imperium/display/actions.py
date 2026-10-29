@@ -143,6 +143,16 @@ _ICON_CONDITIONS: dict[tuple[PersonalCardAgentEffect, str], str] = {
     (_BOX.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO, "spice"): (
         "at 2 Spacing Guild Influence"
     ),
+    # Web of Power (Rise of Ix).
+    (_BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO, "solari"): (
+        "at 2 Emperor Influence"
+    ),
+    (_BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO, "cards"): (
+        "at 2 Spacing Guild Influence"
+    ),
+    (_BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO, "water"): (
+        "at 2 Fremen Influence"
+    ),
     (_BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN, "troops"): (
         "if you gained 2 or more spice this turn"
     ),
@@ -210,6 +220,15 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
     ),
     (_BOX.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO, "spice"): (
         "{influence_spacing_guild:2}일 때"
+    ),
+    (_BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO, "solari"): (
+        "{influence_emperor:2}일 때"
+    ),
+    (_BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO, "cards"): (
+        "{influence_spacing_guild:2}일 때"
+    ),
+    (_BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO, "water"): (
+        "{influence_fremen:2}일 때"
     ),
     (_BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN, "troops"): (
         "이번 차례에 {spice}를 2 이상 얻었다면"

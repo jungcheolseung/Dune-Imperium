@@ -385,6 +385,14 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If you have 2 or more Bene Gesserit Influence: Gain 1 water, "
             "If you have 2 or more Fremen Influence: Gain 1 spice"
         ),
+        (
+            PersonalCardAgentEffect
+            .GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO
+        ): (
+            "If you have 2 or more Emperor Influence: Gain 2 solari, "
+            "If you have 2 or more Spacing Guild Influence: Draw 1 card, "
+            "If you have 2 or more Fremen Influence: Gain 1 water"
+        ),
         PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO: (
             "If you have 2 or more Emperor Influence: Gain 2 solari, "
             "If you have 2 or more Spacing Guild Influence: Gain 1 spice"
@@ -711,6 +719,10 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES: "Place 2 Spies",
             PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: (
                 "If you have 2 or more Tech tiles: "
+                "Gain 1 Influence with a chosen Faction"
+            ),
+            # Rise of Ix's Web of Power (stage P4d): the wild Influence icon.
+            PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE: (
                 "Gain 1 Influence with a chosen Faction"
             ),
             PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH: (

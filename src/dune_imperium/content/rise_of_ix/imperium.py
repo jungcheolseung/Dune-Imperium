@@ -16,9 +16,9 @@ game's deck takes only completed cards (CHOAM Delegate, Jamis, Landing
 Rights, Sayyadina, Shai-Hulud, Truthsayer, Imperial Shock Trooper, Local
 Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
 Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
-Way, Satellite Ban, Spice Trader, Imperial Bashar and Bounty Hunter so far),
-while the observation lists every identity from v39. Setup takes Rise of Ix
-on the original game since stage P4c-5.
+Way, Satellite Ban, Spice Trader, Imperial Bashar, Bounty Hunter and Web of
+Power so far), while the observation lists every identity from v39. Setup
+takes Rise of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
 cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
@@ -44,6 +44,9 @@ _LOCAL_FENCE = (
     PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
 )
 _BOUNTY_HUNTER = PersonalCardAgentEffect.GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE
+_WEB_OF_POWER = (
+    PersonalCardAgentEffect.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO
+)
 _SPICE_TRADER = (
     PersonalCardAgentEffect.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO
 )
@@ -393,6 +396,19 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=4,
         infiltration_icons=(AgentIcon.BENE_GESSERIT,),
+        # App table: Bene Gesserit, the Bene Gesserit icon (also its
+        # Infiltration icon), Reveal 1 Persuasion. Reveal: the wild Influence
+        # icon, "Choose a Faction to gain 1 Influence with" [Steam app text]
+        # (a Reveal choice, mandatory). Agent: "[Emperor] 2 Influence: [2
+        # Solari]", "[Spacing Guild] 2 Influence: [draw 1]" and "[Fremen] 2
+        # Influence: [1 water]" [Steam app screen pieces and text] -- three
+        # Influence thresholds, each its own icon judged when it resolves.
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.BENE_GESSERIT,),
+        agent_effect=_WEB_OF_POWER,
+        reveal_persuasion=1,
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE,),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("weirding_way", "Weirding Way"),

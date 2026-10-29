@@ -186,9 +186,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Weirding Way ("You may take another turn immediately after this one"),
     # Satellite Ban ("[Discard] -> [1 spice] [1 water]"), Spice Trader
     # ("[Fremen] 2 Influence: [Discard] -> [2 spice]"), Imperial Bashar
-    # ("[Troop] -OR- [Trash a card]") and Bounty Hunter ("If used to send an
-    # Agent to a board space with an enemy Agent: [2 Solari]").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 13
+    # ("[Troop] -OR- [Trash a card]"), Bounty Hunter ("If used to send an
+    # Agent to a board space with an enemy Agent: [2 Solari]") and Web of
+    # Power (three Influence thresholds over three icons).
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 14
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -204,6 +205,12 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         _BOX.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO: ("troops", "cards"),
         _BOX.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO: ("water", "spice"),
         _BOX.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO: ("solari", "spice"),
+        # Web of Power (Rise of Ix): three thresholds, one icon each.
+        _BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO: (
+            "solari",
+            "cards",
+            "water",
+        ),
         _BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN: (
             "troops",
             "cards",

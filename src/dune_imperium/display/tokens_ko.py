@@ -447,6 +447,12 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "{influence_emperor} 2 이상이면: {solari:2}, "
         "{influence_spacing_guild} 2 이상이면: {spice:1}"
     ),
+    # Rise of Ix's Web of Power (stage P4d).
+    PersonalCardAgentEffect.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO: (
+        "{influence_emperor} 2 이상이면: {solari:2}, "
+        "{influence_spacing_guild} 2 이상이면: {draw:1}, "
+        "{influence_fremen} 2 이상이면: {water:1}"
+    ),
     # Uprising promo cards (card faces; OQ-024 to OQ-026).
     (
         PersonalCardAgentEffect
@@ -741,6 +747,8 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: (
         "{tech_tile} 2 이상이면: {influence_any:1} 선택"
     ),
+    # Rise of Ix's Web of Power (stage P4d).
+    PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE: "{influence_any:1} 선택",
     PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH: (
         "하나 선택: {spy} 배치 / {sword:2}"
     ),

@@ -1015,6 +1015,29 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                     ),
                 ),
             ),
+            # Web of Power (Rise of Ix): three printed lines, "[Emperor] 2
+            # Influence: [2 Solari]", "[Spacing Guild] 2 Influence: [draw 1]"
+            # and "[Fremen] 2 Influence: [1 water]" [Steam app screen pieces
+            # and text] -- the Influence thresholds Wheels Within Wheels prints,
+            # each icon its own step with the Influence judged when it resolves
+            # (OQ-027, OQ-028).
+            _BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO: _icons(
+                (
+                    "solari",
+                    _line(
+                        GainResources(solari=2),
+                        condition=InfluenceAtLeast(Faction.EMPEROR, 2),
+                    ),
+                ),
+                ("cards", _line(DrawPersonalCards(1), condition=_GUILD_TWO)),
+                (
+                    "water",
+                    _line(
+                        GainResources(water=1),
+                        condition=InfluenceAtLeast(Faction.FREMEN, 2),
+                    ),
+                ),
+            ),
             # Fremen War Name: "If you gained [2 spice] or more this turn:".
             _BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN: _icons(
                 ("troops", _line(RecruitTroops(1), condition=_TWO_SPICE)),

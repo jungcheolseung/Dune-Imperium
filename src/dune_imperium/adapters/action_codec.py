@@ -4241,6 +4241,8 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     ),
     _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE: ("gain_reveal_influence",),
     _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: ("gain_reveal_influence",),
+    # Web of Power (Rise of Ix): the wild Influence icon.
+    _Choice.GAIN_CHOSEN_INFLUENCE: ("gain_reveal_influence",),
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _SOURCED_TROOP_MOVE,
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _SOURCED_TROOP_MOVE,
     _Choice.MAY_DEPLOY_ONE_TROOP: ("deploy_reveal_card_troop",),

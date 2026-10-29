@@ -1645,6 +1645,18 @@ def _old_icon_condition_holds(
             return len(owner.completed_contract_ids) >= 2
         if key == "cards_second":
             return len(owner.completed_contract_ids) >= 4
+    # 2026-10-30 (Rise of Ix, stage P4d): Web of Power's three icons, each
+    # judged at 2 Influence with its own Faction.
+    web_of_power = (
+        PersonalCardAgentEffect.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO
+    )
+    if effect is web_of_power:
+        if key == "solari":
+            return owner.influence.emperor >= 2
+        if key == "cards":
+            return owner.influence.spacing_guild >= 2
+        if key == "water":
+            return owner.influence.fremen >= 2
     # 2026-10-28 (the original game, stage P3): Smuggler's Thopter's two draw
     # icons, each judged at 2 Spacing Guild Influence.
     if (

@@ -131,6 +131,11 @@ class PersonalCardAgentEffect(StrEnum):
     GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO = (
         "gain_by_emperor_and_spacing_guild_influence_two"
     )
+    # Web of Power (Rise of Ix): "[Emperor] 2 Influence: [2 Solari]", "[Spacing
+    # Guild] 2 Influence: [draw 1]" and "[Fremen] 2 Influence: [1 water]".
+    GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO = (
+        "gain_by_emperor_spacing_guild_and_fremen_influence_two"
+    )
     RECRUIT_ONE_IF_MAKER_SPACE = "recruit_one_if_maker_space"
     RECRUIT_TWO_TROOPS = "recruit_two_troops"
     RECRUIT_TWO_IF_BENE_GESSERIT_BOND = "recruit_two_if_bene_gesserit_bond"
@@ -651,6 +656,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     # Negotiated Withdrawal: "Retreat three of your units -> [Influence with
     # any Faction]", an optional arrow [FAQ p. 3].
     MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE = "may_retreat_three_units_for_influence"
+    # Web of Power (Rise of Ix): the wild Influence icon, "Choose a Faction to
+    # gain 1 Influence with".
+    GAIN_CHOSEN_INFLUENCE = "gain_chosen_influence"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -687,6 +695,7 @@ IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = froz
         PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
         PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS,
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS,
+        PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE,
     }
 )
 
