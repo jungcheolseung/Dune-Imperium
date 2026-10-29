@@ -195,7 +195,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # 2026-10-30).
 # Then CHOAM Delegate got its play data (stage P4d): only its own row changed,
 # no column and no scale (compared against aae8f95c, 2026-10-30).
-_GOLDEN_DIGEST = "7f1e5aa2dbedcec5c9612aec067717b1437da4215fe4c394e9bf02563b559aa6"
+# Then Advanced Weaponry got its record (stage P4d): only its own row changed,
+# and one intrigue-table column is new (the Dreadnought commission reward),
+# read by its row alone; no older scale moved (compared against 18d1bb8a,
+# 2026-10-30).
+_GOLDEN_DIGEST = "9474129f21c0b9c81f1ddcbf96f1d25b02ecc7316dfc37fc2e9e4775874b78f4"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

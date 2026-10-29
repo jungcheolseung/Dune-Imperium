@@ -23,6 +23,7 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.effect_dsl import (
+    CommissionDreadnought,
     DiscardFromHand,
     DrawPersonalCards,
     EffectSection,
@@ -36,6 +37,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseTroops,
     PayResources,
     RecruitTroops,
+    TechTilesAtLeast,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.intrigue import (
@@ -58,6 +60,28 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("advanced_weaponry", "Advanced Weaponry"),
         copies=1,
+        # [PLOT / COMBAT] "3 Solari -> Dreadnought" -OR- "If you have three or
+        # more Tech tiles: 4 swords" [Steam app text and screen pieces; the
+        # prefab sets the -OR- frame between the two halves, the log lines
+        # tell the Plot's commission from the Combat's four swords]. The Plot
+        # half is one cost line: with both dreadnoughts already commissioned
+        # the 3 Solari buy nothing, so it is not played (rise-of-ix.md 9.3 and
+        # 15, OQ-113 (C)); the Combat half is conditional, and "To play an
+        # Intrigue card, you must meet its conditions" [FAQ p. 2].
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(solari=3),),
+                    rewards=(CommissionDreadnought(),),
+                )
+            ),
+            _combat(
+                EffectSection(
+                    condition=TechTilesAtLeast(3),
+                    rewards=(GainCombatStrength(4),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("blackmail", "Blackmail"),
