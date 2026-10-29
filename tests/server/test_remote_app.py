@@ -19,6 +19,15 @@ from dune_imperium.server.app import (  # noqa: E402
 from dune_imperium.server.sessions import GameSessionManager  # noqa: E402
 
 ADMIN_KEY = "top-secret-admin-key"
+# GET /whoami's seat table row for the original game (server/seat_kinds.py).
+IMPERIUM_SEAT_KINDS = [
+    "app_ai",
+    "app_ai_easy",
+    "app_ai_medium",
+    "heuristic",
+    "human",
+    "random",
+]
 
 
 @pytest.fixture
@@ -539,7 +548,7 @@ def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
         "ai_pace": "instant",
         "seating": "random",
         "first_player": "player1",
-        "seat_kinds": {"uprising": None, "imperium": ["heuristic", "human", "random"]},
+        "seat_kinds": {"uprising": None, "imperium": IMPERIUM_SEAT_KINDS},
     }
 
     host = _admin_client(app).get("/whoami")
@@ -552,7 +561,7 @@ def test_whoami_tells_a_browser_the_access_mode_and_whether_it_is_the_host(
         "ai_pace": "instant",
         "seating": "random",
         "first_player": "player1",
-        "seat_kinds": {"uprising": None, "imperium": ["heuristic", "human", "random"]},
+        "seat_kinds": {"uprising": None, "imperium": IMPERIUM_SEAT_KINDS},
     }
 
 
@@ -568,7 +577,7 @@ def test_whoami_on_an_open_server_makes_everyone_the_host(tmp_path: Path) -> Non
         "ai_pace": "instant",
         "seating": "random",
         "first_player": "player1",
-        "seat_kinds": {"uprising": None, "imperium": ["heuristic", "human", "random"]},
+        "seat_kinds": {"uprising": None, "imperium": IMPERIUM_SEAT_KINDS},
     }
 
 

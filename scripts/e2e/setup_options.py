@@ -715,9 +715,9 @@ ORIGINAL_SPACES = {"carthag", "conspire", "the_great_flat", "mentat", "hall_of_o
 def original_game(base: str, browser) -> None:
     """[8] The base-game select (P5a): the original game locks the options it
     cannot take yet and gives them back on a return to Uprising, names its
-    own promo cards on the promo box, seats heuristic AIs where no one
-    picked a kind, and starts a game drawn on its own board picture with the
-    original spaces only."""
+    own promo cards on the promo box, keeps the picked kinds its table takes
+    (the app AI since P6) and seats the default app AI elsewhere, and starts
+    a game drawn on its own board picture with the original spaces only."""
     print("[8] the base-game select: the original game")
     context, page, rec = open_context(browser, "setup-original-game")
     page.goto(base + "/")
@@ -736,6 +736,7 @@ def original_game(base: str, browser) -> None:
     )
     page.select_option("#seat-selects select[data-seat='1']", "random")
     page.select_option("#seat-selects select[data-seat='2']", "app_ai_easy")
+    page.select_option("#seat-selects select[data-seat='3']", "rollout")
     page.select_option("#opt-base-game", "imperium")
     original = page.evaluate(BASE_GAME_JS)
     check.ok(
@@ -755,14 +756,16 @@ def original_game(base: str, browser) -> None:
         original["promo"],
     )
     check.ok(
-        original["kinds"] == ["human", "random", "heuristic", "heuristic"],
-        "unpicked seats and an app AI the original table refuses become heuristic;"
-        " a picked random seat stays",
+        original["kinds"] == ["human", "random", "app_ai_easy", "app_ai"],
+        "picked random and app AI seats stay (the app AI plays the original game"
+        " since P6); a rollout seat the original table refuses becomes the"
+        " default app AI",
         original["kinds"],
     )
     allowed = sorted(original["table"]["imperium"])
     check.ok(
-        allowed == ["heuristic", "human", "random"]
+        allowed == ["app_ai", "app_ai_easy", "app_ai_medium", "heuristic", "human",
+                    "random"]
         and all(sorted(kinds) == allowed for kinds in original["offered"]),
         "every seat offers just the original table's kinds (GET /whoami seat_kinds)",
         {"table": original["table"], "offered": original["offered"][0]},
@@ -771,9 +774,10 @@ def original_game(base: str, browser) -> None:
     back = page.evaluate(BASE_GAME_JS)
     check.ok(
         back["boxes"] == before["boxes"] and back["kinds"] == [
-            "human", "random", "app_ai", "app_ai"]
+            "human", "random", "app_ai_easy", "app_ai"]
         and back["promo"] == before["promo"],
-        "back on Uprising: the boxes and the default seats come back",
+        "back on Uprising: the boxes come back, the picked seats stay and the"
+        " refused one keeps the default",
         {"before": before, "back": back},
     )
     open_setup(page, base)

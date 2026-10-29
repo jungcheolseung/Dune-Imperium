@@ -32,6 +32,11 @@ only through its labels; those are what this checks, around a whole game.
     and the review's seat select naming the labels in both languages.
 [R] A --remote room created with app_ai seats shows the labels in the lobby
     in both languages, while a remote room's own defaults stay all human.
+With --base-game imperium every scenario runs on the original Dune: Imperium
+(the app AI plays it since stage P6, docs/app-ai-plan.md 12): the setup
+screen picks the base game first, the boxes the original game takes (Leader
+draft, promo) open checked and the Uprising-only ones locked, and the posted
+game names the base game. app_ai_seats_original.py runs it in the batch.
 Every page: no JS errors; neither server logs a Traceback or ERROR, and the
 open server's log holds nothing but uvicorn's INFO lines (an app AI fallback
 warning would add one). `E2E_SHOTS_DIR` keeps the seat column at 1366x768 in
@@ -40,6 +45,7 @@ both languages (app_ai_seats_1366_ko.png / _en.png).
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shutil
@@ -63,6 +69,8 @@ from open_mode import create_game, settled
 check = Check()
 
 SEED = 20261005
+# The base game every scenario plays (--base-game).
+BASE_GAME = "uprising"
 KINDS = ["human", "app_ai", "app_ai_medium", "app_ai_easy"]
 LABELS = {
     "ko": {
@@ -97,6 +105,8 @@ DEFAULT_BOXES = (
     "go-to-11",
     "epic-game",
 )
+# The boxes the original game takes (the others are Uprising-only and locked).
+ORIGINAL_BOXES = ("leader-draft", "promo")
 SAVE_AT = 60  # human steps before the mid-game save
 SAVE_NAME = "AppAIMidGame"
 KEY = "e2e-admin-key"
@@ -258,7 +268,7 @@ def play(page, rec, label: str, stop_at: int | None = None) -> int:
 
 
 def check_setup(base, browser) -> None:
-    print("[S] setup screen: rows, defaults and the posted kinds")
+    print(f"[S] setup screen ({BASE_GAME}): rows, defaults and the posted kinds")
     _, page, _ = open_context(browser, "setup")
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
@@ -266,6 +276,8 @@ def check_setup(base, browser) -> None:
         "state.server !== null"
         " && document.querySelectorAll('#seat-selects select').length === 4"
     )
+    if BASE_GAME != "uprising":
+        page.select_option("#opt-base-game", BASE_GAME)
     values = page.evaluate(
         "[...document.querySelectorAll('#seat-selects select')].map((s) => s.value)"
     )
@@ -279,11 +291,24 @@ def check_setup(base, browser) -> None:
             '#rule-options input[type=checkbox]')].map(
             (box) => [box.id.slice(4), box.checked && !box.disabled]))"""
     )
-    check.ok(
-        all(boxes.get(name) for name in DEFAULT_BOXES) and boxes.get("scouts") is False,
-        "every rule box but Scouts opens checked",
-        boxes,
-    )
+    if BASE_GAME == "uprising":
+        check.ok(
+            all(boxes.get(name) for name in DEFAULT_BOXES)
+            and boxes.get("scouts") is False,
+            "every rule box but Scouts opens checked",
+            boxes,
+        )
+    else:
+        check.ok(
+            all(boxes.get(name) for name in ORIGINAL_BOXES)
+            and not any(
+                boxes.get(name)
+                for name in (*DEFAULT_BOXES, "scouts")
+                if name not in ORIGINAL_BOXES
+            ),
+            "the original game keeps its boxes checked and the Uprising-only ones off",
+            boxes,
+        )
     for lang in ("ko", "en"):
         set_language(page, lang)
         rows = page.evaluate(
@@ -305,41 +330,51 @@ def check_setup(base, browser) -> None:
             f"{lang}: a language switch keeps the chosen seats",
         )
     set_language(page, "ko")
+    boxes_on = len(DEFAULT_BOXES) if BASE_GAME == "uprising" else len(ORIGINAL_BOXES)
     check.ok(
-        page.inner_text("#setup-summary") == "사람 1명 · AI 3명 · 규칙 옵션 8개 선택",
-        "the summary counts the app AIs as AI and the eight default boxes",
+        page.inner_text("#setup-summary")
+        == f"사람 1명 · AI 3명 · 규칙 옵션 {boxes_on}개 선택",
+        f"the summary counts the app AIs as AI and the {boxes_on} default boxes",
         page.inner_text("#setup-summary"),
     )
     page.context.close()
 
 
 def scenario_game(base, browser) -> None:
-    print("[G] one human against app_ai / app_ai_medium / app_ai_easy")
+    print(f"[G] one human against app_ai / app_ai_medium / app_ai_easy ({BASE_GAME})")
     _, page, rec = open_context(browser, "table")
     with page.expect_request(
         lambda request: request.method == "POST" and request.url.endswith("/games")
     ) as sent:
-        game_id = create_game(page, base, seed=SEED, kinds=KINDS, options=None)
+        game_id = create_game(
+            page, base, seed=SEED, kinds=KINDS, options=None, base_game=BASE_GAME
+        )
     payload = sent.value.post_data_json
+    on = ["leader_draft", "promo_cards"]
+    uprising_only = [
+        "choam_module",
+        "bloodlines",
+        "tech_module",
+        "immortality",
+        "go_to_11",
+        "epic_game",
+    ]
+    if BASE_GAME == "uprising":
+        on, off = on + uprising_only, ["arrakeen_scouts"]
+    else:
+        off = [*uprising_only, "arrakeen_scouts"]
     check.ok(
         payload["seats"] == KINDS
         and payload["game_seed"] == SEED
-        and all(
-            payload[key]
-            for key in (
-                "leader_draft",
-                "choam_module",
-                "promo_cards",
-                "bloodlines",
-                "tech_module",
-                "immortality",
-                "go_to_11",
-                "epic_game",
-            )
-        )
-        and payload["arrakeen_scouts"] is False,
+        and payload.get("base_game", "uprising") == BASE_GAME
+        and all(payload[key] for key in on)
+        and not any(payload[key] for key in off),
         "the start button posts the chosen kinds with the default options",
         payload,
+    )
+    check.ok(
+        page.evaluate("state.summary.base_game") == BASE_GAME,
+        "the summary names the base game",
     )
     check.ok(
         page.evaluate("state.summary.seats") == KINDS,
@@ -591,6 +626,8 @@ def scenario_remote(browser) -> None:
             "state.server !== null"
             " && document.querySelectorAll('#seat-selects select').length === 4"
         )
+        if BASE_GAME != "uprising":
+            host.select_option("#opt-base-game", BASE_GAME)
         defaults = host.evaluate(
             "[...document.querySelectorAll('#seat-selects select')].map((s) => s.value)"
         )
@@ -605,7 +642,8 @@ def scenario_remote(browser) -> None:
         host.click("#create-game")
         host.wait_for_selector("#lobby-screen:not([hidden])")
         check.ok(
-            host.evaluate("state.summary.players.map((p) => p.kind)") == KINDS,
+            host.evaluate("state.summary.players.map((p) => p.kind)") == KINDS
+            and host.evaluate("state.summary.base_game") == BASE_GAME,
             "the remote room publishes the app AI kinds unchanged",
         )
         for lang in ("ko", "en"):
@@ -634,6 +672,12 @@ def scenario_remote(browser) -> None:
 
 
 def main() -> None:
+    global BASE_GAME
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--base-game", choices=("uprising", "imperium"), default=BASE_GAME
+    )
+    BASE_GAME = parser.parse_args().base_game
     with server() as (base, server_log), chrome() as browser:
         try:
             check_setup(base, browser)

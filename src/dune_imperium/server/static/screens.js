@@ -46,9 +46,8 @@ function buildSeatSelects({ followDefaults = false } = {}) {
 
 /* The seat kinds a table of the chosen base game takes, from the server's
    one table (GET /whoami seat_kinds, server/seat_kinds.py), or null for
-   every kind: the original game seats no app or search AI until the app
-   AI's port of it (stage P6 of docs/base-game-and-ix-plan.md) adds them
-   there. */
+   every kind: the original game seats no search or rollout AI (the app AI
+   joined it with its port, stage P6). */
 function allowedSeatKinds() {
   const table = state.server && state.server.seat_kinds;
   const kinds = table ? table[el("opt-base-game").value] : null;
