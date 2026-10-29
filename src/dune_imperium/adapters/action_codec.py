@@ -1297,9 +1297,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="flip_battle_card",
             arguments=(("card_id", conflict.card.card_id),),
         )
-        for conflict in content.conflicts
-        if (config.bloodlines or not conflict.bloodlines_only)
-        and (config.epic_game or not conflict.epic_only)
+        for conflict in content.conflicts_in_play()
     )
     # An Objective "counts as a Conflict card you've already won" [Objective
     # card], so the flip effects may take it too (OQ-005, codec v130).
@@ -1742,14 +1740,10 @@ def _effect_step_templates(
             # (B3d-3), by each icon whose window offers it and each Conflict
             # printing that icon.
             for icon in _REWARD_WINDOW_REFUSALS[template.action_id]:
-                for conflict in content_for(config).conflicts:
+                for conflict in content_for(config).conflicts_in_play():
                     if not (
-                        (config.bloodlines or not conflict.bloodlines_only)
-                        and (config.epic_game or not conflict.epic_only)
-                        and (
-                            icon in conflict_reward_icon_kinds(conflict.card.card_id)
-                            or (icon == "choose_influence" and config.promo_cards)
-                        )
+                        icon in conflict_reward_icon_kinds(conflict.card.card_id)
+                        or (icon == "choose_influence" and config.promo_cards)
                     ):
                         continue
                     for row in steps_for(whole, conflict.card.card_id, icon=icon):
@@ -1766,10 +1760,8 @@ def _effect_step_templates(
             kinds = _WINDOW_REWARD_ICONS.get(template.action_id, (kind,))
             named = tuple(
                 (None, conflict.card.card_id)
-                for conflict in content_for(config).conflicts
-                if (config.bloodlines or not conflict.bloodlines_only)
-                and (config.epic_game or not conflict.epic_only)
-                and (
+                for conflict in content_for(config).conflicts_in_play()
+                if (
                     any(
                         printed in conflict_reward_icon_kinds(conflict.card.card_id)
                         for printed in kinds
@@ -3713,9 +3705,7 @@ def _endgame_wild_templates(
     battle_cards = (
         *(
             (conflict.card.card_id, conflict.battle_icon)
-            for conflict in content_for(config).conflicts
-            if (config.bloodlines or not conflict.bloodlines_only)
-            and (config.epic_game or not conflict.epic_only)
+            for conflict in content_for(config).conflicts_in_play()
         ),
         *(
             (objective.objective_id, objective.battle_icon)

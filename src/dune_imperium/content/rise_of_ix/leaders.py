@@ -10,13 +10,13 @@ rules behind them are docs/rules/rise-of-ix.md 10.
 
 These are stage P4a identity entries: a name and the two ability names. The
 setup deviations (Yuna's ``starting_water``, Hundro's and Tessia's setup
-steps) and the abilities themselves are not wired yet (stage P4e), and the
-Leader draft does not offer these Leaders: neither
-``rulesets.IMPERIUM_LEADER_IDS`` nor any other pool holds them, and setup
-still refuses Rise of Ix. ``content.uprising.leaders``'s ``LEADERS_BY_ID``
-resolves them next to the original game's Leaders; code that lists Uprising's
-Leaders iterates ``LEADERS``, and the observation's Leader universe does not
-list them until v39 (plan 17.1, 17.4).
+steps) and the abilities themselves are not wired yet (stage P4e).
+``rulesets.IMPERIUM_LEADER_IDS`` keeps the original game's eight; with
+``rise_of_ix`` ``content_for`` offers these six after them [Rise of Ix p. 3]
+(stage P4a's board axis), and setup still refuses Rise of Ix.
+``content.uprising.leaders``'s ``LEADERS_BY_ID`` resolves them next to the
+original game's Leaders; code that lists Uprising's Leaders iterates
+``LEADERS``, and the observation lists them from v39 (plan 17.1, 17.4).
 """
 
 from typing import Final

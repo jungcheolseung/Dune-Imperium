@@ -68,6 +68,13 @@ class ConflictSetup:
                 )
         elif len(self.unused) not in (6, 8):
             # 16 retail cards, or 18 with the two Bloodlines cards.
+            # Stage P4c item (docs/base-game-and-ix-plan.md 17.1): the
+            # original game leaves 8 unused (18 cards, 10 drawn), which this
+            # check passes by coincidence; with Rise of Ix the printed deck
+            # leaves 12 (22 cards, I 6, II 11, III 5 drawn as 1, 5, 4 [Rise
+            # of Ix p. 3]; 12 in Epic Game Mode too [Rise of Ix p. 10]). The
+            # check must take the base game and Rise of Ix before setup
+            # accepts the option, which it refuses until then.
             raise ValueError(
                 "six (eight with Bloodlines) Conflict cards must remain unused"
             )

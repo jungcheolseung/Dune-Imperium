@@ -14,9 +14,11 @@ These are stage P4a identity entries: their effects (a dreadnought and/or
 Acquire Tech; Acquire Tech with Tech Discount 1 or a Negotiator, and the
 Persuasion of an Agent there; two Freighter icons; 1 Solari and a Freighter
 icon) need the Freighter, dreadnought and Tech pieces of stages P4b and P4c,
-so no board ability record names them yet. No ruleset content, setup or
-board list holds them (``IMPERIUM_BOARD_SPACES`` keeps the original board's
-22, the overlay's swap is stage P4c's), and setup still refuses Rise of Ix.
+so no board ability record names them yet. ``IMPERIUM_BOARD_SPACES`` keeps
+the original board's 22; with ``rise_of_ix`` ``content_for`` swaps the four
+spaces the overlay covers (``rulesets.IX_OVERLAID_SPACE_IDS``) for these
+(stage P4a's board axis; docs/rules/rise-of-ix.md 3 item 1), while setup still
+refuses Rise of Ix until the spaces have effects (stage P4c).
 ``content.uprising.board``'s ``BOARD_SPACES_BY_ID`` resolves them; the
 observation lists them after every other space from v39
 (``adapters.observation_encoding.SPACE_IDS``, plan 17.8). The original board

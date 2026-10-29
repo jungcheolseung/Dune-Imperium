@@ -19,7 +19,6 @@ from dune_imperium.content.bloodlines.sardaukar import SKILLS
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.immortality.board import RESEARCH_SPACES
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS
-from dune_imperium.content.rise_of_ix.board import IX_BOARD_SPACES
 from dune_imperium.content.rise_of_ix.tech import IX_TECH_TILES
 from dune_imperium.content.rulesets import RulesetContent, content_for
 from dune_imperium.content.uprising.contracts import contract_for_instance
@@ -80,11 +79,11 @@ _KINDS: dict[str, Callable[[RulesetContent], Iterable[tuple[str, Any]]]] = {
     ),
 }
 # Expansion kinds not yet chosen through the ruleset content, and Rise of
-# Ix's Tech tiles and board spaces (stage P4a: no ruleset content holds them
-# before stage P4c).
+# Ix's Tech tiles (stage P4a: no ruleset content holds them before stage P4c;
+# its board spaces, Conflicts and Leaders arrive through the original game's
+# content with ``rise_of_ix``, which ``_widest`` turns on).
 _FIXED_KINDS: dict[str, Iterable[tuple[str, Any]]] = {
     "tech": ((t.tech_id, t) for t in (*TECH_TILES, *IX_TECH_TILES)),
-    "board_space": ((s.space_id, s) for s in IX_BOARD_SPACES),
     "skill": ((s.skill_id, s) for s in SKILLS),
     "research_space": ((s.space_id, s) for s in RESEARCH_SPACES),
     "tleilaxu": ((c.card.card_id, c) for c in TLEILAXU_CARDS),

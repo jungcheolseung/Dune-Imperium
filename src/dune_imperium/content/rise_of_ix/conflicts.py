@@ -16,13 +16,17 @@ Ix Skirmishes take the app's own letters, ``skirmish_e`` and ``skirmish_f``
 Monopoly is ``trade_monopoly``. No other Conflict card has any of those ids.
 
 These are stage P4a identity entries: name and tier only, ``reward_rows``
-``None`` ("not transcribed", as ``ConflictDefinition`` documents). They are
-in no pool: the Conflict deck takes only the transcribed cards, and the
-observation lists them from v39 (plan 17.1, 17.4); neither is done yet, and
-setup still refuses Rise of Ix. ``content.uprising.conflicts``'s
-``CONFLICTS_BY_ID`` resolves them next to the original game's cards; code
-that lists Uprising's or the original game's own Conflicts iterates
-``CONFLICTS`` or ``IMPERIUM_CONFLICTS``.
+``None`` ("not transcribed", as ``ConflictDefinition`` documents). With
+``rise_of_ix`` the original game's Conflicts take a card of this table once
+its rewards are transcribed, as its decks take a card once its play data is
+complete (``rulesets._imperium_conflicts``), and Economic Supremacy at once:
+the printed deck is drawn from I 6, II 11, III 5 [Rise of Ix p. 3]
+(docs/rules/rise-of-ix.md 3 item 3), of which the pool holds what is
+transcribed. Setup still refuses Rise of Ix; the observation lists all of
+them from v39 (plan 17.1, 17.4).
+``content.uprising.conflicts``'s ``CONFLICTS_BY_ID`` resolves them next to
+the original game's cards; code that lists Uprising's or the original game's
+own Conflicts iterates ``CONFLICTS`` or ``IMPERIUM_CONFLICTS``.
 """
 
 from typing import Final

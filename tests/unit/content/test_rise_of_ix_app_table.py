@@ -477,10 +477,11 @@ def test_ix_leaders_and_conflicts_resolve_in_the_merged_tables() -> None:
 
 def test_no_uprising_or_original_game_pool_lists_an_ix_leader_or_conflict() -> None:
     # Code that lists Uprising's or the original game's own Leaders and
-    # Conflicts iterates these tuples, the draft pools and the deck pools;
-    # none holds the Ix entries before their stages (setup still refuses
-    # Rise of Ix). The observation's universes list them at their end since
-    # v39 (plan 17.1, 17.8), after every older identity.
+    # Conflicts iterates these tuples and the Uprising pools; none holds the
+    # Ix entries. Only the original game's content with ``rise_of_ix`` offers
+    # them (stage P4a's board axis; setup still refuses Rise of Ix). The
+    # observation's universes list them at their end since v39 (plan 17.1,
+    # 17.8), after every older identity.
     leader_ids = {leader.leader_id for leader in IX_LEADERS}
     conflict_ids = {conflict.card.card_id for conflict in IX_CONFLICTS}
     listed_leaders = {leader.leader_id for leader in (*LEADERS, *IMPERIUM_LEADERS)}
@@ -514,7 +515,9 @@ def test_no_uprising_or_original_game_pool_lists_an_ix_leader_or_conflict() -> N
                     )
                 }
                 assert not conflict_ids & pool_ids
-    # The content of every game either base game sets up, Rise of Ix on or off.
+    # The content of every game either base game sets up, Rise of Ix on or off:
+    # the Ix Leaders and the Conflicts transcribed so far are the original
+    # game with Rise of Ix's alone (Uprising plus Rise of Ix is stage P7).
     for base_game in BaseGame:
         for rise_of_ix in (False, True):
             for epic_game in (False, True):
@@ -522,11 +525,23 @@ def test_no_uprising_or_original_game_pool_lists_an_ix_leader_or_conflict() -> N
                     base_game=base_game, rise_of_ix=rise_of_ix, epic_game=epic_game
                 )
                 content = content_for(config)
-                assert not leader_ids & {x.leader_id for x in content.leaders}
-                assert not conflict_ids & {x.card.card_id for x in content.conflicts}
-                assert not conflict_ids & {
-                    x.card.card_id for x in content.conflict_pool
-                }
+                offered_leaders = {x.leader_id for x in content.leaders}
+                offered_conflicts = {x.card.card_id for x in content.conflicts}
+                offered_pool = {x.card.card_id for x in content.conflict_pool}
+                if base_game is BaseGame.IMPERIUM and rise_of_ix:
+                    # A Conflict joins once its rewards are transcribed.
+                    transcribed = {
+                        c.card.card_id
+                        for c in IX_CONFLICTS
+                        if c.reward_rows is not None
+                    }
+                    assert leader_ids <= offered_leaders
+                    assert conflict_ids & offered_conflicts == transcribed
+                    assert conflict_ids & offered_pool == transcribed
+                else:
+                    assert not leader_ids & offered_leaders
+                    assert not conflict_ids & offered_conflicts
+                    assert not conflict_ids & offered_pool
 
 
 # --- Tech tiles (docs/rules/rise-of-ix.md 4) ---------------------------------
@@ -720,7 +735,7 @@ def test_ix_spaces_match_the_rules_table_and_the_app() -> None:
     assert by_id["dreadnought"].cost_options == (ResourceCost(solari=3),)
 
 
-def test_ix_spaces_resolve_by_id_only_and_print_no_effect_yet() -> None:
+def test_ix_spaces_resolve_by_id_and_print_no_effect_yet() -> None:
     for space in IX_BOARD_SPACES:
         assert BOARD_SPACES_BY_ID[space.space_id] is space
     assert not set(IX_SPACE_IDS) & {s.space_id for s in IMPERIUM_BOARD_SPACES}
@@ -730,11 +745,17 @@ def test_ix_spaces_resolve_by_id_only_and_print_no_effect_yet() -> None:
         space for space, _ in BOARD_CHOICE_ABILITIES
     }
     assert not set(IX_SPACE_IDS) & printed
+    # Only the original game with ``rise_of_ix`` lists them (the CHOAM
+    # overlay's swap, stage P4a's board axis, ``test_rise_of_ix_board_axis``);
+    # Uprising plus Rise of Ix is stage P7.
     for base_game in BaseGame:
         for rise_of_ix in (False, True):
             config = RulesetConfig(base_game=base_game, rise_of_ix=rise_of_ix)
             spaces = {space.space_id for space in content_for(config).board_spaces}
-            assert not set(IX_SPACE_IDS) & spaces
+            if base_game is BaseGame.IMPERIUM and rise_of_ix:
+                assert set(IX_SPACE_IDS) <= spaces
+            else:
+                assert not set(IX_SPACE_IDS) & spaces
     # The observation lists them after every other space (v39, plan 17.8).
     assert SPACE_IDS[-4:] == IX_SPACE_IDS
     assert not set(IX_SPACE_IDS) & set(SPACE_IDS[:-4])
