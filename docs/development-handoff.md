@@ -69,8 +69,7 @@
   **사용자 확인 대기 둘(결과는 같음, 16.12):** Spice Smugglers가 Solari를 Influence보다 먼저 준다(인쇄·앱은 Influence 먼저), Research Station은
   카드 셋을 한 번에 뽑는다(2026-10-29 사용자 판정으로 둘 다 고침, P4 브랜치 — Spice Smugglers는 순서를 소유자가 고름 OQ-148, Research Station은 한 장씩 OQ-147). **다음: P4(Rise of Ix)** — 브랜치 `claude/base-ix-p4`. [2026-10-29 원판 P3 병합]
 - **원판 화면 P5 끝(2026-10-29, master 병합 `33e01710`):** 계획 18절. 설정에서 기본 판을 고르고 원판 보드 그림(TTS 모드 그림, 비공개 에셋) 위에서 끝까지
-  둔다. 원판 좌석은 `server/seat_kinds.py` 한 표(지금 사람·휴리스틱·무작위). **다음:** 그 표에 앱 AI를 켜는 작은 후속(P5 세션), 원판 지도자
-  섞은 앞면(곁가지 `claude/base-ix-p5-leader-hybrid`, 사용자 결정 대기), Ix 화면(P4 뒤), 한국어 카드 앞면(공식 사진 뒤). [2026-10-29 원판 P5]
+  둔다. 원판 좌석은 `server/seat_kinds.py` 한 표(지금 사람·휴리스틱·무작위). **다음:** (앱 AI 좌석과 지도자 섞은 앞면은 2026-10-29 병합) Ix 화면(P4 뒤), 한국어 카드 앞면(공식 사진 뒤). [2026-10-29 원판 P5]
 - **원판 앱 AI P6 끝(2026-10-29, master 병합 `a4393427`):** `docs/app-ai-plan.md` 12절. 원판에서 무작위 대체 0, Uprising 수 그대로. Ix는 P4 뒤. [2026-10-29 원판 P6]
 - **원판·Rise of Ix — P2 보드·흐름 끝(2026-10-27, `jungcheolseung/base-ix-p2` master 병합 `420c77a5` 2026-10-28):** 계획 15절(15.8·15.9 결과). 원판 4인 판이
   보드 22칸·Mentat·Conflict 18·Reserve 셋·지도자 여덟(draft 포함)으로 끝까지 돈다(Imperium·Intrigue 덱은 P3까지 비어 있음). 관측 v36, codec v155 그대로
