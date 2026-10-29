@@ -302,7 +302,8 @@ def test_an_id_two_cards_produce_always_names_its_card() -> None:
         "pay_reveal_solari_for_troops",
         "deploy_reveal_card_troops",
         "retreat_reveal_card_troops",
-        # Rise of Ix's Guild Chief Administrator, on the original game (P4d).
+        # Rise of Ix's Guild Chief Administrator and Freighter Fleet (their
+        # Freighter icon), on the original game (P4d).
         "advance_reveal_freighter",
         "recall_reveal_freighter",
         "retreat_reveal_units_for_influence",

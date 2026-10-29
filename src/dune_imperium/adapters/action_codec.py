@@ -1088,18 +1088,17 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         # Landing Rights' Freighter icon, an Agent box's two moves
         # (``agent_effects.apply_agent_card_freighter``), Ixian Engineer's
-        # Acquire Tech icon (``agent_effects.apply_agent_card_tech``), Guild
-        # Chief Administrator's Freighter, a Reveal choice's (``reveal_turn``),
-        # and Treachery's Reveal troops deployed from the supply
-        # (``reveal_turn.apply_reveal_gain``).
+        # Acquire Tech icon (``agent_effects.apply_agent_card_tech``), and
+        # Treachery's Reveal troops deployed from the supply
+        # (``reveal_turn.apply_reveal_gain``). The Reveal Freighter rows of
+        # Guild Chief Administrator and Freighter Fleet name their card
+        # (``_SOURCED_REVEAL_ROWS``).
         templates.extend(
             ActionTemplate(action_id=action_id)
             for action_id in (
                 "advance_agent_card_freighter",
                 "recall_agent_card_freighter",
                 "acquire_agent_card_tech",
-                "advance_reveal_freighter",
-                "recall_reveal_freighter",
                 # Weirding Way's extra turn.
                 "take_agent_card_extra_turn",
                 # Treachery's Reveal troops deployed from the supply.
@@ -4299,6 +4298,12 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     # Ixian Engineer (Rise of Ix): the card's own trash.
     _Choice.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES: (
         "trash_reveal_card",
+    ),
+    # Guild Chief Administrator and Freighter Fleet (Rise of Ix): the
+    # Freighter icon's two moves.
+    _Choice.MAY_MOVE_FREIGHTER: (
+        "advance_reveal_freighter",
+        "recall_reveal_freighter",
     ),
 }
 

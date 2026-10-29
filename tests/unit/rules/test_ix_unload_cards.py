@@ -28,7 +28,11 @@ from dune_imperium.content.uprising.effect_dsl import (
 )
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.reveal_abilities import REVEAL_GAIN_ABILITIES
-from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAgentEffect,
+    PersonalCardRevealChoiceEffect,
+)
 from dune_imperium.core import (
     ChanceDecision,
     ChanceResolver,
@@ -1023,4 +1027,197 @@ def test_clean_up_moves_treachery_without_unloading_it() -> None:
     state, unloaded = _clean_up_round(_give(_start(), 0, in_play=(TREACHERY,)))
     assert state.phase is GamePhase.ROUND_START
     assert TREACHERY in state.players[0].discard_pile
+    assert unloaded == []
+
+
+# --- Freighter Fleet ----------------------------------------------------------
+
+FLEET = "imperium:freighter_fleet:0"
+FLEET_TWO = "imperium:freighter_fleet:1"
+SHAI_HULUD = "imperium:shai_hulud:0"
+_FREIGHTER = "freighter"
+
+
+def _freighter_rows(state: GameState, seat: int = 0) -> set[str]:
+    return {
+        row.action_id
+        for row in _rows(state, seat)
+        if row.action_id
+        in ("advance_freighter", "recall_freighter", "decline_freighter")
+    }
+
+
+def test_freighter_fleet_play_data_matches_the_app() -> None:
+    """App table: cost 2, 2 copies, no Faction, the Spice Trade icon, no
+    Agent box; screen pieces: Reveal "[Unload] [Freighter]"."""
+    entry = IMPERIUM_CARDS_BY_ID["freighter_fleet"]
+    assert entry.play_data_complete and entry.unload
+    assert (entry.copies, entry.acquisition_cost) == (2, 2)
+    assert entry.factions == () and entry.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert entry.agent_effect is None
+    assert entry.reveal_choice_effects == (
+        PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER,
+    )
+    assert "freighter_fleet" not in REVEAL_GAIN_ABILITIES
+    assert unload.unload_icons(FLEET) == ((_FREIGHTER, 1),)
+    for config in (IX, replace(IX, rise_of_ix=False), RulesetConfig()):
+        deck = content_for(config).imperium_deck_instance_ids
+        assert ({FLEET, FLEET_TWO} <= set(deck)) == config.rise_of_ix
+
+
+def test_freighter_fleet_revealed_may_move_its_freighter() -> None:
+    """ "Reveal turn에 공개할 때(보통처럼, Unload 표시는 무시)" (rise-of-ix.md 7):
+    "you may move your Freighter in one of two ways" [Rise of Ix p. 5] -- up
+    from the bottom, never a recall there; optional, so the Reveal may end
+    with it unused (OQ-095 (2))."""
+    state = _give(_start(), 0, hand=(FLEET,))
+    revealed = _do(state, "reveal_turn")
+    assert "card_unloaded" not in _kinds(revealed.events)
+    state = revealed.state
+    ids = {row.action_id for row in ENGINE.whole_actions(state, 0)}
+    assert "advance_reveal_freighter" in ids
+    assert "recall_reveal_freighter" not in ids
+    assert "finish_reveal" in ids
+    moved = _do(state, "advance_reveal_freighter").state
+    assert moved.players[0].freighter_space == 1
+    assert not any(
+        row.action_id.endswith("_reveal_freighter")
+        for row in ENGINE.whole_actions(moved, 0)
+    )
+    unused = _do(state, "finish_reveal").state
+    assert unused.players[0].freighter_space == 0
+
+
+def test_freighter_fleet_and_guild_chief_administrator_name_their_freighter() -> (
+    None
+):
+    """Both cards print the Reveal Freighter icon: each row names its card
+    (``source``), so the move taken uses up that card's icon and the other's
+    stays, still "may" (OQ-095 (2))."""
+    administrator = "imperium:guild_chief_administrator:0"
+    state = _give(_start(), 0, hand=(FLEET, administrator))
+    state = _do(state, "reveal_turn").state
+    assert _arguments(state, "advance_reveal_freighter") == {
+        (("source", "freighter_fleet"),),
+        (("source", "guild_chief_administrator"),),
+    }
+    moved = _do(state, "advance_reveal_freighter", source="freighter_fleet")
+    assert any(
+        f"reveal_card:{FLEET}:freighter" in event.event_id for event in moved.events
+    )
+    assert moved.state.players[0].freighter_space == 1
+    assert _arguments(moved.state, "advance_reveal_freighter") == {
+        (("source", "guild_chief_administrator"),),
+    }
+    assert _offered(moved.state, "finish_reveal")
+
+
+def test_freighter_fleet_revealed_recall_owes_its_rewards_on_the_reveal() -> None:
+    """A recall takes "지금 칸과 그 아래 모든 칸의 보상을 원하는 순서로" [Rise of
+    Ix p. 5]: in the owner's Reveal they wait as rows of the turn."""
+    state = _seat(_give(_start(), 0, hand=(FLEET,)), 0, freighter_space=1)
+    state = _do(state, "reveal_turn").state
+    recalled = _do(state, "recall_reveal_freighter").state
+    assert recalled.players[0].freighter_space == 0
+    assert recalled.decision_stack[-1].kind is FrameKind.REVEAL
+    assert "resolve_shipping_reward" in {
+        row.action_id for row in ENGINE.whole_actions(recalled, 0)
+    }
+
+
+def test_freighter_fleet_discarded_as_a_cost_holds_the_draw() -> None:
+    """Truthsayer's "[Discard] -> [draw 1 card]": "Unload를 끝까지 해결한 뒤
+    오른쪽으로 간다" (designer ruling, rise-of-ix.md 7) -- the Freighter is a
+    decision, so the draw waits under a hold until it is answered."""
+    state = _start()
+    kept = state.players[0].hand[0]
+    state = _give(state, 0, hand=(TRUTHSAYER, FLEET, kept))
+    state = _do(state, "choose_agent_card", card_id=TRUTHSAYER).state
+    state = _do(state, "place_agent", space_id="wealth").state
+    paid = _do(state, "discard_agent_card", card_id=FLEET)
+    state = paid.state
+    assert "agent_card_effect_resolved" not in _kinds(paid.events)
+    assert state.decision_stack[-1].kind is FrameKind.FREIGHTER_MOVE
+    assert {row.action_id for row in _rows(state)} == {
+        "advance_freighter",
+        "decline_freighter",
+    }
+    hand = len(state.players[0].hand)
+    check_observation_privacy(state)
+    moved = _do(state, "advance_freighter")
+    assert moved.state.players[0].freighter_space == 1
+    assert len(moved.state.players[0].hand) == hand + 1
+    kinds = _kinds(moved.events)
+    assert kinds.index("freighter_moved") < kinds.index("agent_card_effect_resolved")
+
+
+def test_freighter_fleet_trashed_as_a_cost_holds_what_the_trash_buys() -> None:
+    """Shai-Hulud's "[Trash a card] -> [2 troops]": the troops wait for the
+    Freighter's answer, its "may" decline included."""
+    state = _give(_start(), 0, hand=(SHAI_HULUD, FLEET))
+    state = _do(state, "choose_agent_card", card_id=SHAI_HULUD).state
+    state = _do(state, "place_agent", space_id="imperial_basin").state
+    garrison = state.players[0].troops_garrison
+    state = _do(state, "trash_agent_card", card_id=FLEET).state
+    assert FLEET in state.players[0].trashed
+    assert state.players[0].troops_garrison == garrison
+    assert _freighter_rows(state) == {"advance_freighter", "decline_freighter"}
+    state = _do(state, "decline_freighter").state
+    assert state.players[0].troops_garrison == garrison + 2
+    assert state.players[0].freighter_space == 0
+
+
+def test_freighter_fleet_trashed_by_jamis_waits_as_a_may_row() -> None:
+    """ "trash할 때 얻는다" [Rise of Ix p. 7]; an effect in the owner's turn:
+    the Freighter is a "may" row of the turn that opens its window."""
+    state = _give(_start(), 0, hand=(JAMIS, FLEET))
+    state = _do(state, "choose_agent_card", card_id=JAMIS).state
+    state = _do(state, "place_agent", space_id="stillsuits").state
+    state = _do(state, "trash_agent_card", card_id=FLEET).state
+    assert _arguments(state, UNLOAD_ROW) == {
+        (("card_id", FLEET), ("effect", _FREIGHTER))
+    }
+    opened = _do(state, UNLOAD_ROW, card_id=FLEET, effect=_FREIGHTER).state
+    assert opened.decision_stack[-1].kind is FrameKind.FREIGHTER_MOVE
+    moved = _do(opened, "advance_freighter").state
+    assert moved.players[0].freighter_space == 1
+    assert moved.decision_stack[-1].kind is FrameKind.AGENT_EFFECTS
+
+
+def test_freighter_fleet_discarded_by_an_opponent_opens_its_owners_window() -> None:
+    """ "남의 효과로 버려져도 된다(룰북 예: 상대의 Reverend Mother Mohiam)"
+    (rise-of-ix.md 7): seat 1's own Freighter window, then back to the
+    discard."""
+    state = _start()
+    other = state.players[1].hand[0]
+    state = _mohiam_asks_seat_one(state, FLEET, other)
+    state = _do(state, "discard_opponent_card", seat=1, card_id=FLEET).state
+    top = state.decision_stack[-1]
+    assert top.kind is FrameKind.FREIGHTER_MOVE
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 1
+    assert not _rows(state, 0)
+    state = _do(state, "advance_freighter", seat=1).state
+    assert state.players[1].freighter_space == 1
+    assert state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_freighter_fleet_revealed_then_trashed_moves_again() -> None:
+    """OQ-120: "공개한 Unload 카드를 같은 Reveal turn에 trash하면 다시 얻는다"."""
+    state = _with_cull(_give(_start(), 0, hand=(FLEET,)))
+    state = _do(state, "reveal_turn").state
+    state = _do(state, "advance_reveal_freighter").state
+    state = _do(state, "play_intrigue", card_id=CULL, option=0).state
+    state = _do(state, "trash_intrigue_card", card_id=FLEET).state
+    state = _do(state, UNLOAD_ROW, card_id=FLEET, effect=_FREIGHTER).state
+    state = _do(state, "advance_freighter").state
+    assert state.players[0].freighter_space == 2
+    assert state.decision_stack[-1].kind is FrameKind.REVEAL
+
+
+def test_clean_up_moves_freighter_fleet_without_unloading_it() -> None:
+    """ "Clean Up에서 in play 카드를 discard pile로 옮기는 것은 discard가 아니다"
+    (rise-of-ix.md 7, [FAQ p. 2])."""
+    state, unloaded = _clean_up_round(_give(_start(), 0, in_play=(FLEET,)))
+    assert state.phase is GamePhase.ROUND_START
+    assert FLEET in state.players[0].discard_pile
     assert unloaded == []

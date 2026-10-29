@@ -334,6 +334,10 @@ SOURCED_REVEAL_ACTION_IDS: Final = frozenset(
         "deploy_reveal_card_troops",
         "retreat_reveal_card_troops",
         "decline_reveal_spy_recall",
+        # Guild Chief Administrator's and Freighter Fleet's Freighter icon
+        # (Rise of Ix).
+        "advance_reveal_freighter",
+        "recall_reveal_freighter",
     }
 )
 
@@ -1725,14 +1729,16 @@ def legal_reveal_freighter_actions(
         freighter_can_recall,
     )
 
+    # Guild Chief Administrator and Freighter Fleet both print it, so each
+    # row names its card (``SOURCED_REVEAL_ACTION_IDS``).
     return (
         *(
-            (DomainAction(action_id="advance_reveal_freighter", actor=player),)
+            (_sourced("advance_reveal_freighter", player, opened[0]),)
             if freighter_can_advance(state, player)
             else ()
         ),
         *(
-            (DomainAction(action_id="recall_reveal_freighter", actor=player),)
+            (_sourced("recall_reveal_freighter", player, opened[0]),)
             if freighter_can_recall(state, player)
             else ()
         ),
@@ -5183,8 +5189,8 @@ def _reveal_choice_effect_is_available(
         # resolution (legal_contract_reveal_choice_actions).
         or held_reveal_value(effect) is not None
         or (spy_pair_persuasion(effect) > 0 and len(owner.spy_post_ids) >= 2)
-        # Guild Chief Administrator's Freighter: up from the bottom, or a
-        # recall from the top; some move is always there.
+        # Guild Chief Administrator's and Freighter Fleet's Freighter: up from
+        # the bottom, or a recall from the top; some move is always there.
         or effect is PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER
         # Negotiated Withdrawal: three units in the Conflict, troops,
         # Commanders or dreadnoughts, and a cube that can rise (OQ-071).

@@ -17,9 +17,9 @@ Rights, Sayyadina, Shai-Hulud, Truthsayer, Imperial Shock Trooper, Local
 Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
 Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
 Way, Satellite Ban, Spice Trader, Imperial Bashar, Bounty Hunter, Web of
-Power, Ixian Engineer, Esmar Tuek, Guild Accord, In The Shadows and
-Treachery so far), while the observation lists every identity from v39.
-Setup takes Rise of Ix on the original game since stage P4c-5.
+Power, Ixian Engineer, Esmar Tuek, Guild Accord, In The Shadows, Treachery
+and Freighter Fleet so far), while the observation lists every identity from
+v39. Setup takes Rise of Ix on the original game since stage P4c-5.
 from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
@@ -177,6 +177,16 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("freighter_fleet", "Freighter Fleet"),
         copies=2,
         acquisition_cost=2,
+        # App table: no Faction, the Spice Trade icon, no fixed Reveal values;
+        # no Agent box. Screen pieces: Reveal "[Unload] [Freighter]" -- "you
+        # may move your Freighter in one of two ways" [Rise of Ix p. 5], an
+        # optional Reveal choice; gained also when the card is discarded or
+        # trashed [Rise of Ix p. 7] (``rules.unload``: a decision icon, so as
+        # an arrow's cost it holds the arrow's right side).
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER,),
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("full_scale_assault", "Full-Scale Assault"),

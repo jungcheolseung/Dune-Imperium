@@ -50,16 +50,17 @@ callers write their own frame back after the transition and would drop a
 row or a window put there before.
 
 Wired so far: Reveal boxes of plain resource gains (Water Peddler, CHOAM
-Delegate, Esmar Tuek), of a printed Faction's Influence (In The Shadows) and
-of troops deployed from the supply (Treachery, also during Combat, OQ-127),
-also on a line with a condition the owner's seat alone settles (Guild
-Accord's "[Spacing Guild] Alliance: [3 spice]"). A conditioned
+Delegate, Esmar Tuek), of a printed Faction's Influence (In The Shadows), of
+troops deployed from the supply (Treachery, also during Combat, OQ-127) and
+of the Freighter icon, a Reveal choice and a decision (Freighter Fleet), also
+on a line with a condition the owner's seat alone settles (Guild Accord's
+"[Spacing Guild] Alliance: [3 spice]"). A conditioned
 icon is gained when its condition holds as the card is discarded or trashed:
 the Unload happens then ("trash되는 카드의 Unload는 trash되는 중에 일어난다"),
 and the rows and the window only let the owner order what it gained. A box
-with a choice, a cost, Persuasion or swords belongs to its card's brief
-(Freighter Fleet, Ix-Guild Compact and the promo Boundless Ambition):
-``unload_icons`` refuses it.
+with another choice, a cost, Persuasion or swords belongs to its card's brief
+(Ix-Guild Compact and the promo Boundless Ambition): ``unload_icons`` refuses
+it.
 """
 
 import json
@@ -84,6 +85,7 @@ from dune_imperium.content.uprising.imperium import (
     imperium_card_for_instance,
 )
 from dune_imperium.content.uprising.reveal_abilities import REVEAL_GAIN_ABILITIES
+from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
@@ -154,18 +156,31 @@ def is_decision_icon(name: str) -> bool:
     return name in _DECISION_ICONS
 
 
+# The Reveal choices an Unload box may print, as its decision icons.
+_CHOICE_ICONS: Final = {
+    PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER: FREIGHTER_ICON,
+}
+
+
 @cache
 def _box(definition_id: str) -> tuple[_BoxIcon, ...]:
     entry = IMPERIUM_CARDS_BY_ID[definition_id]
-    if entry.reveal_persuasion or entry.reveal_strength or entry.reveal_choice_effects:
+    if entry.reveal_persuasion or entry.reveal_strength:
         raise NotImplementedError(
-            f"{definition_id}: an Unload box with Persuasion, swords or a choice"
+            f"{definition_id}: an Unload box with Persuasion or swords"
         )
     ability = REVEAL_GAIN_ABILITIES.get(definition_id)
-    if ability is None:
+    if ability is None and not entry.reveal_choice_effects:
         raise ValueError(f"{definition_id} is marked Unload but has no Reveal box")
     icons: list[_BoxIcon] = []
-    for line in ability.sections:
+    for choice in entry.reveal_choice_effects:
+        # Freighter Fleet's Freighter: a Reveal choice, the owner's decision.
+        if choice not in _CHOICE_ICONS:
+            raise NotImplementedError(
+                f"{definition_id}: an Unload box choice {choice} is not wired"
+            )
+        icons.append(_BoxIcon(_CHOICE_ICONS[choice], 1, None))
+    for line in () if ability is None else ability.sections:
         if line.costs:
             raise NotImplementedError(
                 f"{definition_id}: an Unload box line with a cost"

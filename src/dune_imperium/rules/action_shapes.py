@@ -865,12 +865,15 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "pay_reveal_solari_for_troops": _row(
         _V.PAY, _S.REVEAL_CARD, variant="solari_for_troops"
     ),
-    # Guild Chief Administrator's Freighter icon (Rise of Ix): up one space
-    # or recall [Rise of Ix p. 5]; unused, it lapses when the Reveal ends.
+    # Guild Chief Administrator's and Freighter Fleet's Freighter icon (Rise of
+    # Ix): up one space or recall [Rise of Ix p. 5]; unused, it lapses when
+    # the Reveal ends. Two cards print it, so each row names its card.
     "advance_reveal_freighter": _row(
-        _V.ADVANCE, _S.REVEAL_CARD, variant="freighter"
+        _V.ADVANCE, _S.REVEAL_CARD, variant="freighter", tag=_SOURCE
     ),
-    "recall_reveal_freighter": _row(_V.COLLECT, _S.REVEAL_CARD, variant="freighter"),
+    "recall_reveal_freighter": _row(
+        _V.COLLECT, _S.REVEAL_CARD, variant="freighter", tag=_SOURCE
+    ),
     # Negotiated Withdrawal's arrow (Rise of Ix): three units, troops or
     # dreadnoughts, for an Influence with a chosen Faction.
     "retreat_reveal_units_for_influence": _row(

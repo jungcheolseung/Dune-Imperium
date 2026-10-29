@@ -279,6 +279,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "desert_ambush",
     "embedded_agent",
     "esmar_tuek_card",
+    "freighter_fleet",
     "full_scale_assault",
     "guild_accord",
     "guild_chief_administrator",

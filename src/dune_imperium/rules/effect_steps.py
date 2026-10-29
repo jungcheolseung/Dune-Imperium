@@ -768,12 +768,13 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "pay_reveal_solari_for_troops": _spec(
         _V.PAY, _S.REVEAL_CARD, "=gurney_halleck_card"
     ),
-    # Guild Chief Administrator's Freighter icon (Rise of Ix).
+    # Guild Chief Administrator's and Freighter Fleet's Freighter icon (Rise
+    # of Ix): the card the row names.
     "advance_reveal_freighter": _spec(
-        _V.ADVANCE, _S.REVEAL_CARD, "=guild_chief_administrator", icon="freighter"
+        _V.ADVANCE, _S.REVEAL_CARD, "source", icon="freighter"
     ),
     "recall_reveal_freighter": _spec(
-        _V.COLLECT, _S.REVEAL_CARD, "=guild_chief_administrator", icon="freighter"
+        _V.COLLECT, _S.REVEAL_CARD, "source", icon="freighter"
     ),
     # Negotiated Withdrawal's arrow (Rise of Ix): the Faction, then the three
     # units, their mix riding on the count's row.

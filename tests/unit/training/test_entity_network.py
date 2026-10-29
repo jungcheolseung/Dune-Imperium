@@ -330,7 +330,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # it, its row is the only one that changed, and no scale moved (compared
 # against 4d24b432, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against 3f153856 (2026-10-30).
-_GOLDEN_DIGEST = "5d396775bf0fbf7c69603a402a11ca08041fd471f37fd68a655cd3b6b30be118"
+# Then Freighter Fleet got its play data (stage P4d): one personal-table column
+# is new (a Reveal choice's Freighter piece), only its own row reads it, its
+# row is the only one that changed, and no scale moved (compared against
+# 976aa6a1, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against e632d087 (2026-10-30).
+_GOLDEN_DIGEST = "90e8e697a2a49527e2ea6a2ff216c96733e5ac4968bcbbaa7f9d1f37bb0ab4b9"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
