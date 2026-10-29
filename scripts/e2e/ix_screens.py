@@ -112,7 +112,13 @@ Five tables, each a fresh game on the same server:
    still offered. Nothing is hidden there; it stays as a regression table.
 
 Tessia Vernius' Snooper reward 1 outside her turn (the ``OPTIONAL_DISCARD``
-window over her hand) is not reached: in 61 random draft games her first token
+window over her hand) is covered by ``tests/server/test_tessia_window_remote.py``
+instead: the window built as the engine's own Tessia tests build it, read
+through four seat cookies and a seatless client (her hand and rows to her
+alone, a twin with another hidden card, the discard public only after it,
+CHOAM Delegate's Unload before the spice); the page draws it as every other
+``OPTIONAL_DISCARD`` window, whose browser side the e2e scripts cover. A real
+table does not reach it here: in 61 random draft games her first token
 fell in her own turn (a row, not the window) or in Combat with an empty hand
 (no window, rise-of-ix.md 9.3); the only path is a Plot Intrigue that draws
 (Glimpse the Path, Ixian Probe, Water of Life) played in her Reveal turn, then
