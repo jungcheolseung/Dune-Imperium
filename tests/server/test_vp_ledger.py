@@ -396,8 +396,12 @@ def test_sealed_scouts_choices_never_score() -> None:
         if not isinstance(entry.step, ChanceOutcome)
         and (entry.whole or entry.step).action_id in SEALED_ACTION_IDS
     }
-    # The original game's Masterstroke has no Uprising game to be in.
-    uprising_sealed = SEALED_ACTION_IDS - {"choose_masterstroke_faction"}
+    # The original game's Masterstroke and Rise of Ix's One Step Ahead have
+    # no Uprising game to be in.
+    uprising_sealed = SEALED_ACTION_IDS - {
+        "choose_masterstroke_faction",
+        "set_aside_leader_card",
+    }
     assert set(sealed.values()) == uprising_sealed, "seed 0 picks and bids"
     payload = manager.vp_ledger(game_id)
     assert set(payload) == PAYLOAD_KEYS

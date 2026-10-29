@@ -436,7 +436,12 @@ def resolving_intrigue_ids(state: GameState) -> tuple[str, ...]:
     return tuple(resolving)
 
 
-_SEALED_VALUE_PREFIXES: Final = ("scouts_pick:", "scouts_bid:", "masterstroke:")
+_SEALED_VALUE_PREFIXES: Final = (
+    "scouts_pick:",
+    "scouts_bid:",
+    "masterstroke:",
+    "set_aside:",
+)
 
 
 def secret_pick_id(event_round: int, seat: int) -> str:
@@ -455,6 +460,13 @@ def masterstroke_id(seat: int) -> str:
     """The registry id of the Baron at ``seat``'s two Masterstroke Factions."""
 
     return f"{_SEALED_VALUE_PREFIXES[2]}{seat}"
+
+
+def set_aside_id(seat: int) -> str:
+    """The registry id of Ilesa Ecaz at ``seat``'s One Step Ahead set-aside:
+    which card she set aside is her secret until the rules return it."""
+
+    return f"{_SEALED_VALUE_PREFIXES[3]}{seat}"
 
 
 def is_sealed_value_id(value: str) -> bool:
@@ -496,7 +508,8 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     secret pick is listed under ``secret_pick_id`` for its seat until it is
     due, and a sealed bid under ``secret_bid_id`` until every seat has
     confirmed, and the original game's Baron Harkonnen's Masterstroke
-    Factions under ``masterstroke_id`` until he reveals them. This is the
+    Factions under ``masterstroke_id`` until he reveals them, and Ilesa
+    Ecaz's set-aside under ``set_aside_id`` until it returns. This is the
     single source the
     server uses to decide what an event log may show and which steps an undo
     may take back, so every hidden zone and every private glimpse belongs
@@ -552,8 +565,13 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
         if player.secret_project_tech_id:
             known[player.secret_project_tech_id] = owner
         if player.set_aside_card_id:
-            # Ilesa Ecaz's One Step Ahead card, face down until it returns.
+            # Ilesa Ecaz's One Step Ahead card, face down until it returns,
+            # and which card she set aside, a sealed value: the rules reveal
+            # it (at her second turn's start, or with a first-turn Reveal),
+            # so even her own step that falls into it is a reveal
+            # (``set_aside_id``, rise-of-ix.md 13).
             known[player.set_aside_card_id] = owner
+            known[set_aside_id(player.player_id)] = owner
         for card_id in (
             # Imperium Ceremony's peek shows the deck's top cards to its owner.
             *peeked_intrigue_ids(state, player.player_id),
