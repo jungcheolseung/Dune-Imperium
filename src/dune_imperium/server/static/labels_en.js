@@ -569,6 +569,7 @@ const LABELS_EN = {
     "contract_trashed": "{contract} Trashed",
     "contracts_revealed": "{contract} Revealed",
     "corrinth_city_payment_started": "Corrinth City: First Card Chosen",
+    "agent_card_discard_started": "Discard: First Card Chosen",
     "endgame_intrigue_passed": "Passed",
     "endgame_started": "{endgame} Started",
     "endgame_wild_matched": "Wild {battle_icon} Matched",

@@ -55,6 +55,8 @@ BOX_KEY_PAIRS: Final[tuple[tuple[str, str], ...]] = (
     ("trashes_remaining", "graft_trashes_remaining"),
     # Corrinth City's first discard before the second.
     ("corrinth_first_card_id", "graft_corrinth_first_card_id"),
+    # A two-card Discard arrow's first pick (Rise of Ix).
+    ("discard_first_card_id", "graft_discard_first_card_id"),
     # Arrakis Observer's Spy after its discard.
     ("agent_card_spy_pending", "graft_agent_card_spy_pending"),
     ("agent_card_spy_recalled", "graft_agent_card_spy_recalled"),

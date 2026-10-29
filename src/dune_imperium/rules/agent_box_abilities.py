@@ -1911,6 +1911,17 @@ def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult
 # Spy) pays nothing at once: the keys of the lines the discarded card meets
 # are queued in printed order (``effects.arm_agent_icons``), each resolved
 # on its own by the icon path (OQ-027), and the box is then mandatory.
+#
+# Rise of Ix's Discard icon is the same cost: "손의 카드 하나(Intrigue
+# 아님)를 discard pile로. 대개 비용이고, 내지 않으면 효과도 없다"
+# (docs/rules/rise-of-ix.md 7, [Rise of Ix p. 7] [FAQ p. 2]). An optional
+# arrow of two Discard icons (Ix-Guild Compact, ``DiscardFromHand(2)``) is
+# picked as Corrinth City's two discards are: the first row stores its card
+# (``DISCARD_FIRST_KEY``), the second discards both and pays the line, and
+# the refusal stays offered until then; with fewer hand cards than icons it
+# offers only its refusal. An "<Faction> Alliance:" line (Spice Trader) is
+# judged when the cost is paid (OQ-028): without the Alliance only the
+# refusal is offered (``discard_cost_block``).
 
 _DISCARD_REWARDS = (GainResources, TakeContract, DrawPersonalCards, PlaceSpy)
 # The reward each armed key resolves (``agent_effects.resolve_agent_card_icon``).
@@ -1951,8 +1962,27 @@ def _armed_line(key: str, line: EffectSection) -> bool:
     return len(line.rewards) == 1 and line.rewards[0] in _ARMED_REWARDS.get(key, ())
 
 
+DISCARD_FIRST_KEY: Final = "discard_first_card_id"
+"""The first card a two-card discard arrow picked, discarded with the second
+(as Corrinth City's ``corrinth_first_card_id``)."""
+
+
+def discard_count(ability: Ability) -> int:
+    """The hand cards a discard arrow's cost takes (its Discard icons)."""
+
+    (cost,) = ability.sections[0].costs
+    assert isinstance(cost, DiscardFromHand)
+    return cost.count
+
+
+def _discard_alliance(ability: Ability) -> HasAlliance | None:
+    condition = ability.sections[0].condition
+    return condition if isinstance(condition, HasAlliance) else None
+
+
 def discard_box(ability: Ability | None) -> bool:
-    """Whether ``ability`` is a discard arrow (one hand card pays it)."""
+    """Whether ``ability`` is a discard arrow (hand cards pay it: one, or two
+    for an optional arrow, as Rise of Ix's Discard icons print them)."""
 
     if (
         ability is None
@@ -1963,13 +1993,40 @@ def discard_box(ability: Ability | None) -> bool:
     ):
         return False
     first, *rest = ability.sections
-    if first.costs != (DiscardFromHand(),) or any(line.costs for line in rest):
+    if (
+        len(first.costs) != 1
+        or not isinstance(first.costs[0], DiscardFromHand)
+        or any(line.costs for line in rest)
+    ):
+        return False
+    count = first.costs[0].count
+    alliance = first.condition if isinstance(first.condition, HasAlliance) else None
+    if alliance is not None and (
+        alliance.faction is None
+        or ability.mark is not AbilityMark.OPTIONAL
+        or len(ability.sections) != 1
+    ):
+        # "<Faction> Alliance: Discard -> ..." is one optional line.
         return False
     if any(
         line.condition is not None
+        and line.condition is not alliance
         and not isinstance(line.condition, DiscardedCardHasFaction)
         for line in ability.sections
     ):
+        return False
+    if count != 1 and (
+        count != 2
+        or ability.mark is not AbilityMark.OPTIONAL
+        or ability.armed_icons
+        or any(
+            isinstance(line.condition, DiscardedCardHasFaction)
+            or any(isinstance(reward, PlaceSpy) for reward in line.rewards)
+            for line in ability.sections
+        )
+    ):
+        # Two Discard icons: an optional arrow paid at once, whose rewards
+        # read no discarded card and open no step of their own.
         return False
     if ability.armed_icons:
         # Every line armed: a trailing line paid at once is not this shape.
@@ -2020,11 +2077,34 @@ def optional_arrow(ability: Ability | None) -> bool:
 def discard_cost_block(
     owner: PlayerState, ability: Ability
 ) -> OptionalEffectBlock | None:
-    """An optional discard with no card in hand; None for the mandatory one."""
+    """Why an optional discard cannot be paid now: the line's Alliance, then
+    the hand cards it takes; None for the mandatory one."""
 
     if ability.mark is not AbilityMark.OPTIONAL:
         return None
-    return short_of(OptionalBlockKind.HAND, 1, len(owner.hand))
+    alliance = _discard_alliance(ability)
+    if (
+        alliance is not None
+        and alliance.faction is not None
+        and alliance.faction.value not in owner.alliance_faction_ids
+    ):
+        return OptionalEffectBlock(
+            OptionalBlockKind.ALLIANCE, faction=alliance.faction.value
+        )
+    return short_of(OptionalBlockKind.HAND, discard_count(ability), len(owner.hand))
+
+
+def _discard_first_pick(
+    context: Mapping[str, ActionValue], owner: PlayerState
+) -> str | None:
+    """A two-card arrow's stored first pick, while it is still in hand: a
+    freely ordered effect (an Intrigue discard cost) can take it before the
+    second pick, and the cost then restarts from no pick [Main pp. 9, 20]."""
+
+    first = context.get(DISCARD_FIRST_KEY)
+    if first is not None and not isinstance(first, str):
+        raise RuntimeError("pending Agent-card discard has invalid first card")
+    return first if first in owner.hand else None
 
 
 def discard_rows(
@@ -2040,6 +2120,10 @@ def discard_rows(
     )
     if discard_cost_block(owner, ability) is not None:
         return decline
+    first = None
+    if discard_count(ability) > 1:
+        _, context = current_agent_effect_context(state)
+        first = _discard_first_pick(context, owner)
     return (
         *decline,
         *(
@@ -2049,6 +2133,7 @@ def discard_rows(
                 arguments=(("card_id", card_id),),
             )
             for card_id in owner.hand
+            if card_id != first
         ),
     )
 
@@ -2063,6 +2148,7 @@ def apply_discard(
     player, box_card_id = _subject(context)
     source = agent_card_source(state.round_number, player, box_card_id)
     if action.action_id == "decline_agent_card_discard":
+        context.pop(DISCARD_FIRST_KEY, None)
         return RuleResult(
             state=advance_after_effect(state, context),
             events=(
@@ -2072,8 +2158,42 @@ def apply_discard(
     card_id = dict(action.arguments).get("card_id")
     if not isinstance(card_id, str):
         raise RuntimeError("Agent-card discard choice has invalid card ID")
+    paid: tuple[str, ...] = (card_id,)
+    if discard_count(ability) > 1:
+        first = _discard_first_pick(context, state.players[player])
+        if first is None:
+            # The first of two Discard icons: the card waits in hand, and
+            # nothing is paid until the second is picked.
+            context[DISCARD_FIRST_KEY] = card_id
+            context["pending_agent_effect"] = True
+            frame = state.decision_stack[-1]
+            return RuleResult(
+                state=replace(
+                    state,
+                    decision_stack=(
+                        *state.decision_stack[:-1],
+                        replace(frame, context=tuple(sorted(context.items()))),
+                    ),
+                ),
+                events=(
+                    GameEvent(
+                        event_id=f"{source}:first_discard_selected",
+                        kind="agent_card_discard_started",
+                        payload=(("player", player),),
+                    ),
+                ),
+            )
+        context.pop(DISCARD_FIRST_KEY, None)
+        paid = (first, card_id)
     factions = personal_card_for_instance(card_id).factions
-    discarded = discard_personal_card_from_hand(state, player, card_id, source=source)
+    discarded = RuleResult(state=state)
+    for paid_card_id in paid:
+        step = discard_personal_card_from_hand(
+            discarded.state, player, paid_card_id, source=source
+        )
+        discarded = RuleResult(
+            state=step.state, events=(*discarded.events, *step.events)
+        )
     met = tuple(
         not isinstance(line.condition, DiscardedCardHasFaction)
         or line.condition.faction in factions

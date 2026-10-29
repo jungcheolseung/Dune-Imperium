@@ -3310,6 +3310,8 @@ OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = 
 _OPTIONAL_PROGRESS_KEYS: Final = (
     "trashes_remaining",
     "corrinth_first_card_id",
+    # A two-card Discard arrow's first pick (Rise of Ix).
+    "discard_first_card_id",
     "feyd_track_stage",
     "staban_bonus_post",
     "listeners_paid",
@@ -3610,9 +3612,10 @@ def _box_selection_under_way(
         return True
     player = context_int(context, "turn_owner")
     owner = state.players[player]
-    first = context.get("corrinth_first_card_id")
-    if isinstance(first, str) and first in owner.hand:
-        return True
+    for key in ("corrinth_first_card_id", "discard_first_card_id"):
+        first = context.get(key)
+        if isinstance(first, str) and first in owner.hand:
+            return True
     if context.get("agent_card_spy_pending") is True:
         return True
     if "trashes_remaining" in context:

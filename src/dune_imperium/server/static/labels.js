@@ -516,6 +516,7 @@ const EVENT_LABELS = {
   contract_trashed: "{contract} 폐기",
   contracts_revealed: "{contract} 공개",
   corrinth_city_payment_started: "코린트 시티: 첫 카드 선택",
+  agent_card_discard_started: "카드 1장 버리기: 첫 카드 선택",
   endgame_intrigue_passed: "패스",
   endgame_started: "{endgame} 시작",
   endgame_wild_matched: "와일드 {battle_icon} 매칭",
