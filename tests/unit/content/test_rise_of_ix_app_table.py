@@ -270,6 +270,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "landing_rights",
     "local_fence",
     "sayyadina",
+    "shai_hulud",
     "truthsayer",
 }
 

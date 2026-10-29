@@ -2380,7 +2380,8 @@ def trash_box(ability: Ability | None) -> bool:
     ):
         return False
     return all(
-        isinstance(reward, (DrawPersonalCards, GrantCombatDeployment))
+        # Shai-Hulud's "[Trash a card] -> [2 troops]" recruits at once.
+        isinstance(reward, (DrawPersonalCards, GrantCombatDeployment, RecruitTroops))
         or (isinstance(reward, GainInfluence) and reward.visited_space)
         for line in ability.sections[len(ability.armed_icons) :]
         for reward in line.rewards
@@ -2618,6 +2619,26 @@ def apply_trash(
         # Armed rewards wait as icons; the box is not done.
         done = ()
     for reward in paid:
+        if isinstance(reward, RecruitTroops):
+            # Shai-Hulud's "[Trash a card] -> [2 troops]": the troops come at
+            # once, to the garrison; a troop recruited this turn may be
+            # deployed by a Combat space [Main p. 10] [FAQ p. 4].
+            recruiting, recruited = recruit_troops(
+                trashed.state.players[player], reward.count
+            )
+            _credit_recruits(context, recruited)
+            trashed = RuleResult(
+                state=replace(
+                    trashed.state,
+                    players=replace_player(trashed.state.players, recruiting),
+                ),
+                events=(
+                    *trashed.events,
+                    *recruit_shortfall_events(
+                        source, player, reward.count, recruited
+                    ),
+                ),
+            )
         if isinstance(reward, GainInfluence) and reward.visited_space:
             faction = _visited_faction(context)
             if reward.replaces_space:

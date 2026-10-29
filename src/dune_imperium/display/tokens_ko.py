@@ -163,6 +163,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE: (
         "카드 1장 {trash} 가능 {arrow_right} {draw:1}"
     ),
+    # Rise of Ix's Shai-Hulud (stage P4d).
+    PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_RECRUIT_TWO: (
+        "카드 1장 {trash} 가능 {arrow_right} {troop:2}"
+    ),
     # Tread in Darkness's own condition box reads "당신의 플레이 영역에 다른
     # 베네 게세리트 카드가 있다면:" [KO card: Tread in Darkness] rather than
     # the generic "유대감" glossary word, and its two icons (may-trash,
@@ -661,6 +665,9 @@ ACQUISITION_EFFECT_TEXT_KO: Final[dict[PersonalCardAcquisitionEffect, str]] = {
     PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_CHOSEN_FACTION: (
         "{influence_any:1} (4개의 팩션 중 하나 선택)"
     ),
+    # Rise of Ix's Shai-Hulud (stage P4d): the black Trash icon, as its record
+    # renders.
+    PersonalCardAcquisitionEffect.MAY_TRASH_A_CARD: "카드 1장 {trash}",
 }
 
 # The one transcribed member is specific to The Spice Must Flow; cards.py

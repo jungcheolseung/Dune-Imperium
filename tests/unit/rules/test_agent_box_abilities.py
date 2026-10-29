@@ -174,9 +174,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Mohiam, Carryall, Test of Humanity, Firm Grip, Shifting Allegiances,
     # Other Memory, The Voice, and the promos Thumper and Jessica of Arrakis),
     # and Rise of Ix's Sayyadina (stage P4d: "3 water -> 1 Victory Point"),
-    # Local Fence ("[2 spice] -> [5 Solari] -OR- [5 Solari] -> [4 spice]")
-    # and Landing Rights (the Freighter icon).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 3
+    # Local Fence ("[2 spice] -> [5 Solari] -OR- [5 Solari] -> [4 spice]"),
+    # Landing Rights (the Freighter icon) and Shai-Hulud ("[Trash a card] ->
+    # [2 troops]").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 4
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -965,7 +966,7 @@ def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
         assert not discard_box(ability) and not payment_box(ability)
 
 
-def test_six_trash_boxes_and_what_they_read_as() -> None:
+def test_seven_trash_boxes_and_what_they_read_as() -> None:
     """Composed A3e: black trash icons (Calculus of Power's one, Ruthless
     Leadership's two under its Commander condition) and arrows paid by a
     trash (Shishakli's draw, Pivotal Gambit's armed troop and pledge, Elite
@@ -989,6 +990,8 @@ def test_six_trash_boxes_and_what_they_read_as() -> None:
         # The original game's Imperial Spy (stage P3): Pivotal Gambit's shape
         # with an armed Intrigue draw.
         _BOX.MAY_TRASH_SELF_TO_DRAW_INTRIGUE,
+        # Rise of Ix's Shai-Hulud (stage P4d): Shishakli's shape with a recruit.
+        _BOX.TRASH_PERSONAL_CARD_TO_RECRUIT_TWO,
     }
     treacherous = _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
     hand = TrashCard(hand_only=True, faction=Faction.EMPEROR)

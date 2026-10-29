@@ -104,6 +104,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE: (
             "You may trash a card → Draw 1 card"
         ),
+        # Rise of Ix's Shai-Hulud (stage P4d): "[Trash a card] -> [2 troops]".
+        PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_RECRUIT_TWO: (
+            "You may trash a card → Recruit 2 troops"
+        ),
         # Tread in Darkness: two icons side by side with no arrow between
         # them (OQ-058) — the draw always happens, even if the trash is
         # declined (agent_effects.py), unlike Shishakli's real arrow above.
@@ -618,6 +622,9 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
             PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_CHOSEN_FACTION: (
                 "Gain 1 Influence (choose any Faction)"
             ),
+            # Rise of Ix's Shai-Hulud: the black Trash icon, as its record
+            # renders (the icon is optional, which the text does not say).
+            PersonalCardAcquisitionEffect.MAY_TRASH_A_CARD: "Trash a card",
         }
     )
 )

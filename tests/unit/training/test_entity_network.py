@@ -185,7 +185,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # and one personal-table column is new (the Freighter piece in an Agent box),
 # read by its row alone; no older scale moved (compared against b9c62bf5,
 # 2026-10-30).
-_GOLDEN_DIGEST = "0ed2c2541991e940b6ebc0ba728c500022d894fac91a5b49ccef3e1a6f58827c"
+# Then Shai-Hulud got its play data (stage P4d): only its own row changed, and
+# one personal-table column is new (the black Trash icon in an acquire box),
+# read by its row alone; no older scale moved (compared against 706e6f2e,
+# 2026-10-30).
+_GOLDEN_DIGEST = "9acac2e911c671dc08d2e4716fe77f44267a7f84435a5a2437de7cdf00118001"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

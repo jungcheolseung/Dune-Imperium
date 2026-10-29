@@ -26,7 +26,11 @@ from typing import Final
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
-from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
+from dune_imperium.content.uprising.types import (
+    AgentIcon,
+    PersonalCardAcquisitionEffect,
+    PersonalCardAgentEffect,
+)
 
 # The component table lists the cards [Rise of Ix p. 2]; the printed values
 # are the app's (plan 2.4, D1).
@@ -200,6 +204,17 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("shai_hulud", "Shai-Hulud"),
         copies=1,
         acquisition_cost=7,
+        # App table: Fremen, Spice Trade icon, AcquireEffectList Trash; no
+        # fixed Reveal values. Acquire: the black Trash icon, optional like any
+        # Trash icon [DI p. 16] and resolved at once [Main p. 20]. Agent: "[Trash
+        # a card] -> [2 troops]". Reveal: "Fremen Bond: [5 swords]" (a Reveal
+        # record), another Fremen card in play [DI p. 16].
+        has_acquisition_bonus=True,
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_RECRUIT_TWO,
+        acquisition_effect=PersonalCardAcquisitionEffect.MAY_TRASH_A_CARD,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("spice_trader", "Spice Trader"),

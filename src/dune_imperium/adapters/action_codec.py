@@ -83,6 +83,7 @@ from dune_imperium.content.uprising.starting_cards import (
     STARTING_DECK,
     StartingCardEntry,
 )
+from dune_imperium.content.uprising.trigger_abilities import acquisition_ability
 from dune_imperium.content.uprising.types import (
     BLOODLINES_REVEAL_CHOICE_EFFECTS,
     IMMORTALITY_REVEAL_CHOICE_EFFECTS,
@@ -2496,6 +2497,15 @@ def _spy_placement_printers(
     return tuple(printers)
 
 
+def _acquire_box_trashes(card: ImperiumCardEntry) -> bool:
+    """Whether the Imperium card's acquire box prints the black Trash icon."""
+
+    ability = acquisition_ability(card.acquisition_effect)
+    return ability is not None and any(
+        isinstance(reward, TrashPersonalCard) for reward in ability.sections[0].rewards
+    )
+
+
 def _optional_trash_printers(
     config: RulesetConfig,
     box_cards: Mapping[tuple[str, str], tuple[str, ...]],
@@ -2505,7 +2515,8 @@ def _optional_trash_printers(
     (``optional_trash.trash_printer``): a card whose Agent box may trash (box
     1 too with grafting), a Tech tile's acquire or Flip trash (the Tech
     Module's, and Rise of Ix's Disposal Facility, whose acquire icon trashes),
-    a research pair's trash, Arrakis Planetologist's leader."""
+    an Imperium card's acquire box (Rise of Ix's Shai-Hulud), a research
+    pair's trash, Arrakis Planetologist's leader."""
 
     boxes = (0, 1) if config.immortality else (0,)
     return (
@@ -2522,6 +2533,11 @@ def _optional_trash_printers(
             (Source.TECH, tile.tech_id, 0)
             for tile in (IX_TECH_TILES if config.rise_of_ix else ())
             if "trash" in tile.acquire_effect_keys
+        ),
+        *(
+            (Source.ACQUISITION, card.card.card_id, 0)
+            for card in content_for(config).imperium_cards
+            if _acquire_box_trashes(card)
         ),
         *(
             (Source.RESEARCH, space, 0)

@@ -459,6 +459,13 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE: _trash(
                 EffectSection(rewards=(DrawPersonalCards(1),), costs=(TrashCard(),))
             ),
+            # Shai-Hulud (Rise of Ix): "[Trash a card] -> [2 troops]" [Steam app
+            # screen pieces and log text]: an arrow whose cost is a trashed card,
+            # optional like every arrow cost [FAQ p. 3]; the troops come at once
+            # (``agent_box_abilities.apply_trash``).
+            _BOX.TRASH_PERSONAL_CARD_TO_RECRUIT_TWO: _trash(
+                EffectSection(rewards=(RecruitTroops(2),), costs=(TrashCard(),))
+            ),
             # Pivotal Gambit: the card trashes itself as the cost, then its troop
             # and the first-place pledge are armed as icons (OQ-022, OQ-027).
             _BOX.MAY_TRASH_SELF_FOR_TROOP_AND_FIRST_PLACE_INFLUENCE: _trash(

@@ -136,6 +136,11 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "fedaykin_death_commando": _reveal(
             _line(RevealSwords(3), condition=FactionBond(Faction.FREMEN))
         ),
+        # Shai-Hulud (Rise of Ix): "Fremen Bond: [5 swords]" [Steam app screen
+        # pieces]; the card prints no other Reveal value.
+        "shai_hulud": _reveal(
+            _line(RevealSwords(5), condition=FactionBond(Faction.FREMEN))
+        ),
         # Duncan Idaho (original game): "1 water" beside its printed swords.
         "duncan_idaho_card": _reveal(_line(GainResources(water=1))),
         # Sietch Reverend Mother (original game): "Fremen Bond: 3 Persuasion, 1
