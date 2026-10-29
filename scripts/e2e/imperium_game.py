@@ -733,7 +733,7 @@ DREADNOUGHTS_JS = """() => {
   return {
     garrison: count('#board .garrison-unit[data-kind="dreadnought"]'),
     conflict: count('#board .conflict-unit[data-kind="dreadnought"]'),
-    control: control.map((n) => [n.dataset.seat, n.querySelector('title').textContent]),
+    control: control.map((n) => [n.dataset.seat, n.getAttribute('aria-label')]),
     onFlags: control.every((n, i) => {
       const [left, top, width, height] = flags[view.dreadnought_control[i][0]];
       const r = n.getBoundingClientRect();

@@ -376,6 +376,9 @@ APP_PIECE_SOURCES = {
     "control": "ControlMarker{C}",
     "troop": "Icon_Resource_Cube_{C}",
     "sandworm": "Icon_Resource_Worm_{C}",
+    # Rise of Ix's dreadnought: the app's flat icon of the figure in each
+    # colour, like the sandworm's (plan 18.6.6 3: drawn only without it)
+    "dreadnought": "Icon_Resource_Dreadnought_{C}",
     # the High Council seat token (a disc with the council chair; the texture
     # has black corners, cut to the circle)
     "council": "T_Icon_CouncilSeat_{C}",

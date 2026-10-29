@@ -330,12 +330,12 @@ _SCAN_WIDTH, _SCAN_HEIGHT = 6012, 6005
 _FRAME_HEIGHT = SPACE_BOXES["sardaukar"][3]
 AGENT_ON_SPACE_HEIGHT: Final = 0.72
 SANDWORM_WIDTH: Final = 3.6
-# Rise of Ix's dreadnought, a seat's own figure drawn in its colour (the app's
-# is a 3D model; user decision 2026-10-29: drawn like the sandworm),
-# as wide as the sandworm (the miniature is a large figure, some three
-# troop cubes long), at the drawing's 70 x 44 proportions.
+# Rise of Ix's dreadnought, a seat's own figure in its colour like the
+# sandworm (user decision 2026-10-29): the app's flat icon of it
+# (``Icon_Resource_Dreadnought_<colour>``, 254 x 231 px), as wide as the
+# sandworm (the miniature is a large figure, some three troop cubes long).
 DREADNOUGHT_WIDTH: Final = 3.6
-DREADNOUGHT_ASPECT: Final = 70 / 44
+DREADNOUGHT_ASPECT: Final = 254 / 231
 
 
 def _piece_by_height(height: float, aspect: float) -> tuple[float, float]:

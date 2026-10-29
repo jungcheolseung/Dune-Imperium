@@ -523,14 +523,20 @@ function renderBoardStage(board, view) {
     const box = controlFlagBox(spaceId);
     if (!box || !dreadnoughtSize) continue;
     const piece = unitPiece("dreadnought", seat, "control-dreadnought");
-    piece.removeAttribute("aria-hidden");
-    piece.setAttribute("role", "img");
-    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    title.textContent = t(
+    const label = t(
       leaving ? "board.dreadnought_control_leaving" : "board.dreadnought_control_staying",
       { seat, name: spaceName(spaceId) },
     );
-    piece.prepend(title);
+    piece.removeAttribute("aria-hidden");
+    piece.setAttribute("role", "img");
+    piece.setAttribute("aria-label", label);
+    if (piece.tagName === "IMG") {
+      piece.title = label;
+    } else {
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      title.textContent = label;
+      piece.prepend(title);
+    }
     piece.style.width = `${dreadnoughtSize[0]}%`;
     piece.style.height = `${dreadnoughtSize[1]}%`;
     placeAt(piece, box[0] + box[2] / 2, box[1] + box[3] / 2);
@@ -1336,15 +1342,16 @@ function drawnSnooper(size) {
   return token;
 }
 
-/* A seat's dreadnought, drawn (the app's is a 3D model; user decision
-   2026-10-29, plan 18.6.6 3): the warship's blocky hull with its raised
-   bridge, seen from the side like the icon the Ix board prints, flat in
-   the seat's colour with the dark edge of every piece. */
+/* A seat's dreadnought without the app's picture of it (seatPieceUrl;
+   user decision 2026-10-29, plan 18.6.6 3): the warship's blocky hull with
+   its raised bridge, seen from the side like the icon the Ix board prints,
+   flat in the seat's colour with the dark edge of every piece, centred in
+   the picture's proportions. */
 function drawnDreadnought(className, seat) {
   const svgNs = "http://www.w3.org/2000/svg";
   const ship = document.createElementNS(svgNs, "svg");
   ship.setAttribute("class", `${className} drawn dreadnought-piece`);
-  ship.setAttribute("viewBox", "0 0 70 44");
+  ship.setAttribute("viewBox", "0 -10 70 64");
   ship.setAttribute("preserveAspectRatio", "none");
   const hull = document.createElementNS(svgNs, "path");
   hull.setAttribute(
