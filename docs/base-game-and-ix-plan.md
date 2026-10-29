@@ -1498,3 +1498,10 @@ Strongarm·Strategic Push, 그다음 Imperium 카드. 끊기면: 커밋되지 �
   Emperor 4칸의 Spy 보상, Bene Gesserit 보너스 Intrigue, research·contract Influence는 같은 획득 경로라 P7에서도 Snooper에 닿는다.
   **남은 P4e:** 원판 + Ix Epic(rise-of-ix.md 11), Boundless Ambition(Unload 묶음에 포함). Weirding Way의 추가 turn은 `one_step_ahead.finish_turn_count`를
   불러야 한다(마지막 8장 묶음에 전달).
+- **P4e Epic(2026-10-30 04:5x, Opus):** `d88c6a7d` 원판 + Ix에서 Epic 열기(rise-of-ix.md 11 — Uprising Epic 경로 재사용, 원판 시작 덱의 Dune 하나를
+  Control the Spice로; 원판 단독 Epic은 setup이 거절), `e8a0a2d8` Hundro의 Intelligence가 Epic Intrigue 뒤(두 setup 경로, privacy), `556e57ea` Epic 1라운드·
+  두 카드·12점 끝(전체 판). Ix 포함 카탈로그 다이제스트(`tmp/claude/p4e-epic/catalog_digest_ix.py`, 576 구성)로 원판 + Ix + Epic 72개만 바뀐 것을 확인.
+  **남은 빚:** `dune-imperium-sweep --coverage-json`의 0 커버리지 표가 `base_game`·`rise_of_ix`를 넘기지 않아 원판 판에도 Uprising 카탈로그로 만든다(P4 전부터).
+- Strategic Push를 P4에 들임: `097af7d1`(e03cbc8a, 엔티티 다이제스트를 556e57ea와 비교해 다시 고정), `36b374f4`(카드가 Intrigue 덱에 들어 Epic 12점 시험의
+  seed 18이 조건을 잃어 seed 165로), `f6d3e996`(688b0542 — 서약을 공개 보기와 관측 v39 `seat{k}_ix` 열 9에; v39 10,297 → 10,301칸, v38 구간 그대로),
+  `5ded63ae`(동일성 검사 차이 파일에 `strategic_push_solari`).

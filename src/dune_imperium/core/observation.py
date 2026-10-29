@@ -172,6 +172,12 @@ class PublicPlayerView:
     # ``PrivatePlayerView.set_aside_card_id``), whether it came back to the
     # hand this turn, and the turns finished this round; ``PlayerState``
     # fields of the same names.
+    #
+    # ``strategic_push_solari``: the Solari the seat pledged with Strategic
+    # Push for the Conflict under way (``PlayerState`` field of the same
+    # name), public because the Combat card is played face up -- "opponent에게는
+    # play할 때만 공개한다" [Main p. 7] and OQ-010's "한 번 공개된 정보는 재확인
+    # 가능해야 한다" (docs/rules/information-visibility.md).
     dreadnoughts_supply: int = 0
     dreadnoughts_garrison: int = 0
     dreadnoughts_conflict: int = 0
@@ -181,6 +187,7 @@ class PublicPlayerView:
     has_set_aside_card: bool = False
     set_aside_returned_turn: bool = False
     turns_finished_round: int = 0
+    strategic_push_solari: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -1247,4 +1254,5 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         has_set_aside_card=bool(player.set_aside_card_id),
         set_aside_returned_turn=player.set_aside_returned_turn,
         turns_finished_round=player.turns_finished_round,
+        strategic_push_solari=player.strategic_push_solari,
     )

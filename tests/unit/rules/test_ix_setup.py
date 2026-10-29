@@ -12,8 +12,8 @@ The rules are docs/rules/rise-of-ix.md 3 (``[Rise of Ix p. 3]``):
 The engine's Conflict pool holds a card once its rewards are transcribed
 (``rulesets._imperium_conflicts``); with Rise of Ix's three (stage P4d-1) it is
 the printed 22 and exactly 12 stay unused. Uprising plus Rise of Ix stays
-refused until stage P7, and Epic Game Mode on the original game until stage
-P4e.
+refused until stage P7. Epic Game Mode on the original game plays with Rise
+of Ix since stage P4e (``test_ix_epic``).
 """
 
 from collections import Counter
@@ -232,10 +232,13 @@ def test_uprising_with_rise_of_ix_is_still_refused() -> None:
             UprisingRulesEngine().reset(config, 0)
 
 
-def test_epic_game_mode_on_the_original_game_is_still_refused() -> None:
-    config = replace(IX, epic_game=True)
-    with pytest.raises(NotImplementedError, match="epic_game from stage P4"):
-        UprisingRulesEngine().reset(config, 0)
+def test_epic_game_mode_plays_on_the_original_game_only_with_rise_of_ix() -> None:
+    """Epic Game Mode is Rise of Ix's (rise-of-ix.md 11, `[Rise of Ix p. 10]`),
+    open on the original game with it since stage P4e."""
+
+    assert UprisingRulesEngine().reset(replace(IX, epic_game=True), 0).config.epic_game
+    with pytest.raises(NotImplementedError, match="epic_game only with rise_of_ix"):
+        UprisingRulesEngine().reset(replace(ORIGINAL, epic_game=True), 0)
 
 
 @pytest.mark.parametrize("policy", ["random", "heuristic"])

@@ -77,6 +77,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PermanentRevealPersuasion,
     PlaceNegotiator,
     PlaceSpy,
+    PledgeConflictWinSolari,
     RecallSpy,
     RecallYourAgent,
     RecruitTroops,
@@ -1587,6 +1588,15 @@ def apply_rewards(
                 agent_influence = True
             case EachOpponentRetreatsDreadnought():
                 opponents_retreat_dreadnoughts = True
+            case PledgeConflictWinSolari(solari=solari):
+                # Strategic Push's "If you win this Conflict:" Solari wait on
+                # the seat until the sole winner's window pays them (OQ-121
+                # ruling 6 (1), ``combat.STRATEGIC_PUSH``); nothing is gained
+                # now. A second copy would add its own (one copy is printed).
+                owner = replace(
+                    owner,
+                    strategic_push_solari=owner.strategic_push_solari + solari,
+                )
             case SummonSandworm(count=count, requires_maker_hooks=needs_hooks) if (
                 replaces_sandworms(owner)
                 and sandworm_block(state, player, needs_hooks=needs_hooks) is None

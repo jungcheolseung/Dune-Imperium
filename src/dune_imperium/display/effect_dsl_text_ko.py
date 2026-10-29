@@ -156,6 +156,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PermanentRevealPersuasion,
     PlaceNegotiator,
     PlaceSpy,
+    PledgeConflictWinSolari,
     PledgeFirstPlaceInfluence,
     RecallAgent,
     RecallOtherAgent,
@@ -1110,6 +1111,15 @@ def reward_text_ko(reward: Reward) -> str:
             # glossary no dreadnought): the line stays English (module
             # docstring).
             return "Each opponent retreats one dreadnought"
+        case PledgeConflictWinSolari(solari=solari):
+            # Strategic Push's "If you win this Conflict:" (Rise of Ix has
+            # no Korean edition): "이번" as in "이번 차례에", ``OnConflictWon``'s
+            # "{conflict}에서 승리", and rule 1's "-다면:" for a condition that
+            # names an action (korean-card-style.md).
+            return (
+                "이번 {conflict}에서 승리한다면: "
+                f"{reward_text_ko(GainResources(solari=solari))}"
+            )
         case PlaceNegotiator():
             # Rise of Ix's Tech Negotiation icon: no Korean source names the
             # Negotiator yet (``glossary-ko.md`` has no entry; the official

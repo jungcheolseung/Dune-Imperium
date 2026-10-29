@@ -239,6 +239,10 @@ def test_clean_up_moves_an_unload_card_without_unloading_it() -> None:
     chance = ChanceResolver(seed=3)
     rng = random.Random(3)
     unloaded: list[GameEvent] = []
+    # The card's place is read as it leaves play: the Round 2 draw may shuffle
+    # the discard pile back into the deck, as this random game does since
+    # Strategic Push joined the Intrigue deck.
+    left_play: GameState | None = None
     while state.round_number == 1 and state.phase is not GamePhase.FINISHED:
         decision = ENGINE.current_decision(state)
         if isinstance(decision, ChanceDecision):
@@ -250,8 +254,11 @@ def test_clean_up_moves_an_unload_card_without_unloading_it() -> None:
             )
         unloaded.extend(e for e in result.events if e.kind == "card_unloaded")
         state = result.state
+        if left_play is None and MARKED[0] not in state.players[0].in_play:
+            left_play = state
     assert state.round_number == 2
-    assert MARKED[0] in state.players[0].discard_pile
+    assert left_play is not None
+    assert MARKED[0] in left_play.players[0].discard_pile
     assert unloaded == []
 
 

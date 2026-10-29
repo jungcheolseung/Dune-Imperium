@@ -499,6 +499,11 @@ COMBAT_REWARD_ICON_KINDS: Final = (
     # (Rise of Ix), an automatic row of the same window (OQ-121 ruling 6
     # (1)). Only Rise of Ix's catalogs hold its row.
     "windtraps",
+    # Not a reward icon either: Strategic Push's "If you win this Conflict:"
+    # Solari (a Rise of Ix Combat Intrigue), pledged in the Combat and paid as
+    # an automatic row of the same window (OQ-121 ruling 6 (1)). Only Rise of
+    # Ix's catalogs hold its row.
+    "strategic_push",
     # Not a reward icon either: the sole winner's close of the window once
     # every other row is resolved, the press that says "no more winning
     # Intrigue" (OQ-121 decision 6: "안 내도 창이 닫힌다"). Only the original
@@ -538,6 +543,10 @@ DREADNOUGHT_DETONATE_ACTION: Final = "detonate_combat_reward_dreadnought"
 # Windtraps' row of the sole winner's window: "Conflict를 이기면 water 1"
 # (docs/rules/rise-of-ix.md 4).
 WINDTRAPS: Final = "windtraps"
+# Strategic Push's row of the sole winner's window: the Solari its player
+# pledged when the Combat card resolved (``PlayerState.strategic_push_solari``;
+# OQ-121 ruling 6 (1), docs/rules/rise-of-ix.md 12 "승자의 창").
+STRATEGIC_PUSH: Final = "strategic_push"
 IMPERIUM_REWARD_ICON_KINDS: Final = frozenset(
     {"mentat", "one_faction_influence", *REWARD_LINE_KINDS}
 )
@@ -783,6 +792,15 @@ def _reward_window(
             # "고를 것 없는 자동 줄". Not doubled by a sandworm: it is no reward.
             icons.append(WINDTRAPS)
             printed.append(WINDTRAPS)
+        if state.players[assignment.player].strategic_push_solari:
+            # Strategic Push: "If you win this Conflict:" 2 Solari [Strategic
+            # Push card, Steam app text], pledged when the card resolved; "고를
+            # 것 없는 자동 줄" of the sole winner's window, in the winner's order
+            # with its other rows (OQ-121 ruling 6 (1)). One row pays the whole
+            # pledge. A tied first place opens no first-place window, so a
+            # tie pays nothing ("공동 1위면 승리 효과 줄이 없다" [FAQ p. 4]).
+            icons.append(STRATEGIC_PUSH)
+            printed.append(STRATEGIC_PUSH)
         if (
             state.config.rise_of_ix
             and state.players[assignment.player].dreadnoughts_conflict > 0
@@ -945,9 +963,10 @@ def add_late_windtraps_row(state: GameState, player: int) -> GameState:
         if WINDTRAPS in printed:
             return state
         icons = [icon for icon in str(context[_ICONS_KEY]).split(",") if icon]
-        # The window's order: before the dreadnought's row and the closing
-        # row, which stays last (``legal_combat_reward_icon_actions``).
-        later = (DREADNOUGHT_CONTROL, WINNING_INTRIGUE)
+        # The window's order (``_reward_window``'s): before Strategic Push's
+        # row, the dreadnought's and the closing row, which stays last
+        # (``legal_combat_reward_icon_actions``).
+        later = (STRATEGIC_PUSH, DREADNOUGHT_CONTROL, WINNING_INTRIGUE)
         icons.insert(
             next((i for i, icon in enumerate(icons) if icon in later), len(icons)),
             WINDTRAPS,
@@ -1378,6 +1397,25 @@ def _resolve_automatic_icon(
                 state=_with_owner(state, replace(owner, resources=gained)),
                 events=(
                     resources_gained_event(f"{source}:windtraps", player, water=1),
+                ),
+            )
+        case "strategic_push", None:
+            # Strategic Push's pledge, gained as this row resolves, in the
+            # winner's order with its other rows (OQ-121 ruling 6 (1)); the
+            # pledge is spent. Not doubled by a sandworm (Uprising with Rise
+            # of Ix, stage P7): it is the card's effect, no Conflict reward,
+            # as Windtraps' water.
+            solari = owner.strategic_push_solari
+            gained = replace(owner.resources, solari=owner.resources.solari + solari)
+            return RuleResult(
+                state=_with_owner(
+                    state,
+                    replace(owner, resources=gained, strategic_push_solari=0),
+                ),
+                events=(
+                    resources_gained_event(
+                        f"{source}:strategic_push", player, solari=solari
+                    ),
                 ),
             )
         case "planetary_array", None:
@@ -2763,6 +2801,9 @@ def finish_combat(state: GameState) -> RuleResult:
             agent_in_conflict=0,
             combat_strength=0,
             skill_strength_applied=0,
+            # Strategic Push's pledge is for this Conflict only: one the sole
+            # winner's window did not pay (no win, or a tie for first) lapses.
+            strategic_push_solari=0,
         )
         for player in state.players
     )
