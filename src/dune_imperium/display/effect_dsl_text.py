@@ -58,6 +58,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EachOpponentDiscardsCard,
     EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
+    EachOpponentRetreatsDreadnought,
     EffectSection,
     FactionBond,
     FlipBattleCard,
@@ -806,6 +807,10 @@ def reward_text(reward: Reward) -> str:
             # Rise of Ix's Dreadnought icon: "you may commission" [Rise of Ix
             # p. 6] (docs/rules/rise-of-ix.md 6).
             return "Commission a dreadnought"
+        case EachOpponentRetreatsDreadnought():
+            # "Each opponent retreats one dreadnought." [Cannon Turrets card,
+            # Steam app text]
+            return "Each opponent retreats one dreadnought"
         case PlaceNegotiator():
             # Rise of Ix's Tech Negotiation icon: "you may take a troop"
             # [Rise of Ix p. 4] (docs/rules/rise-of-ix.md 4).

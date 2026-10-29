@@ -8,6 +8,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import replace_player
+from dune_imperium.rules.strength import dreadnought_strength
 from dune_imperium.rules.tactics import advance_tactics_token
 
 
@@ -74,6 +75,49 @@ def retreat_units(
                 ),
             ),
             *tactics_events,
+        ),
+    )
+
+
+def retreat_dreadnought(
+    state: GameState, player: int, step_source: str
+) -> RuleResult:
+    """Return one of ``player``'s Conflict dreadnoughts to its garrison.
+
+    "Each opponent retreats one dreadnought." [Cannon Turrets card, Steam app
+    text]: a dreadnought is a unit worth ``dreadnought_strength`` (3, 4 for
+    Prince Rhombur Vernius) [Rise of Ix p. 6], so the seat's strength drops by
+    that, and a seat left with no unit has no strength at all, swords or not
+    [Main p. 12] (rise-of-ix.md 9.3: when the retreated dreadnought was the
+    last unit, the seat plays no more Combat Intrigue in that Conflict). A
+    card's "troop" does not retreat a dreadnought and this does not advance
+    Chani's Tactics token: it counts troops. The seat's dreadnoughts are
+    alike, so nothing is chosen.
+    """
+
+    owner = state.players[player]
+    if owner.dreadnoughts_conflict < 1:
+        raise RuntimeError("retreat exceeds the dreadnoughts in the Conflict")
+    remaining_units = owner.units_in_conflict - 1
+    next_strength = (
+        max(owner.combat_strength - dreadnought_strength(owner), 0)
+        if remaining_units
+        else 0
+    )
+    next_owner = replace(
+        owner,
+        dreadnoughts_garrison=owner.dreadnoughts_garrison + 1,
+        dreadnoughts_conflict=owner.dreadnoughts_conflict - 1,
+        combat_strength=next_strength,
+    )
+    return RuleResult(
+        state=replace(state, players=replace_player(state.players, next_owner)),
+        events=(
+            GameEvent(
+                event_id=f"{step_source}:dreadnought_retreat",
+                kind="dreadnought_retreated",
+                payload=(("player", player),),
+            ),
         ),
     )
 

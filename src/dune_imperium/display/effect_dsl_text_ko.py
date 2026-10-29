@@ -85,6 +85,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EachOpponentDiscardsCard,
     EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
+    EachOpponentRetreatsDreadnought,
     EffectSection,
     FactionBond,
     FlipBattleCard,
@@ -1099,6 +1100,11 @@ def reward_text_ko(reward: Reward) -> str:
             # entry; the official Korean edition has no Rise of Ix), so the
             # line stays English rather than invented (module docstring).
             return "Commission a dreadnought"
+        case EachOpponentRetreatsDreadnought():
+            # Cannon Turrets (Rise of Ix has no Korean edition and the
+            # glossary no dreadnought): the line stays English (module
+            # docstring).
+            return "Each opponent retreats one dreadnought"
         case PlaceNegotiator():
             # Rise of Ix's Tech Negotiation icon: no Korean source names the
             # Negotiator yet (``glossary-ko.md`` has no entry; the official

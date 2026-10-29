@@ -182,6 +182,180 @@ def _in_deck(card: str, config: RulesetConfig) -> bool:
     return f"intrigue:{card}:0" in content_for(config).intrigue_deck_instance_ids
 
 
+# Cannon Turrets -----------------------------------------------------------------
+
+
+def _turrets(**seats: dict[str, Any]) -> GameState:
+    """Seat 0 holds Cannon Turrets with one troop (2 strength) in the
+    Conflict; ``seats`` fields the other seats, at seat 0's Combat Intrigue
+    priority."""
+
+    state = _start("cannon_turrets", troops_conflict=1, combat_strength=2)
+    for seat, fields in seats.items():
+        state = _seat(state, int(seat.removeprefix("seat")), **fields)
+    return _combat(state)
+
+
+def _strengths(state: GameState) -> list[int]:
+    return [player.combat_strength for player in state.players]
+
+
+def test_cannon_turrets_is_a_combat_card_in_the_ix_deck() -> None:
+    """ "Each opponent retreats one dreadnought." with 2 swords [Cannon
+    Turrets card, Steam app text and log line]; a Combat Intrigue, one copy,
+    shuffled in with Rise of Ix only [Rise of Ix p. 2]."""
+    entry = intrigue_card_for_instance("intrigue:cannon_turrets:0")
+    assert entry.play_data_complete
+    assert entry.copies == 1
+    assert [option.timing.value for option in entry.options] == ["combat"]
+    assert _in_deck("cannon_turrets", CONFIG)
+    assert not _in_deck("cannon_turrets", ORIGINAL)
+    assert intrigue_card_text(entry) == [
+        "Combat — Gain 2 swords, Each opponent retreats one dreadnought"
+    ]
+    assert intrigue_card_text_ko(entry) == [
+        "전투 — {sword:2}, Each opponent retreats one dreadnought"
+    ]
+
+
+def test_cannon_turrets_is_not_a_plot() -> None:
+    """Combat Intrigue is played in the Combat phase only [DI p. 12]."""
+    state = _start("cannon_turrets", troops_conflict=1, combat_strength=2)
+    assert _options(state, "cannon_turrets") == set()
+
+
+def test_cannon_turrets_sends_one_dreadnought_of_each_opponent_to_its_garrison() -> (
+    None
+):
+    """ "Each opponent retreats one dreadnought." [Cannon Turrets card]: a
+    dreadnought in the Conflict is a unit worth 3 strength [Rise of Ix p. 6],
+    so a retreat takes 3 off the seat's strength and puts the dreadnought in
+    its garrison; of two, one goes. The card's own 2 swords are the player's."""
+    state = _turrets(
+        seat1={"troops_conflict": 1, "dreadnoughts_conflict": 1, "combat_strength": 5},
+        seat2={"dreadnoughts_conflict": 2, "combat_strength": 6},
+        seat3={"dreadnoughts_conflict": 1, "combat_strength": 3},
+    )
+    assert _options(state, "cannon_turrets") == {0}
+    result = apply_whole(
+        ENGINE,
+        state,
+        DomainAction(
+            action_id="play_intrigue",
+            actor=0,
+            arguments=(("card_id", "intrigue:cannon_turrets:0"), ("option", 0)),
+        ),
+    )
+    done = result.state
+    assert _strengths(done) == [4, 2, 3, 0]
+    one, two, three = (done.players[seat] for seat in (1, 2, 3))
+    assert (one.dreadnoughts_conflict, one.dreadnoughts_garrison) == (0, 1)
+    assert one.troops_conflict == 1
+    assert (two.dreadnoughts_conflict, two.dreadnoughts_garrison) == (1, 1)
+    assert (three.dreadnoughts_conflict, three.dreadnoughts_garrison) == (0, 1)
+    assert done.players[0].troops_conflict == 1
+    assert "intrigue:cannon_turrets:0" in done.intrigue_discard
+    retreats = [
+        (event.event_id, dict(event.payload)["player"])
+        for event in result.events
+        if event.kind == "dreadnought_retreated"
+    ]
+    assert [seat for _, seat in retreats] == [1, 2, 3]
+    assert len({event_id for event_id, _ in retreats}) == 3
+
+
+def test_cannon_turrets_leaves_troops_garrisons_and_control_spaces_alone() -> None:
+    """Only a dreadnought in the Conflict retreats: a troop is not a
+    dreadnought ("A card's troop does not act on a dreadnought" [Rise of Ix
+    p. 6], and no card names this the other way round), a dreadnought in the
+    garrison is already home, and one on a Control space is not in the
+    Conflict."""
+    state = _turrets(
+        seat1={"troops_conflict": 3, "combat_strength": 6},
+        seat2={"dreadnoughts_garrison": 1, "troops_conflict": 1, "combat_strength": 2},
+        seat3={"dreadnoughts_supply": 1, "troops_conflict": 1, "combat_strength": 2},
+    )
+    state = replace(state, dreadnought_control=(("carthag", 3, False),))
+    done = _play(state, "cannon_turrets")
+    assert _strengths(done) == [4, 6, 2, 2]
+    assert done.players[1].troops_conflict == 3
+    assert done.players[2].dreadnoughts_garrison == 1
+    assert done.dreadnought_control == (("carthag", 3, False),)
+
+
+def test_cannon_turrets_does_not_retreat_the_players_own_dreadnoughts() -> None:
+    """ "Each opponent retreats..." names the other seats."""
+    state = _start("cannon_turrets", dreadnoughts_conflict=2, combat_strength=6)
+    state = _seat(state, 1, dreadnoughts_conflict=1, combat_strength=3)
+    done = _play(_combat(state), "cannon_turrets")
+    assert _strengths(done)[:2] == [8, 0]
+    assert done.players[0].dreadnoughts_conflict == 2
+    assert done.players[0].dreadnoughts_garrison == 0
+
+
+def test_cannon_turrets_is_played_with_no_dreadnought_to_retreat() -> None:
+    """The 2 swords are always live, so the card is played whatever the
+    opponents field (OQ-113 (C): a cost-free effect that fizzles is still
+    played)."""
+    state = _turrets(seat1={"troops_conflict": 2, "combat_strength": 4})
+    assert _options(state, "cannon_turrets") == {0}
+    done = _play(state, "cannon_turrets")
+    assert _strengths(done) == [4, 4, 0, 0]
+
+
+def test_cannon_turrets_is_played_by_a_seat_with_only_a_dreadnought() -> None:
+    """A dreadnought is a unit: a seat with one alone keeps its strength and
+    may play Combat Intrigue [Rise of Ix p. 6] [FAQ p. 2]."""
+    state = _start("cannon_turrets", dreadnoughts_conflict=1, combat_strength=3)
+    state = _seat(state, 1, troops_conflict=1, combat_strength=2)
+    state = _combat(state)
+    assert _options(state, "cannon_turrets") == {0}
+    assert _strengths(_play(state, "cannon_turrets"))[0] == 5
+
+
+def test_cannon_turrets_takes_the_last_unit_and_its_combat_intrigue() -> None:
+    """ "Cannon Turrets로 마지막 유닛인 dreadnought가 밀려나면 그 Combat에서
+    Intrigue를 더 못 냄" (rise-of-ix.md 9.3, adopted), with OQ-003's convention
+    that a seat whose last unit leaves drops out of the Combat Intrigue at
+    once, and a seat with no unit has no strength: its Intrigue swords go
+    with it."""
+    state = _start("cannon_turrets", troops_conflict=1, combat_strength=2)
+    state = _seat(
+        state,
+        1,
+        dreadnoughts_conflict=1,
+        combat_strength=7,
+        intrigue_cards=("intrigue:finesse:0",),
+    )
+    state = _seat(state, 2, troops_conflict=1, combat_strength=2)
+    state = _combat(state)
+    done = _play(state, "cannon_turrets")
+    assert done.players[1].combat_strength == 0
+    assert legal_intrigue_play_actions(done, 1) == ()
+    # The cycle goes on without seat 1: seats 0 and 2 pass and it ends.
+    assert _action_ids(done, 0) == ["pass_combat_intrigue"]
+    passed = apply_whole(
+        ENGINE, done, DomainAction(action_id="pass_combat_intrigue", actor=0)
+    ).state
+    assert _action_ids(passed, 1) == []
+    assert _action_ids(passed, 2) == ["pass_combat_intrigue"]
+
+
+def test_cannon_turrets_retreat_keeps_a_seat_with_other_units_in_the_cycle() -> None:
+    """A seat that keeps a unit stays in the Combat Intrigue with the strength
+    that unit gives."""
+    state = _turrets(
+        seat1={"troops_conflict": 1, "dreadnoughts_conflict": 1, "combat_strength": 5},
+    )
+    done = _play(state, "cannon_turrets")
+    assert done.players[1].combat_strength == 2
+    assert done.players[1].units_in_conflict == 1
+    passed = apply_whole(
+        ENGINE, done, DomainAction(action_id="pass_combat_intrigue", actor=0)
+    ).state
+    assert _action_ids(passed, 1) == ["pass_combat_intrigue"]
+
+
 # Advanced Weaponry --------------------------------------------------------------
 
 THREE_TECHS = ("detonation_devices", "spaceport", "troop_transports")

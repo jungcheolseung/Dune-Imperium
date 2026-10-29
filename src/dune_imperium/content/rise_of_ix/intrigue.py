@@ -30,6 +30,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     DrawPersonalCards,
     DreadnoughtsAtLeast,
+    EachOpponentRetreatsDreadnought,
     EffectSection,
     Freighter,
     GainCombatStrength,
@@ -121,6 +122,23 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("cannon_turrets", "Cannon Turrets"),
         copies=1,
+        # [COMBAT] 2 swords, "Each opponent retreats one dreadnought."
+        # [Steam app text, log line and screen pieces]: one cost-free Combat
+        # line. The swords are always live, so the card is played whatever
+        # the opponents field (OQ-113 (C)); an opponent with no dreadnought in
+        # the Conflict is unaffected. A dreadnought is named, so it retreats
+        # [Rise of Ix p. 6] (rise-of-ix.md 6); one that was the opponent's last
+        # unit takes its Combat Intrigue with it (rise-of-ix.md 9.3).
+        options=(
+            _combat(
+                EffectSection(
+                    rewards=(
+                        GainCombatStrength(2),
+                        EachOpponentRetreatsDreadnought(),
+                    )
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("cull", "Cull"),

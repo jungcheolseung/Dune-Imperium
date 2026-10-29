@@ -41,6 +41,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPersonalCards,
     DreadnoughtsAtLeast,
+    EachOpponentRetreatsDreadnought,
     EffectSection,
     FactionBond,
     FlipBattleCard,
@@ -165,6 +166,7 @@ from dune_imperium.rules.spy_placement import (
     spy_placement_posts,
 )
 from dune_imperium.rules.unit_loss import opponents_with_conflict_troop
+from dune_imperium.rules.units import retreat_dreadnought
 
 type ChoiceSlot = (
     LoseInfluence
@@ -1461,6 +1463,7 @@ def apply_rewards(
     contracts = 0
     fixed_influence: list[GainInfluence] = []
     agent_influence = False
+    opponents_retreat_dreadnoughts = False
     # Immortality: Bene Tleilax board moves resolve on the state after the
     # resource gains (a research advance may open a direction choice).
     specimens = 0
@@ -1529,6 +1532,8 @@ def apply_rewards(
                 raise ValueError("Influence choices must be resolved as choice slots")
             case GainInfluenceWhereAgent():
                 agent_influence = True
+            case EachOpponentRetreatsDreadnought():
+                opponents_retreat_dreadnoughts = True
             case SummonSandworm(count=count, requires_maker_hooks=needs_hooks) if (
                 replaces_sandworms(owner)
                 and sandworm_block(state, player, needs_hooks=needs_hooks) is None
@@ -1703,6 +1708,18 @@ def apply_rewards(
             )
             next_state = gained.state
             events.extend(gained.events)
+    if opponents_retreat_dreadnoughts:
+        # Cannon Turrets: each opponent with a dreadnought in the Conflict
+        # sends one to its garrison, clockwise from the next seat; nothing
+        # is chosen (a seat's dreadnoughts are alike).
+        for offset in range(1, state.config.players):
+            seat = (player + offset) % state.config.players
+            if next_state.players[seat].dreadnoughts_conflict:
+                retreated = retreat_dreadnought(
+                    next_state, seat, f"{source}:opponent:{seat}"
+                )
+                next_state = retreated.state
+                events.extend(retreated.events)
     if intrigue_draws:
         # Resolved before the Intrigue card itself is discarded, so the deck
         # reshuffle (if any) never includes the card being played.

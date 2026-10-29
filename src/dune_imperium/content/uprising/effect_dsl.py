@@ -1951,6 +1951,20 @@ class CommissionDreadnought:
 
 
 @dataclass(frozen=True, slots=True)
+class EachOpponentRetreatsDreadnought:
+    """Each opponent retreats one dreadnought ("Each opponent retreats one
+    dreadnought." [Cannon Turrets card, Steam app text]): every opponent with
+    a dreadnought in the Conflict sends one back to its garrison, clockwise
+    from the next seat; one without is unaffected.
+
+    A dreadnought is a unit and the card names it, so unlike a card's "troop"
+    it is reached [Rise of Ix p. 6] (docs/rules/rise-of-ix.md 6, the table
+    row "dreadnought"). The dreadnoughts of a seat are alike, so the
+    opponent has nothing to choose and the retreat is automatic.
+    """
+
+
+@dataclass(frozen=True, slots=True)
 class PlaceNegotiator:
     """Tech Negotiation: send one of the owner's troops from its supply to
     the Ix board as a Negotiator, for each Tech Negotiation icon ("you may
@@ -2063,6 +2077,7 @@ type Reward = (
     | DoubleBaseHarvestSpice
     | DoubleBonusHarvestSpice
     | CommissionDreadnought
+    | EachOpponentRetreatsDreadnought
     | PlaceNegotiator
     | Freighter
 )
