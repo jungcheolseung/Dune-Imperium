@@ -59,10 +59,8 @@ if TYPE_CHECKING:
 # The app's ``Factions.None``: "any faction" for ``GetGainInfluenceValue``.
 NO_FACTION: Final = "none"
 
-# ``IsSetEnabled(RiseOfIx)``: never in the games this port plays.
-# ``IsSetEnabled(Uprising)`` is ``AppContext.uprising`` (false on the
-# original board).
-_RISE_OF_IX_ENABLED: Final = False
+# ``IsSetEnabled(RiseOfIx)`` is ``AppContext.ix`` and ``IsSetEnabled(Uprising)``
+# ``AppContext.uprising`` (false on the original board).
 
 _APP_FACTION: Final = {app: ours for ours, app in FACTION_NAMES.items()}
 
@@ -712,7 +710,7 @@ class InfluenceMixin(ProfileCore):
                 s.multiply(
                     "Plans Within Plans", c.PlansWithinPlansMeetRequisiteInfluenceMod
                 )
-        if _RISE_OF_IX_ENABLED:
+        if ctx.ix:
             if (
                 current_rank < 0
                 and not self.is_climax()
@@ -722,11 +720,12 @@ class InfluenceMixin(ProfileCore):
                 s.multiply("Spacing Guild Rise of Ix", c.SpacingGuildRiseOfIxBonus)
             if cur <= 3 and _has_intrigue(ctx, _GRAND_CONSPIRACY) and new_rank >= 4:
                 s.multiply("Grand Conspiracy", c.GrandConspiracyInfluenceMod)
-        if _has_tech_tile(ctx, "Memocorders") and cur <= 2 and new_rank >= 3:
-            s.multiply("Memocorders", c.MemocordersInfluenceMod)
-        # Tessia's SnooperFactions belongs to the Ix profile slice.
-        if _RISE_OF_IX_ENABLED and leader_arch == _TESSIA_ARCH:
-            s.multiply("Tessia Vernius", c.TessiaVerniusInfluenceMod)
+            if _has_tech_tile(ctx, "Memocorders") and cur <= 2 and new_rank >= 3:
+                s.multiply("Memocorders", c.MemocordersInfluenceMod)
+            # ``Leader.SnooperFactions?.Contains(F)``: a track still holding
+            # her Snooper token (``PlayerState.snooper_faction_ids``).
+            if leader_arch == _TESSIA_ARCH and faction in ctx.me.snooper_faction_ids:
+                s.multiply("Tessia Vernius", c.TessiaVerniusInfluenceMod)
 
         # (E) Uprising block.
         if not ctx.uprising:
