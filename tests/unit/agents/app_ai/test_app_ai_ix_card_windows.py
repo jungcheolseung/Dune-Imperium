@@ -177,3 +177,76 @@ def test_bounty_hunter_box_runs_its_ability_at_once() -> None:
     [source] = t.sources
     assert source.label == "bounty_hunter box" and source.stage is not Stage.PROMPT
     assert not t.unmapped
+
+
+@pytest.mark.parametrize("icon", ["solari", "cards", "water"])
+def test_web_of_power_icons_take_their_app_lines(icon: str) -> None:
+    """``WebOfPower{Emperor,SpacingGuild,Fremen}Ability``: Wheels Within
+    Wheels' shape, one app ability per Influence-2 line."""
+
+    action = DomainAction(
+        action_id="resolve_agent_card_effect", actor=0, arguments=(("effect", icon),)
+    )
+    t = _turn("web_of_power", (action,))
+    agent_effects._box_icon(t, action, icon)
+    assert [s.label for s in t.sources] == [f"web_of_power {icon}"]
+    assert not t.unmapped
+
+
+def test_ixian_engineer_acquires_the_tile_its_ability_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.tech import AcquireTechAbility
+
+    row = DomainAction(action_id="acquire_agent_card_tech", actor=0)
+    t = _turn("ixian_engineer", (row,))
+    answers = iter((Answer(2.0, (("artillery",),), ""), Answer(0.0, None, "")))
+    monkeypatch.setattr(
+        AcquireTechAbility, "evaluate", lambda self, p, request: next(answers)
+    )
+    agent_effects._card_tech(t)
+    [source] = t.sources
+    assert source.label == "Card Acquire Tech" and not t.unmapped
+    assert source.evaluate is not None
+    assert source.evaluate() == (2.0, row)
+    assert source.evaluate() == (0.0, None)
+
+
+def test_web_of_power_and_ixian_engineer_reveal_choices() -> None:
+    """Web of Power's mandatory Faction pick (``WebOfPowerRevealAbility``, a
+    ``GainAnyInfluenceAbility``) and Ixian Engineer's self-trash for a VP
+    (``IxianEngineerAbility``, E 100 with no sub-target)."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+        IxianEngineerAbility,
+        WebOfPowerRevealAbility,
+    )
+
+    p = make_profile(first_decision("turn", config=IX))
+    gains = tuple(
+        DomainAction(
+            action_id="gain_reveal_influence",
+            actor=0,
+            arguments=(("faction", f), ("source", "web_of_power")),
+        )
+        for f in ("emperor", "fremen")
+    )
+    trash = DomainAction(action_id="trash_reveal_card", actor=0)
+    run = DecisionRun(p.ctx, p, (*gains, trash), p.rng, Memory())
+    web, engineer = (
+        "gain_chosen_influence",
+        ("may_trash_self_for_victory_point_if_three_tech_tiles"),
+    )
+    assert isinstance(
+        reveal._choice_ability(run, web, "imperium:web_of_power:0"),
+        WebOfPowerRevealAbility,
+    )
+    assert isinstance(
+        reveal._choice_ability(run, engineer, "imperium:ixian_engineer:0"),
+        IxianEngineerAbility,
+    )
+    picked = reveal._realise(run, web, Answer(1.0, (("fremen",),), ""))
+    assert picked is gains[1]
+    assert reveal._realise(run, engineer, Answer(100.0, (), "")) is trash

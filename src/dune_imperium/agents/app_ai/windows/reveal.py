@@ -236,6 +236,10 @@ from dune_imperium.agents.app_ai.abilities.imperium_b import (
     UndercoverAssetAbility,
     UnswervingLoyaltyAbility,
 )
+from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+    IxianEngineerAbility,
+    WebOfPowerRevealAbility,
+)
 from dune_imperium.agents.app_ai.abilities.leaders import (
     DesertScoutsAbility,
     DeviousStrengthAbility,
@@ -361,6 +365,10 @@ _CHOICE_ABILITIES: Mapping[str, type[DeferredAbility]] = {
     "may_trash_self_for_four_influence_if_four_contracts": CHOAMDemandsRevealAbility,
     "persuasion_or_contract": DeliveryLogisticsRevealAbility,
     "gain_chosen_influence_if_two_tech": IxianAmbassadorRevealAbility,
+    # Rise of Ix (abilities/ix_imperium.py): Web of Power's Faction choice and
+    # Ixian Engineer's self-trash for a Victory Point (CHOAM Demands' shape).
+    "gain_chosen_influence": WebOfPowerRevealAbility,
+    "may_trash_self_for_victory_point_if_three_tech_tiles": IxianEngineerAbility,
     # The original game (abilities/original_imperium.py).
     "may_deploy_one_troop": GunThopterRevealAbility,
     "choose_two_persuasion_or_two_strength": BeneGesseritSisterAbility,
@@ -411,7 +419,11 @@ _COMMAND_EFFECTS = frozenset(
 
 #: The choices whose answer is a Faction track (``gain_reveal_influence``).
 _INFLUENCE_GAIN_EFFECTS = frozenset(
-    {"command_gain_chosen_influence", "gain_chosen_influence_if_two_tech"}
+    {
+        "command_gain_chosen_influence",
+        "gain_chosen_influence_if_two_tech",
+        "gain_chosen_influence",
+    }
 )
 
 #: Corrinth City's choice: valued by ``CorrinthCityRevealScoutsAbility`` in
@@ -1136,7 +1148,8 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
                 return contract
         return run.first("gain_reveal_persuasion")
     if effect in _INFLUENCE_GAIN_EFFECTS:
-        # Pointing the Way / Ixian Ambassador (Explicit): the chosen track.
+        # Pointing the Way / Ixian Ambassador / Web of Power (Explicit): the
+        # chosen track.
         gains = run.by_id("gain_reveal_influence")
         chosen_track = _option(answer)
         gain = (
@@ -1192,8 +1205,10 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
     elif effect in (
         "may_trash_self_for_combat_icon",
         "may_trash_self_for_four_influence_if_four_contracts",
+        "may_trash_self_for_victory_point_if_three_tech_tiles",
     ):
-        # Disruption Tactics / CHOAM Demands trash the card itself.
+        # Disruption Tactics / CHOAM Demands / Ixian Engineer trash the card
+        # itself.
         if answer.response is not None:
             action = run.first("trash_reveal_card")
     elif effect == "may_recall_spy_for_three_strength":

@@ -617,6 +617,11 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
     ("jessica_of_arrakis", "cards_second"): "BeneGesseritDrawAbility#2",
     ("smugglers_thopter", "cards"): "SmugglersThopterAbility",
     ("smugglers_thopter", "cards_second"): "SmugglersThopterAbility#2",
+    # Rise of Ix: Web of Power's three Influence-2 lines (Wheels Within
+    # Wheels' shape: Explicit, auto-run, Cost the Faction's 2 Influence).
+    ("web_of_power", "solari"): "WebOfPowerEmperorAbility",
+    ("web_of_power", "cards"): "WebOfPowerSpacingGuildAbility",
+    ("web_of_power", "water"): "WebOfPowerFremenAbility",
 }
 #: Multi-icon boxes whose icon ability is gated by its ``Cost`` (a failing
 #: Cost has no app key: the icon is a chore), as ``_gated_ability_source``.
@@ -1052,6 +1057,7 @@ _IX_ACTION_IDS: frozenset[str] = frozenset(
         "pay_agent_card_spice_for_solari",
         "pay_agent_card_solari_for_spice",
         "resolve_unload_icon",
+        "acquire_agent_card_tech",
         # The Ix Tech tiles' rows (``_flips``, ``_tech_trashes``,
         # ``_tech_acquire_effects``).
         "flip_tech",
@@ -4547,12 +4553,15 @@ def _ix_card_rows(t: _Turn) -> None:
       spice -> 5 Solari" or option 1 "5 Solari -> 4 spice", realised by the
       offered row (an unaffordable option has no row: no key);
     - Imperial Bashar's -OR- box: ``ImperialBasharAgentAbility``
-      (``_imperial_bashar``).
+      (``_imperial_bashar``);
+    - a card's Acquire Tech icon (Ixian Engineer): the card's
+      ``AcquireTechAgentAbility`` (``_card_tech``).
     """
 
     run = t.run
     if t.card_short == "imperial_bashar":
         _imperial_bashar(t)
+    _card_tech(t)
     for row in t.by_id("resolve_unload_icon"):
         # An Unload box owed in the turn: Triggered, no AI hook (taken in
         # order, before the turn's choices).
@@ -4584,6 +4593,34 @@ def _ix_card_rows(t: _Turn) -> None:
 
         uses = tuple(a for a in (to_solari, to_spice) if a is not None)
         _prompt(t, "Local Fence", uses, evaluate_fence, explicit=False)
+
+
+def _card_tech(t: _Turn) -> None:
+    """A card's Acquire Tech icon (``acquire_agent_card_tech``, Ixian
+    Engineer): ``AcquireTechAgentAbility``, the Dreadnought space's
+    ``AcquireTechAbility`` with Agent timing. Its targets are
+    ``GetAcquireTechTileTargets(M, P, 0, false)``; a tile answer opens our
+    Acquire Tech frame, whose window asks the same class
+    (``bloodlines._IX_TECH_SOURCES``). No tile named leaves the icon to lapse
+    (OQ-095 (2))."""
+
+    row = t.run.first("acquire_agent_card_tech")
+    if row is None or t.card is None:
+        return
+    found = _find(t.card, "AcquireTechAgentAbility")
+    if found is None:
+        t.unmapped.append(f"{t.card_short} acquire_tech")
+        return
+    acquiring = found[0]
+    request = Request(
+        infos=(TargetInfo(entities=tuple(t.p.tech_acquire_targets(0, False))),)
+    )
+
+    def acquire() -> tuple[float, DomainAction | None]:
+        answer = acquiring.evaluate(t.p, request)
+        return answer.value, (row if _response_ref(answer) else None)
+
+    _prompt(t, "Card Acquire Tech", (row,), acquire, explicit=_explicit(acquiring, t.p))
 
 
 def _imperial_bashar(t: _Turn) -> None:
