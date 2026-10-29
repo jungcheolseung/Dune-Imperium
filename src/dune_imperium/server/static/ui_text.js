@@ -116,6 +116,22 @@ const UI_TEXT = {
     "ko": "듄 임페리움 게임판",
     "en": "Dune: Imperium board"
   },
+  "board.known_intrigue_top": {
+    "ko": "내가 아는 책략 카드 덱 맨 위: {{card}}",
+    "en": "You know the Intrigue deck's top card: {{card}}"
+  },
+  "board.known_intrigue_bottom": {
+    "ko": "내가 아는 책략 카드 덱 맨 아래: {{cards}}",
+    "en": "You know at the Intrigue deck's bottom: {{cards}}"
+  },
+  "board.known_intrigue_at_bottom": {
+    "ko": "{{card}}(맨 아래)",
+    "en": "{{card}} (the bottom card)"
+  },
+  "board.known_intrigue_above": {
+    "ko": "{{card}}(맨 아래에서 {{depth}}장 위)",
+    "en": "{{card}} ({{depth}} above the bottom card)"
+  },
   "board.map_alt_ix": {
     "ko": "익스 게임판",
     "en": "Ix board"
@@ -1095,6 +1111,46 @@ const UI_TEXT = {
   "panels.masterstroke_secret": {
     "ko": "{{ability}}: 비밀 진영 둘",
     "en": "{{ability}}: two secret Factions"
+  },
+  "panels.dreadnought_supply": {
+    "ko": "공급처의 드레드노트 {{count}}",
+    "en": "Dreadnoughts in supply {{count}}"
+  },
+  "panels.freighter_step": {
+    "ko": "화물선: 운송 트랙 {{step}}칸",
+    "en": "Freighter: Shipping track step {{step}}"
+  },
+  "panels.negotiators": {
+    "ko": "익스 게임판의 협상가 {{count}}",
+    "en": "Negotiators on the Ix board {{count}}"
+  },
+  "panels.snoopers": {
+    "ko": "탐지기 토큰: {{factions}}",
+    "en": "Snooper tokens: {{factions}}"
+  },
+  "panels.set_aside_own": {
+    "ko": "따로 둔 카드: {{card}} (나만 봄)",
+    "en": "Set aside: {{card}} (only you see this)"
+  },
+  "panels.set_aside_hidden": {
+    "ko": "따로 둔 카드 1장",
+    "en": "One card set aside"
+  },
+  "panels.set_aside_returned": {
+    "ko": "따로 둔 카드를 이번 차례에 돌려받음",
+    "en": "The set-aside card came back this turn"
+  },
+  "panels.known_intrigue_held": {
+    "ko": "이 플레이어가 쥔 것으로 아는 책략 카드: {{cards}} (나만 봄)",
+    "en": "Intrigue cards you know this player holds: {{cards}} (only you see this)"
+  },
+  "panels.ix_pending_shipping": {
+    "ko": "아직 받을 운송 보상: {{steps}}칸",
+    "en": "Shipping rewards still to take: step {{steps}}"
+  },
+  "panels.ix_pending_tech": {
+    "ko": "기술 획득: 기술 할인 {{discount}} · {{payment}}로 지불 · 돌려놓을 수 있는 협상가 {{negotiators}}",
+    "en": "Acquire Tech: Tech Discount {{discount}} · paid in {{payment}} · Negotiators you may return {{negotiators}}"
   },
   "panels.masterstroke_own": {
     "ko": "{{ability}}: {{factions}} (나만 봄)",

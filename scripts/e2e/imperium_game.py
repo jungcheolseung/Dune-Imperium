@@ -749,6 +749,98 @@ DREADNOUGHTS_JS = """() => {
 }"""
 
 
+IX_MARKERS_JS = """() => {
+  const view = state.view;
+  const me = view.player;
+  const other = (n) => (me + n) % 4;
+  const hand = view.private.hand;
+  const intrigue = Object.keys(state.catalog.intrigue);
+  view.players[me].has_set_aside_card = true;
+  view.private.set_aside_card_id = hand[0];
+  view.players[other(1)].has_set_aside_card = true;
+  view.players[other(1)].set_aside_returned_turn = true;
+  view.players[other(2)].snooper_faction_ids = ["emperor", "fremen"];
+  view.private.known_intrigue_held = [[other(2), intrigue[0]]];
+  view.private.known_intrigue_top = intrigue[1];
+  view.private.known_intrigue_bottom = [[2, intrigue[3]], [0, intrigue[2]]];
+  view.private.ix_pending = {shipping_rewards: [1, 2], tech_discount: 1,
+    tech_payment: "spice", negotiators_returnable: 2};
+  render();
+  const panel = (seat) => {
+    const card = document.querySelector(`article.seat[data-seat="${seat}"]`);
+    const detail = card && card.querySelector('.seat-detail');
+    return detail ? detail.innerText : '';
+  };
+  const name = (id) => nameOf(id);
+  return {
+    me, others: [other(1), other(2), other(3)],
+    panels: [0, 1, 2, 3].map(panel),
+    setAside: name(hand[0]), held: name(intrigue[0]), top: name(intrigue[1]),
+    bottom: [name(intrigue[2]), name(intrigue[3])],
+    known: [...document.querySelectorAll('.known-intrigue')].map((n) => n.innerText),
+    words: {
+      setAside: t('panels.set_aside_hidden'), returned: t('panels.set_aside_returned'),
+      supply: t('panels.dreadnought_supply', {count: 2}).replace(' 2', ''),
+      snoopers: t('panels.snoopers', {factions: ''}).replace(/[: ]+$/, ''),
+      pending: t('panels.ix_pending_shipping', {steps: '1, 2'}),
+    },
+  };
+}"""
+
+
+def check_ix_markers(page) -> None:
+    print("[7] Rise of Ix's seat markers and what only the observer knows")
+    for language in ("ko", "en"):
+        page.evaluate(f"setLanguage('{language}')")
+        settled(page)
+        shown = page.evaluate(IX_MARKERS_JS)
+        me, (first, second, third) = shown["me"], shown["others"]
+        panels = shown["panels"]
+        check.ok(
+            shown["setAside"] in panels[me]
+            and all(shown["setAside"] not in panels[seat] for seat in shown["others"]),
+            f"{language}: the set-aside card is named on its owner's panel only",
+            (shown["setAside"], panels[me][:300]),
+        )
+        check.ok(
+            shown["words"]["setAside"] in panels[first]
+            and shown["words"]["returned"] in panels[first],
+            f"{language}: another seat's set-aside card is only said to exist",
+            panels[first][:300],
+        )
+        check.ok(
+            shown["held"] in panels[second]
+            and all(shown["held"] not in panels[seat] for seat in (me, first, third)),
+            f"{language}: a known held Intrigue card on its holder's panel only",
+            panels[second][:300],
+        )
+        known = " ".join(shown["known"])
+        check.ok(
+            shown["top"] in known and all(card in known for card in shown["bottom"])
+            and known.index(shown["bottom"][0]) < known.index(shown["bottom"][1]),
+            f"{language}: the known top and bottom on the Intrigue deck, bottom first",
+            shown["known"],
+        )
+        pending = shown["words"]["pending"]
+        check.ok(
+            pending in panels[me]
+            and all(pending not in panels[seat] for seat in shown["others"]),
+            f"{language}: the observer's open Ix decision on its own panel only",
+            panels[me][:400],
+        )
+        check.ok(
+            all(shown["words"]["supply"] in text for text in panels)
+            and shown["words"]["snoopers"] in panels[second],
+            f"{language}: dreadnoughts in supply and Snooper tokens shown",
+            shown["words"],
+        )
+        check.ok(
+            not any("{" in text for text in panels + shown["known"]),
+            f"{language}: no placeholder left",
+        )
+    page.evaluate("setLanguage('ko')")
+
+
 def main() -> None:
     with server() as (base, log_path), chrome() as browser:
         _, page, rec = open_context(browser, "imperium-game")
@@ -766,6 +858,7 @@ def main() -> None:
         check_markers(page)
         check_masterstroke_pick(page)
         check_ix_table(page)
+        check_ix_markers(page)
         errors = [
             line
             for line in log_path.read_text().splitlines()

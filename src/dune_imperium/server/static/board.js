@@ -2191,6 +2191,30 @@ function renderIntriguePiles(market, view) {
   deck.appendChild(tNode("board.intrigue_deck_count", deckCount));
   prependDeckPile(deck, "intrigue", deckCount.count, t("board.intrigue_deck_count", deckCount));
   box.appendChild(deck);
+  /* The Intrigue deck's cards this seat alone knows (Rise of Ix: Hundro
+     Moritani's Intelligence and Imperium Ceremony on top, Court Intrigue's
+     and Sonic Snoopers' at the bottom), read only from the view's private
+     block, which only the observing seat's view carries
+     (docs/rules/rise-of-ix.md 13). */
+  const own = view.private || {};
+  if (own.known_intrigue_top) {
+    const top = document.createElement("div");
+    top.className = "muted known-intrigue";
+    top.dataset.known = "top";
+    top.appendChild(tNode("board.known_intrigue_top", { card: nameOf(own.known_intrigue_top) }));
+    box.appendChild(top);
+  }
+  const bottom = [...(own.known_intrigue_bottom || [])].sort((a, b) => a[0] - b[0]);
+  if (bottom.length) {
+    const line = document.createElement("div");
+    line.className = "muted known-intrigue";
+    line.dataset.known = "bottom";
+    const cards = bottom.map(([depth, id]) => depth
+      ? t("board.known_intrigue_above", { card: nameOf(id), depth })
+      : t("board.known_intrigue_at_bottom", { card: nameOf(id) }));
+    line.appendChild(tNode("board.known_intrigue_bottom", { cards: cards.join(", ") }));
+    box.appendChild(line);
+  }
   if (!discard.length) {
     market.appendChild(box);
     return;
