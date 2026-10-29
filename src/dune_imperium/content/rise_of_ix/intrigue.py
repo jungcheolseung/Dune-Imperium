@@ -29,6 +29,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Freighter,
     GainCombatStrength,
     GainInfluence,
+    GainInfluenceWhereAgent,
     GainResources,
     HasHighCouncil,
     LoseInfluence,
@@ -168,6 +169,19 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("quid_pro_quo", "Quid Pro Quo"),
         copies=1,
+        # [2 spice] -> "Gain one Influence with each Faction that has at least
+        # one of your Agents on its board spaces." [Steam app text and screen
+        # pieces]: one Plot cost line. Without an Agent on a Faction's space
+        # the cost cannot be paid (rise-of-ix.md 9.3, Message from designer),
+        # and a Faction that can still rise keeps the reward live (OQ-071).
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(spice=2),),
+                    rewards=(GainInfluenceWhereAgent(),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("second_wave", "Second Wave"),

@@ -172,7 +172,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # changed, and two personal-table columns are new (its Reveal line's
 # Agent-on-space condition and the Emperor icon), read by its row alone; no
 # older scale moved (compared against 87581ad9, 2026-10-29).
-_GOLDEN_DIGEST = "73fceff5bc1849ebac0289b78715ad3e084c9cc814d3bae84761297b11cd39b6"
+# Then Quid Pro Quo got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (its each-Faction-with-an-Agent Influence
+# gain), read by its row alone; no older scale moved (compared against
+# 331ada67, 2026-10-29).
+_GOLDEN_DIGEST = "65401c6dfee9a21e601edeb9bba25ba15fbd0c72f1f6aa4f9c2e6c4315e8bedb"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

@@ -262,6 +262,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "secret_forces",
     "strongarm",
     "ixian_probe",
+    "quid_pro_quo",
 }
 _IX_IMPERIUM_TRANSCRIBED = {
     "imperial_shock_trooper",

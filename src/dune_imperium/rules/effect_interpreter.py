@@ -46,6 +46,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Freighter,
     GainCombatStrength,
     GainInfluence,
+    GainInfluenceWhereAgent,
     GainResources,
     GainSolariPerUnitType,
     GainVictoryPoints,
@@ -899,6 +900,14 @@ def reward_can_change_something(
         case GainInfluence() if not reward.requires_choice:
             faction = fixed_influence_faction(state, player, reward)
             return faction is not None and influence_can_rise(owner, faction)
+        case GainInfluenceWhereAgent():
+            # Quid Pro Quo's 2 spice buy something only while a Faction with
+            # one of the player's Agents can still rise (rise-of-ix.md 9.3;
+            # OQ-060, OQ-071).
+            return any(
+                influence_can_rise(owner, faction)
+                for faction in factions_with_agents(state, player)
+            )
         case GainInfluence():
             # A line that pays a LoseInfluence first (Change Allegiances,
             # Tenuous Bond) leaves the Faction it lowers free to rise again,
@@ -1152,6 +1161,24 @@ def fixed_influence_faction(
         )
     assert gain.factions is not None
     return gain.factions[0]
+
+
+def factions_with_agents(state: GameState, player: int) -> tuple[Faction, ...]:
+    """The Factions that have at least one of ``player``'s Agents on their
+    board spaces, in Faction order, each once.
+
+    "Gain one Influence with each Faction that has at least one of your
+    Agents on its board spaces." [Quid Pro Quo, Steam app text]: an Agent
+    sent earlier this round stays on its space until the Recall [DI p. 13].
+    """
+
+    visited = set(state.players[player].agent_locations)
+    held = {
+        space.faction
+        for space in content_for(state.config).board_spaces
+        if space.space_id in visited and space.faction is not None
+    }
+    return tuple(faction for faction in Faction if faction in held)
 
 
 def influence_gain_candidates(
@@ -1419,6 +1446,7 @@ def apply_rewards(
     intrigue_draws = 0
     contracts = 0
     fixed_influence: list[GainInfluence] = []
+    agent_influence = False
     # Immortality: Bene Tleilax board moves resolve on the state after the
     # resource gains (a research advance may open a direction choice).
     specimens = 0
@@ -1485,6 +1513,8 @@ def apply_rewards(
                 fixed_influence.append(reward)
             case GainInfluence():
                 raise ValueError("Influence choices must be resolved as choice slots")
+            case GainInfluenceWhereAgent():
+                agent_influence = True
             case SummonSandworm(count=count, requires_maker_hooks=needs_hooks) if (
                 replaces_sandworms(owner)
                 and sandworm_block(state, player, needs_hooks=needs_hooks) is None
@@ -1646,6 +1676,19 @@ def apply_rewards(
         )
         next_state = gained.state
         events.extend(gained.events)
+    if agent_influence:
+        # Quid Pro Quo: one Influence with each Faction where the player has
+        # an Agent, in Faction order (``factions_with_agents``).
+        for faction in factions_with_agents(next_state, player):
+            gained = gain_faction_influence(
+                next_state,
+                player,
+                faction,
+                1,
+                event_prefix=f"{source}:agent_influence:{faction.value}",
+            )
+            next_state = gained.state
+            events.extend(gained.events)
     if intrigue_draws:
         # Resolved before the Intrigue card itself is discarded, so the deck
         # reshuffle (if any) never includes the card being played.

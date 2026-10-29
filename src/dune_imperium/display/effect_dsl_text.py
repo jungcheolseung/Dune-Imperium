@@ -65,6 +65,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
+    GainInfluenceWhereAgent,
     GainInfluenceWhereAtMost,
     GainLowestInfluence,
     GainResources,
@@ -810,6 +811,13 @@ def reward_text(reward: Reward) -> str:
             return (
                 "Gain 1 Influence with each Faction where you have "
                 f"{maximum} or less Influence"
+            )
+        case GainInfluenceWhereAgent():
+            # "Gain one Influence with each Faction that has at least one of
+            # your Agents on its board spaces." [Quid Pro Quo, Steam app text]
+            return (
+                "Gain 1 Influence with each Faction that has at least one of "
+                "your Agents on its board spaces"
             )
         case RecruitUndeployableTroops(count=count):
             # Quotes ``display/leaders.py``'s Piter De Vries Signet line.

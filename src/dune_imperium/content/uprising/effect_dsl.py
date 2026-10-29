@@ -1751,6 +1751,13 @@ class GainInfluenceWhereAtMost:
 
 
 @dataclass(frozen=True, slots=True)
+class GainInfluenceWhereAgent:
+    """Gain one Influence with each Faction that has at least one of the
+    player's Agents on its board spaces [Quid Pro Quo card]: each such
+    Faction once, however many of the player's Agents are on its spaces."""
+
+
+@dataclass(frozen=True, slots=True)
 class UseSignetAbility:
     """The Signet Ring icon off the Signet Ring card: "you use the Signet
     Ring ability (with the corresponding icon) on your Leader" [Main p. 20]
@@ -2009,6 +2016,7 @@ type Reward = (
     | TakeMentat
     | UseSignetAbility
     | GainInfluenceWhereAtMost
+    | GainInfluenceWhereAgent
     | RecruitUndeployableTroops
     | TroopToMemory
     | DrawTwistedIntrigueCards
