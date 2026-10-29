@@ -4047,8 +4047,43 @@ def reveal_pending_gains(
     return tuple(entries)
 
 
+def _merged_resource_bundles(entries: tuple[RevealGain, ...]) -> tuple[RevealGain, ...]:
+    """``entries`` with the resource bundles of one source summed into its
+    first: one action per waiting gain's kind and entity (stage B3e-1,
+    decision 3). Rise of Ix's Guild Accord is the one card printing two
+    resource lines ("[1 water]" and "[Spacing Guild] Alliance: [3 spice]");
+    every other source waits with one bundle at a time, unchanged."""
+
+    merged: list[RevealGain] = []
+    for kind, payload, source in entries:
+        index = next(
+            (
+                position
+                for position, (other_kind, _, other_source) in enumerate(merged)
+                if kind == other_kind == "resources" and source == other_source
+            ),
+            None,
+        )
+        if index is None:
+            merged.append((kind, payload, source))
+            continue
+        summed = (
+            a + b
+            for a, b in zip(
+                _resource_payload(merged[index][1]),
+                _resource_payload(payload),
+                strict=True,
+            )
+        )
+        merged[index] = (kind, "/".join(str(amount) for amount in summed), source)
+    return tuple(merged)
+
+
 def _encode_gains(entries: tuple[RevealGain, ...]) -> str:
-    return ",".join(f"{kind}|{payload}|{source}" for kind, payload, source in entries)
+    return ",".join(
+        f"{kind}|{payload}|{source}"
+        for kind, payload, source in _merged_resource_bundles(entries)
+    )
 
 
 def resource_gain_entry(

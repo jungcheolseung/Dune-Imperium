@@ -308,6 +308,15 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "choam_delegate": _reveal(_line(GainResources(solari=3))),
         # Esmar Tuek (Rise of Ix): "[Unload] [2 spice] [2 Solari]", likewise.
         "esmar_tuek_card": _reveal(_line(GainResources(solari=2, spice=2))),
+        # Guild Accord (Rise of Ix): "[Unload] [1 water]; [Spacing Guild]
+        # Alliance: [3 spice]" [Steam app screen pieces], two lines, likewise.
+        "guild_accord": _reveal(
+            _line(GainResources(water=1)),
+            _line(
+                GainResources(spice=3),
+                condition=HasAlliance(Faction.SPACING_GUILD),
+            ),
+        ),
         # Quash Rebellion.
         "quash_rebellion": _reveal(
             _line(RevealPersuasion(2), condition=CommandersInConflictAtLeast(1))

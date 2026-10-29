@@ -469,6 +469,12 @@ def personal_card_text(entry: PersonalCardDefinition) -> list[str]:
             lines.append("Ignores Influence requirements")
         if entry.allows_recruited_troop_deployment:
             lines.append("Recruited troops may be deployed to the Conflict")
+        if entry.heighliner_spice_discount:
+            # Rise of Ix's Guild Accord, a placement rule in its Agent box.
+            lines.append(
+                f"Agent: It costs {entry.heighliner_spice_discount} spice less "
+                "to send an Agent to the Heighliner board space with this card"
+            )
 
     reveal_line = _reveal_line(entry)
     if reveal_line is not None:
@@ -548,6 +554,12 @@ def personal_card_text_ko(entry: PersonalCardDefinition) -> list[str]:
             lines.append("영향력 요구 조건 무시")
         if entry.allows_recruited_troop_deployment:
             lines.append("소집한 {troop}을 {conflict}에 배치 가능")
+        if entry.heighliner_spice_discount:
+            # Guild Accord; the Swordmaster discount's words (leaders_ko).
+            lines.append(
+                "에이전트 칸: 이 카드로 하이라이너 게임판 장소에 {agent}를 보내는 "
+                f"비용이 {{spice:{entry.heighliner_spice_discount}}} 감소"
+            )
 
     reveal_line = _reveal_line_ko(entry)
     if reveal_line is not None:

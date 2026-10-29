@@ -17,9 +17,9 @@ Rights, Sayyadina, Shai-Hulud, Truthsayer, Imperial Shock Trooper, Local
 Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
 Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
 Way, Satellite Ban, Spice Trader, Imperial Bashar, Bounty Hunter, Web of
-Power, Ixian Engineer and Esmar Tuek so far), while the observation lists
-every identity from v39. Setup takes Rise of Ix on the original game since
-stage P4c-5.
+Power, Ixian Engineer, Esmar Tuek and Guild Accord so far), while the
+observation lists every identity from v39. Setup takes Rise of Ix on the
+original game since stage P4c-5.
 from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
@@ -197,6 +197,20 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=6,
         infiltration_icons=(AgentIcon.SPACING_GUILD,),
+        # App table: Spacing Guild, the Spacing Guild icon (also its
+        # Infiltration icon), Reveal 1 water; no Persuasion or swords. Agent:
+        # "It costs [2 spice] less to send an Agent to the Heighliner board
+        # space with this card." [Steam app text] -- a placement rule
+        # (``agent_turn``), no box to resolve. Reveal "[Unload] [1 water];
+        # [Spacing Guild] Alliance: [3 spice]" [Steam app screen pieces]: two
+        # lines, the second judged on the Spacing Guild Alliance; gained also
+        # when the card is discarded or trashed [Rise of Ix p. 7]
+        # (``rules.unload``).
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD,),
+        heighliner_spice_discount=2,
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("guild_chief_administrator", "Guild Chief Administrator"),

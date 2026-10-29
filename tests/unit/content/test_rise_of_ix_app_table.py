@@ -280,6 +280,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "embedded_agent",
     "esmar_tuek_card",
     "full_scale_assault",
+    "guild_accord",
     "guild_chief_administrator",
     "imperial_bashar",
     "imperial_shock_trooper",

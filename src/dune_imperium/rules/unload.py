@@ -35,18 +35,29 @@ window once the action's handler is done (``settle_unloads``), because the
 callers write their own frame back after the transition and would drop a
 row or a window put there before.
 
-Only Reveal boxes of plain resource gains are wired (Water Peddler, CHOAM
-Delegate). A box with a condition, a choice, a cost, Persuasion or swords
-belongs to its card's brief (Esmar Tuek, Freighter Fleet, Guild Accord, In The
-Shadows, Ix-Guild Compact, Treachery -- whose Combat-reward case is OQ-127 --
-and the promo Boundless Ambition): ``unload_icons`` refuses it.
+Wired so far: Reveal boxes of plain resource gains (Water Peddler, CHOAM
+Delegate, Esmar Tuek), also on a line with a condition the owner's seat alone
+settles (Guild Accord's "[Spacing Guild] Alliance: [3 spice]"). A conditioned
+icon is gained when its condition holds as the card is discarded or trashed:
+the Unload happens then ("trash되는 카드의 Unload는 trash되는 중에 일어난다"),
+and the rows and the window only let the owner order what it gained. A box
+with a choice, a cost, Persuasion or swords belongs to its card's brief
+(Freighter Fleet, In The Shadows, Ix-Guild Compact, Treachery -- whose
+Combat-reward case is OQ-127 -- and the promo Boundless Ambition):
+``unload_icons`` refuses it.
 """
 
 from copy import replace
+from dataclasses import dataclass
 from functools import cache
 from typing import Final
 
-from dune_imperium.content.uprising.effect_dsl import GainResources
+from dune_imperium.content.uprising.effect_dsl import (
+    CommandReached,
+    Condition,
+    FactionBond,
+    GainResources,
+)
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS_BY_ID,
     imperium_card_for_instance,
@@ -58,6 +69,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.conditions import owner_condition_holds
 from dune_imperium.rules.frames import (
     FrameKind,
     context_str,
@@ -81,9 +93,22 @@ _FRAME: Final = "Unload frame"
 type UnloadIcon = tuple[str, int]
 """One icon of an Unload box: the resource it gains and how many."""
 
+_UNMET_KEY: Final = "unmet"
+"""The ``card_unloaded`` payload's icons whose condition failed as the card
+was discarded or trashed (comma-joined, only when there are any)."""
+
+
+@dataclass(frozen=True, slots=True)
+class _BoxIcon:
+    """One icon of an Unload box and the condition of its printed line."""
+
+    name: str
+    amount: int
+    condition: Condition | None
+
 
 @cache
-def _box_icons(definition_id: str) -> tuple[UnloadIcon, ...]:
+def _box(definition_id: str) -> tuple[_BoxIcon, ...]:
     entry = IMPERIUM_CARDS_BY_ID[definition_id]
     if entry.reveal_persuasion or entry.reveal_strength or entry.reveal_choice_effects:
         raise NotImplementedError(
@@ -92,11 +117,17 @@ def _box_icons(definition_id: str) -> tuple[UnloadIcon, ...]:
     ability = REVEAL_GAIN_ABILITIES.get(definition_id)
     if ability is None:
         raise ValueError(f"{definition_id} is marked Unload but has no Reveal box")
-    icons: list[UnloadIcon] = []
+    icons: list[_BoxIcon] = []
     for line in ability.sections:
-        if line.condition is not None or line.costs:
+        if line.costs:
             raise NotImplementedError(
-                f"{definition_id}: an Unload box line with a condition or a cost"
+                f"{definition_id}: an Unload box line with a cost"
+            )
+        if isinstance(line.condition, FactionBond | CommandReached):
+            # A Bond reads the cards in play and Command the Reveal's
+            # Persuasion: neither is the owner's seat alone.
+            raise NotImplementedError(
+                f"{definition_id}: an Unload box condition {line.condition!r}"
             )
         for reward in line.rewards:
             if not isinstance(reward, GainResources):
@@ -104,23 +135,48 @@ def _box_icons(definition_id: str) -> tuple[UnloadIcon, ...]:
                     f"{definition_id}: an Unload box icon {reward!r} is not wired"
                 )
             icons.extend(
-                (name, getattr(reward, name))
+                _BoxIcon(name, getattr(reward, name), line.condition)
                 for name in _RESOURCES
                 if getattr(reward, name)
             )
+    names = [icon.name for icon in icons]
+    if len(set(names)) != len(names):
+        raise NotImplementedError(f"{definition_id}: an Unload box icon twice")
     return tuple(icons)
 
 
-def unload_icons(card_id: str) -> tuple[UnloadIcon, ...]:
-    """The icons the personal card ``card_id`` gives when discarded or
-    trashed: its Reveal box's when it is marked Unload, else none."""
-
+def _unload_box(card_id: str) -> tuple[_BoxIcon, ...]:
     if not card_id.startswith("imperium:"):
         return ()
     entry = imperium_card_for_instance(card_id)
     if not entry.unload:
         return ()
-    return _box_icons(entry.card.card_id)
+    return _box(entry.card.card_id)
+
+
+def unload_icons(card_id: str) -> tuple[UnloadIcon, ...]:
+    """The icons the personal card ``card_id`` may give when discarded or
+    trashed: its Reveal box's when it is marked Unload, else none (each
+    conditioned icon too; the catalog names a row for every one)."""
+
+    return tuple((icon.name, icon.amount) for icon in _unload_box(card_id))
+
+
+def _unmet(state: GameState, player: int, card_id: str) -> tuple[str, ...]:
+    """The icons of ``card_id``'s box whose condition fails for ``player``
+    now, as the card is discarded or trashed."""
+
+    owner = state.players[player]
+    unmet: list[str] = []
+    for icon in _unload_box(card_id):
+        if icon.condition is None:
+            continue
+        held = owner_condition_holds(owner, icon.condition)
+        if held is None:
+            raise TypeError(f"{icon.condition!r} is no Unload box condition")
+        if not held:
+            unmet.append(icon.name)
+    return tuple(unmet)
 
 
 def _gain(state: GameState, player: int, name: str, amount: int) -> GameState:
@@ -151,6 +207,7 @@ def trigger_unload(
     if not icons:
         return RuleResult(state=state)
     unload_source = f"{source}:unload:{card_id}"
+    unmet = _unmet(state, player, card_id)
     events = [
         GameEvent(
             event_id=unload_source,
@@ -159,11 +216,14 @@ def trigger_unload(
                 ("card_id", card_id),
                 ("pending", not at_once),
                 ("player", player),
+                *(((_UNMET_KEY, ",".join(unmet)),) if unmet else ()),
             ),
         )
     ]
     if at_once:
         for name, amount in icons:
+            if name in unmet:
+                continue
             state = _gain(state, player, name, amount)
             events.append(
                 resources_gained_event(
@@ -177,11 +237,21 @@ def _value(card_id: str, name: str) -> str:
     return f"{card_id}|{name}"
 
 
-def _owe(state: GameState, player: int, card_id: str, source: str) -> GameState:
-    """The icons of an Unload an effect triggered: rows of the owner's own
-    turn, else a window of their own."""
+def _owe(
+    state: GameState,
+    player: int,
+    card_id: str,
+    source: str,
+    unmet: tuple[str, ...] = (),
+) -> GameState:
+    """The icons of an Unload an effect triggered, but those ``unmet``:
+    rows of the owner's own turn, else a window of their own."""
 
-    values = tuple(_value(card_id, name) for name, _ in unload_icons(card_id))
+    values = tuple(
+        _value(card_id, name) for name, _ in unload_icons(card_id) if name not in unmet
+    )
+    if not values:
+        return state
     if turn_rows.waits_on_turn(state, player):
         for value in values:
             queued = turn_rows.queue(
@@ -219,8 +289,16 @@ def settle_unloads(result: RuleResult) -> RuleResult:
     for event in reversed(owed):
         payload = dict(event.payload)
         player, card_id = payload["player"], payload["card_id"]
+        unmet = payload.get(_UNMET_KEY, "")
         assert isinstance(player, int) and isinstance(card_id, str)
-        state = _owe(state, player, card_id, event.event_id)
+        assert isinstance(unmet, str)
+        state = _owe(
+            state,
+            player,
+            card_id,
+            event.event_id,
+            tuple(unmet.split(",") if unmet else ()),
+        )
     return RuleResult(state=state, events=result.events)
 
 

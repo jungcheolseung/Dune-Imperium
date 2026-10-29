@@ -20,7 +20,7 @@ from dune_imperium.adapters import ActionCodec
 from dune_imperium.agents.agent_turn_steps import steps_after
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.effect_dsl import GainResources
+from dune_imperium.content.uprising.effect_dsl import GainResources, HasAlliance
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
 from dune_imperium.content.uprising.reveal_abilities import REVEAL_GAIN_ABILITIES
 from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
@@ -38,6 +38,11 @@ from dune_imperium.core.state import GamePhase
 from dune_imperium.rules import UprisingRulesEngine, unload
 from dune_imperium.rules.effect_steps import first_step
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.pauses import (
+    ROUND_START,
+    pause_is_pending,
+    pending_pause_point,
+)
 from dune_imperium.simulation.invariants import check_observation_privacy
 
 IX = RulesetConfig(
@@ -169,13 +174,15 @@ def _kinds(events: tuple[GameEvent, ...]) -> list[str]:
 
 
 def _clean_up_round(state: GameState) -> tuple[GameState, list[GameEvent]]:
-    """Play the round out at random; return the next round's state and every
-    ``card_unloaded`` event on the way."""
+    """Play the round out at random up to the next Round Start's pause, after
+    Clean Up and before its reshuffles (``rules.pauses``); return that state
+    and every ``card_unloaded`` event on the way."""
 
     chance = ChanceResolver(seed=3)
     rng = random.Random(3)
     unloaded: list[GameEvent] = []
-    while state.round_number == 1 and state.phase is not GamePhase.FINISHED:
+    while not (pause_is_pending(state) and pending_pause_point(state) == ROUND_START):
+        assert state.phase is not GamePhase.FINISHED
         decision = ENGINE.current_decision(state)
         if isinstance(decision, ChanceDecision):
             result = ENGINE.apply(state, chance.resolve(decision))
@@ -405,6 +412,215 @@ def test_clean_up_moves_esmar_tuek_without_unloading_it() -> None:
     """ "Clean Up에서 in play 카드를 discard pile로 옮기는 것은 discard가 아니다"
     (rise-of-ix.md 7, [FAQ p. 2]; OQ-120)."""
     state, unloaded = _clean_up_round(_give(_start(), 0, in_play=(ESMAR,)))
-    assert state.round_number == 2
+    assert state.phase is GamePhase.ROUND_START
     assert ESMAR in state.players[0].discard_pile
+    assert unloaded == []
+
+
+# --- Guild Accord -------------------------------------------------------------
+
+GUILD_ACCORD = "imperium:guild_accord:0"
+SEEK_ALLIES = "player:0:starter:seek_allies:0"
+HEIGHLINER = "imperium_heighliner"
+
+
+def _guild_alliance(state: GameState, seat: int) -> GameState:
+    """``seat`` holds the Spacing Guild Alliance (4 Influence, the token)."""
+
+    owner = state.players[seat]
+    return _seat(
+        state,
+        seat,
+        influence=replace(owner.influence, spacing_guild=4),
+        alliance_faction_ids=("spacing_guild",),
+    )
+
+
+def _spice(state: GameState, seat: int, spice: int) -> GameState:
+    owner = state.players[seat]
+    return _seat(state, seat, resources=replace(owner.resources, spice=spice))
+
+
+def _heighliner_rows(state: GameState, card_id: str) -> bool:
+    chosen = _do(state, "choose_agent_card", card_id=card_id).state
+    return (("space_id", HEIGHLINER),) in _arguments(chosen, "place_agent")
+
+
+def test_guild_accord_play_data_matches_the_app() -> None:
+    """App table: cost 6, 1 copy, Spacing Guild, the Spacing Guild icon (its
+    Infiltration icon too), Reveal 1 water. Agent: "It costs [2 spice] less to
+    send an Agent to the Heighliner board space with this card." Reveal
+    "[Unload] [1 water]; [Spacing Guild] Alliance: [3 spice]"."""
+    entry = IMPERIUM_CARDS_BY_ID["guild_accord"]
+    assert entry.play_data_complete and entry.unload
+    assert (entry.copies, entry.acquisition_cost) == (1, 6)
+    assert entry.factions == (Faction.SPACING_GUILD,)
+    assert entry.agent_icons == entry.infiltration_icons == (AgentIcon.SPACING_GUILD,)
+    assert entry.agent_effect is None and entry.heighliner_spice_discount == 2
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    water, spice = REVEAL_GAIN_ABILITIES["guild_accord"].sections
+    assert water.rewards == (GainResources(water=1),) and water.condition is None
+    assert spice.rewards == (GainResources(spice=3),)
+    assert spice.condition == HasAlliance(Faction.SPACING_GUILD)
+    assert unload.unload_icons(GUILD_ACCORD) == (("water", 1), ("spice", 3))
+    for config in (IX, replace(IX, rise_of_ix=False), RulesetConfig()):
+        deck = content_for(config).imperium_deck_instance_ids
+        assert (GUILD_ACCORD in deck) == config.rise_of_ix
+
+
+def test_guild_accord_sends_an_agent_to_the_heighliner_for_two_spice_less() -> None:
+    """ "It costs [2 spice] less to send an Agent to the Heighliner board space
+    with this card": the Heighliner's 6 spice [DI p. 17] are 4 with Guild
+    Accord, and only with it; no "may", so the cut always applies."""
+    state = _spice(_give(_start(), 0, hand=(GUILD_ACCORD, SEEK_ALLIES)), 0, 4)
+    assert _heighliner_rows(state, GUILD_ACCORD)
+    assert not _heighliner_rows(state, SEEK_ALLIES)
+    assert _heighliner_rows(_spice(state, 0, 6), SEEK_ALLIES)
+    assert not _heighliner_rows(_spice(state, 0, 3), GUILD_ACCORD)
+    state = _do(state, "choose_agent_card", card_id=GUILD_ACCORD).state
+    placed = _do(state, "place_agent", space_id=HEIGHLINER).state
+    assert placed.players[0].resources.spice == 0
+    assert HEIGHLINER in placed.players[0].agent_locations
+
+
+def test_guild_accord_infiltrates_the_heighliner() -> None:
+    """ "Agent의 옆얼굴이 든 Agent 아이콘은 그 아이콘의 칸에서 상대 Agent ...를
+    무시하고 보낼 수 있게 한다" [Rise of Ix p. 7]; Guild Accord's Spacing Guild
+    icon is one (app ``InfiltrationIconList``)."""
+    state = _spice(_give(_start(), 0, hand=(GUILD_ACCORD,)), 0, 4)
+    other = state.players[1]
+    state = _seat(
+        state,
+        1,
+        agent_locations=(HEIGHLINER,),
+        agents_available=other.agents_available - 1,
+    )
+    assert _heighliner_rows(state, GUILD_ACCORD)
+
+
+def test_guild_accord_revealed_gives_its_alliance_line_only_with_the_alliance() -> None:
+    """ "Reveal turn에 공개할 때(보통처럼, Unload 표시는 무시)" (rise-of-ix.md 7):
+    the water, and the 3 spice with the Spacing Guild Alliance -- one step,
+    as every card's resources wait as one gain (stage B3e-1, decision 3)."""
+    for alliance in (False, True):
+        state = _give(_start(), 0, hand=(GUILD_ACCORD,))
+        if alliance:
+            state = _guild_alliance(state, 0)
+        revealed = _do(state, "reveal_turn")
+        assert "card_unloaded" not in _kinds(revealed.events)
+        state = revealed.state
+        before = state.players[0].resources
+        (gain,) = (
+            row
+            for row in ENGINE.whole_actions(state, 0)
+            if row.action_id == "gain_reveal_resources"
+        )
+        assert dict(gain.arguments)["spice"] == (3 if alliance else 0)
+        state = _do(state, "gain_reveal_resources").state
+        assert not _offered(state, "gain_reveal_resources")
+        after = state.players[0].resources
+        assert after.water == before.water + 1
+        assert after.spice == before.spice + (3 if alliance else 0)
+        assert not _offered(state, UNLOAD_ROW)
+
+
+def test_guild_accord_discarded_as_a_cost_pays_its_box_before_the_draw() -> None:
+    """Truthsayer's "[Discard] -> [draw 1 card]": "Unload를 끝까지 해결한 뒤
+    오른쪽으로 간다" (designer ruling, rise-of-ix.md 7); the Alliance line is
+    judged as the card is discarded."""
+    for alliance in (False, True):
+        state = _start()
+        kept = state.players[0].hand[0]
+        state = _give(state, 0, hand=(TRUTHSAYER, GUILD_ACCORD, kept))
+        if alliance:
+            state = _guild_alliance(state, 0)
+        state = _do(state, "choose_agent_card", card_id=TRUTHSAYER).state
+        state = _do(state, "place_agent", space_id="wealth").state
+        before = state.players[0].resources
+        result = _do(state, "discard_agent_card", card_id=GUILD_ACCORD)
+        after = result.state.players[0].resources
+        assert after.water == before.water + 1
+        assert after.spice == before.spice + (3 if alliance else 0)
+        kinds = _kinds(result.events)
+        assert kinds.index("card_unloaded") < kinds.index("agent_card_effect_resolved")
+        assert not _offered(result.state, UNLOAD_ROW)
+
+
+def test_guild_accord_trashed_in_its_owners_turn_waits_as_rows() -> None:
+    """ "trash할 때 얻는다" [Rise of Ix p. 7]; Jamis: "Trash a card". The
+    Alliance line is gained only if the Alliance is held as the card is
+    trashed; each gained icon waits as a row of the turn."""
+    for alliance in (False, True):
+        state = _give(_start(), 0, hand=(JAMIS, GUILD_ACCORD))
+        if alliance:
+            state = _guild_alliance(state, 0)
+        state = _do(state, "choose_agent_card", card_id=JAMIS).state
+        state = _do(state, "place_agent", space_id="stillsuits").state
+        trashed = _do(state, "trash_agent_card", card_id=GUILD_ACCORD)
+        assert GUILD_ACCORD in trashed.state.players[0].trashed
+        expected = {(("card_id", GUILD_ACCORD), ("effect", "water"))}
+        if alliance:
+            expected.add((("card_id", GUILD_ACCORD), ("effect", "spice")))
+        assert _arguments(trashed.state, UNLOAD_ROW) == expected
+        state = trashed.state
+        before = state.players[0].resources
+        state = _do(state, UNLOAD_ROW, card_id=GUILD_ACCORD, effect="water").state
+        if alliance:
+            state = _do(state, UNLOAD_ROW, card_id=GUILD_ACCORD, effect="spice").state
+        after = state.players[0].resources
+        assert after.water == before.water + 1
+        assert after.spice == before.spice + (3 if alliance else 0)
+        assert not _offered(state, UNLOAD_ROW)
+
+
+def test_guild_accord_discarded_by_an_opponent_unloads_in_its_owners_window() -> None:
+    """ "남의 효과로 버려져도 된다(룰북 예: 상대의 Reverend Mother Mohiam)"
+    (rise-of-ix.md 7): the owner's window holds the water, and the 3 spice
+    only with its own Spacing Guild Alliance."""
+    for alliance in (False, True):
+        state = _start()
+        other = state.players[1].hand[0]
+        if alliance:
+            state = _guild_alliance(state, 1)
+        state = _mohiam_asks_seat_one(state, GUILD_ACCORD, other)
+        before = state.players[1].resources
+        state = _do(state, "discard_opponent_card", seat=1, card_id=GUILD_ACCORD).state
+        top = state.decision_stack[-1]
+        assert top.kind is FrameKind.UNLOAD_ICONS
+        assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 1
+        effects = {dict(row.arguments)["effect"] for row in _rows(state, 1)}
+        assert effects == ({"water", "spice"} if alliance else {"water"})
+        for effect in sorted(effects):
+            taken = _do(state, UNLOAD_ROW, seat=1, card_id=GUILD_ACCORD, effect=effect)
+            state = taken.state
+        after = state.players[1].resources
+        assert after.water == before.water + 1
+        assert after.spice == before.spice + (3 if alliance else 0)
+        assert state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_guild_accord_revealed_then_trashed_gives_its_box_again() -> None:
+    """OQ-120: "공개한 Unload 카드를 같은 Reveal turn에 trash하면 다시 얻는다"."""
+    state = _with_cull(_guild_alliance(_give(_start(), 0, hand=(GUILD_ACCORD,)), 0))
+    state = _do(state, "reveal_turn").state
+    before = state.players[0].resources
+    while _offered(state, "gain_reveal_resources"):
+        state = _do(state, "gain_reveal_resources").state
+    state = _do(state, "play_intrigue", card_id=CULL, option=0).state
+    trashed = _do(state, "trash_intrigue_card", card_id=GUILD_ACCORD)
+    assert "card_unloaded" in _kinds(trashed.events)
+    assert not _offered(trashed.state, "finish_reveal")
+    state = _do(trashed.state, UNLOAD_ROW, card_id=GUILD_ACCORD, effect="water").state
+    state = _do(state, UNLOAD_ROW, card_id=GUILD_ACCORD, effect="spice").state
+    after = state.players[0].resources
+    assert (after.water, after.spice) == (before.water + 2, before.spice + 6)
+    assert _offered(state, "finish_reveal")
+
+
+def test_clean_up_moves_guild_accord_without_unloading_it() -> None:
+    """ "Clean Up에서 in play 카드를 discard pile로 옮기는 것은 discard가 아니다"
+    (rise-of-ix.md 7, [FAQ p. 2])."""
+    state, unloaded = _clean_up_round(_give(_start(), 0, in_play=(GUILD_ACCORD,)))
+    assert state.phase is GamePhase.ROUND_START
+    assert GUILD_ACCORD in state.players[0].discard_pile
     assert unloaded == []

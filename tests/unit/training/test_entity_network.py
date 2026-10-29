@@ -315,7 +315,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Then Esmar Tuek got its play data (stage P4d): only its own row changed, no
 # column and no scale (compared against 74aab0c3, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against 86830dd0 (2026-10-30).
-_GOLDEN_DIGEST = "b82454498cfb46734c116e7e8c0531054df137ebfede8e82565afea7d148e5b5"
+# Then Guild Accord got its play data (stage P4d): two personal-table columns
+# are new (its Heighliner discount and its Reveal line's Spacing Guild
+# Alliance condition), only its own row reads them, its row is the only one
+# that changed, and no scale moved (compared against af68b76c, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 28557ce9 (2026-10-30).
+_GOLDEN_DIGEST = "f4ee38011d758ca6333399997b0cd8f888f670e6a4e9341093cf39bb6162c235"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

@@ -92,6 +92,10 @@ class ImperiumCardEntry(DeckCardEntry):
     # Rise of Ix: the Reveal box is marked Unload -- gained also when the card
     # is discarded or trashed [Rise of Ix p. 7] (``rules.unload``).
     unload: bool = False
+    # Rise of Ix's Guild Accord: "It costs [2 spice] less to send an Agent to
+    # the Heighliner board space with this card." [Steam app text] -- a
+    # placement rule (``agent_turn``), not a box resolved after it.
+    heighliner_spice_discount: int = 0
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -115,6 +119,8 @@ class ImperiumCardEntry(DeckCardEntry):
             raise TypeError("the send-from-anywhere flag must be a boolean")
         if not isinstance(self.unload, bool):
             raise TypeError("the Unload mark must be a boolean")
+        if self.heighliner_spice_discount < 0:
+            raise ValueError("a Heighliner discount must not be negative")
         if self.sends_agent_anywhere and self.agent_icons:
             raise ValueError("a send-from-anywhere card has no Agent icons")
         if self.agent_spy_factions and (
@@ -143,6 +149,7 @@ class ImperiumCardEntry(DeckCardEntry):
             or self.reveal_strength
             or self.reveal_choice_effects
             or self.unload
+            or self.heighliner_spice_discount
         ):
             raise ValueError("partial Imperium-card play data must not be exposed")
 

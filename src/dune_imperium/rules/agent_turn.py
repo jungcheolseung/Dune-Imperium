@@ -754,7 +754,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     space = BOARD_SPACES_BY_ID[space_id]
     combat_space = space_is_combat(state, space)
     cost_option, cost = _selected_cost(
-        state, space, arguments.get("cost_option"), action.actor
+        state, space, arguments.get("cost_option"), action.actor, card_instance_id
     )
     discount = arguments.get("discount")
     if discount == "spice":
@@ -1475,7 +1475,7 @@ def _actions_for_affordable_costs(
     names the board space Kwisatz Haderach's Agent comes off (None: the
     Leader)."""
 
-    costs = _effective_costs(state, space, player)
+    costs = _effective_costs(state, space, player, card_instance_id)
     include_choice = space.dynamic_cost is None and len(space.cost_options) > 1
     actions: list[DomainAction] = []
     for cost_option, cost in costs:
@@ -1539,10 +1539,41 @@ def _connected_spy_post_ids(
     )
 
 
+# Guild Accord's Heighliner (Rise of Ix): the original board's, and Uprising's
+# with Rise of Ix (stage P7).
+_HEIGHLINER_SPACE_IDS: Final = frozenset({"imperium_heighliner", "heighliner"})
+
+
+def _card_space_discount(
+    space: BoardSpace, card_instance_id: str, costs: tuple[ResourceCost, ...]
+) -> tuple[ResourceCost, ...]:
+    """``costs`` less what the card sending the Agent takes off them.
+
+    Guild Accord: "It costs [2 spice] less to send an Agent to the
+    Heighliner board space with this card." [Steam app text] -- no "may", so
+    the cut always applies, as every other cost cut here does, and a cost
+    never drops below 0 (the Tech discount's floor, docs/rules/rise-of-ix.md
+    4).
+    """
+
+    card = personal_card_for_instance(card_instance_id)
+    if (
+        not isinstance(card, ImperiumCardEntry)
+        or not card.heighliner_spice_discount
+        or space.space_id not in _HEIGHLINER_SPACE_IDS
+    ):
+        return costs
+    return tuple(
+        replace(cost, spice=max(cost.spice - card.heighliner_spice_discount, 0))
+        for cost in costs
+    )
+
+
 def _effective_costs(
     state: GameState,
     space: BoardSpace,
     player: int,
+    card_instance_id: str,
 ) -> tuple[tuple[int, ResourceCost], ...]:
     if space.dynamic_cost is DynamicCost.SWORDMASTER:
         someone_has_swordmaster = any(
@@ -1567,7 +1598,7 @@ def _effective_costs(
             replace(cost, solari=cost.solari - 1) if cost.solari else cost
             for cost in costs
         )
-    return tuple(enumerate(costs))
+    return tuple(enumerate(_card_space_discount(space, card_instance_id, costs)))
 
 
 def _selected_cost(
@@ -1575,8 +1606,9 @@ def _selected_cost(
     space: BoardSpace,
     requested_option: bool | int | str | None,
     player: int,
+    card_instance_id: str,
 ) -> tuple[int, ResourceCost]:
-    costs = dict(_effective_costs(state, space, player))
+    costs = dict(_effective_costs(state, space, player, card_instance_id))
     if requested_option is None:
         if len(costs) != 1:
             raise ValueError("Agent action must identify its cost option")
