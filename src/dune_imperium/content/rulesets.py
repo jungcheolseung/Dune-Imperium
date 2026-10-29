@@ -164,6 +164,17 @@ IMPERIUM_LEADER_IDS: Final = (
     "countess_ariana_thorvald",
 )
 
+# Rise of Ix's Leaders the engine plays end to end (their setup deviation and
+# both abilities wired, stage P4e). A Leader joins the offer -- the fixed
+# roster, the rotation and the draft pool of an original + Rise of Ix game --
+# only once it is on this list, as a deck card joins its deck only once its
+# play data is complete: a Leader with no setup or abilities would make a
+# wrong game (Yuna would start with water 1, where docs/rules/rise-of-ix.md 3
+# prints 0). ``content.rise_of_ix.leaders.IX_LEADERS`` keeps all six (by-id
+# lookups and the observation vocabulary read them), and P4e adds each id
+# here as its Leader's abilities land.
+IX_LEADER_IDS_OFFERED: Final[frozenset[str]] = frozenset()
+
 # The four original board spaces the CHOAM overlay covers: "Place the CHOAM
 # board overlay on top of the upper right corner of your original game board
 # (covering the original Landsraad and CHOAM sections)" [Rise of Ix p. 3]
@@ -428,12 +439,22 @@ def _imperium_conflicts(rise_of_ix: bool) -> tuple[ConflictDefinition, ...]:
 
 @cache
 def _imperium_leaders(rise_of_ix: bool) -> tuple[LeaderDefinition, ...]:
-    """The Leaders the engine plays; with Rise of Ix the six new ones follow
+    """The Leaders the engine plays; with Rise of Ix the new ones follow
     ("players may choose any combination of new or existing Leaders" [Rise
-    of Ix p. 3])."""
+    of Ix p. 3]) as they are complete (``IX_LEADER_IDS_OFFERED``; none
+    yet, so the offer is the original eight)."""
 
     original = tuple(LEADERS_BY_ID[leader_id] for leader_id in IMPERIUM_LEADER_IDS)
-    return (*original, *IX_LEADERS) if rise_of_ix else original
+    if not rise_of_ix:
+        return original
+    return (
+        *original,
+        *(
+            leader
+            for leader in IX_LEADERS
+            if leader.leader_id in IX_LEADER_IDS_OFFERED
+        ),
+    )
 
 
 @cache

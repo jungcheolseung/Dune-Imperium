@@ -22,7 +22,7 @@ import pytest
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
-from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.rulesets import IMPERIUM_LEADER_IDS, content_for
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core import ChanceResolver, GamePhase, GameState
@@ -33,8 +33,9 @@ from dune_imperium.rules.setup import (
     create_initial_state,
     deal_ix_tech_stacks,
     ix_tech_tiles_decision,
+    leader_draft_pool_decision,
 )
-from dune_imperium.simulation.sweep import run_checked_game
+from dune_imperium.simulation.sweep import run_checked_game, sweep_specs
 
 LEADERS = (
     "paul_atreides",
@@ -242,3 +243,37 @@ def test_an_original_game_with_rise_of_ix_finishes_under_every_invariant(
         # The scripted seat takes the Ix pieces rather than leaving them.
         for kind in ("tech_acquired", "dreadnought_commissioned", "freighter_moved"):
             assert events.get(kind, 0) > 0, kind
+
+
+def test_the_ix_leaders_are_held_back_from_every_way_a_game_offers_leaders() -> None:
+    """The six Ix Leaders have no setup or abilities until stage P4e (plan 17.10
+    "P4c-5 Codex 리뷰" (1); ``rulesets.IX_LEADER_IDS_OFFERED``), so a game with
+    Rise of Ix offers the original eight: Yuna would start with water 1 where
+    docs/rules/rise-of-ix.md 3 prints 0 (`[Rise of Ix p. 3]`). A fixed roster
+    naming one is refused, the draft's six face-up Leaders come from the eight,
+    and a rotated roster draws from them."""
+
+    ix_leader = "princess_yuna_moritani"
+    with pytest.raises(ValueError, match="not available in this ruleset"):
+        create_initial_state(IX, 5, (*LEADERS[:3], ix_leader))
+    decision = leader_draft_pool_decision(IX_DRAFT)
+    assert decision.options == IMPERIUM_LEADER_IDS
+    for seed in range(1, 21):
+        pool = next(
+            outcome
+            for outcome in create_draft_initial_state(IX_DRAFT, seed).chance_outcomes
+            if outcome.decision_id == decision.decision_id
+        )
+        assert len(pool.values) == 6
+        assert set(pool.values) <= set(IMPERIUM_LEADER_IDS)
+    specs = sweep_specs(
+        games=20,
+        rulesets=(False,),
+        start_seed=1,
+        rotate_leaders=True,
+        base_game=BaseGame.IMPERIUM,
+        rise_of_ix=True,
+    )
+    for spec in specs:
+        assert spec.leader_ids is not None
+        assert set(spec.leader_ids) <= set(IMPERIUM_LEADER_IDS)

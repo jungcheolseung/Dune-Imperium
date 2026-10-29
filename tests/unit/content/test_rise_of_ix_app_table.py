@@ -51,7 +51,11 @@ from dune_imperium.content.rise_of_ix.tech import (
     IX_TECH_TILES,
     IX_TECH_TILES_BY_ID,
 )
-from dune_imperium.content.rulesets import IMPERIUM_LEADER_IDS, content_for
+from dune_imperium.content.rulesets import (
+    IMPERIUM_LEADER_IDS,
+    IX_LEADER_IDS_OFFERED,
+    content_for,
+)
 from dune_imperium.content.schema import SourceDocument, SourceRef
 from dune_imperium.content.uprising.abilities import AbilityTiming
 from dune_imperium.content.uprising.board import (
@@ -477,7 +481,7 @@ def test_no_uprising_or_original_game_pool_lists_an_ix_leader_or_conflict() -> N
     # Code that lists Uprising's or the original game's own Leaders and
     # Conflicts iterates these tuples and the Uprising pools; none holds the
     # Ix entries. Only the original game's content with ``rise_of_ix`` offers
-    # them (stage P4a's board axis; setup still refuses Rise of Ix). The
+    # them (stage P4a's board axis; the Leaders as they are wired, P4e). The
     # observation's universes list them at their end since v39 (plan 17.1,
     # 17.8), after every older identity.
     leader_ids = {leader.leader_id for leader in IX_LEADERS}
@@ -533,7 +537,9 @@ def test_no_uprising_or_original_game_pool_lists_an_ix_leader_or_conflict() -> N
                         for c in IX_CONFLICTS
                         if c.reward_rows is not None
                     }
-                    assert leader_ids <= offered_leaders
+                    # A Leader joins once its abilities are wired (held
+                    # back until stage P4e, rulesets.IX_LEADER_IDS_OFFERED).
+                    assert leader_ids & offered_leaders == set(IX_LEADER_IDS_OFFERED)
                     assert conflict_ids & offered_conflicts == transcribed
                     assert conflict_ids & offered_pool == transcribed
                 else:

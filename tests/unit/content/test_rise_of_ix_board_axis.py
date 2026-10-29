@@ -4,10 +4,11 @@ docs/base-game-and-ix-plan.md 17.1 and 17.7 (stage P4a, the board axis): with
 ``rise_of_ix`` the original game's content takes the CHOAM overlay's four
 spaces for four of its own (docs/rules/rise-of-ix.md 3 item 1, 8), the three
 new Conflict cards and Economic Supremacy (3 item 3, 12), the six new Leaders
-(3 item 4, 10) and the Ix cards whose play data is complete (none yet). It
-adds no rules itself; setup takes the option on the original game from stage
-P4c-5 (``tests/unit/rules/test_ix_setup.py``) and still refuses it with
-Uprising (stage P7).
+once their abilities are wired (3 item 4, 10; held back until stage P4e) and
+the Ix cards whose play data is complete. It adds no rules itself; setup takes
+the option on the original game from stage P4c-5
+(``tests/unit/rules/test_ix_setup.py``) and still refuses it with Uprising
+(stage P7).
 """
 
 from dataclasses import replace
@@ -16,6 +17,8 @@ from typing import Any
 import pytest
 
 from dune_imperium import BaseGame, RulesetConfig
+from dune_imperium.adapters.observation_encoding import LEADER_IDS
+from dune_imperium.content import rulesets
 from dune_imperium.content.imperium.board import IMPERIUM_BOARD_SPACES
 from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
@@ -27,12 +30,14 @@ from dune_imperium.content.rise_of_ix.intrigue import IX_INTRIGUE_CARDS
 from dune_imperium.content.rise_of_ix.leaders import IX_LEADERS
 from dune_imperium.content.rulesets import (
     IMPERIUM_LEADER_IDS,
+    IX_LEADER_IDS_OFFERED,
     IX_OVERLAID_SPACE_IDS,
     RulesetContent,
     content_for,
 )
 from dune_imperium.content.uprising.board import BOARD_SPACES
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
+from dune_imperium.content.uprising.leaders import LEADERS_BY_ID
 from dune_imperium.content.uprising.types import AgentIcon, ConflictTier
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.setup import conflict_setup_decisions
@@ -268,28 +273,69 @@ def test_the_ix_deck_keeps_the_shape_of_the_original() -> None:
         assert len(decision.options) >= decision.count
 
 
+_IX_LEADER_IDS = (
+    "archduke_armand_ecaz",
+    "ilesa_ecaz",
+    "prince_rhombur_vernius",
+    "princess_yuna_moritani",
+    "tessia_vernius",
+    "viscount_hundro_moritani",
+)
+
+
 @pytest.mark.parametrize("options", _IX_OPTIONS, ids=lambda options: str(options))
-def test_the_leaders_offered_take_the_six_ix_leaders(options: dict[str, Any]) -> None:
+def test_the_leaders_offered_hold_the_six_ix_leaders_back_until_p4e(
+    options: dict[str, Any],
+) -> None:
     """rise-of-ix.md 3 item 4, `[Rise of Ix p. 3]`: "Add the 6 new Leaders to
     those you already have. When taking Leaders, players may choose any
-    combination of new or existing Leaders." The original game's eight come
-    first, then Rise of Ix's six (10, `[Rise of Ix p. 2]`)."""
+    combination of new or existing Leaders." The six (10, `[Rise of Ix p. 2]`)
+    are held back on purpose until stage P4e wires their setup and abilities
+    (``rulesets.IX_LEADER_IDS_OFFERED``, plan 17.10 "P4c-5 Codex 리뷰" (1)): a
+    Leader joins the offer once its abilities are complete, as a deck card
+    joins once its play data is. Until then the offer is the original game's
+    eight, with Rise of Ix or without."""
 
     content = _ix(**options)
-    assert [leader.leader_id for leader in content.leaders] == [
-        *IMPERIUM_LEADER_IDS,
-        "archduke_armand_ecaz",
-        "ilesa_ecaz",
-        "prince_rhombur_vernius",
-        "princess_yuna_moritani",
-        "tessia_vernius",
-        "viscount_hundro_moritani",
-    ]
-    assert content.leaders[-6:] == IX_LEADERS
-    assert len(content.leaders) == 14
+    assert [leader.leader_id for leader in content.leaders] == list(
+        IMPERIUM_LEADER_IDS
+    )
+    assert len(content.leaders) == 8
+    assert not set(_IX_LEADER_IDS) & {leader.leader_id for leader in content.leaders}
     assert [leader.leader_id for leader in _plain(**options).leaders] == list(
         IMPERIUM_LEADER_IDS
     )
+    assert IX_LEADER_IDS_OFFERED == frozenset()
+    # Held back from the offer only: the six stay defined, found by id and in
+    # the observation's vocabulary.
+    assert tuple(leader.leader_id for leader in IX_LEADERS) == _IX_LEADER_IDS
+    for leader in IX_LEADERS:
+        assert LEADERS_BY_ID[leader.leader_id] is leader
+        assert leader.leader_id in LEADER_IDS
+
+
+def test_a_leader_joins_the_offer_once_it_is_on_the_offered_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The switch P4e flips: an Ix Leader on ``IX_LEADER_IDS_OFFERED`` follows
+    the original eight in printed order, with Rise of Ix only (the uncached
+    builder, so the cached contents other tests share stay untouched)."""
+
+    build = rulesets._imperium_leaders.__wrapped__
+    monkeypatch.setattr(
+        rulesets,
+        "IX_LEADER_IDS_OFFERED",
+        frozenset({"princess_yuna_moritani", "ilesa_ecaz"}),
+    )
+    assert [leader.leader_id for leader in build(True)] == [
+        *IMPERIUM_LEADER_IDS,
+        "ilesa_ecaz",
+        "princess_yuna_moritani",
+    ]
+    assert [leader.leader_id for leader in build(False)] == list(IMPERIUM_LEADER_IDS)
+    monkeypatch.setattr(rulesets, "IX_LEADER_IDS_OFFERED", frozenset(_IX_LEADER_IDS))
+    assert build(True)[-6:] == IX_LEADERS
+    assert len(build(True)) == 14
 
 
 @pytest.mark.parametrize("options", _IX_OPTIONS, ids=lambda options: str(options))
