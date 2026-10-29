@@ -100,7 +100,7 @@
 - **Reinforcements·Gurney Halleck: 공개 차례에 소집한 병력의 배치** ([OQ-140](open-questions.md#oq-140--이-병력을-배치할-수-있다의-이-병력-원판)) — 공개 차례에 Reinforcements나 Gurney Halleck의 공개 효과로 소집한 병력은 원하는 수만큼(0개도) 교전 칸에 배치할 수 있다. 공급처가 모자라 그 카드로 못 소집한 병력은 같은 차례 뒤에 공급처로 병력이 돌아와 채워지면 그때 배치할 수 있다 — 다른 효과도 병력이 모자랐으면 이 카드들 몫을 먼저 채운다. 다른 효과로 소집한 병력과 사다우카 지휘관은 이 몫으로 배치하지 않는다.
   - 출처: Gurney Halleck의 "원하는 수만큼"은 디자이너의 답(따름). 앱은 쓸 때 공급처와 표본에서 병력을 골라 곧바로 배치하고, 나중에 채워진 병력은 배치하지 않는다.
 
-## (다) 공식이 정하지 않아 이 게임이 정한 곳 — 184건
+## (다) 공식이 정하지 않아 이 게임이 정한 곳 — 185건
 
 공식 문서가 정하지 않은 곳을 사용자 판정이나 채택한 디자이너 판정으로 채웠고, 기록된 출처 가운데 다르게 말하는 것은 없다(앱은 같거나 확인하지 않았다).
 
@@ -293,3 +293,4 @@
 - **공개 차례 도중에 얻은 기술 타일도 그 차례에 쓴다** ([OQ-150](open-questions.md#oq-150--reveal-turn-tech-능력-artillery의-셈과-reveal-도중에-얻은-타일-rise-of-ix)) — 공개 차례 도중에 기술 타일을 얻으면, 그 타일의 공개 차례 능력(Artillery, Minimic Film, Restricted Ordnance, Disposal Facility)도 그 차례에 쓴다.
 - **교전 보상으로 회수해 소집한 병력은 주둔지로** ([OQ-151](open-questions.md#oq-151--combat-해결-중-shipping-회수로-recruit한-troop을-troop-transports로-배치할-수-있는가-rise-of-ix)) — 교전 보상의 Freighter로 회수해 소집한 병력은 Troop Transports가 있어도 교전에 배치하지 않고 주둔지로 간다. 자기 차례에 회수로 소집한 병력은 Troop Transports가 있으면 전투 장소에 에이전트를 보내지 않았어도 교전에 배치할 수 있다.
 - **모자랐던 병력은 배치하기 좋은 것부터 채운다** ([OQ-152](open-questions.md#oq-152--일부만-채워지는-recruit-부족분은-어느-troop부터-채우는가)) — 개인 공급처가 모자라 소집하지 못한 병력은 같은 차례에 병력이 돌아오면 채워진다. 일부만 채울 수 있으면 공개 차례 줄이 정한 병력, Troop Transports로 받은 병력, 보통 소집, Harkonnen Advisor 병력 순으로 채운다.
+- **여러 진영을 함께 올리면 순서는 그 플레이어가** ([OQ-153](open-questions.md#oq-153--한-효과가-여러-진영의-influence를-함께-줄-때의-순서-rise-of-ix)) — 한 효과가 여러 진영의 영향력을 함께 올리면 어느 진영부터 올릴지는 그 플레이어가 고른다. Quid Pro Quo는 진영마다 따로 받고, "둘을 고른다:"는 고른 순서대로 받는다. Tessia Vernius의 Snooper 보상은 이 순서대로 닿는 트랙이 받는다. Duplicity로 같은 진영의 영향력을 잃고 다시 얻을 수 있다.

@@ -178,6 +178,7 @@
 | [OQ-150](#oq-150--reveal-turn-tech-능력-artillery의-셈과-reveal-도중에-얻은-타일-rise-of-ix) | Reveal turn Tech 능력: Artillery의 셈과 Reveal 도중에 얻은 타일 (Rise of Ix) | `DECIDED` |
 | [OQ-151](#oq-151--combat-해결-중-shipping-회수로-recruit한-troop을-troop-transports로-배치할-수-있는가-rise-of-ix) | Combat 해결 중 Shipping 회수로 recruit한 troop을 Troop Transports로 배치할 수 있는가 (Rise of Ix) | `DECIDED` |
 | [OQ-152](#oq-152--일부만-채워지는-recruit-부족분은-어느-troop부터-채우는가) | 일부만 채워지는 recruit 부족분은 어느 troop부터 채우는가 | `DECIDED` |
+| [OQ-153](#oq-153--한-효과가-여러-진영의-influence를-함께-줄-때의-순서-rise-of-ix) | 한 효과가 여러 진영의 Influence를 함께 줄 때의 순서 (Rise of Ix) | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3257,3 +3258,25 @@
 - **판정(2026-10-29, 사용자 "(가) 가 맞다"):** 일부만 채울 때는 소유자에게 유리한 순서 — Reveal 줄 `DeployTheseTroops`의 몫(OQ-140) → Troop
   Transports를 가진 Shipping recruit 몫 → 보통 recruit → Harkonnen Advisor(배치 금지, OQ-038). 엔진은 `d9ff11d3`부터 그렇게 한다
   (`combat_deployment.refill_shipping_troops`).
+
+## OQ-153 — 한 효과가 여러 진영의 Influence를 함께 줄 때의 순서 (Rise of Ix)
+
+- 상태: `DECIDED` (2026-10-30 밤, 기존 원칙 적용 — OQ-027·OQ-112·OQ-141과 2026-10-19 상시 지시 "원칙대로"; project convention, 공식 규칙이
+  아니다. 사용자 확인 전이며 뒤집히면 고친다)
+- 계기: Tessia Vernius의 Careful Observation — "그 token에 도달할 때마다 Snooper track의 맨 위 덮이지 않은 보상을 받는다(① discard → spice 1,
+  ② 그 track의 4칸 보너스, ③ 그 track에 Influence 1, ④ ②와 ③)" (rise-of-ix.md 10). 한 효과가 두 진영 이상에 Influence를 주어 token 둘에
+  닿으면, 어느 진영이 먼저 닿느냐에 따라 어느 track이 ②·③을 받는지가 달라진다. 그런 효과: Quid Pro Quo("Gain one Influence with each Faction
+  that has at least one of your Agents on its board spaces"), Shuttle Fleet 획득("Choose two:" 진영 Influence, OQ-114), 원판 Machinations
+  1위(진영 둘, OQ-114), Conflict·계약 보상 한 줄의 Influence 아이콘 여럿(OQ-112), CHOAM Directorship 획득 상자(OQ-141).
+- 공식 문장: 없다. 카드·룰북·FAQ 어디에도 여러 진영의 순서는 없다.
+- 이미 정한 원칙: 인쇄된 아이콘은 각각 독립된 효과이고 소유자가 순서를 고른다 — Agent box(OQ-027), Conflict·계약 보상 한 줄(OQ-112), 획득
+  상자(OQ-141, 사용자 "CHOAM Directorship을 사면 줄 네 개를 눌러야지").
+- 판정: **소유자가 순서를 고른다.**
+  - 진영을 모두 정해 주는 효과(Quid Pro Quo)는 진영마다 줄 하나를 내고 소유자가 원하는 순서로 받는다(OQ-141과 같은 꼴). 받을 진영이 하나뿐이면
+    줄 하나.
+  - 진영을 고르는 "Choose two:"(Shuttle Fleet, Machinations, OQ-114)는 고른 순서가 받는 순서다 — 순서를 소유자가 이미 정한다.
+  - 보상 한 줄·획득 상자는 OQ-112·OQ-141 그대로(이미 아이콘마다 줄).
+- 같이 정한 것 — Duplicity로 같은 진영을 잃고 얻기: 허용한다. 카드에 "다른 진영"이 없고, Finesse·Shifting Allegiances와 같은 꼴이다(`[FAQ p. 4]`의
+  Shifting Allegiances 판정, imperium-base.md 16). Snooper token이 남은 진영은 Tessia가 Influence 1 이하이므로 잃고 다시 얻어도 결과는 같다.
+- 조합: Bloodlines의 Panopticon(Endgame, Influence 1 이하인 진영마다 Influence 1, OQ-044의 좌석 순서 자동 해결)이 Tessia와 한 판에 들 수
+  있는지는 구현 때 확인한다. 들 수 있으면 같은 원칙(진영마다 줄)을 따르고, 못 들면 그대로 둔다.
