@@ -36,6 +36,7 @@ from dune_imperium.content.uprising.abilities import (
 )
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
     AllConditions,
     DrawIntrigueCards,
     DrawPersonalCards,
@@ -55,6 +56,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnRoundStart,
     OnSpiceGainedInTurnAtLeast,
     PayResources,
+    PlaceNegotiator,
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
@@ -288,6 +290,16 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
                 costs=(PayResources(solari=7),),
             ),
         ),
+        # Ixian Technology: "Acquire Tech -OR- Tech Negotiation"
+        # (rise-of-ix.md 10; the app prints the Negotiator first). Each half
+        # is a "may" piece (rise-of-ix.md 4), so the box is optional; its
+        # Acquire Tech prints no Tech Discount.
+        "prince_rhombur_vernius": _hook(
+            "ixian_technology",
+            AbilityMark.OPTIONAL,
+            EffectSection(rewards=(PlaceNegotiator(),)),
+            EffectSection(rewards=(AcquireTech(discount=0),)),
+        ),
     }
 )
 
@@ -482,6 +494,9 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         # Reveal turn only (OQ-042, OQ-063; ``rules.leader_abilities.
         # grant_smuggling_operation``).
         "princess_yuna_moritani": (_standing("smuggling_operation"),),
+        # Heavy Lasgun Cannons: "dreadnought strength 4" (rise-of-ix.md 6, 10;
+        # ``rules.strength.dreadnought_strength``).
+        "prince_rhombur_vernius": (_standing("heavy_lasgun_cannons"),),
     }
 )
 

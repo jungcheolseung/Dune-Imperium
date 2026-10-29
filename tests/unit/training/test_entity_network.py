@@ -226,7 +226,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # the original entities' scale (``entity_features._table``), so her Signet's
 # 7 Solari leaves Scheme's 1 Solari row as it was; no older scale moved
 # (compared against 0d65eb9c, 2026-10-30).
-_GOLDEN_DIGEST = "09955dd905f1c549890936714b1a528de630670f3125179edc5a7b724f451dfc"
+# Then Prince Rhombur Vernius got his records (stage P4e): only his row
+# changed, and four Leader-table columns are new (his standing and Signet
+# hooks, the Signet's Negotiator and Acquire Tech pieces), read by his row
+# alone; no older scale moved (compared against 7514cff6, 2026-10-30).
+_GOLDEN_DIGEST = "9a4c4e9ea778e8254657a7a0d3f94a1ef931ec92dc550335a14fe179e3ac9101"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

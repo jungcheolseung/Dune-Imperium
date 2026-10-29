@@ -388,6 +388,8 @@ const ACTION_LABELS = {
   decline_skill: "플라스틸 칼 유지 ({commander_skill} 거절)",
   choose_secret_project: "비밀 프로젝트: 맨 아래 {tech_tile} 선택",
   gain_leader_signet_spice: "{spice} 1 ({signet_ring})",
+  acquire_leader_tech: "{tech_tile} 획득 ({signet_ring})",
+  place_leader_negotiator: "Negotiator 놓기 ({signet_ring})",
   trash_leader_tech: "{tech_tile} 폐기 → {intrigue} + {draw} 1 ({signet_ring})",
   move_spy: "{spy} 이동",
   lose_moved_spy: "옮길 곳이 없는 {spy} 잃기",

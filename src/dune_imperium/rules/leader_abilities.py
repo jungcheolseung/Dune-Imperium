@@ -88,6 +88,7 @@ from dune_imperium.rules.acquisition import (
     open_acquisition_frames,
     take_imperium_row_card,
 )
+from dune_imperium.rules.action_shapes import Source, printer_value
 from dune_imperium.rules.box_events import (
     BoxNeedsRows,
     BoxOutcome,
@@ -141,6 +142,7 @@ from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     shufflable_intrigue_discard,
 )
+from dune_imperium.rules.negotiators import negotiator_block, place_negotiator
 from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
     add_reveal_persuasion,
@@ -194,6 +196,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "baron_vladimir_harkonnen",
         # Rise of Ix's (docs/rules/rise-of-ix.md 10; stage P4e).
         "princess_yuna_moritani",
+        "prince_rhombur_vernius",
     }
 )
 
@@ -201,6 +204,11 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
 # Delivery's price (docs/rules/rise-of-ix.md 10).
 YUNA: Final = "princess_yuna_moritani"
 FINAL_DELIVERY_SOLARI: Final = 7
+# Prince Rhombur Vernius (Rise of Ix): his Leader id and Ixian Technology's
+# two halves.
+RHOMBUR: Final = "prince_rhombur_vernius"
+RHOMBUR_TECH_ACTION: Final = "acquire_leader_tech"
+RHOMBUR_NEGOTIATOR_ACTION: Final = "place_leader_negotiator"
 
 # Always Smiling grants its Persuasion at six or more strength in the
 # four-player game; the printed asterisk raises that to ten only in a
@@ -607,6 +615,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         "helena_richese",
         "baron_vladimir_harkonnen",
         "princess_yuna_moritani",
+        "prince_rhombur_vernius",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
@@ -810,8 +819,9 @@ SIGNET_HOOKS: Final = frozenset(
         "prudent_diplomacy",
         "manipulate",
         "scheme",
-        # Rise of Ix's "Princess" Yuna Moritani.
+        # Rise of Ix's "Princess" Yuna Moritani and Prince Rhombur Vernius.
         "final_delivery",
+        "ixian_technology",
     }
 )
 
@@ -1503,6 +1513,28 @@ def legal_leader_signet_actions(
                 ()
                 if factions
                 else (DomainAction(action_id="pay_leader_signet_solari", actor=player),)
+            ),
+        )
+
+    if owner.leader_id == RHOMBUR:
+        # Ixian Technology: "Acquire Tech -OR- Tech Negotiation"
+        # (docs/rules/rise-of-ix.md 10), each half a "may" (rise-of-ix.md 4):
+        # the Acquire Tech (no Tech Discount) while a tile is within reach,
+        # the Negotiator while a troop is in the supply. (``rules.tech``
+        # imports this module, so its helpers are imported here.)
+        from dune_imperium.rules.tech import tech_acquisition_possible
+
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                (DomainAction(action_id=RHOMBUR_TECH_ACTION, actor=player),)
+                if tech_acquisition_possible(state, owner, 0)
+                else ()
+            ),
+            *(
+                (DomainAction(action_id=RHOMBUR_NEGOTIATOR_ACTION, actor=player),)
+                if negotiator_block(state, player) is None
+                else ()
             ),
         )
 
@@ -2446,6 +2478,35 @@ def _apply_final_delivery(
     next_state = _store_signet(working, context, working.players)
     events.append(_signet_box(source, context, player, BoxOutcome.RESOLVED))
     return RuleResult(state=next_state, events=tuple(events))
+
+
+def apply_ixian_technology(state: GameState, action: DomainAction) -> RuleResult:
+    """Ixian Technology: an Acquire Tech without a Tech Discount, or a
+    Negotiator (docs/rules/rise-of-ix.md 4, 10). The box resolves with
+    either half; the Acquire Tech window then opens over the Agent box,
+    with its own refusal, as a board space's does (``rules.tech``)."""
+
+    from dune_imperium.rules.tech import push_tech_acquisition
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Ixian Technology choice")
+    context = _signet_context(state)
+    player = action.actor
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    context["pending_agent_effect"] = False
+    working = _store_signet(state, context, state.players)
+    box = _signet_box(source, context, player, BoxOutcome.RESOLVED)
+    if action.action_id == RHOMBUR_NEGOTIATOR_ACTION:
+        placed = place_negotiator(working, player, source=f"{source}:negotiator")
+        return RuleResult(state=placed.state, events=(*placed.events, box))
+    opened = push_tech_acquisition(
+        working,
+        player,
+        discount=0,
+        source=f"{source}:ix_tech",
+        printer=printer_value(Source.LEADER, RHOMBUR),
+    )
+    return RuleResult(state=opened.state, events=(*opened.events, box))
 
 
 def apply_shaddam_signet_choice(

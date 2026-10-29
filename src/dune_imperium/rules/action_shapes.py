@@ -496,6 +496,11 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "deploy_leader_agent": _row(_V.DEPLOY, _S.LEADER, variant="agent", tag=_BOX),
     "gain_leader_signet_spice": _row(_V.GAIN, _S.LEADER, tag=_BOX),
+    # Rise of Ix's Prince Rhombur Vernius: Ixian Technology's two halves.
+    "acquire_leader_tech": _row(_V.ACQUIRE, _S.LEADER, variant="ix_tech", tag=_BOX),
+    "place_leader_negotiator": _row(
+        _V.RECRUIT, _S.LEADER, variant="negotiator", tag=_BOX
+    ),
     "gain_leader_signet_troop": _row(_V.RECRUIT, _S.LEADER, tag=_BOX),
     "pay_leader_signet_solari": _row(_V.PAY, _S.LEADER, variant="solari", tag=_BOX),
     "pay_leader_signet_spice": _row(_V.PAY, _S.LEADER, variant="spice", tag=_BOX),

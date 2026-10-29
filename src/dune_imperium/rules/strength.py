@@ -55,17 +55,20 @@ def conflict_agent_strength(player: PlayerState) -> int:
 # A dreadnought in the Conflict is worth 3 strength [Rise of Ix p. 6]
 # (docs/rules/rise-of-ix.md 6).
 DREADNOUGHT_STRENGTH: Final = 3
+# Prince Rhombur Vernius' Heavy Lasgun Cannons (Rise of Ix).
+RHOMBUR_DREADNOUGHT_STRENGTH: Final = 4
 
 
 def dreadnought_strength(player: PlayerState) -> int:
     """Return the strength one of the seat's Conflict dreadnoughts fights with.
 
-    "Conflict의 dreadnought 하나는 strength 3" [Rise of Ix p. 6]
-    (docs/rules/rise-of-ix.md 6). A per-seat function because Prince Rhombur
-    Vernius' dreadnoughts are worth 4 (stage P4e); until then every seat's
-    is 3.
+    "Conflict의 dreadnought 하나는 strength 3(Prince Rhombur Vernius는 4)"
+    [Rise of Ix p. 6] (docs/rules/rise-of-ix.md 6); "Heavy Lasgun Cannons:
+    dreadnought strength 4" (rise-of-ix.md 10, stage P4e).
     """
 
+    if player.leader_id == "prince_rhombur_vernius":
+        return RHOMBUR_DREADNOUGHT_STRENGTH
     return DREADNOUGHT_STRENGTH
 
 

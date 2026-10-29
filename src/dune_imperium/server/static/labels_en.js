@@ -324,6 +324,8 @@ const LABELS_EN = {
     "decline_skill": "Keep Plasteel Blades (decline {commander_skill})",
     "choose_secret_project": "Secret Project: choose bottom {tech_tile}",
     "gain_leader_signet_spice": "1 {spice} ({signet_ring})",
+    "acquire_leader_tech": "Acquire {tech_tile} ({signet_ring})",
+    "place_leader_negotiator": "Place a Negotiator ({signet_ring})",
     "trash_leader_tech": "Trash {tech_tile} -> {intrigue} + {draw} 1 ({signet_ring})",
     "move_spy": "Move {spy}",
     "lose_moved_spy": "Lose {spy} (nowhere to move)",

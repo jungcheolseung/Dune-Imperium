@@ -2402,6 +2402,12 @@ def _window_printers(
                 if config.rise_of_ix
                 else ()
             ),
+            # Prince Rhombur Vernius' Ixian Technology (stage P4e).
+            *(
+                (Source.LEADER, face)
+                for face in faces
+                if config.rise_of_ix and face == "prince_rhombur_vernius"
+            ),
         )
     if action_id == "resolve_opponent_discard_without_card":
         # Covert Operation's, Reverend Mother Mohiam's and Test of Humanity's
@@ -2600,8 +2606,9 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
             # The original game's Prudent Diplomacy and Scheme.
             "duke_leto_atreides",
             "baron_vladimir_harkonnen",
-            # Rise of Ix's Final Delivery.
+            # Rise of Ix's Final Delivery and Ixian Technology.
             "princess_yuna_moritani",
+            "prince_rhombur_vernius",
         }
     ),
     "resolve_leader_signet_without_option": frozenset(
@@ -2646,6 +2653,9 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "take_leader_bonus_spice": frozenset({"esmar_tuek"}),
     "deploy_leader_agent": frozenset({"duncan_idaho"}),
     "gain_leader_signet_spice": frozenset({"kota_odax_of_ix"}),
+    # Rise of Ix's Ixian Technology.
+    "acquire_leader_tech": frozenset({"prince_rhombur_vernius"}),
+    "place_leader_negotiator": frozenset({"prince_rhombur_vernius"}),
     "trash_leader_tech": frozenset({"kota_odax_of_ix"}),
     "use_other_memories": frozenset({"lady_jessica"}),
     "draw_planetologist_intrigue": frozenset({"liet_kynes"}),
@@ -2818,6 +2828,9 @@ def _rise_of_ix_unit_templates(config: RulesetConfig) -> tuple[ActionTemplate, .
             "recall_board_freighter",
             # Spaceport's Foldspace card on top of the deck.
             "acquire_foldspace_to_deck_top",
+            # Prince Rhombur Vernius' Ixian Technology (stage P4e).
+            "acquire_leader_tech",
+            "place_leader_negotiator",
         )
     )
     templates.extend(_shipping_track_templates())

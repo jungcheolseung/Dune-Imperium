@@ -228,6 +228,7 @@ from dune_imperium.rules.intrigue_triggers import (
 from dune_imperium.rules.ix_board_spaces import apply_ix_space_action
 from dune_imperium.rules.leader_abilities import (
     apply_feyd_track_action,
+    apply_ixian_technology,
     apply_kota_signet_action,
     apply_leader_agent_deploy,
     apply_leader_board_repeat,
@@ -969,6 +970,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_leader_signet_payment": apply_leader_signet_payment,
     "resolve_leader_signet_without_option": apply_leader_signet_payment,
     "set_aside_leader_imperium": apply_manipulate_signet,
+    # Rise of Ix's Prince Rhombur Vernius: Ixian Technology's two halves.
+    "acquire_leader_tech": apply_ixian_technology,
+    "place_leader_negotiator": apply_ixian_technology,
     "choose_masterstroke_faction": apply_masterstroke_choice,
     "acquire_leader_imperium": apply_leader_signet_acquire,
     "acquire_leader_reserve": apply_leader_signet_acquire,
