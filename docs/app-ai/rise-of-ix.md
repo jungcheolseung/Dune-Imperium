@@ -7,7 +7,10 @@
 Status (2026-10-30, branch `claude/base-ix-p6-ix`): every Rise of Ix decision
 our engine offers in an original + Ix game (draft, promos) is answered by an
 app class. The census has no random answer and no unported class: 20 games
-per level, seeds 8100+. All six Ix Leaders are in (P4 `6c6b747e`).
+per level, seeds 8100+, with and without Epic Game Mode. All six Ix
+Leaders are in (P4 `6c6b747e`); Epic on the original board with Rise of Ix
+adds no decision of its own (Hundro's Intelligence follows the Epic Intrigue
+draw, through the same `intrigue_peek`).
 
 Unlike the Bloodlines and Scouts files beside this one, Rise of Ix is a
 **faithful port**: the Steam app plays Rise of Ix itself. Values come from the
@@ -70,6 +73,7 @@ app's prompts.
 | Machine Culture's Plot and its Acquire Tech frame | `MachineCulturePlotAbility`: its targets are `GetAcquireTechTileTargets(M, P, 0, false)` (`<Targets>d__6` @0x4bf4970: no discount, no Solari); its answer names the tile | The app's `RunImmediateEffects` buys that target without asking again. Our engine opens an Acquire Tech frame (printer `intrigue\|machine_culture`) with no refusal while a tile is in reach. The Tech window replays the play's answer (`intrigue_tech_tile`) and never relies on a decline row. |
 | War Chest, Diversion | `WarChestCombatAbility` / `WarChestEndgameAbility`; `DiversionAbility` (its Freighter slot as Expedite's) | War Chest's 2 Solari are the Combat line's cost; nothing to choose. |
 | Double Cross's victim when its play named none | `DefaultRandomChoice` over the offered opponents | A forced prompt answered at 0 or less draws a random key, here the card's (seed 8112). The target prompt that follows is forced too. |
+| Strategic Push (Combat) and its winner's row (`strategic_push`) | `StrategicPushAbility` (Strength 2, the base Evaluate) | The app's play adds `StrategicPushWinConflictAbility` to the player (`AddCustomAbility`), with no AI member: the pledge is part of the card. Our sole winner's window pays it as an automatic row (engine order); no row on a tie. |
 | Endgame plays of Plans Within Plans and Grand Conspiracy | Played without a prompt (`EndgamePhase`). The app's engine scores the count: `CountTotalPoints` gives 1 VP for three, 2 VP for four (@0x4ca8030, @0x4bec350) | Our engine offers each count as an exclusive -OR- option (OQ-058), both when four are met. The window plays the option with the most VP. Before 2026-10-30 it took the first (1 VP); this also changes original games. |
 
 ## Leaders
@@ -173,7 +177,7 @@ Left open by the review:
     Accord, In The Shadows and Treachery are on P4's `claude/p4d-imperium-b`;
     their rows are mapped and checked on a trial merge. Freighter Fleet,
     Ix-Guild Compact and Boundless Ambition wait for P4's Unload hold.)
-  - Intrigue: Strategic Push (P4's `claude/p4d-strategic-push`).
+  - Intrigue: none (Strategic Push landed with P4 `da3cd535`).
   Their response shapes are checked when the engine offers their rows.
   Quid Pro Quo (P4d-6b), Grand Conspiracy, War Chest, Machine Culture and
   Diversion (P4d) are now played and answered.
