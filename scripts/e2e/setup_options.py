@@ -685,11 +685,15 @@ BASE_GAME_JS = """() => {
     offered: [...document.querySelectorAll("#seat-selects select")].map(
       (select) => [...select.options].map((option) => option.value)),
     table: state.server.seat_kinds,
+    // The promo box's label as shown, and each base game's own.
+    promo: [...document.querySelectorAll("#opt-promo ~ span")]
+      .filter((span) => !span.hidden).map((span) => span.textContent.trim()),
+    promoWant: {uprising: t("html.opt_promo"), imperium: t("html.opt_promo_imperium")},
   };
 }"""
 
-# The original game's table as drawn: no board scan yet (stage P5b), the text
-# board's spaces, and the header's badges.
+# The original game's table as drawn: its own board picture (stage P5b), the
+# spaces on it, and the header's badges.
 ORIGINAL_TABLE_JS = """() => {
   const badges = document.querySelector("#header-status .status-badges");
   return {
@@ -710,9 +714,10 @@ ORIGINAL_SPACES = {"carthag", "conspire", "the_great_flat", "mentat", "hall_of_o
 
 def original_game(base: str, browser) -> None:
     """[8] The base-game select (P5a): the original game locks the options it
-    cannot take yet and gives them back on a return to Uprising, seats
-    heuristic AIs where no one picked a kind, and starts a game drawn on the
-    text board with the original spaces only."""
+    cannot take yet and gives them back on a return to Uprising, names its
+    own promo cards on the promo box, seats heuristic AIs where no one
+    picked a kind, and starts a game drawn on its own board picture with the
+    original spaces only."""
     print("[8] the base-game select: the original game")
     context, page, rec = open_context(browser, "setup-original-game")
     page.goto(base + "/")
@@ -724,6 +729,11 @@ def original_game(base: str, browser) -> None:
     before = page.evaluate(BASE_GAME_JS)
     check.ok(before["base"] == "uprising", "the select opens on Uprising", before)
     check.ok(not before["noteShown"], "Uprising: no note", before)
+    check.ok(
+        before["promo"] == [before["promoWant"]["uprising"]],
+        "Uprising: the promo box names Uprising's promos",
+        before["promo"],
+    )
     page.select_option("#seat-selects select[data-seat='1']", "random")
     page.select_option("#seat-selects select[data-seat='2']", "app_ai_easy")
     page.select_option("#opt-base-game", "imperium")
@@ -738,6 +748,11 @@ def original_game(base: str, browser) -> None:
         original["noteShown"] and original["note"] == original["want"],
         "the original game shows its note",
         original,
+    )
+    check.ok(
+        original["promo"] == [original["promoWant"]["imperium"]],
+        "the original game: the promo box names its own three promos",
+        original["promo"],
     )
     check.ok(
         original["kinds"] == ["human", "random", "heuristic", "heuristic"],
@@ -756,7 +771,8 @@ def original_game(base: str, browser) -> None:
     back = page.evaluate(BASE_GAME_JS)
     check.ok(
         back["boxes"] == before["boxes"] and back["kinds"] == [
-            "human", "random", "app_ai", "app_ai"],
+            "human", "random", "app_ai", "app_ai"]
+        and back["promo"] == before["promo"],
         "back on Uprising: the boxes and the default seats come back",
         {"before": before, "back": back},
     )

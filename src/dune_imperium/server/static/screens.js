@@ -77,6 +77,9 @@ const UPRISING_ONLY_OPTIONS = [
 function syncBaseGameOption() {
   const original = el("opt-base-game").value === "imperium";
   el("opt-base-game-note").hidden = !original;
+  /* The promo box names the chosen base game's own promo cards. */
+  el("opt-promo-uprising").hidden = original;
+  el("opt-promo-imperium").hidden = !original;
   for (const id of UPRISING_ONLY_OPTIONS) {
     const box = el(id);
     if (original && !box.dataset.locked) {
