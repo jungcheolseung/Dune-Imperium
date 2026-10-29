@@ -3888,7 +3888,7 @@ def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
             card_id in choice_swords
             or card.reveal_strength
             + sum(
-                effect.strength_over(revealed_cards)
+                effect.strength_over(revealed_cards, owner.dreadnoughts_conflict)
                 for index, effect in enumerate(reveal_lines(card))
                 if f"{card_id}#{index}" in granted
             )
@@ -4636,7 +4636,9 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 persuasion = effect.persuasion_over(
                     revealed_cards, completed, _in_play_cards(next_owner)
                 )
-                sword = effect.strength_over(revealed_cards)
+                sword = effect.strength_over(
+                    revealed_cards, next_owner.dreadnoughts_conflict
+                )
                 if persuasion:
                     frames = add_reveal_persuasion(frames, persuasion)
                 if sword:
@@ -5645,7 +5647,8 @@ def _late_reveal_one_card(
         for effect in eligible
     )
     own_strength = card.reveal_strength + sum(
-        effect.strength_over(revealed_cards) for effect in eligible
+        effect.strength_over(revealed_cards, next_owner.dreadnoughts_conflict)
+        for effect in eligible
     )
     # Leadership's count, for this card and for one revealed earlier, is
     # topped up by _count_leadership_swords once the card is recorded.
@@ -5990,7 +5993,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             card_id,
             card.reveal_strength
             + sum(
-                effect.strength_over(cards)
+                effect.strength_over(cards, owner.dreadnoughts_conflict)
                 for effect_card_id, effect in reveal_effects
                 if effect_card_id == card_id
             ),

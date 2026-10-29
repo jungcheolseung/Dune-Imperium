@@ -80,11 +80,12 @@ def test_every_record_names_a_card_with_its_play_data() -> None:
     # Rise of Ix (stage P4d), one record/line each: Sayyadina's "Fremen
     # Bond: [3 Persuasion]", Imperial Shock Trooper's "If you have an
     # Agent on an [Emperor] board space," [+3 swords], Shai-Hulud's "Fremen
-    # Bond: [5 swords]", Water Peddler's Unload box "[1 water]" and CHOAM
-    # Delegate's "[3 Solari]".
-    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 16 + 5
+    # Bond: [5 swords]", Water Peddler's Unload box "[1 water]", CHOAM
+    # Delegate's "[3 Solari]" and Full-Scale Assault's "[3 swords] for each of
+    # your dreadnoughts in the Conflict".
+    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 16 + 6
     assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == (
-        55 + 1 + 17 + 5
+        55 + 1 + 17 + 6
     )
 
 

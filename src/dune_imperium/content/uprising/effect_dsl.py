@@ -1678,6 +1678,10 @@ class RevealCountKind(StrEnum):
     COMPLETED_CONTRACT = "completed_contract"
     # Each other revealed card with swords (Leadership).
     OTHER_SWORD_CARD = "other_sword_card"
+    # Each of the player's dreadnoughts in the Conflict when the line resolves
+    # (Rise of Ix's Full-Scale Assault); the swords stay if one leaves later
+    # (rise-of-ix.md 9.3, designer ruling; [DI p. 11]).
+    DREADNOUGHT_IN_CONFLICT = "dreadnought_in_conflict"
 
 
 @dataclass(frozen=True, slots=True)

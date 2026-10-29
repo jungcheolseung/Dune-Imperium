@@ -350,13 +350,16 @@ _CONTRACT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "troops": _V.RECRUIT,
 })
 # What an Imperium card's acquire icon does (``acquire_icons``, OQ-141): an
-# Influence with a fixed Faction, or with the one the owner chooses.
+# Influence with a fixed Faction, or with the one the owner chooses; Rise of
+# Ix's Full-Scale Assault commissions a dreadnought (the Dreadnought space's
+# verb).
 _ACQUIRE_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "influence_emperor": _V.GAIN_INFLUENCE,
     "influence_spacing_guild": _V.GAIN_INFLUENCE,
     "influence_bene_gesserit": _V.GAIN_INFLUENCE,
     "influence_fremen": _V.GAIN_INFLUENCE,
     "influence_any": _V.GAIN_INFLUENCE,
+    "dreadnought": _V.RECRUIT,
 })
 # What a Tech tile's acquire icon does (``TechTile.acquire_effect_keys``).
 _TECH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({

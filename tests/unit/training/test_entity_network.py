@@ -267,7 +267,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # flags of its enemy retreat), read by its row alone; no older scale moved
 # (compared against 09791eb4, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against f0ea975e (2026-10-30).
-_GOLDEN_DIGEST = "9ce978b76036b67fd976a2edeffbcf03006e431a2bef573877db0fd9ecf3d8ea"
+# Then Full-Scale Assault got its records (stage P4d): only its own row
+# changed, and two personal-table columns are new (the Dreadnought piece of an
+# acquire box and the Reveal count per dreadnought in the Conflict), read by
+# its row alone; no older scale moved (compared against 94581a95, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 71f32573 (2026-10-30).
+_GOLDEN_DIGEST = "68318babffff99a5e3476ba1b8149eea98ea06066c88c7b5f385922a6db283be"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

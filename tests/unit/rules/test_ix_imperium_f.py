@@ -732,3 +732,148 @@ def test_the_enemy_unit_rows_are_in_the_ix_catalog_only() -> None:
     for row in rows:
         template = ActionTemplate(row.action_id, row.arguments)
         assert template in set(CODEC.catalog) - plain
+
+
+# --- Full-Scale Assault ---------------------------------------------------------
+
+ASSAULT = "imperium:full_scale_assault:0"
+_ACQUIRE_ICON = "resolve_acquire_icon"
+
+
+def _assault_revealed(
+    state: GameState, *, troops: int = 1, dreadnoughts: int = 0, garrisoned: int = 0
+) -> GameState:
+    """Full-Scale Assault revealed with ``troops`` and ``dreadnoughts`` in
+    the Conflict (2 strength a troop, 3 a dreadnought)."""
+
+    owner = state.players[0]
+    state = _give(
+        state,
+        0,
+        hand=(ASSAULT,),
+        troops_garrison=owner.troops_garrison - troops,
+        troops_conflict=troops,
+        dreadnoughts_supply=2 - dreadnoughts - garrisoned,
+        dreadnoughts_garrison=garrisoned,
+        dreadnoughts_conflict=dreadnoughts,
+        combat_strength=2 * troops + 3 * dreadnoughts,
+    )
+    return _do(state, "reveal_turn").state
+
+
+def test_full_scale_assault_matches_the_app_and_joins_the_ix_deck() -> None:
+    """App table: Emperor, cost 8, one copy; Emperor and City icons;
+    AgentTroops 2; AcquireEffectList Dreadnought; Reveal 2 Persuasion. Text:
+    "[3 swords] for each of your dreadnoughts in the Conflict." """
+    entry = IMPERIUM_CARDS_BY_ID["full_scale_assault"]
+    assert (entry.copies, entry.acquisition_cost) == (1, 8)
+    assert entry.factions == (Faction.EMPEROR,)
+    assert entry.agent_icons == (AgentIcon.EMPEROR, AgentIcon.CITY)
+    assert entry.agent_effect is PersonalCardAgentEffect.RECRUIT_TWO_TROOPS
+    assert entry.acquisition_effect is (
+        PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.play_data_complete
+    assert ASSAULT in content_for(IX).imperium_deck_instance_ids
+    for config in (replace(IX, rise_of_ix=False), RulesetConfig()):
+        assert ASSAULT not in content_for(config).imperium_deck_instance_ids
+    english = personal_card_text(entry)
+    assert any(
+        "+3 swords per dreadnought of yours in the Conflict" in line for line in english
+    )
+    assert len(english) == len(personal_card_text_ko(entry))
+
+
+def test_three_swords_for_each_dreadnought_in_the_conflict() -> None:
+    """ "[3 swords] for each of your dreadnoughts in the Conflict": two
+    dreadnoughts give six swords beside the Reveal's 2 Persuasion."""
+    state = _assault_revealed(_start(), troops=1, dreadnoughts=2)
+    context = dict(state.decision_stack[-1].context)
+    assert context["persuasion"] == 2
+    assert context["sword_strength"] == 6
+    assert state.players[0].combat_strength == 2 + 6 + 6
+
+
+def test_no_dreadnought_gives_no_sword() -> None:
+    """With no dreadnought in the Conflict the line gives nothing: a
+    dreadnought in the garrison does nothing [FAQ p. 2] (rise-of-ix.md 6)."""
+    state = _assault_revealed(_start(), troops=2, garrisoned=1)
+    context = dict(state.decision_stack[-1].context)
+    assert context["sword_strength"] == 0
+    assert state.players[0].combat_strength == 4
+
+
+def test_the_swords_stay_when_a_dreadnought_leaves_later() -> None:
+    """ "Full-Scale Assault의 sword는 Reveal 때 고정, 나중에 dreadnought가 빠져도
+    유지(BGG Forum) | 채택 — sword는 공개한 카드가 준 값 [DI p. 11]"
+    (rise-of-ix.md 9.3): a dreadnought retreated after the Reveal takes its
+    own 3 strength, not the card's swords."""
+    from dune_imperium.rules.units import retreat_dreadnought
+
+    state = _assault_revealed(_start(), troops=1, dreadnoughts=1)
+    assert state.players[0].combat_strength == 2 + 3 + 3
+    state = _do(state, "finish_reveal").state
+    retreated = retreat_dreadnought(state, 0, "test").state
+    assert retreated.players[0].combat_strength == 2 + 3
+
+
+def test_full_scale_assault_recruits_two_troops_with_its_agent_box() -> None:
+    """App AgentTroops 2: "[troop] [troop]"; sent to a Combat space the
+    troops may be deployed [DI p. 10]."""
+    state = _start()
+    state = _give(state, 0, hand=(ASSAULT,))
+    garrison = state.players[0].troops_garrison
+    state = _do(state, "choose_agent_card", card_id=ASSAULT).state
+    state = _do(state, "place_agent", space_id="arrakeen").state
+    state = _do(state, "resolve_agent_card_effect").state
+    assert state.players[0].troops_garrison == garrison + 2
+
+
+def test_the_acquire_dreadnought_is_an_optional_row() -> None:
+    """ "Dreadnought 아이콘마다 supply의 dreadnought 하나를 garrison에
+    commission할 수 있다("may")" (rise-of-ix.md 6, [Rise of Ix p. 6]): bought
+    in a Reveal turn, its icon waits as a row of the Reveal; taken, a
+    dreadnought goes to the garrison; left, the Reveal's end lapses it."""
+    state = _in_row(_start(), ASSAULT)
+    state = _with_persuasion(_do(state, "reveal_turn").state, 8)
+    bought = _do(state, "acquire_imperium", instance_id=ASSAULT).state
+    assert _offered(bought, _ACQUIRE_ICON, effect="dreadnought")
+    assert _offered(bought, "finish_reveal")
+    taken = _do(bought, _ACQUIRE_ICON, effect="dreadnought").state
+    owner = taken.players[0]
+    assert (owner.dreadnoughts_supply, owner.dreadnoughts_garrison) == (1, 1)
+    lapsed = _do(bought, "finish_reveal")
+    assert "acquire_icon_lapsed" in _kinds(lapsed.events)
+    assert lapsed.state.players[0].dreadnoughts_supply == 2
+
+
+def test_no_dreadnought_row_with_none_in_the_supply() -> None:
+    """ "supply에 없으면 더 얻지 못한다" (rise-of-ix.md 6): with both
+    dreadnoughts out of the supply the icon offers nothing."""
+    state = _in_row(_start(), ASSAULT)
+    state = _give(state, 0, dreadnoughts_supply=0, dreadnoughts_garrison=2)
+    state = _with_persuasion(_do(state, "reveal_turn").state, 8)
+    bought = _do(state, "acquire_imperium", instance_id=ASSAULT).state
+    assert not _offered(bought, _ACQUIRE_ICON)
+    assert _offered(bought, "finish_reveal")
+
+
+def _with_tile(state: GameState, tech_id: str) -> GameState:
+    """Seat 0 holding ``tech_id``, taken out of the Ix board's stacks."""
+
+    stacks = tuple(
+        tuple(tile for tile in stack if tile != tech_id) for stack in state.tech_stacks
+    )
+    return _give(replace(state, tech_stacks=stacks), 0, tech_ids=(tech_id,))
+
+
+def test_artillery_counts_the_assault_only_when_it_gave_swords() -> None:
+    """Artillery: "Reveal turn: sword를 주는 공개 카드마다 sword 1"
+    (rise-of-ix.md 4): Full-Scale Assault provides swords only with a
+    dreadnought in the Conflict ("이번 turn에 실제로 sword를 준 다른 카드만
+    센다", rise-of-ix.md 9.1, the same reading)."""
+    without = _assault_revealed(_with_tile(_start(), "artillery"))
+    assert dict(without.decision_stack[-1].context)["sword_strength"] == 0
+    with_one = _assault_revealed(_with_tile(_start(), "artillery"), dreadnoughts=1)
+    assert dict(with_one.decision_stack[-1].context)["sword_strength"] == 3 + 1

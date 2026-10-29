@@ -634,6 +634,10 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
             # Rise of Ix's Shai-Hulud: the black Trash icon, as its record
             # renders (the icon is optional, which the text does not say).
             PersonalCardAcquisitionEffect.MAY_TRASH_A_CARD: "Trash a card",
+            # Rise of Ix's Full-Scale Assault: the Dreadnought icon ("may").
+            PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT: (
+                "Commission a dreadnought"
+            ),
         }
     )
 )
@@ -966,6 +970,12 @@ def reveal_effect_text(line: RevealLine) -> str:
     if line.strength_per_other_sword_card:
         n = line.strength_per_other_sword_card
         gains.append(f"+{n} {_plural(n, 'sword')} per other revealed sword card")
+    if line.strength_per_dreadnought:
+        # Rise of Ix's Full-Scale Assault.
+        n = line.strength_per_dreadnought
+        gains.append(
+            f"+{n} {_plural(n, 'sword')} per dreadnought of yours in the Conflict"
+        )
     if line.persuasion_per_completed_contract:
         gains.append(
             f"+{line.persuasion_per_completed_contract} Persuasion "

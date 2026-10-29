@@ -14,7 +14,8 @@ keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
 game's deck takes only completed cards (CHOAM Delegate, Jamis, Sayyadina,
 Truthsayer, Imperial Shock Trooper, Local Fence, Water Peddler, Guild Chief
-Administrator, Negotiated Withdrawal and Desert Ambush so far),
+Administrator, Negotiated Withdrawal, Desert Ambush and Full-Scale Assault so
+far),
 while the observation lists every identity from v39. Setup takes Rise of Ix
 on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
@@ -120,6 +121,18 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("full_scale_assault", "Full-Scale Assault"),
         copies=1,
         acquisition_cost=8,
+        # App table: Emperor; Emperor and City icons; AgentTroops 2;
+        # AcquireEffectList Dreadnought; Reveal 2 Persuasion. Screen pieces
+        # and text: Agent "[troop] [troop]"; Reveal "[3 swords] for each of
+        # your dreadnoughts in the Conflict." (its Reveal record); acquire
+        # the Dreadnought icon, "you may commission" [Rise of Ix p. 6].
+        has_acquisition_bonus=True,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.CITY),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
+        acquisition_effect=PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT,
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("guild_accord", "Guild Accord"),

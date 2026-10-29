@@ -1331,3 +1331,7 @@ def _reveal_count_text_ko(per: RevealCount | None) -> str:
             return " (완수한 {contract}마다)"
         case RevealCountKind.OTHER_SWORD_CARD:
             return " (공개한 다른 {sword} 카드마다)"
+        case RevealCountKind.DREADNOUGHT_IN_CONFLICT:
+            # Rise of Ix: the dreadnought has no Korean source, so the word
+            # stays English (module docstring).
+            return " ({conflict}의 내 dreadnought마다)"

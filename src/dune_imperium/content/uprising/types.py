@@ -504,6 +504,9 @@ class PersonalCardAcquisitionEffect(StrEnum):
     # Shai-Hulud (Rise of Ix): the black Trash icon in the acquire box -- an
     # optional trash resolved at once when the card is acquired.
     MAY_TRASH_A_CARD = "may_trash_a_card"
+    # Full-Scale Assault (Rise of Ix): the Dreadnought icon, "you may
+    # commission" [Rise of Ix p. 6].
+    MAY_COMMISSION_DREADNOUGHT = "may_commission_dreadnought"
 
 
 class PersonalCardRevealChoiceEffect(StrEnum):

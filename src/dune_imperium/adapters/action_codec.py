@@ -98,6 +98,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.acquire_icons import (
     ACQUIRE_ICON_ACTION,
     ACQUIRED_CARD_ARGUMENT,
+    DREADNOUGHT_ICON,
     acquire_box_icons,
     acquire_icon_faction,
 )
@@ -1858,7 +1859,7 @@ def _acquire_icon_templates(
                 (ACQUIRED_CARD_ARGUMENT, card.card.card_id),
                 ("effect", icon),
             )
-            if acquire_icon_faction(icon) is not None:
+            if acquire_icon_faction(icon) is not None or icon == DREADNOUGHT_ICON:
                 templates.append(ActionTemplate(ACQUIRE_ICON_ACTION, base))
                 continue
             templates.extend(

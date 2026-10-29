@@ -678,6 +678,12 @@ ACQUISITION_EFFECT_TEXT_KO: Final[dict[PersonalCardAcquisitionEffect, str]] = {
     # Rise of Ix's Shai-Hulud (stage P4d): the black Trash icon, as its record
     # renders.
     PersonalCardAcquisitionEffect.MAY_TRASH_A_CARD: "카드 1장 {trash}",
+    # Rise of Ix's Full-Scale Assault: no Korean source names the dreadnought
+    # or the commission (glossary-ko.md has no entry), so the line stays
+    # English, as ``effect_dsl_text_ko`` keeps the Dreadnought icon's.
+    PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT: (
+        "Commission a dreadnought"
+    ),
 }
 
 # The one transcribed member is specific to The Spice Must Flow; cards.py
@@ -905,6 +911,13 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
     if line.strength_per_other_sword_card:
         n = line.strength_per_other_sword_card
         gains.append(f"+{{sword:{n}}} (공개한 다른 {{sword}} 카드마다)")
+    if line.strength_per_dreadnought:
+        # Rise of Ix's Full-Scale Assault: no Korean source names the
+        # dreadnought (glossary-ko.md has no entry; the official Korean
+        # edition has no Rise of Ix), so the word stays English, as the
+        # dreadnought rows' labels keep it.
+        n = line.strength_per_dreadnought
+        gains.append(f"+{{sword:{n}}} ({{conflict}}의 내 dreadnought마다)")
     if line.persuasion_per_completed_contract:
         n = line.persuasion_per_completed_contract
         gains.append(f"+{{persuasion:{n}}} (완수한 {{contract}}마다)")

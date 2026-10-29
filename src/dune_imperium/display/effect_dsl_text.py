@@ -1009,3 +1009,5 @@ def _reveal_count_text(per: RevealCount | None) -> str:
             return " per completed Contract"
         case RevealCountKind.OTHER_SWORD_CARD:
             return " per other revealed sword card"
+        case RevealCountKind.DREADNOUGHT_IN_CONFLICT:
+            return " per dreadnought of yours in the Conflict"
