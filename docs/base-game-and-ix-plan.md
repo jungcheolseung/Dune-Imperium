@@ -1418,3 +1418,7 @@ Ix 선택이 없어(P5) 사람 판에는 닿지 않고, 능력은 P4e. app_ai는
 설정만 만든다(그 전부터의 빈틈). "setup이 Rise of Ix를 거절한다"는 낡은 docstring 여럿(`content/rulesets.py`, `content/rise_of_ix/*.py`, 테스트
 셋)은 다음 정리 조각에서 고친다. **22:00 리셋 뒤 다음 일:** (1) Troop Transports 부족분(위 Codex 지적), (2) 낡은 docstring, (3) `rules/tech.py`의
 `ix_negotiators_returnable`과 frame 키를 core 함수 하나로, (4) P4c 관문, (5) P4d(카드).
+**P4c-5 Codex 리뷰(2026-10-29):** (1) 능력 없는 Ix 지도자 여섯이 고정 선택·드래프트에 열려 Yuna가 water 1로 시작하고(3절은 0) Hundro·Tessia의
+setup이 빠진다 → **정함: P4e 전까지 후보에서 뺀다**(덱 카드가 효과를 다 적을 때까지 빠지는 것과 같은 원칙; setup 값만 맞추면 능력 없는
+지도자가 여전히 틀린 판을 만든다). 리셋 뒤 첫 일. (2) Ix Conflict 셋이 전사 전이라 더미가 I/II/III 4/10/5에서 뽑힌다(규칙 6/11/5) — 덱 모양
+1/5/4는 맞고 확률만 다르다. **P4d 확인 항목:** 셋을 전사하면 풀이 6/11/5가 되고 `ConflictSetup`의 하한 9가 12로 좁혀지는지.
