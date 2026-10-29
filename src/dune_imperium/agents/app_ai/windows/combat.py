@@ -104,6 +104,7 @@ from dune_imperium.agents.app_ai.abilities.intrigue import (
     endgame_wild_pairs,
     score_battle_icons_pairs,
 )
+from dune_imperium.agents.app_ai.abilities.ix_conflicts import TradeMonopolyThirdAbility
 from dune_imperium.agents.app_ai.abilities.original_conflicts import (
     TRACK_CHOICE_ABILITIES,
     BattleForArrakeenSecondAbility,
@@ -705,7 +706,9 @@ def combat_reward_icons(run: DecisionRun) -> DomainAction | None:
 
     - Cloak and Dagger 3rd, "draw 1 Intrigue -OR- 1 Spice":
       ``CloakAndDaggerThirdAbility::Evaluate @0x4b90e20``, option 0 (the
-      Intrigue) or 1 (the Spice), our ``line_0`` / ``line_1``;
+      Intrigue) or 1 (the Spice), our ``line_0`` / ``line_1``; Rise of Ix's
+      Trade Monopoly 3rd, "1 Intrigue -OR- 1 water", the same way
+      (``TradeMonopolyThirdAbility::Evaluate @0x4babcf0``);
     - Battle for Arrakeen 2nd, "choose two of Intrigue, 2 Spice, 3 Solari":
       ``BattleForArrakeenSecondAbility::Evaluate @0x4b88e50``, two option
       indices at once (our ``line_0`` .. ``line_2``). Both lines are named
@@ -725,7 +728,7 @@ def combat_reward_icons(run: DecisionRun) -> DomainAction | None:
     }
     ability = _place_ability(run)
     options: tuple[int, ...]
-    if isinstance(ability, CloakAndDaggerThirdAbility):
+    if isinstance(ability, (CloakAndDaggerThirdAbility, TradeMonopolyThirdAbility)):
         options, takes = (0, 1), 1
     elif isinstance(ability, BattleForArrakeenSecondAbility):
         options, takes = (0, 1, 2), 2
