@@ -120,6 +120,7 @@ from dune_imperium.agents.app_ai.catalog import (
     BLOODLINES_SPACE_ORDER,
     CARD_ARCHETYPES,
     IMMORTALITY_SPACE_ARCHETYPES,
+    IX_SPACE_ARCHETYPES,
     ORIGINAL_SPACE_ARCHETYPES,
     POST_INDEX,
     SPACE_ARCHETYPES,
@@ -245,6 +246,10 @@ _SPACE_ARCHETYPE_ORDER: tuple[str, ...] = (
     "SpaceArchetypes.Uprising.SietchTabrUP",  # 642
     "SpaceArchetypes.Uprising.SpiceRefinery",  # 643
     "SpaceArchetypes.Uprising.SwordmasterUP",  # 644
+    "SpaceArchetypes.RiseOfIx.DreadnoughtSpace",  # 645
+    "SpaceArchetypes.RiseOfIx.InterstellarShipping",  # 646
+    "SpaceArchetypes.RiseOfIx.Smuggling",  # 647
+    "SpaceArchetypes.RiseOfIx.TechNegotiation",  # 648
     "SpaceArchetypes.Immortality.ResearchStationImmortality",  # 649
     "SpaceArchetypes.BaseSet.Arrakeen",  # 650
     "SpaceArchetypes.BaseSet.Carthag",  # 651
@@ -284,6 +289,7 @@ _SPACE_OF_ARCHETYPE: dict[str, str] = {
         archetype: space_id
         for space_id, archetype in ORIGINAL_SPACE_ARCHETYPES.items()
     },
+    **{archetype: space_id for space_id, archetype in IX_SPACE_ARCHETYPES.items()},
 }
 
 
@@ -323,6 +329,7 @@ def board_space_order(board: Board) -> tuple[str, ...]:
         board_set,
         *(("CHOAMModule",) if board.choam else ()),
         *(("Immortality",) if board.immortality else ()),
+        *(("RiseOfIx",) if board.ix else ()),
     )
     archetypes = [
         a for a in _SPACE_ARCHETYPE_ORDER if board_set in _set_attr(a, "SetList")

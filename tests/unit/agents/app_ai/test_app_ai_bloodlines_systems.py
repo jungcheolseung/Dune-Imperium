@@ -199,7 +199,11 @@ def _systems_archetype_shorts() -> list[str]:
     return [
         catalog.COMMANDER_ARCHETYPE,
         *catalog.SKILL_ARCHETYPES.values(),
-        *catalog.TECH_ARCHETYPES.values(),
+        *(
+            short
+            for tech_id, short in catalog.TECH_ARCHETYPES.items()
+            if tech_id not in catalog.IX_TECH_ARCHETYPES
+        ),
         *leaders,
         *catalog.NAVIGATION_ARCHETYPES.values(),
         *catalog.BLOODLINES_SPACE_ARCHETYPES.values(),

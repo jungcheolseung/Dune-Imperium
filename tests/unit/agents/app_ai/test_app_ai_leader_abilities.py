@@ -26,6 +26,7 @@ from dune_imperium.agents.app_ai.abilities.base import (
     abilities_of,
 )
 from dune_imperium.agents.app_ai.catalog import (
+    IX_LEADER_ARCHETYPES,
     LEADER_ARCHETYPES,
     ORIGINAL_LEADER_ARCHETYPES,
     POST_INDEX,
@@ -265,7 +266,9 @@ def test_every_leader_ability_resolves_to_a_port() -> None:
     app = {
         k: v
         for k, v in LEADER_ARCHETYPES.items()
-        if v in ARCHETYPES and k not in ORIGINAL_LEADER_ARCHETYPES
+        if v in ARCHETYPES
+        and k not in ORIGINAL_LEADER_ARCHETYPES
+        and k not in IX_LEADER_ARCHETYPES
     }
     ids: list[str] = []
     for short in app.values():
