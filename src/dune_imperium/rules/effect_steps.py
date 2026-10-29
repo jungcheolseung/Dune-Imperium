@@ -318,6 +318,8 @@ _COMBAT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     # The sole winner's dreadnought, set on a Control space that holds none
     # (Rise of Ix, OQ-121 ruling 6 (1)): "take control" as the Control icon.
     "dreadnought_control": _V.TAKE,
+    # Windtraps' water, a row of the winner's window (Rise of Ix).
+    "windtraps": _V.GAIN,
     # The sole winner's close of its window: no more winning Intrigue
     # (OQ-121 decision 6; the original game's To the Victor... and Demand
     # Respect). Nothing is gained, so it only resolves the row.
@@ -355,6 +357,7 @@ _ACQUIRE_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
 _TECH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "cards": _V.DRAW,
     "contracts": _V.TAKE,
+    "distinct_influence": _V.GAIN_INFLUENCE,
     "influence": _V.GAIN_INFLUENCE,
     "intrigue": _V.DRAW,
     "intrigue_or_card": _V.DRAW,
@@ -366,6 +369,7 @@ _TECH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "trash": _V.TRASH,
     "troops": _V.RECRUIT,
     "victory_points": _V.GAIN,
+    "water": _V.GAIN,
 })
 
 # What a research space's bonus does (``immortality.ResearchBonus``): the
@@ -623,7 +627,12 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _S.TECH,
         "tech_id",
         icon="arg:effect",
-        targets=(("faction", _C.FACTION), ("choice", _C.OPTION)),
+        # Shuttle Fleet's two different Factions are two target rows (OQ-114).
+        targets=(
+            ("faction", _C.FACTION),
+            ("second_faction", _C.FACTION),
+            ("choice", _C.OPTION),
+        ),
     ),
     # --- The Reveal frame (stage B3b-2): a purchase, one effect per market --
     "acquire_imperium": _spec(
@@ -741,6 +750,16 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _V.CHOOSE, _S.TECH, "=forbidden_weapons", option="trash"
     ),
     "place_tech_spy": _spec(_V.PLACE_SPY, _S.TECH, "=panopticon"),
+    # Detonation Devices: the winner's dreadnought back to the supply for 1 VP
+    # instead of a Control space (the same window, OQ-121 ruling 3).
+    "detonate_combat_reward_dreadnought": _spec(
+        _V.GAIN, _S.TECH, "=detonation_devices"
+    ),
+    # Disposal Facility's trash of a card in play: the tile prints it, the
+    # card is the target row (Rise of Ix, OQ-126).
+    "trash_disposal_facility_card": _spec(
+        _V.TRASH, _S.TECH, "=disposal_facility", targets=_CARD
+    ),
     # --- Playing a card (stage B3c-1): the window, the card, its option -----
     # One option still opens its step (OQ-111 (2)): an option is an effect
     # printed on the card.
@@ -1365,7 +1384,7 @@ def printed_from_state(
         tiles = [
             entry.split(":")[0]
             for entry in pending.split(",")
-            if entry.endswith(":influence")
+            if entry.endswith((":influence", ":distinct_influence"))
         ]
         if not tiles:
             raise ValueError(f"{whole} has no Tech tile's Influence waiting")

@@ -115,7 +115,9 @@ from dune_imperium.rules.combat import (
     COMBAT_REWARD_ICON_KINDS,
     DREADNOUGHT_CONTROL,
     DREADNOUGHT_CONTROL_ACTION,
+    DREADNOUGHT_DETONATE_ACTION,
     IMPERIUM_REWARD_ICON_KINDS,
+    WINDTRAPS,
     conflict_reward_icon_kinds,
 )
 from dune_imperium.rules.contracts import (
@@ -153,7 +155,6 @@ from dune_imperium.rules.reveal_turn import (
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
 from dune_imperium.rules.tech import (
-    ix_acquire_effect_keys,
     optional_trash_tech_ids,
     tech_acquire_effect_arguments,
 )
@@ -962,6 +963,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # Rise of Ix's winner's dreadnought, set on a Control space (OQ-121
         # ruling 6 (1)); no catalog without the expansion holds its row.
         and (kind != DREADNOUGHT_CONTROL or config.rise_of_ix)
+        # Windtraps' water, a row of the same window (Rise of Ix).
+        and (kind != WINDTRAPS or config.rise_of_ix)
     )
     # One board-effect resolution per printed automatic icon (OQ-027).
     templates.extend(
@@ -1440,6 +1443,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for space_id in content.control_visit_bonuses
         )
+        # Detonation Devices' answer in the same choice (OQ-121 ruling 3).
+        templates.append(ActionTemplate(action_id=DREADNOUGHT_DETONATE_ACTION))
     templates.extend(
         ActionTemplate(
             action_id="recall_spies_for_combat_reward",
@@ -1797,7 +1802,12 @@ def _effect_step_templates(
                     )
                     or (kind == "choose_influence" and config.promo_cards)
                     or kind
-                    in ("planetary_array", "winning_intrigue", DREADNOUGHT_CONTROL)
+                    in (
+                        "planetary_array",
+                        "winning_intrigue",
+                        DREADNOUGHT_CONTROL,
+                        WINDTRAPS,
+                    )
                 )
             )
         elif spec.printed == Printed.CONTRACT:
@@ -1873,7 +1883,7 @@ def _effect_step_templates(
             ) + tuple(
                 (None, tile.tech_id)
                 for tile in (IX_TECH_TILES if config.rise_of_ix else ())
-                if "influence" in ix_acquire_effect_keys(tile)
+                if {"influence", "distinct_influence"} & set(tile.acquire_effect_keys)
             )
         elif spec.printed == Printed.MISSION:
             # A Scouts mission's plain way in (B3d-2b); the specimen return
@@ -3452,9 +3462,9 @@ def _ix_tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     [Rise of Ix p. 4]) with its Negotiators returned: ``acquire_tech`` names
     the tile alone for none, and adds ``negotiators`` for one up to the tile's
     price (a Negotiator beyond it lowers nothing). Each tile's acquire icons
-    are the Tech Module's rows (``resolve_tech_acquire_effect``), except the
-    two no key pays yet (``ix_acquire_effect_keys``). Rows a game with the Tech
-    Module already holds are not repeated.
+    are the Tech Module's rows (``resolve_tech_acquire_effect``; Windtraps'
+    water and Shuttle Fleet's two Factions have keys of their own, stage
+    P4c-2a). Rows a game with the Tech Module already holds are not repeated.
     """
 
     templates: list[ActionTemplate] = []
@@ -3476,11 +3486,14 @@ def _ix_tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
             for returned in range(1, tile.cost + 1)
         )
-        for effect in ix_acquire_effect_keys(tile):
+        for effect in tile.acquire_effect_keys:
             templates.extend(
                 ActionTemplate(action_id="resolve_tech_acquire_effect", arguments=args)
                 for args in tech_acquire_effect_arguments(tile, effect)
             )
+    # Disposal Facility's Reveal-turn trash of a card in play (OQ-126); the
+    # card is the step row's target.
+    templates.append(ActionTemplate(action_id="trash_disposal_facility_card"))
     return tuple(templates)
 
 

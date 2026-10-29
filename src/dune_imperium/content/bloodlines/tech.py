@@ -244,7 +244,30 @@ class TechTile:
     def acquire_influence_choice(self) -> bool:
         """"Gain one Influence of your choice"."""
 
-        return any(isinstance(icon, GainInfluence) for icon in self._acquire_icons())
+        return any(
+            isinstance(icon, GainInfluence) and not icon.distinct
+            for icon in self._acquire_icons()
+        )
+
+    @property
+    def acquire_distinct_influence(self) -> bool:
+        """Shuttle Fleet's "Choose two:" Influence icons: two different
+        Factions, both named before either is paid (OQ-114)."""
+
+        return any(
+            isinstance(icon, GainInfluence) and icon.distinct
+            for icon in self._acquire_icons()
+        )
+
+    @property
+    def acquire_water(self) -> int:
+        """Windtraps' water: "water 1" on acquiring it [Rise of Ix p. 4]."""
+
+        return sum(
+            icon.water
+            for icon in self._acquire_icons()
+            if isinstance(icon, GainResources)
+        )
 
     @property
     def acquire_intrigue_or_card(self) -> bool:
@@ -299,10 +322,10 @@ class TechTile:
         Advanced Data Analysis's Spy trash is a purchase prerequisite,
         rather than a reward to defer [Advanced Data Analysis Tech tile].
 
-        Raises ``NotImplementedError`` for an icon no key below pays: a Rise
-        of Ix record holds two (Windtraps' water, Shuttle Fleet's two
-        distinct Factions, OQ-114) that ``rules.tech`` pays from stage P4c;
-        a key would drop the water and pay one Influence for the two.
+        Raises ``NotImplementedError`` for an icon no key below pays: none
+        since stage P4c-2a (Windtraps' water is the ``water`` key, Shuttle
+        Fleet's two distinct Factions, OQ-114, the ``distinct_influence``
+        key); a key that dropped an icon would pay less than the tile prints.
         """
 
         unpaid = [icon for icon in self._acquire_icons() if not _paid_icon(icon)]
@@ -311,11 +334,18 @@ class TechTile:
                 f"{self.tech_id}: no acquire key pays {unpaid!r} until stage P4c"
             )
         counted_icons = (
-            "solari", "troops", "intrigue", "cards", "victory_points", "contracts"
+            "solari",
+            "water",
+            "troops",
+            "intrigue",
+            "cards",
+            "victory_points",
+            "contracts",
         )
         return (
             *(key for key in counted_icons if getattr(self, f"acquire_{key}")),
             *(("influence",) if self.acquire_influence_choice else ()),
+            *(("distinct_influence",) if self.acquire_distinct_influence else ()),
             *(("intrigue_or_card",) if self.acquire_intrigue_or_card else ()),
             *(("shield_wall",) if self.acquire_may_destroy_shield_wall else ()),
             *(("signet",) if self.acquire_leader_signet else ()),
@@ -345,7 +375,9 @@ def _paid_icon(icon: Reward) -> bool:
     icon (``rules.tech``): the pieces the ``acquire_*`` properties read."""
 
     match icon:
-        case GainResources(spice=0, water=0):
+        # Solari (the Tech Module's) or water (Windtraps): "water 1"
+        # [Rise of Ix p. 4]; no tile prints spice.
+        case GainResources(spice=0):
             return True
         case (
             RecruitTroops()
@@ -358,7 +390,7 @@ def _paid_icon(icon: Reward) -> bool:
         ):
             return True
         case GainInfluence():
-            return icon == GainInfluence()
+            return icon in (GainInfluence(), GainInfluence(times=2, distinct=True))
         case TrashPersonalCard():
             return icon == TrashPersonalCard()
         case PlaceSpy():
@@ -372,13 +404,9 @@ def _acquire(tech_id: str) -> None:
     check_acquire_record(tech_id)
 
 
-def check_acquire_record(tech_id: str, awaiting: tuple[Reward, ...] = ()) -> None:
+def check_acquire_record(tech_id: str) -> None:
     """Check the tile's acquire record against what the ``acquire_*``
-    properties read; raises ``ValueError`` for a record they cannot read.
-
-    ``awaiting`` names icons a record may print although no key pays them
-    yet (Rise of Ix's, ``content.rise_of_ix.tech``):
-    ``TechTile.acquire_effect_keys`` refuses a tile printing one."""
+    properties read; raises ``ValueError`` for a record they cannot read."""
 
     ability = TECH_ACQUIRE_ABILITIES.get(tech_id)
     if ability is None:
@@ -403,7 +431,7 @@ def check_acquire_record(tech_id: str, awaiting: tuple[Reward, ...] = ()) -> Non
         if line.condition is not None or line.costs or len(line.rewards) != 1:
             raise ValueError(f"{tech_id}: an acquire icon is one free reward")
         icon = line.rewards[0]
-        if not _paid_icon(icon) and icon not in awaiting:
+        if not _paid_icon(icon):
             raise ValueError(f"{tech_id}: no acquire icon holds {icon!r}")
         if isinstance(icon, PlaceSpy):
             # Spy Drones prints two Spies with Deep Cover.

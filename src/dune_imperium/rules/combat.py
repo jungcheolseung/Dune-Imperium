@@ -7,6 +7,7 @@ from functools import cache
 from typing import TYPE_CHECKING, Final
 
 from dune_imperium.config import BaseGame
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.bloodlines.tech_abilities import tech_draws_on
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.rulesets import content_for
@@ -493,6 +494,10 @@ COMBAT_REWARD_ICON_KINDS: Final = (
     # its window like Planetary Array's. Only Rise of Ix's catalogs hold its
     # row (``action_codec``).
     "dreadnought_control",
+    # Not a reward icon either: Windtraps' "When you win a Conflict: water 1"
+    # (Rise of Ix), an automatic row of the same window (OQ-121 ruling 6
+    # (1)). Only Rise of Ix's catalogs hold its row.
+    "windtraps",
     # Not a reward icon either: the sole winner's close of the window once
     # every other row is resolved, the press that says "no more winning
     # Intrigue" (OQ-121 decision 6: "안 내도 창이 닫힌다"). Only the original
@@ -522,6 +527,12 @@ WINNING_INTRIGUE: Final = "winning_intrigue"
 DREADNOUGHT_CONTROL: Final = "dreadnought_control"
 # The action that answers it: the Control space the dreadnought is set on.
 DREADNOUGHT_CONTROL_ACTION: Final = "place_combat_reward_dreadnought"
+# Detonation Devices' answer inside the same frame: "dreadnought로 이겼을 때
+# 칸을 지배하는 대신 dreadnought 하나를 supply로 돌려 1 VP" (OQ-121 ruling 3).
+DREADNOUGHT_DETONATE_ACTION: Final = "detonate_combat_reward_dreadnought"
+# Windtraps' row of the sole winner's window: "Conflict를 이기면 water 1"
+# (docs/rules/rise-of-ix.md 4).
+WINDTRAPS: Final = "windtraps"
 IMPERIUM_REWARD_ICON_KINDS: Final = frozenset(
     {"mentat", "one_faction_influence", *REWARD_LINE_KINDS}
 )
@@ -745,6 +756,15 @@ def _reward_window(
         if draws:
             icons.extend(["planetary_array"] * draws)
             printed.append("planetary_array")
+        if state.config.rise_of_ix and has_tech(
+            state.players[assignment.player].tech_ids, TechAbility.CONFLICT_WIN_WATER
+        ):
+            # Windtraps: "Conflict를 이기면 water 1" [Rise of Ix p. 4]
+            # (docs/rules/rise-of-ix.md 4), an automatic row of the sole
+            # winner's window like Planetary Array's (OQ-121 ruling 6 (1)):
+            # "고를 것 없는 자동 줄". Not doubled by a sandworm: it is no reward.
+            icons.append(WINDTRAPS)
+            printed.append(WINDTRAPS)
         if (
             state.config.rise_of_ix
             and state.players[assignment.player].dreadnoughts_conflict > 0
@@ -1239,6 +1259,16 @@ def _resolve_automatic_icon(
             # The window's own close: nothing is gained (the plays it ends
             # were cards of their own, ``intrigue.apply_intrigue_play``).
             return RuleResult(state=state)
+        case "windtraps", None:
+            # "Conflict를 이기면 water 1" [Rise of Ix p. 4]: gained as this
+            # row resolves, in the winner's order with its other rows.
+            gained = replace(owner.resources, water=owner.resources.water + 1)
+            return RuleResult(
+                state=_with_owner(state, replace(owner, resources=gained)),
+                events=(
+                    resources_gained_event(f"{source}:windtraps", player, water=1),
+                ),
+            )
         case "planetary_array", None:
             # "When you win a Conflict: draw a card" [Planetary Array Tech
             # tile], drawn as this row resolves, before the next place is
@@ -2931,9 +2961,12 @@ def legal_dreadnought_control_actions(
     """The Control spaces the winner may set its dreadnought on now: one row
     each, the choice being mandatory ("must", [Rise of Ix p. 6]).
 
-    Stage P4c adds Detonation Devices' "return the dreadnought to the supply
-    for 1 VP instead" to this frame (OQ-121 ruling 3, a choice within the
-    same row)."""
+    Detonation Devices adds its "may" beside them: "dreadnought로 이겼을 때
+    칸을 지배하는 대신 dreadnought 하나를 supply로 돌려 1 VP"
+    ([Rise of Ix p. 4], docs/rules/rise-of-ix.md 4), a row of the same choice
+    since the dreadnought goes to a space *or* back to the supply (OQ-121
+    ruling 3). Only the Conflict's dreadnought can be sent back, never one on
+    a space or in the garrison, and this frame holds only it."""
 
     if not 0 <= player < state.config.players or not state.decision_stack:
         return ()
@@ -2943,13 +2976,21 @@ def legal_dreadnought_control_actions(
     decision = frame.decision
     if not isinstance(decision, PlayerDecision) or decision.owner != player:
         return ()
-    return tuple(
-        DomainAction(
-            action_id=DREADNOUGHT_CONTROL_ACTION,
-            actor=player,
-            arguments=(("space_id", space_id),),
-        )
-        for space_id in dreadnought_control_spaces(state)
+    detonation = (
+        (DomainAction(action_id=DREADNOUGHT_DETONATE_ACTION, actor=player),)
+        if has_tech(state.players[player].tech_ids, TechAbility.DREADNOUGHT_DETONATION)
+        else ()
+    )
+    return (
+        *(
+            DomainAction(
+                action_id=DREADNOUGHT_CONTROL_ACTION,
+                actor=player,
+                arguments=(("space_id", space_id),),
+            )
+            for space_id in dreadnought_control_spaces(state)
+        ),
+        *detonation,
     )
 
 
@@ -2997,6 +3038,59 @@ def apply_dreadnought_control(state: GameState, action: DomainAction) -> RuleRes
         payload=(("player", action.actor), ("space_id", space_id)),
     )
     return RuleResult(state=next_state, events=(event,))
+
+
+def apply_dreadnought_detonation(
+    state: GameState, action: DomainAction
+) -> RuleResult:
+    """Detonation Devices: return the winner's Conflict dreadnought to the
+    supply for 1 VP instead of setting it on a space.
+
+    "dreadnought로 이겼을 때 칸을 지배하는 대신 dreadnought 하나를 supply로
+    돌려 1 VP("may")" (docs/rules/rise-of-ix.md 4, [Detonation Devices
+    tile]); OQ-121 ruling 3: it is the Conflict dreadnought that would have
+    gone to a space. Nothing is set on a space, the Control marker stays, and
+    the winner's second dreadnought (if any) goes to the garrison with the
+    troops as it does after a placement (``_return_conflict_units``).
+    """
+
+    if action not in legal_dreadnought_control_actions(state, action.actor):
+        raise ValueError("action is not a legal Detonation Devices choice")
+    owner = state.players[action.actor]
+    if owner.dreadnoughts_conflict < 1:
+        raise RuntimeError("the winner has no dreadnought in the Conflict")
+    frame = state.decision_stack[-1]
+    choice_index = context_int(dict(frame.context), "choice_index")
+    remaining = state.decision_stack[:-1]
+    next_state = replace(
+        state,
+        players=replace_player(
+            state.players,
+            replace(
+                owner,
+                dreadnoughts_conflict=owner.dreadnoughts_conflict - 1,
+                dreadnoughts_supply=owner.dreadnoughts_supply + 1,
+                victory_points=owner.victory_points + 1,
+            ),
+        ),
+        decision_stack=remaining,
+        combat_rewards_resolved=combat_rewards_done(state, remaining),
+    )
+    source = (
+        f"round:{state.round_number}:combat_reward:dreadnought_detonation:"
+        f"{choice_index}:{action.actor}"
+    )
+    return RuleResult(
+        state=next_state,
+        events=(
+            GameEvent(
+                event_id=source,
+                kind="dreadnought_detonated",
+                payload=(("player", action.actor),),
+            ),
+            resources_gained_event(source, action.actor, victory_points=1),
+        ),
+    )
 
 
 def _positive_strength_groups(

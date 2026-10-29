@@ -14,8 +14,6 @@ are held to the same table.
 
 import re
 
-import pytest
-
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.observation_encoding import (
     BATTLE_CARD_IDS,
@@ -634,28 +632,27 @@ def test_tech_acquire_records_are_the_apps_acquire_effects() -> None:
     }
 
 
-def test_an_acquire_icon_no_key_pays_is_refused_until_stage_p4c() -> None:
-    # Windtraps' water and Shuttle Fleet's two Factions: a key would drop the
-    # water and pay one Influence, so the tiles refuse their keys.
-    for tech_id in ("windtraps", "shuttle_fleet"):
-        with pytest.raises(NotImplementedError, match="P4c"):
-            _ = IX_TECH_TILES_BY_ID[tech_id].acquire_effect_keys
-    keys = {
-        tile.tech_id: tile.acquire_effect_keys
-        for tile in IX_TECH_TILES
-        if tile.tech_id not in ("windtraps", "shuttle_fleet")
-    }
+def test_every_ix_acquire_icon_has_a_key_since_stage_p4c_2a() -> None:
+    # Windtraps' water and Shuttle Fleet's two Factions had no key before
+    # stage P4c-2a (a key would drop the water and pay one Influence), so the
+    # tiles refused theirs; each has its own key now.
+    keys = {tile.tech_id: tile.acquire_effect_keys for tile in IX_TECH_TILES}
     assert {tech_id: value for tech_id, value in keys.items() if value} == {
         "chaumurky": ("intrigue",),
         "disposal_facility": ("trash",),
         "flagship": ("victory_points",),
         "invasion_ships": ("troops",),
         "memocorders": ("influence",),
+        "shuttle_fleet": ("distinct_influence",),
         "sonic_snoopers": ("intrigue",),
         "spaceport": ("cards",),
+        "windtraps": ("water",),
     }
     assert IX_TECH_TILES_BY_ID["invasion_ships"].acquire_troops == 4
     assert IX_TECH_TILES_BY_ID["spaceport"].acquire_cards == 2
+    assert IX_TECH_TILES_BY_ID["windtraps"].acquire_water == 1
+    assert IX_TECH_TILES_BY_ID["shuttle_fleet"].acquire_distinct_influence
+    assert not IX_TECH_TILES_BY_ID["shuttle_fleet"].acquire_influence_choice
 
 
 def test_each_ix_tile_names_an_ability_of_its_own_and_has_no_record() -> None:

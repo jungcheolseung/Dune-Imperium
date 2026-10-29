@@ -19,9 +19,8 @@ These are stage P4a identity entries, built from the Tech Module's
 - an acquire effect an existing piece prints is a record of
   ``TECH_ACQUIRE_ABILITIES`` (``content.bloodlines.tech_abilities``), checked
   here as the Tech Module's are. Windtraps' water and Shuttle Fleet's two
-  different Factions (OQ-114) are pieces no acquire key pays before stage
-  P4c (``IX_ACQUIRE_AWAITING``): ``TechTile.acquire_effect_keys`` refuses
-  them rather than drop the water or pay one Influence;
+  different Factions (OQ-114) have keys of their own since stage P4c-2a
+  (``water``, ``distinct_influence``; ``TechTile.acquire_effect_keys``);
 - no stack, setup or deck holds them, and setup still refuses Rise of Ix.
   ``content.bloodlines.tech``'s ``TECH_TILES_BY_ID`` resolves them; code that
   lists the Tech Module's own tiles iterates ``TECH_TILES``. The observation
@@ -40,29 +39,16 @@ from dune_imperium.content.bloodlines.tech import (
     check_acquire_record,
 )
 from dune_imperium.content.schema import SourceDocument, SourceRef
-from dune_imperium.content.uprising.effect_dsl import (
-    GainInfluence,
-    GainResources,
-    Reward,
-)
 
 # The component table and the Tech tile rules [Rise of Ix pp. 2, 4]; the
 # printed values are the app's (plan 2.4, D1).
 IX_TECH_SOURCES: Final = (SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2, 4)),)
 
-# Acquire icons an Ix record prints that no acquire key pays before stage
-# P4c: Windtraps' water and Shuttle Fleet's "Choose two" Influence (two
-# different Factions, both named before either is paid; OQ-114).
-IX_ACQUIRE_AWAITING: Final[tuple[Reward, ...]] = (
-    GainResources(water=1),
-    GainInfluence(times=2, distinct=True),
-)
-
 
 def _tile(tech_id: str, name: str, cost: int, ability: TechAbility) -> TechTile:
     """One tile, its acquire record checked."""
 
-    check_acquire_record(tech_id, IX_ACQUIRE_AWAITING)
+    check_acquire_record(tech_id)
     return TechTile(tech_id, name, cost, ability, sources=IX_TECH_SOURCES)
 
 

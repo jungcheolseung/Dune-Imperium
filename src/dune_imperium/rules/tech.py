@@ -18,6 +18,7 @@ the stack's next tile face up. The tile's acquire effect pays once
 within the current turn. ``decline_tech`` refuses the offer.
 """
 
+from collections.abc import Mapping
 from copy import replace
 from typing import Final
 
@@ -66,7 +67,9 @@ from dune_imperium.core.observation import (
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, printer_value
+from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.contracts import begin_contract_gain
 from dune_imperium.rules.effects import (
@@ -114,12 +117,15 @@ from dune_imperium.rules.reveal_turn import (
     add_reveal_optional_sword_strength,
     add_reveal_strength,
     add_units_to_reveal,
+    reveal_generated_persuasion,
     tech_reveal_pending,
 )
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_moves import spy_placement_frame
 from dune_imperium.rules.turn_rows import tech_influence_blocked, tech_influence_lapsed
 
+# Disposal Facility: "[Persuasion 6] or more" (OQ-126).
+DISPOSAL_FACILITY_PERSUASION: Final = 6
 _FRAME_LABEL = "Agent-turn effect frame"
 _ACQUISITION_LABEL = "Tech acquisition frame"
 # Kota Odax's Secret Project: "Whenever you could acquire a Tech tile, you
@@ -141,6 +147,32 @@ def tech_acquire_effect_arguments(
     if effect == "influence":
         return tuple(
             tuple(sorted((*base, ("faction", faction.value)))) for faction in Faction
+        )
+    if effect == "distinct_influence":
+        # Shuttle Fleet's "Choose two:" (OQ-114): two different Factions
+        # named before either Influence is paid, one action naming both
+        # (every ordered pair, so the seat picks them in either order), or
+        # the one Faction that can still rise when the other three are at the
+        # top (OQ-060).
+        return (
+            *(
+                tuple(
+                    sorted(
+                        (
+                            *base,
+                            ("faction", first.value),
+                            ("second_faction", second.value),
+                        )
+                    )
+                )
+                for first in Faction
+                for second in Faction
+                if first is not second
+            ),
+            *(
+                tuple(sorted((*base, ("faction", faction.value))))
+                for faction in Faction
+            ),
         )
     if effect == "intrigue_or_card":
         choices = ("card", "intrigue")
@@ -228,6 +260,10 @@ def legal_tech_acquire_effect_actions(
                 owner, Faction(str(values["faction"]))
             ):
                 continue
+            if effect == "distinct_influence" and not _names_distinct_pair(
+                owner, values
+            ):
+                continue
             actions.append(
                 DomainAction(
                     action_id="resolve_tech_acquire_effect",
@@ -245,6 +281,24 @@ def legal_tech_acquire_effect_actions(
             )
         )
     return tuple(actions)
+
+
+def _names_distinct_pair(owner: PlayerState, values: Mapping[str, ActionValue]) -> bool:
+    """Whether a Shuttle Fleet row names the two different Factions "Choose
+    two:" takes (OQ-114): both able to rise (OQ-060), or the only one that
+    can when the other three sit at the top of their tracks."""
+
+    named = tuple(
+        Faction(str(values[key]))
+        for key in ("faction", "second_faction")
+        if key in values
+    )
+    rising = tuple(
+        faction for faction in Faction if influence_can_rise(owner, faction)
+    )
+    return len(named) == min(2, len(rising)) and all(
+        faction in rising for faction in named
+    )
 
 
 def apply_tech_influence_without_faction(
@@ -560,19 +614,6 @@ def ix_tech_acquisitions(
     )
 
 
-def ix_acquire_effect_keys(tile: TechTile) -> tuple[str, ...]:
-    """``tile.acquire_effect_keys`` of an Ix tile; none for the two whose
-    icon no key pays yet (Windtraps' water, Shuttle Fleet's two different
-    Factions, OQ-114: ``IX_ACQUIRE_AWAITING``, stage P4c-2), which the key
-    refuses with ``NotImplementedError`` rather than drop the water. The
-    codec names the rows of the others with this."""
-
-    try:
-        return tile.acquire_effect_keys
-    except NotImplementedError:
-        return ()
-
-
 def ix_acquisition_context(
     state: GameState, owner: PlayerState, discount: int
 ) -> tuple[tuple[str, ActionValue], ...]:
@@ -886,6 +927,7 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
     # amount gained, is a key of the source event's payload).
     amounts = {
         "solari": tile.acquire_solari if effect == "solari" else 0,
+        "water": tile.acquire_water if effect == "water" else 0,
         "victory_points": (
             tile.acquire_victory_points if effect == "victory_points" else 0
         ),
@@ -918,6 +960,14 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
         owner = replace(
             owner, victory_points=owner.victory_points + tile.acquire_victory_points
         )
+    if effect == "water":
+        # Windtraps: "water 1" on acquiring it [Rise of Ix p. 4].
+        owner = replace(
+            owner,
+            resources=replace(
+                owner.resources, water=owner.resources.water + tile.acquire_water
+            ),
+        )
     if effect == "troops":
         owner, recruited = recruit_troops(owner, tile.acquire_troops)
         events.extend(
@@ -942,6 +992,23 @@ def apply_tech_acquire_effect(state: GameState, action: DomainAction) -> RuleRes
         )
         working = gained.state
         events.extend(gained.events)
+    if effect == "distinct_influence":
+        # Shuttle Fleet: both Factions were named before either is paid, so
+        # the second pick never saw what the first one drew (OQ-114, OQ-057
+        # (4)).
+        for key in ("faction", "second_faction"):
+            if key not in arguments:
+                continue
+            faction_value = str(arguments[key])
+            gained = gain_faction_influence(
+                working,
+                player,
+                Faction(faction_value),
+                1,
+                event_prefix=f"{source}:influence:{faction_value}",
+            )
+            working = gained.state
+            events.extend(gained.events)
     if effect == "contracts":
         contracts = begin_contract_gain(
             working, player, tile.acquire_contracts, source=source
@@ -1172,7 +1239,7 @@ def legal_tech_reveal_actions(
     Influence at all.
     """
 
-    if not state.config.tech_module:
+    if not (state.config.tech_module or state.config.rise_of_ix):
         return ()
     frame = _reveal_top(state, player)
     if frame is None:
@@ -1180,6 +1247,21 @@ def legal_tech_reveal_actions(
     pending = tech_reveal_pending(dict(frame.context))
     owner = state.players[player]
     actions: list[DomainAction] = []
+    if "disposal_facility" in pending:
+        # "Reveal turn: ... 얻은 Persuasion 합계(쓴 것 포함)가 6 이상이면 in play
+        # 카드 하나를 trash할 수 있다" (OQ-126, [Disposal Facility tile]): the
+        # total only grows, so the rows open the moment it reaches 6, even in
+        # the Reveal turn's later steps; a "may" lapses at the turn's end.
+        generated = reveal_generated_persuasion(dict(frame.context))
+        if generated is not None and generated >= DISPOSAL_FACILITY_PERSUASION:
+            actions.extend(
+                DomainAction(
+                    action_id="trash_disposal_facility_card",
+                    actor=player,
+                    arguments=(("card_id", card_id),),
+                )
+                for card_id in counted_in_play(owner)
+            )
     if "forbidden_weapons" in pending:
         strength: list[DomainAction] = []
         for faction in Faction:
@@ -1213,6 +1295,28 @@ def legal_tech_reveal_actions(
     if "panopticon" in pending:
         actions.append(DomainAction(action_id="place_tech_spy", actor=player))
     return tuple(actions)
+
+
+def apply_disposal_facility_trash(
+    state: GameState, action: DomainAction
+) -> RuleResult:
+    """Disposal Facility: trash one of the owner's cards in play.
+
+    "Reveal Turn: If you have [Persuasion 6] or more, you may trash one of
+    your cards in play." [Disposal Facility tile]; the Persuasion is the
+    turn's generated total, spent or not (OQ-126). The tile's effect is used
+    once a Reveal turn.
+    """
+
+    if action not in legal_tech_reveal_actions(state, action.actor):
+        raise ValueError("action is not a legal Disposal Facility trash")
+    player = action.actor
+    card_id = str(dict(action.arguments)["card_id"])
+    source = f"round:{state.round_number}:player:{player}:reveal:disposal_facility"
+    settled = _settle_tech_reveal(state, player, "disposal_facility")
+    return credit_trash_recruits(
+        trash_personal_card(settled, player, card_id, source=source), player
+    )
 
 
 def _settle_tech_reveal(state: GameState, player: int, tech_id: str) -> GameState:

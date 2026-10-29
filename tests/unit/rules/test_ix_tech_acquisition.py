@@ -419,16 +419,22 @@ def test_an_acquire_effect_is_paid_as_the_tech_module_pays_it() -> None:
     assert not tech_rules.pending_tech_acquire_effects(paid.decision_stack[-1])
 
 
-def test_the_two_acquire_icons_no_key_pays_stay_refused() -> None:
+def test_windtraps_and_shuttle_fleet_queue_the_keys_p4c_2a_added() -> None:
     """Windtraps' water and Shuttle Fleet's two different Factions (OQ-114)
-    are stage P4c-2's: buying either raises rather than drop the water or pay
-    one Influence for two."""
+    had no acquire key before stage P4c-2a and were refused rather than drop
+    the water or pay one Influence for two; each tile now queues its own key
+    (``tests/unit/rules/test_ix_tech_abilities.py`` pays them)."""
 
-    for tile in ("windtraps", "shuttle_fleet"):
+    for tile, key in (
+        ("windtraps", "windtraps:water"),
+        ("shuttle_fleet", "shuttle_fleet:distinct_influence"),
+    ):
         stacks = ((tile,), (), ())
         _, state = _holding(spice=9, stacks=stacks)
-        with pytest.raises(NotImplementedError, match="no acquire key pays"):
-            _take(_open(state), _buy(tile))
+        after, _ = _take(_open(state), _buy(tile))
+        assert tech_rules.pending_tech_acquire_effects(after.decision_stack[-1]) == (
+            key,
+        )
 
 
 # --- The open decision, as the seat sees it ----------------------------------
@@ -697,8 +703,9 @@ def test_the_rows_run_through_the_engine_and_the_codec() -> None:
 def test_the_rows_of_the_ix_tiles_are_in_the_original_catalog_with_rise_of_ix() -> None:
     """Only a Rise of Ix catalog holds the Ix tiles' rows: each tile bought
     with no Negotiator or with one up to its price, and the acquire icons that
-    a key pays (all but Windtraps' and Shuttle Fleet's); the original game
-    alone has none of them [Rise of Ix p. 4]."""
+    a key pays (every tile's since stage P4c-2a), with the two rows of a tile's
+    ability that choose (Detonation Devices, Disposal Facility); the original
+    game alone has none of them [Rise of Ix p. 4]."""
 
     plain = ActionCodec(ORIGINAL).catalog
     ix = ActionCodec(IX).catalog
@@ -722,12 +729,15 @@ def test_the_rows_of_the_ix_tiles_are_in_the_original_catalog_with_rise_of_ix() 
     }
     assert effects == {
         "chaumurky",
+        "detonation_devices",
         "disposal_facility",
         "flagship",
         "invasion_ships",
         "memocorders",
+        "shuttle_fleet",
         "sonic_snoopers",
         "spaceport",
+        "windtraps",
     }
     assert not {tile for tile in effects if tile in TECH_IDS}
     assert ActionTemplate("choose_tech", (("tech_id", "flagship"),)) in ix_only

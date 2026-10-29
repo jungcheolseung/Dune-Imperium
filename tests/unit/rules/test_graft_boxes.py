@@ -82,6 +82,7 @@ OTHER_FRAME_KEYS = frozenset(
         "acquisition_card_id",
         "acquisition_spy_recalled",
         "advance_agent_frame",
+        "artillery_counted",
         "choice_index",
         "choice_sword_card_ids",
         "chose",

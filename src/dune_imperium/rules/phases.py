@@ -3,6 +3,7 @@
 from copy import replace
 from typing import Final
 
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     DrawTwistedIntrigueCards,
@@ -16,8 +17,10 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.dreadnoughts import space_controller
 from dune_imperium.rules.frames import FrameKind, replace_player, reset_turn_counters
+from dune_imperium.rules.gain_events import resources_gained_event
 from dune_imperium.rules.pauses import ROUND_DRAW, push_pause
 from dune_imperium.rules.tech import apply_endgame_tech_effects
 
@@ -33,6 +36,70 @@ def _twisted_round_draw() -> int:
 
 
 TWISTED_ROUND_DRAW: Final = _twisted_round_draw()
+# Rise of Ix's Round Start Tech lines: Holtzman Engine's card and Shuttle
+# Fleet's Solari (docs/rules/rise-of-ix.md 4, OQ-122).
+HOLTZMAN_ROUND_DRAW: Final = 1
+SHUTTLE_FLEET_SOLARI: Final = 2
+
+
+def _ix_round_start_effects(state: GameState) -> RuleResult:
+    """Pay the held Tech tiles' "Round Start:" lines: Holtzman Engine's card
+    and Shuttle Fleet's 2 Solari.
+
+    "Conflict 공개 → Control 방어 → 각자 5장(뒤집은 Tech 되돌리기를 함께) →
+    Holtzman Engine의 카드 1장·Shuttle Fleet의 2 Solari → Ilesa의 따로 두기 →
+    첫 turn. 좌석 사이는 First Player부터." (docs/rules/rise-of-ix.md 4,
+    OQ-122, user ruling 2026-10-23). They decide nothing, so they run in
+    seat order from the First Player after Piter's draw. Holtzman Engine's
+    card may need the discard pile shuffled: that is the in-turn personal
+    draw's chance step (``draw_or_request_personal_cards``), pushed on the
+    stack the first turn (or the Scouts step) opens on.
+    """
+
+    if state.first_player is None:
+        raise ValueError("a round requires a First Player")
+    working = state
+    events: list[GameEvent] = []
+    seats = state.config.players
+    for offset in range(seats):
+        seat = (state.first_player + offset) % seats
+        source = f"round:{state.round_number}:player:{seat}:tech"
+        owner = working.players[seat]
+        if has_tech(owner.tech_ids, TechAbility.HOLTZMAN_ENGINE) and (
+            owner.deck or owner.discard_pile
+        ):
+            drawn = draw_or_request_personal_cards(
+                working,
+                seat,
+                HOLTZMAN_ROUND_DRAW,
+                source=f"{source}:holtzman_engine",
+            )
+            working = drawn.state
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:holtzman_engine:draw",
+                    kind="cards_drawn",
+                    payload=(("count", HOLTZMAN_ROUND_DRAW), ("player", seat)),
+                )
+            )
+        owner = working.players[seat]
+        if has_tech(owner.tech_ids, TechAbility.ROUND_START_TWO_SOLARI):
+            paid = replace(
+                owner,
+                resources=replace(
+                    owner.resources,
+                    solari=owner.resources.solari + SHUTTLE_FLEET_SOLARI,
+                ),
+            )
+            working = replace(
+                working, players=replace_player(working.players, paid)
+            )
+            events.append(
+                resources_gained_event(
+                    f"{source}:shuttle_fleet", seat, solari=SHUTTLE_FLEET_SOLARI
+                )
+            )
+    return RuleResult(state=working, events=tuple(events))
 
 
 def begin_round(state: GameState) -> RuleResult:
@@ -240,6 +307,10 @@ def draw_round_hands(state: GameState) -> RuleResult:
             for seat in twisted_draws
         ),
     )
+    if state.config.rise_of_ix:
+        ix = _ix_round_start_effects(next_state)
+        next_state = ix.state
+        events = (*events, *ix.events)
     return RuleResult(state=next_state, events=events)
 
 

@@ -678,6 +678,12 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     # control", as the Control icon's verb (a new verb would widen the
     # observation's effect-pick verb segment, ``len(Verb)``).
     "place_combat_reward_dreadnought": _row(_V.TAKE, _S.CONFLICT, _T.SPACE),
+    # Detonation Devices' answer in the same choice: the dreadnought back to
+    # the supply for 1 VP instead of a space ("gain", as the VP icon's verb);
+    # the tile prints it.
+    "detonate_combat_reward_dreadnought": _row(
+        _V.GAIN, _S.TECH, variant="detonation"
+    ),
     "trash_combat_reward_card": _row(_V.TRASH, _S.CONFLICT, _T.PERSONAL_CARD),
     "decline_combat_reward_trash": _row(_V.DECLINE, _S.CONFLICT, of=_V.TRASH),
     "resolve_combat_trash_without_card": _row(
@@ -831,6 +837,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "choose_tech_strength": _row(_V.CHOOSE, _S.TECH, _T.FACTION),
     "choose_tech_trash": _row(_V.CHOOSE, _S.TECH, variant="trash"),
     "place_tech_spy": _row(_V.PLACE_SPY, _S.TECH),
+    # Disposal Facility's Reveal-turn trash of a card in play (Rise of Ix).
+    "trash_disposal_facility_card": _row(
+        _V.TRASH, _S.TECH, _T.PERSONAL_CARD, variant="disposal_facility"
+    ),
     # --- Research ------------------------------------------------------------
     "choose_research_space": _row(_V.ADVANCE, _S.RESEARCH, _T.TRACK_SPACE),
     "choose_research_influence": _row(_V.GAIN_INFLUENCE, _S.RESEARCH, _T.FACTION),

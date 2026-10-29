@@ -255,12 +255,12 @@ def _tech_acquire_keys(context: Mapping[str, object]) -> tuple[str, ...]:
 
 def tech_influence_blocked(key: str, owner: PlayerState) -> bool:
     """Whether an owed Tech acquire icon ``key`` (``<tech_id>:<effect>``) is
-    an "Influence with any Faction" (Glowglobes, Navigation Chamber) with
-    every Faction at the top, where it offers none (OQ-060; user decision
-    2026-10-17, composed-effects plan 5, rule decision 1)."""
+    an "Influence with any Faction" (Glowglobes, Navigation Chamber; Shuttle
+    Fleet's two) with every Faction at the top, where it offers none (OQ-060;
+    user decision 2026-10-17, composed-effects plan 5, rule decision 1)."""
 
     _tech_id, effect = key.split(":")
-    return effect == "influence" and not any(
+    return effect in ("influence", "distinct_influence") and not any(
         influence_can_rise(owner, faction) for faction in Faction
     )
 

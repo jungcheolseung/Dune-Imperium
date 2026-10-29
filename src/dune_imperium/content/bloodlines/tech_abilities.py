@@ -112,10 +112,10 @@ TECH_ACQUIRE_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         # Rise of Ix's tiles (stage P4a, ``content.rise_of_ix.tech``): the
         # acquire effects of docs/rules/rise-of-ix.md 4's table, as the app's
         # ``AcquireEffectList`` lists them. No setup deals these tiles yet.
-        # Two print what no acquire key pays before stage P4c (Windtraps'
-        # water; Shuttle Fleet's "Choose two" Factions, two different ones
-        # named before either is paid, OQ-114, as Machinations' record):
-        # ``TechTile.acquire_effect_keys`` refuses those two tiles.
+        # Windtraps' water and Shuttle Fleet's "Choose two" Factions (two
+        # different ones named before either is paid, OQ-114, as
+        # Machinations' record) are the ``water`` and ``distinct_influence``
+        # keys of ``TechTile.acquire_effect_keys`` (stage P4c-2a).
         "chaumurky": _icons(DrawIntrigueCards(2)),
         # The trash icon, optional as Planetary Array's.
         "disposal_facility": _icons(TrashPersonalCard()),
@@ -293,12 +293,13 @@ def tech_draws_on(
     tech_ids: tuple[str, ...], kind: type[OnContractCompleted] | type[OnConflictWon]
 ) -> int:
     """Cards the held tiles draw when a ``kind`` trigger fires (CHOAM
-    Transports, Planetary Array; composed A6e)."""
+    Transports, Planetary Array; composed A6e). A Rise of Ix tile has no
+    ability record (``content.rise_of_ix.tech``), so it draws none here."""
 
     return sum(
         reward.count
         for tech_id in tech_ids
-        for record in TECH_ABILITIES[tech_id]
+        for record in TECH_ABILITIES.get(tech_id, ())
         if isinstance(record.trigger, kind)
         for line in record.sections
         for reward in line.rewards

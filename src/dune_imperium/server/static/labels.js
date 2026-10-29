@@ -254,6 +254,11 @@ const ACTION_LABELS = {
   place_intrigue_negotiator: "Negotiator 놓기",
   decline_intrigue_negotiator: "Negotiator 놓지 않음",
   place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
+  /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep
+     their English names, which no official Korean source translates. */
+  detonate_combat_reward_dreadnought:
+    "Detonation Devices: dreadnought를 {supply}로 → {victory_point} 1",
+  trash_disposal_facility_card: "Disposal Facility: 플레이 영역 카드 {trash}",
   retreat_leader_commander: "{commander} 1 {retreat} ({leader})",
   gain_reveal_influence: "{influence_any} 1 획득",
   retreat_opponent_troop: "상대 {troop} 강제 {retreat}",
@@ -460,6 +465,7 @@ const EVENT_LABELS = {
   intrigue_negotiator_declined: "Negotiator 놓지 않음",
   dreadnought_control_placed: "dreadnought가 {control} 공간에",
   dreadnought_returned: "dreadnought {garrison} 복귀",
+  dreadnought_detonated: "dreadnought를 {supply}로 (Detonation Devices)",
   conflict_end_trigger_declined: "{conflict} 종료 발동 {intrigue_card} 쓰지 않음",
   conflict_end_trigger_finished: "{conflict} 종료 발동 {intrigue_card} 끝내기",
   conflict_end_trigger_offered: "{conflict} 종료 발동 {intrigue_card} 제안",
@@ -687,6 +693,9 @@ const EFFECT_ICON_LABELS = {
   /* Planetary Array's "When you win a Conflict" card, a row of the
      winner's window (OQ-121). */
   planetary_array: "행성 군사력: {draw} 1",
+  /* Windtraps' "When you win a Conflict" water (Rise of Ix); the tile has no
+     official Korean name. */
+  windtraps: "Windtraps: {water} 1",
   /* The sole winner's close of its window: no more "When you win a
      Conflict" Intrigue (OQ-121 decision 6). */
   winning_intrigue: "승리 {intrigue} 끝내기",

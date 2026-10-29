@@ -100,6 +100,7 @@ from dune_imperium.rules.combat import (
     apply_conflict_end_trigger,
     apply_distinct_combat_reward_influence,
     apply_dreadnought_control,
+    apply_dreadnought_detonation,
     begin_combat_intrigue,
     close_spent_conflict_end_window,
     combat_participants_are_stale,
@@ -390,6 +391,7 @@ from dune_imperium.rules.spy_moves import (
 )
 from dune_imperium.rules.strength import refresh_pre_reveal_strength
 from dune_imperium.rules.tech import (
+    apply_disposal_facility_trash,
     apply_place_tech_spy,
     apply_secret_project,
     apply_tech_acquire_effect,
@@ -829,6 +831,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "choose_tech_strength": apply_tech_choice,
     "choose_tech_trash": apply_tech_choice,
     "place_tech_spy": apply_place_tech_spy,
+    "trash_disposal_facility_card": apply_disposal_facility_trash,
     "place_track_spy": apply_place_track_spy,
     # A triggered draw held as the owner's own step (OQ-106).
     "draw_owed_intrigue": apply_owed_draw,
@@ -997,6 +1000,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "recall_spy_for_combat_reward": apply_combat_reward_spy,
     "decline_combat_reward_spy": apply_combat_reward_spy,
     "place_combat_reward_dreadnought": apply_dreadnought_control,
+    "detonate_combat_reward_dreadnought": apply_dreadnought_detonation,
     "choose_combat_reward_influence": apply_combat_reward_influence,
     "choose_distinct_combat_reward_influence": (apply_distinct_combat_reward_influence),
     # Every eligible Faction at the top: the owner confirms the loss (OQ-060).
