@@ -56,6 +56,8 @@ SECONDS = {
     "narrow": 6,
     "log_passes": 6,
     "log_words": 5,
+    # 2026-10-30 alone: a remote server, five pages, 88 pinned actions.
+    "ix_screens": 18,
 }
 
 
