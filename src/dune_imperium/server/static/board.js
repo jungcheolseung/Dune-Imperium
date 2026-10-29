@@ -1349,8 +1349,8 @@ function watchForceStepper(holder) {
    and Councilor tokens on the High Council seats. */
 function renderTrackMarkers(stage, view) {
   const tracks = boardLayout(view).tracks;
-  /* A board whose tracks are not measured (the original game's, so far)
-     leaves the counts to the seat panels (boardDrawsTracks). */
+  /* A layout without track tables leaves the counts to the seat panels
+     (boardDrawsTracks). */
   if (!tracks || !tracks.influence || !Array.isArray(view.players)) return;
   const factions = Object.keys(FACTION_LABELS);
   let councilSlot = 0;
@@ -1448,9 +1448,10 @@ function renderTrackMarkers(stage, view) {
       stage.appendChild(placeAt(scoreLapMark(seat, vpLap, tracks.disc_size), vpX, vpY));
     }
 
-    /* Every seat's strength token is always on the track: in the framed
-       square left of 1/11 at strength 0 (four tokens in a 2×2), on the
-       printed number otherwise, and on its "+20" face beyond 20 (23 is
+    /* Every seat's strength token is always on the track: at strength 0
+       in the framed square left of 1/11 (four tokens in a 2×2), or fanned
+       on the original board's printed 0 ring, on the printed number
+       otherwise, and on its "+20" face beyond 20 (23 is
        the token on 3 showing +20). With the owner's token pictures
        (catalog.strength_tokens) it is the picture of that face, lying in
        the open part of its cell like the marker on the table, and seats
@@ -1463,7 +1464,8 @@ function renderTrackMarkers(stage, view) {
       ? strengthPicture(seat, flipped ? faces.plus20 : faces.front, tracks.strength.token_size)
       : seatToken(seat, "track-token strength-token");
     token.title = t("board.seat_strength", { seat, strength });
-    if (shown === 0) {
+    const zeroPoint = tracks.strength.zero_point;
+    if (shown === 0 && !zeroPoint) {
       const [zx, zy, zw, zh] = tracks.strength.zero_box;
       const inset = faces ? 0.25 : 0.3;
       placeAt(
@@ -1474,6 +1476,7 @@ function renderTrackMarkers(stage, view) {
     } else {
       const row = shown > 10 ? 1 : 0;
       const cell = shown > 10 ? shown - 10 : shown;
+      const x = shown === 0 ? zeroPoint[0] : tracks.strength.cells[cell];
       if (faces) {
         /* The fan may lap about half a percent over each neighbour (a
            cell is 3.75 wide, the widest fan 4.95), which keeps a strip of
@@ -1481,7 +1484,8 @@ function renderTrackMarkers(stage, view) {
         const sharing = strengthStacks.get(shown);
         const step = sharing.length > 1 ? Math.min(1.1, 1.95 / (sharing.length - 1)) : 0;
         const shift = (sharing.indexOf(seat) - (sharing.length - 1) / 2) * step;
-        placeAt(token, tracks.strength.cells[cell] + shift, tracks.strength.token_rows[row] - shift * 0.35);
+        const y = shown === 0 ? zeroPoint[1] : tracks.strength.token_rows[row];
+        placeAt(token, x + shift, y - shift * 0.35);
       } else {
         if (flipped) {
           token.classList.add("flipped");
@@ -1490,7 +1494,8 @@ function renderTrackMarkers(stage, view) {
           plus.textContent = "+20";
           token.appendChild(plus);
         }
-        placeAt(token, tracks.strength.cells[cell] + (seat - 1.5) * 0.9, tracks.strength.rows[row]);
+        const y = shown === 0 ? zeroPoint[1] : tracks.strength.rows[row];
+        placeAt(token, x + (seat - 1.5) * 0.9, y);
       }
     }
     stage.appendChild(token);

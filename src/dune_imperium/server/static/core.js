@@ -766,8 +766,8 @@ function boardScan(view = state.view) {
 }
 
 /* Whether the shown board draws the seats' tracks (Influence, Score,
-   strength, the Conflict): the original game's are not measured yet, and
-   the seat panels then carry those counts (panels.js textBoardStats). */
+   strength, the Conflict): both boards' pictures do; on the text board (no
+   picture) the seat panels carry those counts (panels.js textBoardStats). */
 function boardDrawsTracks(view = state.view) {
   return Boolean(boardScan(view) && boardLayout(view).tracks.influence);
 }

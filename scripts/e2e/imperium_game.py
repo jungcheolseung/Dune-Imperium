@@ -1,10 +1,10 @@
 """The original Dune: Imperium in the play UI (stage P5a of
 docs/base-game-and-ix-plan.md, section 18).
 
-The original game is played on the text board until its own board scan and
-layout arrive (P5b); its spaces, Conflicts, Leaders and cards come from the
-catalog (names and text). This checks that a whole original game reads as
-words, the way log_words.py checks Uprising's:
+The original game is played on its own board picture (P5b, the text board
+where the picture is missing); its spaces, Conflicts, Leaders and cards
+come from the catalog (names and text). This checks that a whole original
+game reads as words, the way log_words.py checks Uprising's:
 
 [1] Three finished original games played by AI seats (heuristic seed 7;
     random seeds 1 and 2 with the Leader draft and the promo cards, picked
@@ -22,14 +22,17 @@ words, the way log_words.py checks Uprising's:
     the legal list, not always the first) in Korean, then in English from
     the middle: every step settles without an error banner, prettify() is
     never called, every id the view names is in the catalog, the board is
-    the text board with the original game's 22 spaces, and the standings
-    show at the end.
+    the original board's picture with its 22 spaces and the seats' pieces
+    on its tracks (stage P5b: Influence cubes, Alliance tokens, Score
+    discs, strength tokens, the garrisons' troops, the Conflict card and
+    deck), so the seat panels no longer repeat those counts, and the
+    standings show at the end.
 [3] The finished game's review screen in both languages, titles included,
     shows no engine id (log_words.check_page).
 [4] The original game's markers (P5c) on a four-human game's first
     decision, its view edited in the browser the way deck_contents.py's
     scenario C does: The Voice's barred space on the seat panel and the
-    text board, Infiltrate's turn and Recruitment Mission's round,
+    board, Infiltrate's turn and Recruitment Mission's round,
     Masterstroke's secret (to the others), its Factions (to the Baron's own
     seat only, from the view's private block) and once revealed, and the
     Mentat lying on its space with the seat that takes it next round; in
@@ -132,6 +135,31 @@ TABLE_JS = """() => ({
   // The track counts each seat panel shows on the text board.
   trackStats: [...document.querySelectorAll("#seats article.seat")].map(
     (card) => card.querySelectorAll(".text-board-stats .stat").length),
+  // The pieces the original board's tracks carry (stage P5b), and whether
+  // each lies inside the picture.
+  pieces: Object.fromEntries(Object.entries({
+    cubes: ".track-cube", alliance: ".alliance-token", score: ".vp-token",
+    strength: ".strength-token", garrison: '.garrison-unit[data-kind="troop"]',
+    deployed: '.conflict-unit[data-kind="troop"]',
+    conflict: ".conflict.slot-card", deck: ".slot-deck",
+  }).map(([key, selector]) => [key,
+    document.querySelectorAll(`#board .board-stage ${selector}`).length])),
+  // The troops the view puts in the garrisons and the Conflict.
+  troops: ["troops_garrison", "troops_conflict"].map((key) =>
+    state.view.players.reduce((sum, player) => sum + (player[key] || 0), 0)),
+  outside: (() => {
+    const stage = document.querySelector("#board .board-stage");
+    if (!stage) return null;
+    const box = stage.getBoundingClientRect();
+    return [...stage.querySelectorAll(
+      ".track-cube, .alliance-token, .vp-token, .strength-token, .garrison-unit,"
+      + " .conflict-unit")]
+      .filter((node) => {
+        const r = node.getBoundingClientRect();
+        return r.left < box.left - 1 || r.right > box.right + 1
+          || r.top < box.top - 1 || r.bottom > box.bottom + 1;
+      }).length;
+  })(),
 })"""
 
 
@@ -207,9 +235,18 @@ def play_human(page, rec) -> None:
         "the original board's picture carries its 22 spaces (stage P5b)",
         table,
     )
+    garrison, deployed = table["troops"]
     check.ok(
-        table["trackStats"] == [7, 7, 7, 7],
-        "each seat shows its Influence, troops and strength on the text board",
+        table["pieces"] == {
+            "cubes": 16, "alliance": 4, "score": 4, "strength": 4,
+            "garrison": garrison, "deployed": deployed, "conflict": 1, "deck": 1,
+        } and garrison + deployed >= 12 and table["outside"] == 0,
+        "the original board's tracks carry every seat's pieces (stage P5b)",
+        table,
+    )
+    check.ok(
+        table["trackStats"] == [0, 0, 0, 0],
+        "the seat panels leave the track counts to the board",
         table["trackStats"],
     )
     steps = 0
@@ -329,7 +366,7 @@ PLACEHOLDER = re.compile(r"\{[a-z_]+(?::\d+)?\}|\[object|undefined")
 
 
 def check_markers(page) -> None:
-    print("[4] the original game's markers on the seat panels and the text board")
+    print("[4] the original game's markers on the seat panels and the board")
     created = page.evaluate(
         """async (body) => {
           const r = await fetch('/games', {method: 'POST',
