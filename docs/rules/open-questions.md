@@ -176,6 +176,7 @@
 | [OQ-148](#oq-148--spice-smugglers의-화살표-보상-순서-원판) | Spice Smugglers의 화살표 보상 순서 (원판) | `DECIDED` |
 | [OQ-149](#oq-149--intrigue-덱-맨-위를-보고-하나를-남긴-좌석은-그-카드를-아는가-immortality--rise-of-ix) | Intrigue 덱 맨 위를 보고 하나를 남긴 좌석은 그 카드를 아는가 (Immortality · Rise of Ix) | `DECIDED` |
 | [OQ-150](#oq-150--reveal-turn-tech-능력-artillery의-셈과-reveal-도중에-얻은-타일-rise-of-ix) | Reveal turn Tech 능력: Artillery의 셈과 Reveal 도중에 얻은 타일 (Rise of Ix) | `DECIDED` |
+| [OQ-151](#oq-151--combat-해결-중-shipping-회수로-recruit한-troop을-troop-transports로-배치할-수-있는가-rise-of-ix) | Combat 해결 중 Shipping 회수로 recruit한 troop을 Troop Transports로 배치할 수 있는가 (Rise of Ix) | `OPEN` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3225,3 +3226,16 @@
 - **판정(2026-10-29, 사용자 "(가) 모두 듣기"):** (2) Reveal 도중 Acquire Tech로 얻은 타일도 그 Reveal turn의 Reveal 능력이 모두 듣는다 —
   Artillery·Minimic Film·Disposal Facility도 Restricted Ordnance·Tech Module의 Command 타일처럼 늦게 들어도 그 turn에 준다(OQ-095 (7)의 원칙).
   (1) Artillery의 셈은 추천대로 지금 구현(늘어날 때만 채움, trash된 카드 제외)을 둔다 — 별도 판정은 없고, P4f의 앱 대조(디컴파일)에서 확인한다.
+
+## OQ-151 — Combat 해결 중 Shipping 회수로 recruit한 troop을 Troop Transports로 배치할 수 있는가 (Rise of Ix)
+
+- 상태: `OPEN` (2026-10-29, P4c-3에서 올림 — 사용자 판정을 기다린다)
+- 문서끼리 어긋난다: [rise-of-ix.md](rise-of-ix.md) 5는 "Combat 중에 recruit한 troop은 garrison으로(디자이너 판정, BGG forum — Trade Monopoly로
+  얻은 Troop Transports)"라고 적고, 같은 문서 15는 Troop Transports의 "You may deploy any of them to the Conflict"를 두고 "디자이너 판정도 Combat
+  해결 중의 배치가 가능하다는 쪽"이라고 적는다. 원문(BGG 글)은 저장소에 없다.
+- 상황: Conflict 보상의 Freighter(Skirmish·Trade Monopoly, P4d)로 Combat 해결 중에 회수해 2번 칸에서 troop을 recruit하고, 그 좌석이 Troop Transports를
+  가졌다(같은 보상으로 막 얻은 경우 포함). 그 troop을 이미 해결 중인 Conflict에 배치할 수 있는가.
+- 지금 구현(P4c-3): garrison으로 간다(5의 문장). 자기 Agent·Reveal turn에서는 Troop Transports가 Combat 칸이 아니어도 배치를 허락한다(15, P4c-3b).
+- 선택지: (가) garrison으로 — 이미 강도를 겨룬 뒤이므로 배치해도 결과가 바뀌지 않는다는 읽기; (나) 배치할 수 있다 — 카드 문장이 시점을 묻지 않는다는 읽기
+  (보상 계산 뒤라 strength에는 영향이 없고, "Conflict 끝에 잃는" troop만 는다).
+- 추천: (가) — 보상 순위가 이미 정해진 뒤의 배치는 효과가 없고, 5의 문장이 그 경우를 직접 말한다. BGG 원문을 찾으면 다시 본다.
