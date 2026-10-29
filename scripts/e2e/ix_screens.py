@@ -24,9 +24,26 @@ For each hidden value, at the moment it is real:
   own), no payload it can fetch (view, snapshot with the action log) and no
   state its page holds names a tracked card unless that seat may know it (its
   own known cards, or the card it holds in hand), its page shows none of the
-  lines, and asking for the owner's view, actions or snapshot is refused (403);
-- the spectator (no seat) is refused the same, its summary has no such field or
-  card, its page shows none of the lines and holds no view at all.
+  lines, and asking for the owner's view, actions, snapshot or log is refused
+  (403). That owner is every seat with a hidden value, a pending Ix choice
+  alone included, or a hidden card;
+- no other seat's payload (its own view, snapshot and log, the seatless
+  snapshot, the VP ledger) carries an ``ix_pending`` field anywhere but its own
+  empty private block: a pending choice is a number or a word, so it is looked
+  for by its field names in the whole payload, not by its value;
+- no other seat's payloads, and not the spectator's, and no other seat's page
+  anywhere in its document (``outerHTML`` and ``textContent``), hold a tracked
+  card it may not know: not its id, its English or Korean name or the path of
+  either picture (a public copy of the same card would show the same name, so
+  a find also names any copy the page's state holds);
+- the spectator (no seat) is refused the same, its summary and the seatless
+  snapshot have no such field or card, its page shows none of the lines and
+  holds no view at all.
+
+Then a hot-seat hand-over, once per table on an open server, where one page
+plays every seat: the page shows the owner and draws its line, the owner ends
+its turn, and the page that now shows the next seat holds none of the owner's
+lines or cards (the view replaced, the containers emptied).
 
 Two tables, each a fresh game on the same server:
 
@@ -97,6 +114,7 @@ and read each state for the targets.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from dataclasses import dataclass, field
 from typing import Any
@@ -125,11 +143,25 @@ class Checkpoint:
 
 
 @dataclass(frozen=True)
+class Handover:
+    """A hot-seat turn change: after ``shown`` actions (a checkpoint) the page
+    shows ``owner`` and draws its hidden line; after ``passed`` actions, and
+    the owner's turn-end press when it holds one (a turn that left nothing to
+    take back holds none), ``viewer`` decides and the page shows it."""
+
+    shown: int
+    owner: int
+    passed: int
+    viewer: int
+
+
+@dataclass(frozen=True)
 class Table:
     name: str
     body: dict[str, Any]
     plan: list[Step]
     checkpoints: dict[int, Checkpoint]
+    handover: Handover
 
 
 # Table 1: the original game with Rise of Ix, as the setup screen's boxes would
@@ -564,6 +596,8 @@ IX_TABLE = Table(
             {2: {"ix_pending": TECH_PENDING, "known_intrigue_bottom": KNOWN_BOTTOM}},
         ),
     },
+    # Seat 2 knows its bottom card; it ends its turn (30) and seat 3 reveals (31).
+    Handover(shown=29, owner=2, passed=31, viewer=3),
 )
 CEREMONY_TABLE = Table(
     "Uprising + Immortality",
@@ -595,6 +629,9 @@ CEREMONY_TABLE = Table(
             {0: [KEPT], 1: [TOP_CARD]},
         ),
     },
+    # Seat 0 knows the top card and holds the other; it ends its turn (86) and
+    # seat 1 sends an Agent (87).
+    Handover(shown=84, owner=0, passed=87, viewer=1),
 )
 
 SECRET_KEYS = (
@@ -672,6 +709,22 @@ WORDS_JS = """(args) => {
     peeked: args.peeked.map(name),
   };
 }"""
+
+
+# Each tracked card's marks: its id, its English and Korean names and the
+# paths of its English and Korean pictures (the catalog's own entry).
+MARKS_JS = """(ids) => ids.map((id) => {
+  const entry = state.catalog.intrigue[baseId(id)];
+  const path = (url) => (url ? url.split("?")[0] : null);
+  return [id, entry.name, entry.name_ko || null, path(entry.image),
+          path(entry.image_ko)];
+})"""
+
+# The whole document, hidden parts included: markup (attributes, pictures) and
+# text.
+DOCUMENT_JS = """() => [
+  document.documentElement.outerHTML, document.documentElement.textContent,
+]"""
 
 
 class PlanMissed(Exception):
@@ -770,6 +823,85 @@ def tracked_cards(point: Checkpoint) -> list[str]:
     return sorted({card for cards in may_carry(point).values() for card in cards})
 
 
+def shown_bottom(mine: dict[str, Any]) -> list[list[Any]]:
+    """The known bottom entries a page names: its bottom line leaves out the
+    known top card."""
+    top = mine.get("known_intrigue_top", "")
+    return [entry for entry in mine.get("known_intrigue_bottom", []) if entry[1] != top]
+
+
+def word_args(mine: dict[str, Any]) -> dict[str, Any]:
+    """``WORDS_JS``'s arguments for a seat's hidden fields ``mine``."""
+    pending = mine.get("ix_pending", EMPTY_PENDING)
+    bottom = shown_bottom(mine)
+    return {
+        "steps": ", ".join(str(step) for step in pending["shipping_rewards"]),
+        "discount": pending["tech_discount"],
+        "payment": pending["tech_payment"],
+        "negotiators": pending["negotiators_returnable"],
+        "bottom": bottom[0][1] if bottom else "",
+        "depth": bottom[0][0] if bottom else 0,
+        "top": mine.get("known_intrigue_top", ""),
+        "held": [card for _holder, card in mine.get("known_intrigue_held", [])],
+        "peeked": mine.get("peeked_intrigue_ids", []),
+    }
+
+
+def known_lines(mine: dict[str, Any], words: dict[str, Any]) -> list[list[str]]:
+    """The ``.known-intrigue`` lines a page draws for ``mine``: (kind, text)."""
+    return [
+        *([["top", words["top"]]] if mine.get("known_intrigue_top") else []),
+        *([["bottom", words["bottom"]]] if shown_bottom(mine) else []),
+    ]
+
+
+def marks_found(page, cards: list[str], *texts: str) -> dict[str, list[str]]:
+    """Each of ``cards`` whose marks (``MARKS_JS``: id, names, picture paths)
+    are found in any of ``texts``, with the marks found."""
+    if not cards:
+        return {}
+    found: dict[str, list[str]] = {}
+    for card, *marks in page.evaluate(MARKS_JS, cards):
+        hits = [
+            mark for mark in (card, *marks) if mark and any(mark in t for t in texts)
+        ]
+        if hits:
+            found[card] = hits
+    return found
+
+
+def document_leaks(page, cards: list[str], state_text: str) -> dict[str, list[str]]:
+    """What ``page``'s document holds of ``cards``, cards it may not know: the
+    marks of each found in its markup or text. A public copy of the same card
+    would show the same name and picture, so any copy its state names is
+    listed beside a find, to say why."""
+    if not cards:
+        return {}
+    html, text = page.evaluate(DOCUMENT_JS)
+    leaks = marks_found(page, cards, html, text)
+    for card, hits in leaks.items():
+        kind = card.rsplit(":", 1)[0]
+        copies = set(re.findall(re.escape(kind) + r":\d+", state_text)) - {card}
+        hits.extend(f"public copy {copy}" for copy in sorted(copies))
+    return leaks
+
+
+def pending_fields(payload: Any, path: str = "") -> list[tuple[str, Any]]:
+    """Every ``ix_pending`` field (``EMPTY_PENDING``'s keys) anywhere in
+    ``payload``, as (path, value), sorted by path."""
+    found: list[tuple[str, Any]] = []
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            where = f"{path}.{key}" if path else key
+            if key in EMPTY_PENDING:
+                found.append((where, value))
+            found.extend(pending_fields(value, where))
+    elif isinstance(payload, list):
+        for index, value in enumerate(payload):
+            found.extend(pending_fields(value, f"{path}[{index}]"))
+    return sorted(found, key=lambda entry: entry[0])
+
+
 def check_views(
     label: str,
     pages: dict[int, Any],
@@ -778,21 +910,31 @@ def check_views(
     point: Checkpoint,
     revision: int,
 ) -> None:
-    """The HTTP side: each seat's own view and snapshot, the spectator's
-    summary, and the refusals."""
+    """The HTTP side: each seat's own payloads, the spectator's, and the
+    refusals."""
     may = may_carry(point)
     secrets = tracked_cards(point)
     for seat, page in pages.items():
-        status, view = api(page, "GET", f"/games/{game_id}/seats/{seat}/view")
-        status_s, snapshot = api(page, "GET", f"/games/{game_id}/snapshot?seat={seat}")
-        ok = status == 200 and status_s == 200
+        paths = {
+            "view": f"/games/{game_id}/seats/{seat}/view",
+            "snapshot": f"/games/{game_id}/snapshot?seat={seat}",
+            "log": f"/games/{game_id}/log?seat={seat}",
+            "seatless": f"/games/{game_id}/snapshot",
+            "ledger": f"/games/{game_id}/vp-ledger",
+        }
+        answers = {name: api(page, "GET", path) for name, path in paths.items()}
+        statuses = {name: status for name, (status, _) in answers.items()}
+        ok = all(status == 200 for status in statuses.values())
         check.ok(
             ok,
-            f"{label}: seat {seat} reads its own view and snapshot",
-            (status, status_s),
+            f"{label}: seat {seat} reads its own view, snapshot and log, the"
+            " seatless snapshot and the VP ledger",
+            statuses,
         )
         if not ok:
             continue
+        data = {name: body for name, (_, body) in answers.items()}
+        view, snapshot = data["view"], data["snapshot"]
         expected = {**EMPTY_PRIVATE, **point.private.get(seat, {})}
         found = {key: view["private"][key] for key in EMPTY_PRIVATE}
         check.ok(
@@ -806,30 +948,68 @@ def check_views(
             f"{label}: seat {seat}'s view is of the checkpoint's revision",
             (view["revision"], revision, snapshot["summary"]["revision"]),
         )
-        text = json.dumps([view, snapshot])
+        own = expected["ix_pending"]
+        fields = pending_fields(data)
+        wanted = sorted(
+            (f"{where}.private.ix_pending.{key}", value)
+            for where in ("view", "snapshot.view")
+            for key, value in own.items()
+        )
+        check.ok(
+            fields == wanted,
+            f"{label}: seat {seat}'s payloads carry the ix_pending fields only in"
+            " its own private block"
+            + (", with its pending choice" if own != EMPTY_PENDING else ", empty"),
+            [entry for entry in fields if entry not in wanted][:6],
+        )
+        text = json.dumps(data, ensure_ascii=False)
         for card in secrets:
             check.ok(
                 (card in text) == (card in may[seat]),
-                f"{label}: seat {seat}'s view and snapshot (with the action log)"
+                f"{label}: seat {seat}'s payloads (view, snapshot and log, the"
+                " seatless snapshot, the VP ledger)"
                 + (" name" if card in may[seat] else " do not name")
                 + f" {card}",
             )
-    status, summary = api(spectator, "GET", f"/games/{game_id}")
-    text = json.dumps(summary)
+        unknown = [card for card in secrets if card not in may[seat]]
+        named = marks_found(page, unknown, text)
+        check.ok(
+            not named,
+            f"{label}: seat {seat}'s payloads hold no English or Korean name or"
+            f" picture of {unknown or 'a card'} it may not know",
+            named,
+        )
+    answers = {
+        "summary": api(spectator, "GET", f"/games/{game_id}"),
+        "seatless": api(spectator, "GET", f"/games/{game_id}/snapshot"),
+        "ledger": api(spectator, "GET", f"/games/{game_id}/vp-ledger"),
+    }
+    statuses = {name: status for name, (status, _) in answers.items()}
+    # The VP ledger opens to a seat cookie, or to the room link once the game
+    # has finished; what it says when it opens is looked at all the same.
+    data = {name: body for name, (status, body) in answers.items() if status == 200}
+    text = json.dumps(data, ensure_ascii=False)
+    named = marks_found(spectator, secrets, text)
     check.ok(
-        status == 200
-        and summary["revision"] == revision
+        statuses["summary"] == statuses["seatless"] == 200
+        and statuses["ledger"] in (200, 403)
+        and data["summary"]["revision"] == revision
         and not any(key in text for key in SECRET_KEYS)
-        and not any(card in text for card in secrets),
-        f"{label}: the spectator's summary carries no hidden field or card",
-        (status, [key for key in SECRET_KEYS if key in text]),
+        and not pending_fields(data)
+        and not named,
+        f"{label}: the spectator's summary, seatless snapshot and VP ledger carry"
+        " no hidden field, and no id, name or picture of a tracked card",
+        (statuses, [key for key in SECRET_KEYS if key in text], named),
     )
     readers = {
         **{f"seat {seat}": page for seat, page in pages.items()},
         "spectator": spectator,
     }
+    # Every seat with a hidden value (a pending Ix choice alone counts) or a
+    # hidden card.
+    owners = sorted(set(point.private) | {seat for seat, cards in may.items() if cards})
     refused: list[str] = []
-    for owner in (seat for seat, cards in may.items() if cards):
+    for owner in owners:
         for name, page in readers.items():
             if name == f"seat {owner}":
                 continue
@@ -837,14 +1017,16 @@ def check_views(
                 f"/games/{game_id}/seats/{owner}/view",
                 f"/games/{game_id}/seats/{owner}/actions",
                 f"/games/{game_id}/snapshot?seat={owner}",
+                f"/games/{game_id}/log?seat={owner}",
             ):
                 status, _ = api(page, "GET", path)
                 if status != 403:
                     refused.append(f"{name} {path}: HTTP {status}")
     check.ok(
-        not refused,
+        bool(owners) and not refused,
         f"{label}: every other seat and the spectator is refused (403) the"
-        " view, actions and snapshot of a seat that holds a hidden value or card",
+        f" view, actions, snapshot and log of seats {owners}, which hold a hidden"
+        " value or card",
         refused[:4],
     )
 
@@ -880,26 +1062,10 @@ def check_pages(
         mine = point.private.get(seat, {})
         pending = mine.get("ix_pending", EMPTY_PENDING)
         top = mine.get("known_intrigue_top", "")
-        # The page's bottom line leaves out the known top card.
-        bottom = [
-            entry for entry in mine.get("known_intrigue_bottom", []) if entry[1] != top
-        ]
+        bottom = shown_bottom(mine)
         held = mine.get("known_intrigue_held", [])
         peeked = mine.get("peeked_intrigue_ids", [])
-        words = page.evaluate(
-            WORDS_JS,
-            {
-                "steps": ", ".join(str(step) for step in pending["shipping_rewards"]),
-                "discount": pending["tech_discount"],
-                "payment": pending["tech_payment"],
-                "negotiators": pending["negotiators_returnable"],
-                "bottom": bottom[0][1] if bottom else "",
-                "depth": bottom[0][0] if bottom else 0,
-                "top": top,
-                "held": [card for _holder, card in held],
-                "peeked": peeked,
-            },
-        )
+        words = page.evaluate(WORDS_JS, word_args(mine))
         own_panel = shown["panels"][str(seat)]
         every_panel = " ".join(shown["panels"].values())
         shipping = bool(pending["shipping_rewards"])
@@ -923,10 +1089,7 @@ def check_pages(
             + (" on its own panel only" if tech else ""),
             (words["tech"], own_panel[:300]),
         )
-        expected_known = [
-            *([["top", words["top"]]] if top else []),
-            *([["bottom", words["bottom"]]] if bottom else []),
-        ]
+        expected_known = known_lines(mine, words)
         check.ok(
             shown["known"] == expected_known
             and (words["topHead"] in shown["body"]) == bool(top)
@@ -978,6 +1141,14 @@ def check_pages(
                 + (" holds" if card in may[seat] else " does not hold")
                 + f" {card}",
             )
+        unknown = [card for card in secrets if card not in may[seat]]
+        leaks = document_leaks(page, unknown, shown["stateText"])
+        check.ok(
+            not leaks,
+            f"{tag}: seat {seat}'s document holds no id, name or picture of"
+            f" {unknown or 'a card'} it may not know",
+            leaks,
+        )
     shown = spectator.evaluate(PAGE_JS)
     words = spectator.evaluate(
         WORDS_JS,
@@ -1008,6 +1179,119 @@ def check_pages(
         " holds no tracked card",
         {key: shown[key] for key in ("mine", "viewer", "known", "pending")},
     )
+    leaks = document_leaks(spectator, secrets, shown["stateText"])
+    check.ok(
+        not leaks,
+        f"{tag}: the spectator's document holds no id, name or picture of {secrets}",
+        leaks,
+    )
+
+
+def hand_over(base: str, browser, table: Table) -> None:
+    """The hot-seat table: on an open server one page plays every seat and
+    shows whichever must act (``session.js`` ``pickViewSeat``). It shows the
+    owner and draws its hidden line; once the owner's turn is over (its
+    turn-end press, when one is held) it shows the next seat, and must hold
+    none of the owner's lines or cards."""
+    handover = table.handover
+    point = table.checkpoints[handover.shown]
+    secrets = tracked_cards(point)
+    unknown = [
+        card for card in secrets if card not in may_carry(point)[handover.viewer]
+    ]
+    mine = point.private[handover.owner]
+    print(
+        f"[{table.name}: hot seat] seat {handover.owner}'s line, then seat"
+        f" {handover.viewer} on the same page"
+    )
+    context, page, recorder = open_context(browser, "hotseat", VIEWPORT)
+    table_page = {"hotseat": (page, recorder)}
+    page.goto(f"{base}/")
+    wait_for_setup(page)
+    status, created = api(page, "POST", "/games", table.body)
+    if status != 200:
+        raise PlanMissed(f"the open server refused the pinned table: {created}")
+    game_id = created["game_id"]
+    page.goto(f"{base}/#game={game_id}")
+    page.wait_for_selector("#game-screen:not([hidden])")
+    check.ok(
+        page.evaluate("state.server.access") == "open"
+        and page.evaluate("state.me.seats") == [0, 1, 2, 3],
+        "the hot-seat page plays all four seats",
+    )
+    pages = dict.fromkeys(range(4), page)
+    for index in range(handover.passed):
+        take_plan_step(table, pages, game_id, index)
+        if index + 1 != handover.shown:
+            continue
+        check.ok(
+            converge(table_page, game_id, f"hot seat {handover.shown}", timeout=15),
+            "the hot-seat page has caught up to the server",
+        )
+        words = page.evaluate(WORDS_JS, word_args(mine))
+        shown = page.evaluate(PAGE_JS)
+        lines = [line for _kind, line in known_lines(mine, words)]
+        check.ok(
+            shown["viewer"] == handover.owner
+            and [line for _kind, line in shown["known"]] == lines,
+            f"{table.name}: the hot-seat page shows seat {handover.owner} and draws"
+            " its known-Intrigue line",
+            (shown["viewer"], shown["known"], lines),
+        )
+    _, summary = api(page, "GET", f"/games/{game_id}")
+    held = summary["confirmation"]
+    if held == handover.owner:
+        status, _ = api(
+            page,
+            "POST",
+            f"/games/{game_id}/confirm",
+            {
+                "seat": handover.owner,
+                "revision": summary["revision"],
+                "undo_count": summary["undo_count"],
+            },
+        )
+        if status != 200:
+            raise PlanMissed(f"{table.name}: seat {held}'s turn end: HTTP {status}")
+        _, summary = api(page, "GET", f"/games/{game_id}")
+    decision = summary["decision"]
+    deciding = decision["owner"] if decision else None
+    if summary["confirmation"] is not None or deciding != handover.viewer:
+        raise PlanMissed(
+            f"{table.name}: after {handover.passed} actions seat {handover.viewer}"
+            f" should decide, not {decision} (turn end held:"
+            f" {summary['confirmation']})"
+        )
+    check.ok(
+        converge(table_page, game_id, f"hot seat {handover.passed}", timeout=15),
+        f"seat {handover.owner}'s turn is over"
+        + (" (its turn end pressed)" if held == handover.owner else "")
+        + f", seat {handover.viewer} decides, and the page catches up",
+    )
+    for language in ("ko", "en"):
+        page.evaluate(f"setLanguage('{language}')")
+        settled(page)
+        words = page.evaluate(WORDS_JS, word_args(mine))
+        shown = page.evaluate(PAGE_JS)
+        heads = [words[key] for key in ("bottomHead", "topHead", "heldHead")]
+        check.ok(
+            shown["viewer"] == handover.viewer
+            and shown["known"] == []
+            and not any(head in shown["body"] for head in heads)
+            and not any(card in shown["stateText"] for card in unknown),
+            f"{table.name} [{language}]: the hot-seat page now shows seat"
+            f" {handover.viewer}, with no known-Intrigue line and no tracked card in"
+            " its state",
+            (shown["viewer"], shown["known"]),
+        )
+        leaks = document_leaks(page, unknown, shown["stateText"])
+        check.ok(
+            bool(unknown) and not leaks,
+            f"{table.name} [{language}]: seat {handover.viewer}'s document holds no"
+            f" id, name or picture of {unknown}",
+            leaks,
+        )
+    context.close()
 
 
 def run_checkpoint(
@@ -1175,6 +1459,19 @@ def main() -> None:
         log_text = server_log.read_text()
         bad = "Traceback" in log_text or "ERROR" in log_text
         check.ok(not bad, f"no server errors (see {SERVER_LOG_COPY})")
+        print("[4] the hot-seat hand-over, on an open server")
+        with server() as (open_base, open_log):
+            try:
+                for table in (IX_TABLE, CEREMONY_TABLE):
+                    hand_over(open_base, browser, table)
+            except PlanMissed as missed:
+                check.ok(False, f"the pinned plan was missed: {missed}")
+            log_text = open_log.read_text()
+            check.ok(
+                "Traceback" not in log_text and "ERROR" not in log_text,
+                "no errors on the open server",
+                log_text[-2000:],
+            )
     check.finish()
 
 
