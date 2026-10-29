@@ -387,6 +387,9 @@ from dune_imperium.agents.app_ai.abilities.generic import (
     _faction_influence,
     ability_id,
 )
+from dune_imperium.agents.app_ai.abilities.intrigue import (
+    _can_gain_faction_influence,
+)
 from dune_imperium.agents.app_ai.abilities.leaders import (
     DisciplineAbility,
     training_space_entity,
@@ -506,6 +509,9 @@ _AGENT_BOX_CARDS = (
     "duncan_loyal_blade",
     "power_play",
     "thumper",
+    # ``GunThopterAgentAbility`` (an ``AgentAbility``: the opponents' garrison
+    # troop is the engine's).
+    "gun_thopter",
 )
 #: Cards whose generic agent box is ``PowerPlayAgentAbility`` (it sets
 #: ``player.AdditionalSpaceInfluence``; archetypes ``WormAbilityIDs``).
@@ -539,6 +545,11 @@ _BOX_ABILITY: Mapping[str, str] = {
     "kwisatz_haderach": "DrawAbility",
     "lady_jessica_card": "DrawAbility",
     "piter_de_vries_card": "AgentGainIntrigueAbility",
+    # Opponents discard (or lose a troop): one box of ours for the card's
+    # ``AgentAbility`` subclass (500) and its deferred rider, which runs at
+    # once (600); the box takes the rider's stage.
+    "reverend_mother_mohiam": "ReverendMotherMohiamDeferredAbility",
+    "test_of_humanity": "TestOfHumanityDeferredAbility",
 }
 #: Multi-icon boxes: (card, our icon key) -> the app ability of that icon.
 _ICON_ABILITY: Mapping[tuple[str, str], str] = {
@@ -583,6 +594,8 @@ _ICON_ABILITY: Mapping[tuple[str, str], str] = {
     ("foldspace_card", "cards"): "DrawAbility",
     ("jessica_of_arrakis", "cards"): "BeneGesseritDrawAbility",
     ("jessica_of_arrakis", "cards_second"): "BeneGesseritDrawAbility#2",
+    ("smugglers_thopter", "cards"): "SmugglersThopterAbility",
+    ("smugglers_thopter", "cards_second"): "SmugglersThopterAbility#2",
 }
 #: Multi-icon boxes whose icon ability is gated by its ``Cost`` (a failing
 #: Cost has no app key: the icon is a chore), as ``_gated_ability_source``.
@@ -617,6 +630,11 @@ _ARMED_REWARD_CARDS = (
     # Its two cards after the mandatory discard (OQ-106; engine audit
     # 2026-10-22, P6): the app's GuildEnvoyAbility answers the discard.
     "guild_envoy",
+    # The original game: Duncan Idaho's troop and card after the water
+    # (``DuncanIdahoAbility``), Imperial Spy's Intrigue after the self-trash
+    # (``ImperialSpyAbility``).
+    "duncan_idaho_card",
+    "imperial_spy",
 )
 #: Urgent Shigawire's added draw comes after the boosted card's own
 #: abilities in the card row (``_boost_draw``).
@@ -662,6 +680,10 @@ _DISCARD_ABILITY: Mapping[str, str] = {
 _PAYMENT_ABILITY: Mapping[str, str] = {
     "ecological_testing_station": "EcologicalTestingStationAbility",
     "smuggler_s_haven": "SmugglersHavenAgentAbility",
+    # The original game's Optional pay-for boxes (abilities/original_imperium.py).
+    "spice_smugglers": "SpiceSmugglersAbility",
+    "fremen_camp": "FremenCampAbility",
+    "duncan_idaho_card": "DuncanIdahoAbility",
 }
 _INTRIGUE_PAYMENT_ABILITY: Mapping[str, str] = {
     "branching_path": "BranchingPathAbility",
@@ -680,6 +702,8 @@ _CARD_INFLUENCE_ABILITY: Mapping[str, str] = {
     # Immortality: ``GainAnyInfluenceAbility`` subclasses (Explicit).
     "for_humanity": "ForHumanityAgentAbility",
     "interstellar_conspiracy": "InterstellarConspiracyAbility",
+    # The original Missionaria Protectiva (a ``GainAnyInfluenceAbility``).
+    "missionaria_protectiva": "MissionariaProtectivaAbility",
 }
 #: Immortality, Epic and promo single boxes resolved by the card's own
 #: deferred ability (app class short name), as ``_BOX_ABILITY``; the
@@ -754,6 +778,7 @@ _FOLLOW_UP_ICON_CARDS = ("pivotal_gambit",)
 _PAYMENT_IDS = (
     "pay_agent_card_water",
     "pay_agent_card_spice",
+    "pay_agent_card_solari",
     "decline_agent_card_payment",
     "pay_agent_card_specimen",
     "pay_agent_card_two_specimens",
@@ -937,6 +962,10 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "return_specimen",
         "select_corrinth_city_discard",
         "set_aside_leader_imperium",
+        "block_agent_card_space",
+        "lose_agent_card_influence",
+        "pay_agent_card_solari",
+        "take_agent_card_from_discard",
         "summon_maker_sandworms",
         "take_agent_card_combat_icon",
         "take_sietch_tabr_supplies",
@@ -2062,6 +2091,8 @@ def _single_box(t: _Turn, action: DomainAction) -> None:
     if short == "seek_allies":
         t.chores.append(action)  # TrashSelfAbility: Implicit, after End Turn
         return
+    if short in _ORIGINAL_CHOICE_BOX_CARDS:
+        return  # one option of the card's own choice (_original_card_choices)
     if short in _AGENT_BOX_CARDS:
         _box_auto(t, f"{short} box", action)
         return
@@ -2250,6 +2281,263 @@ def _card_choices(t: _Turn) -> None:
         _price_is_no_object(t)
     _choam_demands(t)
     _disruption_tactics(t)
+    _original_card_choices(t, short)
+
+
+# -- the original game's card choices (abilities/original_imperium.py) ------------
+
+
+#: Original cards whose plain box is one option of their own choice
+#: (``_original_card_choices``), and cards whose Influence pick is the rest of
+#: an answer given at their payment or loss.
+_ORIGINAL_CHOICE_BOX_CARDS = frozenset({"guild_ambassador", "other_memory"})
+_ORIGINAL_INFLUENCE_FOLLOW_UPS = frozenset(
+    {"firm_grip", "shifting_allegiances", "guild_ambassador"}
+)
+
+
+def _original_card_choices(t: _Turn, short: str) -> None:
+    if short == "firm_grip":
+        _firm_grip_gain(t)
+    elif short == "imperial_spy":
+        _imperial_spy(t)
+    elif short == "guild_ambassador":
+        _guild_ambassador(t)
+    elif short == "other_memory":
+        _other_memory(t)
+    elif short == "shifting_allegiances":
+        _shifting_allegiances(t)
+    elif short == "the_voice":
+        _the_voice(t)
+
+
+def _imperial_spy(t: _Turn) -> None:
+    """Imperial Spy's self-trash for an Intrigue: ``ImperialSpyAbility``
+    (Optional; "use" trashes, the Intrigue follows as its armed icon)."""
+
+    trash = t.by_id("trash_agent_card")
+    if not trash:
+        return
+    _choice_source(
+        t,
+        "imperial_spy trash",
+        _find(t.card, "ImperialSpyAbility"),
+        trash,
+        Request(),
+        lambda _a: trash[0],
+        t.run.first("decline_agent_card_trash"),
+    )
+
+
+def _guild_ambassador(t: _Turn) -> None:
+    """Guild Ambassador's -OR- box (``GuildAmbassadorAgentAbility``,
+    Explicit): option 0 the Spacing Guild Influence
+    (``choose_agent_card_influence``), option 1 the two spice (the plain
+    ``resolve_agent_card_effect``)."""
+
+    influence = t.by_id("choose_agent_card_influence")
+    spice = [
+        a for a in t.by_id("resolve_agent_card_effect") if str_arg(a, "effect") is None
+    ]
+    if not influence and not spice:
+        return
+
+    def answer(ans: Answer) -> DomainAction | None:
+        if _response_ref(ans) == 0 and influence:
+            return influence[0]
+        if _response_ref(ans) == 1 and spice:
+            return spice[0]
+        return None
+
+    _choice_source(
+        t,
+        "guild_ambassador box",
+        _find(t.card, "GuildAmbassadorAgentAbility"),
+        (*influence, *spice),
+        Request(infos=(TargetInfo(options=(0, 1)),)),
+        answer,
+        None,
+    )
+
+
+def _other_memory(t: _Turn) -> None:
+    """Other Memory's -OR- box (``OtherMemoryAbility``, Explicit): its card
+    is taken back from the discard pile (``take_agent_card_from_discard``),
+    its empty answer is the draw (the plain ``resolve_agent_card_effect``)."""
+
+    take = t.by_id("take_agent_card_from_discard")
+    draw = [
+        a for a in t.by_id("resolve_agent_card_effect") if str_arg(a, "effect") is None
+    ]
+    if not take and not draw:
+        return
+    request = Request(
+        infos=(TargetInfo(entities=_cards(t, _arg_refs(take, "card_id"))),)
+    )
+
+    def answer(ans: Answer) -> DomainAction | None:
+        ref = _response_ref(ans)
+        if isinstance(ref, str):
+            return with_arg(take, "card_id", ref)
+        return draw[0] if draw else None
+
+    _choice_source(
+        t,
+        "other_memory box",
+        _find(t.card, "OtherMemoryAbility"),
+        (*take, *draw),
+        request,
+        answer,
+        None,
+    )
+
+
+def _shifting_key(t: _Turn) -> tuple[object, ...]:
+    return ("agent_effects", "shifting_allegiances", t.run.ctx.round_number, t.card_ref)
+
+
+def _shifting_allegiances(t: _Turn) -> None:
+    """Shifting Allegiances (``ShiftingAllegiancesAbility``, Optional): one
+    app answer names the track to lose and the track to gain two on; ours
+    asks the loss (with the 2 spice) first and the gain after it (rule 6:
+    the gain is a follow-up with the stored track)."""
+
+    memory = t.run.memory.intents
+    key = _shifting_key(t)
+    gains = t.by_id("choose_agent_card_influence")
+    if gains:
+        stored = memory.pop(key, None)
+        chosen = with_arg(gains, "faction", stored) if isinstance(stored, str) else None
+        if chosen is None:
+            # No stored answer: the app's exchange over what is offered.
+            ability = _find(t.card, "ShiftingAllegiancesAbility")
+            offered = tuple(
+                track_entity(f) for f in FACTIONS if f in _arg_refs(gains, "faction")
+            )
+            if ability is not None:
+                ans = ability[0].evaluate(
+                    t.p,
+                    Request(infos=(TargetInfo(entities=offered),) * 2),
+                )
+                chosen = with_arg(gains, "faction", _response_ref(ans, 1))
+        _automatic(t, "Shifting Allegiances gain", _FOLLOW_UP, chosen or gains[0], -1)
+        return
+    loses = t.by_id("lose_agent_card_influence")
+    if not loses:
+        return
+    lose_tracks = tuple(
+        track_entity(f) for f in FACTIONS if f in _arg_refs(loses, "faction")
+    )
+    me = t.run.ctx.me
+    gain_tracks = tuple(
+        track_entity(f) for f in FACTIONS if _can_gain_faction_influence(me, f)
+    )
+    request = Request(
+        infos=(TargetInfo(entities=lose_tracks), TargetInfo(entities=gain_tracks))
+    )
+
+    def answer(ans: Answer) -> DomainAction | None:
+        action = with_arg(loses, "faction", _response_ref(ans))
+        gain = _response_ref(ans, 1)
+        if action is not None and isinstance(gain, str):
+            t.on_choose[action] = [(key, gain)]
+        return action
+
+    _choice_source(
+        t,
+        "shifting_allegiances influence",
+        _find(t.card, "ShiftingAllegiancesAbility"),
+        loses,
+        request,
+        answer,
+        None,
+    )
+
+
+def _the_voice(t: _Turn) -> None:
+    """The Voice (``TheVoiceAbility``, Explicit): the space its Evaluate
+    names (``block_agent_card_space``)."""
+
+    blocks = t.by_id("block_agent_card_space")
+    if not blocks:
+        return
+    spaces = tuple(
+        space_entity(ref, t.run.ctx.board) for ref in _arg_refs(blocks, "space_id")
+    )
+    _choice_source(
+        t,
+        "the_voice box",
+        _find(t.card, "TheVoiceAbility"),
+        blocks,
+        Request(infos=(TargetInfo(entities=spaces),)),
+        _ref_or(blocks, "space_id", None),
+        None,
+    )
+
+
+def _firm_grip_key(t: _Turn) -> tuple[object, ...]:
+    return ("agent_effects", "firm_grip", t.run.ctx.round_number, t.card_ref)
+
+
+#: Firm Grip's Influence: the tracks its box offers (``GainInfluence``'s
+#: factions; no Emperor).
+_FIRM_GRIP_FACTIONS = ("spacing_guild", "bene_gesserit", "fremen")
+
+
+def _firm_grip_gain(t: _Turn) -> None:
+    """Firm Grip's Influence after its 2 Solari: the track the payment's
+    answer named (a follow-up); without one, the same Evaluate over what
+    is offered."""
+
+    gains = t.by_id("choose_agent_card_influence")
+    if not gains:
+        return
+    stored = t.run.memory.intents.pop(_firm_grip_key(t), None)
+    chosen = with_arg(gains, "faction", stored) if isinstance(stored, str) else None
+    if chosen is None:
+        found = _find(t.card, "FirmGripAgentAbility")
+        offered = tuple(
+            track_entity(f) for f in FACTIONS if f in _arg_refs(gains, "faction")
+        )
+        if found is not None:
+            ans = found[0].evaluate(t.p, Request(infos=(TargetInfo(entities=offered),)))
+            chosen = with_arg(gains, "faction", _response_ref(ans))
+    _automatic(t, "Firm Grip gain", _FOLLOW_UP, chosen or gains[0], -1)
+
+
+def _firm_grip(t: _Turn) -> None:
+    """Firm Grip's Optional 2 Solari for one Influence
+    (``FirmGripAgentAbility``): one app answer names the track; ours asks
+    the payment first and the track after it (a follow-up with the stored
+    track, rule 6)."""
+
+    pay = t.by_id("pay_agent_card_solari")
+    decline = t.run.first("decline_agent_card_payment")
+    if not pay and decline is None:
+        return
+    tracks = tuple(
+        track_entity(f)
+        for f in _FIRM_GRIP_FACTIONS
+        if _can_gain_faction_influence(t.run.ctx.me, f)
+    )
+    key = _firm_grip_key(t)
+
+    def answer(ans: Answer) -> DomainAction | None:
+        track = _response_ref(ans)
+        if not pay or not isinstance(track, str):
+            return None
+        t.on_choose[pay[0]] = [(key, track)]
+        return pay[0]
+
+    _choice_source(
+        t,
+        "firm_grip payment",
+        _find(t.card, "FirmGripAgentAbility"),
+        pay,
+        Request(infos=(TargetInfo(entities=tracks),)),
+        answer,
+        decline,
+    )
 
 
 def _card_trash(t: _Turn, short: str) -> None:
@@ -2260,6 +2548,8 @@ def _card_trash(t: _Turn, short: str) -> None:
     if short == "pivotal_gambit":
         _pivotal_gambit(t, trash, decline)
         return
+    if short == "imperial_spy":
+        return  # ``ImperialSpyAbility`` (_original_card_choices)
     name = _TRASH_ABILITY.get(short)
     found = _find(t.card, name) if name is not None else None
     if found is None:
@@ -2721,6 +3011,7 @@ def _stitched_horror(t: _Turn) -> None:
 
 #: Card -> its payment-family handler (``_card_payment``).
 _PAYMENT_HANDLERS: Mapping[str, Callable[[_Turn], None]] = {
+    "firm_grip": lambda t: _firm_grip(t),
     "organ_merchants": _organ_merchants,
     "tleilaxu_surgeon": _tleilaxu_surgeon,
     "dissecting_kit": _dissecting_kit,
@@ -2920,6 +3211,8 @@ def _card_influence(t: _Turn, short: str) -> None:
     if short == "long_reach":
         _long_reach(t, actions)
         return
+    if short in _ORIGINAL_INFLUENCE_FOLLOW_UPS:
+        return  # the rest of the payment's answer (_original_card_choices)
     if short in _BOND_CHOICE_CARDS:
         _bond_choice(t, short, actions)
         return

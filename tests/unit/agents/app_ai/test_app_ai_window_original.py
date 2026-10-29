@@ -68,7 +68,7 @@ def unmapped() -> Counter[str]:
     agent_effects._collect = spy
     logging.getLogger("dune_imperium.agents.app_ai.agent").setLevel(logging.ERROR)
     try:
-        for seed in (21, 22, 23, 24):
+        for seed in (21, 22, 23, 24, 25, 26):
             agents = tuple(AppAIAgent(seed=seed * 10 + seat) for seat in range(4))
             run_policy_game(ENGINE, ORIGINAL, seed, agents)
     finally:
@@ -108,6 +108,15 @@ def test_original_signets_find_their_leaders_app_abilities(
 def test_original_spaces_find_their_app_abilities(unmapped: Counter[str]) -> None:
     spaces = ("Maker space", "board ", "Desert Tactics trash")
     assert not [reason for reason in unmapped if reason.startswith(spaces)]
+
+
+def test_the_agent_turn_window_maps_every_original_decision(
+    unmapped: Counter[str],
+) -> None:
+    """Every card box and choice, Signet, space and payment of the original
+    game: no Agent-turn decision falls back (plan §12.2's census)."""
+
+    assert dict(unmapped) == {}
 
 
 def test_second_ability_of_a_class_is_found_by_its_index() -> None:
