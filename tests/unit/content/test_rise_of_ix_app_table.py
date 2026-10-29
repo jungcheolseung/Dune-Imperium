@@ -267,6 +267,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "grand_conspiracy",
     "cannon_turrets",
     "second_wave",
+    "war_chest",
 }
 _IX_IMPERIUM_TRANSCRIBED = {
     "choam_delegate",

@@ -45,6 +45,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseTroops,
     PayResources,
     RecruitTroops,
+    SolariAtLeast,
     SpiceMustFlowCardsAtLeast,
     TechTilesAtLeast,
     TrashPersonalCard,
@@ -326,5 +327,28 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("war_chest", "War Chest"),
         copies=1,
+        # [COMBAT / ENDGAME] "2 Solari -> 4 swords" -OR- "If you have 10 or
+        # more Solari: 1 VP" [Steam app text, log lines and screen pieces; the
+        # prefab sets the -OR- frame between the two halves, and the log tells
+        # the arrow's side: "played War Chest and spent 2 Solari to gain 4
+        # swords"]. The Combat half is one cost line, so it is played only
+        # with the 2 Solari in hand ("To play an Intrigue card, you must meet
+        # its conditions and pay its costs." [FAQ p. 2]); the swords are always
+        # live in a Conflict (OQ-071). The Endgame half is Economic
+        # Positioning's: a Solari condition, 1 VP.
+        options=(
+            _combat(
+                EffectSection(
+                    costs=(PayResources(solari=2),),
+                    rewards=(GainCombatStrength(4),),
+                )
+            ),
+            _endgame(
+                EffectSection(
+                    condition=SolariAtLeast(10),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
     ),
 )

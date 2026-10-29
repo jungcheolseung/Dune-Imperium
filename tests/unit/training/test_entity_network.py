@@ -212,7 +212,9 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # one intrigue-table column is new (the "units" flag of its garrison
 # deployment, the dreadnoughts' share), read by its row alone; no older scale
 # moved (compared against 4cdf1e99, 2026-10-30).
-_GOLDEN_DIGEST = "b281810556772086c0fb91ffc890c2a97f73c72b8e5c4e504fdbfa7418449241"
+# Then War Chest got its record (stage P4d): only its own row changed, no
+# column and no scale (compared against 3b8cd83c, 2026-10-30).
+_GOLDEN_DIGEST = "026ab1d314f395c3c2526d4917ff65f12edff2d52ba58a805d8e8c411a6b0814"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
