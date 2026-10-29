@@ -160,7 +160,9 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # personal-table columns are new (the icon count and one per icon), only the
 # seven Ix cards that print one read them, and every older row and its scales
 # are unchanged (compared against e20b83dc, 2026-10-29).
-_GOLDEN_DIGEST = "bdb6d7abc6ad74b38ee119dc0bb1e7e80d064bfc707a27daa031f962d5760fd9"
+# Then Jamis got his play data (stage P4d): only his own row changed, no column
+# and no scale (compared against 49b6dfdc, 2026-10-29).
+_GOLDEN_DIGEST = "ef0a02bdf03bea5616e2112c3d44e4d51b0e448bc050d4e28a05059a6f7dd561"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

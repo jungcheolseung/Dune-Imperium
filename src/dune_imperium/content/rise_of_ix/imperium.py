@@ -12,7 +12,7 @@ These began as stage P4a identity entries (name, copies and cost), generated
 by ``scripts/dwgr/imperium_entries.py --set ix skeleton``. Incomplete entries
 keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
-game's deck takes only completed cards (none yet), while the observation
+game's deck takes only completed cards (Jamis so far), while the observation
 lists every identity from v39. Setup takes Rise of Ix on the original game
 since stage P4c-5.
 ``content.uprising.imperium``'s
@@ -24,8 +24,9 @@ cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
 from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
+from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
-from dune_imperium.content.uprising.types import AgentIcon
+from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
 
 # The component table lists the cards [Rise of Ix p. 2]; the printed values
 # are the app's (plan 2.4, D1).
@@ -131,6 +132,12 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=2,
         infiltration_icons=(AgentIcon.FREMEN,),
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.FREMEN,),
+        agent_effect=PersonalCardAgentEffect.TRASH_PERSONAL_CARD,
+        reveal_persuasion=1,
+        reveal_strength=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("landing_rights", "Landing Rights"),
