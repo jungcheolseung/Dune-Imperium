@@ -2313,7 +2313,10 @@ def _apply_graft_trash(
     [Beguiling Pheromones card]. Trashing the other grafted card expires its
     un-activated box (OQ-022 designer ruling, FAQ p. 1); trashing the box's
     own card is its own cost, so the reward still pays out. The cost is the
-    trash; its own event says so (cleanup-2c-6)."""
+    trash; its own event says so (cleanup-2c-6). A trashed Unload card's box
+    is paid inside that cost, before the reward: "비용 → 효과 줄의 왼쪽(비용)이
+    Unload를 일으키면 Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer
+    ruling, docs/rules/rise-of-ix.md 7)."""
 
     _, active_id, space_id = _effect_subject(context)
     named = dict(action.arguments).get("card_id")
@@ -2324,7 +2327,9 @@ def _apply_graft_trash(
     else:
         expired = _expired_partner_box(state, context, action.actor)
     next_state = advance_after_effect(state, context)
-    trashed = trash_personal_card(next_state, action.actor, trashed_id, source=source)
+    trashed = trash_personal_card(
+        next_state, action.actor, trashed_id, source=source, unload_at_once=True
+    )
     working = trashed.state
     events: list[GameEvent] = [*trashed.events, *expired]
     for reward in ability.sections[0].rewards:
