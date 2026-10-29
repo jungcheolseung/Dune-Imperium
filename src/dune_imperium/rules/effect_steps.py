@@ -526,6 +526,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "deploy_leader_agent": _spec(_V.DEPLOY, _S.LEADER, _LEADER),
     "gain_leader_signet_spice": _spec(_V.GAIN, _S.LEADER, _LEADER),
+    # Rise of Ix's Tessia Vernius: Duplicity's lost Influence (its cost).
+    "lose_leader_influence": _spec(
+        _V.LOSE_INFLUENCE, _S.LEADER, _LEADER, targets=(*_FACTION, _RECIPIENT)
+    ),
     # Rise of Ix's Viscount Hundro Moritani: Couriers' two Freighter moves.
     "advance_leader_freighter": _spec(
         _V.ADVANCE, _S.LEADER, _LEADER, option="freighter"
@@ -821,9 +825,12 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _V.GAIN, _S.TECH, "=detonation_devices"
     ),
     # Disposal Facility's trash of a card in play: the tile prints it, the
-    # card is the target row (Rise of Ix, OQ-126).
+    # card is the target row (Rise of Ix, OQ-126). The tile also prints an
+    # acquire box "trash 1" (the optional trash window's row, printed by the
+    # same tile); bought during a Reveal with six Persuasion both are open at
+    # once (OQ-150 (2)), so this one is told apart as its Reveal turn option.
     "trash_disposal_facility_card": _spec(
-        _V.TRASH, _S.TECH, "=disposal_facility", targets=_CARD
+        _V.TRASH, _S.TECH, "=disposal_facility", option="reveal_turn", targets=_CARD
     ),
     # --- Playing a card (stage B3c-1): the window, the card, its option -----
     # One option still opens its step (OQ-111 (2)): an option is an effect

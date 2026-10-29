@@ -498,6 +498,19 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "deploy_leader_agent": _row(_V.DEPLOY, _S.LEADER, variant="agent", tag=_BOX),
     "gain_leader_signet_spice": _row(_V.GAIN, _S.LEADER, tag=_BOX),
+    # Rise of Ix's Tessia Vernius: Duplicity's Influence lost (its cost), her
+    # first Snooper reward's discard and its refusal outside her turn; and an
+    # effect's Influence with one Faction it names, a row each (OQ-153).
+    "lose_leader_influence": _row(_V.LOSE_INFLUENCE, _S.LEADER, _T.FACTION, tag=_BOX),
+    "discard_snooper_card": _row(
+        _V.DISCARD, _S.LEADER, _T.PERSONAL_CARD, variant="snooper"
+    ),
+    "decline_snooper_discard": _row(
+        _V.DECLINE, _S.LEADER, of=_V.DISCARD, variant="snooper"
+    ),
+    "resolve_effect_influence": _row(
+        _V.GAIN_INFLUENCE, _S.INTRIGUE, _T.FACTION, variant="effect_influence"
+    ),
     # Rise of Ix's Viscount Hundro Moritani: Couriers' spice for a Freighter
     # move up or a recall.
     "advance_leader_freighter": _row(

@@ -72,6 +72,7 @@ from dune_imperium.rules.contracts import (
     legal_contract_completion_actions,
     legal_contract_icon_row_actions,
 )
+from dune_imperium.rules.effect_influence import legal_effect_influence_actions
 from dune_imperium.rules.effects import (
     current_agent_effect_context,
     pending_agent_icons,
@@ -108,6 +109,7 @@ from dune_imperium.rules.sardaukar import (
 from dune_imperium.rules.scouts_effects import legal_subcommittee_choice_actions
 from dune_imperium.rules.scouts_missions import legal_mission_collect_actions
 from dune_imperium.rules.shipping_track import legal_shipping_reward_row_actions
+from dune_imperium.rules.snoopers import legal_snooper_row_actions
 from dune_imperium.rules.spies import legal_gather_intelligence_actions
 from dune_imperium.rules.spy_moves import legal_track_spy_actions
 from dune_imperium.rules.tech import (
@@ -177,6 +179,10 @@ def legal_agent_effect_frame_actions(
         *legal_shipping_reward_row_actions(state, player),
         # An Unload box an effect triggered (Rise of Ix, ``rules.unload``).
         *legal_unload_row_actions(state, player),
+        # An effect's per-Faction Influence (OQ-153) and Tessia Vernius'
+        # first Snooper reward (Rise of Ix).
+        *legal_effect_influence_actions(state, player),
+        *legal_snooper_row_actions(state, player),
         # Rise of Ix's four spaces' icons and the Foldspace space's deck-top
         # twin (stage P4c-4).
         *legal_ix_space_actions(state, player),

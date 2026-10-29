@@ -285,6 +285,41 @@ def test_dissecting_kit_trashes_the_partner_for_a_specimen() -> None:
     assert str(gains).startswith("tleilaxu|1|")
 
 
+def test_dissecting_kit_pays_a_trashed_unload_box_before_its_specimen() -> None:
+    """ "비용 → 효과 줄의 왼쪽(비용)이 Unload를 일으키면 Unload를 끝까지 해결한 뒤
+    오른쪽으로 간다" (designer ruling, docs/rules/rise-of-ix.md 7): the graft
+    trash is the box's cost, so a trashed Unload card -- CHOAM Delegate, whose
+    box is 3 Solari -- pays in the same step, before the specimen, and leaves
+    no Unload row behind. Rise of Ix with Immortality (stage P7) is judged
+    with the cards' own data on an Immortality table."""
+
+    kit = _card("dissecting_kit")
+    delegate = "imperium:choam_delegate:0"
+    grafted = _graft(_state(_owner((kit, delegate))), kit, "arrakeen", delegate)
+    solari = grafted.players[0].resources.solari
+    engine = UprisingRulesEngine()
+    result = apply_whole(
+        engine, grafted, _payment(grafted, "trash_grafted_card_for_specimen")
+    )
+    owner = result.state.players[0]
+    assert delegate in owner.trashed
+    assert owner.resources.solari == solari + 3
+    assert owner.specimens == 1
+    kinds = [event.kind for event in result.events]
+    unloaded = next(
+        index
+        for index, event in enumerate(result.events)
+        if event.kind == "resources_gained" and dict(event.payload).get("solari") == 3
+    )
+    assert kinds.index("card_trashed") < unloaded < kinds.index("specimens_generated")
+    assert "resolve_unload_icon" not in _offered_ids(result.state)
+    assert not any(
+        item[0] == turn_rows.UNLOAD_ICON
+        for frame in result.state.decision_stack
+        for item in turn_rows.pending(frame)
+    )
+
+
 def test_dissecting_kit_trashing_subversive_advisor_keeps_the_space_influence() -> None:
     # The trashed Subversive Advisor's box expires before it resolves
     # (OQ-022), so its "gain two Influence instead of one" lapses; the

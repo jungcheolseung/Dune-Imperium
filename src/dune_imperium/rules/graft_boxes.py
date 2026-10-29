@@ -66,6 +66,8 @@ BOX_KEY_PAIRS: Final[tuple[tuple[str, str], ...]] = (
     ("leader_spy_recalled", "graft_leader_spy_recalled"),
     ("staban_bonus_post", "graft_staban_bonus_post"),
     ("listeners_paid", "graft_listeners_paid"),
+    # Rise of Ix's Tessia Vernius: Duplicity's Influence lost.
+    ("duplicity_paid", "graft_duplicity_paid"),
     ("signet_rewards", "graft_signet_rewards"),
 )
 

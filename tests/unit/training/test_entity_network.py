@@ -243,7 +243,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Leader-table columns are new (One Step Ahead's standing hook, Guild
 # Contacts' hook and its AcquireReserveCard piece), read by her row alone; no
 # older scale moved (compared against 4b05d412, 2026-10-30).
-_GOLDEN_DIGEST = "ed08e9233f87525334f5343d39d8061b93f5760dbb132b91f4e89f63e64040ca"
+# Then Tessia Vernius got her records (stage P4e): only her row changed, and
+# four Leader-table columns are new (Careful Observation's standing hook,
+# Duplicity's hook and its LoseInfluence cost with its count), read by her
+# row alone; no older scale moved (compared against 2a8bc1ea, 2026-10-30).
+_GOLDEN_DIGEST = "601cb3a20c1580e6ebbbaa5a6723c49c5968af43fe3393e0a73fce41ddcfbd86"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

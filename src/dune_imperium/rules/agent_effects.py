@@ -2313,7 +2313,10 @@ def _apply_graft_trash(
     [Beguiling Pheromones card]. Trashing the other grafted card expires its
     un-activated box (OQ-022 designer ruling, FAQ p. 1); trashing the box's
     own card is its own cost, so the reward still pays out. The cost is the
-    trash; its own event says so (cleanup-2c-6)."""
+    trash; its own event says so (cleanup-2c-6). A trashed Unload card's box
+    is paid inside that cost, before the reward: "비용 → 효과 줄의 왼쪽(비용)이
+    Unload를 일으키면 Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer
+    ruling, docs/rules/rise-of-ix.md 7)."""
 
     _, active_id, space_id = _effect_subject(context)
     named = dict(action.arguments).get("card_id")
@@ -2324,7 +2327,9 @@ def _apply_graft_trash(
     else:
         expired = _expired_partner_box(state, context, action.actor)
     next_state = advance_after_effect(state, context)
-    trashed = trash_personal_card(next_state, action.actor, trashed_id, source=source)
+    trashed = trash_personal_card(
+        next_state, action.actor, trashed_id, source=source, unload_at_once=True
+    )
     working = trashed.state
     events: list[GameEvent] = [*trashed.events, *expired]
     for reward in ability.sections[0].rewards:
@@ -3316,12 +3321,21 @@ _OPTIONAL_PROGRESS_KEYS: Final = (
     "staban_bonus_post",
     "listeners_paid",
     "leader_spy_recalled",
+    # Tessia Vernius' Duplicity, its Influence lost (Rise of Ix).
+    "duplicity_paid",
 )
 # Signet Ring abilities optional only at some stages (composed A6c): their
 # record's mark is the printed reading of the first one, their stage keys
 # decide the rest (``_signet_is_optional``).
 _STAGED_SIGNETS: Final = frozenset(
-    {"unseen_network", "corrino_liaison", "listeners", "personal_training"}
+    {
+        "unseen_network",
+        "corrino_liaison",
+        "listeners",
+        "personal_training",
+        # Rise of Ix's Tessia Vernius: optional until the Influence is lost.
+        "duplicity",
+    }
 )
 
 
@@ -3444,6 +3458,9 @@ def _signet_is_optional(state: GameState, context: dict[str, ActionValue]) -> bo
         return signet.mark is AbilityMark.OPTIONAL
     if signet.hook == "unseen_network":
         return isinstance(context.get("staban_bonus_post"), str)
+    if signet.hook == "duplicity":
+        # Duplicity's arrow: the gain is owed once the Influence is lost.
+        return context.get("duplicity_paid") is not True
     if signet.hook in ("corrino_liaison", "listeners"):
         return (
             context.get("leader_spy_recalled") is not True
@@ -3567,6 +3584,7 @@ _SIGNET_STAGE_KEYS: Final = (
     "leader_spy_recalled",
     "staban_bonus_post",
     "listeners_paid",
+    "duplicity_paid",
     "signet_rewards",
 )
 
