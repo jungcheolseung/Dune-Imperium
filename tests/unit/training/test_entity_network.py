@@ -252,7 +252,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Solari reward), read by its row alone; no older scale moved (compared against
 # 0d65eb9c and again against 556e57ea when it landed on claude/base-ix-p4,
 # 2026-10-30).
-_GOLDEN_DIGEST = "92974e016a828043dac14b186129ee66ed3e753ce555fe969e4e9764437dd5d9"
+# Then Guild Chief Administrator got its records (stage P4d): only its own row
+# changed, and one personal-table column is new (the Freighter piece in a
+# Reveal choice), read by its row alone; no older scale moved (compared
+# against 2a8bc1ea, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against da3cd535 (2026-10-30).
+_GOLDEN_DIGEST = "dcc99327ff896bebfaa9e8fe42975d46c53233321f8bbe663c959156953675ad"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

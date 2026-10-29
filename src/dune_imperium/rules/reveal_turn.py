@@ -287,6 +287,9 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     _Choice.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: frozenset(
         {"lose_reveal_troops_for_specimens"}
     ),
+    _Choice.MAY_MOVE_FREIGHTER: frozenset(
+        {"advance_reveal_freighter", "recall_reveal_freighter"}
+    ),
 }
 REVEAL_CHOICE_ACTION_IDS: Final = frozenset().union(
     *REVEAL_CHOICE_EFFECT_ACTIONS.values()
@@ -1643,6 +1646,73 @@ def apply_reveal_influence_gain(
     if action not in legal_reveal_influence_gain_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal Influence choice")
     return resolve_target_reward(state, action)
+
+
+def legal_reveal_freighter_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Guild Chief Administrator's Freighter icon (Rise of Ix): "you may move
+    your Freighter in one of two ways" [Rise of Ix p. 5] (docs/rules/
+    rise-of-ix.md 5) -- up one space (never from the top) or a recall (never
+    from the bottom, where it moves nothing). The icon is "may": no refusal,
+    and the Reveal's end lapses it (OQ-095 (7) addition)."""
+
+    pending = pending_choice_rows(state, player, legal_reveal_freighter_actions)
+    if pending is not None:
+        return pending
+    opened = _choice_frame_effect(state, player)
+    if opened is None or opened[1] is not _Choice.MAY_MOVE_FREIGHTER:
+        return ()
+    # Imported here: the Shipping track imports the Tech tiles, which import
+    # this module.
+    from dune_imperium.rules.shipping_track import (
+        freighter_can_advance,
+        freighter_can_recall,
+    )
+
+    return (
+        *(
+            (DomainAction(action_id="advance_reveal_freighter", actor=player),)
+            if freighter_can_advance(state, player)
+            else ()
+        ),
+        *(
+            (DomainAction(action_id="recall_reveal_freighter", actor=player),)
+            if freighter_can_recall(state, player)
+            else ()
+        ),
+    )
+
+
+def apply_reveal_freighter(state: GameState, action: DomainAction) -> RuleResult:
+    """Move the Freighter for a revealed card's Freighter icon: up one space,
+    or a recall whose rewards wait on the Reveal as rows of their own, in the
+    order the seat picks (``rules.shipping_track``, [Rise of Ix p. 5])."""
+
+    from dune_imperium.rules.shipping_track import (
+        move_freighter_up,
+        recall_freighter,
+    )
+
+    state = _open_pending(state, action, legal_reveal_freighter_actions)
+    if action not in legal_reveal_freighter_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal Freighter move")
+    opened = _choice_frame_effect(state, action.actor)
+    assert opened is not None
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{opened[0]}:freighter"
+    )
+    # The choice's frame closes first, so a recall's rewards are queued on
+    # the Reveal frame below it (``turn_rows``).
+    closed = state.pop_decision()
+    move = (
+        move_freighter_up
+        if action.action_id == "advance_reveal_freighter"
+        else recall_freighter
+    )
+    return move(closed, action.actor, source=source)
 
 
 def legal_reveal_deployments(
@@ -4706,6 +4776,8 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         else "You may recall a Spy to draw an Intrigue card"
         if effect
         is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
+        else "You may move your Freighter up one space or recall it"
+        if effect is PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER
         else "Choose a Spy to recall for this Reveal effect"
     )
 
@@ -4882,6 +4954,9 @@ def _reveal_choice_effect_is_available(
         # resolution (legal_contract_reveal_choice_actions).
         or held_reveal_value(effect) is not None
         or (spy_pair_persuasion(effect) > 0 and len(owner.spy_post_ids) >= 2)
+        # Guild Chief Administrator's Freighter: up from the bottom, or a
+        # recall from the top; some move is always there.
+        or effect is PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER
     )
 
 
@@ -5071,6 +5146,7 @@ def reveal_choice_providers() -> tuple[ChoiceProvider, ...]:
         legal_reveal_troop_move_actions,
         legal_reveal_troops_move_actions,
         legal_reveal_troop_sacrifice_actions,
+        legal_reveal_freighter_actions,
     )
 
 

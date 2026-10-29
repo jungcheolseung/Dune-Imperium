@@ -313,6 +313,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_corrinth_city_reveal,
     apply_reveal_card_trash,
     apply_reveal_deployment,
+    apply_reveal_freighter,
     apply_reveal_gain,
     apply_reveal_influence_exchange,
     apply_reveal_influence_gain,
@@ -1075,6 +1076,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_reveal_spice_for_vp": apply_reveal_vp_payment,
     # Gurney Halleck (original game): "3 Solari -> 2 troops".
     "pay_reveal_solari_for_troops": apply_reveal_troop_purchase,
+    # Guild Chief Administrator (Rise of Ix): the Reveal box's Freighter icon.
+    "advance_reveal_freighter": apply_reveal_freighter,
+    "recall_reveal_freighter": apply_reveal_freighter,
     "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
     # Immortality Reveal choices (For Humanity, Shadout Mapes, Tleilaxu
     # Surgeon)

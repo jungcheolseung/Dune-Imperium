@@ -848,6 +848,12 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "pay_reveal_solari_for_troops": _row(
         _V.PAY, _S.REVEAL_CARD, variant="solari_for_troops"
     ),
+    # Guild Chief Administrator's Freighter icon (Rise of Ix): up one space
+    # or recall [Rise of Ix p. 5]; unused, it lapses when the Reveal ends.
+    "advance_reveal_freighter": _row(
+        _V.ADVANCE, _S.REVEAL_CARD, variant="freighter"
+    ),
+    "recall_reveal_freighter": _row(_V.COLLECT, _S.REVEAL_CARD, variant="freighter"),
     "pay_reveal_water_for_sandworm": _row(
         _V.PAY, _S.REVEAL_CARD, variant="water_for_sandworm"
     ),

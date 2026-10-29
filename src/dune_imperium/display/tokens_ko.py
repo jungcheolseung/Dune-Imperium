@@ -473,6 +473,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE: (
         "카드 1장 {discard} 가능 {arrow_right} {draw:1}"
     ),
+    # Rise of Ix's Guild Chief Administrator (stage P4d).
+    PersonalCardAgentEffect.MAY_DISCARD_TO_TRASH_A_CARD: (
+        "카드 1장 {discard} 가능 {arrow_right} 카드 1장 {trash} 가능"
+    ),
     PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT: (
         "{conflict}에 {sandworm}가 1 이상 있다면: {intrigue:1}"
     ),
@@ -738,6 +742,11 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     ),
     PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS: (
         "{troop:2}까지 {retreat} 가능"
+    ),
+    # Rise of Ix's Guild Chief Administrator (stage P4d): Landing Rights'
+    # Freighter line.
+    PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER: (
+        "운송 트랙에서 한 칸 위로 또는 회수 가능"
     ),
     PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
         "원하는 수의 {troop} {retreat} 가능"

@@ -1086,12 +1086,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
         )
         # Landing Rights' Freighter icon, an Agent box's two moves
-        # (``agent_effects.apply_agent_card_freighter``).
+        # (``agent_effects.apply_agent_card_freighter``), and Guild Chief
+        # Administrator's, a Reveal choice's (``reveal_turn``).
         templates.extend(
             ActionTemplate(action_id=action_id)
             for action_id in (
                 "advance_agent_card_freighter",
                 "recall_agent_card_freighter",
+                "advance_reveal_freighter",
+                "recall_reveal_freighter",
             )
         )
         # An Unload card's Reveal box icon, a row each (``rules.unload``).

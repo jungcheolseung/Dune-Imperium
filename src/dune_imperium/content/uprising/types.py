@@ -414,6 +414,8 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_MOVE_FREIGHTER = "may_move_freighter"
     # Shai-Hulud (Rise of Ix): "[Trash a card] -> [2 troops]".
     TRASH_PERSONAL_CARD_TO_RECRUIT_TWO = "trash_personal_card_to_recruit_two"
+    # Guild Chief Administrator (Rise of Ix): "[Discard] -> [Trash a card]".
+    MAY_DISCARD_TO_TRASH_A_CARD = "may_discard_to_trash_a_card"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -606,6 +608,9 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS = (
         "may_trash_self_to_move_any_number_of_troops"
     )
+    # Rise of Ix's Imperium cards (stage P4d). Guild Chief Administrator: the
+    # Freighter icon in its Reveal box, "may" [Rise of Ix p. 5].
+    MAY_MOVE_FREIGHTER = "may_move_freighter"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -625,11 +630,13 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
     }
 )
 
-# Choice effects added by the original game's Imperium cards (stage P3):
-# outside every Uprising catalog, whose resume templates list one per choice
-# effect of the Uprising family only.
+# Choice effects added by the original game's Imperium cards (stage P3), and
+# by the Rise of Ix cards played on it (stage P4d; Uprising with Rise of Ix is
+# P7): outside every Uprising catalog, whose resume templates list one per
+# choice effect of the Uprising family only.
 IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = frozenset(
     {
+        PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER,
         PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,
         PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
         PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT,

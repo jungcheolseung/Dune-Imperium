@@ -13,7 +13,8 @@ by ``scripts/dwgr/imperium_entries.py --set ix skeleton``. Incomplete entries
 keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
 game's deck takes only completed cards (CHOAM Delegate, Jamis, Sayyadina,
-Truthsayer, Imperial Shock Trooper, Local Fence and Water Peddler so far),
+Truthsayer, Imperial Shock Trooper, Local Fence, Water Peddler and Guild Chief
+Administrator so far),
 while the observation lists every identity from v39. Setup takes Rise of Ix
 on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
@@ -31,6 +32,7 @@ from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
+    PersonalCardRevealChoiceEffect,
 )
 
 # The component table lists the cards [Rise of Ix p. 2]; the printed values
@@ -117,6 +119,17 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("guild_chief_administrator", "Guild Chief Administrator"),
         copies=1,
         acquisition_cost=4,
+        # App table: Spacing Guild; Spacing Guild, City and Spice Trade icons;
+        # Reveal 1 Persuasion. Screen pieces: Agent "[Discard] -> [Trash a
+        # card]", an optional arrow whose trash stays optional [FAQ p. 3];
+        # Reveal "[1 Persuasion] [Freighter]", the Freighter a "may" [Rise of
+        # Ix p. 5] -- its Reveal choice record.
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.MAY_DISCARD_TO_TRASH_A_CARD,
+        reveal_persuasion=1,
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER,),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("imperial_bashar", "Imperial Bashar"),

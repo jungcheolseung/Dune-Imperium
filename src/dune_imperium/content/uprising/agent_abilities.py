@@ -373,6 +373,15 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.MAY_DISCARD_TO_DRAW_ONE: _discard(_line(DrawPersonalCards(1))),
             # Engineered Miracle.
             _BOX.MAY_DISCARD_FOR_WATER: _discard(_line(GainResources(water=1))),
+            # Guild Chief Administrator (Rise of Ix): "[Discard] -> [Trash a
+            # card]" [Steam app screen pieces]. The discard is the arrow's
+            # optional cost [Rise of Ix p. 7] [FAQ p. 2], an Unload card's box
+            # paid in full before the trash (rise-of-ix.md 7); the trash is a
+            # black trash icon, optional once the cost is paid ("검은색 trash
+            # 아이콘으로 trash하는 효과는 선택이다" [FAQ p. 3], uprising-
+            # systems.md), as Control the Spice's is. The card just discarded
+            # is in the discard pile, so a card to trash is always there.
+            _BOX.MAY_DISCARD_TO_TRASH_A_CARD: _discard(_line(TrashPersonalCard())),
             # Space-time Folding: "Draw 1 card (2 if the discarded card has
             # Spacing Guild affiliation)".
             _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: _discard(

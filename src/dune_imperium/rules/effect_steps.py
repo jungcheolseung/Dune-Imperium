@@ -755,6 +755,13 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "pay_reveal_solari_for_troops": _spec(
         _V.PAY, _S.REVEAL_CARD, "=gurney_halleck_card"
     ),
+    # Guild Chief Administrator's Freighter icon (Rise of Ix).
+    "advance_reveal_freighter": _spec(
+        _V.ADVANCE, _S.REVEAL_CARD, "=guild_chief_administrator", icon="freighter"
+    ),
+    "recall_reveal_freighter": _spec(
+        _V.COLLECT, _S.REVEAL_CARD, "=guild_chief_administrator", icon="freighter"
+    ),
     "pay_reveal_spice_influence": _spec(
         _V.PAY, _S.REVEAL_CARD, "=spacing_guild_s_favor", targets=_FACTION
     ),

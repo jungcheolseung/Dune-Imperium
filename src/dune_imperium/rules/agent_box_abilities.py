@@ -1923,7 +1923,15 @@ def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult
 # judged when the cost is paid (OQ-028): without the Alliance only the
 # refusal is offered (``discard_cost_block``).
 
-_DISCARD_REWARDS = (GainResources, TakeContract, DrawPersonalCards, PlaceSpy)
+# Guild Chief Administrator's black trash icon (Rise of Ix) waits once the
+# discard is paid, optional as Control the Spice's paid trash is [FAQ p. 3].
+_DISCARD_REWARDS = (
+    GainResources,
+    TakeContract,
+    DrawPersonalCards,
+    PlaceSpy,
+    TrashPersonalCard,
+)
 # The reward each armed key resolves (``agent_effects.resolve_agent_card_icon``).
 # That path offers and pays a key per effect (Branching Path's 2 spice), so
 # the record table test keeps each key to the boxes it serves.
@@ -2250,6 +2258,14 @@ def apply_discard(
         drawn = draw_or_request_personal_cards(next_state, player, draws, source=source)
         next_state = drawn.state
         events.extend(drawn.events)
+    if any(isinstance(reward, TrashPersonalCard) for reward in rewards):
+        # Guild Chief Administrator: the black trash icon stays optional once
+        # the discard is paid [FAQ p. 3], a row of the turn named after the
+        # box (as ``apply_payment``'s for Control the Spice); the discarded
+        # card, now in the discard pile, may be the one trashed.
+        next_state = open_optional_trash(
+            next_state, player, source, printer=_box_trash_printer(context)
+        )
     if context["pending_agent_effect"] is not True:
         events.append(agent_box_event(source, box_card_id, player, _RESOLVED))
     return RuleResult(state=next_state, events=tuple(events))

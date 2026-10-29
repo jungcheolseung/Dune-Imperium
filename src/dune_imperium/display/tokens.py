@@ -414,6 +414,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE: (
             "You may discard a card → Draw 1 card"
         ),
+        # Rise of Ix's Guild Chief Administrator (stage P4d).
+        PersonalCardAgentEffect.MAY_DISCARD_TO_TRASH_A_CARD: (
+            "You may discard a card → You may trash a card"
+        ),
         PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT: (
             "If you have 1 or more sandworms in the Conflict: Draw 1 Intrigue card"
         ),
@@ -710,6 +714,10 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             ),
             PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS: (
                 "You may retreat up to 2 troops"
+            ),
+            # Rise of Ix's Guild Chief Administrator (stage P4d).
+            PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER: (
+                "You may move your Freighter up one space or recall it"
             ),
             PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
                 "You may retreat any number of troops"

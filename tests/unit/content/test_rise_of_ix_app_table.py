@@ -274,6 +274,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
 }
 _IX_IMPERIUM_TRANSCRIBED = {
     "choam_delegate",
+    "guild_chief_administrator",
     "imperial_shock_trooper",
     "jamis",
     "landing_rights",

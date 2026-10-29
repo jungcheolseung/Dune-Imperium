@@ -249,6 +249,7 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "advance_board_freighter": 1.5,
     "advance_intrigue_freighter": 1.5,
     "advance_agent_card_freighter": 1.5,
+    "advance_reveal_freighter": 1.5,
     "advance_freighter": 1.5,
     "resolve_shipping_reward": 2.0,
     "place_combat_reward_dreadnought": 2.0,
