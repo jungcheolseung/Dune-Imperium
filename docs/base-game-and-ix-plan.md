@@ -1437,3 +1437,7 @@ Uprising Conflict만 그려 지금은 닿지 않는다), sandworm이 Freighter�
 Blackmail·Cull·Glimpse the Path(기존 조각만). 다음 후보 — Expedite(Freighter)·Ixian Probe(discard 둘 → 카드 둘)·Finesse(두 면), 그다음 dreadnought·
 unit 카드(Cannon Turrets·Second Wave·Diversion·Grand Conspiracy·Advanced Weaponry), Machine Culture·War Chest·Secret Forces·Quid Pro Quo·
 Strongarm·Strategic Push, 그다음 Imperium 카드. 끊기면: 커밋되지 않은 agent 작업은 버리고(`git checkout --`) 마지막 커밋에서 다시 시작한다.
+- 묶음 1 끝(`21bebb89` Blackmail, `c23fb5bc` Cull, `018e7961` Glimpse the Path). **고칠 것(정함):** Cull은 1 Solari를 낸 뒤 trash를 거절할 수 있게 들어갔다 —
+  rise-of-ix.md 9.3이 채택한 디자이너 판정 "Cull은 trash해야 낸다"(OQ-113 (C)와 같은 방향)와 어긋나므로, 낸 뒤의 trash는 의무로 고친다(다음 Codex
+  묶음). Codex 묶음 2(`codex/p4d-intrigue2`): Expedite·Finesse·Secret Forces·Strongarm 끝(검토 전), Quid Pro Quo는 새 조각("Agent가 놓인 진영마다
+  Influence")이 필요해 멈춤 — astra 묶음으로.
