@@ -39,8 +39,9 @@ resolves those a second time with ``app_renders=False``: scans only, in
 the same language order (``ko``, ``en`` for the Korean UI).
 Only entries of the indexed sets (Uprising, and Bloodlines for the
 ``bloodlines`` option) that carry a ``content_id`` are indexed (Rise of
-Ix's 80 since stage P5f; Epic Game Mode's two cards had theirs before);
-the other sets in the manifest are archived for future expansions. The original game's set
+Ix's 80 since stage P5f; Epic Game Mode's two cards had theirs
+before); the other sets in the manifest are archived for future
+expansions. The original game's set
 (``base``) names its own prints since stage P5d of
 docs/base-game-and-ix-plan.md; its starting cards and the three spaces it
 shares with Uprising are Uprising's prints and keep Uprising's entries.
