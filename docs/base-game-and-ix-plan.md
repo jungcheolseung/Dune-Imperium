@@ -1689,4 +1689,14 @@ dreadnought 말은 앱 그림이나 TTS 토큰이 아니라 Uprising의 그린 �
   Ilesa의 팔만 스캔에서 덧댄다 — 스캔 픽셀이 앱 그림 위를 덮는 유일한 예외라 `app_leaders.py` docstring에 적었고, 다각형 안에서 피부·금색만
   고른 좁은 마스크에 이음매는 흐리게(`ARM_PATCH`). 다른 다섯과 Uprising·원판 앞면은 바이트 그대로. 대조표
   `tmp/claude/5823a41d/p5-ix-leaders/sheets/ilesa-arm.jpg`.
-- **남은 것:** 한국어 카드 앞면(공식 한글판 사진 뒤), Rise of Ix 화면(18.6, P4 병합 뒤), worklog·handoff(병합 때).
+- **Rise of Ix 화면 진행(브랜치 `claude/base-ix-p5-ix`, P4 `7a0c50e4`를 병합해 시작):** 카탈로그의 Ix 내용과 한국어 이름 `bf93a224`, 설정 화면의
+  Rise of Ix 칸 `23fe5c1c`, Ix 그림 색인과 Tech 13장 앱 렌더 `08966be5`·`dcc8582b`, CHOAM 덮개 `f784dc17`·`655f7cbb`, 지도자 여섯 `5fb557ee`·`2c53aafe`
+  (위). **Ix 보드 `7da1f993`:** 주 보드 오른쪽에 인쇄 비율(프레임 449.6 px 대 379.5 px, 1.18)로 붙여 Dreadnought·Tech Negotiation 누를 곳, 세 Tech 판의
+  앞면 타일과 더미 수, 방패의 좌석별 협상가; 운송 트랙의 좌석별 화물선 원판(덮개 그림에서 밝기 단면으로 잼, card-implementer 하나, 오버레이로 확인).
+  **드레드노트 `1ab32da3`:** 코드로 그린 좌석 색 함선(18.6.6 3), 주둔지·Conflict·지배 칸 깃발(덮인 Control marker 위, 돌아갈 때를 제목에) `[Rise of Ix p. 6]`.
+  **한국어 `d578e718`:** P4가 영어로 둔 행동·이벤트 문구를 공식 한국어 룰북의 말로(드레드노트 취역, 협상가, 화물선 1칸 전진·귀환, 운송 보상 `[IX-ko pp. 4-5, 12]`).
+  **숨은 정보 `b56681bb`:** 좌석 패널의 공급처 드레드노트·탐지기 토큰(글 보드면 화물선 칸·협상가), Ilesa의 따로 둔 카드는 자기 패널에만(남에게는 "1장"),
+  관찰자가 아는 책략 카드(덱 맨 위·아래는 덱 옆, 남이 쥔 카드는 그 좌석 패널), 자기 `ix_pending` — 모두 보기의 `private`에서만; 조정자의 Codex 리뷰
+  요청. **탐지기 토큰 `8e02203b`:** 각 영향력 트랙 2칸에 그린 토큰. 확인: e2e `imperium_game` [6]·[7](90/0), `board_tokens` 608, 화면·서버 pytest.
+  남은 Ix 일: 새 아이콘 여섯(18.6.2 7), Ix 칸 타일(`app_board.py`의 `P_Spaces_IX`), 실제 판의 좌석 쿠키 누출 e2e(P4가 Ilesa·Hundro를 넣은 뒤), P5j 묶음.
+- **남은 것:** 한국어 카드 앞면(공식 한글판 사진 뒤), worklog·handoff(병합 때).
