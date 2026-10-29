@@ -36,7 +36,7 @@ from dune_imperium.agents.app_ai.catalog import (
     track_entity,
 )
 from dune_imperium.agents.app_ai.context import Board
-from dune_imperium.agents.app_ai.entities import Entity
+from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.summer import Summer
 from dune_imperium.agents.app_ai.testing import (
@@ -278,19 +278,19 @@ PORTED: dict[str, list[tuple[type[Ability], type[Ability]]]] = {
         (ix.WarChestCombatAbility, StrengthIntrigueAbility),
         (ix.WarChestEndgameAbility, IntrigueAbility),
     ],
+    "glimpse_the_path": [(ix.GlimpseThePathAbility, IntrigueAbility)],
+    "ixian_probe": [(ix.IxianProbeAbility, IntrigueAbility)],
 }
+
+
 #: Their ``Evaluate`` reads ``GetBestOption``, which the profile lacks.
-BLOCKED = ("glimpse_the_path", "ixian_probe")
-
-
-def test_every_ix_intrigue_card_but_two_resolves_to_its_ports() -> None:
+def test_every_ix_intrigue_card_resolves_to_its_ports() -> None:
     assert len(IX_INTRIGUE_ARCHETYPES) == 17
-    assert set(PORTED) | set(BLOCKED) == set(IX_INTRIGUE_ARCHETYPES)
+    assert set(PORTED) == set(IX_INTRIGUE_ARCHETYPES)
     for card_id, expected in PORTED.items():
         found = abilities_of(card(card_id))
         assert [type(a) for a in found] == [cls for cls, _ in expected], card_id
-    for card_id in BLOCKED:
-        assert all(isinstance(a, UnportedAbility) for a in abilities_of(card(card_id)))
+        assert not any(isinstance(a, UnportedAbility) for a in found), card_id
 
 
 @pytest.mark.parametrize(
@@ -316,7 +316,7 @@ def test_every_port_of_the_module_is_listed() -> None:
         and PORTS.get(cls.APP_CLASS) is cls
     }
     assert ports == {cls for pairs in PORTED.values() for cls, _ in pairs}
-    assert len(ports) == 19
+    assert len(ports) == 21
 
 
 #: The raw ``AbilityTiming`` of each port: 5 Combat (``StrengthIntrigueAbility``'s
@@ -341,6 +341,8 @@ TIMINGS: dict[type[IntrigueAbility], int] = {
     ix.QuidProQuoAbility: 0,
     ix.SecretForcesAbility: 0,
     ix.StrongarmAbility: 0,
+    ix.GlimpseThePathAbility: 0,
+    ix.IxianProbeAbility: 0,
 }
 
 
@@ -845,3 +847,43 @@ def test_war_chest_endgame(turn_state: GameState, prof: ProfileFactory) -> None:
     tsmf = card_entity(_TSMF, 0)
     pile = ability.value_in_pile_for_other_play(prof(turn_state), Pile.DECK, tsmf)
     assert pile.sum == 0.0
+
+
+def test_best_option_is_the_strict_maximum_over_hand_and_valid_spaces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dune_imperium.agents.app_ai.abilities import original_intrigue as oi
+    from dune_imperium.agents.app_ai.abilities.immortality import valid_space_ids
+
+    p = make_profile(first_decision("turn", config=IX))
+    hand = oi._hand_entities(p)
+    assert hand
+    monkeypatch.setattr(oi, "_agent_card_value", lambda p, card, space: 1.0)
+    monkeypatch.setattr(
+        oi,
+        "_space_value",
+        lambda p, space, with_: 2.0 if space.ref == "arrakeen" else 0.5,
+    )
+    card, space, value = oi.best_option(p)
+    valid = valid_space_ids(p, card.ref, {}) if card is not None else frozenset()
+    if "arrakeen" in valid:
+        assert space is not None and space.ref == "arrakeen" and value == 3.0
+    monkeypatch.setattr(oi, "_agent_card_value", lambda p, card, space: -5.0)
+    assert oi.best_option(p) == (None, None, 0.0)
+
+
+def test_ixian_probe_discards_the_first_two_of_the_discard_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    p = make_profile(first_decision("turn", config=IX))
+    cards = [Entity(Kind.CARD, f"c{i}", None, p.ctx.seat) for i in range(3)]
+    monkeypatch.setattr(p, "is_climax", lambda: True)
+    monkeypatch.setattr(p, "discard_value", lambda: 1.0)
+    monkeypatch.setattr(p, "card_draw_value", lambda: 2.0)
+    monkeypatch.setattr(p, "buy_gains", lambda n: 0.5)
+    monkeypatch.setattr(p, "possible_persuasion_gain", lambda: 3)
+    monkeypatch.setattr(p, "discard_order", lambda cs, sg: list(reversed(list(cs))))
+    request = Request(infos=(TargetInfo(entities=tuple(cards)),))
+    answer = ix.IxianProbeAbility(card("ixian_probe")).evaluate(p, request)
+    assert answer.value == pytest.approx(2 * 1.0 + 2 * 2.0 + 2 * 0.5)
+    assert answer.response == (("c2", "c1"),)

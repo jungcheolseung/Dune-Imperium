@@ -902,6 +902,32 @@ class PlansWithinPlansAbility(_EndgameBaseSetAbility):
 # ---------------------------------------------------------------------------
 
 
+def best_option(
+    p: Profile, cards: Sequence[Entity] | None = None
+) -> tuple[Entity | None, Entity | None, float]:
+    """``WormAIProfile::GetBestOption(possibleCards)`` @0x4911370
+    (05-agent-placement.md §10): over ``possibleCards`` (default the hand)
+    and each card's ``Board.ValidSpaces`` in board order, ``AgentAbility.
+    ValueForPlayer(P, [space]).Sum + Σ space.Abilities.ValueForPlayer(P,
+    [card]).Sum`` (``b__87_1``, a Merge); a strict maximum from 0.0, no
+    ``CanBeRun`` filter. Returns ``(card, space, value)``; no option above
+    0.0 leaves the card and space None. Its callers are Rise of Ix's
+    (Glimpse the Path, Ixian Probe, Ilesa's One Step Ahead)."""
+
+    hand = list(cards) if cards is not None else _hand_entities(p)
+    cache: SpaceCache = {}
+    best: tuple[Entity | None, Entity | None, float] = (None, None, 0.0)
+    for card in hand:
+        valid = valid_space_ids(p, card.ref, cache)
+        for space in _board_spaces(p):
+            if space.ref not in valid:
+                continue
+            value = _agent_card_value(p, card, space) + _space_value(p, space, (card,))
+            if value > best[2]:
+                best = (card, space, value)
+    return best
+
+
 def _board_spaces(p: Profile) -> list[Entity]:
     """``Match.BoardSpaces`` (``WormMatchExtensions::BoardSpaces``) in order."""
 

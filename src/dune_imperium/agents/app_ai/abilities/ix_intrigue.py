@@ -7,10 +7,9 @@ and confirmed line by line in the annotated disassembly
 (``dump/asm/worm-canis.dll/worm.canis.abilities.PlayAbilities.RiseOfIx.
 <Class>.asm``).
 
-Not ported here: ``GlimpseThePathAbility`` and ``IxianProbeAbility``. Both
-``Evaluate``s read ``WormAIProfile::GetBestOption`` @0x4911370 (the best
-``(card, space, value)`` of the hand), which the profile does not port yet,
-so the two classes stay in ``abilities.UNPORTED`` until it does.
+``GlimpseThePathAbility`` and ``IxianProbeAbility`` read
+``WormAIProfile::GetBestOption`` @0x4911370 (the best ``(card, space, value)``
+of the hand), ``original_intrigue.best_option``.
 
 App class chains (``dump/worm-canis.dll.cs``):
 
@@ -78,6 +77,7 @@ from dune_imperium.agents.app_ai.abilities.base import (
 from dune_imperium.agents.app_ai.abilities.intrigue import (
     _REVEAL_TURN,
     _TSMF_ARCHETYPES,
+    _UNDETERMINED,
     ENDGAME_TIMING,
     IntrigueAbility,
     StrengthIntrigueAbility,
@@ -86,6 +86,7 @@ from dune_imperium.agents.app_ai.abilities.intrigue import (
     _count_the_spice_must_flow,
     _in_player_turn,
     _influence,
+    _intrigue_hand_count,
     _targets,
 )
 from dune_imperium.agents.app_ai.abilities.tech import is_tech_tile
@@ -920,3 +921,110 @@ class WarChestEndgameAbility(_EndgameIxAbility):
         (empty; not the base tag synergy)."""
 
         return Summer()
+
+
+# ---------------------------------------------------------------------------
+# GetBestOption readers
+# ---------------------------------------------------------------------------
+
+
+@port(_PA + "GlimpseThePathAbility")
+class GlimpseThePathAbility(IntrigueAbility):
+    """``RiseOfIx.GlimpseThePathAbility``: pay 1 spice, gain 1 water and draw
+    a card."""
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``Cost`` @0x4beb130: at least 1 spice."""
+
+        return p.ctx.me.resources.spice >= 1
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``GlimpseThePathAbility::Evaluate``: a path, then the play.
+
+        "Before Agent/Reveal": at the turn start (``IsInPlayerTurn(0)``) with
+        an Agent left, when the spice differs from ``GetBestOption``'s card
+        plus space ``SpiceCost`` (a lifted nullable sum: no option is
+        different too). "During Reveal" (``IsInPlayerTurn(2)``): at the climax
+        or with ``GetBuyGains(PossiblePersuasionGain()) >= 2.5``. With no
+        path, "4+ Intrigue Cards". The play is ``UpdateSelectionTargets(sum,
+        null)`` of "Play early" 100.0, ``GetSpiceValue(-1)`` ("Pay 1 Spice"),
+        ``GetWaterValue(1)``, ``CardDrawValue`` and
+        ``GetBuyGains(PossiblePersuasionGain())`` ("Buy Gains Bonus").
+        """
+
+        from dune_imperium.agents.app_ai.abilities.original_intrigue import (
+            best_option,
+        )
+
+        choice = _Choice()
+        me = p.ctx.me
+        path: str | None = None
+        if _in_player_turn(p, _UNDETERMINED) and me.agents_available > 0:
+            card, space, _value = best_option(p)
+            if card is None or space is None:
+                path = "Before Agent/Reveal"
+            else:
+                cost = card.int_attr("SpiceCost", 0) + space.int_attr("SpiceCost", 0)
+                if me.resources.spice != cost:
+                    path = "Before Agent/Reveal"
+        elif _in_player_turn(p, _REVEAL_TURN) and (
+            p.is_climax() or p.buy_gains(p.possible_persuasion_gain()) >= 2.5
+        ):
+            path = "During Reveal"
+        if path is None and _intrigue_hand_count(p) >= 4:
+            path = "4+ Intrigue Cards"
+        if path is None:
+            return choice.answer("Glimpse The Path")
+        v = Summer()
+        v.add("Play early", 100.0)
+        v.add("Pay 1 Spice", p.spice_value(-1))
+        v.add("Water", p.water_value(1))
+        v.add("Card Draw", p.card_draw_value())
+        v.add("Buy Gains Bonus", p.buy_gains(p.possible_persuasion_gain()))
+        choice.update_targets(v.sum, None)
+        return choice.answer(f"Glimpse The Path | {v.sum} | path: {path}")
+
+
+@port(_PA + "IxianProbeAbility")
+class IxianProbeAbility(IntrigueAbility):
+    """``RiseOfIx.IxianProbeAbility``: discard two cards, draw two."""
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``Cost`` @0x4befdd0: two or more Imperium cards in hand."""
+
+        return len(p.ctx.me.hand) >= 2
+
+    def evaluate(self, p: Profile, request: Request) -> Answer:
+        """``IxianProbeAbility::Evaluate``: at the climax; with no Agent left,
+        a hand of 4 or more and ``5.0 >= GetBuyValue()``; or with an Agent
+        left, ``GetBestOption`` worth at most 4.0. The play is the summer of
+        "Discard 2" (2 x ``DiscardValue``), "Draw 2" (2 x ``CardDrawValue``)
+        and "2 Buy Gains Bonus" (2 x ``GetBuyGains(PossiblePersuasionGain())``),
+        answered with the first two of ``GetDiscardOrder(P, cards, false)``;
+        not exactly two, no play."""
+
+        from dune_imperium.agents.app_ai.abilities.original_intrigue import (
+            best_option,
+        )
+
+        choice = _Choice()
+        me = p.ctx.me
+        if p.is_climax():
+            path = "Climax"
+        elif me.agents_available <= 0:
+            if not (len(me.hand) >= 4 and 5.0 >= p.buy_value()):
+                return choice.answer("Ixian Probe")
+            path = "No Agents Remaining"
+        else:
+            if not 4.0 >= best_option(p)[2]:
+                return choice.answer("Ixian Probe")
+            path = "Agents Remaining"
+        v = Summer()
+        v.add("Discard 2", 2 * p.discard_value())
+        v.add("Draw 2", 2 * p.card_draw_value())
+        v.add("2 Buy Gains Bonus", 2 * p.buy_gains(p.possible_persuasion_gain()))
+        order = p.discard_order(_targets(request, 0, Kind.CARD), False)[:2]
+        if len(order) != 2:
+            return choice.answer("Ixian Probe")
+        choice.update_targets(v.sum, tuple(c.ref for c in order))
+        return choice.answer(f"Ixian Probe | {v.sum} | path: {path}")
