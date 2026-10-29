@@ -684,7 +684,14 @@ def _card_ability[A: Ability](card: Entity, cls: type[A]) -> A:
     value the card as another card (the window falls back instead).
     """
 
-    for ability in abilities_of(card):
+    abilities = abilities_of(card)
+    # A subclass may come first (Rise of Ix's Shai-Hulud lists its
+    # ``ShaiHuludAcquireAbility``, the acquire-time trash, before the plain
+    # ``AcquireAbility`` the purchase is valued by): the exact class wins.
+    for ability in abilities:
+        if type(ability) is cls:
+            return ability
+    for ability in abilities:
         if isinstance(ability, cls):
             return ability
     raise _Unmirrored(f"{card.ref} has no {cls.__name__}")

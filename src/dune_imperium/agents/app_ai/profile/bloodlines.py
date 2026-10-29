@@ -126,7 +126,8 @@ class BloodlinesMixin(ProfileCore):
         seat."""
 
         pl = self.ctx.me if player is None else player
-        if self.ctx.bloodlines:
+        if self.ctx.bloodlines or self.ctx.ix:
+            # Rise of Ix: dreadnoughts are units too (``units_in_conflict``).
             return pl.units_in_conflict
         return pl.troops_conflict + pl.sandworms_conflict
 
