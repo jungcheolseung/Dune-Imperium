@@ -1321,3 +1321,14 @@ marker 그대로), Combat 단계의 마지막에 `leaving`인 것은 garrison으
 codec: 원판 + Ix 카탈로그만 +19행(Conflict마다 `take{icon: dreadnought_control}`), Ix 없는 카탈로그 288개 그대로. 룰북 예(Frida·Ned·Bodie)를
 엔진으로 좌석별 테스트. **P4c 표시 몫(P5 화면 세션과 나눔):** `display/actions.py` `combat_reward_icon_action_text`에 `dreadnought_control` 갈래가 없어
 그 줄이 "Influence 1"로 보인다; 엔진 이벤트 `dreadnought_control_placed`·`dreadnought_returned`의 로그 문구. setup이 열리기 전에는 닿지 않는다.
+
+**P4b-2 끝(2026-10-29, `4aa62f61`·`4561910b`, 라벨 `904357ad`):** DSL 조각 `CommissionDreadnought`(아이콘마다 "may", supply → garrison; supply가
+비면 그 아이콘만 불발 — `NO_DREADNOUGHT_TO_COMMISSION`). 이번 turn의 commission은 turn frame에 세고(Plot으로 놓기 전 commission한 것도 이번
+turn의 것 — "units recruited during your current turn"과 같이), 배치는 셋째 종류(`deploy_dreadnoughts`·`withdraw_dreadnoughts`): commission한
+dreadnought는 제 자리, garrison 몫 둘은 troop·Commander·dreadnought가 함께(`unit_deployment_rooms`: 종류마다 초과분의 합 ≤ 2). dreadnought는
+troop이 아니라 `units_deployed_*`(Masterstroke·Distraction·Coercive Negotiation이 읽는 셈)에 들지 않는다. codec: 원판 + Ix만 +4행. 서버 라벨은
+공식 한글이 없어 "dreadnought"를 영어로 둔다(용어집에 행 없음). **넘기는 일:** P4c — Dreadnought 칸·Tech의 commission 행(지금은 Intrigue 출처만
+줄이 있다), 화면의 `FORCE_STEPPER_ACTIONS`(turn.js)에 dreadnought 배치/회수, 한글 이름(`effect_dsl_text_ko.py`의 "Commission a dreadnought"는
+영어 임시), 훈련의 `UNDO_ACTION_IDS`에 `withdraw_dreadnoughts`(지금 넣으면 `test_selfplay`가 고정한 집합과 어긋남 — Ix 판 자체 대국 전에). P4d —
+Diversion("four or more units")은 dreadnought를 세야 하므로 frame의 dreadnought 수를 조건에 더한다. P7 — Reveal turn의 Combat 아이콘 배치에
+dreadnought(Bloodlines + Ix), Uprising의 "unit" 조건 카드.
