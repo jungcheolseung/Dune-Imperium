@@ -134,7 +134,8 @@ _DESERT_DEFERRED_ABILITIES: Final = frozenset(
     }
 )
 # ``GainInfluenceIntrigueAbility`` subclasses and the faction each grants
-# (all BaseSet intrigues: the "+1 influence intrigue" bump is dead here).
+# (all BaseSet intrigues: the "+1 influence intrigue" bump is live in the
+# original game, where those cards are held).
 _GAIN_INFLUENCE_INTRIGUE_ABILITIES: Final = {
     "worm.canis.abilities.PlayAbilities.BaseSet.FavoredSubjectAbility": "emperor",
     "worm.canis.abilities.PlayAbilities.BaseSet.GuildAuthorizationAbility": (
@@ -146,7 +147,8 @@ _GAIN_INFLUENCE_INTRIGUE_ABILITIES: Final = {
     ),
 }
 # ``AllianceAbility`` subclasses on Imperium cards and their faction (BaseSet
-# and Rise of Ix only: the "Abilities Bonus" is dead here).
+# and Rise of Ix only: the "Abilities Bonus" is live in the original
+# game, where those Imperium cards are bought).
 _ALLIANCE_ABILITIES: Final = {
     "worm.canis.abilities.PlayAbilities.BaseSet.FirmGripAbility2": "emperor",
     "worm.canis.abilities.PlayAbilities.BaseSet.WormRidersAllianceAbility": "fremen",
@@ -635,7 +637,7 @@ class InfluenceMixin(ProfileCore):
         if current_rank < 0:
             cur = _influence(me, faction)
             has_alliance = faction in me.alliance_faction_ids
-            # b__0: a held intrigue whose influence ability names F (dead here).
+            # b__0: a held intrigue whose influence ability names F (original game).
             if any(
                 _intrigue_grants_influence(iid, faction) for iid in ctx.intrigue_cards
             ):
@@ -654,7 +656,7 @@ class InfluenceMixin(ProfileCore):
         else:
             self._loss_multiplier(s, amount, cur, new_rank, opp_max, has_alliance)
 
-        # (B) "Abilities Bonus": Alliance-keyword Imperium cards (dead here).
+        # (B) "Abilities Bonus": Alliance-keyword Imperium cards (original game).
         n = sum(
             1
             for cid in _own_card_ids(ctx)
