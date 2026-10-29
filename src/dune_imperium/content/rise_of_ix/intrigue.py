@@ -23,8 +23,10 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.effect_dsl import (
+    DrawPersonalCards,
     EffectSection,
     GainCombatStrength,
+    GainResources,
     LoseInfluence,
     PayResources,
     TrashPersonalCard,
@@ -104,6 +106,19 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("glimpse_the_path", "Glimpse the Path"),
         copies=1,
+        # "Played Glimpse the Path and spent 1 spice to gain 1 water and draw
+        # a card" [Glimpse the Path card, app log line; the card prints icons
+        # only]: one Plot cost line, 1 spice -> 1 water and 1 card. The water
+        # is always a live reward (OQ-071), so the line is played even with
+        # no card left to draw.
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(spice=1),),
+                    rewards=(GainResources(water=1), DrawPersonalCards(1)),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("grand_conspiracy", "Grand Conspiracy"),

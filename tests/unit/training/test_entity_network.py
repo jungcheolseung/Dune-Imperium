@@ -150,8 +150,8 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # and its scales are unchanged (compared against 3767c469, 2026-10-29). Then
 # Rise of Ix's Intrigue cards got their records (stage P4d), each card's own
 # row only and no column (Blackmail, compared against 7a0c50e4; Cull, compared
-# against 21bebb89, 2026-10-29).
-_GOLDEN_DIGEST = "134a54a6dc0ba8001318acd0e425aa16988dcf2d50b6a0eb2b43b89c9a3217a3"
+# against 21bebb89; Glimpse the Path, compared against c23fb5bc, 2026-10-29).
+_GOLDEN_DIGEST = "1564d8787626b17e02735bda221fc28a049aa23b787c2a589ae7e022b24d59bf"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

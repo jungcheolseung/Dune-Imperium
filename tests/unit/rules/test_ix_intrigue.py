@@ -32,7 +32,10 @@ from dune_imperium.core import (
 from dune_imperium.display import intrigue_card_text
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.combat import begin_combat_intrigue
-from dune_imperium.rules.intrigue import legal_intrigue_play_actions
+from dune_imperium.rules.intrigue import (
+    apply_intrigue_play,
+    legal_intrigue_play_actions,
+)
 
 IX = RulesetConfig(
     base_game=BaseGame.IMPERIUM, rise_of_ix=True, first_player_seat_zero=True
@@ -514,4 +517,201 @@ def test_cull_rows_round_trip_through_the_codec() -> None:
         }
 
     assert rows(IX) == {"decline"}
+    assert not rows(ORIGINAL)
+
+
+# --- Glimpse the Path (Plot) ------------------------------------------------
+
+GLIMPSE = _intrigue("glimpse_the_path")
+
+
+def _settle(engine: UprisingRulesEngine, state: GameState, seed: int = 3) -> GameState:
+    """Resolve the chance decisions (a discard-pile shuffle) waiting in ``state``."""
+
+    chance = ChanceResolver(seed=seed)
+    while isinstance(decision := engine.current_decision(state), ChanceDecision):
+        state = engine.apply(state, chance.resolve(decision)).state
+    return state
+
+
+def _glimpse_hand(
+    *, deck: int = 5, discard: int = 0, spice: int = 2
+) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 with Glimpse the Path, ``spice`` spice and no water, and ``deck``
+    / ``discard`` of its ten starter cards left in those piles (the rest stay
+    in hand)."""
+
+    engine, state = _start()
+    owner = state.players[0]
+    cards = (*owner.deck, *owner.hand)
+    state = _seat(
+        state,
+        intrigue_cards=(GLIMPSE,),
+        resources=Resources(solari=3, spice=spice, water=0),
+        deck=cards[:deck],
+        discard_pile=cards[deck : deck + discard],
+        hand=cards[deck + discard :],
+    )
+    return engine, state
+
+
+def test_glimpse_the_path_is_one_plot_cost_line_shuffled_in_with_rise_of_ix() -> None:
+    # "Played Glimpse the Path and spent 1 spice to gain 1 water and draw a
+    # card" [Glimpse the Path card, Steam app log text; the card prints icons
+    # only]: Plot, 1 spice -> 1 water and a card; 1 copy [Rise of Ix p. 2].
+    # Shuffled in with Rise of Ix only.
+    entry = intrigue_card_for_instance(GLIMPSE)
+    assert entry.card.name == "Glimpse the Path"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert len(entry.options[0].sections) == 1
+    assert intrigue_card_text(entry) == [
+        "Plot — Pay 1 spice → Gain 1 water, Draw 1 card"
+    ]
+    assert _in_deck("glimpse_the_path", IX)
+    assert not _in_deck("glimpse_the_path", ORIGINAL)
+    assert "glimpse_the_path" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_glimpse_the_path_pays_one_spice_for_one_water_and_one_card() -> None:
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." `[FAQ p. 2]`; the arrow cost is required once the card is played
+    # `[FAQ p. 3]`; the draw comes from the seat's own deck (imperium-base.md
+    # 11, "카드 뽑기" `[DI p. 16]`).
+    engine, state = _glimpse_hand(deck=5)
+    before = state.players[0]
+    assert legal_intrigue_play_actions(state, 0) == (_play(GLIMPSE),)
+
+    result = apply_intrigue_play(state, _play(GLIMPSE))
+    done = result.state.players[0]
+
+    assert done.resources == Resources(solari=3, spice=1, water=1)
+    assert done.hand == (*before.hand, before.deck[0])
+    assert done.deck == before.deck[1:]
+    assert done.intrigue_cards == ()
+    assert result.state.intrigue_discard == (GLIMPSE,)
+    kinds = [event.kind for event in result.events]
+    assert kinds.index("resources_paid") < kinds.index("resources_gained")
+    payload = dict(result.events[kinds.index("resources_paid")].payload)
+    assert payload["spice"] == 1
+    # The turn goes on: the Plot did not end it.
+    assert result.state.decision_stack[-1].kind == "turn"
+    assert apply_whole(engine, state, _play(GLIMPSE)).state.players[0] == done
+
+
+def test_glimpse_the_path_needs_one_spice() -> None:
+    # Without the spice the cost is not met (FAQ p. 2), whatever else the seat
+    # holds.
+    engine, state = _glimpse_hand(spice=0)
+    state = _seat(state, resources=Resources(solari=9, spice=0, water=4))
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert _play(GLIMPSE) not in engine.whole_actions(state, 0)
+
+    _, exact = _glimpse_hand(spice=1)
+    assert legal_intrigue_play_actions(exact, 0) == (_play(GLIMPSE),)
+    done = apply_whole(engine, exact, _play(GLIMPSE)).state.players[0]
+    assert done.resources == Resources(solari=3, spice=0, water=1)
+
+
+def test_glimpse_the_path_reshuffles_the_discard_pile_to_draw() -> None:
+    # With the deck empty the discard pile is shuffled to make a new deck and
+    # the draw goes on (imperium-base.md 11, "카드 뽑기" `[DI p. 16]`).
+    engine, state = _glimpse_hand(deck=0, discard=3)
+    before = state.players[0]
+
+    opened = apply_whole(engine, state, _play(GLIMPSE)).state
+    assert opened.decision_stack[-1].kind == "personal_draw_reshuffle"
+    done = _settle(engine, opened).players[0]
+
+    assert len(done.hand) == len(before.hand) + 1
+    assert len(done.deck) == 2
+    assert done.discard_pile == ()
+    assert set(done.hand + done.deck) == set(before.hand + before.discard_pile)
+    assert done.resources == Resources(solari=3, spice=1, water=1)
+
+
+def test_glimpse_the_path_is_played_for_its_water_with_no_card_to_draw() -> None:
+    # "보상 중 하나라도 지금 무언가를 바꿀 수 있어야 낸다" (imperium-base.md
+    # 16, OQ-071, OQ-113 (C)): the water always changes something, so the
+    # line is played even when the deck and the discard pile are both empty;
+    # the draw then takes nothing (unlike Water of Life, whose only reward is
+    # the draw).
+    engine, state = _glimpse_hand(deck=0, discard=0)
+    before = state.players[0]
+    assert legal_intrigue_play_actions(state, 0) == (_play(GLIMPSE),)
+
+    done = apply_whole(engine, state, _play(GLIMPSE)).state.players[0]
+
+    assert done.hand == before.hand
+    assert done.deck == () and done.discard_pile == ()
+    assert done.resources == Resources(solari=3, spice=1, water=1)
+
+
+def test_glimpse_the_path_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`: the seat keeps
+    # the card and the spice and takes another turn action.
+    engine, state = _glimpse_hand()
+    actions = engine.whole_actions(state, 0)
+    assert _play(GLIMPSE) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (GLIMPSE,)
+    assert placed.players[0].resources == state.players[0].resources
+
+
+def test_glimpse_the_path_card_is_revealed_at_once_in_the_reveal_turn() -> None:
+    # "Reveal turn에 뽑으면 바로 공개해 이번 turn에 쓴다" `[FAQ p. 3]`
+    # (imperium-base.md 13.2 Poison Snooper row, 14): in the Reveal turn the
+    # drawn card goes straight into play instead of the hand.
+    engine, state = _glimpse_hand()
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    before = revealed.players[0]
+    assert _play(GLIMPSE) in engine.whole_actions(revealed, 0)
+
+    result = apply_whole(engine, revealed, _play(GLIMPSE))
+    done = result.state.players[0]
+
+    assert done.hand == before.hand == ()
+    assert done.in_play == (*before.in_play, before.deck[0])
+    assert done.deck == before.deck[1:]
+    assert [e.kind for e in result.events].count("personal_card_late_revealed") == 1
+    assert done.resources == Resources(solari=3, spice=1, water=1)
+
+
+def test_glimpse_the_path_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _glimpse_hand()
+    state = _seat(state, 1, intrigue_cards=(GLIMPSE,), resources=Resources(spice=3))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_glimpse_the_path_rows_round_trip_through_the_codec() -> None:
+    # The Ix catalog lists the card (a ``choose_intrigue_card`` row naming
+    # it, as every Intrigue card of the deck has) and the codec round-trips
+    # what the seat is offered before and after the play; the original
+    # game's catalog without Rise of Ix has none.
+    engine, state = _glimpse_hand(deck=0, discard=3)
+    codec = ActionCodec(IX)
+    played = _settle(engine, apply_whole(engine, state, _play(GLIMPSE)).state)
+    for held in (state, played):
+        offered = engine.legal_actions(held, 0)
+        assert offered
+        for action in offered:
+            assert codec.decode(codec.encode(action), 0) == action
+
+    def rows(config: RulesetConfig) -> set[str]:
+        return {
+            template.action_id
+            for template in ActionCodec(config).catalog
+            if dict(template.arguments).get("card_id") == GLIMPSE
+        }
+
+    assert rows(IX) == {"choose_intrigue_card"}
     assert not rows(ORIGINAL)
