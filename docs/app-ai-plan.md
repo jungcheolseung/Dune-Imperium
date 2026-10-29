@@ -531,6 +531,10 @@ P4 브랜치(`51884e8f`)가 지금 가진 결정은 dreadnought 셋(P4b)과 예�
   `SecondWaveAbility`가 고른 유닛 수와 dreadnought 수가 같은 행이다. Cannon Turrets는 고를 것이 없다. Endgame의 Plans Within
   Plans·Grand Conspiracy는 넷을 채우면 2 VP 선택지를 낸다(앱 `CountTotalPoints`: 셋 1 VP, 넷 2 VP). 전에는 첫 선택지(1 VP)를
   냈고, 이 수정으로 원판 고정 시드 1판(`original:501:L1`)이 그 한 수만 바뀐다.
+- P4 책략 묶음 e(`0d65eb9c`, 병합 `8aee4447`): Machine Culture는 앱처럼 `GetAcquireTechTileTargets(0, false)`를 대상으로
+  받아(전에는 대상이 없어 내지 않았다) 고른 타일을 Tech 창이 그대로 산다(엔진은 Intrigue가 연 Tech 프레임에 거절 행을 두지 않는다).
+  War Chest·Diversion은 고를 것 없이 이식된 클래스로 답한다. Double Cross를 앱의 `DefaultRandomChoice`가 냈을 때(평가가 상대를
+  고르지 않음) 대상도 `DefaultRandomChoice`로 고른다.
 - Interstellar Shipping에서 Shipping 회수로 recruit한 병력의 배치(시드 8100): P4 판정으로 Troop Transports가 허락하는 합법 배치
   (rise-of-ix.md 15)라, 앱의 `TroopTransportsAbility`로 답한다(`fcd538be`).
 - agent 토큰: Opus 둘(Imperium 약 862k, 책략 약 537k), Codex Tech 하나(Codex 쪽 한도). 독립 검토는 Codex 5시간 창이 차서
