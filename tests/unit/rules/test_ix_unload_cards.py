@@ -1501,7 +1501,16 @@ def _with_spaceport(state: GameState, seat: int) -> GameState:
 
 
 def _cheap_row_card(state: GameState) -> str:
-    return next(card for card in state.imperium_row if _cost(card) <= 5)
+    """A Row card within 5 whose acquisition is the acquisition alone (no
+    acquire box, which may open a window of its own), so the step after it
+    is the one under test."""
+
+    return next(
+        card
+        for card in state.imperium_row
+        if _cost(card) <= 5
+        and imperium_card_for_instance(card).acquisition_effect is None
+    )
 
 
 def _nothing_within_five(state: GameState) -> GameState:
