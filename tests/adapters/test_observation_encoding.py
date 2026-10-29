@@ -1772,7 +1772,9 @@ def test_the_intrigue_cards_a_seat_knows_are_its_own_columns() -> None:
 
 def test_ix_pending_is_the_open_decision_of_its_own_seat() -> None:
     # Plan 17.8 review item 4: the Shipping rewards still owed, the open
-    # Acquire Tech's discount and payment, and the Negotiators it may return.
+    # Acquire Tech's discount and payment, and the Negotiators it may return
+    # -- counted from the state, not the context (Codex review of 82b2bf2e:
+    # the stale 3 written here is not what the seat holds).
     state = _ix_state()
     frame = state.decision_stack[-1]
     assert isinstance(frame.decision, PlayerDecision)
@@ -1784,7 +1786,7 @@ def test_ix_pending_is_the_open_decision_of_its_own_seat() -> None:
                 (SHIPPING_REWARDS_KEY, "1,3"),
                 (TECH_DISCOUNT_KEY, 2),
                 (TECH_PAYMENT_KEY, "solari"),
-                (NEGOTIATORS_RETURNABLE_KEY, 1),
+                (NEGOTIATORS_RETURNABLE_KEY, 3),
             )
         )
     )
@@ -1792,13 +1794,20 @@ def test_ix_pending_is_the_open_decision_of_its_own_seat() -> None:
         state,
         decision_stack=(*state.decision_stack[:-1], replace(frame, context=context)),
     )
+    plain = replace(state, config=replace(state.config, rise_of_ix=False))
+    seats = list(state.players)
+    seats[owner] = replace(
+        seats[owner],
+        negotiators=1,
+        troops_supply=seats[owner].troops_supply - 1,
+    )
+    state = replace(state, players=tuple(seats), tech_stacks=(("flagship",),))
     for observer in range(4):
         pending = encode_player_view(observe_state(state, observer))[
             segment_slice("ix_pending")
         ]
         expected = (1, 0, 1, 2, 0, 1, 1) if observer == owner else (0,) * 7
         assert pending == expected
-    plain = replace(state, config=replace(state.config, rise_of_ix=False))
     assert not any(
         encode_player_view(observe_state(plain, owner))[segment_slice("ix_pending")]
     )

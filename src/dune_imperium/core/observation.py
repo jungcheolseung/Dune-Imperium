@@ -7,7 +7,11 @@ from functools import cache
 from typing import Final
 
 from dune_imperium.config import BaseGame
-from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.bloodlines.tech import (
+    TECH_TILES_BY_ID,
+    TechAbility,
+    has_tech,
+)
 from dune_imperium.content.uprising.effect_dsl import RevealContractsTakeOne
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
@@ -823,10 +827,29 @@ TECH_PAYMENT_KEY: Final = "tech_payment"
 NEGOTIATORS_RETURNABLE_KEY: Final = "negotiators_returnable"
 
 
+def ix_negotiators_returnable(state: GameState, player: int, discount: int) -> int:
+    """The most Negotiators ``player`` could still return toward an Acquire
+    Tech at ``discount``: those it holds, but no more than the dearest
+    face-up tile still costs ("any number" of them, each one spice off,
+    [Rise of Ix p. 4]; one beyond the price lowers nothing). Read from the
+    state each time: an acquisition stacked under another that spent
+    Negotiators or took a tile must not show the count it opened with
+    (Codex review of 82b2bf2e)."""
+
+    prices = (
+        max(TECH_TILES_BY_ID[stack[0]].cost - discount, 0)
+        for stack in state.tech_stacks
+        if stack
+    )
+    return min(state.players[player].negotiators, max(prices, default=0))
+
+
 def ix_pending_of(state: GameState, player: int) -> IxPending:
     """The open Rise of Ix decision ``player`` is making (``IxPending``),
     from the context of its own top frame; ``NO_IX_PENDING`` otherwise, and
-    always outside a Rise of Ix game."""
+    always outside a Rise of Ix game. An open Ix Tech acquisition's
+    returnable Negotiators are counted now (``ix_negotiators_returnable``),
+    not taken from the context."""
 
     if not state.config.rise_of_ix or not state.decision_stack:
         return NO_IX_PENDING
@@ -837,7 +860,11 @@ def ix_pending_of(state: GameState, player: int) -> IxPending:
     rewards = context.get(SHIPPING_REWARDS_KEY)
     discount = context.get(TECH_DISCOUNT_KEY)
     payment = context.get(TECH_PAYMENT_KEY)
-    returnable = context.get(NEGOTIATORS_RETURNABLE_KEY)
+    returnable = (
+        ix_negotiators_returnable(state, player, discount)
+        if isinstance(discount, int)
+        else 0
+    )
     pending = IxPending(
         shipping_rewards=tuple(
             int(space) for space in rewards.split(",") if space
@@ -846,7 +873,7 @@ def ix_pending_of(state: GameState, player: int) -> IxPending:
         else (),
         tech_discount=discount if isinstance(discount, int) else 0,
         tech_payment=payment if isinstance(payment, str) else "",
-        negotiators_returnable=returnable if isinstance(returnable, int) else 0,
+        negotiators_returnable=returnable,
     )
     return NO_IX_PENDING if pending == NO_IX_PENDING else pending
 
