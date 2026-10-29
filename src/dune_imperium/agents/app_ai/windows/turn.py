@@ -115,7 +115,16 @@ from dune_imperium.agents.app_ai.abilities.original_board import (
 from dune_imperium.agents.app_ai.abilities.original_imperium import (
     KwisatzHaderachAbility,
 )
-from dune_imperium.agents.app_ai.abilities.tech import MemocordersAcquiredAbility
+from dune_imperium.agents.app_ai.abilities.tech import (
+    FlagshipAbility,
+    HoloprojectorsAbility,
+    InvasionShipsAbility,
+    MemocordersAcquiredAbility,
+    ShuttleFleetAcquiredAbility,
+    SonicSnoopersAbility,
+    SpySatellitesAbility,
+    TrainingDronesAbility,
+)
 from dune_imperium.agents.app_ai.catalog import (
     BLOODLINES_SPACE_ORDER,
     CARD_ARCHETYPES,
@@ -134,6 +143,7 @@ from dune_imperium.agents.app_ai.catalog import (
     track_entity,
 )
 from dune_imperium.agents.app_ai.choice import default_random_choice
+from dune_imperium.agents.app_ai.context import FACTIONS as _FACTIONS
 from dune_imperium.agents.app_ai.context import AppContext, Board, card_id
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
 from dune_imperium.agents.app_ai.entities import Entity, Kind
@@ -187,6 +197,8 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "play_turn_start_card",
         "flip_tech",
         "resolve_tech_acquire_effect",
+        # Rise of Ix: Spy Satellites' and Sonic Snoopers' trash (plan §13).
+        "trash_tech",
     }
 )
 #: Navigation Chamber's discount variants of one space, in our legal order
@@ -197,7 +209,18 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
 #: appear only on a cost with both resources, which no 4-player space has.
 _DISCOUNT_ORDER: tuple[str | None, ...] = (None, "spice", "solari")
 #: A tile's Flip activation (bloodlines-systems.md §3.3; D23-D25).
-_FLIP_ABILITIES = (AdvancedDataAnalysisAbility, SpyDronesAbility, RapidDropshipsAbility)
+_FLIP_ABILITIES = (
+    AdvancedDataAnalysisAbility,
+    SpyDronesAbility,
+    RapidDropshipsAbility,
+    # Rise of Ix's four Flip tiles (rix-tech.md §8.4, §8.5, §8.7, §8.14).
+    FlagshipAbility,
+    HoloprojectorsAbility,
+    InvasionShipsAbility,
+    TrainingDronesAbility,
+)
+#: Rise of Ix's "trash this tile ->" activations (rix-tech.md §8.11, §8.13).
+_TRASH_ABILITIES = (SpySatellitesAbility, SonicSnoopersAbility)
 #: Gene-Locked Vault's branches -> our ``choice`` argument.
 _VAULT_CHOICES: dict[int, str] = {
     GeneLockedVaultAcquiredAbility.INTRIGUE: "intrigue",
@@ -1053,6 +1076,37 @@ def tech_flip_sources(run: DecisionRun) -> list[Source] | None:
     return sources
 
 
+def tech_trash_sources(run: DecisionRun) -> list[Source] | None:
+    """One PROMPT key per ``trash_tech(tech_id)``: Spy Satellites' (3 spice
+    and the tile -> 1 VP) and Sonic Snoopers' (the tile -> cycle Intrigue)
+    activations, Optional, taken at their ``Evaluate`` when their ``Cost``
+    holds (rix-tech.md §7.4: offered in turn prompts). None for a tile with
+    no such ability."""
+
+    sources: list[Source] = []
+    for action in run.by_id("trash_tech"):
+        tech_id = str_arg(action, "tech_id")
+        if tech_id is None or tech_id not in TECH_ARCHETYPES:
+            return None
+        tile = tech_entity(tech_id, run.ctx.seat)
+        ability = next(
+            (a for a in abilities_of(tile) if isinstance(a, _TRASH_ABILITIES)), None
+        )
+        if ability is None:
+            return None
+        if not ability.meets_cost(run.profile):
+            continue
+        sources.append(
+            Source(
+                f"Trash {tech_id}",
+                Stage.PROMPT,
+                (action,),
+                _plain_evaluate(run, ability, action),
+            )
+        )
+    return sources
+
+
 def tech_acquire_effect_sources(run: DecisionRun) -> list[Source] | None:
     """The owed acquire icons of a Tech tile bought in this turn (OQ-098).
 
@@ -1126,6 +1180,28 @@ def _acquire_effect_action(
         request = Request(infos=(TargetInfo(options=tuple(options)),), forced=True)
         option = _forced_pick(run, vault.evaluate(p, request), options)
         return with_arg(actions, "choice", _VAULT_CHOICES[option])
+    if effect == "distinct_influence":
+        shuttle = next(
+            (
+                a
+                for a in abilities_of(tile)
+                if isinstance(a, ShuttleFleetAcquiredAbility)
+            ),
+            None,
+        )
+        if shuttle is None:
+            return None
+        offered = {str_arg(a, "faction") for a in actions} | {
+            str_arg(a, "second_faction") for a in actions
+        }
+        tracks = tuple(track_entity(f) for f in _FACTIONS if f in offered)
+        answer = shuttle.evaluate(p, Request(infos=(TargetInfo(entities=tracks),)))
+        picked = set(answer.response[0]) if answer.response else set()
+        for action in actions:
+            pair = {str_arg(action, "faction"), str_arg(action, "second_faction")}
+            if pair == picked:
+                return action
+        return default_random_choice(list(actions), run.rng)
     if effect == "shield_wall":
         destroy = p.should_blow_wall()
         for action in actions:
@@ -1162,7 +1238,8 @@ def turn_window(run: DecisionRun) -> DomainAction | None:
     # the post-action prompt, as the window brief rules.
     starts = _turn_start_card_sources(run)
     flips = tech_flip_sources(run)
-    if starts is None or flips is None:
+    trashes = tech_trash_sources(run)
+    if starts is None or flips is None or trashes is None:
         return None
     sources = _card_sources(run)
     plots = run.by_id("play_intrigue")
@@ -1171,6 +1248,7 @@ def turn_window(run: DecisionRun) -> DomainAction | None:
     sources.extend(playmat_sources(run))
     sources.extend(starts)
     sources.extend(flips)
+    sources.extend(trashes)
     chosen = decide(run, sources, skip=run.first("reveal_turn"), forced=False)
     if chosen is not None and chosen.action_id == "agent_turn":
         return _realise(run, chosen)

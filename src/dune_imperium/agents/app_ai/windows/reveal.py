@@ -258,6 +258,7 @@ from dune_imperium.agents.app_ai.abilities.scouts import (
     CorrinthCityRevealScoutsAbility,
     SubcommitteeOfferAbility,
 )
+from dune_imperium.agents.app_ai.abilities.tech import DisposalFacilityAbility
 from dune_imperium.agents.app_ai.catalog import (
     CARD_ARCHETYPES,
     LEADER_ARCHETYPES,
@@ -303,6 +304,7 @@ from dune_imperium.agents.app_ai.windows.scouts import SUBCOMMITTEE_INTENT
 from dune_imperium.agents.app_ai.windows.turn import (
     tech_acquire_effect_sources,
     tech_flip_sources,
+    tech_trash_sources,
 )
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -448,6 +450,10 @@ _REVEAL_ACTIONS = REVEAL_CHOICE_ACTION_IDS | frozenset(
         "choose_tech_trash",
         "flip_tech",
         "resolve_tech_acquire_effect",
+        # Rise of Ix Tech: Spy Satellites' / Sonic Snoopers' trash, Disposal
+        # Facility's Reveal-turn trash (plan §13).
+        "trash_tech",
+        "trash_disposal_facility_card",
         # Arrakeen Scouts (Corrinth City's seat)
         "choose_subcommittee",
         "decline_subcommittee",
@@ -2046,6 +2052,37 @@ def _tech_reveal_sources(run: DecisionRun) -> list[Source] | None:
                 },
             )
         )
+    disposals = run.by_id("trash_disposal_facility_card")
+    if disposals:
+        # Rise of Ix's Disposal Facility (rix-tech.md §8.3): Optional, its
+        # ``Evaluate`` @0x4dad550 names the in-play card ``GetCardToTrash``
+        # picks (minimum trash value 1.0); no card named leaves it unused
+        # (a "may" that lapses at the turn's end).
+        disposal = next(
+            (
+                a
+                for a in abilities_of(tech_entity("disposal_facility", seat))
+                if isinstance(a, DisposalFacilityAbility)
+            ),
+            None,
+        )
+        if disposal is None:
+            return None
+        cards = tuple(
+            card_entity(ref, seat)
+            for ref in (str_arg(a, "card_id") for a in disposals)
+            if ref is not None
+        )
+        disposal_request = Request(infos=(TargetInfo(entities=cards),))
+
+        def evaluate_disposal() -> tuple[float, DomainAction | None]:
+            answer = disposal.evaluate(p, disposal_request)
+            ref = answer.response[0][0] if answer.response else None
+            return answer.value, with_arg(disposals, "card_id", ref)
+
+        sources.append(
+            Source("Disposal Facility", Stage.PROMPT, disposals, evaluate_disposal)
+        )
     strength = run.by_id("choose_tech_strength")
     trash = run.first("choose_tech_trash")
     if not strength and trash is None:
@@ -2297,9 +2334,17 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     commanders = _commander_sources(run)
     tiles = _tech_reveal_sources(run)
     flips = tech_flip_sources(run)
+    trashes = tech_trash_sources(run)
     subcommittee = _subcommittee_sources(run, gain_answers)
-    if commanders is None or tiles is None or flips is None or subcommittee is None:
+    if (
+        commanders is None
+        or tiles is None
+        or flips is None
+        or trashes is None
+        or subcommittee is None
+    ):
         return None
+    flips = [*flips, *trashes]
     rests: dict[DomainAction, tuple[str, int]] = {}
     sources: list[Source] = [
         *gains,

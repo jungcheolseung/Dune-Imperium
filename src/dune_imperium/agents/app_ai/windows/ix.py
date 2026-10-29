@@ -214,8 +214,32 @@ def dreadnought_control_choice(run: DecisionRun) -> DomainAction | None:
     return decide(run, [source], skip=None, forced=True)
 
 
+_PUT_BOTTOM = "put_intrigue_on_bottom"
+_FINISH_BOTTOM = "finish_intrigue_bottom"
+
+
+def intrigue_bottom_pick(run: DecisionRun) -> DomainAction | None:
+    """``intrigue_bottom_pick``: Sonic Snoopers' "put any number of your
+    Intrigue cards on the bottom, then draw that many", asked one card at a
+    time. The app answers at once: ``SonicSnoopersAbility::Evaluate``
+    @0x4de2840 names the bad Intrigue cards in hand
+    (``bad_intrigue_cards_in_hand``, in that order). So each pick puts the
+    next of them still in hand, and the pick ends when none is left (the
+    draw comes after, so the hand only shrinks meanwhile)."""
+
+    ids = {_PUT_BOTTOM, _FINISH_BOTTOM}
+    if any(a.action_id not in ids for a in run.legal):
+        return None
+    puts = {str_arg(a, "card_id"): a for a in run.by_id(_PUT_BOTTOM)}
+    for card in run.profile.bad_intrigue_cards_in_hand():
+        if card.ref in puts:
+            return puts[card.ref]
+    return run.first(_FINISH_BOTTOM)
+
+
 HANDLERS: dict[str, Handler] = {
     "dreadnought_control_choice": dreadnought_control_choice,
+    "intrigue_bottom_pick": intrigue_bottom_pick,
     "freighter_move": freighter_move,
     "shipping_reward_icons": shipping_reward_icons,
 }

@@ -443,7 +443,11 @@ from dune_imperium.agents.app_ai.windows.run import (
     Memory,
     arg,
 )
-from dune_imperium.agents.app_ai.windows.turn import board_space_order, playmat_sources
+from dune_imperium.agents.app_ai.windows.turn import (
+    _acquire_effect_action,
+    board_space_order,
+    playmat_sources,
+)
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.agent_effect_frame import agent_box_rows
 from dune_imperium.rules.agent_effects import (
@@ -877,6 +881,16 @@ _FLIP_ABILITY: Mapping[str, str] = {
     "advanced_data_analysis": "AdvancedDataAnalysisAbility",
     "spy_drones": "SpyDronesAbility",
     "rapid_dropships": "RapidDropshipsAbility",
+    # Rise of Ix (rix-tech.md §8).
+    "flagship": "FlagshipAbility",
+    "holoprojectors": "HoloprojectorsAbility",
+    "invasion_ships": "InvasionShipsAbility",
+    "training_drones": "TrainingDronesAbility",
+}
+#: Rise of Ix's "trash this tile ->" activations (``trash_tech``).
+_TRASH_TECH_ABILITY: Mapping[str, str] = {
+    "spy_satellites": "SpySatellitesAbility",
+    "sonic_snoopers": "SonicSnoopersAbility",
 }
 #: The Into the Fray Agent as a recall candidate (``Kind.AGENT`` whose ref is
 #: no space: ``GetRecallAgent`` skips it, bloodlines-systems.md §8, D55).
@@ -1013,6 +1027,11 @@ _IX_ACTION_IDS: frozenset[str] = frozenset(
         "deploy_dreadnoughts",
         # The app never withdraws (``DeployUnitsAbility`` only deploys).
         "withdraw_dreadnoughts",
+        # The Ix Tech tiles' rows (``_flips``, ``_tech_trashes``,
+        # ``_tech_acquire_effects``).
+        "flip_tech",
+        "trash_tech",
+        "resolve_tech_acquire_effect",
     }
 )
 _BLOODLINES_ACTION_IDS: frozenset[str] = frozenset(
@@ -1986,6 +2005,8 @@ def _tech_acquire_effects(t: _Turn) -> None:
     chosen: DomainAction | None = None
     if len(variants) == 1:
         chosen = variants[0]
+    elif tech_id is not None and effect == "distinct_influence":
+        chosen = _acquire_effect_action(t.run, tech_id, effect, variants)
     elif tech_id is not None and effect == "influence":
         found = _find(tech_entity(tech_id), "MemocordersAcquiredAbility")
         if found is not None:
@@ -2021,6 +2042,18 @@ def _flips(t: _Turn) -> None:
         name = _FLIP_ABILITY.get(tech_id)
         found = _find(tech_entity(tech_id), name) if name is not None else None
         _ability_source(t, f"flip {tech_id}", found, _ROW_PLAYMAT, action)
+
+
+def _tech_trashes(t: _Turn) -> None:
+    """``trash_tech(tile)``: Spy Satellites' and Sonic Snoopers' activation
+    (Optional; rix-tech.md §7.4, §8.11, §8.13), a post-action key at its
+    ``Evaluate``."""
+
+    for action in t.by_id("trash_tech"):
+        tech_id = str_arg(action, "tech_id") or ""
+        name = _TRASH_TECH_ABILITY.get(tech_id)
+        found = _find(tech_entity(tech_id), name) if name is not None else None
+        _ability_source(t, f"trash {tech_id}", found, _ROW_PLAYMAT, action)
 
 
 def _mission_collect(t: _Turn) -> None:
@@ -4800,6 +4833,7 @@ def _collect(t: _Turn) -> None:
     _track_spy(t)
     _contracts(t)
     _flips(t)
+    _tech_trashes(t)
     _recruit_commander(t)
     _deploy(t)
     _plots(t)
