@@ -1227,6 +1227,17 @@ Infiltration, Discard; 7절), Ix 카드·지도자 6·Conflict 4 앞면, Hundro 
   우리 배치로 놓아 보드를 새로 짬"으로 정리했다. **사용자 결정(2026-10-29 10시대, 조정자 경유) "원판 보드 그림은 (가)로 하자"** — 내려받기 자체는 이
   세션 채팅에서 사용자가 파일(URL·이름·크기)을 보고 허락한다. 모드 2354919205의 주 보드는 테이블 가운데의 `Custom_Token`(GUID 2da390, 배율 6.64)이다
   (네 개의 같은 `Custom_Board`는 좌석 판). 어느 쪽이든 원판 칸 19개의 앱 칸 타일(팝오버 그림)은 `app_board.py`로 그린다.
-- **확인:** pytest `-n 8` 9,304(좌석 표 커밋 때), ruff, mypy 606; e2e `imperium_game` 48, `setup_options` 81, 그 밖에 화면을 다루는 스크립트들.
-- **남은 것:** 보드 그림(결정 1), 원판 칸 앱 타일, 원판 지도자 앞면 앱 렌더, 보드 위 말(Mentat·The Voice 마커 — 그림 뒤), 한국어 카드 앞면(공식 한글판
-  사진 뒤), Rise of Ix 화면(18.6, P4 병합 뒤), worklog·handoff(병합 때).
+- **P5b 보드 그림:** 사용자가 이 세션 채팅에서 TTS 모드 2354919205의 주 보드 그림 내려받기를 허락("받기 허락")했다. cloud-3 주소가 403이라 같은 UGC
+  id·해시를 `steamusercontent-a.akamaihd.net`에서 받았다(에셋 `86489d7` `board/imperium.jpg` 5000x4996, README에 출처). 원판 칸 19개의 앱 타일은
+  `app_board.py`의 원판 Playmat 묶음으로 그렸다(에셋 `4f5520e`, 커밋 `a88ff4ca`). `c109ae96`가 판마다 자기 보드 그림·배치를 읽게 하고(카탈로그
+  `boards.imperium`, `core.js` `boardLayout`·`spaceBox`·`boardScan`, Uprising 전용 방벽은 Uprising만), `a4545a9d`가 원판 그림 위에 칸 22개의 누를 곳,
+  Control 깃발 셋, Maker 보너스 스파이스 셋, Mentat 말, The Voice 막힘 칩을 그린다(`display/board_layout_imperium.py`, 그림 픽셀에서 잰 값, 오버레이로 확인).
+  트랙(영향력·점수·전투력·Conflict·원로회)은 아직 재지 않았다 — 그때까지 좌석 패널이 글 보드처럼 수를 보인다(`6ed13327` `textBoardStats`; 글 보드에서는 전에
+  이 수가 어디에도 없었다).
+- **묶음 확인(2026-10-29 오전, 브랜치 HEAD `a4545a9d`):** pytest `-n 8` 9,304, ruff, mypy; e2e `run_all.py -j 4` 70 통과·1 실패 — `effect_text`가 원판 카드
+  넷의 영어·한국어 아이콘 차이를 찾았다(Spice Smugglers의 대문자 "Solari", Refocus의 소문자 "draw" — 인쇄는 "then: [draw 1]", Gurney Halleck·Reinforcements
+  한국어 "이 병력"에 병력 아이콘 없음). `fcc003db`가 표시 문구만 고쳤고 `effect_text` 727/0.
+- **확인:** pytest `-n 8` 9,304(좌석 표 커밋 때와 묶음 확인 때), ruff, mypy 606; e2e `imperium_game` [1]-[5], `setup_options` [8], 그 밖에 화면을 다루는
+  스크립트들(묶음 71개).
+- **남은 것:** 보드 트랙 재기와 그 위 표시(진행 중), 원판 지도자 앞면 앱 렌더(원판 지도자 틀을 새로 재야 함), 한국어 카드 앞면(공식 한글판 사진 뒤),
+  Rise of Ix 화면(18.6, P4 병합 뒤), worklog·handoff(병합 때).
