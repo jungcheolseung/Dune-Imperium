@@ -149,8 +149,9 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # place's Freighter icon), only those three rows read it, and every older row
 # and its scales are unchanged (compared against 3767c469, 2026-10-29). Then
 # Rise of Ix's Intrigue cards got their records (stage P4d), each card's own
-# row only and no column (Blackmail; compared against 7a0c50e4, 2026-10-29).
-_GOLDEN_DIGEST = "969aeaf940d7ae2d54dc4fe8cb903abf7f9e2bb5bb7c91f8e945f122b11af644"
+# row only and no column (Blackmail, compared against 7a0c50e4; Cull, compared
+# against 21bebb89, 2026-10-29).
+_GOLDEN_DIGEST = "134a54a6dc0ba8001318acd0e425aa16988dcf2d50b6a0eb2b43b89c9a3217a3"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

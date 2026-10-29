@@ -26,8 +26,14 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     GainCombatStrength,
     LoseInfluence,
+    PayResources,
+    TrashPersonalCard,
 )
-from dune_imperium.content.uprising.intrigue import IntrigueCardEntry, _combat
+from dune_imperium.content.uprising.intrigue import (
+    IntrigueCardEntry,
+    _combat,
+    _plot,
+)
 
 IX_INTRIGUE_SOURCES: Final = (SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2,)),)
 
@@ -68,6 +74,20 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("cull", "Cull"),
         copies=1,
+        # "Played Cull and spent 1 Solari to trash [card]" [Cull card, app log
+        # line; the card prints icons only]: one Plot cost line, 1 Solari ->
+        # the black Trash icon. The trash is optional like any Trash icon
+        # [Main p. 20], but the line is offered only when a card can be
+        # trashed (OQ-071, OQ-113 (C); rise-of-ix.md 9: "Cull is played only
+        # if it trashes"), from the hand, the discard pile or play.
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(solari=1),),
+                    rewards=(TrashPersonalCard(),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("diversion", "Diversion"),

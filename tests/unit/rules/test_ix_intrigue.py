@@ -27,6 +27,7 @@ from dune_imperium.core import (
     GameState,
     Influence,
     PlayerState,
+    Resources,
 )
 from dune_imperium.display import intrigue_card_text
 from dune_imperium.rules import UprisingRulesEngine
@@ -57,7 +58,7 @@ def _start(seed: int = 3) -> tuple[UprisingRulesEngine, GameState]:
     return engine, state
 
 
-def _seat(state: GameState, seat: int = 0, **changes: object) -> GameState:
+def _seat(state: GameState, seat: int = 0, /, **changes: object) -> GameState:
     players = list(state.players)
     players[seat] = replace(players[seat], **changes)  # type: ignore[arg-type]
     return replace(state, players=tuple(players))
@@ -291,4 +292,226 @@ def test_blackmail_rows_round_trip_through_the_codec() -> None:
         }
 
     assert rows(IX) == {"resolve"}
+    assert not rows(ORIGINAL)
+
+
+# --- Cull (Plot) ------------------------------------------------------------
+
+CULL = _intrigue("cull")
+DIPLOMACY = "player:0:starter:diplomacy:0"
+DAGGER = "player:0:starter:dagger:0"
+SEEK_ALLIES = "player:0:starter:seek_allies:0"
+
+
+def _trash(card_id: str) -> DomainAction:
+    return DomainAction(
+        action_id="trash_intrigue_card",
+        actor=0,
+        arguments=(("card_id", card_id),),
+    )
+
+
+DECLINE_TRASH = DomainAction(action_id="decline_intrigue_trash", actor=0)
+
+
+def _cull_hand(
+    solari: int = 2,
+    hand: tuple[str, ...] | None = None,
+    discard_pile: tuple[str, ...] = (),
+    in_play: tuple[str, ...] = (),
+) -> tuple[UprisingRulesEngine, GameState]:
+    """Seat 0 holding Cull and ``solari`` Solari; ``hand`` (the seat's own when
+    ``None``), ``discard_pile`` and ``in_play`` replace the seat's own."""
+
+    engine, state = _start()
+    piles: dict[str, object] = {"discard_pile": discard_pile, "in_play": in_play}
+    if hand is not None:
+        piles["hand"] = hand
+    return engine, _seat(
+        state, intrigue_cards=(CULL,), resources=Resources(solari=solari), **piles
+    )
+
+
+def test_cull_is_one_plot_cost_line_shuffled_in_with_rise_of_ix() -> None:
+    # "Played Cull and spent 1 Solari to trash [card]" [Cull card, Steam app
+    # log text; the card prints icons only]: Plot, 1 Solari -> Trash; 1 copy
+    # [Rise of Ix p. 2]. Shuffled in with Rise of Ix only.
+    entry = intrigue_card_for_instance(CULL)
+    assert entry.card.name == "Cull"
+    assert entry.copies == 1
+    assert entry.play_data_complete
+    assert [option.timing.value for option in entry.options] == ["plot"]
+    assert len(entry.options[0].sections) == 1
+    assert intrigue_card_text(entry) == ["Plot — Pay 1 solari → Trash a card"]
+    assert _in_deck("cull", IX)
+    assert not _in_deck("cull", ORIGINAL)
+    assert "cull" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
+
+
+def test_cull_pays_one_solari_then_trashes_the_chosen_card() -> None:
+    # "To play an Intrigue card, you must meet its conditions and pay its
+    # costs." `[FAQ p. 2]`; the arrow cost is required once the card is played
+    # `[FAQ p. 3]`. The reward is the Trash icon: a card from the hand, the
+    # discard pile or play `[DI p. 16]` (imperium-base.md 11).
+    engine, state = _cull_hand(
+        solari=3,
+        hand=(DIPLOMACY, DAGGER),
+        discard_pile=(SEEK_ALLIES,),
+        in_play=(),
+    )
+    assert legal_intrigue_play_actions(state, 0) == (_play(CULL),)
+
+    result = apply_whole(engine, state, _play(CULL))
+    opened = result.state
+    # The Solari is paid on playing; nobody else acts meanwhile.
+    assert opened.players[0].resources.solari == 2
+    assert opened.decision_stack[-1].kind == "intrigue_choice"
+    assert engine.whole_actions(opened, 1) == ()
+    assert opened.players[0].intrigue_cards == (CULL,)
+
+    done = apply_whole(engine, opened, _trash(DAGGER))
+    player = done.state.players[0]
+    assert player.hand == (DIPLOMACY,)
+    assert player.discard_pile == (SEEK_ALLIES,)
+    assert DAGGER in player.trashed
+    assert player.intrigue_cards == ()
+    assert done.state.intrigue_discard == (CULL,)
+    assert [e.kind for e in done.events] == ["card_trashed"]
+    # The turn goes on: the Plot did not end it.
+    assert done.state.decision_stack[-1].kind == "turn"
+    kinds = [event.kind for event in result.events]
+    assert "resources_paid" in kinds
+
+
+def test_cull_trashes_from_the_hand_the_discard_pile_or_play() -> None:
+    # The Trash icon takes a card "from your hand, discard pile or in play"
+    # `[DI p. 16]` (imperium-base.md 11).
+    engine, state = _cull_hand(
+        hand=(DIPLOMACY,), discard_pile=(SEEK_ALLIES,), in_play=(DAGGER,)
+    )
+    opened = apply_whole(engine, state, _play(CULL)).state
+    offered = engine.whole_actions(opened, 0)
+    assert set(offered) == {
+        DECLINE_TRASH,
+        _trash(DIPLOMACY),
+        _trash(SEEK_ALLIES),
+        _trash(DAGGER),
+    }
+
+    done = apply_whole(engine, opened, _trash(SEEK_ALLIES)).state.players[0]
+    assert done.discard_pile == ()
+    assert done.hand == (DIPLOMACY,)
+    assert done.in_play == (DAGGER,)
+    assert SEEK_ALLIES in done.trashed
+
+
+def test_cull_trash_is_optional_once_the_solari_is_paid() -> None:
+    # The Trash definition "비용이거나 카드가 자기를 trash하라고 할 때만 의무"
+    # (imperium-base.md 11, `[DI p. 16]`): a Trash icon that is a reward is not
+    # forced, so the seat may decline it. The Solari stays spent (the arrow
+    # cost is required once the card is played, `[FAQ p. 3]`).
+    engine, state = _cull_hand(hand=(DIPLOMACY,))
+    opened = apply_whole(engine, state, _play(CULL)).state
+    assert DECLINE_TRASH in engine.whole_actions(opened, 0)
+
+    done = apply_whole(engine, opened, DECLINE_TRASH).state.players[0]
+    assert done.hand == (DIPLOMACY,)
+    assert done.trashed == ()
+    assert done.resources.solari == 1
+
+
+def test_cull_is_not_played_when_nothing_can_be_trashed() -> None:
+    # "Cull은 trash해야 낸다" (rise-of-ix.md 9, the "Message from designer"
+    # row, adopted; OQ-113 (C): a cost line needs a live reward, so the
+    # Solari is never paid for no trash). With the hand, the discard pile and
+    # play all empty there is nothing to trash.
+    engine, state = _cull_hand(solari=5, hand=(), discard_pile=(), in_play=())
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert _play(CULL) not in engine.whole_actions(state, 0)
+    assert state.players[0].resources.solari == 5
+
+    # One card in any of the three places is enough.
+    for hand, discard, in_play in (
+        ((DIPLOMACY,), (), ()),
+        ((), (DIPLOMACY,), ()),
+        ((), (), (DIPLOMACY,)),
+    ):
+        _, held = _cull_hand(hand=hand, discard_pile=discard, in_play=in_play)
+        assert legal_intrigue_play_actions(held, 0) == (_play(CULL),)
+
+
+def test_cull_needs_one_solari() -> None:
+    # The cost is not met without the Solari (FAQ p. 2), whatever else the
+    # seat holds.
+    engine, state = _cull_hand(solari=0)
+    state = _seat(state, resources=Resources(solari=0, spice=5, water=5))
+    assert legal_intrigue_play_actions(state, 0) == ()
+    assert _play(CULL) not in engine.whole_actions(state, 0)
+
+    _, exact = _cull_hand(solari=1)
+    assert legal_intrigue_play_actions(exact, 0) == (_play(CULL),)
+
+
+def test_cull_may_be_declined_by_not_playing_it() -> None:
+    # A Plot Intrigue is a choice, never forced `[DI pp. 7-8]`: the seat keeps
+    # the card and the Solari and takes another turn action.
+    engine, state = _cull_hand()
+    actions = engine.whole_actions(state, 0)
+    assert _play(CULL) in actions
+    others = [action for action in actions if action.action_id != "play_intrigue"]
+    assert others
+
+    placed = apply_whole(engine, state, others[0]).state
+
+    assert placed.players[0].intrigue_cards == (CULL,)
+    assert placed.players[0].resources.solari == 2
+
+
+def test_cull_is_also_played_during_the_reveal_turn() -> None:
+    # "아무 때나" within the seat's own Agent or Reveal turn
+    # (imperium-base.md 5, `[DI pp. 7-8]`); the revealed cards are in play.
+    engine, state = _cull_hand()
+    revealed = apply_whole(
+        engine, state, DomainAction(action_id="reveal_turn", actor=0)
+    ).state
+    assert revealed.decision_stack[-1].kind == "reveal"
+    in_play = revealed.players[0].in_play
+    assert in_play
+    assert _play(CULL) in engine.whole_actions(revealed, 0)
+
+    opened = apply_whole(engine, revealed, _play(CULL)).state
+    assert {_trash(card) for card in in_play} <= set(engine.whole_actions(opened, 0))
+    done = apply_whole(engine, opened, _trash(in_play[0])).state.players[0]
+    assert in_play[0] in done.trashed
+    assert done.resources.solari == 1
+
+
+def test_cull_is_not_offered_outside_the_seats_turn() -> None:
+    # "Plot Intrigue는 자기 Agent·Reveal turn 안에서" (imperium-base.md 5).
+    _, state = _cull_hand()
+    state = _seat(state, 1, intrigue_cards=(CULL,), resources=Resources(solari=2))
+    assert legal_intrigue_play_actions(state, 1) == ()
+
+
+def test_cull_rows_round_trip_through_the_codec() -> None:
+    # The Ix catalog lists the decline of the card's Trash (naming Cull as the
+    # card that prints it) and the codec round-trips what the seat is offered;
+    # the original game's catalog without Rise of Ix has none.
+    engine, state = _cull_hand(hand=(DIPLOMACY,), discard_pile=(SEEK_ALLIES,))
+    codec = ActionCodec(IX)
+    opened = apply_whole(engine, state, _play(CULL)).state
+    for held in (state, opened):
+        offered = engine.legal_actions(held, 0)
+        assert offered
+        for action in offered:
+            assert codec.decode(codec.encode(action), 0) == action
+
+    def rows(config: RulesetConfig) -> set[str]:
+        return {
+            template.action_id
+            for template in ActionCodec(config).catalog
+            if dict(template.arguments).get("printed") == "cull"
+        }
+
+    assert rows(IX) == {"decline"}
     assert not rows(ORIGINAL)
