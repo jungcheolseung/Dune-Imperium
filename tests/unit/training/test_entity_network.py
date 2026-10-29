@@ -178,7 +178,10 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # 331ada67, 2026-10-29).
 # Then Local Fence got its play data (stage P4d): only its own row changed, no
 # column and no scale (compared against 28ab9f72, 2026-10-29).
-_GOLDEN_DIGEST = "e06234aef45a8c5745a016b60261ad8bdc9952a2d9b4404b06c4c5916ef84607"
+# Then Cull's trash became mandatory (stage P4d): only its own row changed (the
+# existing "mandatory" reward column, read by Twisted Devious too), no column
+# and no scale (compared against e7218126, 2026-10-30).
+_GOLDEN_DIGEST = "302641ffb79d0e229d1397e6bb12b331b8e4f3c4861124371c5362d0c185626c"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

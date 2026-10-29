@@ -85,15 +85,17 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
         copies=1,
         # "Played Cull and spent 1 Solari to trash [card]" [Cull card, app log
         # line; the card prints icons only]: one Plot cost line, 1 Solari ->
-        # the black Trash icon. The trash is optional like any Trash icon
-        # [Main p. 20], but the line is offered only when a card can be
-        # trashed (OQ-071, OQ-113 (C); rise-of-ix.md 9: "Cull is played only
-        # if it trashes"), from the hand, the discard pile or play.
+        # the black Trash icon, from the hand, the discard pile or play. The
+        # trash is mandatory once Cull is played: the designer's "Cull은
+        # trash해야 낸다" (rise-of-ix.md 9.3, OQ-113 (C)) -- the Solari buys a
+        # trash that must happen, so no decline row follows the payment
+        # (``TrashPersonalCard(mandatory=True)``, as Twisted Devious's), and
+        # the line is offered only when a card can be trashed (OQ-071).
         options=(
             _plot(
                 EffectSection(
                     costs=(PayResources(solari=1),),
-                    rewards=(TrashPersonalCard(),),
+                    rewards=(TrashPersonalCard(mandatory=True),),
                 )
             ),
         ),
