@@ -177,14 +177,15 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # and Rise of Ix's Sayyadina (stage P4d: "3 water -> 1 Victory Point"),
     # Local Fence ("[2 spice] -> [5 Solari] -OR- [5 Solari] -> [4 spice]"),
     # Landing Rights (the Freighter icon), Shai-Hulud ("[Trash a card] ->
-    # [2 troops]"), Guild Chief Administrator ("[Discard] -> [Trash a
-    # card]"), Desert Ambush ("For each troop you deploy this turn, you may
-    # force an enemy unit to retreat"), Embedded Agent ("If you have another
-    # Bene Gesserit card in play: [Freighter] [Freighter]"), Court Intrigue
-    # ("Put an Intrigue card on the bottom of the deck -> [Intrigue card]"),
-    # Weirding Way ("You may take another turn immediately after this one")
-    # and Satellite Ban ("[Discard] -> [1 spice] [1 water]").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 10
+    # [2 troops]"), Guild Chief Administrator ("[Discard] -> [Trash a card]"),
+    # Desert Ambush ("For each troop you deploy this turn, you may force an
+    # enemy unit to retreat"), Embedded Agent ("If you have another Bene
+    # Gesserit card in play: [Freighter] [Freighter]"), Court Intrigue ("Put
+    # an Intrigue card on the bottom of the deck -> [Intrigue card]"),
+    # Weirding Way ("You may take another turn immediately after this one"),
+    # Satellite Ban ("[Discard] -> [1 spice] [1 water]") and Spice Trader
+    # ("[Fremen] 2 Influence: [Discard] -> [2 spice]").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 11
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -906,7 +907,7 @@ def test_a_target_box_raises_while_it_can_choose_and_fizzles_without() -> None:
         resolve_agent_card_effect(demands)
 
 
-def test_nine_discard_arrows_read_the_discarded_card() -> None:
+def test_ten_discard_arrows_read_the_discarded_card() -> None:
     """Composed A3d: "[You may] discard a card -> ..." boxes. The cost is on
     the first line; a later line's condition reads the discarded card, which
     only the Agent box knows (the generic interpreter refuses it). Captured
@@ -924,6 +925,9 @@ def test_nine_discard_arrows_read_the_discarded_card() -> None:
         _BOX.MAY_DISCARD_FOR_WATER: AbilityMark.OPTIONAL,
         # Rise of Ix's Satellite Ban (stage P4d).
         _BOX.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER: AbilityMark.OPTIONAL,
+        # Rise of Ix's Spice Trader (stage P4d): an Influence threshold over the
+        # whole arrow.
+        _BOX.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO: AbilityMark.OPTIONAL,
         _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: AbilityMark.OPTIONAL,
         _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: AbilityMark.MANDATORY,
         _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: AbilityMark.OPTIONAL,

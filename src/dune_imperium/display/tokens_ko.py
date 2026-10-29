@@ -536,6 +536,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER: (
         "카드 1장 {discard} 가능 {arrow_right} {spice:1}, {water:1}"
     ),
+    # Rise of Ix's Spice Trader (stage P4d).
+    PersonalCardAgentEffect.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO: (
+        "{influence_fremen} 2 이상이면: 카드 1장 {discard} 가능 {arrow_right} {spice:2}"
+    ),
     PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT: "당신의 계약 하나 완수",
     PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: (
         "다른 플레이어 각자 {troop} 하나 잃음. 이번 차례에 당신이 {agent}를 "

@@ -293,7 +293,10 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Then Satellite Ban got its play data (stage P4d): only its own row changed,
 # no column and no scale (compared against 18d1bb8a, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against e3cac948 (2026-10-30).
-_GOLDEN_DIGEST = "179058bb49a161457a4b2e26b25f1a0a4f7e74cdb4da77c7e7eed038340384d6"
+# Then Spice Trader got its play data (stage P4d): only its own row changed, no
+# column and no scale (compared against adacdc42, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against bba17118 (2026-10-30).
+_GOLDEN_DIGEST = "33b35b0f9fd8fed495a1f56c448e85af3c7cb2d26918c7ce10013b6f21ecc1c1"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

@@ -1971,9 +1971,11 @@ def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult
 # picked as Corrinth City's two discards are: the first row stores its card
 # (``DISCARD_FIRST_KEY``), the second discards both and pays the line, and
 # the refusal stays offered until then; with fewer hand cards than icons it
-# offers only its refusal. An "<Faction> Alliance:" line (Spice Trader) is
-# judged when the cost is paid (OQ-028): without the Alliance only the
-# refusal is offered (``discard_cost_block``).
+# offers only its refusal. A line gated by "<Faction> Alliance:" or by "<Faction>
+# 2 Influence:" (Spice Trader prints the Influence threshold, the same words
+# High Priority Travel prints) is judged when the cost is paid (OQ-028):
+# without the Alliance or the Influence only the refusal is offered
+# (``discard_cost_block``).
 
 # Guild Chief Administrator's black trash icon (Rise of Ix) waits once the
 # discard is paid, optional as Control the Spice's paid trash is [FAQ p. 3].
@@ -2035,9 +2037,17 @@ def discard_count(ability: Ability) -> int:
     return cost.count
 
 
-def _discard_alliance(ability: Ability) -> HasAlliance | None:
+_DISCARD_GATES: Final = (HasAlliance, InfluenceAtLeast)
+_DiscardGate = HasAlliance | InfluenceAtLeast
+"""The condition printed over a whole discard arrow: a named Faction's
+Alliance or an Influence threshold."""
+
+
+def _discard_gate(ability: Ability) -> _DiscardGate | None:
     condition = ability.sections[0].condition
-    return condition if isinstance(condition, HasAlliance) else None
+    if isinstance(condition, HasAlliance) and condition.faction is not None:
+        return condition
+    return condition if isinstance(condition, InfluenceAtLeast) else None
 
 
 def discard_box(ability: Ability | None) -> bool:
@@ -2060,17 +2070,18 @@ def discard_box(ability: Ability | None) -> bool:
     ):
         return False
     count = first.costs[0].count
-    alliance = first.condition if isinstance(first.condition, HasAlliance) else None
-    if alliance is not None and (
-        alliance.faction is None
+    gate = first.condition if isinstance(first.condition, _DISCARD_GATES) else None
+    if gate is not None and (
+        (isinstance(gate, HasAlliance) and gate.faction is None)
         or ability.mark is not AbilityMark.OPTIONAL
         or len(ability.sections) != 1
     ):
-        # "<Faction> Alliance: Discard -> ..." is one optional line.
+        # "<Faction> Alliance: Discard -> ..." and "<Faction> 2 Influence:
+        # Discard -> ..." are one optional line.
         return False
     if any(
         line.condition is not None
-        and line.condition is not alliance
+        and line.condition is not gate
         and not isinstance(line.condition, DiscardedCardHasFaction)
         for line in ability.sections
     ):
@@ -2137,20 +2148,28 @@ def optional_arrow(ability: Ability | None) -> bool:
 def discard_cost_block(
     owner: PlayerState, ability: Ability
 ) -> OptionalEffectBlock | None:
-    """Why an optional discard cannot be paid now: the line's Alliance, then
-    the hand cards it takes; None for the mandatory one."""
+    """Why an optional discard cannot be paid now: the line's Alliance or
+    Influence threshold, then the hand cards it takes; None for the mandatory
+    one."""
 
     if ability.mark is not AbilityMark.OPTIONAL:
         return None
-    alliance = _discard_alliance(ability)
-    if (
-        alliance is not None
-        and alliance.faction is not None
-        and alliance.faction.value not in owner.alliance_faction_ids
-    ):
-        return OptionalEffectBlock(
-            OptionalBlockKind.ALLIANCE, faction=alliance.faction.value
-        )
+    gate = _discard_gate(ability)
+    if isinstance(gate, HasAlliance):
+        assert gate.faction is not None
+        if gate.faction.value not in owner.alliance_faction_ids:
+            return OptionalEffectBlock(
+                OptionalBlockKind.ALLIANCE, faction=gate.faction.value
+            )
+    elif isinstance(gate, InfluenceAtLeast):
+        held = influence_amount(owner.influence, gate.faction)
+        if held < gate.amount:
+            return OptionalEffectBlock(
+                OptionalBlockKind.INFLUENCE,
+                needed=gate.amount,
+                held=held,
+                faction=gate.faction.value,
+            )
     return short_of(OptionalBlockKind.HAND, discard_count(ability), len(owner.hand))
 
 

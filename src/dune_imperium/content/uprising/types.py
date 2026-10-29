@@ -438,6 +438,10 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER = (
         "may_discard_for_one_spice_and_one_water"
     )
+    # Spice Trader (Rise of Ix): "[Fremen] 2 Influence: [Discard] -> [2 spice]".
+    MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO = (
+        "may_discard_for_two_spice_if_fremen_influence_two"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

@@ -287,6 +287,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "satellite_ban",
     "sayyadina",
     "shai_hulud",
+    "spice_trader",
     "truthsayer",
     "water_peddler",
     "weirding_way",

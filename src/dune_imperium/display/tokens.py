@@ -476,6 +476,12 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER: (
             "You may discard a card → Gain 1 spice, Gain 1 water"
         ),
+        # Rise of Ix's Spice Trader (stage P4d): "[Fremen] 2 Influence: [Discard]
+        # -> [2 spice]".
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO: (
+            "If you have 2 or more Fremen Influence: "
+            "You may discard a card → Gain 2 spice"
+        ),
         PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT: "Complete one of your contracts",
         PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: (
             "Each opponent loses one troop. Each opponent spying on the board "

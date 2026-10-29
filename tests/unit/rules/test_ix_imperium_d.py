@@ -11,6 +11,8 @@ round-trips through ``ActionCodec``.
 from dataclasses import replace
 from functools import cache
 
+import pytest
+
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
@@ -28,6 +30,7 @@ from dune_imperium.core import (
     DomainAction,
     GamePhase,
     GameState,
+    Influence,
     Resources,
 )
 from dune_imperium.display.cards import personal_card_text, personal_card_text_ko
@@ -306,7 +309,8 @@ def test_satellite_ban_can_leave_the_arrow_unpaid() -> None:
     placed = _ban(engine, state, (paid, kept))
     assert "decline_agent_card_discard" not in _ids(engine, placed)
     owner = _finish(engine, placed).players[0]
-    assert owner.hand == (paid, kept)
+    assert {paid, kept} <= set(owner.hand)
+    assert paid not in owner.discard_pile and kept not in owner.discard_pile
     # Only the space's own gain, as with no card to pay.
     bare = _finish(engine, _ban(engine, state, ())).players[0]
     assert owner.resources == bare.resources
@@ -405,3 +409,203 @@ def test_satellite_ban_retreats_troops_and_not_dreadnoughts() -> None:
     after = _do(engine, revealed, "retreat_reveal_card_troops", count=1).players[0]
     assert (after.troops_conflict, after.dreadnoughts_conflict) == (0, 1)
     assert after.troops_garrison == 1
+
+
+# --- Spice Trader ---------------------------------------------------------------
+
+SPICE_TRADER = "imperium:spice_trader:0"
+_DISCARD_TRADER = _BOX.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO
+
+
+def _trader(
+    engine: _Engine,
+    state: GameState,
+    hand: tuple[str, ...],
+    space: str = "arrakeen",
+    **changes: object,
+) -> GameState:
+    """Spice Trader sent to ``space`` (Arrakeen, its City icon) with ``hand``
+    besides it, its box pending."""
+
+    state = _seat(state, 0, hand=(SPICE_TRADER, *hand), **changes)
+    return _send(engine, state, SPICE_TRADER, space)
+
+
+def test_spice_trader_matches_app_attributes_and_only_joins_the_ix_deck() -> None:
+    """ "[Fremen] 2 Influence: [Discard] -> [2 spice]".
+
+    App table: cost 4, one copy, Fremen, the City and Spice Trade icons,
+    Reveal 2 Persuasion and 1 sword.
+    """
+    entry = IMPERIUM_CARDS_BY_ID["spice_trader"]
+    assert (entry.copies, entry.acquisition_cost) == (1, 4)
+    assert entry.factions == (Faction.FREMEN,)
+    assert entry.agent_icons == (AgentIcon.CITY, AgentIcon.SPICE_TRADE)
+    assert entry.infiltration_icons == ()
+    assert entry.agent_effect is _DISCARD_TRADER
+    assert entry.reveal_choice_effects == ()
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 1)
+    assert entry.play_data_complete
+    assert SPICE_TRADER in content_for(CONFIG).imperium_deck_instance_ids
+    for config in (
+        replace(CONFIG, rise_of_ix=False),
+        RulesetConfig(),
+        RulesetConfig(rise_of_ix=True),
+    ):
+        assert SPICE_TRADER not in content_for(config).imperium_deck_instance_ids
+
+
+def test_spice_trader_card_text_prints_the_influence_and_the_arrow() -> None:
+    """ "[Fremen] 2 Influence : [Discard] -> [2 spice]" [Steam app screen
+    pieces and text]."""
+    entry = IMPERIUM_CARDS_BY_ID["spice_trader"]
+    assert personal_card_text(entry) == [
+        "Agent: If you have 2 or more Fremen Influence: "
+        "You may discard a card → Gain 2 spice"
+    ]
+    assert personal_card_text_ko(entry) == [
+        "에이전트 칸: {influence_fremen} 2 이상이면: "
+        "카드 1장 {discard} 가능 {arrow_right} {spice:2}"
+    ]
+
+
+def test_spice_trader_goes_to_its_two_icons_only() -> None:
+    """The City and Spice Trade Agent icons (app attribute table)."""
+    engine, state = _start()
+    state = _seat(state, hand=(SPICE_TRADER,))
+    spaces = {
+        str(dict(row.arguments)["space_id"])
+        for row in executable_placements(state, 0)
+        if dict(row.arguments)["card_id"] == SPICE_TRADER
+    }
+    assert {"arrakeen", "carthag", "imperial_basin", "smuggling"} <= spaces
+    assert not spaces & {"wealth", "stillsuits", "foldspace", "hall_of_oratory"}
+
+
+def test_spice_trader_discards_a_chosen_card_for_two_spice() -> None:
+    """ "[Fremen] 2 Influence: [Discard] -> [2 spice]": with 2 Fremen
+    Influence one hand card is the cost ("손의 카드 하나(Intrigue 아님)를
+    discard pile로" [Rise of Ix p. 7]) and 2 spice come at once."""
+    engine, state = _start()
+    paid, kept = state.players[0].hand[:2]
+    placed = _trader(engine, state, (paid, kept), influence=Influence(fremen=2))
+    assert _discards(engine, placed) == {paid, kept}
+    before = placed.players[0]
+    after = _do(engine, placed, "discard_agent_card", card_id=paid).players[0]
+    assert after.resources.spice == before.resources.spice + 2
+    assert after.resources.water == before.resources.water
+    assert after.hand == (kept,)
+    assert after.discard_pile[-1] == paid
+    assert SPICE_TRADER in after.in_play
+
+
+@pytest.mark.parametrize(
+    "influence",
+    [
+        Influence(),
+        Influence(fremen=1),
+        # Another Faction's Influence is no Fremen Influence.
+        Influence(emperor=4, spacing_guild=3, bene_gesserit=2, fremen=1),
+    ],
+)
+def test_spice_trader_needs_two_fremen_influence(influence: Influence) -> None:
+    """ "[Fremen] 2 Influence:" is a threshold on the Fremen track: below it
+    no card can pay, and the block names the Influence it needs."""
+    engine, state = _start()
+    paid, kept = state.players[0].hand[:2]
+    placed = _trader(engine, state, (paid, kept), influence=influence)
+    assert not _discards(engine, placed)
+    assert agent_card_cost_block(placed, 0) == OptionalEffectBlock(
+        OptionalBlockKind.INFLUENCE,
+        needed=2,
+        held=influence.fremen,
+        faction="fremen",
+    )
+    owner = _finish(engine, placed).players[0]
+    assert {paid, kept} <= set(owner.hand)
+    assert paid not in owner.discard_pile and kept not in owner.discard_pile
+
+
+@pytest.mark.parametrize("influence", [Influence(fremen=2), Influence(fremen=3)])
+def test_spice_trader_wants_the_influence_and_not_the_alliance(
+    influence: Influence,
+) -> None:
+    """The Faction icon with "2 Influence :" (the words High Priority Travel
+    prints for its Spacing Guild threshold) is a count of Influence; the
+    Alliance token (4 Influence and the most) is not asked."""
+    engine, state = _start()
+    paid = state.players[0].hand[0]
+    placed = _trader(engine, state, (paid,), influence=influence)
+    assert placed.players[0].alliance_faction_ids == ()
+    assert _discards(engine, placed) == {paid}
+    assert agent_card_cost_block(placed, 0) is None
+
+
+def test_spice_trader_judges_the_influence_when_the_cost_is_paid() -> None:
+    """OQ-028 (a): "Influence 문턱 ... 은 box를 pending으로 두고 해결 시점에
+    판정한다. 화살표 지불은 비용이 성립할 때까지" nothing is offered: placed
+    with 1 Fremen Influence the arrow offers no card, and once the owner
+    reaches 2 later in the same turn it does."""
+    engine, state = _start()
+    paid, kept = state.players[0].hand[:2]
+    placed = _trader(engine, state, (paid, kept), influence=Influence(fremen=1))
+    assert not _discards(engine, placed)
+    owner = placed.players[0]
+    risen = replace(
+        placed,
+        players=(replace(owner, influence=Influence(fremen=2)), *placed.players[1:]),
+    )
+    assert _discards(engine, risen) == {paid, kept}
+    spice = owner.resources.spice
+    assert (
+        _do(engine, risen, "discard_agent_card", card_id=kept)
+        .players[0]
+        .resources.spice
+        == spice + 2
+    )
+
+
+def test_spice_trader_pays_once_per_turn_and_can_stay_unpaid() -> None:
+    """ "하나의 화살표 비용과 효과는 한 턴에 한 번만" (player-turns.md [Main
+    p. 9] [FAQ p. 3]) and no payment means no effect: the arrow is optional
+    and offers no refusal row (OQ-095 (2))."""
+    engine, state = _start()
+    paid, kept, third = state.players[0].hand[:3]
+    placed = _trader(engine, state, (paid, kept, third), influence=Influence(fremen=2))
+    assert "decline_agent_card_discard" not in _ids(engine, placed)
+    unpaid = _finish(engine, placed).players[0]
+    assert {paid, kept, third} <= set(unpaid.hand)
+    assert not {paid, kept, third} & set(unpaid.discard_pile)
+    assert unpaid.resources.spice == placed.players[0].resources.spice
+    after = _do(engine, placed, "discard_agent_card", card_id=paid)
+    assert not _discards(engine, after)
+    assert after.players[0].hand == (kept, third)
+
+
+def test_spice_trader_offers_no_discard_with_an_empty_hand() -> None:
+    """ "내지 않으면 효과도 없다" [Rise of Ix p. 7]: the played Spice Trader
+    cannot pay itself; the Influence is held, so the block is the hand."""
+    engine, state = _start()
+    placed = _trader(engine, state, (), influence=Influence(fremen=2))
+    assert not _discards(engine, placed)
+    assert agent_card_cost_block(placed, 0) == OptionalEffectBlock(
+        OptionalBlockKind.HAND, 1, 0
+    )
+
+
+def test_spice_trader_reveals_two_persuasion_and_a_sword() -> None:
+    """App table: Reveal 2 Persuasion and 1 sword; its arrow is Agent-box
+    only. A sword counts with a troop in the Conflict ("troop 2, sword 1;
+    Conflict에 troop이 하나도 없으면 0" [DI p. 11])."""
+    engine, state = _start()
+    state = _seat(
+        state,
+        hand=(SPICE_TRADER,),
+        influence=Influence(fremen=2),
+        troops_conflict=1,
+    )
+    revealed = _do(engine, state, "reveal_turn")
+    context = dict(revealed.decision_stack[-1].context)
+    assert (context["persuasion"], context["sword_strength"]) == (2, 1)
+    assert revealed.players[0].combat_strength == 2 + 1
+    assert "discard_agent_card" not in _ids(engine, revealed)

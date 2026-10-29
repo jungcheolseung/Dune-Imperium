@@ -402,6 +402,17 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER: _discard(
                 _line(GainResources(spice=1, water=1))
             ),
+            # Spice Trader (Rise of Ix): "[Fremen] 2 Influence : [Discard] -> [2
+            # spice]" [Steam app screen pieces and text]: the Faction icon and the
+            # words "2 Influence:" are an Influence threshold over the whole arrow
+            # (the one High Priority Travel prints), judged when the cost is paid
+            # (OQ-028), not an Alliance.
+            _BOX.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO: _discard(
+                _line(
+                    GainResources(spice=2),
+                    condition=InfluenceAtLeast(Faction.FREMEN, 2),
+                )
+            ),
             # Space-time Folding: "Draw 1 card (2 if the discarded card has
             # Spacing Guild affiliation)".
             _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: _discard(
