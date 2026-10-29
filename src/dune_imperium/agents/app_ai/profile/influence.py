@@ -58,9 +58,9 @@ if TYPE_CHECKING:
 # The app's ``Factions.None``: "any faction" for ``GetGainInfluenceValue``.
 NO_FACTION: Final = "none"
 
-# ``IsSetEnabled`` for the sets this port can meet: the target is the
-# 4-player Uprising game (with or without CHOAM), never Rise of Ix.
-_UPRISING_ENABLED: Final = True
+# ``IsSetEnabled(RiseOfIx)``: never in the games this port plays.
+# ``IsSetEnabled(Uprising)`` is ``AppContext.uprising`` (false on the
+# original board).
 _RISE_OF_IX_ENABLED: Final = False
 
 _APP_FACTION: Final = {app: ours for ours, app in FACTION_NAMES.items()}
@@ -677,7 +677,7 @@ class InfluenceMixin(ProfileCore):
                     cast("Profile", self).any_faction_four_bonus_value(),
                 )
             elif faction == "emperor":
-                if _UPRISING_ENABLED:
+                if ctx.uprising:
                     s.add("Resource Bonus(Spy)", self.spy_value().sum)
                 else:
                     s.add("Resource Bonus (Troops)", 3.0)  # literal
@@ -721,7 +721,7 @@ class InfluenceMixin(ProfileCore):
                 s.multiply("Tessia Vernius", c.TessiaVerniusInfluenceMod)
 
         # (E) Uprising block.
-        if not _UPRISING_ENABLED:
+        if not ctx.uprising:
             return s
         leader = me.leader_id
         if leader == _MARGOT and faction == "bene_gesserit" and cur <= 1:

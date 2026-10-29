@@ -1895,7 +1895,10 @@ class SpaceAbility(Ability):
                 v.add("Hungry for Spice", hungry)
         # Baron (needs BaronHarkonnenSecretFactions) and Archduke Armand Ecaz
         # (Rise of Ix) are never dealt in Uprising: no term.
-        # --- Uprising block (IsSetEnabled(4) is true) ---
+        # --- Uprising block: ``S is WormSpace && IsSetEnabled(4)`` (board.md
+        # §1.3); none of it on the original board. ---
+        if not p.ctx.uprising:
+            return v
         for contract in _contracts_for_space(p, space):
             completion = _first_contract_ability(contract)
             if completion is not None:

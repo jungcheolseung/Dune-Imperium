@@ -527,7 +527,8 @@ class EconomyMixin(ProfileCore):
         if conflict is None:
             return score
         score += self._possible_combat_reward_vp(conflict, player, False)
-        # SetOn(4) (Uprising) is on in every game we play.
+        if not self.ctx.uprising:  # SetOn(4): the sandworm and battle-icon terms
+            return score
         if player.sandworms_conflict > 0:  # any(p.ConflictSandworms)
             # The 1st-place reward again, with doubleCost = true.
             score += self._possible_combat_reward_vp(conflict, player, True)
@@ -788,13 +789,13 @@ class EconomyMixin(ProfileCore):
                     and self._has_intrigue(_ECONOMIC_POSITIONING)
                 ):
                     _mul(s, c.EconomicPositioningSolariMod, "Economic Positioning Mod")
-                # SetOn(4):
-                if self._has_intrigue(_BUY_ACCESS):
-                    _mul(s, c.BuyAccessSolariMod, "Buy Access Mod")
-                if self._has_intrigue(_MARKET_OPPORTUNITY):
-                    _mul(s, c.MarketOpportunitySolariMod, "Market Opportunity Mod")
-                if self._has_intrigue(_MERCENARIES):
-                    _mul(s, c.MercenariesSolariMod, "Mercenaries Mod")
+                if self.ctx.uprising:  # SetOn(4)
+                    if self._has_intrigue(_BUY_ACCESS):
+                        _mul(s, c.BuyAccessSolariMod, "Buy Access Mod")
+                    if self._has_intrigue(_MARKET_OPPORTUNITY):
+                        _mul(s, c.MarketOpportunitySolariMod, "Market Opportunity Mod")
+                    if self._has_intrigue(_MERCENARIES):
+                        _mul(s, c.MercenariesSolariMod, "Mercenaries Mod")
 
             if include_combat_posture_mod and attr in (
                 Attr.STRENGTH,
@@ -818,33 +819,33 @@ class EconomyMixin(ProfileCore):
                     _mul(s, c.TheSleeperMustAwakenSpiceMod, "Sleeper Must Awaken")
                 if self._has_intrigue(_PRIVATE_ARMY):
                     _mul(s, c.PrivateArmySpiceMod, "Private Army")
-                # SetOn(4):
-                if self._has_intrigue(_MARKET_OPPORTUNITY):
-                    _mul(s, c.MarketOpportunitySpiceMod, "Market Opportunity Mod")
-                if self._has_intrigue(_STRATEGIC_STOCKPILING):
-                    _mul(
-                        s,
-                        c.StrategicStockpilingSpiceMod,
-                        "Strategic Stockpiling Mod",
-                    )
+                if self.ctx.uprising:  # SetOn(4)
+                    if self._has_intrigue(_MARKET_OPPORTUNITY):
+                        _mul(s, c.MarketOpportunitySpiceMod, "Market Opportunity Mod")
+                    if self._has_intrigue(_STRATEGIC_STOCKPILING):
+                        _mul(
+                            s,
+                            c.StrategicStockpilingSpiceMod,
+                            "Strategic Stockpiling Mod",
+                        )
 
             if attr is Attr.WATER:
                 if leader == _COUNTESS_ARIANA:
                     _mul(s, c.CountessArianaThorvaldWaterValueMod, "Countess Ariana")
-                # SetOn(4):
-                if me.maker_hooks:
-                    _mul(s, c.WaterHooksMod, "Water Hooks Mod")
-                if (
-                    self._has_intrigue(_STRATEGIC_STOCKPILING)
-                    and self._influence(me, "fremen") >= 2
-                ):
-                    _mul(
-                        s,
-                        c.StrategicStockpilingWaterMod,
-                        "Strategic Stockpiling Mod",
-                    )
-                if self._has_intrigue(_UNEXPECTED_ALLIES):
-                    _mul(s, c.UnexpectedAlliesWaterMod, "Unexpected Allies Mod")
+                if self.ctx.uprising:  # SetOn(4)
+                    if me.maker_hooks:
+                        _mul(s, c.WaterHooksMod, "Water Hooks Mod")
+                    if (
+                        self._has_intrigue(_STRATEGIC_STOCKPILING)
+                        and self._influence(me, "fremen") >= 2
+                    ):
+                        _mul(
+                            s,
+                            c.StrategicStockpilingWaterMod,
+                            "Strategic Stockpiling Mod",
+                        )
+                    if self._has_intrigue(_UNEXPECTED_ALLIES):
+                        _mul(s, c.UnexpectedAlliesWaterMod, "Unexpected Allies Mod")
 
             if attr is Attr.TROOPS:
                 if self._has_intrigue(_RAPID_MOBILIZATION):
@@ -889,7 +890,7 @@ class EconomyMixin(ProfileCore):
                             c.SpecimenGoodTleilaxuBonus,
                         )
 
-            if attr is Attr.SANDWORMS:  # SetOn(4)
+            if attr is Attr.SANDWORMS and self.ctx.uprising:  # SetOn(4)
                 interest = self.current_conflict_interest().sum  # always computed
                 if leader == _MUAD_DIB:
                     s.add("Muad'Dib Intrigue", self.intrigue_value())
@@ -1487,7 +1488,7 @@ class EconomyMixin(ProfileCore):
             guild_spy = any(
                 played.short == _GUILD_SPY for played in self._own_cards(me.in_play)
             )
-            contract_open = any(
+            contract_open = self.ctx.uprising and any(  # SetOn(4)
                 CONTRACT_ARCHETYPES.get(card_id(contract)) == _CONTRACT_BASE_20
                 for contract in me.active_contract_ids
             )
@@ -1505,9 +1506,11 @@ class EconomyMixin(ProfileCore):
                     )
             if SYNERGY_READS_HELD_CARD_ABILITIES:
                 held = [intrigue_entity(i, self.ctx.seat) for i in me.intrigue_cards]
-                held += [
-                    contract_entity(i, self.ctx.seat) for i in me.active_contract_ids
-                ]
+                if self.ctx.uprising:  # SetOn(4): the ContractArea
+                    held += [
+                        contract_entity(i, self.ctx.seat)
+                        for i in me.active_contract_ids
+                    ]
                 for owned in held:
                     for ability in self._abilities(owned):
                         concat.merge(

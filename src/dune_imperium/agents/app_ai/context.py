@@ -154,6 +154,13 @@ class AppContext:
         return self.state.config.choam_module
 
     @property
+    def uprising(self) -> bool:
+        """The app's ``IsSetEnabled(Uprising = 4)`` (``WormMatch::IsSetEnabled``
+        @0x47fe130): an Uprising game; false on the original board."""
+
+        return self.state.config.base_game is BaseGame.UPRISING
+
+    @property
     def board(self) -> Board:
         """The space-archetype key of this game (see ``Board``), with this
         round's public Scouts modifier (Eyes on Arrakis, scouts.md §4.8)."""
