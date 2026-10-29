@@ -137,9 +137,12 @@ def apply_intrigue_bottom_action(state: GameState, action: DomainAction) -> Rule
         intrigue_deck=(*state.intrigue_deck, card),
     )
     return RuleResult(
+        # Every other seat loses what it knew of this whole hand: it sees a
+        # card go down, not which one, so keeping the cards still held would
+        # tell it which one moved (OQ-149; Codex review of 7913f5db).
         state=forget_intrigue_cards(
             replace_top_frame(putting, with_context(frame, context)),
-            (card,),
+            owner.intrigue_cards,
             keeping=(player,),
         ),
         # The table sees a card go to the bottom, not which (rise-of-ix.md

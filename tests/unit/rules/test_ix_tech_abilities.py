@@ -1656,7 +1656,8 @@ def test_sonic_snoopers_keeps_the_order_it_was_put_in_and_draws_that_many() -> N
 
 def test_the_other_seats_forget_the_cards_they_knew_in_its_hand() -> None:
     """The other seats cannot tell which cards went down: what they knew of
-    this hand is lost, so a card they knew there that stays is still known."""
+    this hand is lost, the cards that stay included -- keeping them would show
+    which one moved (OQ-149; Codex review of 7913f5db)."""
 
     state = _snoopers(2)
     first, second = state.players[0].intrigue_cards
@@ -1665,10 +1666,10 @@ def test_the_other_seats_forget_the_cards_they_knew_in_its_hand() -> None:
     opened = _stack(state, TRASH_SNOOPERS)
     assert known_card_seats(opened)[first] == frozenset({0, 1, 2})
     putting = _stack(opened, _put(first))
-    assert putting.players[1].known_intrigue_ids == (second,)
+    assert putting.players[1].known_intrigue_ids == ()
     assert putting.players[2].known_intrigue_ids == ()
     assert known_card_seats(putting)[first] == frozenset({0})
-    assert known_card_seats(putting)[second] == frozenset({0, 1})
+    assert known_card_seats(putting)[second] == frozenset({0})
     check_observation_privacy(putting)
 
 
