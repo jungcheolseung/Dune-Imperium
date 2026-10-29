@@ -777,6 +777,11 @@ function boardDrawsTracks(view = state.view) {
    both) and, for a Leader's own tile, while that Leader plays. */
 function spaceInPlay(entry, view) {
   if (entry.base_games && !entry.base_games.includes(viewBaseGame(view))) return false;
+  /* Rise of Ix's four spaces only with the expansion, and the four its CHOAM
+     overlay covers only without it (catalog ``expansion``/``removed_by``). */
+  const ix = Boolean(state.summary && state.summary.rise_of_ix);
+  if (entry.expansion === "rise_of_ix" && !ix) return false;
+  if (entry.removed_by === "rise_of_ix" && ix) return false;
   return (
     !entry.required_leader_id ||
     (view.players || []).some((player) => player.leader_id === entry.required_leader_id)

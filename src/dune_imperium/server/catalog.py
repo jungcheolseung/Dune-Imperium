@@ -78,6 +78,13 @@ from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
 from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
 from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
 from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
+from dune_imperium.content.rise_of_ix.board import IX_BOARD_SPACES, IX_SPACE_IDS
+from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS
+from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS
+from dune_imperium.content.rise_of_ix.intrigue import IX_INTRIGUE_CARDS
+from dune_imperium.content.rise_of_ix.leaders import IX_LEADERS
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_TILES
+from dune_imperium.content.rulesets import IX_OVERLAID_SPACE_IDS
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     BOARD_SPACES_BY_ID,
@@ -282,8 +289,9 @@ def build_catalog(
         )
     # Uprising's own cards, then the original game's 43 and its 3 promos
     # (stage P5a of docs/base-game-and-ix-plan.md: names and text; their
-    # pictures come with P5d). Ids never repeat across the two (plan 16.2).
-    for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS):
+    # pictures come with P5d), then Rise of Ix's (stage P5f). Ids never
+    # repeat across them (plan 16.2, 17.2).
+    for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS, *IX_IMPERIUM_CARDS):
         card_id = entry.card.card_id
         cards[card_id] = _personal_card(
             entry.card.name,
@@ -333,7 +341,9 @@ def build_catalog(
         )
 
     intrigue: dict[str, JsonValue] = {}
-    for intrigue_entry in (*INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS):
+    for intrigue_entry in (
+        *INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS, *IX_INTRIGUE_CARDS
+    ):
         intrigue_id = intrigue_entry.card.card_id
         # Navigation cards print no Plot/Combat/Endgame banner: Plot Course
         # plays them automatically on reaching 2 Influence, not by timing
@@ -361,7 +371,7 @@ def build_catalog(
 
     leader_layouts = leader_layout()
     leaders: dict[str, JsonValue] = {}
-    for leader in (*LEADERS, *IMPERIUM_LEADERS):
+    for leader in (*LEADERS, *IMPERIUM_LEADERS, *IX_LEADERS):
         leaders[leader.leader_id] = _leader_face(
             leader.name,
             ability=leader.ability_name,
@@ -418,7 +428,7 @@ def build_catalog(
             "choam_only": tile.choam_only,
             "image": _image_url("tech", tile.tech_id, image_files),
         }
-        for tile in TECH_TILES
+        for tile in (*TECH_TILES, *IX_TECH_TILES)
     }
 
     catalog: JsonObject = {
@@ -485,7 +495,7 @@ def build_catalog(
                     "conflict", conflict.card.card_id, image_files
                 ),
             }
-            for conflict in (*CONFLICTS, *IMPERIUM_CONFLICTS)
+            for conflict in (*CONFLICTS, *IMPERIUM_CONFLICTS, *IX_CONFLICTS)
         },
         "leaders": leaders,
         # Both boards' spaces; ``base_games`` says which board prints each
@@ -495,7 +505,7 @@ def build_catalog(
         # of docs/base-game-and-ix-plan.md).
         "spaces": {
             space.space_id: _space(space.space_id, image_files, tile_files)
-            for space in (*BOARD_SPACES, *IMPERIUM_BOARD_SPACES)
+            for space in (*BOARD_SPACES, *IMPERIUM_BOARD_SPACES, *IX_BOARD_SPACES)
         },
         "objectives": {
             objective.objective_id: {
@@ -832,6 +842,11 @@ def _space(
             for base_game, spaces in _BOARD_SPACE_IDS.items()
             if space_id in spaces
         ],
+        # Rise of Ix on the original board (stage P5f): its four spaces are
+        # in play only with the expansion, and the four its CHOAM overlay
+        # covers only without it (content.rulesets).
+        "expansion": "rise_of_ix" if space_id in IX_SPACE_IDS else None,
+        "removed_by": "rise_of_ix" if space_id in IX_OVERLAID_SPACE_IDS else None,
         "agent_icon": space.agent_icon.value,
         "combat": space.combat,
         "maker": space.maker,
@@ -880,7 +895,9 @@ def _space(
 # Each base game's printed board (``base_games`` of a catalog space).
 _BOARD_SPACE_IDS: dict[BaseGame, frozenset[str]] = {
     BaseGame.UPRISING: frozenset(space.space_id for space in BOARD_SPACES),
-    BaseGame.IMPERIUM: frozenset(space.space_id for space in IMPERIUM_BOARD_SPACES),
+    BaseGame.IMPERIUM: frozenset(
+        space.space_id for space in (*IMPERIUM_BOARD_SPACES, *IX_BOARD_SPACES)
+    ),
 }
 
 

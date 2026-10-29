@@ -543,7 +543,7 @@ Tech 타일 이름은 한글판 카드 사진을 찾을 때까지 영어다. 룰
 | Discard (아이콘) | 버림 | `[IX-ko pp. 7, 12]` | 적용 예정 |
 | Flip (Tech tile) | 뒤집기 | `[IX-ko p. 12]` | 적용 예정 |
 | Snooper token | 탐지기 토큰 | `[IX-ko p. 2]` | 적용 예정 |
-| Tessia Vernius | 테시아 버니우스 | `[IX-ko p. 2]` | 적용 예정(지도자 이름) |
+| Tessia Vernius | 테시아 버니우스 | `[IX-ko p. 2]` | 적용(지도자 이름) |
 | Prince Rhombur Vernius | 롬버 버니우스 대공 | `[IX-ko p. 8]` | 적용 예정(지도자 이름) |
 | Viscount Hundro Moritani | 헌드로 모리타니 자작 | `[IX-ko pp. 8, 10]` | 적용 예정(지도자 이름) |
 | Ilesa Ecaz | 일레사 에카즈 | `[IX-ko p. 10]` | 적용 예정(지도자 이름) |

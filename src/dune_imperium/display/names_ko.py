@@ -288,6 +288,13 @@ _LEADERS: Final[dict[str, str]] = {
     "glossu_rabban": "짐승 같은 글로서 라반",
     "helena_richese": "헬레나 리체스",
     "paul_atreides": "폴 아트레이드",
+    # Rise of Ix's, as its Korean rulebook names them [IX-ko pp. 2, 8, 10]
+    # (Archduke Armand Ecaz and "Princess" Yuna Moritani are not named
+    # there, so they stay English).
+    "ilesa_ecaz": "일레사 에카즈",
+    "prince_rhombur_vernius": "롬버 버니우스 대공",
+    "tessia_vernius": "테시아 버니우스",
+    "viscount_hundro_moritani": "헌드로 모리타니 자작",
     # Uprising's and Bloodlines'.
     "chani": "챠니",
     "count_hasimir_fenring": "하시미르 펜링 백작",
@@ -372,6 +379,11 @@ _SPACES: Final[dict[str, str]] = {
     "stillsuits": "스틸슈트",
     "the_great_flat": "대평지",
     "wealth": "재물",
+    # Rise of Ix's four spaces [IX-ko p. 12].
+    "dreadnought": "드레드노트",
+    "interstellar_shipping": "성간 거래",
+    "smuggling": "밀수",
+    "tech_negotiation": "기술 협상",
     # Uprising's board (and the three shared prints).
     "accept_contract": "계약 수락",
     "arrakeen": "아라킨",

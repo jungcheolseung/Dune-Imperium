@@ -221,6 +221,67 @@ LEADER_FACE_TEXTS: Mapping[str, LeaderFaceText] = MappingProxyType(
                 " solari; a Spice Trade space: Gain 1 spice"
             ),
         ),
+        # Rise of Ix's six Leaders (stage P5f of
+        # docs/base-game-and-ix-plan.md): our own wording of the abilities as
+        # docs/rules/rise-of-ix.md 10 states them (the app's card text stays
+        # local, plan 2.3), with the rulings it cites as notes.
+        "archduke_armand_ecaz": LeaderFaceText(
+            ability_text=(
+                "Reveal turn: If you have 2 or more Agents on Landsraad, City"
+                " or Spice Trade board spaces, you may trash one of your cards"
+                " in play"
+            ),
+            signet_text="Acquire a card that costs 3 or less",
+            notes=("The Mentat counts as one of his Agents (designer ruling)",),
+        ),
+        "ilesa_ecaz": LeaderFaceText(
+            ability_text=(
+                "Round Start: Set aside a card from your hand. At the start of"
+                " your second turn in a round, reveal it and return it to your"
+                " hand. If you send an Agent with it that turn: Gain 1 spice if"
+                " it has exactly one Agent icon, otherwise Gain 1 solari"
+            ),
+            signet_text="Pay 1 solari → Acquire a Foldspace card",
+            notes=(
+                "A pass without an Agent and Weirding Way's extra turn both"
+                " count as turns (FAQ p. 2)",
+            ),
+        ),
+        "prince_rhombur_vernius": LeaderFaceText(
+            ability_text="Your dreadnoughts have 4 strength instead of 3",
+            signet_text="Acquire a Tech tile -OR- Tech Negotiation",
+        ),
+        "princess_yuna_moritani": LeaderFaceText(
+            ability_text=(
+                "Start the game with no water. Whenever you gain solari on your"
+                " turn, gain 1 more"
+            ),
+            signet_text=(
+                "Pay 7 solari → Gain 1 Influence with a Faction of your choice,"
+                " Recruit 1 troop, Gain 1 spice"
+            ),
+            notes=("Not on the 1 solari Dividends pay on another seat's turn",),
+        ),
+        "tessia_vernius": LeaderFaceText(
+            ability_text=(
+                "Game Start: Put a Snooper token at 2 Influence on each"
+                " Influence track. Whenever you reach one, gain the topmost"
+                " uncovered Snooper reward: (1) you may discard a card → Gain 1"
+                " spice; (2) that track's bonus; (3) 1 Influence on that"
+                " track; (4) the bonus and 1 Influence"
+            ),
+            signet_text=(
+                "Lose 1 Influence → Gain 1 Influence with a Faction where you"
+                " have a Snooper token"
+            ),
+        ),
+        "viscount_hundro_moritani": LeaderFaceText(
+            ability_text=(
+                "Game Start: Look at the top two cards of the Intrigue deck."
+                " Keep one and put the other back on top"
+            ),
+            signet_text="Pay 1 spice → Move your Freighter",
+        ),
         # The original game's eight Leaders (stage P5a of
         # docs/base-game-and-ix-plan.md): our own wording of the abilities as
         # docs/rules/imperium-base.md 12 states them (the app's card text

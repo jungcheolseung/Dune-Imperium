@@ -9,6 +9,9 @@ from dune_imperium.content.imperium.board import IMPERIUM_BOARD_SPACES
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
 from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
 from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
+from dune_imperium.content.rise_of_ix.board import IX_BOARD_SPACES
+from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS
+from dune_imperium.content.rise_of_ix.intrigue import IX_INTRIGUE_CARDS
 from dune_imperium.content.uprising.board import BOARD_SPACES
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS, INTRIGUE_CARDS_BY_ID
@@ -39,7 +42,8 @@ def test_catalog_is_json_serializable_and_covers_every_card() -> None:
     # Both base games' cards (the original game's since stage P5a of
     # docs/base-game-and-ix-plan.md): its 43 and 3 promos, its Reserve.
     imperium = (
-        entry.card.card_id for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS)
+        entry.card.card_id
+        for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS, *IX_IMPERIUM_CARDS)
     )
     reserve = (stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS)
     for card_id in (*STARTING_CARDS_BY_ID, "prepare_the_way", *imperium, *reserve):
@@ -47,7 +51,8 @@ def test_catalog_is_json_serializable_and_covers_every_card() -> None:
     intrigue = catalog["intrigue"]
     assert isinstance(intrigue, dict)
     assert set(intrigue) == {
-        entry.card.card_id for entry in (*INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS)
+        entry.card.card_id
+        for entry in (*INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS, *IX_INTRIGUE_CARDS)
     }
 
 
@@ -236,6 +241,10 @@ def test_catalog_serves_generated_effect_text() -> None:
         # option text yet and never enters a deck until it does.
         card = INTRIGUE_CARDS_BY_ID[card_id]
         if entry["text"] == [] and (card.bloodlines_only or card.immortality_only):
+            continue
+        # Rise of Ix's Intrigue whose play data stage P4d has not written yet
+        # has no text and never enters a deck until it does.
+        if entry["text"] == [] and not card.play_data_complete:
             continue
         assert entry["text"]
 
@@ -471,12 +480,23 @@ def test_catalog_spaces_carry_structured_board_data() -> None:
     spaces = catalog["spaces"]
     assert isinstance(spaces, dict)
     # Uprising's 22, Tuek's Sietch (Bloodlines) and the original board's 22,
-    # three of them (Arrakeen, Imperial Basin, Secrets) one print on both.
-    assert len(spaces) == 22 + 1 + 22 - 3
+    # three of them (Arrakeen, Imperial Basin, Secrets) one print on both,
+    # and Rise of Ix's four on the original board (stage P5f).
+    assert len(spaces) == 22 + 1 + 22 - 3 + 4
+    assert {space_id for space_id, entry in spaces.items()
+            if isinstance(entry, dict) and entry["expansion"] == "rise_of_ix"} == {
+        "dreadnought", "tech_negotiation", "interstellar_shipping", "smuggling"}
+    assert {space_id for space_id, entry in spaces.items()
+            if isinstance(entry, dict) and entry["removed_by"] == "rise_of_ix"} == {
+        "hall_of_oratory", "rally_troops", "secure_contract", "sell_melange"}
     for space_id, entry in spaces.items():
         assert isinstance(entry, dict)
         on_uprising = space_id in {space.space_id for space in BOARD_SPACES}
-        on_original = space_id in {space.space_id for space in IMPERIUM_BOARD_SPACES}
+        # The original board's, with Rise of Ix's four printed on its Ix board
+        # and CHOAM overlay.
+        on_original = space_id in {
+            space.space_id for space in (*IMPERIUM_BOARD_SPACES, *IX_BOARD_SPACES)
+        }
         assert entry["base_games"] == (
             ["uprising"] * on_uprising + ["imperium"] * on_original
         ), space_id
@@ -1215,6 +1235,7 @@ def test_catalog_card_pools_share_no_id() -> None:
 def test_catalog_serves_bloodlines_skills_and_tech_tiles() -> None:
     from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
     from dune_imperium.content.bloodlines.tech import TECH_IDS
+    from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
 
     catalog = build_catalog()
     skills = catalog["skills"]
@@ -1229,8 +1250,8 @@ def test_catalog_serves_bloodlines_skills_and_tech_tiles() -> None:
 
     tech = catalog["tech"]
     assert isinstance(tech, dict)
-    # The Tech Module's tiles; Rise of Ix's (stage P4a) wait for stage P4c.
-    assert set(tech) == set(TECH_IDS)
+    # The Tech Module's tiles and Rise of Ix's (stage P5f).
+    assert set(tech) == set(TECH_IDS) | set(IX_TECH_IDS)
     high_command = tech["sardaukar_high_command"]
     assert isinstance(high_command, dict)
     assert high_command["name"] == "Sardaukar High Command"

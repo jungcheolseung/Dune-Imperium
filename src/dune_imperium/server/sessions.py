@@ -2370,6 +2370,7 @@ class GameSessionManager:
             "immortality": session.config.immortality,
             "go_to_11": session.config.go_to_11,
             "epic_game": session.config.epic_game,
+            "rise_of_ix": session.config.rise_of_ix,
             "arrakeen_scouts": session.config.arrakeen_scouts,
             "first_player_seat_zero": session.config.first_player_seat_zero,
             "seats": list(kinds),
