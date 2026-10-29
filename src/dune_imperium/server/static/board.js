@@ -249,7 +249,7 @@ function boardPiece(src, box, className) {
 /* Where the board prints the flag under a controllable space
    (catalog.tracks.control_flags, a percent box), if it does. */
 function controlFlagBox(spaceId) {
-  const flags = state.catalog.tracks && state.catalog.tracks.control_flags;
+  const flags = boardLayout().tracks.control_flags;
   return (flags && flags.boxes[spaceId]) || null;
 }
 
@@ -273,7 +273,7 @@ function controlMarker(seat, spaceId, box) {
     picture.style.height = `${height}%`;
     return picture;
   }
-  const dip = 100 * (1 - state.catalog.tracks.control_flags.notch);
+  const dip = 100 * (1 - boardLayout().tracks.control_flags.notch);
   const marker = document.createElementNS(svgNs, "svg");
   marker.setAttribute("class", "control-marker");
   marker.setAttribute("viewBox", "0 0 100 100");
@@ -299,7 +299,7 @@ function controlMarker(seat, spaceId, box) {
    every space lights up the same shape, without the icons beside it. */
 function spaceFrame() {
   const svgNs = "http://www.w3.org/2000/svg";
-  const [cutX, cutY] = state.catalog.space_frame.cut;
+  const [cutX, cutY] = (boardLayout().space_frame || state.catalog.space_frame).cut;
   const frame = document.createElementNS(svgNs, "svg");
   frame.setAttribute("class", "space-frame");
   frame.setAttribute("viewBox", "0 0 100 100");
@@ -317,7 +317,7 @@ function spaceFrame() {
 /* The centre of the hexagon a Maker space prints for its bonus spice
    (catalog.tracks.maker_spice), if the layout has one for the space. */
 function makerSpicePoint(spaceId) {
-  const spots = state.catalog.tracks && state.catalog.tracks.maker_spice;
+  const spots = boardLayout().tracks.maker_spice;
   return (spots && spots.points[spaceId]) || null;
 }
 
@@ -373,7 +373,7 @@ function bonusSpiceToken(spaceId, count, point) {
   const token = spiceHex(
     count,
     point,
-    state.catalog.tracks.maker_spice.size,
+    boardLayout().tracks.maker_spice.size,
     `${spaceName(spaceId)} · ${t("board.bonus_spice", { count })}`,
   );
   token.dataset.space = spaceId;
@@ -390,7 +390,7 @@ function renderBoardStage(board, view) {
   const map = document.createElement("img");
   map.className = "board-map";
   map.src = boardScan(view);
-  map.alt = t("board.map_alt");
+  map.alt = t(viewBaseGame(view) === "imperium" ? "board.map_alt_imperium" : "board.map_alt");
   map.draggable = false;
   stage.appendChild(map);
 
@@ -425,7 +425,9 @@ function renderBoardStage(board, view) {
 
   for (const [spaceId, entry] of Object.entries(state.catalog.spaces)) {
     if (!spaceInPlay(entry, view)) continue;
-    const [left, top, width, height] = entry.box;
+    const box = spaceBox(spaceId, entry, view);
+    if (!box) continue;
+    const [left, top, width, height] = box;
     const hotspot = document.createElement("button");
     hotspot.type = "button";
     hotspot.className = "hotspot";
@@ -489,13 +491,15 @@ function renderBoardStage(board, view) {
   }
   for (const spaceId of commanders) {
     const entry = state.catalog.spaces[spaceId];
-    if (entry && spaceInPlay(entry, view)) stage.appendChild(commanderPiece(spaceId, entry.box));
+    const box = entry && spaceBox(spaceId, entry, view);
+    if (box && spaceInPlay(entry, view)) stage.appendChild(commanderPiece(spaceId, box));
   }
 
   /* Arrakeen Scouts: what missions left on the spaces and posts. */
   renderScoutsBoardPieces(stage, view, spies);
 
-  for (const [postId, [x, y]] of Object.entries(state.catalog.posts)) {
+  const layout = boardLayout(view);
+  for (const [postId, [x, y]] of Object.entries(layout.posts)) {
     const legal = legalSpyPostActions(postId);
     if (legal.length) {
       const target = document.createElement("button");
@@ -504,7 +508,7 @@ function renderBoardStage(board, view) {
       /* The post a held choice names (turn.js chooseAction). */
       if (isHeldRef(postId)) target.classList.add("picked");
       target.dataset.post = postId;
-      target.style.width = `${state.catalog.post_size * 1.8}%`;
+      target.style.width = `${layout.post_size * 1.8}%`;
       placeAt(target, x, y);
       const name = postName(postId);
       target.title = name;
@@ -524,7 +528,7 @@ function renderBoardStage(board, view) {
     /* A Spy is as wide as the printed post disc (catalog.post_size, a
        percent of the width; the scan is square within 0.12 %), so the row
        is that tall at the icon's proportions. */
-    post.style.height = `${(state.catalog.post_size * 80) / 56}%`;
+    post.style.height = `${(layout.post_size * 80) / 56}%`;
     post.dataset.count = String(Math.min(seats.length, 4));
     post.title = t("board.post_seats", {
       post: postName(postId),
@@ -579,7 +583,7 @@ function conflictHistoryTrigger() {
 }
 
 function renderSlotCards(stage, view) {
-  const tracks = state.catalog.tracks;
+  const tracks = boardLayout(view).tracks;
   if (!tracks || !tracks.conflict_slot) return;
 
   const [cLeft, cTop, cWidth, cHeight] = tracks.conflict_slot;
@@ -1304,8 +1308,10 @@ function watchForceStepper(holder) {
    seat's garrison in its ring and deployed units in its Conflict quadrant,
    and Councilor tokens on the High Council seats. */
 function renderTrackMarkers(stage, view) {
-  const tracks = state.catalog.tracks;
-  if (!tracks || !Array.isArray(view.players)) return;
+  const tracks = boardLayout(view).tracks;
+  /* A board whose tracks are not measured (the original game's, so far)
+     leaves the counts to the seat panels (boardDrawsTracks). */
+  if (!tracks || !tracks.influence || !Array.isArray(view.players)) return;
   const factions = Object.keys(FACTION_LABELS);
   let councilSlot = 0;
   /* The seats on each cell of the combat track and of the Score track, in
@@ -1810,8 +1816,8 @@ function renderMarket() {
 
   /* With the board scan the Conflict card and the face-up contracts sit
      in their printed slots on the board (renderSlotCards); the strips
-     below only cover the text-board fallback. */
-  const onBoard = Boolean(boardScan(view));
+     below cover the text board and a board without those slots. */
+  const onBoard = Boolean(boardScan(view) && boardLayout(view).tracks.conflict_slot);
   if (!onBoard) {
     const conflicts = cardStrip(
       market,
@@ -2636,8 +2642,8 @@ function scoutsRegionsClear(regions, avoid) {
 
 /* The box (stage percent) of the Sardaukar Commander standing on a space's
    frame (commanderPiece). */
-function commanderBox(spaceBox) {
-  const [left, top, width, height] = spaceBox;
+function commanderBox(frame) {
+  const [left, top, width, height] = frame;
   const spot = state.catalog.commander_spot;
   const size = state.catalog.tracks.conflict_units.sizes.commander;
   const tall = height * spot.height;

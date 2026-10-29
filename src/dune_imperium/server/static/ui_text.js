@@ -112,6 +112,10 @@ const UI_TEXT = {
     "ko": "초기화 실패 ({{message}})",
     "en": "Initialization failed ({{message}})"
   },
+  "board.map_alt_imperium": {
+    "ko": "듄 임페리움 게임판",
+    "en": "Dune: Imperium board"
+  },
   "board.map_alt": {
     "ko": "듄 임페리움: 봉기 게임판",
     "en": "Dune: Imperium — Uprising board"

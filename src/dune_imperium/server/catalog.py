@@ -138,6 +138,7 @@ from dune_imperium.display.board_layout import (
     SPACE_FRAME_CUT,
     marker_layout,
 )
+from dune_imperium.display.board_layout_imperium import imperium_board_layout
 from dune_imperium.display.card_backs import available_card_backs
 from dune_imperium.display.house_rulings import ordered_house_rulings
 from dune_imperium.display.images import (
@@ -194,6 +195,7 @@ def build_catalog(
     board_image: bool = False,
     *,
     bene_tleilax_image: bool = False,
+    imperium_board_image: bool = False,
     token_files: frozenset[str] = frozenset(),
     asset_versions: frozenset[tuple[str, str]] = frozenset(),
     image_index_ko: frozenset[tuple[str, str, str]] = frozenset(),
@@ -529,6 +531,20 @@ def build_catalog(
             for name, filename in available_log_icons(icon_files).items()
         },
         "board_image": versioned("/board-image") if board_image else None,
+        # Each other base game's board: its picture (null without the local
+        # file) and the percent layout over it, in the shape of Uprising's
+        # top-level tables (space_boxes for spaces[].box, space_frame,
+        # tracks); the page draws a game on its own board (core.js
+        # boardLayout). The original game's since stage P5b
+        # (display.board_layout_imperium).
+        "boards": {
+            BaseGame.IMPERIUM.value: {
+                "image": (
+                    versioned("/board-image/imperium") if imperium_board_image else None
+                ),
+                **imperium_board_layout(),
+            },
+        },
         # The project's rulings for the help panel's notice, both languages
         # (display.house_rulings, user request 2026-10-24).
         "house_rulings": _house_rulings(),

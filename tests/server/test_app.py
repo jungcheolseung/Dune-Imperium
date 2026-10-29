@@ -592,6 +592,27 @@ def test_board_scan_and_icons_are_served_when_present(tmp_path: Path) -> None:
         served = image_client.get(catalog["board_image"])
         assert served.status_code == 200
         assert served.content == b"jpeg-board"
+        # The original game's board is looked for beside the Uprising scan
+        # (imperium.jpg); absent, its picture is null and its route a 404.
+        assert catalog["boards"]["imperium"]["image"] is None
+        assert image_client.get("/board-image/imperium").status_code == 404
+
+    (tmp_path / "imperium.jpg").write_bytes(b"jpeg-imperium")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=icons,
+            tokens_dir=tmp_path / "no-tokens",
+            board_image=board,
+        )
+    ) as image_client:
+        catalog = image_client.get("/catalog").json()
+        original = catalog["boards"]["imperium"]
+        assert _unversioned(original["image"]) == "/board-image/imperium"
+        assert image_client.get(original["image"]).content == b"jpeg-imperium"
+        # Its layout comes in the shapes of Uprising's top-level tables.
+        assert set(original) >= {"space_boxes", "space_frame", "tracks", "mentat"}
 
     bene_tleilax = tmp_path / "bene_tleilax.jpg"
     bene_tleilax.write_bytes(b"jpeg-bene-tleilax")

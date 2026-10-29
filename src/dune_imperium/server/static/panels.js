@@ -369,7 +369,7 @@ function renderSeats() {
        game before its board layout), nothing else shows the counts the
        board's tracks would: Influence on each strip, the garrison, the
        troops in the Conflict and the strength. */
-    if (!boardScan(view)) card.appendChild(textBoardStats(player));
+    if (!boardDrawsTracks(view)) card.appendChild(textBoardStats(player));
 
     /* Each flag is nodes (tNode), so its rule terms keep their icons. The
        Swordmaster is the glossary's 소드마스터; only the board space of that

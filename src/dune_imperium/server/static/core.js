@@ -717,13 +717,59 @@ function viewBaseGame(view = state.view) {
   return (view && view.base_game) || "uprising";
 }
 
-/* The board scan the shown game is drawn on, or null for the text board.
-   The one scan (catalog.board_image) and its layout are Uprising's; the
-   original game keeps the text board until its own picture and layout
-   (stage P5b of docs/base-game-and-ix-plan.md). */
+/* The percent layout over the board the shown game is drawn on: Uprising's
+   is the catalog's own tables (tracks, space_frame, posts and each space's
+   box), another base game's is catalog.boards[base] in the same shapes
+   (display.board_layout_imperium for the original game; stage P5b of
+   docs/base-game-and-ix-plan.md), with no observation posts. */
+function boardLayout(view = state.view) {
+  const catalog = state.catalog || {};
+  const base = viewBaseGame(view);
+  if (base === "uprising") {
+    return {
+      image: catalog.board_image || null,
+      tracks: catalog.tracks || {},
+      space_frame: catalog.space_frame,
+      posts: catalog.posts || {},
+      post_size: catalog.post_size,
+      boxes: null,
+      mentat: null,
+    };
+  }
+  const board = (catalog.boards || {})[base] || {};
+  return {
+    image: board.image || null,
+    tracks: board.tracks || {},
+    space_frame: board.space_frame,
+    posts: {},
+    post_size: 0,
+    boxes: board.space_boxes || {},
+    mentat: board.mentat || null,
+  };
+}
+
+/* A space's box on the shown board (percent of the picture), or null when
+   that board has no place for it. */
+function spaceBox(spaceId, entry, view = state.view) {
+  const layout = boardLayout(view);
+  return layout.boxes ? layout.boxes[spaceId] || null : entry.box || null;
+}
+
+/* The board scan the shown game is drawn on, or null for the text board:
+   the base game's picture once its layout places the spaces. */
 function boardScan(view = state.view) {
-  if (!state.catalog || !state.catalog.board_image) return null;
-  return viewBaseGame(view) === "uprising" ? state.catalog.board_image : null;
+  if (!state.catalog) return null;
+  const layout = boardLayout(view);
+  if (!layout.image) return null;
+  if (layout.boxes && !Object.keys(layout.boxes).length) return null;
+  return layout.image;
+}
+
+/* Whether the shown board draws the seats' tracks (Influence, Score,
+   strength, the Conflict): the original game's are not measured yet, and
+   the seat panels then carry those counts (panels.js textBoardStats). */
+function boardDrawsTracks(view = state.view) {
+  return Boolean(boardScan(view) && boardLayout(view).tracks.influence);
 }
 
 /* A space is on the table when its base game's board is (``base_games``:
