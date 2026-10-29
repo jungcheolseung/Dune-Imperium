@@ -15,7 +15,15 @@ App class chains (``dump/worm-canis.dll.cs``):
 - ``DeferredAbility`` <- ``RiseOfIx.ShippingTrackAbility1``,
   ``RiseOfIx.ShippingTrackAbility3``;
 - ``ActivatedAbilities.GainAnyInfluenceAbility`` <-
-  ``RiseOfIx.ShippingTrackAbility2`` (no AI override).
+  ``RiseOfIx.ShippingTrackAbility2`` (no AI override);
+- ``SpaceAbilities.SpaceAbility`` <- the four Ix spaces' classes;
+  ``TriggeredAbilities.TriggeredAbility`` <-
+  ``RiseOfIx.TechNegotiationTriggeredAbility``.
+
+The spaces' other abilities are ported elsewhere and summed with these
+(generic-abilities.md §2.1): Freighter icons (``FreighterAgentAbility``
+below), the Dreadnought space's ``AcquireTechAbility`` and Tech Negotiation's
+``TechNegotiationDeferredAbility`` (``abilities/tech.py``).
 
 Addresses are build dad97e2021144d45b5b4f022e07bd3b3.
 """
@@ -33,6 +41,8 @@ from dune_imperium.agents.app_ai.abilities.base import (
 from dune_imperium.agents.app_ai.abilities.generic import (
     DeferredAbility,
     GainAnyInfluenceAbility,
+    SpaceAbility,
+    TriggeredAbility,
 )
 from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.summer import Summer
@@ -41,6 +51,8 @@ if TYPE_CHECKING:
     from dune_imperium.agents.app_ai.profile import Profile
 
 _AA = "worm.canis.abilities.ActivatedAbilities.RiseOfIx."
+_SA = "worm.canis.abilities.SpaceAbilities.RiseOfIx."
+_TA = "worm.canis.abilities.TriggeredAbilities.RiseOfIx."
 
 #: ``FreighterAbility::Evaluate``'s response: ``Item1`` of
 #: ``GetFreighterSelections`` (log 'Recall' / 'Advance', spec §4.7).
@@ -164,3 +176,64 @@ class ShippingTrackAbility3(DeferredAbility):
         0x4de1836): taken, no target."""
 
         return Answer(100.0, (), "Shipping Track 3 | 100")
+
+
+# -- the four Rise of Ix spaces ------------------------------------------------------
+
+
+@port(_SA + "DreadnoughtSpaceAbility")
+class DreadnoughtSpaceAbility(SpaceAbility):
+    """``SpaceAbilities.RiseOfIx.DreadnoughtSpaceAbility``: commission a
+    dreadnought (the space's Acquire Tech is ``AcquireTechAbility``)."""
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``DreadnoughtSpaceAbility::ValueForPlayer`` @0x4bc3600 (rix-tech.md
+        §6.7): the generic space value plus ``GetDreadnoughtValue(1, false)``
+        ("Dreadnought from Space"); the -10.0 is the ``TutorialROI``
+        scenario's only."""
+
+        v = super().value_for_player(p, ())
+        v.add("Dreadnought from Space", p.dreadnought_value(1, False))
+        return v
+
+
+@port(_SA + "InterstellarShippingSpaceAbility")
+class InterstellarShippingSpaceAbility(SpaceAbility):
+    """``SpaceAbilities.RiseOfIx.InterstellarShippingSpaceAbility``:
+    ``ValueForPlayer`` @0x4bc42b0 is the generic space value (its -10.0 is
+    the ``TutorialROI`` scenario's only); the two Freighters are
+    ``FreighterAgentAbility``."""
+
+
+@port(_SA + "SmugglingSpaceAbility")
+class SmugglingSpaceAbility(SpaceAbility):
+    """``SpaceAbilities.RiseOfIx.SmugglingSpaceAbility``: ``ValueForPlayer``
+    @0x4bc46f0 is the generic space value (the ``TutorialROI`` -10.0
+    aside); its Freighter is ``FreighterAgentAbility``."""
+
+
+@port(_SA + "TechNegotiationSpaceAbility")
+class TechNegotiationSpaceAbility(SpaceAbility):
+    """``SpaceAbilities.RiseOfIx.TechNegotiationSpaceAbility``: no AI
+    override (only ``MakeGameLogBuilder``); its choice is
+    ``TechNegotiationDeferredAbility``."""
+
+
+@port(_TA + "TechNegotiationTriggeredAbility")
+class TechNegotiationTriggeredAbility(TriggeredAbility):
+    """``TriggeredAbilities.RiseOfIx.TechNegotiationTriggeredAbility``: +1
+    Persuasion on the Reveal turn while the Agent stands here."""
+
+    should_exhaust: ClassVar[bool] = False  # get_ShouldExhaust @0x4b08ea0
+
+    def value_for_player(
+        self, p: Profile, with_entities: Sequence[Entity] = ()
+    ) -> Summer:
+        """``TechNegotiationTriggeredAbility::ValueForPlayer`` @0x4b090a0:
+        ``GetPersuasionValue(1)``."""
+
+        v = Summer()
+        v.add("Tech Negotiation Persuasion", p.persuasion_value(1))
+        return v

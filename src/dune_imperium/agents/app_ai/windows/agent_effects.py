@@ -390,10 +390,15 @@ from dune_imperium.agents.app_ai.abilities.generic import (
 from dune_imperium.agents.app_ai.abilities.intrigue import (
     _can_gain_faction_influence,
 )
+from dune_imperium.agents.app_ai.abilities.ix_board import (
+    FreighterAbility,
+    FreighterAgentAbility,
+)
 from dune_imperium.agents.app_ai.abilities.leaders import (
     DisciplineAbility,
     training_space_entity,
 )
+from dune_imperium.agents.app_ai.abilities.tech import TECH_NEGOTIATION_AREA
 from dune_imperium.agents.app_ai.catalog import (
     DEPLOY_UNITS_ABILITY,
     LEADER_ARCHETYPES,
@@ -415,6 +420,7 @@ from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, card_id
 from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.profile.immortality import research_space_entity
+from dune_imperium.agents.app_ai.windows import ix
 from dune_imperium.agents.app_ai.windows.common import (
     TURN_ROW_IDS,
     Source,
@@ -990,6 +996,19 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
 #: The ids Bloodlines and the Tech Module add (bloodlines-cards.md §8,
 #: bloodlines-systems.md §2.3, §3.4, §4; ``withdraw_commanders``: never),
 #: known only in a Bloodlines game (an unexpected one falls back).
+#: Rise of Ix's Agent-turn rows (``_ix_spaces``): the four spaces' icons and
+#: a Shipping track recall's rewards.
+_IX_ACTION_IDS: frozenset[str] = frozenset(
+    {
+        "advance_board_freighter",
+        "recall_board_freighter",
+        "resolve_shipping_reward",
+        "place_board_negotiator",
+        "acquire_negotiation_tech",
+        "commission_board_dreadnought",
+        "acquire_board_tech",
+    }
+)
 _BLOODLINES_ACTION_IDS: frozenset[str] = frozenset(
     {
         "acquire_sardaukar_commander",
@@ -4333,6 +4352,79 @@ def _deploy_units(t: _Turn) -> None:
     _prompt(t, "Deploy Units", (*troops, *commanders), evaluate, explicit=False)
 
 
+def _ix_spaces(t: _Turn) -> None:
+    """Rise of Ix's space rows (plan §13; ``windows/ix.py``).
+
+    - the Freighter icons of Interstellar Shipping and Smuggling: the space's
+      ``FreighterAgentAbility`` (``ix.freighter_sources``);
+    - a recall's rewards waiting on the turn: the Shipping track's three
+      sources (``ix.shipping_sources``);
+    - Tech Negotiation's "OR": ``TechNegotiationDeferredAbility``, one
+      Explicit prompt over the Negotiation area (1.0) and the tiles
+      affordable at Tech Discount 1 (rix-tech.md §6.2); a tile answer is our
+      ``acquire_negotiation_tech`` (the tile is picked in its window);
+    - the Dreadnought space: the commission is the space's own execution
+      (``DreadnoughtSpaceAbility``, automatic), the Acquire Tech its
+      ``AcquireTechAbility`` prompt (our ``acquire_board_tech``).
+    """
+
+    run = t.run
+    advance = t.by_id("advance_board_freighter")
+    recall = t.by_id("recall_board_freighter")
+    if advance or recall:
+        owner = t.space if t.space is not None else track_entity("spacing_guild")
+        found = _find(owner, "FreighterAgentAbility")
+        ability = (
+            found[0]
+            if found is not None and isinstance(found[0], FreighterAbility)
+            else FreighterAgentAbility(owner)
+        )
+        t.sources.extend(
+            ix.freighter_sources(run, "Freighter", ability, advance, recall)
+        )
+    rewards = t.by_id("resolve_shipping_reward")
+    if rewards:
+        t.sources.extend(ix.shipping_sources(run, rewards))
+    negotiator = run.first("place_board_negotiator")
+    negotiation_tech = run.first("acquire_negotiation_tech")
+    if (negotiator is not None or negotiation_tech is not None) and t.space is not None:
+        found = _find(t.space, "TechNegotiationDeferredAbility")
+        if found is None:
+            t.unmapped.append("tech_negotiation choice")
+        else:
+            negotiation = found[0]
+            tiles = tuple(t.p.tech_acquire_targets(1, False))
+            request = Request(infos=(TargetInfo(entities=tiles),))
+
+            def negotiate() -> tuple[float, DomainAction | None]:
+                answer = negotiation.evaluate(t.p, request)
+                ref = _response_ref(answer)
+                if ref == TECH_NEGOTIATION_AREA:
+                    return answer.value, negotiator
+                return answer.value, negotiation_tech
+
+            uses = tuple(a for a in (negotiator, negotiation_tech) if a is not None)
+            _prompt(t, "Tech Negotiation", uses, negotiate, explicit=True)
+    commission = run.first("commission_board_dreadnought")
+    if commission is not None:
+        _automatic(t, "Dreadnought from Space", Stage.SPACE, commission, 0)
+    board_tech = run.first("acquire_board_tech")
+    if board_tech is not None and t.space is not None:
+        found = _find(t.space, "AcquireTechAbility")
+        if found is None:
+            t.unmapped.append("dreadnought acquire_tech")
+        else:
+            acquiring = found[0]
+            board_tiles = tuple(t.p.tech_acquire_targets(0, False))
+            board_request = Request(infos=(TargetInfo(entities=board_tiles),))
+
+            def acquire() -> tuple[float, DomainAction | None]:
+                answer = acquiring.evaluate(t.p, board_request)
+                return answer.value, (board_tech if _response_ref(answer) else None)
+
+            _prompt(t, "Acquire Tech", (board_tech,), acquire, explicit=True)
+
+
 def _plots(t: _Turn) -> None:
     """Plots join the post-action prompt only once ``finish_agent_turn`` is
     legal (``docs/app-ai-plan.md`` §4.4)."""
@@ -4595,6 +4687,8 @@ def _unknown_ids(t: _Turn) -> None:
         known = known | _BLOODLINES_ACTION_IDS
     if ctx.scouts:
         known = known | _SCOUTS_ACTION_IDS
+    if ctx.ix:
+        known = known | _IX_ACTION_IDS
     for action_id in sorted({a.action_id for a in t.run.legal} - known):
         t.unmapped.append(f"unknown action {action_id}")
 
@@ -4602,6 +4696,8 @@ def _unknown_ids(t: _Turn) -> None:
 def _collect(t: _Turn) -> None:
     _unknown_ids(t)
     _board_icons(t)
+    if t.run.ctx.ix:
+        _ix_spaces(t)
     _maker(t)
     _sietch_tabr(t)
     _espionage(t)
