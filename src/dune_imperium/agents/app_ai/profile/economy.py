@@ -30,6 +30,10 @@ from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 
+from dune_imperium.agents.app_ai.abilities.generic import (
+    ConflictAbility,
+    GenericConflictAbility,
+)
 from dune_imperium.agents.app_ai.catalog import (
     CONTRACT_ARCHETYPES,
     INTRIGUE_ARCHETYPES,
@@ -550,12 +554,18 @@ class EconomyMixin(ProfileCore):
         ``GetPossibleCombatRewardVP`` dispatches to ``AbilityForPlacement(1)``
         (``@0x4829c40``); Epic's Economic Supremacy overrides it with
         ``EconomicSupremacyFirstAbility::GetPossibleRewardVP @0x4b792d0``
-        (spec/epic-goto11-promo-draft.md §2.4).
+        (spec/epic-goto11-promo-draft.md §2.4), and the original game's
+        ``BaseSet.<Card>FirstAbility`` leave it to the base
+        ``ConflictAbility::GetPossibleRewardVP @0x4b6ea00`` (the card's
+        ``VictoryPoints``, whatever ``player`` holds).
         """
 
         card = conflict_entity(conflict, self.ctx.choam)
         if _ES_FIRST in card.ability_ids:
             return self._economic_supremacy_first_reward_vp(player, double_cost)
+        place_one = self._place_one_ability(card)
+        if place_one is not None and not isinstance(place_one, GenericConflictAbility):
+            return place_one.possible_reward_vp(self._profile(), double_cost)
         rewards = conflict_reward_entities(conflict, self.ctx.choam)
         if not rewards:
             return 0
@@ -580,6 +590,15 @@ class EconomyMixin(ProfileCore):
             ):
                 vp += 1
         return vp
+
+    def _place_one_ability(self, card: Entity) -> ConflictAbility | None:
+        """``WormConflictPlayable::AbilityForPlacement(1) @0x4829c40``: the
+        first ``ConflictAbility`` of the card with ``ConflictPlace`` 1."""
+
+        for ability in self._abilities(card):
+            if isinstance(ability, ConflictAbility) and ability.place == 1:
+                return ability
+        return None
 
     @staticmethod
     def _economic_supremacy_first_reward_vp(

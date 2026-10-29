@@ -41,6 +41,8 @@ from dune_imperium.agents.app_ai.testing import (
     ENGINE,
     first_decision,
     make_profile,
+    with_player,
+    with_state,
 )
 from dune_imperium.config import BaseGame
 from dune_imperium.core.decisions import PlayerDecision
@@ -80,6 +82,8 @@ def solari(n: int) -> float:
 
 
 def influence(faction: str, n: int) -> Summer:
+    if faction == "none":  # ``Factions.None``: the best faction's summer
+        return Summer(max(INFLUENCE[f] * n + 0.07 for f in INFLUENCE))
     return Summer(INFLUENCE[faction] * n + 0.07)
 
 
@@ -616,3 +620,224 @@ def test_the_other_places_have_no_evaluator() -> None:
             assert {k for k, v in has.items() if v} == (
                 set() if expected is None else {expected}
             ), (card_id, place)
+
+
+# ---------------------------------------------------------------------------
+# The profile: ConflictValue, the possible VP and the literal level average
+# ---------------------------------------------------------------------------
+
+
+def with_conflict(state: GameState, conflict_id: str) -> GameState:
+    return with_state(
+        state,
+        current_conflict_ids=(conflict_id,),
+        conflict_deck=tuple(c for c in state.conflict_deck if c != conflict_id),
+        unused_conflict_ids=tuple(
+            c for c in state.unused_conflict_ids if c != conflict_id
+        ),
+    )
+
+
+def test_uprising_is_the_base_game_of_the_config(turn_state: GameState) -> None:
+    assert make_profile(turn_state, _seat(turn_state)).ctx.uprising is False
+    uprising = first_decision("turn")
+    assert make_profile(uprising, _seat(uprising)).ctx.uprising is True
+
+
+def test_conflict_abilities_carry_the_place_of_the_port(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    p = prof(with_conflict(turn_state, "machinations"))
+    card = conflict_entity("machinations", False)
+    assert [place for place, _ in p._conflict_abilities(card)] == [1, 2, 3]
+    third = p._conflict_ability_for_place(3)
+    assert type(third) is type(_place("machinations", 3))
+    assert type(p._conflict_ability_for_place(1)) is type(_place("machinations", 1))
+
+
+def test_conflict_value_adds_the_three_places_of_a_base_set_card(
+    turn_state: GameState, prof: ProfileFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    p = prof(with_conflict(turn_state, "skirmish_b"))
+    card = conflict_entity("skirmish_b", False)
+    # (the 1st: 1 VP; the 2nd: 2 Solari and an Intrigue; the 3rd: 2 Solari)
+    expected = vp(1) + (solari(2) + INTRIGUE) + solari(2)
+    assert p._conflict_value(card).sum == pytest.approx(expected)
+    # Fewer than four players: the 3rd place is skipped.
+    monkeypatch.setattr(p, "_is_four_player", lambda: False)
+    assert p._conflict_value(card).sum == pytest.approx(expected - solari(2))
+
+
+@pytest.mark.parametrize(("card_id", "points"), CARD_VP.items())
+def test_possible_combat_reward_vp_is_the_cards_victory_points(
+    turn_state: GameState, prof: ProfileFactory, card_id: str, points: int
+) -> None:
+    p = prof(with_conflict(turn_state, card_id))
+    for player in p.ctx.players:
+        for double_cost in (False, True):
+            got = p._possible_combat_reward_vp(card_id, player, double_cost)
+            assert got == points  # whatever the player holds
+
+
+def test_possible_end_of_round_score_adds_the_cards_points(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    state = with_conflict(turn_state, "imperium_battle_for_arrakeen")
+    p = prof(state, current_combat_order=lambda: [0, 1, 2, 3])
+    for seat in range(4):
+        assert p.possible_end_of_round_score(seat) == p.ctx.vp(p.ctx.player(seat)) + 2
+
+
+# Each level's table, worked out from the decompiled ``GetResourceValue`` /
+# ``Add`` / ``Multiply`` calls of ``RelativeConflictValue @0x4900490``
+# (``je 0x4900ee5``), with the stubbed prices above: the sum of the table
+# scaled by 0.25 / 0.1 / 0.25 (``Multiply(avg, mod)``).
+
+S, SP, WA = Attr.SOLARI, Attr.SPICE, Attr.WATER
+LITERAL_TABLES: dict[tuple[int, bool], Callable[[], float]] = {
+    (1, True): lambda: (
+        0.25
+        * (
+            _resource_value(S, 11)
+            + _resource_value(SP, 1) * 5.0
+            + _resource_value(WA, 1)
+            + INTRIGUE
+            + (vp(1) + vp(1))
+            + (any_influence(1) + any_influence(1))
+        )
+    ),
+    (1, False): lambda: (
+        0.25
+        * (
+            _resource_value(S, 7)
+            + _resource_value(SP, 1) * 3.0
+            + _resource_value(WA, 1)
+            + INTRIGUE
+            + (vp(1) + vp(1))
+            + (any_influence(1) + any_influence(1))
+        )
+    ),
+    (2, True): lambda: (
+        0.1
+        * (
+            _resource_value(S, 26)
+            + _resource_value(SP, 1) * 13.0
+            + _resource_value(WA, 1) * 8.0
+            + INTRIGUE * 8.0
+            + vp(1) * 5.0
+            + any_influence(1) * 3.0
+            + (CONTROL_SOLARI + CONTROL_SOLARI)
+            + CONTROL_SPICE
+            + MENTAT
+            + TRASH
+        )
+    ),
+    (2, False): lambda: (
+        0.1
+        * (
+            _resource_value(S, 20)
+            + _resource_value(SP, 1) * 9.0
+            + _resource_value(WA, 1) * 6.0
+            + INTRIGUE * 7.0
+            + vp(1) * 5.0
+            + any_influence(1) * 3.0
+            + (CONTROL_SOLARI + CONTROL_SOLARI)
+            + CONTROL_SPICE
+            + MENTAT
+            + TRASH
+        )
+    ),
+    # Level III prices Solari(2) and Spice(1) under the "Control..." labels.
+    (3, True): lambda: (
+        0.25
+        * (
+            _resource_value(S, 2)
+            + _resource_value(SP, 1) * 22.0
+            + INTRIGUE * 5.0
+            + vp(1) * 6.0
+            + (any_influence(1) + any_influence(1))
+            + _resource_value(S, 2)
+            + _resource_value(SP, 1)
+        )
+    ),
+    (3, False): lambda: (
+        0.25
+        * (
+            _resource_value(SP, 1) * 13.0
+            + INTRIGUE * 4.0
+            + vp(1) * 6.0
+            + (any_influence(1) + any_influence(1))
+            + _resource_value(S, 2)
+            + _resource_value(SP, 1)
+        )
+    ),
+}
+
+
+@pytest.mark.parametrize(("level", "four"), LITERAL_TABLES)
+def test_the_literal_level_average_of_a_game_without_uprising(
+    turn_state: GameState, prof: ProfileFactory, level: int, four: bool
+) -> None:
+    p = prof(turn_state)
+    avg = Summer()
+    p._literal_conflict_average(avg, level, four)
+    assert avg.sum == pytest.approx(LITERAL_TABLES[(level, four)](), rel=1e-12)
+
+
+def test_an_unknown_level_adds_nothing_to_the_literal_average(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    p = prof(turn_state)
+    for level in (0, 4):
+        avg = Summer()
+        p._literal_conflict_average(avg, level, True)
+        assert avg.sum == 0.0
+
+
+@pytest.mark.parametrize(
+    ("card_id", "level"),
+    [("skirmish_a", 1), ("cloak_and_dagger", 2), ("grand_vision", 3)],
+)
+def test_relative_conflict_value_divides_by_the_literal_table_in_the_original_game(
+    turn_state: GameState, prof: ProfileFactory, card_id: str, level: int
+) -> None:
+    p = prof(with_conflict(turn_state, card_id))
+    ccv = sum(VALUES[card_id][place]() for place in (0, 1, 2))
+    expected = ccv / LITERAL_TABLES[(level, True)]()
+    assert p.relative_conflict_value().sum == pytest.approx(expected, rel=1e-12)
+
+
+def test_relative_conflict_value_keeps_the_uprising_pool_in_an_uprising_game(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = first_decision("turn")
+    p = make_profile(state, _seat(state))
+    assert p.ctx.uprising
+    called: list[str] = []
+    monkeypatch.setattr(
+        p, "_literal_conflict_average", lambda *a: called.append("literal")
+    )
+    p.relative_conflict_value()
+    assert called == []
+
+
+def test_demand_respect_and_to_the_victor_add_to_the_relative_value(
+    turn_state: GameState, prof: ProfileFactory
+) -> None:
+    seat = _seat(turn_state)
+    state = with_conflict(turn_state, "guild_bank_raid")
+    base = prof(state).relative_conflict_value().sum
+    respect = "intrigue:demand_respect:0"
+    victor = "intrigue:to_the_victor:0"
+    held = with_player(state, seat, intrigue_cards=(respect,))
+    assert prof(held).relative_conflict_value().sum == pytest.approx(
+        base + (any_influence(1) + 1.0)
+    )
+    held = with_player(state, seat, intrigue_cards=(victor,))
+    assert prof(held).relative_conflict_value().sum == pytest.approx(
+        base + _resource_value(SP, 1) * 3.0
+    )
+    held = with_player(state, seat, intrigue_cards=(respect, victor))
+    assert prof(held).relative_conflict_value().sum == pytest.approx(
+        base + (any_influence(1) + 1.0) + _resource_value(SP, 1) * 3.0
+    )
