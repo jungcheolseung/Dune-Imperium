@@ -25,6 +25,7 @@ from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceR
 from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     EffectSection,
+    Freighter,
     GainCombatStrength,
     GainResources,
     LoseInfluence,
@@ -98,6 +99,13 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("expedite", "Expedite"),
         copies=1,
+        # "1 spice -> Freighter" [Steam app screen pieces]. One paid Plot
+        # line; each icon offers an advance or recall [Rise of Ix p. 5].
+        options=(
+            _plot(
+                EffectSection(costs=(PayResources(spice=1),), rewards=(Freighter(),))
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("finesse", "Finesse"),
