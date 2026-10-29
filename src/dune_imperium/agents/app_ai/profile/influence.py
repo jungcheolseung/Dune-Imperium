@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Final, cast
 from dune_imperium.agents.app_ai.catalog import (
     FACTION_NAMES,
     INTRIGUE_ARCHETYPES,
+    IX_TECH_ARCHETYPES,
     LEADER_ARCHETYPES,
     POST_INDEX,
     board_space_ids,
@@ -309,9 +310,14 @@ def _active_space_id(ctx: AppContext) -> str | None:
 
 
 def _has_tech_tile(ctx: AppContext, tile: str) -> bool:
-    """``Player.HasTechTile(RiseOfIx.<tile>)``: no Rise of Ix tech here."""
+    """``Player.HasTechTile(RiseOfIx.<tile>)``: public owned-tile ids."""
 
-    return False
+    archetype = "TechTileArchetypes.RiseOfIx." + tile
+    return any(
+        ctx.has_tech(tech_id)
+        for tech_id, short in IX_TECH_ARCHETYPES.items()
+        if short == archetype
+    )
 
 
 # -- board spaces and observation posts ---------------------------------------
@@ -716,11 +722,11 @@ class InfluenceMixin(ProfileCore):
                 s.multiply("Spacing Guild Rise of Ix", c.SpacingGuildRiseOfIxBonus)
             if cur <= 3 and _has_intrigue(ctx, _GRAND_CONSPIRACY) and new_rank >= 4:
                 s.multiply("Grand Conspiracy", c.GrandConspiracyInfluenceMod)
-            if _has_tech_tile(ctx, "Memocorders") and cur <= 2 and new_rank >= 3:
-                s.multiply("Memocorders", c.MemocordersInfluenceMod)
-            # Tessia's SnooperFactions: Rise of Ix leader, never dealt here.
-            if leader_arch == _TESSIA_ARCH:
-                s.multiply("Tessia Vernius", c.TessiaVerniusInfluenceMod)
+        if _has_tech_tile(ctx, "Memocorders") and cur <= 2 and new_rank >= 3:
+            s.multiply("Memocorders", c.MemocordersInfluenceMod)
+        # Tessia's SnooperFactions belongs to the Ix profile slice.
+        if _RISE_OF_IX_ENABLED and leader_arch == _TESSIA_ARCH:
+            s.multiply("Tessia Vernius", c.TessiaVerniusInfluenceMod)
 
         # (E) Uprising block.
         if not ctx.uprising:

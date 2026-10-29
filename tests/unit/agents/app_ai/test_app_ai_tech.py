@@ -753,16 +753,24 @@ def test_tech_negotiation_members() -> None:
 # §8 Tile ability classes
 # =================================================================================
 
+# Full ability order of the tiles that share effects with Bloodlines
+# (rix-tech.md §2); the original Ix activations/triggers are ported too.
 _SHARED = {
     "Chaumurky": [_AA + "ChaumurkyAbility"],
     "MinimicFilm": [
         "worm.canis.abilities.TriggeredAbilities.RiseOfIx.MinimicFilmAbility"
     ],
     "Memocorders": [
+        _AA + "MemocordersAbility",
         "worm.canis.abilities.ConflictAbilities.BaseSet.MemocordersAcquiredAbility"
     ],
-    "DisposalFacility": [_AA + "DisposalFacilityAcquiredAbility"],
+    "DisposalFacility": [
+        _AA + "RiseOfIx.DisposalFacilityAbility",
+        _AA + "DisposalFacilityAcquiredAbility",
+        _AA + "RiseOfIx.DisposalFacilityTriggeredAbility",
+    ],
     "ShuttleFleet": [
+        "worm.canis.abilities.TriggeredAbilities.RiseOfIx.ShuttleFleetAbility",
         "worm.canis.abilities.ConflictAbilities.BaseSet.ShuttleFleetAcquiredAbility"
     ],
     "Spaceport": [  # x2 (WormAbilityIDs)
@@ -770,6 +778,7 @@ _SHARED = {
     ]
     * 2,
     "SonicSnoopers": [
+        _AA + "RiseOfIx.SonicSnoopersAbility",
         "worm.canis.abilities.ConflictAbilities.BaseSet.GainIntrigueAcquiredAbility"
     ],
 }

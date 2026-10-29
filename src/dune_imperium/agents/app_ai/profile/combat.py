@@ -795,8 +795,7 @@ class CombatMixin(ProfileCore):
             res.merge(self._conflict_value(cc))  # MergePrependReason "CCV "
         _multiply(res, "Avg Conflict Value", _ieee_div(1.0, avg.sum))
         # Demand Respect and To the Victor (BaseSet): held in the original
-        # game only. Strategic Push and Windtraps (Rise of Ix) cannot be held
-        # yet.
+        # game only. Strategic Push belongs to the Ix profile slice.
         if self._holds_intrigue("demand_respect"):
             res.add(
                 "Demand Respect Influence",
@@ -806,6 +805,8 @@ class CombatMixin(ProfileCore):
             res.add(
                 "To the Victor Spice", self.resource_value(Attr.SPICE, 1, False) * 3.0
             )
+        if self.ctx.has_tech("windtraps"):
+            res.add("Windtraps", self.resource_value(Attr.WATER, 1, False))
         # Bloodlines Planetary Array (bloodlines-systems.md §9, D58; the
         # Windtraps precedent): a draw on a Conflict win. Tech Module only.
         if self.ctx.has_tech("planetary_array"):
