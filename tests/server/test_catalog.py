@@ -1179,7 +1179,7 @@ def test_catalog_card_pools_share_no_id() -> None:
 
 def test_catalog_serves_bloodlines_skills_and_tech_tiles() -> None:
     from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
-    from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
+    from dune_imperium.content.bloodlines.tech import TECH_IDS
 
     catalog = build_catalog()
     skills = catalog["skills"]
@@ -1194,7 +1194,8 @@ def test_catalog_serves_bloodlines_skills_and_tech_tiles() -> None:
 
     tech = catalog["tech"]
     assert isinstance(tech, dict)
-    assert set(tech) == set(TECH_TILES_BY_ID)
+    # The Tech Module's tiles; Rise of Ix's (stage P4a) wait for stage P4c.
+    assert set(tech) == set(TECH_IDS)
     high_command = tech["sardaukar_high_command"]
     assert isinstance(high_command, dict)
     assert high_command["name"] == "Sardaukar High Command"

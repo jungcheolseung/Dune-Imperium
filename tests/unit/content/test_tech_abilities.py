@@ -16,6 +16,7 @@ from dune_imperium.content.bloodlines.tech_abilities import (
     TECH_ACQUIRE_ABILITIES,
     TRASH_SPY_TO_ACQUIRE,
 )
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
 from dune_imperium.content.uprising.abilities import AbilityStructure, AbilityTiming
 from dune_imperium.content.uprising.effect_dsl import (
     CommandReached,
@@ -50,7 +51,9 @@ def test_every_tile_with_an_acquire_box_takes_it_from_its_record() -> None:
         for tile in TECH_TILES
         if tile.acquire_effect_keys or tile.acquire_requires_spy_trash
     }
-    assert printed == set(TECH_ACQUIRE_ABILITIES)
+    # Rise of Ix's records (stage P4a) are tested with its tiles
+    # (``test_rise_of_ix_app_table``).
+    assert printed == set(TECH_ACQUIRE_ABILITIES) - set(IX_TECH_IDS)
     assert sum(len(tile.acquire_effect_keys) for tile in TECH_TILES) == 16
     for ability in TECH_ACQUIRE_ABILITIES.values():
         assert ability.timing is AbilityTiming.ACQUIRE

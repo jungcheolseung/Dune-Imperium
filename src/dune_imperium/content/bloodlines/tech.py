@@ -7,6 +7,10 @@ acquire effect that pays once when the tile is acquired, and an ability
 [Bloodlines p. 7]. The Rival marker only matters in solo play. The acquire
 effects are ability records (``tech_abilities.py``, composed A6a) compiled
 into the ``acquire_*`` fields below.
+
+Rise of Ix's 18 tiles (stage P4a) are ``TechTile`` entries too
+(``content.rise_of_ix.tech``): ``TECH_TILES_BY_ID`` resolves them, while
+``TECH_TILES`` and ``TECH_IDS`` stay the Tech Module's.
 """
 
 from dataclasses import dataclass
@@ -97,6 +101,55 @@ class TechAbility(StrEnum):
     INTRIGUE_DRAW_TROOP = "intrigue_draw_troop"
     # Reveal Turn: Command (6+): 2 swords.
     COMMAND_TWO_STRENGTH = "command_two_strength"
+
+    # Rise of Ix's tiles (stage P4a, ``content.rise_of_ix.tech``; the
+    # abilities as docs/rules/rise-of-ix.md 4 sums them up). One member per
+    # tile; nothing resolves them before stage P4c, and ``has_tech`` finds
+    # them only on a seat holding the tile, which no setup deals yet.
+    # Artillery -- Reveal Turn: a sword for each revealed card giving swords.
+    REVEAL_SWORD_PER_SWORD_CARD = "reveal_sword_per_sword_card"
+    # Chaumurky -- Endgame: you win ties [FAQ p. 1].
+    ENDGAME_TIE_WIN = "endgame_tie_win"
+    # Detonation Devices -- winning with a dreadnought, you may return it to
+    # the supply for 1 VP instead of controlling a space (OQ-121).
+    DREADNOUGHT_DETONATION = "dreadnought_detonation"
+    # Disposal Facility -- Reveal Turn: with 6+ Persuasion gained this turn,
+    # you may trash a card in play (OQ-126).
+    REVEAL_TRASH_AT_SIX_PERSUASION = "reveal_trash_at_six_persuasion"
+    # Flagship -- Flip: 4 Solari -> 3 troops.
+    FLIP_SOLARI_FOR_TROOPS = "flip_solari_for_troops"
+    # Holoprojectors -- Flip: discard a card -> draw a card.
+    FLIP_DISCARD_FOR_CARD = "flip_discard_for_card"
+    # Holtzman Engine -- Round Start: draw a card. Endgame: 1 VP with two or
+    # more The Spice Must Flow (OQ-123).
+    HOLTZMAN_ENGINE = "holtzman_engine"
+    # Invasion Ships -- Flip: discard a card -> enemy Agents do not block
+    # yours this turn.
+    FLIP_DISCARD_IGNORE_BLOCKS = "flip_discard_ignore_blocks"
+    # Memocorders -- Endgame: 1 VP with 3+ Influence on all four tracks.
+    ENDGAME_INFLUENCE_THREE_VP = "endgame_influence_three_vp"
+    # Minimic Film -- Reveal Turn: 1 Persuasion (the line Self-Destroying
+    # Messages' REVEAL_PERSUASION prints; a member of its own, one per tile).
+    MINIMIC_FILM = "minimic_film"
+    # Restricted Ordnance -- Reveal Turn: 4 swords with a High Council seat.
+    REVEAL_HIGH_COUNCIL_SWORDS = "reveal_high_council_swords"
+    # Shuttle Fleet -- Round Start: 2 Solari (OQ-122).
+    ROUND_START_TWO_SOLARI = "round_start_two_solari"
+    # Sonic Snoopers -- trash this -> put any number of Intrigue cards on
+    # the Intrigue deck's bottom, then draw as many [Rise of Ix p. 10].
+    TRASH_CYCLE_INTRIGUE = "trash_cycle_intrigue"
+    # Spaceport -- you may put the cards you acquire on top of your deck.
+    ACQUIRED_CARDS_ON_DECK = "acquired_cards_on_deck"
+    # Spy Satellites -- 3 spice and trash this -> 1 VP. Endgame: 1 VP for
+    # each Faction where you have 1 or less Influence.
+    SPY_SATELLITES = "spy_satellites"
+    # Training Drones -- Flip: a troop.
+    FLIP_TROOP = "flip_troop"
+    # Troop Transports -- one more troop whenever you recruit from the
+    # Shipping track; any of them may deploy to the Conflict.
+    SHIPPING_EXTRA_TROOP = "shipping_extra_troop"
+    # Windtraps -- when you win a Conflict: 1 water.
+    CONFLICT_WIN_WATER = "conflict_win_water"
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,8 +298,18 @@ class TechTile:
 
         Advanced Data Analysis's Spy trash is a purchase prerequisite,
         rather than a reward to defer [Advanced Data Analysis Tech tile].
+
+        Raises ``NotImplementedError`` for an icon no key below pays: a Rise
+        of Ix record holds two (Windtraps' water, Shuttle Fleet's two
+        distinct Factions, OQ-114) that ``rules.tech`` pays from stage P4c;
+        a key would drop the water and pay one Influence for the two.
         """
 
+        unpaid = [icon for icon in self._acquire_icons() if not _paid_icon(icon)]
+        if unpaid:
+            raise NotImplementedError(
+                f"{self.tech_id}: no acquire key pays {unpaid!r} until stage P4c"
+            )
         counted_icons = (
             "solari", "troops", "intrigue", "cards", "victory_points", "contracts"
         )
@@ -277,9 +340,45 @@ _INTRIGUE_OR_CARD: Final = (
 )
 
 
+def _paid_icon(icon: Reward) -> bool:
+    """Whether a key of ``TechTile.acquire_effect_keys`` pays this acquire
+    icon (``rules.tech``): the pieces the ``acquire_*`` properties read."""
+
+    match icon:
+        case GainResources(spice=0, water=0):
+            return True
+        case (
+            RecruitTroops()
+            | DrawIntrigueCards()
+            | DrawPersonalCards()
+            | GainVictoryPoints()
+            | TakeContract()
+            | DestroyShieldWall()
+            | UseSignetAbility()
+        ):
+            return True
+        case GainInfluence():
+            return icon == GainInfluence()
+        case TrashPersonalCard():
+            return icon == TrashPersonalCard()
+        case PlaceSpy():
+            return icon == PlaceSpy(shared_post=True)
+    return False
+
+
 def _acquire(tech_id: str) -> None:
+    """Check a Tech Module tile's acquire record (``check_acquire_record``)."""
+
+    check_acquire_record(tech_id)
+
+
+def check_acquire_record(tech_id: str, awaiting: tuple[Reward, ...] = ()) -> None:
     """Check the tile's acquire record against what the ``acquire_*``
-    properties read; raises ``ValueError`` for a record they cannot read."""
+    properties read; raises ``ValueError`` for a record they cannot read.
+
+    ``awaiting`` names icons a record may print although no key pays them
+    yet (Rise of Ix's, ``content.rise_of_ix.tech``):
+    ``TechTile.acquire_effect_keys`` refuses a tile printing one."""
 
     ability = TECH_ACQUIRE_ABILITIES.get(tech_id)
     if ability is None:
@@ -304,28 +403,11 @@ def _acquire(tech_id: str) -> None:
         if line.condition is not None or line.costs or len(line.rewards) != 1:
             raise ValueError(f"{tech_id}: an acquire icon is one free reward")
         icon = line.rewards[0]
-        match icon:
-            case GainResources(spice=0, water=0):
-                pass
-            case (
-                RecruitTroops()
-                | DrawIntrigueCards()
-                | DrawPersonalCards()
-                | GainVictoryPoints()
-                | TakeContract()
-                | DestroyShieldWall()
-                | UseSignetAbility()
-            ):
-                pass
-            case GainInfluence() if icon == GainInfluence():
-                pass
-            case TrashPersonalCard() if icon == TrashPersonalCard():
-                pass
-            case PlaceSpy() if icon == PlaceSpy(shared_post=True):
-                # Spy Drones prints two Spies with Deep Cover.
-                continue
-            case _:
-                raise ValueError(f"{tech_id}: no acquire icon holds {icon!r}")
+        if not _paid_icon(icon) and icon not in awaiting:
+            raise ValueError(f"{tech_id}: no acquire icon holds {icon!r}")
+        if isinstance(icon, PlaceSpy):
+            # Spy Drones prints two Spies with Deep Cover.
+            continue
         if type(icon) in printed:
             raise ValueError(f"{tech_id}: acquire {type(icon).__name__} printed twice")
         printed.add(type(icon))
@@ -464,7 +546,6 @@ TECH_TILES: Final[tuple[TechTile, ...]] = (
         rival=True,
     ),
 )
-TECH_TILES_BY_ID: Final = {tile.tech_id: tile for tile in TECH_TILES}
 TECH_IDS: Final = tuple(tile.tech_id for tile in TECH_TILES)
 if set(TECH_ABILITIES) != set(TECH_IDS):
     raise ValueError("every Tech tile prints one ability record set")
@@ -536,3 +617,15 @@ def has_tech(tech_ids: tuple[str, ...], ability: TechAbility) -> bool:
     """Return whether one of ``tech_ids`` prints ``ability``."""
 
     return any(TECH_TILES_BY_ID[tech_id].ability is ability for tech_id in tech_ids)
+
+
+# One lookup by id for the Tech Module's tiles and Rise of Ix's (stage P4a,
+# docs/base-game-and-ix-plan.md 17.1), as ``BOARD_SPACES_BY_ID`` is for the
+# boards: code that lists the Tech Module's own tiles (its stacks, setup,
+# codec, catalog and texts) iterates ``TECH_TILES`` and ``TECH_IDS``. Imported
+# last, as Rise of Ix's tiles are built from ``TechTile``.
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_TILES  # noqa: E402
+
+TECH_TILES_BY_ID: Final = {
+    tile.tech_id: tile for tile in (*TECH_TILES, *IX_TECH_TILES)
+}

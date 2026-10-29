@@ -9,7 +9,7 @@ import pytest
 
 from dune_imperium import RulesetConfig
 from dune_imperium.agents.agent_turn_steps import apply_placement, apply_whole
-from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
+from dune_imperium.content.bloodlines.tech import TECH_TILES, TECH_TILES_BY_ID
 from dune_imperium.content.uprising.imperium import imperium_deck_instance_ids
 from dune_imperium.content.uprising.intrigue import intrigue_deck_instance_ids
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
@@ -314,7 +314,9 @@ def test_tenuous_bond_distinguishes_its_influence_cost_and_reward() -> None:
     assert gained.players[0].influence.fremen == 1
 
 
-@pytest.mark.parametrize("tech_id", sorted(TECH_TILES_BY_ID))
+# The Tech Module's tiles: Rise of Ix's (also in ``TECH_TILES_BY_ID``, stage
+# P4a) take their acquire rows in stage P4c.
+@pytest.mark.parametrize("tech_id", [tile.tech_id for tile in TECH_TILES])
 def test_tech_acquire_icons_have_english_and_korean_details(tech_id: str) -> None:
     from dune_imperium.rules.tech import tech_acquire_effect_arguments
 

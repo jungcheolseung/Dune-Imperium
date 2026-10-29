@@ -7,10 +7,14 @@ Imperium and Intrigue cards come from the Steam app's attribute table
 identity entry equal to it. ``scripts/dwgr/imperium_entries.py --set ix``
 writes the entries from the same table; this test reads it on its own, so a
 slip in the generator does not pass unseen. The six Leaders and the three new
-Conflict cards (names, tiers) are held to the same table.
+Conflict cards (names, tiers), the 18 Tech tiles (names, spice costs, acquire
+effects) and the four board spaces (Agent icons, cost, Influence requirement)
+are held to the same table.
 """
 
 import re
+
+import pytest
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.observation_encoding import (
@@ -19,20 +23,60 @@ from dune_imperium.adapters.observation_encoding import (
     LEADER_IDS,
 )
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
+from dune_imperium.content.bloodlines.tech import (
+    TECH_IDS,
+    TECH_TILES,
+    TECH_TILES_BY_ID,
+    TechAbility,
+    tech_tiles_for,
+)
+from dune_imperium.content.bloodlines.tech_abilities import (
+    TECH_ABILITIES,
+    TECH_ACQUIRE_ABILITIES,
+)
+from dune_imperium.content.imperium.board import IMPERIUM_BOARD_SPACES
 from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
 from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
 from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
+from dune_imperium.content.rise_of_ix.board import IX_BOARD_SPACES, IX_SPACE_IDS
 from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS
 from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS
 from dune_imperium.content.rise_of_ix.intrigue import IX_INTRIGUE_CARDS
 from dune_imperium.content.rise_of_ix.leaders import IX_LEADERS
+from dune_imperium.content.rise_of_ix.tech import (
+    IX_TECH_IDS,
+    IX_TECH_TILES,
+    IX_TECH_TILES_BY_ID,
+)
 from dune_imperium.content.rulesets import IMPERIUM_LEADER_IDS, content_for
 from dune_imperium.content.schema import SourceDocument, SourceRef
+from dune_imperium.content.uprising.abilities import AbilityTiming
+from dune_imperium.content.uprising.board import (
+    BOARD_SPACES,
+    BOARD_SPACES_BY_ID,
+    Faction,
+    InfluenceRequirement,
+    ResourceCost,
+)
+from dune_imperium.content.uprising.board_abilities import (
+    BOARD_CHOICE_ABILITIES,
+    BOARD_SPACE_ABILITIES,
+)
 from dune_imperium.content.uprising.conflicts import (
     CONFLICTS,
     CONFLICTS_BY_ID,
     conflicts_by_tier,
+)
+from dune_imperium.content.uprising.effect_dsl import (
+    DrawIntrigueCards,
+    DrawPersonalCards,
+    GainInfluence,
+    GainResources,
+    GainVictoryPoints,
+    RecruitTroops,
+    Reward,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS,
@@ -49,7 +93,7 @@ from dune_imperium.content.uprising.leaders import (
     leaders_for_choam,
 )
 from dune_imperium.content.uprising.starting_cards import STARTING_CARDS_BY_ID
-from dune_imperium.content.uprising.types import ConflictTier
+from dune_imperium.content.uprising.types import AgentIcon, ConflictTier
 
 # The one name Rise of Ix prints that another kind already uses: the
 # Bloodlines Leader ``esmar_tuek`` (plan 17.2); it takes ``_card``.
@@ -479,3 +523,209 @@ def test_no_uprising_or_original_game_pool_lists_an_ix_leader_or_conflict() -> N
                 assert not conflict_ids & {
                     x.card.card_id for x in content.conflict_pool
                 }
+
+
+# --- Tech tiles (docs/rules/rise-of-ix.md 4) ---------------------------------
+
+# The app's ``AcquireEffectList`` names and the piece each prints; repeated
+# names are one piece's count (as Self-Destroying Messages' two Intrigue).
+def _acquire_piece(name: str, count: int) -> Reward:
+    match name:
+        case "Intrigue":
+            return DrawIntrigueCards(count)
+        case "Troop":
+            return RecruitTroops(count)
+        case "VP":
+            return GainVictoryPoints(count)
+        case "Imperium":
+            return DrawPersonalCards(count)
+        case "Water":
+            return GainResources(water=count)
+        case "Trash":
+            return TrashPersonalCard()
+        case "AnyRank":
+            return GainInfluence()
+        case "AnyTwoDifferentRanks":
+            # "Choose two" Factions: two different ones (OQ-114).
+            return GainInfluence(times=2, distinct=True)
+    raise AssertionError(f"no acquire piece for the app's {name!r}")
+
+
+def _slug(archetype: Archetype) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", _title(archetype).lower()).strip("_")
+
+
+def _tech_archetypes() -> dict[str, Archetype]:
+    return {
+        _slug(archetype): archetype
+        for short, archetype in ARCHETYPES.items()
+        if short.startswith("TechTileArchetypes.RiseOfIx.")
+    }
+
+
+def test_every_ix_tech_tile_has_an_entry_and_no_more() -> None:
+    assert len(IX_TECH_TILES) == 18
+    assert list(IX_TECH_IDS) == sorted(_tech_archetypes())
+    assert set(IX_TECH_TILES_BY_ID) == set(IX_TECH_IDS)
+
+
+def test_tech_names_and_costs_match_the_app_and_the_rules_table() -> None:
+    archetypes = _tech_archetypes()
+    for tile in IX_TECH_TILES:
+        archetype = archetypes[tile.tech_id]
+        assert tile.name == _title(archetype), tile.tech_id
+        assert tile.cost == archetype.attributes["SpiceCost"], tile.tech_id
+        assert not tile.choam_only and not tile.rival, tile.tech_id
+        assert tile.sources == (SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2, 4)),)
+    # docs/rules/rise-of-ix.md 4: Flagship 8 is the dearest, Artillery 1 the
+    # cheapest; the 18 costs sum to 65.
+    assert IX_TECH_TILES_BY_ID["flagship"].cost == 8
+    assert IX_TECH_TILES_BY_ID["artillery"].cost == 1
+    assert sum(tile.cost for tile in IX_TECH_TILES) == 65
+
+
+def test_tech_acquire_records_are_the_apps_acquire_effects() -> None:
+    archetypes = _tech_archetypes()
+    for tile in IX_TECH_TILES:
+        effects = archetypes[tile.tech_id].attributes.get("AcquireEffectList", ())
+        assert isinstance(effects, tuple)
+        record = TECH_ACQUIRE_ABILITIES.get(tile.tech_id)
+        if not effects:
+            assert record is None, tile.tech_id
+            continue
+        assert record is not None, tile.tech_id
+        assert record.timing is AbilityTiming.ACQUIRE
+        expected = tuple(
+            _acquire_piece(str(name), effects.count(name))
+            for name in dict.fromkeys(effects)
+        )
+        assert tuple(line.rewards[0] for line in record.sections) == expected, (
+            tile.tech_id
+        )
+    assert {tile.tech_id for tile in IX_TECH_TILES} & set(TECH_ACQUIRE_ABILITIES) == {
+        "chaumurky",
+        "disposal_facility",
+        "flagship",
+        "invasion_ships",
+        "memocorders",
+        "shuttle_fleet",
+        "sonic_snoopers",
+        "spaceport",
+        "windtraps",
+    }
+
+
+def test_an_acquire_icon_no_key_pays_is_refused_until_stage_p4c() -> None:
+    # Windtraps' water and Shuttle Fleet's two Factions: a key would drop the
+    # water and pay one Influence, so the tiles refuse their keys.
+    for tech_id in ("windtraps", "shuttle_fleet"):
+        with pytest.raises(NotImplementedError, match="P4c"):
+            _ = IX_TECH_TILES_BY_ID[tech_id].acquire_effect_keys
+    keys = {
+        tile.tech_id: tile.acquire_effect_keys
+        for tile in IX_TECH_TILES
+        if tile.tech_id not in ("windtraps", "shuttle_fleet")
+    }
+    assert {tech_id: value for tech_id, value in keys.items() if value} == {
+        "chaumurky": ("intrigue",),
+        "disposal_facility": ("trash",),
+        "flagship": ("victory_points",),
+        "invasion_ships": ("troops",),
+        "memocorders": ("influence",),
+        "sonic_snoopers": ("intrigue",),
+        "spaceport": ("cards",),
+    }
+    assert IX_TECH_TILES_BY_ID["invasion_ships"].acquire_troops == 4
+    assert IX_TECH_TILES_BY_ID["spaceport"].acquire_cards == 2
+
+
+def test_each_ix_tile_names_an_ability_of_its_own_and_has_no_record() -> None:
+    abilities = [tile.ability for tile in IX_TECH_TILES]
+    assert len(set(abilities)) == 18
+    assert not set(abilities) & {tile.ability for tile in TECH_TILES}
+    assert set(TechAbility) == set(abilities) | {tile.ability for tile in TECH_TILES}
+    # The flips, Reveal and Endgame lines and hooks are stage P4c's.
+    assert not set(IX_TECH_IDS) & set(TECH_ABILITIES)
+
+
+def test_ix_tech_tiles_resolve_by_id_only() -> None:
+    # No id collides with a Tech Module tile or any other identity, and no
+    # stack, setup or list of the Tech Module holds an Ix tile.
+    assert not set(IX_TECH_IDS) & set(TECH_IDS)
+    others = {
+        *IMPERIUM_CARDS_BY_ID,
+        *INTRIGUE_CARDS_BY_ID,
+        *LEADERS_BY_ID,
+        *CONFLICTS_BY_ID,
+        *BOARD_SPACES_BY_ID,
+        *STARTING_CARDS_BY_ID,
+    }
+    assert not set(IX_TECH_IDS) & others
+    for tile in IX_TECH_TILES:
+        assert TECH_TILES_BY_ID[tile.tech_id] is tile
+    assert len(TECH_TILES_BY_ID) == len(TECH_TILES) + len(IX_TECH_TILES)
+    for choam_module in (False, True):
+        assert not set(IX_TECH_IDS) & {t.tech_id for t in tech_tiles_for(choam_module)}
+
+
+# --- Board spaces (docs/rules/rise-of-ix.md 8) -------------------------------
+
+_SPACE_ARCHETYPES = {
+    "dreadnought": "SpaceArchetypes.RiseOfIx.DreadnoughtSpace",
+    "tech_negotiation": "SpaceArchetypes.RiseOfIx.TechNegotiation",
+    "interstellar_shipping": "SpaceArchetypes.RiseOfIx.InterstellarShipping",
+    "smuggling": "SpaceArchetypes.RiseOfIx.Smuggling",
+}
+_ICONS = {"Pentagon": AgentIcon.LANDSRAAD, "Triangle": AgentIcon.SPICE_TRADE}
+
+
+def test_ix_spaces_match_the_rules_table_and_the_app() -> None:
+    # Plan 17.2's ids, in the order observation v39 reserved for them.
+    assert IX_SPACE_IDS == (
+        "dreadnought",
+        "tech_negotiation",
+        "interstellar_shipping",
+        "smuggling",
+    )
+    assert {
+        short
+        for short in ARCHETYPES
+        if short.startswith("SpaceArchetypes.RiseOfIx.")
+    } == set(_SPACE_ARCHETYPES.values())
+    for space in IX_BOARD_SPACES:
+        attributes = ARCHETYPES[_SPACE_ARCHETYPES[space.space_id]].attributes
+        assert space.name == ARCHETYPES[_SPACE_ARCHETYPES[space.space_id]].title
+        assert space.agent_icon is _ICONS[str(attributes["AgentIcon"])]
+        solari = attributes.get("SolariCost", 0)
+        assert isinstance(solari, int)
+        assert space.cost_options == (
+            (ResourceCost(solari=solari),) if solari else ()
+        ), space.space_id
+        requirements = attributes.get("InfluenceRequirements", ())
+        assert (space.requirement is None) is (not requirements), space.space_id
+        assert not (space.combat or space.maker or space.critical)
+        assert space.dynamic_cost is None and space.required_leader_id is None
+    # docs/rules/rise-of-ix.md 8: Dreadnought costs 3 Solari, Interstellar
+    # Shipping needs 2 Spacing Guild Influence.
+    by_id = {space.space_id: space for space in IX_BOARD_SPACES}
+    assert by_id["interstellar_shipping"].requirement == InfluenceRequirement(
+        Faction.SPACING_GUILD, 2
+    )
+    assert by_id["dreadnought"].cost_options == (ResourceCost(solari=3),)
+
+
+def test_ix_spaces_resolve_by_id_only_and_print_no_effect_yet() -> None:
+    for space in IX_BOARD_SPACES:
+        assert BOARD_SPACES_BY_ID[space.space_id] is space
+    assert not set(IX_SPACE_IDS) & {s.space_id for s in IMPERIUM_BOARD_SPACES}
+    assert not set(IX_SPACE_IDS) & {s.space_id for s in BOARD_SPACES}
+    # Their effects need stages P4b and P4c's pieces.
+    printed = {space for space, _, _ in BOARD_SPACE_ABILITIES} | {
+        space for space, _ in BOARD_CHOICE_ABILITIES
+    }
+    assert not set(IX_SPACE_IDS) & printed
+    for base_game in BaseGame:
+        for rise_of_ix in (False, True):
+            config = RulesetConfig(base_game=base_game, rise_of_ix=rise_of_ix)
+            spaces = {space.space_id for space in content_for(config).board_spaces}
+            assert not set(IX_SPACE_IDS) & spaces

@@ -24,8 +24,9 @@ def test_board_has_the_official_space_and_icon_counts() -> None:
     # 22 printed Uprising spaces plus Esmar Tuek's Bloodlines tile.
     assert len(BOARD_SPACES) == 22 + 1
     # The id table adds the original board's 19 spaces of its own (plan 4.2
-    # item 7: Arrakeen, Imperial Basin and Secrets print alike in both).
-    assert len(BOARD_SPACES_BY_ID) == 22 + 1 + 19
+    # item 7: Arrakeen, Imperial Basin and Secrets print alike in both) and
+    # Rise of Ix's four (stage P4a, plan 17.2).
+    assert len(BOARD_SPACES_BY_ID) == 22 + 1 + 19 + 4
     assert len({space.space_id for space in BOARD_SPACES}) == 22 + 1
     assert [s.space_id for s in BOARD_SPACES if s.required_leader_id] == ["tuek_sietch"]
     assert Counter(space.agent_icon for space in BOARD_SPACES) == {
