@@ -1384,3 +1384,10 @@ Module의 Self-Destroying Messages·Panopticon도 OQ-150의 같은 원칙으로 
 카드를 잊는다(OQ-149), 넣을 Intrigue가 있을 때만(OQ-071), Twisted는 넣지 않음(OQ-097)), Spy Satellites의 교환(spice 3 + 타일 trash → 1 VP),
 Spaceport(얻는 카드를 덱 위에 — 뒤붙이 행이 있는 모든 획득, OQ-145로 공개). 원판 + Ix 1,892행. Tech 18장 가운데 17장 끝(Troop Transports는 P4c-3).
 **P4c-4 몫:** Spaceport와 Foldspace 칸의 Foldspace 카드(17.5 5) — 자동 Foldspace 칸 줄(`board_effects.py`)에 덱 위 변형이 없어 지금은 닿지 않는다.
+
+**P4c-3 끝(2026-10-29, `24da7aaf`·`dfa4fbb5`·`8b464fcb`):** `Freighter` 조각(아이콘마다 "may": 한 칸 위·회수·안 함), 회수 보상은 칸마다 줄 —
+1번 Dividends 또는 spice 2, 2번은 recruit와 Influence가 **따로 두 줄**(OQ-148 원칙, 순서 자유), 3번 할인 2 Acquire Tech("may", 턴 종료에 소멸,
+OQ-095 (2)); 차례 밖은 `FREIGHTER_MOVE`·`SHIPPING_REWARD_ICONS` 창. Troop Transports(Tech 18장 끝): 2번 recruit에 troop +1, 자기 turn이면 Combat
+칸이 아니어도 그 troop을 따로 센 몫으로 배치(rise-of-ix.md 15, `SHIPPING_TROOPS_KEY`), 배치를 막는 효과는 "may"보다 먼저, Combat 해결 중의
+회수는 garrison(OQ-151 (가)). 원판 + Ix 1,905행. **넘기는 일:** 화면 문구(`display/actions.py`에 `resolve_shipping_reward` 설명 없음, P5와
+나눔), 칸·카드 출처의 Freighter 행(P4c-4·P4d), Windtraps를 Freighter 보상으로 얻은 승리의 water(Conflict 보상을 붙일 때, rise-of-ix.md 12).
