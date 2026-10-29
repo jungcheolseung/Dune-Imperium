@@ -43,6 +43,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
     EffectSection,
+    Freighter,
     GainInfluence,
     GainResources,
     HasAlliance,
@@ -309,6 +310,14 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
             AbilityMark.OPTIONAL,
             EffectSection(rewards=(AcquireCardUpTo(3),)),
         ),
+        # Couriers: "spice 1 → Freighter" (rise-of-ix.md 10; the icon is the
+        # Freighter's, Rival 문장 "spend 1 spice … for the Freighter icon"
+        # [Rise of Ix p. 8]) -- an arrow, so never forced.
+        "viscount_hundro_moritani": _hook(
+            "couriers",
+            AbilityMark.OPTIONAL,
+            EffectSection(rewards=(Freighter(),), costs=(PayResources(spice=1),)),
+        ),
     }
 )
 
@@ -513,6 +522,10 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         "archduke_armand_ecaz": (
             _left_hook(AbilityTiming.REVEAL, "coordination", AbilityMark.OPTIONAL),
         ),
+        # Intelligence: "게임 시작에 Intrigue 덱 위 두 장을 보고 하나를 갖고 하나를
+        # 위에 되돌린다" (rise-of-ix.md 3, 10, 13; ``rules.intrigue_peek.
+        # assign_intelligence``), a setup step that is no Reveal or trigger.
+        "viscount_hundro_moritani": (_standing("intelligence"),),
     }
 )
 

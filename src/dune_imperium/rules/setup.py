@@ -38,6 +38,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.intrigue_peek import assign_intelligence
 from dune_imperium.rules.masterstroke import assign_masterstroke
 from dune_imperium.rules.navigation import assign_navigation_deck
 from dune_imperium.rules.tactics import TACTICS_TRACK_START
@@ -743,8 +744,10 @@ def create_initial_state(
         ix_tech_stacks,
     )
     # The original game's Baron chooses his Factions after every other setup
-    # step [FAQ p. 1] (``rules.masterstroke``).
-    state = assign_masterstroke(state)
+    # step [FAQ p. 1] (``rules.masterstroke``); Rise of Ix's Hundro Moritani
+    # then looks at the Intrigue deck's top two, "모든 setup 뒤, 첫 라운드 전"
+    # (docs/rules/rise-of-ix.md 3, ``rules.intrigue_peek``).
+    state = assign_intelligence(assign_masterstroke(state))
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 

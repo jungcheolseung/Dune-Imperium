@@ -227,6 +227,7 @@ from dune_imperium.rules.intrigue_triggers import (
 )
 from dune_imperium.rules.ix_board_spaces import apply_ix_space_action
 from dune_imperium.rules.leader_abilities import (
+    apply_couriers,
     apply_feyd_track_action,
     apply_ixian_technology,
     apply_kota_signet_action,
@@ -988,6 +989,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "recall_spy_for_leader": apply_leader_reveal_action,
     # Rise of Ix's Archduke Armand Ecaz: Coordination.
     "trash_leader_reveal_card": apply_leader_reveal_action,
+    # Rise of Ix's Viscount Hundro Moritani: Couriers' two Freighter moves.
+    "advance_leader_freighter": apply_couriers,
+    "recall_leader_freighter": apply_couriers,
     "finish_reveal": finish_reveal_turn,
     "place_acquisition_spy": apply_acquisition_spy_action,
     "recall_spy_for_acquisition": apply_acquisition_spy_action,

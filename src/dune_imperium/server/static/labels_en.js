@@ -326,6 +326,8 @@ const LABELS_EN = {
     "choose_secret_project": "Secret Project: choose bottom {tech_tile}",
     "gain_leader_signet_spice": "1 {spice} ({signet_ring})",
     "acquire_leader_tech": "Acquire {tech_tile} ({signet_ring})",
+    "advance_leader_freighter": "1 {spice} -> Move the Freighter up one space ({signet_ring})",
+    "recall_leader_freighter": "1 {spice} -> Recall the Freighter ({signet_ring})",
     "place_leader_negotiator": "Place a Negotiator ({signet_ring})",
     "trash_leader_tech": "Trash {tech_tile} -> {intrigue} + {draw} 1 ({signet_ring})",
     "move_spy": "Move {spy}",

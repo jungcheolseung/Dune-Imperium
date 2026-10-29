@@ -200,6 +200,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "princess_yuna_moritani",
         "prince_rhombur_vernius",
         "archduke_armand_ecaz",
+        "viscount_hundro_moritani",
     }
 )
 
@@ -222,6 +223,12 @@ COORDINATION_ICONS: Final = frozenset(
 )
 COORDINATION_AGENTS: Final = 2
 COORDINATION_ACTION: Final = "trash_leader_reveal_card"
+# Viscount Hundro Moritani (Rise of Ix): his Leader id and Couriers' two
+# Freighter moves, each paying its spice (docs/rules/rise-of-ix.md 10).
+HUNDRO: Final = "viscount_hundro_moritani"
+COURIERS_SPICE: Final = 1
+COURIERS_ADVANCE_ACTION: Final = "advance_leader_freighter"
+COURIERS_RECALL_ACTION: Final = "recall_leader_freighter"
 
 # Always Smiling grants its Persuasion at six or more strength in the
 # four-player game; the printed asterisk raises that to ten only in a
@@ -630,6 +637,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         "princess_yuna_moritani",
         "prince_rhombur_vernius",
         "archduke_armand_ecaz",
+        "viscount_hundro_moritani",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
@@ -838,6 +846,7 @@ SIGNET_HOOKS: Final = frozenset(
         "final_delivery",
         "ixian_technology",
         "conscript",
+        "couriers",
     }
 )
 
@@ -1550,6 +1559,37 @@ def legal_leader_signet_actions(
             *(
                 (DomainAction(action_id=RHOMBUR_NEGOTIATOR_ACTION, actor=player),)
                 if negotiator_block(state, player) is None
+                else ()
+            ),
+        )
+
+    if owner.leader_id == HUNDRO:
+        # Couriers: "spice 1 → Freighter" (docs/rules/rise-of-ix.md 10), an
+        # arrow, so declined freely; the spice buys one of the Freighter
+        # icon's two moves (rise-of-ix.md 5: up one space, never from the
+        # top, or a recall, never from the bottom), paid with the move, so
+        # the spice is never paid for nothing (section 15, OQ-071).
+        # (``rules.shipping_track`` imports this module through
+        # ``rules.tech``, so its helpers are imported here.)
+        from dune_imperium.rules.shipping_track import (
+            freighter_can_advance,
+            freighter_can_recall,
+        )
+
+        if owner.resources.spice < COURIERS_SPICE:
+            return (
+                DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            )
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                (DomainAction(action_id=COURIERS_ADVANCE_ACTION, actor=player),)
+                if freighter_can_advance(state, player)
+                else ()
+            ),
+            *(
+                (DomainAction(action_id=COURIERS_RECALL_ACTION, actor=player),)
+                if freighter_can_recall(state, player)
                 else ()
             ),
         )
@@ -2574,6 +2614,49 @@ def apply_ixian_technology(state: GameState, action: DomainAction) -> RuleResult
         printer=printer_value(Source.LEADER, RHOMBUR),
     )
     return RuleResult(state=opened.state, events=(*opened.events, box))
+
+
+def apply_couriers(state: GameState, action: DomainAction) -> RuleResult:
+    """Couriers: pay 1 spice, then move the Freighter up one space or recall
+    it -- the recall's rewards wait on the turn like any Freighter recall
+    (docs/rules/rise-of-ix.md 5, 10; ``rules.shipping_track``). The box is
+    resolved and written back first, so the recall's rewards are queued on
+    the state the turn frame belongs to."""
+
+    from dune_imperium.rules.shipping_track import (
+        move_freighter_up,
+        recall_freighter,
+    )
+
+    if action not in legal_leader_signet_actions(state, action.actor):
+        raise ValueError("action is not a legal Couriers choice")
+    context = _signet_context(state)
+    player = action.actor
+    owner = state.players[player]
+    source = f"round:{state.round_number}:player:{player}:leader_signet"
+    context["pending_agent_effect"] = False
+    paid = replace(
+        owner,
+        resources=replace(
+            owner.resources, spice=owner.resources.spice - COURIERS_SPICE
+        ),
+        spice_spent_turn=owner.spice_spent_turn + COURIERS_SPICE,
+    )
+    working = _store_signet(state, context, replace_player(state.players, paid))
+    move = (
+        move_freighter_up
+        if action.action_id == COURIERS_ADVANCE_ACTION
+        else recall_freighter
+    )
+    moved = move(working, player, source=f"{source}:freighter")
+    return RuleResult(
+        state=moved.state,
+        events=(
+            resources_paid_event(source, player, spice=COURIERS_SPICE),
+            *moved.events,
+            _signet_box(source, context, player, BoxOutcome.RESOLVED),
+        ),
+    )
 
 
 def apply_shaddam_signet_choice(

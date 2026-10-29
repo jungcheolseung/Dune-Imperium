@@ -496,6 +496,14 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "deploy_leader_agent": _row(_V.DEPLOY, _S.LEADER, variant="agent", tag=_BOX),
     "gain_leader_signet_spice": _row(_V.GAIN, _S.LEADER, tag=_BOX),
+    # Rise of Ix's Viscount Hundro Moritani: Couriers' spice for a Freighter
+    # move up or a recall.
+    "advance_leader_freighter": _row(
+        _V.ADVANCE, _S.LEADER, variant="freighter", tag=_BOX
+    ),
+    "recall_leader_freighter": _row(
+        _V.COLLECT, _S.LEADER, variant="freighter", tag=_BOX
+    ),
     # Rise of Ix's Prince Rhombur Vernius: Ixian Technology's two halves.
     "acquire_leader_tech": _row(_V.ACQUIRE, _S.LEADER, variant="ix_tech", tag=_BOX),
     "place_leader_negotiator": _row(

@@ -526,6 +526,13 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "deploy_leader_agent": _spec(_V.DEPLOY, _S.LEADER, _LEADER),
     "gain_leader_signet_spice": _spec(_V.GAIN, _S.LEADER, _LEADER),
+    # Rise of Ix's Viscount Hundro Moritani: Couriers' two Freighter moves.
+    "advance_leader_freighter": _spec(
+        _V.ADVANCE, _S.LEADER, _LEADER, option="freighter"
+    ),
+    "recall_leader_freighter": _spec(
+        _V.COLLECT, _S.LEADER, _LEADER, option="freighter"
+    ),
     # Rise of Ix's Prince Rhombur Vernius: Ixian Technology's "OR" halves.
     "acquire_leader_tech": _spec(_V.ACQUIRE, _S.LEADER, _LEADER, option="tech"),
     "place_leader_negotiator": _spec(

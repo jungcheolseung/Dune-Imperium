@@ -235,7 +235,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Conscript's hook and its AcquireCardUpTo piece with its cost cap), read by
 # his row alone; no older scale moved (compared against d13b81cd,
 # 2026-10-30).
-_GOLDEN_DIGEST = "c8fdf9027461442bea08879f7fc87a3867a5ef5de9e671a3d156ba5853a94726"
+# Then Viscount Hundro Moritani got his records (stage P4e): only his row
+# changed, and three Leader-table columns are new (Intelligence's standing
+# hook, Couriers' hook and its Freighter piece), read by his row alone; no
+# older scale moved (compared against c426d03d, 2026-10-30).
+_GOLDEN_DIGEST = "0fb40b3a21790a12ead34990803d497c78a5b70e889ddb1885313d0905404e7f"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

@@ -390,6 +390,8 @@ const ACTION_LABELS = {
   choose_secret_project: "비밀 프로젝트: 맨 아래 {tech_tile} 선택",
   gain_leader_signet_spice: "{spice} 1 ({signet_ring})",
   acquire_leader_tech: "{tech_tile} 획득 ({signet_ring})",
+  advance_leader_freighter: "{spice} 1 → Freighter 한 칸 위로 ({signet_ring})",
+  recall_leader_freighter: "{spice} 1 → Freighter 회수 ({signet_ring})",
   place_leader_negotiator: "Negotiator 놓기 ({signet_ring})",
   trash_leader_tech: "{tech_tile} 폐기 → {intrigue} + {draw} 1 ({signet_ring})",
   move_spy: "{spy} 이동",

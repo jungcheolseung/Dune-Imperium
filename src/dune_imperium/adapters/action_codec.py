@@ -1654,6 +1654,17 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # and Conscript's card on top of the deck while Spaceport lets him
         # put it there.
         templates.extend(_trash_templates(config, "trash_leader_reveal_card"))
+        if not config.immortality:
+            # Viscount Hundro Moritani's Intelligence keeps one of the
+            # Intrigue deck's top two (an Immortality catalog holds the
+            # keep-one rows already, for Imperium Ceremony).
+            templates.extend(
+                ActionTemplate(
+                    action_id="keep_peeked_intrigue",
+                    arguments=(("instance_id", instance_id),),
+                )
+                for instance_id in intrigue_instances
+            )
         templates.extend(
             ActionTemplate(
                 action_id="acquire_leader_imperium",
@@ -2626,10 +2637,12 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
             # The original game's Prudent Diplomacy and Scheme.
             "duke_leto_atreides",
             "baron_vladimir_harkonnen",
-            # Rise of Ix's Final Delivery, Ixian Technology and Conscript.
+            # Rise of Ix's Final Delivery, Ixian Technology, Conscript and
+            # Couriers.
             "princess_yuna_moritani",
             "prince_rhombur_vernius",
             "archduke_armand_ecaz",
+            "viscount_hundro_moritani",
         }
     ),
     "resolve_leader_signet_without_option": frozenset(
@@ -2677,7 +2690,9 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "take_leader_bonus_spice": frozenset({"esmar_tuek"}),
     "deploy_leader_agent": frozenset({"duncan_idaho"}),
     "gain_leader_signet_spice": frozenset({"kota_odax_of_ix"}),
-    # Rise of Ix's Ixian Technology.
+    # Rise of Ix's Couriers and Ixian Technology.
+    "advance_leader_freighter": frozenset({"viscount_hundro_moritani"}),
+    "recall_leader_freighter": frozenset({"viscount_hundro_moritani"}),
     "acquire_leader_tech": frozenset({"prince_rhombur_vernius"}),
     "place_leader_negotiator": frozenset({"prince_rhombur_vernius"}),
     "trash_leader_tech": frozenset({"kota_odax_of_ix"}),
@@ -2852,9 +2867,12 @@ def _rise_of_ix_unit_templates(config: RulesetConfig) -> tuple[ActionTemplate, .
             "recall_board_freighter",
             # Spaceport's Foldspace card on top of the deck.
             "acquire_foldspace_to_deck_top",
-            # Prince Rhombur Vernius' Ixian Technology (stage P4e).
+            # Prince Rhombur Vernius' Ixian Technology and Viscount Hundro
+            # Moritani's Couriers (stage P4e).
             "acquire_leader_tech",
             "place_leader_negotiator",
+            "advance_leader_freighter",
+            "recall_leader_freighter",
         )
     )
     templates.extend(_shipping_track_templates())
