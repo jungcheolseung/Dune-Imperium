@@ -6,10 +6,14 @@ Rise of Ix 확장의 Epic Game Mode를 4인 Uprising에 적용하는 규칙 명�
 Spice와 Conflict III 카드 Economic Supremacy. Rise of Ix 없이 이 모드만 켜는 것은
 공식 규칙이 아니라 사용자 결정이다([OQ-092](open-questions.md#oq-092--epic-game-mode를-rise-of-ix-없이-uprising에-적용)).
 
-범위 밖: Viscount Hundro Moritani의 setup 순서 `[Rise of Ix p. 10]`(Rise of Ix
+범위 밖(Uprising 위에서): Viscount Hundro Moritani의 setup 순서 `[Rise of Ix p. 10]`(Rise of Ix
 Leader), Rise of Ix의 다른 Conflict 카드, 6인 Epic `[Board Guide p. 13]`, Rise of Ix
 p. 10의 카드 clarification(Appropriate, Court Intrigue, Ilesa Ecaz, Imperial Bashar,
 Second Wave, Treachery — 모두 Rise of Ix 카드).
+
+원판 + Rise of Ix의 Epic(2026-10-30, 단계 P4e, `d88c6a7d`·`e8a0a2d8`·`556e57ea`)은 [rise-of-ix.md](rise-of-ix.md) 11절이
+정하고 이 문서의 구현을 그대로 다시 쓴다. 거기서는 Hundro의 순서(모두 Intrigue를 뽑은 뒤 Intelligence)와 Ix Conflict·Leader가 범위 안이다.
+원판에 Rise of Ix 없이 Epic만 켜는 것은 setup이 거절한다(Uprising의 OQ-092 같은 사용자 결정이 없다).
 
 ## 1. 출처
 
