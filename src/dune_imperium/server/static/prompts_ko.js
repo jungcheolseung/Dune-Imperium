@@ -78,6 +78,7 @@ const PROMPT_KO = {
   "Gain two Persuasion or pay one Water for a sandworm": "{persuasion} 2 획득 또는 {water} 1 지불하고 {sandworm} 획득",
   "Keep one of the two Intrigue cards": "{intrigue_card} 2장 중 1장 보관",
   "Keep the last Intrigue card": "남은 {intrigue_card} 1장 보관",
+  "Choose a Control space that holds no dreadnought for yours": "{control} 공간 선택 (이미 놓인 곳 제외)",
   "You may lose two troops for two specimens": "병력 2를 잃고 {specimen} 2 획득 가능",
   "Move your Spy off the watched space": "감시 중인 공간에서 {spy} 이동",
   "You may pay three Spice for one Influence": "{spice} 3 지불하고 {influence_any} 1 획득 가능",

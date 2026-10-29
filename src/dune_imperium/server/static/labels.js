@@ -242,6 +242,14 @@ const ACTION_LABELS = {
   trash_skill_for_strength: "{commander_skill} 폐기 → 검 3",
   deploy_commanders: "{commander} 배치",
   withdraw_commanders: "{commander} 회수",
+  /* Rise of Ix (stage P4b): no official Korean source names the dreadnought
+     (docs/rules/glossary-ko.md has no row), so the labels keep the English
+     word and no TERMS entry is made for it. */
+  commission_intrigue_dreadnought: "dreadnought 얻기",
+  decline_intrigue_dreadnought: "dreadnought 얻지 않음",
+  deploy_dreadnoughts: "dreadnought 배치",
+  withdraw_dreadnoughts: "dreadnought 회수",
+  place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
   retreat_leader_commander: "{commander} 1 {retreat} ({leader})",
   gain_reveal_influence: "{influence_any} 1 획득",
   retreat_opponent_troop: "상대 {troop} 강제 {retreat}",
@@ -440,6 +448,12 @@ const EVENT_LABELS = {
   combat_strength_gained: "{strength} 획득",
   commanders_deployed: "{commander} 배치",
   commanders_withdrawn: "{commander} 회수",
+  dreadnought_commissioned: "dreadnought 얻음",
+  intrigue_dreadnought_declined: "dreadnought 얻지 않음",
+  dreadnoughts_deployed: "dreadnought 배치",
+  dreadnoughts_withdrawn: "dreadnought 회수",
+  dreadnought_control_placed: "dreadnought가 {control} 공간에",
+  dreadnought_returned: "dreadnought {garrison} 복귀",
   conflict_end_trigger_declined: "{conflict} 종료 발동 {intrigue_card} 쓰지 않음",
   conflict_end_trigger_finished: "{conflict} 종료 발동 {intrigue_card} 끝내기",
   conflict_end_trigger_offered: "{conflict} 종료 발동 {intrigue_card} 제안",
