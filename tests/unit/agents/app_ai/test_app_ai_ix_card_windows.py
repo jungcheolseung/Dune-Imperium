@@ -17,9 +17,11 @@ from dune_imperium.agents.app_ai.catalog import card_entity
 from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.testing import first_decision, make_profile
 from dune_imperium.agents.app_ai.windows import agent_effects, reveal
+from dune_imperium.agents.app_ai.windows.common import Stage
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Memory
 from dune_imperium.config import BaseGame
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.core.state import GameState
 
 IX = RulesetConfig(
     base_game=BaseGame.IMPERIUM, rise_of_ix=True, promo_cards=True, leader_draft=True
@@ -520,3 +522,244 @@ def test_boundless_ambitions_reveal_is_valued_by_its_custom_ability() -> None:
     )
     held = reveal._held_answer(run, [reveal._Entry(card, effect, rows)])
     assert held is rows[list(refs).index(best.ref)]
+
+
+# -- P4's last Imperium batch (P4 e3cac948) -------------------------------------------
+
+
+def _in_conflict(
+    state: GameState, seat: int, troops: int = 0, dreadnoughts: int = 0
+) -> GameState:
+    """``state`` with ``seat``'s troops and dreadnoughts moved from the supply
+    into the Conflict."""
+
+    from dune_imperium.agents.app_ai.testing import with_player
+
+    me = state.players[seat]
+    return with_player(
+        state,
+        seat,
+        troops_supply=me.troops_supply - troops,
+        troops_conflict=me.troops_conflict + troops,
+        dreadnoughts_supply=me.dreadnoughts_supply - dreadnoughts,
+        dreadnoughts_conflict=me.dreadnoughts_conflict + dreadnoughts,
+    )
+
+
+def _turn_on(
+    state: GameState,
+    short: str,
+    rows: Sequence[DomainAction],
+    context: dict[str, ActionValue] | None = None,
+) -> agent_effects._Turn:
+    p = make_profile(state)
+    run = DecisionRun(p.ctx, p, tuple(rows), p.rng, Memory())
+    card = card_entity(f"imperium:{short}:0", p.ctx.seat)
+    return agent_effects._Turn(
+        run=run,
+        context=context or {},
+        card_ref=card.ref,
+        card_short=short,
+        card=card,
+        space_id=None,
+        space=None,
+        leader=None,
+    )
+
+
+def test_weirding_ways_extra_turn_follows_its_confirm_option(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``WeirdingWayAbility``: option 1 ("confirm", ``ExtraTurn``) takes the
+    row; option 0 ("decline") uses the key on nothing, so it lapses."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import WeirdingWayAbility
+
+    row = _row("take_agent_card_extra_turn")
+    for option, expected in ((1, row), (0, None)):
+        monkeypatch.setattr(
+            WeirdingWayAbility,
+            "evaluate",
+            lambda self, p, request, o=option: Answer(1.0, ((o,),), ""),
+        )
+        t = _turn("weirding_way", (row,))
+        agent_effects._ix_card_rows(t)
+        [source] = [s for s in t.sources if s.label == "Weirding Way"]
+        assert source.evaluate is not None and not t.unmapped
+        assert source.evaluate() == (1.0, expected)
+
+
+def test_embedded_agents_freighters_are_its_custom_freighter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``EmbeddedAgentAbility`` adds a ``FreighterCustomAbility`` per icon:
+    each Freighter row is ``FreighterAbility::Evaluate``'s (1 recalls)."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.ix_board import (
+        FreighterCustomAbility,
+    )
+
+    advance = _row("advance_agent_card_freighter")
+    recall = _row("recall_agent_card_freighter")
+    monkeypatch.setattr(
+        FreighterCustomAbility,
+        "evaluate",
+        lambda self, p, request: Answer(2.0, ((1,),), ""),
+    )
+    t = _turn("embedded_agent", (advance, recall))
+    agent_effects._ix_card_rows(t)
+    [source] = [s for s in t.sources if s.label == "Card Freighter"]
+    assert source.evaluate is not None and not t.unmapped
+    assert source.evaluate() == (2.0, recall)
+
+
+def test_guild_chief_administrators_discard_and_trash_are_its_own() -> None:
+    """The discard is ``GuildChiefAdministratorAbility``'s; the trash its box
+    grants (named after the box) is its ``EvaluateTrash``."""
+
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+        GuildChiefAdministratorAbility,
+    )
+    from dune_imperium.agents.app_ai.windows import immortality
+
+    rows = tuple(
+        _row("discard_agent_card", card_id=c)
+        for c in ("player:0:starter:dagger:0", "player:0:starter:dagger:1")
+    )
+    t = _turn("guild_chief_administrator", rows)
+    agent_effects._card_discard(t, "guild_chief_administrator")
+    assert [s.label for s in t.sources] == ["guild_chief_administrator discard"]
+    box = "round:2:player:0:agent_card:imperium:guild_chief_administrator:0"
+    assert isinstance(
+        immortality._box_trash(box, 0), GuildChiefAdministratorAbility
+    )
+    other = "round:2:player:0:agent_card:imperium:control_the_spice:0"
+    assert immortality._box_trash(other, 0) is None
+
+
+def test_full_scale_assault_and_court_intrigue_boxes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Full-Scale Assault's two troops are its generic box (state 500); Court
+    Intrigue's arrow is ``CourtIntrigueAbility``'s Intrigue card, its draw a
+    follow-up."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+        CourtIntrigueAbility,
+    )
+
+    t = _turn("full_scale_assault", (TROOP,))
+    agent_effects._single_box(t, TROOP)
+    [box] = t.sources
+    assert box.stage is not Stage.PROMPT and not t.unmapped
+    puts = tuple(
+        _row("put_intrigue_on_bottom_for_agent_card", intrigue_card_id=i)
+        for i in ("intrigue:cull:0", "intrigue:diversion:0")
+    )
+    monkeypatch.setattr(
+        CourtIntrigueAbility,
+        "evaluate",
+        lambda self, p, request: Answer(3.0, (("intrigue:diversion:0",),), ""),
+    )
+    t = _turn("court_intrigue", puts)
+    agent_effects._card_intrigue_payment(t, "court_intrigue")
+    [source] = t.sources
+    assert source.evaluate is not None
+    assert source.evaluate() == (3.0, puts[1])
+    assert "court_intrigue" in agent_effects._ARMED_REWARD_CARDS
+
+
+def test_desert_ambush_retreats_the_units_of_one_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``DesertAmbushAbility`` names every unit at once, at most the retreats
+    the turn's troops still buy; our engine retreats one per row (seat and
+    kind), the rest follow up."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer, Request
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+        DesertAmbushAbility,
+    )
+    from dune_imperium.agents.app_ai.testing import with_player
+    from dune_imperium.rules.agent_box_abilities import RETREATS_FOR_DEPLOYMENT_KEY
+
+    state = first_decision("turn", config=IX)
+    seat = make_profile(state).ctx.seat
+    others = [p.player_id for p in state.players if p.player_id != seat]
+    state = with_player(state, seat, units_deployed_turn=3)
+    state = _in_conflict(state, others[0], troops=2)
+    state = _in_conflict(state, others[1], dreadnoughts=1)
+    troop = _row("retreat_opponent_troop", player=others[0])
+    dreadnought = _row("retreat_opponent_troop", dreadnoughts=1, player=others[1])
+    requests: list[Request] = []
+
+    def evaluate(self: DesertAmbushAbility, p: object, request: Request) -> Answer:
+        requests.append(request)
+        assert sorted(self.units) == [0, 1, 2]
+        return Answer(0.5, ((2, 0),), "")
+
+    monkeypatch.setattr(DesertAmbushAbility, "evaluate", evaluate)
+    context: dict[str, ActionValue] = {RETREATS_FOR_DEPLOYMENT_KEY: 1}
+    t = _turn_on(state, "desert_ambush", (troop, dreadnought), context)
+    agent_effects._disruption_tactics(t)
+    [source] = t.sources
+    assert source.evaluate is not None and not t.unmapped
+    assert source.evaluate() == (0.5, dreadnought)
+    assert requests[-1].infos[0].options == (0, 1, 2)
+    assert requests[-1].infos[0].max_select == 2
+    key = agent_effects._desert_ambush_key(t)
+    assert t.on_choose[dreadnought] == [(key, ((others[0], "troop"),))]
+
+    follow = _turn_on(state, "desert_ambush", (troop,), context)
+    follow.run.memory.intents[key] = ((others[0], "troop"),)
+    agent_effects._disruption_tactics(follow)
+    [next_unit] = follow.sources
+    assert next_unit.actions == (troop,) and next_unit.stage is not Stage.PROMPT
+    assert key not in follow.run.memory.intents
+
+
+def test_negotiated_withdrawal_retreats_troops_first_for_its_faction() -> None:
+    """``NegotiatedWithdrawalAbility``: the Faction prompt, then the units;
+    its compiled ``Evaluate`` names no unit, so ``BeginExecution`` takes the
+    first three of troops-then-dreadnoughts. ``Cost``: three units in the
+    Conflict and a Faction to rise on."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+        NegotiatedWithdrawalAbility,
+    )
+
+    state = first_decision("turn", config=IX)
+    seat = make_profile(state).ctx.seat
+    base = state
+    state = _in_conflict(base, seat, troops=2, dreadnoughts=2)
+    rows = tuple(
+        _row(
+            "retreat_reveal_units_for_influence",
+            count=3,
+            faction=f,
+            **({"dreadnoughts": d} if d else {}),
+        )
+        for f in ("emperor", "fremen")
+        for d in (1, 2)
+    )
+    p = make_profile(state)
+    run = DecisionRun(p.ctx, p, rows, p.rng, Memory())
+    effect = "may_retreat_three_units_for_influence"
+    card = "imperium:negotiated_withdrawal:0"
+    ability = reveal._choice_ability(run, effect, card)
+    assert isinstance(ability, NegotiatedWithdrawalAbility)
+    request = reveal._choice_request(run, effect, card)
+    assert [e.ref for e in request.infos[0].entities] == ["emperor", "fremen"]
+    assert request.infos[1].options == (0, 1, 2, 3)
+    assert request.infos[1].max_select == 3
+    picked = reveal._realise(run, effect, Answer(1.0, (("fremen",), ()), ""))
+    assert picked is rows[2]  # fremen, two troops and one dreadnought
+    answer = ability.evaluate(p, request)
+    assert answer.response is not None and answer.response[1] == ()
+    assert ability.meets_cost(p)
+    few = _in_conflict(base, seat, troops=1, dreadnoughts=1)
+    assert not ability.meets_cost(make_profile(few))

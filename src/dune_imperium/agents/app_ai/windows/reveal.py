@@ -244,6 +244,7 @@ from dune_imperium.agents.app_ai.abilities.ix_imperium import (
     BoundlessAmbitionCustomAbility,
     BoundlessAmbitionRevealAbility,
     IxianEngineerAbility,
+    NegotiatedWithdrawalAbility,
     WebOfPowerRevealAbility,
 )
 from dune_imperium.agents.app_ai.abilities.ix_leaders import CoordinationAbility
@@ -382,6 +383,8 @@ _CHOICE_ABILITIES: Mapping[str, type[DeferredAbility]] = {
     # (``_choice_ability``).
     "may_move_freighter": FreighterRevealAbility,
     "acquire_card_up_to_five": BoundlessAmbitionRevealAbility,
+    # Negotiated Withdrawal's three units for an Influence (``_withdrawal``).
+    "may_retreat_three_units_for_influence": NegotiatedWithdrawalAbility,
     # The original game (abilities/original_imperium.py).
     "may_deploy_one_troop": GunThopterRevealAbility,
     "choose_two_persuasion_or_two_strength": BeneGesseritSisterAbility,
@@ -431,6 +434,10 @@ _AUTOMATIC_CHOICES = frozenset({"may_place_two_negotiators", "may_place_negotiat
 _BOUNDLESS_AMBITION = "acquire_card_up_to_five"
 _REVEAL_ACQUIRE_IMPERIUM = "acquire_reveal_imperium_card"
 _REVEAL_ACQUIRE_RESERVE = "acquire_reveal_reserve_card"
+
+_WITHDRAWAL = "may_retreat_three_units_for_influence"
+_WITHDRAWAL_ROW = "retreat_reveal_units_for_influence"
+_WITHDRAWAL_UNITS = 3
 
 #: Bloodlines "Command (6+)" choices: automatic steps answered before any buy,
 #: by their card's reveal position (docs/app-ai-plan.md §11.5;
@@ -811,6 +818,19 @@ def _choice_request(run: DecisionRun, effect: str, card_ref: str) -> Request:
         return original
     if effect == "may_move_freighter":
         return Request()
+    if effect == _WITHDRAWAL:
+        # ``<Targets>d__6`` @0x4dd8590: the Faction prompt
+        # (``MakeGainAnyFactionInfluenceTargeting``), then the units
+        # (``NumberToSelect`` 3).
+        rising = set(_arg_refs(run.by_id(_WITHDRAWAL_ROW), "faction"))
+        rise = tuple(track_entity(f) for f in FACTIONS if f in rising)
+        units = tuple(range(len(_withdrawal_units(run))))
+        return Request(
+            (
+                TargetInfo(entities=rise),
+                TargetInfo(options=units, max_select=_WITHDRAWAL_UNITS),
+            )
+        )
     if effect == _BOUNDLESS_AMBITION:
         return ix.boundless_ambition_request(
             run, run.by_id(_REVEAL_ACQUIRE_IMPERIUM), run.by_id(_REVEAL_ACQUIRE_RESERVE)
@@ -1199,6 +1219,8 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
             if contract is not None:
                 return contract
         return run.first("gain_reveal_persuasion")
+    if effect == _WITHDRAWAL:
+        return _withdrawal(run, answer)
     if effect == "may_move_freighter":
         # Freighter Fleet (Explicit): ``Item1`` 1 recalls, 0 advances.
         recall = _option(answer) == FREIGHTER_RECALL
@@ -2033,6 +2055,47 @@ def _choice_evaluate(
         return answer.value, action
 
     return evaluate
+
+
+def _withdrawal_units(run: DecisionRun) -> list[str]:
+    """The seat's units in the Conflict as Negotiated Withdrawal's
+    ``<BeginExecution>d__9`` @0x4dd78d0 lists them: the deployed troops,
+    then ``GetDeployedUnits<WormDreadnought>`` (``Concat``). A Bloodlines
+    Commander is a troop [Bloodlines p. 4], after the plain troops (D7)."""
+
+    me = run.ctx.me
+    return (
+        ["troop"] * me.troops_conflict
+        + ["commander"] * me.commanders_conflict
+        + ["dreadnought"] * me.dreadnoughts_conflict
+    )
+
+
+def _withdrawal(run: DecisionRun, answer: Answer) -> DomainAction | None:
+    """Negotiated Withdrawal's row for ``NegotiatedWithdrawalAbility``'s
+    ``((track,), (unit, ...))``: the Faction the answer names, and its
+    units. The compiled ``Evaluate`` reads its units from the Faction prompt,
+    so it names none; ``BeginExecution`` then retreats the first three of
+    its list (``ListUtil.IsEmpty`` -> ``Take(3)``): troops before
+    dreadnoughts."""
+
+    faction = _option(answer)
+    listed = _withdrawal_units(run)
+    picked = answer.response[1] if answer.response and len(answer.response) > 1 else ()
+    kinds = [listed[r] for r in picked if isinstance(r, int) and 0 <= r < len(listed)]
+    if not kinds:
+        kinds = listed[:_WITHDRAWAL_UNITS]
+    if len(kinds) != _WITHDRAWAL_UNITS:
+        return None
+    commanders, dreadnoughts = kinds.count("commander"), kinds.count("dreadnought")
+    for row in run.by_id(_WITHDRAWAL_ROW):
+        if (
+            str_arg(row, "faction") == faction
+            and (int_arg(row, "commanders") or 0) == commanders
+            and (int_arg(row, "dreadnoughts") or 0) == dreadnoughts
+        ):
+            return row
+    return None
 
 
 def _automatic_choices(run: DecisionRun, entries: Sequence[_Entry]) -> list[Source]:

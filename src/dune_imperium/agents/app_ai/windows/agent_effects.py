@@ -394,10 +394,13 @@ from dune_imperium.agents.app_ai.abilities.ix_board import (
     FREIGHTER_RECALL,
     FreighterAbility,
     FreighterAgentAbility,
+    FreighterCustomAbility,
 )
 from dune_imperium.agents.app_ai.abilities.ix_imperium import (
     IMPERIAL_BASHAR_TRASH,
     IMPERIAL_BASHAR_TROOP,
+    ConflictUnit,
+    DesertAmbushAbility,
 )
 from dune_imperium.agents.app_ai.abilities.leaders import (
     DisciplineAbility,
@@ -459,7 +462,10 @@ from dune_imperium.agents.app_ai.windows.turn import (
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
-from dune_imperium.rules.agent_box_abilities import DISCARD_FIRST_KEY
+from dune_imperium.rules.agent_box_abilities import (
+    DISCARD_FIRST_KEY,
+    retreats_for_deployment_left,
+)
 from dune_imperium.rules.agent_effect_frame import agent_box_rows
 from dune_imperium.rules.agent_effects import (
     STITCHED_HORROR_REWARDS,
@@ -480,6 +486,7 @@ from dune_imperium.rules.graft_boxes import (
 )
 from dune_imperium.rules.leader_abilities import LANDSRAAD_POST_IDS
 from dune_imperium.rules.spy_placement import solo_occupied_post_ids
+from dune_imperium.rules.strength import dreadnought_strength as _dreadnought
 
 _AU = "worm.canis.abilities.ActivatedAbilities.Uprising."
 _PLACE_SPY_CUSTOM = _AU + "PlaceSpyCustomAbility"
@@ -541,6 +548,8 @@ _AGENT_BOX_CARDS = (
     # ``GunThopterAgentAbility`` (an ``AgentAbility``: the opponents' garrison
     # troop is the engine's).
     "gun_thopter",
+    # Rise of Ix's Full-Scale Assault: its printed ``AgentTroops`` 2.
+    "full_scale_assault",
 )
 #: Cards whose generic agent box is ``PowerPlayAgentAbility`` (it sets
 #: ``player.AdditionalSpaceInfluence``; archetypes ``WormAbilityIDs``).
@@ -676,6 +685,9 @@ _ARMED_REWARD_CARDS = (
     # Rise of Ix's Esmar Tuek's card after the spice (``EsmarTuekAbility``).
     "spice_smugglers",
     "esmar_tuek_card",
+    # Rise of Ix's Court Intrigue: its Intrigue card after the one under the
+    # deck (``CourtIntrigueAbility``).
+    "court_intrigue",
 )
 #: Urgent Shigawire's added draw comes after the boosted card's own
 #: abilities in the card row (``_boost_draw``).
@@ -716,6 +728,9 @@ _DISCARD_ABILITY: Mapping[str, str] = {
     "truthsayer": "TruthsayerAbility",
     "satellite_ban": "SatelliteBanAbility",
     "spice_trader": "SpiceTraderAbility",
+    # Its trash after the discard is ``EvaluateTrash`` (the ``optional_trash``
+    # row, ``immortality._box_trash``).
+    "guild_chief_administrator": "GuildChiefAdministratorAbility",
     "guild_spy": "GuildSpyAgentAbility",
     "space_time_folding": "SpacetimeFoldingAbility",
     "guild_envoy": "GuildEnvoyAbility",
@@ -740,6 +755,8 @@ _PAYMENT_ABILITY: Mapping[str, str] = {
 }
 _INTRIGUE_PAYMENT_ABILITY: Mapping[str, str] = {
     "branching_path": "BranchingPathAbility",
+    # Rise of Ix: the Intrigue card it puts under the deck.
+    "court_intrigue": "CourtIntrigueAbility",
     "junction_headquarters": "JunctionHeadquartersAbility",
 }
 _CARD_SPY_ABILITY: Mapping[str, str] = {
@@ -1075,6 +1092,11 @@ _IX_ACTION_IDS: frozenset[str] = frozenset(
         "resolve_effect_influence",
         "discard_snooper_card",
         "acquire_agent_card_tech",
+        # Weirding Way's extra turn, Court Intrigue's Intrigue under the deck,
+        # Desert Ambush's enemy units (``_desert_ambush``).
+        "take_agent_card_extra_turn",
+        "put_intrigue_on_bottom_for_agent_card",
+        "retreat_opponent_troop",
         # The Ix Leaders' Signets (``_ix_signets``).
         "lose_leader_influence",
         "acquire_leader_reserve",
@@ -3279,7 +3301,11 @@ def _corrinth_city(t: _Turn) -> None:
 
 
 def _card_intrigue_payment(t: _Turn, short: str) -> None:
-    uses = t.by_id("trash_intrigue_for_agent_card", "pay_agent_card_intrigue_and_spice")
+    uses = t.by_id(
+        "trash_intrigue_for_agent_card",
+        "pay_agent_card_intrigue_and_spice",
+        "put_intrigue_on_bottom_for_agent_card",
+    )
     decline = t.run.first("decline_agent_card_intrigue_payment")
     if not uses and decline is None:
         return
@@ -3645,6 +3671,9 @@ def _disruption_tactics(t: _Turn) -> None:
     actions = t.by_id("retreat_opponent_troop")
     if not actions:
         return
+    if t.card_short == "desert_ambush":
+        _desert_ambush(t, actions)
+        return
     by_code: dict[int, DomainAction] = {}
     for action in actions:
         seat = int_arg(action, "player")
@@ -3668,6 +3697,95 @@ def _disruption_tactics(t: _Turn) -> None:
         answer,
         None,
     )
+
+
+def _desert_ambush_key(t: _Turn) -> tuple[object, ...]:
+    return ("agent_effects", "desert_ambush", t.run.ctx.round_number, t.card_ref)
+
+
+#: An enemy unit as Desert Ambush's rows name it: (seat, kind).
+type _EnemyUnit = tuple[int, str]
+#: A troop's (and a Commander's) ``get_Strength``.
+_TROOP_STRENGTH = 2
+
+
+def _enemy_unit(action: DomainAction) -> _EnemyUnit | None:
+    seat = int_arg(action, "player")
+    if seat is None:
+        return None
+    if int_arg(action, "dreadnoughts") == 1:
+        return seat, "dreadnought"
+    return seat, ("commander" if int_arg(action, "commanders") == 1 else "troop")
+
+
+def _desert_ambush(t: _Turn, actions: Sequence[DomainAction]) -> None:
+    """Desert Ambush's box (``DesertAmbushAbility``, Optional, unexhausted):
+    one Evaluate names every unit it retreats, ``((unit, ...),)``, at most
+    ``NumberToSelect`` -- the retreats the turn's troops still buy
+    (``retreats_for_deployment_left``). Our engine retreats one unit a row
+    (``retreat_opponent_troop``: the seat and the kind), so the rest of the
+    answer are follow-ups. The targets are the offered opponents' units in
+    seat order, troops (Commanders after them) then dreadnoughts, as
+    ``GetDeployedUnits`` lists them (UNTRACED: the app's target order)."""
+
+    rows: dict[_EnemyUnit, DomainAction] = {}
+    for action in actions:
+        unit = _enemy_unit(action)
+        if unit is not None:
+            rows.setdefault(unit, action)
+    memory = t.run.memory.intents
+    key = _desert_ambush_key(t)
+    queued = memory.pop(key, None)
+    if isinstance(queued, tuple):
+        for index, unit in enumerate(queued):
+            if unit in rows:
+                if queued[index + 1 :]:
+                    memory[key] = queued[index + 1 :]
+                _automatic(t, "Desert Ambush next unit", _FOLLOW_UP, rows[unit], -1)
+                return
+    units: list[ConflictUnit] = []
+    kinds: dict[int, _EnemyUnit] = {}
+    for opponent in t.run.ctx.opponents:
+        seat = opponent.player_id
+        for kind, count, strength in (
+            ("troop", opponent.troops_conflict, _TROOP_STRENGTH),
+            ("commander", opponent.commanders_conflict, _TROOP_STRENGTH),
+            ("dreadnought", opponent.dreadnoughts_conflict, _dreadnought(opponent)),
+        ):
+            if (seat, kind) not in rows:
+                continue
+            for _ in range(count):
+                kinds[len(units)] = (seat, kind)
+                units.append(ConflictUnit(len(units), seat, strength))
+    try:
+        left = retreats_for_deployment_left(t.run.ctx.me, t.context)
+    except RuntimeError:
+        left = 1
+    request = Request(
+        infos=(
+            TargetInfo(
+                options=tuple(int(u.ref) for u in units), max_select=max(left, 1)
+            ),
+        )
+    )
+
+    def answer(ans: Answer) -> DomainAction | None:
+        """The first unit now; the rest are kept only if this key is the one
+        chosen (``t.on_choose``)."""
+
+        picked = [kinds[r] for r in (ans.response or ((),))[0] if r in kinds]
+        if not picked:
+            return None
+        action = rows[picked[0]]
+        if len(picked) > 1:
+            t.on_choose[action] = [(key, tuple(picked[1:]))]
+        return action
+
+    found = _find(t.card, "DesertAmbushAbility")
+    if found is not None:
+        # The class takes its targets' units as ``ConflictUnit`` data.
+        found = (DesertAmbushAbility(found[0].owner, units), found[1])
+    _choice_source(t, "Desert Ambush", found, actions, request, answer, None)
 
 
 def _price_is_no_object(t: _Turn) -> None:
@@ -4947,13 +5065,19 @@ def _ix_card_rows(t: _Turn) -> None:
     - Imperial Bashar's -OR- box: ``ImperialBasharAgentAbility``
       (``_imperial_bashar``);
     - a card's Acquire Tech icon (Ixian Engineer): the card's
-      ``AcquireTechAgentAbility`` (``_card_tech``).
+      ``AcquireTechAgentAbility`` (``_card_tech``);
+    - Embedded Agent's two Freighter icons: its ``EmbeddedAgentAbility``
+      (Explicit, run at once) adds a ``FreighterCustomAbility``
+      (``<BeginExecution>d__9`` @0x4e687d0: ``AddCustomAbility``), each icon
+      answered by ``FreighterAbility::Evaluate``;
+    - Weirding Way's extra turn: ``WeirdingWayAbility`` (``_weirding_way``).
     """
 
     run = t.run
     if t.card_short == "imperial_bashar":
         _imperial_bashar(t)
     _card_tech(t)
+    _weirding_way(t)
     for row in t.by_id("resolve_unload_icon"):
         # An Unload box owed in the turn: Triggered, no AI hook (taken in
         # order, before the turn's choices).
@@ -4967,12 +5091,19 @@ def _ix_card_rows(t: _Turn) -> None:
     advance = t.by_id("advance_agent_card_freighter")
     recall = t.by_id("recall_agent_card_freighter")
     if (advance or recall) and t.card is not None:
-        found = _find(t.card, "FreighterAgentAbility")
-        if found is None or not isinstance(found[0], FreighterAbility):
+        freighter: FreighterAbility | None = None
+        if t.card_short == "embedded_agent":
+            if _find(t.card, "EmbeddedAgentAbility") is not None:
+                freighter = FreighterCustomAbility(t.card)
+        else:
+            found = _find(t.card, "FreighterAgentAbility")
+            if found is not None and isinstance(found[0], FreighterAbility):
+                freighter = found[0]
+        if freighter is None:
             t.unmapped.append(f"{t.card_short} freighter")
         else:
             t.sources.extend(
-                ix.freighter_sources(run, "Card Freighter", found[0], advance, recall)
+                ix.freighter_sources(run, "Card Freighter", freighter, advance, recall)
             )
     to_solari = run.first("pay_agent_card_spice_for_solari")
     to_spice = run.first("pay_agent_card_solari_for_spice")
@@ -4991,6 +5122,41 @@ def _ix_card_rows(t: _Turn) -> None:
 
         uses = tuple(a for a in (to_solari, to_spice) if a is not None)
         _prompt(t, "Local Fence", uses, evaluate_fence, explicit=False)
+
+
+#: ``WeirdingWayAbility``'s prompt (``<Targets>d__6`` @0x4df39b0): option 0
+#: "decline", option 1 "confirm"; ``<BeginExecution>d__9`` @0x4df3290 sets
+#: ``ExtraTurn`` only for an answer above 0.
+_WEIRDING_WAY_DECLINE = 0
+_WEIRDING_WAY_CONFIRM = 1
+
+
+def _weirding_way(t: _Turn) -> None:
+    """Weirding Way's "you may take another turn" (``take_agent_card_extra_turn``,
+    no refusal): ``WeirdingWayAbility`` (Optional, 1.0) answers option 1, the
+    extra turn, when the lower ``ConflictPostureBounds`` reaches the
+    Conflict's interest; option 0 declines -- the key used on nothing, the
+    row lapsing at the turn's end (OQ-095 (2))."""
+
+    row = t.run.first("take_agent_card_extra_turn")
+    if row is None:
+        return
+
+    def answer(ans: Answer) -> Answered:
+        return row if _response_ref(ans) == _WEIRDING_WAY_CONFIRM else LEFT_UNUSED
+
+    request = Request(
+        infos=(TargetInfo(options=(_WEIRDING_WAY_DECLINE, _WEIRDING_WAY_CONFIRM)),)
+    )
+    _choice_source(
+        t,
+        "Weirding Way",
+        _find(t.card, "WeirdingWayAbility") if t.card is not None else None,
+        (row,),
+        request,
+        answer,
+        None,
+    )
 
 
 def _card_tech(t: _Turn) -> None:

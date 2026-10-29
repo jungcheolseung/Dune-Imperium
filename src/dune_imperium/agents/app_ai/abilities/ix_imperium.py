@@ -98,6 +98,9 @@ from dune_imperium.agents.app_ai.abilities.imperium_a import (
     _has_faction,
     _in_play,
 )
+from dune_imperium.agents.app_ai.abilities.intrigue import (
+    _can_gain_faction_influence,
+)
 from dune_imperium.agents.app_ai.abilities.leaders import _has_trashable_card
 from dune_imperium.agents.app_ai.abilities.original_imperium import (
     AllianceAbility,
@@ -112,6 +115,7 @@ from dune_imperium.agents.app_ai.catalog import (
     is_board_space,
     space_entity,
 )
+from dune_imperium.agents.app_ai.context import FACTIONS
 from dune_imperium.agents.app_ai.entities import Attr, Entity, Kind
 from dune_imperium.agents.app_ai.summer import Summer
 from dune_imperium.core.player import PlayerState
@@ -1763,6 +1767,16 @@ class NegotiatedWithdrawalAbility(DeferredAbility):
         """``NegotiatedWithdrawalAbility::SelectionMode`` @0x4dd67b0: Optional."""
 
         return SelectionMode.OPTIONAL
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``Cost`` @0x4dd6620: ``ConflictTroops + ConflictDreadnoughts > 2``
+        (``BoolAction(2 < troops + dreadnoughts)``), then ``CanGainInfluence``
+        (a Faction the seat can still rise on). A Bloodlines Commander is a
+        troop [Bloodlines p. 4]."""
+
+        me = p.ctx.me
+        units = me.troops_conflict + me.commanders_conflict + me.dreadnoughts_conflict
+        return units > 2 and any(_can_gain_faction_influence(me, f) for f in FACTIONS)
 
     def value_for_player(
         self, p: Profile, with_entities: Sequence[Entity] = ()
