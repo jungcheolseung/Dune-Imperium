@@ -651,9 +651,8 @@ class BoundlessAmbitionRevealAbility(DeferredAbility):
         (``Playmat.Abilities.FirstOrDefault(b__11_0)``, ``b__11_0`` @0x4d8dd10:
         ``is BoundlessAmbitionCustomAbility``), added as a sub-summer.
         ``SetupPhase`` gives the playmat that ability in every Rise of Ix game
-        (``IsSetEnabled(2)`` @0x4a42f96 .. 0x4a43225), so it is always found.
-        Its class is not ported by this module: until it is, the lookup is the
-        ``UnportedAbility`` stand-in (worth 0, counted in ``UNPORTED``).
+        (``IsSetEnabled(2)`` @0x4a42f96 .. 0x4a43225), so it is always found
+        (``BoundlessAmbitionCustomAbility`` below).
         """
 
         v = Summer()
@@ -2153,15 +2152,32 @@ class WeirdingWayAbility(DeferredAbility):
 
 @port(BOUNDLESS_AMBITION_CUSTOM)
 class BoundlessAmbitionCustomAbility(DeferredAbility):
-    """``PlayAbilities.Promo.BoundlessAmbitionCustomAbility``: the playmat's
-    "acquire an Imperium Row card costing 5 or less" that Boundless
-    Ambition's Reveal grants (``Cost`` @0x4c5d100: ``HasCustomAbility`` and
-    ``HasImperiumRowCardWithPersuasionCostLessThan``)."""
+    """``PlayAbilities.Promo.BoundlessAmbitionCustomAbility``: the "acquire a
+    card that costs 5 or less" that Boundless Ambition's Reveal
+    (``BoundlessAmbitionRevealAbility/<BeginExecution>d__9`` @0x4d8dd90:
+    ``GainCustomAbility``) and its Unload
+    (``BoundlessAmbitionUnloadAbility/<BeginExecution>d__9`` @0x4b0b5b0:
+    ``AddCustomAbility``) grant the player.
+
+    ``Targets`` @0x4c5cff0: ``MakeAcquireImperiumRowCardTargeting(maxCost 5,
+    includeReserved, includeCanTopOfDeck)``: ``request.infos[0]`` the Row
+    then Reserve cards, ``infos[1]`` the destination picker.
+    ``evaluate`` responds ``((card,), (0,))``."""
 
     def selection_mode(self, p: Profile) -> SelectionMode:
-        """``SelectionMode`` @0x4c5d1b0: Optional (``xor eax, eax``)."""
+        """``SelectionMode`` @0x4c5d1b0: Optional (``return 0``)."""
 
         return SelectionMode.OPTIONAL
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``Cost`` @0x4c5d100: ``HasImperiumRowCardWithPersuasionCostLessThan
+        (6)`` and ``HasCustomAbility``: a Row card (never the Reserve) of cost
+        5 or less."""
+
+        return any(
+            card_entity(ref).int_attr("PersuasionCost", 0) < 6
+            for ref in p.ctx.imperium_row
+        )
 
     def value_for_player(
         self, p: Profile, with_entities: Sequence[Entity] = ()
@@ -2187,15 +2203,18 @@ class BoundlessAmbitionCustomAbility(DeferredAbility):
         return v
 
     def evaluate(self, p: Profile, request: Request) -> Answer:
-        """``Evaluate`` @0x4c5d750: each card target at ``AcquireValue(P)
-        .Sum``, answered ``[IntTargetResponse(0), [card]]`` and kept only
-        when strictly better (``UpdateSelectionResponses``)."""
+        """``Evaluate`` @0x4c5d750: each card target
+        (``GetTargets().OfType<WormImperiumPlayable>()``) at
+        ``AcquireValue(P).Sum``, answered ``[EntityListTargetResponse([card]),
+        IntTargetResponse(0)]`` -- the card, then option 0 of the destination
+        picker -- and kept only when strictly better
+        (``UpdateSelectionResponses``)."""
 
         best: Answer | None = None
         for card in _targets(request, Kind.CARD):
             value = p.acquire_value(card).sum
             if best is None or value > best.value:
                 best = Answer(
-                    value, ((0,), (card.ref,)), f"Boundless Ambition | {card.ref}"
+                    value, ((card.ref,), (0,)), f"Boundless Ambition | {card.ref}"
                 )
         return best if best is not None else Answer(0.0, None, "Boundless Ambition")

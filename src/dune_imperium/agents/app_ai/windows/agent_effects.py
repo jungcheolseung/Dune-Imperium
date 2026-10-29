@@ -456,7 +456,10 @@ from dune_imperium.agents.app_ai.windows.turn import (
     board_space_order,
     playmat_sources,
 )
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
+from dune_imperium.content.uprising.types import PersonalCardAgentEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
+from dune_imperium.rules.agent_box_abilities import DISCARD_FIRST_KEY
 from dune_imperium.rules.agent_effect_frame import agent_box_rows
 from dune_imperium.rules.agent_effects import (
     STITCHED_HORROR_REWARDS,
@@ -2208,6 +2211,23 @@ def _boost_draw(t: _Turn, action: DomainAction) -> None:
     )
 
 
+def _signet_box(t: _Turn) -> bool:
+    """Whether the box being resolved is a Signet Ring icon's: its card's
+    agent effect is ``LEADER_SIGNET`` (the Signet Ring, Rise of Ix's
+    Boundless Ambition, whose "[Signet Ring]" box uses the Leader's Signet
+    Ring ability [Main p. 20], or a Ghola's copy of either; the engine's
+    ``rules.agent_effects._is_signet_box``)."""
+
+    ref = t.partner_ref if t.ghola else t.card_ref
+    if ref is None:
+        return False
+    try:
+        card = personal_card_for_instance(ref)
+    except (KeyError, NotImplementedError, ValueError):
+        return False
+    return card.agent_effect is PersonalCardAgentEffect.LEADER_SIGNET
+
+
 def _single_box(t: _Turn, action: DomainAction) -> None:
     short = t.card_short or ""
     if short == "seek_allies":
@@ -2220,7 +2240,7 @@ def _single_box(t: _Turn, action: DomainAction) -> None:
     if short in _AGENT_BOX_CARDS:
         _box_auto(t, f"{short} box", action)
         return
-    if short == "signet_ring":
+    if _signet_box(t):
         leader_id = t.run.ctx.me.leader_id or ""
         name = _SIGNET_BOX_ABILITY.get(leader_id)
         found = _find(t.leader, name) if name is not None else None
@@ -2342,7 +2362,7 @@ def _bloodlines_box(t: _Turn, short: str, action: DomainAction) -> None:
 def _box_icon(t: _Turn, action: DomainAction, effect: str) -> None:
     short = t.card_short or ""
     label = f"{short} {effect}"
-    if short == "signet_ring":
+    if _signet_box(t):
         _signet_icon(t, action, effect)
         return
     if effect == "trash_self":
@@ -2742,6 +2762,9 @@ def _card_discard(t: _Turn, short: str) -> None:
     if short == "in_the_shadows":
         _in_the_shadows_discard(t, discard, decline)
         return
+    if short == "ix_guild_compact":
+        _ix_guild_compact_discard(t, discard, decline)
+        return
     name = _DISCARD_ABILITY.get(short)
     found = _find(t.card, name) if name is not None else None
     if found is None:
@@ -2759,6 +2782,52 @@ def _card_discard(t: _Turn, short: str) -> None:
         _ref_or(discard, "card_id", None),
         decline,
     )
+
+
+def _ix_guild_compact_key(t: _Turn) -> tuple[object, ...]:
+    return ("agent_effects", "ix_guild_compact", t.run.ctx.round_number, t.card_ref)
+
+
+def _ix_guild_compact_discard(
+    t: _Turn, discard: Sequence[DomainAction], decline: DomainAction | None
+) -> None:
+    """Ix-Guild Compact's "[Discard] [Discard] -> [Dreadnought]"
+    (``IxGuildCompactAgentAbility``, Optional): one answer names both cards
+    ``((card, card),)``; our engine picks them one at a time, the first kept
+    in the box's ``DISCARD_FIRST_KEY`` until the second is picked. The second
+    is the rest of the same answer, a follow-up (Corrinth City's shape); an
+    unused key lapses at the turn's end."""
+
+    memory = t.run.memory.intents
+    key = _ix_guild_compact_key(t)
+    if isinstance(t.context.get(DISCARD_FIRST_KEY), str):
+        intent = memory.pop(key, None)
+        chosen = with_arg(discard, "card_id", intent) if intent is not None else None
+        if chosen is None:
+            # No stored answer: the app's discard order over what is left.
+            order = t.p.discard_order(_cards(t, _arg_refs(discard, "card_id")), False)
+            chosen = with_arg(discard, "card_id", order[0].ref) if order else None
+        if chosen is not None:
+            _automatic(t, "Ix-Guild Compact second discard", _FOLLOW_UP, chosen, -1)
+        return
+    found = _find(t.card, "IxGuildCompactAgentAbility")
+    request = Request(
+        infos=(TargetInfo(entities=_cards(t, _arg_refs(discard, "card_id"))),)
+    )
+
+    def answer(ans: Answer) -> DomainAction | None:
+        """The first discard now; the second is kept only if this key is
+        the one chosen (``t.on_choose``)."""
+
+        if ans.response is None or not ans.response[0]:
+            return None
+        refs = ans.response[0]
+        action = with_arg(discard, "card_id", refs[0])
+        if action is not None and len(refs) >= 2:
+            t.on_choose[action] = [(key, refs[1])]
+        return action
+
+    _choice_source(t, "Ix-Guild Compact", found, discard, request, answer, decline)
 
 
 def _card_payment(t: _Turn, short: str) -> None:
@@ -5251,7 +5320,7 @@ def _partner_box(t: _Turn, view: _BoxView) -> _Partner:
     _unknown_ids(other)
     _card_box(other)
     _card_choices(other)
-    if other.card_short == "signet_ring":
+    if _signet_box(other):
         # The Signet Ring's box choices are the leader's (``_leader_choices``);
         # what the leader offers in both states (Other Memories, the board
         # repeat, …) is the active state's already.

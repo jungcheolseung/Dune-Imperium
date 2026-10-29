@@ -497,7 +497,10 @@ def test_boundless_ambition_custom_takes_the_best_row_card_costing_five_or_less(
     assert got == pytest.approx(expected if expected is not None else 0.0)
     answer = custom.evaluate(p, Request(infos=(TargetInfo(entities=tuple(cheap)),)))
     if cheap:
-        assert answer.response is not None and answer.response[0] == (0,)
+        # ``Evaluate`` @0x4c5d750: the card first, then the picker's option 0.
+        best = max(cheap, key=lambda c: p.acquire_value(c).sum)
+        assert answer.response == ((best.ref,), (0,))
+    assert custom.meets_cost(p) == bool(cheap)
 
 
 # ---------------------------------------------------------------------------

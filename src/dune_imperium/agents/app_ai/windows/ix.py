@@ -1,5 +1,5 @@
-"""Rise of Ix windows (docs/app-ai-plan.md §13): the Freighter and the
-Shipping track's recall rewards.
+"""Rise of Ix windows (docs/app-ai-plan.md §13): the Freighter, the Shipping
+track's recall rewards and the Unload boxes' windows.
 
 - ``freighter_move``: a Freighter icon outside its owner's turn (a Conflict
   reward's, ``rules.shipping_track.freighter_move_frame``): the app's
@@ -7,6 +7,15 @@ Shipping track's recall rewards.
   ``GetFreighterSelections(-1).Item1`` (1 recall, 0 advance) at
   ``FreighterValue`` (spec/rix-tech.md §4.6-4.7, §6.6). Explicit, so the app
   always answers; ``decline_freighter`` is never the app's answer.
+  Freighter Fleet's Unload opens the same window (its
+  ``FreighterFleetUnloadAbility`` ``AddCustomAbility``s a
+  ``FreighterCustomAbility``, @0x4ad6b60), outside the owner's turn or above
+  an arrow's held right side (``rules.unload``).
+- ``unload_icons``: an Unload box's own window, gained outside its owner's
+  turn or above an arrow's held right side: its icons in order, Ix-Guild
+  Compact's Tech Negotiation placed while the supply allows
+  (``unload_icons``), Boundless Ambition's acquisition answered by
+  ``BoundlessAmbitionCustomAbility`` (``unload_acquisition``).
 - ``shipping_reward_icons``: a recall's rewards outside the owner's turn, one
   row each in any order (``resolve_shipping_reward``). The app's three
   Explicit sources: ``ShippingTrackAbility1`` (space 1: Dividends or spice by
@@ -23,6 +32,7 @@ window (``agent_effects``), where the same rows wait on the owner's turn.
 from collections.abc import Sequence
 
 from dune_imperium.agents.app_ai.abilities.base import (
+    Answer,
     Request,
     SelectionMode,
     TargetInfo,
@@ -39,6 +49,9 @@ from dune_imperium.agents.app_ai.abilities.ix_board import (
     ShippingTrackAbility2,
     ShippingTrackAbility3,
 )
+from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+    BoundlessAmbitionCustomAbility,
+)
 from dune_imperium.agents.app_ai.abilities.ix_leaders import (
     CarefulObservationFactionAbility,
     OneStepAheadRoundAbility,
@@ -50,7 +63,7 @@ from dune_imperium.agents.app_ai.catalog import (
     space_entity,
     track_entity,
 )
-from dune_imperium.agents.app_ai.context import FACTIONS
+from dune_imperium.agents.app_ai.context import FACTIONS, card_id
 from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.windows.common import (
     Source,
@@ -58,7 +71,7 @@ from dune_imperium.agents.app_ai.windows.common import (
     decide,
     str_arg,
 )
-from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler
+from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.rules.dreadnoughts import space_controller
 
@@ -363,12 +376,125 @@ def take_effect_influence(run: DecisionRun) -> DomainAction | None:
     return rows[0] if rows else None
 
 
-def unload_icons(run: DecisionRun) -> DomainAction | None:
-    """``unload_icons``: an Unload box gained outside its owner's turn."""
+UNLOAD_DECLINE = "decline_unload_icon"
+_UNLOAD_IDS = frozenset({UNLOAD, UNLOAD_DECLINE})
+ACQUIRE_UNLOAD_IMPERIUM = "acquire_unload_imperium_card"
+ACQUIRE_UNLOAD_RESERVE = "acquire_unload_reserve_card"
+SKIP_UNLOAD_ACQUISITION = "skip_unload_acquisition"
+_ACQUISITION_IDS = frozenset(
+    {ACQUIRE_UNLOAD_IMPERIUM, ACQUIRE_UNLOAD_RESERVE, SKIP_UNLOAD_ACQUISITION}
+)
+#: The player's playmat, owner of the custom abilities the app grants (no
+#: hook reads it).
+_PLAYMAT = Entity(Kind.LEADER, "playmat")
 
-    if any(a.action_id != UNLOAD for a in run.legal):
+
+def unload_icons(run: DecisionRun) -> DomainAction | None:
+    """``unload_icons``: an Unload box's own window (see the module
+    docstring). The app's ``UnloadAbility`` runs the card's Reveal abilities
+    (``<BeginExecution>d__10`` @0x4b09fc0: ``RunUsableAbilityForPlayer``
+    over its ``RevealAbility``s) without asking: Ix-Guild Compact's
+    ``IxGuildCompactRevealAbility`` places both Negotiators
+    (``<BeginExecution>d__5`` @0x4bef400: ``AddTechNegotiators(2)``), so a
+    Tech Negotiation is placed whenever it is offered and refused
+    (``decline_unload_icon``) only when the supply cannot pay it."""
+
+    if any(a.action_id in _ACQUISITION_IDS for a in run.legal):
+        return unload_acquisition(run)
+    if any(a.action_id not in _UNLOAD_IDS for a in run.legal):
         return None
-    return take_unload(run)
+    return take_unload(run) or run.first(UNLOAD_DECLINE)
+
+
+def boundless_ambition_request(
+    run: DecisionRun,
+    imperium: Sequence[DomainAction],
+    reserve: Sequence[DomainAction],
+) -> Request:
+    """``BoundlessAmbitionCustomAbility::Targets`` @0x4c5cff0 over the offered
+    rows: ``infos[0]`` the Row cards, then the Reserve's
+    (``MakeAcquireImperiumRowCardTargeting(maxCost 5, includeReserved,
+    includeCanTopOfDeck)``; our engine never offers Foldspace, OQ-125),
+    ``infos[1]`` the destination picker -- the top of the deck (0) only while
+    Spaceport or Recruitment Mission offers it, then the discard pile."""
+
+    seat = run.ctx.seat
+    row_refs = [
+        ref
+        for a in imperium
+        if arg(a, "to_deck_top") is not True
+        and (ref := str_arg(a, "instance_id")) is not None
+    ]
+    reserve_ids = [
+        ref
+        for a in reserve
+        if arg(a, "to_deck_top") is not True
+        and (ref := str_arg(a, "card_id")) is not None
+    ]
+    entities = (
+        *(card_entity(ref, seat) for ref in row_refs),
+        *(
+            run.profile.market_opening_reserve_card(card_entity(f"reserve:{ref}"))
+            for ref in reserve_ids
+        ),
+    )
+    deck_top = any(arg(a, "to_deck_top") is True for a in (*imperium, *reserve))
+    return Request(
+        infos=(
+            TargetInfo(entities=entities),
+            TargetInfo(options=(0, 1) if deck_top else (0,)),
+        )
+    )
+
+
+def boundless_ambition_choice(
+    answer: Answer,
+    imperium: Sequence[DomainAction],
+    reserve: Sequence[DomainAction],
+) -> DomainAction | None:
+    """The row of ``BoundlessAmbitionCustomAbility``'s ``((card,), (0,))``:
+    the card's row, on top of the deck when option 0 names it there (as
+    Conscript's picker, ``agent_effects._deck_top_variant``)."""
+
+    response = answer.response or ()
+    ref = response[0][0] if response and response[0] else None
+    if not isinstance(ref, str):
+        return None
+    if ref.startswith("reserve:"):
+        variants = [a for a in reserve if str_arg(a, "card_id") == card_id(ref)]
+    else:
+        variants = [a for a in imperium if str_arg(a, "instance_id") == ref]
+    destination = response[1][0] if len(response) > 1 and response[1] else None
+    deck_top = next((a for a in variants if arg(a, "to_deck_top") is True), None)
+    plain = next((a for a in variants if arg(a, "to_deck_top") is not True), None)
+    if destination == 0 and deck_top is not None:
+        return deck_top
+    return plain
+
+
+def unload_acquisition(run: DecisionRun) -> DomainAction | None:
+    """Boundless Ambition's Unload window (``rules.unload`` marks it
+    ``UNLOAD_ACQUIRE_KEY``): the custom ability its
+    ``BoundlessAmbitionUnloadAbility`` grants, valued by
+    ``BoundlessAmbitionCustomAbility::Evaluate`` over the offered cards.
+
+    Judgement: the key is Optional, so the app's ``MakeChoice`` leaves it
+    unused when its value is 0 or less; our window has no refusal while a
+    card is in reach, so its own answer is taken then too. With none in
+    reach the ability's ``Cost`` fails and only the fizzle's confirm
+    (``skip_unload_acquisition``) is offered."""
+
+    if any(a.action_id not in _ACQUISITION_IDS for a in run.legal):
+        return None
+    imperium = run.by_id(ACQUIRE_UNLOAD_IMPERIUM)
+    reserve = run.by_id(ACQUIRE_UNLOAD_RESERVE)
+    if not imperium and not reserve:
+        return run.first(SKIP_UNLOAD_ACQUISITION)
+    ability = BoundlessAmbitionCustomAbility(_PLAYMAT)
+    request = boundless_ambition_request(run, imperium, reserve)
+    return boundless_ambition_choice(
+        ability.evaluate(run.profile, request), imperium, reserve
+    )
 
 
 _SET_ASIDE = "set_aside_leader_card"

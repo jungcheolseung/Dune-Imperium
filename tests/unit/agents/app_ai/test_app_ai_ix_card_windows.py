@@ -1,7 +1,8 @@
 """The windows that answer P4's Imperium batch d (plan §13): Imperial Bashar's
 -OR- box, Satellite Ban's and Spice Trader's discards and Satellite Ban's
-Reveal retreat, on hand-built rows (the engine rows are P4's
-``claude/p4d-imperium-b``)."""
+Reveal retreat, the Unload cards (Freighter Fleet, Ix-Guild Compact,
+Boundless Ambition) and their Unload windows, on hand-built rows (the engine
+rows are P4's ``claude/p4d-imperium-b``)."""
 
 from collections.abc import Sequence
 
@@ -307,3 +308,215 @@ def test_esmar_tuek_and_treachery_follow_their_app_classes() -> None:
     assert "treachery" in agent_effects._POWER_PLAY_CARDS
     assert "treachery" in agent_effects._AGENT_BOX_CARDS
     assert reveal._GAIN_KINDS["deploy_reveal_supply_troops"] == "deploy"
+
+
+# -- Freighter Fleet, Ix-Guild Compact, Boundless Ambition ----------------------------
+
+COMPACT = "imperium:ix_guild_compact:0"
+
+
+def _row(action_id: str, **arguments: object) -> DomainAction:
+    return DomainAction(
+        action_id=action_id,
+        actor=0,
+        arguments=tuple(sorted(arguments.items())),  # type: ignore[arg-type]
+    )
+
+
+def _run(rows: Sequence[DomainAction]) -> DecisionRun:
+    p = make_profile(first_decision("turn", config=IX))
+    return DecisionRun(p.ctx, p, tuple(rows), p.rng, Memory())
+
+
+def test_a_signet_box_is_read_from_the_cards_agent_effect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Boundless Ambition's "[Signet Ring]" box uses the Leader's Signet Ring
+    ability [Main p. 20]: a box is a Signet's by its card's ``LEADER_SIGNET``
+    effect (P4's data for Boundless Ambition, stubbed here), not by the
+    Signet Ring's name; a Ghola's box is its partner's."""
+
+    from types import SimpleNamespace
+
+    from dune_imperium.content.uprising.personal_cards import (
+        personal_card_for_instance as lookup,
+    )
+    from dune_imperium.content.uprising.types import PersonalCardAgentEffect
+
+    ambition = "imperium:boundless_ambition:0"
+
+    def stub(ref: str) -> object:
+        if ref == ambition:
+            return SimpleNamespace(agent_effect=PersonalCardAgentEffect.LEADER_SIGNET)
+        return lookup(ref)
+
+    monkeypatch.setattr(agent_effects, "personal_card_for_instance", stub)
+    t = _turn("boundless_ambition", ())
+    assert agent_effects._signet_box(t)
+    t.card_ref = "player:0:starter:signet_ring:0"
+    assert agent_effects._signet_box(t)
+    t.card_ref = "player:0:starter:dagger:0"
+    assert not agent_effects._signet_box(t)
+    t.card_ref, t.partner_ref, t.ghola = "imperium:ghola:0", ambition, True
+    assert agent_effects._signet_box(t)
+
+
+def test_ix_guild_compact_discards_both_cards_of_one_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``IxGuildCompactAgentAbility::Evaluate`` @0x4dcf430 names both cards
+    (``GetDiscardOrder(...).Take(2)``); our engine asks one at a time, the
+    first kept in ``DISCARD_FIRST_KEY``: the second is a follow-up."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+        IxGuildCompactAgentAbility,
+    )
+    from dune_imperium.agents.app_ai.windows.common import Stage
+    from dune_imperium.rules.agent_box_abilities import DISCARD_FIRST_KEY
+
+    cards = (
+        "player:0:starter:dagger:0",
+        "player:0:starter:dagger:1",
+        "player:0:starter:dune_the_desert_planet:0",
+    )
+    discards = tuple(_row("discard_agent_card", card_id=c) for c in cards)
+    monkeypatch.setattr(
+        IxGuildCompactAgentAbility,
+        "evaluate",
+        lambda self, p, request: Answer(3.0, ((cards[2], cards[0]),), ""),
+    )
+    t = _turn("ix_guild_compact", discards)
+    agent_effects._card_discard(t, "ix_guild_compact")
+    [source] = t.sources
+    assert source.evaluate is not None and not t.unmapped
+    assert source.evaluate() == (3.0, discards[2])
+    key = agent_effects._ix_guild_compact_key(t)
+    assert t.on_choose[discards[2]] == [(key, cards[0])]
+
+    second = _turn("ix_guild_compact", discards[:2])
+    second.context = {DISCARD_FIRST_KEY: cards[2]}
+    second.run.memory.intents[key] = cards[0]
+    agent_effects._card_discard(second, "ix_guild_compact")
+    [follow] = second.sources
+    assert follow.actions == (discards[0],) and follow.stage is not Stage.PROMPT
+    assert key not in second.run.memory.intents
+
+
+def test_the_unload_window_places_each_negotiator_the_supply_allows() -> None:
+    """``UnloadAbility`` reruns Ix-Guild Compact's Reveal, which places both
+    Negotiators without asking (``AddTechNegotiators(2)``): placed when
+    offered, refused only when only the refusal is offered (an empty supply)."""
+
+    from dune_imperium.agents.app_ai.windows import ix
+
+    place = _row("resolve_unload_icon", card_id=COMPACT, effect="negotiator")
+    decline = _row("decline_unload_icon", card_id=COMPACT, effect="negotiator")
+    assert ix.unload_icons(_run((place, decline))) is place
+    assert ix.unload_icons(_run((decline,))) is decline
+
+
+def test_boundless_ambitions_unload_window_takes_its_custom_abilitys_card(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``BoundlessAmbitionCustomAbility``: Row then Reserve cards and the
+    destination picker (option 0 the top of the deck while offered); its
+    answer ``((card,), (0,))`` is taken whatever its value (our window has
+    no refusal), and the fizzle's confirm when nothing is in reach."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer, Request
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+        BoundlessAmbitionCustomAbility,
+    )
+    from dune_imperium.agents.app_ai.windows import ix
+
+    run = _run(())
+    first, second = run.ctx.imperium_row[:2]
+    plain = tuple(
+        _row(ix.ACQUIRE_UNLOAD_IMPERIUM, instance_id=r) for r in (first, second)
+    )
+    top = _row(ix.ACQUIRE_UNLOAD_IMPERIUM, instance_id=second, to_deck_top=True)
+    reserve = _row(ix.ACQUIRE_UNLOAD_RESERVE, card_id="arrakis_liaison")
+    requests: list[Request] = []
+
+    def answer(ref: str) -> None:
+        def evaluate(self: object, p: object, request: Request) -> Answer:
+            requests.append(request)
+            return Answer(-1.0, ((ref,), (0,)), "")
+
+        monkeypatch.setattr(BoundlessAmbitionCustomAbility, "evaluate", evaluate)
+
+    answer(second)
+    assert ix.unload_icons(_run((*plain, top, reserve))) is top
+    request = requests[-1]
+    refs = [e.ref for e in request.infos[0].entities]
+    assert refs == [first, second, "reserve:arrakis_liaison"]
+    assert request.infos[1].options == (0, 1)
+    assert ix.unload_icons(_run((*plain, reserve))) is plain[1]
+    assert requests[-1].infos[1].options == (0,)
+    answer("reserve:arrakis_liaison")
+    assert ix.unload_icons(_run((*plain, reserve))) is reserve
+    skip = _row(ix.SKIP_UNLOAD_ACQUISITION)
+    assert ix.unload_icons(_run((skip,))) is skip
+
+
+def test_freighter_fleets_reveal_moves_as_its_freighter_ability_answers() -> None:
+    """``FreighterRevealAbility`` (``FreighterAbility::Evaluate``: ``Item1``
+    1 recalls, 0 advances) over the Reveal's two rows."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.ix_board import FreighterRevealAbility
+
+    advance = _row("advance_reveal_freighter")
+    recall = _row("recall_reveal_freighter")
+    run = _run((advance, recall))
+    effect = "may_move_freighter"
+    ability = reveal._choice_ability(run, effect, "imperium:freighter_fleet:0")
+    assert isinstance(ability, FreighterRevealAbility)
+    assert reveal._realise(run, effect, Answer(1.0, ((1,),), "")) is recall
+    assert reveal._realise(run, effect, Answer(1.0, ((0,),), "")) is advance
+    only = _run((advance,))
+    assert reveal._realise(only, effect, Answer(1.0, ((1,),), "")) is None
+
+
+def test_ix_guild_compacts_reveal_negotiators_are_automatic_steps() -> None:
+    """``IxGuildCompactRevealAbility`` (a state-300 ``RevealAbility``)
+    places both without asking: each optional row is an automatic step."""
+
+    from dune_imperium.agents.app_ai.windows.common import Stage
+
+    place = _row("place_reveal_negotiator")
+    run = _run((place,))
+    for effect in ("may_place_two_negotiators", "may_place_negotiator"):
+        entry = reveal._Entry(COMPACT, effect, (place,))
+        [source] = reveal._automatic_choices(run, [entry])
+        assert source.stage is Stage.REVEAL_AUTO and source.actions == (place,)
+
+
+def test_boundless_ambitions_reveal_is_valued_by_its_custom_ability() -> None:
+    """The Reveal's ``BoundlessAmbitionRevealAbility`` grants
+    ``BoundlessAmbitionCustomAbility``, the prompt key; while the mandatory
+    acquisition holds ``finish_reveal`` its own answer is the fallback of an
+    End Turn (``_held_answer``): the best ``AcquireValue`` card."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+        BoundlessAmbitionCustomAbility,
+    )
+
+    probe = _run(())
+    refs = probe.ctx.imperium_row[:3]
+    rows = tuple(_row("acquire_reveal_imperium_card", instance_id=r) for r in refs)
+    run = _run(rows)
+    card, effect = "imperium:boundless_ambition:0", "acquire_card_up_to_five"
+    ability = reveal._choice_ability(run, effect, card)
+    assert isinstance(ability, BoundlessAmbitionCustomAbility)
+    request = reveal._choice_request(run, effect, card)
+    assert [e.ref for e in request.infos[0].entities] == list(refs)
+    picked = reveal._realise(run, effect, Answer(1.0, ((refs[1],), (0,)), ""))
+    assert picked is rows[1]
+    best = max(
+        request.infos[0].entities, key=lambda e: run.profile.acquire_value(e).sum
+    )
+    held = reveal._held_answer(run, [reveal._Entry(card, effect, rows)])
+    assert held is rows[list(refs).index(best.ref)]

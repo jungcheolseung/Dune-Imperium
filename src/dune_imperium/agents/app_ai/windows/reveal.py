@@ -236,7 +236,13 @@ from dune_imperium.agents.app_ai.abilities.imperium_b import (
     UndercoverAssetAbility,
     UnswervingLoyaltyAbility,
 )
+from dune_imperium.agents.app_ai.abilities.ix_board import (
+    FREIGHTER_RECALL,
+    FreighterRevealAbility,
+)
 from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+    BoundlessAmbitionCustomAbility,
+    BoundlessAmbitionRevealAbility,
     IxianEngineerAbility,
     WebOfPowerRevealAbility,
 )
@@ -370,6 +376,12 @@ _CHOICE_ABILITIES: Mapping[str, type[DeferredAbility]] = {
     # Ixian Engineer's self-trash for a Victory Point (CHOAM Demands' shape).
     "gain_chosen_influence": WebOfPowerRevealAbility,
     "may_trash_self_for_victory_point_if_three_tech_tiles": IxianEngineerAbility,
+    # Freighter Fleet's Freighter (``FreighterRevealAbility``, Explicit), and
+    # Boundless Ambition's acquisition: its ``BoundlessAmbitionRevealAbility``
+    # grants the ``BoundlessAmbitionCustomAbility`` that values it
+    # (``_choice_ability``).
+    "may_move_freighter": FreighterRevealAbility,
+    "acquire_card_up_to_five": BoundlessAmbitionRevealAbility,
     # The original game (abilities/original_imperium.py).
     "may_deploy_one_troop": GunThopterRevealAbility,
     "choose_two_persuasion_or_two_strength": BeneGesseritSisterAbility,
@@ -405,6 +417,20 @@ _ORIGINAL_SINGLE_ROWS: Mapping[str, str] = {
 }
 
 _SPY_EFFECTS = frozenset({"place_spy", "place_two_spies", "command_place_spy"})
+
+#: Choices the app makes without asking: Ix-Guild Compact's two Tech
+#: Negotiation icons are its ``IxGuildCompactRevealAbility``, a state-300
+#: ``RevealAbility`` whose ``<BeginExecution>d__5`` @0x4bef400 places both
+#: (``AddTechNegotiators(2)``). Our engine offers each as an optional row
+#: (``place_reveal_negotiator``, the first queues the second); each is an
+#: automatic step at its card's reveal position (``_automatic_choices``).
+_AUTOMATIC_CHOICES = frozenset({"may_place_two_negotiators", "may_place_negotiator"})
+
+#: Boundless Ambition's "Acquire a card that costs 5 or less": a mandatory
+#: choice of ours whose app key is Optional (``reveal_window``).
+_BOUNDLESS_AMBITION = "acquire_card_up_to_five"
+_REVEAL_ACQUIRE_IMPERIUM = "acquire_reveal_imperium_card"
+_REVEAL_ACQUIRE_RESERVE = "acquire_reveal_reserve_card"
 
 #: Bloodlines "Command (6+)" choices: automatic steps answered before any buy,
 #: by their card's reveal position (docs/app-ai-plan.md §11.5;
@@ -621,7 +647,8 @@ def _choice_entries(run: DecisionRun) -> list[_Entry] | None:
         offered = tuple(a for a in rows if a in legal)
         if not offered:
             continue
-        if effect not in _CHOICE_ABILITIES or card_id(card) not in CARD_ARCHETYPES:
+        mirrored = effect in _CHOICE_ABILITIES or effect in _AUTOMATIC_CHOICES
+        if not mirrored or card_id(card) not in CARD_ARCHETYPES:
             return None
         entries.append(_Entry(card, effect, offered))
         covered.update(offered)
@@ -745,6 +772,10 @@ def _choice_ability(run: DecisionRun, effect: str, card_ref: str) -> DeferredAbi
     ability = _card_ability(card, _CHOICE_ABILITIES[effect])
     if effect == _CORRINTH_CITY and run.ctx.scouts:
         return CorrinthCityRevealScoutsAbility(card)
+    if effect == _BOUNDLESS_AMBITION:
+        # The custom ability the card's Reveal grants (``GainCustomAbility``,
+        # @0x4d8dd90): the prompt's key that names the card.
+        return BoundlessAmbitionCustomAbility(_PLAYMAT)
     return ability
 
 
@@ -767,13 +798,23 @@ def _choice_request(run: DecisionRun, effect: str, card_ref: str) -> Request:
       judgement: the app's ``Targets`` were not decoded, these are the
       engine's legal losses), ``FACTIONS`` order;
     - Tleilaxu Surgeon: one zone code per troop, garrison troops (0) first,
-      then deployed ones (1) (``GetTroopTargets``).
+      then deployed ones (1) (``GetTroopTargets``);
+    - Freighter Fleet: none (``FreighterAbility::Evaluate`` reads the
+      seat's Freighter);
+    - Boundless Ambition: the offered cards and the destination picker
+      (``ix.boundless_ambition_request``).
     """
 
     me = run.ctx.me
     original = _original_request(run, effect)
     if original is not None:
         return original
+    if effect == "may_move_freighter":
+        return Request()
+    if effect == _BOUNDLESS_AMBITION:
+        return ix.boundless_ambition_request(
+            run, run.by_id(_REVEAL_ACQUIRE_IMPERIUM), run.by_id(_REVEAL_ACQUIRE_RESERVE)
+        )
     if effect in (
         "recall_spy_to_draw_intrigue_if_two_placed",
         "may_recall_two_spies_for_three_persuasion",
@@ -1158,6 +1199,18 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
             if contract is not None:
                 return contract
         return run.first("gain_reveal_persuasion")
+    if effect == "may_move_freighter":
+        # Freighter Fleet (Explicit): ``Item1`` 1 recalls, 0 advances.
+        recall = _option(answer) == FREIGHTER_RECALL
+        return run.first(
+            "recall_reveal_freighter" if recall else "advance_reveal_freighter"
+        )
+    if effect == _BOUNDLESS_AMBITION:
+        return ix.boundless_ambition_choice(
+            answer,
+            run.by_id(_REVEAL_ACQUIRE_IMPERIUM),
+            run.by_id(_REVEAL_ACQUIRE_RESERVE),
+        )
     if effect in _INFLUENCE_GAIN_EFFECTS:
         # Pointing the Way / Ixian Ambassador / Web of Power (Explicit): the
         # chosen track.
@@ -1982,6 +2035,39 @@ def _choice_evaluate(
     return evaluate
 
 
+def _automatic_choices(run: DecisionRun, entries: Sequence[_Entry]) -> list[Source]:
+    """The ``_AUTOMATIC_CHOICES`` entries as state-300 automatic steps, by
+    their card's reveal position (``_auto_rank``)."""
+
+    revealed = _revealed_cards(_reveal_context(run))
+    return [
+        Source(
+            f"Choice {entry.effect} {entry.card}",
+            Stage.REVEAL_AUTO,
+            entry.rows,
+            order=_auto_rank(entry.effect, entry.card, revealed),
+        )
+        for entry in entries
+        if entry.effect in _AUTOMATIC_CHOICES
+    ]
+
+
+def _held_answer(run: DecisionRun, entries: Sequence[_Entry]) -> DomainAction | None:
+    """Boundless Ambition's own answer while its mandatory acquisition holds
+    ``finish_reveal`` (``reveal_window``): ``BoundlessAmbitionCustomAbility::
+    Evaluate``'s card, whatever its value."""
+
+    for entry in entries:
+        if entry.effect != _BOUNDLESS_AMBITION:
+            continue
+        ability = _choice_ability(run, entry.effect, entry.card)
+        answer = ability.evaluate(
+            run.profile, _choice_request(run, entry.effect, entry.card)
+        )
+        return _realise(_entry_run(run, entry), entry.effect, answer)
+    return None
+
+
 def _outside_prompt(run: DecisionRun, entry: _Entry) -> bool:
     """A choice the app runs without the post-reveal prompt: a Command (6+)
     choice (plan §11.5) or one whose ability ``CanRunImmediately`` (state
@@ -2407,7 +2493,9 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     owed = tech_acquire_effect_sources(run)
     if entries is None or gains is None or owed is None:
         return None
-    step, prompt_entries = _automatic_step(run, [*owed, *gains], entries)
+    automatic = _automatic_choices(run, entries)
+    entries = [e for e in entries if e.effect not in _AUTOMATIC_CHOICES]
+    step, prompt_entries = _automatic_step(run, [*owed, *gains, *automatic], entries)
     if step is not None:
         return step
     mark = run.memory.data.pop(_END_TURN, None)
@@ -2458,11 +2546,18 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     else:
         declines = [s.extra.get("decline") for s in sources]
         decline = next((d for d in declines if isinstance(d, DomainAction)), None)
-        if decline is None:
+        held = _held_answer(run, prompt_entries) if decline is None else None
+        if decline is not None:
+            # The app would End Turn: our engine needs the subcommittee offer
+            # declined first; ``finish_reveal`` follows (``_END_TURN``).
+            skip, forced = decline, False
+        elif held is not None:
+            # Judgement: Boundless Ambition's acquisition holds
+            # ``finish_reveal``, but its app key is Optional. Where the app
+            # would End Turn and leave it unused, its own answer is taken.
+            skip, forced = held, False
+        else:
             return None  # finish blocked by something the app has no key for
-        # The app would End Turn: our engine needs the subcommittee offer
-        # declined first; ``finish_reveal`` follows (``_END_TURN``).
-        skip, forced = decline, False
     random_pick = False
 
     def forced_now() -> bool:
