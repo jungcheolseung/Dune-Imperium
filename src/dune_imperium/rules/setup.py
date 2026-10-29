@@ -54,11 +54,10 @@ _DREADNOUGHTS_PER_PLAYER: Final = 2
 # What the Conflict cards of Rise of Ix leave out of the ten drawn: the
 # printed deck is I 6, II 11, III 5 (22 cards), so 12 stay in the box
 # [Rise of Ix p. 3] (docs/rules/rise-of-ix.md 3 item 3), Epic Game Mode too
-# [Rise of Ix p. 10]. The engine's pool holds a card only once its rewards
-# are transcribed (``rulesets._imperium_conflicts``): Economic Supremacy and
-# the original 18 now, so 9 stay, one more for each Ix Conflict (stage P4d)
-# that joins, up to the printed 12.
-_IX_UNUSED_CONFLICTS: Final = (9, 10, 11, 12)
+# [Rise of Ix p. 10]. The engine's pool holds a card once its rewards are
+# transcribed (``rulesets._imperium_conflicts``); since stage P4d-1 that is
+# all 22, so exactly 12 stay.
+_IX_UNUSED_CONFLICTS: Final = 12
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,10 +74,10 @@ class ConflictSetup:
         if len(self.deck) != 10:
             raise ValueError("the four-player Conflict deck must contain 10 cards")
         if self.rise_of_ix:
-            if len(self.unused) not in _IX_UNUSED_CONFLICTS:
+            if len(self.unused) != _IX_UNUSED_CONFLICTS:
                 raise ValueError(
-                    "nine to twelve Conflict cards must remain unused with "
-                    "Rise of Ix (12 once all its Conflicts are in the pool)"
+                    "twelve Conflict cards must remain unused with Rise of Ix "
+                    "(I 6, II 11, III 5 less the ten drawn)"
                 )
         elif self.epic_game:
             if len(self.unused) not in (7, 9):

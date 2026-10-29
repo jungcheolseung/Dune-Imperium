@@ -331,6 +331,9 @@ _COMBAT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "line_0": _V.CHOOSE,
     "line_1": _V.CHOOSE,
     "line_2": _V.CHOOSE,
+    # Rise of Ix's Freighter icon: it opens the recipient's Freighter window,
+    # "move it up" being the verb of that window's first answer.
+    "freighter": _V.ADVANCE,
 })
 # What a completed Contract's icon does (``contracts.CONTRACT_REWARD_ICON_KINDS``).
 _CONTRACT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({

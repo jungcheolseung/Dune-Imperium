@@ -15,22 +15,28 @@ Ix Skirmishes take the app's own letters, ``skirmish_e`` and ``skirmish_f``
 (``ConflictArchetypes.RiseOfIx.SkirmishE`` and ``SkirmishF``); Trade
 Monopoly is ``trade_monopoly``. No other Conflict card has any of those ids.
 
-These are stage P4a identity entries: name and tier only, ``reward_rows``
-``None`` ("not transcribed", as ``ConflictDefinition`` documents). With
-``rise_of_ix`` the original game's Conflicts take a card of this table once
-its rewards are transcribed, as its decks take a card once its play data is
-complete (``rulesets._imperium_conflicts``), and Economic Supremacy at once:
-the printed deck is drawn from I 6, II 11, III 5 [Rise of Ix p. 3]
-(docs/rules/rise-of-ix.md 3 item 3), of which the pool holds what is
-transcribed. Setup takes Rise of Ix on the original game since stage P4c-5;
-the observation lists all of them from v39 (plan 17.1, 17.4).
-``content.uprising.conflicts``'s ``CONFLICTS_BY_ID`` resolves them next to
-the original game's cards; code that lists Uprising's or the original game's
-own Conflicts iterates ``CONFLICTS`` or ``IMPERIUM_CONFLICTS``.
+Stage P4a wrote them as identity entries (name and tier only, ``reward_rows``
+``None``, "not transcribed" as ``ConflictDefinition`` documents), and stage
+P4d-1 transcribed their three reward rows each (``conflict_abilities``,
+docs/rules/rise-of-ix.md 12): with ``rise_of_ix`` the original game's
+Conflicts take a card of this table once its rewards are transcribed, as its
+decks take a card once its play data is complete
+(``rulesets._imperium_conflicts``), and Economic Supremacy at once. The printed
+deck is
+drawn from I 6, II 11, III 5 [Rise of Ix p. 3] (docs/rules/rise-of-ix.md 3
+item 3), all of which the pool holds now, so 12 cards stay in the box. Setup
+takes Rise of Ix on the original game since stage P4c-5; the observation lists
+all of them from v39 (plan 17.1, 17.4). ``content.uprising.conflicts``'s
+``CONFLICTS_BY_ID`` resolves them next to the original game's cards; code that
+lists Uprising's or the original game's own Conflicts iterates ``CONFLICTS``
+or ``IMPERIUM_CONFLICTS``.
 """
 
 from typing import Final
 
+from dune_imperium.content.rise_of_ix.conflict_abilities import (
+    IX_CONFLICT_REWARD_ABILITIES,
+)
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.conflicts import ConflictDefinition
 from dune_imperium.content.uprising.types import ConflictTier
@@ -41,9 +47,11 @@ IX_CONFLICT_SOURCES: Final = (SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2, 
 
 
 def _conflict(content_id: str, name: str, tier: ConflictTier) -> ConflictDefinition:
+    first, second, third = IX_CONFLICT_REWARD_ABILITIES[content_id]
     return ConflictDefinition(
         card=CardDefinition(content_id, name, IX_CONFLICT_SOURCES),
         tier=tier,
+        reward_rows=(first, second, third),
     )
 
 

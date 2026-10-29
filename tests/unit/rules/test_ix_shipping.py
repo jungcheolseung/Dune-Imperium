@@ -6,11 +6,11 @@ docs/base-game-and-ix-plan.md 17.10 item 3. Setup takes ``rise_of_ix`` on the
 original game since stage P4c-5, but these tests build their states by hand:
 the original game's round one at seat 0's first turn with its config switched
 to ``rise_of_ix=True`` and the Freighter, tiles and troops laid on the seats by
-``dataclasses.replace``. No card prints the Freighter icon yet (stage P4d), and
-the two spaces that do (stage P4c-4, in ``test_ix_board_spaces.py``) are not
-visited here, so the icon goes through the executor with hand-built abilities,
-a recall's rewards are taken as the rows the engine offers, and the
-out-of-turn window opens the way a Conflict reward's icon will.
+``dataclasses.replace``. The two spaces that print the icon (stage P4c-4, in
+``test_ix_board_spaces.py``) are not visited here, so the icon goes through the
+executor with hand-built abilities, a recall's rewards are taken as the rows
+the engine offers, and the out-of-turn window opens the way a Conflict reward's
+icon does (stage P4d-1, ``test_ix_conflicts.py``).
 """
 
 from collections.abc import Callable, MutableMapping

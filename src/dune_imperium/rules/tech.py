@@ -69,6 +69,7 @@ from dune_imperium.rules.card_bonds import counted_in_play
 from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
+from dune_imperium.rules.combat import add_late_windtraps_row
 from dune_imperium.rules.combat_deployment import grant_combat_icon
 from dune_imperium.rules.conditions import spice_must_flow_copies
 from dune_imperium.rules.contracts import begin_contract_gain
@@ -894,6 +895,11 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         working = working.pop_decision()
 
     working = _queue_acquire_effects(working, player, tile)
+    if has_tech((tech_id,), TechAbility.CONFLICT_WIN_WATER):
+        # Windtraps taken in the winner's own Conflict reward (a Freighter's
+        # Acquire Tech) still pays this win's water (docs/rules/rise-of-ix.md
+        # 12).
+        working = add_late_windtraps_row(working, player)
     return RuleResult(state=working, events=tuple(events))
 
 

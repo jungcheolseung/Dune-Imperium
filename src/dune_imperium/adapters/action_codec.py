@@ -117,6 +117,7 @@ from dune_imperium.rules.combat import (
     DREADNOUGHT_CONTROL_ACTION,
     DREADNOUGHT_DETONATE_ACTION,
     IMPERIUM_REWARD_ICON_KINDS,
+    IX_REWARD_ICON_KINDS,
     WINDTRAPS,
     conflict_reward_icon_kinds,
 )
@@ -964,8 +965,12 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="resolve_combat_reward_icon", arguments=(("effect", kind),)
         )
         for kind in COMBAT_REWARD_ICON_KINDS
-        # The original game's kinds only where its Conflicts print them.
-        if (kind not in IMPERIUM_REWARD_ICON_KINDS or kind in printed_reward_kinds)
+        # The original game's and Rise of Ix's kinds only where the
+        # Conflicts print them.
+        if (
+            kind not in IMPERIUM_REWARD_ICON_KINDS | IX_REWARD_ICON_KINDS
+            or kind in printed_reward_kinds
+        )
         and (kind != "deep_cover_spy" or config.bloodlines)
         and (kind not in _SPY_REWARD_ICONS or content.observation_posts)
         and (kind != "contract" or content.contract_instance_ids)

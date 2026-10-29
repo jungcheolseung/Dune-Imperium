@@ -413,16 +413,23 @@ def test_conflict_names_and_tiers_match_the_app() -> None:
     ]
 
 
-def test_new_ix_conflicts_are_identities_without_a_battle_icon() -> None:
+def test_new_ix_conflicts_print_no_battle_icon_and_take_no_control() -> None:
     # The original game prints no battle icon and the app's table gives these
     # cards none (an Uprising Conflict has a ``BattleIcon`` attribute);
-    # Economic Supremacy prints none either (OQ-094). Their rewards are not
-    # transcribed yet (``reward_rows`` ``None``).
+    # Economic Supremacy prints none either (OQ-094). Their rewards are
+    # transcribed since stage P4d-1 (three rows from the app's three ability
+    # classes each); the app tags each of the three "Freighter", and none
+    # takes control of a space (docs/rules/rise-of-ix.md 12).
     table = _conflict_archetypes()
     for conflict in IX_CONFLICTS:
-        assert "BattleIcon" not in table[conflict.card.card_id].attributes
+        attributes = table[conflict.card.card_id].attributes
+        assert "BattleIcon" not in attributes
+        assert attributes["Tags"] == ("Freighter",), conflict.card.card_id
+        worm = attributes["WormAbilityIDs"]
+        assert isinstance(worm, tuple) and len(worm) == 3, conflict.card.card_id
         assert conflict.battle_icon is None, conflict.card.card_id
-        assert conflict.reward_rows is None, conflict.card.card_id
+        assert conflict.reward_rows is not None, conflict.card.card_id
+        assert len(conflict.reward_rows) == 3, conflict.card.card_id
         assert not conflict.shield_wall_protected, conflict.card.card_id
         assert not conflict.bloodlines_only, conflict.card.card_id
         assert not conflict.epic_only, conflict.card.card_id

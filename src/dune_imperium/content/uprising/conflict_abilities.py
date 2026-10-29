@@ -19,6 +19,9 @@ from typing import Final
 from dune_imperium.content.imperium.conflict_abilities import (
     IMPERIUM_CONFLICT_REWARD_ABILITIES,
 )
+from dune_imperium.content.rise_of_ix.conflict_abilities import (
+    IX_CONFLICT_REWARD_ABILITIES,
+)
 from dune_imperium.content.uprising.abilities import (
     Ability,
     AbilityTiming,
@@ -62,6 +65,8 @@ CONFLICT_REWARD_ABILITIES: Final[Mapping[str, tuple[Ability, Ability, Ability]]]
             # The original game's cards share the table (one id, one
             # printing; docs/base-game-and-ix-plan.md 4.2 item 7).
             **IMPERIUM_CONFLICT_REWARD_ABILITIES,
+            # Rise of Ix's three (``content.rise_of_ix.conflict_abilities``).
+            **IX_CONFLICT_REWARD_ABILITIES,
             # Skirmish (Crysknife).
             "skirmish_crysknife": (
                 _row(_line(GainInfluence())),

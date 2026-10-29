@@ -144,8 +144,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # table are new (Acquire Tech and its discount, the dreadnought commission,
 # the Negotiator, the Freighter, the "OR" structure), only those four spaces'
 # rows read them, and every older row and its scales are unchanged (compared
-# against a88a66f3, 2026-10-29).
-_GOLDEN_DIGEST = "73c5e3ac405843be5e0ef89933974ac4c2ac9853119cb38d5f5e5d12995a97d2"
+# against a88a66f3, 2026-10-29). Then Rise of Ix's three Conflicts got their
+# reward rows (stage P4d-1): one column of the conflict table is new (the first
+# place's Freighter icon), only those three rows read it, and every older row
+# and its scales are unchanged (compared against 3767c469, 2026-10-29).
+_GOLDEN_DIGEST = "e1426dfd4e15c7312b7a0e90139392ab8e7f48b42a20b6ee30209f6be8e91ee2"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

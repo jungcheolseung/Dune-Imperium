@@ -11,9 +11,11 @@ p. 5]). The spaces' rewards, bottom to top: "1. 고르기: Dividends(5 Solari,
 A Freighter icon is the DSL piece ``effect_dsl.Freighter``, offered by whatever
 prints it through the executor (``ability_executor``): up one space, recall,
 or neither. Where no executor frame owns the icon -- a Conflict reward's
-Freighter, "자기 turn 밖" [FAQ p. 3] -- ``open_freighter_move`` opens the
+Freighter, "자기 turn 밖" [FAQ p. 3] -- ``freighter_move_frame`` builds the
 window ``FrameKind.FREIGHTER_MOVE`` with the same three answers
-(``advance_freighter``, ``recall_freighter``, ``decline_freighter``).
+(``advance_freighter``, ``recall_freighter``, ``decline_freighter``): the
+recipient's reward window opens one for each Freighter icon of its row
+(``combat.FREIGHTER``, stage P4d-1).
 
 A recall owes the rewards of the Freighter's space and every space below it,
 one row each (``resolve_shipping_reward``) in the order the seat picks:
@@ -450,19 +452,23 @@ def _influence(
 # --- The Freighter icon outside its owner's turn ------------------------------
 
 
-def open_freighter_move(state: GameState, player: int, *, source: str) -> GameState:
-    """Open ``player``'s window over one Freighter icon it gained where no
-    row of its own turn holds it (a Conflict reward's, [FAQ p. 3]): up one
-    space, recall or neither [Rise of Ix p. 5]."""
+def freighter_move_frame(player: int, *, source: str) -> DecisionFrame:
+    """``player``'s window over one Freighter icon it gained where no row of
+    its own turn holds it (a Conflict reward's, [FAQ p. 3]): up one space,
+    recall or neither [Rise of Ix p. 5]."""
 
-    return state.push_decision(
-        DecisionFrame(
-            kind=FrameKind.FREIGHTER_MOVE,
-            frame_id=f"{source}:freighter_move",
-            decision=PlayerDecision(owner=player, prompt="Move your Freighter"),
-            context=(("source", source),),
-        )
+    return DecisionFrame(
+        kind=FrameKind.FREIGHTER_MOVE,
+        frame_id=f"{source}:freighter_move",
+        decision=PlayerDecision(owner=player, prompt="Move your Freighter"),
+        context=(("source", source),),
     )
+
+
+def open_freighter_move(state: GameState, player: int, *, source: str) -> GameState:
+    """Open the window ``freighter_move_frame`` builds on top of ``state``."""
+
+    return state.push_decision(freighter_move_frame(player, source=source))
 
 
 def legal_freighter_move_actions(

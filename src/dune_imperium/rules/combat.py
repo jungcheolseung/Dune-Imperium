@@ -21,6 +21,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireTleilaxuCard,
     DrawIntrigueCards,
     EffectSection,
+    Freighter,
     GainInfluence,
     GainResources,
     GainVictoryPoints,
@@ -513,6 +514,10 @@ COMBAT_REWARD_ICON_KINDS: Final = (
     "line_0",
     "line_1",
     "line_2",
+    # Rise of Ix's (docs/rules/rise-of-ix.md 12): the Freighter icon of the
+    # Skirmishes' and Trade Monopoly's first place, which opens the
+    # recipient's Freighter window (``FREIGHTER``).
+    "freighter",
 )
 # The kinds only the original game's Conflicts print: a catalog holds their
 # rows only when one of its Conflicts prints them (docs/base-game-and-ix-plan.md
@@ -536,6 +541,17 @@ WINDTRAPS: Final = "windtraps"
 IMPERIUM_REWARD_ICON_KINDS: Final = frozenset(
     {"mentat", "one_faction_influence", *REWARD_LINE_KINDS}
 )
+# Rise of Ix's Freighter icon in a Conflict reward (stage P4d-1): "Freighter
+# 아이콘마다 Freighter를 둘 가운데 하나로 움직일 수 있다("may")" [Rise of Ix
+# p. 5] (docs/rules/rise-of-ix.md 5), outside its owner's turn "자기 turn 밖"
+# [FAQ p. 3]: the icon opens the recipient's own Freighter window
+# (``shipping_track.freighter_move_frame``) and the recall's rewards follow in
+# their windows above the reward window. One window for each icon -- Trade Monopoly's
+# first place prints two -- and no sandworm doubles it (that board has none;
+# Uprising plus Rise of Ix is stage P7). A catalog holds its row only when a
+# Conflict of the pool prints it.
+FREIGHTER: Final = "freighter"
+IX_REWARD_ICON_KINDS: Final = frozenset({FREIGHTER})
 # Frame context keys of the window: the icons still to resolve, in the order
 # the engine paid them before stage B2 (``LEGACY_ICON_ORDER``: an older
 # record's, and the AI seats', order), the row's kinds in printed order, the
@@ -628,6 +644,8 @@ def _icon_kind(piece: Reward) -> str:
             return "faction_influence"
         case GainInfluence():
             return "choose_influence"
+        case Freighter():
+            return FREIGHTER
     raise TypeError(f"{piece!r} is not a Conflict reward icon")
 
 
@@ -742,7 +760,7 @@ def _reward_window(
         icons.extend([kind] * (counts.get(kind, 0) * multiplier))
     # The original game's kinds, after every older one (no sandworm doubles
     # them: that board has none).
-    for kind in ("mentat", "one_faction_influence", *REWARD_LINE_KINDS):
+    for kind in ("mentat", "one_faction_influence", *REWARD_LINE_KINDS, FREIGHTER):
         icons.extend([kind] * counts.get(kind, 0))
     if assignment.rank is RewardRank.FIRST:
         # The first-place reward goes to a sole winner only (a tie for first
@@ -878,6 +896,90 @@ def winning_intrigue_is_hidden(state: GameState) -> bool:
     )
 
 
+def add_late_windtraps_row(state: GameState, player: int) -> GameState:
+    """Give the sole winner Windtraps' row of this win when the tile came
+    after its reward window opened.
+
+    "Freighter 보상으로 그 자리에서 Windtraps를 얻으면 이번 승리에도 water를
+    받는다 -- 디자이너 판정(BGG forum, "one from the Acquire effect and one for
+    winning the combat") ... Detonation Devices도 같다" (docs/rules/
+    rise-of-ix.md 12). The acquire effect's water is paid with the tile
+    (``tech.apply_tech_acquire_effect``); this adds the second one, the
+    winner's row for "Conflict를 이기면 water 1" (rise-of-ix.md 4, OQ-121
+    ruling 6 (1)), to the first-place window that is open, in the order
+    ``_reward_window`` lays the rows. Called when ``player`` takes a tile with
+    that ability. When the window has closed already -- the Freighter was its
+    last icon -- the row waits in a window of its own at the bottom of the
+    stack, which surfaces once the frames the Freighter opened are answered.
+    Only the sole winner's own reward counts: a tile taken in any other
+    seat's window or outside the Combat rewards adds nothing.
+
+    Detonation Devices needs no such row: its option is read from the
+    seat's tiles when the dreadnought's Control space is chosen
+    (``legal_dreadnought_control_actions``), so a tile taken first shows it.
+    """
+
+    if (
+        not state.config.rise_of_ix
+        or state.phase is not GamePhase.COMBAT
+        or state.combat_rewards_resolved
+        or not state.current_conflict_ids
+        or state.combat_rewards_paid < 1
+    ):
+        return state
+    ranking = rank_combat(state.players, first_player=state.first_player)
+    if state.combat_rewards_paid > len(ranking.rewards):
+        return state
+    paying = ranking.rewards[state.combat_rewards_paid - 1]
+    if paying.player != player or paying.rank is not RewardRank.FIRST:
+        return state
+    for index, frame in enumerate(state.decision_stack):
+        if (
+            frame.kind is not FrameKind.COMBAT_REWARD_ICONS
+            or not isinstance(frame.decision, PlayerDecision)
+            or frame.decision.owner != player
+        ):
+            continue
+        context = dict(frame.context)
+        printed = str(context[_PRINTED_KEY]).split(",")
+        if WINDTRAPS in printed:
+            return state
+        icons = [icon for icon in str(context[_ICONS_KEY]).split(",") if icon]
+        # The window's order: before the dreadnought's row and the closing
+        # row, which stays last (``legal_combat_reward_icon_actions``).
+        later = (DREADNOUGHT_CONTROL, WINNING_INTRIGUE)
+        icons.insert(
+            next((i for i, icon in enumerate(icons) if icon in later), len(icons)),
+            WINDTRAPS,
+        )
+        printed.insert(
+            next((i for i, icon in enumerate(printed) if icon in later), len(printed)),
+            WINDTRAPS,
+        )
+        context[_ICONS_KEY] = ",".join(icons)
+        context[_PRINTED_KEY] = ",".join(printed)
+        stack = list(state.decision_stack)
+        stack[index] = with_context(frame, context)
+        return replace(state, decision_stack=tuple(stack))
+    late: dict[str, ActionValue] = {
+        _ICONS_KEY: WINDTRAPS,
+        _PRINTED_KEY: WINDTRAPS,
+        _RANK_KEY: RewardRank.FIRST.value,
+        _MULTIPLIER_KEY: 1,
+        _CHOICE_INDEX_KEY: 0,
+    }
+    window = DecisionFrame(
+        kind=FrameKind.COMBAT_REWARD_ICONS,
+        frame_id=(
+            f"round:{state.round_number}:combat_reward_icons:{player}:"
+            f"{RewardRank.FIRST.value}:windtraps"
+        ),
+        decision=PlayerDecision(owner=player, prompt="Resolve your Conflict reward"),
+        context=tuple(sorted(late.items())),
+    )
+    return replace(state, decision_stack=(window, *state.decision_stack))
+
+
 def winning_intrigue_window_is_open(state: GameState, player: int) -> bool:
     """Whether ``player``'s reward window is on top and still open for its
     winning Intrigue (its closing row is not pressed yet)."""
@@ -1008,6 +1110,15 @@ def apply_combat_reward_icon(state: GameState, action: DomainAction) -> RuleResu
             )
         case "dreadnought_control":
             opened.append(_dreadnought_control_frame(state, player, index))
+        case "freighter":
+            # "you may move your Freighter": the recipient's own window, a
+            # source of its own for each icon (``index`` counts the frames the
+            # window has opened).
+            from dune_imperium.rules.shipping_track import freighter_move_frame
+
+            opened.append(
+                freighter_move_frame(player, source=f"{source}:freighter:{index}")
+            )
         case "contract" if state.config.choam_module:
             assert isinstance(piece, TakeContract)
             opened.append(

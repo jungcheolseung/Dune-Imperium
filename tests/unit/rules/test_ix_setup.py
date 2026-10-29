@@ -9,10 +9,11 @@ The rules are docs/rules/rise-of-ix.md 3 (``[Rise of Ix p. 3]``):
 - item 5: "좌석마다 dreadnought 둘을 supply에, disc 하나를 Freighter로 Shipping
   track 맨 아래 칸에 놓는다".
 
-The engine's Conflict pool holds a card only once its rewards are transcribed
-(``rulesets._imperium_conflicts``), so it leaves 9 of the printed 12 unused
-until stage P4d. Uprising plus Rise of Ix stays refused until stage P7, and
-Epic Game Mode on the original game until stage P4e.
+The engine's Conflict pool holds a card once its rewards are transcribed
+(``rulesets._imperium_conflicts``); with Rise of Ix's three (stage P4d-1) it is
+the printed 22 and exactly 12 stay unused. Uprising plus Rise of Ix stays
+refused until stage P7, and Epic Game Mode on the original game until stage
+P4e.
 """
 
 from collections import Counter
@@ -169,28 +170,42 @@ def test_the_conflict_deck_is_one_i_five_ii_four_iii_from_the_ix_pool(
     assert "economic_supremacy" in pool
     assert set(deck) | set(state.unused_conflict_ids) == pool
     assert not set(deck) & set(state.unused_conflict_ids)
-    assert len(state.unused_conflict_ids) == len(pool) - 10
+    assert len(state.unused_conflict_ids) == len(pool) - 10 == 12
 
 
 def test_the_unused_conflicts_are_twelve_of_the_printed_22() -> None:
     """The printed deck is I 6, II 11, III 5 (22 cards): 12 stay in the box
-    (rise-of-ix.md 3 item 3). The pool holds 19 until the Ix Conflicts are
-    transcribed (stage P4d), so the check takes 9 to 12."""
+    (rise-of-ix.md 3 item 3, `[Rise of Ix p. 3]`). The pool holds all 22 since
+    Rise of Ix's three Conflicts are transcribed (stage P4d-1), so the check
+    takes exactly 12."""
 
     deck = tuple(f"deck_{index}" for index in range(10))
 
     def unused(count: int) -> tuple[str, ...]:
         return tuple(f"unused_{index}" for index in range(count))
 
-    for count in (9, 10, 11, 12):
-        ConflictSetup(deck=deck, unused=unused(count), rise_of_ix=True)
-    for count in (6, 8, 13):
-        with pytest.raises(ValueError, match="Rise of Ix"):
+    ConflictSetup(deck=deck, unused=unused(12), rise_of_ix=True)
+    for count in (6, 8, 9, 10, 11, 13):
+        with pytest.raises(ValueError, match="twelve"):
             ConflictSetup(deck=deck, unused=unused(count), rise_of_ix=True)
     # Without Rise of Ix the original's 8 stand and 12 is refused.
     ConflictSetup(deck=deck, unused=unused(8))
     with pytest.raises(ValueError, match="six"):
         ConflictSetup(deck=deck, unused=unused(12))
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_a_rise_of_ix_setup_leaves_twelve_conflicts_unused(seed: int) -> None:
+    """The pool is I 6, II 11, III 5 and the ten-card deck takes I 1, II 5,
+    III 4 from it, so the setup returns exactly 12 to the box."""
+
+    state = _setup(seed=seed)
+    pool = content_for(IX).conflict_pool
+    assert [
+        sum(c.tier is tier for c in pool) for tier in ConflictTier
+    ] == [6, 11, 5]
+    assert len(state.unused_conflict_ids) == 12
+    assert len(_deck(state)) == 10
 
 
 def test_the_draft_setup_deals_the_same_ix_state() -> None:

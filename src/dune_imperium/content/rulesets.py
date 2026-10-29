@@ -419,10 +419,12 @@ def _imperium_conflicts(rise_of_ix: bool) -> tuple[ConflictDefinition, ...]:
     "to those you already have", I 6, II 11, III 5, and the deck keeps the
     shape I 1, II 5, III 4 with one III returned to the box [Rise of Ix
     p. 3] (docs/rules/rise-of-ix.md 3 item 3). Economic Supremacy, Rise of
-    Ix's Conflict III, is in every such game, Epic or not; the two Skirmishes
-    and Trade Monopoly join once their reward rows are transcribed (stage
-    P4c/P4d), as the decks take a card only once its play data is complete.
-    Tier by tier: the original cards, then Rise of Ix's in printed order."""
+    Ix's Conflict III, is in every such game, Epic or not. The two Skirmishes
+    and Trade Monopoly are in it since their reward rows are transcribed (stage
+    P4d-1), so the pool is the printed I 6, II 11, III 5; a card without
+    ``reward_rows`` would stay out, as the decks take a card only once its play
+    data is complete. Tier by tier: the original cards, then Rise of Ix's in
+    printed order."""
 
     if not rise_of_ix:
         return IMPERIUM_CONFLICTS

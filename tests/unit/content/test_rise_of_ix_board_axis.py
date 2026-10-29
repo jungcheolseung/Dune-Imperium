@@ -204,6 +204,14 @@ def test_the_conflict_pool_takes_the_transcribed_ix_cards_and_economic_supremacy
         )
     expected = len(IMPERIUM_CONFLICTS) + len(transcribed) + 1
     assert len(content.conflict_pool) == expected
+    # All of Rise of Ix's three are transcribed since stage P4d-1, so the pool
+    # is the printed I 6, II 11, III 5 [Rise of Ix p. 3] (22 cards).
+    assert len(transcribed) == len(IX_CONFLICTS) == 3
+    assert [len(content.conflicts_by_tier(tier)) for tier in ConflictTier] == [
+        6,
+        11,
+        5,
+    ]
     # The universe is the pool: every Conflict the engine plays here.
     assert content.conflicts == content.conflict_pool
     assert len({c.card.card_id for c in content.conflicts}) == expected
