@@ -2258,7 +2258,12 @@ function renderIntriguePiles(market, view) {
     top.appendChild(tNode("board.known_intrigue_top", { card: nameOf(own.known_intrigue_top) }));
     box.appendChild(top);
   }
-  const bottom = [...(own.known_intrigue_bottom || [])].sort((a, b) => a[0] - b[0]);
+  /* The view lists every known card still in the deck by its depth
+     (core.observation.known_intrigue_places), the known top card too; that
+     one is already named on top, so the bottom line leaves it out. */
+  const bottom = [...(own.known_intrigue_bottom || [])]
+    .filter(([, id]) => id !== own.known_intrigue_top)
+    .sort((a, b) => a[0] - b[0]);
   if (bottom.length) {
     const line = document.createElement("div");
     line.className = "muted known-intrigue";

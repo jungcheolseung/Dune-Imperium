@@ -56,8 +56,9 @@ SECONDS = {
     "narrow": 6,
     "log_passes": 6,
     "log_words": 5,
-    # 2026-10-30 alone: a remote server, five pages, 88 pinned actions.
-    "ix_screens": 18,
+    # 2026-10-30 alone: a remote server, two tables of five pages, 88 and 91
+    # pinned actions.
+    "ix_screens": 35,
 }
 
 
