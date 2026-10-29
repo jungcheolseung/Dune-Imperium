@@ -1511,12 +1511,106 @@ P5a를 먼저 하는 까닭: 보드 그림(18.5 1)을 기다리지 않고 원판
 5. **앞면의 틀.** 원판 카드도 앱이 그리는 틀(지금 Uprising 앞면과 같은 렌더러)을 그대로 쓴다(앱 그림 우선, 2026-10-07). 인쇄된 원판 카드와 틀 모양이 다를
    수 있다 — 추천: 앱 그대로, 다르면 sheet에서 보이고 묻는다.
 
-### 18.6 Rise of Ix 화면 (P4가 master에 들어온 뒤)
+### 18.6 Rise of Ix 화면 (P4가 master에 들어온 뒤; 설계 2026-10-29 — 코드는 아직 바꾸지 않음)
 
-Ix 보드(Dreadnought·Tech Negotiation·Interstellar Shipping·Smuggling)와 CHOAM 덮개(덮는 칸 넷 `[Rise of Ix pp. 3, 12]`), Shipping 트랙과 Freighter, Tech 타일
-18장 앞면(`UI_crd_TechTile_*`)과 세 더미, 협상가 자리, Dreadnought 말과 garrison·지배, 새 아이콘 여섯(Dreadnought, Freighter, Tech Negotiation, Unload,
-Infiltration, Discard; 7절), Ix 카드·지도자 6·Conflict 4 앞면, Hundro Moritani·Ilesa Ecaz의 고르기 화면(숨은 정보라 높은 위험). 화면은 P4의 관측 v39(17.8)와 그
-보기에 맞춰 짜고, 이 절은 P4 병합 뒤 하위 단계로 나눈다. 보드 그림의 출처는 18.5 1과 같은 결정으로 정한다(그 모드는 이름에 Rise of Ix가 들어 있다; 그림이 있는지는 받을 때 본다).
+원판 + Rise of Ix 판을 플레이 화면에서 두게 한다. 화면·표시만 바꾸고 엔진·codec·관측은 P4가 정한 그대로 쓴다. 이 설계는 `claude/base-ix-p4`
+`51884e8f`(P4b 유닛·dreadnought까지; P4c Ix 보드·Tech·Shipping, P4d 카드, P4e 지도자는 아직)를 읽고 썼다. P4가 병합되면 그 사이 바뀐 이름을 다시
+대조한다.
+
+**보드의 모양** `[Rise of Ix pp. 3-5]`, [rise-of-ix.md](rules/rise-of-ix.md) 3·5·8: CHOAM 덮개가 원판 보드 오른쪽 위(Landsraad와 CHOAM 구역)를
+덮어 원판 칸 넷(Hall of Oratory, Rally Troops, Secure Contract, Sell Melange)이 빠지고 새 칸 넷(Dreadnought, Tech Negotiation — Landsraad,
+Interstellar Shipping, Smuggling — Spice Trade)과 **Shipping 트랙**("on the CHOAM board overlay", p. 5)이 생긴다. **Ix 보드**는 보드 옆에 따로 놓이고
+Tech 타일 세 더미와 협상가 자리가 있다(pp. 3-4).
+
+**이미 있는 것(재사용):** 원판 보드 그림과 배치(P5b, `display/board_layout_imperium.py`), Uprising + Bloodlines Tech 모듈 화면(Tech 세 더미·앞면·
+획득 창·뒤집기·Kota의 Secret Project 뒷면 — 보기의 `tech_face_up`·`tech_stack_sizes`·`tech_trash`, 좌석의 `tech_ids`·`tech_flipped`, 카탈로그
+`card_backs.tech`; 앞면은 `app_cards.py`의 Tech 렌더), 판마다 보드 그림을 고르는 `boardLayout`, Bene Tleilax 보드처럼 따로 그리는 판(`renderBeneTleilax`
+방식), 좌석 패널의 글 보드 수(`textBoardStats`), 원판 지도자의 섞은 안(앱 그림 + 스캔, 2026-10-29 사용자 결정).
+
+#### 18.6.1 보기(view)에서 받는 값
+
+서버는 좌석마다 엔진의 `observe(state, seat)`를 `asdict`로 그대로 보낸다(`server/sessions.py`의 view 직렬화). 그래서 P4 관측 v39의 칸은 서버 코드를
+고치지 않아도 온다. 화면은 이 값만 읽고, 숨은 값은 엔진이 좌석별로 거른 `private`에서만 읽는다.
+
+| 값 | 어디 | 누가 받나 | 화면 |
+| --- | --- | --- | --- |
+| `dreadnoughts_supply`·`_garrison`·`_conflict` | 좌석 공개 | 모두 | garrison 고리·Conflict 구역의 dreadnought 말, 좌석 패널 수 |
+| `dreadnought_control` (칸, 좌석, 떠남) | 판 공개 | 모두 | Control 칸의 dreadnought 말(떠남 표시) |
+| `freighter_space` (0~3) | 좌석 공개 | 모두 | Shipping 트랙의 좌석 disc |
+| `negotiators` | 좌석 공개 | 모두 | Ix 보드 협상가 자리의 좌석 큐브 |
+| `snooper_faction_ids` | 좌석 공개 | 모두 | Tessia의 Snooper token(Influence 트랙 2칸) |
+| `has_set_aside_card`, `set_aside_returned_turn`, `turns_finished_round` | 좌석 공개 | 모두 | Ilesa: "따로 둔 카드 있음"(정체 없이), 둘째 turn 표시 |
+| `tech_face_up`, `tech_stack_sizes`, `tech_trash`, 좌석 `tech_ids`·`tech_flipped` | 판·좌석 공개 | 모두 | Ix 보드의 세 더미, 좌석 패널의 Tech |
+| `set_aside_card_id` | `private` | Ilesa 좌석만 | 자기 패널에만 카드 앞면 |
+| `known_intrigue_top` | `private` | 아는 좌석만(Hundro의 Intelligence, Imperium Ceremony) | Intrigue 덱 위 "아는 카드" 표시 |
+| `known_intrigue_bottom` (깊이, 카드), `known_intrigue_held` (좌석, 카드) | `private` | 놓은 좌석만(Court Intrigue, Sonic Snoopers) | 덱 맨 아래 순서, 다른 좌석이 쥔 아는 카드 |
+| `ix_pending` (`shipping_rewards`, `tech_discount`, `tech_payment`, `negotiators_returnable`) | `private` | 그 결정을 하는 좌석만 | 남은 Shipping 보상 고르기, Tech 할인·지불·협상가 반환 창 |
+
+- **숨은 정보(높은 위험, CLAUDE.md):** 위 `private` 넷을 다른 좌석 패널이나 보드 그림이 읽지 않게 한다. Ilesa의 카드는 남에게 `has_set_aside_card`만,
+  Hundro가 아는 덱 맨 위는 그 좌석에게만. 끝난 판의 검토(`disclosure`, `disclose_hidden_zones`)에 따로 둔 카드가 드러나는지는 P4의 판정을 따른다.
+  원격 판에서 다른 좌석 쿠키의 보기로 새지 않는지 e2e로 보고, 독립 리뷰(조정자의 Codex)를 받는다.
+- **로그 이벤트:** P4b까지 `dreadnought_commissioned`, `dreadnoughts_deployed`·`_withdrawn`, `dreadnought_control_placed`, `dreadnought_returned`,
+  `intrigue_dreadnought_declined`(P4가 `labels*.js`에 영어·한국어를 넣음). P4c~e의 Freighter·Shipping 보상·Ix Tech 획득·협상가·Unload·Discard·
+  Snooper·따로 두기 이벤트는 병합 때 목록을 다시 뽑아 로그 문구 둘(영어·한국어)과 `visible_to`(Hundro의 엿보기는 숨김)를 맞춘다. 행동 줄(P4가
+  예약한 FrameKind 일곱: `freighter_move`, `shipping_reward_icons`, `dreadnought_control_choice`, `round_start_set_aside`, `unload_icons`,
+  `optional_discard`, `intrigue_bottom_pick`)의 문구와 설명도 같이.
+
+#### 18.6.2 그림 (앱 먼저, 픽셀로 확인; 없으면 TTS 모드는 이 세션 채팅의 사용자 허락)
+
+1. **CHOAM 덮개와 Ix 보드:** 앱에는 보드 그림이 없다(3D Playmat). 앱 장면 `Board/Visible Objects Connected to Entities`에는 원판 + Ix 판의 칸 묶음
+   `P_Spaces_IX_ChildOrderMattersForGamepad`(29: 새 칸 넷, `P_ShippingTrack`(자식 11), 원판 칸들의 Ix 판 상태, `HighlightBoxCHOAMAnchor`, Immortality
+   Research Station; 2026-10-29 조회)가 있다 — 새 칸 넷과 Shipping 트랙의 **칸 타일**(팝오버 그림)은 `app_board.py`에 이 컨테이너를 더해 P5b의 원판
+   19칸처럼 그린다. **보드 그림**은 TTS 모드 2354919205("Dune Imperium + Rise of IX + Immortality")의 작은 `Custom_Board` 둘
+   (`ugc/1656728601468972086/97AF2ED5…`, `ugc/1656728601468992121/5A33F0A8…`; 캐시에 없음, 크기 모름)이 덮개·Ix 보드 후보다 — 내려받기는 파일을 보이고
+   허락을 받는다. 덮개는 원판 그림의 해당 구역 위에 겹쳐 그리고(빠진 칸 넷의 hotspot은 원판 판에서만), Ix 보드는 Bene Tleilax 보드처럼 따로 그린다
+   (`boards.imperium.ix`). 대안: 그림 없이 앱 칸 타일과 Shipping 트랙 타일로 덮개 구역을 짠다.
+2. **Tech 타일 18장:** 앱 `UI_crd_TechTile_*`(Bloodlines Tech 렌더와 같은 틀, `app_cards.py`) — 스캔 `cards/en/rise-of-ix/tech/`와 sheet로 대조. 뒷면은 `back_tech`.
+3. **지도자 여섯:** `app_leaders.py`의 원판 틀(`FRAME_KINDS["original"]`)과 섞은 안(앱 그림 + 스캔 채움)을 Ix 지도자에 — 스캔은 `cards/en/rise-of-ix/leader/`
+   에 여섯 장이 있다. 앱 그림이 얼마나 덮는지 먼저 잰다.
+4. **카드:** Ix Imperium 35·Intrigue 17·Conflict 3·프로모 Boundless Ambition — `app_cards.py`의 원판 렌더(P5d)를 Ix 세트로 넓히고, manifest의
+   `rise-of-ix` 항목에 content_id를 단다(지금은 Epic 두 장만, `display/images.py`).
+5. **dreadnought 말:** 앱 `P_unitView_Dreadnought.prefab`(앱 이미지 우선 — 3D 말이면 렌더 방법을 정해야 한다). 안 되면 TTS `Custom_Token "<색>
+   Dreadnought"`(`ugc/1833531164453610613/4D779824…`, 허락) 또는 그린 말. 크기는 Commander처럼 칸 프레임 높이에 맞춘다(`conflict_units.sizes`에
+   `dreadnought`).
+6. **Freighter·협상가·Snooper:** Freighter는 좌석 disc(`seatDisc`), 협상가는 좌석 큐브(앱 troop 그림), Snooper token은 앱에서 찾고(`FX_unit_SnooperToken
+   Removed` 계열) 없으면 그린 표시.
+7. **새 아이콘 여섯(7절):** Dreadnought, Freighter, Tech Negotiation, Unload, Infiltration, Discard — 앱 아이콘을 `icons/`에 더하고, `ICON_RULES`와
+   한국어 `TERMS`에 둔다.
+
+#### 18.6.3 배치
+
+- `board_layout_imperium.py`에 Ix 판 상태를 더한다: 덮개 상자, 새 칸 넷의 상자, Shipping 트랙 칸 넷(0~3)의 중심, Control 칸의 dreadnought 자리(원판
+  Control 깃발 옆), garrison·Conflict의 dreadnought 크기. Ix 보드: Tech 세 더미의 자리, 협상가 자리. 모두 그림 픽셀에서 잰다(P5b와 같은 방법).
+- 칸 목록이 판의 Ix 여부를 따른다: 지금 `spaceInPlay`는 `base_games`만 본다. 카탈로그 칸에 "Ix 판에서 빠짐"(넷)과 "Ix 판에만"(넷)을 표시하거나,
+  보기에 그 판의 칸 목록을 싣는다(엔진의 `content_for(config)`) — 뒤쪽이 원칙에 맞다(보기가 판을 말한다). P4 병합 때 보기에 칸 목록이 없으면 조정자에게
+  묻는다(엔진 쪽 변경).
+
+#### 18.6.4 하위 단계 (P4 병합 뒤)
+
+| 단계 | 내용 | 위험 |
+| --- | --- | --- |
+| **P5f 판 고르기와 글 보드** | 카탈로그에 Ix 칸·Tech·카드·지도자·Conflict, 칸 목록이 Ix를 따름, 설정 화면의 Rise of Ix 칸(원판에서만 켜짐; Uprising + Ix는 P7까지 잠김), 좌석 패널의 dreadnought·Freighter·협상가 수, 로그 문구, 글 보드로 한 판 끝까지 | 보통 |
+| **P5g 그림** | Tech·카드·지도자 앱 렌더(sheet 대조, 스캔과 다른 것만 사용자에게), 새 칸 타일, 덮개·Ix 보드 그림(허락 뒤), dreadnought 말 | 낮음 |
+| **P5h 보드 위 말** | dreadnought(garrison·Conflict·Control 칸), Shipping 트랙의 Freighter, Ix 보드의 Tech 더미·협상가, Snooper token, 덮개 | 낮음 |
+| **P5i 숨은 정보와 고르기 화면** | Hundro의 Intelligence(setup에서 둘 보고 하나 갖기, 아는 덱 맨 위), Ilesa의 따로 둔 카드, Court Intrigue·Sonic Snoopers의 덱 맨 아래, `ix_pending` 창(남은 Shipping 보상, Tech 할인·지불·협상가 반환) | **높음**(독립 리뷰) |
+| **P5j 확인** | e2e 묶음, 원판 + Ix로 `app_ai_seats --base-game imperium`(P6의 Ix 몫 뒤), 스크린샷, 계획·worklog | – |
+
+#### 18.6.5 확인
+
+- 서버 테스트: 카탈로그의 Ix 칸·Tech·카드·지도자, 원판 + Ix 판이 끝까지 직렬화(`tests/server/test_imperium_game.py`에 Ix 판), 원판 단독과 Uprising의
+  카탈로그·보기는 그대로.
+- e2e: `imperium_game.py`에 Ix 판(로그 단어, 한 판 끝까지, 드래프트·Hundro·Ilesa), 새 `ix_screens.py`(보드의 말 수가 보기와 같고 모두 그림 안,
+  다른 좌석 보기에 숨은 값이 없는지 — 원격 서버의 좌석 쿠키로), `effect_text.py`(Ix 카드의 영어·한국어 아이콘 쌍), `setup_options.py`(Rise of Ix
+  칸), `board_tokens.py`.
+- 단계마다 그 단계가 닿는 테스트와 e2e만, 병합 전에는 tier 2 묶음(합친 트리 pytest·ruff·mypy, 닿는 e2e 전체).
+
+#### 18.6.6 사용자 결정 (모아서)
+
+1. **덮개·Ix 보드 그림:** (가) TTS 모드 2354919205의 두 보드 그림 내려받기(파일을 보이고 이 세션 채팅에서 허락) — 원판 보드와 같은 길, 추천,
+   (나) 그림 없이 앱 칸 타일로 덮개 구역을 짬.
+2. **Ix 한국어 이름:** 로컬에 공식 한국어판 Rise of Ix 룰북(`KR_DUNE_IMPERIUM_RISE_OF_IX_Rulebook.pdf`)이 있다. (가) 18.5 2처럼 칸·지도자·용어가 나오는
+   쪽만 읽기(허락), (나) 영어 유지. 카드 이름은 공식 카드 사진이 없으므로 영어.
+3. **dreadnought 말 그림:** 앱 말이 3D라 렌더가 어려우면 (가) TTS 토큰 내려받기(허락), (나) 그린 말.
 
 ### 18.7 진행 (2026-10-29, 같은 브랜치)
 
