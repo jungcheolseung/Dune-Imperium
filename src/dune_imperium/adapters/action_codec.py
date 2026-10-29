@@ -2485,8 +2485,9 @@ def _optional_trash_printers(
 ) -> tuple[tuple[Source, str, int], ...]:
     """The entities that may print an optional trash waiting on the turn
     (``optional_trash.trash_printer``): a card whose Agent box may trash (box
-    1 too with grafting), a Tech tile's acquire or Flip trash, a research
-    pair's trash, Arrakis Planetologist's leader."""
+    1 too with grafting), a Tech tile's acquire or Flip trash (the Tech
+    Module's, and Rise of Ix's Disposal Facility, whose acquire icon trashes),
+    a research pair's trash, Arrakis Planetologist's leader."""
 
     boxes = (0, 1) if config.immortality else (0,)
     return (
@@ -2498,6 +2499,11 @@ def _optional_trash_printers(
         *(
             (Source.TECH, tech_id, 0)
             for tech_id in (optional_trash_tech_ids() if config.tech_module else ())
+        ),
+        *(
+            (Source.TECH, tile.tech_id, 0)
+            for tile in (IX_TECH_TILES if config.rise_of_ix else ())
+            if "trash" in tile.acquire_effect_keys
         ),
         *(
             (Source.RESEARCH, space, 0)
@@ -3579,6 +3585,11 @@ def _ix_tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     # Disposal Facility's Reveal-turn trash of a card in play (OQ-126); the
     # card is the step row's target.
     templates.append(ActionTemplate(action_id="trash_disposal_facility_card"))
+    # Its acquire icon's trash opens the generic optional-trash frame (a
+    # "trash" key, ``_optional_trash_printers``), which an original game holds
+    # only with other modules; the catalog keeps one copy of each row.
+    templates.append(ActionTemplate(action_id="decline_optional_trash"))
+    templates.extend(_trash_templates(config, "trash_optional_card"))
     # The four Flip tiles (docs/rules/rise-of-ix.md 4, stage P4c-2b): the tile
     # names the whole action, and the card Holoprojectors and Invasion Ships
     # discard is the step row's target.
