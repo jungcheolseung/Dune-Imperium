@@ -115,6 +115,9 @@ TURN_KEYS: Final = frozenset(
         "pending_tech_acquire_effects",
         # Effects waiting on the turn as rows (cleanup-2b, ``turn_rows``).
         "pending_turn_rows",
+        # Troop Transports' Shipping troops, deployable wherever the Agent
+        # went (Rise of Ix, ``combat_deployment``).
+        "shipping_troops_recruited",
         # The rows picked toward one waiting effect (stage B3,
         # ``effect_steps``), whichever box's effect it is.
         "effect_pick",

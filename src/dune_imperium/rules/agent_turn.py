@@ -78,6 +78,7 @@ from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
     DREADNOUGHTS_COMMISSIONED_KEY,
     OWED_CARD,
+    SHIPPING_TROOPS_KEY,
     TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     commissioned_dreadnought_count,
@@ -86,6 +87,7 @@ from dune_imperium.rules.frames import (
     recruited_commander_count,
     replace_player,
     replace_top_frame,
+    shipping_troop_count,
     turn_start_is_open,
     with_context,
 )
@@ -761,6 +763,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     ungained_undeployable = ungained_undeployable_troops(turn_context)
     commanders_before = _commanders_recruited_before_placement(state)
     dreadnoughts_before = commissioned_dreadnought_count(turn_context)
+    shipping_before = shipping_troop_count(turn_context)
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
         raise ValueError("Agent action infiltrate_post_id must be a string")
@@ -960,6 +963,14 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     *(
                         ((DREADNOUGHTS_COMMISSIONED_KEY, dreadnoughts_before),)
                         if dreadnoughts_before
+                        else ()
+                    ),
+                    # And Troop Transports' Shipping troops recruited before
+                    # the placement, which deploy wherever the Agent goes
+                    # (docs/rules/rise-of-ix.md 15).
+                    *(
+                        ((SHIPPING_TROOPS_KEY, shipping_before),)
+                        if shipping_before
                         else ()
                     ),
                     ("units_deploy_blocked", units_deploy_blocked),

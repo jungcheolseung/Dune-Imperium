@@ -253,6 +253,17 @@ the garrison share of two (docs/base-game-and-ix-plan.md 17.6 item 2). A Reveal
 turn has no such window, so nothing is kept there."""
 
 
+SHIPPING_TROOPS_KEY = "shipping_troops_recruited"
+"""Troops a Shipping track recruit brought in with Troop Transports in this
+Agent turn, kept on the Agent-turn effect frame and on the turn frame before
+the placement (absent means none), apart from the other recruits: "You may
+deploy any of them to the Conflict" lets every one deploy even where the Agent
+went to no Combat space (docs/rules/rise-of-ix.md 15), each with a slot of its
+own and none of the garrison share of two (``combat_deployment``). In a
+Combat-space turn they are plain recruits of the turn, and a Reveal turn keeps
+them as ``combat_deployment.RECRUITS_DEPLOYABLE_KEY``."""
+
+
 def recruited_commander_count(context: FrameContext, key: str) -> int:
     """Return the Commander recruit count kept under ``key`` (0 when absent)."""
 
@@ -268,6 +279,16 @@ def commissioned_dreadnought_count(context: FrameContext) -> int:
     value = context.get(DREADNOUGHTS_COMMISSIONED_KEY, 0)
     if isinstance(value, bool) or not isinstance(value, int):
         raise RuntimeError(f"turn frame has invalid {DREADNOUGHTS_COMMISSIONED_KEY}")
+    return value
+
+
+def shipping_troop_count(context: FrameContext) -> int:
+    """Return the Troop Transports troops recruited this Agent turn (0 when
+    absent)."""
+
+    value = context.get(SHIPPING_TROOPS_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"turn frame has invalid {SHIPPING_TROOPS_KEY}")
     return value
 
 

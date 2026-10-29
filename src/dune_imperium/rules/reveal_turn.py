@@ -102,6 +102,7 @@ from dune_imperium.rules.card_bonds import (
 )
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
+    RECRUITS_DEPLOYABLE_KEY,
     UNGAINED_UNDEPLOYABLE_KEY,
     deployment_rooms,
     grant_combat_icon,
@@ -133,6 +134,7 @@ from dune_imperium.rules.frames import (
     replace_top_frame,
     reset_turn_counters,
     reveal_is_open_for,
+    shipping_troop_count,
     with_context,
 )
 from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
@@ -5947,6 +5949,11 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         context.append((UNGAINED_UNDEPLOYABLE_KEY, carried_ungained_undeployable))
     if carried_commanders:
         context.append((REVEAL_COMMANDERS_RECRUITED_KEY, carried_commanders))
+    # Troop Transports' Shipping troops recruited before the Reveal deploy
+    # without a Combat icon, as "these troops" do (docs/rules/rise-of-ix.md 15).
+    carried_shipping = shipping_troop_count(turn_context)
+    if carried_shipping:
+        context.append((RECRUITS_DEPLOYABLE_KEY, carried_shipping))
     context.extend(
         (f"revealed_card_{index:03d}", card_id)
         for index, card_id in enumerate(revealed)

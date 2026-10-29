@@ -88,9 +88,10 @@ every cube at the top it waits and the press lapses it (OQ-060, OQ-057 (1))."""
 SHIPPING_REWARD: Final = SHIPPING_REWARD_ROW
 """One reward of a Shipping track recall the owner took in its own turn (Rise
 of Ix, stage P4c-3, ``rules.shipping_track``): ``value`` is the Shipping space
-whose reward it is. Spaces 1 and 2 are mandatory; space 3's Acquire Tech is
-"may" ([Rise of Ix p. 4]), so it holds no turn end back and the press lapses
-it (OQ-095 (2))."""
+whose reward it is (``"1"``, ``"2:recruit"``, ``"2:influence"``, ``"3"``:
+space 2 prints two rewards, each its own, OQ-148). All but space 3's are
+mandatory; its Acquire Tech is "may" ([Rise of Ix p. 4]), so it holds no turn
+end back and the press lapses it (OQ-095 (2))."""
 
 CHOSEN_INFLUENCE_ICON: Final = "influence_any"
 """The acquire icon ``value`` of an Influence with a Faction of the owner's
@@ -242,7 +243,7 @@ def holds_the_end(state: GameState, player: int) -> bool:
     owner = state.players[player]
     return any(
         kind in (PLANETOLOGIST_INTRIGUE, RESEARCH_ICON, CONTRACT_ICON)
-        or (kind == SHIPPING_REWARD and value in _MANDATORY_SHIPPING_SPACES)
+        or (kind == SHIPPING_REWARD and value != _OPTIONAL_SHIPPING_REWARD)
         or (
             kind == RESEARCH_BONUS
             and ResearchBonus(value) is ResearchBonus.INFLUENCE_ANY
@@ -253,7 +254,7 @@ def holds_the_end(state: GameState, player: int) -> bool:
     )
 
 
-_MANDATORY_SHIPPING_SPACES: Final = frozenset({"1", "2"})
+_OPTIONAL_SHIPPING_REWARD: Final = "3"
 
 
 def _tech_acquire_keys(context: Mapping[str, object]) -> tuple[str, ...]:
@@ -332,7 +333,7 @@ def _lapsed(player: int, item: Pending) -> GameEvent:
         return GameEvent(
             event_id=f"{source}:shipping_reward_lapsed",
             kind="shipping_reward_lapsed",
-            payload=(("player", player), ("space", int(value))),
+            payload=(("player", player), ("space", int(value.split(":")[0]))),
         )
     # Arrakis Planetologist's Intrigue card and a research space's icon hold
     # the end (``holds_the_end``).

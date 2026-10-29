@@ -139,6 +139,10 @@ def _kinds(state: GameState) -> list[str]:
     return [frame.kind for frame in state.decision_stack]
 
 
+def _context_of(state: GameState) -> dict[str, object]:
+    return dict(state.decision_stack[-1].context)
+
+
 def _owed(state: GameState, seat: int = 0) -> tuple[int, ...]:
     return ix_pending_of(state, seat).shipping_rewards
 
@@ -290,8 +294,8 @@ def test_a_recall_owes_the_rewards_of_its_space_and_every_space_below(
         effects
         == {
             1: {"dividends", "spice"},
-            2: {"dividends", "spice", "recruit"},
-            3: {"dividends", "spice", "recruit", "tech"},
+            2: {"dividends", "spice", "recruit", "influence"},
+            3: {"dividends", "spice", "recruit", "influence", "tech"},
         }[space]
     )
     _round_trips(after, 0)
@@ -310,15 +314,18 @@ def test_a_recall_from_the_bottom_pays_nothing() -> None:
 
 def test_the_rewards_may_be_taken_in_any_order() -> None:
     """ "보상을 원하는 순서로 받는다" [Rise of Ix p. 5]: the rewards of a recall
-    from space 3 taken spice, recruit, Acquire Tech and the other way round --
-    Acquire Tech first, then the recruit, then the spice -- leave the same
-    state, and the spaces still owed shrink one at a time."""
+    from space 3 taken spice, recruit, Influence, Acquire Tech and the other
+    way round -- Acquire Tech first, then the Influence, then the recruit,
+    then the spice -- leave the same state, and the spaces still owed shrink
+    as their last reward is taken (space 2 prints two)."""
 
     ordered = _recalled(_at(3, tech_ids=()))
     assert _owed(ordered) == (1, 2, 3)
     ordered = _claim(ordered, "spice")
     assert _owed(ordered) == (2, 3)
-    ordered = _claim(ordered, "recruit", "fremen")
+    ordered = _claim(ordered, "recruit")
+    assert _owed(ordered) == (2, 3)
+    ordered = _claim(ordered, "influence", "fremen")
     assert _owed(ordered) == (3,)
     ordered = _claim(ordered, "tech")
     assert ordered.decision_stack[-1].kind == FrameKind.TECH_ACQUISITION
@@ -330,7 +337,10 @@ def test_the_rewards_may_be_taken_in_any_order() -> None:
     assert reversed_.decision_stack[-1].kind == FrameKind.TECH_ACQUISITION
     reversed_ = _declined(reversed_)
     assert _owed(reversed_) == (1, 2)
-    reversed_ = _claim(reversed_, "recruit", "fremen")
+    reversed_ = _claim(reversed_, "influence", "fremen")
+    assert _owed(reversed_) == (1, 2)
+    reversed_ = _claim(reversed_, "recruit")
+    assert _owed(reversed_) == (1,)
     reversed_ = _claim(reversed_, "spice")
     assert _owed(reversed_) == ()
     assert reversed_.players == ordered.players
@@ -361,25 +371,51 @@ def test_space_one_is_dividends_or_two_spice_and_is_paid_once() -> None:
     assert _rows(spiced) == []
 
 
-def test_space_two_recruits_two_troops_and_gains_one_influence() -> None:
-    """ "2. troop 2 recruit + 진영 하나에 Influence 1" [Rise of Ix p. 5]: two
-    troops go from the supply to the garrison and the chosen Faction rises by
-    one. One row for each Faction that can still rise: a Faction at the top is
-    not offered ("진영을 고르는 보상은 6칸 진영을 제외한다", OQ-060), and with
-    every cube at the top the recruit is one row without a Faction."""
+def _of(state: GameState, effect: str) -> list[DomainAction]:
+    return [row for row in _rows(state) if dict(row.arguments)["effect"] == effect]
+
+
+def test_space_two_prints_a_recruit_and_an_influence_as_two_rewards() -> None:
+    """ "2. troop 2 recruit + 진영 하나에 Influence 1" [Rise of Ix p. 5] and the
+    OQ-148 ruling (separately printed rewards are resolved in the owner's
+    order): the two troops and the Influence are two owed rows of their own,
+    each its own entry waiting on the turn, and the troops move from the
+    supply to the garrison without the Influence having been taken."""
 
     state = _recalled(_at(2, troops_garrison=1, troops_supply=11))
-    factions = {
-        dict(row.arguments).get("faction")
-        for row in _rows(state)
-        if dict(row.arguments)["effect"] == "recruit"
-    }
-    assert factions == {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
+    frame = state.decision_stack[-1]
+    assert [value for _, _, value in turn_rows.pending(frame)] == [
+        "1",
+        "2:recruit",
+        "2:influence",
+    ]
+    assert [row.arguments for row in _of(state, "recruit")] == [
+        (("effect", "recruit"),)
+    ]
+    fremen = state.players[0].influence.fremen
 
-    after = _claim(state, "recruit", "fremen")
+    after = _claim(state, "recruit")
     owner = after.players[0]
     assert (owner.troops_garrison, owner.troops_supply) == (3, 9)
-    assert owner.influence.fremen == state.players[0].influence.fremen + 1
+    assert owner.influence.fremen == fremen
+    assert _of(after, "recruit") == []
+    assert _of(after, "influence") != []
+    assert _owed(after) == (1, 2)
+    assert turn_rows.holds_the_end(_claim(after, "spice"), 0)
+
+
+def test_space_twos_influence_goes_to_a_faction_that_can_rise() -> None:
+    """ "진영 하나에 Influence 1" [Rise of Ix p. 5]: one row for each Faction
+    that can still rise ("진영을 고르는 보상은 6칸 진영을 제외한다", OQ-060);
+    with every cube at the top the Influence is lost and its owner confirms it
+    with one row without a Faction, which holds the turn's end like any other
+    mandatory reward."""
+
+    state = _recalled(_at(2))
+    factions = {dict(row.arguments).get("faction") for row in _of(state, "influence")}
+    assert factions == {"emperor", "spacing_guild", "bene_gesserit", "fremen"}
+    after = _claim(state, "influence", "emperor")
+    assert after.players[0].influence.emperor == state.players[0].influence.emperor + 1
 
     topped = _recalled(
         _at(
@@ -387,30 +423,37 @@ def test_space_two_recruits_two_troops_and_gains_one_influence() -> None:
             influence=Influence(emperor=2, spacing_guild=2, bene_gesserit=2, fremen=6),
         )
     )
-    offered = {
-        dict(row.arguments).get("faction")
-        for row in _rows(topped)
-        if dict(row.arguments)["effect"] == "recruit"
-    }
-    assert "fremen" not in offered
+    offered = {dict(row.arguments).get("faction") for row in _of(topped, "influence")}
     assert offered == {"emperor", "spacing_guild", "bene_gesserit"}
 
     full = _recalled(
         _at(
             2,
-            troops_garrison=0,
-            troops_supply=12,
             influence=Influence(emperor=6, spacing_guild=6, bene_gesserit=6, fremen=6),
         )
     )
-    assert [
-        row.arguments
-        for row in _rows(full)
-        if dict(row.arguments)["effect"] == "recruit"
-    ] == [(("effect", "recruit"),)]
-    lost = _claim(full, "recruit")
-    assert lost.players[0].troops_garrison == 2
-    assert lost.players[0].influence == full.players[0].influence
+    assert [row.arguments for row in _of(full, "influence")] == [
+        (("effect", "influence"),)
+    ]
+    lost = ENGINE.apply(full, _of(full, "influence")[0])
+    assert [e.kind for e in lost.events] == ["shipping_influence_unavailable"]
+    assert lost.state.players[0].influence == full.players[0].influence
+    assert _owed(lost.state) == (1, 2)
+
+
+def test_space_twos_two_rewards_are_taken_in_the_seats_order() -> None:
+    """The OQ-148 ruling and "보상을 원하는 순서로 받는다" [Rise of Ix p. 5]:
+    the recruit then the Influence, and the Influence then the recruit, leave
+    the same state."""
+
+    base = _recalled(_at(2, troops_garrison=1, troops_supply=11))
+    base = _claim(base, "spice")
+    first = _claim(_claim(base, "recruit"), "influence", "fremen")
+    second = _claim(_claim(base, "influence", "fremen"), "recruit")
+    assert first.players == second.players
+    assert _owed(first) == ()
+    assert first.players[0].troops_garrison == 3
+    assert first.players[0].influence.fremen == base.players[0].influence.fremen + 1
 
 
 def test_space_three_opens_an_acquire_tech_at_discount_two() -> None:
@@ -444,15 +487,17 @@ def test_space_three_opens_an_acquire_tech_at_discount_two() -> None:
 def test_the_end_of_the_turn_waits_for_spaces_one_and_two_only() -> None:
     """The recall is the owner's choice, but its rewards are received
     ([Rise of Ix p. 5]); only the Acquire Tech is "may" ([Rise of Ix p. 4]).
-    So space 1's choice and space 2's recruit hold the turn's end, while
-    space 3's Acquire Tech waits unused: the turn-end press lapses it with an
-    event (OQ-095 (2))."""
+    So space 1's choice and space 2's recruit and Influence hold the turn's
+    end, while space 3's Acquire Tech waits unused: the turn-end press lapses
+    it with an event (OQ-095 (2))."""
 
     state = _recalled(_at(3))
     assert turn_rows.holds_the_end(state, 0)
     state = _claim(state, "spice")
     assert turn_rows.holds_the_end(state, 0)
-    state = _claim(state, "recruit", "fremen")
+    state = _claim(state, "recruit")
+    assert turn_rows.holds_the_end(state, 0)
+    state = _claim(state, "influence", "fremen")
     assert not turn_rows.holds_the_end(state, 0)
     assert _owed(state) == (3,)
     lapsed = turn_rows.lapse(state, 0)
@@ -465,9 +510,14 @@ def test_the_end_of_the_turn_waits_for_spaces_one_and_two_only() -> None:
 # --- Deployment of the recruited troops ---------------------------------------
 
 
-def _agent_turn(space: str, **changes: object) -> GameState:
+def _agent_turn(
+    space: str,
+    before: Callable[[GameState], GameState] | None = None,
+    **changes: object,
+) -> GameState:
     """Seat 0's Agent turn at ``space`` with its printed effects pending and
-    Sardaukar Standard (whose Agent box prints nothing) played."""
+    Sardaukar Standard (whose Agent box prints nothing) played; ``before`` acts
+    on the turn frame first (a recall made before the placement)."""
 
     state = _seat(
         _start(),
@@ -475,12 +525,36 @@ def _agent_turn(space: str, **changes: object) -> GameState:
         resources=Resources(water=2),
         **changes,
     )
+    if before is not None:
+        state = before(state)
     placement = next(
         placement
         for placement in executable_placements(state, 0)
         if dict(placement.arguments)["space_id"] == space
     )
     return apply_placement(ENGINE, state, placement).state
+
+
+def _recalled_from(space: int) -> Callable[[GameState], GameState]:
+    """A recall of seat 0's Freighter from ``space``."""
+
+    return lambda state: (
+        recall_freighter(_seat(state, freighter_space=space), 0, source="s").state
+    )
+
+
+def _deploy(state: GameState, count: int) -> GameState:
+    return ENGINE.apply(
+        state, DomainAction("deploy_troops", 0, (("count", count),))
+    ).state
+
+
+def _withdrawable(state: GameState) -> list[int]:
+    return [
+        cast(int, dict(action.arguments)["count"])
+        for action in ENGINE.legal_actions(state, 0)
+        if action.action_id == "withdraw_troops"
+    ]
 
 
 def _deployable(state: GameState) -> list[int]:
@@ -502,7 +576,6 @@ def test_troops_recruited_by_a_recall_deploy_in_a_combat_space_turn() -> None:
     combat = _claim(
         recall_freighter(_seat(combat, freighter_space=2), 0, source="s").state,
         "recruit",
-        "fremen",
     )
     assert combat.players[0].troops_garrison == 4
     assert _deployable(combat) == [1, 2, 3, 4]
@@ -511,7 +584,6 @@ def test_troops_recruited_by_a_recall_deploy_in_a_combat_space_turn() -> None:
     quiet = _claim(
         recall_freighter(_seat(quiet, freighter_space=2), 0, source="s").state,
         "recruit",
-        "fremen",
     )
     assert quiet.players[0].troops_garrison == 4
     assert _deployable(quiet) == []
@@ -539,15 +611,159 @@ def test_troop_transports_recruits_one_more_troop() -> None:
     combat = _claim(
         recall_freighter(_seat(combat, freighter_space=2), 0, source="s").state,
         "recruit",
-        "emperor",
     )
     assert combat.players[0].troops_garrison == 3
     assert _deployable(combat) == [1, 2, 3]
 
-    plain = _claim(
-        _recalled(_at(2, troops_garrison=0, troops_supply=12)), "recruit", "emperor"
-    )
+    plain = _claim(_recalled(_at(2, troops_garrison=0, troops_supply=12)), "recruit")
     assert plain.players[0].troops_garrison == 2
+
+
+def test_troop_transports_troops_deploy_in_a_turn_without_a_combat_space() -> None:
+    """ "Troop Transports의 'You may deploy any of them to the Conflict'는 카드
+    문장이 배치를 허락하므로 Combat 칸에 Agent를 보내지 않은 turn에도 배치할 수
+    있다" (docs/rules/rise-of-ix.md 15, [DI p. 6]): at a space with no Combat
+    icon the three troops of a recall's recruit (the extra one included) may
+    deploy, each with a room of its own -- the two troops already in the
+    garrison are not offered beside them (no garrison share) -- and a deployed
+    troop is in the Conflict."""
+
+    quiet = _agent_turn(
+        "wealth", troops_garrison=2, troops_supply=10, tech_ids=("troop_transports",)
+    )
+    assert _deployable(quiet) == []
+    quiet = _claim(_recalled_from(2)(quiet), "recruit")
+    assert quiet.players[0].troops_garrison == 5
+    assert _context_of(quiet)["shipping_troops_recruited"] == 3
+    assert _deployable(quiet) == [1, 2, 3]
+
+    deployed = _deploy(quiet, 2)
+    owner = deployed.players[0]
+    assert (owner.troops_garrison, owner.troops_conflict) == (3, 2)
+    assert _deployable(deployed) == [1]
+    assert _deploy(deployed, 1).players[0].troops_conflict == 3
+    assert _deployable(_deploy(deployed, 1)) == []
+
+
+def test_without_troop_transports_a_recall_deploys_nothing_in_such_a_turn() -> None:
+    """ "회수로 recruit한 troop은 Combat 칸에 Agent를 보낸 turn이면 배치할 수
+    있다" [FAQ p. 4]: with no Troop Transports -- or another tile -- the troops
+    stay in the garrison at a space with no Combat icon."""
+
+    for tiles in ((), ("windtraps",)):
+        quiet = _agent_turn(
+            "wealth", troops_garrison=2, troops_supply=10, tech_ids=tiles
+        )
+        quiet = _claim(_recalled_from(2)(quiet), "recruit")
+        assert quiet.players[0].troops_garrison == 4
+        assert "shipping_troops_recruited" not in _context_of(quiet)
+        assert _deployable(quiet) == []
+        assert not any(
+            action.action_id == "deploy_troops"
+            for action in ENGINE.legal_actions(quiet, 0)
+        )
+
+
+def test_a_withdrawal_gives_the_troop_transports_room_back() -> None:
+    """The withdrawal of a deployment frees its room (OQ-029): troops deployed
+    with Troop Transports' allowance in a turn with no Combat space return to
+    the garrison, and may deploy again."""
+
+    quiet = _agent_turn(
+        "wealth", troops_garrison=0, troops_supply=12, tech_ids=("troop_transports",)
+    )
+    quiet = _deploy(_claim(_recalled_from(2)(quiet), "recruit"), 3)
+    assert _deployable(quiet) == []
+    assert _withdrawable(quiet) == [1, 2, 3]
+    back = ENGINE.apply(
+        quiet, DomainAction("withdraw_troops", 0, (("count", 2),))
+    ).state
+    owner = back.players[0]
+    assert (owner.troops_garrison, owner.troops_conflict) == (2, 1)
+    assert _deployable(back) == [1, 2]
+    assert _withdrawable(back) == [1]
+
+
+def test_troops_recruited_before_the_placement_deploy_wherever_the_agent_goes() -> None:
+    """The recall made on the turn frame, before the Agent is sent, carries
+    the Troop Transports troops over the placement (docs/rules/rise-of-ix.md
+    15): they deploy at a space with no Combat icon, and at a Combat space they
+    are plain recruits beside the garrison's two."""
+
+    quiet = _agent_turn(
+        "wealth",
+        lambda state: _claim(_recalled_from(2)(state), "recruit"),
+        troops_garrison=2,
+        troops_supply=10,
+        tech_ids=("troop_transports",),
+    )
+    assert _deployable(quiet) == [1, 2, 3]
+    combat = _agent_turn(
+        RESEARCH_STATION,
+        lambda state: _claim(_recalled_from(2)(state), "recruit"),
+        troops_garrison=2,
+        troops_supply=10,
+        tech_ids=("troop_transports",),
+    )
+    assert _deployable(combat) == [1, 2, 3, 4, 5]
+
+
+def test_troop_transports_troops_deploy_in_a_reveal_turn_without_a_combat_icon() -> (
+    None
+):
+    """The same sentence in the owner's Reveal turn
+    (docs/rules/rise-of-ix.md 15): with no Combat icon the troops a Shipping
+    recruit brings in deploy as "these troops" do (OQ-140), any of them and
+    none of the garrison; without Troop Transports there is no deployment."""
+
+    def reveal(tiles: tuple[str, ...]) -> GameState:
+        state = _seat(
+            _start(),
+            freighter_space=2,
+            hand=(f"imperium:{STANDARD}:0",),
+            troops_garrison=2,
+            troops_supply=10,
+            tech_ids=tiles,
+        )
+        opened = ENGINE.apply(state, DomainAction("reveal_turn", 0)).state
+        assert opened.decision_stack[-1].kind == FrameKind.REVEAL
+        return _claim(recall_freighter(opened, 0, source="s").state, "recruit")
+
+    def counts(state: GameState) -> list[int]:
+        return [
+            cast(int, dict(action.arguments)["count"])
+            for action in ENGINE.legal_actions(state, 0)
+            if action.action_id == "deploy_troops"
+        ]
+
+    assert counts(reveal(("troop_transports",))) == [1, 2, 3]
+    assert counts(reveal(())) == []
+
+
+def test_the_turns_end_leaves_undeployed_troop_transports_troops_in_the_garrison() -> (
+    None
+):
+    """The window is the turn's: the press closes it (OQ-029), the turn passes
+    to the next seat, and the troops left undeployed wait in the garrison."""
+
+    quiet = _agent_turn(
+        "wealth", troops_garrison=0, troops_supply=12, tech_ids=("troop_transports",)
+    )
+    quiet = _claim(_recalled_from(2)(quiet), "spice")
+    quiet = _claim(_claim(quiet, "recruit"), "influence", "fremen")
+    finish = DomainAction("finish_agent_turn", 0)
+    while finish not in ENGINE.legal_actions(quiet, 0):
+        # The space's own gains are taken first.
+        row = next(
+            action
+            for action in ENGINE.legal_actions(quiet, 0)
+            if action.action_id in ("gain", "gain_influence")
+        )
+        quiet = ENGINE.apply(quiet, row).state
+    after = ENGINE.apply(quiet, finish).state
+    assert after.players[0].troops_garrison == 3
+    assert after.players[0].troops_conflict == 0
+    assert dict(after.decision_stack[-1].context)["turn_owner"] != 0
 
 
 # --- Outside the owner's turn -------------------------------------------------
@@ -622,6 +838,7 @@ def test_an_out_of_turn_recall_opens_the_rewards_window() -> None:
         "dividends",
         "spice",
         "recruit",
+        "influence",
         "tech",
     }
     _round_trips(state, 0)
@@ -637,13 +854,10 @@ def test_an_out_of_turn_recall_opens_the_rewards_window() -> None:
     assert _owed(state) == (1, 2)
 
     state = _claim(state, "spice")
+    state = _claim(state, "influence", "emperor")
+    assert FrameKind.SHIPPING_REWARD_ICONS in _kinds(state)
     state = ENGINE.apply(
-        state,
-        DomainAction(
-            "resolve_shipping_reward",
-            0,
-            (("effect", "recruit"), ("faction", "emperor")),
-        ),
+        state, DomainAction("resolve_shipping_reward", 0, (("effect", "recruit"),))
     ).state
     # The last reward closes the window (the Combat phase then moves on).
     assert FrameKind.SHIPPING_REWARD_ICONS not in _kinds(state)
@@ -670,9 +884,14 @@ def test_troops_recruited_in_combat_wait_in_the_garrison() -> None:
     fremen = state.players[0].influence.fremen
     state = ENGINE.apply(state, DomainAction("recall_freighter", 0)).state
     state = ENGINE.apply(
+        state, DomainAction("resolve_shipping_reward", 0, (("effect", "recruit"),))
+    ).state
+    state = ENGINE.apply(
         state,
         DomainAction(
-            "resolve_shipping_reward", 0, (("effect", "recruit"), ("faction", "fremen"))
+            "resolve_shipping_reward",
+            0,
+            (("effect", "influence"), ("faction", "fremen")),
         ),
     ).state
     owner = state.players[0]
@@ -692,8 +911,8 @@ def test_nothing_changes_without_rise_of_ix() -> None:
     without the expansion holds a Freighter or reward row, a game without it
     owes no recall reward in its observation, and the original game's Rise of
     Ix catalog holds them: the Freighter window's three rows and the reward
-    rows (Dividends, spice, the recruit for each Faction and without one, the
-    Acquire Tech)."""
+    rows (Dividends, spice, the recruit, the Influence for each Faction and
+    without one, the Acquire Tech)."""
 
     names = {
         "advance_freighter",
@@ -708,7 +927,7 @@ def test_nothing_changes_without_rise_of_ix() -> None:
             "advance_freighter",
             "recall_freighter",
             "decline_freighter",
-            *["resolve_shipping_reward"] * 4,
+            *["resolve_shipping_reward"] * 5,
             *["resolve_shipping_reward"] * len(Faction),
         ]
     )

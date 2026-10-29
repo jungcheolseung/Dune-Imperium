@@ -824,8 +824,9 @@ def known_intrigue_places(state: GameState, owner: PlayerState) -> KnownIntrigue
 SHIPPING_REWARDS_KEY: Final = "shipping_rewards"
 # Inside the owner's own turn the owed recall rewards wait on its turn frame
 # instead (``rules.turn_rows``: the frame's waiting effects, a JSON list of
-# ``[kind, source, value]``, and a Shipping reward's kind, whose value is its
-# space), and ``ix_pending_of`` reads them there too.
+# ``[kind, source, value]``, and a Shipping reward's kind, whose value is
+# ``"<space>"``, or ``"<space>:<part>"`` where a space prints two rewards, as
+# the window's key lists them), and ``ix_pending_of`` reads them there too.
 TURN_ROWS_KEY: Final = "pending_turn_rows"
 SHIPPING_REWARD_ROW: Final = "shipping_reward"
 TECH_DISCOUNT_KEY: Final = "tech_discount"
@@ -872,14 +873,14 @@ def ix_pending_of(state: GameState, player: int) -> IxPending:
         else 0
     )
     owed = (
-        {int(space) for space in rewards.split(",") if space}
+        {int(reward.split(":")[0]) for reward in rewards.split(",") if reward}
         if isinstance(rewards, str)
         else set()
     )
     waiting = context.get(TURN_ROWS_KEY)
     if isinstance(waiting, str) and waiting:
         owed.update(
-            int(value)
+            int(value.split(":")[0])
             for kind, _source, value in json.loads(waiting)
             if kind == SHIPPING_REWARD_ROW
         )

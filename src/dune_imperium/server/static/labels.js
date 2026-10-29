@@ -483,6 +483,7 @@ const EVENT_LABELS = {
   intrigue_freighter_declined: "Freighter 움직이지 않음",
   shipping_troops_recruited: "Freighter 회수: {troop} {recruit}",
   shipping_reward_lapsed: "Freighter 회수 보상: 쓰지 않음",
+  shipping_influence_unavailable: "Freighter 회수: {influence_any} 불가",
   dreadnought_control_placed: "dreadnought가 {control} 공간에",
   dreadnought_returned: "dreadnought {garrison} 복귀",
   dreadnought_detonated: "dreadnought를 {supply}로 (Detonation Devices)",

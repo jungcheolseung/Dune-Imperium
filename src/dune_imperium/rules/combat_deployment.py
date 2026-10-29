@@ -59,6 +59,7 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
+    SHIPPING_TROOPS_KEY,
     FrameKind,
     commissioned_dreadnought_count,
     owes_held_draw,
@@ -66,6 +67,7 @@ from dune_imperium.rules.frames import (
     own_turn_frame_index,
     recruited_commander_count,
     replace_player,
+    shipping_troop_count,
     with_context,
 )
 
@@ -324,7 +326,7 @@ def _deployment_context(
     if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
         return None
     if context["pending_combat_deployment"] is not True:
-        return None
+        return _shipping_deployment(context)
     recruited = context["troops_recruited"]
     if isinstance(recruited, bool) or not isinstance(recruited, int):
         raise RuntimeError("Agent-turn effect frame has invalid recruit count")
@@ -357,6 +359,38 @@ def _deployment_context(
         troop_room,
         commander_room,
         dreadnought_room,
+        withdrawable_troops,
+        withdrawable_commanders,
+        _unit_count(context, WITHDRAWABLE_DREADNOUGHTS_KEY),
+    )
+
+
+def _shipping_deployment(context: dict[str, ActionValue]) -> _Deployment | None:
+    """The deployment window of an Agent turn with no Combat space, which
+    only the troops a Shipping recruit brought in with Troop Transports open:
+    "You may deploy any of them to the Conflict" -- the card's sentence allows
+    the deployment, and "카드는 일반 규칙을 바꾼다 [DI p. 6]"
+    (docs/rules/rise-of-ix.md 15). Those troops have a room of their own, with
+    no garrison share of two and no Commander or dreadnought slot, and the
+    window closes with the turn's press. None without such troops, or while
+    the turn's deployment is blocked [Main p. 17]."""
+
+    shipping = shipping_troop_count(context)
+    if (
+        shipping < 1
+        or context.get("units_deploy_blocked") is True
+        or agent_turn_is_finishing(context)
+    ):
+        return None
+    troops, _commanders = _shares(context, DEPLOYED_UNITS_KEY, DEPLOYED_COMMANDERS_KEY)
+    withdrawable_troops, withdrawable_commanders = _shares(
+        context, WITHDRAWABLE_UNITS_KEY, WITHDRAWABLE_COMMANDERS_KEY
+    )
+    return _Deployment(
+        context,
+        max(0, shipping - troops),
+        0,
+        0,
         withdrawable_troops,
         withdrawable_commanders,
         _unit_count(context, WITHDRAWABLE_DREADNOUGHTS_KEY),
@@ -1025,6 +1059,40 @@ def grant_recruit_deployment(
     if index is None:
         return state
     return _with_reveal_counts(state, index, recruited=recruited, owed=owed)
+
+
+def grant_shipping_troop_deployment(
+    state: GameState, player: int, troops: int
+) -> GameState:
+    """Let ``player`` deploy the ``troops`` a Shipping recruit just brought in
+    with Troop Transports, in its own turn, wherever the Agent went
+    (``frames.SHIPPING_TROOPS_KEY``): in a Reveal turn they are "these
+    troops" (``RECRUITS_DEPLOYABLE_KEY``, any of them, no Combat icon
+    needed); in an Agent turn, or on the turn frame before the placement
+    carries them over, a count of their own."""
+
+    if troops < 1:
+        return state
+    for index in range(len(state.decision_stack) - 1, -1, -1):
+        frame = state.decision_stack[index]
+        if not isinstance(frame.decision, PlayerDecision) or (
+            frame.decision.owner != player
+        ):
+            continue
+        if frame.kind == FrameKind.REVEAL:
+            return _with_reveal_counts(state, index, recruited=troops, owed=0)
+        if frame.kind in (FrameKind.AGENT_EFFECTS, FrameKind.TURN):
+            context = dict(frame.context)
+            context[SHIPPING_TROOPS_KEY] = shipping_troop_count(context) + troops
+            return replace(
+                state,
+                decision_stack=(
+                    *state.decision_stack[:index],
+                    replace(frame, context=tuple(sorted(context.items()))),
+                    *state.decision_stack[index + 1 :],
+                ),
+            )
+    return state
 
 
 def credit_owed_recruits(state: GameState, player: int, troops: int) -> GameState:

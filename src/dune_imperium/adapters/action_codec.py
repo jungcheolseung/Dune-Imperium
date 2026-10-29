@@ -159,6 +159,7 @@ from dune_imperium.rules.shipping_track import (
     ADVANCE_ACTION,
     DECLINE_ACTION,
     DIVIDENDS,
+    INFLUENCE,
     RECALL_ACTION,
     RECRUIT,
     REWARD_ACTION,
@@ -2721,21 +2722,22 @@ def _shipping_track_templates() -> tuple[ActionTemplate, ...]:
     """The Freighter's own window and the Shipping track's rewards
     (``rules.shipping_track``): up, recall or neither outside the owner's
     turn, and a row for each reward a recall owes -- Dividends, spice, the
-    recruit once for each Faction that gains its Influence (and once without,
-    every cube at the top, OQ-060) and the discounted Acquire Tech."""
+    recruit, the Influence once for each Faction that gains it (and once
+    without, every cube at the top, OQ-060) and the discounted Acquire
+    Tech."""
 
     templates = [
         ActionTemplate(action_id=action_id)
         for action_id in (ADVANCE_ACTION, RECALL_ACTION, DECLINE_ACTION)
     ]
-    for effect in (DIVIDENDS, SPICE, RECRUIT, TECH):
+    for effect in (DIVIDENDS, SPICE, RECRUIT, INFLUENCE, TECH):
         templates.append(
             ActionTemplate(action_id=REWARD_ACTION, arguments=(("effect", effect),))
         )
     templates.extend(
         ActionTemplate(
             action_id=REWARD_ACTION,
-            arguments=(("effect", RECRUIT), ("faction", faction.value)),
+            arguments=(("effect", INFLUENCE), ("faction", faction.value)),
         )
         for faction in Faction
     )

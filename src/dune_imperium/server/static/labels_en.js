@@ -541,6 +541,7 @@ const LABELS_EN = {
     "intrigue_freighter_declined": "Freighter Left",
     "shipping_troops_recruited": "Shipping Track: {troop} {recruit}ed",
     "shipping_reward_lapsed": "Shipping Track Reward: Unused",
+    "shipping_influence_unavailable": "Shipping Track: {influence_any} Unavailable",
     "dreadnought_control_placed": "Dreadnought on a {control} Space",
     "dreadnought_returned": "Dreadnought Back to the {garrison}",
     "dreadnought_detonated": "Dreadnought Returned to the {supply} (Detonation Devices)",

@@ -46,6 +46,7 @@ from dune_imperium.core.observation import SHIPPING_REWARDS_KEY
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
 from dune_imperium.rules.action_shapes import Source, printer_value
+from dune_imperium.rules.combat_deployment import grant_shipping_troop_deployment
 from dune_imperium.rules.effects import recruit_shortfall_events, recruit_troops
 from dune_imperium.rules.frames import (
     FrameKind,
@@ -75,12 +76,35 @@ PRINTED: Final = "shipping_track"
 DIVIDENDS: Final = "dividends"
 SPICE: Final = "spice"
 RECRUIT: Final = "recruit"
+INFLUENCE: Final = "influence"
 TECH: Final = "tech"
 
-REWARD_SPACE: Final = {DIVIDENDS: 1, SPICE: 1, RECRUIT: 2, TECH: 3}
-"""The Shipping space each reward row belongs to."""
-
-SPACE_REWARDS: Final = {1: (DIVIDENDS, SPICE), 2: (RECRUIT,), 3: (TECH,)}
+# The rewards a recall owes, in the order the track prints them: space 1's
+# choice, space 2's two (its recruit and its Influence, separately printed, so
+# each its own reward, OQ-148), space 3's Acquire Tech. A reward is named by
+# ``"<space>"`` or, where a space prints two, ``"<space>:<part>"``.
+CHOICE_REWARD: Final = "1"
+RECRUIT_REWARD: Final = "2:recruit"
+INFLUENCE_REWARD: Final = "2:influence"
+TECH_REWARD: Final = "3"
+SPACE_REWARDS: Final = {
+    1: (CHOICE_REWARD,),
+    2: (RECRUIT_REWARD, INFLUENCE_REWARD),
+    3: (TECH_REWARD,),
+}
+REWARD_ORDER: Final = tuple(
+    reward for rewards in SPACE_REWARDS.values() for reward in rewards
+)
+REWARD_EFFECTS: Final = {
+    CHOICE_REWARD: (DIVIDENDS, SPICE),
+    RECRUIT_REWARD: (RECRUIT,),
+    INFLUENCE_REWARD: (INFLUENCE,),
+    TECH_REWARD: (TECH,),
+}
+EFFECT_REWARD: Final = {
+    effect: reward for reward, effects in REWARD_EFFECTS.items() for effect in effects
+}
+"""The reward each row's effect takes."""
 
 DIVIDENDS_SOLARI: Final = 5
 DIVIDENDS_OPPONENT_SOLARI: Final = 1
@@ -135,8 +159,11 @@ def recall_freighter(state: GameState, player: int, *, source: str) -> RuleResul
     left = owner.freighter_space
     recalled = replace(owner, freighter_space=0)
     working = replace(state, players=replace_player(state.players, recalled))
+    owed = tuple(
+        reward for space in range(1, left + 1) for reward in SPACE_REWARDS[space]
+    )
     return RuleResult(
-        state=_owe(working, player, tuple(range(1, left + 1)), source),
+        state=_owe(working, player, owed, source),
         events=(
             GameEvent(
                 event_id=f"{source}:freighter_recalled",
@@ -148,15 +175,15 @@ def recall_freighter(state: GameState, player: int, *, source: str) -> RuleResul
 
 
 def _owe(
-    state: GameState, player: int, spaces: tuple[int, ...], source: str
+    state: GameState, player: int, rewards: tuple[str, ...], source: str
 ) -> GameState:
-    """The rewards of ``spaces``, one row each: waiting on the owner's own
+    """The rewards a recall owes, one row each: waiting on the owner's own
     turn, else in a window of their own."""
 
     if turn_rows.waits_on_turn(state, player):
-        for space in spaces:
+        for reward in rewards:
             queued = turn_rows.queue(
-                state, player, (turn_rows.SHIPPING_REWARD, source, str(space))
+                state, player, (turn_rows.SHIPPING_REWARD, source, reward)
             )
             assert queued is not None
             state = queued
@@ -171,7 +198,7 @@ def _owe(
             context=tuple(
                 sorted(
                     (
-                        (SHIPPING_REWARDS_KEY, _spaces_text(spaces)),
+                        (SHIPPING_REWARDS_KEY, _rewards_text(rewards)),
                         ("source", source),
                     )
                 )
@@ -180,24 +207,26 @@ def _owe(
     )
 
 
-def _spaces_text(spaces: tuple[int, ...]) -> str:
-    return ",".join(str(space) for space in spaces)
+def _rewards_text(rewards: tuple[str, ...]) -> str:
+    return ",".join(rewards)
 
 
 def reward_rows(
-    state: GameState, player: int, spaces: tuple[int, ...]
+    state: GameState, player: int, rewards: tuple[str, ...]
 ) -> tuple[DomainAction, ...]:
-    """The rows that take the rewards of the owed ``spaces``, lowest space
-    first: space 1's choice of Dividends or spice, space 2's recruit once for
-    each Faction that can still rise (OQ-060: with every cube at the top the
-    Influence is lost, so the recruit is one row without a Faction), space 3's
-    Acquire Tech."""
+    """The rows that take the owed ``rewards``, in the track's order: space
+    1's choice of Dividends or spice, space 2's recruit, space 2's Influence
+    once for each Faction that can still rise (OQ-060: with every cube at the
+    top the Influence is lost and its owner confirms it, one row without a
+    Faction), space 3's Acquire Tech. They are separate rewards, so every
+    owed one is offered at once, in whatever order the seat picks (OQ-148,
+    [Rise of Ix p. 5])."""
 
     owner = state.players[player]
     rows: list[DomainAction] = []
-    for space in sorted(set(spaces)):
-        for effect in SPACE_REWARDS[space]:
-            if effect != RECRUIT:
+    for reward in sorted(set(rewards), key=REWARD_ORDER.index):
+        for effect in REWARD_EFFECTS[reward]:
+            if effect != INFLUENCE:
                 rows.append(_row(player, effect))
                 continue
             factions = [f for f in Faction if influence_can_rise(owner, f)]
@@ -216,29 +245,29 @@ def _row(player: int, effect: str, faction: Faction | None = None) -> DomainActi
     )
 
 
-def _window_spaces(state: GameState, player: int) -> tuple[int, ...] | None:
+def _window_rewards(state: GameState, player: int) -> tuple[str, ...] | None:
     frame = owned_top_frame(state, FrameKind.SHIPPING_REWARD_ICONS, player)
     if frame is None:
         return None
     text = dict(frame.context)[SHIPPING_REWARDS_KEY]
-    return tuple(int(space) for space in str(text).split(",") if space)
+    return tuple(reward for reward in str(text).split(",") if reward)
 
 
 def legal_shipping_reward_row_actions(
     state: GameState, player: int
 ) -> tuple[DomainAction, ...]:
     """A row for each reward waiting on ``player``'s own turn (module
-    docstring), every owed space's at once."""
+    docstring), every owed reward's at once."""
 
     frame = turn_rows.rows_frame(state, player)
     if frame is None:
         return ()
-    spaces = tuple(
-        int(value)
+    rewards = tuple(
+        value
         for kind, _source, value in turn_rows.pending(frame)
         if kind == turn_rows.SHIPPING_REWARD
     )
-    return reward_rows(state, player, spaces) if spaces else ()
+    return reward_rows(state, player, rewards) if rewards else ()
 
 
 def legal_shipping_reward_window_actions(
@@ -246,8 +275,8 @@ def legal_shipping_reward_window_actions(
 ) -> tuple[DomainAction, ...]:
     """A row for each reward still owed in ``player``'s window."""
 
-    spaces = _window_spaces(state, player)
-    return () if spaces is None else reward_rows(state, player, spaces)
+    rewards = _window_rewards(state, player)
+    return () if rewards is None else reward_rows(state, player, rewards)
 
 
 def apply_shipping_reward(state: GameState, action: DomainAction) -> RuleResult:
@@ -257,17 +286,18 @@ def apply_shipping_reward(state: GameState, action: DomainAction) -> RuleResult:
     player = action.actor
     arguments = dict(action.arguments)
     effect = str(arguments["effect"])
-    space = REWARD_SPACE[effect]
-    window = _window_spaces(state, player)
+    reward = EFFECT_REWARD[effect]
+    window = _window_rewards(state, player)
     if window is not None:
         if action not in legal_shipping_reward_window_actions(state, player):
             raise ValueError("action is not a legal Shipping track reward")
         frame = state.decision_stack[-1]
         source = context_str(dict(frame.context), "source", owner=_FRAME)
-        remaining = tuple(owed for owed in window if owed != space)
+        remaining = list(window)
+        remaining.remove(reward)
         if remaining:
             context = dict(frame.context)
-            context[SHIPPING_REWARDS_KEY] = _spaces_text(remaining)
+            context[SHIPPING_REWARDS_KEY] = _rewards_text(tuple(remaining))
             state = replace_top_frame(state, with_context(frame, context))
         else:
             state = state.pop_decision()
@@ -279,7 +309,7 @@ def apply_shipping_reward(state: GameState, action: DomainAction) -> RuleResult:
         item = next(
             item
             for item in turn_rows.pending(rows_frame)
-            if item[0] == turn_rows.SHIPPING_REWARD and item[2] == str(space)
+            if item[0] == turn_rows.SHIPPING_REWARD and item[2] == reward
         )
         source = item[1]
         state = turn_rows.take(state, player, item)
@@ -332,7 +362,9 @@ def _pay(
             events=(resources_gained_event(reward_source, player, spice=SPICE_REWARD),),
         )
     if effect == RECRUIT:
-        return _recruit(state, player, faction, reward_source)
+        return _recruit(state, player, reward_source)
+    if effect == INFLUENCE:
+        return _influence(state, player, faction, reward_source)
     if effect == TECH:
         return push_tech_acquisition(
             state,
@@ -353,17 +385,23 @@ def shipping_troops(owner_tech_ids: tuple[str, ...]) -> int:
     return RECRUITED_TROOPS + (1 if extra else 0)
 
 
-def _recruit(
-    state: GameState, player: int, faction: ActionValue | None, source: str
-) -> RuleResult:
-    """Space 2: recruit the troops and gain 1 Influence with ``faction``."""
+def _recruit(state: GameState, player: int, source: str) -> RuleResult:
+    """Space 2's recruit: the troops go to the garrison. In the owner's own
+    turn they join its deployment allowance by the Combat-space rule, and with
+    Troop Transports -- "You may deploy any of them to the Conflict" -- every
+    one of them (the extra troop included) may deploy even where the Agent
+    went to no Combat space (docs/rules/rise-of-ix.md 15). Outside the turn,
+    in Combat, they only wait in the garrison."""
 
     owner = state.players[player]
+    extra = has_tech(owner.tech_ids, TechAbility.SHIPPING_EXTRA_TROOP)
     count = shipping_troops(owner.tech_ids)
     next_owner, recruited = recruit_troops(owner, count)
     working = replace(state, players=replace_player(state.players, next_owner))
     if own_turn_frame_index(working, player) is not None:
         working = update_turn_recruits(working, troops_recruited=recruited)
+        if extra:
+            working = grant_shipping_troop_deployment(working, player, recruited)
     events: list[GameEvent] = [
         GameEvent(
             event_id=f"{source}:troops",
@@ -372,16 +410,33 @@ def _recruit(
         ),
         *recruit_shortfall_events(source, player, count, recruited),
     ]
+    return RuleResult(state=working, events=tuple(events))
+
+
+def _influence(
+    state: GameState, player: int, faction: ActionValue | None, source: str
+) -> RuleResult:
+    """Space 2's Influence: 1 with ``faction``; with every cube at the top it
+    is lost and the owner confirms it (OQ-060)."""
+
     if faction is None:
-        return RuleResult(state=working, events=tuple(events))
-    gained = gain_faction_influence(
-        working,
+        return RuleResult(
+            state=state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:unavailable",
+                    kind="shipping_influence_unavailable",
+                    payload=(("player", player),),
+                ),
+            ),
+        )
+    return gain_faction_influence(
+        state,
         player,
         Faction(str(faction)),
         1,
-        event_prefix=f"{source}:influence:{faction}",
+        event_prefix=f"{source}:{faction}",
     )
-    return RuleResult(state=gained.state, events=(*events, *gained.events))
 
 
 # --- The Freighter icon outside its owner's turn ------------------------------
