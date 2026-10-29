@@ -21,6 +21,7 @@ from dune_imperium.agents.agent_turn_steps import steps_after
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    DeployFromSupply,
     GainInfluence,
     GainResources,
     HasAlliance,
@@ -42,6 +43,7 @@ from dune_imperium.core.state import GamePhase
 from dune_imperium.rules import UprisingRulesEngine, unload
 from dune_imperium.rules.agent_box_abilities import AgentPaymentBlock
 from dune_imperium.rules.agent_effects import agent_card_payment_block
+from dune_imperium.rules.combat import begin_combat_intrigue
 from dune_imperium.rules.effect_steps import first_step
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.pauses import (
@@ -799,4 +801,226 @@ def test_clean_up_moves_in_the_shadows_without_unloading_it() -> None:
     state, unloaded = _clean_up_round(_give(_start(), 0, in_play=(SHADOWS,)))
     assert state.phase is GamePhase.ROUND_START
     assert SHADOWS in state.players[0].discard_pile
+    assert unloaded == []
+
+
+# --- Treachery ----------------------------------------------------------------
+
+TREACHERY = "imperium:treachery:0"
+TREACHERY_TWO = "imperium:treachery:1"
+_DEPLOY = "deploy"
+
+
+def test_treachery_play_data_matches_the_app() -> None:
+    """App table: cost 6, 2 copies, no Faction, the four Faction icons;
+    Agent "Gain two Influence instead of one. Trash this card." (Power Play's
+    box), Reveal "[Unload] [troop] [troop] Deploy these troops to the
+    Conflict."."""
+    entry = IMPERIUM_CARDS_BY_ID["treachery"]
+    assert entry.play_data_complete and entry.unload
+    assert (entry.copies, entry.acquisition_cost) == (2, 6)
+    assert entry.factions == ()
+    assert entry.agent_icons == (
+        AgentIcon.EMPEROR,
+        AgentIcon.SPACING_GUILD,
+        AgentIcon.BENE_GESSERIT,
+        AgentIcon.FREMEN,
+    )
+    assert entry.agent_effect is IMPERIUM_CARDS_BY_ID["power_play"].agent_effect
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    (line,) = REVEAL_GAIN_ABILITIES["treachery"].sections
+    assert line.rewards == (DeployFromSupply(2),) and line.condition is None
+    assert unload.unload_icons(TREACHERY) == ((_DEPLOY, 2),)
+    for config in (IX, replace(IX, rise_of_ix=False), RulesetConfig()):
+        deck = content_for(config).imperium_deck_instance_ids
+        assert ({TREACHERY, TREACHERY_TWO} <= set(deck)) == config.rise_of_ix
+
+
+def test_treachery_revealed_deploys_two_troops_from_the_supply() -> None:
+    """ "Reveal turn에 공개할 때(보통처럼, Unload 표시는 무시)" (rise-of-ix.md 7):
+    "Deploy these troops to the Conflict" moves two troops from the supply,
+    the owner's own step as a recruit is (OQ-045), counted in this Reveal's
+    strength; the Reveal cannot end before it."""
+    state = _give(_start(), 0, hand=(TREACHERY,))
+    revealed = _do(state, "reveal_turn")
+    assert "card_unloaded" not in _kinds(revealed.events)
+    state = revealed.state
+    assert not _offered(state, "finish_reveal")
+    before = state.players[0]
+    deployed = _do(state, "deploy_reveal_supply_troops")
+    after = deployed.state.players[0]
+    assert after.troops_supply == before.troops_supply - 2
+    assert after.troops_conflict == before.troops_conflict + 2
+    assert after.troops_garrison == before.troops_garrison
+    assert after.combat_strength == before.combat_strength + 4
+    assert "troops_deployed" in _kinds(deployed.events)
+    assert _offered(deployed.state, "finish_reveal")
+    assert not _offered(deployed.state, UNLOAD_ROW)
+
+
+def test_treachery_revealed_with_one_troop_in_the_supply_deploys_it() -> None:
+    """ "my supply may be empty" [FAQ p. 2]: one troop deploys and the other
+    is recorded as Double Cross's shortfall is (OQ-042 (2), "원판·Ix의 Double
+    Cross·Treachery(supply에서 Conflict로 배치)도 같은 기록을 쓴다")."""
+    state = _give(_start(), 0, hand=(TREACHERY,))
+    owner = state.players[0]
+    state = _seat(
+        state,
+        0,
+        troops_supply=1,
+        troops_garrison=owner.troops_garrison + owner.troops_supply - 1,
+    )
+    state = _do(state, "reveal_turn").state
+    after = _do(state, "deploy_reveal_supply_troops").state.players[0]
+    assert (after.troops_supply, after.troops_conflict) == (0, 1)
+    assert after.ungained_conflict_troops == 1
+
+
+def test_treachery_trashing_itself_on_its_agent_turn_deploys_its_troops() -> None:
+    """Power Play's box: "Gain two Influence instead of one. Trash this
+    card." -- and "Treachery는 자기를 trash한다고 적혀 있어 예외" (rise-of-ix.md 7,
+    [Rise of Ix p. 10]): trashed by its own text, its Unload comes as a row of
+    its owner's turn, two troops to the Conflict by the card's text."""
+    state = _give(_start(), 0, hand=(TREACHERY,))
+    state = _do(state, "choose_agent_card", card_id=TREACHERY).state
+    state = _do(state, "place_agent", space_id="wealth").state
+    before = state.players[0]
+    boxed = _do(state, "resolve_agent_card_effect")
+    assert TREACHERY in boxed.state.players[0].trashed
+    assert "card_unloaded" in _kinds(boxed.events)
+    state = boxed.state
+    assert state.players[0].influence.emperor == before.influence.emperor + 2
+    assert _arguments(state, UNLOAD_ROW) == {
+        (("card_id", TREACHERY), ("effect", _DEPLOY))
+    }
+    state = _do(state, "resolve_board_effect", effect="resources").state
+    assert not _offered(state, "finish_agent_turn")
+    state = _do(state, UNLOAD_ROW, card_id=TREACHERY, effect=_DEPLOY).state
+    after = state.players[0]
+    assert after.troops_conflict == before.troops_conflict + 2
+    assert after.troops_supply == before.troops_supply - 2
+    assert _offered(state, "finish_agent_turn")
+
+
+def test_treachery_discarded_as_a_cost_deploys_before_the_draw() -> None:
+    """Truthsayer's "[Discard] -> [draw 1 card]": "Unload를 끝까지 해결한 뒤
+    오른쪽으로 간다" (designer ruling, rise-of-ix.md 7)."""
+    state = _start()
+    kept = state.players[0].hand[0]
+    state = _give(state, 0, hand=(TRUTHSAYER, TREACHERY, kept))
+    state = _do(state, "choose_agent_card", card_id=TRUTHSAYER).state
+    state = _do(state, "place_agent", space_id="wealth").state
+    before = state.players[0]
+    result = _do(state, "discard_agent_card", card_id=TREACHERY)
+    after = result.state.players[0]
+    assert after.troops_conflict == before.troops_conflict + 2
+    kinds = _kinds(result.events)
+    assert (
+        kinds.index("card_unloaded")
+        < kinds.index("troops_deployed")
+        < kinds.index("agent_card_effect_resolved")
+    )
+    assert not _offered(result.state, UNLOAD_ROW)
+    check_observation_privacy(result.state)
+
+
+def test_treachery_discarded_by_an_opponent_deploys_its_owners_troops() -> None:
+    """ "남의 효과로 버려져도 된다(룰북 예: 상대의 Reverend Mother Mohiam)"
+    (rise-of-ix.md 7): seat 1's window, seat 1's troops, in another seat's
+    turn -- the card's "Deploy these troops" needs no Combat space."""
+    state = _start()
+    other = state.players[1].hand[0]
+    state = _mohiam_asks_seat_one(state, TREACHERY, other)
+    before = state.players[1]
+    state = _do(state, "discard_opponent_card", seat=1, card_id=TREACHERY).state
+    top = state.decision_stack[-1]
+    assert top.kind is FrameKind.UNLOAD_ICONS
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 1
+    state = _do(state, UNLOAD_ROW, seat=1, card_id=TREACHERY, effect=_DEPLOY).state
+    after = state.players[1]
+    assert after.troops_conflict == before.troops_conflict + 2
+    assert after.troops_supply == before.troops_supply - 2
+    assert state.players[0].troops_conflict == 0
+    assert state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_treachery_revealed_then_trashed_deploys_again() -> None:
+    """OQ-120: "공개한 Unload 카드를 같은 Reveal turn에 trash하면 다시 얻는다"."""
+    state = _with_cull(_give(_start(), 0, hand=(TREACHERY,)))
+    state = _do(state, "reveal_turn").state
+    before = state.players[0]
+    state = _do(state, "deploy_reveal_supply_troops").state
+    state = _do(state, "play_intrigue", card_id=CULL, option=0).state
+    state = _do(state, "trash_intrigue_card", card_id=TREACHERY).state
+    assert not _offered(state, "finish_reveal")
+    state = _do(state, UNLOAD_ROW, card_id=TREACHERY, effect=_DEPLOY).state
+    after = state.players[0]
+    assert after.troops_conflict == before.troops_conflict + 4
+    assert after.combat_strength == before.combat_strength + 8
+    assert _offered(state, "finish_reveal")
+
+
+def test_treachery_trashed_by_a_combat_reward_deploys_for_the_next_step() -> None:
+    """OQ-127: "Combat 보상 지급 중(Terrible Purpose의 trash 보상 등)에 열린
+    Treachery의 Unload는 문장대로 troop 둘을 Conflict에 배치하고, 그 troop은 바로
+    다음 단계에서 supply로 돌아간다" (rise-of-ix.md 7)."""
+    conflict = "terrible_purpose"
+    state = _give(_start(), 0, discard_pile=(TREACHERY,))
+    state = replace(
+        state,
+        conflict_deck=tuple(c for c in state.conflict_deck if c != conflict),
+        unused_conflict_ids=tuple(
+            c for c in state.unused_conflict_ids if c != conflict
+        ),
+        phase=GamePhase.COMBAT,
+        decision_stack=(),
+        current_conflict_ids=(conflict,),
+        combat_intrigue_complete=False,
+        combat_rewards_resolved=False,
+        combat_end_triggers_offered=False,
+    )
+    owner = state.players[0]
+    state = _seat(
+        state,
+        0,
+        troops_garrison=owner.troops_garrison - 2,
+        troops_conflict=2,
+        combat_strength=4,
+    )
+    state = begin_combat_intrigue(state).state
+    while state.decision_stack[-1].kind is FrameKind.COMBAT_INTRIGUE:
+        passing = state.decision_stack[-1].decision
+        assert isinstance(passing, PlayerDecision)
+        state = _do(state, "pass_combat_intrigue", seat=passing.owner).state
+    state = _do(state, "resolve_combat_reward_icon", effect="trash").state
+    trashed = _do(state, "trash_combat_reward_card", card_id=TREACHERY)
+    assert "card_unloaded" in _kinds(trashed.events)
+    state = trashed.state
+    assert state.decision_stack[-1].kind is FrameKind.UNLOAD_ICONS
+    supply = state.players[0].troops_supply
+    state = _do(state, UNLOAD_ROW, card_id=TREACHERY, effect=_DEPLOY).state
+    assert state.players[0].troops_conflict == 4
+    assert state.players[0].troops_supply == supply - 2
+    state = _do(state, "resolve_combat_reward_icon", effect="victory_points").state
+    chance = ChanceResolver(seed=3)
+    while state.phase is GamePhase.COMBAT:
+        decision = ENGINE.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = ENGINE.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        assert not any(
+            row.action_id == UNLOAD_ROW for row in _rows(state, decision.owner)
+        )
+        state = ENGINE.apply(state, _rows(state, decision.owner)[0]).state
+    assert state.players[0].troops_conflict == 0
+    assert state.players[0].troops_supply == supply + 2
+
+
+def test_clean_up_moves_treachery_without_unloading_it() -> None:
+    """ "Clean Up에서 in play 카드를 discard pile로 옮기는 것은 discard가 아니다"
+    (rise-of-ix.md 7, [FAQ p. 2])."""
+    state, unloaded = _clean_up_round(_give(_start(), 0, in_play=(TREACHERY,)))
+    assert state.phase is GamePhase.ROUND_START
+    assert TREACHERY in state.players[0].discard_pile
     assert unloaded == []

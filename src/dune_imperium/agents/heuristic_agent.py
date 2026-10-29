@@ -137,6 +137,8 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # Reveal gains are always taken; the order rarely matters to the rules
     # agent, so it takes them before shopping.
     "recruit_reveal_troops": 4.0,
+    # Rise of Ix's Treachery: its two troops go to the Conflict.
+    "deploy_reveal_supply_troops": 4.0,
     "draw_reveal_intrigue": 4.0,
     # Immortality: take the Reveal's specimens, answer research choices,
     # and prefer the paid research bonus; returning specimens is a last

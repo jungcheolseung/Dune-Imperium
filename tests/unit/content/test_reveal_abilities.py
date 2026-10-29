@@ -86,10 +86,11 @@ def test_every_record_names_a_card_with_its_play_data() -> None:
     # Imperial Bashar's "+[sword] for each other revealed card that provides
     # one or more [sword]", Esmar Tuek's Unload box "[2 spice] [2 Solari]" and
     # Guild Accord's two lines "[1 water]", "[Spacing Guild] Alliance: [3
-    # spice]" and In The Shadows' "[Bene Gesserit Influence]".
-    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 16 + 11
+    # spice]", In The Shadows' "[Bene Gesserit Influence]" and Treachery's
+    # "[troop] [troop] Deploy these troops to the Conflict.".
+    assert len(REVEAL_GAIN_ABILITIES) == 51 + 1 + 16 + 12
     assert sum(len(a.sections) for a in REVEAL_GAIN_ABILITIES.values()) == (
-        55 + 1 + 17 + 12
+        55 + 1 + 17 + 13
     )
 
 

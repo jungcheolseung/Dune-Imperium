@@ -17,9 +17,9 @@ Rights, Sayyadina, Shai-Hulud, Truthsayer, Imperial Shock Trooper, Local
 Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
 Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
 Way, Satellite Ban, Spice Trader, Imperial Bashar, Bounty Hunter, Web of
-Power, Ixian Engineer, Esmar Tuek, Guild Accord and In The Shadows so far),
-while the observation lists every identity from v39. Setup takes Rise of Ix
-on the original game since stage P4c-5.
+Power, Ixian Engineer, Esmar Tuek, Guild Accord, In The Shadows and
+Treachery so far), while the observation lists every identity from v39.
+Setup takes Rise of Ix on the original game since stage P4c-5.
 from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
@@ -423,6 +423,28 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("treachery", "Treachery"),
         copies=2,
         acquisition_cost=6,
+        # App table: no Faction, the four Faction icons, no fixed Reveal values.
+        # Agent: "Gain two Influence instead of one. Trash this card." [Steam
+        # app text] -- Power Play's box (the app's PowerPlayAgentAbility):
+        # the 2 replace the visited Faction space's 1, and the card trashes
+        # itself by its own text, which gives its Unload too ("Treachery는
+        # 자기를 trash한다고 적혀 있어 예외" [Rise of Ix p. 10],
+        # docs/rules/rise-of-ix.md 7). Reveal: "[Unload] [troop] [troop]
+        # Deploy these troops to the Conflict." [Steam app screen pieces and
+        # text] -- two troops from the supply to the Conflict, gained also when
+        # the card is discarded or trashed [Rise of Ix p. 7] (``rules.unload``;
+        # during Combat, OQ-127).
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        ),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+        ),
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("truthsayer", "Truthsayer"),

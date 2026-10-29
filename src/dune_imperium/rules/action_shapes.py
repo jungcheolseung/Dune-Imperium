@@ -815,6 +815,9 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.GAIN_INFLUENCE, _S.REVEAL_CARD, _T.FACTION, variant="pending_gain"
     ),
     "recruit_reveal_troops": _row(_V.RECRUIT, _S.REVEAL_CARD),
+    "deploy_reveal_supply_troops": _row(
+        _V.DEPLOY, _S.REVEAL_CARD, variant="supply_troops"
+    ),
     "draw_reveal_intrigue": _row(_V.DRAW, _S.REVEAL_CARD, variant="intrigue"),
     "generate_reveal_specimens": _row(_V.GENERATE_SPECIMENS, _S.REVEAL_CARD),
     "advance_reveal_tleilaxu": _row(_V.ADVANCE, _S.REVEAL_CARD, variant="tleilaxu"),

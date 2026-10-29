@@ -263,6 +263,7 @@ const LABELS_EN = {
     "place_tech_spy": "Panopticon: place {spy}",
     "place_track_spy": "{influence_emperor} 4: place {spy}",
     "recruit_reveal_troops": "{reveal_turn}: {recruit} {troop}",
+    "deploy_reveal_supply_troops": "{reveal_turn}: Deploy {troop} to the {conflict}",
     "draw_reveal_intrigue": "{reveal_turn}: {intrigue}",
     "generate_reveal_specimens": "{reveal_turn}: {specimen}",
     "advance_reveal_tleilaxu": "{reveal_turn}: {tleilaxu}",

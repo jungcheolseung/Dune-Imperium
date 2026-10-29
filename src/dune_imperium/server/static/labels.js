@@ -327,6 +327,8 @@ const ACTION_LABELS = {
   place_tech_spy: "파놉티콘: {spy} 배치",
   place_track_spy: "{influence_emperor} 4: {spy} 배치",
   recruit_reveal_troops: "{reveal_turn}: {troop} {recruit}",
+  /* Rise of Ix's Treachery: "Deploy these troops to the Conflict." */
+  deploy_reveal_supply_troops: "{reveal_turn}: {troop} {conflict}에 배치",
   draw_reveal_intrigue: "{reveal_turn}: {intrigue}",
   generate_reveal_specimens: "{reveal_turn}: {specimen}",
   advance_reveal_tleilaxu: "{reveal_turn}: {tleilaxu}",

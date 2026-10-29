@@ -294,6 +294,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "sayyadina",
     "shai_hulud",
     "spice_trader",
+    "treachery",
     "truthsayer",
     "water_peddler",
     "web_of_power",

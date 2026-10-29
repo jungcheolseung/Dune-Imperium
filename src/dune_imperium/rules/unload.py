@@ -36,15 +36,15 @@ callers write their own frame back after the transition and would drop a
 row or a window put there before.
 
 Wired so far: Reveal boxes of plain resource gains (Water Peddler, CHOAM
-Delegate, Esmar Tuek) and of a printed Faction's Influence (In The Shadows),
+Delegate, Esmar Tuek), of a printed Faction's Influence (In The Shadows) and
+of troops deployed from the supply (Treachery, also during Combat, OQ-127),
 also on a line with a condition the owner's seat alone settles (Guild
 Accord's "[Spacing Guild] Alliance: [3 spice]"). A conditioned
 icon is gained when its condition holds as the card is discarded or trashed:
 the Unload happens then ("trash되는 카드의 Unload는 trash되는 중에 일어난다"),
 and the rows and the window only let the owner order what it gained. A box
 with a choice, a cost, Persuasion or swords belongs to its card's brief
-(Freighter Fleet, Ix-Guild Compact, Treachery -- whose
-Combat-reward case is OQ-127 -- and the promo Boundless Ambition):
+(Freighter Fleet, Ix-Guild Compact and the promo Boundless Ambition):
 ``unload_icons`` refuses it.
 """
 
@@ -57,6 +57,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     CommandReached,
     Condition,
+    DeployFromSupply,
     FactionBond,
     GainInfluence,
     GainResources,
@@ -95,6 +96,9 @@ _RESOURCES: Final = ("solari", "spice", "water")
 INFLUENCE_ICON_PREFIX: Final = "influence_"
 """An icon raising one printed Faction's Influence: ``influence_<faction>``
 (In The Shadows' "[Bene Gesserit Influence]")."""
+DEPLOY_ICON: Final = "deploy"
+"""Treachery's "[troop] [troop] Deploy these troops to the Conflict.": troops
+from the supply to the Conflict, one icon for the printed sentence."""
 _FRAME: Final = "Unload frame"
 
 type UnloadIcon = tuple[str, int]
@@ -137,6 +141,9 @@ def _box(definition_id: str) -> tuple[_BoxIcon, ...]:
                 f"{definition_id}: an Unload box condition {line.condition!r}"
             )
         for reward in line.rewards:
+            if isinstance(reward, DeployFromSupply):
+                icons.append(_BoxIcon(DEPLOY_ICON, reward.count, line.condition))
+                continue
             if _one_faction(reward) is not None:
                 assert isinstance(reward, GainInfluence) and reward.factions
                 icons.append(
@@ -214,10 +221,21 @@ def _unmet(state: GameState, player: int, card_id: str) -> tuple[str, ...]:
 def _gain(
     state: GameState, player: int, name: str, amount: int, *, source: str
 ) -> RuleResult:
-    """Pay one icon of an Unload box: a resource, or a printed Faction's
+    """Pay one icon of an Unload box: a resource, a printed Faction's
     Influence (gained on its track as any Influence is; at the top nothing
-    is gained, OQ-060). ``source`` names the icon's events."""
+    is gained, OQ-060), or troops deployed from the supply. ``source`` names
+    the icon's events."""
 
+    if name == DEPLOY_ICON:
+        # "Deploy these troops to the Conflict" -- also outside its owner's
+        # turn: during Combat they go to the Conflict and back to the supply
+        # with the others at the next step (OQ-127), and a supply short of
+        # them records the rest as Double Cross's does (OQ-042 (2)).
+        # Imported here: the Tech module imports the card discard and trash,
+        # which import this one.
+        from dune_imperium.rules.tech import deploy_troops_from_supply
+
+        return deploy_troops_from_supply(state, player, amount, source=source)
     if name.startswith(INFLUENCE_ICON_PREFIX):
         faction = Faction(name.removeprefix(INFLUENCE_ICON_PREFIX))
         return gain_faction_influence(

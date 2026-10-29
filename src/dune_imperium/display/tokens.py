@@ -27,6 +27,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AgentOnSpaceWithIcon,
     CommandersInConflictAtLeast,
     CommandReached,
+    DeployFromSupply,
     DrawIntrigueCards,
     FactionBond,
     GainInfluence,
@@ -62,7 +63,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
-from dune_imperium.display.effect_dsl_text import condition_text
+from dune_imperium.display.effect_dsl_text import condition_text, reward_text
 from dune_imperium.rules.reveal_lines import RevealLine
 
 _BOND_NAMES: dict[PersonalCardBond, str] = {
@@ -918,6 +919,7 @@ HANDLED_REVEAL_REWARDS: Final[frozenset[type]] = frozenset(
         AdvanceTleilaxu,
         Research,
         ReserveCostDiscount,
+        DeployFromSupply,
     }
 )
 
@@ -1069,6 +1071,9 @@ def reveal_effect_text(line: RevealLine) -> str:
         gains.append(
             f"Recruit {line.recruit_troops} {_plural(line.recruit_troops, 'troop')}"
         )
+    if line.supply_deployments:
+        # Treachery: Double Cross's words (``effect_dsl_text``).
+        gains.append(reward_text(DeployFromSupply(line.supply_deployments)))
     influence = line.influence
     if influence is not None and influence[1]:
         faction, times = influence

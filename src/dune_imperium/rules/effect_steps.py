@@ -1198,6 +1198,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     # resource bundle or a Faction is its printer's own, so the row does not
     # repeat it (``_PRINTER_IMPLIED``).
     "recruit_reveal_troops": _spec(_V.RECRUIT, _S.REF, Printed.NAMED, icon="troops"),
+    # Rise of Ix's Treachery: troops from the supply to the Conflict.
+    "deploy_reveal_supply_troops": _spec(
+        _V.DEPLOY, _S.REF, Printed.NAMED, icon="supply_troops"
+    ),
     "draw_reveal_intrigue": _spec(_V.DRAW, _S.REF, Printed.NAMED, icon="intrigue"),
     "generate_reveal_specimens": _spec(
         _V.GENERATE_SPECIMENS, _S.REF, Printed.NAMED, icon="specimen"

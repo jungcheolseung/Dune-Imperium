@@ -782,6 +782,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "place_agent": apply_agent_space_pick,
     "reveal_turn": begin_reveal_turn,
     "recruit_reveal_troops": apply_reveal_gain,
+    "deploy_reveal_supply_troops": apply_reveal_gain,
     "draw_reveal_intrigue": apply_reveal_gain,
     "generate_reveal_specimens": apply_reveal_gain,
     "advance_reveal_tleilaxu": apply_reveal_gain,

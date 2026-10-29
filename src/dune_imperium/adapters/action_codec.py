@@ -1088,9 +1088,10 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         # Landing Rights' Freighter icon, an Agent box's two moves
         # (``agent_effects.apply_agent_card_freighter``), Ixian Engineer's
-        # Acquire Tech icon (``agent_effects.apply_agent_card_tech``), and
-        # Guild Chief Administrator's Freighter, a Reveal choice's
-        # (``reveal_turn``).
+        # Acquire Tech icon (``agent_effects.apply_agent_card_tech``), Guild
+        # Chief Administrator's Freighter, a Reveal choice's (``reveal_turn``),
+        # and Treachery's Reveal troops deployed from the supply
+        # (``reveal_turn.apply_reveal_gain``).
         templates.extend(
             ActionTemplate(action_id=action_id)
             for action_id in (
@@ -1101,6 +1102,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "recall_reveal_freighter",
                 # Weirding Way's extra turn.
                 "take_agent_card_extra_turn",
+                # Treachery's Reveal troops deployed from the supply.
+                "deploy_reveal_supply_troops",
             )
         )
         # Court Intrigue's arrow: an Intrigue card of the hand under the
@@ -2307,6 +2310,7 @@ _OWED_DRAW_IDS: Final = frozenset({"draw_owed_intrigue", "draw_owed_card"})
 # (stage B3e-1, ``reveal_turn.legal_reveal_gain_actions``).
 _REVEAL_GAIN_OF: Final[Mapping[str, Callable[[RevealLine], bool]]] = {
     "recruit_reveal_troops": lambda line: line.recruit_troops > 0,
+    "deploy_reveal_supply_troops": lambda line: line.supply_deployments > 0,
     "draw_reveal_intrigue": lambda line: line.draw_intrigue > 0,
     "generate_reveal_specimens": lambda line: line.specimens > 0,
     "advance_reveal_tleilaxu": lambda line: line.tleilaxu > 0,

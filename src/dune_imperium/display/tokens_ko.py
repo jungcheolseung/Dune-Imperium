@@ -996,6 +996,10 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
         gains.append(f"{{intrigue:{line.draw_intrigue}}}")
     if line.recruit_troops:
         gains.append(f"{{troop:{line.recruit_troops}}}")
+    if line.supply_deployments:
+        # Treachery: Double Cross's words (``effect_dsl_text_ko``).
+        n = line.supply_deployments
+        gains.append(f"{{supply}}의 {{troop:{n}}}을 {{conflict}}에 배치")
     influence = line.influence
     if influence is not None and influence[1]:
         faction, times = influence

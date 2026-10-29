@@ -35,6 +35,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CommandersInConflictAtLeast,
     CommandReached,
     Condition,
+    DeployFromSupply,
     DrawIntrigueCards,
     EffectSection,
     FactionBond,
@@ -313,6 +314,12 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "in_the_shadows": _reveal(
             _line(GainInfluence(factions=(Faction.BENE_GESSERIT,)))
         ),
+        # Treachery (Rise of Ix): "[Unload] [troop] [troop] Deploy these
+        # troops to the Conflict." [Steam app screen pieces and text] -- two
+        # troops from the supply to the Conflict, as Double Cross's one
+        # (OQ-042 (2): "원판·Ix의 Double Cross·Treachery(supply에서 Conflict로
+        # 배치)도 같은 기록을 쓴다"); its Unload box too.
+        "treachery": _reveal(_line(DeployFromSupply(2))),
         # Guild Accord (Rise of Ix): "[Unload] [1 water]; [Spacing Guild]
         # Alliance: [3 spice]" [Steam app screen pieces], two lines, likewise.
         "guild_accord": _reveal(
@@ -420,6 +427,7 @@ REVEAL_LINE_REWARDS: Final[frozenset[type]] = frozenset(
         AdvanceTleilaxu,
         Research,
         ReserveCostDiscount,
+        DeployFromSupply,
     }
 )
 
@@ -486,7 +494,11 @@ def check_reveal_gain_line(line: EffectSection) -> None:
                     raise TypeError(f"{reward!r} is not a Reveal gain")
                 once("influence")
                 gains += times
-            case DrawIntrigueCards(count=count) | RecruitTroops(count=count):
+            case (
+                DrawIntrigueCards(count=count)
+                | RecruitTroops(count=count)
+                | DeployFromSupply(count=count)
+            ):
                 once(type(reward).__name__)
                 gains += count
             case GenerateSpecimens(count=count) | AdvanceTleilaxu(count=count):

@@ -325,7 +325,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # only its own row reads it, its row is the only one that changed, and no
 # scale moved (compared against 44501017, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against 107443a9 (2026-10-30).
-_GOLDEN_DIGEST = "c61ece9b46d18f1a1919f87a9664cfc69d92c7e77ebef7d6674214957c773fa2"
+# Then Treachery got its play data (stage P4d): one personal-table column is
+# new (a Reveal line deploying troops from the supply), only its own row reads
+# it, its row is the only one that changed, and no scale moved (compared
+# against 4d24b432, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 3f153856 (2026-10-30).
+_GOLDEN_DIGEST = "5d396775bf0fbf7c69603a402a11ca08041fd471f37fd68a655cd3b6b30be118"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
