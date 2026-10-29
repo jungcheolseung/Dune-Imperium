@@ -46,6 +46,7 @@ from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
 from dune_imperium.agents.app_ai.data.synthetic import SYNTHETIC
 from dune_imperium.content.bloodlines.tech import TECH_TILES
 from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_TILES
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.contracts import BLOODLINES_CONTRACTS
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
@@ -2106,7 +2107,8 @@ def contract_set_mark(img, scale):
 # Bloodlines content, so the printed English comes from en_text.json
 # (card.techtile.<slug>.ability) and the Korean from ko_text.json; the acquire
 # strip is derived from the engine's tile definition with the app's own icons.
-TECH_BY_ID = {tile.tech_id: tile for tile in TECH_TILES}
+# The Tech Module's 18 and Rise of Ix's 18 (stage P5g; same tile frame).
+TECH_BY_ID = {tile.tech_id: tile for tile in (*TECH_TILES, *IX_TECH_TILES)}
 # Every tile is drawn on the Windtraps prefab, whose acquire root holds both
 # strip pictures (short and long); the binder places the icons itself.
 TECH_TEMPLATE = "UI_crd_TechTile_Windtraps.prefab.json"
@@ -2124,6 +2126,8 @@ TECH_STRIP_ICONS = {
     "TrashCard": ("TrashCard", False, (66.0, 100.0)),
     "Troop": ("Troop", False, (57.0, 60.0)),
     "SuperSpy": ("SuperSpy", True, (65.0, 78.0)),
+    # Rise of Ix: Windtraps' water drop (checked against its scan).
+    "Water": ("UI_crd_CostIcon_Water", False, (50.0, 66.0)),
 }
 TECH_STRIP_PAIR = 0.86  # two like cards stacked print smaller (Self-Destroying)
 TECH_STRIP_TOP = 241.0  # the icons' top, just below the chevron (tile's top)
@@ -2216,13 +2220,38 @@ def tech_strip(tile):
         out.append("TrashCard")
     out += ["Troop"] * tile.acquire_troops
     out += ["SuperSpy"] * tile.acquire_deep_cover_spies
+    # Rise of Ix's own acquire keys: Windtraps' water, Shuttle Fleet's
+    # Influence with two different Factions (OQ-114).
+    if "water" in tile.acquire_effect_keys:
+        out.append("Water")
+    if "distinct_influence" in tile.acquire_effect_keys:
+        out += ["WildRankUp", "WildRankUp"]
     return out
+
+
+# Rise of Ix tiles that keep their scans: the flip tiles print an icon row
+# (flip, discard, arrows) this renderer does not draw, and Shuttle Fleet's
+# acquire strip is a "Choose two:" row of the four Factions.
+TECH_SCAN_ONLY = {
+    "flagship": "flip icon row not drawn",
+    "holoprojectors": "flip icon row not drawn",
+    "invasion_ships": "flip icon row not drawn",
+    "training_drones": "flip icon row not drawn",
+    "shuttle_fleet": "Choose two: Faction strip not drawn",
+}
 
 
 def tech_spec(inp, content_id):
     tile = TECH_BY_ID[content_id]
-    key = f"card.techtile.{content_id.replace('_', '')}.ability"
-    en = inp.en.get(key)
+    # The app spells one Rise of Ix key differently (docs/rules/rise-of-ix.md
+    # 4: ``restrictedordinance``).
+    short = {"restricted_ordnance": "restrictedordinance"}.get(
+        content_id, content_id.replace("_", "")
+    )
+    key = f"card.techtile.{short}.ability"
+    # Bloodlines' text is en_text.json's (the app has no Bloodlines); Rise of
+    # Ix's is the app's own string unless en_text.json prints it otherwise.
+    en = inp.en.get(key) or inp.loc.get(key)
     return {
         "kind": "tech",
         "id": content_id,
@@ -2232,8 +2261,9 @@ def tech_spec(inp, content_id):
         "choam": tile.choam_only,
         "strip": tech_strip(tile),
         "texts": [{"key": key, "en": en, "ko": inp.ko.get(key)}],
-        "art": "tech" if en else None,
-        "skip": None if en else "no English text (en_text.json)",
+        "art": "tech" if en and content_id not in TECH_SCAN_ONLY else None,
+        "skip": TECH_SCAN_ONLY.get(content_id)
+        or (None if en else "no English text (en_text.json)"),
         "path": inp.manifest.get(("tech", content_id)),
     }
 
@@ -2797,7 +2827,7 @@ KIND_IDS = {
         ]
         + list(BLOODLINES_CONTRACT_TEMPLATES)
     ),
-    "tech": lambda: [tile.tech_id for tile in TECH_TILES],
+    "tech": lambda: [tile.tech_id for tile in (*TECH_TILES, *IX_TECH_TILES)],
 }
 
 
