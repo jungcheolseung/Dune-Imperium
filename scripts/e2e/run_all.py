@@ -59,7 +59,7 @@ SECONDS = {
     # 2026-10-30 alone: a remote server, seven tables of five pages (203, 91,
     # 33, 7, 177, 57 and 161 pinned actions) and two twins, then an open
     # server with hot-seat pages for three tables.
-    "ix_screens": 180,
+    "ix_screens": 230,
 }
 
 
