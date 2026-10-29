@@ -552,6 +552,23 @@ def test_only_this_turns_dreadnoughts_may_be_withdrawn() -> None:
     assert _context(untouched)[WITHDRAWABLE_DREADNOUGHTS_KEY] == 1
 
 
+def test_a_withdrawal_offers_only_the_dreadnoughts_the_conflict_holds() -> None:
+    """A withdrawal acts on what is in the Conflict when it resolves, as the
+    troops' does (OQ-029): a dreadnought deployed this turn that has since
+    left the Conflict some other way is not offered back, so the seat's
+    dreadnoughts never go negative."""
+
+    engine, state = _turn(garrison=1)
+    deployed = _deploy(engine, state, "dreadnoughts", 1)
+    assert _context(deployed)[WITHDRAWABLE_DREADNOUGHTS_KEY] == 1
+    gone = _seat(deployed, dreadnoughts_conflict=0, dreadnoughts_supply=1)
+    assert legal_dreadnought_withdrawals(gone, 0) == ()
+    assert not any(
+        action.action_id == "withdraw_dreadnoughts"
+        for action in engine.legal_actions(gone, 0)
+    )
+
+
 def test_a_commission_outside_a_combat_turn_cannot_be_deployed() -> None:
     """ "Combat 칸에 Agent를 보낸 turn이면 Conflict에 배치할 수 있다"
     (docs/rules/rise-of-ix.md 6, [Rise of Ix p. 6]): at a space with no
