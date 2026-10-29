@@ -21,6 +21,7 @@ from dune_imperium.agents.app_ai.abilities import (
 )
 from dune_imperium.agents.app_ai.abilities import original_intrigue as oi
 from dune_imperium.agents.app_ai.abilities.base import Request, TargetInfo, Timing
+from dune_imperium.agents.app_ai.abilities.immortality import valid_space_ids
 from dune_imperium.agents.app_ai.abilities.intrigue import (
     IntrigueAbility,
     StrengthIntrigueAbility,
@@ -1328,7 +1329,7 @@ def test_valid_spaces_of_the_original_starting_hand(
     and Bindu Suspension readers)."""
 
     p = prof(turn_state)
-    found = {ref.split(":")[3]: oi.valid_space_ids(p, ref, {}) for ref in p.ctx.hand}
+    found = {ref.split(":")[3]: valid_space_ids(p, ref, {}) for ref in p.ctx.hand}
     assert found["reconnaissance"] == {"arrakeen", "carthag"}
     assert found["dagger"] == {"hall_of_oratory"}
     assert found["dune_the_desert_planet"] >= {"imperial_basin"}
