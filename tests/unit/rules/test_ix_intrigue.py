@@ -330,6 +330,10 @@ def _cull_hand(
     piles: dict[str, object] = {"discard_pile": discard_pile, "in_play": in_play}
     if hand is not None:
         piles["hand"] = hand
+    # A card sits in one zone only: take the named ones out of the deck, whose
+    # shuffle depends on how many Ix cards the Imperium deck holds.
+    named = {*discard_pile, *in_play, *(hand or ())}
+    piles["deck"] = tuple(c for c in state.players[0].deck if c not in named)
     return engine, _seat(
         state, intrigue_cards=(CULL,), resources=Resources(solari=solari), **piles
     )

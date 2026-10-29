@@ -164,7 +164,9 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # and no scale (compared against 49b6dfdc, 2026-10-29).
 # Then Sayyadina got her play data (stage P4d): only her own row changed, no
 # column and no scale (compared against d6a6d909, 2026-10-29).
-_GOLDEN_DIGEST = "46a4d846c8af71cf6e1ce2d58da0589cd022ea23f15f7ebafae6e4bfc8583847"
+# Then Truthsayer got her play data (stage P4d): only her own row changed, no
+# column and no scale (compared against 776f8431, 2026-10-29).
+_GOLDEN_DIGEST = "3f1a399234e7a78a2313894c96d2f657ca53dc7c69b60a84268d8f3d794c05e2"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

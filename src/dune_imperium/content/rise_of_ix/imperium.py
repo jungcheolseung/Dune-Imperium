@@ -12,9 +12,9 @@ These began as stage P4a identity entries (name, copies and cost), generated
 by ``scripts/dwgr/imperium_entries.py --set ix skeleton``. Incomplete entries
 keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
-game's deck takes only completed cards (Jamis and Sayyadina so far), while
-the observation lists every identity from v39. Setup takes Rise of Ix on the
-original game since stage P4c-5.
+game's deck takes only completed cards (Jamis, Sayyadina and Truthsayer so
+far), while the observation lists every identity from v39. Setup takes Rise
+of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
 cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
@@ -190,6 +190,15 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("truthsayer", "Truthsayer"),
         copies=2,
         acquisition_cost=3,
+        # App screen pieces: Discard -> draw 1; Reveal 1 Persuasion, 1 sword.
+        # The hand-card cost uses the same optional arrow as other cards
+        # [Rise of Ix p. 7] [FAQ p. 2].
+        factions=(Faction.EMPEROR, Faction.BENE_GESSERIT),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.BENE_GESSERIT, AgentIcon.LANDSRAAD),
+        agent_effect=PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("water_peddler", "Water Peddler"),

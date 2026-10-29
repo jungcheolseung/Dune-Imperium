@@ -282,7 +282,11 @@ def test_infiltration_belongs_to_the_played_card() -> None:
     """'그 아이콘의 칸에서 상대 Agent ... 무시' [Rise of Ix p. 7]."""
     engine, state = _start()
     diplomacy = "player:0:starter:diplomacy:0"
-    state = _seat(state, hand=(JAMIS, diplomacy))
+    state = _seat(
+        state,
+        hand=(JAMIS, diplomacy),
+        deck=tuple(card for card in state.players[0].deck if card != diplomacy),
+    )
     state = _seat(state, 1, agent_locations=("stillsuits",), agents_available=1)
     engine.legal_actions(state, 0)
     occupied_rows = [
