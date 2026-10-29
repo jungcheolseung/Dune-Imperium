@@ -569,7 +569,9 @@ def reward_text(reward: Reward) -> str:
             return f"Draw {count} {_plural(count, 'card')}"
         case ShuffleDiscardIntoDeck(draw=draw):
             return (
-                "Shuffle your discard pile into your deck, then draw "
+                # The card prints "then: [draw 1]" (Refocus): the capital
+                # "Draw" draws the icon, as the Korean {draw:N} does.
+                "Shuffle your discard pile into your deck, then: Draw "
                 f"{draw} {_plural(draw, 'card')}"
             )
         case BlockChosenSpaceForOpponentsNextAgent():
