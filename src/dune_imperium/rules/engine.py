@@ -902,6 +902,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_agent_card_spice": apply_agent_card_payment,
     # Firm Grip (original game): "2 Solari -> Choose one Influence".
     "pay_agent_card_solari": apply_agent_card_payment,
+    # Local Fence (Rise of Ix): its two arrows printed with "-OR-".
+    "pay_agent_card_spice_for_solari": apply_agent_card_payment,
+    "pay_agent_card_solari_for_spice": apply_agent_card_payment,
     "decline_agent_card_payment": apply_agent_card_payment,
     "pay_corrinth_city": apply_corrinth_city_payment,
     "select_corrinth_city_discard": apply_corrinth_city_payment,

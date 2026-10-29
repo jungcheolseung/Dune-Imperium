@@ -202,6 +202,15 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_PAY_THREE_WATER_FOR_VP: (
         "{water:3} 지불 가능 {arrow_right} {victory_point:1}"
     ),
+    # Rise of Ix's Local Fence (stage P4d): the same arrows, joined as Guild
+    # Ambassador's "하나 선택: ... / ...".
+    (
+        PersonalCardAgentEffect
+        .MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
+    ): (
+        "하나 선택: {spice:2} 지불 가능 {arrow_right} {solari:5} / "
+        "{solari:5} 지불 가능 {arrow_right} {spice:4}"
+    ),
     PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP: (
         "카드 2장 {discard}·{solari:5} 지불 가능 {arrow_right} {victory_point:1}"
     ),

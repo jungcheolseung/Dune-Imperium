@@ -142,6 +142,14 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_PAY_THREE_WATER_FOR_VP: (
             "You may pay 3 water → Gain 1 VP"
         ),
+        # Rise of Ix's Local Fence (stage P4d): two arrows printed with -OR-.
+        (
+            PersonalCardAgentEffect
+            .MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
+        ): (
+            "Choose one: You may pay 2 spice → Gain 5 solari / "
+            "You may pay 5 solari → Gain 4 spice"
+        ),
         PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP: (
             "You may discard 2 cards and pay 5 solari → Gain 1 VP"
         ),

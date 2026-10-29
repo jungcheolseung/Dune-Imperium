@@ -218,7 +218,14 @@ def test_sayyadina_can_be_acquired_from_the_imperium_row() -> None:
     state = _seat(
         state, hand=("imperium:sietch_reverend_mother:0", "imperium:spice_hunter:0")
     )
-    state = replace(state, imperium_row=(SAYYADINA, *state.imperium_row[1:]))
+    # The seeded row may already hold her (the Ix deck grows card by card):
+    # one copy, in front, and none left in the deck.
+    row = tuple(card for card in state.imperium_row if card != SAYYADINA)
+    state = replace(
+        state,
+        imperium_row=(SAYYADINA, *row[len(row) - 4 :]),
+        imperium_deck=tuple(card for card in state.imperium_deck if card != SAYYADINA),
+    )
     revealed = _do(engine, state, "reveal_turn")
     acquired = _do(engine, revealed, "acquire_imperium", instance_id=SAYYADINA)
     assert SAYYADINA in acquired.players[0].discard_pile

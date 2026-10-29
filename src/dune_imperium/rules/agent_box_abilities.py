@@ -1152,7 +1152,10 @@ def resolve_box_icon(state: GameState, action: DomainAction) -> RuleResult:
 # ``<box>:paid`` with the resource and the amount spent, the gains'
 # ``resources_gained`` ``<box>:resources``, then runs the follow-ups that may
 # push a frame: a draw named ``<box>``, a Tleilaxu advance named
-# ``<box>:tleilaxu``. The caller adds the box's event.
+# ``<box>:tleilaxu``. The caller adds the box's event. Two such arrows printed
+# with "-OR-" (Local Fence, a ``ONE_OF`` record) are one row each beside the
+# one refusal, each named by its exchange (``pay_agent_card_<paid>_for_<gained>``,
+# as Arrakis Revolt names its two payments), so the steps tell them apart.
 
 # The rewards ``apply_payment`` gives; a record with any other is no payment
 # box (it keeps its own code until a stage moves it).
@@ -1215,9 +1218,25 @@ def payment_box(ability: Ability | None) -> bool:
         except ValueError:
             return False
         return True
+    if ability.structure is AbilityStructure.ONE_OF:
+        # "[2 spice] -> [5 Solari] -OR- [5 Solari] -> [4 spice]" (Local
+        # Fence): each line an arrow of its own, told apart by its row.
+        if not all(_payment_line(line) for line in ability.sections):
+            return False
+        try:
+            rows = {_exchange_template(line) for line in ability.sections}
+        except LookupError:
+            return False
+        return len(rows) == len(ability.sections)
     if len(ability.sections) != 1:
         return False
-    (section,) = ability.sections
+    return _payment_line(ability.sections[0])
+
+
+def _payment_line(section: EffectSection) -> bool:
+    """Whether ``section`` is one paid arrow ``apply_payment`` pays: one cost
+    a payment row names, and rewards it gives."""
+
     if len(section.costs) != 1 or not all(
         isinstance(reward, _PAYMENT_REWARDS)
         and (not isinstance(reward, GainInfluence) or _paid_influence(reward))
@@ -1231,10 +1250,54 @@ def payment_box(ability: Ability | None) -> bool:
     return True
 
 
-def _payment_cost(ability: Ability) -> PayResources | SpendSpecimens:
-    cost = ability.sections[0].costs[0]
+def _line_cost(section: EffectSection) -> PayResources | SpendSpecimens:
+    cost = section.costs[0]
     assert isinstance(cost, PayResources | SpendSpecimens)
     return cost
+
+
+def _paid_lines(ability: Ability) -> tuple[EffectSection, ...]:
+    """The lines whose arrow a payment row pays: each of a "-OR-" box's, or
+    the one line (an armed arrow's cost is on its first)."""
+
+    if ability.structure is AbilityStructure.ONE_OF:
+        return ability.sections
+    return ability.sections[:1]
+
+
+def _payment_cost(ability: Ability) -> PayResources | SpendSpecimens:
+    return _line_cost(ability.sections[0])
+
+
+def _exchange_template(line: EffectSection) -> str:
+    """The row of one arrow of a "-OR-" box: what it pays for the one
+    resource it gains (``pay_agent_card_spice_for_solari``); ``LookupError``
+    when no row names that exchange."""
+
+    gained = [
+        name
+        for reward in line.rewards
+        if isinstance(reward, GainResources)
+        for name in ("solari", "spice", "water")
+        if getattr(reward, name)
+    ]
+    if len(line.rewards) != 1 or len(gained) != 1:
+        raise LookupError(f"no exchange row pays {line!r}")
+    paid, _ = _paid_resource(_line_cost(line))
+    return template_id(
+        Verb.PAY, Source.AGENT_CARD, variant=f"{paid}_for_{gained[0]}"
+    )
+
+
+def _chosen_line(ability: Ability, action_id: str | None) -> EffectSection:
+    """The arrow the payment row ``action_id`` pays (the first line of a box
+    with one arrow)."""
+
+    if ability.structure is not AbilityStructure.ONE_OF:
+        return ability.sections[0]
+    return next(
+        line for line in ability.sections if _exchange_template(line) == action_id
+    )
 
 
 def _paid_resource(cost: object) -> tuple[str, int]:
@@ -1264,9 +1327,22 @@ def _payment_template(cost: PayResources | SpendSpecimens) -> str:
 def payment_cost_block(
     owner: PlayerState, ability: Ability
 ) -> OptionalEffectBlock | None:
-    """Why the arrow's cost cannot be paid now, or None."""
+    """Why the arrow's cost cannot be paid now, or None: for a "-OR-" box,
+    None while either arrow's can, else the first's with the second's
+    ``also``."""
 
-    match _payment_cost(ability):
+    blocks = [_cost_block(owner, _line_cost(line)) for line in _paid_lines(ability)]
+    if any(block is None for block in blocks):
+        return None
+    first, *rest = blocks
+    assert first is not None
+    return replace(first, also=rest[0]) if rest else first
+
+
+def _cost_block(
+    owner: PlayerState, cost: PayResources | SpendSpecimens
+) -> OptionalEffectBlock | None:
+    match cost:
         case SpendSpecimens(count=count):
             return short_of(OptionalBlockKind.SPECIMENS, count, owner.specimens)
         case PayResources(solari=solari, spice=spice, water=water):
@@ -1305,7 +1381,17 @@ def payment_reward_block(
         if any(block is None for block in blocks):
             return None
         return blocks[0]
-    rewards = ability.sections[0].rewards
+    blocks = [
+        _rewards_block(state, player, line.rewards) for line in _paid_lines(ability)
+    ]
+    return None if any(block is None for block in blocks) else blocks[0]
+
+
+def _rewards_block(
+    state: GameState, player: int, rewards: tuple[Reward, ...]
+) -> AgentPaymentBlock | None:
+    """Why one arrow's rewards would change nothing now (OQ-071), or None."""
+
     if (
         rewards
         and all(isinstance(reward, RecruitTroops) for reward in rewards)
@@ -1365,6 +1451,19 @@ def payment_rows(
     the owner's order [Main pp. 9, 20] (OQ-028)."""
 
     decline = DomainAction(action_id="decline_agent_card_payment", actor=player)
+    if ability.structure is AbilityStructure.ONE_OF:
+        # One row per arrow its owner can pay for something now; the box
+        # holds one refusal (Local Fence).
+        owner = state.players[player]
+        return (
+            decline,
+            *(
+                DomainAction(action_id=_exchange_template(line), actor=player)
+                for line in ability.sections
+                if _cost_block(owner, _line_cost(line)) is None
+                and _rewards_block(state, player, line.rewards) is None
+            ),
+        )
     if (
         payment_cost_block(state.players[player], ability) is not None
         or payment_reward_block(state, player, ability) is not None
@@ -1382,11 +1481,14 @@ def apply_payment(
     ability: Ability,
     context: dict[str, ActionValue],
     source: str,
+    action_id: str | None = None,
 ) -> RuleResult:
     """Pay the arrow and take what it buys (``context`` has its pending flag
-    already cleared by the caller; ``source`` is the box)."""
+    already cleared by the caller; ``source`` is the box; ``action_id`` the
+    payment row, which names the arrow of a "-OR-" box)."""
 
-    cost = _payment_cost(ability)
+    line = _chosen_line(ability, action_id)
+    cost = _line_cost(line)
     owner = state.players[player]
     if ability.armed_icons:
         # Only the cost is paid now; the rewards are armed as icons, each
@@ -1428,7 +1530,7 @@ def apply_payment(
                 spice_spent_turn=owner.spice_spent_turn + spice,
             )
     shortfall: tuple[GameEvent, ...] = ()
-    for reward in ability.sections[0].rewards:
+    for reward in line.rewards:
         match reward:
             case GainResources():
                 owner = _gain(owner, reward)
@@ -1450,10 +1552,10 @@ def apply_payment(
             player,
             **{"specimens" if resource == "specimen" else resource: spent},
         ),
-        *_gains_event(ability.sections[0].rewards, source, player),
+        *_gains_event(line.rewards, source, player),
         *shortfall,
     ]
-    for reward in ability.sections[0].rewards:
+    for reward in line.rewards:
         step: RuleResult | None = None
         match reward:
             case TrashPersonalCard():

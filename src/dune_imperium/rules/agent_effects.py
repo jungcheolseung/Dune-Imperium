@@ -2158,9 +2158,12 @@ def _apply_payment_choice(
     if recorded is not None and wall_and_worm_box(recorded):
         return _apply_arrakis_revolt_payment(state, action, recorded, context, source)
     if payment_box(recorded):
-        # An optional arrow with no target, from its record (composed A3b).
+        # An optional arrow with no target, from its record (composed A3b);
+        # the row names which arrow of a "-OR-" box it pays (Local Fence).
         assert recorded is not None
-        return apply_payment(state, action.actor, recorded, context, source)
+        return apply_payment(
+            state, action.actor, recorded, context, source, action.action_id
+        )
     if recorded is not None and lose_box(recorded):
         # Piter, Genius Advisor (composed A3f).
         return apply_lose(state, action, recorded, context, source)

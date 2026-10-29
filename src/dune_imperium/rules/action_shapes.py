@@ -397,6 +397,13 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "pay_agent_card_solari": _row(_V.PAY, _S.AGENT_CARD, variant="solari", tag=_BOX),
     "pay_agent_card_spice": _row(_V.PAY, _S.AGENT_CARD, variant="spice", tag=_BOX),
+    # Local Fence's two arrows printed with "-OR-" (Rise of Ix), one each.
+    "pay_agent_card_spice_for_solari": _row(
+        _V.PAY, _S.AGENT_CARD, variant="spice_for_solari", tag=_BOX
+    ),
+    "pay_agent_card_solari_for_spice": _row(
+        _V.PAY, _S.AGENT_CARD, variant="solari_for_spice", tag=_BOX
+    ),
     "pay_agent_card_spice_for_sandworm": _row(
         _V.PAY, _S.AGENT_CARD, variant="spice_for_sandworm", tag=_BOX
     ),

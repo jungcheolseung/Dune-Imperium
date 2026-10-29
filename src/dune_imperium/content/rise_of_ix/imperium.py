@@ -12,9 +12,9 @@ These began as stage P4a identity entries (name, copies and cost), generated
 by ``scripts/dwgr/imperium_entries.py --set ix skeleton``. Incomplete entries
 keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
-game's deck takes only completed cards (Jamis, Sayyadina, Truthsayer and
-Imperial Shock Trooper so far), while the observation lists every identity
-from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
+game's deck takes only completed cards (Jamis, Sayyadina, Truthsayer,
+Imperial Shock Trooper and Local Fence so far), while the observation lists
+every identity from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
 cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
@@ -31,6 +31,9 @@ from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEff
 # The component table lists the cards [Rise of Ix p. 2]; the printed values
 # are the app's (plan 2.4, D1).
 IX_IMPERIUM_SOURCES: Final = (SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2,)),)
+_LOCAL_FENCE = (
+    PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
+)
 
 
 def ix_imperium_card(card_id: str, name: str) -> CardDefinition:
@@ -155,6 +158,13 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("local_fence", "Local Fence"),
         copies=1,
         acquisition_cost=3,
+        # App table: no Faction, City icon; Reveal 2 Persuasion. Agent: "[2
+        # spice] -> [5 Solari] -OR- [5 Solari] -> [4 spice]" [Steam app
+        # screen pieces and text], two optional arrows of which one is paid.
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=_LOCAL_FENCE,
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("negotiated_withdrawal", "Negotiated Withdrawal"),

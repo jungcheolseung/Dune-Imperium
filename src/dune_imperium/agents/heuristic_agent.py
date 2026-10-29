@@ -330,6 +330,8 @@ _OPTIONAL_AGENT_TURN_ROWS: Final = frozenset(
         "recall_conflict_agent_for_agent_card",
         "pay_agent_card_water",
         "pay_agent_card_spice",
+        "pay_agent_card_spice_for_solari",
+        "pay_agent_card_solari_for_spice",
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",
         "pay_agent_card_specimen",

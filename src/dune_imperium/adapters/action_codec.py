@@ -1068,6 +1068,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # back [Rise of Ix p. 6], and the Dreadnought icon an Intrigue slot
         # offers; no catalog without the expansion holds these rows.
         templates.extend(_rise_of_ix_unit_templates())
+        # Local Fence's two Agent-box arrows printed with "-OR-", one row
+        # each (``agent_box_abilities.payment_box``).
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in (
+                "pay_agent_card_spice_for_solari",
+                "pay_agent_card_solari_for_spice",
+            )
+        )
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
     elif content.base_game is BaseGame.IMPERIUM:

@@ -128,6 +128,7 @@ _BRANCHING_PATH = (
 _JUNCTION_HEADQUARTERS = (
     _BOX.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
 )
+_LOCAL_FENCE = _BOX.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
 
 
 def _line(*rewards: Reward, condition: Condition | None = None) -> EffectSection:
@@ -233,6 +234,26 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # An optional arrow, once per turn [DI p. 9] [FAQ p. 3].
             _BOX.MAY_PAY_THREE_WATER_FOR_VP: _pay(
                 PayResources(water=3), GainVictoryPoints(1)
+            ),
+            # Local Fence (Rise of Ix): "[2 spice] -> [5 Solari] -OR- [5
+            # Solari] -> [4 spice]" [Steam app screen pieces and text]: two
+            # arrows, each optional (player-turns.md [Main p. 9] [FAQ p. 3]),
+            # and "-OR-" takes one (imperium-base.md 10.1), so the owner pays
+            # one or neither; each line is its own row (``payment_box``).
+            _LOCAL_FENCE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(GainResources(solari=5),),
+                        costs=(PayResources(spice=2),),
+                    ),
+                    EffectSection(
+                        rewards=(GainResources(spice=4),),
+                        costs=(PayResources(solari=5),),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                structure=AbilityStructure.ONE_OF,
             ),
             _BOX.RECRUIT_TWO_TROOPS: _box(RecruitTroops(2)),
             # Arrakis Recruiter (original game): one troop; a Combat space

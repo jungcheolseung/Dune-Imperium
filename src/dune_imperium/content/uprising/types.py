@@ -405,6 +405,11 @@ class PersonalCardAgentEffect(StrEnum):
     )
     # Sayyadina (Rise of Ix): "[3 water] -> [1 Victory Point]".
     MAY_PAY_THREE_WATER_FOR_VP = "may_pay_three_water_for_vp"
+    # Local Fence (Rise of Ix): "[2 spice] -> [5 Solari] -OR- [5 Solari] ->
+    # [4 spice]".
+    MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE = (
+        "may_pay_two_spice_for_five_solari_or_five_solari_for_four_spice"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

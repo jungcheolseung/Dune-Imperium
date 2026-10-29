@@ -176,7 +176,9 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # one intrigue-table column is new (its each-Faction-with-an-Agent Influence
 # gain), read by its row alone; no older scale moved (compared against
 # 331ada67, 2026-10-29).
-_GOLDEN_DIGEST = "65401c6dfee9a21e601edeb9bba25ba15fbd0c72f1f6aa4f9c2e6c4315e8bedb"
+# Then Local Fence got its play data (stage P4d): only its own row changed, no
+# column and no scale (compared against 28ab9f72, 2026-10-29).
+_GOLDEN_DIGEST = "e06234aef45a8c5745a016b60261ad8bdc9952a2d9b4404b06c4c5916ef84607"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
