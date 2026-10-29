@@ -20,9 +20,12 @@ from dataclasses import replace
 from functools import cache
 
 import pytest
+from tests.support.pauses import answer_pause
+from tests.support.reward_windows import settle_reward_window
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters import ActionCodec
+from dune_imperium.agents import HeuristicAgent
 from dune_imperium.agents.agent_turn_steps import apply_whole
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
@@ -35,10 +38,19 @@ from dune_imperium.core import (
     GamePhase,
     GameState,
     PlayerDecision,
+    Resources,
 )
 from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules.action_shapes import Source
+from dune_imperium.rules.combat import (
+    apply_combat_reward_optional_payment,
+    legal_combat_reward_optional_payment_actions,
+    resolve_combat_rewards,
+)
+from dune_imperium.rules.effect_steps import steps_for
 from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.leader_draft import remaining_draft_pool
+from dune_imperium.rules.pauses import pause_is_pending
 from dune_imperium.rules.setup import (
     SetupResult,
     conflict_setup_decisions,
@@ -46,6 +58,7 @@ from dune_imperium.rules.setup import (
     create_initial_state,
 )
 from dune_imperium.simulation.invariants import check_observation_privacy
+from dune_imperium.simulation.sweep import run_checked_game
 
 IX = RulesetConfig(base_game=BaseGame.IMPERIUM, rise_of_ix=True)
 IX_EPIC = replace(IX, epic_game=True)
@@ -513,3 +526,319 @@ def test_the_baron_and_hundro_both_follow_the_epic_draw() -> None:
     started = _settle(engine, state)
     assert started.phase is GamePhase.PLAYER_TURNS
     check_observation_privacy(started)
+
+
+# -- Round 1 ----------------------------------------------------------------------
+ILESA = "ilesa_ecaz"
+SEAT_ZERO = replace(IX_EPIC, first_player_seat_zero=True)
+
+
+def test_ilesa_sets_a_hand_card_aside_in_the_first_epic_round() -> None:
+    """ "Round Start에 손의 카드 하나를 따로 둔다" (rise-of-ix.md 10), after the
+    five cards (OQ-122): in Epic round 1 she also holds the setup Intrigue
+    card, which is no hand card -- the choice offers her five Imperium hand
+    cards only, and the Intrigue card stays hers."""
+
+    leaders = (ILESA, "glossu_rabban", "count_ilban_richese", "earl_memnon_thorvald")
+    engine = _Engine(leader_ids=leaders)
+    state = _settle(engine, engine.reset(SEAT_ZERO, 3))
+    assert state.phase is GamePhase.PLAYER_TURNS
+    assert [frame.kind for frame in state.decision_stack] == [
+        FrameKind.TURN,
+        FrameKind.ROUND_START_SET_ASIDE,
+    ]
+    owner = state.players[0]
+    assert len(owner.hand) == 5 and len(owner.intrigue_cards) == 1
+    engine.legal_actions(state, 0)
+    rows = [
+        row
+        for row in engine.whole_actions(state, 0)
+        if row.action_id == "set_aside_leader_card"
+    ]
+    assert {dict(row.arguments)["card_id"] for row in rows} == set(owner.hand)
+    check_observation_privacy(state)
+    aside = apply_whole(engine, state, rows[0]).state
+    after = aside.players[0]
+    assert after.set_aside_card_id == dict(rows[0].arguments)["card_id"]
+    assert after.set_aside_card_id not in after.hand
+    assert after.intrigue_cards == owner.intrigue_cards
+    assert [frame.kind for frame in aside.decision_stack] == [FrameKind.TURN]
+    check_observation_privacy(aside)
+
+
+# -- Control the Spice on the original board ----------------------------------------
+CONTROL = "player:0:starter:control_the_spice:0"
+
+
+def _with_control_in_hand(state: GameState, **changes: object) -> GameState:
+    """Seat 0 holds Control the Spice (swapped from its deck or discard)."""
+
+    owner = state.players[0]
+    if CONTROL not in owner.hand:
+        swapped = owner.hand[0]
+        owner = replace(
+            owner,
+            hand=(CONTROL, *owner.hand[1:]),
+            deck=tuple(swapped if card == CONTROL else card for card in owner.deck),
+            discard_pile=tuple(
+                swapped if card == CONTROL else card for card in owner.discard_pile
+            ),
+        )
+    owner = replace(owner, **changes)  # type: ignore[arg-type]
+    return replace(state, players=(owner, *state.players[1:]))
+
+
+def _whole(engine: _Engine, state: GameState, action_id: str) -> list[DomainAction]:
+    engine.legal_actions(state, 0)
+    return [row for row in engine.whole_actions(state, 0) if row.action_id == action_id]
+
+
+def test_control_the_spice_plays_on_the_original_board() -> None:
+    """epic-game-mode.md 6: "Agent 아이콘: Spice Trade(노란 삼각형) 하나 — Dune,
+    the Desert Planet와 같다"; "Agent box: spice 1 → 카드 1장 trash + troop 1
+    recruit. 화살표 비용이므로 내지 않아도 되고 ... trash 후보는 hand, discard
+    pile, in play의 카드다 [Main p. 20](Control the Spice 자신 포함)". On the
+    original board with Rise of Ix the card goes to every Spice Trade space
+    (water, spice and Spacing Guild Influence given so only the icon limits
+    it); paying the spice recruits a troop and offers the trash."""
+
+    engine = _Engine(leader_ids=LEADERS)
+    state = _settle(engine, engine.reset(SEAT_ZERO, 3))
+    hand = state.players[0].hand
+    state = _with_control_in_hand(
+        state,
+        resources=replace(state.players[0].resources, spice=3, water=3),
+        influence=replace(state.players[0].influence, spacing_guild=2),
+    )
+    owner = state.players[0]
+    (pick,) = [
+        row
+        for row in _whole(engine, state, "choose_agent_card")
+        if dict(row.arguments)["card_id"] == CONTROL
+    ]
+    picked = apply_whole(engine, state, pick).state
+    spaces = {
+        dict(row.arguments)["space_id"]: row
+        for row in _whole(engine, picked, "place_agent")
+    }
+    assert (
+        set(spaces)
+        == {
+            space.space_id
+            for space in content_for(SEAT_ZERO).board_spaces
+            if space.agent_icon.value == "spice_trade"
+        }
+        == {
+            "imperial_basin",
+            "imperium_hagga_basin",
+            "the_great_flat",
+            "interstellar_shipping",
+            "smuggling",
+        }
+    )
+    placed = apply_whole(engine, picked, spaces["imperial_basin"]).state
+    (pay,) = _whole(engine, placed, "pay_agent_card_spice")
+    paid = apply_whole(engine, placed, pay).state
+    seat = paid.players[0]
+    # The space's own spice (Maker harvest) is still a row of the turn.
+    assert seat.resources.spice == owner.resources.spice - 1
+    assert (seat.troops_garrison, seat.troops_supply) == (
+        owner.troops_garrison + 1,
+        owner.troops_supply - 1,
+    )
+    offered = {
+        str(dict(row.arguments)["card_id"])
+        for row in _whole(engine, paid, "trash_optional_card")
+    }
+    assert CONTROL in offered
+    assert set(hand[1:]) <= offered
+    trashed = apply_whole(
+        engine,
+        paid,
+        next(
+            row
+            for row in _whole(engine, paid, "trash_optional_card")
+            if dict(row.arguments)["card_id"] == CONTROL
+        ),
+    ).state
+    assert trashed.players[0].trashed == (CONTROL,)
+    check_observation_privacy(trashed)
+
+
+# -- Economic Supremacy -------------------------------------------------------------
+def _combat_on_economic_supremacy(*, solari: int, spice: int) -> GameState:
+    """An Epic setup's state at the Combat of round 6, Economic Supremacy
+    revealed: seat 0 first (8), seat 1 second (6), seat 2 third (4), seat 3
+    out."""
+
+    state = create_initial_state(SEAT_ZERO, 3, LEADERS).state
+    players = [
+        replace(
+            player,
+            combat_strength=strength,
+            resources=Resources(solari=solari, spice=spice)
+            if player.player_id == 0
+            else Resources(),
+        )
+        for player, strength in zip(state.players, (8, 6, 4, 0), strict=True)
+    ]
+    return replace(
+        state,
+        phase=GamePhase.COMBAT,
+        round_number=6,
+        players=tuple(players),
+        current_conflict_ids=("economic_supremacy",),
+        conflict_deck=tuple(
+            card for card in state.conflict_deck if card != "economic_supremacy"
+        ),
+        combat_intrigue_complete=True,
+    )
+
+
+def _answer_arrow(state: GameState, *, pay: bool) -> GameState:
+    frame = state.decision_stack[-1]
+    assert frame.kind == FrameKind.COMBAT_REWARD_OPTIONAL
+    action = DomainAction("pay_combat_reward" if pay else "decline_combat_reward", 0)
+    assert action in legal_combat_reward_optional_payment_actions(state, 0)
+    return settle_reward_window(
+        apply_combat_reward_optional_payment(state, action).state
+    )
+
+
+@pytest.mark.parametrize("pay", (True, False))
+def test_economic_supremacy_pays_its_rows_in_the_original_game(pay: bool) -> None:
+    """Every Epic deck of the original game holds Economic Supremacy among its
+    five Conflict III (rise-of-ix.md 11, 12). Its rows (epic-game-mode.md 6):
+    "1위: Victory Point 1. 그리고 Solari 6 → Victory Point 1, spice 4 →
+    Victory Point 1. 두 화살표는 서로 독립이라 둘 다, 하나만, 또는 하나도 안 낼
+    수 있다"; "2위: Victory Point 1"; "3위: spice 2, Solari 2"; "location 없음
+    (control 보상 없음)"."""
+
+    before = _combat_on_economic_supremacy(solari=6, spice=4)
+    state = settle_reward_window(resolve_combat_rewards(before).state)
+    state = _answer_arrow(state, pay=pay)
+    state = _answer_arrow(state, pay=pay)
+    while not state.combat_rewards_resolved:
+        if pause_is_pending(state):
+            state = answer_pause(state).state
+        elif not state.decision_stack:
+            state = resolve_combat_rewards(state).state
+        else:
+            state = settle_reward_window(state)
+
+    first, second, third, fourth = state.players
+    gained = 3 if pay else 1
+    assert first.victory_points == before.players[0].victory_points + gained
+    assert (first.resources.solari, first.resources.spice) == (
+        (0, 0) if pay else (6, 4)
+    )
+    assert second.victory_points == before.players[1].victory_points + 1
+    assert (third.resources.spice, third.resources.solari) == (2, 2)
+    assert fourth == before.players[3]
+    assert all(player.control_space_ids == () for player in state.players)
+    assert state.dreadnought_control == ()
+
+
+# -- Whole games ----------------------------------------------------------------------
+def test_a_heuristic_game_plays_past_ten_to_the_twelve_point_end() -> None:
+    """ "12점까지" (rise-of-ix.md 11): the round-end check ("Endgame 조건(10점
+    이상 또는 Conflict 덱 소진)" [DI p. 13], imperium-base.md 10) reads 12, not
+    10 (epic-game-mode.md 3). In this seeded heuristic game (seed 18,
+    found by search) a seat stands on 10 and then 11 at round ends and the
+    game goes on; a round end with 12 opens the Endgame while a Conflict card
+    is still in the deck, and the game finishes there."""
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(IX_EPIC, 18)
+    agents = [HeuristicAgent(seed=180 + seat) for seat in range(4)]
+    chance = ChanceResolver(seed=18)
+    round_ends: list[tuple[int, bool, int]] = []
+    while state.phase is not GamePhase.FINISHED:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            transition = engine.apply(state, chance.resolve(decision))
+        else:
+            assert isinstance(decision, PlayerDecision)
+            rows = engine.legal_actions(state, decision.owner)
+            pick = agents[decision.owner].choose_action_with_state(
+                state, engine.observe(state, decision.owner), rows
+            )
+            transition = engine.apply(state, pick, legal_actions=rows)
+        ended = any(event.kind == "endgame_started" for event in transition.events)
+        if ended or transition.state.round_number > state.round_number:
+            best = max(player.victory_points for player in transition.state.players)
+            round_ends.append((best, ended, len(transition.state.conflict_deck)))
+        state = transition.state
+
+    *played_on, (final_best, final_ended, deck_left) = round_ends
+    assert final_ended and final_best >= 12 and deck_left > 0
+    assert all(not ended and best < 12 for best, ended, _ in played_on)
+    assert {10, 11} <= {best for best, _, _ in played_on}
+    # A Conflict card was still face down when the Endgame opened.
+    assert state.conflict_deck
+
+
+@pytest.mark.parametrize("policy", ["random", "heuristic"])
+@pytest.mark.parametrize(
+    "config",
+    (IX_EPIC, IX_EPIC_DRAFT, replace(IX_EPIC, promo_cards=True)),
+    ids=("fixed", "draft", "promo"),
+)
+def test_an_epic_game_finishes_under_every_invariant(
+    config: RulesetConfig, policy: str
+) -> None:
+    """A short engine-driven game, every seat the same scripted policy, under
+    the sweep's checks: card conservation (the Epic Intrigue cards and Control
+    the Spice included), troops and dreadnoughts, observation privacy, the
+    codec round trip of every advertised action (``soundness_interval``) and
+    the replay."""
+
+    report = run_checked_game(config, 12, 900_012, policy=policy, soundness_interval=25)
+    assert report.winner is not None
+
+
+# -- The action codec -----------------------------------------------------------------
+@pytest.mark.parametrize(
+    "config",
+    (IX_EPIC, IX_EPIC_DRAFT, replace(IX_EPIC, promo_cards=True)),
+    ids=("fixed", "draft", "promo"),
+)
+def test_the_epic_rows_round_trip_only_in_an_epic_catalog(
+    config: RulesetConfig,
+) -> None:
+    """Control the Spice's rows -- the paid arrow's ``pay`` effect row, the
+    optional trash's target row and its refusal naming the card -- round-trip
+    through an original + Rise of Ix + Epic catalog and are in no catalog of
+    the same game without Epic Game Mode; a draft pick of any offered Leader
+    (the six Ix ones included) and the draft's end round-trip too. The other
+    setup-time rows the engine offers (the Intelligence keep, the Baron's
+    Factions, Ilesa's set-aside) are round-tripped by ``_Engine`` in the
+    tests above."""
+
+    whole_trash = DomainAction("trash_optional_card", 0, (("card_id", CONTROL),))
+    (trash,) = steps_for(whole_trash, effect_row=False)
+    (pay,) = steps_for(DomainAction("pay_agent_card_spice", 0), "control_the_spice")
+    (decline,) = steps_for(
+        DomainAction("decline_optional_trash", 0),
+        "control_the_spice",
+        Source.AGENT_CARD,
+    )
+    codec = _codec(config)
+    for action in (trash, pay, decline):
+        assert codec.decode(codec.encode(action), 0) == action
+    plain = _codec(replace(config, epic_game=False))
+    for action in (pay, decline):
+        with pytest.raises(ValueError, match="not present"):
+            plain.encode(action)
+    assert not any(
+        dict(template.arguments).get("printed") == "control_the_spice"
+        for template in plain.catalog
+    )
+    if config.leader_draft:
+        # A pick is offered as the Leader's target row (stage B3).
+        for leader in content_for(config).leaders:
+            pick = DomainAction("pick_leader", 2, (("leader_id", leader.leader_id),))
+            for row in steps_for(pick):
+                assert codec.decode(codec.encode(row), 2) == row
+        finish = DomainAction("finish_leader_draft", 1)
+        assert codec.decode(codec.encode(finish), 1) == finish
