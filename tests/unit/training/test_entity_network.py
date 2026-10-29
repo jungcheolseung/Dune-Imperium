@@ -44,17 +44,19 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     RESEARCH_SPACE_IDS,
     SKILL_IDS,
     SPACE_IDS,
+    TECH_IDS,
     segment_slice,
 )
 from dune_imperium.agents import StateAgent  # noqa: E402
 from dune_imperium.agents.network_search_agent import NetworkSearchAgent  # noqa: E402
 from dune_imperium.agents.registry import CHECKPOINT_PREFIX, make_agent  # noqa: E402
-from dune_imperium.content.bloodlines.tech import TECH_IDS  # noqa: E402
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS  # noqa: E402
 from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS  # noqa: E402
+from dune_imperium.content.rise_of_ix.board import IX_SPACE_IDS  # noqa: E402
 from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS  # noqa: E402
 from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS  # noqa: E402
 from dune_imperium.content.rise_of_ix.leaders import IX_LEADERS  # noqa: E402
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS  # noqa: E402
 from dune_imperium.content.rulesets import content_for  # noqa: E402
 from dune_imperium.core.chance import ChanceResolver  # noqa: E402
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision  # noqa: E402
@@ -132,8 +134,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # 17 Intrigue cards, three Conflicts and six Leaders join their vocabularies
 # at the end, identity entries without records yet, and add no column; the
 # 533 older rows (Uprising's and the original game's) and their scales are
-# unchanged (compared against 7b4c65be, 2026-10-29).
-_GOLDEN_DIGEST = "ab198901a803aa3c43685ad4ac4768880319ec1ddf7ecf1be2b5b728cb3df2cb"
+# unchanged (compared against 7b4c65be, 2026-10-29). Then its 18 Tech tiles
+# and four board spaces join theirs, each tile with its acquire record where
+# an existing piece prints it: two tech columns are new (Windtraps' water,
+# Shuttle Fleet's ``distinct`` Influence); the 589 older rows and their
+# scales are unchanged (compared against 78c00bac, 2026-10-29).
+_GOLDEN_DIGEST = "a842f73eafccb96cb33eca7d796cc2f1ad51f55a2f268ea5ceabcbec83141433"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -293,6 +299,10 @@ def test_what_an_entity_does_is_read_from_its_records() -> None:
             for leader in IX_LEADERS
             if leader.leader_id not in IMPLEMENTED_ABILITY_LEADER_IDS
         ),
+        # Its Tech tiles and spaces print no ability record before stage
+        # P4c (an acquire record alone does not tell every tile apart).
+        *IX_TECH_IDS,
+        *IX_SPACE_IDS,
     }
     for name in ("personal", "leader", "tech", "space", "conflict"):
         table = tables[name]
@@ -1252,7 +1262,8 @@ def test_a_v38_entity_file_moves_onto_v39_with_the_new_inputs_at_zero(
     # 30 Imperium and 17 Intrigue cards, three Conflicts and six Leaders; no
     # feature column is new (the 533 older rows are unchanged).
     assert report.features_moved
-    assert report.entities_new == 30 + 17 + 3 + 6
+    # 18 Tech tiles and four board spaces.
+    assert report.entities_new == 30 + 17 + 3 + 6 + 18 + 4
     assert (report.feature_columns_new, report.feature_columns_dropped) == (0, 0)
 
     observations = _observations(recorded).clone()

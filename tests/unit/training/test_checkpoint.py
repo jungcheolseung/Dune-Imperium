@@ -808,22 +808,22 @@ def test_a_v38_file_migrates_to_v39_with_the_new_columns_at_zero(
     tmp_path: Path,
 ) -> None:
     # Observation v39 (stage P4a, plan 17.8): Rise of Ix's ids end the
-    # personal-card and Intrigue universes (30 and 17 columns at the end of
-    # 30 and 9 segments), the Intrigue deck's size ends global_scalars, and
-    # Rise of Ix's segments end the layout. A v38 file's columns keep their
-    # (segment, offset) and the new ones start at zero.
+    # personal-card, Intrigue and Tech universes (30, 17 and 18 columns at the
+    # end of 30, 9 and 6 segments), the Intrigue deck's size ends
+    # global_scalars, and Rise of Ix's segments end the layout. A v38 file's
+    # columns keep their (segment, offset) and the new ones start at zero.
     layout = v38_layout()
     assert layout[-1][0] == "card_turn_flags"
     assert layout[-1][1] + layout[-1][2] == V38_SIZE
     older, codec, weight, kept = _older_file(tmp_path, 38, layout)
     added = _check_new_columns_at_zero(older, 38, codec, weight, kept)
-    assert added == 30 * 30 + 9 * 17 + 1 + sum(
+    assert added == 30 * 30 + 9 * 17 + 6 * 18 + 1 + sum(
         segment.length
         for segment in OBSERVATION_SEGMENTS
         if segment.name in V39_NEW_SEGMENTS
     )
     assert added == sum(growth_in_v39(segment) for segment in OBSERVATION_SEGMENTS)
-    assert added == 10_189 - 8_265
+    assert added == 10_297 - 8_265
 
 
 def test_checkpoint_cli_inspects_stamps_and_migrates(

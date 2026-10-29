@@ -24,12 +24,12 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     PERSONAL_CARD_IDS,
     RESEARCH_SPACE_IDS,
     SPACE_IDS,
+    TECH_IDS,
     encode_player_view,
     segment_slice,
 )
 from dune_imperium.agents import StateAgent  # noqa: E402
 from dune_imperium.agents.registry import make_agent  # noqa: E402
-from dune_imperium.content.bloodlines.tech import TECH_IDS  # noqa: E402
 from dune_imperium.content.immortality.board import TLEILAXU_TRACK_END  # noqa: E402
 from dune_imperium.content.immortality.tleilaxu import (  # noqa: E402
     TLEILAXU_CARDS_BY_ID,
@@ -103,8 +103,11 @@ from dune_imperium.training.slots import (  # noqa: E402
 # Ix's 30 Imperium cards end the Imperium Row, set-aside and Agent box fields,
 # its three Conflicts the current-Conflict field and its six Leaders the four
 # seats' Leader fields and the draft pool: 213 keys; the other 1,744 keep
-# their order (their digest is v38's f48440ae...).
-_GOLDEN_DIGEST = "e382b8ad5324c4a8d7414a507709b979527e0c109968708a81ec9481b2de0141"
+# their order (their digest is v38's f48440ae...). Then its 18 Tech tiles end
+# the face-up Tech and Secret Project fields and its four spaces the
+# occupancy and four seats' location fields: 56 keys; the other 1,957 keep
+# their order (their digest is e382b8ad..., checked 2026-10-29).
+_GOLDEN_DIGEST = "3cf49f0955257735922c98e8dddc299c224c299c5ebafe48ca02ea5d9ec41a17"
 _FULL = RulesetConfig(
     choam_module=True,
     promo_cards=True,
@@ -338,11 +341,13 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
     # v36: + 1, the Masterstroke choice's decision kind. v37 (stage P3a): the
     # original game's 46 Imperium cards in the Imperium Row, the four seats'
     # set-aside fields and the Agent boxes. v39 (stage P4a): Rise of Ix's 30
-    # Imperium cards in the same six fields, its three Conflicts and its six
-    # Leaders (four seats and the draft pool).
+    # Imperium cards in the same six fields, its three Conflicts, its six
+    # Leaders (four seats and the draft pool), its 18 Tech tiles (face-up
+    # tiles and the Secret Project) and its four spaces (occupancy and four
+    # seats' locations).
     assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_303 + (
         18 + 19 * 5 + 8 * 5 + 3 + 8
-    ) + 1 + 46 * 6 + 30 * 6 + 3 + 6 * 5
+    ) + 1 + 46 * 6 + 30 * 6 + 3 + 6 * 5 + 18 * 2 + 4 * 5
     assert "conflict:economic_supremacy" in SLOT_KEYS
     assert len(set(SLOT_KEYS)) == len(SLOT_KEYS)
     assert len(navigation) == 10

@@ -34,7 +34,8 @@ from dune_imperium.content.bloodlines.sardaukar import (
     SKILLS,
     skill_for_instance,
 )
-from dune_imperium.content.bloodlines.tech import TECH_IDS, TECH_STACKS
+from dune_imperium.content.bloodlines.tech import TECH_IDS as TECH_MODULE_IDS
+from dune_imperium.content.bloodlines.tech import TECH_STACKS
 from dune_imperium.content.immortality.board import (
     RESEARCH_SPACES_BY_ID,
     TLEILAXU_ROW_SIZE,
@@ -46,10 +47,12 @@ from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
 from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
 from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
 from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
+from dune_imperium.content.rise_of_ix.board import IX_BOARD_SPACES
 from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS
 from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS
 from dune_imperium.content.rise_of_ix.intrigue import IX_INTRIGUE_CARDS
 from dune_imperium.content.rise_of_ix.leaders import IX_LEADERS
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
@@ -212,11 +215,12 @@ from dune_imperium.rules.frames import FrameKind
 # starts them at 0.
 # v39 (stage P4a, docs/base-game-and-ix-plan.md 17.8 and its review): Rise of
 # Ix. Its 30 Imperium cards (Boundless Ambition included), 17 Intrigue
-# cards, three new Conflicts and six Leaders join each identity universe at
-# its end, so every older identity keeps its index and column (30 personal-
-# card and 9 Intrigue segments grow at their end); its four board spaces and
-# 18 Tech tiles are not defined yet and join SPACE_IDS and TECH_IDS in stage
-# P4c. ``global_scalars`` gains the Intrigue deck's size at its end (public,
+# cards, three new Conflicts, six Leaders, 18 Tech tiles and four board
+# spaces join each identity universe at its end, so every older identity
+# keeps its index and column (30 personal-card, 9 Intrigue and 6 Tech
+# segments grow at their end; a space has no segment of its own -- the Agent
+# locations hold one by index, and ``voice_blocks`` keeps its 42, below).
+# ``global_scalars`` gains the Intrigue deck's size at its end (public,
 # and nonzero in every game). Appended after every other segment, all 0 in a
 # game without Rise of Ix: each relative seat's dreadnoughts
 # (``seat{k}_units``), the dreadnoughts on Control spaces
@@ -229,7 +233,9 @@ from dune_imperium.rules.frames import FrameKind
 # (``private_intrigue_bottom``, 8 slots), the Intrigue cards it knows in each
 # opponent's hand (``private_known_intrigue_seat{1,2,3}``), its set-aside
 # card (``private_set_aside``) and its open Rise of Ix decision
-# (``ix_pending``) -- and the Rise of Ix flag (``ix_flags``). A v38
+# (``ix_pending``) -- and the Rise of Ix flag (``ix_flags``). The frame
+# kinds stages P4b to P4e decide in (``rules.frames.IX_FRAME_KINDS``) end the
+# kind index ``global_scalars`` holds, which no engine path opens yet. A v38
 # checkpoint migrates by segment and starts every new column at 0.
 OBSERVATION_VERSION: Final = 39
 _SEATS: Final = 4
@@ -299,18 +305,18 @@ LEADER_IDS: Final = tuple(
 VOICE_BLOCK_SPACE_IDS: Final = tuple(
     space.space_id for space in (*BOARD_SPACES, *IMPERIUM_ONLY_BOARD_SPACES)
 )
-# Rise of Ix's four board spaces (plan 17.2; docs/rules/rise-of-ix.md 8).
-# They have no definition yet (stage P4c), so they are not in SPACE_IDS;
-# observation v39 reserves their Voice bars by these ids
-# (``voice_blocks_ix``), and stage P4c appends them to SPACE_IDS in this
-# order, which moves no segment (only Agent locations hold a space).
-IX_SPACE_IDS: Final = (
-    "dreadnought",
-    "tech_negotiation",
-    "interstellar_shipping",
-    "smuggling",
+# v39: Rise of Ix's four board spaces (plan 17.2; docs/rules/rise-of-ix.md 8)
+# follow every other space; their Voice bars are ``voice_blocks_ix``'s.
+IX_SPACE_IDS: Final = tuple(space.space_id for space in IX_BOARD_SPACES)
+SPACE_IDS: Final = (*VOICE_BLOCK_SPACE_IDS, *IX_SPACE_IDS)
+# v9: the Tech Module's 18 tiles; v39: Rise of Ix's 18 follow them (plan
+# 17.8), so each Tech segment grows at its end (``TECH_SEGMENTS``).
+TECH_IDS: Final = (*TECH_MODULE_IDS, *IX_TECH_IDS)
+# The segments with one column per TECH_IDS identity, in that order.
+TECH_SEGMENTS: Final = frozenset(
+    {"tech_trash", "private_effect_pick_tech"}
+    | {f"seat{seat}_tech" for seat in range(4)}
 )
-SPACE_IDS: Final = VOICE_BLOCK_SPACE_IDS
 # The identities v35 and v37 added: the original game's own spaces,
 # Conflicts, Leaders, Reserve cards, Imperium and Intrigue cards (its
 # Arrakeen, Imperial Basin and Secrets, and its starting deck, are
@@ -326,13 +332,15 @@ IMPERIUM_IDENTITIES: Final = frozenset(
     }
 )
 # The identities v39 added: Rise of Ix's Imperium and Intrigue cards, new
-# Conflicts and Leaders.
+# Conflicts, Leaders, Tech tiles and board spaces.
 IX_IDENTITIES: Final = frozenset(
     {
         *(entry.card.card_id for entry in IX_IMPERIUM_CARDS),
         *(entry.card.card_id for entry in IX_INTRIGUE_CARDS),
         *(conflict.card.card_id for conflict in IX_CONFLICTS),
         *(leader.leader_id for leader in IX_LEADERS),
+        *IX_TECH_IDS,
+        *IX_SPACE_IDS,
     }
 )
 # Every identity that is not Uprising's (with its expansions): the entity
@@ -406,12 +414,6 @@ _IX_PENDING: Final = 7
 # these once at import time turns each lookup into an O(1) dict access
 # instead of an O(n) linear scan repeated on every encode call.
 _SPACE_INDEX: Final = {space_id: index for index, space_id in enumerate(SPACE_IDS)}
-_VOICE_SPACE_INDEX: Final = {
-    space_id: index for index, space_id in enumerate(VOICE_BLOCK_SPACE_IDS)
-}
-_IX_SPACE_INDEX: Final = {
-    space_id: index for index, space_id in enumerate(IX_SPACE_IDS)
-}
 _LEADER_INDEX: Final = {leader_id: index for index, leader_id in enumerate(LEADER_IDS)}
 _CONFLICT_INDEX: Final = {card_id: index for index, card_id in enumerate(CONFLICT_IDS)}
 _BATTLE_CARD_INDEX: Final = {
@@ -901,13 +903,19 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
     for seat_view in view.players:
         row = relative(seat_view.player) - 1
         offset = _OFFSET["voice_blocks"] + row * len(VOICE_BLOCK_SPACE_IDS)
-        ix_offset = _OFFSET["voice_blocks_ix"] + row * len(IX_SPACE_IDS)
+        # A space after ``voice_blocks``' 42 (Rise of Ix's, v39) is a column
+        # of ``voice_blocks_ix``, by its place in SPACE_IDS.
+        ix_offset = (
+            _OFFSET["voice_blocks_ix"]
+            + row * len(IX_SPACE_IDS)
+            - len(VOICE_BLOCK_SPACE_IDS)
+        )
         for space_id in seat_view.voice_blocked_space_ids:
-            slot = _VOICE_SPACE_INDEX.get(space_id)
-            if slot is None:
-                values[ix_offset + _IX_SPACE_INDEX[space_id]] = 1
-            else:
+            slot = _SPACE_INDEX[space_id]
+            if slot < len(VOICE_BLOCK_SPACE_IDS):
                 values[offset + slot] = 1
+            else:
+                values[ix_offset + slot] = 1
         offset = _OFFSET["card_turn_flags"] + row * 2
         values[offset] = int(seat_view.enemy_agents_ignored_turn)
         values[offset + 1] = int(seat_view.acquire_to_deck_top_round)

@@ -9,11 +9,12 @@ every personal-card segment and its 34 Intrigue cards in every Intrigue
 segment; v38 (OQ-145 and the original game's public markers) appended the
 public deck-top depths, the Voice's barred spaces and the card turn flags,
 all new segments; v39 (stage P4a, 17.8) Rise of Ix's 30 Imperium cards in
-every personal-card segment and its 17 Intrigue cards in every Intrigue
-segment, the Intrigue deck's size at the end of ``global_scalars`` and its
-new segments. Tests that rebuild an older layout from today's (a migrated
-checkpoint, the v31 input names, the golden digests) take these columns
-off.
+every personal-card segment, its 17 Intrigue cards in every Intrigue segment
+and its 18 Tech tiles in every Tech segment (``TECH_SEGMENTS``), the Intrigue
+deck's size at the end of ``global_scalars`` and its new segments (its four
+board spaces join ``SPACE_IDS``, which no segment has a column per). Tests
+that rebuild an older layout from today's (a migrated checkpoint, the v31
+input names, the golden digests) take these columns off.
 """
 
 from collections.abc import Sequence
@@ -22,12 +23,14 @@ from dune_imperium.adapters.observation_encoding import (
     INTRIGUE_IDS,
     OBSERVATION_SEGMENTS,
     PERSONAL_CARD_IDS,
+    TECH_SEGMENTS,
     ObservationSegment,
 )
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
 from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
 from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS
 from dune_imperium.content.rise_of_ix.intrigue import IX_INTRIGUE_CARDS
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
 
 # The segments v39 appended (stage P4a, plan 17.8).
 V39_NEW_SEGMENTS = frozenset(
@@ -62,6 +65,7 @@ _V37_PERSONAL = len(IMPERIUM_BASE_CARDS)
 _V37_INTRIGUE = len(IMPERIUM_INTRIGUE_CARDS)
 _V39_PERSONAL = len(IX_IMPERIUM_CARDS)
 _V39_INTRIGUE = len(IX_INTRIGUE_CARDS)
+_V39_TECH = len(IX_TECH_IDS)
 # Observation v38's width and segment count.
 V38_SIZE = 8_265
 V38_SEGMENTS = 137
@@ -77,6 +81,8 @@ def growth_in_v39(segment: ObservationSegment) -> int:
         return _V39_PERSONAL
     if segment.length == len(INTRIGUE_IDS):
         return _V39_INTRIGUE
+    if segment.name in TECH_SEGMENTS:
+        return _V39_TECH
     return int(segment.name == "global_scalars")
 
 
@@ -90,6 +96,8 @@ def growth_since_v34(segment: ObservationSegment) -> int:
         return 3 + _V37_PERSONAL + _V39_PERSONAL
     if segment.length == len(INTRIGUE_IDS):
         return _V37_INTRIGUE + _V39_INTRIGUE
+    if segment.name in TECH_SEGMENTS:
+        return _V39_TECH
     if segment.name.endswith(("_control", "_agent_locations")):
         return 1
     return {"reserve_stacks": 3, "maker_bonus_spice": 2, "global_scalars": 1}.get(

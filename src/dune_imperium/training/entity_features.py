@@ -70,9 +70,10 @@ from dune_imperium.adapters.observation_encoding import (
     SCOUTS_ITEM_IDS,
     SKILL_IDS,
     SPACE_IDS,
+    TECH_IDS,
 )
 from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
-from dune_imperium.content.bloodlines.tech import TECH_IDS, TECH_TILES_BY_ID
+from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.bloodlines.tech_abilities import (
     TECH_ABILITIES,
     TECH_ACQUIRE_ABILITIES,
@@ -349,11 +350,12 @@ def _leader_records(leader: Any) -> dict[str, float]:
 
 
 def _tech_records(tech_id: str) -> dict[str, float]:
+    # A Rise of Ix tile prints no ability record before stage P4c (v39).
     return _records(
         ("acquire", TECH_ACQUIRE_ABILITIES.get(tech_id)),
         *(
             (f"tile_{ability.timing.value}", ability)
-            for ability in TECH_ABILITIES[tech_id]
+            for ability in TECH_ABILITIES.get(tech_id, ())
         ),
     )
 

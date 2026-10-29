@@ -53,8 +53,10 @@ def _teacher() -> PolicyValueNetwork:
     # Seed 1 since observation v38: the wider input moved every draw, and seed
     # 0's teacher played a policy with entropy 0.48, too soft for a student
     # that starts near uniform (cross-entropy 0.77) to halve its distance
-    # (the learning test's first bar); seeds 1 to 4 pass it.
-    torch.manual_seed(1)
+    # (the learning test's first bar); seeds 1 to 4 pass it. Seed 2 since
+    # observation v39 took Rise of Ix's Tech tiles (108 more columns): seed
+    # 1's teacher entropy, 0.53, missed that bar (0.38); seeds 2 to 5 pass.
+    torch.manual_seed(2)
     network = PolicyValueNetwork(ActionCodec(_RULES).size, hidden=(16,))
     with torch.no_grad():
         network.policy_head.weight.mul_(100.0)

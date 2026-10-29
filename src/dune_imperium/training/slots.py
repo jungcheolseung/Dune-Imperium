@@ -50,9 +50,9 @@ from dune_imperium.adapters.observation_encoding import (
     PERSONAL_CARD_IDS,
     RESEARCH_SPACE_IDS,
     SPACE_IDS,
+    TECH_IDS,
     segment_slice,
 )
-from dune_imperium.content.bloodlines.tech import TECH_IDS
 from dune_imperium.content.immortality.board import TLEILAXU_TRACK_END
 from dune_imperium.content.immortality.tleilaxu import TLEILAXU_CARDS_BY_ID
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
@@ -112,9 +112,10 @@ SLOT_VERSION: Final = 1
 # card turn flags; no slot field reads them (the entity network reads the
 # deck-top counts as a zone, ``entity_network``).
 # v39 (stage P4a, Rise of Ix) lists Rise of Ix's Imperium cards after the
-# original game's in every Imperium-card field and its Conflicts and Leaders
-# at the end of theirs (keys appended, so a migrated network starts them at
-# 0); its new segments are counts, flags, seats and one slot segment (the
+# original game's in every Imperium-card field and its Conflicts, Leaders,
+# Tech tiles (the Tech fields read the observation's TECH_IDS) and board
+# spaces at the end of theirs (keys appended, so a migrated network starts
+# them at 0); its new segments are counts, flags, seats and one slot segment (the
 # Intrigue deck's known depths from the bottom), which no field reads yet:
 # the ``mlp`` trunk reads them through ``log1p`` and the entity network its
 # count zones as zones (``entity_network``).

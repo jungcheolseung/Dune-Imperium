@@ -21,6 +21,10 @@ from dune_imperium.adapters.observation_encoding import (
     BATTLE_CARD_IDS,
     CONFLICT_IDS,
     LEADER_IDS,
+    SPACE_IDS,
+)
+from dune_imperium.adapters.observation_encoding import (
+    TECH_IDS as OBSERVATION_TECH_IDS,
 )
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES, Archetype
 from dune_imperium.content.bloodlines.tech import (
@@ -666,6 +670,8 @@ def test_ix_tech_tiles_resolve_by_id_only() -> None:
     assert len(TECH_TILES_BY_ID) == len(TECH_TILES) + len(IX_TECH_TILES)
     for choam_module in (False, True):
         assert not set(IX_TECH_IDS) & {t.tech_id for t in tech_tiles_for(choam_module)}
+    # The observation lists them after the Tech Module's (v39, plan 17.8).
+    assert OBSERVATION_TECH_IDS == (*TECH_IDS, *IX_TECH_IDS)
 
 
 # --- Board spaces (docs/rules/rise-of-ix.md 8) -------------------------------
@@ -729,3 +735,6 @@ def test_ix_spaces_resolve_by_id_only_and_print_no_effect_yet() -> None:
             config = RulesetConfig(base_game=base_game, rise_of_ix=rise_of_ix)
             spaces = {space.space_id for space in content_for(config).board_spaces}
             assert not set(IX_SPACE_IDS) & spaces
+    # The observation lists them after every other space (v39, plan 17.8).
+    assert SPACE_IDS[-4:] == IX_SPACE_IDS
+    assert not set(IX_SPACE_IDS) & set(SPACE_IDS[:-4])

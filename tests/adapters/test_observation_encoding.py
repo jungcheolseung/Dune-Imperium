@@ -32,12 +32,13 @@ from dune_imperium.adapters.observation_encoding import (
     PERSONAL_CARD_IDS,
     RESERVE_STACK_IDS,
     SPACE_IDS,
+    TECH_IDS,
+    TECH_SEGMENTS,
     VOICE_BLOCK_SPACE_IDS,
     ObservationSegment,
     encode_player_view,
     segment_slice,
 )
-from dune_imperium.content.bloodlines.tech import TECH_IDS
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.core import (
     ChanceDecision,
@@ -228,9 +229,12 @@ def test_layout_is_versioned_and_contiguous() -> None:
         # columns, four seats' bars on the four Ix spaces, the known Intrigue
         # deck top (141), its eight bottom depths, the known Intrigue of three
         # opponents (141 each), the set-aside card (218), seven pending
-        # columns and the Rise of Ix flag.
+        # columns and the Rise of Ix flag. Its 18 Tech tiles in the six Tech
+        # segments (four seats, the trash and the effect pick); its four
+        # spaces add no column (an Agent location holds a space by index).
         + 30 * 30
         + 9 * 17
+        + 6 * 18
         + 1
         + 4 * 3
         + 4 * 2
@@ -243,8 +247,17 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 7
         + 1
     )
-    assert OBSERVATION_SIZE == 10_189
-    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment("ix_flags", 10_188, 1)
+    assert OBSERVATION_SIZE == 10_297
+    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment("ix_flags", 10_296, 1)
+    # v39: the Tech Module's 18 tiles, then Rise of Ix's 18; the segments
+    # with a column per tile are exactly ``TECH_SEGMENTS``.
+    assert len(TECH_IDS) == 18 + 18
+    assert TECH_IDS[17] == "training_depot" and TECH_IDS[18] == "artillery"
+    assert {
+        segment.name
+        for segment in OBSERVATION_SEGMENTS
+        if segment.length == len(TECH_IDS)
+    } == TECH_SEGMENTS
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -724,7 +737,8 @@ def test_the_voice_and_the_card_turn_flags_are_encoded_by_relative_seat() -> Non
         flags = encoded[segment_slice("card_turn_flags")]
         for seat in range(4):
             row = (seat - observer) % 4
-            row_blocks = blocks[row * len(SPACE_IDS) : (row + 1) * len(SPACE_IDS)]
+            width = len(VOICE_BLOCK_SPACE_IDS)
+            row_blocks = blocks[row * width : (row + 1) * width]
             expected = (
                 {spaces["arrakeen"], spaces["heighliner"]} if seat == 2 else set()
             )
@@ -1515,7 +1529,8 @@ def test_every_v38_segment_keeps_its_name_and_the_meaning_of_its_columns() -> No
         "interstellar_shipping",
         "smuggling",
     )
-    assert not set(IX_SPACE_IDS) & set(SPACE_IDS)
+    # v39 appends them to the space universe, after ``voice_blocks``' 42.
+    assert SPACE_IDS == (*VOICE_BLOCK_SPACE_IDS, *IX_SPACE_IDS)
 
 
 def _v39_games() -> dict[str, dict[str, Any]]:
