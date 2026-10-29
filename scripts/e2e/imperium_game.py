@@ -34,6 +34,13 @@ words, the way log_words.py checks Uprising's:
     seat only, from the view's private block) and once revealed, and the
     Mentat lying on its space with the seat that takes it next round; in
     both languages, with no placeholder left.
+[5] A four-human original game with the Leader draft (P5e): a seat drafts
+    Baron Harkonnen and, before the first round, chooses its two secret
+    Factions on screen; the banner asks in Korean with no English left but
+    names, the rows name the Factions, the Baron's own panel names the
+    Faction already picked while he picks the second, and the server's view
+    of every other seat says only that he holds a secret (imperium-base.md
+    14), while his own carries both.
 Every page: no JS errors; the server logs no Traceback or ERROR.
 """
 
@@ -315,7 +322,7 @@ def check_markers(page) -> None:
     page.evaluate("(id) => openGame(id)", created["game_id"])
     page.wait_for_function(
         "state.view !== null && refreshFlight === null"
-        " && state.gameId === %s" % json.dumps(created["game_id"])
+        f" && state.gameId === {json.dumps(created['game_id'])}"
     )
     settled(page)
     for lang in ("ko", "en"):
@@ -370,6 +377,135 @@ def check_markers(page) -> None:
     page.evaluate("setLanguage('ko')")
 
 
+# Seat rows the browser offers now: (index, action id, leader id, faction).
+ROWS_JS = """() => (state.actions ? state.actions.actions : []).map((row) => [
+  row.index, row.action_id, (row.arguments || {}).leader_id || null,
+  (row.arguments || {}).faction || null])"""
+
+BANNER_JS = """() => ({
+  prompt: (document.querySelector('#decision-info .prompt') || {}).textContent || '',
+  rows: document.getElementById('actions').innerText,
+  kind: state.summary.decision ? state.summary.decision.kind : null,
+  owner: state.summary.decision ? state.summary.decision.owner : null,
+  emperor: FACTION_LABELS.emperor, fremen: FACTION_LABELS.fremen,
+})"""
+
+OWN_PANEL_JS = """(seat) => {
+  const card = document.querySelector(`article.seat[data-seat="${seat}"]`);
+  const detail = card && card.querySelector('.seat-detail');
+  return {text: detail ? detail.innerText : '', viewer: state.view.player};
+}"""
+
+SEAT_VIEW_JS = (
+    "async ([id, seat]) => (await fetch(`/games/${id}/seats/${seat}/view`)).json()"
+)
+
+LATIN_WORD = re.compile(r"[A-Za-z]{3,}")
+
+
+def check_masterstroke_pick(page) -> None:
+    print("[5] a human Baron Harkonnen drafts and chooses his secret Factions")
+    page.evaluate("setLanguage('ko')")
+    created = page.evaluate(
+        """async (body) => {
+          const r = await fetch('/games', {method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)});
+          return await r.json();
+        }""",
+        {"seats": ["human"] * 4, "game_seed": 3, "leader_draft": True, **ORIGINAL},
+    )
+    game_id = created["game_id"]
+    page.evaluate("(id) => openGame(id)", game_id)
+    page.wait_for_function(
+        "state.view !== null && refreshFlight === null"
+        f" && state.gameId === {json.dumps(game_id)}"
+    )
+    settled(page)
+    baron = None
+    for _ in range(80):
+        snap = client_state(page)
+        if snap["kind"] == "masterstroke_setup" or snap["finished"]:
+            break
+        if snap["confirmation"] is not None:
+            page.evaluate("confirmTurn()")
+        else:
+            rows = page.evaluate(ROWS_JS)
+            pick = next(
+                (row for row in rows if row[2] == "baron_vladimir_harkonnen"), rows[0]
+            )
+            if pick[2] == "baron_vladimir_harkonnen":
+                baron = snap["owner"]
+            page.evaluate(f"applyAction({pick[0]})")
+        settled(page, 20)
+    banner = page.evaluate(BANNER_JS)
+    check.ok(
+        baron is not None
+        and banner["kind"] == "masterstroke_setup"
+        and banner["owner"] == baron,
+        "the seat that drafted the Baron chooses its secret Factions first",
+        (baron, banner["kind"], banner["owner"]),
+    )
+    abilities = page.evaluate(
+        "Object.values(state.catalog.leaders).map((l) => l.ability || '')"
+    )
+    stray = [
+        word
+        for word in LATIN_WORD.findall(banner["prompt"])
+        if not any(word in ability for ability in abilities)
+    ]
+    check.ok(
+        bool(banner["prompt"]) and not stray,
+        "ko: the banner asks for the secret Factions in Korean",
+        banner["prompt"],
+    )
+    check.ok(
+        banner["emperor"] in banner["rows"] and banner["fremen"] in banner["rows"],
+        "ko: the rows name the Factions",
+        banner["rows"][:200],
+    )
+    for number, faction in enumerate(("emperor", "fremen")):
+        rows = page.evaluate(ROWS_JS)
+        row = next(row for row in rows if row[3] == faction)
+        page.evaluate(f"applyAction({row[0]})")
+        settled(page, 20)
+        if number == 0:
+            own = page.evaluate(OWN_PANEL_JS, baron)
+            check.ok(
+                own["viewer"] == baron and banner["emperor"] in own["text"],
+                "the Baron's own panel names the Faction he picked",
+                own,
+            )
+        if client_state(page)["confirmation"] is not None:
+            page.evaluate("confirmTurn()")
+            settled(page, 20)
+    mine = page.evaluate(SEAT_VIEW_JS, [game_id, baron])
+    check.ok(
+        sorted((mine.get("private") or {}).get("masterstroke_factions") or [])
+        == ["emperor", "fremen"],
+        "the Baron's own view carries both secret Factions",
+        (mine.get("private") or {}).get("masterstroke_factions"),
+    )
+    leaks = []
+    for seat in range(4):
+        if seat == baron:
+            continue
+        view = page.evaluate(SEAT_VIEW_JS, [game_id, seat])
+        held = view["players"][baron]
+        private = view.get("private") or {}
+        if (
+            not held.get("masterstroke_secret")
+            or held.get("masterstroke_revealed_factions")
+            or private.get("masterstroke_factions")
+        ):
+            leaks.append((seat, held.get("masterstroke_secret"), private))
+    check.ok(
+        not leaks,
+        "every other seat's view says only that the Baron holds a secret",
+        leaks,
+    )
+
+
 def main() -> None:
     with server() as (base, log_path), chrome() as browser:
         _, page, rec = open_context(browser, "imperium-game")
@@ -385,6 +521,7 @@ def main() -> None:
         if game_ids:
             check_page(page, base, game_ids[0], posts, names)
         check_markers(page)
+        check_masterstroke_pick(page)
         errors = [
             line
             for line in log_path.read_text().splitlines()
