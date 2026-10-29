@@ -1245,5 +1245,12 @@ Infiltration, Discard; 7절), Ix 카드·지도자 6·Conflict 4 앞면, Hundro 
 - **트랙 확인:** 새 `tests/unit/display/test_imperium_board_layout.py` 9개(garrison 배치 포팅은 `tests/support/board_layout.py`로 옮겨 두 보드가 같이 씀),
   `tests/unit/display`·`tests/server` 1,491, e2e `imperium_game` 52(말 수가 보기와 같고 모두 그림 안), `setup_options` 81, `board_tokens` 608,
   `turn_controls` 48.
-- **남은 것:** 원판 지도자 앞면 앱 렌더(원판 지도자 틀을 새로 재야 함), 한국어 카드 앞면(공식 한글판 사진 뒤), Rise of Ix 화면(18.6, P4 병합 뒤),
-  worklog·handoff(병합 때).
+- **원판 지도자 앞면(앱 렌더, 쓰지 않음):** card-implementer 하나가 `scripts/dwgr/app_leaders.py`로 여덟 명의 영어 앞면을 그렸다(곁가지
+  `claude/base-ix-p5-leader-renders` `afb23da0`, 이 묶음의 병합 밖). 틀은 Uprising과 같은 모양에 원판의 색(이름 띠·가문 띠·Signet 칸·금색 칸이 더
+  밝다, 세트 표시 육각형 없음)이고, 각 스캔을 틀의 창에 맞춰 잰다(`SCAN_FIT`); 글·아이콘은 스캔과 1-6 px 안이다. 그러나 앱에는 원판 지도자의 그림
+  전체가 없다: 오린 인물과 금색 칸 모양으로 잘린 256x139 조각뿐이라 그림 창의 47-66%만 덮고, 나머지(위쪽 띠와 양옆)는 가장자리 색으로 메운
+  가짜다(Ilban의 배 지느러미와 천장, Helena의 천장, Paul의 벽이 없다). 그래서 앞면은 서버가 읽는 곳에 두지 않고 스캔을 그대로 두며, 쓸지는 사용자가
+  정한다(sheet `tmp/claude/5823a41d/p5-leaders/sheets/`, 그림은 `tmp/claude/5823a41d/p5-leaders/faces/`). 덧붙여 찾은 것: 지금 스크립트로 다시 그린
+  Uprising 영어 앞면 열 장은 커밋된 것과 바이트가 다르다(색 8-13 단계, 고치기 전 스크립트로도 같음 — 라이브러리 판 차이로 보임; 한국어 아홉 장은 같다).
+- **남은 것:** 원판 지도자 앞면을 쓸지(사용자 결정), 한국어 카드 앞면(공식 한글판 사진 뒤), Rise of Ix 화면(18.6, P4 병합 뒤), 원판 판의 앱 AI 좌석(P5·P6
+  병합 뒤 작은 후속, 조정자 합의), worklog·handoff(병합 때).
