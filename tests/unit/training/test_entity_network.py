@@ -156,7 +156,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Freighter reward, compared against 018e7961; Strongarm's visited-space
 # Influence gain, compared against cba9b870), only its own row reads it, and
 # every older row and its scales are unchanged (2026-10-29).
-_GOLDEN_DIGEST = "619b8b70d8cd0551b4f2c50fd60e0e8cf4b914a9ca1e95132a1d1453b0e4de8d"
+# Then the Imperium cards' printed Infiltration icons (stage P4d): eight
+# personal-table columns are new (the icon count and one per icon), only the
+# seven Ix cards that print one read them, and every older row and its scales
+# are unchanged (compared against e20b83dc, 2026-10-29).
+_GOLDEN_DIGEST = "bdb6d7abc6ad74b38ee119dc0bb1e7e80d064bfc707a27daa031f962d5760fd9"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

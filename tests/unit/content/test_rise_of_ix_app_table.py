@@ -782,3 +782,26 @@ def test_ix_spaces_resolve_by_id_and_print_their_icons() -> None:
     # The observation lists them after every other space (v39, plan 17.8).
     assert SPACE_IDS[-4:] == IX_SPACE_IDS
     assert not set(IX_SPACE_IDS) & set(SPACE_IDS[:-4])
+
+
+def test_infiltration_icons_match_the_app_table() -> None:
+    """'그 아이콘의 칸에서 상대 Agent(여럿이어도)를 무시' [Rise of Ix p. 7]."""
+    icons = {
+        "Circle": AgentIcon.CITY,
+        "Triangle": AgentIcon.SPICE_TRADE,
+        "Pentagon": AgentIcon.LANDSRAAD,
+        "Emperor": AgentIcon.EMPEROR,
+        "SpacingGuild": AgentIcon.SPACING_GUILD,
+        "BeneGesserit": AgentIcon.BENE_GESSERIT,
+        "Fremen": AgentIcon.FREMEN,
+    }
+    table = _imperium_archetypes()
+    for entry in IX_IMPERIUM_CARDS:
+        printed = table[entry.card.card_id].attributes.get("InfiltrationIconList", ())
+        assert isinstance(printed, tuple)
+        assert entry.infiltration_icons == tuple(icons[name] for name in printed)
+    assert sum(bool(entry.infiltration_icons) for entry in IX_IMPERIUM_CARDS) == 7
+    assert all(
+        not entry.infiltration_icons
+        for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS)
+    )
