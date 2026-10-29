@@ -181,10 +181,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # card]"), Desert Ambush ("For each troop you deploy this turn, you may
     # force an enemy unit to retreat"), Embedded Agent ("If you have another
     # Bene Gesserit card in play: [Freighter] [Freighter]"), Court Intrigue
-    # ("Put an Intrigue card on the bottom of the deck -> [Intrigue card]")
-    # and Weirding Way ("You may take another turn immediately after this
-    # one").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 9
+    # ("Put an Intrigue card on the bottom of the deck -> [Intrigue card]"),
+    # Weirding Way ("You may take another turn immediately after this one")
+    # and Satellite Ban ("[Discard] -> [1 spice] [1 water]").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 10
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -906,7 +906,7 @@ def test_a_target_box_raises_while_it_can_choose_and_fizzles_without() -> None:
         resolve_agent_card_effect(demands)
 
 
-def test_eight_discard_arrows_read_the_discarded_card() -> None:
+def test_nine_discard_arrows_read_the_discarded_card() -> None:
     """Composed A3d: "[You may] discard a card -> ..." boxes. The cost is on
     the first line; a later line's condition reads the discarded card, which
     only the Agent box knows (the generic interpreter refuses it). Captured
@@ -922,6 +922,8 @@ def test_eight_discard_arrows_read_the_discarded_card() -> None:
         _BOX.MAY_DISCARD_TO_TAKE_CONTRACT: AbilityMark.OPTIONAL,
         _BOX.MAY_DISCARD_TO_DRAW_ONE: AbilityMark.OPTIONAL,
         _BOX.MAY_DISCARD_FOR_WATER: AbilityMark.OPTIONAL,
+        # Rise of Ix's Satellite Ban (stage P4d).
+        _BOX.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER: AbilityMark.OPTIONAL,
         _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: AbilityMark.OPTIONAL,
         _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: AbilityMark.MANDATORY,
         _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: AbilityMark.OPTIONAL,

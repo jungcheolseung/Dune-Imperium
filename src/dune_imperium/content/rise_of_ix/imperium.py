@@ -12,12 +12,12 @@ These began as stage P4a identity entries (name, copies and cost), generated
 by ``scripts/dwgr/imperium_entries.py --set ix skeleton``. Incomplete entries
 keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
-game's deck takes only completed cards (CHOAM Delegate, Jamis, Sayyadina,
-Truthsayer, Imperial Shock Trooper, Local Fence, Water Peddler, Guild Chief
-Administrator, Negotiated Withdrawal, Desert Ambush, Full-Scale Assault,
-Embedded Agent, Court Intrigue and Weirding Way so far),
-while the observation lists every identity from v39. Setup takes Rise of Ix
-on the original game since stage P4c-5.
+game's deck takes only completed cards (CHOAM Delegate, Jamis, Landing
+Rights, Sayyadina, Shai-Hulud, Truthsayer, Imperial Shock Trooper, Local
+Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
+Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
+Way and Satellite Ban so far), while the observation lists every identity
+from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
 cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
@@ -267,6 +267,19 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("satellite_ban", "Satellite Ban"),
         copies=1,
         acquisition_cost=5,
+        # App table: Spacing Guild and Fremen, their two Agent icons, Reveal 1
+        # Persuasion, no fixed swords. Agent: "[Discard] -> [1 spice] [1
+        # water]", an optional arrow [Rise of Ix p. 7]. Reveal: "Retreat up to
+        # two of your troops." [Steam app screen pieces and text] -- Scout's
+        # sentence, so the same choice (0 to 2 troops, none included).
+        factions=(Faction.SPACING_GUILD, Faction.FREMEN),
+        agent_icons=(AgentIcon.SPACING_GUILD, AgentIcon.FREMEN),
+        agent_effect=PersonalCardAgentEffect.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER,
+        reveal_persuasion=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("sayyadina", "Sayyadina"),

@@ -290,7 +290,10 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # one personal-table column is new (the extra-turn piece), read by its row
 # alone; no older scale moved (compared against f10bdb6a, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against 30fca5c8 (2026-10-30).
-_GOLDEN_DIGEST = "ae2004626db17f48d3e138d3ffb39bd548e558f9f5e74be0efe7a198884f082f"
+# Then Satellite Ban got its play data (stage P4d): only its own row changed,
+# no column and no scale (compared against 18d1bb8a, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against e3cac948 (2026-10-30).
+_GOLDEN_DIGEST = "179058bb49a161457a4b2e26b25f1a0a4f7e74cdb4da77c7e7eed038340384d6"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

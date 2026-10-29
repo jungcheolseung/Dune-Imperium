@@ -396,6 +396,12 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # systems.md), as Control the Spice's is. The card just discarded
             # is in the discard pile, so a card to trash is always there.
             _BOX.MAY_DISCARD_TO_TRASH_A_CARD: _discard(_line(TrashPersonalCard())),
+            # Satellite Ban (Rise of Ix): "[Discard] -> [1 spice] [1 water]" [Steam
+            # app screen pieces and log text]: one optional arrow, both gains
+            # paid at once.
+            _BOX.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER: _discard(
+                _line(GainResources(spice=1, water=1))
+            ),
             # Space-time Folding: "Draw 1 card (2 if the discarded card has
             # Spacing Guild affiliation)".
             _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: _discard(

@@ -472,6 +472,10 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER: (
             "You may discard a card → Gain 1 water"
         ),
+        # Rise of Ix's Satellite Ban (stage P4d): "[Discard] -> [1 spice] [1 water]".
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER: (
+            "You may discard a card → Gain 1 spice, Gain 1 water"
+        ),
         PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT: "Complete one of your contracts",
         PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: (
             "Each opponent loses one troop. Each opponent spying on the board "

@@ -434,6 +434,10 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED = (
         "may_force_enemy_unit_retreat_for_each_troop_deployed"
     )
+    # Satellite Ban (Rise of Ix): "[Discard] -> [1 spice] [1 water]".
+    MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER = (
+        "may_discard_for_one_spice_and_one_water"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):

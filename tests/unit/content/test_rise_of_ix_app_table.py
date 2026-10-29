@@ -284,6 +284,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "landing_rights",
     "local_fence",
     "negotiated_withdrawal",
+    "satellite_ban",
     "sayyadina",
     "shai_hulud",
     "truthsayer",
