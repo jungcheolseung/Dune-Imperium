@@ -65,6 +65,7 @@ from dune_imperium.content.uprising.types import AgentIcon
 _COMMAND = CommandReached()
 _PER_COMPLETED_CONTRACT = RevealCount(RevealCountKind.COMPLETED_CONTRACT)
 _PER_OTHER_SWORD_CARD = RevealCount(RevealCountKind.OTHER_SWORD_CARD)
+_PER_DREADNOUGHT = RevealCount(RevealCountKind.DREADNOUGHT_IN_CONFLICT)
 
 
 def _revealed(faction: Faction) -> RevealCount:
@@ -113,6 +114,15 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "imperial_shock_trooper": _reveal(
             _line(RevealSwords(3), condition=AgentOnSpaceWithIcon(AgentIcon.EMPEROR))
         ),
+        # Full-Scale Assault (Rise of Ix): "[3 swords] for each of your
+        # dreadnoughts in the Conflict." [Steam app text], counted when the
+        # line resolves; the swords stay if a dreadnought leaves later
+        # (rise-of-ix.md 9.3, designer ruling: "sword는 공개한 카드가 준 값"
+        # [DI p. 11]).
+        "full_scale_assault": _reveal(_line(RevealSwords(3, per=_PER_DREADNOUGHT))),
+        # Embedded Agent (Rise of Ix): "[Intrigue card]" beside its 1
+        # Persuasion [Steam app screen pieces], Thufir Hawat's line.
+        "embedded_agent": _reveal(_line(DrawIntrigueCards(1))),
         # Delivery Agreement.
         "delivery_agreement": _reveal(_line(GainResources(spice=1))),
         # Ecological Testing Station.

@@ -350,13 +350,16 @@ _CONTRACT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "troops": _V.RECRUIT,
 })
 # What an Imperium card's acquire icon does (``acquire_icons``, OQ-141): an
-# Influence with a fixed Faction, or with the one the owner chooses.
+# Influence with a fixed Faction, or with the one the owner chooses; Rise of
+# Ix's Full-Scale Assault commissions a dreadnought (the Dreadnought space's
+# verb).
 _ACQUIRE_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "influence_emperor": _V.GAIN_INFLUENCE,
     "influence_spacing_guild": _V.GAIN_INFLUENCE,
     "influence_bene_gesserit": _V.GAIN_INFLUENCE,
     "influence_fremen": _V.GAIN_INFLUENCE,
     "influence_any": _V.GAIN_INFLUENCE,
+    "dreadnought": _V.RECRUIT,
 })
 # What a Tech tile's acquire icon does (``TechTile.acquire_effect_keys``).
 _TECH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
@@ -430,6 +433,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "recall_agent_card_freighter": _spec(
         _V.COLLECT, _S.AGENT_CARD, _BOX, icon="freighter"
     ),
+    # Weirding Way's extra turn (Rise of Ix).
+    "take_agent_card_extra_turn": _spec(
+        _V.TAKE, _S.AGENT_CARD, _BOX, icon="extra_turn"
+    ),
     # Local Fence's "-OR-" of two arrows (Rise of Ix): which one is paid.
     "pay_agent_card_spice_for_solari": _spec(
         _V.PAY, _S.AGENT_CARD, _BOX, option="spice_for_solari"
@@ -456,6 +463,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "trash_intrigue_for_agent_card": _spec(
         _V.TRASH, _S.AGENT_CARD, _BOX, targets=_INTRIGUE
+    ),
+    # Court Intrigue (Rise of Ix): the card put under the Intrigue deck.
+    "put_intrigue_on_bottom_for_agent_card": _spec(
+        _V.PAY, _S.AGENT_CARD, _BOX, targets=_INTRIGUE
     ),
     "acquire_imperium_by_card": _spec(
         _V.ACQUIRE, _S.AGENT_CARD, _BOX, targets=_IMPERIUM
@@ -754,6 +765,21 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "pay_reveal_spice_for_vp": _spec(_V.PAY, _S.REVEAL_CARD, "=guild_ambassador"),
     "pay_reveal_solari_for_troops": _spec(
         _V.PAY, _S.REVEAL_CARD, "=gurney_halleck_card"
+    ),
+    # Guild Chief Administrator's Freighter icon (Rise of Ix).
+    "advance_reveal_freighter": _spec(
+        _V.ADVANCE, _S.REVEAL_CARD, "=guild_chief_administrator", icon="freighter"
+    ),
+    "recall_reveal_freighter": _spec(
+        _V.COLLECT, _S.REVEAL_CARD, "=guild_chief_administrator", icon="freighter"
+    ),
+    # Negotiated Withdrawal's arrow (Rise of Ix): the Faction, then the three
+    # units, their mix riding on the count's row.
+    "retreat_reveal_units_for_influence": _spec(
+        _V.RETREAT,
+        _S.REVEAL_CARD,
+        "=negotiated_withdrawal",
+        targets=(*_FACTION, ("count", _C.COUNT)),
     ),
     "pay_reveal_spice_influence": _spec(
         _V.PAY, _S.REVEAL_CARD, "=spacing_guild_s_favor", targets=_FACTION

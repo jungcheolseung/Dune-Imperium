@@ -87,6 +87,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
+    PutIntrigueOnDeckBottom,
     RecallAgent,
     RecruitTroops,
     Research,
@@ -97,6 +98,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpendSpecimens,
     SpyRecalledThisTurn,
     SummonSandworm,
+    TakeAnotherTurn,
     TakeCardFromDiscard,
     TakeContract,
     TrashCard,
@@ -364,6 +366,18 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             # Disruption Tactics.
             _BOX.FORCE_OPPONENT_TROOP_RETREAT: _box(ForceEnemyRetreat()),
+            # Desert Ambush (Rise of Ix): "For each troop you deploy this turn,
+            # you may force an enemy unit to retreat." [Steam app text] -- an
+            # optional target box ("may"), open all turn: each troop the owner
+            # deploys this turn (OQ-029's count) buys one retreat of an enemy
+            # troop or dreadnought, the owner picking it (rise-of-ix.md 6, 9.3).
+            _BOX.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(ForceEnemyRetreat(units=True, per_troop_deployed=True)),
+                ),
+                mark=AbilityMark.OPTIONAL,
+            ),
             # CHOAM Demands.
             _BOX.COMPLETE_ONE_CONTRACT: _box(CompleteContract()),
             # --- Discard arrows (composed effects, A3d) ---------------------------
@@ -373,6 +387,15 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.MAY_DISCARD_TO_DRAW_ONE: _discard(_line(DrawPersonalCards(1))),
             # Engineered Miracle.
             _BOX.MAY_DISCARD_FOR_WATER: _discard(_line(GainResources(water=1))),
+            # Guild Chief Administrator (Rise of Ix): "[Discard] -> [Trash a
+            # card]" [Steam app screen pieces]. The discard is the arrow's
+            # optional cost [Rise of Ix p. 7] [FAQ p. 2], an Unload card's box
+            # paid in full before the trash (rise-of-ix.md 7); the trash is a
+            # black trash icon, optional once the cost is paid ("검은색 trash
+            # 아이콘으로 trash하는 효과는 선택이다" [FAQ p. 3], uprising-
+            # systems.md), as Control the Spice's is. The card just discarded
+            # is in the discard pile, so a card to trash is always there.
+            _BOX.MAY_DISCARD_TO_TRASH_A_CARD: _discard(_line(TrashPersonalCard())),
             # Space-time Folding: "Draw 1 card (2 if the discarded card has
             # Spacing Guild affiliation)".
             _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: _discard(
@@ -430,6 +453,25 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ),
                 mark=AbilityMark.OPTIONAL,
                 armed_icons=("intrigue", "spice"),
+            ),
+            # Court Intrigue (Rise of Ix): "Put an Intrigue card on the bottom
+            # of the deck -> [Intrigue card]" [Steam app text and screen
+            # pieces]: an optional arrow [FAQ p. 3] whose cost is one Intrigue
+            # card of the hand put under the Intrigue deck, unseen by the
+            # others ([Rise of Ix p. 10], rise-of-ix.md 9.1, 13); the draw, a
+            # hidden draw, is then armed as its own step (OQ-106), as
+            # Branching Path's. The card put there can be the one drawn when
+            # the deck holds nothing else.
+            _BOX.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(DrawIntrigueCards(1),),
+                        costs=(PutIntrigueOnDeckBottom(),),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("intrigue",),
             ),
             # Junction Headquarters: "If Spacing Guild Alliance: You may trash
             # an Intrigue card and pay 2 spice -> Gain 1 VP".
@@ -626,6 +668,31 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # (``agent_effects.OPTIONAL_AGENT_ICONS``) answered by its own rows
             # (``advance_agent_card_freighter``, ``recall_agent_card_freighter``).
             _BOX.MAY_MOVE_FREIGHTER: _icons(("freighter", _line(Freighter()))),
+            # Embedded Agent (Rise of Ix): "If you have another Bene Gesserit
+            # card in play:" [Steam app text] with two Freighter icons [screen
+            # pieces] -- a Bene Gesserit Bond ("one or more other ... cards in
+            # play" [Main p. 20]), as In High Places': the Bond opens the box
+            # and is judged again on each icon when it resolves (OQ-028); each
+            # icon is a "may" of its own [Rise of Ix p. 5] (OQ-027), answered by
+            # the Freighter rows (``agent_effects.OPTIONAL_AGENT_ICONS``).
+            _BOX.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(Freighter(), condition=_BG_BOND),
+                    _line(Freighter(), condition=_BG_BOND),
+                ),
+                structure=AbilityStructure.SEPARATE,
+                requirement=_BG_BOND,
+                icons=("freighter", "freighter_second"),
+            ),
+            # Weirding Way (Rise of Ix): "You may take another turn immediately
+            # after this one." [Steam app text] -- an optional icon
+            # (``agent_effects.OPTIONAL_AGENT_ICONS``) answered by its row
+            # (``take_agent_card_extra_turn``); unused, the turn's end lapses it
+            # (OQ-095 (2)).
+            _BOX.MAY_TAKE_ANOTHER_TURN: _icons(
+                ("extra_turn", _line(TakeAnotherTurn()))
+            ),
             # Tread in Darkness: "If Bene Gesserit Bond: You may trash a card,
             # Draw 1 card" -- the Bond opens the box and is judged again on each
             # icon when it resolves (OQ-028); the trash stays optional (OQ-058).

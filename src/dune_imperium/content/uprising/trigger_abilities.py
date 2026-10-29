@@ -36,6 +36,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireBankCommander,
     AdvanceTleilaxu,
+    CommissionDreadnought,
     DrawIntrigueCards,
     EffectSection,
     GainInfluence,
@@ -138,6 +139,12 @@ ACQUISITION_ABILITIES: Final[Mapping[PersonalCardAcquisitionEffect, Ability]] = 
             # ``rules.optional_trash``).
             _ACQUIRE.MAY_TRASH_A_CARD: _when(
                 AbilityTiming.ACQUIRE, TrashPersonalCard()
+            ),
+            # Full-Scale Assault (Rise of Ix): the Dreadnought icon, "you may
+            # commission" [Rise of Ix p. 6] -- an optional row of the turn
+            # (``rules.acquire_icons``).
+            _ACQUIRE.MAY_COMMISSION_DREADNOUGHT: _when(
+                AbilityTiming.ACQUIRE, CommissionDreadnought()
             ),
         }
     )

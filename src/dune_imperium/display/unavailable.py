@@ -1568,6 +1568,13 @@ def _reveal_choice_block(
         case choice if choice in _RETREAT_TWO:
             english, korean, _ = _in_conflict_reason(2, units_conflict)
             return english, korean, "waiting"
+        case _Choice.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE:
+            # Negotiated Withdrawal (Rise of Ix): a dreadnought is a unit
+            # [Rise of Ix p. 6].
+            english, korean, _ = _in_conflict_reason(
+                3, units_conflict + owner.dreadnoughts_conflict
+            )
+            return english, korean, "waiting"
         case _Choice.MAY_RECALL_SPY_FOR_THREE_STRENGTH:
             return _spies_reason(1, len(owner.spy_post_ids))
         case _Choice.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED if (

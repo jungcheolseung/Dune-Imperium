@@ -43,6 +43,7 @@ from dune_imperium.rules.agent_effect_frame import (
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_contract_completion,
     apply_agent_card_discard,
+    apply_agent_card_extra_turn,
     apply_agent_card_freighter,
     apply_agent_card_influence,
     apply_agent_card_intrigue_payment,
@@ -313,6 +314,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_corrinth_city_reveal,
     apply_reveal_card_trash,
     apply_reveal_deployment,
+    apply_reveal_freighter,
     apply_reveal_gain,
     apply_reveal_influence_exchange,
     apply_reveal_influence_gain,
@@ -326,6 +328,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_troop_retreat,
     apply_reveal_troop_sacrifice,
     apply_reveal_troops_move,
+    apply_reveal_unit_retreat,
     apply_reveal_vp_payment,
     begin_reveal_turn,
     finish_reveal_turn,
@@ -953,6 +956,9 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Landing Rights (Rise of Ix): the Freighter icon's two moves.
     "advance_agent_card_freighter": apply_agent_card_freighter,
     "recall_agent_card_freighter": apply_agent_card_freighter,
+    # Weirding Way (Rise of Ix): "You may take another turn immediately after
+    # this one."
+    "take_agent_card_extra_turn": apply_agent_card_extra_turn,
     # Local Fence (Rise of Ix): its two arrows printed with "-OR-".
     "pay_agent_card_spice_for_solari": apply_agent_card_payment,
     "pay_agent_card_solari_for_spice": apply_agent_card_payment,
@@ -962,6 +968,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_corrinth_city_payment": apply_corrinth_city_payment,
     "pay_agent_card_intrigue_and_spice": apply_agent_card_intrigue_payment,
     "trash_intrigue_for_agent_card": apply_agent_card_intrigue_payment,
+    # Court Intrigue (Rise of Ix): an Intrigue card under the deck.
+    "put_intrigue_on_bottom_for_agent_card": apply_agent_card_intrigue_payment,
     "decline_agent_card_intrigue_payment": apply_agent_card_intrigue_payment,
     "recall_agent_for_agent_card": apply_agent_card_recall,
     "recall_conflict_agent_for_agent_card": apply_agent_card_recall,
@@ -1075,6 +1083,12 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_reveal_spice_for_vp": apply_reveal_vp_payment,
     # Gurney Halleck (original game): "3 Solari -> 2 troops".
     "pay_reveal_solari_for_troops": apply_reveal_troop_purchase,
+    # Guild Chief Administrator (Rise of Ix): the Reveal box's Freighter icon.
+    "advance_reveal_freighter": apply_reveal_freighter,
+    "recall_reveal_freighter": apply_reveal_freighter,
+    # Negotiated Withdrawal (Rise of Ix): "Retreat three of your units ->
+    # Influence with any Faction".
+    "retreat_reveal_units_for_influence": apply_reveal_unit_retreat,
     "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
     # Immortality Reveal choices (For Humanity, Shadout Mapes, Tleilaxu
     # Surgeon)

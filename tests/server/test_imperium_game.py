@@ -40,10 +40,13 @@ def _play(**options: Any) -> tuple[int, dict[str, Any]]:
             listed: Any = manager.legal_actions(game_id, 0)
             rows: list[dict[str, Any]] = listed["actions"]
             assert rows
-            # A varied row, never a troop withdrawal: it only undoes a
-            # deployment, and taking both in turn never ends the turn.
+            # A varied row, never a troop or dreadnought withdrawal: it only
+            # undoes a deployment, and taking both in turn never ends the
+            # turn (seed 9 with Rise of Ix did so with a dreadnought).
             picks = [
-                row for row in rows if row["action_id"] != "withdraw_troops"
+                row
+                for row in rows
+                if row["action_id"] not in ("withdraw_troops", "withdraw_dreadnoughts")
             ] or rows
             row = picks[(steps * 7) % len(picks)]
             summary = manager.apply_action(

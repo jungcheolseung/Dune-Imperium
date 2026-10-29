@@ -274,14 +274,21 @@ _IX_INTRIGUE_TRANSCRIBED = {
 }
 _IX_IMPERIUM_TRANSCRIBED = {
     "choam_delegate",
+    "court_intrigue",
+    "desert_ambush",
+    "embedded_agent",
+    "full_scale_assault",
+    "guild_chief_administrator",
     "imperial_shock_trooper",
     "jamis",
     "landing_rights",
     "local_fence",
+    "negotiated_withdrawal",
     "sayyadina",
     "shai_hulud",
     "truthsayer",
     "water_peddler",
+    "weirding_way",
 }
 
 

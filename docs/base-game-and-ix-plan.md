@@ -1025,6 +1025,11 @@ Ghidra는 launch.sh 대신 JDK 25로 직접 띄워 `-Duser.home`·`-Djava.io.tmp
 3. **차례 밖 획득의 창(그 조합을 열 때):** OQ-141 조합 — Scouts의 Critical Moment로 얻은 CHOAM Directorship·Lady Jessica. 차례 밖에서 Imperium 카드를
    얻는 길은 Impress(비용 3 이하라 닿지 않음)와 Critical Moment뿐이고, 획득 상자의 Influence는 한 곳(`_acquisition_influence`)을 지나 거절이 모든 길을
    덮는다(2026-10-28 Codex 리뷰 뒤 OQ-141에 적음).
+   Rise of Ix(2026-10-30 추가): 결정이 든 획득 상자에 Full-Scale Assault(비용 8, 획득 dreadnought — 차례 밖으로는 Scouts의 Critical Moment로만
+   닿고, 원판의 Scouts는 setup이 P8까지 거절)와 Appropriate(비용 5, 획득 Freighter)가 더해진다. 그리고 원판 + Ix에 차례 밖 획득 길이 하나 는다:
+   상대의 Reverend Mother Mohiam이 버린 Boundless Ambition의 Unload "Acquire a card that costs 5 or less"(rise-of-ix.md 7). 그 길로 Appropriate를
+   얻으면 Freighter 획득 아이콘은 차례 밖 Freighter 창(`FREIGHTER_MOVE`)으로 받아야 한다 — Appropriate와 Boundless Ambition이 함께 들어올 때
+   구현하고 시험한다(지금은 두 카드가 서로 다른 브랜치에 있다).
 4. **OQ-144(사용자 확인 대기):** Double Cross의 supply 배치에 Commander를 쓸 수 있는가.
 5. **Guild Bankers:** 할인은 원판·Uprising의 The Spice Must Flow 두 인쇄를 모두 이름하고(`ReserveCostDiscount.card_ids`), Scouts의 Reserve 비용
    수정도 같은 값을 읽어(`scouts_modifiers.reserve_discount`) 조합에서도 같다.
@@ -1116,6 +1121,11 @@ C를 먼저 읽고 결론을 가르는 줄은 주석 asm으로 확인했다. 20�
 - **P4 점검 목록(앱 코드에서 본 Ix 상호작용):** Guild Accord의 Heighliner spice 할인(2, Ghola와 4), Spaceport의 Foldspace 카드 덱 위, Combat 칸 배치 몫의
   dreadnought, Rise of Ix가 Hall of Oratory·Rally Troops·Secure Contract·Sell Melange를 보드에서 뺌, Yuna Moritani의 Smuggling Operation이 Windfall에도 +1
   Solari, dreadnought가 Control marker보다 먼저 칸의 controller가 됨(`WormSpace::get_ControllingPlayer`).
+- **P7 점검 목록(Ix를 Uprising·Immortality와 묶을 때, 2026-10-30 추가):** Spaceport("얻는 카드를 덱 위에 놓을 수 있다", rise-of-ix.md 4)와 한 판이
+  되는 획득마다 덱 위 쌍둥이 줄이 있는지 — Tleilaxu Master(Immortality)의 Agent 칸 획득에는 없다(`acquisition._agent_card_acquisition_targets`가
+  쌍둥이를 더하지 않고 `_acquire_by_agent_card`가 `to_deck_top`을 넘기지 않음, 2026-10-30 Codex 리뷰). Uprising 지도자의 `acquire_leader_*`는 Irulan의
+  Signet처럼 손으로 얻어 쌍둥이가 필요 없다고 리뷰가 읽었다 — P7에서 카드 문장으로 확인한다. Armand Ecaz의 Conscript는 `deck_top_offered`로 이미 있다
+  (`test_conscript_puts_the_card_on_the_deck_with_spaceport`).
 
 ## 17. P4 계획 초안: Rise of Ix (원판 위) (2026-10-29, 브랜치 `claude/base-ix-p4`, P3 병합 master에서)
 
@@ -1505,6 +1515,16 @@ Strongarm·Strategic Push, 그다음 Imperium 카드. 끊기면: 커밋되지 �
 - Strategic Push를 P4에 들임: `097af7d1`(e03cbc8a, 엔티티 다이제스트를 556e57ea와 비교해 다시 고정), `36b374f4`(카드가 Intrigue 덱에 들어 Epic 12점 시험의
   seed 18이 조건을 잃어 seed 165로), `f6d3e996`(688b0542 — 서약을 공개 보기와 관측 v39 `seat{k}_ix` 열 9에; v39 10,297 → 10,301칸, v38 구간 그대로),
   `5ded63ae`(동일성 검사 차이 파일에 `strategic_push_solari`).
+- **Imperium 마지막 묶음을 P4에 들임(2026-10-30 06:5x, Opus, 브랜치 `claude/p4d-imperium-c`):** `d6419f86` Guild Chief Administrator(discard 뒤 trash는
+  선택 — "검은색 trash 아이콘으로 trash하는 효과는 선택이다" [FAQ p. 3]; Cull의 의무는 그 카드의 디자이너 판정), `f0ea975e` Negotiated Withdrawal(정확히 유닛
+  셋, troop·dreadnought 섞어 — rise-of-ix.md 6의 unit 표, 비용은 다 내야 [DI p. 9]), `71f32573` Desert Ambush(배치한 troop마다 상대 유닛 하나 retreat,
+  산 retreat이 OQ-029 (3)의 하한을 올림), `5ddab661` Full-Scale Assault(sword는 Reveal 때 고정; 획득 dreadnought는 선택 turn 줄 — 차례 밖 획득은 Scouts 시장뿐,
+  원판의 Scouts는 P8), `9260241c` Embedded Agent(Bene Gesserit Bond: Freighter 둘), `30fca5c8` Court Intrigue(덱 아래 Intrigue는 숨김, 뽑기는 따로 — OQ-106,
+  OQ-149), `32198e3c` Weirding Way(추가 turn은 Agent turn 안의 선택 줄 — OQ-095 (2); Voice에 막히지 않음, Ilesa의 둘째 turn으로 셈 — OQ-116, OQ-119),
+  `6ffabee5` Epic 12점 시험 seed 233. **엔티티 특성 판단(2026-10-30 밤, 사용자 확인 대기):** Embedded Agent가 Ix 전용 열 `agent.sections.rewards:Freighter`의
+  척도를 1 → 2로 넓혀 Landing Rights 줄이 1.0 → 0.5로 바뀐다 — Ix 줄끼리의 척도 변화는 받아들인다(v39와 Ix 특성은 master에 없고 학습한 망도 없다); Uprising·원판
+  줄은 그대로라는 규칙은 지킨다. 남은 Ix Imperium: Appropriate(imperium-b의 Agent 칸 Acquire Tech가 필요) — imperium-b(Unload 붙잡기 + 7장, blocker 수정 중)를
+  들인 뒤. **시험 메모:** Epic 12점 시험은 카드가 덱에 들 때마다 seed를 잃는다(18 → 165 → 233) — 다음에 깨지면 seed 대신 만든 상태로 바꾼다.
 
 ## 18. P5 계획: 원판 화면 (2026-10-29, 브랜치 `claude/base-ix-p5-8de6c1`, master `6fcb0c16`에서)
 

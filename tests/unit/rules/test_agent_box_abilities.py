@@ -59,6 +59,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallAgent,
     RecruitTroops,
     ReturnOtherGraftedCardAtRevealStart,
+    TakeAnotherTurn,
     TrashCard,
     TrashedCardHasFaction,
     TrashPersonalCard,
@@ -175,9 +176,15 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Other Memory, The Voice, and the promos Thumper and Jessica of Arrakis),
     # and Rise of Ix's Sayyadina (stage P4d: "3 water -> 1 Victory Point"),
     # Local Fence ("[2 spice] -> [5 Solari] -OR- [5 Solari] -> [4 spice]"),
-    # Landing Rights (the Freighter icon) and Shai-Hulud ("[Trash a card] ->
-    # [2 troops]").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 4
+    # Landing Rights (the Freighter icon), Shai-Hulud ("[Trash a card] ->
+    # [2 troops]"), Guild Chief Administrator ("[Discard] -> [Trash a
+    # card]"), Desert Ambush ("For each troop you deploy this turn, you may
+    # force an enemy unit to retreat"), Embedded Agent ("If you have another
+    # Bene Gesserit card in play: [Freighter] [Freighter]"), Court Intrigue
+    # ("Put an Intrigue card on the bottom of the deck -> [Intrigue card]")
+    # and Weirding Way ("You may take another turn immediately after this
+    # one").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 9
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -209,6 +216,14 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         # Landing Rights (Rise of Ix): the Freighter icon, answered by its own
         # rows.
         _BOX.MAY_MOVE_FREIGHTER: ("freighter",),
+        # Embedded Agent (Rise of Ix): two Freighter icons behind the Bond.
+        _BOX.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
+            "freighter",
+            "freighter_second",
+        ),
+        # Weirding Way (Rise of Ix): "You may take another turn immediately
+        # after this one", answered by its own row.
+        _BOX.MAY_TAKE_ANOTHER_TURN: ("extra_turn",),
         _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: ("trash", "cards"),
         # Split per icon (cleanup-2d-5, user decision 2026-10-18).
         _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: ("influence", "intrigue"),
@@ -777,12 +792,16 @@ def test_seven_boxes_choose_one_target_and_read_as_their_cards() -> None:
         _BOX.BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT: (
             BlockChosenSpaceForOpponentsNextAgent
         ),
+        # Desert Ambush (Rise of Ix, stage P4d): the one optional target box,
+        # "you may force an enemy unit to retreat" for each troop deployed.
+        _BOX.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED: ForceEnemyRetreat,
     }
     for effect in (
         _BOX.PLACE_SPY,
         _BOX.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE,
         _BOX.FORCE_OPPONENT_TROOP_RETREAT,
         _BOX.COMPLETE_ONE_CONTRACT,
+        _BOX.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED,
     ):
         (reward,) = AGENT_BOX_ABILITIES[effect].sections[0].rewards
         assert reward_text(reward) == AGENT_EFFECT_TEXT[effect]
@@ -910,6 +929,9 @@ def test_eight_discard_arrows_read_the_discarded_card() -> None:
             AbilityMark.OPTIONAL
         ),
         _BOX.MAY_DISCARD_FOR_DEEP_COVER_SPY: AbilityMark.OPTIONAL,
+        # Rise of Ix's Guild Chief Administrator: "[Discard] -> [Trash a
+        # card]", the trash optional once the cost is paid [FAQ p. 3].
+        _BOX.MAY_DISCARD_TO_TRASH_A_CARD: AbilityMark.OPTIONAL,
     }
     assert {
         effect: ability.armed_icons
@@ -947,7 +969,9 @@ def test_eight_discard_arrows_read_the_discarded_card() -> None:
 def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
     """Composed A3d: Branching Path and Junction Headquarters pay with an
     Intrigue card under an Alliance judged when the cost is paid; Branching
-    Path's rewards are armed as icons, Junction's VP is paid at once."""
+    Path's rewards are armed as icons, Junction's VP is paid at once. Rise of
+    Ix's Court Intrigue pays with one put under the Intrigue deck instead,
+    its Intrigue draw armed."""
 
     branching = AGENT_BOX_ABILITIES[
         _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
@@ -955,11 +979,13 @@ def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
     junction = AGENT_BOX_ABILITIES[
         _BOX.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
     ]
+    court = AGENT_BOX_ABILITIES[_BOX.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE]
     intrigue_arrows = [
         ability for ability in AGENT_BOX_ABILITIES.values() if intrigue_box(ability)
     ]
-    assert intrigue_arrows == [branching, junction]
+    assert intrigue_arrows == [branching, court, junction]
     assert branching.armed_icons == (AGENT_ICON_INTRIGUE, AGENT_ICON_SPICE)
+    assert court.armed_icons == (AGENT_ICON_INTRIGUE,)
     assert not junction.armed_icons
     for ability in intrigue_arrows:
         assert optional_arrow(ability)
@@ -1097,8 +1123,11 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     # Spice Smugglers: its Influence and its Solari armed once the spice is
     # paid, in the owner's order (OQ-148).
     smugglers = _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+    # Rise of Ix's Court Intrigue: its Intrigue draw once the card is under
+    # the deck.
+    court = _BOX.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE
     assert users == {
-        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy},
+        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy, court},
         AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy, duncan},
         AGENT_ICON_SPICE: {branching},
         AGENT_ICON_TROOPS: {gambit, elite, duncan},
@@ -1349,6 +1378,8 @@ def test_the_optional_icons_are_marked_in_their_records() -> None:
                 or isinstance(reward, RecallAgent) and reward.optional
                 # Landing Rights' Freighter icon is "may" [Rise of Ix p. 5].
                 or isinstance(reward, Freighter)
+                # Weirding Way: "You may take another turn".
+                or isinstance(reward, TakeAnotherTurn)
                 for reward in line.rewards
             )
         )

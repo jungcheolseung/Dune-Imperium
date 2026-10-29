@@ -224,9 +224,10 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
         {"alliance_recipient", "effect", "faction", "gained_faction", "lost_faction"}
     ),
     # ``dreadnoughts``: the share of a count that is dreadnoughts, for a card
-    # that moves "units" (Second Wave) [Rise of Ix p. 6].
+    # that moves "units" (Second Wave) [Rise of Ix p. 6]; ``faction``: the
+    # Influence the units' retreat pays for (Negotiated Withdrawal).
     Target.UNITS: frozenset(
-        {"commanders", "count", "dreadnoughts", "player", "zone", "zones"}
+        {"commanders", "count", "dreadnoughts", "faction", "player", "zone", "zones"}
     ),
     Target.RESOURCES: frozenset({"solari", "spice", "water"}),
     Target.OPTION: frozenset(
@@ -411,6 +412,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "recall_agent_card_freighter": _row(
         _V.COLLECT, _S.AGENT_CARD, variant="freighter", tag=_BOX
     ),
+    # Weirding Way's extra turn (Rise of Ix); unused, it lapses at the end.
+    "take_agent_card_extra_turn": _row(
+        _V.TAKE, _S.AGENT_CARD, variant="extra_turn", tag=_BOX
+    ),
     # Local Fence's two arrows printed with "-OR-" (Rise of Ix), one each.
     "pay_agent_card_spice_for_solari": _row(
         _V.PAY, _S.AGENT_CARD, variant="spice_for_solari", tag=_BOX
@@ -462,6 +467,11 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "trash_intrigue_for_agent_card": _row(
         _V.TRASH, _S.AGENT_CARD, _T.INTRIGUE_CARD, tag=_BOX
+    ),
+    # Court Intrigue (Rise of Ix): the Intrigue card its arrow puts under the
+    # Intrigue deck [Rise of Ix p. 10].
+    "put_intrigue_on_bottom_for_agent_card": _row(
+        _V.PAY, _S.AGENT_CARD, _T.INTRIGUE_CARD, variant="intrigue_bottom", tag=_BOX
     ),
     # Imperium Ceremony keeps one of the Intrigue deck's top two cards.
     "keep_peeked_intrigue": _row(_V.KEEP, _S.AGENT_CARD, _T.INTRIGUE_CARD),
@@ -847,6 +857,17 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "pay_reveal_spice_for_vp": _row(_V.PAY, _S.REVEAL_CARD, variant="spice_for_vp"),
     "pay_reveal_solari_for_troops": _row(
         _V.PAY, _S.REVEAL_CARD, variant="solari_for_troops"
+    ),
+    # Guild Chief Administrator's Freighter icon (Rise of Ix): up one space
+    # or recall [Rise of Ix p. 5]; unused, it lapses when the Reveal ends.
+    "advance_reveal_freighter": _row(
+        _V.ADVANCE, _S.REVEAL_CARD, variant="freighter"
+    ),
+    "recall_reveal_freighter": _row(_V.COLLECT, _S.REVEAL_CARD, variant="freighter"),
+    # Negotiated Withdrawal's arrow (Rise of Ix): three units, troops or
+    # dreadnoughts, for an Influence with a chosen Faction.
+    "retreat_reveal_units_for_influence": _row(
+        _V.RETREAT, _S.REVEAL_CARD, _T.UNITS, variant="units_for_influence"
     ),
     "pay_reveal_water_for_sandworm": _row(
         _V.PAY, _S.REVEAL_CARD, variant="water_for_sandworm"

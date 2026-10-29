@@ -220,6 +220,7 @@ const ACTION_LABELS = {
   skip_intrigue_trash: "{trash}할 카드 없음 (건너뛰기)",
   skip_intrigue_recall_agent: "소환할 {agent} 없음 (건너뛰기)",
   trash_intrigue_for_agent_card: "{trash_intrigue} (카드 비용)",
+  put_intrigue_on_bottom_for_agent_card: "{intrigue_card}를 {intrigue} {deck} 맨 아래로 (카드 비용)",
   trash_intrigue_for_contract: "{trash_intrigue} (즉시 {contract})",
   trash_intrigue_for_imperial_privilege: "{trash_intrigue} → {intrigue} (제국 특권)",
   put_back_top_card: "{deck} 맨 위 카드 그대로 두기",
@@ -286,6 +287,10 @@ const ACTION_LABELS = {
   /* Landing Rights' Agent box (stage P4d): the same two moves. */
   advance_agent_card_freighter: "화물선 1칸 전진",
   recall_agent_card_freighter: "화물선 귀환",
+  take_agent_card_extra_turn: "이 차례 바로 뒤에 차례 한 번 더",
+  advance_reveal_freighter: "화물선 1칸 전진",
+  recall_reveal_freighter: "화물선 귀환",
+  retreat_reveal_units_for_influence: "부대 3 후퇴 → {influence_any}",
   acquire_foldspace_to_deck_top: "접힘 공간 카드를 덱 위에",
   place_combat_reward_dreadnought: "드레드노트를 놓을 {control} 공간",
   /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep
@@ -508,6 +513,7 @@ const EVENT_LABELS = {
   intrigue_negotiator_declined: "협상가 놓지 않음",
   freighter_moved: "화물선 1칸 전진",
   freighter_recalled: "화물선 귀환",
+  extra_turn_taken: "이 차례 바로 뒤에 차례 한 번 더",
   freighter_declined: "화물선 이동 안 함",
   intrigue_freighter_declined: "화물선 이동 안 함",
   shipping_troops_recruited: "화물선 귀환: {troop} {recruit}",

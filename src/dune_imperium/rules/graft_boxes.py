@@ -57,6 +57,9 @@ BOX_KEY_PAIRS: Final[tuple[tuple[str, str], ...]] = (
     ("corrinth_first_card_id", "graft_corrinth_first_card_id"),
     # A two-card Discard arrow's first pick (Rise of Ix).
     ("discard_first_card_id", "graft_discard_first_card_id"),
+    # The enemy units Desert Ambush's box retreated this turn, one for each
+    # troop deployed (Rise of Ix); a Ghola copying the box has its own.
+    ("enemy_retreats_for_deployment", "graft_enemy_retreats_for_deployment"),
     # Arrakis Observer's Spy after its discard.
     ("agent_card_spy_pending", "graft_agent_card_spy_pending"),
     ("agent_card_spy_recalled", "graft_agent_card_spy_recalled"),
@@ -139,6 +142,9 @@ TURN_KEYS: Final = frozenset(
         # finds it gone.
         "turn_agent_recalled",
         "turn_owner",
+        # Weirding Way's extra turns owed after this one (Rise of Ix,
+        # ``effects.close_agent_turn``), whichever box took them.
+        "extra_turns_owed",
         # Ilesa Ecaz's card back in her hand at this turn's start (Rise of
         # Ix, ``one_step_ahead``), read by the turn's placement.
         "one_step_ahead_card",
@@ -254,6 +260,8 @@ BOX_ACTION_IDS: Final = frozenset(
         # Rise of Ix's Landing Rights: the Freighter icon's two moves.
         "advance_agent_card_freighter",
         "recall_agent_card_freighter",
+        # Rise of Ix's Weirding Way: the extra turn.
+        "take_agent_card_extra_turn",
         # Rise of Ix's Local Fence: its two arrows printed with "-OR-".
         "pay_agent_card_spice_for_solari",
         "pay_agent_card_solari_for_spice",
@@ -276,6 +284,8 @@ BOX_ACTION_IDS: Final = frozenset(
         "decline_corrinth_city_payment",
         "pay_agent_card_intrigue_and_spice",
         "trash_intrigue_for_agent_card",
+        # Rise of Ix's Court Intrigue: an Intrigue card under the deck.
+        "put_intrigue_on_bottom_for_agent_card",
         "decline_agent_card_intrigue_payment",
         # Acquisitions.
         "acquire_imperium_with_solari",

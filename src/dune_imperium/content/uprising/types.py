@@ -414,6 +414,26 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_MOVE_FREIGHTER = "may_move_freighter"
     # Shai-Hulud (Rise of Ix): "[Trash a card] -> [2 troops]".
     TRASH_PERSONAL_CARD_TO_RECRUIT_TWO = "trash_personal_card_to_recruit_two"
+    # Guild Chief Administrator (Rise of Ix): "[Discard] -> [Trash a card]".
+    MAY_DISCARD_TO_TRASH_A_CARD = "may_discard_to_trash_a_card"
+    # Embedded Agent (Rise of Ix): "If you have another Bene Gesserit card in
+    # play: [Freighter] [Freighter]".
+    MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND = (
+        "may_move_freighter_twice_if_bene_gesserit_bond"
+    )
+    # Weirding Way (Rise of Ix): "You may take another turn immediately after
+    # this one."
+    MAY_TAKE_ANOTHER_TURN = "may_take_another_turn"
+    # Court Intrigue (Rise of Ix): "Put an Intrigue card on the bottom of the
+    # deck -> [Intrigue card]".
+    MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE = (
+        "may_put_intrigue_on_bottom_to_draw_intrigue"
+    )
+    # Desert Ambush (Rise of Ix): "For each troop you deploy this turn, you
+    # may force an enemy unit to retreat."
+    MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED = (
+        "may_force_enemy_unit_retreat_for_each_troop_deployed"
+    )
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -497,6 +517,9 @@ class PersonalCardAcquisitionEffect(StrEnum):
     # Shai-Hulud (Rise of Ix): the black Trash icon in the acquire box -- an
     # optional trash resolved at once when the card is acquired.
     MAY_TRASH_A_CARD = "may_trash_a_card"
+    # Full-Scale Assault (Rise of Ix): the Dreadnought icon, "you may
+    # commission" [Rise of Ix p. 6].
+    MAY_COMMISSION_DREADNOUGHT = "may_commission_dreadnought"
 
 
 class PersonalCardRevealChoiceEffect(StrEnum):
@@ -606,6 +629,12 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS = (
         "may_trash_self_to_move_any_number_of_troops"
     )
+    # Rise of Ix's Imperium cards (stage P4d). Guild Chief Administrator: the
+    # Freighter icon in its Reveal box, "may" [Rise of Ix p. 5].
+    MAY_MOVE_FREIGHTER = "may_move_freighter"
+    # Negotiated Withdrawal: "Retreat three of your units -> [Influence with
+    # any Faction]", an optional arrow [FAQ p. 3].
+    MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE = "may_retreat_three_units_for_influence"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -625,11 +654,14 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
     }
 )
 
-# Choice effects added by the original game's Imperium cards (stage P3):
-# outside every Uprising catalog, whose resume templates list one per choice
-# effect of the Uprising family only.
+# Choice effects added by the original game's Imperium cards (stage P3), and
+# by the Rise of Ix cards played on it (stage P4d; Uprising with Rise of Ix is
+# P7): outside every Uprising catalog, whose resume templates list one per
+# choice effect of the Uprising family only.
 IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = frozenset(
     {
+        PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER,
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE,
         PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,
         PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
         PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT,

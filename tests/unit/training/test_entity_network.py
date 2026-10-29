@@ -252,7 +252,45 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Solari reward), read by its row alone; no older scale moved (compared against
 # 0d65eb9c and again against 556e57ea when it landed on claude/base-ix-p4,
 # 2026-10-30).
-_GOLDEN_DIGEST = "92974e016a828043dac14b186129ee66ed3e753ce555fe969e4e9764437dd5d9"
+# Then Guild Chief Administrator got its records (stage P4d): only its own row
+# changed, and one personal-table column is new (the Freighter piece in a
+# Reveal choice), read by its row alone; no older scale moved (compared
+# against 2a8bc1ea, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against da3cd535 (2026-10-30).
+# Then Negotiated Withdrawal got its records (stage P4d): only its own row
+# changed, and one personal-table column is new (the "units" flag of a Reveal
+# choice's retreat cost), read by its row alone; no older scale moved
+# (compared against d2a5121e, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against d6419f86 (2026-10-30).
+# Then Desert Ambush got its record (stage P4d): only its own row changed, and
+# two personal-table columns are new (the "units" and "per_troop_deployed"
+# flags of its enemy retreat), read by its row alone; no older scale moved
+# (compared against 09791eb4, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against f0ea975e (2026-10-30).
+# Then Full-Scale Assault got its records (stage P4d): only its own row
+# changed, and two personal-table columns are new (the Dreadnought piece of an
+# acquire box and the Reveal count per dreadnought in the Conflict), read by
+# its row alone; no older scale moved (compared against 94581a95, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 71f32573 (2026-10-30).
+# Then Embedded Agent got its records (stage P4d, picked here before Court
+# Intrigue and Weirding Way): its own row changed, and its two Freighter
+# pieces widen the Ix-only personal column agent.sections.rewards:Freighter
+# from 1 to 2, so Landing Rights' row reads 0.5 there instead of 1.0 -- the
+# one older change, accepted by the coordinator (2026-10-30): an Ix entity
+# row may rescale when a later Ix card widens an Ix-only column, as
+# observation v39 and its Ix features are not on master and no network has
+# trained on them; Uprising and original-game rows never change. No other
+# row or scale moved (compared against 5ddab661 on claude/base-ix-p4).
+# Then Court Intrigue got its record (stage P4d): only its own row changed,
+# and one personal-table column is new (the cost that puts an Intrigue card
+# under the deck), read by its row alone; no older scale moved (compared
+# against 560892d9, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 9260241c (2026-10-30).
+# Then Weirding Way got its record (stage P4d): only its own row changed, and
+# one personal-table column is new (the extra-turn piece), read by its row
+# alone; no older scale moved (compared against f10bdb6a, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 30fca5c8 (2026-10-30).
+_GOLDEN_DIGEST = "ae2004626db17f48d3e138d3ffb39bd548e558f9f5e74be0efe7a198884f082f"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
