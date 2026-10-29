@@ -47,10 +47,11 @@ Text, as on the card:
 Line breaks follow the print (``BREAKS``): they only replace spaces, never
 words (``relayout`` checks it).
 
-The original game's eight Leaders (``ORIGINAL_IDS``, English only: the Korean
-edition shows these faces' English) are drawn the same way on the original
-frame (``FRAME_KINDS``): the Uprising frame's shape with its own shades and no
-set mark. Their scans are cropped less evenly (``SCAN_FIT`` maps each onto the
+The original game's eight Leaders (``BASE_IDS``) and Rise of Ix's six
+(``IX_IDS``; together ``ORIGINAL_IDS``, English only: the Korean edition shows
+these faces' English) are drawn the same way on the original frame
+(``FRAME_KINDS``): the Uprising frame's shape with its own shades and no set
+mark. Their scans are cropped less evenly (``SCAN_FIT`` maps each onto the
 frame's window), their names are the print's (``PRINT_NAMES``), and, unlike
 the Uprising ones, their app backgrounds are only a patch of the painting
 (``ORIGINAL_ART``). The rest of the art window, which is in no app picture,
@@ -60,7 +61,19 @@ the icons stay the app's. This is the one place where scan pixels enter a
 face, by the user's decision of 2026-10-29 ("(다) 섞은 안으로 한번 해보자",
 docs/base-game-and-ix-plan.md 18.7); filled smooth from the patch's edge
 colours instead, half of each painting was invented. The faces go to
-``assets/cards/app/en/base/leader/<scan file name>.webp``.
+``assets/cards/app/en/base/leader/<scan file name>.webp`` (Rise of Ix's to
+``.../en/rise-of-ix/leader/``).
+
+Rise of Ix's scans need a few more measurements and parts than the original
+eight's. Some are scanned crooked (``SCAN_SKEW``: turned back before the window
+is fitted) or cropped tighter (``FIT_RANGES``). Hundro's figure is turned 15.5
+degrees against the app's picture (``PLACEMENT``'s fourth number). Where a
+cut-out ends above the boxes (Ilesa's by 60 px), the carried-on cloth is the
+scan's painting too. Ilesa's ability box is tall (``LAYOUTS["tall"]``).
+Tessia's card prints the Snooper track, four dark panels over the painting
+(``draw_snoopers``). Where the app's strings differ from the cards (bold
+keywords, italics, bullets, two icons' order, Tessia's wording)
+``IX_PRINT_TEXT`` has the print's.
 
 Inputs go to the assets checkout's git-ignored
 ``reference/dune-steam-app/<build-guid>/render/leaders/`` (with the card
@@ -118,8 +131,15 @@ APP_IDS = {
     "helena_richese": ("helenarichese", "helenarichese"),
     "earl_memnon_thorvald": ("earlmemnonthorvald", "earlmemnonthorvald"),
     "countess_ariana_thorvald": ("countessarianathorvald", "countessarianathorvald"),
+    # Rise of Ix's six leaders (IX_IDS), on the same frame
+    "archduke_armand_ecaz": ("archdukearmandecaz", "archdukearmandecaz"),
+    "ilesa_ecaz": ("ilesaecaz", "ilesaecaz"),
+    "prince_rhombur_vernius": ("princerhomburvernius", "princerhomburvernius"),
+    "princess_yuna_moritani": ("princessyunamoritani", "princessyunamoritani"),
+    "tessia_vernius": ("tessiavernius", "tessiavernius"),
+    "viscount_hundro_moritani": ("viscounthundromoritani", "viscounthundromoritani"),
 }
-ORIGINAL_IDS = (
+BASE_IDS = (
     "paul_atreides",
     "duke_leto_atreides",
     "glossu_rabban",
@@ -129,6 +149,17 @@ ORIGINAL_IDS = (
     "earl_memnon_thorvald",
     "countess_ariana_thorvald",
 )
+IX_IDS = (
+    "archduke_armand_ecaz",
+    "ilesa_ecaz",
+    "prince_rhombur_vernius",
+    "princess_yuna_moritani",
+    "tessia_vernius",
+    "viscount_hundro_moritani",
+)
+# Both sets are the original game's printing (Rise of Ix is printed on its
+# frame, FRAME_KINDS["original"]); their faces are drawn alike.
+ORIGINAL_IDS = BASE_IDS + IX_IDS
 FIGURE = "leader_ConflictWinner_{}"
 BACKGROUND = "frame_DeferredAbility_BG{}"
 SIGNET_RING = "UI_crd_ActionIcon_SignetRing"
@@ -207,6 +238,27 @@ PLACEMENT = {
         "figure": (0.824, 276, 192),
         "background": (4.2866, 252, 308),
     },
+    # Rise of Ix's leaders: patch backgrounds as the original game's (Tessia's
+    # reaches 5.5x). Hundro's figure is turned by 15.5 degrees against the app's
+    # picture (the fourth number, counter-clockwise).
+    "archduke_armand_ecaz": {
+        "figure": (0.7757, 636, 134),
+        "background": (1.8814, 160, 310),
+    },
+    "ilesa_ecaz": {"figure": (0.5473, 856, 244), "background": (4.0594, -34, -28)},
+    "prince_rhombur_vernius": {
+        "figure": (0.8494, 530, 136),
+        "background": (5.3658, 62, 180),
+    },
+    "princess_yuna_moritani": {
+        "figure": (0.7245, 542, 130),
+        "background": (5.3658, 60, 122),
+    },
+    "tessia_vernius": {"figure": (0.7081, 784, 156), "background": (5.5374, 30, 126)},
+    "viscount_hundro_moritani": {
+        "figure": (0.7134, 474, 22, 15.5),
+        "background": (4.5266, -34, 10),
+    },
 }
 
 # The original game's eight English scans are cropped a little differently
@@ -227,6 +279,12 @@ SCAN_FIT = {
     "helena_richese": (29.3, 27.9, 1429.9, 988.7),
     "earl_memnon_thorvald": (33.0, 30.8, 1432.8, 989.8),
     "countess_ariana_thorvald": (29.5, 31.7, 1434.3, 990.7),
+    "archduke_armand_ecaz": (19.4, 20.8, 1441.9, 996.7),
+    "ilesa_ecaz": (16.2, 20.8, 1439.6, 995.3),
+    "prince_rhombur_vernius": (17.5, 21.7, 1442.6, 1005.2),
+    "princess_yuna_moritani": (10.8, 26.9, 1434.5, 1002.2),
+    "tessia_vernius": (21.9, 26.2, 1442.8, 1001.2),
+    "viscount_hundro_moritani": (19.7, 20.6, 1441.9, 1000.6),
 }
 
 # ---------------------------------------------------------------- the frame
@@ -301,8 +359,11 @@ LAYOUTS["feyd"] = dict(
 # The original game's card sets its Signet title 2 px higher than the
 # Uprising one (baselines of the eight scans: 812.2 against 815).
 LAYOUTS["original"] = dict(LAYOUTS["normal"], signet_base=35)
+# Ilesa Ecaz's ability box is tall (its text is long): its top is 142 px higher.
+LAYOUTS["tall"] = dict(LAYOUTS["original"], gold_top=636)
 LAYOUT_OF = {"staban_tuek": "staban", "feyd_rautha_harkonnen": "feyd"}
 LAYOUT_OF.update(dict.fromkeys(ORIGINAL_IDS, "original"))
+LAYOUT_OF["ilesa_ecaz"] = "tall"
 
 COLORS = {
     "card": (3, 3, 3),
@@ -446,6 +507,57 @@ def signet_polygon(top):
     )
 
 
+# Tessia Vernius's Snooper track: four stacked panels over the painting's left
+# part, cut by one slanted edge (x at y, measured on her scan) and by three
+# orange rules between them (the third starts right of the DECK tab).
+SNOOPER_TOP, SNOOPER_BOTTOM = 177, 778
+SNOOPER_RULES = ((323.5, ART[0]), (474.5, ART[0]), (625.5, 122))  # y, first x
+
+
+def snooper_edge(y):
+    """x of the Snooper track's slanted right edge at height y."""
+    return 345.5 + 0.5375 * (y - 216)
+
+
+def snooper_polygon():
+    """The track's whole area."""
+    return (
+        (ART[0], SNOOPER_TOP),
+        (snooper_edge(SNOOPER_TOP), SNOOPER_TOP),
+        (snooper_edge(SNOOPER_BOTTOM), SNOOPER_BOTTOM),
+        (ART[0], SNOOPER_BOTTOM),
+    )
+
+
+def snooper_panels():
+    """The four panels, from the top; the DECK tab cuts the lower two."""
+    y1, y2, y3 = (r[0] for r in SNOOPER_RULES)
+    e = snooper_edge
+    return (
+        (
+            (ART[0], SNOOPER_TOP),
+            (e(SNOOPER_TOP), SNOOPER_TOP),
+            (e(y1), y1),
+            (ART[0], y1),
+        ),
+        ((ART[0], y1), (e(y1), y1), (e(y2), y2), (ART[0], y2)),
+        (
+            (ART[0], y2),
+            (e(y2), y2),
+            (e(y3), y3),
+            (DECK_TAB[1][0], y3),
+            (DECK_TAB[1][0], DECK_TAB[1][1]),
+            DECK_TAB[0],
+        ),
+        (
+            (DECK_TAB[1][0], y3),
+            (e(y3), y3),
+            (e(SNOOPER_BOTTOM), SNOOPER_BOTTOM),
+            (DECK_TAB[1][0], SNOOPER_BOTTOM),
+        ),
+    )
+
+
 def frame_polygons(cid):
     """The printed frame parts that hide the art."""
     lay = layout(cid)
@@ -454,6 +566,8 @@ def frame_polygons(cid):
         polys.append(HOUSE_BAND)
     polys.append(gold_polygon(lay["red_top"] or lay["gold_top"]))
     polys.append(signet_polygon(lay["signet_top"]))
+    if LEADERS[cid].get("snoopers"):
+        polys.append(snooper_polygon())
     return polys
 
 
@@ -486,16 +600,41 @@ def step_edge(v, lo, rising):
     return lo + i + 0.5
 
 
-def fit_window(grey):
+def fit_window(grey, left=(14, 50), bottom=(975, 1010)):
     """(left, top, right, bottom) of the art window in a scan, 1460x1020
     grey in 0..255: the steps from the black card edge, the name band's top
-    and the gold box's bottom."""
+    and the gold box's bottom. ``left`` (columns) and ``bottom`` (rows) are
+    the ranges searched; a scan cropped tighter than the others needs its own
+    (FIT_RANGES)."""
     return (
-        step_edge(grey[300:480, 14:50].mean(0), 14, True),
+        step_edge(grey[300:480, left[0] : left[1]].mean(0), left[0], True),
         step_edge(grey[20:50, 600:1000].mean(1), 20, True),
         step_edge(grey[500:700, 1410:1450].mean(0), 1410, False),
-        step_edge(grey[975:1010, 200:260].mean(1), 975, False),
+        step_edge(grey[bottom[0] : bottom[1], 200:260].mean(1), bottom[0], False),
     )
+
+
+# Some Rise of Ix scans are cropped tighter (Yuna's left edge is 10 px in, the
+# text above the gold box's bottom edge reaches 990) and some are scanned a
+# little crooked: the tilt of the card, counter-clockwise in degrees, measured
+# as the mean slope of the four window edges; ``load_scan`` turns it back
+# before the window is fitted, so the frame keeps its place over the whole card.
+FIT_RANGES = {"princess_yuna_moritani": {"left": (0, 30), "bottom": (990, 1015)}}
+SCAN_SKEW = {
+    "ilesa_ecaz": 0.28,
+    "princess_yuna_moritani": 0.45,
+    "viscount_hundro_moritani": 0.22,
+}
+
+
+def raw_scan(path, cid, mode="RGB", resample=None):
+    """The English scan at 1460x1020, turned back by its tilt (SCAN_SKEW)."""
+    from PIL import Image
+
+    img = Image.open(path).convert(mode).resize((W, H), resample)
+    if cid in SCAN_SKEW:
+        img = img.rotate(-SCAN_SKEW[cid], resample=Image.BICUBIC)
+    return img
 
 
 def load_scan(path, cid, mode="RGB", resample=None):
@@ -503,7 +642,7 @@ def load_scan(path, cid, mode="RGB", resample=None):
     mapped onto the frame's art window (SCAN_FIT)."""
     from PIL import Image
 
-    img = Image.open(path).convert(mode).resize((W, H), resample)
+    img = raw_scan(path, cid, mode, resample)
     fit = SCAN_FIT.get(cid)
     if fit is None:
         return img
@@ -581,8 +720,24 @@ def ncc_search(scan, valid, templ, alpha, scales, step):
     return best
 
 
+# Figures the print turns against the app's picture (degrees, counter-clockwise):
+# the angles ``measure`` tries for them, one degree apart (the match peaks about
+# a degree wide); the others are searched upright only.
+FIGURE_ANGLES = {"viscount_hundro_moritani": tuple(np.arange(12.0, 20.1, 1.0))}
+# The scales ``measure`` searches the patch backgrounds at (default 2-7).
+BACKGROUND_SCALES = {"archduke_armand_ecaz": (0.8, 3.0)}
+
+
+def turned_figure(fig, angle):
+    from PIL import Image
+
+    return fig.rotate(angle, expand=True, resample=Image.BICUBIC) if angle else fig
+
+
 def measure(cid, scan_path):
-    """NCC placement of the app figure, then the background, on the scan."""
+    """NCC placement of the app figure, then the background, on the scan.
+
+    The figure's tuple ends in its angle when it is turned (FIGURE_ANGLES)."""
     from PIL import Image
 
     sprite_id = APP_IDS[cid][0]
@@ -591,11 +746,38 @@ def measure(cid, scan_path):
     bg = Image.open(d / f"{BACKGROUND.format(sprite_id)}.png").convert("RGBA")
     scan = np.asarray(load_scan(scan_path, cid, "L"), float) / 255
     valid = ~frame_mask(cid)
-    grey, alpha = fig.convert("L"), fig.getchannel("A")
-    f = ncc_search(scan, valid, grey, alpha, np.geomspace(0.5, 1.5, 30), 4)
-    f = ncc_search(
-        scan, valid, grey, alpha, np.geomspace(f[1] * 0.97, f[1] * 1.03, 9), 2
-    )
+    angles = FIGURE_ANGLES.get(cid, (0.0,))
+    coarse = None
+    for angle in angles:
+        turned = turned_figure(fig, angle)
+        found = ncc_search(
+            scan,
+            valid,
+            turned.convert("L"),
+            turned.getchannel("A"),
+            np.geomspace(0.5, 1.5, 30),
+            4,
+        )
+        if coarse is None or found[0] > coarse[0]:
+            coarse, turn = found, angle
+    # the scale and place at a finer step (and the angle in quarter degrees)
+    f = None
+    for angle in turn + 0.25 * np.arange(-3, 4) if len(angles) > 1 else [turn]:
+        turned = turned_figure(fig, angle)
+        found = ncc_search(
+            scan,
+            valid,
+            turned.convert("L"),
+            turned.getchannel("A"),
+            np.geomspace(coarse[1] * 0.97, coarse[1] * 1.03, 9),
+            2,
+        )
+        if f is None or found[0] > f[0]:
+            f, best = found, angle
+    fig = turned_figure(fig, best)
+    alpha = fig.getchannel("A")
+    if len(angles) > 1:
+        f = (*f, best)
     fw, fh = round(fig.width * f[1]), round(fig.height * f[1])
     fa = np.asarray(alpha.resize((fw, fh)), float) > 20
     figmask = np.zeros((H, W), bool)
@@ -609,7 +791,8 @@ def measure(cid, scan_path):
     # their opaque pixels are the painting
     balpha = bg.getchannel("A")
     balpha = balpha if balpha.getextrema()[0] < 255 else None
-    scales = np.geomspace(2.0, 7.0, 70) if balpha else np.geomspace(4.5, 7.0, 30)
+    lo, hi = BACKGROUND_SCALES.get(cid, (2.0, 7.0))
+    scales = np.geomspace(lo, hi, 70) if balpha else np.geomspace(4.5, 7.0, 30)
     b = ncc_search(scan, bvalid, bgrey, balpha, scales, 4)
     b = ncc_search(
         scan, bvalid, bgrey, balpha, np.geomspace(b[1] * 0.98, b[1] * 1.02, 7), 2
@@ -645,9 +828,10 @@ def cmd_inputs(args):
             if cid in ORIGINAL_IDS:
                 from PIL import Image
 
-                raw = Image.open(CARDS / "en" / entries[cid]["path"]).convert("L")
-                grey = np.asarray(raw.resize((W, H), Image.LANCZOS), float)
-                print(cid, "SCAN_FIT", [float(round(v, 1)) for v in fit_window(grey)])
+                path = CARDS / "en" / entries[cid]["path"]
+                grey = np.asarray(raw_scan(path, cid, "L", Image.LANCZOS), float)
+                fit = fit_window(grey, **FIT_RANGES.get(cid, {}))
+                print(cid, "SCAN_FIT", [float(round(v, 1)) for v in fit])
             r = measure(cid, CARDS / "en" / entries[cid]["path"])
             print(
                 cid,
@@ -678,6 +862,12 @@ LEADERS = {
     "helena_richese": {"house": "richese", "hexes": 2},
     "earl_memnon_thorvald": {"house": "thorvald", "hexes": 1},
     "countess_ariana_thorvald": {"house": "thorvald", "hexes": 3},
+    "archduke_armand_ecaz": {"house": "ecaz", "hexes": 2},
+    "ilesa_ecaz": {"house": "ecaz", "hexes": 3},
+    "prince_rhombur_vernius": {"house": "vernius", "hexes": 1},
+    "princess_yuna_moritani": {"house": "moritani", "hexes": 2},
+    "tessia_vernius": {"house": "vernius", "hexes": 4, "snoopers": True},
+    "viscount_hundro_moritani": {"house": "moritani", "hexes": 1},
 }
 # The names as the original cards print them (the manifest keeps the upstream
 # file slugs: "Dune Leto", "Glossu the Beast"; the app's short titles are
@@ -691,6 +881,8 @@ PRINT_NAMES = {
     "helena_richese": "Helena Richese",
     "earl_memnon_thorvald": "Earl Memnon Thorvald",
     "countess_ariana_thorvald": "Countess Ariana Thorvald",
+    # Rise of Ix (the others are the manifest's names)
+    "princess_yuna_moritani": "\u201cPrincess\u201d Yuna Moritani",
 }
 # Korean words read off the Korean edition's leader cards (photos in
 # cards/ko/uprising/leader/): the house lines and the two side tabs.
@@ -750,7 +942,24 @@ NAME_WORD_GAP = {"en": 8.0, "ko": 9.0}
 # set tighter (letter pitch 36 against 46 px), fitted to the eight scans'
 # word positions (rms 1.5-3 px).
 ORIGINAL_NAME_GAP = 5.5
-NAME_SPACING = {"helena_richese": 8.4}
+NAME_SPACING = {
+    "helena_richese": 8.4,
+    # Rise of Ix's names (fitted to their scans' word positions, rms 1-4 px)
+    "archduke_armand_ecaz": 16.04,
+    "ilesa_ecaz": 16.61,
+    "prince_rhombur_vernius": 17.41,
+    "princess_yuna_moritani": 18.47,
+    "tessia_vernius": 17.43,
+    "viscount_hundro_moritani": 16.07,
+}
+NAME_GAP = {
+    "archduke_armand_ecaz": 2.29,
+    "ilesa_ecaz": 3.26,
+    "prince_rhombur_vernius": 2.83,
+    "princess_yuna_moritani": -1.43,
+    "tessia_vernius": 4.95,
+    "viscount_hundro_moritani": 2.96,
+}
 # first hex centre after the name (the scans' 60.5 px from the name's last
 # letter, in this script's measure 57.5; Helena's tight name 4 px closer)
 ORIGINAL_HEX_GAP = {"default": 57.5, "helena_richese": 53.5}
@@ -816,6 +1025,40 @@ BREAKS = {
     ],
     ("en", "earl_memnon_thorvald", "ability"): [("High Council", LINE)],
     ("en", "countess_ariana_thorvald", "ability"): [("gain", LINE)],
+    # Rise of Ix's leaders
+    ("en", "archduke_armand_ecaz", "ability"): [
+        ("two Agents", LINE),
+        ("spaces, you", LINE),
+        ("cards <i>", LINE),
+    ],
+    ("en", "archduke_armand_ecaz", "signet"): [("costs <sprite", LINE)],
+    ("en", "ilesa_ecaz", "ability"): [
+        ("from your hand", LINE),
+        ("a round,", LINE),
+        ("it to your hand.", LINE),
+        ("an Agent this", LINE),
+        ("\u2022 if it", LINE),
+        ("\u2022 otherwise", LINE),
+    ],
+    ("en", "prince_rhombur_vernius", "ability"): [("4 strength", LINE)],
+    ("en", "princess_yuna_moritani", "ability"): [("increase the", LINE)],
+    ("en", "tessia_vernius", "ability"): [
+        ("2 Influence", LINE),
+        ("move it", LINE),
+        ("above and", LINE),
+    ],
+    ("en", "tessia_vernius", "signet"): [("a Faction", LINE), ("Snooper token.", LINE)],
+    ("en", "tessia_vernius", "snooper2"): [("token\u2019s", LINE)],
+    ("en", "tessia_vernius", "snooper3"): [("token\u2019s", LINE)],
+    ("en", "tessia_vernius", "snooper4"): [
+        ("token\u2019s", LINE),
+        ("one Influence on that", LINE),
+    ],
+    ("en", "viscount_hundro_moritani", "ability"): [
+        ("the top two", LINE),
+        ("deck. Keep", LINE),
+        ("back on top", LINE),
+    ],
     ("ko", "muad_dib", "ability"): [("모래벌레가", LINE)],
     ("ko", "shaddam_corrino_iv", "ability"): [("이 계약들은", LINE)],
     ("ko", "shaddam_corrino_iv", "signet"): [('<sprite name="Solari_1">', "\n")],
@@ -844,6 +1087,38 @@ EN_PRINT_KEYS = (
     "worm.leader.ladyjessica.staticability.desc",
     "worm.leader.reverendmotherjessica.staticability.desc",
 )
+
+# English print corrections for Rise of Ix's leaders, in the same place and for
+# the same reason as ``cards/app/en_text.json`` (which takes precedence): the
+# app's strings lack the printed bold "Reveal Turn:"-style keyword, Armand's
+# italic "in play" and Ilesa's bullets, put Rhombur's two icons the other way
+# round, and word the end of Tessia's text as the app's menu does ("gain the
+# topmost uncovered reward from the Snooper track") where the card prints the
+# move to the topmost uncovered space.
+IX_PRINT_TEXT = {
+    # the card prints the Buy Tech box before the Negotiator hex
+    "worm.leader.princerhomburvernius.signetability.desc": (
+        '<sprite name="BuyTech"> \u2014OR\u2014 <sprite name="TechNegotiator">'
+    ),
+    "worm.leader.archdukearmandecaz.staticability.desc": (
+        "<b>Reveal Turn:</b> If you have at least two Agents on "
+        '<sprite name="Landsraad">/<sprite name="PopulationCenter">/'
+        '<sprite name="Commerce"> board spaces, you may trash one of your '
+        "cards <i>in play</i>."
+    ),
+    "worm.leader.ilesaecaz.staticability.desc": (
+        "<b>Round Start:</b> Set aside a card from your hand.\n"
+        "At the start of your second turn in a round, reveal that card and "
+        "return it to your hand. If you use it to send an Agent this turn: "
+        '\u2022 if it has exactly one Agent icon, <sprite name="Spice_1"> '
+        '\u2022 otherwise, <sprite name="Solari_1">'
+    ),
+    "worm.leader.tessiavernius.staticability.desc": (
+        "<b>Game Start:</b> Put a Snooper token at 2 Influence on each "
+        "Influence track.\nWhenever you reach a Snooper token, move it to the "
+        "topmost uncovered space above and take that reward."
+    ),
+}
 
 # Box layout, card pixels (see Box): defaults per box and language, then
 # per leader. size: text px; pitch: line distance in ems; icon: big icon
@@ -1079,6 +1354,86 @@ BOXES = {
         "dy": -2.5,
     },
     ("countess_ariana_thorvald", "signet"): {"dy": 2},
+    # Rise of Ix's leaders, measured on their English scans.
+    ("archduke_armand_ecaz", "ability"): {
+        "align": "left",
+        "x0": 141.5,
+        "size": 34.0,
+        "pitch": 1.138,
+        "inline": 1.0,
+        "dy": 2,
+    },
+    ("archduke_armand_ecaz", "signet"): {
+        "size": 37.8,
+        "pitch": 1.2,
+        "inline": 1.5,
+        "align": "left",
+        "x0": 879,
+    },
+    ("ilesa_ecaz", "ability"): {
+        "align": "left",
+        "x0": 141,
+        "size": 32.5,
+        "pitch": 1.157,
+        "gap": 15,
+        "y1": 994,
+        "dy": 0,
+        "x1": 735,
+        "trail": False,
+        "bullet_indent": 23,
+    },
+    ("ilesa_ecaz", "signet"): {"icon": 80},
+    ("prince_rhombur_vernius", "ability"): {"align": "left", "x0": 141, "dy": 4},
+    ("prince_rhombur_vernius", "signet"): {
+        "icon": 84,
+        "sep": 0.84,
+        "row_gap": 22,
+        "dy": -3,
+    },
+    ("princess_yuna_moritani", "ability"): {
+        "align": "left",
+        "x0": 141,
+        "size": 35.8,
+        "pitch": 1.13,
+        "gap": 25,
+        "inline": 1.45,
+        "dy": 2,
+        "x1": 840,
+    },
+    ("princess_yuna_moritani", "signet"): {
+        "icon": 83,
+        "row_gap": 15,
+        "cx": 1160,
+        "dy": 2,
+    },
+    ("tessia_vernius", "ability"): {
+        "align": "left",
+        "x0": 141,
+        "size": 29.1,
+        "pitch": 1.1,
+        "gap": 11,
+        "y0": 826,
+        "y1": 994,
+        "dy": 5,
+    },
+    ("tessia_vernius", "snooper1"): {"dy": -3},
+    ("tessia_vernius", "snooper2"): {"dy": 3},
+    ("tessia_vernius", "snooper3"): {"dy": 4},
+    ("tessia_vernius", "snooper4"): {"dy": 6},
+    ("tessia_vernius", "signet"): {
+        "size": 37.7,
+        "pitch": 1.233,
+        "align": "left",
+        "x0": 879,
+    },
+    ("viscount_hundro_moritani", "ability"): {
+        "align": "left",
+        "x0": 141.5,
+        "size": 34.0,
+        "pitch": 1.138,
+        "dy": 3,
+    },
+    ("viscount_hundro_moritani", "signet"): {"icon": 82, "cx": 1158, "dy": -3},
     ("staban_tuek", "signet"): {
         "icon": 46,
         "x0": 886,
@@ -1144,7 +1499,7 @@ class Inputs:
         return self.pictures[name]
 
     def en_text(self, key):
-        v = self.en.get(key) or self.loc.get(key)
+        v = self.en.get(key) or IX_PRINT_TEXT.get(key) or self.loc.get(key)
         return v.replace("\\n", "\n") if v else v
 
 
@@ -1181,6 +1536,8 @@ def text_renderer(R):
             layer[..., :3] = color[:3]
             layer[..., 3] = a * color[3]
             tile = Image.fromarray((layer * 255).astype(np.uint8), "RGBA")
+            if it["st"].get("italic"):
+                tile = R.slant(tile)
             R.composite(canvas, tile, round(x0), round(y0), clip, S, top)
 
         def _ttf(self, canvas, S, it, pen, base, color, clip, top):
@@ -1205,6 +1562,8 @@ def text_renderer(R):
                 im = ImageChops.lighter(im, outline)
             rgba = Image.new("RGBA", im.size, tuple(int(c * 255) for c in color[:3]))
             rgba.putalpha(im.point(lambda v: int(v * color[3])))
+            if it["st"].get("italic"):
+                rgba = R.slant(rgba)
             R.composite(
                 canvas,
                 rgba,
@@ -1294,6 +1653,9 @@ def face_texts(inp, cid, lang):
         if inp.loc.get(f"{key}.staticability.title2"):
             out["limited_title"] = inp.en_text(f"{key}.staticability.title2")
             out["limited"] = normalize(inp.en_text(f"{key}.staticability.desc2"))
+        if spec.get("snoopers"):
+            for i in range(1, 5):
+                out[f"snooper{i}"] = normalize(inp.en_text(f"{key}.staticability.{i}"))
     else:
         ko = LEADER_FACE_TEXTS_KO.get(cid)
         name = KOREAN_CARD_NAMES["leaders"].get(cid)
@@ -1316,7 +1678,7 @@ def face_texts(inp, cid, lang):
         # the print's box titles and texts set a typographic apostrophe
         for key in ("ability_title", "ability", "signet_title", "signet"):
             out[key] = re.sub(r"(?<=\w)'(?=\w)", "\u2019", out[key])
-    for box in ("ability", "signet", "limited"):
+    for box in ("ability", "signet", "limited", "snooper2", "snooper3", "snooper4"):
         if box in out and (lang, cid, box) in BREAKS:
             out[box] = relayout(out[box], BREAKS[(lang, cid, box)])
     return out
@@ -1346,6 +1708,7 @@ class Painter:
             "weight": 0.0,
             "upper": False,
             "bold": False,
+            "italic": False,
             "ko_spacing": KO_BODY_SPACING,
             "ko_stroke": 0.0,
             "squeeze": 1.0,
@@ -1431,6 +1794,12 @@ class Painter:
             return
         top = baseline - lines[0]["base"]
         tmp = self._prepare(st)
+        if text.startswith(".") and not text.startswith(".."):
+            # the app hides a text's leading "." (its prefabs' habit); here it is
+            # a full stop after an icon or an italic word, so it needs a lead
+            text = "<b></b>" + text
+        if st["italic"]:
+            text = f"<i>{text}</i>"  # app_render slants these glyphs
         rect = (x, self.h - top - 600, 99999, 600)
         self.tx.draw(self.canvas, SS, rect, text, tmp, None, self.h)
 
@@ -1461,18 +1830,22 @@ SEPARATOR = re.compile(r"^\s*[—-]+\s*\S+\s*[—-]+\s*$")
 
 def parse_line(markup):
     """[{"kind": "text", "text", "bold"} | {"kind": "icon", "name"}]."""
-    items, bold = [], False
-    for part in re.split(r"(<sprite name=\"[^\"]+\">|</?b>)", markup):
+    items, bold, italic = [], False, False
+    for part in re.split(r"(<sprite name=\"[^\"]+\">|</?[bi]>)", markup):
         if not part:
             continue
         if part == "<b>":
             bold = True
         elif part == "</b>":
             bold = False
+        elif part == "<i>":
+            italic = True
+        elif part == "</i>":
+            italic = False
         elif part.startswith("<sprite"):
             items.append({"kind": "icon", "name": SPRITE.match(part).group(1)})
         else:
-            items.append({"kind": "text", "text": part, "bold": bold})
+            items.append({"kind": "text", "text": part, "bold": bold, "italic": italic})
     return items
 
 
@@ -1497,7 +1870,12 @@ class Box:
     def __init__(self, painter, text, rect, opts):
         if opts.get("join"):
             text = text.replace("\n", " ")
-        rect = (opts.get("x0", rect[0]), rect[1], opts.get("x1", rect[2]), rect[3])
+        rect = (
+            opts.get("x0", rect[0]),
+            opts.get("y0", rect[1]),
+            opts.get("x1", rect[2]),
+            opts.get("y1", rect[3]),
+        )
         self.p, self.text, self.rect, self.o = painter, text, rect, opts
 
     def para_opts(self, i):
@@ -1579,6 +1957,7 @@ class Box:
                 st = self.p.style(
                     size=size * (o.get("sep", 0.62) if sep else 1.0),
                     bold=it["bold"],
+                    italic=it["italic"],
                     squeeze=o.get("squeeze", 1.0),
                 )
                 txt = it["text"].strip()
@@ -1634,7 +2013,9 @@ class Box:
     def text_style(self, it, st):
         sep = SEPARATOR.match(it["text"])
         size = st["size"] * (st.get("sep", 0.62) if sep else 1.0)
-        out = self.p.style(size=size, bold=it["bold"], squeeze=st["squeeze"])
+        out = self.p.style(
+            size=size, bold=it["bold"], italic=it["italic"], squeeze=st["squeeze"]
+        )
         out["sep"] = st.get("sep", 0.62)
         return out
 
@@ -1718,6 +2099,8 @@ class Box:
         baseline = y_text + st["size"] * 0.74
         for ln, lw in zip(para["lines"], para["widths"], strict=False):
             x = px + ((para["block_w"] - lw) / 2 if o.get("lines") == "center" else 0)
+            if ln and ln[0]["kind"] == "text" and ln[0]["text"].startswith("\u2022"):
+                x += o.get("bullet_indent", 0)  # a bullet line stands in from the rest
             for it in ln:
                 if it["kind"] == "icon":
                     h = st["size"] * o["inline"]
@@ -2113,6 +2496,7 @@ def draw_header(p, cid, texts):
     else:
         # small capitals: lower-case letters as smaller capitals
         word_gap = ORIGINAL_NAME_GAP if cid in ORIGINAL_IDS else NAME_WORD_GAP["en"]
+        word_gap = NAME_GAP.get(cid, word_gap)
         extra = {"spacing": NAME_SPACING[cid]} if cid in NAME_SPACING else {}
         big = type_style(p, "name", color=COLORS["name"], **extra)
         small = type_style(
@@ -2349,6 +2733,76 @@ def draw_track(p):
             p.icon(name, cx + dx, cy, h)
 
 
+# -- Tessia's Snooper track
+SNOOPER_COLORS = {
+    "rule": (214, 138, 34),
+    "rule_dim": (140, 92, 34),
+    "panel": (37, 29, 25),  # the panels are almost opaque (the scan: 4% painting)
+}
+SNOOPER_DARKEN = 0.28  # the panels' darkening towards the slanted edge ...
+SNOOPER_REACH = 160  # ... over this many px
+# (top, bottom, centre x of the words) of the four panels, from the top
+SNOOPER_TIERS = (
+    (SNOOPER_TOP, 323.5, 190),
+    (323.5, 474.5, 220),
+    (474.5, 625.5, 297),
+    (625.5, SNOOPER_BOTTOM, 357),
+)
+SNOOPER_BOX = {
+    "lines": "center",
+    "size": 29.8,
+    "pitch": 1.14,
+    "icon": 85,
+    "row_gap": 6,
+    "squeeze": 0.94,
+}
+
+
+def draw_snoopers(p, texts):
+    """The Snooper track over the painting: its dark panels, the orange rules
+    between them and along their slanted edge, and each panel's words or
+    icons."""
+    from PIL import ImageDraw
+
+    d = ImageDraw.Draw(p.canvas)
+    rule, dim = SNOOPER_COLORS["rule"], SNOOPER_COLORS["rule_dim"]
+
+    def shade(x, y):
+        edge = snooper_edge(y)
+        f = 1 - SNOOPER_DARKEN * np.clip(
+            (x - (edge - SNOOPER_REACH)) / SNOOPER_REACH, 0, 1
+        )
+        return np.asarray(SNOOPER_COLORS["panel"], float) * f[..., None]
+
+    for i, poly in enumerate(snooper_panels()):
+        shaded_fill(p, poly, shade, 247, f"tessia_vernius/snooper{i}")
+    for y, x0 in SNOOPER_RULES:
+        d.line(
+            [(x0 * SS, y * SS), (snooper_edge(y) * SS, y * SS)],
+            fill=rule + (255,),
+            width=3 * SS,
+        )
+    for dx, colour, width in ((-6, dim + (190,), 2 * SS), (0, rule + (255,), 3 * SS)):
+        d.line(
+            [
+                ((snooper_edge(SNOOPER_TOP) + dx) * SS, SNOOPER_TOP * SS),
+                ((snooper_edge(SNOOPER_BOTTOM) + dx) * SS, SNOOPER_BOTTOM * SS),
+            ],
+            fill=colour,
+            width=width,
+        )
+    for i, (top, bottom, cx) in enumerate(SNOOPER_TIERS):
+        opts = dict(
+            BOX_DEFAULTS["ability"],
+            **SNOOPER_BOX,
+            **BOXES.get(("tessia_vernius", f"snooper{i + 1}"), {}),
+            align="center",
+            cx=cx,
+        )
+        rect = (ART[0], top, 2 * cx - ART[0], bottom)
+        Box(p, texts[f"snooper{i + 1}"], rect, opts).draw()
+
+
 # -- the art
 # The original game's backgrounds are not the whole painting. The app cuts
 # each to the gold box's shape (the right side is transparent) and shows the
@@ -2465,20 +2919,25 @@ def placed_background(inp, cid):
     return np.ascontiguousarray(full), covered
 
 
-def placed_figure(inp, cid):
+def placed_figure(inp, cid, extend=True):
     """The cut-out at its place on a transparent card-size layer, carried on
-    where it ends in a hard edge in view. Also returns its unextended alpha."""
+    where it ends in a hard edge in view (unless ``extend`` is off). Also
+    returns its unextended alpha."""
     from PIL import Image
 
     fig = inp.leader_picture(FIGURE.format(APP_IDS[cid][0]))
-    s, fx, fy = PLACEMENT[cid]["figure"]
+    s, fx, fy, *turn = PLACEMENT[cid]["figure"]
+    if turn:
+        # the print turns this painting (counter-clockwise, degrees); the
+        # placement is that of the turned picture's corner
+        fig = fig.rotate(turn[0], expand=True, resample=Image.BICUBIC)
     fw, fh = round(fig.width * s), round(fig.height * s)
     fig = fig.resize((fw, fh), Image.LANCZOS)
     own = Image.new("L", (W, H), 0)
     own.paste(fig.getchannel("A"), (fx, fy))
-    if cid in EXTEND_FIGURE_RIGHT:
+    if extend and cid in EXTEND_FIGURE_RIGHT:
         fig = extend_right(fig, EXTEND_FIGURE_RIGHT[cid])
-    if fy + fh < BOX_BOTTOM:
+    if extend and fy + fh < BOX_BOTTOM:
         fig = extend_bottom(fig, BOX_BOTTOM - (fy + fh) + 4)
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     layer.paste(fig, (fx, fy), fig)
@@ -2581,6 +3040,14 @@ def art_layer(inp, cid):
         bg = np.clip(np.round(mixed), 0, 255).astype(np.uint8)
     f = np.array(fig)
     f[..., :3] = apply_grade(f[..., :3], fig_grade)
+    ext = None
+    if cid in IX_IDS:
+        # Rise of Ix's cut-outs end well above the boxes (Ilesa's by 60 px),
+        # where the mirrored carry-on shows as ripples: the print's painting
+        # goes on there, so it is the scan's, as the rest the app lacks
+        bare, _ = placed_figure(inp, cid, extend=False)
+        ext = (f[..., 3] > 0) & ~(np.asarray(bare.getchannel("A")) > 0)
+        f[ext, 3] = 0
     fig = Image.fromarray(f, "RGBA")
     # where the app's picture stops short of the window (Lady Margot's left
     # strip) its edge is carried out, blurred, and darkened like the print's
@@ -2608,6 +3075,22 @@ def art_layer(inp, cid):
     lines[..., 3] = np.clip(alpha * fade[:, None], 0, 255).astype(np.uint8)
     art.alpha_composite(Image.fromarray(lines, "RGBA"))
     art.alpha_composite(fig)
+    if ext is not None and ext.any():
+        weight = np.clip(
+            np.asarray(
+                Image.fromarray(ext.astype(np.uint8) * 255).filter(
+                    ImageFilter.GaussianBlur(1.5)
+                ),
+                float,
+            )
+            / 255,
+            0,
+            1,
+        )[..., None]
+        scan = np.asarray(english_scan(inp, cid), float)
+        mixed = np.asarray(art.convert("RGB"), float) * (1 - weight) + scan * weight
+        mixed = np.clip(np.round(mixed), 0, 255).astype(np.uint8)
+        art = Image.fromarray(mixed, "RGB").convert("RGBA")
     return art
 
 
@@ -2687,6 +3170,8 @@ def render_face(inp, cid, lang):
     draw_frame(p, cid)
     if LEADERS[cid].get("track"):
         draw_track(p)
+    if LEADERS[cid].get("snoopers"):
+        draw_snoopers(p, texts)
     draw_header(p, cid, texts)
     draw_tabs(p, texts)
     draw_titles(p, cid, texts)
@@ -2729,6 +3214,8 @@ def cmd_render(args):
             # the original frame, and how the scan was mapped onto its window
             source["frame_kind"] = "original"
             source["scan_fit"] = list(SCAN_FIT[cid])
+            if cid in SCAN_SKEW:
+                source["scan_skew"] = SCAN_SKEW[cid]
         if LEADERS[cid].get("track"):
             from dune_imperium.display.leader_layout import FEYD_TRACK_BOXES
 
