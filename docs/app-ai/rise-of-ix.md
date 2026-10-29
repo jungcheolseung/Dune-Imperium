@@ -59,6 +59,10 @@ app's prompts.
 | Ixian Engineer's Reveal "3+ Tech tiles: trash this card -> 1 VP" | `IxianEngineerAbility` (Optional, E 100) | CHOAM Demands' `trash_reveal_card` shape. |
 | Web of Power's three Influence-2 lines | `WebOfPowerEmperorAbility` (Solari), `WebOfPowerSpacingGuildAbility` (draw), `WebOfPowerFremenAbility` (water) | Wheels Within Wheels' shape, in `_ICON_ABILITY`. |
 | Web of Power's Reveal Faction pick (`gain_chosen_influence`) | `WebOfPowerRevealAbility` (a `GainAnyInfluenceAbility`, Explicit) | The chosen track's `gain_reveal_influence` row. |
+| Esmar Tuek's paid box (`pay_agent_card_spice`, then a Spacing Guild Influence and a card) | `EsmarTuekAbility` (Optional) | Spice Smugglers' shape: the Influence and the card follow the payment (the order of the app's three actions is UNTRACED; Spice Smugglers' is kept). |
+| In The Shadows' box (`discard_agent_card`, then `choose_agent_card_influence`) | `InTheShadowsAgentAbility` (Optional): one answer `((card,), (track,))` over the hand and the Emperor, Spacing Guild and Fremen tracks | The track waits in `Memory.intents` for the Influence step. |
+| Treachery's box and Reveal (`deploy_reveal_supply_troops`) | `PowerPlayAgentAbility`, with the Explicit `TreacheryTrashSelfAbility` folded into the one action (as Subversive Advisor's trash); `TreacheryRevealAbility`, a state-300 `RevealAbility` | The Reveal's two troops are an automatic gain (kind `deploy`). |
+| Guild Accord | `GuildAccordUnloadAbility`, `GuildAccordAllianceAbility` | Nothing to choose. |
 | Satellite Ban's Reveal "retreat up to two troops" | `SatelliteBanRevealAbility` | The effect is Scout's. Its table entry is the shared `OptionalRetreatAbility`, so each card answers with its own class. |
 | Intrigue slots | Strongarm's zone, Double Cross's victim (`OpponentLosesTroop`), Urgent Mission's Agent (`RecallYourAgent`) | Each comes from the play's recorded answer. Urgent Mission is an original card; Ix's extra Agents exposed its missing case. |
 | Advanced Weaponry's commission (`commission_intrigue_dreadnought`) | `AdvancedWeaponryPlotAbility` commissions as it runs | No prompt in the app: taken; declined only when no commission is offered. |
@@ -165,9 +169,10 @@ Left open by the review:
   have no play data yet (P4d, as of P4 `3b8cd83c`):
   - Imperium: Guild Chief Administrator, Weirding Way, Negotiated
     Withdrawal, Embedded Agent. (Satellite Ban, Spice Trader, Imperial
-    Bashar, Bounty Hunter, Web of Power and Ixian Engineer are on P4's
-    `claude/p4d-imperium-b`; their rows are mapped and checked on a trial
-    merge.)
+    Bashar, Bounty Hunter, Web of Power, Ixian Engineer, Esmar Tuek, Guild
+    Accord, In The Shadows and Treachery are on P4's `claude/p4d-imperium-b`;
+    their rows are mapped and checked on a trial merge. Freighter Fleet,
+    Ix-Guild Compact and Boundless Ambition wait for P4's Unload hold.)
   - Intrigue: Strategic Push (P4's `claude/p4d-strategic-push`).
   Their response shapes are checked when the engine offers their rows.
   Quid Pro Quo (P4d-6b), Grand Conspiracy, War Chest, Machine Culture and
