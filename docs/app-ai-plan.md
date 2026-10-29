@@ -502,12 +502,12 @@ P4 브랜치(`51884e8f`)가 지금 가진 결정은 dreadnought 셋(P4b)과 예�
 | 2 | 프로필 | `SetOn(2)` 자리 18곳, `tech.py`의 협상가·supply dreadnought, `get_FreighterValue`·`GetFreighterSelections` | Freighter·협상가·dreadnought 완료 `f94e850b`; Tech 항은 Codex(`codex-p6ix-tech`) |
 | 3 | 유닛 | dreadnought 지배·commission·배치(13.3 첫 세 줄) | 완료 `318b7c13`(`GetUnitsToDeploy`의 강한 유닛 먼저·Baron 교체·Diversion, `DeployValue` Ix 항), `3880c3e3`(지배) |
 | 4 | 칸과 Shipping | Ix 칸 6클래스, `FreighterAbility`·`ShippingTrackAbility1/2/3`, `freighter_move`·`shipping_reward_icons` 창 | 완료 `f94e850b`, `de9ffbed`; Tech 획득 창(할인별 앱 클래스, 협상가 먼저) `3880c3e3` |
-| 5 | Tech | 타일 17클래스, Tech 창을 실제 Ix 타일로, Sonic Snoopers 창 | 클래스: Codex(`codex-p6ix-tech`, 10-30 01:58 재실행); 창은 그 뒤 |
-| 6 | Imperium | 48클래스, Unload·Discard·잠입 | 클래스: Codex(`codex-p6ix-imperium`, 46); 창은 그 뒤 |
-| 7 | 책략 | 21클래스 | 클래스: Codex(`codex-p6ix-intrigue`); 창은 그 뒤 |
+| 5 | Tech | 타일 17클래스, Tech 창을 실제 Ix 타일로, Sonic Snoopers 창 | 완료: 클래스 `0fc758b1`(Codex), 창 `f5ad13ce`, Troop Transports 배치 `fcd538be` |
+| 6 | Imperium | 48클래스, Unload·Discard·잠입 | 완료: 클래스 `43035f7d`(Opus agent), `beb1328b`, 창 `63b24e7f`, Boundless Ambition `5a195063` |
+| 7 | 책략 | 21클래스 | 완료: 클래스 `af6341ea`(Opus agent), `4689a8ec`(`GetBestOption`·Glimpse·Ixian Probe), 창 `63c94da4`, `2ec3f1d1` |
 | 8 | Conflict | 9클래스 | 완료 `c2838e5d` |
 | 9 | 지도자 | 20클래스, `round_start_set_aside`·`optional_discard`, Tessia·Hundro의 setup | P4e(지도자 후보) 뒤 |
-| 10 | 마무리 | 세 난이도 census 0, Uprising·원판 같은 수, 원판 + Ix soak, Hard 대 heuristic 측정, 문서·P5 알림 | 같은 수는 조각마다 확인(24판) |
+| 10 | 마무리 | 세 난이도 census 0, Uprising·원판 같은 수, 원판 + Ix soak, Hard 대 heuristic 측정, 문서·P5 알림 | census 0·같은 수 완료; 문서 `docs/app-ai/rise-of-ix.md`; soak·측정은 P4e 뒤 |
 
 - 진행(2026-10-29 밤, 브랜치 `claude/base-ix-p6-ix` = P4 `7a0c50e4` + P6 브랜치 `e7af766f` 병합, 그 뒤 P4 `87581ad9`를 따라
   병합): 원판 + Ix Hard 10판 census에서 남은 무작위는 Tech 타일 자체의 줄과 P4d가 덱에 넣기 시작한 Ix 카드뿐이다. Ix 클래스
@@ -520,3 +520,15 @@ P4 브랜치(`51884e8f`)가 지금 가진 결정은 dreadnought 셋(P4b)과 예�
 - P4와 병합: P4는 `6352199d`(P6 병합 전)에서 땄고 `windows/turn.py`의 `_after_send`(dreadnought가 칸의 controller, `space_controller`)를
   고쳤다. 2026-10-29 `git merge-tree`로는 이 파일이 자동으로 합쳐지고, 충돌은 P4·master 몫(`docs/base-game-and-ix-plan.md`,
   `display/effect_dsl_text_ko.py`)뿐이다. 슬라이스 1에서 합쳐진 `_after_send`가 원판 보드에서 맞는지 본다.
+
+### 13.5 결과와 알려진 차이 (2026-10-30)
+
+- census: 원판 + Ix(드래프트·프로모) 세 난이도 15판씩(시드 8100–8114) 무작위 0·미포팅 0, 원판 단독 Hard 10판 0. app_ai 테스트
+  3,872개. Uprising·원판 고정 시드 24판의 수는 조각마다 같았다(Spice Smugglers 순서 수정 `e49c1568` 뒤의 기준선, 그 카드가 나오는 원판
+  2판만 그 수정으로 바뀜).
+- 결정마다 어느 앱 클래스가 답하는지와 판단 사항은 [docs/app-ai/rise-of-ix.md](app-ai/rise-of-ix.md)에 있다.
+- Interstellar Shipping에서 Shipping 회수로 recruit한 병력의 배치(시드 8100): P4 판정으로 Troop Transports가 허락하는 합법 배치
+  (rise-of-ix.md 15)라, 앱의 `TroopTransportsAbility`로 답한다(`fcd538be`).
+- agent 토큰: Opus 둘(Imperium 약 862k, 책략 약 537k), Codex Tech 하나(Codex 쪽 한도). 독립 검토는 Codex 5시간 창이 차서
+  읽기 전용 리뷰 agent 하나(세션 모델)로 했다.
+- 남은 것: Ix 지도자 6명(P4e 뒤), 원판 + Ix soak과 Hard 대 heuristic 측정.
