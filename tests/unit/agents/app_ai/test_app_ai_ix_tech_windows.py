@@ -120,3 +120,22 @@ def test_strongarm_loses_the_troop_from_the_answered_zone() -> None:
     garrison = intrigue._lose_troops(run, "strongarm", lambda: Answer(1.0, ((0,),), ""))
     assert deployed is not None and dict(deployed.arguments) == {"zone": "conflict"}
     assert garrison is not None and dict(garrison.arguments) == {"zone": "garrison"}
+
+
+def test_urgent_mission_recalls_the_agent_its_play_named() -> None:
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.windows import intrigue
+
+    rows = [
+        DomainAction(
+            action_id="recall_agent_for_intrigue", actor=0, arguments=(("space_id", s),)
+        )
+        for s in ("carthag", "dreadnought")
+    ]
+    run = _choice_run(rows)
+    named = intrigue._recall_your_agent(
+        run, lambda: Answer(100.0, (("dreadnought",),), "")
+    )
+    assert named is not None and dict(named.arguments) == {"space_id": "dreadnought"}
+    again = intrigue._recall_your_agent(run, lambda: Answer(0.0, None, ""))
+    assert again in rows

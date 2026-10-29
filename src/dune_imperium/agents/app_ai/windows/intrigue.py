@@ -236,6 +236,7 @@ from dune_imperium.agents.app_ai.catalog import (
     INTRIGUE_ARCHETYPES,
     LEADER_ARCHETYPES,
     NAVIGATION_ARCHETYPES,
+    agent_entity,
     card_entity,
     contract_entity,
     intrigue_entity,
@@ -277,6 +278,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
+    RecallYourAgent,
     RetreatTroops,
     SetAsideImperiumRowCard,
     TrashDiscardPileCard,
@@ -1600,7 +1602,29 @@ def intrigue_choice(run: DecisionRun) -> DomainAction | None:
             return _intrigue_freighter(run, intent)
         case OpponentLosesTroop():
             return _opponent_troop_loss(run, intent)
+        case RecallYourAgent():
+            return _recall_your_agent(run, intent)
     return None
+
+
+def _recall_your_agent(
+    run: DecisionRun, intent: Callable[[], Answer]
+) -> DomainAction | None:
+    """Urgent Mission's "recall one of your Agents"
+    (``recall_agent_for_intrigue(space_id)``): the Agent the play's answer
+    named (``UrgentMissionAbility::Evaluate``: ``GetRecallAgent(agents)``),
+    else ``GetRecallAgent`` over the offered Agents again."""
+
+    actions = run.by_id("recall_agent_for_intrigue")
+    answer = intent()
+    ref = answer.response[0][0] if answer.response and answer.response[0] else None
+    chosen = with_arg(actions, "space_id", ref) if ref is not None else None
+    if chosen is not None:
+        return chosen
+    spaces = [str_arg(a, "space_id") for a in actions]
+    agents = [agent_entity(s, run.ctx.seat) for s in spaces if s is not None]
+    agent = run.profile.recall_agent(agents)
+    return None if agent is None else with_arg(actions, "space_id", agent.ref)
 
 
 def _opponent_troop_loss(
