@@ -106,6 +106,31 @@ app's prompts.
 - **"This turn's exhausted units"** (Baron, Diversion): read as
   `units_deployed_turn`. When the app readies them is UNTRACED.
 
+## Independent review (2026-10-30)
+
+A read-only review agent (the session's model) compared 16 of the
+agent-ported classes with the decompiled C and the asm: 8 Imperium and 8
+Intrigue. The classes themselves matched: value terms, literals, price
+arguments, branches and response shapes.
+
+It confirmed two problems, both fixed in `16d6acda`:
+- **Missing targets.** `intrigue_request` gave Blackmail, Cull and
+  Finesse's Plot no targets, so their evaluates were empty and the cards
+  were never played. Their Influence slots now replay the play's answer.
+- **NaN gates.** Three comparisons now take NaN to the early return, as
+  `ucomisd; jb(e)` does.
+
+Left open by the review:
+- Some cards still have no window consumer: Spice Trader, Guild Chief
+  Administrator, Imperial Bashar, Weirding Way, Negotiated Withdrawal,
+  Embedded Agent, Quid Pro Quo, Grand Conspiracy and War Chest. Their engine
+  entries have no play data yet (P4d). Their response shapes are checked
+  when the engine offers their rows.
+- The `Cost`s of Imperial Bashar and Negotiated Withdrawal are not ported as
+  `meets_cost`.
+- `GetBestInfluenceExchange`'s bool argument has no counterpart in
+  `profile.best_influence_exchange`.
+
 ## What waits
 
 - **The six Leaders (P4e)**: 20 classes, `round_start_set_aside` (Ilesa,
