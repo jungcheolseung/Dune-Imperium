@@ -175,6 +175,7 @@ from dune_imperium.rules.tech import (
     tech_acquire_effect_arguments,
 )
 from dune_imperium.rules.units import unit_count_arguments
+from dune_imperium.rules.unload import UNLOAD_ICON_ACTION, unload_icons
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
 # Imperial Privilege, may recall an Into the Fray Agent from the Conflict --
@@ -1086,6 +1087,15 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "advance_agent_card_freighter",
                 "recall_agent_card_freighter",
             )
+        )
+        # An Unload card's Reveal box icon, a row each (``rules.unload``).
+        templates.extend(
+            ActionTemplate(
+                action_id=UNLOAD_ICON_ACTION,
+                arguments=(("card_id", instance_id), ("effect", name)),
+            )
+            for instance_id in content.imperium_deck_instance_ids
+            for name in dict.fromkeys(name for name, _ in unload_icons(instance_id))
         )
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))

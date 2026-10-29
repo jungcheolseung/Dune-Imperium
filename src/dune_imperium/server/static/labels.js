@@ -264,6 +264,9 @@ const ACTION_LABELS = {
   recall_freighter: "Freighter 회수",
   decline_freighter: "Freighter 움직이지 않음",
   resolve_shipping_reward: "Freighter 회수 보상",
+  /* Rise of Ix's Unload keeps its English name, which no official Korean
+     source translates; the Reveal box is 공개 칸 [Main p. 8]. */
+  resolve_unload_icon: "Unload: 공개 칸 효과",
   /* Rise of Ix's four board spaces (stage P4c-4): the Dreadnought icon, the
      Acquire Tech icon, Tech Negotiation's two halves and Spaceport's
      Foldspace on top of the deck; the dreadnought and the Negotiator stay
@@ -499,6 +502,7 @@ const EVENT_LABELS = {
   intrigue_freighter_declined: "Freighter 움직이지 않음",
   shipping_troops_recruited: "Freighter 회수: {troop} {recruit}",
   shipping_reward_lapsed: "Freighter 회수 보상: 쓰지 않음",
+  card_unloaded: "Unload",
   shipping_influence_unavailable: "Freighter 회수: {influence_any} 불가",
   dreadnought_control_placed: "dreadnought가 {control} 공간에",
   dreadnought_returned: "dreadnought {garrison} 복귀",

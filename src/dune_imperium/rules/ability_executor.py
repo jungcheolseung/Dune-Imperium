@@ -976,6 +976,10 @@ def apply_piece(
     arguments = dict(action.arguments)
     step_source = f"{source}:slot:{entry.step}"
     taken = replace(entry, step=entry.step + 1)
+    # A card a cost piece discards or trashes gives its Rise of Ix Unload box
+    # before the line's rewards (docs/rules/rise-of-ix.md 7): the costs come
+    # first among the pieces (``choice_slots``).
+    paying_cost = entry.step < len(cost_slots(entry_sections(entry)))
 
     match piece:
         case AcquireCardUpTo():
@@ -1014,7 +1018,11 @@ def apply_piece(
             )
         case TrashDiscardPileCard():
             result = trash_personal_card(
-                state, player, str(arguments["card_id"]), source=step_source
+                state,
+                player,
+                str(arguments["card_id"]),
+                source=step_source,
+                unload_at_once=paying_cost,
             )
             # No AGENT_EFFECTS frame is on top here, so ``trash_personal_card``
             # credited no troop-on-trash trigger (Eliminate Allies) anywhere. A
@@ -1119,7 +1127,11 @@ def apply_piece(
                 taken = replace(taken, held=())
         case DiscardFromHand():
             result = discard_personal_card_from_hand(
-                state, player, str(arguments["card_id"]), source=step_source
+                state,
+                player,
+                str(arguments["card_id"]),
+                source=step_source,
+                unload_at_once=paying_cost,
             )
         case DestroyShieldWall():
             if shape.verb is Verb.DESTROY_SHIELD_WALL:
@@ -1143,7 +1155,11 @@ def apply_piece(
             else:
                 trashed_id = str(arguments["card_id"])
                 result = trash_personal_card(
-                    state, player, trashed_id, source=step_source
+                    state,
+                    player,
+                    trashed_id,
+                    source=step_source,
+                    unload_at_once=paying_cost,
                 )
                 # As for the discard-pile trash above [Main p. 10] [FAQ p. 4].
                 result = credit_trash_recruits(result, player)

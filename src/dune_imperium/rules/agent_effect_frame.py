@@ -116,6 +116,7 @@ from dune_imperium.rules.tech import (
     legal_tech_flip_actions,
     legal_tech_trash_actions,
 )
+from dune_imperium.rules.unload import legal_unload_row_actions
 
 _RESOLVE_BOX = "resolve_agent_card_effect"
 
@@ -174,6 +175,8 @@ def legal_agent_effect_frame_actions(
         *legal_acquire_icon_actions(state, player),
         # A Shipping track recall's rewards (Rise of Ix, stage P4c-3).
         *legal_shipping_reward_row_actions(state, player),
+        # An Unload box an effect triggered (Rise of Ix, ``rules.unload``).
+        *legal_unload_row_actions(state, player),
         # Rise of Ix's four spaces' icons and the Foldspace space's deck-top
         # twin (stage P4c-4).
         *legal_ix_space_actions(state, player),

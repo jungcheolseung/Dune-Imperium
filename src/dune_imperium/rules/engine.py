@@ -428,6 +428,12 @@ from dune_imperium.rules.tleilaxu_row import (
     legal_tleilaxu_acquisitions,
 )
 from dune_imperium.rules.unit_loss import apply_unit_loss, legal_unit_loss_actions
+from dune_imperium.rules.unload import (
+    apply_unload_icon,
+    legal_unload_row_actions,
+    legal_unload_window_actions,
+    settle_unloads,
+)
 
 type LegalActionProvider = Callable[[GameState, int], tuple[DomainAction, ...]]
 
@@ -532,6 +538,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_acquire_icon_actions,
         # And a Shipping track recall's rewards (Rise of Ix, stage P4c-3).
         legal_shipping_reward_row_actions,
+        # And an Unload box an effect triggered (Rise of Ix).
+        legal_unload_row_actions,
         # A research bonus or trash icon a Plot raised waits on the turn
         # (cleanup-2b).
         legal_research_bonus_actions,
@@ -563,6 +571,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_acquire_icon_actions,
         # And a Shipping track recall's rewards (Rise of Ix, stage P4c-3).
         legal_shipping_reward_row_actions,
+        # And an Unload box an effect triggered (Rise of Ix).
+        legal_unload_row_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
@@ -675,6 +685,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     # rewards (stage P4c-3, ``rules.shipping_track``).
     FrameKind.FREIGHTER_MOVE: (legal_freighter_move_actions,),
     FrameKind.SHIPPING_REWARD_ICONS: (legal_shipping_reward_window_actions,),
+    # Rise of Ix's Unload outside its owner's turn (``rules.unload``).
+    FrameKind.UNLOAD_ICONS: (legal_unload_window_actions,),
     # Servo-Receivers: the Leader's Signet Ring ability outside its box.
     FrameKind.LEADER_SIGNET: (legal_feyd_track_actions, legal_leader_signet_actions),
     # Arrakeen Scouts: Friends Everywhere's choice of Influence 4 bonus.
@@ -873,6 +885,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Spaceport's Foldspace card on top of the deck (stage P4c-4).
     "acquire_foldspace_to_deck_top": apply_foldspace_deck_top,
     "resolve_shipping_reward": apply_shipping_reward,
+    "resolve_unload_icon": apply_unload_icon,
     "put_intrigue_on_bottom": apply_intrigue_bottom_action,
     "finish_intrigue_bottom": apply_intrigue_bottom_action,
     "choose_secret_project": apply_secret_project,
@@ -1152,6 +1165,7 @@ class UprisingRulesEngine(RulesEngine):
             result = apply_scouts_draw(state, outcome)
         else:
             result = apply_round_start_reshuffle(state, outcome)
+        result = settle_unloads(result)
         # An Intrigue draw granted by a Reveal passive may queue a reshuffle,
         # so the automatic advance runs again after the passives.
         result = grant_late_reveal_effects(
@@ -1262,7 +1276,11 @@ class UprisingRulesEngine(RulesEngine):
                 assert step.event is not None
                 return RuleResult(state=step.state, events=(step.event,))
             state, action = step.state, step.whole
-        handled = _end_turn_start(state, action, _handle(state, action))
+        # An Unload an effect triggered waits until the handler wrote its
+        # frames back (``rules.unload``).
+        handled = _end_turn_start(
+            state, action, settle_unloads(_handle(state, action))
+        )
         result = _advance_automatic(handled)
         # An Intrigue draw granted by a Reveal passive or a late-met Reveal
         # condition may queue a reshuffle, so the automatic advance runs

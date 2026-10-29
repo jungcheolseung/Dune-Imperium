@@ -89,6 +89,9 @@ class ImperiumCardEntry(DeckCardEntry):
     # Identity metadata may precede the full play transcription; incomplete
     # entries stay out of the deck, and ordinary/granted icons gain no bypass.
     infiltration_icons: tuple[AgentIcon, ...] = ()
+    # Rise of Ix: the Reveal box is marked Unload -- gained also when the card
+    # is discarded or trashed [Rise of Ix p. 7] (``rules.unload``).
+    unload: bool = False
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -110,6 +113,8 @@ class ImperiumCardEntry(DeckCardEntry):
             raise TypeError("recruited-troop deployment permission must be a boolean")
         if not isinstance(self.sends_agent_anywhere, bool):
             raise TypeError("the send-from-anywhere flag must be a boolean")
+        if not isinstance(self.unload, bool):
+            raise TypeError("the Unload mark must be a boolean")
         if self.sends_agent_anywhere and self.agent_icons:
             raise ValueError("a send-from-anywhere card has no Agent icons")
         if self.agent_spy_factions and (
@@ -137,6 +142,7 @@ class ImperiumCardEntry(DeckCardEntry):
             or self.reveal_persuasion
             or self.reveal_strength
             or self.reveal_choice_effects
+            or self.unload
         ):
             raise ValueError("partial Imperium-card play data must not be exposed")
 

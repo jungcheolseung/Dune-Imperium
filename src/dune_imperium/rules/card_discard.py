@@ -19,6 +19,7 @@ from dune_imperium.content.uprising.trigger_abilities import (
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.unload import trigger_unload
 
 
 def discard_personal_card_from_hand(
@@ -27,13 +28,16 @@ def discard_personal_card_from_hand(
     card_id: str,
     *,
     source: str,
+    unload_at_once: bool = False,
 ) -> RuleResult:
     """Move one hand card to discard and resolve its discard trigger.
 
     Shared by arrow costs (Agent, Intrigue and Tech) and discard effects.
-    Rise of Ix's future Unload continuation belongs at this boundary: finish
-    the discarded card's Unload before the caller resumes its arrow reward
-    (docs/rules/rise-of-ix.md 7). Clean Up must not use this transition.
+    Then the card's Rise of Ix Unload (``rules.unload``): a cost's caller
+    passes ``unload_at_once`` so the box is paid before its arrow's reward
+    ("비용 ... 이 Unload를 일으키면 Unload를 끝까지 해결한 뒤 오른쪽으로
+    간다", docs/rules/rise-of-ix.md 7); an effect's Unload is announced and
+    queued once the action is done. Clean Up must not use this transition.
     """
 
     if not 0 <= player < state.config.players:
@@ -63,9 +67,12 @@ def discard_personal_card_from_hand(
     triggered = resolve_personal_card_discard_trigger(
         moved, player, card_id, source=source
     )
+    unloaded = trigger_unload(
+        triggered.state, player, card_id, source=source, at_once=unload_at_once
+    )
     return RuleResult(
-        state=triggered.state,
-        events=(discard_event, *triggered.events),
+        state=unloaded.state,
+        events=(discard_event, *triggered.events, *unloaded.events),
     )
 
 

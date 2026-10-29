@@ -2188,8 +2188,10 @@ def apply_discard(
     factions = personal_card_for_instance(card_id).factions
     discarded = RuleResult(state=state)
     for paid_card_id in paid:
+        # The discards are the arrow's cost: an Unload card's box is paid
+        # before the line's reward (docs/rules/rise-of-ix.md 7).
         step = discard_personal_card_from_hand(
-            discarded.state, player, paid_card_id, source=source
+            discarded.state, player, paid_card_id, source=source, unload_at_once=True
         )
         discarded = RuleResult(
             state=step.state, events=(*discarded.events, *step.events)
@@ -2670,12 +2672,16 @@ def apply_trash(
     card_id = dict(action.arguments).get("card_id")
     if not isinstance(card_id, str):
         raise RuntimeError("Agent-card trash choice has invalid card ID")
-    trashed = trash_personal_card(state, player, card_id, source=source)
+    cost = _trash_cost(ability)
+    # A trash that pays the arrow's cost settles an Unload card's box before
+    # the reward (docs/rules/rise-of-ix.md 7); a black trash icon is no cost.
+    trashed = trash_personal_card(
+        state, player, card_id, source=source, unload_at_once=cost is not None
+    )
     done: tuple[GameEvent, ...] = (
         agent_box_event(source, box_card_id, player, _RESOLVED),
     )
     keep_trash_recruits(context, trashed)
-    cost = _trash_cost(ability)
     if cost is None and len(ability.sections) > 1:
         # Black trash icons: one counter for the ones still open.
         remaining = trashes_remaining(context, len(ability.sections)) - 1
@@ -3236,9 +3242,11 @@ def apply_discard_pay(
     )
     paid_state = replace(state, players=replace_player(state.players, paid_owner))
     first = discard_personal_card_from_hand(
-        paid_state, player, first_card_id, source=source
+        paid_state, player, first_card_id, source=source, unload_at_once=True
     )
-    second = discard_personal_card_from_hand(first.state, player, picked, source=source)
+    second = discard_personal_card_from_hand(
+        first.state, player, picked, source=source, unload_at_once=True
+    )
     gained_owner = second.state.players[player]
     points = sum(
         reward.amount
