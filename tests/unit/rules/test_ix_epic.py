@@ -743,15 +743,16 @@ def test_economic_supremacy_pays_its_rows_in_the_original_game(pay: bool) -> Non
 def test_a_heuristic_game_plays_past_ten_to_the_twelve_point_end() -> None:
     """ "12점까지" (rise-of-ix.md 11): the round-end check ("Endgame 조건(10점
     이상 또는 Conflict 덱 소진)" [DI p. 13], imperium-base.md 10) reads 12, not
-    10 (epic-game-mode.md 3). In this seeded heuristic game (seed 18,
-    found by search) a seat stands on 10 and then 11 at round ends and the
-    game goes on; a round end with 12 opens the Endgame while a Conflict card
-    is still in the deck, and the game finishes there."""
+    10 (epic-game-mode.md 3). In this seeded heuristic game (seed 165,
+    found by search; seed 18 until Strategic Push joined the Intrigue deck)
+    a seat stands on 10 and then 11 at round ends and the game goes on; a
+    round end with 12 opens the Endgame while a Conflict card is still in the
+    deck, and the game finishes there."""
 
     engine = UprisingRulesEngine()
-    state = engine.reset(IX_EPIC, 18)
-    agents = [HeuristicAgent(seed=180 + seat) for seat in range(4)]
-    chance = ChanceResolver(seed=18)
+    state = engine.reset(IX_EPIC, 165)
+    agents = [HeuristicAgent(seed=1650 + seat) for seat in range(4)]
+    chance = ChanceResolver(seed=165)
     round_ends: list[tuple[int, bool, int]] = []
     while state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
