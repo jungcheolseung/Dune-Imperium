@@ -1260,3 +1260,19 @@ v38은 137구간 8,265열이다. 원칙은 v35·v37·v38과 같다: 새 id는 �
 **v39 구현과 리뷰(2026-10-29):** `001a5b64`(Ix 상태 칸, 기본값이면 해시에서 빠짐), `78c00bac`(인코딩 8,265 → 10,189열, 137 → 155구간). Codex 독립 리뷰
 지적 0. 남은 주의: 지식 칸을 채우고 비우는 효과(Hundro, Court Intrigue, Sonic Snoopers, Ilesa, 덱 섞기 때 무효화)를 P4b~e에서 넣을 때 섞기에서
 지식이 지워지는지 테스트로 고정한다. Ix Tech 18장·칸 4개 정의와 P4b~e의 FrameKind 예약도 v39에 함께 넣는다(조정자 go, "v39 한 번" 유지).
+
+**v39에 더한 것(2026-10-29, `f51fba6d`·`2ed0cd7f`·`4784d228`):** Ix Tech 18장(`content/rise_of_ix/tech.py`: 앱 표의 이름·spice 비용, 타일마다
+`TechAbility` 새 멤버 — 능력 기록은 P4c)과 칸 넷(`content/rise_of_ix/board.py`: 17.2의 id·순서, Agent 아이콘, Dreadnought 3 Solari,
+Interstellar Shipping의 Spacing Guild 2 — 효과 기록은 P4b·c)을 by-id 조회(`TECH_TILES_BY_ID`, `BOARD_SPACES_BY_ID`)에만 넣었다(더미·setup·덱·
+`content_for` 밖). 획득 효과는 기존 조각이 있는 9장을 `TECH_ACQUIRE_ABILITIES`에 적었다(Chaumurky Intrigue 2, Disposal Facility trash, Flagship
+1 VP, Invasion Ships troop 4, Memocorders Influence 1, Sonic Snoopers Intrigue 1, Spaceport 카드 2, Windtraps water 1, Shuttle Fleet 서로 다른
+진영 둘 — OQ-114, Machinations와 같은 조각). water와 "서로 다른 둘"은 지금 획득 키가 내지 못하므로 그 두 타일의 `acquire_effect_keys`는 P4c까지
+`NotImplementedError`다. 관측: `TECH_IDS` = Tech Module 18 + Ix 18(Tech 구간 여섯이 끝에 18열씩), `SPACE_IDS` 끝에 칸 넷(칸마다 열인 구간은
+없다; `voice_blocks_ix`는 어휘로 색인하고 열은 그대로) → 10,189 → 10,297열, 155구간. FrameKind 다섯을 끝에 예약했다(`frames.IX_FRAME_KINDS`,
+엔진 경로 없음): `freighter_move`(차례 밖 Freighter 아이콘의 답 — Conflict 보상 창의 선택 아이콘처럼), `shipping_reward_icons`(차례 밖 회수 보상,
+`contract_reward_icons`처럼), `dreadnought_control_choice`(승자의 지배 칸 또는 Detonation), `round_start_set_aside`(Ilesa), `unload_icons`(차례
+밖 Unload의 Reveal box). 재사용: Acquire Tech·협상가 반환은 `tech_acquisition`, Hundro의 Intelligence는 `intrigue_peek`(Imperium Ceremony와 같은
+결정), 나머지(Duplicity, 협상가, Tech Negotiation 칸, commission·배치, Discard 비용, 뒤집기)는 차례의 줄. 움직인 고정값: slot 키 1,957 → 2,018
+(옛 키 순서 그대로), 엔티티 특성(+22 개체, tech 열 2개 — water·distinct; 옛 589행 차이 0), `test_teacher`의 teacher seed 1 → 2. v38 열의 골든
+digest·고정 두 판, 카탈로그 288개, 상태 해시 6판은 그대로. 예약하지 않고 남긴 것: Tessia의 Snooper ①(버리기 → spice)이 차례 밖(Conflict 보상의
+Influence)에서 열릴 때의 창, Sonic Snoopers의 "몇 장이든" 맨 아래 놓기의 결정 단위 — P4e·P4c 설계 때 정하고, 새 kind가 필요하면 그때 묻는다(17.1).
