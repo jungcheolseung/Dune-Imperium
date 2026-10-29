@@ -250,3 +250,60 @@ def test_web_of_power_and_ixian_engineer_reveal_choices() -> None:
     picked = reveal._realise(run, web, Answer(1.0, (("fremen",),), ""))
     assert picked is gains[1]
     assert reveal._realise(run, engineer, Answer(100.0, (), "")) is trash
+
+
+def test_in_the_shadows_discards_then_raises_the_track_of_one_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``InTheShadowsAgentAbility``: one answer ``((card,), (track,))``; our
+    discard row takes the card and the Influence step after it the track."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+        InTheShadowsAgentAbility,
+    )
+
+    discards = tuple(
+        DomainAction(
+            action_id="discard_agent_card", actor=0, arguments=(("card_id", c),)
+        )
+        for c in ("player:0:starter:dagger:0", "player:0:starter:dagger:1")
+    )
+    monkeypatch.setattr(
+        InTheShadowsAgentAbility,
+        "evaluate",
+        lambda self, p, request: Answer(
+            2.0, (("player:0:starter:dagger:1",), ("fremen",)), ""
+        ),
+    )
+    t = _turn("in_the_shadows", discards)
+    agent_effects._card_discard(t, "in_the_shadows")
+    [source] = t.sources
+    assert source.evaluate is not None
+    assert source.evaluate() == (2.0, discards[1])
+    gains = tuple(
+        DomainAction(
+            action_id="choose_agent_card_influence",
+            actor=0,
+            arguments=(("faction", f),),
+        )
+        for f in ("emperor", "fremen")
+    )
+    t2 = _turn("in_the_shadows", gains)
+    t2.run.memory.intents.update(t.run.memory.intents)
+    agent_effects._card_influence(t2, "in_the_shadows")
+    [gain] = t2.sources
+    assert gain.actions == (gains[1],)
+
+
+def test_esmar_tuek_and_treachery_follow_their_app_classes() -> None:
+    """Esmar Tuek: Spice Smugglers' shape (``EsmarTuekAbility`` pays, its
+    Influence and card follow); Treachery: Power Play's generic box, and its
+    Reveal deployment a state-300 gain."""
+
+    assert agent_effects._PAYMENT_ABILITY["esmar_tuek_card"] == "EsmarTuekAbility"
+    assert "esmar_tuek_card" in agent_effects._ARMED_REWARD_CARDS
+    assert "esmar_tuek_card" in agent_effects._PAID_INFLUENCE_FOLLOW_UPS
+    assert "treachery" in agent_effects._POWER_PLAY_CARDS
+    assert "treachery" in agent_effects._AGENT_BOX_CARDS
+    assert reveal._GAIN_KINDS["deploy_reveal_supply_troops"] == "deploy"

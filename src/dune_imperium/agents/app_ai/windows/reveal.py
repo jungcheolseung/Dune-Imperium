@@ -439,6 +439,7 @@ _REVEAL_ACTIONS = REVEAL_CHOICE_ACTION_IDS | frozenset(
         "acquire_reserve",
         "acquire_manipulated_imperium",
         "recruit_reveal_troops",
+        "deploy_reveal_supply_troops",
         "draw_reveal_intrigue",
         "gain_reveal_resources",
         "gain_reveal_faction_influence",
@@ -500,6 +501,9 @@ _APPSTYLE_IMPERIUM = "ImperiumArchetypes.AppStyle."
 #: takes the oldest entry of that kind).
 _GAIN_KINDS: Mapping[str, str] = {
     "recruit_reveal_troops": "troops",
+    # Rise of Ix's Treachery: two troops from the supply into the Conflict
+    # (``TreacheryRevealAbility``, a state-300 ``RevealAbility``).
+    "deploy_reveal_supply_troops": "deploy",
     "draw_reveal_intrigue": "intrigue",
     "generate_reveal_specimens": "specimens",
     "advance_reveal_tleilaxu": "tleilaxu",

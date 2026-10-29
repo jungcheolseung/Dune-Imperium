@@ -420,7 +420,10 @@ from dune_imperium.agents.app_ai.catalog import (
     tech_entity,
     track_entity,
 )
-from dune_imperium.agents.app_ai.choice import default_random_choice
+from dune_imperium.agents.app_ai.choice import (
+    default_random_choice,
+    first_strictly_best,
+)
 from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, card_id
 from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.profile import Profile
@@ -528,13 +531,17 @@ _AGENT_BOX_CARDS = (
     "duncan_loyal_blade",
     "power_play",
     "thumper",
+    # Rise of Ix's Treachery: ``PowerPlayAgentAbility``, its Explicit
+    # ``TreacheryTrashSelfAbility`` folded into the same action (as
+    # Subversive Advisor's trash).
+    "treachery",
     # ``GunThopterAgentAbility`` (an ``AgentAbility``: the opponents' garrison
     # troop is the engine's).
     "gun_thopter",
 )
 #: Cards whose generic agent box is ``PowerPlayAgentAbility`` (it sets
 #: ``player.AdditionalSpaceInfluence``; archetypes ``WormAbilityIDs``).
-_POWER_PLAY_CARDS = ("overthrow", "subversive_advisor", "power_play")
+_POWER_PLAY_CARDS = ("overthrow", "subversive_advisor", "power_play", "treachery")
 #: Single boxes resolved by the card's own deferred ability (app class short
 #: name); the stage follows from the port's ``CanRunImmediately``.
 _BOX_ABILITY: Mapping[str, str] = {
@@ -662,8 +669,10 @@ _ARMED_REWARD_CARDS = (
     # (``ImperialSpyAbility``).
     "duncan_idaho_card",
     "imperial_spy",
-    # Spice Smugglers' Solari after the spice (``SpiceSmugglersAbility``).
+    # Spice Smugglers' Solari after the spice (``SpiceSmugglersAbility``);
+    # Rise of Ix's Esmar Tuek's card after the spice (``EsmarTuekAbility``).
     "spice_smugglers",
+    "esmar_tuek_card",
 )
 #: Urgent Shigawire's added draw comes after the boosted card's own
 #: abilities in the card row (``_boost_draw``).
@@ -721,8 +730,10 @@ _PAYMENT_ABILITY: Mapping[str, str] = {
     "spice_smugglers": "SpiceSmugglersAbility",
     "fremen_camp": "FremenCampAbility",
     "duncan_idaho_card": "DuncanIdahoAbility",
-    # Rise of Ix: Sayyadina's water payment (abilities/ix_imperium.py).
+    # Rise of Ix: Sayyadina's water payment, Esmar Tuek's spice for a
+    # Spacing Guild Influence and a card (abilities/ix_imperium.py).
     "sayyadina": "SayyadinaAbility",
+    "esmar_tuek_card": "EsmarTuekAbility",
 }
 _INTRIGUE_PAYMENT_ABILITY: Mapping[str, str] = {
     "branching_path": "BranchingPathAbility",
@@ -2413,7 +2424,7 @@ _ORIGINAL_INFLUENCE_FOLLOW_UPS = frozenset(
 )
 #: Original cards whose fixed Influence row follows their payment, part of
 #: the one app ability that paid (Spice Smugglers' Spacing Guild).
-_PAID_INFLUENCE_FOLLOW_UPS = frozenset({"spice_smugglers"})
+_PAID_INFLUENCE_FOLLOW_UPS = frozenset({"spice_smugglers", "esmar_tuek_card"})
 
 
 def _original_card_choices(t: _Turn, short: str) -> None:
@@ -2727,6 +2738,9 @@ def _card_discard(t: _Turn, short: str) -> None:
     discard = t.by_id("discard_agent_card")
     decline = t.run.first("decline_agent_card_discard")
     if not discard and decline is None:
+        return
+    if short == "in_the_shadows":
+        _in_the_shadows_discard(t, discard, decline)
         return
     name = _DISCARD_ABILITY.get(short)
     found = _find(t.card, name) if name is not None else None
@@ -3326,9 +3340,78 @@ def _arrakis_observer_spy(
     _automatic(t, "Arrakis Observer spy", _FOLLOW_UP, chosen, -1)
 
 
+#: ``Memory.intents`` key of In The Shadows' Influence track: ``(SHADOWS_INTENT,
+#: seat)`` -> the faction its discard answer named.
+SHADOWS_INTENT = "in_the_shadows_track"
+
+
+def _in_the_shadows_discard(
+    t: _Turn, discard: Sequence[DomainAction], decline: DomainAction | None
+) -> None:
+    """In The Shadows' box (``InTheShadowsAgentAbility``, Optional): one
+    answer ``((card,), (track,))`` over the hand cards we offer and the
+    tracks it may raise (``GetFactionTrackTargets``: Emperor, Spacing Guild,
+    Fremen in board order, each able to rise). The discard takes the card;
+    the track waits for the Influence step our engine asks after it."""
+
+    seat = t.run.ctx.seat
+    me = t.run.ctx.me
+    tracks = tuple(
+        track_entity(f)
+        for f in FACTIONS
+        if f != "bene_gesserit" and _can_gain_faction_influence(me, f)
+    )
+    request = Request(
+        infos=(
+            TargetInfo(entities=_cards(t, _arg_refs(discard, "card_id"))),
+            TargetInfo(entities=tracks),
+        )
+    )
+
+    def answer(ans: Answer) -> DomainAction | None:
+        action = with_arg(discard, "card_id", _response_ref(ans))
+        track = _response_ref(ans, 1)
+        if action is not None and isinstance(track, str):
+            t.run.memory.intents[(SHADOWS_INTENT, seat)] = track
+        return action
+
+    _choice_source(
+        t,
+        "in_the_shadows discard",
+        _find(t.card, "InTheShadowsAgentAbility"),
+        discard,
+        request,
+        answer,
+        decline,
+    )
+
+
+def _in_the_shadows_influence(t: _Turn, actions: Sequence[DomainAction]) -> None:
+    """In The Shadows' Influence after its discard: the track the discard's
+    answer named; without one, its Evaluate's track criterion again
+    (``GetGainInfluenceValue``, the first strictly best in our row order;
+    the discard term is the same for every track)."""
+
+    kept = t.run.memory.intents.pop((SHADOWS_INTENT, t.run.ctx.seat), None)
+    chosen = with_arg(actions, "faction", kept) if isinstance(kept, str) else None
+    if chosen is None:
+        p = t.p
+        values = [
+            (a, p.gain_influence_value(str_arg(a, "faction") or "", 1, -1, False))
+            for a in actions
+        ]
+        best = first_strictly_best([(a, v.sum) for a, v in values])
+        chosen = best[0] if best is not None else None
+    if chosen is not None:
+        _automatic(t, "in_the_shadows influence", _FOLLOW_UP, chosen, -1)
+
+
 def _card_influence(t: _Turn, short: str) -> None:
     actions = t.by_id("choose_agent_card_influence")
     if not actions:
+        return
+    if short == "in_the_shadows":
+        _in_the_shadows_influence(t, actions)
         return
     if short == "long_reach":
         _long_reach(t, actions)
