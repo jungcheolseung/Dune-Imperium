@@ -1219,12 +1219,14 @@ Infiltration, Discard; 7절), Ix 카드·지도자 6·Conflict 4 앞면, Hundro 
 - **P5d 앞면:** `51b94995`(에셋 `3f3e5b4`: manifest의 원판 항목에 우리 id, 그림 색인이 원판 세트를 읽음 — 앱 렌더가 없으면 Dune Cards Hub 스캔),
   `2ad3d4e2`(에셋 `7f836e8`: 앱 조각으로 그린 원판 앞면 100장, card-implementer 하나가 구현하고 내가 sheet 27장을 모두 봄). 스캔과 다른 넷: Duncan Idaho의
   검(스캔이 틀림, 렌더가 앱·인쇄와 같음), Kwisatz Haderach의 Agent 칸 배치(앱 프리팹: 카드 아이콘 -AND- 글, 인쇄는 글 아래 아이콘), Foldspace 그림의 색,
-  원판 The Spice Must Flow(앱에 그 그림이 없어 스캔 유지). 원판 지도자 앞면은 스캔이다 — `app_leaders.py`가 Uprising 지도자 인쇄 틀 전용이라 원판 틀을
+  원판 The Spice Must Flow(앱에 그 그림이 없어 스캔 유지) — **사용자 확인(2026-10-29 10시대, 조정자 경유) "카드 넷은 그렇게 해"**. 원판 지도자 앞면은 스캔이다 — `app_leaders.py`가 Uprising 지도자 인쇄 틀 전용이라 원판 틀을
   새로 재야 한다(남은 일).
 - **보드 그림(18.5 1) — 앱 자료 확인 결과:** 앱에는 원판 인쇄 보드 그림이 없다. 앱의 게임판은 Playmat 장면의 3D 디지털 배치(행성 Arrakis·성운 배경 위에
   칸 묶음 `P_Spaces_ChildOrderMattersForGamepad` 24개·`P_Spaces_IX…` 29개·`P_FactionTracks`·`P_ConflictArea`)이고, 보드 전체 그림은 상점용
   `shop_Uprising_Board.png`(Uprising) 하나뿐이다. 그래서 (가) TTS 영어 원판 모드의 보드 그림 내려받기(허락 필요)가 여전히 추천이고, (나)는 "앱 칸 타일을
-  우리 배치로 놓아 보드를 새로 짬"으로 정리했다. 어느 쪽이든 원판 칸 19개의 앱 칸 타일(팝오버 그림)은 `app_board.py`로 그린다.
+  우리 배치로 놓아 보드를 새로 짬"으로 정리했다. **사용자 결정(2026-10-29 10시대, 조정자 경유) "원판 보드 그림은 (가)로 하자"** — 내려받기 자체는 이
+  세션 채팅에서 사용자가 파일(URL·이름·크기)을 보고 허락한다. 모드 2354919205의 주 보드는 테이블 가운데의 `Custom_Token`(GUID 2da390, 배율 6.64)이다
+  (네 개의 같은 `Custom_Board`는 좌석 판). 어느 쪽이든 원판 칸 19개의 앱 칸 타일(팝오버 그림)은 `app_board.py`로 그린다.
 - **확인:** pytest `-n 8` 9,304(좌석 표 커밋 때), ruff, mypy 606; e2e `imperium_game` 48, `setup_options` 81, 그 밖에 화면을 다루는 스크립트들.
 - **남은 것:** 보드 그림(결정 1), 원판 칸 앱 타일, 원판 지도자 앞면 앱 렌더, 보드 위 말(Mentat·The Voice 마커 — 그림 뒤), 한국어 카드 앞면(공식 한글판
   사진 뒤), Rise of Ix 화면(18.6, P4 병합 뒤), worklog·handoff(병합 때).
