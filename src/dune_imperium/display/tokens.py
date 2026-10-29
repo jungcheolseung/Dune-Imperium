@@ -267,6 +267,16 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: (
             "You may move your Freighter up one space or recall it"
         ),
+        # Rise of Ix's Embedded Agent: two Freighter icons behind "another
+        # Bene Gesserit card in play", the original game's Bond words.
+        PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
+            "If Bene Gesserit Bond: You may move your Freighter up one space or "
+            "recall it, You may move your Freighter up one space or recall it"
+        ),
+        # Rise of Ix's Weirding Way (stage P4d).
+        PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: (
+            "You may take another turn immediately after this one"
+        ),
         PersonalCardAgentEffect.GENERATE_SPECIMEN: "Generate 1 specimen",
         PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
             "Gain 1 Bene Gesserit Influence, Draw 1 Intrigue card"
@@ -414,6 +424,15 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE: (
             "You may discard a card → Draw 1 card"
         ),
+        # Rise of Ix's Court Intrigue (stage P4d).
+        PersonalCardAgentEffect.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE: (
+            "You may put an Intrigue card on the bottom of the Intrigue deck → "
+            "Draw 1 Intrigue card"
+        ),
+        # Rise of Ix's Guild Chief Administrator (stage P4d).
+        PersonalCardAgentEffect.MAY_DISCARD_TO_TRASH_A_CARD: (
+            "You may discard a card → You may trash a card"
+        ),
         PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT: (
             "If you have 1 or more sandworms in the Conflict: Draw 1 Intrigue card"
         ),
@@ -436,6 +455,11 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         ),
         PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT: (
             "Force an enemy troop to retreat"
+        ),
+        # Rise of Ix's Desert Ambush (stage P4d).
+        PersonalCardAgentEffect.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED: (
+            "For each troop you deploy this turn, you may force an enemy unit "
+            "to retreat"
         ),
         PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT: (
             "If you have one or more Sardaukar Commanders in the Conflict: "
@@ -625,6 +649,10 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
             # Rise of Ix's Shai-Hulud: the black Trash icon, as its record
             # renders (the icon is optional, which the text does not say).
             PersonalCardAcquisitionEffect.MAY_TRASH_A_CARD: "Trash a card",
+            # Rise of Ix's Full-Scale Assault: the Dreadnought icon ("may").
+            PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT: (
+                "Commission a dreadnought"
+            ),
         }
     )
 )
@@ -710,6 +738,15 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             ),
             PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS: (
                 "You may retreat up to 2 troops"
+            ),
+            # Rise of Ix's Guild Chief Administrator (stage P4d).
+            PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER: (
+                "You may move your Freighter up one space or recall it"
+            ),
+            # Rise of Ix's Negotiated Withdrawal (stage P4d).
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE: (
+                "You may retreat 3 of your units → Gain 1 Influence with a "
+                "chosen Faction"
             ),
             PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
                 "You may retreat any number of troops"
@@ -948,6 +985,12 @@ def reveal_effect_text(line: RevealLine) -> str:
     if line.strength_per_other_sword_card:
         n = line.strength_per_other_sword_card
         gains.append(f"+{n} {_plural(n, 'sword')} per other revealed sword card")
+    if line.strength_per_dreadnought:
+        # Rise of Ix's Full-Scale Assault.
+        n = line.strength_per_dreadnought
+        gains.append(
+            f"+{n} {_plural(n, 'sword')} per dreadnought of yours in the Conflict"
+        )
     if line.persuasion_per_completed_contract:
         gains.append(
             f"+{line.persuasion_per_completed_contract} Persuasion "

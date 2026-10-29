@@ -26,6 +26,7 @@ from copy import replace
 from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
+    CommissionDreadnought,
     DrawIntrigueCards,
     DrawPersonalCards,
     EffectSection,
@@ -62,7 +63,11 @@ from dune_imperium.display.spaces import (
 )
 from dune_imperium.display.tokens import REVEAL_CHOICE_EFFECT_TEXT
 from dune_imperium.display.tokens_ko import REVEAL_CHOICE_EFFECT_TEXT_KO
-from dune_imperium.rules.acquire_icons import ACQUIRE_ICON_ACTION, acquire_icon_faction
+from dune_imperium.rules.acquire_icons import (
+    ACQUIRE_ICON_ACTION,
+    DREADNOUGHT_ICON,
+    acquire_icon_faction,
+)
 from dune_imperium.rules.agent_effect_frame import agent_box_rows, route_box_action
 from dune_imperium.rules.agent_effects import (
     boost_draw_card,
@@ -824,6 +829,10 @@ def acquire_icon_action_text(action: DomainAction) -> tuple[str, str] | None:
     if action.action_id != ACQUIRE_ICON_ACTION:
         return None
     effect = str(dict(action.arguments)["effect"])
+    if effect == DREADNOUGHT_ICON:
+        # Full-Scale Assault's Dreadnought icon (Rise of Ix).
+        dreadnought = CommissionDreadnought()
+        return reward_text(dreadnought), reward_text_ko(dreadnought)
     faction = acquire_icon_faction(effect)
     piece = GainInfluence(factions=None if faction is None else (faction,))
     return reward_text(piece), reward_text_ko(piece)

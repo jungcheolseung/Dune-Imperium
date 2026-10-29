@@ -329,6 +329,16 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: (
         "운송 트랙에서 한 칸 위로 또는 회수 가능"
     ),
+    # Rise of Ix's Embedded Agent: Landing Rights' line for each of its two
+    # Freighter icons, behind the Bond.
+    PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
+        "베네 게세리트의 유대감이면: 운송 트랙에서 한 칸 위로 또는 회수 가능, "
+        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+    ),
+    # Rise of Ix's Weirding Way (stage P4d).
+    PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: (
+        "이 차례 바로 뒤에 차례를 한 번 더 할 수 있음"
+    ),
     PersonalCardAgentEffect.GENERATE_SPECIMEN: "표본 1개 생성",
     PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
         "{influence_bene_gesserit:1}, {intrigue:1}"
@@ -473,6 +483,15 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE: (
         "카드 1장 {discard} 가능 {arrow_right} {draw:1}"
     ),
+    # Rise of Ix's Court Intrigue (stage P4d): Sonic Snoopers' prompt words.
+    PersonalCardAgentEffect.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE: (
+        "{intrigue_card} 1장을 {intrigue} {deck} 맨 아래에 놓기 가능 "
+        "{arrow_right} {intrigue:1}"
+    ),
+    # Rise of Ix's Guild Chief Administrator (stage P4d).
+    PersonalCardAgentEffect.MAY_DISCARD_TO_TRASH_A_CARD: (
+        "카드 1장 {discard} 가능 {arrow_right} 카드 1장 {trash} 가능"
+    ),
     PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT: (
         "{conflict}에 {sandworm}가 1 이상 있다면: {intrigue:1}"
     ),
@@ -495,6 +514,12 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     ),
     PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT: (
         "다른 플레이어의 {troop} 강제 {retreat}"
+    ),
+    # Rise of Ix's Desert Ambush (stage P4d): Disruption Tactics' line, a
+    # unit being "부대" (glossary-ko.md, [Main p. 10]).
+    PersonalCardAgentEffect.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED: (
+        "이번 차례에 배치하는 {troop} 1마다 다른 플레이어의 부대 1 강제 "
+        "{retreat} 가능"
     ),
     PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT: (
         "{conflict}에 {commander}이 1 이상 있다면: 카드 1장 {trash} 가능, "
@@ -668,6 +693,12 @@ ACQUISITION_EFFECT_TEXT_KO: Final[dict[PersonalCardAcquisitionEffect, str]] = {
     # Rise of Ix's Shai-Hulud (stage P4d): the black Trash icon, as its record
     # renders.
     PersonalCardAcquisitionEffect.MAY_TRASH_A_CARD: "카드 1장 {trash}",
+    # Rise of Ix's Full-Scale Assault: no Korean source names the dreadnought
+    # or the commission (glossary-ko.md has no entry), so the line stays
+    # English, as ``effect_dsl_text_ko`` keeps the Dreadnought icon's.
+    PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT: (
+        "Commission a dreadnought"
+    ),
 }
 
 # The one transcribed member is specific to The Spice Must Flow; cards.py
@@ -738,6 +769,16 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     ),
     PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS: (
         "{troop:2}까지 {retreat} 가능"
+    ),
+    # Rise of Ix's Guild Chief Administrator (stage P4d): Landing Rights'
+    # Freighter line.
+    PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER: (
+        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+    ),
+    # Rise of Ix's Negotiated Withdrawal (stage P4d): units are "부대"
+    # (glossary-ko.md, [Main p. 10]).
+    PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE: (
+        "부대 3 {retreat} 가능 {arrow_right} {influence_any:1} 선택"
     ),
     PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
         "원하는 수의 {troop} {retreat} 가능"
@@ -885,6 +926,13 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
     if line.strength_per_other_sword_card:
         n = line.strength_per_other_sword_card
         gains.append(f"+{{sword:{n}}} (공개한 다른 {{sword}} 카드마다)")
+    if line.strength_per_dreadnought:
+        # Rise of Ix's Full-Scale Assault: no Korean source names the
+        # dreadnought (glossary-ko.md has no entry; the official Korean
+        # edition has no Rise of Ix), so the word stays English, as the
+        # dreadnought rows' labels keep it.
+        n = line.strength_per_dreadnought
+        gains.append(f"+{{sword:{n}}} ({{conflict}}의 내 dreadnought마다)")
     if line.persuasion_per_completed_contract:
         n = line.persuasion_per_completed_contract
         gains.append(f"+{{persuasion:{n}}} (완수한 {{contract}}마다)")

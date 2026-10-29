@@ -41,6 +41,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     EffectSection,
     FactionBond,
+    Freighter,
     GainInfluence,
     GainResources,
     GainVictoryPoints,
@@ -276,6 +277,22 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                 _line(RetreatTroops(0, None), costs=(TrashCard(this_card=True),)),
                 mark=_OPTIONAL,
                 structure=AbilityStructure.ONE_OF,
+            ),
+            # Guild Chief Administrator (Rise of Ix): the Freighter icon beside
+            # its 1 Persuasion [Steam app screen pieces]: "Freighter 아이콘마다
+            # Freighter를 둘 가운데 하나로 움직일 수 있다("may")" [Rise of Ix
+            # p. 5] (rise-of-ix.md 5) -- an optional choice, its two rows
+            # (up one space, recall), lapsing unused when the Reveal ends.
+            _CHOICE.MAY_MOVE_FREIGHTER: _choice(_line(Freighter()), mark=_OPTIONAL),
+            # Negotiated Withdrawal (Rise of Ix): "Retreat three of your units
+            # -> [Influence with any Faction]" [Steam app text and screen
+            # pieces]: an optional arrow [FAQ p. 3] whose cost is exactly
+            # three units, troops or dreadnoughts in any mix ("unit" -- 예,
+            # rise-of-ix.md 6, [Rise of Ix p. 6]); one row names the mix and
+            # the Faction, never a cube at the top (OQ-060, OQ-071).
+            _CHOICE.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE: _choice(
+                _line(GainInfluence(), costs=(RetreatTroops(3, 3, units=True),)),
+                mark=_OPTIONAL,
             ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).

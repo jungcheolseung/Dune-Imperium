@@ -72,6 +72,7 @@ from dune_imperium.rules.dreadnoughts import space_controller
 from dune_imperium.rules.effects import (
     BOOST_DRAW_KEY,
     BOOSTED_CARDS_KEY,
+    EXTRA_TURNS_KEY,
     open_next_turn,
 )
 from dune_imperium.rules.frames import (
@@ -925,6 +926,13 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     # A research bonus a Plot raised before the Agent went
                     # out (cleanup-2b).
                     *turn_rows.carried(turn_context),
+                    # More extra turns owed after this one (Weirding Way's box
+                    # copied by a Ghola, Rise of Ix with Immortality).
+                    *(
+                        ((EXTRA_TURNS_KEY, turn_context[EXTRA_TURNS_KEY]),)
+                        if turn_context.get(EXTRA_TURNS_KEY)
+                        else ()
+                    ),
                     ("pending_contract_ids", ",".join(pending_contract_ids)),
                     (
                         # Subversive Advisor's waiting box holds the space's

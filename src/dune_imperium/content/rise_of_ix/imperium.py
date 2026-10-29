@@ -13,7 +13,9 @@ by ``scripts/dwgr/imperium_entries.py --set ix skeleton``. Incomplete entries
 keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
 game's deck takes only completed cards (CHOAM Delegate, Jamis, Sayyadina,
-Truthsayer, Imperial Shock Trooper, Local Fence and Water Peddler so far),
+Truthsayer, Imperial Shock Trooper, Local Fence, Water Peddler, Guild Chief
+Administrator, Negotiated Withdrawal, Desert Ambush, Full-Scale Assault,
+Embedded Agent, Court Intrigue and Weirding Way so far),
 while the observation lists every identity from v39. Setup takes Rise of Ix
 on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
@@ -31,6 +33,7 @@ from dune_imperium.content.uprising.types import (
     AgentIcon,
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
+    PersonalCardRevealChoiceEffect,
 )
 
 # The component table lists the cards [Rise of Ix p. 2]; the printed values
@@ -80,17 +83,49 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=2,
         infiltration_icons=(AgentIcon.EMPEROR,),
+        # App table: Emperor; the Emperor icon, its Infiltration icon
+        # (``InfiltrationIconList``); Reveal 1 Persuasion, 1 sword. Text and
+        # screen pieces: Agent "Put an Intrigue card on the bottom of the
+        # deck -> [Intrigue card]", unseen by the others [Rise of Ix p. 10].
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR,),
+        agent_effect=PersonalCardAgentEffect.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("desert_ambush", "Desert Ambush"),
         copies=1,
         acquisition_cost=3,
+        # App table: Fremen, the Spice Trade icon; Reveal 1 Persuasion, 1
+        # sword. Text: Agent "For each troop you deploy this turn, you may
+        # force an enemy unit to retreat." -- an enemy troop or dreadnought
+        # [Rise of Ix p. 6], the player of the card picking it.
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED
+        ),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("embedded_agent", "Embedded Agent"),
         copies=1,
         acquisition_cost=5,
         infiltration_icons=(AgentIcon.LANDSRAAD,),
+        # App table: Bene Gesserit; the Landsraad icon, its Infiltration icon
+        # (``InfiltrationIconList``); Reveal 1 Persuasion. Screen pieces and
+        # text: Agent "If you have another Bene Gesserit card in play:
+        # [Freighter] [Freighter]"; Reveal "[1 Persuasion] [Intrigue card]"
+        # (its Reveal record, Thufir Hawat's line).
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.LANDSRAAD,),
+        agent_effect=PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND,
+        reveal_persuasion=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("esmar_tuek_card", "Esmar Tuek"),
@@ -106,6 +141,18 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("full_scale_assault", "Full-Scale Assault"),
         copies=1,
         acquisition_cost=8,
+        # App table: Emperor; Emperor and City icons; AgentTroops 2;
+        # AcquireEffectList Dreadnought; Reveal 2 Persuasion. Screen pieces
+        # and text: Agent "[troop] [troop]"; Reveal "[3 swords] for each of
+        # your dreadnoughts in the Conflict." (its Reveal record); acquire
+        # the Dreadnought icon, "you may commission" [Rise of Ix p. 6].
+        has_acquisition_bonus=True,
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.EMPEROR, AgentIcon.CITY),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_TWO_TROOPS,
+        acquisition_effect=PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT,
+        reveal_persuasion=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("guild_accord", "Guild Accord"),
@@ -117,6 +164,17 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("guild_chief_administrator", "Guild Chief Administrator"),
         copies=1,
         acquisition_cost=4,
+        # App table: Spacing Guild; Spacing Guild, City and Spice Trade icons;
+        # Reveal 1 Persuasion. Screen pieces: Agent "[Discard] -> [Trash a
+        # card]", an optional arrow whose trash stays optional [FAQ p. 3];
+        # Reveal "[1 Persuasion] [Freighter]", the Freighter a "may" [Rise of
+        # Ix p. 5] -- its Reveal choice record.
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.MAY_DISCARD_TO_TRASH_A_CARD,
+        reveal_persuasion=1,
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER,),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("imperial_bashar", "Imperial Bashar"),
@@ -191,6 +249,19 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("negotiated_withdrawal", "Negotiated Withdrawal"),
         copies=2,
         acquisition_cost=4,
+        # App table: no Faction; Landsraad, City and Spice Trade icons, no
+        # Agent box; AcquireEffectList Troop; Reveal 2 Persuasion. Text and
+        # screen pieces: Reveal "Retreat three of your units -> [Influence
+        # with any Faction]", an optional arrow -- its Reveal choice record;
+        # a unit is a troop or a dreadnought [Rise of Ix p. 6].
+        has_acquisition_bonus=True,
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        acquisition_effect=PersonalCardAcquisitionEffect.RECRUIT_ONE_TROOP,
+        reveal_persuasion=2,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("satellite_ban", "Satellite Ban"),
@@ -273,6 +344,15 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("weirding_way", "Weirding Way"),
         copies=1,
         acquisition_cost=3,
+        # App table: Bene Gesserit; City and Spice Trade icons; Reveal 1
+        # Persuasion, 2 swords. Text: Agent "You may take another turn
+        # immediately after this one."
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN,
+        reveal_persuasion=1,
+        reveal_strength=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("boundless_ambition", "Boundless Ambition"),

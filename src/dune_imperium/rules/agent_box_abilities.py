@@ -103,6 +103,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
+    PutIntrigueOnDeckBottom,
     RecruitTroops,
     Research,
     ReturnOtherGraftedCardAtRevealStart,
@@ -121,6 +122,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashThisCard,
     UnitsInConflictAtLeast,
 )
+from dune_imperium.content.uprising.intrigue import twisted_intrigue_instance_ids
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.types import AgentIcon, PersonalCardAgentEffect
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -193,6 +195,10 @@ from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     shufflable_intrigue_discard,
     with_trashed_intrigue,
+)
+from dune_imperium.rules.intrigue_knowledge import (
+    forget_intrigue_cards,
+    remember_intrigue,
 )
 from dune_imperium.rules.intrigue_peek import begin_intrigue_peek
 from dune_imperium.rules.optional_trash import open_optional_trash, trash_printer
@@ -1608,11 +1614,12 @@ type TargetPiece = (
 
 
 def target_piece(ability: Ability | None) -> TargetPiece | None:
-    """The one target ``ability``'s mandatory line chooses, if it is one."""
+    """The one target ``ability``'s mandatory line chooses, if it is one --
+    or Desert Ambush's optional one, an enemy unit for each troop deployed
+    this turn ("you may force", Rise of Ix)."""
 
     if (
         ability is None
-        or ability.mark is not AbilityMark.MANDATORY
         or ability.icons
         or ability.hook is not None
         or len(ability.sections) != 1
@@ -1621,6 +1628,14 @@ def target_piece(ability: Ability | None) -> TargetPiece | None:
     ):
         return None
     (piece,) = ability.sections[0].rewards
+    if ability.mark is not AbilityMark.MANDATORY:
+        return (
+            piece
+            if ability.mark is AbilityMark.OPTIONAL
+            and isinstance(piece, ForceEnemyRetreat)
+            and piece.per_troop_deployed
+            else None
+        )
     match piece:
         case GainInfluence(requires_choice=True, times=1):
             return piece
@@ -1676,8 +1691,12 @@ def target_rows(
             )
         case PlaceSpy():
             return agent_spy_rows(state, player, piece, context)
-        case ForceEnemyRetreat():
-            return _enemy_retreat_rows(state, player)
+        case ForceEnemyRetreat(units=units, per_troop_deployed=per_troop):
+            if per_troop and retreats_for_deployment_left(
+                state.players[player], context
+            ) <= 0:
+                return ()
+            return _enemy_retreat_rows(state, player, dreadnoughts=units)
         case BlockChosenSpaceForOpponentsNextAgent():
             # "Choose any board space" [The Voice card]: every space on the
             # table, occupied or not, the owner's own Agent's included
@@ -1701,9 +1720,34 @@ def target_rows(
             )
 
 
-def _enemy_retreat_rows(state: GameState, player: int) -> tuple[DomainAction, ...]:
+RETREATS_FOR_DEPLOYMENT_KEY: Final = "enemy_retreats_for_deployment"
+"""The enemy units Desert Ambush's box has retreated this turn (Rise of Ix)."""
+
+
+def retreats_for_deployment_left(
+    owner: PlayerState, context: Mapping[str, ActionValue]
+) -> int:
+    """Desert Ambush: "For each troop you deploy this turn, you may force an
+    enemy unit to retreat." -- the retreats the troops deployed so far still
+    buy. The turn's deployment is OQ-029's count ("같은 큐브를 retreat했다 다시
+    배치해도 두 번 세지 않음", docs/rules/rise-of-ix.md 15): the units the turn
+    deployed, less what a withdrawal took back (``units_deployed_turn``, which
+    holds no dreadnought -- a card's "troop" is no dreadnought [Rise of Ix p.
+    6] -- and in the original game no sandworm; a Commander is a troop
+    [Bloodlines p. 4])."""
+
+    used = context.get(RETREATS_FOR_DEPLOYMENT_KEY, 0)
+    if isinstance(used, bool) or not isinstance(used, int):
+        raise RuntimeError("Desert Ambush's retreat count is not a number")
+    return owner.units_deployed_turn - used
+
+
+def _enemy_retreat_rows(
+    state: GameState, player: int, *, dreadnoughts: bool = False
+) -> tuple[DomainAction, ...]:
     """One row per opponent with troops in the Conflict, then one per opponent
-    with Commanders there, in seat order (OQ-034)."""
+    with Commanders there, in seat order (OQ-034); with ``dreadnoughts`` (an
+    enemy unit, Desert Ambush) one per opponent with a dreadnought there too."""
 
     rows: list[DomainAction] = []
     for seat in state.players:
@@ -1723,6 +1767,14 @@ def _enemy_retreat_rows(state: GameState, player: int) -> tuple[DomainAction, ..
                     action_id="retreat_opponent_troop",
                     actor=player,
                     arguments=(("commanders", 1), ("player", seat.player_id)),
+                )
+            )
+        if dreadnoughts and seat.dreadnoughts_conflict > 0:
+            rows.append(
+                DomainAction(
+                    action_id="retreat_opponent_troop",
+                    actor=player,
+                    arguments=(("dreadnoughts", 1), ("player", seat.player_id)),
                 )
             )
     return tuple(rows)
@@ -1923,7 +1975,15 @@ def apply_chosen_influence(state: GameState, action: DomainAction) -> RuleResult
 # judged when the cost is paid (OQ-028): without the Alliance only the
 # refusal is offered (``discard_cost_block``).
 
-_DISCARD_REWARDS = (GainResources, TakeContract, DrawPersonalCards, PlaceSpy)
+# Guild Chief Administrator's black trash icon (Rise of Ix) waits once the
+# discard is paid, optional as Control the Spice's paid trash is [FAQ p. 3].
+_DISCARD_REWARDS = (
+    GainResources,
+    TakeContract,
+    DrawPersonalCards,
+    PlaceSpy,
+    TrashPersonalCard,
+)
 # The reward each armed key resolves (``agent_effects.resolve_agent_card_icon``).
 # That path offers and pays a key per effect (Branching Path's 2 spice), so
 # the record table test keeps each key to the boxes it serves.
@@ -2250,6 +2310,14 @@ def apply_discard(
         drawn = draw_or_request_personal_cards(next_state, player, draws, source=source)
         next_state = drawn.state
         events.extend(drawn.events)
+    if any(isinstance(reward, TrashPersonalCard) for reward in rewards):
+        # Guild Chief Administrator: the black trash icon stays optional once
+        # the discard is paid [FAQ p. 3], a row of the turn named after the
+        # box (as ``apply_payment``'s for Control the Spice); the discarded
+        # card, now in the discard pile, may be the one trashed.
+        next_state = open_optional_trash(
+            next_state, player, source, printer=_box_trash_printer(context)
+        )
     if context["pending_agent_effect"] is not True:
         events.append(agent_box_event(source, box_card_id, player, _RESOLVED))
     return RuleResult(state=next_state, events=tuple(events))
@@ -2269,10 +2337,19 @@ def apply_discard(
 # rewards (Junction's VP, with no event of its own) are paid at once.
 
 _INTRIGUE_TRASH: Final = TrashIntrigueCard()
+# Rise of Ix's Court Intrigue pays with an Intrigue card put on the deck's
+# bottom instead of trashed, unseen by the others [Rise of Ix p. 10].
+_INTRIGUE_BOTTOM: Final = PutIntrigueOnDeckBottom()
+_INTRIGUE_COSTS: Final = (_INTRIGUE_TRASH, _INTRIGUE_BOTTOM)
+
+
+def _puts_intrigue_on_bottom(ability: Ability) -> bool:
+    return _INTRIGUE_BOTTOM in ability.sections[0].costs
 
 
 def intrigue_box(ability: Ability | None) -> bool:
-    """Whether ``ability`` is an optional arrow paid by trashing an Intrigue card."""
+    """Whether ``ability`` is an optional arrow paid by trashing an Intrigue
+    card (or, for Court Intrigue, putting one on the deck's bottom)."""
 
     if (
         ability is None
@@ -2283,10 +2360,12 @@ def intrigue_box(ability: Ability | None) -> bool:
     ):
         return False
     first, *rest = ability.sections
-    if _INTRIGUE_TRASH not in first.costs or any(line.costs for line in rest):
+    if sum(cost in _INTRIGUE_COSTS for cost in first.costs) != 1 or any(
+        line.costs for line in rest
+    ):
         return False
     if any(
-        cost != _INTRIGUE_TRASH and _intrigue_spice(cost) is None
+        cost not in _INTRIGUE_COSTS and _intrigue_spice(cost) is None
         for cost in first.costs
     ):
         return False
@@ -2342,9 +2421,20 @@ def intrigue_cost_block(
         block = short_of(OptionalBlockKind.SPICE, spice, owner.resources.spice)
         if block is not None:
             return block
-    if not owner.intrigue_cards:
+    if not _payable_intrigue(owner, ability):
         return OptionalEffectBlock(OptionalBlockKind.INTRIGUE)
     return None
+
+
+def _payable_intrigue(owner: PlayerState, ability: Ability) -> tuple[str, ...]:
+    """The Intrigue cards of the hand that pay the arrow: any one to trash; to
+    put on the deck's bottom, any but a Twisted card, which never reaches the
+    common deck (OQ-097)."""
+
+    if not _puts_intrigue_on_bottom(ability):
+        return owner.intrigue_cards
+    twisted = frozenset(twisted_intrigue_instance_ids())
+    return tuple(card for card in owner.intrigue_cards if card not in twisted)
 
 
 def intrigue_rows(
@@ -2359,7 +2449,9 @@ def intrigue_rows(
     if intrigue_cost_block(owner, ability) is not None:
         return (decline,)
     action_id = (
-        "pay_agent_card_intrigue_and_spice"
+        "put_intrigue_on_bottom_for_agent_card"
+        if _puts_intrigue_on_bottom(ability)
+        else "pay_agent_card_intrigue_and_spice"
         if _spice_cost(ability)
         else "trash_intrigue_for_agent_card"
     )
@@ -2371,7 +2463,7 @@ def intrigue_rows(
                 actor=player,
                 arguments=(("intrigue_card_id", card_id),),
             )
-            for card_id in owner.intrigue_cards
+            for card_id in _payable_intrigue(owner, ability)
         ),
     )
 
@@ -2395,6 +2487,7 @@ def apply_intrigue_payment(
     intrigue_card_id = dict(action.arguments).get("intrigue_card_id")
     if not isinstance(intrigue_card_id, str):
         raise RuntimeError("Agent-card Intrigue payment has invalid card ID")
+    held_before = state.players[player].intrigue_cards
     owner = state.players[player]
     owner = replace(
         owner,
@@ -2402,13 +2495,28 @@ def apply_intrigue_payment(
             held for held in owner.intrigue_cards if held != intrigue_card_id
         ),
     )
-    events = [
-        GameEvent(
-            event_id=f"{source}:intrigue_trashed:{intrigue_card_id}",
-            kind="intrigue_card_trashed",
-            payload=(("card_id", intrigue_card_id), ("player", player)),
-        )
-    ]
+    bottom = _puts_intrigue_on_bottom(ability)
+    if bottom:
+        # Court Intrigue: the card goes under the deck, which the seat knows
+        # and the table does not ("공개하지 않는다" [Rise of Ix p. 10],
+        # rise-of-ix.md 13; OQ-149), as Sonic Snoopers' does
+        # (``rules.intrigue_bottom``).
+        owner = remember_intrigue(owner, (intrigue_card_id,))
+        events = [
+            GameEvent(
+                event_id=f"{source}:intrigue_bottom",
+                kind="intrigue_put_on_bottom",
+                payload=(("count", 1), ("player", player)),
+            )
+        ]
+    else:
+        events = [
+            GameEvent(
+                event_id=f"{source}:intrigue_trashed:{intrigue_card_id}",
+                kind="intrigue_card_trashed",
+                payload=(("card_id", intrigue_card_id), ("player", player)),
+            )
+        ]
     if ability.armed_icons:
         # Every key: the Alliance printed over the whole arrow gated the cost
         # line's rows (``intrigue_cost_block``), and no later line has a
@@ -2432,6 +2540,15 @@ def apply_intrigue_payment(
                     owner = _gain(owner, reward)
         events.extend(_gains_event(ability.sections[0].rewards, source, player))
         events.append(agent_box_event(source, card_id, player, _RESOLVED))
+    if bottom:
+        put = replace(state, intrigue_deck=(*state.intrigue_deck, intrigue_card_id))
+        next_state = advance_after_effect(
+            put, context, replace_player(state.players, owner)
+        )
+        # Every other seat loses what it knew of this hand: it sees a card go
+        # down, not which (OQ-149, as ``intrigue_bottom``).
+        next_state = forget_intrigue_cards(next_state, held_before, keeping=(player,))
+        return RuleResult(state=next_state, events=tuple(events))
     next_state = advance_after_effect(
         with_trashed_intrigue(state, intrigue_card_id),
         context,

@@ -745,6 +745,18 @@ class TrashIntrigueCard:
 
 
 @dataclass(frozen=True, slots=True)
+class PutIntrigueOnDeckBottom:
+    """Put one of the player's Intrigue cards on the bottom of the Intrigue
+    deck: "Put an Intrigue card on the bottom of the deck" [Court Intrigue
+    card, Steam app text]. The other seats do not see which card ("Court
+    Intrigue·Sonic Snoopers — Intrigue를 덱 맨 아래에 놓을 때 상대에게 보이지
+    않는다", docs/rules/rise-of-ix.md 9.1, [Rise of Ix p. 10]); the seat that
+    put it knows it until it is drawn or the deck is shuffled (rise-of-ix.md
+    13, OQ-149, ``rules.intrigue_knowledge``). A Twisted Intrigue card never
+    reaches the common deck (OQ-097)."""
+
+
+@dataclass(frozen=True, slots=True)
 class RecallSpy:
     """Return ``count`` of the player's placed Spies to supply (player choice)."""
 
@@ -765,10 +777,17 @@ class RetreatTroops:
     (docs/rules/uprising-systems.md). During Combat the retreated troops'
     strength leaves the total at once and a player left without units drops
     out of the priority loop (OQ-003).
+
+    ``units``: "Retreat three of your units" [Negotiated Withdrawal card,
+    Steam app text] -- a unit is a troop or a dreadnought [Rise of Ix p. 6]
+    (docs/rules/rise-of-ix.md 6, its table's "unit" row), so the owner's
+    Conflict dreadnoughts are among what it may retreat. Without it a card's
+    "troop" never reaches a dreadnought.
     """
 
     minimum: int = 1
     maximum: int | None = None
+    units: bool = False
 
     def __post_init__(self) -> None:
         if self.minimum < 0:
@@ -865,6 +884,7 @@ type Cost = (
     | LoseTroops
     | GiveIntrigueToOpponent
     | TrashIntrigueCard
+    | PutIntrigueOnDeckBottom
     | RecallSpy
     | RetreatTroops
     | FlipBattleCard
@@ -1671,6 +1691,10 @@ class RevealCountKind(StrEnum):
     COMPLETED_CONTRACT = "completed_contract"
     # Each other revealed card with swords (Leadership).
     OTHER_SWORD_CARD = "other_sword_card"
+    # Each of the player's dreadnoughts in the Conflict when the line resolves
+    # (Rise of Ix's Full-Scale Assault); the swords stay if one leaves later
+    # (rise-of-ix.md 9.3, designer ruling; [DI p. 11]).
+    DREADNOUGHT_IN_CONFLICT = "dreadnought_in_conflict"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1825,7 +1849,21 @@ class ForceEnemyRetreat:
     """Force an enemy troop to retreat [Disruption Tactics card]: one unit of
     an opponent's in the Conflict goes back to its garrison. A Sardaukar
     Commander is a troop [Bloodlines p. 4]; the acting player picks the
-    opponent and, where both kinds are there, the kind (OQ-034)."""
+    opponent and, where both kinds are there, the kind (OQ-034).
+
+    Desert Ambush (Rise of Ix): "For each troop you deploy this turn, you may
+    force an enemy unit to retreat." [Steam app text]. ``units``: an enemy
+    *unit*, so a dreadnought too ("unit | ... Desert Ambush(enemy unit) |
+    예", docs/rules/rise-of-ix.md 6, [Rise of Ix p. 6]), the player of the
+    card picking it (rise-of-ix.md 9.3, designer ruling; sandworms are P7).
+    ``per_troop_deployed``: one retreat for each troop the owner deploys this
+    turn, counted as OQ-029 counts the turn's deployment ("같은 큐브를
+    retreat했다 다시 배치해도 두 번 세지 않음", rise-of-ix.md 15), each a
+    "may".
+    """
+
+    units: bool = False
+    per_troop_deployed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -2032,6 +2070,17 @@ class Freighter:
     """
 
 
+@dataclass(frozen=True, slots=True)
+class TakeAnotherTurn:
+    """"You may take another turn immediately after this one." [Weirding Way
+    card, Steam app text]: the owner's next turn follows this one at once,
+    an Agent or a Reveal turn [DI p. 8]; then play goes on clockwise from
+    the owner. Optional ("may"). The Voice does not block it ("Weirding Way의
+    둘째 turn은 The Voice에 막히지 않음", docs/rules/rise-of-ix.md 9.3;
+    imperium-base.md 13.1, OQ-116), and Ilesa Ecaz counts it as a turn
+    (OQ-119)."""
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -2120,6 +2169,7 @@ type Reward = (
     | PledgeConflictWinSolari
     | PlaceNegotiator
     | Freighter
+    | TakeAnotherTurn
 )
 
 

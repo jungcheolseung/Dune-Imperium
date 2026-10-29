@@ -277,9 +277,30 @@ class RevealLine:
                 total += reward.amount * _with_faction(in_play_cards, per.faction)
         return total
 
-    def strength_over(self, revealed_cards: Sequence[PersonalCardDefinition]) -> int:
-        """The line's own swords: flat or per revealed Faction card; a sword
-        per other sword card is counted apart (``strength_per_other_sword_card``)."""
+    @property
+    def strength_per_dreadnought(self) -> int:
+        """Full-Scale Assault's swords for each of the owner's dreadnoughts
+        in the Conflict (Rise of Ix)."""
+
+        return sum(
+            reward.amount
+            for reward in self.section.rewards
+            if isinstance(reward, RevealSwords)
+            and reward.per is not None
+            and reward.per.kind is RevealCountKind.DREADNOUGHT_IN_CONFLICT
+        )
+
+    def strength_over(
+        self,
+        revealed_cards: Sequence[PersonalCardDefinition],
+        dreadnoughts: int = 0,
+    ) -> int:
+        """The line's own swords: flat, per revealed Faction card, or per
+        dreadnought of the owner's in the Conflict (``dreadnoughts``, read
+        when the line resolves: "Full-Scale Assault의 sword는 Reveal 때 고정,
+        나중에 dreadnought가 빠져도 유지", rise-of-ix.md 9.3, [DI p. 11]); a
+        sword per other sword card is counted apart
+        (``strength_per_other_sword_card``)."""
 
         total = 0
         for reward in self.section.rewards:
@@ -290,6 +311,8 @@ class RevealLine:
                 total += reward.amount
             elif per.kind is RevealCountKind.REVEALED_FACTION_CARD:
                 total += reward.amount * _with_faction(revealed_cards, per.faction)
+            elif per.kind is RevealCountKind.DREADNOUGHT_IN_CONFLICT:
+                total += reward.amount * dreadnoughts
         return total
 
     def arrival_gains(self, arriving: PersonalCardDefinition) -> tuple[int, int]:

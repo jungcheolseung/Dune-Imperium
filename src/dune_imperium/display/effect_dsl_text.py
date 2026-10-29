@@ -131,6 +131,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     PledgeConflictWinSolari,
     PledgeFirstPlaceInfluence,
+    PutIntrigueOnDeckBottom,
     RecallAgent,
     RecallOtherAgent,
     RecallSpy,
@@ -163,6 +164,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     StrengthInConflictAtLeast,
     SummonSandworm,
+    TakeAnotherTurn,
     TakeCardFromDiscard,
     TakeContract,
     TakeControl,
@@ -490,6 +492,9 @@ def cost_text(cost: Cost) -> str:
                 else ""
             )
             return f"Trash an Intrigue card from your hand{extra}"
+        case PutIntrigueOnDeckBottom():
+            # Rise of Ix's Court Intrigue.
+            return "Put an Intrigue card on the bottom of the Intrigue deck"
         case DiscardFromHand(count=1):
             return "Discard a card"
         case DiscardFromHand(count=count):
@@ -737,6 +742,12 @@ def reward_text(reward: Reward) -> str:
                 f"Look at the top {count} Intrigue cards, keep 1 and put the"
                 f" {'other' if count == 2 else 'others'} back on top"
             )
+        case ForceEnemyRetreat(per_troop_deployed=True):
+            # Rise of Ix's Desert Ambush.
+            return (
+                "For each troop you deploy this turn, you may force an enemy"
+                " unit to retreat"
+            )
         case ForceEnemyRetreat():
             return "Force an enemy troop to retreat"
         case PledgeFirstPlaceInfluence():
@@ -830,6 +841,9 @@ def reward_text(reward: Reward) -> str:
             # Rise of Ix's Tech Negotiation icon: "you may take a troop"
             # [Rise of Ix p. 4] (docs/rules/rise-of-ix.md 4).
             return "Place a troop from your supply on the Ix board as a Negotiator"
+        case TakeAnotherTurn():
+            # Rise of Ix's Weirding Way.
+            return "You may take another turn immediately after this one"
         case Freighter():
             # Rise of Ix's Freighter icon: "you may move your Freighter in one
             # of two ways" [Rise of Ix p. 5] (docs/rules/rise-of-ix.md 5).
@@ -1003,3 +1017,5 @@ def _reveal_count_text(per: RevealCount | None) -> str:
             return " per completed Contract"
         case RevealCountKind.OTHER_SWORD_CARD:
             return " per other revealed sword card"
+        case RevealCountKind.DREADNOUGHT_IN_CONFLICT:
+            return " per dreadnought of yours in the Conflict"

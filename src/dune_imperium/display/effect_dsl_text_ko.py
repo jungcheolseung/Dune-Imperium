@@ -158,6 +158,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PlaceSpy,
     PledgeConflictWinSolari,
     PledgeFirstPlaceInfluence,
+    PutIntrigueOnDeckBottom,
     RecallAgent,
     RecallOtherAgent,
     RecallSpy,
@@ -190,6 +191,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     StrengthInConflictAtLeast,
     SummonSandworm,
+    TakeAnotherTurn,
     TakeCardFromDiscard,
     TakeContract,
     TakeControl,
@@ -714,6 +716,9 @@ def cost_text_ko(cost: Cost) -> str:
             # actual count either, so bare ``{troop}``, not ``{troop:N}``.
             extra = " (뒤틀린 책략 카드가 아니면 {troop})" if troops else ""
             return f"핸드에서 {{trash_intrigue}}{extra}"
+        case PutIntrigueOnDeckBottom():
+            # Rise of Ix's Court Intrigue: Sonic Snoopers' prompt words.
+            return "{intrigue_card} 1장을 {intrigue} {deck} 맨 아래에 놓기"
         case DiscardFromHand(count=1):
             return "카드 1장 {discard}"
         case DiscardFromHand(count=count):
@@ -1013,6 +1018,12 @@ def reward_text_ko(reward: Reward) -> str:
                 f"{{intrigue}} 맨 위 {count}장 확인 후 1장 보관, 나머지는 맨"
                 " 위로 되돌림"
             )
+        case ForceEnemyRetreat(per_troop_deployed=True):
+            # Quotes ``tokens_ko.py``'s Desert Ambush line.
+            return (
+                "이번 차례에 배치하는 {troop} 1마다 다른 플레이어의 부대 1 강제"
+                " {retreat} 가능"
+            )
         case ForceEnemyRetreat():
             # Quotes ``tokens_ko.py``'s Disruption Tactics line.
             return "다른 플레이어의 {troop} 강제 {retreat}"
@@ -1126,6 +1137,9 @@ def reward_text_ko(reward: Reward) -> str:
             # Korean edition has no Rise of Ix), so the line stays English
             # rather than invented (module docstring).
             return "Place a troop from your supply on the Ix board as a Negotiator"
+        case TakeAnotherTurn():
+            # Quotes ``tokens_ko.py``'s Weirding Way line.
+            return "이 차례 바로 뒤에 차례를 한 번 더 할 수 있음"
         case Freighter():
             # Rise of Ix's Freighter icon: no Korean source names the
             # Freighter or the Shipping track yet (``glossary-ko.md`` has no
@@ -1325,3 +1339,7 @@ def _reveal_count_text_ko(per: RevealCount | None) -> str:
             return " (완수한 {contract}마다)"
         case RevealCountKind.OTHER_SWORD_CARD:
             return " (공개한 다른 {sword} 카드마다)"
+        case RevealCountKind.DREADNOUGHT_IN_CONFLICT:
+            # Rise of Ix: the dreadnought has no Korean source, so the word
+            # stays English (module docstring).
+            return " ({conflict}의 내 dreadnought마다)"

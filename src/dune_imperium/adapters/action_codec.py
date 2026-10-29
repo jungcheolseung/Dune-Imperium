@@ -98,6 +98,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.acquire_icons import (
     ACQUIRE_ICON_ACTION,
     ACQUIRED_CARD_ARGUMENT,
+    DREADNOUGHT_ICON,
     acquire_box_icons,
     acquire_icon_faction,
 )
@@ -1086,13 +1087,64 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
         )
         # Landing Rights' Freighter icon, an Agent box's two moves
-        # (``agent_effects.apply_agent_card_freighter``).
+        # (``agent_effects.apply_agent_card_freighter``), and Guild Chief
+        # Administrator's, a Reveal choice's (``reveal_turn``).
         templates.extend(
             ActionTemplate(action_id=action_id)
             for action_id in (
                 "advance_agent_card_freighter",
                 "recall_agent_card_freighter",
+                "advance_reveal_freighter",
+                "recall_reveal_freighter",
+                # Weirding Way's extra turn.
+                "take_agent_card_extra_turn",
             )
+        )
+        # Court Intrigue's arrow: an Intrigue card of the hand under the
+        # Intrigue deck (``agent_box_abilities.intrigue_rows``).
+        templates.extend(
+            ActionTemplate(
+                action_id="put_intrigue_on_bottom_for_agent_card",
+                arguments=(("intrigue_card_id", instance_id),),
+            )
+            for instance_id in content.intrigue_deck_instance_ids
+        )
+        # Desert Ambush's enemy unit (a troop or a dreadnought) to retreat,
+        # by its seat; the Bloodlines catalog holds the troop rows already.
+        for seat in range(config.players):
+            if not config.bloodlines:
+                templates.append(
+                    ActionTemplate(
+                        action_id="retreat_opponent_troop",
+                        arguments=(("player", seat),),
+                    )
+                )
+            templates.append(
+                ActionTemplate(
+                    action_id="retreat_opponent_troop",
+                    arguments=(("dreadnoughts", 1), ("player", seat)),
+                )
+            )
+        # Negotiated Withdrawal's arrow: three units in any mix of troops,
+        # dreadnoughts (a seat has two) and, with Bloodlines, Commanders, for
+        # an Influence with each Faction (``reveal_turn``).
+        templates.extend(
+            ActionTemplate(
+                action_id="retreat_reveal_units_for_influence",
+                arguments=tuple(
+                    sorted(
+                        (
+                            *((("commanders", share),) if share else ()),
+                            ("count", 3),
+                            *((("dreadnoughts", ships),) if ships else ()),
+                            ("faction", faction.value),
+                        )
+                    )
+                ),
+            )
+            for ships in range(MAX_DREADNOUGHT_DEPLOYMENT + 1)
+            for share in range(0, (4 - ships) if config.bloodlines else 1)
+            for faction in Faction
         )
         # An Unload card's Reveal box icon, a row each (``rules.unload``).
         templates.extend(
@@ -1818,7 +1870,7 @@ def _acquire_icon_templates(
                 (ACQUIRED_CARD_ARGUMENT, card.card.card_id),
                 ("effect", icon),
             )
-            if acquire_icon_faction(icon) is not None:
+            if acquire_icon_faction(icon) is not None or icon == DREADNOUGHT_ICON:
                 templates.append(ActionTemplate(ACQUIRE_ICON_ACTION, base))
                 continue
             templates.extend(
@@ -2760,6 +2812,8 @@ _PIECE_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "TrashCard": (("trash", ""),),
     "TrashThisCard": (("trash", ""),),
     "TrashIntrigueCard": (("trash", ""), ("pay", "")),
+    # Court Intrigue's Intrigue card under the deck (Rise of Ix).
+    "PutIntrigueOnDeckBottom": (("pay", ""),),
     "DiscardFromHand": (("discard", ""), ("pay", "")),
     "PayResources": (("pay", ""),),
     "SpendSpecimens": (("pay", ""),),
@@ -2789,6 +2843,10 @@ _ICON_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "combat": (("gain", "combat"),),
     "spy": (("place_spy", ""), ("recall_spy", "")),
     "freighter": (("advance", "freighter"), ("collect", "freighter")),
+    # Embedded Agent's second Freighter icon: the same two rows.
+    "freighter_second": (("advance", "freighter"), ("collect", "freighter")),
+    # Weirding Way's extra turn (Rise of Ix).
+    "extra_turn": (("take", "extra_turn"),),
 }
 _HOOK_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "possible_futures": (("gain_influence", ""),),

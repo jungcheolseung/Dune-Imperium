@@ -14,6 +14,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardForSolari,
     AcquireCardUpTo,
     AdvanceTleilaxu,
+    CommissionDreadnought,
     DrawIntrigueCards,
     GainInfluence,
     GainResources,
@@ -1357,11 +1358,13 @@ def _resolve_imperium_acquisition_bonus(
                 | GainInfluence()
                 | Research()
                 | TrashPersonalCard()
+                | CommissionDreadnought()
             ):
                 # Left to the purchase path: its Spy choice or Contract
                 # market, the Influence, the track after the card's zone, the
                 # optional trash once the card sits in its zone
-                # (``_acquisition_trash``).
+                # (``_acquisition_trash``), Full-Scale Assault's optional
+                # Dreadnought icon (``acquire_icons``).
                 pass
             case AdvanceTleilaxu():
                 pass

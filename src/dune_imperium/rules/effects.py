@@ -652,6 +652,12 @@ def advance_after_effect(
     )
 
 
+EXTRA_TURNS_KEY: Final = "extra_turns_owed"
+"""The turns its owner takes at once after this one (Rise of Ix's Weirding
+Way, ``agent_effects.apply_agent_card_extra_turn``): on the Agent-turn effect
+frame, and on the turn frame of an extra turn while more are owed."""
+
+
 def close_agent_turn(state: GameState, owner: int) -> GameState:
     """End ``owner``'s Agent turn and open the next unrevealed seat's turn.
 
@@ -684,9 +690,16 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
         # Taken in any order, but before the turn ends (user ruling
         # 2026-10-10, OQ-106).
         raise RuntimeError("an Agent turn cannot close over a waiting draw")
-    next_player = next_unrevealed_player(state, owner)
+    # Weirding Way: "You may take another turn immediately after this one."
+    # The owner, unrevealed after an Agent turn, takes its next turn at once
+    # (an Agent or a Reveal turn [DI p. 8]); any more owed ride on that turn's
+    # frame (a Ghola copying the box, Immortality).
+    owed = dict(effect_frame.context).get(EXTRA_TURNS_KEY, 0)
+    if isinstance(owed, bool) or not isinstance(owed, int):
+        raise RuntimeError("the owed extra turns are not a number")
+    next_player = owner if owed else next_unrevealed_player(state, owner)
     # Ilesa Ecaz's One Step Ahead counts the turns she finished
-    # (``rules.one_step_ahead``).
+    # (``rules.one_step_ahead``); an extra turn is one (OQ-119).
     closed = replace_player(state.players, finish_turn_count(state.players[owner]))
     players = reset_turn_counters(closed, next_player, closing=owner)
     next_frame = DecisionFrame(
@@ -696,7 +709,11 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
             owner=next_player,
             prompt="Choose an Agent turn or Reveal turn",
         ),
-        context=(("round", state.round_number), ("turn_owner", next_player)),
+        context=(
+            *(((EXTRA_TURNS_KEY, owed - 1),) if owed > 1 else ()),
+            ("round", state.round_number),
+            ("turn_owner", next_player),
+        ),
     )
     return replace(
         state,

@@ -103,6 +103,8 @@ const PROMPT_KO = {
   "Resolve your Conflict reward": "{combat} 보상 받기",
   "Gain your Contract reward": "{contract} 보상 받기",
   "Move your Freighter": "한 칸 위로 · 회수 · 하지 않음 중 선택",
+  "You may move your Freighter up one space or recall it": "운송 트랙에서 한 칸 위로 또는 회수 가능",
+  "You may retreat three units for one Influence": "부대 3을 {retreat}하고 {influence_any} 1 선택 가능",
   "Gain your Shipping track rewards": "회수 보상 받기",
   "Gain your Unload card's Reveal box": "버리거나 폐기한 카드의 공개 칸 효과 받기",
   "You may retreat two troops for four strength": "병력 2를 {retreat}하고 {strength} 4 획득 가능",

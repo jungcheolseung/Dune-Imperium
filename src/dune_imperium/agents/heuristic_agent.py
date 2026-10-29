@@ -249,6 +249,11 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "advance_board_freighter": 1.5,
     "advance_intrigue_freighter": 1.5,
     "advance_agent_card_freighter": 1.5,
+    # Weirding Way: another turn at once.
+    "take_agent_card_extra_turn": 3.0,
+    "advance_reveal_freighter": 1.5,
+    # Negotiated Withdrawal: three units leave the Conflict for one Influence.
+    "retreat_reveal_units_for_influence": -1.0,
     "advance_freighter": 1.5,
     "resolve_shipping_reward": 2.0,
     "place_combat_reward_dreadnought": 2.0,
@@ -344,6 +349,7 @@ _OPTIONAL_AGENT_TURN_ROWS: Final = frozenset(
         "select_corrinth_city_discard",
         "pay_agent_card_intrigue_and_spice",
         "trash_intrigue_for_agent_card",
+        "put_intrigue_on_bottom_for_agent_card",
         "acquire_imperium_with_solari",
         "acquire_reserve_with_solari",
         "acquire_imperium_by_card",
