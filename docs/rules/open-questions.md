@@ -174,6 +174,7 @@
 | [OQ-146](#oq-146--kwisatz-haderach의-from-anywhere와-conflict에-있는-into-the-fray의-agent-원판--bloodlines) | Kwisatz Haderach의 "from anywhere"와 Conflict에 있는 Into the Fray의 Agent (원판 + Bloodlines) | `DECIDED` |
 | [OQ-147](#oq-147--research-station의-카드-셋-원판) | Research Station의 카드 셋 (원판) | `DECIDED` |
 | [OQ-148](#oq-148--spice-smugglers의-화살표-보상-순서-원판) | Spice Smugglers의 화살표 보상 순서 (원판) | `DECIDED` |
+| [OQ-149](#oq-149--intrigue-덱-맨-위를-보고-하나를-남긴-좌석은-그-카드를-아는가-immortality--rise-of-ix) | Intrigue 덱 맨 위를 보고 하나를 남긴 좌석은 그 카드를 아는가 (Immortality · Rise of Ix) | `OPEN` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3171,3 +3172,21 @@
   `choose_agent_card_influence` 행(Clandestine Meeting과 같은 길; 6칸이면 그 획득만 버림, OQ-060), Solari는 그 줄의 값. 화살표는 둘 중 하나라도 무언가를
   바꿀 수 있으면 열린다(OQ-071). 원판 카탈로그에 Solari 행 하나가 더해졌고(codec은 P4 병합 때), Uprising 카탈로그 144개는 그대로다. 테스트
   `tests/unit/rules/test_imperium_cards.py`(`test_spice_smugglers_rewards_are_taken_in_the_owner_s_order` 등).
+
+## OQ-149 — Intrigue 덱 맨 위를 보고 하나를 남긴 좌석은 그 카드를 아는가 (Immortality · Rise of Ix)
+
+- 상태: `OPEN` (2026-10-29, 사용자 확인 대기 — 조정자가 올림)
+- 인쇄·문서:
+  - Immortality의 Imperium Ceremony: "Intrigue deck 맨 위 두 장을 보고 한 장을 keep, 나머지는 맨 위로" `[card face]`(OQ-052).
+  - Rise of Ix의 Viscount Hundro Moritani, Intelligence: 게임 시작에 Intrigue 덱 위 두 장을 보고 하나를 갖고 하나를 위에 되돌린다 `[Leader card]`.
+    [rise-of-ix.md](rise-of-ix.md) 13(P0 명세, 사용자 판정 없음): "Hundro 좌석이 Intrigue 덱 맨 위 카드 | 그 카드가 뽑힐 때까지".
+  - 재확인 원칙(OQ-010, 2026-09-01 사용자 "한 번 공개된 정보는 다시 확인할 수 있어야 한다"): 한 번 본 정보는 그 좌석이 계속 안다.
+- 지금 엔진: Imperium Ceremony는 `intrigue_peek` 창으로 두 장을 보여 주고 하나를 갖게 하지만, 맨 위에 남긴 카드를 그 좌석이 아는 것으로 기록하지
+  않는다(`known_card_seats`·관측에 없음). P4에서 Hundro도 같은 창을 쓴다(관측 v39는 `known_intrigue_ids`로 좌석이 아는 Intrigue를 담을 수 있다).
+- 질문: 맨 위에 남긴 카드를 그 카드가 뽑히거나 덱이 섞일 때까지 그 좌석이 아는 것으로 기록하는가.
+- 선택지:
+  - (가) 둘 다 기록한다 — Hundro와 Imperium Ceremony 모두. Uprising + Immortality 판의 숨은 정보 처리(관측, 결정 표본)가 바뀐다.
+  - (나) Hundro만 기록한다(rise-of-ix.md 13대로), Imperium Ceremony는 지금대로.
+  - (다) 둘 다 기록하지 않는다(rise-of-ix.md 13을 고친다).
+- 추천: **(가).** 같은 상황(맨 위 둘을 보고 하나를 되돌림)이면 같은 지식이고, 재확인 원칙(OQ-010)에 맞는다. 섞으면 지식은 지운다(Codex 리뷰의
+  주의, plan 17.8). 판정 전에는 엔진을 바꾸지 않는다.
