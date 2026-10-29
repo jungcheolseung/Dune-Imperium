@@ -54,7 +54,9 @@ app's prompts.
 | `intrigue_bottom_pick` (Sonic Snoopers) | `SonicSnoopersAbility` names the bad Intrigue cards at once | Our engine asks one card at a time: the next bad card still in hand, then finish. The draw comes after, so the hand only shrinks meanwhile. |
 | Disposal Facility's Reveal trash | `DisposalFacilityAbility` (`GetCardToTrash`, minimum 1.0) | No card named leaves it unused. |
 | Spaceport's Foldspace | The destination picker: option 0, top of deck, for every card except The Spice Must Flow (generic-abilities §4.2) | |
-| Ix Imperium boxes | `_DISCARD_ABILITY` (Truthsayer), `_PAYMENT_ABILITY` (Sayyadina), `_TRASH_ABILITY` (Jamis) | |
+| Ix Imperium boxes | `_DISCARD_ABILITY` (Truthsayer, Satellite Ban, Spice Trader), `_PAYMENT_ABILITY` (Sayyadina), `_TRASH_ABILITY` (Jamis), `_BOX_ABILITY` (Bounty Hunter: `BountyHunterAbility`, run at once) | |
+| Imperial Bashar's "troop -OR- trash" box | `ImperialBasharAgentAbility` (Explicit): option 0 the plain `resolve_agent_card_effect`, option 1 its card's `trash_agent_card` row | The second info lists the trash rows' cards in our rows' order. An answer with no row (option 1 with no card, or the troop when none can join) uses the key on nothing, and the box lapses at the turn's end (OQ-095 (2)). Mapped before P4's `claude/p4d-imperium-b` reached P4, and checked on a trial merge. |
+| Satellite Ban's Reveal "retreat up to two troops" | `SatelliteBanRevealAbility` | The effect is Scout's. Its table entry is the shared `OptionalRetreatAbility`, so each card answers with its own class. |
 | Intrigue slots | Strongarm's zone, Double Cross's victim (`OpponentLosesTroop`), Urgent Mission's Agent (`RecallYourAgent`) | Each comes from the play's recorded answer. Urgent Mission is an original card; Ix's extra Agents exposed its missing case. |
 | Advanced Weaponry's commission (`commission_intrigue_dreadnought`) | `AdvancedWeaponryPlotAbility` commissions as it runs | No prompt in the app: taken; declined only when no commission is offered. |
 | Second Wave's `deploy_intrigue_troops` | `SecondWaveAbility`: `GetUnitsToDeploy` over the garrison units | The request lists one index per garrison unit, dreadnoughts first, `NumberToSelect = Min(count, 2)` (`<Targets>` @0x4bf7d40). The row has as many units, with as many `dreadnoughts`, as the answer chose. An empty answer deploys none: the swords alone. |
@@ -126,14 +128,16 @@ It confirmed two problems, both fixed in `16d6acda`:
 Left open by the review:
 - Some cards still have no window consumer, because their engine entries
   have no play data yet (P4d, as of P4 `3b8cd83c`):
-  - Imperium: Spice Trader, Guild Chief Administrator, Imperial Bashar,
-    Weirding Way, Negotiated Withdrawal, Embedded Agent.
+  - Imperium: Guild Chief Administrator, Weirding Way, Negotiated
+    Withdrawal, Embedded Agent. (Satellite Ban, Spice Trader, Imperial
+    Bashar and Bounty Hunter are on P4's `claude/p4d-imperium-b`; their rows
+    are mapped.)
   - Intrigue: Diversion, Machine Culture, Strategic Push, War Chest.
   Their response shapes are checked when the engine offers their rows.
   Quid Pro Quo (P4d-6b) and Grand Conspiracy (P4d) are now played and
   answered.
-- The `Cost`s of Imperial Bashar and Negotiated Withdrawal are not ported as
-  `meets_cost`.
+- Negotiated Withdrawal's `Cost` is not ported as `meets_cost`. Imperial
+  Bashar's is: `HasTrashableCard` or a troop in the supply (@0x4dc3c70).
 - `GetBestInfluenceExchange`'s bool argument has no counterpart in
   `profile.best_influence_exchange`.
 
