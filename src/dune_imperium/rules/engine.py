@@ -158,6 +158,12 @@ from dune_imperium.rules.contracts import (
     resolve_exhausted_contract_choice,
 )
 from dune_imperium.rules.deck_top import settle_public_deck_tops
+from dune_imperium.rules.effect_influence import (
+    apply_effect_influence,
+    effect_influence_event_ids,
+    legal_effect_influence_actions,
+    settle_effect_influence,
+)
 from dune_imperium.rules.effect_steps import (
     present,
     presents_steps,
@@ -228,6 +234,7 @@ from dune_imperium.rules.intrigue_triggers import (
 from dune_imperium.rules.ix_board_spaces import apply_ix_space_action
 from dune_imperium.rules.leader_abilities import (
     apply_couriers,
+    apply_duplicity_loss,
     apply_feyd_track_action,
     apply_ixian_technology,
     apply_kota_signet_action,
@@ -400,6 +407,13 @@ from dune_imperium.rules.shortfall import (
     shortfall_is_stale,
     shortfall_refill_seat,
 )
+from dune_imperium.rules.snoopers import (
+    apply_snooper_discard,
+    legal_snooper_row_actions,
+    legal_snooper_window_actions,
+    settle_snooper_discards,
+    snooper_event_ids,
+)
 from dune_imperium.rules.spies import apply_gather_intelligence_action
 from dune_imperium.rules.spy_moves import (
     apply_place_track_spy,
@@ -548,6 +562,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_shipping_reward_row_actions,
         # And an Unload box an effect triggered (Rise of Ix).
         legal_unload_row_actions,
+        # And an effect's per-Faction Influence (Quid Pro Quo, OQ-153) and
+        # Tessia Vernius' first Snooper reward (Rise of Ix).
+        legal_effect_influence_actions,
+        legal_snooper_row_actions,
         # A research bonus or trash icon a Plot raised waits on the turn
         # (cleanup-2b).
         legal_research_bonus_actions,
@@ -581,6 +599,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_shipping_reward_row_actions,
         # And an Unload box an effect triggered (Rise of Ix).
         legal_unload_row_actions,
+        # And an effect's per-Faction Influence (Quid Pro Quo, OQ-153) and
+        # Tessia Vernius' first Snooper reward (Rise of Ix).
+        legal_effect_influence_actions,
+        legal_snooper_row_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
@@ -677,6 +699,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     ),
     FrameKind.TECH_SECRET_PROJECT: (legal_secret_project_actions,),
     FrameKind.MASTERSTROKE_SETUP: (legal_masterstroke_actions,),
+    # Rise of Ix's Tessia Vernius: her first Snooper reward outside her turn.
+    FrameKind.OPTIONAL_DISCARD: (legal_snooper_window_actions,),
     # Rise of Ix's Ilesa Ecaz: One Step Ahead's Round Start set-aside.
     FrameKind.ROUND_START_SET_ASIDE: (legal_set_aside_actions,),
     FrameKind.RESEARCH_ADVANCE: (
@@ -983,6 +1007,12 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "place_leader_negotiator": apply_ixian_technology,
     "choose_masterstroke_faction": apply_masterstroke_choice,
     "set_aside_leader_card": apply_set_aside,
+    # Rise of Ix: an effect's per-Faction Influence (OQ-153), Tessia Vernius'
+    # first Snooper reward and her Duplicity's loss.
+    "resolve_effect_influence": apply_effect_influence,
+    "discard_snooper_card": apply_snooper_discard,
+    "decline_snooper_discard": apply_snooper_discard,
+    "lose_leader_influence": apply_duplicity_loss,
     "acquire_leader_imperium": apply_leader_signet_acquire,
     "acquire_leader_reserve": apply_leader_signet_acquire,
     "gain_leader_signet_troop": apply_shaddam_signet_choice,
@@ -1184,7 +1214,8 @@ class UprisingRulesEngine(RulesEngine):
             result = apply_scouts_draw(state, outcome)
         else:
             result = apply_round_start_reshuffle(state, outcome)
-        result = settle_unloads(result)
+        result = _settle_owed_rows(settle_unloads(result))
+        settled = _owed_row_event_ids(result)
         # An Intrigue draw granted by a Reveal passive may queue a reshuffle,
         # so the automatic advance runs again after the passives.
         result = grant_late_reveal_effects(
@@ -1207,7 +1238,11 @@ class UprisingRulesEngine(RulesEngine):
                 _settle_card_knowledge(
                     refresh_pre_reveal_strength(
                         _settle_finishing(
-                            _reveal_masterstroke(_advance_automatic(result))
+                            # Rows owed by the automatic steps since.
+                            _settle_owed_rows(
+                                _reveal_masterstroke(_advance_automatic(result)),
+                                skip=settled,
+                            )
                         )
                     )
                 )
@@ -1305,10 +1340,11 @@ class UprisingRulesEngine(RulesEngine):
                 return RuleResult(state=step.state, events=(step.event,))
             state, action = step.state, step.whole
         # An Unload an effect triggered waits until the handler wrote its
-        # frames back (``rules.unload``).
-        handled = _end_turn_start(
-            state, action, settle_unloads(_handle(state, action))
-        )
+        # frames back (``rules.unload``), and so do an effect's per-Faction
+        # Influence rows and a Snooper's discard (Rise of Ix).
+        owed = _settle_owed_rows(settle_unloads(_handle(state, action)))
+        settled = _owed_row_event_ids(owed)
+        handled = _end_turn_start(state, action, owed)
         result = _advance_automatic(handled)
         # An Intrigue draw granted by a Reveal passive or a late-met Reveal
         # condition may queue a reshuffle, so the automatic advance runs
@@ -1334,7 +1370,11 @@ class UprisingRulesEngine(RulesEngine):
                 _settle_card_knowledge(
                     refresh_pre_reveal_strength(
                         _settle_finishing(
-                            _reveal_masterstroke(_advance_automatic(result))
+                            # Rows owed by the automatic steps since.
+                            _settle_owed_rows(
+                                _reveal_masterstroke(_advance_automatic(result)),
+                                skip=settled,
+                            )
                         )
                     )
                 )
@@ -1345,6 +1385,21 @@ class UprisingRulesEngine(RulesEngine):
     def observe(self, state: GameState, player: int) -> PlayerView:
         return observe_state(state, player)
 
+
+def _settle_owed_rows(
+    result: RuleResult, *, skip: frozenset[str] = frozenset()
+) -> RuleResult:
+    """Queue the rows (or open the windows) a transition's effects announced:
+    an effect's per-Faction Influence (OQ-153) and Tessia Vernius' first
+    Snooper reward; ``skip`` holds the announcements already settled."""
+
+    return settle_snooper_discards(
+        settle_effect_influence(result, skip=skip), skip=skip
+    )
+
+
+def _owed_row_event_ids(result: RuleResult) -> frozenset[str]:
+    return effect_influence_event_ids(result.events) | snooper_event_ids(result.events)
 
 
 def _end_turn_start(

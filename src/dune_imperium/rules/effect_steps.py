@@ -526,6 +526,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "deploy_leader_agent": _spec(_V.DEPLOY, _S.LEADER, _LEADER),
     "gain_leader_signet_spice": _spec(_V.GAIN, _S.LEADER, _LEADER),
+    # Rise of Ix's Tessia Vernius: Duplicity's lost Influence (its cost).
+    "lose_leader_influence": _spec(
+        _V.LOSE_INFLUENCE, _S.LEADER, _LEADER, targets=(*_FACTION, _RECIPIENT)
+    ),
     # Rise of Ix's Viscount Hundro Moritani: Couriers' two Freighter moves.
     "advance_leader_freighter": _spec(
         _V.ADVANCE, _S.LEADER, _LEADER, option="freighter"

@@ -130,6 +130,7 @@ from dune_imperium.rules.contracts import (
 )
 from dune_imperium.rules.dreadnought_commission import commission_block
 from dune_imperium.rules.dreadnoughts import dreadnoughts_owned
+from dune_imperium.rules.effect_influence import effect_influence_owed
 from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
     agent_turn_space_id,
@@ -1749,17 +1750,15 @@ def apply_rewards(
         events.extend(gained.events)
     if agent_influence:
         # Quid Pro Quo: one Influence with each Faction where the player has
-        # an Agent, in Faction order (``factions_with_agents``).
-        for faction in factions_with_agents(next_state, player):
-            gained = gain_faction_influence(
-                next_state,
+        # an Agent now, a row each taken in the owner's order (OQ-153);
+        # queued on the turn once the play is done (``rules.effect_influence``).
+        events.append(
+            effect_influence_owed(
+                f"{source}:agent_influence",
                 player,
-                faction,
-                1,
-                event_prefix=f"{source}:agent_influence:{faction.value}",
+                factions_with_agents(next_state, player),
             )
-            next_state = gained.state
-            events.extend(gained.events)
+        )
     if opponents_retreat_dreadnoughts:
         # Cannon Turrets: each opponent with a dreadnought in the Conflict
         # sends one to its garrison, clockwise from the next seat; nothing

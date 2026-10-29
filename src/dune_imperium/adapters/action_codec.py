@@ -1683,6 +1683,38 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
         # Ilesa Ecaz's One Step Ahead: the hand card set aside at Round Start.
         templates.extend(_trash_templates(config, "set_aside_leader_card"))
+        # Tessia Vernius (stage P4e): her first Snooper reward's discard and
+        # its refusal, and Duplicity's Influence lost -- naming the Alliance's
+        # recipient when several opponents could take it.
+        templates.extend(_trash_templates(config, "discard_snooper_card"))
+        templates.append(ActionTemplate(action_id="decline_snooper_discard"))
+        templates.extend(
+            ActionTemplate(
+                action_id="lose_leader_influence",
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        )
+        templates.extend(
+            ActionTemplate(
+                action_id="lose_leader_influence",
+                arguments=(
+                    ("alliance_recipient", recipient),
+                    ("faction", faction.value),
+                ),
+            )
+            for faction in Faction
+            for recipient in range(config.players)
+        )
+        # An effect's Influence with each Faction it names, a row each
+        # (OQ-153: Quid Pro Quo).
+        templates.extend(
+            ActionTemplate(
+                action_id="resolve_effect_influence",
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        )
     templates.extend(_trash_templates(config, "trash_agent_card"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_draw"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_discard"))
@@ -2641,12 +2673,13 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
             "duke_leto_atreides",
             "baron_vladimir_harkonnen",
             # Rise of Ix's Final Delivery, Ixian Technology, Conscript,
-            # Couriers and Guild Contacts.
+            # Couriers, Guild Contacts and Duplicity.
             "princess_yuna_moritani",
             "prince_rhombur_vernius",
             "archduke_armand_ecaz",
             "viscount_hundro_moritani",
             "ilesa_ecaz",
+            "tessia_vernius",
         }
     ),
     "resolve_leader_signet_without_option": frozenset(
@@ -2680,10 +2713,17 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "pay_leader_signet_water": frozenset({"chani"}),
     "gain_leader_signet_troop": frozenset({"shaddam_corrino_iv"}),
     # Shaddam's three Solari; the original game's Prudent Diplomacy; Rise
-    # of Ix's Final Delivery.
+    # of Ix's Final Delivery and Duplicity's gain.
     "choose_leader_signet_influence": frozenset(
-        {"shaddam_corrino_iv", "duke_leto_atreides", "princess_yuna_moritani"}
+        {
+            "shaddam_corrino_iv",
+            "duke_leto_atreides",
+            "princess_yuna_moritani",
+            "tessia_vernius",
+        }
     ),
+    # Rise of Ix's Duplicity: the Influence lost.
+    "lose_leader_influence": frozenset({"tessia_vernius"}),
     # Chronicler's Insight; Rise of Ix's Conscript and Guild Contacts.
     "acquire_leader_imperium": frozenset({"princess_irulan", "archduke_armand_ecaz"}),
     "acquire_leader_reserve": frozenset(

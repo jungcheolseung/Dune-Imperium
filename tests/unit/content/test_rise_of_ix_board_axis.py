@@ -293,9 +293,9 @@ _IX_LEADER_IDS = (
 
 # The Ix Leaders stage P4e has wired so far, one commit each (setup, Leader
 # ability and Signet Ring with their tests): "Princess" Yuna Moritani, Prince
-# Rhombur Vernius, Archduke Armand Ecaz, Viscount Hundro Moritani, Ilesa Ecaz.
-# Tessia Vernius waits on a rule question (the order of two Snooper tokens
-# reached by one gain, plan 17.10's P4e note on Quid Pro Quo).
+# Rhombur Vernius, Archduke Armand Ecaz, Viscount Hundro Moritani, Ilesa Ecaz
+# and Tessia Vernius (once OQ-153 ordered one effect's several Factions):
+# all six.
 _WIRED_IX_LEADER_IDS = frozenset(
     {
         "princess_yuna_moritani",
@@ -303,6 +303,7 @@ _WIRED_IX_LEADER_IDS = frozenset(
         "archduke_armand_ecaz",
         "viscount_hundro_moritani",
         "ilesa_ecaz",
+        "tessia_vernius",
     }
 )
 
