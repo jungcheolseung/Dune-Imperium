@@ -1313,3 +1313,11 @@ digest·고정 두 판, 카탈로그 288개, 상태 해시 6판은 그대로.
    codec 행(원판 + Ix 카탈로그만), 관문(17.1 "단계마다 엔진 관문 전체"; 첫 P4 관문은 6352199d에서 새 같음 기준을 잡는다).
 
 setup이 좌석마다 supply에 dreadnought 둘을 주는 일 `[Rise of Ix p. 3]`(rise-of-ix.md 3의 5)은 setup을 여는 P4c에서 한다.
+
+**P4b-1 끝(2026-10-29, `c0d47fe7`·`44c643fd`):** dreadnought는 Conflict의 유닛(strength 3, strength 0 규칙·Combat Intrigue 자격), Combat 끝 정리에서
+garrison으로, 칸의 controller는 dreadnought가 marker보다 먼저(방문 보너스·방어 배치·app_ai 미리보기; marker를 옮기는 보상·세 개 한도·관측은
+marker 그대로), Combat 단계의 마지막에 `leaving`인 것은 garrison으로·나머지는 `leaving`. 승자의 창에 `dreadnought_control` 줄 하나(승리마다
+하나, sandworm으로 두 배가 되지 않음), 답은 `DREADNOUGHT_CONTROL_CHOICE`의 `place_combat_reward_dreadnought`(Control 칸 셋 중 dreadnought가 없는 칸).
+codec: 원판 + Ix 카탈로그만 +19행(Conflict마다 `take{icon: dreadnought_control}`), Ix 없는 카탈로그 288개 그대로. 룰북 예(Frida·Ned·Bodie)를
+엔진으로 좌석별 테스트. **P4c 표시 몫(P5 화면 세션과 나눔):** `display/actions.py` `combat_reward_icon_action_text`에 `dreadnought_control` 갈래가 없어
+그 줄이 "Influence 1"로 보인다; 엔진 이벤트 `dreadnought_control_placed`·`dreadnought_returned`의 로그 문구. setup이 열리기 전에는 닿지 않는다.
