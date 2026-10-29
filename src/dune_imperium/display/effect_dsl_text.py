@@ -33,6 +33,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CommandReached,
+    CommissionDreadnought,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -787,6 +788,10 @@ def reward_text(reward: Reward) -> str:
         case TakeMentat():
             # The original game's Mentat icon [DI p. 16].
             return "Take the Mentat from its space"
+        case CommissionDreadnought():
+            # Rise of Ix's Dreadnought icon: "you may commission" [Rise of Ix
+            # p. 6] (docs/rules/rise-of-ix.md 6).
+            return "Commission a dreadnought"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "Use your Leader's Signet Ring ability"

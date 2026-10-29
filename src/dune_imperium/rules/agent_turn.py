@@ -76,9 +76,11 @@ from dune_imperium.rules.effects import (
 )
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
+    DREADNOUGHTS_COMMISSIONED_KEY,
     OWED_CARD,
     TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
+    commissioned_dreadnought_count,
     hold_draw,
     owned_top_frame,
     recruited_commander_count,
@@ -758,6 +760,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         raise RuntimeError("turn frame has an invalid undeployable count")
     ungained_undeployable = ungained_undeployable_troops(turn_context)
     commanders_before = _commanders_recruited_before_placement(state)
+    dreadnoughts_before = commissioned_dreadnought_count(turn_context)
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
         raise ValueError("Agent action infiltrate_post_id must be a string")
@@ -949,6 +952,14 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     *(
                         ((COMMANDERS_RECRUITED_KEY, commanders_before),)
                         if commanders_before
+                        else ()
+                    ),
+                    # So does a dreadnought commissioned before the
+                    # placement: it may deploy if the Agent goes to a Combat
+                    # space [Rise of Ix p. 6].
+                    *(
+                        ((DREADNOUGHTS_COMMISSIONED_KEY, dreadnoughts_before),)
+                        if dreadnoughts_before
                         else ()
                     ),
                     ("units_deploy_blocked", units_deploy_blocked),

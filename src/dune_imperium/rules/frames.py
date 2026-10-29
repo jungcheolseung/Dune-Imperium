@@ -243,6 +243,15 @@ the Agent-turn effect frame and on the turn frame before the placement
 REVEAL_COMMANDERS_RECRUITED_KEY = "reveal_commanders_recruited"
 """The Reveal frame's Commanders recruited this turn (absent means none)."""
 
+DREADNOUGHTS_COMMISSIONED_KEY = "dreadnoughts_commissioned"
+"""Rise of Ix dreadnoughts commissioned this Agent turn, kept on the Agent-turn
+effect frame and on the turn frame before the placement (absent means none),
+apart from the troops and the Commanders: "If you commissioned the dreadnought
+while sending an Agent to a Combat space, you may deploy it to the Conflict"
+[Rise of Ix p. 6], and each reserves a deploy slot for a dreadnought outside
+the garrison share of two (docs/base-game-and-ix-plan.md 17.6 item 2). A Reveal
+turn has no such window, so nothing is kept there."""
+
 
 def recruited_commander_count(context: FrameContext, key: str) -> int:
     """Return the Commander recruit count kept under ``key`` (0 when absent)."""
@@ -250,6 +259,15 @@ def recruited_commander_count(context: FrameContext, key: str) -> int:
     value = context.get(key, 0)
     if isinstance(value, bool) or not isinstance(value, int):
         raise RuntimeError(f"turn frame has invalid {key}")
+    return value
+
+
+def commissioned_dreadnought_count(context: FrameContext) -> int:
+    """Return the dreadnoughts commissioned this Agent turn (0 when absent)."""
+
+    value = context.get(DREADNOUGHTS_COMMISSIONED_KEY, 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"turn frame has invalid {DREADNOUGHTS_COMMISSIONED_KEY}")
     return value
 
 
@@ -416,6 +434,40 @@ def own_turn_frame_index(state: GameState, player: int) -> int | None:
             return index
         return None
     return None
+
+
+def credit_commissioned_dreadnoughts(
+    state: GameState, player: int, count: int
+) -> GameState:
+    """Count ``count`` dreadnoughts commissioned in ``player``'s own Agent turn.
+
+    Credited on the owner's turn frame -- the one before the Agent is placed
+    (the placement carries the count over) or the Agent-turn effect frame --
+    the way a recruited Commander is (``update_turn_recruits``), and only in
+    the owner's own turn: nothing is kept outside it, and nothing in a Reveal
+    turn, which has no deployment of a dreadnought ("If you commissioned the
+    dreadnought while sending an Agent to a Combat space, you may deploy it to
+    the Conflict" [Rise of Ix p. 6]).
+    """
+
+    index = own_turn_frame_index(state, player)
+    if index is None or count < 1:
+        return state
+    frame = state.decision_stack[index]
+    if frame.kind not in (FrameKind.TURN, FrameKind.AGENT_EFFECTS):
+        return state
+    context = frame_context(frame)
+    context[DREADNOUGHTS_COMMISSIONED_KEY] = (
+        commissioned_dreadnought_count(context) + count
+    )
+    return replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:index],
+            with_context(frame, context),
+            *state.decision_stack[index + 1 :],
+        ),
+    )
 
 
 TECH_ACQUIRE_PENDING_KEY = "pending_tech_acquire_effects"

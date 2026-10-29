@@ -63,6 +63,8 @@ from dune_imperium.rules.combat_deployment import (
     legal_combat_deployments,
     legal_commander_deployments,
     legal_commander_withdrawals,
+    legal_dreadnought_deployments,
+    legal_dreadnought_withdrawals,
     legal_troop_withdrawals,
 )
 from dune_imperium.rules.contracts import (
@@ -193,6 +195,7 @@ def legal_agent_effect_frame_actions(
         *legal_commander_recruit_actions(state, player),
         *legal_combat_deployments(state, player),
         *legal_commander_deployments(state, player),
+        *legal_dreadnought_deployments(state, player),
         *legal_intrigue_play_actions(state, player),
         *legal_specimen_return_actions(state, player),
         *legal_family_atomics_actions(state, player),
@@ -201,6 +204,7 @@ def legal_agent_effect_frame_actions(
         # to the limit and finishes instead of cycling deploy/withdraw.
         *legal_troop_withdrawals(state, player),
         *legal_commander_withdrawals(state, player),
+        *legal_dreadnought_withdrawals(state, player),
     )
 
 

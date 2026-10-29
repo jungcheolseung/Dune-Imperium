@@ -1885,6 +1885,20 @@ class ReserveCostDiscount:
             raise ValueError("a Reserve discount must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class CommissionDreadnought:
+    """Commission one of the owner's dreadnoughts: one from its supply to its
+    garrison for each Dreadnought icon ("you may commission", [Rise of Ix
+    p. 6], docs/rules/rise-of-ix.md 6).
+
+    An optional piece ("may"): the owner takes the icon or leaves it. With
+    no dreadnought in the supply -- a seat has two at most, and "supply에
+    없으면 더 얻지 못한다" -- the icon has no effect and the space or card
+    that prints it is still played (designer ruling, BGG forum). A second
+    icon is a second piece; the piece has no field.
+    """
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -1967,6 +1981,7 @@ type Reward = (
     | ReserveCostDiscount
     | DoubleBaseHarvestSpice
     | DoubleBonusHarvestSpice
+    | CommissionDreadnought
 )
 
 

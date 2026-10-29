@@ -42,6 +42,7 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquireTleilaxuCard,
+    CommissionDreadnought,
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
@@ -102,6 +103,10 @@ from dune_imperium.rules.combat_deployment import (
     grant_combat_icon,
     grant_recruit_deployment,
     reconcile_deployment_after_retreat,
+)
+from dune_imperium.rules.dreadnought_commission import (
+    commission_block,
+    commission_dreadnought,
 )
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
@@ -691,6 +696,16 @@ def piece_rows(
                 # Nothing within the cap: the acquisition alone fizzles
                 # (designer ruling, Impress; OQ-057).
                 rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.ACQUIRE))
+        case CommissionDreadnought():
+            # "you may commission" [Rise of Ix p. 6]: the icon is taken or
+            # left. With no dreadnought in the supply it has nothing to take
+            # (``commission_block``); an own turn then offers no row and the
+            # turn's end lapses the icon (OQ-095 (2)), a stacked frame its
+            # refusal.
+            if commission_block(state, player) is None:
+                rows.append(row(Verb.RECRUIT, variant="dreadnought"))
+            if refusals:
+                rows.append(row(Verb.DECLINE, of=Verb.RECRUIT, variant="dreadnought"))
         case PassTurn(optional=True):
             # Bindu Suspension: after the draw, "you may pass your turn" or
             # play it normally (OQ-117); the refusal is the normal turn.
@@ -816,6 +831,11 @@ _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
     ),
     "decline_intrigue_spy": ("spy_declined", "intrigue_spy_declined"),
     "keep_shield_wall": ("shield_wall_kept", "shield_wall_kept"),
+    # A Dreadnought icon left unused (Rise of Ix).
+    "decline_intrigue_dreadnought": (
+        "dreadnought_declined",
+        "intrigue_dreadnought_declined",
+    ),
     "resolve_intrigue_influence_without_faction": (
         "influence_unavailable",
         "intrigue_influence_unavailable",
@@ -1222,6 +1242,10 @@ def apply_piece(
             # The Spy placement is passed up only when it cannot be made
             # (``piece_rows``).
             result = _passed(state, player, action, step_source)
+        case CommissionDreadnought() if shape.verb is Verb.DECLINE:
+            result = _passed(state, player, action, step_source)
+        case CommissionDreadnought():
+            result = commission_dreadnought(state, player, source=step_source)
         case RecallYourAgent() if shape.verb is Verb.CONFIRM_EMPTY:
             result = _passed(state, player, action, step_source)
         case RecallYourAgent():

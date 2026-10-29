@@ -295,6 +295,14 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "deploy_commanders": _row(_V.DEPLOY, _S.TURN, _T.UNITS, variant="commanders"),
     "withdraw_troops": _row(_V.WITHDRAW, _S.TURN, _T.UNITS),
     "withdraw_commanders": _row(_V.WITHDRAW, _S.TURN, _T.UNITS, variant="commanders"),
+    # Rise of Ix: a dreadnought is a third kind of unit beside the troop and
+    # the Commander [Rise of Ix p. 6].
+    "deploy_dreadnoughts": _row(
+        _V.DEPLOY, _S.TURN, _T.UNITS, variant="dreadnoughts"
+    ),
+    "withdraw_dreadnoughts": _row(
+        _V.WITHDRAW, _S.TURN, _T.UNITS, variant="dreadnoughts"
+    ),
     "pass_combat_intrigue": _row(_V.PASS, _S.TURN, variant="combat"),
     "pass_endgame_intrigue": _row(_V.PASS, _S.TURN, variant="endgame"),
     "play_turn_start_card": _row(_V.PLAY, _S.TURN, _T.PERSONAL_CARD),
@@ -512,6 +520,15 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "choose_intrigue_discard": _row(_V.DISCARD, _S.INTRIGUE, _T.PERSONAL_CARD),
     "detonate_shield_wall": _row(_V.DESTROY_SHIELD_WALL, _S.INTRIGUE),
     "keep_shield_wall": _row(_V.DECLINE, _S.INTRIGUE, of=_V.DESTROY_SHIELD_WALL),
+    # Rise of Ix's Dreadnought icon ("you may commission", [Rise of Ix p. 6]),
+    # as a recruit: a new verb would widen the observation's effect-pick verb
+    # segment (``len(Verb)``).
+    "commission_intrigue_dreadnought": _row(
+        _V.RECRUIT, _S.INTRIGUE, variant="dreadnought"
+    ),
+    "decline_intrigue_dreadnought": _row(
+        _V.DECLINE, _S.INTRIGUE, of=_V.RECRUIT, variant="dreadnought"
+    ),
     "deploy_intrigue_troops": _row(_V.DEPLOY, _S.INTRIGUE, _T.UNITS),
     "retreat_intrigue_troops": _row(_V.RETREAT, _S.INTRIGUE, _T.UNITS),
     "lose_intrigue_troop": _row(_V.LOSE_UNIT, _S.INTRIGUE, _T.UNITS),

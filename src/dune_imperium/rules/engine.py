@@ -125,6 +125,8 @@ from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
     apply_commander_deployment,
     apply_commander_withdrawal,
+    apply_dreadnought_deployment,
+    apply_dreadnought_withdrawal,
     apply_troop_withdrawal,
     record_deployment_peak,
     settle_finishing_agent_turn,
@@ -469,6 +471,8 @@ def _apply_deployment(state: GameState, action: DomainAction) -> RuleResult:
         return apply_reveal_deployment(state, action)
     if action.action_id == "deploy_commanders":
         return apply_commander_deployment(state, action)
+    if action.action_id == "deploy_dreadnoughts":
+        return apply_dreadnought_deployment(state, action)
     return apply_combat_deployment(state, action)
 
 
@@ -726,6 +730,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "choose_intrigue_discard": apply_intrigue_choice,
     "detonate_shield_wall": apply_intrigue_choice,
     "keep_shield_wall": apply_intrigue_choice,
+    "commission_intrigue_dreadnought": apply_intrigue_choice,
+    "decline_intrigue_dreadnought": apply_intrigue_choice,
     "deploy_intrigue_troops": apply_intrigue_choice,
     "trash_intrigue_card": apply_intrigue_choice,
     "decline_intrigue_trash": apply_intrigue_choice,
@@ -792,6 +798,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "withdraw_troops": apply_troop_withdrawal,
     "deploy_commanders": _apply_deployment,
     "withdraw_commanders": apply_commander_withdrawal,
+    "deploy_dreadnoughts": _apply_deployment,
+    "withdraw_dreadnoughts": apply_dreadnought_withdrawal,
     "finish_agent_turn": apply_agent_turn_finish,
     # Immortality: the Bene Tleilax board and Family Atomics
     "choose_research_space": apply_research_advance,

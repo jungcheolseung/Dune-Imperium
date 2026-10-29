@@ -684,6 +684,8 @@ MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
 MAX_COMMANDER_DEPLOYMENT = 7
+# Two dreadnoughts a seat [Rise of Ix p. 6].
+MAX_DREADNOUGHT_DEPLOYMENT = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -1034,6 +1036,11 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
     )
     templates.append(ActionTemplate(action_id="finish_agent_turn"))
+    if config.rise_of_ix:
+        # Rise of Ix's dreadnought, a third kind of unit to deploy and take
+        # back [Rise of Ix p. 6], and the Dreadnought icon an Intrigue slot
+        # offers; no catalog without the expansion holds these rows.
+        templates.extend(_rise_of_ix_unit_templates())
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
     elif content.base_game is BaseGame.IMPERIUM:
@@ -1978,6 +1985,10 @@ _RECALL_AGENT_EFFECTS: Final = (
 _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
     "PlaceSpy": ("recall_spy_for_intrigue", "decline_intrigue_spy"),
     "DestroyShieldWall": ("detonate_shield_wall", "keep_shield_wall"),
+    "CommissionDreadnought": (
+        "commission_intrigue_dreadnought",
+        "decline_intrigue_dreadnought",
+    ),
     "PeekTopCard": (
         "put_back_top_card",
         "discard_top_card",
@@ -2625,6 +2636,27 @@ def _leader_faces(config: RulesetConfig) -> tuple[str, ...]:
         if leader.alternate_face_id is not None:
             faces.setdefault(leader.alternate_face_id, None)
     return tuple(faces)
+
+
+def _rise_of_ix_unit_templates() -> tuple[ActionTemplate, ...]:
+    """Rise of Ix's dreadnought rows (``rules.combat_deployment``,
+    ``rules.dreadnought_commission``): the deployment of garrison dreadnoughts
+    and its withdrawal, a count each (a seat has two), and an Intrigue slot's
+    commission and its refusal."""
+
+    templates: list[ActionTemplate] = [
+        ActionTemplate(action_id=action_id, arguments=(("count", count),))
+        for action_id in ("deploy_dreadnoughts", "withdraw_dreadnoughts")
+        for count in range(1, MAX_DREADNOUGHT_DEPLOYMENT + 1)
+    ]
+    templates.extend(
+        ActionTemplate(action_id=action_id)
+        for action_id in (
+            "commission_intrigue_dreadnought",
+            "decline_intrigue_dreadnought",
+        )
+    )
+    return tuple(templates)
 
 
 def _unit_loss_templates() -> tuple[ActionTemplate, ...]:

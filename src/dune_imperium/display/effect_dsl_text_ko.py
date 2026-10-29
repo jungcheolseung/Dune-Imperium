@@ -60,6 +60,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CommandReached,
+    CommissionDreadnought,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -1075,6 +1076,12 @@ def reward_text_ko(reward: Reward) -> str:
             # The original game's Mentat: no Korean source names it yet, so
             # the term stays English (module docstring).
             return "장소에서 Mentat 가져옴"
+        case CommissionDreadnought():
+            # Rise of Ix's Dreadnought icon: no Korean source names the
+            # dreadnought or the commission yet (``glossary-ko.md`` has no
+            # entry; the official Korean edition has no Rise of Ix), so the
+            # line stays English rather than invented (module docstring).
+            return "Commission a dreadnought"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "당신 {leader}의 {signet_ring} 능력 사용"

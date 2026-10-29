@@ -90,10 +90,15 @@ TURN_KEYS: Final = frozenset(
         "board_icons",
         "combat_commanders_deployed",
         "combat_commanders_withdrawable",
+        # Rise of Ix's dreadnoughts, the turn's third kind of unit
+        # (``combat_deployment``).
+        "combat_dreadnoughts_deployed",
+        "combat_dreadnoughts_withdrawable",
         "combat_troops_deployed",
         "combat_troops_withdrawable",
         "commanders_recruited",
         "cost_option",
+        "dreadnoughts_commissioned",
         "espionage_spy_recalled",
         "existing_troop_deployment_limit",
         "finish_deployment_window",
