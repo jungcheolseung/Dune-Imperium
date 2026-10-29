@@ -848,6 +848,40 @@ class RecallSpyIntelligenceAbility(DeferredAbility):
 # ===========================================================================
 
 
+def gain_any_two_value(p: Profile, label: str) -> Summer:
+    """The ``ValueForPlayer`` of the "gain 1 Influence with two different
+    factions" rewards (Propaganda 1st, Machinations 1st: the same code).
+
+    ``FactionList`` values of ``GetGainInfluenceValue(f, 1)``, ordered
+    descending, the top two summed (``Enumerable.Sum``: left to right).
+    """
+
+    values = [p.gain_influence_value(f, 1, -1, False).sum for f in FACTIONS]
+    top = sorted(values, reverse=True)[:2]  # OrderByDescending.Take(2)
+    v = Summer()
+    v.add(label, _dsum(top))
+    return v
+
+
+def gain_any_two_evaluate(p: Profile, request: Request, label: str) -> Answer:
+    """The ``Evaluate`` of the same rewards (Propaganda 1st @0x4b6f3f0,
+    Machinations 1st @0x4b977b0).
+
+    TRACK targets shuffled (``p.rng``), each with its own summer
+    (``Dictionary.TryAdd`` keeps insertion order), the two best by a
+    stable descending sort, value ``Math.Max(0.5, sum)``. The House
+    Hagal branch is unreachable.
+    """
+
+    tracks = list(_targets(request, Kind.TRACK))
+    p.rng.shuffle(tracks)
+    scored = [(p.gain_influence_value(t.ref, 1, -1, False), t) for t in tracks]
+    top = sorted(scored, key=lambda st: st[0].sum, reverse=True)[:2]
+    value = _math_max(0.5, _dsum([s.sum for s, _ in top]))
+    refs = tuple(t.ref for _, t in top)
+    return Answer(value, (refs,), label)
+
+
 @port(
     "worm.canis.abilities.ConflictAbilities.Uprising.GainAnyTwoInfluenceConflictAbility"
 )
@@ -860,34 +894,16 @@ class GainAnyTwoInfluenceConflictAbility(ConflictAbility):
     def value_for_player(
         self, p: Profile, with_entities: Sequence[Entity] = ()
     ) -> Summer:
-        """``GainAnyTwoInfluenceConflictAbility::ValueForPlayer`` @0x4b6ef00.
+        """``GainAnyTwoInfluenceConflictAbility::ValueForPlayer`` @0x4b6ef00
+        (``gain_any_two_value``)."""
 
-        ``FactionList`` values of ``GetGainInfluenceValue(f, 1)``, ordered
-        descending, the top two summed (``Enumerable.Sum``: left to right).
-        """
-
-        values = [p.gain_influence_value(f, 1, -1, False).sum for f in FACTIONS]
-        top = sorted(values, reverse=True)[:2]  # OrderByDescending.Take(2)
-        v = Summer()
-        v.add("GainAnyTwoInfluenceConflict", _dsum(top))
-        return v
+        return gain_any_two_value(p, "GainAnyTwoInfluenceConflict")
 
     def evaluate(self, p: Profile, request: Request) -> Answer:
-        """``GainAnyTwoInfluenceConflictAbility::Evaluate`` @0x4b6f3f0.
+        """``GainAnyTwoInfluenceConflictAbility::Evaluate`` @0x4b6f3f0
+        (``gain_any_two_evaluate``)."""
 
-        TRACK targets shuffled (``p.rng``), each with its own summer
-        (``Dictionary.TryAdd`` keeps insertion order), the two best by a
-        stable descending sort, value ``Math.Max(0.5, sum)``. The House
-        Hagal branch is unreachable.
-        """
-
-        tracks = list(_targets(request, Kind.TRACK))
-        p.rng.shuffle(tracks)
-        scored = [(p.gain_influence_value(t.ref, 1, -1, False), t) for t in tracks]
-        top = sorted(scored, key=lambda st: st[0].sum, reverse=True)[:2]
-        value = _math_max(0.5, _dsum([s.sum for s, _ in top]))
-        refs = tuple(t.ref for _, t in top)
-        return Answer(value, (refs,), "GainAnyTwoInfluenceConflict")
+        return gain_any_two_evaluate(p, request, "GainAnyTwoInfluenceConflict")
 
 
 def place_reward_ability(conflict: Entity, place: int) -> ConflictAbility | None:
@@ -914,7 +930,10 @@ def granted_reward_abilities(conflict: Entity, place: int) -> tuple[Ability, ...
     - ``EconomicSupremacyFirstAbility`` (Epic's Conflict III, no reward
       archetypes): the card's own ``EconomicSupremacySolariAbility`` and
       ``…SpiceAbility`` (spec/epic-goto11-promo-draft.md §2.4);
-    - anything else (ES 2nd/3rd: plain gains): nothing.
+    - anything else (ES 2nd/3rd: plain gains; every ``BaseSet`` place ability
+      of the original game, whose ``BeginExecution`` gains everything itself
+      and asks its choices through its own ``Evaluate``/``EvaluateFaction``,
+      ``abilities/original_conflicts.py``): nothing.
 
     Static content only: the ``GainAnyInfluenceConflictAbility`` charge a
     played Pivotal Gambit appends at run time to the

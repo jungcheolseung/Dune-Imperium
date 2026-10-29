@@ -103,19 +103,19 @@ from dune_imperium.agents.app_ai.abilities.board import (
     Harvest4ContractAbility,
 )
 from dune_imperium.agents.app_ai.abilities.intrigue import (
-    _HIGH_COUNCIL,
-    _SWORDMASTER,
     IntrigueAbility,
     StrengthIntrigueAbility,
     _Choice,
     _current_conflict,
     _deploy_window,
     _EndgameIntrigueAbility,
+    _high_council,
     _in_player_turn,
     _intrigue_hand_count,
     _open_to,
     _placement_value,
     _space_cost,
+    _swordmaster,
     _trash_targets,
     intrigue_deploy_troops,
 )
@@ -2098,10 +2098,12 @@ def _contingency_plan_short(p: Profile) -> bool:
         return False
     if not (_in_player_turn(p, _UNDETERMINED) and me.agents_available > 0):
         return False
-    if _short_of(p, _SWORDMASTER):
+    if _short_of(p, _swordmaster(p)):
         return True
     return (
-        p.ctx.round_number <= 5 and not me.high_council and _short_of(p, _HIGH_COUNCIL)
+        p.ctx.round_number <= 5
+        and not me.high_council
+        and _short_of(p, _high_council(p))
     )
 
 

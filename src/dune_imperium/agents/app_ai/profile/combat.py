@@ -75,25 +75,8 @@ _PLACE_SPY_CUSTOM = (
 # app's own mismatch, spec §14.4; moot: Trade Dispute is never in the pool).
 _TRASH_CUSTOM = "worm.canis.abilities.ActivatedAbilities.TrashCustomAbility"
 
-# ``ConflictPlace`` of a conflict card's abilities (set by
-# ``GenericConflictAbility::.ctor @0x4b70df0``). The card-level extras
-# (``Recall2SpiesVPAbility``, ``Pay*ToGain1VPAbility``) come after the three
-# generic abilities, so a ``FirstOrDefault(place == n)`` always lands on a
-# generic one; they are given place 0 here.
-_CONFLICT_PLACES: dict[str, int] = {
-    "worm.canis.abilities.ConflictAbilities.Uprising.GenericConflictFirstAbility": 1,
-    "worm.canis.abilities.ConflictAbilities.Uprising.GenericConflictSecondAbility": 2,
-    "worm.canis.abilities.ConflictAbilities.Uprising.GenericConflictThirdAbility": 3,
-    # Epic's Economic Supremacy (spec/epic-goto11-promo-draft.md §2.4): the
-    # place ctors 0x4b78db0 / 0x4b7a920 / 0x4b7c980; its Solari and Spice
-    # charges have no ConflictPlace attribute (0).
-    "worm.canis.abilities.ConflictAbilities.RiseOfIx.EconomicSupremacyFirstAbility": 1,
-    "worm.canis.abilities.ConflictAbilities.RiseOfIx.EconomicSupremacySecondAbility": 2,
-    "worm.canis.abilities.ConflictAbilities.RiseOfIx.EconomicSupremacyThirdAbility": 3,
-}
-
 # Direct subclasses of ``PlayAbilities.StrengthIntrigueAbility`` dealt in an
-# Uprising game, with Immortality's two (type listing in
+# Uprising or original game, with Immortality's two (type listing in
 # ``worm-canis.dll.cs``; none has a subclass): the abilities
 # ``OfType<StrengthIntrigueAbility>()`` keeps.
 _STRENGTH_INTRIGUE_ABILITIES: frozenset[str] = frozenset(
@@ -101,6 +84,12 @@ _STRENGTH_INTRIGUE_ABILITIES: frozenset[str] = frozenset(
         "worm.canis.abilities.PlayAbilities.Immortality.CounterattackCombatAbility",
         "worm.canis.abilities.PlayAbilities.Immortality.ViciousTalentsAbility",
         "worm.canis.abilities.PlayAbilities.BaseSet.BackedbyCHOAMCombatAbility",
+        # The original game's Strength cards (abilities/original_intrigue.py).
+        "worm.canis.abilities.PlayAbilities.BaseSet.AlliedArmadaAbility",
+        "worm.canis.abilities.PlayAbilities.BaseSet.AmbushAbility",
+        "worm.canis.abilities.PlayAbilities.BaseSet.MasterTacticianAbility",
+        "worm.canis.abilities.PlayAbilities.BaseSet.PrivateArmyAbility",
+        "worm.canis.abilities.PlayAbilities.BaseSet.TiebreakerAbility",
         "worm.canis.abilities.PlayAbilities.Uprising.ContingencyPlanCombatAbility",
         "worm.canis.abilities.PlayAbilities.Uprising.DevourAbility",
         "worm.canis.abilities.PlayAbilities.Uprising.FindWeaknessAbility",
@@ -154,12 +143,11 @@ _GURNEY = "LeaderArchetypes.Uprising.GurneyHalleckLeader"
 _CHANI_CLEVER_TACTICIAN = "chani_clever_tactician"
 _GO_TO_GROUND = "go_to_ground"
 _ECONOMIC_POSITIONING = "economic_positioning"  # our Intrigue card id
-# Our ids of the board spaces the potentials look up
-# (``BoardSpaces.FirstOrDefault(IsHeighlinerSpace)`` / ``ArchID ==
-# Uprising.HaggaBasinUP`` / ``Uprising.DeepDesert``): always on our board.
-_HEIGHLINER = "heighliner"
-_HAGGA_BASIN = "hagga_basin"
-_DEEP_DESERT = "deep_desert"
+# The space archetypes the worm potentials look up (``ArchID ==
+# Uprising.HaggaBasinUP`` / ``Uprising.DeepDesert``): only on the Uprising
+# board; the Heighliner is ``catalog.heighliner_space_id`` on every board.
+_HAGGA_BASIN = frozenset({"SpaceArchetypes.Uprising.HaggaBasinUP"})
+_DEEP_DESERT = frozenset({"SpaceArchetypes.Uprising.DeepDesert"})
 # ``WormUnit`` vslot 35 ``get_Strength``: a troop is worth 2.
 _TROOP_STRENGTH = 2
 
@@ -316,13 +304,21 @@ class CombatMixin(ProfileCore):
         return 0 if conflict is None else conflict.int_attr("ConflictLevel", 0)
 
     def _conflict_abilities(self, conflict: Entity) -> list[tuple[int, Ability]]:
-        """``cc.Abilities`` in order, each with its ``ConflictPlace``."""
+        """``cc.Abilities`` in order, each with its ``ConflictPlace``.
+
+        The place is the one the class's ``.ctor`` sets, which the port keeps
+        as ``ConflictAbility.place`` (no other ability has one): Uprising's
+        ``GenericConflict*Ability`` 0x4b70df0, Economic Supremacy's 0x4b78db0 /
+        0x4b7a920 / 0x4b7c980, the original game's
+        ``BaseSet.<Card>First/Second/ThirdAbility``. The
+        card-level extras (``Recall2SpiesVPAbility``, ``Pay*ToGain1VPAbility``)
+        and Economic Supremacy's Solari and Spice charges set none: 0, so a
+        ``FirstOrDefault(place == n)`` always lands on a place class.
+        """
 
         return [
-            (_CONFLICT_PLACES.get(ability_id, 0), ability)
-            for ability_id, ability in zip(
-                conflict.ability_ids, abilities_of(conflict), strict=True
-            )
+            (getattr(ability, "place", None) or 0, ability)
+            for ability in abilities_of(conflict)
         ]
 
     def _conflict_ability_for_place(self, place: int) -> Ability | None:
@@ -457,9 +453,21 @@ class CombatMixin(ProfileCore):
         w += min(max(0.0, (_garrison_troops(me) - 3) * 0.33), 2.0)
         # IsSetEnabled(RiseOfIx) is false: dreadnought, Negotiated Withdrawal
         # and Overpowering Dread terms skipped. Rapid Mobilization and Staged
-        # Incident (BaseSet) cannot be held: r = s = 1.0.
-        r = 1.0
+        # Incident (BaseSet, the original game's cards; spec §6): r is
+        # ``RapidMobilizationDeployMod`` with the first held, s is
+        # ``StagedIncidentDeployMod`` with the second held and
+        # ``StagedIncidentDeployedTroopThreshold >= ConflictTroops``.
+        r = (
+            self.C.RapidMobilizationDeployMod
+            if self._holds_intrigue("rapid_mobilization")
+            else 1.0
+        )
         s = 1.0
+        if (
+            self._holds_intrigue("staged_incident")
+            and self.C.StagedIncidentDeployedTroopThreshold >= _conflict_troops(me)
+        ):
+            s = self.C.StagedIncidentDeployMod
         w = w * (r * s)
         # Economic Positioning (Immortality, spec/immortality.md §2.9): not
         # gated by the set (the card exists only with it).
@@ -561,6 +569,187 @@ class CombatMixin(ProfileCore):
 
         return _UPRISING_CONFLICTS
 
+    def _uprising_conflict_average(
+        self, avg: Summer, conflict_level: int, four: bool
+    ) -> None:
+        """The ``IsSetEnabled(Uprising)`` branch of ``RelativeConflictValue``
+        (``GetUprisingConflicts`` at 0x4900bc0): the average reward of every
+        Uprising Conflict card of the level, from their reward archetypes."""
+
+        pool = [
+            c
+            for c in self.uprising_conflicts()
+            if _int(c, "ConflictLevel") == conflict_level
+        ]
+        take = 3 if four else 2  # Take(isFourPlayer | 2)
+        rewards = [
+            ARCHETYPES[reward_id]
+            for c in pool
+            for reward_id in _strings(c, "ConflictRewardArchetypes")[:take]
+        ]
+        for name, attr in _RESOURCE_NAMES:
+            n = sum(_int(r, name) for r in rewards)
+            if n > 0:
+                if attr is None:
+                    raise NotImplementedError(f"no Attr for reward {name}")
+                avg.add(f"{name} * {n}", self.resource_value(attr, n, False))
+        vp1 = self.victory_point_value(1)
+        n = sum(_int(r, "VictoryPoints") for r in rewards)
+        if n > 0:
+            avg.add(f"VP * {n}", n * vp1)
+        n = sum(_int(r, "IntrigueCard") for r in rewards)
+        if n > 0:
+            avg.add(f"Intrigue * {n}", self.intrigue_value() * n)
+        influence: list[tuple[str, int]] = []
+        for r in rewards:
+            pairs = r.attributes.get("FactionInfluence")
+            if isinstance(pairs, Mapping):
+                influence.extend(
+                    (_APP_FACTION_TO_OURS[faction], int(amount))
+                    for faction, amount in pairs.items()
+                )
+        if influence:
+            total = 0.0
+            for faction, amount in influence:  # b__19
+                total += self.gain_influence_value(faction, amount, -1, False).sum
+            avg.add("Specific Influence", total)
+        n = sum(_int(r, "Troops") for r in rewards)
+        if n > 0:
+            avg.add(f"Troop * {n}", self.resource_value(Attr.TROOPS, n, False))
+        # lea eax,[rax+rax*2]: a flat 3 per card, always added.
+        avg.add("Battle Icon Value", float(3 * len(pool)))
+        ids = [i for r in rewards for i in _strings(r, "CustomAbilityIDs")]
+        k = ids.count(_GAIN_ANY_INFLUENCE) + 2 * ids.count(_GAIN_ANY_TWO_INFLUENCE)
+        if k > 0:
+            avg.add(
+                f"Any Influence * {k}",
+                k * self.gain_influence_value(ANY_FACTION, 1, -1, False).sum,
+            )
+        ids = [
+            i for i in ids if i not in (_GAIN_ANY_INFLUENCE, _GAIN_ANY_TWO_INFLUENCE)
+        ]
+        n = ids.count(_TAKE_CONTROL)
+        if n > 0:
+            control_solari = self.control_solari_value()
+            avg.add(
+                f"Take Control * {n}",
+                n
+                * (
+                    (control_solari + control_solari + self.control_spice_value()) / 3.0
+                ),
+            )
+            ids = [i for i in ids if i != _TAKE_CONTROL]
+        n = ids.count(_PLACE_SPY_CUSTOM)
+        if n > 0:
+            # The app's log label is the copy-pasted "Take Control * ".
+            avg.add(f"Take Control * {n}", n * self.spy_value().sum)
+            ids = [i for i in ids if i != _PLACE_SPY_CUSTOM]
+        n = ids.count(_TRASH_CUSTOM)
+        if n > 0:
+            # Valued with SpyValue (the app's copy-paste).
+            avg.add(f"Trash * {n}", n * self.spy_value().sum)
+            ids = [i for i in ids if i != _TRASH_CUSTOM]
+        if ids:
+            # f64 0.5 (RelativeConflictValue): pay-X-for-VP style rewards.
+            avg.add(f"Costed Ability * {len(ids)}", vp1 * len(ids) * 0.5)
+        _multiply(avg, "Avg Conflict Value", _ieee_div(1.0, len(pool)))
+
+    def _literal_conflict_average(
+        self, avg: Summer, conflict_level: int, four: bool
+    ) -> None:
+        """The ``IsSetEnabled(Uprising)``-false branch of
+        ``RelativeConflictValue`` (``je 0x4900ee5``; the original game).
+
+        The level's average reward from hard-coded tables (spec §5.2 only
+        summarises them), read from the disassembly of 0x4900490. Each level
+        is a sum of prices at literal amounts (the total of that level's
+        printed rewards; ``isFourPlayer`` picks a bigger table, ``cmp byte
+        ptr [DisplayClass112_0 + 0x10], 1``), scaled to one card by
+        ``Multiply(avg, 0.25 / 0.1 / 0.25, "<n> Conflict <level> cards")``
+        (the 4 / 10 / 4 cards of the levels [DI p. 3]). Any other level adds
+        nothing: the average stays 0. The ``f64`` multipliers and ``addsd
+        xmm0, xmm0`` doublings are the app code's own literals.
+
+        Level III prices ``GetResourceValue(Solari, 2)`` and
+        ``GetResourceValue(Spice, 1)`` under the labels "ControlSolariValue *
+        2" and "ControlSpiceValue" (the app's copy-paste: not the control
+        values); level II uses the control values.
+        """
+
+        def any_influence() -> float:
+            # GetGainInfluenceValue(Factions.None, 1, -1, false).Sum
+            return self.gain_influence_value(ANY_FACTION, 1, -1, False).sum
+
+        if conflict_level == 1:
+            # 0x4900f0b (four players) / 0x4902d07
+            solari = 11 if four else 7
+            spice = 5 if four else 3
+            avg.add(
+                f"SolariValue * {solari}",
+                self.resource_value(Attr.SOLARI, solari, False),
+            )
+            avg.add(
+                f"SpiceValue * {spice}",
+                self.resource_value(Attr.SPICE, 1, False) * float(spice),
+            )
+            avg.add("WaterValue", self.resource_value(Attr.WATER, 1, False))
+            avg.add("IntrigueValue", self.intrigue_value())
+            vp = self.victory_point_value(1)
+            avg.add("VPValue * 2", vp + vp)
+            influence = any_influence()
+            avg.add("RankAnyValue * 2", influence + influence)
+            _multiply(avg, "4 Conflict I cards", 0.25)
+        elif conflict_level == 2:
+            # 0x490193f (four players) / 0x49028a3, then the shared 0x49029c4
+            solari = 26 if four else 20
+            spice = 13 if four else 9
+            water = 8 if four else 6
+            intrigue = 8 if four else 7
+            avg.add(
+                f"SolariValue * {solari}",
+                self.resource_value(Attr.SOLARI, solari, False),
+            )
+            avg.add(
+                f"SpiceValue * {spice}",
+                self.resource_value(Attr.SPICE, 1, False) * float(spice),
+            )
+            avg.add(
+                f"WaterValue * {water}",
+                self.resource_value(Attr.WATER, 1, False) * float(water),
+            )
+            avg.add(
+                f"IntrigueValue * {intrigue}", self.intrigue_value() * float(intrigue)
+            )
+            avg.add("VPValue * 5", self.victory_point_value(1) * 5.0)
+            avg.add("RankAnyValue * 3", any_influence() * 3.0)
+            control = self.control_solari_value()
+            avg.add("ControlSolariValue * 2", control + control)
+            avg.add("ControlSpiceValue", self.control_spice_value())
+            avg.add("MentatValue", self.mentat_value())
+            avg.add("TrashValue", self.trash_card_value())
+            _multiply(avg, "10 Conflict II cards", 0.1)
+        elif conflict_level == 3:
+            # 0x4901a76 (four players) / 0x4902b1d, then the shared 0x4902b96
+            if four:
+                avg.add("SolariValue * 2", self.resource_value(Attr.SOLARI, 2, False))
+            spice = 22 if four else 13
+            intrigue = 5 if four else 4
+            avg.add(
+                f"SpiceValue * {spice}",
+                self.resource_value(Attr.SPICE, 1, False) * float(spice),
+            )
+            avg.add(
+                f"IntrigueValue * {intrigue}", self.intrigue_value() * float(intrigue)
+            )
+            avg.add("VPValue * 6", self.victory_point_value(1) * 6.0)
+            influence = any_influence()
+            avg.add("RankAnyValue * 2", influence + influence)
+            avg.add(
+                "ControlSolariValue * 2", self.resource_value(Attr.SOLARI, 2, False)
+            )
+            avg.add("ControlSpiceValue", self.resource_value(Attr.SPICE, 1, False))
+            _multiply(avg, "4 Conflict III cards", 0.25)
+
     def relative_conflict_value(self) -> Summer:
         """``RelativeConflictValue(false) @0x4900490`` — spec §5.2.
 
@@ -570,6 +759,10 @@ class CombatMixin(ProfileCore):
         Economic Supremacy (a Rise of Ix archetype) is never in that pool: as
         the current card it is divided by the four Uprising level-III cards'
         average (spec/epic-goto11-promo-draft.md §2.4).
+
+        In the original game (``IsSetEnabled(Uprising)`` false, ``AppContext.
+        uprising``) the average is the app's hard-coded per-level table
+        (``_literal_conflict_average``), not the Uprising pool.
         """
 
         four = self._is_four_player()
@@ -578,93 +771,26 @@ class CombatMixin(ProfileCore):
         cc = self._current_conflict()
         if cc is not None:
             conflict_level = cc.int_attr("ConflictLevel", 0)
-            # IsSetEnabled(Uprising) is true: the Uprising branch.
-            pool = [
-                c
-                for c in self.uprising_conflicts()
-                if _int(c, "ConflictLevel") == conflict_level
-            ]
-            take = 3 if four else 2  # Take(isFourPlayer | 2)
-            rewards = [
-                ARCHETYPES[reward_id]
-                for c in pool
-                for reward_id in _strings(c, "ConflictRewardArchetypes")[:take]
-            ]
-            for name, attr in _RESOURCE_NAMES:
-                n = sum(_int(r, name) for r in rewards)
-                if n > 0:
-                    if attr is None:
-                        raise NotImplementedError(f"no Attr for reward {name}")
-                    avg.add(f"{name} * {n}", self.resource_value(attr, n, False))
-            vp1 = self.victory_point_value(1)
-            n = sum(_int(r, "VictoryPoints") for r in rewards)
-            if n > 0:
-                avg.add(f"VP * {n}", n * vp1)
-            n = sum(_int(r, "IntrigueCard") for r in rewards)
-            if n > 0:
-                avg.add(f"Intrigue * {n}", self.intrigue_value() * n)
-            influence: list[tuple[str, int]] = []
-            for r in rewards:
-                pairs = r.attributes.get("FactionInfluence")
-                if isinstance(pairs, Mapping):
-                    influence.extend(
-                        (_APP_FACTION_TO_OURS[faction], int(amount))
-                        for faction, amount in pairs.items()
-                    )
-            if influence:
-                total = 0.0
-                for faction, amount in influence:  # b__19
-                    total += self.gain_influence_value(faction, amount, -1, False).sum
-                avg.add("Specific Influence", total)
-            n = sum(_int(r, "Troops") for r in rewards)
-            if n > 0:
-                avg.add(f"Troop * {n}", self.resource_value(Attr.TROOPS, n, False))
-            # lea eax,[rax+rax*2]: a flat 3 per card, always added.
-            avg.add("Battle Icon Value", float(3 * len(pool)))
-            ids = [i for r in rewards for i in _strings(r, "CustomAbilityIDs")]
-            k = ids.count(_GAIN_ANY_INFLUENCE) + 2 * ids.count(_GAIN_ANY_TWO_INFLUENCE)
-            if k > 0:
-                avg.add(
-                    f"Any Influence * {k}",
-                    k * self.gain_influence_value(ANY_FACTION, 1, -1, False).sum,
-                )
-            ids = [
-                i
-                for i in ids
-                if i not in (_GAIN_ANY_INFLUENCE, _GAIN_ANY_TWO_INFLUENCE)
-            ]
-            n = ids.count(_TAKE_CONTROL)
-            if n > 0:
-                control_solari = self.control_solari_value()
-                avg.add(
-                    f"Take Control * {n}",
-                    n
-                    * (
-                        (control_solari + control_solari + self.control_spice_value())
-                        / 3.0
-                    ),
-                )
-                ids = [i for i in ids if i != _TAKE_CONTROL]
-            n = ids.count(_PLACE_SPY_CUSTOM)
-            if n > 0:
-                # The app's log label is the copy-pasted "Take Control * ".
-                avg.add(f"Take Control * {n}", n * self.spy_value().sum)
-                ids = [i for i in ids if i != _PLACE_SPY_CUSTOM]
-            n = ids.count(_TRASH_CUSTOM)
-            if n > 0:
-                # Valued with SpyValue (the app's copy-paste).
-                avg.add(f"Trash * {n}", n * self.spy_value().sum)
-                ids = [i for i in ids if i != _TRASH_CUSTOM]
-            if ids:
-                # f64 0.5 (RelativeConflictValue): pay-X-for-VP style rewards.
-                avg.add(f"Costed Ability * {len(ids)}", vp1 * len(ids) * 0.5)
-            _multiply(avg, "Avg Conflict Value", _ieee_div(1.0, len(pool)))
+            if self.ctx.uprising:  # IsSetEnabled(Uprising = 4)
+                self._uprising_conflict_average(avg, conflict_level, four)
+            else:
+                self._literal_conflict_average(avg, conflict_level, four)
         cc = self._current_conflict()
         if cc is not None:
             res.merge(self._conflict_value(cc))  # MergePrependReason "CCV "
         _multiply(res, "Avg Conflict Value", _ieee_div(1.0, avg.sum))
-        # Demand Respect, To the Victor (BaseSet), Strategic Push and Windtraps
-        # (Rise of Ix) cannot be held in an Uprising game.
+        # Demand Respect and To the Victor (BaseSet): held in the original
+        # game only. Strategic Push and Windtraps (Rise of Ix) cannot be held
+        # yet.
+        if self._holds_intrigue("demand_respect"):
+            res.add(
+                "Demand Respect Influence",
+                self.gain_influence_value(ANY_FACTION, 1, -1, False).sum + 1.0,
+            )
+        if self._holds_intrigue("to_the_victor"):
+            res.add(
+                "To the Victor Spice", self.resource_value(Attr.SPICE, 1, False) * 3.0
+            )
         # Bloodlines Planetary Array (bloodlines-systems.md §9, D58; the
         # Windtraps precedent): a draw on a Conflict win. Tech Module only.
         if self.ctx.has_tech("planetary_array"):
@@ -701,7 +827,9 @@ class CombatMixin(ProfileCore):
             s.add("Heighliner Potential", self.C.ConflictInterestHeighlinerPotential)
         if self.has_worm_potential():
             s.add("Worm Potential", self.C.ConflictInterestWormPotential)
-        # Reinforcements (BaseSet) cannot be held in an Uprising game.
+        # Reinforcements (BaseSet, the original game's card; spec §5).
+        if self._holds_intrigue("reinforcements") and me.resources.solari >= 3:
+            s.add("Reinforcements", self.C.ReinforcementsConflictInterestBonus)
         return s
 
     def _intrigue_troop_value(self) -> int:
@@ -913,8 +1041,23 @@ class CombatMixin(ProfileCore):
             if not ok:
                 break
             deploy += 1
-        # Baron Harkonnen's Masterstroke (BaseSet) and Diversion (Rise of Ix)
-        # cannot occur. Go to Ground: keep one troop in to stay playable.
+        if self._baron_holds_secret_factions():
+            # The original Baron Harkonnen (0x49167cc-0x4916fb5): when this
+            # turn's exhausted units in the Conflict (``b__118_11``
+            # ``IsExhausted``; ours: ``units_deployed_turn``, UNTRACED when
+            # the app readies them) and the troops chosen make exactly 3, one
+            # more troop left over goes in (" with Masterstroke") while the
+            # list is under ``max``; the Strength-3 unit it may swap out
+            # (``b__118_12``, a dreadnought) is never in an original game.
+            if (
+                me.units_deployed_turn + deploy == 3
+                and units - deploy > 0
+                and deploy < max_
+            ):
+                deploy += 1
+            return deploy
+        # Diversion (Rise of Ix) cannot occur. Go to Ground: keep one troop in
+        # to stay playable.
         if (
             self._holds_intrigue(_GO_TO_GROUND)
             and _conflict_troops(me) == 0
@@ -925,6 +1068,18 @@ class CombatMixin(ProfileCore):
             # unit offered there is no deploy prompt at all.
             deploy += 1
         return deploy
+
+    def _baron_holds_secret_factions(self) -> bool:
+        """``Leader.ArchID == BaronVladimirHarkonnen && PrivateInformation
+        .Has(BaronHarkonnenSecretFactions)``: his Factions chosen and not yet
+        revealed by a Masterstroke."""
+
+        me = self.ctx.me
+        return (
+            me.leader_id == "baron_vladimir_harkonnen"
+            and bool(me.masterstroke_factions)
+            and not me.masterstroke_revealed
+        )
 
     def _leader_short(self) -> str | None:
         me = self.ctx.me
@@ -1070,9 +1225,10 @@ class CombatMixin(ProfileCore):
         """
 
         ordered = self.ordered_players()
-        space = catalog.space_entity(_HEIGHLINER, self.ctx.board)
+        heighliner = catalog.heighliner_space_id(self.ctx.board)
+        space = catalog.space_entity(heighliner, self.ctx.board)
         spice_cost = space.int_attr("SpiceCost", 0)
-        occupied = self._space_has_agent(_HEIGHLINER)
+        occupied = self._space_has_agent(heighliner)
         for seat in ordered:
             p = self.ctx.player(seat)
             is_me = seat == self.ctx.seat
@@ -1080,18 +1236,24 @@ class CombatMixin(ProfileCore):
                 continue
             # p.IsHagal: never in a 4-player game.
             if occupied and not self._observes(p, space):
-                # Only the AI could still go there, with Infiltrate (BaseSet),
-                # which an Uprising Intrigue hand cannot hold.
-                continue
+                # Only the AI could still go there, with Infiltrate in hand
+                # (``<GetHeighlinerPotentialPlayer>b__126_1``: ArchID ==
+                # BaseSet.Infiltrate; the original game's card).
+                if not is_me or not self._holds_intrigue("infiltrate"):
+                    continue
             if p.agents_available > 0:
                 if not is_me:
                     if any(_has_guild_icon(c) for c in self.ctx.hidden_pool(seat)):
                         return seat
                     continue
-            else:
-                # Urgent Mission (BaseSet) cannot be held: the AI is out too.
+            elif not is_me or not self._holds_intrigue("urgent_mission"):
+                # No Agent left: only the AI, with Urgent Mission in hand
+                # (``b__126_2``: ArchID == BaseSet.UrgentMission).
                 continue
-            # ME: Dispatch an Envoy (BaseSet) cannot be held.
+            # ME: Dispatch an Envoy in hand (``b__126_3``) gives it the Guild
+            # icon; else a Guild-icon hand card.
+            if self._holds_intrigue("dispatch_an_envoy"):
+                return seat
             if any(_has_guild_icon(card_id(card)) for card in self.ctx.hand):
                 return seat
         return None
@@ -1111,14 +1273,18 @@ class CombatMixin(ProfileCore):
         return None
 
     def _worm_potential_a_player(self) -> int | None:
-        """``GetWormPotentialAPlayer @0x491e8d0``: Hagga Basin (``HaggaBasinUP``)."""
+        """``GetWormPotentialAPlayer @0x491e8d0``: Hagga Basin (``HaggaBasinUP``);
+        null on a board without it."""
 
-        return self.worm_potential_player(_HAGGA_BASIN)
+        space_id = catalog.board_space_where(self.ctx.board, _HAGGA_BASIN)
+        return None if space_id is None else self.worm_potential_player(space_id)
 
     def _worm_potential_b_player(self) -> int | None:
-        """``GetWormPotentialBPlayer @0x491ea30``: Deep Desert."""
+        """``GetWormPotentialBPlayer @0x491ea30``: Deep Desert; null on a
+        board without it."""
 
-        return self.worm_potential_player(_DEEP_DESERT)
+        space_id = catalog.board_space_where(self.ctx.board, _DEEP_DESERT)
+        return None if space_id is None else self.worm_potential_player(space_id)
 
     def has_worm_potential(self, seat: int | None = None) -> bool:
         """``HasWormPotential() @0x4914380`` / ``(p) @0x491eb90`` — spec §9.4.

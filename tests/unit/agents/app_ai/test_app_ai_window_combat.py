@@ -50,6 +50,7 @@ COMBAT_KINDS = frozenset(
         "combat_intrigue",
         "combat_reward_optional",
         "combat_reward_distinct_influence",
+        "combat_reward_icons",
         "combat_reward_influence",
         "combat_reward_spy",
         "combat_reward_spy_recall",

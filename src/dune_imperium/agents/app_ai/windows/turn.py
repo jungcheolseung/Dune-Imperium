@@ -109,14 +109,23 @@ from dune_imperium.agents.app_ai.abilities.board import (
 )
 from dune_imperium.agents.app_ai.abilities.generic import AgentAbility, SpaceAbility
 from dune_imperium.agents.app_ai.abilities.immortality import graft_card_evaluate
+from dune_imperium.agents.app_ai.abilities.original_board import (
+    SellMelangeSpaceAbility,
+)
+from dune_imperium.agents.app_ai.abilities.original_imperium import (
+    KwisatzHaderachAbility,
+)
 from dune_imperium.agents.app_ai.abilities.tech import MemocordersAcquiredAbility
 from dune_imperium.agents.app_ai.catalog import (
     BLOODLINES_SPACE_ORDER,
     CARD_ARCHETYPES,
     IMMORTALITY_SPACE_ARCHETYPES,
+    ORIGINAL_SPACE_ARCHETYPES,
     POST_INDEX,
     SPACE_ARCHETYPES,
+    SWORDMASTER_SPACE_ARCHETYPES,
     TECH_ARCHETYPES,
+    agent_entity,
     card_entity,
     space_entity,
     spy_entity,
@@ -126,7 +135,7 @@ from dune_imperium.agents.app_ai.catalog import (
 from dune_imperium.agents.app_ai.choice import default_random_choice
 from dune_imperium.agents.app_ai.context import AppContext, Board, card_id
 from dune_imperium.agents.app_ai.data.archetypes import ARCHETYPES
-from dune_imperium.agents.app_ai.entities import Entity
+from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.profile.bloodlines import space_with_cost_cut
 from dune_imperium.agents.app_ai.windows.common import (
@@ -143,6 +152,7 @@ from dune_imperium.agents.app_ai.windows.common import (
 )
 from dune_imperium.agents.app_ai.windows.intrigue import intrigue_play_sources
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
@@ -151,6 +161,8 @@ from dune_imperium.rules.graft import legal_graft_partner_actions
 
 #: The board set of a 4-player Uprising game (``SetupPhase/<BeginSetup>``).
 _BOARD_SET = "Uprising"
+#: The board set of an original Dune: Imperium game (``Board.original``).
+_ORIGINAL_BOARD_SET = "BaseSet"
 _IMMORTALITY_AA = "worm.canis.abilities.ActivatedAbilities.Immortality."
 #: Playmat abilities (``SetupPhase/<BeginSetup>`` adds them with Immortality,
 #: spec immortality.md §1.4); their owner is never read.
@@ -234,8 +246,27 @@ _SPACE_ARCHETYPE_ORDER: tuple[str, ...] = (
     "SpaceArchetypes.Uprising.SwordmasterUP",  # 644
     "SpaceArchetypes.Immortality.ResearchStationImmortality",  # 649
     "SpaceArchetypes.BaseSet.Arrakeen",  # 650
+    "SpaceArchetypes.BaseSet.Carthag",  # 651
+    "SpaceArchetypes.BaseSet.Conspire",  # 652
+    "SpaceArchetypes.BaseSet.FoldspaceSpace",  # 653
+    "SpaceArchetypes.BaseSet.HaggaBasin",  # 654
+    "SpaceArchetypes.BaseSet.HallofOratory",  # 655
+    "SpaceArchetypes.BaseSet.HardyWarriors",  # 656
+    "SpaceArchetypes.BaseSet.Heighliner",  # 657
+    "SpaceArchetypes.BaseSet.HighCouncil",  # 658
     "SpaceArchetypes.BaseSet.ImperialBasin",  # 659
+    "SpaceArchetypes.BaseSet.Mentat",  # 660
+    "SpaceArchetypes.BaseSet.RallyTroops",  # 661
+    "SpaceArchetypes.BaseSet.ResearchStation",  # 662
     "SpaceArchetypes.BaseSet.Secrets",  # 663
+    "SpaceArchetypes.BaseSet.SecureContract",  # 664
+    "SpaceArchetypes.BaseSet.SelectiveBreeding",  # 665
+    "SpaceArchetypes.BaseSet.SellMelange",  # 666
+    "SpaceArchetypes.BaseSet.SietchTabr",  # 667
+    "SpaceArchetypes.BaseSet.Stillsuits",  # 668
+    "SpaceArchetypes.BaseSet.Swordmaster",  # 669
+    "SpaceArchetypes.BaseSet.TheGreatFlat",  # 670
+    "SpaceArchetypes.BaseSet.Wealth",  # 671
 )
 #: Our space id of each app space archetype (both CHOAM variants).
 _SPACE_OF_ARCHETYPE: dict[str, str] = {
@@ -247,6 +278,10 @@ _SPACE_OF_ARCHETYPE: dict[str, str] = {
     **{
         archetype: space_id
         for space_id, archetype in IMMORTALITY_SPACE_ARCHETYPES.items()
+    },
+    **{
+        archetype: space_id
+        for space_id, archetype in ORIGINAL_SPACE_ARCHETYPES.items()
     },
 }
 
@@ -282,13 +317,14 @@ def board_space_order(board: Board) -> tuple[str, ...]:
 
     # UNTRACED: the reflection order (engine-order §9) is taken to be the
     # typedef order of dump/worm-canis.dll.cs, as the spec assumes.
+    board_set = _ORIGINAL_BOARD_SET if board.original else _BOARD_SET
     enabled = (
-        _BOARD_SET,
+        board_set,
         *(("CHOAMModule",) if board.choam else ()),
         *(("Immortality",) if board.immortality else ()),
     )
     archetypes = [
-        a for a in _SPACE_ARCHETYPE_ORDER if _BOARD_SET in _set_attr(a, "SetList")
+        a for a in _SPACE_ARCHETYPE_ORDER if board_set in _set_attr(a, "SetList")
     ]
     archetypes.extend(
         a
@@ -434,6 +470,40 @@ def _cost_first_ability(
     return None
 
 
+def _sell_melange_ability(space_id: str, board: Board) -> Ability | None:
+    """The original Sell Melange's ``SellMelangeSpaceAbility`` (None
+    elsewhere)."""
+
+    for ability in abilities_of(space_entity(space_id, board)):
+        if isinstance(ability, SellMelangeSpaceAbility):
+            return ability
+    return None
+
+
+def _sell_melange_option(
+    run: DecisionRun,
+    state: GameState,
+    sell: Ability,
+    space_id: str,
+    options: Sequence[int],
+) -> int:
+    """Our Sell Melange ``cost_option`` for the app's answer.
+
+    The app asks the amount at state 400, after the placement
+    (``SellMelangeSpaceAbility::Evaluate`` @0x4bcd9e0, a forced
+    ``IntListTargetResponse(n)`` of the spice sold); our engine asks it with
+    the placement, one cost option per amount (``ResourceCost(spice=n)``),
+    so the same answer on the placed state picks the option.
+    """
+
+    costs = BOARD_SPACES_BY_ID[space_id].cost_options
+    answer = sell.evaluate(_profile_on(run, state), Request(forced=True))
+    spice = answer.response[0][0] if answer.response and answer.response[0] else None
+    picked = [option for option in options if costs[option].spice == spice]
+    named = Answer(answer.value, ((picked[0],),) if picked else None)
+    return _forced_pick(run, named, options)
+
+
 def _forced_pick[T: (int, str)](
     run: DecisionRun, answer: Answer, legal: Sequence[T]
 ) -> T:
@@ -482,6 +552,9 @@ def _realise(run: DecisionRun, chosen: DomainAction) -> DomainAction:
     # Navigation Chamber (D60): the discount variant the card's key chose.
     discount = str_arg(chosen, "discount")
     variants = [a for a in variants if str_arg(a, "discount") == discount] or variants
+    # The original Kwisatz Haderach: the Agent its key sent (``from_space``).
+    origin = str_arg(chosen, "from_space")
+    variants = [a for a in variants if str_arg(a, "from_space") == origin] or variants
     graft = _graft_choice(run, card_ref, variants)
     if graft is not None:
         variants = [a for a in variants if (arg(a, "graft") is True) is graft]
@@ -528,6 +601,10 @@ def _realise_costs(
             request = Request(infos=(TargetInfo(options=tuple(options)),), forced=True)
             answer = ability.evaluate(_profile_on(run, state), request)
             option = _forced_pick(run, answer, options)
+        elif len(options) > 1:
+            sell = _sell_melange_ability(space_id, board)
+            if sell is not None:
+                option = _sell_melange_option(run, state, sell, space_id, options)
         variants = [a for a in variants if int_arg(a, "cost_option") == option]
         if ability is not None:
             cost_first = (ability, option)
@@ -739,9 +816,10 @@ def _card_evaluate(
         )
         if not spaces:
             return 0.0, None
-        answer = ability.evaluate(
-            run.profile, Request(infos=(TargetInfo(entities=spaces),))
-        )
+        infos: tuple[TargetInfo, ...] = (TargetInfo(entities=spaces),)
+        if isinstance(ability, KwisatzHaderachAbility):
+            infos = (*infos, TargetInfo(entities=_kwisatz_agents(run, actions)))
+        answer = ability.evaluate(run.profile, Request(infos=infos))
         if not answer.response or not answer.response[0]:
             # GetResponse after MakeChoice picked this key: the empty answer.
             return answer.value, run.first("reveal_turn")
@@ -754,15 +832,59 @@ def _card_evaluate(
             if variants
             else None
         )
+        origin = _kwisatz_origin(answer)
         for action in actions:
             if (
                 str_arg(action, "space_id") == space_id
                 and str_arg(action, "discount") == discount
+                and str_arg(action, "from_space") == origin
             ):
                 return answer.value, action
         return answer.value, None
 
     return evaluate
+
+
+#: The ref of an Agent still in the player's area (``from_space`` None).
+_KWISATZ_HOME = "player_area"
+
+
+def _kwisatz_agents(
+    run: DecisionRun, actions: Sequence[DomainAction]
+) -> tuple[Entity, ...]:
+    """``KwisatzHaderachAbility::GetAgentTargets`` @0x4ca13a0: every Agent of
+    P (``Playmat.Descendents``), not one on the Swordmaster space unless P
+    holds the Swordmaster (``b__0`` @0x4ca2690), as far as our variants send
+    it (``from_space``; none: one still in P's area). UNTRACED: the
+    descendants' order; ours puts an Agent in P's area first, then the board
+    in its order."""
+
+    origins = {str_arg(a, "from_space") for a in actions}
+    seat = run.ctx.seat
+    board = run.ctx.board
+    sword = run.ctx.me.swordmaster_acquired
+    agents: list[Entity] = []
+    if None in origins:
+        agents.append(Entity(Kind.AGENT, _KWISATZ_HOME, None, seat))
+    for space_id in board_space_order(board):
+        if space_id not in origins:
+            continue
+        if not sword and space_entity(space_id, board).short in (
+            SWORDMASTER_SPACE_ARCHETYPES
+        ):
+            continue
+        agents.append(agent_entity(space_id, seat))
+    return tuple(agents)
+
+
+def _kwisatz_origin(answer: Answer) -> str | None:
+    """The ``from_space`` of the Agent a Kwisatz Haderach answer sends
+    (None: an Agent from P's area, or another card)."""
+
+    if not answer.response or len(answer.response) < 2 or not answer.response[1]:
+        return None
+    ref = answer.response[1][0]
+    return None if ref == _KWISATZ_HOME else str(ref)
 
 
 def _discount_of(target: Entity) -> str | None:

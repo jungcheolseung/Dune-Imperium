@@ -949,9 +949,11 @@ def test_economic_supremacy_places_and_conflict_pool() -> None:
 
 
 class ValueFake(Ability):
-    def __init__(self, owner: Entity, value: float) -> None:
+    def __init__(self, owner: Entity, value: float, place: int | None = None) -> None:
         super().__init__(owner)
         self.value = value
+        if place is not None:
+            self.place = place  # ``ConflictAbility.place``
 
     def value_for_player(
         self, p: Profile, with_entities: Sequence[Entity] = ()
@@ -970,10 +972,16 @@ def test_economic_supremacy_conflict_value_and_guaranteed_third_place(
         "EconomicSupremacySpiceAbility": 10000.0,
     }
 
+    places = {
+        "EconomicSupremacyFirstAbility": 1,
+        "EconomicSupremacySecondAbility": 2,
+        "EconomicSupremacyThirdAbility": 3,
+    }
+
     def abilities_of(owner: Entity) -> tuple[Ability, ...]:
+        names = [ability_id.rsplit(".", 1)[1] for ability_id in owner.ability_ids]
         return tuple(
-            ValueFake(owner, values.get(ability_id.rsplit(".", 1)[1], 0.0))
-            for ability_id in owner.ability_ids
+            ValueFake(owner, values.get(name, 0.0), places.get(name)) for name in names
         )
 
     monkeypatch.setattr(combat, "abilities_of", abilities_of)

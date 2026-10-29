@@ -52,6 +52,7 @@ from dune_imperium.agents.engine_order import engine_order_answer
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import PlayerView
 from dune_imperium.core.state import GameState
+from dune_imperium.rules.combat import REWARD_LINE_KINDS, legacy_combat_reward_icon
 
 LEVEL_NAMES = {0: "easy", 1: "medium", 2: "hard"}
 #: The ``fallbacks`` key prefix of a decision a window failed on.
@@ -66,6 +67,19 @@ _LOGGER: Final = logging.getLogger(__name__)
 # choice (OQ-100). Once the choice is made, a draw printed after it waits as
 # the same action alone (OQ-106), which the app's printed order then takes.
 _PROJECT_ONLY_ACTIONS: Final = frozenset({"scouts_rewards_first"})
+
+
+def _picks_reward_line(state: GameState, player: int) -> bool:
+    """Whether the open Conflict reward window waits on the pick of a line of
+    an "-OR-" or "Choose two:" row (the original game): the app asks those
+    through the place ability's own prompt (``windows.combat.
+    combat_reward_icons``), not in the engine's fixed order."""
+
+    legacy = legacy_combat_reward_icon(state, player)
+    return (
+        legacy is not None
+        and dict(legacy.arguments).get("effect") in REWARD_LINE_KINDS
+    )
 
 
 def app_offered(legal_actions: tuple[DomainAction, ...]) -> tuple[DomainAction, ...]:
@@ -123,7 +137,7 @@ class AppAIAgent:
         for, one decision per placement (``agents.agent_turn_steps``)."""
 
         scripted = engine_order_answer(state, observation.player, legal_actions)
-        if scripted is not None:
+        if scripted is not None and not _picks_reward_line(state, observation.player):
             # The app pays a Conflict reward without asking (stage B2 rows,
             # ``agents.engine_order``).
             return scripted

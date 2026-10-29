@@ -228,6 +228,10 @@ from dune_imperium.agents.app_ai.abilities.intrigue import (
     complete_battle_icon_pair_card,
     intrigue_deploy_troops,
 )
+from dune_imperium.agents.app_ai.abilities.original_intrigue import (
+    BinduSuspensionAbility,
+    PoisonSnooperAbility,
+)
 from dune_imperium.agents.app_ai.catalog import (
     INTRIGUE_ARCHETYPES,
     LEADER_ARCHETYPES,
@@ -267,6 +271,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    PassTurn,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
@@ -1319,18 +1324,33 @@ def _trash_intrigue_hand(
     return None if pick is None else with_arg(actions, "card_id", pick.ref)
 
 
-def _peek(run: DecisionRun, cid: str) -> DomainAction | None:
-    """Twisted Controlled after the peek (D20; LLtF evaluator):
-    ``controlled_peek_choice`` on the top card the owner sees (the frame's
-    ``peeked_card_id``, shown to the owner only)."""
+def _peek(run: DecisionRun, cid: str, instance: str) -> DomainAction | None:
+    """The draw-or-trash of a peeked top card (the frame's ``peeked_card_id``,
+    shown to the owner only): Twisted Controlled's
+    ``controlled_peek_choice`` (D20; LLtF evaluator), the original Poison
+    Snooper's ``ChoosePoisonEvaluator`` (0 = trash, 1 = draw)."""
 
-    if cid != "twisted_controlled":
-        return None
     peeked = run.ctx.top_frame_context.get("peeked_card_id")
     if not isinstance(peeked, str) or not peeked:
         return None
     top = card_entity(peeked, run.ctx.seat)
-    return run.first(bc.controlled_peek_choice(run.profile, top))
+    if cid == "twisted_controlled":
+        return run.first(bc.controlled_peek_choice(run.profile, top))
+    if cid == "poison_snooper":
+        snooper = PoisonSnooperAbility(intrigue_entity(instance, run.ctx.seat))
+        draw = snooper.choose_poison(run.profile, top) == 1
+        return run.first("draw_top_card" if draw else "trash_top_card")
+    return None
+
+
+def _bindu_pass(run: DecisionRun, instance: str) -> DomainAction | None:
+    """Bindu Suspension's optional pass after its draw: the app's
+    ``ChoosePassEvaluator`` (1 = pass the turn, 0 = play it normally)."""
+
+    bindu = BinduSuspensionAbility(intrigue_entity(instance, run.ctx.seat))
+    if bindu.choose_pass(run.profile) == 1:
+        return run.first("pass_turn_intrigue")
+    return run.first("keep_turn_intrigue")
 
 
 def _trash_discard_pile(run: DecisionRun, cid: str) -> DomainAction | None:
@@ -1558,7 +1578,9 @@ def intrigue_choice(run: DecisionRun) -> DomainAction | None:
         case TrashIntrigueCard():
             return _trash_intrigue_hand(run, cid, intent)
         case PeekTopCard():
-            return _peek(run, cid)
+            return _peek(run, cid, instance)
+        case PassTurn():
+            return _bindu_pass(run, instance)
         case TrashDiscardPileCard():
             return _trash_discard_pile(run, cid)
         case FlipFaceUpConflictCard():

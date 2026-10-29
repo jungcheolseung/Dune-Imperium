@@ -50,12 +50,15 @@ from dune_imperium.agents.app_ai.abilities.imperium_a import (
     LongLiveTheFightersAbility,
     LongLiveTheFightersEvaluator,
 )
+from dune_imperium.agents.app_ai.abilities.original_imperium import (
+    TestOfHumanityDeferredAbility,
+)
 from dune_imperium.agents.app_ai.catalog import (
     agent_entity,
     card_entity,
     contract_entity,
 )
-from dune_imperium.agents.app_ai.context import Board
+from dune_imperium.agents.app_ai.context import Board, card_id
 from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.profile import Profile
 from dune_imperium.agents.app_ai.windows.common import (
@@ -315,6 +318,9 @@ _OPPONENT_DISCARD = "discard_opponent_card"
 # asks no such seat, so the confirm, always offered alone, is the answer.
 _OPPONENT_DISCARD_CONFIRM = "resolve_opponent_discard_without_card"
 _OPPONENT_DISCARD_IDS = frozenset({_OPPONENT_DISCARD, _OPPONENT_DISCARD_CONFIRM})
+# The original Test of Humanity's victim may lose a deployed troop instead
+# (the frame's ``or_lose_deployed_troop``).
+_LOSE_UNIT = "lose_unit"
 
 
 def choose_discard_evaluate(p: Profile, cards: Sequence[Entity], n: int) -> Answer:
@@ -343,7 +349,14 @@ def opponent_card_discard(run: DecisionRun) -> DomainAction | None:
     (``resolve_opponent_discard_without_card``, offered alone).
     """
 
-    if not _known_only(run, _OPPONENT_DISCARD_IDS):
+    lose = run.first(_LOSE_UNIT)
+    if lose is not None:
+        choice = _test_of_humanity_choice(run)
+        if choice is None:
+            return None
+        if choice == 1 or not run.by_id(_OPPONENT_DISCARD):
+            return lose
+    elif not _known_only(run, _OPPONENT_DISCARD_IDS):
         return None
     discards = run.by_id(_OPPONENT_DISCARD)
     if not discards:
@@ -359,6 +372,25 @@ def opponent_card_discard(run: DecisionRun) -> DomainAction | None:
         "card_id",
         lambda: choose_discard_evaluate(profile, cards, 1),
     )
+
+
+def _test_of_humanity_choice(run: DecisionRun) -> int | None:
+    """The victim's "discard a card or lose a deployed troop" of the original
+    Test of Humanity: ``TestOfHumanityDeferredAbility::
+    EvaluateResolutionChoice`` on the victim's own profile (0 discard, 1
+    troop). None when the frame is not that card's."""
+
+    if not _known_only(run, _OPPONENT_DISCARD_IDS | {_LOSE_UNIT}):
+        return None
+    source = run.ctx.top_frame_context.get("covert_operation_card_id")
+    if not isinstance(source, str) or card_id(source) != "test_of_humanity":
+        return None
+    owner = card_entity(source, None)
+    answer = TestOfHumanityDeferredAbility(owner).evaluate_resolution_choice(
+        run.profile
+    )
+    item = answer.response[0] if answer.response else ()
+    return 1 if item and item[0] == 1 else 0
 
 
 # -- Long Live the Fighters ----------------------------------------------------------
