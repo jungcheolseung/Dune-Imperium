@@ -2659,6 +2659,12 @@ function ixMarkers(player, seat, view) {
       : tNode("panels.set_aside_hidden"));
   }
   if (player.set_aside_returned_turn) flags.push(tNode("panels.set_aside_returned"));
+  /* Strategic Push's pledge, public to every seat (PublicPlayerView
+     strategic_push_solari): the Solari the seat takes if it wins this
+     Conflict alone, until the Combat is cleaned up. */
+  if (player.strategic_push_solari) {
+    flags.push(tNode("panels.strategic_push", { solari: player.strategic_push_solari }));
+  }
   const pending = own && own.ix_pending;
   if (pending && (pending.shipping_rewards || []).length) {
     flags.push(tNode("panels.ix_pending_shipping", {

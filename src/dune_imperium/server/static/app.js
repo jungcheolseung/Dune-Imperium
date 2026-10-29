@@ -123,6 +123,7 @@ async function init() {
   el("opt-immortality").addEventListener("change", syncGoTo11Option);
   syncGoTo11Option();
   el("opt-base-game").addEventListener("change", syncBaseGameOption);
+  el("opt-rise-of-ix").addEventListener("change", syncEpicOption);
   el("setup-form").addEventListener("change", updateSetupSummary);
   el("leave-game").addEventListener("click", () => leaveGame());
   el("open-lobby").addEventListener("click", () => showLobby());

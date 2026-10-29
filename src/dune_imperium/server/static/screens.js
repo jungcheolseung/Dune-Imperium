@@ -70,8 +70,27 @@ function defaultSeatKind(seat) {
    choices back on a return to Uprising. */
 const UPRISING_ONLY_OPTIONS = [
   "opt-choam", "opt-bloodlines", "opt-tech", "opt-immortality", "opt-go-to-11",
-  "opt-epic-game", "opt-scouts",
+  "opt-scouts",
 ];
+
+/* Epic Game Mode is the Rise of Ix rulebook's [Rise of Ix p. 10]: the
+   original game takes it with Rise of Ix only (rules/setup.py; Uprising
+   plays it alone, OQ-092). Without Rise of Ix the box locks, cleared, and
+   gives its choice back once it opens again. */
+function syncEpicOption() {
+  const box = el("opt-epic-game");
+  const open = el("opt-base-game").value !== "imperium" || el("opt-rise-of-ix").checked;
+  if (!open && !box.dataset.locked) {
+    box.dataset.locked = "1";
+    box.dataset.wasChecked = box.checked ? "1" : "";
+    box.checked = false;
+    box.disabled = true;
+  } else if (open && box.dataset.locked) {
+    delete box.dataset.locked;
+    box.checked = box.dataset.wasChecked === "1";
+    box.disabled = false;
+  }
+}
 
 function syncBaseGameOption() {
   const original = el("opt-base-game").value === "imperium";
@@ -100,6 +119,7 @@ function syncBaseGameOption() {
     syncTechOption();
     syncGoTo11Option();
   }
+  syncEpicOption();
   /* The seats offer what the base game's table takes; a seat nobody picked,
      or whose pick that table does not take, follows the game's default. */
   buildSeatSelects({ followDefaults: true });

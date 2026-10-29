@@ -745,8 +745,8 @@ const UI_TEXT = {
     "en": "Dune: Imperium (the original game)"
   },
   "html.base_game_imperium_note": {
-    "ko": "원판은 아직 플레이어1 시작 플레이어·지도자 드래프트·프로모 카드(원판 3장)만 함께 씁니다. 다른 확장은 준비 중입니다. 원판 판에는 앱 AI·휴리스틱 AI·랜덤 AI가 앉습니다(탐색·롤아웃 AI는 아직 원판을 두지 않습니다).",
-    "en": "The original game takes only Player 1 as First Player, the Leader draft and the promo cards (its 3) so far; the other expansions are still to come. The app AI, the heuristic AI and the random AI sit at an original table (the search and rollout AIs do not play the original game yet)."
+    "ko": "원판은 아직 플레이어1 시작 플레이어·지도자 드래프트·프로모 카드(원판 3장)·익스의 부상 확장과, 익스의 부상과 함께일 때 에픽 게임 모드만 함께 씁니다. 다른 확장은 준비 중입니다. 원판 판에는 앱 AI·휴리스틱 AI·랜덤 AI가 앉습니다(탐색·롤아웃 AI는 아직 원판을 두지 않습니다).",
+    "en": "The original game takes only Player 1 as First Player, the Leader draft, the promo cards (its 3), the Rise of Ix expansion and, with Rise of Ix, Epic Game Mode so far; the other expansions are still to come. The app AI, the heuristic AI and the random AI sit at an original table (the search and rollout AIs do not play the original game yet)."
   },
   "screens.base_game_imperium_badge": {
     "ko": "원판",
@@ -1143,6 +1143,10 @@ const UI_TEXT = {
   "panels.set_aside_returned": {
     "ko": "따로 둔 카드를 이번 차례에 돌려받음",
     "en": "The set-aside card came back this turn"
+  },
+  "panels.strategic_push": {
+    "ko": "Strategic Push: 이번 교전에서 승리하면 솔라리 {{solari}}",
+    "en": "Strategic Push: {{solari}} Solari if this seat wins this Conflict"
   },
   "panels.known_intrigue_held": {
     "ko": "이 플레이어가 쥔 것으로 아는 책략 카드: {{cards}} (나만 봄)",
