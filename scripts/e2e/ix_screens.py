@@ -30,16 +30,16 @@ For each hidden value, at the moment it is real:
 
 Two tables, each a fresh game on the same server:
 
-1. Original game + Rise of Ix, four human seats (seed 41):
-   a. ``ix_pending.tech_discount`` / ``tech_payment`` /
-      ``negotiators_returnable``: seat 0 sends an Agent to Tech Negotiation
+1. Original game + Rise of Ix, four human seats (seed 4):
+   a. ``known_intrigue_bottom``: seat 2 buys Sonic Snoopers and puts an
+      Intrigue card at the Intrigue deck's bottom, which only it then knows.
+      (Checked again at the two later moments: still known, still hidden.)
+   b. ``ix_pending.shipping_rewards``: seat 0 recalls its Freighter from
+      Shipping step 1; the step-1 reward is owed.
+   c. ``ix_pending.tech_discount`` / ``tech_payment`` /
+      ``negotiators_returnable``: seat 2 sends an Agent to Tech Negotiation
       holding a Negotiator, and its Acquire Tech (Tech Discount 1, spice, one
       Negotiator returnable) is open.
-   b. ``known_intrigue_bottom``: seat 0 buys Sonic Snoopers and puts an
-      Intrigue card at the Intrigue deck's bottom, which only it then knows.
-      (Checked again at the end: still known, still hidden.)
-   c. ``ix_pending.shipping_rewards``: seat 1 recalls its Freighter from
-      Shipping step 1 (Smuggling); the step-1 reward is owed.
 2. Uprising + Immortality, four human seats (seed 143), sent as the setup
    screen sends it with only the Immortality box checked:
    a. ``peeked_intrigue_ids``: seat 0 plays Imperium Ceremony and sees the
@@ -75,10 +75,12 @@ and read each state for the targets.
 
 - Table 1: ``find.py`` weights Smuggling, Tech Negotiation, Dreadnought and
   Interstellar Shipping up and troop shuffling down; ``search.py`` runs it over
-  seeds 1-239 with three answer streams each (at most 220 actions). Seven of
-  the 717 playouts reached a Shipping reward owed, an Acquire Tech open with a
-  returnable Negotiator and a bottom-known Intrigue card; the shortest, seed 41
-  with answer stream 41 * 1000 + 2, is ``IX_PLAN`` (88 actions).
+  seeds with three answer streams each and keeps a playout that reaches a
+  Shipping reward owed, an Acquire Tech open with a returnable Negotiator and a
+  bottom-known Intrigue card. Re-run after P4 4cdf1e99 was merged (its Ix card
+  data changed the deal and the first plan, seed 41, missed at step 3): over
+  seeds 1-119 (at most 220 actions) two playouts got there; the shorter, seed 4
+  with answer stream 4 * 1000 + 0, is ``IX_PLAN`` (178 actions).
 - Table 2: ``find2.py`` weights Imperium Ceremony (to buy it, then to play it)
   up by 300, and, once a seat knows the top card, Intrigue-drawing spaces up
   for every seat but the knower. It was run over the eight seeds below 200
@@ -136,7 +138,7 @@ IX_BODY = {
     "seats": ["human", "human", "human", "human"],
     "base_game": "imperium",
     "rise_of_ix": True,
-    "game_seed": 41,
+    "game_seed": 4,
 }
 # Table 2: Uprising with Immortality alone, with every box of the setup screen's
 # payload spelled out (the Go to 11 box stays unchecked; ``--first-player deal``
@@ -161,132 +163,222 @@ CEREMONY_BODY = {
 # (seat, action id, arguments), in order; the number after each is its index
 # (the checkpoints count the actions applied).
 IX_PLAN: list[Step] = [
-    # Setup: seat 3's Masterstroke, two Factions picked in secret.
-    (3, "choose_masterstroke_faction", {"faction": "fremen"}),  # 0
-    (3, "choose_masterstroke_faction", {"faction": "spacing_guild"}),  # 1
-    # Round 1, first Agent turns. Seat 0: Tech Negotiation, a Negotiator on the
-    # Ix board.
-    (0, "choose_agent_card", {"card_id": "player:0:starter:dagger:0"}),  # 2
-    (0, "place_agent", {"space_id": "tech_negotiation"}),  # 3
-    (0, "place_board_negotiator", {}),  # 4
-    (0, "finish_agent_turn", {}),  # 5
-    # Seat 1: Hardy Warriors.
-    (1, "choose_agent_card", {"card_id": "player:1:starter:seek_allies:0"}),  # 6
-    (1, "place_agent", {"space_id": "hardy_warriors"}),  # 7
-    (1, "resolve_board_effect", {"effect": "troops"}),  # 8
-    (1, "deploy_troops", {"count": 3}),  # 9
-    (1, "resolve_faction_influence", {}),  # 10
-    (1, "resolve_agent_card_effect", {}),  # 11
-    (1, "finish_agent_turn", {}),  # 12
-    # Seat 2: Foldspace.
-    (2, "choose_agent_card", {"card_id": "player:2:starter:diplomacy:0"}),  # 13
-    (2, "place_agent", {"space_id": "foldspace"}),  # 14
-    (2, "resolve_faction_influence", {}),  # 15
-    (2, "resolve_board_effect", {"effect": "foldspace"}),  # 16
-    (2, "finish_agent_turn", {}),  # 17
-    # Seat 3: Smuggling, its Freighter moves up to Shipping step 1.
+    # Found on the engine as merged with P4 4cdf1e99 (seed 4, answer stream
+    # 4 * 1000 + 0): seat 2 buys Sonic Snoopers and puts an Intrigue card at
+    # the bottom (29), seat 0 recalls its Freighter from step 1 (95), seat 2
+    # opens an Acquire Tech at Tech Negotiation holding a Negotiator (178).
+    (3, "choose_masterstroke_faction", {"faction": "spacing_guild"}),  # 0
+    (3, "choose_masterstroke_faction", {"faction": "bene_gesserit"}),  # 1
+    (2, "choose_agent_card", {"card_id": "player:2:starter:diplomacy:0"}),  # 2
+    (2, "place_agent", {"space_id": "stillsuits"}),  # 3
+    (2, "resolve_faction_influence", {}),  # 4
+    (2, "deploy_troops", {"count": 1}),  # 5
+    (2, "resolve_board_effect", {"effect": "resources"}),  # 6
+    (2, "finish_agent_turn", {}),  # 7
     (
         3,
         "choose_agent_card",
-        {"card_id": "player:3:starter:dune_the_desert_planet:1"},
-    ),  # 18
-    (3, "place_agent", {"space_id": "smuggling"}),  # 19
-    (3, "advance_board_freighter", {}),  # 20
-    (3, "resolve_board_effect", {"effect": "resources"}),  # 21
-    (3, "finish_agent_turn", {}),  # 22
-    # Round 1, second Agent turns, seats 0 to 3.
+        {"card_id": "player:3:starter:dune_the_desert_planet:0"},
+    ),  # 8
+    (3, "place_agent", {"space_id": "smuggling"}),  # 9
+    (3, "resolve_board_effect", {"effect": "resources"}),  # 10
+    (3, "advance_board_freighter", {}),  # 11
+    (3, "finish_agent_turn", {}),  # 12
+    (
+        0,
+        "choose_agent_card",
+        {"card_id": "player:0:starter:dune_the_desert_planet:0"},
+    ),  # 13
+    (0, "place_agent", {"space_id": "imperial_basin"}),  # 14
+    (0, "deploy_troops", {"count": 2}),  # 15
+    (0, "harvest_maker_spice", {"space_id": "imperial_basin"}),  # 16
+    (0, "finish_agent_turn", {}),  # 17
+    (1, "reveal_turn", {}),  # 18
+    (1, "acquire_imperium", {"instance_id": "imperium:guild_ambassador:0"}),  # 19
+    (1, "acquire_imperium", {"instance_id": "imperium:assassination_mission:1"}),  # 20
+    (1, "finish_reveal", {}),  # 21
+    (2, "choose_agent_card", {"card_id": "player:2:starter:dagger:0"}),  # 22
+    (2, "place_agent", {"space_id": "tech_negotiation"}),  # 23
+    (2, "acquire_negotiation_tech", {}),  # 24
+    (2, "acquire_tech", {"tech_id": "sonic_snoopers"}),  # 25
+    (
+        2,
+        "resolve_tech_acquire_effect",
+        {"effect": "intrigue", "tech_id": "sonic_snoopers"},
+    ),  # 26
+    (2, "trash_tech", {"tech_id": "sonic_snoopers"}),  # 27
+    (2, "put_intrigue_on_bottom", {"card_id": "intrigue:ambush:1"}),  # 28
+    (2, "finish_intrigue_bottom", {}),  # 29
+    (2, "finish_agent_turn", {}),  # 30
+    (3, "reveal_turn", {}),  # 31
+    (3, "acquire_imperium", {"instance_id": "imperium:fremen_camp:0"}),  # 32
+    (3, "finish_reveal", {}),  # 33
     (
         0,
         "choose_agent_card",
         {"card_id": "player:0:starter:dune_the_desert_planet:1"},
-    ),  # 23
-    (0, "place_agent", {"space_id": "imperium_hagga_basin"}),  # 24
-    (0, "deploy_troops", {"count": 2}),  # 25
-    (0, "harvest_maker_spice", {"space_id": "imperium_hagga_basin"}),  # 26
-    (0, "finish_agent_turn", {}),  # 27
-    (
-        1,
-        "choose_agent_card",
-        {"card_id": "player:1:starter:dune_the_desert_planet:0"},
-    ),  # 28
-    (1, "place_agent", {"space_id": "imperial_basin"}),  # 29
-    (1, "harvest_maker_spice", {"space_id": "imperial_basin"}),  # 30
-    (1, "deploy_troops", {"count": 1}),  # 31
-    (1, "finish_agent_turn", {}),  # 32
-    (2, "choose_agent_card", {"card_id": "player:2:starter:seek_allies:0"}),  # 33
-    (2, "place_agent", {"space_id": "wealth"}),  # 34
-    (2, "resolve_faction_influence", {}),  # 35
-    (2, "resolve_agent_card_effect", {}),  # 36
-    (2, "resolve_board_effect", {"effect": "resources"}),  # 37
-    (2, "finish_agent_turn", {}),  # 38
-    (3, "choose_agent_card", {"card_id": "player:3:starter:reconnaissance:0"}),  # 39
-    (3, "place_agent", {"space_id": "carthag"}),  # 40
-    (3, "resolve_board_effect", {"effect": "intrigue"}),  # 41
-    (3, "resolve_board_effect", {"effect": "troops"}),  # 42
-    (3, "deploy_troops", {"count": 3}),  # 43
-    (3, "finish_agent_turn", {}),  # 44
-    # Reveal turns, then Combat: seat 1 wins, and a Freighter reward moves its
-    # Freighter.
-    (0, "reveal_turn", {}),  # 45
+    ),  # 34
+    (0, "place_agent", {"space_id": "imperium_hagga_basin"}),  # 35
+    (0, "harvest_maker_spice", {"space_id": "imperium_hagga_basin"}),  # 36
+    (0, "deploy_troops", {"count": 1}),  # 37
+    (0, "finish_agent_turn", {}),  # 38
+    (2, "reveal_turn", {}),  # 39
+    (2, "acquire_imperium", {"instance_id": "imperium:sardaukar_infantry:1"}),  # 40
+    (2, "acquire_imperium", {"instance_id": "imperium:imperial_shock_trooper:0"}),  # 41
+    (2, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 42
+    (2, "finish_reveal", {}),  # 43
+    (0, "reveal_turn", {}),  # 44
+    (0, "acquire_imperium", {"instance_id": "imperium:guild_administrator:1"}),  # 45
     (0, "finish_reveal", {}),  # 46
-    (1, "reveal_turn", {}),  # 47
-    (1, "finish_reveal", {}),  # 48
-    (2, "reveal_turn", {}),  # 49
+    (2, "play_intrigue", {"card_id": "intrigue:master_tactician:2", "option": 1}),  # 47
+    (2, "retreat_intrigue_troops", {"count": 0}),  # 48
+    (2, "pass_combat_intrigue", {}),  # 49
+    (0, "pass_combat_intrigue", {}),  # 50
+    (2, "pass_combat_intrigue", {}),  # 51
+    (0, "resolve_combat_reward_icon", {"effect": "resources"}),  # 52
+    (0, "resolve_combat_reward_icon", {"effect": "choose_influence"}),  # 53
+    (0, "choose_combat_reward_influence", {"faction": "emperor"}),  # 54
+    (0, "resolve_combat_reward_icon", {"effect": "winning_intrigue"}),  # 55
+    (2, "resolve_combat_reward_icon", {"effect": "resources"}),  # 56
+    (3, "reveal_turn", {}),  # 57
+    (3, "finish_reveal", {}),  # 58
+    (0, "choose_agent_card", {"card_id": "player:0:starter:signet_ring:0"}),  # 59
+    (0, "place_agent", {"space_id": "smuggling"}),  # 60
+    (0, "advance_board_freighter", {}),  # 61
+    (0, "resolve_agent_card_effect", {}),  # 62
+    (0, "resolve_board_effect", {"effect": "resources"}),  # 63
+    (0, "finish_agent_turn", {}),  # 64
+    (1, "reveal_turn", {}),  # 65
+    (1, "acquire_imperium", {"instance_id": "imperium:spice_smugglers:1"}),  # 66
+    (1, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 67
+    (1, "finish_reveal", {}),  # 68
     (
         2,
-        "acquire_imperium",
-        {"instance_id": "imperium:fedaykin_death_commando:0"},
-    ),  # 50
-    (2, "finish_reveal", {}),  # 51
-    (3, "reveal_turn", {}),  # 52
-    (3, "acquire_imperium", {"instance_id": "imperium:space_travel:0"}),  # 53
-    (3, "finish_reveal", {}),  # 54
-    (0, "pass_combat_intrigue", {}),  # 55
-    (1, "pass_combat_intrigue", {}),  # 56
-    (3, "pass_combat_intrigue", {}),  # 57
-    (1, "resolve_combat_reward_icon", {"effect": "freighter"}),  # 58
-    (1, "advance_freighter", {}),  # 59
-    (1, "resolve_combat_reward_icon", {"effect": "resources"}),  # 60
-    (1, "resolve_combat_reward_icon", {"effect": "winning_intrigue"}),  # 61
-    (3, "resolve_combat_reward_icon", {"effect": "resources"}),  # 62
-    (0, "resolve_combat_reward_icon", {"effect": "resources"}),  # 63
-    # Round 2: seats 1 and 2 send an Agent (Stillsuits, Dreadnought), seat 3 reveals.
-    (1, "choose_agent_card", {"card_id": "player:1:starter:diplomacy:0"}),  # 64
-    (1, "place_agent", {"space_id": "stillsuits"}),  # 65
-    (1, "resolve_board_effect", {"effect": "resources"}),  # 66
-    (1, "resolve_faction_influence", {}),  # 67
-    (1, "finish_agent_turn", {}),  # 68
-    (2, "choose_agent_card", {"card_id": "player:2:starter:dagger:1"}),  # 69
-    (2, "place_agent", {"space_id": "dreadnought"}),  # 70
-    (2, "finish_agent_turn", {}),  # 71
-    (3, "reveal_turn", {}),  # 72
-    (3, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 73
-    (3, "acquire_imperium", {"instance_id": "imperium:sardaukar_infantry:1"}),  # 74
-    (3, "finish_reveal", {}),  # 75
-    # Seat 0, Tech Negotiation again: Acquire Tech returning its Negotiator (action 79:
-    (0, "choose_agent_card", {"card_id": "player:0:starter:dagger:1"}),  # 76
-    (0, "place_agent", {"space_id": "tech_negotiation"}),  # 77
-    (0, "acquire_negotiation_tech", {}),  # 78
-    (0, "acquire_tech", {"negotiators": 1, "tech_id": "sonic_snoopers"}),  # 79
-    # the Acquire Tech is open), then Sonic Snoopers' Acquire effect and its trash: an
-    (
-        0,
-        "resolve_tech_acquire_effect",
-        {"effect": "intrigue", "tech_id": "sonic_snoopers"},
-    ),  # 80
-    (0, "trash_tech", {"tech_id": "sonic_snoopers"}),  # 81
-    # Intrigue card goes to the Intrigue deck's bottom (action 83: seat 0 knows it).
-    (0, "put_intrigue_on_bottom", {"card_id": "intrigue:master_tactician:1"}),  # 82
-    (0, "finish_intrigue_bottom", {}),  # 83
-    (0, "finish_agent_turn", {}),  # 84
-    # Seat 1, Smuggling: its Freighter, at step 1, is recalled (action 88).
+        "choose_agent_card",
+        {"card_id": "player:2:starter:dune_the_desert_planet:0"},
+    ),  # 69
+    (2, "place_agent", {"space_id": "the_great_flat"}),  # 70
+    (2, "harvest_maker_spice", {"space_id": "the_great_flat"}),  # 71
+    (2, "deploy_troops", {"count": 1}),  # 72
+    (2, "finish_agent_turn", {}),  # 73
+    (0, "choose_agent_card", {"card_id": "player:0:starter:dagger:1"}),  # 74
+    (0, "place_agent", {"space_id": "dreadnought"}),  # 75
+    (0, "finish_agent_turn", {}),  # 76
+    (2, "choose_agent_card", {"card_id": "player:2:starter:dagger:1"}),  # 77
+    (2, "place_agent", {"space_id": "tech_negotiation"}),  # 78
+    (2, "place_board_negotiator", {}),  # 79
+    (2, "finish_agent_turn", {}),  # 80
+    (0, "reveal_turn", {}),  # 81
+    (0, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 82
+    (0, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 83
+    (0, "finish_reveal", {}),  # 84
+    (2, "reveal_turn", {}),  # 85
+    (2, "finish_reveal", {}),  # 86
+    (2, "pass_combat_intrigue", {}),  # 87
+    (2, "resolve_combat_reward_icon", {"effect": "control"}),  # 88
+    (2, "resolve_combat_reward_icon", {"effect": "victory_points"}),  # 89
+    (2, "resolve_combat_reward_icon", {"effect": "winning_intrigue"}),  # 90
+    (0, "choose_agent_card", {"card_id": "imperium:guild_administrator:1"}),  # 91
+    (0, "place_agent", {"space_id": "smuggling"}),  # 92
+    (0, "trash_agent_card", {"card_id": "player:0:starter:reconnaissance:0"}),  # 93
+    (0, "recall_board_freighter", {}),  # 94
+    (0, "resolve_shipping_reward", {"effect": "dividends"}),  # 95
+    (0, "resolve_board_effect", {"effect": "resources"}),  # 96
+    (0, "finish_agent_turn", {}),  # 97
+    (1, "reveal_turn", {}),  # 98
+    (1, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 99
     (
         1,
+        "gain_reveal_resources",
+        {
+            "printed": "assassination_mission",
+            "solari": 1,
+            "source": "reveal_card",
+            "spice": 0,
+            "water": 0,
+        },
+    ),  # 100
+    (1, "finish_reveal", {}),  # 101
+    (2, "reveal_turn", {}),  # 102
+    (2, "finish_reveal", {}),  # 103
+    (3, "choose_agent_card", {"card_id": "player:3:starter:dagger:0"}),  # 104
+    (3, "place_agent", {"space_id": "tech_negotiation"}),  # 105
+    (3, "place_board_negotiator", {}),  # 106
+    (3, "finish_agent_turn", {}),  # 107
+    (0, "reveal_turn", {}),  # 108
+    (0, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 109
+    (0, "finish_reveal", {}),  # 110
+    (
+        3,
         "choose_agent_card",
-        {"card_id": "player:1:starter:dune_the_desert_planet:1"},
-    ),  # 85
-    (1, "place_agent", {"space_id": "smuggling"}),  # 86
-    (1, "recall_board_freighter", {}),  # 87
+        {"card_id": "player:3:starter:dune_the_desert_planet:1"},
+    ),  # 111
+    (3, "place_agent", {"space_id": "imperial_basin"}),  # 112
+    (3, "deploy_troops", {"count": 1}),  # 113
+    (3, "deploy_troops", {"count": 1}),  # 114
+    (3, "harvest_maker_spice", {"space_id": "imperial_basin"}),  # 115
+    (3, "finish_agent_turn", {}),  # 116
+    (3, "reveal_turn", {}),  # 117
+    (3, "finish_reveal", {}),  # 118
+    (3, "pass_combat_intrigue", {}),  # 119
+    (3, "resolve_combat_reward_icon", {"effect": "resources"}),  # 120
+    (3, "resolve_combat_reward_icon", {"effect": "winning_intrigue"}),  # 121
+    (1, "choose_agent_card", {"card_id": "player:1:starter:dagger:1"}),  # 122
+    (1, "place_agent", {"space_id": "tech_negotiation"}),  # 123
+    (1, "place_board_negotiator", {}),  # 124
+    (1, "finish_agent_turn", {}),  # 125
+    (2, "choose_agent_card", {"card_id": "reserve:arrakis_liaison:7"}),  # 126
+    (2, "place_agent", {"space_id": "imperium_high_council"}),  # 127
+    (2, "resolve_board_effect", {"effect": "high_council"}),  # 128
+    (2, "finish_agent_turn", {}),  # 129
+    (3, "reveal_turn", {}),  # 130
+    (3, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 131
+    (3, "finish_reveal", {}),  # 132
+    (0, "choose_agent_card", {"card_id": "player:0:starter:seek_allies:0"}),  # 133
+    (0, "place_agent", {"space_id": "stillsuits"}),  # 134
+    (0, "resolve_agent_card_effect", {}),  # 135
+    (0, "resolve_board_effect", {"effect": "resources"}),  # 136
+    (0, "resolve_faction_influence", {}),  # 137
+    (0, "finish_agent_turn", {}),  # 138
+    (1, "reveal_turn", {}),  # 139
+    (1, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 140
+    (1, "finish_reveal", {}),  # 141
+    (2, "choose_agent_card", {"card_id": "player:2:starter:seek_allies:0"}),  # 142
+    (2, "place_agent", {"space_id": "secrets"}),  # 143
+    (2, "resolve_board_effect", {"effect": "intrigue"}),  # 144
+    (2, "resolve_agent_card_effect", {}),  # 145
+    (2, "resolve_faction_influence", {}),  # 146
+    (2, "play_intrigue", {"card_id": "intrigue:finesse:0", "option": 0}),  # 147
+    (2, "choose_intrigue_faction", {"faction": "fremen"}),  # 148
+    (2, "choose_intrigue_faction", {"faction": "bene_gesserit"}),  # 149
+    (2, "finish_agent_turn", {}),  # 150
+    (0, "reveal_turn", {}),  # 151
+    (0, "finish_reveal", {}),  # 152
+    (2, "reveal_turn", {}),  # 153
+    (2, "acquire_imperium", {"instance_id": "imperium:liet_kynes_card:0"}),  # 154
+    (2, "finish_reveal", {}),  # 155
+    (2, "choose_agent_card", {"card_id": "player:2:starter:signet_ring:0"}),  # 156
+    (2, "place_agent", {"space_id": "imperial_basin"}),  # 157
+    (2, "resolve_agent_card_effect", {}),  # 158
+    (2, "deploy_troops", {"count": 2}),  # 159
+    (2, "harvest_maker_spice", {"space_id": "imperial_basin"}),  # 160
+    (2, "finish_agent_turn", {}),  # 161
+    (3, "choose_agent_card", {"card_id": "player:3:starter:reconnaissance:0"}),  # 162
+    (3, "place_agent", {"space_id": "arrakeen"}),  # 163
+    (3, "resolve_board_effect", {"effect": "troops"}),  # 164
+    (3, "resolve_board_effect", {"effect": "cards"}),  # 165
+    (3, "deploy_troops", {"count": 1}),  # 166
+    (3, "finish_agent_turn", {}),  # 167
+    (0, "choose_agent_card", {"card_id": "player:0:starter:diplomacy:0"}),  # 168
+    (0, "place_agent", {"space_id": "stillsuits"}),  # 169
+    (0, "resolve_board_effect", {"effect": "resources"}),  # 170
+    (0, "resolve_faction_influence", {}),  # 171
+    (0, "finish_agent_turn", {}),  # 172
+    (1, "reveal_turn", {}),  # 173
+    (1, "finish_reveal", {}),  # 174
+    (2, "choose_agent_card", {"card_id": "player:2:starter:dagger:1"}),  # 175
+    (2, "place_agent", {"space_id": "tech_negotiation"}),  # 176
+    (2, "acquire_negotiation_tech", {}),  # 177
 ]
 
 # (seat, action id, arguments), in order; the number after each is its index.
@@ -443,7 +535,7 @@ TECH_PENDING = {
     "negotiators_returnable": 1,
 }
 SHIPPING_PENDING = {**EMPTY_PENDING, "shipping_rewards": [1]}
-SECRET_CARD = "intrigue:master_tactician:1"
+SECRET_CARD = "intrigue:ambush:1"
 KNOWN_BOTTOM = [[0, SECRET_CARD]]
 PEEKED = ["intrigue:gruesome_sacrifice:1", "intrigue:imperium_politics:0"]
 KEPT = "intrigue:gruesome_sacrifice:1"
@@ -454,22 +546,22 @@ IX_TABLE = Table(
     IX_BODY,
     IX_PLAN,
     {
-        79: Checkpoint(
-            "Acquire Tech open for seat 0 (Tech Negotiation, Tech Discount 1,"
-            " spice, one Negotiator returnable)",
-            {0: {"ix_pending": TECH_PENDING}},
+        29: Checkpoint(
+            "seat 2 put an Intrigue card at the deck's bottom (Sonic Snoopers)",
+            {2: {"known_intrigue_bottom": KNOWN_BOTTOM}},
         ),
-        83: Checkpoint(
-            "seat 0 put an Intrigue card at the deck's bottom (Sonic Snoopers)",
-            {0: {"known_intrigue_bottom": KNOWN_BOTTOM}},
-        ),
-        88: Checkpoint(
-            "seat 1 recalled its Freighter from step 1: the step-1 reward is"
-            " owed (seat 0 still knows its bottom card)",
+        95: Checkpoint(
+            "seat 0 recalled its Freighter from step 1: the step-1 reward is"
+            " owed (seat 2 still knows its bottom card)",
             {
-                0: {"known_intrigue_bottom": KNOWN_BOTTOM},
-                1: {"ix_pending": SHIPPING_PENDING},
+                0: {"ix_pending": SHIPPING_PENDING},
+                2: {"known_intrigue_bottom": KNOWN_BOTTOM},
             },
+        ),
+        178: Checkpoint(
+            "Acquire Tech open for seat 2 (Tech Negotiation, Tech Discount 1,"
+            " spice, one Negotiator returnable; it still knows its bottom card)",
+            {2: {"ix_pending": TECH_PENDING, "known_intrigue_bottom": KNOWN_BOTTOM}},
         ),
     },
 )

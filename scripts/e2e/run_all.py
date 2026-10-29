@@ -58,7 +58,7 @@ SECONDS = {
     "log_words": 5,
     # 2026-10-30 alone: a remote server, two tables of five pages, 88 and 91
     # pinned actions.
-    "ix_screens": 35,
+    "ix_screens": 50,
 }
 
 
