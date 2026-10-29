@@ -56,6 +56,10 @@ app's prompts.
 | Spaceport's Foldspace | The destination picker: option 0, top of deck, for every card except The Spice Must Flow (generic-abilities §4.2) | |
 | Ix Imperium boxes | `_DISCARD_ABILITY` (Truthsayer, Satellite Ban, Spice Trader), `_PAYMENT_ABILITY` (Sayyadina), `_TRASH_ABILITY` (Jamis), `_BOX_ABILITY` (Bounty Hunter: `BountyHunterAbility`, run at once) | |
 | Imperial Bashar's "troop -OR- trash" box | `ImperialBasharAgentAbility` (Explicit): option 0 the plain `resolve_agent_card_effect`, option 1 its card's `trash_agent_card` row | The second info lists the trash rows' cards in our rows' order. An answer with no row (option 1 with no card, or the troop when none can join) uses the key on nothing, and the box lapses at the turn's end (OQ-095 (2)). Mapped before P4's `claude/p4d-imperium-b` reached P4, and checked on a trial merge. |
+| Ixian Engineer's Acquire Tech icon (`acquire_agent_card_tech`) | `AcquireTechAgentAbility` (the Dreadnought space's `AcquireTechAbility`, Agent timing) over `GetAcquireTechTileTargets(M, P, 0, false)` | A tile answer takes the row. The Acquire Tech frame it opens asks the same class (discount 0). |
+| Ixian Engineer's Reveal "3+ Tech tiles: trash this card -> 1 VP" | `IxianEngineerAbility` (Optional, E 100) | CHOAM Demands' `trash_reveal_card` shape. |
+| Web of Power's three Influence-2 lines | `WebOfPowerEmperorAbility` (Solari), `WebOfPowerSpacingGuildAbility` (draw), `WebOfPowerFremenAbility` (water) | Wheels Within Wheels' shape, in `_ICON_ABILITY`. |
+| Web of Power's Reveal Faction pick (`gain_chosen_influence`) | `WebOfPowerRevealAbility` (a `GainAnyInfluenceAbility`, Explicit) | The chosen track's `gain_reveal_influence` row. |
 | Satellite Ban's Reveal "retreat up to two troops" | `SatelliteBanRevealAbility` | The effect is Scout's. Its table entry is the shared `OptionalRetreatAbility`, so each card answers with its own class. |
 | Intrigue slots | Strongarm's zone, Double Cross's victim (`OpponentLosesTroop`), Urgent Mission's Agent (`RecallYourAgent`) | Each comes from the play's recorded answer. Urgent Mission is an original card; Ix's extra Agents exposed its missing case. |
 | Advanced Weaponry's commission (`commission_intrigue_dreadnought`) | `AdvancedWeaponryPlotAbility` commissions as it runs | No prompt in the app: taken; declined only when no commission is offered. |
@@ -133,8 +137,9 @@ Left open by the review:
   have no play data yet (P4d, as of P4 `3b8cd83c`):
   - Imperium: Guild Chief Administrator, Weirding Way, Negotiated
     Withdrawal, Embedded Agent. (Satellite Ban, Spice Trader, Imperial
-    Bashar and Bounty Hunter are on P4's `claude/p4d-imperium-b`; their rows
-    are mapped.)
+    Bashar, Bounty Hunter, Web of Power and Ixian Engineer are on P4's
+    `claude/p4d-imperium-b`; their rows are mapped and checked on a trial
+    merge.)
   - Intrigue: Strategic Push (P4's `claude/p4d-strategic-push`).
   Their response shapes are checked when the engine offers their rows.
   Quid Pro Quo (P4d-6b), Grand Conspiracy, War Chest, Machine Culture and
