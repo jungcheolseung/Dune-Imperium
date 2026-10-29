@@ -40,7 +40,14 @@ For each hidden value, at the moment it is real:
   snapshot have no such field or card, its page shows none of the lines and
   holds no view at all.
 
-Then, step [5], hot-seat hand-overs on an open server, where one page plays
+Step [4] plays table 3's twin (``Table.twin``): the same game where Ilesa sets
+another card aside. At every action from her set-aside to the action before
+the card comes back, every payload of the other three seats and of the
+spectator must be the same in both games (the game id, clock and presence
+aside), and none names her card's id: so neither the card nor its name, base
+id or picture reaches them, even by a count.
+
+Then, step [6], hot-seat hand-overs on an open server, where one page plays
 every seat (``Table.handovers``: one each for tables 1 and 2, Hundro to Ilesa
 and Ilesa to the first player on table 3): the page shows the owner and draws
 its hidden lines, the owner's turn ends, and the page that now shows the next
@@ -82,16 +89,22 @@ Three tables, each a fresh game on the same server:
       end held). Other seats see ``has_set_aside_card`` (her panel's "one card
       set aside") and ``(비공개)`` in the log; she sees her card.
    d. Her second turn starts and the card comes back to her hand, public:
-      every seat's view and log name it, and every page says it came back;
-      the set-aside's log entry stays ``(비공개)`` to the others.
-   Her card is one of her starter cards, whose name and picture every seat's
-   own starter cards share, so it is looked for by its id alone.
+      her own ``private.hand`` and every seat's view of her ``hand_public``
+      hold it, every seat's log has its ``card_returned_to_hand`` event, and
+      every page says it came back; the set-aside's log entry stays
+      ``(비공개)`` to the others (a project convention: the rules reveal the
+      card, not old log lines; docs silent). A seatless spectator gets no
+      table on a remote server, so the card reaches it nowhere.
+   Checked also after each turn in between (20, 23, 26, 31). Her card is one
+   of her starter cards, whose name and picture every seat's own starter
+   cards share, so in one game it is looked for by its id; step [4]'s twin
+   game covers its name, base id and picture.
 
 Not reached, and named here so the gap stays visible: POST /games refuses
 ``base_game: "imperium"`` with ``immortality`` ("the original game takes
 immortality from stage P7") and Rise of Ix on Uprising (also P7), so no table
 combines the original game, Rise of Ix and Immortality; that is why table 2 is
-Uprising. Step [4] asserts that the original game still refuses Immortality.
+Uprising. Step [5] asserts that the original game still refuses Immortality.
 
 The plans are pinned, not searched: each table's seed, its POST body and its
 ``PLAN``, the exact whole actions to take (seat, action id, arguments) in
@@ -144,7 +157,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from common import SERVER_LOG_COPY, Check, chrome, open_context, server
@@ -167,17 +180,26 @@ class Checkpoint:
 
     what: str
     private: dict[int, dict[str, Any]]
+    # Tracked cards in a seat's own hand: an Intrigue card in its view's
+    # ``private.intrigue_cards``, any other in ``private.hand``.
     hands: dict[int, list[str]] = field(default_factory=dict)
     # The seat whose turn end the server holds at the checkpoint, if any.
     held: int | None = None
-    # Cards every seat now knows (a returned set-aside card in a hand, public);
-    # every seat's payloads and page state must name them.
-    public: list[str] = field(default_factory=list)
+    # Cards every seat now knows, by the seat whose public hand holds them (a
+    # returned set-aside card): every seat's view has it in that seat's
+    # ``hand_public``, and every seat's page state names it.
+    public: dict[str, int] = field(default_factory=dict)
+    # Events every seat's log holds: (kind, payload).
+    events: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     # Ilesa Ecaz's public set-aside flag per seat: "aside" (a card set aside)
     # or "returned" (it came back this turn).
     aside: dict[int, str] = field(default_factory=dict)
     # Sealed log entries: (action id, argument, value). Every seat's log holds
     # the entry once, naming the value to its actor and "(비공개)" to others.
+    # That the set-aside's entry stays "(비공개)" to the others after the card
+    # comes back is a project convention: docs/rules/rise-of-ix.md 13 and
+    # OQ-119 say the card is revealed at her second turn, not whether old log
+    # lines are opened then (docs silent; the coordinator asks the user).
     sealed: list[tuple[str, str, str]] = field(default_factory=list)
 
 
@@ -195,12 +217,31 @@ class Handover:
 
 
 @dataclass(frozen=True)
+class Twin:
+    """A second game of the same table, where ``owner``'s secret pick at plan
+    step ``index`` is ``step`` instead. From ``first`` to ``last`` actions
+    every payload of every other seat and of the spectator must be the same
+    in both games (``VOLATILE`` keys aside), so nothing of which card was
+    picked reaches them: not its id, its name, its base id, its picture or a
+    count that would give it away. In the first game no such payload names
+    ``secret``, the card picked there, at any of those actions."""
+
+    index: int
+    step: Step
+    owner: int
+    first: int
+    last: int
+    secret: str
+
+
+@dataclass(frozen=True)
 class Table:
     name: str
     body: dict[str, Any]
     plan: list[Step]
     checkpoints: dict[int, Checkpoint]
     handovers: tuple[Handover, ...]
+    twin: Twin | None = None
 
 
 # Table 1: the original game with Rise of Ix, as the setup screen's boxes would
@@ -708,6 +749,10 @@ HUNDRO_KNOWS = {
     "known_intrigue_bottom": [[54, HUNDRO_TOP]],
 }
 SET_ASIDE = "player:0:starter:dune_the_desert_planet:1"
+TWIN_SET_ASIDE = "player:0:starter:reconnaissance:0"
+# What differs between two games of one table whatever was picked: the game's
+# id and log epoch, the play clock, who is online, the doorbell's sequence.
+VOLATILE = frozenset({"game_id", "epoch", "clock", "clock_age_ms", "online", "seq"})
 
 IX_TABLE = Table(
     "original + Rise of Ix",
@@ -805,12 +850,41 @@ LEADERS_TABLE = Table(
                 ("set_aside_leader_card", "card_id", SET_ASIDE),
             ],
         ),
+        # Between the set-aside and its return, at each turn's end: still hers
+        # alone (the twin game below also compares every action in between).
+        **{
+            done: Checkpoint(
+                f"after {what}: Ilesa's card still aside, Hundro still knows the"
+                " top card",
+                {0: {"set_aside_card_id": SET_ASIDE}, 1: HUNDRO_KNOWS},
+                {1: [HUNDRO_KEPT]},
+                aside={0: "aside"},
+                sealed=[
+                    ("keep_peeked_intrigue", "instance_id", HUNDRO_KEPT),
+                    ("set_aside_leader_card", "card_id", SET_ASIDE),
+                ],
+            )
+            for done, what in (
+                (20, "seat 2's first Agent turn"),
+                (23, "seat 3's Reveal turn"),
+                (26, "Ilesa's first Agent turn"),
+            )
+        },
         # Hundro played Know Their Ways in his Reveal turn (29): public since.
+        31: Checkpoint(
+            "after Hundro's Reveal turn: Ilesa's card still aside, Hundro still"
+            " knows the top card",
+            {0: {"set_aside_card_id": SET_ASIDE}, 1: HUNDRO_KNOWS},
+            aside={0: "aside"},
+            sealed=[("set_aside_leader_card", "card_id", SET_ASIDE)],
+        ),
         38: Checkpoint(
             "Ilesa's second turn starts: her card is back in her hand, public;"
             " Hundro still knows the top card",
             {1: HUNDRO_KNOWS},
-            public=[SET_ASIDE],
+            {0: [SET_ASIDE]},
+            public={SET_ASIDE: 0},
+            events=[("card_returned_to_hand", {"card_id": SET_ASIDE, "player": 0})],
             aside={0: "returned"},
             sealed=[("set_aside_leader_card", "card_id", SET_ASIDE)],
         ),
@@ -821,6 +895,17 @@ LEADERS_TABLE = Table(
         # turn end (7), and once it is pressed seat 2, the first player, acts.
         Handover(shown=5, owner=1, passed=6, viewer=0),
         Handover(shown=7, owner=0, passed=7, viewer=2),
+    ),
+    # Her hand then is Dune, the Desert Planet 1, Dagger 1, Reconnaissance 0
+    # and two Convincing Arguments; the plan plays Dagger 1 before 38, so the
+    # twin sets Reconnaissance 0 aside (another card, another name).
+    Twin(
+        index=6,
+        step=(0, "set_aside_leader_card", {"card_id": TWIN_SET_ASIDE}),
+        owner=0,
+        first=7,
+        last=37,
+        secret=SET_ASIDE,
     ),
 )
 
@@ -848,6 +933,22 @@ FETCH_JS = """async ([method, path, body]) => {
 # What a page shows: its own seat panels, Intrigue deck lines and action rows,
 # whose view it holds, the revision of that view, and the state it holds.
 PAGE_JS = """() => {
+  // Everything the page holds in ``state`` (pick, held and counts too), the
+  // catalog aside: Maps and Sets as lists, each object once.
+  const wholeState = () => {
+    const seen = new WeakSet();
+    return JSON.stringify(state, (key, value) => {
+      if (key === "catalog" || typeof value === "function") return undefined;
+      if (typeof Node !== "undefined" && value instanceof Node) return undefined;
+      if (value instanceof Map) return [...value.entries()];
+      if (value instanceof Set) return [...value];
+      if (value && typeof value === "object") {
+        if (seen.has(value)) return undefined;
+        seen.add(value);
+      }
+      return value;
+    });
+  };
   const norm = (s) => s.replace(/\\s+/g, " ").trim();
   const view = state.view;
   const private_ = view && view.private ? view.private : null;
@@ -866,7 +967,7 @@ PAGE_JS = """() => {
       .map((el) => [el.dataset.known, norm(el.textContent)]),
     actionRows: actions ? norm(actions.innerText) : "",
     body: norm(document.body.innerText),
-    stateText: JSON.stringify([state.view, state.log, state.summary, state.actions]),
+    stateText: wholeState(),
   };
 }"""
 
@@ -916,6 +1017,28 @@ HEADS = (
     "setAsideOwnHead",
 )
 
+
+# The event stream's first message as raw text (the doorbell every page
+# listens to), read for at most three seconds.
+EVENTS_JS = """async (path) => {
+  const controller = new AbortController();
+  const response = await fetch(path, {signal: controller.signal});
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  const deadline = Date.now() + 3000;
+  while (!text.includes("\\n\\n") && Date.now() < deadline) {
+    const chunk = await Promise.race([
+      reader.read(),
+      new Promise((resolve) => setTimeout(() => resolve(null), 500)),
+    ]);
+    if (chunk === null) continue;
+    if (chunk.done) break;
+    text += decoder.decode(chunk.value, {stream: true});
+  }
+  controller.abort();
+  return {status: response.status, text};
+}"""
 
 # Each tracked card's marks: its id, its English and Korean names and the
 # paths of its English and Korean pictures (the catalog's own entry). A tracked
@@ -1118,6 +1241,36 @@ def document_leaks(page, cards: list[str], state_text: str) -> dict[str, list[st
     return leaks
 
 
+def steady(payload: Any) -> Any:
+    """``payload`` without its ``VOLATILE`` keys, at any depth."""
+    if isinstance(payload, dict):
+        return {k: steady(v) for k, v in payload.items() if k not in VOLATILE}
+    if isinstance(payload, list):
+        return [steady(value) for value in payload]
+    return payload
+
+
+def first_difference(first: Any, second: Any, path: str = "") -> str | None:
+    """Where two payloads first differ, or None."""
+    if isinstance(first, dict) and isinstance(second, dict):
+        for key in sorted(set(first) | set(second)):
+            if key not in first or key not in second:
+                return f"{path}.{key}: in one game only"
+            found = first_difference(first[key], second[key], f"{path}.{key}")
+            if found:
+                return found
+        return None
+    if isinstance(first, list) and isinstance(second, list):
+        if len(first) != len(second):
+            return f"{path}: {len(first)} vs {len(second)} items"
+        for index, (one, two) in enumerate(zip(first, second, strict=True)):
+            found = first_difference(one, two, f"{path}[{index}]")
+            if found:
+                return found
+        return None
+    return None if first == second else f"{path}: {first!r:.80} vs {second!r:.80}"
+
+
 def pending_fields(payload: Any, path: str = "") -> list[tuple[str, Any]]:
     """Every ``ix_pending`` field (``EMPTY_PENDING``'s keys) anywhere in
     ``payload``, as (path, value), sorted by path."""
@@ -1134,6 +1287,41 @@ def pending_fields(payload: Any, path: str = "") -> list[tuple[str, Any]]:
     return sorted(found, key=lambda entry: entry[0])
 
 
+def reader_payloads(page, game_id: str, seat: int | None) -> dict[str, Any]:
+    """Every payload ``page`` fetches about the game with its own cookie, as
+    (status, body) by name: a seat's own view, snapshot (with the log tail),
+    log and actions; the spectator's summary; both, the seatless snapshot and
+    the VP ledger."""
+    game = f"/games/{game_id}"
+    paths = (
+        {
+            "view": f"{game}/seats/{seat}/view",
+            "snapshot": f"{game}/snapshot?seat={seat}",
+            "log": f"{game}/log?seat={seat}",
+            "actions": f"{game}/seats/{seat}/actions",
+        }
+        if seat is not None
+        else {"summary": game}
+    )
+    paths |= {"seatless": f"{game}/snapshot", "ledger": f"{game}/vp-ledger"}
+    return {name: api(page, "GET", path) for name, path in paths.items()}
+
+
+def events_text(page, game_id: str) -> tuple[int, str]:
+    """The raw first message of the game's event stream, fetched by ``page``."""
+    result = page.evaluate(EVENTS_JS, f"/games/{game_id}/events")
+    return result["status"], result["text"]
+
+
+def log_events(log: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        event
+        for entry in log["entries"]
+        if not entry.get("undone")
+        for event in entry.get("events", [])
+    ]
+
+
 def check_views(
     label: str,
     pages: dict[int, Any],
@@ -1147,20 +1335,15 @@ def check_views(
     may = may_carry(point)
     secrets = tracked_cards(point)
     for seat, page in pages.items():
-        paths = {
-            "view": f"/games/{game_id}/seats/{seat}/view",
-            "snapshot": f"/games/{game_id}/snapshot?seat={seat}",
-            "log": f"/games/{game_id}/log?seat={seat}",
-            "seatless": f"/games/{game_id}/snapshot",
-            "ledger": f"/games/{game_id}/vp-ledger",
-        }
-        answers = {name: api(page, "GET", path) for name, path in paths.items()}
+        answers = reader_payloads(page, game_id, seat)
         statuses = {name: status for name, (status, _) in answers.items()}
-        ok = all(status == 200 for status in statuses.values())
+        status, stream = events_text(page, game_id)
+        statuses["events"] = status
+        ok = all(status == 200 for status in statuses.values()) and bool(stream)
         check.ok(
             ok,
-            f"{label}: seat {seat} reads its own view, snapshot and log, the"
-            " seatless snapshot and the VP ledger",
+            f"{label}: seat {seat} reads its own view, snapshot, log and actions,"
+            " the seatless snapshot, the VP ledger and the event stream",
             statuses,
         )
         if not ok:
@@ -1180,6 +1363,31 @@ def check_views(
             f"{label}: seat {seat}'s view is of the checkpoint's revision",
             (view["revision"], revision, snapshot["summary"]["revision"]),
         )
+        for card in point.hands.get(seat, []):
+            zone = "intrigue_cards" if card.startswith("intrigue:") else "hand"
+            check.ok(
+                card in view["private"][zone],
+                f"{label}: seat {seat}'s own view holds {card} in private.{zone}",
+                view["private"][zone],
+            )
+        for card, holder in point.public.items():
+            shown = view["players"][holder]["hand_public"]
+            check.ok(
+                card in shown,
+                f"{label}: seat {seat}'s view shows {card} in seat {holder}'s"
+                " public hand",
+                shown,
+            )
+        events = log_events(data["log"])
+        for kind, payload in point.events:
+            check.ok(
+                any(
+                    event["kind"] == kind
+                    and all(event["payload"].get(k) == v for k, v in payload.items())
+                    for event in events
+                ),
+                f"{label}: seat {seat}'s log holds the event {kind} {payload}",
+            )
         own = expected["ix_pending"]
         fields = pending_fields(data)
         wanted = sorted(
@@ -1194,21 +1402,22 @@ def check_views(
             + (", with its pending choice" if own != EMPTY_PENDING else ", empty"),
             [entry for entry in fields if entry not in wanted][:6],
         )
-        text = json.dumps(data, ensure_ascii=False)
+        text = json.dumps(data, ensure_ascii=False) + stream
         for card in secrets:
             check.ok(
                 (card in text) == (card in may[seat]),
-                f"{label}: seat {seat}'s payloads (view, snapshot and log, the"
-                " seatless snapshot, the VP ledger)"
+                f"{label}: seat {seat}'s payloads (view, snapshot, log, actions,"
+                " the seatless snapshot, the VP ledger, the event stream)"
                 + (" name" if card in may[seat] else " do not name")
                 + f" {card}",
             )
         unknown = [card for card in secrets if card not in may[seat]]
         named = marks_found(page, unknown, text)
         check.ok(
-            not named,
+            not named and not any(key in stream for key in SECRET_KEYS),
             f"{label}: seat {seat}'s payloads hold no English or Korean name or"
-            f" picture of {unknown or 'a card'} it may not know",
+            f" picture of {unknown or 'a card'} it may not know, and its event"
+            " stream no hidden field",
             named,
         )
         for action_id, key, value in point.sealed:
@@ -1225,40 +1434,39 @@ def check_views(
                 + (value if mine else "(비공개)"),
                 [entry["arguments"] for entry in entries],
             )
-    answers = {
-        "summary": api(spectator, "GET", f"/games/{game_id}"),
-        "seatless": api(spectator, "GET", f"/games/{game_id}/snapshot"),
-        "ledger": api(spectator, "GET", f"/games/{game_id}/vp-ledger"),
-    }
+    answers = reader_payloads(spectator, game_id, None)
     statuses = {name: status for name, (status, _) in answers.items()}
+    status, stream = events_text(spectator, game_id)
+    statuses["events"] = status
     # The VP ledger opens to a seat cookie, or to the room link once the game
     # has finished; what it says when it opens is looked at all the same.
     data = {name: body for name, (status, body) in answers.items() if status == 200}
-    text = json.dumps(data, ensure_ascii=False)
-    named = marks_found(spectator, hidden_cards(point), text)
+    text = json.dumps(data, ensure_ascii=False) + stream
+    hidden = hidden_cards(point)
+    named = marks_found(spectator, hidden, text)
+    # A seatless spectator gets no table on a remote server (the seatless
+    # snapshot has no view; the summary names the seats only), so a card that
+    # turned public (point.public) reaches it nowhere either.
     check.ok(
-        statuses["summary"] == statuses["seatless"] == 200
+        statuses["summary"] == statuses["seatless"] == statuses["events"] == 200
         and statuses["ledger"] in (200, 403)
         and data["summary"]["revision"] == revision
+        and data["seatless"].get("view") is None
         and not any(key in text for key in SECRET_KEYS)
         and not pending_fields(data)
+        and not any(card in text for card in tracked_cards(point))
         and not named,
-        f"{label}: the spectator's summary, seatless snapshot and VP ledger carry"
-        " no hidden field, and no id, name or picture of a tracked card",
+        f"{label}: the spectator's summary, seatless snapshot, VP ledger and event"
+        " stream carry no view, no hidden field and no tracked card (id, name or"
+        " picture)",
         (statuses, [key for key in SECRET_KEYS if key in text], named),
     )
     readers = {
         **{f"seat {seat}": page for seat, page in pages.items()},
         "spectator": spectator,
     }
-    # Every seat with a hidden value (a pending Ix choice alone counts) or a
-    # hidden card.
-    owners = sorted(
-        set(point.private)
-        | {seat for seat, cards in may.items() if cards - set(point.public)}
-    )
     refused: list[str] = []
-    for owner in owners:
+    for owner in range(4):
         for name, page in readers.items():
             if name == f"seat {owner}":
                 continue
@@ -1272,10 +1480,9 @@ def check_views(
                 if status != 403:
                     refused.append(f"{name} {path}: HTTP {status}")
     check.ok(
-        bool(owners) and not refused,
-        f"{label}: every other seat and the spectator is refused (403) the"
-        f" view, actions, snapshot and log of seats {owners}, which hold a hidden"
-        " value or card",
+        not refused,
+        f"{label}: every other seat and the spectator is refused (403) each seat's"
+        " view, actions, snapshot and log",
         refused[:4],
     )
 
@@ -1472,7 +1679,13 @@ def hand_over(base: str, browser, table: Table) -> None:
     names = ", ".join(f"{h.owner} -> {h.viewer}" for h in table.handovers)
     print(f"[{table.name}: hot seat] seats {names} on one page")
     context, page, recorder = open_context(browser, "hotseat", VIEWPORT)
-    table_page = {"hotseat": (page, recorder)}
+    try:
+        hot_seat(base, table, page, {"hotseat": (page, recorder)})
+    finally:
+        context.close()
+
+
+def hot_seat(base: str, table: Table, page, table_page) -> None:
     page.goto(f"{base}/")
     wait_for_setup(page)
     status, created = api(page, "POST", "/games", table.body)
@@ -1542,7 +1755,6 @@ def hand_over(base: str, browser, table: Table) -> None:
             )
         page.evaluate("setLanguage('ko')")
         settled(page)
-    context.close()
 
 
 def hand_on(table: Table, page, table_page, game_id: str, handover: Handover) -> None:
@@ -1631,7 +1843,10 @@ def holds_only_its_own_cookie(
     )
 
 
-def play_table(base: str, browser, table: Table) -> None:
+def play_table(base: str, browser, table: Table) -> dict[int, dict[str, Any]]:
+    """Play ``table`` on its own five contexts, checking it at its
+    checkpoints; return, for each action of its twin's range, the payloads
+    (``steady``) of every seat but the twin's owner and of the spectator."""
     contexts = {}
     pages: dict[int, Any] = {}
     all_pages: dict[str, tuple[Any, Any]] = {}
@@ -1643,7 +1858,21 @@ def play_table(base: str, browser, table: Table) -> None:
         browser, "spectator", VIEWPORT
     )
     all_pages["spectator"] = (spectator, spectator_recorder)
+    try:
+        return replay_table(base, table, pages, spectator, all_pages, contexts)
+    finally:
+        for context in [*contexts.values(), spectator_context]:
+            context.close()
 
+
+def replay_table(
+    base: str,
+    table: Table,
+    pages: dict[int, Any],
+    spectator,
+    all_pages: dict[str, tuple[Any, Any]],
+    contexts: dict[int, Any],
+) -> dict[int, dict[str, Any]]:
     print(
         f"[{table.name}] the host (seat 0's context) creates the table; each"
         " context claims its seat"
@@ -1692,15 +1921,35 @@ def play_table(base: str, browser, table: Table) -> None:
         spectator.evaluate("state.me.seats.length") == 0,
         "the spectator's context holds no seat",
     )
+    spectator_context = spectator.context
     check.ok(
         holds_only_its_own_cookie(contexts, spectator_context, game_id),
         "each context holds its own seat cookie and no other",
     )
 
     print(f"[{table.name}] replaying {len(table.plan)} pinned actions")
+    twin = table.twin
+    captured: dict[int, dict[str, Any]] = {}
     for index in range(len(table.plan)):
         take_plan_step(table, pages, game_id, index)
         done = index + 1
+        if twin is not None and twin.first <= done <= twin.last:
+            readers = {
+                **{f"seat {seat}": (page, seat) for seat, page in pages.items()},
+                "spectator": (spectator, None),
+            }
+            captured[done] = {
+                name: steady(
+                    {
+                        key: [status, body]
+                        for key, (status, body) in reader_payloads(
+                            page, game_id, seat
+                        ).items()
+                    }
+                )
+                for name, (page, seat) in readers.items()
+                if seat != twin.owner
+            }
         if done in table.checkpoints:
             run_checkpoint(table, done, pages, spectator, game_id, all_pages)
         elif done % 20 == 0:
@@ -1710,8 +1959,46 @@ def play_table(base: str, browser, table: Table) -> None:
         summary["revision"] > 0 and not summary["finished"],
         f"{table.name}: the plan ended inside the game, on its last checkpoint",
     )
-    for context in [*contexts.values(), spectator_context]:
-        context.close()
+    return captured
+
+
+def compare_twin(base: str, browser, table: Table, first: dict[int, Any]) -> None:
+    """Play ``table``'s twin game and compare it with the first one."""
+    twin = table.twin
+    assert twin is not None
+    plan = list(table.plan)
+    plan[twin.index] = twin.step
+    second = play_table(
+        base,
+        browser,
+        replace(table, name=f"{table.name}, twin", plan=plan, checkpoints={}),
+    )
+    leaks = [
+        f"after {done}: {reader}"
+        for done, readers in sorted(first.items())
+        for reader, payload in readers.items()
+        if twin.secret in json.dumps(payload)
+    ]
+    span = range(twin.first, twin.last + 1)
+    check.ok(
+        sorted(first) == list(span) and not leaks,
+        f"{table.name}: no payload of another seat or of the spectator names"
+        f" {twin.secret} at any action from {twin.first} to {twin.last}",
+        leaks[:6],
+    )
+    differences = [
+        f"after {done}, {reader}: {found}"
+        for done in span
+        for reader in first.get(done, {})
+        if (found := first_difference(first[done][reader], second[done][reader]))
+    ]
+    check.ok(
+        sorted(second) == list(span) and not differences,
+        f"{table.name}: whichever card seat {twin.owner} picks ({twin.secret} or"
+        f" {twin.step[2]}), every payload of the other seats and of the spectator"
+        f" is the same at every action from {twin.first} to {twin.last}",
+        differences[:6],
+    )
 
 
 TABLES = (IX_TABLE, CEREMONY_TABLE, LEADERS_TABLE)
@@ -1720,7 +2007,7 @@ TABLES = (IX_TABLE, CEREMONY_TABLE, LEADERS_TABLE)
 def check_original_refuses_immortality(base: str, browser) -> None:
     """The original game takes no Immortality until stage P7, which is why the
     Imperium Ceremony table is an Uprising one."""
-    print("[4] the original game still does not take Immortality (stage P7)")
+    print("[5] the original game still does not take Immortality (stage P7)")
     context, page, _ = open_context(browser, "host", VIEWPORT)
     page.goto(f"{base}/#admin={KEY}")
     wait_for_setup(page)
@@ -1740,19 +2027,28 @@ def main() -> None:
     ):
         try:
             # A table whose plan is missed fails alone; the others still run.
+            captured = {}
             for number, table in enumerate(TABLES, start=1):
                 print(f"[{number}] {table.name}")
                 try:
-                    play_table(base, browser, table)
+                    captured[table.name] = play_table(base, browser, table)
                 except PlanMissed as missed:
                     check.ok(False, f"the pinned plan was missed: {missed}")
+            print("[4] the twin games")
+            for table in TABLES:
+                if table.twin is None or table.name not in captured:
+                    continue
+                try:
+                    compare_twin(base, browser, table, captured[table.name])
+                except PlanMissed as missed:
+                    check.ok(False, f"the twin's pinned plan was missed: {missed}")
             check_original_refuses_immortality(base, browser)
         finally:
             shutil.copy(server_log, SERVER_LOG_COPY)
         log_text = server_log.read_text()
         bad = "Traceback" in log_text or "ERROR" in log_text
         check.ok(not bad, f"no server errors (see {SERVER_LOG_COPY})")
-        print("[5] the hot-seat hand-overs, on an open server")
+        print("[6] the hot-seat hand-overs, on an open server")
         with server() as (open_base, open_log):
             for table in TABLES:
                 try:

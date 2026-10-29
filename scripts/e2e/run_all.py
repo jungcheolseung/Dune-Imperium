@@ -57,8 +57,9 @@ SECONDS = {
     "log_passes": 6,
     "log_words": 5,
     # 2026-10-30 alone: a remote server, three tables of five pages (184, 91
-    # and 38 pinned actions), then an open server with a hot-seat page per table.
-    "ix_screens": 60,
+    # and 38 pinned actions) and table 3's twin, then an open server with a
+    # hot-seat page per table.
+    "ix_screens": 90,
 }
 
 
