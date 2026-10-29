@@ -1533,8 +1533,11 @@ def _nothing_within_five(state: GameState) -> GameState:
 
 def _in_row(state: GameState, card: str) -> GameState:
     """``card`` takes the Row's first position, whose card goes to its place
-    in the Imperium deck."""
+    in the Imperium deck (unchanged when the seed already dealt it to the
+    Row)."""
 
+    if card in state.imperium_row:
+        return state
     assert card in state.imperium_deck
     first = state.imperium_row[0]
     return replace(
@@ -1792,6 +1795,56 @@ def test_boundless_ambition_out_of_turn_gains_a_water_acquire_box(card: str) -> 
     assert card in state.players[1].discard_pile
     assert state.players[1].resources.water == water + 1
     assert state.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_boundless_ambition_out_of_turn_acquires_appropriate_and_its_freighter() -> (
+    None
+):
+    """Appropriate (cost 5) is within Boundless Ambition's reach: acquired in
+    seat 1's Unload window during seat 0's turn, its acquire box's Freighter
+    icon ("you may move your Freighter in one of two ways" [Rise of Ix p. 5])
+    opens seat 1's own Freighter window at once rather than waiting on a turn
+    seat 1 does not have (plan 10), then play goes back to the discard."""
+    appropriate = "imperium:appropriate:0"
+    state = _in_row(_start(config=IX_PROMOS), appropriate)
+    other = state.players[1].hand[0]
+    state = _mohiam_asks_seat_one(state, AMBITION, other)
+    state = _do(state, "discard_opponent_card", seat=1, card_id=AMBITION).state
+    acquired = _do(
+        state, "acquire_unload_imperium_card", seat=1, instance_id=appropriate
+    )
+    state = acquired.state
+    assert appropriate in state.players[1].discard_pile
+    top = state.decision_stack[-1]
+    assert top.kind is FrameKind.FREIGHTER_MOVE
+    assert isinstance(top.decision, PlayerDecision) and top.decision.owner == 1
+    assert not _rows(state, 0)
+    check_observation_privacy(state)
+    moved = _do(state, "advance_freighter", seat=1).state
+    assert moved.players[1].freighter_space == 1
+    assert moved.decision_stack[-1].kind is FrameKind.OPPONENT_CARD_DISCARD
+
+
+def test_appropriate_acquired_inside_a_hold_moves_its_freighter_first() -> None:
+    """Inside Truthsayer's hold (Boundless Ambition discarded as its cost) an
+    effect opens its own window rather than waiting on the turn: the acquired
+    Appropriate's Freighter window opens above the hold, and the draw comes
+    after it ("Unload를 끝까지 해결한 뒤 오른쪽으로 간다", rise-of-ix.md 7)."""
+    appropriate = "imperium:appropriate:0"
+    state = _in_row(_start(config=IX_PROMOS), appropriate)
+    kept = state.players[0].hand[0]
+    state = _give(state, 0, hand=(TRUTHSAYER, AMBITION, kept))
+    state = _do(state, "choose_agent_card", card_id=TRUTHSAYER).state
+    state = _do(state, "place_agent", space_id="wealth").state
+    state = _do(state, "discard_agent_card", card_id=AMBITION).state
+    hand = len(state.players[0].hand)
+    state = _do(state, "acquire_unload_imperium_card", instance_id=appropriate).state
+    assert state.decision_stack[-1].kind is FrameKind.FREIGHTER_MOVE
+    assert len(state.players[0].hand) == hand
+    done = _do(state, "decline_freighter")
+    assert len(done.state.players[0].hand) == hand + 1
+    kinds = _kinds(done.events)
+    assert kinds.index("freighter_declined") < kinds.index("agent_card_effect_resolved")
 
 
 def test_boundless_ambition_with_nothing_in_reach_fizzles_in_its_window() -> None:

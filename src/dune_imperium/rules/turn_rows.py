@@ -126,6 +126,10 @@ DREADNOUGHT_ACQUIRE_ICON: Final = "dreadnought"
 """The acquire icon ``value`` of Full-Scale Assault's Dreadnought icon (Rise
 of Ix): "you may commission" [Rise of Ix p. 6], so it holds no turn end."""
 
+FREIGHTER_ACQUIRE_ICON: Final = "freighter"
+"""The acquire icon ``value`` of Appropriate's Freighter icon (Rise of Ix):
+"you may move your Freighter" [Rise of Ix p. 5], so it holds no turn end."""
+
 type Pending = tuple[str, str, str]
 
 _TURN_KINDS: Final = (FrameKind.TURN, FrameKind.AGENT_EFFECTS, FrameKind.REVEAL)
@@ -256,7 +260,7 @@ def acquire_icon_blocked(value: str, owner: PlayerState) -> bool:
     no row (OQ-060): it waits, greyed out, and the press lapses it."""
 
     _card_id, icon = value.split("|")
-    if icon == DREADNOUGHT_ACQUIRE_ICON:
+    if icon in (DREADNOUGHT_ACQUIRE_ICON, FREIGHTER_ACQUIRE_ICON):
         # Optional ("may"): it never holds the end, offered or not.
         return True
     return icon == CHOSEN_INFLUENCE_ICON and not any(
@@ -371,8 +375,8 @@ def _lapsed(player: int, item: Pending) -> GameEvent:
         )
     if kind == ACQUIRE_ICON:
         # Only the chosen Influence with every Faction at the top, and Full-
-        # Scale Assault's optional Dreadnought icon, reach the press
-        # (``holds_the_end``).
+        # Scale Assault's optional Dreadnought icon and Appropriate's
+        # optional Freighter icon, reach the press (``holds_the_end``).
         card_id, icon = value.split("|")
         return GameEvent(
             event_id=f"{source}:{icon}_lapsed",

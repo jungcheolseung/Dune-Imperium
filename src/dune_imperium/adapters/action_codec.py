@@ -99,6 +99,7 @@ from dune_imperium.rules.acquire_icons import (
     ACQUIRE_ICON_ACTION,
     ACQUIRED_CARD_ARGUMENT,
     DREADNOUGHT_ICON,
+    FREIGHTER_ICON,
     acquire_box_icons,
     acquire_icon_faction,
 )
@@ -1153,6 +1154,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "advance_agent_card_freighter",
                 "recall_agent_card_freighter",
                 "acquire_agent_card_tech",
+                # Appropriate's, paid in Solari instead of spice.
+                "acquire_agent_card_tech_with_solari",
                 # Weirding Way's extra turn.
                 "take_agent_card_extra_turn",
                 # Treachery's Reveal troops deployed from the supply.
@@ -1944,7 +1947,10 @@ def _acquire_icon_templates(
                 (ACQUIRED_CARD_ARGUMENT, card.card.card_id),
                 ("effect", icon),
             )
-            if acquire_icon_faction(icon) is not None or icon == DREADNOUGHT_ICON:
+            if acquire_icon_faction(icon) is not None or icon in (
+                DREADNOUGHT_ICON,
+                FREIGHTER_ICON,
+            ):
                 templates.append(ActionTemplate(ACQUIRE_ICON_ACTION, base))
                 continue
             templates.extend(

@@ -39,6 +39,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CommissionDreadnought,
     DrawIntrigueCards,
     EffectSection,
+    Freighter,
     GainInfluence,
     GainResources,
     PlaceSpy,
@@ -146,6 +147,11 @@ ACQUISITION_ABILITIES: Final[Mapping[PersonalCardAcquisitionEffect, Ability]] = 
             _ACQUIRE.MAY_COMMISSION_DREADNOUGHT: _when(
                 AbilityTiming.ACQUIRE, CommissionDreadnought()
             ),
+            # Appropriate (Rise of Ix): the Freighter icon [Steam app
+            # attribute table, AcquireEffectList], "you may move" [Rise of Ix
+            # p. 5] -- an optional row of the turn, or outside its owner's
+            # turn the Freighter's own window (``rules.acquire_icons``).
+            _ACQUIRE.MAY_MOVE_FREIGHTER: _when(AbilityTiming.ACQUIRE, Freighter()),
         }
     )
 )

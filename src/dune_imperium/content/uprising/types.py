@@ -419,6 +419,11 @@ class PersonalCardAgentEffect(StrEnum):
     MAY_MOVE_FREIGHTER = "may_move_freighter"
     # Ixian Engineer (Rise of Ix): the Acquire Tech icon, with no Tech Discount.
     MAY_ACQUIRE_TECH = "may_acquire_tech"
+    # Appropriate (Rise of Ix): "[Emperor] 2 Influence: [Acquire Tech] You may
+    # use Solari instead of spice for this purchase."
+    MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO = (
+        "may_acquire_tech_with_spice_or_solari_if_emperor_influence_two"
+    )
     # Shai-Hulud (Rise of Ix): "[Trash a card] -> [2 troops]".
     TRASH_PERSONAL_CARD_TO_RECRUIT_TWO = "trash_personal_card_to_recruit_two"
     # Guild Chief Administrator (Rise of Ix): "[Discard] -> [Trash a card]".
@@ -557,6 +562,9 @@ class PersonalCardAcquisitionEffect(StrEnum):
     # Full-Scale Assault (Rise of Ix): the Dreadnought icon, "you may
     # commission" [Rise of Ix p. 6].
     MAY_COMMISSION_DREADNOUGHT = "may_commission_dreadnought"
+    # Appropriate (Rise of Ix): the Freighter icon, "you may move your
+    # Freighter in one of two ways" [Rise of Ix p. 5].
+    MAY_MOVE_FREIGHTER = "may_move_freighter"
 
 
 class PersonalCardRevealChoiceEffect(StrEnum):

@@ -193,9 +193,11 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # (three Influence thresholds over three icons), Ixian Engineer (the
     # Acquire Tech icon), Esmar Tuek ("[1 spice] -> [Spacing Guild Influence]
     # [draw 1 card]"), In The Shadows ("[Bene Gesserit] 2 Influence: [Discard]
-    # -> Choose one: [Emperor] [Spacing Guild] [Fremen] Influence") and
-    # Ix-Guild Compact ("[Discard] [Discard] -> [Dreadnought]").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 18
+    # -> Choose one: [Emperor] [Spacing Guild] [Fremen] Influence"), Ix-Guild
+    # Compact ("[Discard] [Discard] -> [Dreadnought]") and Appropriate
+    # ("[Emperor] 2 Influence: [Acquire Tech] You may use Solari instead of
+    # spice for this purchase").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 19
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -244,6 +246,10 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         # Ixian Engineer (Rise of Ix): the Acquire Tech icon, answered by its
         # own row.
         _BOX.MAY_ACQUIRE_TECH: ("tech",),
+        # Appropriate (Rise of Ix): the same icon behind the Emperor threshold.
+        _BOX.MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO: (
+            "tech",
+        ),
         _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: ("trash", "cards"),
         # Split per icon (cleanup-2d-5, user decision 2026-10-18).
         _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: ("influence", "intrigue"),

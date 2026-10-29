@@ -770,6 +770,22 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # it opens the Acquire Tech window with its own refusal
             # (``agent_effects.apply_agent_card_tech``).
             _BOX.MAY_ACQUIRE_TECH: _icons(("tech", _line(AcquireTech(discount=0)))),
+            # Appropriate (Rise of Ix): "[Emperor] 2 Influence: [Acquire Tech]
+            # You may use Solari instead of spice for this purchase." [Steam
+            # app text] -- Ixian Engineer's plain Acquire Tech icon (no Tech
+            # Discount sprite) behind an Emperor threshold judged when the
+            # icon resolves (OQ-028, as Web of Power's), its price payable in
+            # Solari instead ("Solari와 spice를 섞어 낼 수 없다. Negotiator
+            # 하나가 1 Solari를 깎는다", rise-of-ix.md 4, [Rise of Ix p. 10]).
+            _BOX.MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO: _icons(
+                (
+                    "tech",
+                    _line(
+                        AcquireTech(discount=0, solari_allowed=True),
+                        condition=InfluenceAtLeast(Faction.EMPEROR, 2),
+                    ),
+                )
+            ),
             # Tread in Darkness: "If Bene Gesserit Bond: You may trash a card,
             # Draw 1 card" -- the Bond opens the box and is judged again on each
             # icon when it resolves (OQ-028); the trash stays optional (OQ-058).

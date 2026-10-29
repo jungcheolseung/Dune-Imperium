@@ -220,7 +220,12 @@ from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
-from dune_imperium.rules.tech import push_tech_acquisition, tech_acquisition_possible
+from dune_imperium.rules.tech import (
+    SOLARI_PAYMENT,
+    SPICE_PAYMENT,
+    push_tech_acquisition,
+    tech_acquisition_possible,
+)
 from dune_imperium.rules.unit_loss import lose_unit, unit_loss_options
 from dune_imperium.rules.units import retreat_dreadnought, retreat_units
 from dune_imperium.rules.unload import hold_payer, push_unload_hold, unload_holds
@@ -1142,11 +1147,26 @@ def _tech_icon_rows(
     assert recorded is not None
     if box_icon_block(state.players[player], context, recorded, tech[0]):
         return ()
-    if not state.config.rise_of_ix or not tech_acquisition_possible(
-        state, state.players[player], tech[1].discount
-    ):
+    if not state.config.rise_of_ix:
         return ()
-    return (DomainAction(action_id="acquire_agent_card_tech", actor=player),)
+    owner = state.players[player]
+    # Appropriate: "You may use Solari instead of spice for this purchase."
+    # -- its owner picks the resource as the icon opens the window, which
+    # then prices every tile in it, never mixed (rise-of-ix.md 4).
+    return tuple(
+        DomainAction(action_id=action_id, actor=player)
+        for action_id, payment in _TECH_PAYMENT_ROWS
+        if (payment == SPICE_PAYMENT or tech[1].solari_allowed)
+        and tech_acquisition_possible(state, owner, tech[1].discount, payment)
+    )
+
+
+# The rows that open an Agent box's Acquire Tech window, by what it is paid
+# with: spice, or Solari where the icon allows it (Appropriate).
+_TECH_PAYMENT_ROWS: Final = (
+    ("acquire_agent_card_tech", SPICE_PAYMENT),
+    ("acquire_agent_card_tech_with_solari", SOLARI_PAYMENT),
+)
 
 
 def legal_agent_card_icon_choice_actions(
@@ -1247,6 +1267,7 @@ def apply_agent_card_tech(state: GameState, action: DomainAction) -> RuleResult:
         discount=tech[1].discount,
         source=f"{source}:tech",
         printer=printer,
+        payment=dict(_TECH_PAYMENT_ROWS)[action.action_id],
     )
     done = agent_box_event(
         source,
@@ -3560,6 +3581,11 @@ OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = 
             ),
             # Ixian Engineer's Acquire Tech icon (Rise of Ix, "may").
             PersonalCardAgentEffect.MAY_ACQUIRE_TECH: frozenset({AGENT_ICON_TECH}),
+            # Appropriate's, paid in spice or Solari (Rise of Ix, "may").
+            (
+                PersonalCardAgentEffect
+                .MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO
+            ): frozenset({AGENT_ICON_TECH}),
         }
     )
 )

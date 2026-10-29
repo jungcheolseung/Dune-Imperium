@@ -701,6 +701,10 @@ def reward_text(reward: Reward) -> str:
             )
         case AcquireReserveCard(card_id=card_id):
             return f"Acquire {card_id.replace('_', ' ').title()}"
+        case AcquireTech(discount=0, solari_allowed=True):
+            # Appropriate (Rise of Ix): "You may use Solari instead of spice
+            # for this purchase."
+            return "Acquire a Tech tile, paying Solari instead of spice if you like"
         case AcquireTech(discount=0):
             return "Acquire a Tech tile"
         case AcquireTech(discount=discount):

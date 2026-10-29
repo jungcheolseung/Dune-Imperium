@@ -345,7 +345,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # cap), only its own row reads them, its row is the only one that changed, and
 # no scale moved (compared against 23f086aa, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against be07d962 (2026-10-30).
-_GOLDEN_DIGEST = "41713f256c48dea4b0903eec0718b8baa1bd935489088befd1ffa16b47fd7791"
+# Then Appropriate got its records (stage P4d): only its own row changed, and
+# two personal-table columns are new (the Freighter piece of an acquire box and
+# the Acquire Tech piece's Solari payment), read by its row alone; no older
+# scale moved (compared against 78241b7b on claude/base-ix-p4, 2026-10-30).
+_GOLDEN_DIGEST = "07de0735fc3b615e5a8675085c28daef06501ce6f6617863c1f61763036a81a1"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

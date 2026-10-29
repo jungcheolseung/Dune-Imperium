@@ -951,6 +951,9 @@ def reward_text_ko(reward: Reward) -> str:
             # print (`[KO card: Navigation Card 4]`; the class's own
             # docstring names it "Navigation card 4").
             return f"{_reserve_card_name_ko(card_id)} {{acquire}}"
+        case AcquireTech(discount=0, solari_allowed=True):
+            # Appropriate (Rise of Ix): the price in Solari instead of spice.
+            return "{tech_tile} {acquire} ({spice} 대신 {solari}로 지불 가능)"
         case AcquireTech(discount=0):
             # "Acquire Tech | 기술 획득" [Bloodlines p. 12].
             return "{tech_tile} {acquire}"

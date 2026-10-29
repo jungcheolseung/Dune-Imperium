@@ -302,6 +302,7 @@ const ACTION_LABELS = {
   acquire_unload_reserve_card: "Unload: 비용이 5 이하인 카드 획득",
   skip_unload_acquisition: "Unload: 획득할 카드 없음 (건너뛰기)",
   acquire_agent_card_tech: "{tech_tile} 획득",
+  acquire_agent_card_tech_with_solari: "{tech_tile} 획득 ({solari}로 지불)",
   acquire_foldspace_to_deck_top: "Foldspace 카드를 덱 위에",
   place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
   /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep

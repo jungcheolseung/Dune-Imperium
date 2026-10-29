@@ -1324,6 +1324,12 @@ class AcquireTech:
     and with any Negotiators returned (``rules.tech``)."""
 
     discount: int = 1
+    # Appropriate (Rise of Ix): "You may use Solari instead of spice for this
+    # purchase." [Steam app text] -- the whole price in one resource, never
+    # mixed, Negotiators taking a Solari each ("Solari와 spice를 섞어 낼 수
+    # 없다. Negotiator 하나가 1 Solari를 깎는다", docs/rules/rise-of-ix.md 4,
+    # [Rise of Ix p. 10]).
+    solari_allowed: bool = False
 
     def __post_init__(self) -> None:
         if self.discount < 0:

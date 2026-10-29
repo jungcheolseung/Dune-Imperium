@@ -286,6 +286,14 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         ),
         # Rise of Ix's Ixian Engineer (stage P4d): the Acquire Tech icon.
         PersonalCardAgentEffect.MAY_ACQUIRE_TECH: "You may acquire a Tech tile",
+        # Rise of Ix's Appropriate (stage P4d).
+        (
+            PersonalCardAgentEffect
+            .MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO
+        ): (
+            "If you have 2 or more Emperor Influence: You may acquire a Tech "
+            "tile, using Solari instead of spice for this purchase if you like"
+        ),
         PersonalCardAgentEffect.GENERATE_SPECIMEN: "Generate 1 specimen",
         PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
             "Gain 1 Bene Gesserit Influence, Draw 1 Intrigue card"
@@ -705,6 +713,10 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
             # Rise of Ix's Full-Scale Assault: the Dreadnought icon ("may").
             PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT: (
                 "Commission a dreadnought"
+            ),
+            # Rise of Ix's Appropriate: the Freighter icon ("may").
+            PersonalCardAcquisitionEffect.MAY_MOVE_FREIGHTER: (
+                "Move your Freighter up one space or recall it"
             ),
         }
     )

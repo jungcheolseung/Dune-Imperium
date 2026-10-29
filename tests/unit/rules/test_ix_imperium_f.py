@@ -1397,3 +1397,184 @@ def test_a_taken_extra_turn_stays_when_the_card_is_trashed() -> None:
     assert WEIRDING in state.players[0].trashed
     state = _do(state, "finish_agent_turn").state
     assert _turn_owner(state) == 0
+
+
+# --- Appropriate ------------------------------------------------------------------
+
+APPROPRIATE = "imperium:appropriate:0"
+_TECH_SPICE = "acquire_agent_card_tech"
+_TECH_SOLARI = "acquire_agent_card_tech_with_solari"
+
+
+def _tech_on_top(state: GameState, tech_id: str) -> GameState:
+    """``tech_id`` on top of the first Ix Tech stack."""
+
+    stacks = tuple(
+        tuple(tile for tile in stack if tile != tech_id) for stack in state.tech_stacks
+    )
+    return replace(state, tech_stacks=((tech_id, *stacks[0]), *stacks[1:]))
+
+
+def _appropriate_placed(
+    state: GameState, *, emperor: int = 2, solari: int = 5, spice: int = 0
+) -> GameState:
+    """Appropriate sent to Imperial Basin (its Spice Trade icon) with
+    ``emperor`` Influence, ``solari`` and ``spice``; Detonation Devices (3)
+    on top of a Tech stack."""
+
+    state = _tech_on_top(state, "detonation_devices")
+    owner = state.players[0]
+    state = _give(
+        state,
+        0,
+        hand=(APPROPRIATE,),
+        influence=replace(owner.influence, emperor=emperor),
+        resources=replace(owner.resources, solari=solari, spice=spice),
+    )
+    state = _do(state, "choose_agent_card", card_id=APPROPRIATE).state
+    return _do(state, "place_agent", space_id="imperial_basin").state
+
+
+def _tech_rows(state: GameState) -> set[str]:
+    _rows(state)
+    return {
+        row.action_id
+        for row in ENGINE.whole_actions(state, 0)
+        if row.action_id in (_TECH_SPICE, _TECH_SOLARI)
+    }
+
+
+def test_appropriate_matches_the_app_and_joins_the_ix_deck() -> None:
+    """App table: Emperor, cost 5, one copy; Landsraad and Spice Trade icons;
+    Reveal 2 Persuasion; acquire box Freighter. Text: "[Emperor] 2 Influence:
+    [Acquire Tech] You may use Solari instead of spice for this purchase." """
+    entry = IMPERIUM_CARDS_BY_ID["appropriate"]
+    assert (entry.copies, entry.acquisition_cost) == (1, 5)
+    assert entry.factions == (Faction.EMPEROR,)
+    assert entry.agent_icons == (AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO
+    )
+    assert entry.acquisition_effect is PersonalCardAcquisitionEffect.MAY_MOVE_FREIGHTER
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (2, 0)
+    assert entry.play_data_complete
+    assert APPROPRIATE in content_for(IX).imperium_deck_instance_ids
+    for config in (replace(IX, rise_of_ix=False), RulesetConfig()):
+        assert APPROPRIATE not in content_for(config).imperium_deck_instance_ids
+    assert len(personal_card_text(entry)) == len(personal_card_text_ko(entry))
+
+
+def test_appropriate_pays_the_whole_tile_in_solari() -> None:
+    """ "You may use Solari instead of spice for this purchase." with
+    "Solari와 spice를 섞어 낼 수 없다" (rise-of-ix.md 4, [Rise of Ix p. 10]):
+    with no spice the Solari row opens the window priced in Solari, and
+    Detonation Devices (3) takes 3 Solari and no spice."""
+    state = _appropriate_placed(_start(), solari=5, spice=0)
+    assert _tech_rows(state) == {_TECH_SOLARI}
+    opened = _do(state, _TECH_SOLARI).state
+    assert ix_pending_of(opened, 0).tech_payment == "solari"
+    assert ix_pending_of(opened, 0).tech_discount == 0
+    check_observation_privacy(opened)
+    bought = _do(opened, "acquire_tech", tech_id="detonation_devices")
+    owner = bought.state.players[0]
+    assert "detonation_devices" in owner.tech_ids
+    assert (owner.resources.solari, owner.resources.spice) == (2, 0)
+    acquired = next(e for e in bought.events if e.kind == "tech_acquired")
+    assert dict(acquired.payload)["solari"] == 3
+    assert dict(acquired.payload)["spice"] == 0
+
+
+def test_appropriate_may_still_pay_in_spice() -> None:
+    """The Solari are a "may": with both resources the owner picks either
+    row, and the spice row is the plain Acquire Tech."""
+    state = _appropriate_placed(_start(), solari=5, spice=3)
+    assert _tech_rows(state) == {_TECH_SPICE, _TECH_SOLARI}
+    opened = _do(state, _TECH_SPICE).state
+    assert ix_pending_of(opened, 0).tech_payment == "spice"
+    owner = _do(opened, "acquire_tech", tech_id="detonation_devices").state.players[0]
+    assert (owner.resources.solari, owner.resources.spice) == (5, 0)
+
+
+def test_appropriate_never_mixes_the_two_resources() -> None:
+    """ "Solari와 spice를 섞어 낼 수 없다": 2 Solari and 1 spice do not buy a
+    3-cost tile, so the icon offers no row (an arrow-less "may" with no tile
+    in reach, as at the Dreadnought space)."""
+    state = _appropriate_placed(_start(), solari=2, spice=1)
+    owner = state.players[0]
+    assert owner.resources.solari + owner.resources.spice == 3
+    # The other tops cost more than 3 (Spaceport 5, Invasion Ships 5).
+    assert _tech_rows(state) == set()
+
+
+def test_a_negotiator_takes_one_solari_off() -> None:
+    """ "Negotiator 하나가 1 Solari를 깎는다" (rise-of-ix.md 4): with one
+    Negotiator returned, Detonation Devices costs 2 Solari."""
+    state = _appropriate_placed(_start(), solari=2, spice=0)
+    owner = state.players[0]
+    state = _give(
+        state, 0, negotiators=1, troops_supply=owner.troops_supply - 1
+    )
+    opened = _do(state, _TECH_SOLARI).state
+    bought = _do(opened, "acquire_tech", tech_id="detonation_devices", negotiators=1)
+    after = bought.state.players[0]
+    assert after.resources.solari == 0
+    assert after.negotiators == 0
+
+
+def test_appropriate_needs_two_emperor_influence() -> None:
+    """ "[Emperor] 2 Influence:" -- judged when the icon resolves (OQ-028),
+    as Web of Power's thresholds: with one Influence nothing is offered."""
+    state = _appropriate_placed(_start(), emperor=1, solari=5, spice=5)
+    assert _tech_rows(state) == set()
+
+
+def test_appropriate_acquired_moves_the_freighter_as_an_optional_row() -> None:
+    """The acquire box's Freighter icon, "you may move your Freighter in one of
+    two ways" [Rise of Ix p. 5]: bought in a Reveal turn it waits as a row of
+    the Reveal that opens the Freighter's window; left, the Reveal's end lapses
+    it."""
+    state = _in_row(_start(), APPROPRIATE)
+    state = _with_persuasion(_do(state, "reveal_turn").state, 5)
+    bought = _do(state, "acquire_imperium", instance_id=APPROPRIATE).state
+    assert _offered(bought, _ACQUIRE_ICON, effect="freighter")
+    assert _offered(bought, "finish_reveal")
+    opened = _do(bought, _ACQUIRE_ICON, effect="freighter").state
+    assert opened.decision_stack[-1].kind == "freighter_move"
+    moved = _do(opened, "advance_freighter").state
+    assert moved.players[0].freighter_space == 1
+    lapsed = _do(bought, "finish_reveal")
+    assert "acquire_icon_lapsed" in _kinds(lapsed.events)
+    assert lapsed.state.players[0].freighter_space == 0
+
+
+def test_appropriate_and_the_shipping_tops_acquire_tech_stay_apart() -> None:
+    """ "Shipping 맨 위 회수와 함께 쓰면 Acquire Tech가 둘이고 각각 따로다(−2
+    할인을 Solari 구매에 붙일 수 없다; Negotiator는 어느 쪽에나) — 디자이너 판정"
+    (rise-of-ix.md 4; 9.3 "Appropriate + Shipping 맨 위: Acquire Tech 둘은
+    따로"): sent to Smuggling with the Freighter on top, the space's recall
+    owes space 3's Acquire Tech at Tech Discount 2 paid in spice, and
+    Appropriate's own icon opens a window of its own, no discount, in Solari."""
+    state = _tech_on_top(_start(), "detonation_devices")
+    owner = state.players[0]
+    state = _give(
+        state,
+        0,
+        hand=(APPROPRIATE,),
+        freighter_space=3,
+        influence=replace(owner.influence, emperor=2),
+        resources=replace(owner.resources, solari=5, spice=1),
+    )
+    state = _do(state, "choose_agent_card", card_id=APPROPRIATE).state
+    state = _do(state, "place_agent", space_id="smuggling").state
+    state = _do(state, "recall_board_freighter").state
+    shipping = _do(state, "resolve_shipping_reward", effect="tech").state
+    assert ix_pending_of(shipping, 0).tech_discount == 2
+    assert ix_pending_of(shipping, 0).tech_payment == "spice"
+    # Detonation Devices (3) at 2 off: the 1 spice, nothing in Solari.
+    bought = _do(shipping, "acquire_tech", tech_id="detonation_devices").state
+    after = bought.players[0]
+    assert (after.resources.spice, after.resources.solari) == (0, 5)
+    assert _tech_rows(bought) == {_TECH_SOLARI}
+    opened = _do(bought, _TECH_SOLARI).state
+    assert ix_pending_of(opened, 0).tech_discount == 0
+    assert ix_pending_of(opened, 0).tech_payment == "solari"

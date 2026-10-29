@@ -246,6 +246,7 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "commission_intrigue_dreadnought": 2.5,
     "acquire_board_tech": 2.5,
     "acquire_agent_card_tech": 2.5,
+    "acquire_agent_card_tech_with_solari": 2.5,
     "acquire_negotiation_tech": 2.5,
     "place_board_negotiator": 1.0,
     "place_intrigue_negotiator": 1.0,

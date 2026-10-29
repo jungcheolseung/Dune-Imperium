@@ -240,6 +240,7 @@ const LABELS_EN = {
     "acquire_unload_reserve_card": "Unload: Acquire a card costing 5 or less",
     "skip_unload_acquisition": "Unload: No card to acquire (skip)",
     "acquire_agent_card_tech": "Acquire {tech_tile}",
+    "acquire_agent_card_tech_with_solari": "Acquire {tech_tile} paying {solari}",
     "acquire_foldspace_to_deck_top": "Foldspace card on top of your deck",
     "place_combat_reward_dreadnought": "{control} space for your dreadnought",
     "detonate_combat_reward_dreadnought": "Detonation Devices: dreadnought to the {supply} -> 1 {victory_point}",

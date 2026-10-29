@@ -347,6 +347,15 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     # words of ``effect_dsl_text_ko`` ("Acquire Tech | 기술 획득" [Bloodlines
     # p. 12]) with the "may" of [Rise of Ix p. 4].
     PersonalCardAgentEffect.MAY_ACQUIRE_TECH: "{tech_tile} {acquire} 가능",
+    # Rise of Ix's Appropriate (stage P4d): Web of Power's threshold words and
+    # the Acquire Tech icon's, the price payable in Solari.
+    (
+        PersonalCardAgentEffect
+        .MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO
+    ): (
+        "{influence_emperor} 2 이상이면: {tech_tile} {acquire} 가능, "
+        "{spice} 대신 {solari}로 지불 가능"
+    ),
     PersonalCardAgentEffect.GENERATE_SPECIMEN: "표본 1개 생성",
     PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
         "{influence_bene_gesserit:1}, {intrigue:1}"
@@ -743,6 +752,11 @@ ACQUISITION_EFFECT_TEXT_KO: Final[dict[PersonalCardAcquisitionEffect, str]] = {
     # English, as ``effect_dsl_text_ko`` keeps the Dreadnought icon's.
     PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT: (
         "Commission a dreadnought"
+    ),
+    # Rise of Ix's Appropriate: the Freighter icon in ``effect_dsl_text_ko``'s
+    # words (no Korean source names the Freighter's move).
+    PersonalCardAcquisitionEffect.MAY_MOVE_FREIGHTER: (
+        "Move your Freighter up one space or recall it"
     ),
 }
 

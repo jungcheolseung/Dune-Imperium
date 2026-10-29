@@ -12,16 +12,16 @@ These began as stage P4a identity entries (name, copies and cost), generated
 by ``scripts/dwgr/imperium_entries.py --set ix skeleton``. Incomplete entries
 keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
-game's deck takes only completed cards (CHOAM Delegate, Jamis, Landing
-Rights, Sayyadina, Shai-Hulud, Truthsayer, Imperial Shock Trooper, Local
-Fence, Water Peddler, Guild Chief Administrator, Negotiated Withdrawal,
-Desert Ambush, Full-Scale Assault, Embedded Agent, Court Intrigue, Weirding
-Way, Satellite Ban, Spice Trader, Imperial Bashar, Bounty Hunter, Web of
-Power, Ixian Engineer, Esmar Tuek, Guild Accord, In The Shadows, Treachery,
-Freighter Fleet and Ix-Guild Compact so far, and with ``promo_cards``
-Boundless Ambition), while the observation lists every identity from v39.
-Setup takes Rise of Ix on the original game since stage P4c-5.
-from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
+game's deck takes only completed cards: every one of the 29 since Appropriate
+(CHOAM Delegate, Jamis, Landing Rights, Sayyadina, Shai-Hulud, Truthsayer,
+Imperial Shock Trooper, Local Fence, Water Peddler, Guild Chief
+Administrator, Negotiated Withdrawal, Desert Ambush, Full-Scale Assault,
+Embedded Agent, Court Intrigue, Weirding Way, Satellite Ban, Spice Trader,
+Imperial Bashar, Bounty Hunter, Web of Power, Ixian Engineer, Esmar Tuek,
+Guild Accord, In The Shadows, Treachery, Freighter Fleet, Ix-Guild Compact
+and Appropriate), and with ``promo_cards`` Boundless Ambition; the observation
+lists every identity from v39. Setup takes Rise of Ix on the original game
+since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
 cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
@@ -56,6 +56,9 @@ _SPICE_TRADER = (
 _ESMAR_TUEK = (
     PersonalCardAgentEffect.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
 )
+_APPROPRIATE = (
+    PersonalCardAgentEffect.MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO
+)
 _IN_THE_SHADOWS = (
     PersonalCardAgentEffect.MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO
 )
@@ -74,6 +77,22 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("appropriate", "Appropriate"),
         copies=1,
         acquisition_cost=5,
+        # App table: Emperor, the Landsraad and Spice Trade icons, Reveal 2
+        # Persuasion, acquire box Freighter. Agent: "[Emperor] 2 Influence:
+        # [Acquire Tech] You may use Solari instead of spice for this
+        # purchase." [Steam app text] -- Solari or spice, never mixed, a
+        # Negotiator taking 1 Solari off (rise-of-ix.md 4, [Rise of Ix p.
+        # 10]); beside Shipping space 3's own Acquire Tech it is a second,
+        # separate one (rise-of-ix.md 4, Direwolf Discord). Acquire box: the
+        # Freighter icon, "you may move your Freighter in one of two ways"
+        # [Rise of Ix p. 5] (``rules.acquire_icons``).
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
+        agent_effect=_APPROPRIATE,
+        reveal_persuasion=2,
+        has_acquisition_bonus=True,
+        acquisition_effect=PersonalCardAcquisitionEffect.MAY_MOVE_FREIGHTER,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("bounty_hunter", "Bounty Hunter"),

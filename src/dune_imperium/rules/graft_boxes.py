@@ -264,6 +264,8 @@ BOX_ACTION_IDS: Final = frozenset(
         "take_agent_card_extra_turn",
         # Rise of Ix's Ixian Engineer: the Acquire Tech icon.
         "acquire_agent_card_tech",
+        # Rise of Ix's Appropriate: the Acquire Tech icon paid in Solari.
+        "acquire_agent_card_tech_with_solari",
         # Rise of Ix's Local Fence: its two arrows printed with "-OR-".
         "pay_agent_card_spice_for_solari",
         "pay_agent_card_solari_for_spice",

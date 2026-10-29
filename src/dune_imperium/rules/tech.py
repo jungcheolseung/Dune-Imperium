@@ -162,6 +162,10 @@ TRASH_ABILITIES: Final = frozenset(
 )
 _FRAME_LABEL = "Agent-turn effect frame"
 _ACQUISITION_LABEL = "Tech acquisition frame"
+SPICE_PAYMENT: Final = "spice"
+SOLARI_PAYMENT: Final = "solari"
+"""Appropriate's "You may use Solari instead of spice for this purchase."
+(Rise of Ix): an Acquire Tech paid in Solari (``push_tech_acquisition``)."""
 # Kota Odax's Secret Project: "Whenever you could acquire a Tech tile, you
 # may choose this one. It costs 1 less" [Kota Odax of Ix card].
 SECRET_PROJECT_DISCOUNT = 1
@@ -437,18 +441,25 @@ def push_tech_acquisition(
     discount: int,
     source: str,
     printer: str,
+    payment: str = SPICE_PAYMENT,
 ) -> RuleResult:
     """Open a card-granted Acquire Tech.
 
     It opens even with no tile left to take (every stack empty and no Secret
     Project): the owner then confirms with ``decline_tech``, the only action
     offered (user ruling 2026-09-30, "결정 창 없이 자동으로 넘어가는 곳도
-    모두 결정 창을 연다"; OQ-057 (9) "살 수 없으면 거절만").
+    모두 결정 창을 연다"; OQ-057 (9) "살 수 없으면 거절만"). ``payment`` is
+    what the whole price is paid with: spice, or Appropriate's Solari (Rise
+    of Ix, ``SOLARI_PAYMENT``).
     """
 
     if not (state.config.tech_module or state.config.rise_of_ix):
         raise ValueError("Acquire Tech requires the Tech Module or Rise of Ix")
-    extra = ix_acquisition_context(discount) if state.config.rise_of_ix else ()
+    if payment != SPICE_PAYMENT and not state.config.rise_of_ix:
+        raise ValueError("only Rise of Ix's Appropriate pays a Tech tile in Solari")
+    extra = (
+        ix_acquisition_context(discount, payment) if state.config.rise_of_ix else ()
+    )
     return RuleResult(
         state=state.push_decision(
             tech_acquisition_frame(
@@ -565,8 +576,10 @@ def tech_acquisition_possible(
     state: GameState,
     owner: PlayerState,
     discount: int,
+    payment: str = SPICE_PAYMENT,
 ) -> bool:
-    """Whether a card's Acquire Tech at ``discount`` could buy a tile now.
+    """Whether a card's Acquire Tech at ``discount`` could buy a tile now,
+    paid with ``payment`` (Appropriate's Solari only in a Rise of Ix game).
 
     The play gate of Battlefield Research and Rapid Engineering reads it
     (``effect_interpreter``), with the owner after the card's own cost; the
@@ -575,7 +588,7 @@ def tech_acquisition_possible(
     """
 
     if state.config.rise_of_ix:
-        return bool(ix_tech_acquisitions(state, owner, discount))
+        return bool(ix_tech_acquisitions(state, owner, discount, payment))
     return state.config.tech_module and bool(
         _affordable_acquisitions(state, owner, discount)
     )
@@ -618,8 +631,18 @@ def _ix_tops(state: GameState) -> tuple[TechTile, ...]:
     return tuple(TECH_TILES_BY_ID[tech_id] for tech_id in face_up_tech_ids(state))
 
 
+def _held_for(owner: PlayerState, payment: str) -> int:
+    """What the owner holds of the resource an Acquire Tech is paid with."""
+
+    if payment == SPICE_PAYMENT:
+        return owner.resources.spice
+    if payment == SOLARI_PAYMENT:
+        return owner.resources.solari
+    raise ValueError(f"an Acquire Tech is not paid with {payment!r}")
+
+
 def ix_tech_acquisitions(
-    state: GameState, owner: PlayerState, discount: int
+    state: GameState, owner: PlayerState, discount: int, payment: str = SPICE_PAYMENT
 ) -> tuple[tuple[TechTile, int], ...]:
     """Each (tile, Negotiators returned) the owner can pay for now.
 
@@ -627,32 +650,49 @@ def ix_tech_acquisitions(
     how many Negotiators to return, from none up to the most that still
     lowers its cost ("원하는 만큼"; the most over every tile on offer is
     ``core.observation.ix_negotiators_returnable``), and the rest of the price
-    is spice it holds.
+    is spice it holds -- or, for Appropriate, Solari, the whole price in the
+    one resource ("Solari와 spice를 섞어 낼 수 없다. Negotiator 하나가 1
+    Solari를 깎는다", docs/rules/rise-of-ix.md 4, [Rise of Ix p. 10]).
     """
 
+    held = _held_for(owner, payment)
     return tuple(
         (tile, returned)
         for tile in _ix_tops(state)
         for returned in range(
             min(owner.negotiators, max(tile.cost - discount, 0)) + 1
         )
-        if owner.resources.spice
-        >= ix_tech_cost(owner, tile, discount=discount, negotiators=returned)
+        if held >= ix_tech_cost(owner, tile, discount=discount, negotiators=returned)
     )
 
 
-def ix_acquisition_context(discount: int) -> tuple[tuple[str, ActionValue], ...]:
+def ix_acquisition_context(
+    discount: int, payment: str = SPICE_PAYMENT
+) -> tuple[tuple[str, ActionValue], ...]:
     """The open Acquire Tech's state the seat's own view shows
     (``core.observation.ix_pending_of``): its Tech Discount and its payment
-    (spice; Appropriate's Solari is stage P4c's later slice). The Negotiators
-    the seat may still return are not kept: the view counts them from the state
-    each time (``core.observation.ix_negotiators_returnable``), as an
-    acquisition stacked under another must not show the count it opened with."""
+    (spice, or Appropriate's Solari). The Negotiators the seat may still
+    return are not kept: the view counts them from the state each time
+    (``core.observation.ix_negotiators_returnable``), as an acquisition
+    stacked under another must not show the count it opened with."""
 
     return (
         (TECH_DISCOUNT_KEY, discount),
-        (TECH_PAYMENT_KEY, "spice"),
+        (TECH_PAYMENT_KEY, payment),
     )
+
+
+def _offer_payment(state: GameState, player: int) -> str:
+    """What the open Acquire Tech is paid with: its frame's payment in a Rise
+    of Ix game (Appropriate's Solari), else spice."""
+
+    frame = owned_top_frame(state, FrameKind.TECH_ACQUISITION, player)
+    if frame is None or not state.config.rise_of_ix:
+        return SPICE_PAYMENT
+    payment = dict(frame.context).get(TECH_PAYMENT_KEY, SPICE_PAYMENT)
+    if not isinstance(payment, str):
+        raise RuntimeError("Tech acquisition frame has an invalid payment")
+    return payment
 
 
 def landsraad_tech_block(state: GameState, player: int) -> OptionalEffectBlock | None:
@@ -729,7 +769,9 @@ def legal_tech_acquisition_actions(
                     )
                 ),
             )
-            for tile, returned in ix_tech_acquisitions(state, owner, discount)
+            for tile, returned in ix_tech_acquisitions(
+                state, owner, discount, _offer_payment(state, player)
+            )
         )
         if len(actions) > 1 and _opened_by_intrigue(state, player):
             # Machine Culture "must acquire once played" (designer ruling,
@@ -843,11 +885,15 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
         if ix
         else tech_cost(owner, tile, discount=discount, secret_project=secret)
     )
+    payment = _offer_payment(state, player)
+    solari = payment == SOLARI_PAYMENT
     payload: list[tuple[str, ActionValue]] = [
         ("player", player),
         ("secret_project", secret),
-        ("spice", cost),
+        ("spice", 0 if solari else cost),
         ("tech_id", tech_id),
+        # Appropriate's Solari, the whole price (rise-of-ix.md 4).
+        *((("solari", cost),) if solari else ()),
     ]
     if ix:
         payload.append(("negotiators", returned))
@@ -868,16 +914,26 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
             negotiators=next_owner.negotiators - returned,
             troops_supply=next_owner.troops_supply + returned,
         )
-    # The price is Spice spent, not Spice never gained: "If you gained spice
-    # this turn" (Leverage) and Harvest Contracts count every gain of the
-    # turn [Main p. 16], so the spend is recorded like any other payment.
-    next_owner = replace(
-        next_owner,
-        resources=replace(
-            next_owner.resources, spice=next_owner.resources.spice - cost
-        ),
-        spice_spent_turn=next_owner.spice_spent_turn + cost,
-    )
+    if solari:
+        # Appropriate: the whole price in Solari, no spice (rise-of-ix.md 4).
+        next_owner = replace(
+            next_owner,
+            resources=replace(
+                next_owner.resources, solari=next_owner.resources.solari - cost
+            ),
+        )
+    else:
+        # The price is Spice spent, not Spice never gained: "If you gained
+        # spice this turn" (Leverage) and Harvest Contracts count every gain
+        # of the turn [Main p. 16], so the spend is recorded like any other
+        # payment.
+        next_owner = replace(
+            next_owner,
+            resources=replace(
+                next_owner.resources, spice=next_owner.resources.spice - cost
+            ),
+            spice_spent_turn=next_owner.spice_spent_turn + cost,
+        )
 
     # --- purchase prerequisite on the owner ---------------------------
     if tile.acquire_requires_spy_trash:

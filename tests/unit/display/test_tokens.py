@@ -355,12 +355,15 @@ def test_every_table_ko_text_uses_only_known_terms() -> None:
 # Negotiator, so those words stay English in a Korean line (as
 # ``effect_dsl_text_ko`` and the dreadnought rows' labels keep them):
 # Full-Scale Assault's acquire and Reveal, Ix-Guild Compact's dreadnought and
-# Negotiator.
+# Negotiator, Appropriate's Freighter.
 _NO_KOREAN_SOURCE: Final = frozenset(
     {
         "Commission a dreadnought",
         "dreadnought",
         "Place a troop from your supply on the Ix board as a Negotiator",
+        # Appropriate's acquire box (no Korean source names the Freighter's
+        # move either).
+        "Move your Freighter up one space or recall it",
     }
 )
 

@@ -971,6 +971,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "take_agent_card_extra_turn": apply_agent_card_extra_turn,
     # Ixian Engineer (Rise of Ix): the Acquire Tech icon opens its window.
     "acquire_agent_card_tech": apply_agent_card_tech,
+    # Appropriate (Rise of Ix): the same window, paid in Solari.
+    "acquire_agent_card_tech_with_solari": apply_agent_card_tech,
     # Local Fence (Rise of Ix): its two arrows printed with "-OR-".
     "pay_agent_card_spice_for_solari": apply_agent_card_payment,
     "pay_agent_card_solari_for_spice": apply_agent_card_payment,
