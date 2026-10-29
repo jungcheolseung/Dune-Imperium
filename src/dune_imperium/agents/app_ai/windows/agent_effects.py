@@ -781,6 +781,15 @@ _SIGNET_BOX_ABILITY: Mapping[str, str] = {
     # ``WarmasterAbility`` (D41); Judge of the Change runs by itself (D45).
     "piter_de_vries": "WarmasterAbility",
     "liet_kynes": "JudgeOfTheChangeSignetAbility",
+    # The original game's single Signet boxes (abilities/original_leaders.py;
+    # Paul's Discipline is the Uprising port's ``DisciplineAbility``):
+    # Manufacturing, Spice Hoard and Hidden Reservoir run at once
+    # (``AlwaysRunImmediately``), Brutality as its ``SignetAbility`` base.
+    "paul_atreides": "DisciplineAbility",
+    "count_ilban_richese": "ManufacturingAbility",
+    "earl_memnon_thorvald": "SpiceHoardAbility",
+    "countess_ariana_thorvald": "HiddenReservoirAbility",
+    "glossu_rabban": "BrutalityAbility",
 }
 #: Signet boxes resolved icon by icon (``resolve_agent_card_effect(effect=)``):
 #: (leader, our icon key) -> the leader's app ability of that icon. Amber's
@@ -870,6 +879,7 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "advance_feyd_track",
         "choose_agent_card_influence",
         "choose_agent_card_reward",
+        "choose_connections_influence",
         "choose_leader_signet_influence",
         "choose_shipping_influence",
         "complete_contract",
@@ -923,6 +933,7 @@ _KNOWN_ACTION_IDS: frozenset[str] = frozenset(
         "resolve_imperial_privilege_without_recall",
         "return_specimen",
         "select_corrinth_city_discard",
+        "set_aside_leader_imperium",
         "summon_maker_sandworms",
         "take_agent_card_combat_icon",
         "take_sietch_tabr_supplies",
@@ -3192,6 +3203,19 @@ def _leader_choices(t: _Turn) -> None:
         _irulan(t)
     elif leader_id == "shaddam_corrino_iv":
         _shaddam(t)
+    elif leader_id == "duke_leto_atreides":
+        # Prudent Diplomacy (Optional): its Evaluate over the tracks an
+        # opponent leads; an unused key lapses at the turn's end.
+        _influence_choice(
+            t,
+            "Prudent Diplomacy",
+            _find(t.leader, "PrudentDiplomacyAbility"),
+            t.by_id("choose_leader_signet_influence"),
+        )
+    elif leader_id == "baron_vladimir_harkonnen":
+        _signet_payment(t, "SchemeAbility", "pay_leader_signet_solari")
+    elif leader_id == "helena_richese":
+        _manipulate(t)
     elif leader_id == "lady_jessica":
         name = (
             "WaterOfLifeSignetAbility"
@@ -3203,8 +3227,44 @@ def _leader_choices(t: _Turn) -> None:
         bloodlines = _BLOODLINES_SIGNETS.get(leader_id or "")
         if bloodlines is not None:
             bloodlines(t)
+    _connections(t)
     _other_memories(t)
     _board_repeat(t)
+
+
+def _manipulate(t: _Turn) -> None:
+    """Helena Richese's Manipulate (``ManipulateAbility``, Explicit): its
+    Evaluate over the Imperium Row cards we offer; its 0.5 empty answer
+    sets nothing aside (the key is left unused)."""
+
+    picks = t.by_id("set_aside_leader_imperium")
+    if not picks:
+        return
+    request = Request(
+        infos=(TargetInfo(entities=_cards(t, _arg_refs(picks, "instance_id"))),)
+    )
+    _choice_source(
+        t,
+        "Manipulate",
+        _find(t.leader, "ManipulateAbility"),
+        picks,
+        request,
+        _ref_or(picks, "instance_id", LEFT_UNUSED),
+        None,
+    )
+
+
+def _connections(t: _Turn) -> None:
+    """Earl Memnon's Connections: the Influence his High Council seat grants
+    (``ConnectionsInfluenceAbility``, Explicit; immediate unless the deferral
+    threshold is reached), over the offered tracks."""
+
+    choices = t.by_id("choose_connections_influence")
+    if not choices:
+        return
+    _influence_choice(
+        t, "Connections", _find(t.leader, "ConnectionsInfluenceAbility"), choices
+    )
 
 
 def _signet_payment(t: _Turn, name: str, pay_id: str) -> None:

@@ -20,7 +20,9 @@ from dune_imperium.config import BaseGame
 from dune_imperium.rules.engine import UprisingRulesEngine
 from dune_imperium.simulation.runner import run_policy_game
 
-ORIGINAL = RulesetConfig(base_game=BaseGame.IMPERIUM, promo_cards=True)
+ORIGINAL = RulesetConfig(
+    base_game=BaseGame.IMPERIUM, promo_cards=True, leader_draft=True
+)
 ENGINE = UprisingRulesEngine()
 
 #: Cards whose Agent box only needs app abilities ported before the original
@@ -81,6 +83,26 @@ def test_mapped_card_boxes_find_their_app_abilities(unmapped: Counter[str]) -> N
         if reason.split(" ", 1)[0] in MAPPED_CARDS
     }
     assert left == {}
+
+
+def test_original_signets_find_their_leaders_app_abilities(
+    unmapped: Counter[str],
+) -> None:
+    """The eight original Leaders' Signet boxes and choices (Discipline,
+    Manufacturing, Spice Hoard, Hidden Reservoir, Brutality, Prudent
+    Diplomacy, Scheme, Manipulate) and Memnon's Connections."""
+
+    left = [
+        reason
+        for reason in unmapped
+        if reason.startswith("signet ")
+        or reason
+        in (
+            "unknown action set_aside_leader_imperium",
+            "unknown action choose_connections_influence",
+        )
+    ]
+    assert left == []
 
 
 def test_original_spaces_find_their_app_abilities(unmapped: Counter[str]) -> None:
