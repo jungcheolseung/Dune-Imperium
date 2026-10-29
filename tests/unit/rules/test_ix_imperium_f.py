@@ -568,3 +568,167 @@ def test_the_unit_retreat_rows_are_in_the_ix_catalog_only() -> None:
         dict(template.arguments).get("printed") == "negotiated_withdrawal"
         for template in ActionCodec(RulesetConfig()).catalog
     )
+
+
+# --- Desert Ambush --------------------------------------------------------------
+
+AMBUSH = "imperium:desert_ambush:0"
+_ENEMY_RETREAT = "retreat_opponent_troop"
+
+
+def _ambush(state: GameState, *, garrison: int = 3, dreadnoughts: int = 0) -> GameState:
+    """Desert Ambush sent to Imperial Basin (its Spice Trade icon, a Combat
+    space); seat 1 has two troops and a dreadnought in the Conflict."""
+
+    rival = state.players[1]
+    state = _give(
+        state,
+        1,
+        troops_garrison=rival.troops_garrison - 2,
+        troops_conflict=2,
+        dreadnoughts_supply=1,
+        dreadnoughts_conflict=1,
+        combat_strength=7,
+    )
+    owner = state.players[0]
+    state = _give(
+        state,
+        0,
+        hand=(AMBUSH,),
+        troops_supply=owner.troops_supply + owner.troops_garrison - garrison,
+        troops_garrison=garrison,
+        dreadnoughts_supply=2 - dreadnoughts,
+        dreadnoughts_garrison=dreadnoughts,
+    )
+    state = _do(state, "choose_agent_card", card_id=AMBUSH).state
+    return _do(state, "place_agent", space_id="imperial_basin").state
+
+
+def _enemy_rows(state: GameState) -> list[dict[str, object]]:
+    _rows(state)
+    return [
+        dict(row.arguments)
+        for row in ENGINE.whole_actions(state, 0)
+        if row.action_id == _ENEMY_RETREAT
+    ]
+
+
+def test_desert_ambush_matches_the_app_and_joins_the_ix_deck() -> None:
+    """App table: Fremen, cost 3, one copy; the Spice Trade icon; Reveal 1
+    Persuasion, 1 sword. Text: "For each troop you deploy this turn, you may
+    force an enemy unit to retreat." """
+    entry = IMPERIUM_CARDS_BY_ID["desert_ambush"]
+    assert (entry.copies, entry.acquisition_cost) == (1, 3)
+    assert entry.factions == (Faction.FREMEN,)
+    assert entry.agent_icons == (AgentIcon.SPICE_TRADE,)
+    assert entry.agent_effect is (
+        PersonalCardAgentEffect.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED
+    )
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (1, 1)
+    assert entry.play_data_complete
+    assert AMBUSH in content_for(IX).imperium_deck_instance_ids
+    for config in (replace(IX, rise_of_ix=False), RulesetConfig()):
+        assert AMBUSH not in content_for(config).imperium_deck_instance_ids
+    assert (
+        "Agent: For each troop you deploy this turn, you may force an enemy unit"
+        " to retreat" in personal_card_text(entry)
+    )
+    assert len(personal_card_text(entry)) == len(personal_card_text_ko(entry))
+
+
+def test_each_deployed_troop_buys_one_retreat_of_an_enemy_unit() -> None:
+    """ "For each troop you deploy this turn, you may force an enemy unit to
+    retreat"; "unit | ... Desert Ambush(enemy unit) | 예" (rise-of-ix.md 6,
+    [Rise of Ix p. 6]): before a deployment nothing; with one troop deployed
+    one retreat, of a troop or a dreadnought, the player of the card picking
+    it (rise-of-ix.md 9.3)."""
+    state = _ambush(_start())
+    assert _enemy_rows(state) == []
+    state = _do(state, "deploy_troops", count=1).state
+    assert {tuple(sorted(row.items())) for row in _enemy_rows(state)} == {
+        (("player", 1),),
+        (("dreadnoughts", 1), ("player", 1)),
+    }
+    result = _do(state, _ENEMY_RETREAT, player=1, dreadnoughts=1)
+    rival = result.state.players[1]
+    assert (rival.dreadnoughts_conflict, rival.dreadnoughts_garrison) == (0, 1)
+    assert rival.combat_strength == 4
+    assert "dreadnought_retreated" in _kinds(result.events)
+    assert _enemy_rows(result.state) == []
+    again = _do(result.state, "deploy_troops", count=1).state
+    assert _enemy_rows(again) == [{"player": 1}]
+    done = _do(again, _ENEMY_RETREAT, player=1).state
+    assert done.players[1].troops_conflict == 1
+    assert _enemy_rows(done) == []
+
+
+def test_a_retreat_bought_holds_the_deployment_it_counted() -> None:
+    """ "이번 turn의 배치 수를 조건으로 이미 사용한 효과가 있으면, 배치 수를 그
+    조건(최소 수) 아래로 내리는 회수는 허용하지 않는다" (OQ-029 (3)): with two
+    troops deployed and one retreat bought, only one troop may be withdrawn."""
+    state = _ambush(_start())
+    state = _do(state, "deploy_troops", count=2).state
+    assert len(_enemy_rows(state)) == 2
+    state = _do(state, _ENEMY_RETREAT, player=1).state
+    withdrawals = {
+        dict(row.arguments)["count"]
+        for row in ENGINE.whole_actions(state, 0)
+        if row.action_id == "withdraw_troops"
+    }
+    assert withdrawals == {1}
+    withdrawn = _do(state, "withdraw_troops", count=1).state
+    assert _enemy_rows(withdrawn) == []
+
+
+def test_a_withdrawn_troop_counts_once_when_deployed_again() -> None:
+    """ "같은 큐브를 retreat했다 다시 배치해도 두 번 세지 않음" (rise-of-ix.md
+    15, OQ-029): a troop deployed, withdrawn and deployed again buys one
+    retreat."""
+    state = _ambush(_start())
+    state = _do(state, "deploy_troops", count=1).state
+    state = _do(state, "withdraw_troops", count=1).state
+    state = _do(state, "deploy_troops", count=1).state
+    state = _do(state, _ENEMY_RETREAT, player=1).state
+    assert _enemy_rows(state) == []
+
+
+def test_a_deployed_dreadnought_is_no_troop() -> None:
+    """ "원판 카드의 "troop"은 유닛을 뜻하지 않아 dreadnought에 작용하지 않는다"
+    and the table's "troop recruit/잃기/retreat/배치 | ... | 아니오"
+    (rise-of-ix.md 6, [Rise of Ix p. 6]): deploying a dreadnought buys no
+    retreat."""
+    state = _ambush(_start(), dreadnoughts=1)
+    state = _do(state, "deploy_dreadnoughts", count=1).state
+    assert state.players[0].dreadnoughts_conflict == 1
+    assert _enemy_rows(state) == []
+
+
+def test_unused_retreats_lapse_with_the_turn() -> None:
+    """ "you may force": an optional box offers no refusal and the turn's end
+    lapses it (OQ-095 (2))."""
+    state = _ambush(_start())
+    state = _do(state, "deploy_troops", count=1).state
+    state = _do(state, "harvest_maker_spice", space_id="imperial_basin").state
+    assert not any(
+        row.action_id.startswith("decline_") for row in ENGINE.whole_actions(state, 0)
+    )
+    finished = _do(state, "finish_agent_turn")
+    assert "agent_card_effect_lapsed" in _kinds(finished.events)
+    assert finished.state.players[1].troops_conflict == 2
+
+
+def test_the_enemy_unit_rows_are_in_the_ix_catalog_only() -> None:
+    """A dreadnought's row is in the original game's catalog with Rise of Ix
+    alone [Rise of Ix p. 2]."""
+    state = _ambush(_start())
+    state = _do(state, "deploy_troops", count=1).state
+    rows = [
+        row
+        for row in ENGINE.legal_actions(state, 0)
+        if dict(row.arguments).get("printed") == "desert_ambush"
+    ]
+    assert rows
+    plain = set(ActionCodec(replace(IX, rise_of_ix=False)).catalog)
+    for row in rows:
+        template = ActionTemplate(row.action_id, row.arguments)
+        assert template in set(CODEC.catalog) - plain

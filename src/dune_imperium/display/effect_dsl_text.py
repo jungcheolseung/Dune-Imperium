@@ -737,6 +737,12 @@ def reward_text(reward: Reward) -> str:
                 f"Look at the top {count} Intrigue cards, keep 1 and put the"
                 f" {'other' if count == 2 else 'others'} back on top"
             )
+        case ForceEnemyRetreat(per_troop_deployed=True):
+            # Rise of Ix's Desert Ambush.
+            return (
+                "For each troop you deploy this turn, you may force an enemy"
+                " unit to retreat"
+            )
         case ForceEnemyRetreat():
             return "Force an enemy troop to retreat"
         case PledgeFirstPlaceInfluence():

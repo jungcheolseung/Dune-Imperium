@@ -57,6 +57,9 @@ BOX_KEY_PAIRS: Final[tuple[tuple[str, str], ...]] = (
     ("corrinth_first_card_id", "graft_corrinth_first_card_id"),
     # A two-card Discard arrow's first pick (Rise of Ix).
     ("discard_first_card_id", "graft_discard_first_card_id"),
+    # The enemy units Desert Ambush's box retreated this turn, one for each
+    # troop deployed (Rise of Ix); a Ghola copying the box has its own.
+    ("enemy_retreats_for_deployment", "graft_enemy_retreats_for_deployment"),
     # Arrakis Observer's Spy after its discard.
     ("agent_card_spy_pending", "graft_agent_card_spy_pending"),
     ("agent_card_spy_recalled", "graft_agent_card_spy_recalled"),

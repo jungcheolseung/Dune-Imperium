@@ -500,6 +500,12 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT: (
         "다른 플레이어의 {troop} 강제 {retreat}"
     ),
+    # Rise of Ix's Desert Ambush (stage P4d): Disruption Tactics' line, a
+    # unit being "부대" (glossary-ko.md, [Main p. 10]).
+    PersonalCardAgentEffect.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED: (
+        "이번 차례에 배치하는 {troop} 1마다 다른 플레이어의 부대 1 강제 "
+        "{retreat} 가능"
+    ),
     PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT: (
         "{conflict}에 {commander}이 1 이상 있다면: 카드 1장 {trash} 가능, "
         "카드 1장 {trash} 가능"

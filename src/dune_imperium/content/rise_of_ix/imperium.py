@@ -14,7 +14,7 @@ keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
 game's deck takes only completed cards (CHOAM Delegate, Jamis, Sayyadina,
 Truthsayer, Imperial Shock Trooper, Local Fence, Water Peddler, Guild Chief
-Administrator and Negotiated Withdrawal so far),
+Administrator, Negotiated Withdrawal and Desert Ambush so far),
 while the observation lists every identity from v39. Setup takes Rise of Ix
 on the original game since stage P4c-5.
 ``content.uprising.imperium``'s
@@ -87,6 +87,18 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("desert_ambush", "Desert Ambush"),
         copies=1,
         acquisition_cost=3,
+        # App table: Fremen, the Spice Trade icon; Reveal 1 Persuasion, 1
+        # sword. Text: Agent "For each troop you deploy this turn, you may
+        # force an enemy unit to retreat." -- an enemy troop or dreadnought
+        # [Rise of Ix p. 6], the player of the card picking it.
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=(
+            PersonalCardAgentEffect.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED
+        ),
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("embedded_agent", "Embedded Agent"),

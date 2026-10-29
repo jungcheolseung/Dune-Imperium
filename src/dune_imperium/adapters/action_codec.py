@@ -1097,6 +1097,22 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
                 "recall_reveal_freighter",
             )
         )
+        # Desert Ambush's enemy unit (a troop or a dreadnought) to retreat,
+        # by its seat; the Bloodlines catalog holds the troop rows already.
+        for seat in range(config.players):
+            if not config.bloodlines:
+                templates.append(
+                    ActionTemplate(
+                        action_id="retreat_opponent_troop",
+                        arguments=(("player", seat),),
+                    )
+                )
+            templates.append(
+                ActionTemplate(
+                    action_id="retreat_opponent_troop",
+                    arguments=(("dreadnoughts", 1), ("player", seat)),
+                )
+            )
         # Negotiated Withdrawal's arrow: three units in any mix of troops,
         # dreadnoughts (a seat has two) and, with Bloodlines, Commanders, for
         # an Influence with each Faction (``reveal_turn``).

@@ -262,7 +262,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # choice's retreat cost), read by its row alone; no older scale moved
 # (compared against d2a5121e, 2026-10-30).
 # Landed on claude/base-ix-p4 and compared again against d6419f86 (2026-10-30).
-_GOLDEN_DIGEST = "431b8e6e52d7b37788db6ed00060b7ef31d44a8c21f7dd776743fe3720d5636c"
+# Then Desert Ambush got its record (stage P4d): only its own row changed, and
+# two personal-table columns are new (the "units" and "per_troop_deployed"
+# flags of its enemy retreat), read by its row alone; no older scale moved
+# (compared against 09791eb4, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against f0ea975e (2026-10-30).
+_GOLDEN_DIGEST = "9ce978b76036b67fd976a2edeffbcf03006e431a2bef573877db0fd9ecf3d8ea"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

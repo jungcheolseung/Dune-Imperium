@@ -1013,6 +1013,12 @@ def reward_text_ko(reward: Reward) -> str:
                 f"{{intrigue}} 맨 위 {count}장 확인 후 1장 보관, 나머지는 맨"
                 " 위로 되돌림"
             )
+        case ForceEnemyRetreat(per_troop_deployed=True):
+            # Quotes ``tokens_ko.py``'s Desert Ambush line.
+            return (
+                "이번 차례에 배치하는 {troop} 1마다 다른 플레이어의 부대 1 강제"
+                " {retreat} 가능"
+            )
         case ForceEnemyRetreat():
             # Quotes ``tokens_ko.py``'s Disruption Tactics line.
             return "다른 플레이어의 {troop} 강제 {retreat}"

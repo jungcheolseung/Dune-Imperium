@@ -1832,7 +1832,21 @@ class ForceEnemyRetreat:
     """Force an enemy troop to retreat [Disruption Tactics card]: one unit of
     an opponent's in the Conflict goes back to its garrison. A Sardaukar
     Commander is a troop [Bloodlines p. 4]; the acting player picks the
-    opponent and, where both kinds are there, the kind (OQ-034)."""
+    opponent and, where both kinds are there, the kind (OQ-034).
+
+    Desert Ambush (Rise of Ix): "For each troop you deploy this turn, you may
+    force an enemy unit to retreat." [Steam app text]. ``units``: an enemy
+    *unit*, so a dreadnought too ("unit | ... Desert Ambush(enemy unit) |
+    예", docs/rules/rise-of-ix.md 6, [Rise of Ix p. 6]), the player of the
+    card picking it (rise-of-ix.md 9.3, designer ruling; sandworms are P7).
+    ``per_troop_deployed``: one retreat for each troop the owner deploys this
+    turn, counted as OQ-029 counts the turn's deployment ("같은 큐브를
+    retreat했다 다시 배치해도 두 번 세지 않음", rise-of-ix.md 15), each a
+    "may".
+    """
+
+    units: bool = False
+    per_troop_deployed: bool = False
 
 
 @dataclass(frozen=True, slots=True)

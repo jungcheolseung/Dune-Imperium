@@ -364,6 +364,18 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             # Disruption Tactics.
             _BOX.FORCE_OPPONENT_TROOP_RETREAT: _box(ForceEnemyRetreat()),
+            # Desert Ambush (Rise of Ix): "For each troop you deploy this turn,
+            # you may force an enemy unit to retreat." [Steam app text] -- an
+            # optional target box ("may"), open all turn: each troop the owner
+            # deploys this turn (OQ-029's count) buys one retreat of an enemy
+            # troop or dreadnought, the owner picking it (rise-of-ix.md 6, 9.3).
+            _BOX.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(ForceEnemyRetreat(units=True, per_troop_deployed=True)),
+                ),
+                mark=AbilityMark.OPTIONAL,
+            ),
             # CHOAM Demands.
             _BOX.COMPLETE_ONE_CONTRACT: _box(CompleteContract()),
             # --- Discard arrows (composed effects, A3d) ---------------------------

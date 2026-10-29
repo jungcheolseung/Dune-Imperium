@@ -176,9 +176,10 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # and Rise of Ix's Sayyadina (stage P4d: "3 water -> 1 Victory Point"),
     # Local Fence ("[2 spice] -> [5 Solari] -OR- [5 Solari] -> [4 spice]"),
     # Landing Rights (the Freighter icon), Shai-Hulud ("[Trash a card] ->
-    # [2 troops]") and Guild Chief Administrator ("[Discard] -> [Trash a
-    # card]").
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 5
+    # [2 troops]"), Guild Chief Administrator ("[Discard] -> [Trash a
+    # card]") and Desert Ambush ("For each troop you deploy this turn, you
+    # may force an enemy unit to retreat").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 6
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -778,12 +779,16 @@ def test_seven_boxes_choose_one_target_and_read_as_their_cards() -> None:
         _BOX.BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT: (
             BlockChosenSpaceForOpponentsNextAgent
         ),
+        # Desert Ambush (Rise of Ix, stage P4d): the one optional target box,
+        # "you may force an enemy unit to retreat" for each troop deployed.
+        _BOX.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED: ForceEnemyRetreat,
     }
     for effect in (
         _BOX.PLACE_SPY,
         _BOX.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE,
         _BOX.FORCE_OPPONENT_TROOP_RETREAT,
         _BOX.COMPLETE_ONE_CONTRACT,
+        _BOX.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED,
     ):
         (reward,) = AGENT_BOX_ABILITIES[effect].sections[0].rewards
         assert reward_text(reward) == AGENT_EFFECT_TEXT[effect]

@@ -53,6 +53,7 @@ from dune_imperium.rules import turn_rows
 from dune_imperium.rules.action_shapes import Source, printer_parts
 from dune_imperium.rules.agent_box_abilities import (
     NOT_PRINTED_BLOCK,
+    RETREATS_FOR_DEPLOYMENT_KEY,
     SPACE_INFLUENCE_REPLACED,
     AgentIconBlock,
     AgentPaymentBlock,
@@ -213,7 +214,7 @@ from dune_imperium.rules.spy_placement import (
     recall_spy,
 )
 from dune_imperium.rules.unit_loss import lose_unit, unit_loss_options
-from dune_imperium.rules.units import retreat_units
+from dune_imperium.rules.units import retreat_dreadnought, retreat_units
 
 # Immortality boxes whose enum names do not fit a comparison line.
 _RESEARCH_AND_TRASH_FOR_VP = (
@@ -1488,7 +1489,14 @@ def apply_agent_card_opponent_retreat(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Retreat one unit of the chosen opponent to their garrison."""
+    """Retreat one unit of the chosen opponent to their garrison.
+
+    Desert Ambush's box (Rise of Ix) stays open for the rest of the turn:
+    each troop deployed buys one retreat, and once one is bought the turn's
+    deployment may not be withdrawn below the retreats it paid for ("이번
+    turn의 배치 수를 조건으로 이미 사용한 효과가 있으면, 배치 수를 그 조건
+    아래로 내리는 회수는 허용하지 않는다", OQ-029 (3)); unused, the press
+    lapses it (OQ-095 (2))."""
 
     if action not in legal_agent_card_opponent_retreat_actions(state, action.actor):
         raise ValueError("action is not a legal enemy retreat choice")
@@ -1497,17 +1505,44 @@ def apply_agent_card_opponent_retreat(
     arguments = dict(action.arguments)
     target = arguments["player"]
     commanders = arguments.get("commanders", 0)
+    dreadnoughts = arguments.get("dreadnoughts", 0)
     if isinstance(target, bool) or not isinstance(target, int):
         raise RuntimeError("enemy retreat has an invalid target")
-    if isinstance(commanders, bool) or not isinstance(commanders, int):
+    if (
+        isinstance(commanders, bool)
+        or not isinstance(commanders, int)
+        or isinstance(dreadnoughts, bool)
+        or not isinstance(dreadnoughts, int)
+    ):
         raise RuntimeError("enemy retreat has an invalid unit kind")
     source = (
         f"round:{state.round_number}:player:{action.actor}:"
         f"agent_card:{source_card_id}:opponent:{target}"
     )
-    retreated = retreat_units(
-        state, target, source, troops=1 - commanders, commanders=commanders
+    retreated = (
+        retreat_dreadnought(state, target, source)
+        if dreadnoughts
+        else retreat_units(
+            state, target, source, troops=1 - commanders, commanders=commanders
+        )
     )
+    piece = target_piece(box_ability(active_agent_card(context).agent_effect))
+    if isinstance(piece, ForceEnemyRetreat) and piece.per_troop_deployed:
+        before = context.get(RETREATS_FOR_DEPLOYMENT_KEY, 0)
+        if isinstance(before, bool) or not isinstance(before, int):
+            raise RuntimeError("Desert Ambush's retreat count is not a number")
+        used = before + 1
+        context[RETREATS_FOR_DEPLOYMENT_KEY] = used
+        owner = retreated.state.players[action.actor]
+        floored = replace(
+            owner,
+            units_deployed_committed=max(owner.units_deployed_committed, used),
+        )
+        players = replace_player(retreated.state.players, floored)
+        return RuleResult(
+            state=advance_after_effect(retreated.state, context, players),
+            events=retreated.events,
+        )
     context["pending_agent_effect"] = False
     next_state = advance_after_effect(
         retreated.state, context, retreated.state.players

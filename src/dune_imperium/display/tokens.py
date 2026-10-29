@@ -441,6 +441,11 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT: (
             "Force an enemy troop to retreat"
         ),
+        # Rise of Ix's Desert Ambush (stage P4d).
+        PersonalCardAgentEffect.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED: (
+            "For each troop you deploy this turn, you may force an enemy unit "
+            "to retreat"
+        ),
         PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT: (
             "If you have one or more Sardaukar Commanders in the Conflict: "
             "You may trash a card, You may trash a card"

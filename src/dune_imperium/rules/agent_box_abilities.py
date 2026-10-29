@@ -1608,11 +1608,12 @@ type TargetPiece = (
 
 
 def target_piece(ability: Ability | None) -> TargetPiece | None:
-    """The one target ``ability``'s mandatory line chooses, if it is one."""
+    """The one target ``ability``'s mandatory line chooses, if it is one --
+    or Desert Ambush's optional one, an enemy unit for each troop deployed
+    this turn ("you may force", Rise of Ix)."""
 
     if (
         ability is None
-        or ability.mark is not AbilityMark.MANDATORY
         or ability.icons
         or ability.hook is not None
         or len(ability.sections) != 1
@@ -1621,6 +1622,14 @@ def target_piece(ability: Ability | None) -> TargetPiece | None:
     ):
         return None
     (piece,) = ability.sections[0].rewards
+    if ability.mark is not AbilityMark.MANDATORY:
+        return (
+            piece
+            if ability.mark is AbilityMark.OPTIONAL
+            and isinstance(piece, ForceEnemyRetreat)
+            and piece.per_troop_deployed
+            else None
+        )
     match piece:
         case GainInfluence(requires_choice=True, times=1):
             return piece
@@ -1676,8 +1685,12 @@ def target_rows(
             )
         case PlaceSpy():
             return agent_spy_rows(state, player, piece, context)
-        case ForceEnemyRetreat():
-            return _enemy_retreat_rows(state, player)
+        case ForceEnemyRetreat(units=units, per_troop_deployed=per_troop):
+            if per_troop and retreats_for_deployment_left(
+                state.players[player], context
+            ) <= 0:
+                return ()
+            return _enemy_retreat_rows(state, player, dreadnoughts=units)
         case BlockChosenSpaceForOpponentsNextAgent():
             # "Choose any board space" [The Voice card]: every space on the
             # table, occupied or not, the owner's own Agent's included
@@ -1701,9 +1714,34 @@ def target_rows(
             )
 
 
-def _enemy_retreat_rows(state: GameState, player: int) -> tuple[DomainAction, ...]:
+RETREATS_FOR_DEPLOYMENT_KEY: Final = "enemy_retreats_for_deployment"
+"""The enemy units Desert Ambush's box has retreated this turn (Rise of Ix)."""
+
+
+def retreats_for_deployment_left(
+    owner: PlayerState, context: Mapping[str, ActionValue]
+) -> int:
+    """Desert Ambush: "For each troop you deploy this turn, you may force an
+    enemy unit to retreat." -- the retreats the troops deployed so far still
+    buy. The turn's deployment is OQ-029's count ("같은 큐브를 retreat했다 다시
+    배치해도 두 번 세지 않음", docs/rules/rise-of-ix.md 15): the units the turn
+    deployed, less what a withdrawal took back (``units_deployed_turn``, which
+    holds no dreadnought -- a card's "troop" is no dreadnought [Rise of Ix p.
+    6] -- and in the original game no sandworm; a Commander is a troop
+    [Bloodlines p. 4])."""
+
+    used = context.get(RETREATS_FOR_DEPLOYMENT_KEY, 0)
+    if isinstance(used, bool) or not isinstance(used, int):
+        raise RuntimeError("Desert Ambush's retreat count is not a number")
+    return owner.units_deployed_turn - used
+
+
+def _enemy_retreat_rows(
+    state: GameState, player: int, *, dreadnoughts: bool = False
+) -> tuple[DomainAction, ...]:
     """One row per opponent with troops in the Conflict, then one per opponent
-    with Commanders there, in seat order (OQ-034)."""
+    with Commanders there, in seat order (OQ-034); with ``dreadnoughts`` (an
+    enemy unit, Desert Ambush) one per opponent with a dreadnought there too."""
 
     rows: list[DomainAction] = []
     for seat in state.players:
@@ -1723,6 +1761,14 @@ def _enemy_retreat_rows(state: GameState, player: int) -> tuple[DomainAction, ..
                     action_id="retreat_opponent_troop",
                     actor=player,
                     arguments=(("commanders", 1), ("player", seat.player_id)),
+                )
+            )
+        if dreadnoughts and seat.dreadnoughts_conflict > 0:
+            rows.append(
+                DomainAction(
+                    action_id="retreat_opponent_troop",
+                    actor=player,
+                    arguments=(("dreadnoughts", 1), ("player", seat.player_id)),
                 )
             )
     return tuple(rows)
