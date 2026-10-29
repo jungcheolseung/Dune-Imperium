@@ -1425,3 +1425,10 @@ setup이 빠진다 → **정함: P4e 전까지 후보에서 뺀다**(덱 카드�
 **P4c 후속(2026-10-29, `a4ce4d23`·`d9ff11d3`·`6b793541`·`bac61f7a`):** (1) Ix 지도자 여섯을 P4e까지 후보에서 뺌(`IX_LEADER_IDS_OFFERED`, P4e가 지도자마다
 더한다). (2) Troop Transports 부족분 — Shipping recruit의 모자란 몫을 `UNGAINED_SHIPPING_TROOPS_KEY`에 세고 채워질 때 배치 몫으로(OQ-030); 일부만
 채울 때의 순서는 OQ-152(OPEN). (3) 낡은 docstring. (4) 돌려받을 Negotiator 계산은 `core.observation` 하나, frame에 적지 않는다.
+
+**P4d-1 끝(2026-10-29, `3dbbae8e`):** Ix Conflict 셋의 보상(`content/rise_of_ix/conflict_abilities.py`, rise-of-ix.md 12) — Freighter는 받는 좌석의
+창에서 차례 밖 Freighter 창으로(회수 recruit는 garrison, OQ-151), "Freighter 2"는 아이콘 둘(Interstellar Shipping과 같은 읽기), Trade Monopoly
+3위는 고르기. Windtraps를 이번 승리의 Freighter로 얻어도 이번 승리의 water 줄이 붙고(창이 이미 닫혔으면 새 창), Detonation Devices도 같다
+(rise-of-ix.md 12의 디자이너 판정). 풀이 I 6·II 11·III 5, `ConflictSetup` 남는 장수는 정확히 12. 원판 + Ix 카탈로그 +23행. 엔티티 특성 conflict 표
+열 +1(`Freighter`, 새 Conflict 셋만). **P5·P7 몫:** `display/structs.conflict_row_parts`가 `Freighter`·`TakeMentat`에서 `TypeError`(서버 카탈로그는
+Uprising Conflict만 그려 지금은 닿지 않는다), sandworm이 Freighter를 두 배로 하는지는 Uprising + Ix(P7). 라벨 `b9b2fc7e`(효과 하나에 아이콘 하나).
