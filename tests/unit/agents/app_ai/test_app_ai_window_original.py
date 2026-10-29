@@ -79,6 +79,36 @@ def test_the_reveal_window_maps_every_original_decision(
     assert not [key for key in fallbacks if key.startswith("error:")]
 
 
+def test_no_original_decision_falls_back(fallbacks: Counter[str]) -> None:
+    """Every window on the original game (plan §12's goal): the Agent turn,
+    Reveal, Conflict rewards, Intrigue choices, the victim's discard and the
+    Masterstroke setup."""
+
+    assert dict(fallbacks) == {}
+
+
+def test_the_baron_picks_two_masterstroke_factions() -> None:
+    """``masterstroke_setup``: the two Factions of one
+    ``MasterstrokeAbility1`` answer, asked one at a time by our engine."""
+
+    leaders = (
+        "baron_vladimir_harkonnen",
+        "paul_atreides",
+        "duke_leto_atreides",
+        "glossu_rabban",
+    )
+    engine = UprisingRulesEngine(leader_ids=leaders)
+    config = RulesetConfig(base_game=BaseGame.IMPERIUM)
+    agents = tuple(AppAIAgent(seed=70 + seat) for seat in range(4))
+    result = run_policy_game(engine, config, 7, agents)
+    baron = next(
+        p for p in result.state.players if p.leader_id == "baron_vladimir_harkonnen"
+    )
+    assert len(set(baron.masterstroke_factions)) == 2
+    assert not any(agent.fallbacks for agent in agents)
+    assert agents[baron.player_id].mirrored["masterstroke_setup"] == 2
+
+
 @pytest.fixture(scope="module")
 def unmapped() -> Counter[str]:
     """The ``unmapped`` reasons of the Agent-turn window over four games."""

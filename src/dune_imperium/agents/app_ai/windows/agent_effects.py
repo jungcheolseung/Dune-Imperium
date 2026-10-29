@@ -410,6 +410,7 @@ from dune_imperium.agents.app_ai.catalog import (
     tech_entity,
     track_entity,
 )
+from dune_imperium.agents.app_ai.choice import default_random_choice
 from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, card_id
 from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.profile import Profile
@@ -3530,8 +3531,12 @@ def _leader_choices(t: _Turn) -> None:
 
 def _manipulate(t: _Turn) -> None:
     """Helena Richese's Manipulate (``ManipulateAbility``, Explicit): its
-    Evaluate over the Imperium Row cards we offer; its 0.5 empty answer
-    sets nothing aside (the key is left unused)."""
+    Evaluate over the Imperium Row cards we offer. Its 0.5 empty answer (no
+    Row card it can afford) sets nothing aside in the app; ours leaves the
+    key unused while the turn can end, but our engine owes the set-aside once
+    the Signet is used (nothing else offered): then the app's answer to a
+    forced prompt it cannot fill, ``DefaultRandomChoice`` over the Row cards
+    (plan §12.4)."""
 
     picks = t.by_id("set_aside_leader_imperium")
     if not picks:
@@ -3539,13 +3544,23 @@ def _manipulate(t: _Turn) -> None:
     request = Request(
         infos=(TargetInfo(entities=_cards(t, _arg_refs(picks, "instance_id"))),)
     )
+    forced = t.run.first("finish_agent_turn") is None
+
+    def answer(ans: Answer) -> Answered:
+        ref = _response_ref(ans)
+        if isinstance(ref, str):
+            return with_arg(picks, "instance_id", ref)
+        if forced:
+            return default_random_choice(picks, t.run.rng)
+        return LEFT_UNUSED
+
     _choice_source(
         t,
         "Manipulate",
         _find(t.leader, "ManipulateAbility"),
         picks,
         request,
-        _ref_or(picks, "instance_id", LEFT_UNUSED),
+        answer,
         None,
     )
 
