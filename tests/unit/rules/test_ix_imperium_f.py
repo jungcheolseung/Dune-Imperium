@@ -880,6 +880,116 @@ def test_artillery_counts_the_assault_only_when_it_gave_swords() -> None:
     assert dict(with_one.decision_stack[-1].context)["sword_strength"] == 3 + 1
 
 
+def _assault_withdrawn_then_freighter_recalled(*, artillery_held: bool) -> GameState:
+    """One dreadnought and three troops in the Conflict; Full-Scale Assault,
+    Negotiated Withdrawal and Guild Chief Administrator revealed (Freighter on
+    the Shipping track's top); Negotiated Withdrawal retreats the dreadnought
+    and two troops; the Freighter's recall reaches space 3's Acquire Tech,
+    which buys Artillery unless it is ``artillery_held`` from the start (then
+    the Acquire Tech is left)."""
+
+    state = _start()
+    if artillery_held:
+        state = _with_tile(state, "artillery")
+    else:
+        # Artillery on top of a stack, its 1 spice paid by space 3's Tech
+        # Discount 2.
+        stacks = tuple(
+            tuple(tile for tile in stack if tile != "artillery")
+            for stack in state.tech_stacks
+        )
+        state = replace(state, tech_stacks=(("artillery", *stacks[0]), *stacks[1:]))
+    owner = state.players[0]
+    state = _give(
+        state,
+        0,
+        hand=(ASSAULT, WITHDRAWAL, GCA),
+        freighter_space=3,
+        troops_garrison=owner.troops_garrison - 3,
+        troops_conflict=3,
+        dreadnoughts_supply=1,
+        dreadnoughts_conflict=1,
+        combat_strength=2 * 3 + 3,
+    )
+    state = _do(state, "reveal_turn").state
+    state = _do(
+        state,
+        "retreat_reveal_units_for_influence",
+        count=3,
+        dreadnoughts=1,
+        faction="emperor",
+    ).state
+    left = state.players[0]
+    assert (left.troops_conflict, left.dreadnoughts_conflict) == (1, 0)
+    state = _do(state, _RECALL, source="guild_chief_administrator").state
+    state = _do(state, "resolve_shipping_reward", effect="tech").state
+    if artillery_held:
+        return _do(state, "decline_tech").state
+    return _do(state, "acquire_tech", tech_id="artillery").state
+
+
+def test_artillery_counts_the_swords_the_assault_gave_at_its_reveal() -> None:
+    """ "Full-Scale Assault의 sword는 Reveal 때 고정, 나중에 dreadnought가 빠져도
+    유지(BGG Forum) | 채택 — sword는 공개한 카드가 준 값 [DI p. 11]"
+    (rise-of-ix.md 9.3), "Artillery | Reveal turn: sword를 주는 공개 카드마다
+    sword 1" (rise-of-ix.md 4) and a tile acquired mid-Reveal applying its
+    Reveal turn ability in that Reveal (OQ-150 (가)): Full-Scale Assault gave
+    3 swords for the dreadnought at its Reveal, so it is a card that gave
+    swords when Artillery arrives after the dreadnought left -- 1 troop (2),
+    the Assault's 3 swords and Artillery's 1 sword: 6."""
+    state = _assault_withdrawn_then_freighter_recalled(artillery_held=False)
+    owner = state.players[0]
+    assert owner.tech_ids[-1] == "artillery"
+    assert owner.combat_strength == 2 + 3 + 1
+    assert dict(state.decision_stack[-1].context)["artillery_counted"] == 1
+
+
+def test_artillery_held_from_the_start_keeps_the_assaults_sword() -> None:
+    """The same with Artillery held from the Reveal's start: it counted the
+    Assault then (3 + 1 swords) and the dreadnought's retreat takes only its
+    own 3 strength, never the swords: 6 again."""
+    state = _assault_withdrawn_then_freighter_recalled(artillery_held=True)
+    assert state.players[0].combat_strength == 2 + 3 + 1
+    assert dict(state.decision_stack[-1].context)["artillery_counted"] == 1
+
+
+def test_imperial_bashar_drawn_late_counts_the_swords_the_assault_gave() -> None:
+    """Imperial Bashar's "+[sword] for each other revealed card that provides
+    one or more [sword]" reads the same record: drawn in the Reveal after
+    Negotiated Withdrawal took the dreadnought back, it still counts Full-Scale
+    Assault, which gave its 3 swords at its Reveal (rise-of-ix.md 9.3) --
+    Bashar's own 2 swords and 1 for the Assault."""
+    from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+
+    bashar = "imperium:imperial_bashar:0"
+    state = _start()
+    owner = state.players[0]
+    state = _give(
+        state,
+        0,
+        hand=(ASSAULT, WITHDRAWAL),
+        deck=(bashar, *(card for card in owner.deck if card != bashar)),
+        troops_garrison=owner.troops_garrison - 3,
+        troops_conflict=3,
+        dreadnoughts_supply=1,
+        dreadnoughts_conflict=1,
+        combat_strength=2 * 3 + 3,
+    )
+    state = _do(state, "reveal_turn").state
+    state = _do(
+        state,
+        "retreat_reveal_units_for_influence",
+        count=3,
+        dreadnoughts=1,
+        faction="emperor",
+    ).state
+    before = state.players[0].combat_strength
+    assert before == 2 + 3
+    drawn = draw_or_request_personal_cards(state, 0, 1, source="test").state
+    assert bashar in drawn.players[0].in_play
+    assert drawn.players[0].combat_strength == before + 2 + 1
+
+
 # --- Embedded Agent -------------------------------------------------------------
 
 EMBEDDED = "imperium:embedded_agent:0"

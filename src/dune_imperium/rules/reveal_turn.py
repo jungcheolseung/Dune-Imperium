@@ -3948,6 +3948,23 @@ def _choice_sword_card_ids(context: Mapping[str, ActionValue]) -> tuple[str, ...
     return tuple(card_id for card_id in value.split(",") if card_id)
 
 
+def _swords_given(
+    effect: RevealLine,
+    recorded: int | None,
+    revealed_cards: tuple[PersonalCardDefinition, ...],
+) -> int:
+    """The swords a granted Reveal line gave when it resolved: its flat and
+    per-Faction-card swords (this Reveal's cards, fixed), and Full-Scale
+    Assault's per-dreadnought swords as recorded then (``_granted_entries``,
+    ``grant_late_reveal_effects``), however many dreadnoughts are left in the
+    Conflict now."""
+
+    given = effect.strength_over(revealed_cards)
+    if effect.strength_per_dreadnought:
+        given += recorded or 0
+    return given
+
+
 def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
     """Pay Leadership's swords for sword cards it has not counted yet.
 
@@ -3979,6 +3996,9 @@ def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
         personal_card_for_instance(card_id) for card_id in revealed_ids
     )
     choice_swords = set(_choice_sword_card_ids(context))
+    # A card provides swords by what it gave when its swords were resolved,
+    # not by the board now: "sword는 공개한 카드가 준 값" [DI p. 11] (rise-of-ix.md
+    # 9.3, Full-Scale Assault's swords fixed at the Reveal).
     sword_cards = {
         card_id
         for card_id, card in zip(revealed_ids, revealed_cards, strict=True)
@@ -3987,7 +4007,7 @@ def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
             card_id in choice_swords
             or card.reveal_strength
             + sum(
-                effect.strength_over(revealed_cards, owner.dreadnoughts_conflict)
+                _swords_given(effect, granted[f"{card_id}#{index}"], revealed_cards)
                 for index, effect in enumerate(reveal_lines(card))
                 if f"{card_id}#{index}" in granted
             )
@@ -4079,11 +4099,18 @@ def _granted_entries(
             ):
                 # Leadership keeps the number of sword cards it has counted
                 # (``_count_leadership_swords``); a new entry has counted none.
+                # Full-Scale Assault's line keeps the swords it gave now, as
+                # its dreadnoughts stood ("Full-Scale Assault의 sword는 Reveal
+                # 때 고정, 나중에 dreadnought가 빠져도 유지", rise-of-ix.md
+                # 9.3): what a card gave is read from here afterwards
+                # (``_swords_given``).
                 entries[f"{card_id}#{index}"] = (
                     completed_contracts
                     if effect.persuasion_per_completed_contract
                     else 0
                     if effect.strength_per_other_sword_card
+                    else effect.strength_per_dreadnought * owner.dreadnoughts_conflict
+                    if effect.strength_per_dreadnought
                     else None
                 )
     return entries
@@ -4832,7 +4859,12 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 # keep the count it was paid for here, and later Contracts would
                 # add their increment above.
                 newly_granted[key] = paid[key] = (
-                    completed if effect.persuasion_per_completed_contract else None
+                    completed
+                    if effect.persuasion_per_completed_contract
+                    # The per-dreadnought swords it gave now (``_swords_given``).
+                    else sword
+                    if effect.strength_per_dreadnought
+                    else None
                 )
                 sweeping = True
                 events.append(
