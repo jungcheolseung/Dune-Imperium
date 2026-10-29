@@ -48,6 +48,7 @@ from dune_imperium.rules.frames import (
     TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     frame_context,
+    is_unload_hold,
     own_turn_frame_index,
     with_context,
 )
@@ -96,7 +97,13 @@ end back and the press lapses it (OQ-095 (2))."""
 UNLOAD_ICON: Final = "unload_icon"
 """One icon of an Unload card's Reveal box an effect triggered in its owner's
 own turn (Rise of Ix, ``rules.unload``): ``value`` is ``"<card instance>|<icon>"``;
-mandatory, a gain [Rise of Ix p. 7]."""
+mandatory, a gain [Rise of Ix p. 7] -- but an icon of ``OPTIONAL_UNLOAD_ICONS``,
+whose row opens its own window: "may", it holds no turn end back and the
+press lapses it (OQ-095 (2))."""
+
+OPTIONAL_UNLOAD_ICONS: Final = frozenset({"freighter"})
+"""The Unload icons the owner "may" use (``rules.unload``'s decision icons):
+the Freighter icon, "you may move your Freighter" [Rise of Ix p. 5]."""
 
 EFFECT_INFLUENCE: Final = "effect_influence"
 """One Faction's Influence of an effect that raises several Factions it
@@ -175,11 +182,14 @@ def waits_on_turn(state: GameState, player: int) -> bool:
     frame (``queue``) rather than open its own window: inside the seat's own
     turn and not in a Scouts line run in it -- a line's frame anywhere above
     the turn frame, also under a frame the line opened (its Contract market,
-    its Research direction)."""
+    its Research direction) -- nor in an arrow's Unload hold above it, whose
+    Unload is resolved to the end before the arrow's right side
+    (``rules.unload``, docs/rules/rise-of-ix.md 7)."""
 
     index = own_turn_frame_index(state, player)
     return index is not None and not any(
-        frame.kind in _SCOUTS_KINDS for frame in state.decision_stack[index + 1 :]
+        frame.kind in _SCOUTS_KINDS or is_unload_hold(frame)
+        for frame in state.decision_stack[index + 1 :]
     )
 
 
@@ -272,9 +282,9 @@ def holds_the_end(state: GameState, player: int) -> bool:
             PLANETOLOGIST_INTRIGUE,
             RESEARCH_ICON,
             CONTRACT_ICON,
-            UNLOAD_ICON,
             EFFECT_INFLUENCE,
         )
+        or (kind == UNLOAD_ICON and not unload_icon_is_optional(value))
         or (kind == SHIPPING_REWARD and value != _OPTIONAL_SHIPPING_REWARD)
         or (
             kind == RESEARCH_BONUS
@@ -287,6 +297,13 @@ def holds_the_end(state: GameState, player: int) -> bool:
 
 
 _OPTIONAL_SHIPPING_REWARD: Final = "3"
+
+
+def unload_icon_is_optional(value: str) -> bool:
+    """Whether a waiting Unload icon ``value`` (``"<card instance>|<icon>"``)
+    is "may" (``OPTIONAL_UNLOAD_ICONS``)."""
+
+    return value.split("|")[1] in OPTIONAL_UNLOAD_ICONS
 
 
 def _tech_acquire_keys(context: Mapping[str, object]) -> tuple[str, ...]:
@@ -366,6 +383,14 @@ def _lapsed(player: int, item: Pending) -> GameEvent:
             event_id=f"{source}:snooper_discard_lapsed",
             kind="snooper_discard_lapsed",
             payload=(("faction", value), ("player", player)),
+        )
+    if kind == UNLOAD_ICON:
+        # Only a "may" icon reaches the press (``holds_the_end``).
+        card_id, icon = value.split("|")
+        return GameEvent(
+            event_id=f"{source}:{icon}_lapsed",
+            kind="unload_icon_lapsed",
+            payload=(("card_id", card_id), ("effect", icon), ("player", player)),
         )
     if kind == SHIPPING_REWARD:
         # Only space 3's Acquire Tech reaches the press (``holds_the_end``).

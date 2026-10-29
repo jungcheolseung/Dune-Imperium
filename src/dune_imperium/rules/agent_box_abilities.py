@@ -211,6 +211,7 @@ from dune_imperium.rules.spy_placement import (
     spy_options,
 )
 from dune_imperium.rules.unit_loss import lose_unit, opponent_unit_loss_frames
+from dune_imperium.rules.unload import hold_payer, push_unload_hold, unload_holds
 
 _RESOLVED = BoxOutcome.RESOLVED
 _UNAVAILABLE = BoxOutcome.UNAVAILABLE
@@ -2306,7 +2307,6 @@ def apply_discard(
             )
         context.pop(DISCARD_FIRST_KEY, None)
         paid = (first, card_id)
-    factions = personal_card_for_instance(card_id).factions
     discarded = RuleResult(state=state)
     for paid_card_id in paid:
         # The discards are the arrow's cost: an Unload card's box is paid
@@ -2317,6 +2317,67 @@ def apply_discard(
         discarded = RuleResult(
             state=step.state, events=(*discarded.events, *step.events)
         )
+    if unload_holds(discarded.events):
+        # "Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer ruling,
+        # docs/rules/rise-of-ix.md 7): a discarded card's box holds a decision,
+        # so the arrow's right side waits for it (``rules.unload``).
+        written = advance_after_effect(
+            discarded.state, context, discarded.state.players
+        )
+        return RuleResult(
+            state=push_unload_hold(
+                written,
+                player,
+                source=source,
+                payer=_DISCARD_PAYER,
+                values={"card_id": card_id},
+            ),
+            events=discarded.events,
+        )
+    return _discard_right_side(
+        discarded, context, ability, player, box_card_id, source, card_id
+    )
+
+
+_DISCARD_PAYER: Final = "agent_box_discard"
+
+
+@hold_payer(_DISCARD_PAYER)
+def _pay_held_discard(
+    state: GameState, player: int, values: Mapping[str, ActionValue]
+) -> RuleResult:
+    """A discard arrow's right side, once its discarded card's Unload is
+    decided: the box on top again, as the discard left it."""
+
+    _, context = current_agent_effect_context(state)
+    ability = box_ability(active_agent_card(context).agent_effect)
+    assert ability is not None
+    _, box_card_id = _subject(context)
+    source = agent_card_source(state.round_number, player, box_card_id)
+    return _discard_right_side(
+        RuleResult(state=state),
+        context,
+        ability,
+        player,
+        box_card_id,
+        source,
+        str(values["card_id"]),
+    )
+
+
+def _discard_right_side(
+    discarded: RuleResult,
+    context: dict[str, ActionValue],
+    ability: Ability,
+    player: int,
+    box_card_id: str,
+    source: str,
+    card_id: str,
+) -> RuleResult:
+    """A discard arrow's lines once its cost is paid: armed as icons, or paid
+    (the discarded card ``card_id`` read by a later line's condition)."""
+
+    factions = personal_card_for_instance(card_id).factions
     met = tuple(
         not isinstance(line.condition, DiscardedCardHasFaction)
         or line.condition.faction in factions
@@ -2886,6 +2947,71 @@ def apply_trash(
             state=advance_after_effect(trashed.state, context, trashed.state.players),
             events=(*trashed.events, *done),
         )
+    if unload_holds(trashed.events):
+        # "Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer ruling,
+        # docs/rules/rise-of-ix.md 7): the trashed card's box holds a decision,
+        # so what the trash buys waits for it (``rules.unload``).
+        written = advance_after_effect(trashed.state, context, trashed.state.players)
+        return RuleResult(
+            state=push_unload_hold(
+                written,
+                player,
+                source=source,
+                payer=_TRASH_PAYER,
+                values={"card_id": card_id},
+            ),
+            events=trashed.events,
+        )
+    return _trash_right_side(
+        trashed, context, ability, player, box_card_id, source, card_id, cost, done
+    )
+
+
+_TRASH_PAYER: Final = "agent_box_trash"
+
+
+@hold_payer(_TRASH_PAYER)
+def _pay_held_trash(
+    state: GameState, player: int, values: Mapping[str, ActionValue]
+) -> RuleResult:
+    """A trash arrow's right side, once its trashed card's Unload is
+    decided: the box on top again, as the trash left it."""
+
+    _, context = current_agent_effect_context(state)
+    ability = box_ability(active_agent_card(context).agent_effect)
+    assert ability is not None
+    cost = _trash_cost(ability)
+    assert cost is not None
+    _, box_card_id = _subject(context)
+    source = agent_card_source(state.round_number, player, box_card_id)
+    done = (agent_box_event(source, box_card_id, player, _RESOLVED),)
+    return _trash_right_side(
+        RuleResult(state=state),
+        context,
+        ability,
+        player,
+        box_card_id,
+        source,
+        str(values["card_id"]),
+        cost,
+        done,
+    )
+
+
+def _trash_right_side(
+    trashed: RuleResult,
+    context: dict[str, ActionValue],
+    ability: Ability,
+    player: int,
+    box_card_id: str,
+    source: str,
+    card_id: str,
+    cost: TrashCard,
+    done: tuple[GameEvent, ...],
+) -> RuleResult:
+    """What a trash arrow buys once its cost is paid (the trashed card
+    ``card_id`` read by a later line's condition)."""
+
     if cost.this_card:
         # The card trashed itself as its own cost, so its rewards still pay
         # out (OQ-022).
@@ -3425,7 +3551,63 @@ def apply_discard_pay(
     second = discard_personal_card_from_hand(
         first.state, player, picked, source=source, unload_at_once=True
     )
-    gained_owner = second.state.players[player]
+    if unload_holds((*first.events, *second.events)):
+        # "Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer ruling,
+        # docs/rules/rise-of-ix.md 7): a discarded card's box holds a decision,
+        # so the Victory Point waits for it (``rules.unload``).
+        written = advance_after_effect(second.state, context, second.state.players)
+        return RuleResult(
+            state=push_unload_hold(
+                written, player, source=source, payer=_DISCARD_PAY_PAYER
+            ),
+            events=(
+                *first.events,
+                *second.events,
+                resources_paid_event(source, player, solari=solari),
+            ),
+        )
+    gained = _discard_pay_right_side(second.state, context, ability, player, source)
+    return RuleResult(
+        state=gained.state,
+        events=(
+            *first.events,
+            *second.events,
+            resources_paid_event(source, player, solari=solari),
+            *gained.events,
+        ),
+    )
+
+
+_DISCARD_PAY_PAYER: Final = "agent_box_discard_pay"
+
+
+@hold_payer(_DISCARD_PAY_PAYER)
+def _pay_held_discard_pay(
+    state: GameState, player: int, values: Mapping[str, ActionValue]
+) -> RuleResult:
+    """Corrinth City's Victory Point once a discarded card's Unload is
+    decided: the box on top again, as the payment left it."""
+
+    del values
+    _, context = current_agent_effect_context(state)
+    ability = box_ability(active_agent_card(context).agent_effect)
+    assert ability is not None
+    _, card_id = _subject(context)
+    source = agent_card_source(state.round_number, player, card_id)
+    return _discard_pay_right_side(state, context, ability, player, source)
+
+
+def _discard_pay_right_side(
+    state: GameState,
+    context: dict[str, ActionValue],
+    ability: Ability,
+    player: int,
+    source: str,
+) -> RuleResult:
+    """Corrinth City's Victory Point and the box's end, once paid."""
+
+    _, card_id = _subject(context)
+    gained_owner = state.players[player]
     points = sum(
         reward.amount
         for reward in ability.sections[0].rewards
@@ -3435,14 +3617,11 @@ def apply_discard_pay(
         gained_owner, victory_points=gained_owner.victory_points + points
     )
     next_state = advance_after_effect(
-        second.state, context, replace_player(second.state.players, gained_owner)
+        state, context, replace_player(state.players, gained_owner)
     )
     return RuleResult(
         state=next_state,
         events=(
-            *first.events,
-            *second.events,
-            resources_paid_event(source, player, solari=solari),
             resources_gained_event(source, player, victory_points=points),
             agent_box_event(source, card_id, player, _RESOLVED),
         ),

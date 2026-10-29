@@ -2,6 +2,7 @@
 
 from copy import replace
 from enum import StrEnum
+from typing import Final
 
 from dune_imperium.content.uprising.effect_dsl import OnSpiceGainedInTurnAtLeast
 from dune_imperium.content.uprising.leader_abilities import leader_triggers
@@ -145,7 +146,10 @@ class FrameKind(StrEnum):
     # An Unload card's Reveal box gained outside its owner's turn, when an
     # opponent's effect discards it [Rise of Ix p. 7] or a Combat reward
     # trashes it (OQ-127): one row each in any order, its choices and costs
-    # with them, as ``CONTRACT_REWARD_ICONS`` holds a reward box.
+    # with them, as ``CONTRACT_REWARD_ICONS`` holds a reward box. Marked
+    # ``UNLOAD_HOLD_KEY``, it is instead the hold of an arrow whose cost's
+    # Unload box needs a decision: it holds the arrow's right side until the
+    # windows above it are answered (``rules.unload``).
     UNLOAD_ICONS = "unload_icons"
     # An optional "[discard] ->" cost outside its owner's turn: a hand card
     # (no Intrigue) or none [Rise of Ix p. 7] -- Tessia Vernius' first
@@ -160,6 +164,22 @@ class FrameKind(StrEnum):
     # its own, as ``LONG_LIVE_FIGHTERS``, so no other effect interleaves.
     # Court Intrigue's single card is a row with one target, no window.
     INTRIGUE_BOTTOM_PICK = "intrigue_bottom_pick"
+
+
+UNLOAD_HOLD_KEY: Final = "unload_hold"
+"""Marks an ``UNLOAD_ICONS`` frame as the hold of an arrow's right side
+(``rules.unload``): "비용 → 효과 줄의 왼쪽(비용)이 Unload를 일으키면 Unload를
+끝까지 해결한 뒤 오른쪽으로 간다" (designer ruling, docs/rules/rise-of-ix.md 7).
+While one is open above the owner's turn frame, an effect of that seat opens
+its own window rather than waiting on the turn (``turn_rows.waits_on_turn``)."""
+
+
+def is_unload_hold(frame: DecisionFrame) -> bool:
+    """Whether ``frame`` is an arrow's Unload hold (``UNLOAD_HOLD_KEY``)."""
+
+    return frame.kind == FrameKind.UNLOAD_ICONS and any(
+        key == UNLOAD_HOLD_KEY for key, _ in frame.context
+    )
 
 
 # The kinds observation v39 reserved for Rise of Ix (stage P4a), in order.

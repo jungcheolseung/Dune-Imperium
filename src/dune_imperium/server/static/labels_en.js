@@ -573,6 +573,7 @@ const LABELS_EN = {
     "shipping_troops_recruited": "Shipping Track: {troop} {recruit}ed",
     "shipping_reward_lapsed": "Shipping Track Reward: Unused",
     "card_unloaded": "Unload",
+    "unload_icon_lapsed": "Unload: Reveal Box Effect Unused",
     "shipping_influence_unavailable": "Shipping Track: {influence_any} Unavailable",
     "dreadnought_control_placed": "Dreadnought on a {control} Space",
     "dreadnought_returned": "Dreadnought Back to the {garrison}",

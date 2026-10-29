@@ -223,6 +223,7 @@ from dune_imperium.rules.spy_placement import (
 from dune_imperium.rules.tech import push_tech_acquisition, tech_acquisition_possible
 from dune_imperium.rules.unit_loss import lose_unit, unit_loss_options
 from dune_imperium.rules.units import retreat_dreadnought, retreat_units
+from dune_imperium.rules.unload import hold_payer, push_unload_hold, unload_holds
 
 # Immortality boxes whose enum names do not fit a comparison line.
 _RESEARCH_AND_TRASH_FOR_VP = (
@@ -2522,21 +2523,70 @@ def _apply_graft_trash(
     trashed = trash_personal_card(
         next_state, action.actor, trashed_id, source=source, unload_at_once=True
     )
-    working = trashed.state
-    events: list[GameEvent] = [*trashed.events, *expired]
+    if unload_holds(trashed.events):
+        # The trashed card's box holds a decision: the reward waits for it
+        # ("Unload를 끝까지 해결한 뒤 오른쪽으로 간다", ``rules.unload``). The
+        # frame was written before the trash, as the reward finds it.
+        return RuleResult(
+            state=push_unload_hold(
+                trashed.state,
+                action.actor,
+                source=source,
+                payer=_GRAFT_TRASH_PAYER,
+                values={"source": source},
+            ),
+            events=(*trashed.events, *expired),
+        )
+    return _graft_trash_right_side(
+        trashed.state,
+        action.actor,
+        ability,
+        space_id,
+        source,
+        [*trashed.events, *expired],
+    )
+
+
+_GRAFT_TRASH_PAYER: Final = "agent_box_graft_trash"
+
+
+@hold_payer(_GRAFT_TRASH_PAYER)
+def _pay_held_graft_trash(
+    state: GameState, player: int, values: Mapping[str, ActionValue]
+) -> RuleResult:
+    """A graft trash's reward once the trashed card's Unload is decided:
+    the box on top again, as the trash left it."""
+
+    _, context = current_agent_effect_context(state)
+    ability = box_ability(active_agent_card(context).agent_effect)
+    assert ability is not None and graft_trash_box(ability)
+    _, _, space_id = _effect_subject(context)
+    return _graft_trash_right_side(
+        state, player, ability, space_id, str(values["source"]), []
+    )
+
+
+def _graft_trash_right_side(
+    working: GameState,
+    player: int,
+    ability: Ability,
+    space_id: str,
+    source: str,
+    events: list[GameEvent],
+) -> RuleResult:
+    """A graft trash's reward: specimens, the visited Faction's Influence."""
+
     for reward in ability.sections[0].rewards:
         step: RuleResult | None = None
         if isinstance(reward, GenerateSpecimens):
-            step = generate_specimens(
-                working, action.actor, reward.count, source=source
-            )
+            step = generate_specimens(working, player, reward.count, source=source)
         elif isinstance(reward, GainInfluence) and reward.visited_space:
             faction = BOARD_SPACES_BY_ID[space_id].faction
             if faction is None:
                 raise RuntimeError("a visited Faction's gain needs a Faction space")
             step = gain_faction_influence(
                 working,
-                action.actor,
+                player,
                 faction,
                 reward.times,
                 event_prefix=f"{source}:influence:{faction.value}",

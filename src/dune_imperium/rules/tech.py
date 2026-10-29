@@ -134,6 +134,7 @@ from dune_imperium.rules.reveal_turn import (
 from dune_imperium.rules.shield_wall import destroy_shield_wall
 from dune_imperium.rules.spy_moves import spy_placement_frame
 from dune_imperium.rules.turn_rows import tech_influence_blocked, tech_influence_lapsed
+from dune_imperium.rules.unload import hold_payer, push_unload_hold, unload_holds
 
 # Disposal Facility: "[Persuasion 6] or more" (OQ-126).
 DISPOSAL_FACILITY_PERSUASION: Final = 6
@@ -1296,7 +1297,7 @@ def _apply_ix_flip(
             events.append(resources_paid_event(source, player, solari=FLAGSHIP_SOLARI))
             working, gained = _flip_recruit(working, player, FLAGSHIP_TROOPS, source)
             events.extend(gained)
-        case TechAbility.FLIP_DISCARD_FOR_CARD:
+        case TechAbility.FLIP_DISCARD_FOR_CARD | TechAbility.FLIP_DISCARD_IGNORE_BLOCKS:
             # The flip's cost: an Unload card's box comes before its effect
             # (docs/rules/rise-of-ix.md 7).
             discarded = discard_personal_card_from_hand(
@@ -1307,40 +1308,73 @@ def _apply_ix_flip(
                 unload_at_once=True,
             )
             events.extend(discarded.events)
-            drawn = draw_or_request_personal_cards(
-                discarded.state, player, 1, source=f"{source}:draw"
-            )
-            working = drawn.state
-            events.extend(drawn.events)
-            events.append(
+            if unload_holds(discarded.events):
+                # A decision of the discarded card's box: the flip's effect
+                # waits for it ("Unload를 끝까지 해결한 뒤 오른쪽으로 간다",
+                # ``rules.unload``).
+                return RuleResult(
+                    state=push_unload_hold(
+                        discarded.state,
+                        player,
+                        source=source,
+                        payer=_FLIP_PAYER,
+                        values={"source": source, "tech_id": tech_id},
+                    ),
+                    events=tuple(events),
+                )
+            flipped = _ix_flip_discard_effect(discarded.state, player, tech_id, source)
+            working = flipped.state
+            events.extend(flipped.events)
+    return RuleResult(state=working, events=tuple(events))
+
+
+_FLIP_PAYER: Final = "tech_flip_discard"
+
+
+@hold_payer(_FLIP_PAYER)
+def _pay_held_flip(
+    state: GameState, player: int, values: Mapping[str, ActionValue]
+) -> RuleResult:
+    """A discard-cost Flip tile's effect once the discarded card's Unload is
+    decided."""
+
+    return _ix_flip_discard_effect(
+        state, player, str(values["tech_id"]), str(values["source"])
+    )
+
+
+def _ix_flip_discard_effect(
+    state: GameState, player: int, tech_id: str, source: str
+) -> RuleResult:
+    """What a Rise of Ix Flip tile's discard buys: a card, or the turn's
+    Infiltrate."""
+
+    if TECH_TILES_BY_ID[tech_id].ability is TechAbility.FLIP_DISCARD_FOR_CARD:
+        drawn = draw_or_request_personal_cards(
+            state, player, 1, source=f"{source}:draw"
+        )
+        return RuleResult(
+            state=drawn.state,
+            events=(
+                *drawn.events,
                 GameEvent(
                     event_id=f"{source}:draw",
                     kind="cards_drawn",
                     payload=(("count", 1), ("player", player)),
-                )
-            )
-        case TechAbility.FLIP_DISCARD_IGNORE_BLOCKS:
-            # The flip's cost: an Unload card's box comes before its effect
-            # (docs/rules/rise-of-ix.md 7).
-            discarded = discard_personal_card_from_hand(
-                working,
-                player,
-                str(arguments["card_id"]),
-                source=f"{source}:discard",
-                unload_at_once=True,
-            )
-            events.extend(discarded.events)
-            # The Infiltrate mechanism: spent by the turn's Agent placement,
-            # gone when any turn opens (``PlayerState.enemy_agents_ignored_turn``).
-            owner = discarded.state.players[player]
-            working = replace(
-                discarded.state,
-                players=replace_player(
-                    discarded.state.players,
-                    replace(owner, enemy_agents_ignored_turn=True),
                 ),
-            )
-    return RuleResult(state=working, events=tuple(events))
+            ),
+        )
+    # The Infiltrate mechanism: spent by the turn's Agent placement, gone
+    # when any turn opens (``PlayerState.enemy_agents_ignored_turn``).
+    owner = state.players[player]
+    return RuleResult(
+        state=replace(
+            state,
+            players=replace_player(
+                state.players, replace(owner, enemy_agents_ignored_turn=True)
+            ),
+        )
+    )
 
 
 def _flip_recruit(

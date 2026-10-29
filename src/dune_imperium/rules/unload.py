@@ -21,13 +21,27 @@ How the icons are taken:
 - Triggered by a cost: "비용 → 효과 줄의 왼쪽(비용)이 Unload를 일으키면
   Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer ruling, rise-of-ix.md 7).
   The cost's caller passes ``at_once``: the box is paid inside the payment,
-  before the line's reward (``pay_unload``).
+  before the line's reward. A decision icon (``is_decision_icon``: the
+  Freighter's move) cannot be paid there: the announcement holds it
+  (``unload_holds``), and the caller stops before its right side, writes its
+  frame as the cost left it and pushes the hold (``push_unload_hold``) naming
+  how to pay the rest later (a payer registered with ``hold_payer`` and its
+  plain values). The engine then opens the held icons' windows above the
+  hold; while any is open, they are the seat's only rows, and an effect of
+  the seat opens its own window rather than waiting on its turn
+  (``turn_rows.waits_on_turn``), so the Unload is resolved to the end. Once
+  the hold is on top again (and no immediate owed draw of its seat waits) it
+  closes and its payer pays the right side as the path would have
+  (``settle_unloads``). A box with no decision icon is paid as before.
 - Triggered by an effect inside its owner's own turn: each icon waits on the
   turn's frame as a mandatory row (``turn_rows.UNLOAD_ICON``), as a Contract's
-  icons do (OQ-112 (4)), and holds the turn's end until taken.
+  icons do (OQ-112 (4)), and holds the turn's end until taken; a decision
+  icon's row opens its window, and a "may" one lapses at the turn-end press
+  (``turn_rows.OPTIONAL_UNLOAD_ICONS``, OQ-095 (2)).
 - Outside its owner's turn (an opponent's effect discards it, a Combat reward
   trashes it): the window ``FrameKind.UNLOAD_ICONS``, one row per icon, in the
-  owner's order.
+  owner's order; a decision icon opens its own window (the Freighter's,
+  ``FrameKind.FREIGHTER_MOVE``) above it.
 
 The transitions only announce an Unload owed by an effect (the event
 ``card_unloaded`` with ``pending``); the engine queues its rows or opens its
@@ -48,6 +62,8 @@ with a choice, a cost, Persuasion or swords belongs to its card's brief
 ``unload_icons`` refuses it.
 """
 
+import json
+from collections.abc import Callable, Mapping
 from copy import replace
 from dataclasses import dataclass
 from functools import cache
@@ -59,6 +75,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Condition,
     DeployFromSupply,
     FactionBond,
+    Freighter,
     GainInfluence,
     GainResources,
 )
@@ -67,7 +84,7 @@ from dune_imperium.content.uprising.imperium import (
     imperium_card_for_instance,
 )
 from dune_imperium.content.uprising.reveal_abilities import REVEAL_GAIN_ABILITIES
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
@@ -75,8 +92,11 @@ from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
 from dune_imperium.rules.conditions import owner_condition_holds
 from dune_imperium.rules.frames import (
+    UNLOAD_HOLD_KEY,
     FrameKind,
     context_str,
+    draw_is_immediate,
+    is_unload_hold,
     owned_top_frame,
     replace_player,
     replace_top_frame,
@@ -99,6 +119,15 @@ INFLUENCE_ICON_PREFIX: Final = "influence_"
 DEPLOY_ICON: Final = "deploy"
 """Treachery's "[troop] [troop] Deploy these troops to the Conflict.": troops
 from the supply to the Conflict, one icon for the printed sentence."""
+FREIGHTER_ICON: Final = "freighter"
+"""The Freighter icon: "you may move your Freighter in one of two ways"
+[Rise of Ix p. 5] -- a decision, answered in ``FrameKind.FREIGHTER_MOVE``."""
+_DECISION_ICONS: Final = frozenset({FREIGHTER_ICON})
+_HELD_KEY: Final = "held"
+"""The ``card_unloaded`` payload's decision icons a cost held (comma-joined,
+only when there are any)."""
+_PAYER_KEY: Final = "unload_hold_payer"
+_VALUES_KEY: Final = "unload_hold_values"
 _FRAME: Final = "Unload frame"
 
 type UnloadIcon = tuple[str, int]
@@ -116,6 +145,13 @@ class _BoxIcon:
     name: str
     amount: int
     condition: Condition | None
+
+
+def is_decision_icon(name: str) -> bool:
+    """Whether an Unload icon is the owner's decision, answered in a window
+    of its own (one per icon, so a box may print two), not paid by a row."""
+
+    return name in _DECISION_ICONS
 
 
 @cache
@@ -141,6 +177,9 @@ def _box(definition_id: str) -> tuple[_BoxIcon, ...]:
                 f"{definition_id}: an Unload box condition {line.condition!r}"
             )
         for reward in line.rewards:
+            if isinstance(reward, Freighter):
+                icons.append(_BoxIcon(FREIGHTER_ICON, 1, line.condition))
+                continue
             if isinstance(reward, DeployFromSupply):
                 icons.append(_BoxIcon(DEPLOY_ICON, reward.count, line.condition))
                 continue
@@ -163,7 +202,7 @@ def _box(definition_id: str) -> tuple[_BoxIcon, ...]:
                 for name in _RESOURCES
                 if getattr(reward, name)
             )
-    names = [icon.name for icon in icons]
+    names = [icon.name for icon in icons if not is_decision_icon(icon.name)]
     if len(set(names)) != len(names):
         raise NotImplementedError(f"{definition_id}: an Unload box icon twice")
     return tuple(icons)
@@ -272,12 +311,18 @@ def trigger_unload(
         return RuleResult(state=state)
     unload_source = f"{source}:unload:{card_id}"
     unmet = _unmet(state, player, card_id)
+    held = (
+        tuple(name for name, _ in icons if name not in unmet and is_decision_icon(name))
+        if at_once
+        else ()
+    )
     events = [
         GameEvent(
             event_id=unload_source,
             kind="card_unloaded",
             payload=(
                 ("card_id", card_id),
+                *(((_HELD_KEY, ",".join(held)),) if held else ()),
                 ("pending", not at_once),
                 ("player", player),
                 *(((_UNMET_KEY, ",".join(unmet)),) if unmet else ()),
@@ -286,7 +331,7 @@ def trigger_unload(
     ]
     if at_once:
         for name, amount in icons:
-            if name in unmet:
+            if name in unmet or is_decision_icon(name):
                 continue
             paid = _gain(state, player, name, amount, source=f"{unload_source}:{name}")
             state = paid.state
@@ -298,6 +343,19 @@ def _value(card_id: str, name: str) -> str:
     return f"{card_id}|{name}"
 
 
+def _open_decision(state: GameState, player: int, name: str, source: str) -> GameState:
+    """Open the window that answers the decision icon ``name`` for ``player``
+    on top of ``state`` (``is_decision_icon``)."""
+
+    if name == FREIGHTER_ICON:
+        # Imported here: the Shipping track imports the Tech module, which
+        # imports the card discard and trash, which import this one.
+        from dune_imperium.rules.shipping_track import open_freighter_move
+
+        return open_freighter_move(state, player, source=source)
+    raise RuntimeError(f"{name} is not an Unload decision icon")
+
+
 def _owe(
     state: GameState,
     player: int,
@@ -306,44 +364,186 @@ def _owe(
     unmet: tuple[str, ...] = (),
 ) -> GameState:
     """The icons of an Unload an effect triggered, but those ``unmet``:
-    rows of the owner's own turn, else a window of their own."""
+    rows of the owner's own turn, else a window of their own, and a window
+    for each decision icon above it."""
 
-    values = tuple(
-        _value(card_id, name) for name, _ in unload_icons(card_id) if name not in unmet
-    )
-    if not values:
+    names = tuple(name for name, _ in unload_icons(card_id) if name not in unmet)
+    if not names:
         return state
     if turn_rows.waits_on_turn(state, player):
-        for value in values:
+        for name in names:
             queued = turn_rows.queue(
-                state, player, (turn_rows.UNLOAD_ICON, source, value)
+                state, player, (turn_rows.UNLOAD_ICON, source, _value(card_id, name))
             )
             assert queued is not None
             state = queued
         return state
+    values = tuple(
+        _value(card_id, name) for name in names if not is_decision_icon(name)
+    )
+    if values:
+        state = state.push_decision(
+            DecisionFrame(
+                kind=FrameKind.UNLOAD_ICONS,
+                frame_id=f"{source}:icons",
+                decision=PlayerDecision(owner=player, prompt=UNLOAD_PROMPT),
+                context=tuple(
+                    sorted(((UNLOAD_ICONS_KEY, ",".join(values)), ("source", source)))
+                ),
+            )
+        )
+    # The last pushed is answered first: the printed first decision on top.
+    for name in reversed(tuple(name for name in names if is_decision_icon(name))):
+        state = _open_decision(state, player, name, f"{source}:{name}")
+    return state
+
+
+# --- An arrow's right side held while its cost's Unload is decided ------------
+
+type HoldPayer = Callable[[GameState, int, Mapping[str, ActionValue]], RuleResult]
+"""Pays the right side of an arrow whose cost's Unload a hold kept back:
+called with the hold popped (the path's own frame on top again, as the cost
+left it), the hold's seat and the plain values its path recorded."""
+
+_PAYERS: dict[str, HoldPayer] = {}
+
+
+def hold_payer(key: str) -> Callable[[HoldPayer], HoldPayer]:
+    """Register the function that pays the right side a hold named ``key``
+    kept back (one per cost path, in the path's own module)."""
+
+    def register(payer: HoldPayer) -> HoldPayer:
+        if key in _PAYERS:
+            raise ValueError(f"an Unload hold payer {key!r} is registered twice")
+        _PAYERS[key] = payer
+        return payer
+
+    return register
+
+
+def unload_holds(events: tuple[GameEvent, ...]) -> bool:
+    """Whether a cost's Unload among ``events`` held a decision icon, so its
+    path must stop before its right side and push a hold
+    (``push_unload_hold``)."""
+
+    return any(
+        event.kind == UNLOADED_EVENT and _HELD_KEY in dict(event.payload)
+        for event in events
+    )
+
+
+def push_unload_hold(
+    state: GameState,
+    player: int,
+    *,
+    source: str,
+    payer: str | None = None,
+    values: Mapping[str, ActionValue] | None = None,
+) -> GameState:
+    """Push ``player``'s hold of an arrow's right side on top of ``state``
+    (its path's frame already written as the cost left it).
+
+    ``payer`` names the registered function that pays the right side once the
+    held icons are answered, with ``values``; None when the path's right side
+    already waits on the frame below as rows of its own (an armed icon, a
+    later step), which the hold alone keeps back.
+    """
+
+    if payer is not None and payer not in _PAYERS:
+        raise ValueError(f"no Unload hold payer is registered as {payer!r}")
     return state.push_decision(
         DecisionFrame(
             kind=FrameKind.UNLOAD_ICONS,
-            frame_id=f"{source}:icons",
+            frame_id=f"{source}:unload_hold",
             decision=PlayerDecision(owner=player, prompt=UNLOAD_PROMPT),
             context=tuple(
-                sorted(((UNLOAD_ICONS_KEY, ",".join(values)), ("source", source)))
+                sorted(
+                    (
+                        (UNLOAD_HOLD_KEY, True),
+                        (UNLOAD_ICONS_KEY, ""),
+                        ("source", source),
+                        (_PAYER_KEY, payer or ""),
+                        (_VALUES_KEY, json.dumps(dict(values or {}), sort_keys=True)),
+                    )
+                )
             ),
         )
     )
 
 
+def _open_held(state: GameState, event: GameEvent) -> GameState:
+    """Open the windows of the decision icons a cost's Unload held, above the
+    hold its path pushed."""
+
+    payload = dict(event.payload)
+    player, held = payload["player"], payload[_HELD_KEY]
+    assert isinstance(player, int) and isinstance(held, str)
+    top = state.decision_stack[-1] if state.decision_stack else None
+    if (
+        top is None
+        or not is_unload_hold(top)
+        or not isinstance(top.decision, PlayerDecision)
+        or top.decision.owner != player
+    ):
+        raise RuntimeError(
+            "a cost's Unload holds a decision but its path pushed no hold"
+        )
+    for name in reversed(held.split(",")):
+        state = _open_decision(state, player, name, f"{event.event_id}:{name}")
+    return state
+
+
+def _closable_hold(state: GameState) -> DecisionFrame | None:
+    """The hold on top whose held icons are all answered, while no immediate
+    owed draw of its seat (a track bonus the Unload earned) still waits."""
+
+    if not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if not is_unload_hold(frame) or not isinstance(frame.decision, PlayerDecision):
+        return None
+    owner = state.players[frame.decision.owner]
+    if any(draw_is_immediate(origin) for _, origin, _ in owner.owed_draws):
+        return None
+    return frame
+
+
+def _close_holds(result: RuleResult) -> RuleResult:
+    """Close every answered hold on top and pay its right side."""
+
+    state, events = result.state, list(result.events)
+    while (frame := _closable_hold(state)) is not None:
+        assert isinstance(frame.decision, PlayerDecision)
+        context = dict(frame.context)
+        payer = context_str(context, _PAYER_KEY, owner=_FRAME)
+        values = json.loads(context_str(context, _VALUES_KEY, owner=_FRAME))
+        state = state.pop_decision()
+        if not payer:
+            continue
+        paid = settle_unloads(_PAYERS[payer](state, frame.decision.owner, values))
+        state = paid.state
+        events.extend(paid.events)
+    return RuleResult(state=state, events=tuple(events))
+
+
 def settle_unloads(result: RuleResult) -> RuleResult:
     """Queue the rows or open the windows of the Unloads ``result``'s
-    events announce as owed, once the action's handler is done."""
+    events announce as owed, open the windows of the decision icons a cost's
+    Unload held, and close an answered hold on top, paying its right side --
+    once the action's handler is done."""
 
     owed = [
         event
         for event in result.events
         if event.kind == UNLOADED_EVENT and dict(event.payload).get("pending") is True
     ]
-    if not owed:
-        return result
+    held = [
+        event
+        for event in result.events
+        if event.kind == UNLOADED_EVENT and _HELD_KEY in dict(event.payload)
+    ]
+    if not owed and not held:
+        return _close_holds(result) if _closable_hold(result.state) else result
     state = result.state
     # Windows stack: the last pushed is answered first, so the first
     # Unload announced is pushed last.
@@ -360,7 +560,10 @@ def settle_unloads(result: RuleResult) -> RuleResult:
             event.event_id,
             tuple(unmet.split(",") if unmet else ()),
         )
-    return RuleResult(state=state, events=result.events)
+    # A cost's held decisions are answered first, the first announced on top.
+    for event in reversed(held):
+        state = _open_held(state, event)
+    return _close_holds(RuleResult(state=state, events=result.events))
 
 
 def _row(player: int, value: str) -> DomainAction:
@@ -436,5 +639,8 @@ def apply_unload_icon(state: GameState, action: DomainAction) -> RuleResult:
         )
         source = item[1]
         state = turn_rows.take(state, player, item)
+    if is_decision_icon(name):
+        # A row of its owner's turn: its window answers it.
+        return RuleResult(state=_open_decision(state, player, name, f"{source}:{name}"))
     amount = dict(unload_icons(card_id))[name]
     return _gain(state, player, name, amount, source=f"{source}:{name}")

@@ -522,6 +522,7 @@ const EVENT_LABELS = {
   shipping_troops_recruited: "Freighter 회수: {troop} {recruit}",
   shipping_reward_lapsed: "Freighter 회수 보상: 쓰지 않음",
   card_unloaded: "Unload",
+  unload_icon_lapsed: "Unload: 공개 칸 효과 쓰지 않음",
   shipping_influence_unavailable: "Freighter 회수: {influence_any} 불가",
   dreadnought_control_placed: "dreadnought가 {control} 공간에",
   dreadnought_returned: "dreadnought {garrison} 복귀",
