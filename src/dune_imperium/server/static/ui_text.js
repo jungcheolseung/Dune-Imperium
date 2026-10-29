@@ -1150,7 +1150,7 @@ const UI_TEXT = {
   },
   "panels.ix_pending_shipping": {
     "ko": "아직 받을 운송 보상: {{steps}}칸",
-    "en": "Shipping rewards still to take: step {{steps}}"
+    "en": "Shipping rewards still to take: track spaces {{steps}}"
   },
   "panels.ix_pending_tech": {
     "ko": "기술 획득: 기술 할인 {{discount}} · {{payment}}로 지불 · 돌려놓을 수 있는 협상가 {{negotiators}}",

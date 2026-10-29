@@ -392,6 +392,7 @@ function renderSeats() {
     if (view.mentat_owed_to === seat) flags.push(tNode("panels.mentat_next_round"));
     for (const flag of originalMarkers(player, seat, view)) flags.push(flag);
     for (const flag of ixMarkers(player, seat, view)) flags.push(flag);
+    for (const flag of knownIntrigueMarkers(seat, view)) flags.push(flag);
     if (player.has_revealed) flags.push(tNode("panels.revealed"));
     /* Bloodlines Leader state: Piter's Twisted deck. Chani's Tactics space,
        Y'rkoon's Navigation cards and Kota's Secret Project tile are drawn
@@ -2633,9 +2634,8 @@ function originalMarkers(player, seat, view) {
    came back this turn, and on the text board the Freighter's step and the
    Negotiators the board picture otherwise shows. Hidden, read only from the
    view's private block (which only the observing seat's view carries): the
-   card Ilesa set aside, on her own panel; the Intrigue cards the observer
-   knows this seat holds, on that seat's panel; and the observer's own open
-   Rise of Ix decision (ix_pending), on its own panel. */
+   card Ilesa set aside, on her own panel, and the observer's own open Rise
+   of Ix decision (ix_pending), on its own panel. */
 function ixMarkers(player, seat, view) {
   if (!view.rise_of_ix) return [];
   const flags = [];
@@ -2659,14 +2659,6 @@ function ixMarkers(player, seat, view) {
       : tNode("panels.set_aside_hidden"));
   }
   if (player.set_aside_returned_turn) flags.push(tNode("panels.set_aside_returned"));
-  const held = view.private && view.player !== seat
-    ? (view.private.known_intrigue_held || []).filter(([holder]) => holder === seat)
-    : [];
-  if (held.length) {
-    flags.push(tNode("panels.known_intrigue_held", {
-      cards: held.map(([, id]) => nameOf(id)).join(", "),
-    }));
-  }
   const pending = own && own.ix_pending;
   if (pending && (pending.shipping_rewards || []).length) {
     flags.push(tNode("panels.ix_pending_shipping", {
@@ -2681,6 +2673,21 @@ function ixMarkers(player, seat, view) {
     }));
   }
   return flags;
+}
+
+/* The Intrigue cards the observer knows this seat holds (OQ-149): a card it
+   saw on the deck's top and another seat drew -- Immortality's Imperium
+   Ceremony in any game it is in, Rise of Ix's Hundro Moritani -- or one it
+   put at the bottom (Court Intrigue, Sonic Snoopers) that another seat drew
+   (rules.intrigue_knowledge). Read only from the view's private block, on
+   the holder's panel, for every combination of expansions. */
+function knownIntrigueMarkers(seat, view) {
+  if (!view.private || view.player === seat) return [];
+  const held = (view.private.known_intrigue_held || []).filter(([holder]) => holder === seat);
+  if (!held.length) return [];
+  return [tNode("panels.known_intrigue_held", {
+    cards: held.map(([, id]) => nameOf(id)).join(", "),
+  })];
 }
 
 function deckTopSource(glowglobes, leaderId) {

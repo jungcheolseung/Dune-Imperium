@@ -2243,11 +2243,13 @@ function renderIntriguePiles(market, view) {
   deck.appendChild(tNode("board.intrigue_deck_count", deckCount));
   prependDeckPile(deck, "intrigue", deckCount.count, t("board.intrigue_deck_count", deckCount));
   box.appendChild(deck);
-  /* The Intrigue deck's cards this seat alone knows (Rise of Ix: Hundro
-     Moritani's Intelligence and Imperium Ceremony on top, Court Intrigue's
-     and Sonic Snoopers' at the bottom), read only from the view's private
-     block, which only the observing seat's view carries
-     (docs/rules/rise-of-ix.md 13). */
+  /* The Intrigue deck's cards this seat alone knows (OQ-149,
+     rules.intrigue_knowledge): on top, one it put back after Immortality's
+     Imperium Ceremony or Rise of Ix's Hundro Moritani's Intelligence; at the
+     bottom, the ones it put there with Rise of Ix's Court Intrigue or Sonic
+     Snoopers. Read only from the view's private block, which only the
+     observing seat's view carries (docs/rules/rise-of-ix.md 13), in every
+     game. */
   const own = view.private || {};
   if (own.known_intrigue_top) {
     const top = document.createElement("div");

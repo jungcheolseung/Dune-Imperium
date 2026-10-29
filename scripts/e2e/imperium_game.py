@@ -752,6 +752,30 @@ DREADNOUGHTS_JS = """() => {
 IX_MARKERS_JS = """() => {
   const view = state.view;
   const me = view.player;
+  const heldWords = t('panels.known_intrigue_held', {cards: ''}).split(':')[0];
+  const seatTexts = () => [...document.querySelectorAll('article.seat .seat-detail')]
+    .map((n) => n.innerText);
+  /* Before the edit the game knows no Intrigue card: nothing is shown. */
+  const before = {
+    known: document.querySelectorAll('.known-intrigue').length,
+    held: seatTexts().filter((text) => text.includes(heldWords)).length,
+  };
+  /* A view without the private block (a spectator, no seat) renders
+     without it and shows no hidden line. */
+  const saved = view.private;
+  view.private = null;
+  let spectator;
+  try {
+    render();
+    spectator = {
+      known: document.querySelectorAll('.known-intrigue').length,
+      held: seatTexts().filter((text) => text.includes(heldWords)).length,
+      error: null,
+    };
+  } catch (error) {
+    spectator = {error: String(error)};
+  }
+  view.private = saved;
   const other = (n) => (me + n) % 4;
   const hand = view.private.hand;
   const intrigue = Object.keys(state.catalog.intrigue);
@@ -773,6 +797,7 @@ IX_MARKERS_JS = """() => {
   };
   const name = (id) => nameOf(id);
   return {
+    before, spectator,
     me, others: [other(1), other(2), other(3)],
     panels: [0, 1, 2, 3].map(panel),
     setAside: name(hand[0]), held: name(intrigue[0]), top: name(intrigue[1]),
@@ -796,6 +821,19 @@ def check_ix_markers(page) -> None:
         page.evaluate(f"setLanguage('{language}')")
         settled(page)
         shown = page.evaluate(IX_MARKERS_JS)
+        if language == "ko":
+            # The first pass sees the game's own view; the next one sees the
+            # edit this one made.
+            check.ok(
+                shown["before"] == {"known": 0, "held": 0},
+                "no known Intrigue line while the view knows none",
+                shown["before"],
+            )
+        check.ok(
+            shown["spectator"] == {"known": 0, "held": 0, "error": None},
+            f"{language}: a view without the private block shows no hidden line",
+            shown["spectator"],
+        )
         me, (first, second, third) = shown["me"], shown["others"]
         panels = shown["panels"]
         check.ok(
