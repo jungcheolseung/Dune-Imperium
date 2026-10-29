@@ -132,6 +132,10 @@ const UI_TEXT = {
     "ko": "{{card}}(맨 아래에서 {{depth}}장 위)",
     "en": "{{card}} ({{depth}} above the bottom card)"
   },
+  "board.snooper_token": {
+    "ko": "탐지기 토큰 · {{faction}} 영향력 2칸",
+    "en": "Snooper token · {{faction}} Influence 2"
+  },
   "board.map_alt_ix": {
     "ko": "익스 게임판",
     "en": "Ix board"

@@ -3038,6 +3038,17 @@ body.hand-dragging, body.hand-dragging * {
   width: calc(100% * var(--ix-share));
   aspect-ratio: 2100 / 2132;
 }
+/* Tessia Vernius' drawn Snooper token on an Influence strip
+   (board.js drawnSnooper), under the cubes. */
+.snooper-token {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.snooper-token circle:first-of-type { fill: #1d2430; stroke: #c9b37a; stroke-width: 2; }
+.snooper-token .snooper-eye { fill: #d9d2bd; }
+.snooper-token .snooper-pupil { fill: #1d2430; stroke: none; }
 /* Rise of Ix's drawn dreadnought (board.js drawnDreadnought): the hull in
    the seat's colour, its outline and deck line dark like every piece's. */
 .dreadnought-piece { overflow: visible; }

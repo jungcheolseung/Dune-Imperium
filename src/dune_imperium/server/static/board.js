@@ -1310,6 +1310,32 @@ function drawnSandworm(className) {
   return worm;
 }
 
+/* Tessia Vernius' Snooper token, drawn (the assets have no picture of
+   it): a dark round token with an eye, neutral like the print's. `size` is
+   its width in percent of the stage. */
+function drawnSnooper(size) {
+  const svgNs = "http://www.w3.org/2000/svg";
+  const token = document.createElementNS(svgNs, "svg");
+  token.setAttribute("class", "snooper-token");
+  token.setAttribute("viewBox", "0 0 40 40");
+  token.setAttribute("role", "img");
+  token.style.width = `${size}%`;
+  const disc = document.createElementNS(svgNs, "circle");
+  disc.setAttribute("cx", "20");
+  disc.setAttribute("cy", "20");
+  disc.setAttribute("r", "18");
+  const eye = document.createElementNS(svgNs, "path");
+  eye.setAttribute("class", "snooper-eye");
+  eye.setAttribute("d", "M6 20 Q20 8 34 20 Q20 32 6 20 Z");
+  const pupil = document.createElementNS(svgNs, "circle");
+  pupil.setAttribute("class", "snooper-pupil");
+  pupil.setAttribute("cx", "20");
+  pupil.setAttribute("cy", "20");
+  pupil.setAttribute("r", "5");
+  token.append(disc, eye, pupil);
+  return token;
+}
+
 /* A seat's dreadnought, drawn (the app's is a 3D model; user decision
    2026-10-29, plan 18.6.6 3): the warship's blocky hull with its raised
    bridge, seen from the side like the icon the Ix board prints, flat in
@@ -1532,6 +1558,25 @@ function renderTrackMarkers(stage, view) {
       stage.appendChild(placeAt(ring, ax, ay + offset));
     } else {
       stage.appendChild(placeAt(allianceToken(key, size), ax, ay + offset));
+    }
+  }
+
+  /* Rise of Ix: Tessia Vernius' Snooper tokens, put on each Influence
+     track's 2 space at the game's start until she reaches them
+     (docs/rules/rise-of-ix.md, Tessia Vernius [Leader cards]); centred on the strip's
+     row under the cubes (snooper_faction_ids, public). */
+  const xs = tracks.influence.seat_x;
+  for (const player of view.players) {
+    for (const key of player.snooper_faction_ids || []) {
+      const offset = tracks.influence.offsets[key];
+      if (offset === undefined) continue;
+      const token = drawnSnooper(tracks.influence.cube_size * 1.5);
+      token.dataset.faction = key;
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      title.textContent = t("board.snooper_token", { faction: FACTION_LABELS[key] });
+      token.prepend(title);
+      const x = xs.reduce((sum, value) => sum + value, 0) / xs.length;
+      stage.appendChild(placeAt(token, x, tracks.influence.levels[2] + offset));
     }
   }
 

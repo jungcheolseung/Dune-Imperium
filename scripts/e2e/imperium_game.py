@@ -778,6 +778,8 @@ IX_MARKERS_JS = """() => {
     setAside: name(hand[0]), held: name(intrigue[0]), top: name(intrigue[1]),
     bottom: [name(intrigue[2]), name(intrigue[3])],
     known: [...document.querySelectorAll('.known-intrigue')].map((n) => n.innerText),
+    snooperTokens: [...document.querySelectorAll('#board .snooper-token')]
+      .map((n) => n.dataset.faction).sort(),
     words: {
       setAside: t('panels.set_aside_hidden'), returned: t('panels.set_aside_returned'),
       supply: t('panels.dreadnought_supply', {count: 2}).replace(' 2', ''),
@@ -833,6 +835,11 @@ def check_ix_markers(page) -> None:
             and shown["words"]["snoopers"] in panels[second],
             f"{language}: dreadnoughts in supply and Snooper tokens shown",
             shown["words"],
+        )
+        check.ok(
+            shown["snooperTokens"] == ["emperor", "fremen"],
+            f"{language}: a Snooper token on each track that still holds one",
+            shown["snooperTokens"],
         )
         check.ok(
             not any("{" in text for text in panels + shown["known"]),
