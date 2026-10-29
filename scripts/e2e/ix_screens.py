@@ -43,9 +43,11 @@ For each hidden value, at the moment it is real:
 Step [6] plays the twins of tables 3 and 4 (``Table.twin``): the same game
 where Ilesa sets another card aside. At every action from her set-aside to the
 action before the card turns public, every payload of the other three seats
-and of the spectator must be the same in both games (the game id, clock and
-presence aside), and none names her card's id: so neither the card nor its
-name, base id or picture reaches them, even by a count.
+and of the spectator, their event stream's message and their page's whole
+state (catalog aside, once every page has caught up) must be the same in both
+games (the game id, clock and presence aside), and none names her card's id:
+so neither the card nor its name, base id or picture reaches them, even by a
+count.
 
 Then, step [8], hot-seat hand-overs on an open server, where one page plays
 every seat (``Table.handovers``: one each for tables 1 and 2, Hundro to Ilesa
@@ -113,12 +115,15 @@ Five tables, each a fresh game on the same server:
 
 Tessia Vernius' Snooper reward 1 outside her turn (the ``OPTIONAL_DISCARD``
 window over her hand) is covered by ``tests/server/test_tessia_window_remote.py``
-instead: the window built as the engine's own Tessia tests build it, read
-through four seat cookies and a seatless client (her hand and rows to her
-alone, a twin with another hidden card, the discard public only after it,
-CHOAM Delegate's Unload before the spice); the page draws it as every other
-``OPTIONAL_DISCARD`` window, whose browser side the e2e scripts cover. A real
-table does not reach it here: in 61 random draft games her first token
+instead: a real game played to her Combat reward, where she is given a hand
+(the one change outside the rules) and takes the Influence that opens the
+window over the reward frame, read over a live socket through four seat
+cookies and a seatless client, the event stream included (her hand and rows
+to her alone, twins with another starter card or without CHOAM Delegate, the
+discard public only after it, the Delegate's Unload before the spice, the
+reward going on). The page draws it as every other ``OPTIONAL_DISCARD``
+window, whose browser side the e2e scripts cover. A real table does not
+reach it here: in 61 random draft games her first token
 fell in her own turn (a row, not the window) or in Combat with an empty hand
 (no window, rise-of-ix.md 9.3); the only path is a Plot Intrigue that draws
 (Glimpse the Path, Ixian Probe, Water of Life) played in her Reveal turn, then
@@ -1030,8 +1035,11 @@ SET_ASIDE = "player:0:starter:dune_the_desert_planet:1"
 TWIN_SET_ASIDE = "player:0:starter:reconnaissance:0"
 FIRST_SET_ASIDE = "player:0:starter:dagger:1"
 # What differs between two games of one table whatever was picked: the game's
-# id and log epoch, the play clock, who is online, the doorbell's sequence.
-VOLATILE = frozenset({"game_id", "epoch", "clock", "clock_age_ms", "online", "seq"})
+# id (``gameId`` in a page's state) and log epoch, the play clock, who is
+# online, the doorbell's sequence.
+VOLATILE = frozenset(
+    {"game_id", "gameId", "epoch", "clock", "clock_age_ms", "online", "seq"}
+)
 
 IX_TABLE = Table(
     "original + Rise of Ix",
@@ -1645,6 +1653,12 @@ def events_text(page, game_id: str) -> tuple[int, str]:
     """The raw first message of the game's event stream, fetched by ``page``."""
     result = page.evaluate(EVENTS_JS, f"/games/{game_id}/events")
     return result["status"], result["text"]
+
+
+def stream_data(status: int, text: str) -> list[Any]:
+    """An event stream message's status and data, parsed."""
+    data = [line for line in text.splitlines() if line.startswith("data: ")]
+    return [status, [json.loads(line.removeprefix("data: ")) for line in data]]
 
 
 def log_events(log: dict[str, Any]) -> list[dict[str, Any]]:
@@ -2278,13 +2292,24 @@ def replay_table(
                 **{f"seat {seat}": (page, seat) for seat, page in pages.items()},
                 "spectator": (spectator, None),
             }
+            # The pages first catch up, so that each one's state is of this
+            # action: its whole state (catalog aside) and the event stream's
+            # message are compared with the payloads.
+            check.ok(
+                converge(all_pages, game_id, f"twin capture {done}", timeout=15),
+                f"after {done} every page has caught up before the capture",
+            )
             captured[done] = {
                 name: steady(
                     {
-                        key: [status, body]
-                        for key, (status, body) in reader_payloads(
-                            page, game_id, seat
-                        ).items()
+                        **{
+                            key: [status, body]
+                            for key, (status, body) in reader_payloads(
+                                page, game_id, seat
+                            ).items()
+                        },
+                        "events": stream_data(*events_text(page, game_id)),
+                        "page": json.loads(page.evaluate(PAGE_JS)["stateText"]),
                     }
                 )
                 for name, (page, seat) in readers.items()
