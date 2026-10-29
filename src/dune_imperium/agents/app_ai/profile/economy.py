@@ -141,6 +141,15 @@ _LIET_KYNES_REVEAL = _PLAY + "BaseSet.LietKynesRevealAbility"
 _THUFIR_REVEAL = _PLAY + "BaseSet.ThufirHawatRevealAbility"
 _IN_HIGH_PLACES_REVEAL = _PLAY + "BaseSet.InHighPlacesRevealAbility"
 _UNDERCOVER_REVEAL = _PLAY + "BaseSet.UndercoverAssetRevealAbility"
+# The original game's Reveal boxes (``abilities/original_imperium``). Guild
+# Bankers' ``GuildBankersAbility`` is its only Reveal box and keeps the base
+# preview.
+_BG_SISTER_REVEAL = _PLAY + "BaseSet.BeneGesseritSisterRevealAbility"
+_FEDAYKIN_REVEAL = _PLAY + "BaseSet.FedaykinDeathCommandoRevealAbility"
+_FIRM_GRIP_REVEAL = _PLAY + "BaseSet.FirmGripRevealAbility"
+_GUILD_BANKERS_REVEAL = _PLAY + "BaseSet.GuildBankersAbility"
+_SIETCH_RM_REVEAL = _PLAY + "BaseSet.SietchReverendMotherRevealAbility"
+_WORM_RIDERS_REVEAL = _PLAY + "BaseSet.WormRidersRevealAbility"
 # Immortality RevealAbility subclasses overriding GetRevealPreviewValue.
 _BT_RESEARCHER_REVEAL = _PLAY + "Immortality.BeneTleilaxResearcherRevealAbility"
 _LISAN_AL_GAIB_PREVIEW = _PLAY + "Immortality.LisanAlGaibRevealPreviewAbility"
@@ -170,6 +179,12 @@ _REVEAL_CLASSES = _APPSTYLE_PREVIEW_REVEALS | frozenset(
         _THUFIR_REVEAL,
         _IN_HIGH_PLACES_REVEAL,
         _UNDERCOVER_REVEAL,
+        _BG_SISTER_REVEAL,
+        _FEDAYKIN_REVEAL,
+        _FIRM_GRIP_REVEAL,
+        _GUILD_BANKERS_REVEAL,
+        _SIETCH_RM_REVEAL,
+        _WORM_RIDERS_REVEAL,
         _BT_RESEARCHER_REVEAL,
         _LISAN_AL_GAIB_PREVIEW,
         _THRONE_ROOM_REVEAL,
@@ -180,6 +195,13 @@ _AGENT_CLASSES = frozenset(
         _PLAY + "AgentAbility",
         _PLAY + "BaseSet.PowerPlayAgentAbility",
         _PLAY + "BaseSet.SeekAlliesAgentAbility",
+        # The original game's Agent boxes of cards without a generic one.
+        _PLAY + "BaseSet.CarryAllAgentAbility",
+        _PLAY + "BaseSet.GeneManipulationAbility",
+        _PLAY + "BaseSet.GunThopterAgentAbility",
+        _PLAY + "BaseSet.KwisatzHaderachAbility",
+        _PLAY + "BaseSet.ReverendMotherMohiamAbility",
+        _PLAY + "BaseSet.TestOfHumanityAbility",
         _PLAY + "Uprising.WeirdingWomanAgentAbility",
         # Immortality: GraftAgentAbility and its subclasses, the specimen boxes.
         _PLAY + "Immortality.GraftAgentAbility",
@@ -1263,6 +1285,25 @@ class EconomyMixin(ProfileCore):
             return 1
         if ability_class == _UNDERCOVER_REVEAL:  # @0x4cce1c0
             return 0  # only {"OptionalStrength": 2}
+        if ability_class in (_BG_SISTER_REVEAL, _WORM_RIDERS_REVEAL):
+            # @0x4c854a0 {OptionalPersuasion 2, OptionalStrength 2}, @0x4cbdb70
+            # {Strength}: no Persuasion key.
+            return 0
+        if ability_class == _FIRM_GRIP_REVEAL:  # @0x4c996b0: InAlliance(Emperor) << 2
+            return 4 if "emperor" in me.alliance_faction_ids else 0
+        if ability_class == _FEDAYKIN_REVEAL:  # @0x4c991b0 {Persuasion 1, Strength}
+            return 1  # literal
+        if ability_class == _SIETCH_RM_REVEAL:  # @0x4cb4a50
+            # 3 with another own Fremen card in play or in hand (the same
+            # test as Southern Elders').
+            others = (
+                other
+                for other in self._own_cards(me.in_play, me.hand)
+                if other.ref != card.ref
+            )
+            return (
+                3 if any("Fremen" in o.list_attr("FactionList") for o in others) else 0
+            )
         if ability_class == _BT_RESEARCHER_REVEAL:  # @0x4c637e0
             return self.ctx.genetic_markers() + 1  # get_GeneticMarkers; inc
         if ability_class == _LISAN_AL_GAIB_PREVIEW:  # @0x4c790e0
