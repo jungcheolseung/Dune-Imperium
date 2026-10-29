@@ -1200,3 +1200,31 @@ Ix 보드(Dreadnought·Tech Negotiation·Interstellar Shipping·Smuggling)와 CH
 18장 앞면(`UI_crd_TechTile_*`)과 세 더미, 협상가 자리, Dreadnought 말과 garrison·지배, 새 아이콘 여섯(Dreadnought, Freighter, Tech Negotiation, Unload,
 Infiltration, Discard; 7절), Ix 카드·지도자 6·Conflict 4 앞면, Hundro Moritani·Ilesa Ecaz의 고르기 화면(숨은 정보라 높은 위험). 화면은 P4의 관측 v39(17.8)와 그
 보기에 맞춰 짜고, 이 절은 P4 병합 뒤 하위 단계로 나눈다. 보드 그림의 출처는 18.5 1과 같은 결정으로 정한다(그 모드는 이름에 Rise of Ix가 들어 있다; 그림이 있는지는 받을 때 본다).
+
+### 18.7 진행 (2026-10-29, 같은 브랜치)
+
+**사용자 결정(조정자 경유, 2026-10-29 오전):** 18.5 2 (가) — 로컬 한국어 원판 룰북의 해당 쪽만 읽음(내려받지 않음), 4 (가), 5 (가).
+3은 고르지 않고 "앱 AI를 가져오면 되지 않나"로 답해 원판·Ix 앱 AI 이식을 따로 하기로 했다(P6의 앱 AI 몫); 그때까지 원판 판은 휴리스틱·무작위만,
+기본 판별 좌석 표 한 곳에서. 1은 앱 자료를 먼저 확인했다(아래).
+
+- **P5a 판 고르기와 글 보드:** `7abf4850`(원판 칸·Conflict·지도자 문구; Conflict "-OR-"/"Choose two:" 줄이 합쳐지던 결함 등), `9f062c16`(설정 화면·
+  `POST /games`의 `base_game`, 카탈로그의 원판 내용), `d48e71df`(새 e2e `imperium_game.py`가 찾은 서버 500 — Mentat 칸 행동 문구 — 과 기록의 이름 없는 칸들),
+  Codex 리뷰 두 건을 고친 `f7d4e437`(복원 길의 `NotImplementedError`를 `SessionError`로, 기본 판별 좌석 표 `server/seat_kinds.py` — 서버의 새 판·복원과
+  `/whoami`를 읽는 설정 화면이 같은 표를 씀).
+- **P5c 말과 표시(그림 없이 되는 몫):** `c2710951`(좌석 패널·글 보드의 Mentat 위치, 다음 라운드 Mentat, The Voice 막힘, Infiltrate·Recruitment
+  Mission, Masterstroke — 진영은 Baron 자신의 보기 `private`에서만).
+- **P5e 고르기 화면:** `0ae2f490`(사람이 드래프트에서 Baron을 고르고 비밀 진영을 고르는 e2e; 원판 판의 엔진 안내 문구 20종은 이미 한국어가 있음).
+- **한국어 이름:** `9ba138ba`(칸 22, 지도자 여섯, Reserve 셋, 멘타트·접힘 공간·절묘한 수완 `[DI-ko pp. 3-4, 13, 16-18, 20]`; 룰북 본문에 없는 Duke Leto·
+  Countess Ariana는 영어; `glossary-ko.md` 원판 절).
+- **P5d 앞면:** `51b94995`(에셋 `3f3e5b4`: manifest의 원판 항목에 우리 id, 그림 색인이 원판 세트를 읽음 — 앱 렌더가 없으면 Dune Cards Hub 스캔),
+  `2ad3d4e2`(에셋 `7f836e8`: 앱 조각으로 그린 원판 앞면 100장, card-implementer 하나가 구현하고 내가 sheet 27장을 모두 봄). 스캔과 다른 넷: Duncan Idaho의
+  검(스캔이 틀림, 렌더가 앱·인쇄와 같음), Kwisatz Haderach의 Agent 칸 배치(앱 프리팹: 카드 아이콘 -AND- 글, 인쇄는 글 아래 아이콘), Foldspace 그림의 색,
+  원판 The Spice Must Flow(앱에 그 그림이 없어 스캔 유지). 원판 지도자 앞면은 스캔이다 — `app_leaders.py`가 Uprising 지도자 인쇄 틀 전용이라 원판 틀을
+  새로 재야 한다(남은 일).
+- **보드 그림(18.5 1) — 앱 자료 확인 결과:** 앱에는 원판 인쇄 보드 그림이 없다. 앱의 게임판은 Playmat 장면의 3D 디지털 배치(행성 Arrakis·성운 배경 위에
+  칸 묶음 `P_Spaces_ChildOrderMattersForGamepad` 24개·`P_Spaces_IX…` 29개·`P_FactionTracks`·`P_ConflictArea`)이고, 보드 전체 그림은 상점용
+  `shop_Uprising_Board.png`(Uprising) 하나뿐이다. 그래서 (가) TTS 영어 원판 모드의 보드 그림 내려받기(허락 필요)가 여전히 추천이고, (나)는 "앱 칸 타일을
+  우리 배치로 놓아 보드를 새로 짬"으로 정리했다. 어느 쪽이든 원판 칸 19개의 앱 칸 타일(팝오버 그림)은 `app_board.py`로 그린다.
+- **확인:** pytest `-n 8` 9,304(좌석 표 커밋 때), ruff, mypy 606; e2e `imperium_game` 48, `setup_options` 81, 그 밖에 화면을 다루는 스크립트들.
+- **남은 것:** 보드 그림(결정 1), 원판 칸 앱 타일, 원판 지도자 앞면 앱 렌더, 보드 위 말(Mentat·The Voice 마커 — 그림 뒤), 한국어 카드 앞면(공식 한글판
+  사진 뒤), Rise of Ix 화면(18.6, P4 병합 뒤), worklog·handoff(병합 때).
