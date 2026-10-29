@@ -98,6 +98,7 @@ from dune_imperium.agents.app_ai.abilities.imperium_a import (
     _has_faction,
     _in_play,
 )
+from dune_imperium.agents.app_ai.abilities.leaders import _has_trashable_card
 from dune_imperium.agents.app_ai.abilities.original_imperium import (
     AllianceAbility,
     OptionalRetreatAbility,
@@ -1519,6 +1520,12 @@ class ImperialBasharAgentAbility(DeferredAbility):
         """``ImperialBasharAgentAbility::SelectionMode`` @0x4dc3ba0: Explicit."""
 
         return SelectionMode.EXPLICIT
+
+    def meets_cost(self, p: Profile) -> bool:
+        """``Cost`` @0x4dc3c70: ``HasTrashableCard`` or
+        ``HasUnitsInSupply<WormTroop>.Any`` (``CostAction::Or``)."""
+
+        return _has_trashable_card(p) or p.ctx.me.troops_supply > 0
 
     def value_for_player(
         self, p: Profile, with_entities: Sequence[Entity] = ()

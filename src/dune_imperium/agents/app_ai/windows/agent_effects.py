@@ -568,6 +568,9 @@ _BOX_ABILITY: Mapping[str, str] = {
     # once (600); the box takes the rider's stage.
     "reverend_mother_mohiam": "ReverendMotherMohiamDeferredAbility",
     "test_of_humanity": "TestOfHumanityDeferredAbility",
+    # Rise of Ix: Bounty Hunter's 2 Solari at a space with an opponent's
+    # Agent (``BountyHunterAbility``, AlwaysRunImmediately: 600).
+    "bounty_hunter": "BountyHunterAbility",
 }
 #: Multi-icon boxes: (card, our icon key) -> the app ability of that icon.
 _ICON_ABILITY: Mapping[tuple[str, str], str] = {

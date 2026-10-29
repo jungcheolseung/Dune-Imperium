@@ -131,3 +131,49 @@ def test_a_retreat_up_to_two_takes_the_cards_own_class() -> None:
     scout = reveal._choice_ability(run, effect, "imperium:scout:0")
     assert type(ban) is SatelliteBanRevealAbility
     assert type(scout) is ScoutAbility
+
+
+def test_imperial_bashar_costs_a_trashable_card_or_a_supply_troop() -> None:
+    """``ImperialBasharAgentAbility::Cost`` @0x4dc3c70: ``HasTrashableCard``
+    or ``HasUnitsInSupply<WormTroop>.Any``."""
+
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+        ImperialBasharAgentAbility,
+    )
+    from dune_imperium.agents.app_ai.testing import ENGINE, with_player
+    from dune_imperium.core.decisions import PlayerDecision
+
+    state = first_decision("turn", config=IX)
+    decision = ENGINE.current_decision(state)
+    assert isinstance(decision, PlayerDecision)
+    seat = decision.owner
+    me = state.players[seat]
+    supply = me.troops_supply
+    card = card_entity("imperium:imperial_bashar:0", seat)
+    held = make_profile(state, seat)
+    assert ImperialBasharAgentAbility(card).meets_cost(held)
+    empty = dict(hand=(), discard_pile=())
+    troop_only = make_profile(with_player(state, seat, **empty), seat)
+    assert ImperialBasharAgentAbility(card).meets_cost(troop_only)
+    nothing = with_player(
+        state,
+        seat,
+        **empty,
+        troops_supply=0,
+        troops_garrison=me.troops_garrison + supply,
+    )
+    assert not ImperialBasharAgentAbility(card).meets_cost(make_profile(nothing, seat))
+
+
+def test_bounty_hunter_box_runs_its_ability_at_once() -> None:
+    """``BountyHunterAbility``: ``AlwaysRunImmediately``, so its box is an
+    automatic step, not a prompt key."""
+
+    from dune_imperium.agents.app_ai.windows.common import Stage
+
+    plain = DomainAction(action_id="resolve_agent_card_effect", actor=0)
+    t = _turn("bounty_hunter", (plain,))
+    agent_effects._single_box(t, plain)
+    [source] = t.sources
+    assert source.label == "bounty_hunter box" and source.stage is not Stage.PROMPT
+    assert not t.unmapped
