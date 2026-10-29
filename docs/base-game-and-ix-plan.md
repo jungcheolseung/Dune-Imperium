@@ -1355,3 +1355,13 @@ dreadnought(Bloodlines + Ix), Uprising의 "unit" 조건 카드.
 5. **P4c-5 setup을 연다.** `_IMPERIUM_PENDING_OPTIONS`에서 `rise_of_ix`를 빼고: 좌석마다 dreadnought 둘을 supply에, Freighter를 맨 아래에, Tech
    18장을 섞어 세 더미, `ConflictSetup`의 남는 장수(원판 + Ix 12, Epic도 12), 휴리스틱이 새 결정을 모두 답하는지(소크), P4b가 넘긴 화면·훈련
    몫(17.9). 그다음 원판 + Ix 소크와 관문.
+
+**P4c-1 끝(2026-10-29, `82b2bf2e`):** Ix 획득은 Bloodlines 틀(`tech_stacks`, `TECH_ACQUISITION` 창, `_take_tile`, 획득 효과)을 `rise_of_ix`
+갈래로 쓴다: 값 = 타일 비용 − 할인 − 돌려준 Negotiator(0 아래로 안 감), High Council 할인은 없음(`tech_cost(high_council_discount=False)`,
+Ixian Embassy가 없다), Bloodlines의 Landsraad 획득 제안은 `tech_module`일 때만. 조각은 Bloodlines의 `AcquireTech`를 그대로 쓰고(새 조각 없음)
+`PlaceNegotiator`를 더했다(행 모양은 `Verb.RECRUIT`의 `negotiator` 변형 — 관측의 Verb 폭을 넓히지 않으려고; 규칙상 recruit가 아니다
+`[FAQ p. 4]`). `ix_pending`의 `negotiators_returnable`은 min(가진 수, 앞면 타일 가운데 가장 비싼 값 − 할인). 세 더미 만들기
+`deal_ix_tech_stacks`(setup에는 P4c-5에서). 원판 + Ix 카탈로그 +113행. **다음 조각이 꼭 할 일:** (1) `AcquireTech`의 기본 할인이 1(Bloodlines)이므로
+Ix 콘텐츠는 `discount=0`/`1`을 늘 적는다(Dreadnought 칸은 0, Tech Negotiation은 1). (2) 거절(`decline`) 행이 원판 + Ix 카탈로그에 없다 — 창의
+인쇄 출처(`_window_printers`)가 Intrigue 카드만 알므로, P4c-4·P4d가 칸·카드 출처를 더하기 전에 콘텐츠를 붙이면 codec이 거절을 담지 못한다.
+(3) Windtraps·Shuttle Fleet은 아직 사면 `NotImplementedError`(P4c-2). (4) `PlaceNegotiator`·`CommissionDreadnought`는 Intrigue 출처 행만 있다.
