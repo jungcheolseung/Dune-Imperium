@@ -406,7 +406,11 @@ async function createGame(event) {
 /* The tab's own title, in the chosen language (the page's <title> carries
    the same key). */
 function baseTitle() {
-  return t("html.page_title");
+  /* The original game's table is named after it; every other page keeps
+     the server's name. */
+  const original = state.summary && state.summary.base_game === "imperium"
+    && !el("game-screen").hidden;
+  return t(original ? "html.page_title_imperium" : "html.page_title");
 }
 const SCREENS = ["setup-screen", "landing-screen", "lobby-screen", "game-screen"];
 

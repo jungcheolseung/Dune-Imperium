@@ -636,6 +636,9 @@ function watchTableLayout() {
    the title. */
 function renderHeaderStatus() {
   const summary = state.summary;
+  /* The header names the shown game: the original game's table its own. */
+  const heading = document.querySelector("header h1");
+  if (heading) heading.textContent = baseTitle();
   const shown = state.review && state.review.phase ? state.review : null;
   const round = shown ? shown.round : summary.round_number;
   const phase = shown ? shown.phase : summary.phase;

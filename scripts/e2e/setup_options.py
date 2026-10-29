@@ -696,8 +696,9 @@ ORIGINAL_TABLE_JS = """() => {
     base: state.summary.base_game,
     view: state.view.base_game,
     scan: Boolean(document.querySelector("#board .board-stage")),
-    spaces: [...document.querySelectorAll("#board .space-row")].map(
-      (row) => row.dataset.space),
+    spaces: [...document.querySelectorAll(
+      "#board .board-stage .hotspot[data-space], #board .space-row")].map(
+      (node) => node.dataset.space),
     badges: badges ? badges.textContent : "",
     badge: t("screens.base_game_imperium_badge"),
   };
@@ -785,12 +786,12 @@ def original_game(base: str, browser) -> None:
         table,
     )
     check.ok(
-        not table["scan"], "the original game keeps the text board (no scan)", table
+        table["scan"], "the original game is drawn on its own board picture", table
     )
     check.ok(
         ORIGINAL_SPACES <= spaces and not (UPRISING_ONLY_SPACES & spaces)
         and len(spaces) == 22,
-        "the text board lists the original game's 22 spaces only",
+        "the board carries the original game's 22 spaces only",
         sorted(spaces),
     )
     check.ok(

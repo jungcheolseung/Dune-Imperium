@@ -720,6 +720,10 @@ const UI_TEXT = {
     "ko": "지도자 6종 공개 드래프트 (공식 규칙 아님)",
     "en": "Open draft from 6 revealed Leaders (not an official rule)"
   },
+  "html.page_title_imperium": {
+    "ko": "듄 임페리움",
+    "en": "Dune: Imperium"
+  },
   "html.page_title": {
     "ko": "듄 임페리움: 봉기",
     "en": "Dune: Imperium — Uprising"

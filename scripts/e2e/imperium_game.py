@@ -124,8 +124,11 @@ PICK_JS = """(step) => {
 TABLE_JS = """() => ({
   base: state.view.base_game,
   scan: Boolean(document.querySelector("#board .board-stage")),
-  spaces: [...document.querySelectorAll("#board .space-row")].map(
-    (row) => row.dataset.space),
+  // The spaces as drawn: hotspots on the original board's picture, rows on
+  // the text board.
+  spaces: [...document.querySelectorAll(
+    "#board .board-stage .hotspot[data-space], #board .space-row")].map(
+    (node) => node.dataset.space),
   // The track counts each seat panel shows on the text board.
   trackStats: [...document.querySelectorAll("#seats article.seat")].map(
     (card) => card.querySelectorAll(".text-board-stats .stat").length),
@@ -199,9 +202,9 @@ def play_human(page, rec) -> None:
     )
     table = page.evaluate(TABLE_JS)
     check.ok(
-        table["base"] == "imperium" and not table["scan"]
+        table["base"] == "imperium" and table["scan"]
         and len(table["spaces"]) == 22 and "carthag" in table["spaces"],
-        "the text board lists the original game's 22 spaces",
+        "the original board's picture carries its 22 spaces (stage P5b)",
         table,
     )
     check.ok(
@@ -291,14 +294,20 @@ MARKERS_JS = """() => {
     const detail = card && card.querySelector('.seat-detail');
     return detail ? detail.innerText : '';
   };
+  // A space's words: its text-board row, or its hotspot's title on the board.
   const row = (space) => {
     const node = document.querySelector(`#board .space-row[data-space="${space}"]`);
-    return node ? node.innerText : '';
+    if (node) return node.innerText;
+    const spot = document.querySelector(`#board .hotspot[data-space="${space}"]`);
+    return spot ? spot.title : '';
   };
   const out = {
     me, other1: other(1),
     panels: [0, 1, 2, 3].map(panel),
     mentatRow: row("mentat"), carthagRow: row("carthag"),
+    mentatPiece: Boolean(document.querySelector("#board .mentat-piece")),
+    barredChips: document.querySelectorAll(
+      '#board .hotspot[data-space="carthag"] .voice-barred-seat').length,
     names: {
       voice: lookup("the_voice", "cards").name,
       infiltrate: lookup("infiltrate", "intrigue").name,
@@ -377,9 +386,15 @@ def check_markers(page) -> None:
         )
         check.ok(
             names["voice"] in shown["carthagRow"]
-            and names["seat1"] in shown["carthagRow"],
-            f"{lang}: the text board marks the space The Voice bars",
-            shown["carthagRow"],
+            and names["seat1"] in shown["carthagRow"]
+            and shown["barredChips"] == 1,
+            f"{lang}: the board marks the space The Voice bars",
+            (shown["carthagRow"], shown["barredChips"]),
+        )
+        check.ok(
+            shown["mentatPiece"],
+            f"{lang}: the Mentat lies on its space on the board",
+            shown,
         )
         leaks = [
             text for text in (*panels, shown["mentatRow"], shown["carthagRow"])

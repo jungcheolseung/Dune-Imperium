@@ -294,12 +294,16 @@ function controlMarker(seat, spaceId, box) {
 }
 
 /* The white frame a space prints around its picture, which its hotspot's
-   box follows (catalog.space_frame): square top-left and bottom-right
-   corners, the other two cut. The highlight is drawn on this outline so
-   every space lights up the same shape, without the icons beside it. */
-function spaceFrame() {
+   box follows (the board's space_frame): square top-left and bottom-right
+   corners, the other two cut -- but square at the bottom left where the
+   original board hangs a Control flag from it (square_bottom_left). The
+   highlight is drawn on this outline so every space lights up the same
+   shape, without the icons beside it. */
+function spaceFrame(spaceId) {
   const svgNs = "http://www.w3.org/2000/svg";
-  const [cutX, cutY] = (boardLayout().space_frame || state.catalog.space_frame).cut;
+  const shape = boardLayout().space_frame || state.catalog.space_frame;
+  const [cutX, cutY] = shape.cut;
+  const square = (shape.square_bottom_left || []).includes(spaceId);
   const frame = document.createElementNS(svgNs, "svg");
   frame.setAttribute("class", "space-frame");
   frame.setAttribute("viewBox", "0 0 100 100");
@@ -308,7 +312,9 @@ function spaceFrame() {
   const outline = document.createElementNS(svgNs, "polygon");
   outline.setAttribute(
     "points",
-    `0,0 ${100 - cutX},0 100,${cutY} 100,100 ${cutX},100 0,${100 - cutY}`,
+    square
+      ? `0,0 ${100 - cutX},0 100,${cutY} 100,100 0,100`
+      : `0,0 ${100 - cutX},0 100,${cutY} 100,100 ${cutX},100 0,${100 - cutY}`,
   );
   frame.appendChild(outline);
   return frame;
@@ -407,7 +413,7 @@ function renderBoardStage(board, view) {
      that may be the app's board-space render, which only the popovers
      show. */
   const wall = state.catalog.shield_wall;
-  if (view.shield_wall_present && wall && wall.image) {
+  if (viewBaseGame(view) === "uprising" && view.shield_wall_present && wall && wall.image) {
     const token = boardPiece(wall.image, wall.box, "shield-wall-token");
     token.alt = phraseText("{shield_wall}");
     token.style.transform = `rotate(${wall.rotation}deg)`;
@@ -442,10 +448,15 @@ function renderBoardStage(board, view) {
     const label = commanders.has(spaceId)
       ? t("board.space_with_commander", { space: entry.name })
       : entry.name;
-    hotspot.title = label;
+    /* The original game's state the print has no place for (the seats The
+       Voice bars from here, OQ-116), named on the space and marked on it. */
+    const extra = originalSpaceStatus(spaceId);
+    hotspot.title = [label, ...extra].join(" · ");
+    const barred = voiceBarredSeats(spaceId, view);
+    if (barred.length) hotspot.appendChild(voiceBarredMark(barred));
     hotspot.dataset.space = spaceId;
     hotspot.setAttribute("aria-label", label);
-    hotspot.appendChild(spaceFrame());
+    hotspot.appendChild(spaceFrame(spaceId));
     const legal = legalActionsFor(spaceId);
     if (legal.length) hotspot.classList.add("legal");
     if ((state.pick && state.pick.spaceId === spaceId) || isHeldRef(spaceId)) {
@@ -489,6 +500,8 @@ function renderBoardStage(board, view) {
     const point = makerSpicePoint(spaceId);
     if (count && point) stage.appendChild(bonusSpiceToken(spaceId, count, point));
   }
+  const mentat = mentatOnSpace(view);
+  if (mentat) stage.appendChild(mentat);
   for (const spaceId of commanders) {
     const entry = state.catalog.spaces[spaceId];
     const box = entry && spaceBox(spaceId, entry, view);
@@ -546,6 +559,33 @@ function renderBoardStage(board, view) {
   renderSlotCards(stage, view);
   renderTrackMarkers(stage, view);
   board.appendChild(stage);
+}
+
+/* The original game's Mentat lying on its own space while no seat holds it
+   [DI pp. 4, 13], on the silhouette the space prints for it (the board's
+   mentat point and height): a light figure over the dark print, the way
+   the app fills that slot. Null when a seat holds it or the board has no
+   place for it. */
+function mentatOnSpace(view) {
+  const spot = boardLayout(view).mentat;
+  if (!spot || (view.players || []).some((player) => player.mentat)) return null;
+  const svgNs = "http://www.w3.org/2000/svg";
+  const piece = document.createElementNS(svgNs, "svg");
+  piece.setAttribute("class", "mentat-piece");
+  piece.setAttribute("viewBox", "0 0 40 100");
+  const title = document.createElementNS(svgNs, "title");
+  title.textContent = t("board.mentat_here");
+  const figure = document.createElementNS(svgNs, "path");
+  /* A standing figure in a cap and long coat, the print's outline. */
+  figure.setAttribute(
+    "d",
+    "M14 4 Q20 0 27 4 L28 10 L33 11 L27 13 Q28 19 24 22 L30 27 Q36 32 36 44 "
+      + "L37 96 L3 96 L6 44 Q6 31 13 26 L16 22 Q12 19 13 13 L8 11 L13 10 Z",
+  );
+  piece.append(title, figure);
+  const [x, y] = spot.point;
+  piece.style.height = `${spot.height}%`;
+  return placeAt(piece, x, y);
 }
 
 /* The Conflict card and the face-up CHOAM contracts drawn in their printed
@@ -1601,6 +1641,27 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   });
   hoverPopover(row, () => entry);
   return row;
+}
+
+/* The seats The Voice bars from a space this round (OQ-116). */
+function voiceBarredSeats(spaceId, view) {
+  return (view.players || [])
+    .filter((player) => (player.voice_blocked_space_ids || []).includes(spaceId))
+    .map((player) => player.player);
+}
+
+/* The Voice's mark on a space of the board: a chip in each barred seat's
+   colour, apart from any Control marker (OQ-116). */
+function voiceBarredMark(seats) {
+  const mark = document.createElement("span");
+  mark.className = "voice-barred";
+  for (const seat of seats) {
+    const chip = document.createElement("span");
+    chip.className = "voice-barred-seat";
+    chip.style.background = SEAT_COLORS[seat];
+    mark.appendChild(chip);
+  }
+  return mark;
 }
 
 /* The original game's state on a space of the text board: the Mentat lying
