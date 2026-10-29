@@ -82,6 +82,7 @@ const LABELS_EN = {
     "keep_shield_wall": "Keep {shield_wall}",
     "manipulate_imperium_row": "Set aside {imperium_row} card",
     "set_aside_leader_imperium": "Set aside {imperium_row} card ({signet_ring})",
+    "set_aside_leader_card": "Set aside a {hand} card ({leader})",
     "choose_masterstroke_faction": "Choose {faction} ({leader})",
     "match_endgame_wild_icon": "Match wild {battle_icon}",
     "pass_combat_intrigue": "Pass",

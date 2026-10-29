@@ -1424,6 +1424,8 @@ def next_reserve_instance_id(state: GameState, card_id: str) -> str:
             player.discard_pile,
             player.in_play,
             player.trashed,
+            # Ilesa Ecaz's card set aside by One Step Ahead (Rise of Ix).
+            (player.set_aside_card_id,) if player.set_aside_card_id else (),
         )
         for instance_id in zone
         if instance_id.startswith(prefix)

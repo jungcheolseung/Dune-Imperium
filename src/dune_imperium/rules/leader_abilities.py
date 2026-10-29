@@ -201,6 +201,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         "prince_rhombur_vernius",
         "archduke_armand_ecaz",
         "viscount_hundro_moritani",
+        "ilesa_ecaz",
     }
 )
 
@@ -229,6 +230,11 @@ HUNDRO: Final = "viscount_hundro_moritani"
 COURIERS_SPICE: Final = 1
 COURIERS_ADVANCE_ACTION: Final = "advance_leader_freighter"
 COURIERS_RECALL_ACTION: Final = "recall_leader_freighter"
+# Ilesa Ecaz (Rise of Ix): Guild Contacts' price and the Foldspace it buys
+# (docs/rules/rise-of-ix.md 10).
+ILESA_LEADER: Final = "ilesa_ecaz"
+GUILD_CONTACTS_SOLARI: Final = 1
+FOLDSPACE_CARD: Final = "foldspace_card"
 
 # Always Smiling grants its Persuasion at six or more strength in the
 # four-player game; the printed asterisk raises that to ten only in a
@@ -638,6 +644,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         "prince_rhombur_vernius",
         "archduke_armand_ecaz",
         "viscount_hundro_moritani",
+        "ilesa_ecaz",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
@@ -847,6 +854,7 @@ SIGNET_HOOKS: Final = frozenset(
         "ixian_technology",
         "conscript",
         "couriers",
+        "guild_contacts",
     }
 )
 
@@ -1590,6 +1598,34 @@ def legal_leader_signet_actions(
             *(
                 (DomainAction(action_id=COURIERS_RECALL_ACTION, actor=player),)
                 if freighter_can_recall(state, player)
+                else ()
+            ),
+        )
+
+    if owner.leader_id == ILESA_LEADER:
+        # Guild Contacts: "1 Solari → Foldspace 획득" (docs/rules/rise-of-ix.md
+        # 10), an arrow, so declined freely, and never paid for nothing
+        # (section 15, OQ-071): not while the Foldspace stack is empty. The
+        # card goes to the discard pile, or on top of the deck while she may
+        # put what she acquires there (Spaceport, ``deck_top_offered``).
+        foldspace = dict(state.reserve_stacks).get(FOLDSPACE_CARD, 0)
+        tops = (False, True) if deck_top_offered(state, player) else (False,)
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *(
+                (
+                    DomainAction(
+                        action_id="acquire_leader_reserve",
+                        actor=player,
+                        arguments=(
+                            ("card_id", FOLDSPACE_CARD),
+                            *((("to_deck_top", True),) if top else ()),
+                        ),
+                    )
+                    for top in tops
+                )
+                if foldspace > 0
+                and owner.resources.solari >= GUILD_CONTACTS_SOLARI
                 else ()
             ),
         )
@@ -2865,9 +2901,10 @@ def apply_leader_signet_acquire(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Acquire a one-cost card to hand for Chronicler's Insight, or a card
-    that costs 3 or less for Conscript -- to the discard pile, or on top of
-    the deck (``to_deck_top``, ``_conscript_choices``)."""
+    """Acquire a one-cost card to hand for Chronicler's Insight, a card that
+    costs 3 or less for Conscript, or a Foldspace for Guild Contacts' Solari
+    -- the last two to the discard pile, or on top of the deck
+    (``to_deck_top``, ``_conscript_choices``)."""
 
     if action not in legal_leader_signet_actions(state, action.actor):
         raise ValueError("action is not a legal Leader Signet acquisition")
@@ -2875,8 +2912,25 @@ def apply_leader_signet_acquire(
     player = action.actor
     arguments = dict(action.arguments)
     source = f"round:{state.round_number}:player:{player}:leader_signet"
-    to_hand = state.players[player].leader_id != ARMAND
+    owner = state.players[player]
+    to_hand = owner.leader_id not in (ARMAND, ILESA_LEADER)
     to_deck_top = arguments.get("to_deck_top") is True
+    paid_events: tuple[GameEvent, ...] = ()
+    if owner.leader_id == ILESA_LEADER:
+        # Guild Contacts' Solari, paid before the Foldspace is acquired.
+        if owner.resources.solari < GUILD_CONTACTS_SOLARI:
+            raise RuntimeError("Guild Contacts requires one Solari")
+        paid = replace(
+            owner,
+            resources=replace(
+                owner.resources,
+                solari=owner.resources.solari - GUILD_CONTACTS_SOLARI,
+            ),
+        )
+        state = replace(state, players=replace_player(state.players, paid))
+        paid_events = (
+            resources_paid_event(source, player, solari=GUILD_CONTACTS_SOLARI),
+        )
 
     # The box settles first so an acquire box that opens a frame (a
     # Research direction, Immortality) stacks above the turn.
@@ -2912,7 +2966,7 @@ def apply_leader_signet_acquire(
     )
     return RuleResult(
         state=opened.state,
-        events=(*acquired.result.events, *opened.events, resolved),
+        events=(*paid_events, *acquired.result.events, *opened.events, resolved),
     )
 
 

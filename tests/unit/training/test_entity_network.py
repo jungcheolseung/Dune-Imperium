@@ -239,7 +239,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # changed, and three Leader-table columns are new (Intelligence's standing
 # hook, Couriers' hook and its Freighter piece), read by his row alone; no
 # older scale moved (compared against c426d03d, 2026-10-30).
-_GOLDEN_DIGEST = "0fb40b3a21790a12ead34990803d497c78a5b70e889ddb1885313d0905404e7f"
+# Then Ilesa Ecaz got her records (stage P4e): only her row changed, and three
+# Leader-table columns are new (One Step Ahead's standing hook, Guild
+# Contacts' hook and its AcquireReserveCard piece), read by her row alone; no
+# older scale moved (compared against 4b05d412, 2026-10-30).
+_GOLDEN_DIGEST = "ed08e9233f87525334f5343d39d8061b93f5760dbb132b91f4e89f63e64040ca"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

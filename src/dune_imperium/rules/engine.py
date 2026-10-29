@@ -268,6 +268,11 @@ from dune_imperium.rules.navigation import (
     legal_navigation_setup_actions,
     navigation_play_is_queued,
 )
+from dune_imperium.rules.one_step_ahead import (
+    apply_set_aside,
+    legal_set_aside_actions,
+    return_set_aside_card,
+)
 from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
     legal_optional_trash_actions,
@@ -672,6 +677,8 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     ),
     FrameKind.TECH_SECRET_PROJECT: (legal_secret_project_actions,),
     FrameKind.MASTERSTROKE_SETUP: (legal_masterstroke_actions,),
+    # Rise of Ix's Ilesa Ecaz: One Step Ahead's Round Start set-aside.
+    FrameKind.ROUND_START_SET_ASIDE: (legal_set_aside_actions,),
     FrameKind.RESEARCH_ADVANCE: (
         legal_research_advance_actions,
         legal_scouts_rewards_first_actions,
@@ -975,6 +982,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_leader_tech": apply_ixian_technology,
     "place_leader_negotiator": apply_ixian_technology,
     "choose_masterstroke_faction": apply_masterstroke_choice,
+    "set_aside_leader_card": apply_set_aside,
     "acquire_leader_imperium": apply_leader_signet_acquire,
     "acquire_leader_reserve": apply_leader_signet_acquire,
     "gain_leader_signet_troop": apply_shaddam_signet_choice,
@@ -1192,11 +1200,16 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
+        # Ilesa Ecaz's set-aside card returns as her second turn opens, and
         # Smuggling Operation reads the whole transition's gains (Rise of Ix).
         return grant_smuggling_operation(
-            _settle_card_knowledge(
-                refresh_pre_reveal_strength(
-                    _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
+            return_set_aside_card(
+                _settle_card_knowledge(
+                    refresh_pre_reveal_strength(
+                        _settle_finishing(
+                            _reveal_masterstroke(_advance_automatic(result))
+                        )
+                    )
                 )
             ),
             state,
@@ -1314,11 +1327,16 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
+        # Ilesa Ecaz's set-aside card returns as her second turn opens, and
         # Smuggling Operation reads the whole transition's gains (Rise of Ix).
         return grant_smuggling_operation(
-            _settle_card_knowledge(
-                refresh_pre_reveal_strength(
-                    _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
+            return_set_aside_card(
+                _settle_card_knowledge(
+                    refresh_pre_reveal_strength(
+                        _settle_finishing(
+                            _reveal_masterstroke(_advance_automatic(result))
+                        )
+                    )
                 )
             ),
             state,

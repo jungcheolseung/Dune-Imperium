@@ -155,15 +155,14 @@ def test_intelligence_and_masterstroke_both_happen_before_the_first_round() -> N
     assert _settle(engine, state).phase is GamePhase.PLAYER_TURNS
 
 
-def test_intelligence_follows_the_leader_draft() -> None:
-    """A drafted Hundro looks once the draft and every other setup step are
-    done (rise-of-ix.md 3, lessons 2026-10-05: the private decision is not
-    bound to the Leader pick)."""
+def _drafted(seed: int) -> GameState:
+    """A draft resolved with ``seed``, every seat taking Hundro when he is
+    offered, up to the end of SETUP or his look."""
 
     config = replace(CONFIG, leader_draft=True)
     engine = _Engine()
-    state = create_draft_initial_state(config, 3).state
-    chance = ChanceResolver(seed=3)
+    state = create_draft_initial_state(config, seed).state
+    chance = ChanceResolver(seed=seed)
     for _ in range(400):
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
@@ -180,13 +179,32 @@ def test_intelligence_follows_the_leader_draft() -> None:
             rows[0],
         )
         state = engine.apply(state, pick).state
-    hundro = next((seat for seat in state.players if seat.leader_id == HUNDRO), None)
-    assert hundro is not None
-    assert state.phase is GamePhase.SETUP
-    frame = state.decision_stack[-1]
-    assert frame.kind == FrameKind.INTRIGUE_PEEK
-    assert _keep_rows(engine, state, hundro.player_id)
-    check_observation_privacy(state)
+    return state
+
+
+def test_intelligence_follows_the_leader_draft() -> None:
+    """A drafted Hundro looks once the draft and every other setup step are
+    done (rise-of-ix.md 3, lessons 2026-10-05: the private decision is not
+    bound to the Leader pick); a draft without him starts the round."""
+
+    engine = _Engine()
+    seen = set()
+    for seed in range(1, 40):
+        state = _drafted(seed)
+        hundro = next(
+            (seat for seat in state.players if seat.leader_id == HUNDRO), None
+        )
+        seen.add(hundro is not None)
+        if hundro is None:
+            assert state.phase is not GamePhase.SETUP
+            continue
+        assert state.phase is GamePhase.SETUP
+        assert state.decision_stack[-1].kind == FrameKind.INTRIGUE_PEEK
+        assert _keep_rows(engine, state, hundro.player_id)
+        check_observation_privacy(state)
+        if seen == {True, False}:
+            break
+    assert seen == {True, False}
 
 
 # --- Couriers -------------------------------------------------------------------

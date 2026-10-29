@@ -37,6 +37,7 @@ from dune_imperium.content.uprising.abilities import (
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
+    AcquireReserveCard,
     AcquireTech,
     AllConditions,
     DrawIntrigueCards,
@@ -318,6 +319,16 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
             AbilityMark.OPTIONAL,
             EffectSection(rewards=(Freighter(),), costs=(PayResources(spice=1),)),
         ),
+        # Guild Contacts: "1 Solari → Foldspace 획득" (rise-of-ix.md 10) -- an
+        # arrow, so never forced.
+        "ilesa_ecaz": _hook(
+            "guild_contacts",
+            AbilityMark.OPTIONAL,
+            EffectSection(
+                rewards=(AcquireReserveCard("foldspace_card"),),
+                costs=(PayResources(solari=1),),
+            ),
+        ),
     }
 )
 
@@ -526,6 +537,11 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         # 위에 되돌린다" (rise-of-ix.md 3, 10, 13; ``rules.intrigue_peek.
         # assign_intelligence``), a setup step that is no Reveal or trigger.
         "viscount_hundro_moritani": (_standing("intelligence"),),
+        # One Step Ahead: a card set aside at Round Start, back in the hand
+        # at the start of her second turn, a spice or a Solari for the Agent
+        # it then sends (rise-of-ix.md 10, OQ-119, OQ-122;
+        # ``rules.one_step_ahead``).
+        "ilesa_ecaz": (_standing("one_step_ahead"),),
     }
 )
 

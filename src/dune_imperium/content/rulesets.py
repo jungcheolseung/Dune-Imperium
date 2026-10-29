@@ -180,6 +180,7 @@ IX_LEADER_IDS_OFFERED: Final[frozenset[str]] = frozenset(
         "prince_rhombur_vernius",
         "archduke_armand_ecaz",
         "viscount_hundro_moritani",
+        "ilesa_ecaz",
     }
 )
 

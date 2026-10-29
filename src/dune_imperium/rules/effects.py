@@ -34,9 +34,11 @@ from dune_imperium.rules.frames import (
     FrameKind,
     owes_held_draw,
     owes_track_spy,
+    replace_player,
     reset_turn_counters,
 )
 from dune_imperium.rules.influence import influence_can_rise
+from dune_imperium.rules.one_step_ahead import finish_turn_count
 from dune_imperium.rules.strength import conflict_agent_strength
 from dune_imperium.rules.turn_rows import PENDING_KEY
 
@@ -149,7 +151,9 @@ def open_next_turn(state: GameState, player: int) -> GameState:
         # of the turn, after which no turn-passing play is offered.
         raise RuntimeError("a turn cannot pass over effects waiting on it")
     next_player = next_unrevealed_player(state, player)
-    players = reset_turn_counters(state.players, next_player, closing=player)
+    # A pass is one of the seat's turns (OQ-119, ``rules.one_step_ahead``).
+    passed = replace_player(state.players, finish_turn_count(state.players[player]))
+    players = reset_turn_counters(passed, next_player, closing=player)
     frames = list(state.decision_stack)
     for index in range(len(frames) - 1, -1, -1):
         frame = frames[index]
@@ -681,7 +685,10 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
         # 2026-10-10, OQ-106).
         raise RuntimeError("an Agent turn cannot close over a waiting draw")
     next_player = next_unrevealed_player(state, owner)
-    players = reset_turn_counters(state.players, next_player, closing=owner)
+    # Ilesa Ecaz's One Step Ahead counts the turns she finished
+    # (``rules.one_step_ahead``).
+    closed = replace_player(state.players, finish_turn_count(state.players[owner]))
+    players = reset_turn_counters(closed, next_player, closing=owner)
     next_frame = DecisionFrame(
         kind=FrameKind.TURN,
         frame_id=f"round:{state.round_number}:turn:{next_player}",
