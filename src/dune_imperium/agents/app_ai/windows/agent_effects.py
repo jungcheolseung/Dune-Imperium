@@ -3279,8 +3279,11 @@ def _card_influence(t: _Turn, short: str) -> None:
     if short in _ORIGINAL_INFLUENCE_FOLLOW_UPS:
         return  # the rest of the payment's answer (_original_card_choices)
     if short in _PAID_INFLUENCE_FOLLOW_UPS:
+        # ``SpiceSmugglersAbility/<BeginExecution>d__8`` (assets
+        # ghidra/p3d-types): PaySpice(2), GainFactionInfluence(SpacingGuild,
+        # 1), then GainSolari(3) -- the Influence ahead of the Solari row (-1).
         for action in actions:
-            _automatic(t, f"{short} influence", _FOLLOW_UP, action, -1)
+            _automatic(t, f"{short} influence", _FOLLOW_UP, action, -2)
         return
     if short in _BOND_CHOICE_CARDS:
         _bond_choice(t, short, actions)
