@@ -25,6 +25,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AllConditions,
     AtFactionSpace,
+    AtLeastOfConditions,
     AtMakerSpace,
     CommanderDiscountThisTurn,
     CommissionDreadnought,
@@ -39,6 +40,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
+    DreadnoughtsAtLeast,
     EffectSection,
     FactionBond,
     FlipBattleCard,
@@ -122,6 +124,7 @@ from dune_imperium.rules.contracts import (
     market_contract_ids,
 )
 from dune_imperium.rules.dreadnought_commission import commission_block
+from dune_imperium.rules.dreadnoughts import dreadnoughts_owned
 from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
     agent_turn_space_id,
@@ -295,6 +298,17 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             return bool(opponents_with_conflict_troop(state, player))
         case AllConditions(conditions=conditions):
             return all(condition_holds(state, player, item) for item in conditions)
+        case AtLeastOfConditions(count=count, conditions=conditions):
+            # Grand Conspiracy: "If you have any three:" of its four items.
+            return (
+                sum(condition_holds(state, player, item) for item in conditions)
+                >= count
+            )
+        case DreadnoughtsAtLeast(count=count):
+            # Grand Conspiracy's "2 dreadnoughts": the seat's own, wherever
+            # they stand (OQ-121); a Control space holds the game's, so this
+            # reads the state.
+            return dreadnoughts_owned(state, player) >= count
         case MoreSpiceMustFlowThanEachOpponent():
             # Corner the Market: "상대 하나라도 같거나 많으면 둘째 조건 실패"
             # (imperium-base.md 13.2, ``[FAQ p. 2]``): each opponent is

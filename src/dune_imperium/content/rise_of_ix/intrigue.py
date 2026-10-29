@@ -23,27 +23,45 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.effect_dsl import (
+    AllConditions,
+    AtLeastOfConditions,
     CommissionDreadnought,
+    Condition,
     DiscardFromHand,
     DrawPersonalCards,
+    DreadnoughtsAtLeast,
     EffectSection,
     Freighter,
     GainCombatStrength,
     GainInfluence,
     GainInfluenceWhereAgent,
     GainResources,
+    GainVictoryPoints,
     HasHighCouncil,
+    InfluenceAtLeastOnTracks,
     LoseInfluence,
     LoseTroops,
     PayResources,
     RecruitTroops,
+    SpiceMustFlowCardsAtLeast,
     TechTilesAtLeast,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
     _combat,
+    _endgame,
     _plot,
+)
+
+# Grand Conspiracy's four items: "2 dreadnoughts", "1+ The Spice Must Flow",
+# "4+ Influence on 2+ Influence tracks" and "A seat on the High Council"
+# [Grand Conspiracy card, Steam app text].
+_GRAND_CONSPIRACY_ITEMS: Final[tuple[Condition, ...]] = (
+    DreadnoughtsAtLeast(2),
+    SpiceMustFlowCardsAtLeast(1),
+    InfluenceAtLeastOnTracks(4, 2),
+    HasHighCouncil(),
 )
 
 IX_INTRIGUE_SOURCES: Final = (SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2,)),)
@@ -172,6 +190,29 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("grand_conspiracy", "Grand Conspiracy"),
         copies=1,
+        # [ENDGAME] the four items above, then "If you have any three:" one
+        # Victory Point -OR- "If you have all four:" two Victory Points
+        # [Steam app text and screen pieces: the prefab puts one VP icon
+        # beside the first line, two beside the second, and the -OR- frame
+        # between them]. Two exclusive Endgame options, each carrying its own
+        # condition, as Plans Within Plans' (OQ-058: a card divided by -OR- is
+        # exclusive options, imperium-base.md 16), so at most 2 VP. "2
+        # dreadnoughts" is the count the seat has, wherever they stand, and
+        # the Spice Must Flow copies are every one it owns (OQ-121, OQ-123).
+        options=(
+            _endgame(
+                EffectSection(
+                    condition=AtLeastOfConditions(3, _GRAND_CONSPIRACY_ITEMS),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+            _endgame(
+                EffectSection(
+                    condition=AllConditions(_GRAND_CONSPIRACY_ITEMS),
+                    rewards=(GainVictoryPoints(2),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("ixian_probe", "Ixian Probe"),

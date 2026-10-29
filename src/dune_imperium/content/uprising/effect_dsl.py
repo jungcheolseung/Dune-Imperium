@@ -393,6 +393,21 @@ class GarrisonedUnitsAtLeast:
 
 
 @dataclass(frozen=True, slots=True)
+class DreadnoughtsAtLeast:
+    """The player has ``count`` or more dreadnoughts of its own -- the ones
+    commissioned out of its supply, wherever they stand: its garrison, the
+    Conflict or a Control space ("2 dreadnoughts" [Grand Conspiracy card,
+    Steam app text]; docs/rules/open-questions.md OQ-121: "Grand Conspiracy의
+    '2 dreadnoughts'는 가진 수이고", no position is read)."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.count <= 2:
+            raise ValueError("a seat has one or two dreadnoughts to count")
+
+
+@dataclass(frozen=True, slots=True)
 class CommandReached:
     """Command (6+): the player's Reveal turn generates six or more
     Persuasion [Bloodlines pp. 5, 12], the others' first so the order does
@@ -494,6 +509,22 @@ class AllConditions:
             raise ValueError("a conjunction needs at least two conditions")
 
 
+@dataclass(frozen=True, slots=True)
+class AtLeastOfConditions:
+    """At least ``count`` of the listed conditions hold (Grand Conspiracy:
+    "If you have any three:" of its four items). ``count`` is fewer than the
+    items; all of them is ``AllConditions``."""
+
+    count: int
+    conditions: tuple[Condition, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.conditions) < 3:
+            raise ValueError("a count of conditions needs at least three")
+        if not 1 < self.count < len(self.conditions):
+            raise ValueError("the count is more than one and less than all")
+
+
 type Condition = (
     InfluenceAtLeast
     | InfluenceAtLeastOnTracks
@@ -527,9 +558,11 @@ type Condition = (
     | GraftedWithFaction
     | Grafted
     | AllConditions
+    | AtLeastOfConditions
     | HasSwordmaster
     | SpyingOnMakerSpace
     | GarrisonedUnitsAtLeast
+    | DreadnoughtsAtLeast
     | CommandReached
     | AtBoardSpace
     | AcquiredCard

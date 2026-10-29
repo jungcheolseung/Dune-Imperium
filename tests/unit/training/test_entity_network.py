@@ -199,7 +199,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # and one intrigue-table column is new (the Dreadnought commission reward),
 # read by its row alone; no older scale moved (compared against 18d1bb8a,
 # 2026-10-30).
-_GOLDEN_DIGEST = "9474129f21c0b9c81f1ddcbf96f1d25b02ecc7316dfc37fc2e9e4775874b78f4"
+# Then Grand Conspiracy got its record (stage P4d): only its own row changed,
+# and six intrigue-table columns are new (the "any three of" condition, the
+# dreadnought count, and the Influence-on-tracks and Spice Must Flow items
+# nested in them), read by its row alone; no older scale moved (compared
+# against b8feee68, 2026-10-30).
+_GOLDEN_DIGEST = "bd2cdba7e7ec92df0f8c1cfaa1bcf3d2cddfc015a1bb9d221973fa4ef1994076"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

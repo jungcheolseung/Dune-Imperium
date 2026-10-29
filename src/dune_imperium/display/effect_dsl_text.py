@@ -27,6 +27,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllianceTaken,
     AtBoardSpace,
     AtFactionSpace,
+    AtLeastOfConditions,
     AtMakerSpace,
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
@@ -52,6 +53,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
+    DreadnoughtsAtLeast,
     DuringAgentTurn,
     EachOpponentDiscardsCard,
     EachOpponentDiscardsOrLosesDeployedTroop,
@@ -409,6 +411,10 @@ def condition_text(condition: Condition) -> str:
             return "you are spying on a Maker space"
         case GarrisonedUnitsAtLeast(count=count):
             return f"you have {count} or more garrisoned units"
+        case DreadnoughtsAtLeast(count=count):
+            # "2 dreadnoughts" [Grand Conspiracy card, Steam app text]: the
+            # seat's own, wherever they stand.
+            return f"you have {count} {_plural(count, 'dreadnought')}"
         case DuringAgentTurn():
             # Quotes ``display/bloodlines.py``'s Rapid Dropships line.
             return "Agent Turn"
@@ -442,6 +448,11 @@ def condition_text(condition: Condition) -> str:
             return "Take an Alliance token you do not already hold"
         case AllConditions(conditions=conditions):
             return " and ".join(condition_text(item) for item in conditions)
+        case AtLeastOfConditions(count=count, conditions=conditions):
+            # "If you have any three:" over the card's four items [Grand
+            # Conspiracy card, Steam app text].
+            items = "; ".join(condition_text(item) for item in conditions)
+            return f"at least {count} of these hold: {items}"
         case _:
             assert_never(condition)
 

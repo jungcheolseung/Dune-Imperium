@@ -264,6 +264,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "ixian_probe",
     "quid_pro_quo",
     "advanced_weaponry",
+    "grand_conspiracy",
 }
 _IX_IMPERIUM_TRANSCRIBED = {
     "choam_delegate",
