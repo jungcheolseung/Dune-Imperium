@@ -116,8 +116,9 @@ window over her hand) is not reached: in 61 random draft games her first token
 fell in her own turn (a row, not the window) or in Combat with an empty hand
 (no window, rise-of-ix.md 9.3); the only path is a Plot Intrigue that draws
 (Glimpse the Path, Ixian Probe, Water of Life) played in her Reveal turn, then
-a Combat Influence reaching her first token, which a targeted search has not
-found yet.
+a Combat Influence reaching her first token. About 200 steered games
+(``find7.py``) did not get there: in the 40 counted, she held such a card in
+4 but never played it in her Reveal turn.
 
 Not reached, and named here so the gap stays visible: POST /games refuses
 ``base_game: "imperium"`` with ``immortality`` ("the original game takes
