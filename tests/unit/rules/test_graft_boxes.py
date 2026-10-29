@@ -160,7 +160,9 @@ OTHER_FRAME_KEYS = frozenset(
         "tech_reveal_pending",
         "turn_agent_in_conflict",
         "turn_start_over",
-        # Rise of Ix's Unload window (``rules.unload``).
+        # Rise of Ix's Unload window (``rules.unload``), and its mark when it
+        # offers several cards' held icons of one cost.
+        "unload_by_card",
         "unload_icons",
     }
 )

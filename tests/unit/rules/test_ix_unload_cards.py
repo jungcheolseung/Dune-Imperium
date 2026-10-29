@@ -12,8 +12,10 @@ each card's own data through ``UprisingRulesEngine`` in an original game with
 Rise of Ix.
 """
 
+import json
 import random
-from dataclasses import replace
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 
 import pytest
 
@@ -49,19 +51,20 @@ from dune_imperium.core import (
 from dune_imperium.core.actions import ActionValue
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.state import GamePhase
+from dune_imperium.core.state import GamePhase, canonical_state_hash
 from dune_imperium.display.unavailable import unavailable_choices
 from dune_imperium.rules import UprisingRulesEngine, unload
 from dune_imperium.rules.agent_box_abilities import AgentPaymentBlock
 from dune_imperium.rules.agent_effects import agent_card_payment_block
 from dune_imperium.rules.combat import begin_combat_intrigue
 from dune_imperium.rules.effect_steps import first_step
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import FrameKind, is_unload_hold
 from dune_imperium.rules.pauses import (
     ROUND_START,
     pause_is_pending,
     pending_pause_point,
 )
+from dune_imperium.server.persistence import deserialize_step, serialize_step
 from dune_imperium.simulation.invariants import check_observation_privacy
 
 IX = RulesetConfig(
@@ -1822,3 +1825,273 @@ def test_clean_up_moves_boundless_ambition_without_unloading_it() -> None:
     assert state.phase is GamePhase.ROUND_START
     assert AMBITION in state.players[0].discard_pile
     assert unloaded == []
+
+
+# --- Several Unloads held by one cost ------------------------------------------
+#
+# "비용 → 효과 줄의 왼쪽(비용)이 Unload를 일으키면 Unload를 끝까지 해결한 뒤
+# 오른쪽으로 간다" (designer ruling, rise-of-ix.md 7): a cost of two cards is
+# both discards, so every Unload it triggers resolves before the right side.
+# Several cards' held icons open one window above the hold, every icon a row,
+# and the owner picks their order (``unload._open_held``).
+
+CORRINTH = "imperium:corrinth_city:0"
+
+
+def _taken(
+    state: GameState,
+    action_id: str,
+    arguments: Mapping[str, object],
+    *,
+    codec: bool = True,
+) -> tuple[RuleResult, tuple[DomainAction, ...]]:
+    """Seat 0's whole action by its steps: the result and the steps taken,
+    each row round-tripped through the codec unless ``codec`` is False."""
+
+    seat = 0
+
+    whole = next(
+        row
+        for row in ENGINE.whole_actions(state, seat)
+        if row.action_id == action_id
+        and all(
+            dict(row.arguments).get(key) == value for key, value in arguments.items()
+        )
+    )
+    events: list[GameEvent] = []
+    steps: list[DomainAction] = []
+    while True:
+        rows = _rows(state, seat) if codec else ENGINE.legal_actions(state, seat)
+        left = 0 if whole in rows else steps_after(state, whole)
+        row = whole if whole in rows else first_step(state, whole)
+        assert row in rows
+        result = ENGINE.apply(state, row)
+        events.extend(result.events)
+        steps.append(row)
+        state = result.state
+        if left == 0:
+            return RuleResult(state=state, events=tuple(events)), tuple(steps)
+
+
+def _loaded(start: GameState, steps: tuple[DomainAction, ...]) -> GameState:
+    """A save writes a game's steps from its start as JSON
+    (``server.persistence``); a load replays them, as an undo replays the
+    steps before the one it takes back."""
+
+    saved = json.dumps([serialize_step(step) for step in steps])
+    state = start
+    for index, value in enumerate(json.loads(saved)):
+        state = ENGINE.apply(state, deserialize_step(value, index)).state
+    return state
+
+
+def _holds(state: GameState) -> int:
+    return sum(1 for frame in state.decision_stack if is_unload_hold(frame))
+
+
+type _Step = tuple[str, dict[str, object]]
+
+
+@dataclass(frozen=True)
+class _HeldRun:
+    held: GameState
+    answered: tuple[tuple[str, ...], ...]
+    """Each answer's event kinds, in order."""
+    finished: GameState
+
+
+def _held_run(
+    start: GameState,
+    setup: tuple[_Step, ...],
+    opening: _Step,
+    answers: tuple[_Step, ...],
+    *,
+    codec: bool = True,
+) -> _HeldRun:
+    """Play ``setup``, the payment ``opening`` that holds, then ``answers``.
+
+    On the way: the undo of the opening step (the steps before it replayed)
+    leaves no hold and taking it again opens the same one; a save and load in
+    the middle of the answers (after half of them) is the same state; the
+    whole game replays to the finished state.
+    """
+
+    state = start
+    steps: tuple[DomainAction, ...] = ()
+    for action_id, arguments in setup:
+        result, taken = _taken(state, action_id, arguments, codec=codec)
+        state, steps = result.state, (*steps, *taken)
+    before, before_steps = state, steps
+    opened, taken = _taken(state, *opening, codec=codec)
+    held, steps = opened.state, (*steps, *taken)
+    assert _holds(held) == 1
+    check_observation_privacy(held)
+    undone = _loaded(start, before_steps)
+    assert canonical_state_hash(undone) == canonical_state_hash(before)
+    assert _holds(undone) == 0
+    again, _ = _taken(undone, *opening, codec=codec)
+    assert canonical_state_hash(again.state) == canonical_state_hash(held)
+    state = held
+    answered: list[tuple[str, ...]] = []
+    for index, (action_id, arguments) in enumerate(answers):
+        if index == len(answers) // 2:
+            loaded = _loaded(start, steps)
+            assert canonical_state_hash(loaded) == canonical_state_hash(state)
+            state = loaded
+        result, taken = _taken(state, action_id, arguments, codec=codec)
+        answered.append(tuple(_kinds(result.events)))
+        state, steps = result.state, (*steps, *taken)
+        if index < len(answers) - 1:
+            assert _holds(state) == 1
+    assert _holds(state) == 0
+    assert canonical_state_hash(_loaded(start, steps)) == canonical_state_hash(state)
+    return _HeldRun(held=held, answered=tuple(answered), finished=state)
+
+
+def _held_rows(state: GameState, seat: int = 0, *, codec: bool = True) -> set[_Row]:
+    rows = _rows(state, seat) if codec else ENGINE.legal_actions(state, seat)
+    return {(row.action_id, row.arguments) for row in rows}
+
+
+def _icon(card_id: str, effect: str) -> tuple[tuple[str, ActionValue], ...]:
+    return (("card_id", card_id), ("effect", effect))
+
+
+def _paid_once_last(run: _HeldRun, kind: str, after: str) -> None:
+    """The right side's event ``kind`` comes once, in the last answer, after
+    that answer's ``after``."""
+
+    assert [kinds.count(kind) for kinds in run.answered] == [
+        *([0] * (len(run.answered) - 1)),
+        1,
+    ]
+    last = run.answered[-1]
+    assert last.index(after) < last.index(kind)
+
+
+_COMPACT_SETUP: tuple[_Step, ...] = (
+    ("choose_agent_card", {"card_id": COMPACT}),
+    ("place_agent", {"space_id": "foldspace"}),
+)
+
+
+def test_two_freighter_fleets_discarded_together_both_move_first() -> None:
+    """Ix-Guild Compact's "[Discard] [Discard] -> [Dreadnought]" paid with two
+    Freighter Fleets: both Freighters are offered at once, the owner picks
+    the second card's first, and the dreadnought comes once, after both."""
+    start = _give(_start(), 0, hand=(COMPACT, FLEET, FLEET_TWO))
+    supply = start.players[0].dreadnoughts_supply
+    run = _held_run(
+        start,
+        (*_COMPACT_SETUP, ("discard_agent_card", {"card_id": FLEET})),
+        ("discard_agent_card", {"card_id": FLEET_TWO}),
+        (
+            (UNLOAD_ROW, {"card_id": FLEET_TWO, "effect": _FREIGHTER}),
+            ("advance_freighter", {}),
+            (UNLOAD_ROW, {"card_id": FLEET, "effect": _FREIGHTER}),
+            ("advance_freighter", {}),
+        ),
+    )
+    top = run.held.decision_stack[-1]
+    assert top.kind is FrameKind.UNLOAD_ICONS
+    assert dict(top.context)[unload.UNLOAD_BY_CARD_KEY] is True
+    assert _held_rows(run.held) == {
+        (action_id, _icon(card, _FREIGHTER))
+        for action_id in (UNLOAD_ROW, "decline_unload_icon")
+        for card in (FLEET, FLEET_TWO)
+    }
+    assert run.held.players[0].dreadnoughts_supply == supply
+    _paid_once_last(run, "dreadnought_commissioned", "freighter_moved")
+    assert run.finished.players[0].freighter_space == 2
+    assert run.finished.players[0].dreadnoughts_supply == supply - 1
+    assert run.finished.decision_stack[-1].kind is FrameKind.AGENT_EFFECTS
+
+
+def test_a_freighter_and_an_acquisition_discarded_together_in_the_owners_order() -> (
+    None
+):
+    """Two different decision boxes in one payment, Freighter Fleet's
+    Freighter and Boundless Ambition's acquisition: the owner takes the
+    acquisition first, then leaves the "may" Freighter; the dreadnought comes
+    once, after both."""
+    start = _give(_start(config=IX_PROMOS), 0, hand=(COMPACT, FLEET, AMBITION))
+    card = _cheap_row_card(start)
+    run = _held_run(
+        start,
+        (*_COMPACT_SETUP, ("discard_agent_card", {"card_id": FLEET})),
+        ("discard_agent_card", {"card_id": AMBITION}),
+        (
+            (UNLOAD_ROW, {"card_id": AMBITION, "effect": _ACQUIRE}),
+            ("acquire_unload_imperium_card", {"instance_id": card}),
+            ("decline_unload_icon", {"card_id": FLEET, "effect": _FREIGHTER}),
+        ),
+    )
+    assert _held_rows(run.held) == {
+        (UNLOAD_ROW, _icon(FLEET, _FREIGHTER)),
+        ("decline_unload_icon", _icon(FLEET, _FREIGHTER)),
+        (UNLOAD_ROW, _icon(AMBITION, _ACQUIRE)),
+    }
+    assert "card_acquired" in run.answered[1]
+    _paid_once_last(run, "dreadnought_commissioned", "unload_icon_declined")
+    assert card in run.finished.players[0].discard_pile
+    assert run.finished.players[0].freighter_space == 0
+
+
+def test_a_freighter_held_beside_water_peddlers_water_paid_at_once() -> None:
+    """One decision box and one plain box in one payment: Water Peddler's
+    water is paid inside it, Freighter Fleet's Freighter holds the
+    dreadnought."""
+    start = _give(_start(), 0, hand=(COMPACT, WATER_PEDDLER, FLEET))
+    water = start.players[0].resources.water
+    run = _held_run(
+        start,
+        (*_COMPACT_SETUP, ("discard_agent_card", {"card_id": WATER_PEDDLER})),
+        ("discard_agent_card", {"card_id": FLEET}),
+        (("decline_freighter", {}),),
+    )
+    assert run.held.players[0].resources.water == water + 1
+    assert run.held.decision_stack[-1].kind is FrameKind.FREIGHTER_MOVE
+    _paid_once_last(run, "dreadnought_commissioned", "freighter_declined")
+    assert run.finished.players[0].resources.water == water + 1
+
+
+def test_corrinth_city_pays_its_victory_point_after_two_unload_cards() -> None:
+    """Corrinth City's "discard 2 cards and pay 5 Solari -> 1 Victory Point"
+    paid with Freighter Fleet and Ix-Guild Compact: the Freighter and both
+    Tech Negotiations are offered at once, in the owner's order, and the
+    Victory Point comes once, after all three. No catalog holds Corrinth
+    City beside the Rise of Ix cards yet (Uprising with Rise of Ix is P7), so
+    its rows are not round-tripped through a codec."""
+    state = _give(_start(), 0, hand=(CORRINTH, FLEET, COMPACT))
+    owner = state.players[0]
+    start = _seat(state, 0, resources=replace(owner.resources, solari=5))
+    points = start.players[0].victory_points
+    negotiators = start.players[0].negotiators
+    run = _held_run(
+        start,
+        (
+            ("choose_agent_card", {"card_id": CORRINTH}),
+            ("place_agent", {"space_id": "wealth"}),
+            ("select_corrinth_city_discard", {"card_id": FLEET}),
+        ),
+        ("pay_corrinth_city", {"card_id": COMPACT}),
+        (
+            (UNLOAD_ROW, {"card_id": COMPACT, "effect": _NEGOTIATOR}),
+            (UNLOAD_ROW, {"card_id": FLEET, "effect": _FREIGHTER}),
+            ("advance_freighter", {}),
+            (UNLOAD_ROW, {"card_id": COMPACT, "effect": _NEGOTIATOR}),
+        ),
+        codec=False,
+    )
+    assert _held_rows(run.held, codec=False) == {
+        (action_id, _icon(card, effect))
+        for action_id in (UNLOAD_ROW, "decline_unload_icon")
+        for card, effect in ((FLEET, _FREIGHTER), (COMPACT, _NEGOTIATOR))
+    }
+    assert run.held.players[0].victory_points == points
+    assert run.held.players[0].resources.solari == 0
+    _paid_once_last(run, "resources_gained", "negotiator_placed")
+    after = run.finished.players[0]
+    assert after.victory_points == points + 1
+    assert after.negotiators == negotiators + 2
+    assert after.freighter_space == 1

@@ -27,13 +27,15 @@ How the icons are taken:
   before its right side, writes its frame as the cost left it and pushes the
   hold (``push_unload_hold``) naming how to pay the rest later (a payer
   registered with ``hold_payer`` and its plain values). The engine then
-  opens the held icons' windows above the hold; while any is open, they are
-  the seat's only rows, and an effect of the seat opens its own window rather
-  than waiting on its turn (``turn_rows.waits_on_turn``), so the Unload is
-  resolved to the end. Once the hold is on top again (and no immediate owed
-  draw of its seat waits) it closes and its payer pays the right side as the
-  path would have (``settle_unloads``). A box with no decision icon is paid
-  as before.
+  opens the held icons' windows above the hold -- every card's, when the cost
+  is several cards (two discarded together): their icons then share one
+  window of rows and the owner picks the order (``_open_held``); while any is
+  open, they are the seat's only rows, and an effect of the seat opens its
+  own window rather than waiting on its turn (``turn_rows.waits_on_turn``),
+  so the Unload is resolved to the end. Once the hold is on top again (and
+  no immediate owed draw of its seat waits) it closes and its payer pays the
+  right side as the path would have (``settle_unloads``). A box with no
+  decision icon is paid as before.
 - Triggered by an effect inside its owner's own turn: each icon waits on the
   turn's frame as a mandatory row (``turn_rows.UNLOAD_ICON``), as a Contract's
   icons do (OQ-112 (4)), and holds the turn's end until taken; a decision
@@ -154,6 +156,10 @@ _DECISION_ICONS: Final = frozenset({FREIGHTER_ICON, NEGOTIATOR_ICON, ACQUIRE_ICO
 _HELD_KEY: Final = "held"
 """The ``card_unloaded`` payload's decision icons a cost held (comma-joined,
 only when there are any)."""
+UNLOAD_BY_CARD_KEY: Final = "unload_by_card"
+"""Marks an Unload window that offers the icons several cards' Unloads held
+in one cost (``_open_held``): its rows name their cards, and each icon's
+events are named after its own card."""
 _PAYER_KEY: Final = "unload_hold_payer"
 _VALUES_KEY: Final = "unload_hold_values"
 _FRAME: Final = "Unload frame"
@@ -561,13 +567,26 @@ def push_unload_hold(
     )
 
 
-def _open_held(state: GameState, event: GameEvent) -> GameState:
-    """Open the windows of the decision icons a cost's Unload held, above the
-    hold its path pushed."""
+def _open_held(state: GameState, events: list[GameEvent]) -> GameState:
+    """Open the decision icons one cost's Unloads held, above the hold its
+    path pushed: every one of them before the right side, as the cost is every
+    card it discards or trashes ("Unload를 끝까지 해결한 뒤 오른쪽으로 간다").
 
-    payload = dict(event.payload)
-    player, held = payload["player"], payload[_HELD_KEY]
-    assert isinstance(player, int) and isinstance(held, str)
+    One card's: its row decisions in a window of their own, each with its
+    refusal, and each window icon's window, the printed first on top. Several
+    cards' (two cards discarded together: Ix-Guild Compact's arrow, Corrinth
+    City's payment): one window offering every held icon of every card as a
+    row (``UNLOAD_BY_CARD_KEY``), so the owner picks their order as the rows
+    of the owner's own turn and the icons of one window are picked -- a window
+    icon's row opens its window (``apply_unload_icon``).
+    """
+
+    payloads = [dict(event.payload) for event in events]
+    players = {payload["player"] for payload in payloads}
+    if len(players) != 1:
+        raise RuntimeError("one cost's held Unloads belong to several seats")
+    (player,) = players
+    assert isinstance(player, int)
     top = state.decision_stack[-1] if state.decision_stack else None
     if (
         top is None
@@ -578,9 +597,35 @@ def _open_held(state: GameState, event: GameEvent) -> GameState:
         raise RuntimeError(
             "a cost's Unload holds a decision but its path pushed no hold"
         )
-    names = held.split(",")
-    card_id = payload["card_id"]
-    assert isinstance(card_id, str)
+    held: list[tuple[str, str]] = []
+    for payload in payloads:
+        card_id, held_names = payload["card_id"], payload[_HELD_KEY]
+        assert isinstance(card_id, str) and isinstance(held_names, str)
+        held.extend((card_id, name) for name in held_names.split(","))
+    if len({card_id for card_id, _ in held}) > 1:
+        source = f"{context_str(dict(top.context), 'source', owner=_FRAME)}:unload"
+        return state.push_decision(
+            DecisionFrame(
+                kind=FrameKind.UNLOAD_ICONS,
+                frame_id=f"{source}:icons",
+                decision=PlayerDecision(owner=player, prompt=UNLOAD_PROMPT),
+                context=tuple(
+                    sorted(
+                        (
+                            (
+                                UNLOAD_ICONS_KEY,
+                                ",".join(_value(card, name) for card, name in held),
+                            ),
+                            (UNLOAD_BY_CARD_KEY, True),
+                            ("source", source),
+                        )
+                    )
+                ),
+            )
+        )
+    (event,) = events
+    card_id = held[0][0]
+    names = [name for _, name in held]
     values = tuple(_value(card_id, name) for name in names if name not in _WINDOW_ICONS)
     if values:
         # Decisions answered by rows (a Tech Negotiation): a window of their
@@ -670,9 +715,9 @@ def settle_unloads(result: RuleResult) -> RuleResult:
             event.event_id,
             tuple(unmet.split(",") if unmet else ()),
         )
-    # A cost's held decisions are answered first, the first announced on top.
-    for event in reversed(held):
-        state = _open_held(state, event)
+    # A cost's held decisions are answered first, all of them above its hold.
+    if held:
+        state = _open_held(state, held)
     return _close_holds(RuleResult(state=state, events=result.events))
 
 
@@ -808,6 +853,10 @@ def apply_unload_icon(state: GameState, action: DomainAction) -> RuleResult:
             raise ValueError("action is not a legal Unload icon")
         context = dict(frame.context)
         source = context_str(context, "source", owner=_FRAME)
+        if context.get(UNLOAD_BY_CARD_KEY) is True:
+            # Several cards' held icons in one window: each named after its
+            # own card, as the icons a payment paid at once are.
+            source = f"{source}:{card_id}"
         remaining = list(_window_values(frame))
         remaining.remove(value)
         if remaining:
