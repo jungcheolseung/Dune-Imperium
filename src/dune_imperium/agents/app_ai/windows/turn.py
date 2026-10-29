@@ -114,6 +114,7 @@ from dune_imperium.agents.app_ai.catalog import (
     BLOODLINES_SPACE_ORDER,
     CARD_ARCHETYPES,
     IMMORTALITY_SPACE_ARCHETYPES,
+    ORIGINAL_SPACE_ARCHETYPES,
     POST_INDEX,
     SPACE_ARCHETYPES,
     TECH_ARCHETYPES,
@@ -151,6 +152,8 @@ from dune_imperium.rules.graft import legal_graft_partner_actions
 
 #: The board set of a 4-player Uprising game (``SetupPhase/<BeginSetup>``).
 _BOARD_SET = "Uprising"
+#: The board set of an original Dune: Imperium game (``Board.original``).
+_ORIGINAL_BOARD_SET = "BaseSet"
 _IMMORTALITY_AA = "worm.canis.abilities.ActivatedAbilities.Immortality."
 #: Playmat abilities (``SetupPhase/<BeginSetup>`` adds them with Immortality,
 #: spec immortality.md §1.4); their owner is never read.
@@ -234,8 +237,27 @@ _SPACE_ARCHETYPE_ORDER: tuple[str, ...] = (
     "SpaceArchetypes.Uprising.SwordmasterUP",  # 644
     "SpaceArchetypes.Immortality.ResearchStationImmortality",  # 649
     "SpaceArchetypes.BaseSet.Arrakeen",  # 650
+    "SpaceArchetypes.BaseSet.Carthag",  # 651
+    "SpaceArchetypes.BaseSet.Conspire",  # 652
+    "SpaceArchetypes.BaseSet.FoldspaceSpace",  # 653
+    "SpaceArchetypes.BaseSet.HaggaBasin",  # 654
+    "SpaceArchetypes.BaseSet.HallofOratory",  # 655
+    "SpaceArchetypes.BaseSet.HardyWarriors",  # 656
+    "SpaceArchetypes.BaseSet.Heighliner",  # 657
+    "SpaceArchetypes.BaseSet.HighCouncil",  # 658
     "SpaceArchetypes.BaseSet.ImperialBasin",  # 659
+    "SpaceArchetypes.BaseSet.Mentat",  # 660
+    "SpaceArchetypes.BaseSet.RallyTroops",  # 661
+    "SpaceArchetypes.BaseSet.ResearchStation",  # 662
     "SpaceArchetypes.BaseSet.Secrets",  # 663
+    "SpaceArchetypes.BaseSet.SecureContract",  # 664
+    "SpaceArchetypes.BaseSet.SelectiveBreeding",  # 665
+    "SpaceArchetypes.BaseSet.SellMelange",  # 666
+    "SpaceArchetypes.BaseSet.SietchTabr",  # 667
+    "SpaceArchetypes.BaseSet.Stillsuits",  # 668
+    "SpaceArchetypes.BaseSet.Swordmaster",  # 669
+    "SpaceArchetypes.BaseSet.TheGreatFlat",  # 670
+    "SpaceArchetypes.BaseSet.Wealth",  # 671
 )
 #: Our space id of each app space archetype (both CHOAM variants).
 _SPACE_OF_ARCHETYPE: dict[str, str] = {
@@ -247,6 +269,10 @@ _SPACE_OF_ARCHETYPE: dict[str, str] = {
     **{
         archetype: space_id
         for space_id, archetype in IMMORTALITY_SPACE_ARCHETYPES.items()
+    },
+    **{
+        archetype: space_id
+        for space_id, archetype in ORIGINAL_SPACE_ARCHETYPES.items()
     },
 }
 
@@ -282,13 +308,14 @@ def board_space_order(board: Board) -> tuple[str, ...]:
 
     # UNTRACED: the reflection order (engine-order §9) is taken to be the
     # typedef order of dump/worm-canis.dll.cs, as the spec assumes.
+    board_set = _ORIGINAL_BOARD_SET if board.original else _BOARD_SET
     enabled = (
-        _BOARD_SET,
+        board_set,
         *(("CHOAMModule",) if board.choam else ()),
         *(("Immortality",) if board.immortality else ()),
     )
     archetypes = [
-        a for a in _SPACE_ARCHETYPE_ORDER if _BOARD_SET in _set_attr(a, "SetList")
+        a for a in _SPACE_ARCHETYPE_ORDER if board_set in _set_attr(a, "SetList")
     ]
     archetypes.extend(
         a

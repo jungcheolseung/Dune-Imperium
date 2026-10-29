@@ -154,12 +154,11 @@ _GURNEY = "LeaderArchetypes.Uprising.GurneyHalleckLeader"
 _CHANI_CLEVER_TACTICIAN = "chani_clever_tactician"
 _GO_TO_GROUND = "go_to_ground"
 _ECONOMIC_POSITIONING = "economic_positioning"  # our Intrigue card id
-# Our ids of the board spaces the potentials look up
-# (``BoardSpaces.FirstOrDefault(IsHeighlinerSpace)`` / ``ArchID ==
-# Uprising.HaggaBasinUP`` / ``Uprising.DeepDesert``): always on our board.
-_HEIGHLINER = "heighliner"
-_HAGGA_BASIN = "hagga_basin"
-_DEEP_DESERT = "deep_desert"
+# The space archetypes the worm potentials look up (``ArchID ==
+# Uprising.HaggaBasinUP`` / ``Uprising.DeepDesert``): only on the Uprising
+# board; the Heighliner is ``catalog.heighliner_space_id`` on every board.
+_HAGGA_BASIN = frozenset({"SpaceArchetypes.Uprising.HaggaBasinUP"})
+_DEEP_DESERT = frozenset({"SpaceArchetypes.Uprising.DeepDesert"})
 # ``WormUnit`` vslot 35 ``get_Strength``: a troop is worth 2.
 _TROOP_STRENGTH = 2
 
@@ -1070,9 +1069,10 @@ class CombatMixin(ProfileCore):
         """
 
         ordered = self.ordered_players()
-        space = catalog.space_entity(_HEIGHLINER, self.ctx.board)
+        heighliner = catalog.heighliner_space_id(self.ctx.board)
+        space = catalog.space_entity(heighliner, self.ctx.board)
         spice_cost = space.int_attr("SpiceCost", 0)
-        occupied = self._space_has_agent(_HEIGHLINER)
+        occupied = self._space_has_agent(heighliner)
         for seat in ordered:
             p = self.ctx.player(seat)
             is_me = seat == self.ctx.seat
@@ -1111,14 +1111,18 @@ class CombatMixin(ProfileCore):
         return None
 
     def _worm_potential_a_player(self) -> int | None:
-        """``GetWormPotentialAPlayer @0x491e8d0``: Hagga Basin (``HaggaBasinUP``)."""
+        """``GetWormPotentialAPlayer @0x491e8d0``: Hagga Basin (``HaggaBasinUP``);
+        null on a board without it."""
 
-        return self.worm_potential_player(_HAGGA_BASIN)
+        space_id = catalog.board_space_where(self.ctx.board, _HAGGA_BASIN)
+        return None if space_id is None else self.worm_potential_player(space_id)
 
     def _worm_potential_b_player(self) -> int | None:
-        """``GetWormPotentialBPlayer @0x491ea30``: Deep Desert."""
+        """``GetWormPotentialBPlayer @0x491ea30``: Deep Desert; null on a
+        board without it."""
 
-        return self.worm_potential_player(_DEEP_DESERT)
+        space_id = catalog.board_space_where(self.ctx.board, _DEEP_DESERT)
+        return None if space_id is None else self.worm_potential_player(space_id)
 
     def has_worm_potential(self, seat: int | None = None) -> bool:
         """``HasWormPotential() @0x4914380`` / ``(p) @0x491eb90`` — spec §9.4.

@@ -36,6 +36,10 @@ from dune_imperium.agents.app_ai.catalog import (
     IMMORTALITY_SPACE_ARCHETYPES,
     INTRIGUE_ARCHETYPES,
     LEADER_ARCHETYPES,
+    ORIGINAL_CARD_ARCHETYPES,
+    ORIGINAL_CONFLICT_ARCHETYPES,
+    ORIGINAL_INTRIGUE_ARCHETYPES,
+    ORIGINAL_LEADER_ARCHETYPES,
     POST_INDEX,
     SPACE_ARCHETYPES,
     card_entity,
@@ -198,15 +202,27 @@ def _pair(table: Mapping[str, tuple[str, str]], key: str, choam: bool) -> str:
     return with_choam if choam else without
 
 
+_ORIGINAL_IDS = frozenset(
+    {
+        *ORIGINAL_CARD_ARCHETYPES,
+        *ORIGINAL_INTRIGUE_ARCHETYPES,
+        *ORIGINAL_CONFLICT_ARCHETYPES,
+        *ORIGINAL_LEADER_ARCHETYPES,
+    }
+)
+
+
 def _app_only[V: (str, tuple[str, str])](table: Mapping[str, V]) -> dict[str, V]:
     """The entries that map to the app's own archetypes. The app-style
     Bloodlines/Scouts entries (``data/synthetic.py``) are checked in
-    ``test_app_ai_synthetic.py``."""
+    ``test_app_ai_synthetic.py``, the original game's entries in
+    ``test_app_ai_catalog_original.py``."""
 
     return {
         key: value
         for key, value in table.items()
         if (value if isinstance(value, str) else value[0]) in ARCHETYPES
+        and key not in _ORIGINAL_IDS
     }
 
 
@@ -348,9 +364,10 @@ def test_promos_map_to_the_apps_names_but_are_never_dealt() -> None:
 
 
 def test_the_app_deals_nothing_our_catalog_leaves_unmapped() -> None:
-    """Every app card archetype is ours except Foldspace (the app-only card)."""
+    """Every app card archetype is ours except Foldspace (the app-only card;
+    the original game's Foldspace maps to it)."""
 
-    mapped = set(CARD_ARCHETYPES.values())
+    mapped = set(_app_only(CARD_ARCHETYPES).values())
     app_cards = {
         short
         for short, archetype in ARCHETYPES.items()

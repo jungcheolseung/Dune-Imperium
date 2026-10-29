@@ -1229,6 +1229,10 @@ class EconomyMixin(ProfileCore):
         if not in_reveal_turn:
             if me.high_council:
                 persuasion += 2
+            # ``FindSpace(BaseSet.HallofOratory)`` (the original board) and
+            # ``FindSpace(Uprising.AssemblyHall)``: an own Agent there.
+            if "hall_of_oratory" in me.agent_locations:
+                persuasion += 1
             if "assembly_hall" in me.agent_locations:
                 persuasion += 1
             if self.ctx.bloodlines:

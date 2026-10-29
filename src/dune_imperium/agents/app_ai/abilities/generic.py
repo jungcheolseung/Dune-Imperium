@@ -50,6 +50,7 @@ from dune_imperium.agents.app_ai.catalog import (
     conflict_entity,
     contract_entity,
     intrigue_entity,
+    is_high_council_space,
     leader_entity,
     space_archetype,
     space_entity,
@@ -416,7 +417,7 @@ def deferred_threshold_reached(p: Profile) -> bool:
     leader = _leader_arch_id(p)
     if leader == _BARON:  # needs P.PrivateInformation BaronHarkonnenSecretFactions
         pass
-    elif leader == _MEMNON and any(s.ref == "high_council" for s in spaces):
+    elif leader == _MEMNON and any(is_high_council_space(s) for s in spaces):
         n += 2
     elif leader == _ARIANA and any(
         s.int_attr("Spice") > 0 and s.has("BonusSpice") for s in spaces

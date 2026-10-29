@@ -27,6 +27,7 @@ from dune_imperium.agents.app_ai.abilities.base import (
 )
 from dune_imperium.agents.app_ai.catalog import (
     LEADER_ARCHETYPES,
+    ORIGINAL_LEADER_ARCHETYPES,
     POST_INDEX,
     card_entity,
     leader_entity,
@@ -259,8 +260,13 @@ def test_every_leader_ability_resolves_to_a_port() -> None:
     """Coverage: every ability id of the leader archetypes (both Jessica
     faces) and of the training-track rewards has a registered port."""
 
-    # The Bloodlines leaders are app-style (test_app_ai_synthetic.py).
-    app = {k: v for k, v in LEADER_ARCHETYPES.items() if v in ARCHETYPES}
+    # The Bloodlines leaders are app-style (test_app_ai_synthetic.py); the
+    # original game's are covered with its ports.
+    app = {
+        k: v
+        for k, v in LEADER_ARCHETYPES.items()
+        if v in ARCHETYPES and k not in ORIGINAL_LEADER_ARCHETYPES
+    }
     ids: list[str] = []
     for short in app.values():
         attrs = ARCHETYPES[short].attributes

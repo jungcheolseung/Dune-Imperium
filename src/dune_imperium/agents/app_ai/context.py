@@ -29,7 +29,7 @@ from collections.abc import Mapping
 from functools import cached_property, lru_cache
 from typing import NamedTuple
 
-from dune_imperium.config import RulesetConfig
+from dune_imperium.config import BaseGame, RulesetConfig
 from dune_imperium.content.arrakeen_scouts.types import RoundModifier
 from dune_imperium.content.immortality.board import (
     RESEARCH_SPACES,
@@ -96,6 +96,10 @@ class Board(NamedTuple):
     #: expansion's spaces). Public (leaders are public); set by
     #: ``AppContext.board``.
     tueks_sietch: bool = False
+    #: The original Dune: Imperium board (``BaseGame.IMPERIUM``): the app's
+    #: ``BaseSet`` space archetypes instead of the Uprising ones
+    #: (``catalog.ORIGINAL_SPACE_ARCHETYPES``).
+    original: bool = False
 
     @staticmethod
     def of(config: RulesetConfig) -> Board:
@@ -105,6 +109,7 @@ class Board(NamedTuple):
             bloodlines=config.bloodlines,
             tech_module=config.tech_module,
             scouts=config.arrakeen_scouts,
+            original=config.base_game is BaseGame.IMPERIUM,
         )
 
 

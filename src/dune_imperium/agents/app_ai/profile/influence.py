@@ -32,12 +32,10 @@ from functools import cache
 from typing import TYPE_CHECKING, Final, cast
 
 from dune_imperium.agents.app_ai.catalog import (
-    BLOODLINES_SPACE_ARCHETYPES,
     FACTION_NAMES,
     INTRIGUE_ARCHETYPES,
     LEADER_ARCHETYPES,
     POST_INDEX,
-    SPACE_ARCHETYPES,
     board_space_ids,
     card_entity,
     intrigue_entity,
@@ -1295,10 +1293,7 @@ class InfluenceMixin(ProfileCore):
         for agent in shuffled:
             # a.Parent is not a WormSpace (Duncan's Conflict Agent, D55);
             # Esmar's Tuek's Sietch is a space (bloodlines-systems.md §6).
-            if (
-                agent.ref not in SPACE_ARCHETYPES
-                and agent.ref not in BLOODLINES_SPACE_ARCHETYPES
-            ):
+            if not is_board_space(agent.ref):
                 continue
             space = space_entity(agent.ref, ctx.board)
             combat = space.attr("CombatSpace", False) is True

@@ -62,6 +62,141 @@ def _both(short: str) -> tuple[str, str]:
     return (short, short)
 
 
+# -- the original Dune: Imperium (``BaseGame.IMPERIUM``) ----------------------
+#
+# The app's ``BaseSet`` (and base-game ``Promo``) archetypes of our original
+# content; merged into the tables below (no id collides with an Uprising
+# one). The starting deck is the BaseSet one both games share.
+
+# Reserve stacks, the 43 Imperium kinds and the three promos
+# (``content.imperium.imperium.IMPERIUM_BASE_CARDS``).
+ORIGINAL_CARD_ARCHETYPES: dict[str, str] = {
+    "arrakis_liaison": "ImperiumArchetypes.BaseSet.ArrakisLiaison",
+    "imperium_the_spice_must_flow": "ImperiumArchetypes.BaseSet.TheSpiceMustFlow",
+    "foldspace_card": "ImperiumArchetypes.BaseSet.FoldspaceImperium",
+    "arrakis_recruiter": "ImperiumArchetypes.BaseSet.ArrakisRecruiter",
+    "spice_smugglers": "ImperiumArchetypes.BaseSet.SpiceSmugglers",
+    "gun_thopter": "ImperiumArchetypes.BaseSet.GunThopter",
+    "assassination_mission": "ImperiumArchetypes.BaseSet.AssassinationMission",
+    "bene_gesserit_initiate": "ImperiumArchetypes.BaseSet.BeneGesseritInitiate",
+    "bene_gesserit_sister": "ImperiumArchetypes.BaseSet.BeneGesseritSister",
+    "choam_directorship": "ImperiumArchetypes.BaseSet.CHOAMDirectorship",
+    "carryall": "ImperiumArchetypes.BaseSet.Carryall",
+    "chani_card": "ImperiumArchetypes.BaseSet.Chani",
+    "crysknife_card": "ImperiumArchetypes.BaseSet.Crysknife",
+    "dr_yueh": "ImperiumArchetypes.BaseSet.DrYueh",
+    "duncan_idaho_card": "ImperiumArchetypes.BaseSet.DuncanIdaho",
+    "fedaykin_death_commando": "ImperiumArchetypes.BaseSet.FedaykinDeathCommando",
+    "firm_grip": "ImperiumArchetypes.BaseSet.FirmGrip",
+    "fremen_camp": "ImperiumArchetypes.BaseSet.FremenCamp",
+    "gene_manipulation": "ImperiumArchetypes.BaseSet.GeneManipulation",
+    "guild_administrator": "ImperiumArchetypes.BaseSet.GuildAdministrator",
+    "guild_ambassador": "ImperiumArchetypes.BaseSet.GuildAmbassador",
+    "guild_bankers": "ImperiumArchetypes.BaseSet.GuildBankers",
+    "gurney_halleck_card": "ImperiumArchetypes.BaseSet.GurneyHalleck",
+    "imperial_spy": "ImperiumArchetypes.BaseSet.ImperialSpy",
+    "kwisatz_haderach": "ImperiumArchetypes.BaseSet.KwisatzHaderach",
+    "lady_jessica_card": "ImperiumArchetypes.BaseSet.LadyJessica",
+    "liet_kynes_card": "ImperiumArchetypes.BaseSet.LietKynes",
+    "missionaria_protectiva": "ImperiumArchetypes.BaseSet.MissionariaProtectiva",
+    "opulence": "ImperiumArchetypes.BaseSet.Opulence",
+    "other_memory": "ImperiumArchetypes.BaseSet.OtherMemory",
+    "piter_de_vries_card": "ImperiumArchetypes.BaseSet.PiterDeVries",
+    "power_play": "ImperiumArchetypes.BaseSet.PowerPlay",
+    "reverend_mother_mohiam": "ImperiumArchetypes.BaseSet.ReverendMotherMohiam",
+    "sardaukar_infantry": "ImperiumArchetypes.BaseSet.SardaukarInfantry",
+    "sardaukar_legion": "ImperiumArchetypes.BaseSet.SardaukarLegion",
+    "scout": "ImperiumArchetypes.BaseSet.Scout",
+    "shifting_allegiances": "ImperiumArchetypes.BaseSet.ShiftingAllegiances",
+    "sietch_reverend_mother": "ImperiumArchetypes.BaseSet.SietchReverendMother",
+    "smugglers_thopter": "ImperiumArchetypes.BaseSet.SmugglersThopter",
+    "space_travel": "ImperiumArchetypes.BaseSet.SpaceTravel",
+    "spice_hunter": "ImperiumArchetypes.BaseSet.SpiceHunter",
+    "stilgar": "ImperiumArchetypes.BaseSet.Stilgar",
+    "test_of_humanity": "ImperiumArchetypes.BaseSet.TestofHumanity",
+    "the_voice": "ImperiumArchetypes.BaseSet.TheVoice",
+    "thufir_hawat": "ImperiumArchetypes.BaseSet.ThufirHawat",
+    "worm_riders": "ImperiumArchetypes.BaseSet.WormRiders",
+    "duncan_loyal_blade": "ImperiumArchetypes.Promo.DuncanLoyalBlade",
+    "jessica_of_arrakis": "ImperiumArchetypes.Promo.JessicaofArrakis",
+    "thumper": "ImperiumArchetypes.Promo.Thumper",
+}
+# ``content.imperium.intrigue.IMPERIUM_INTRIGUE_CARDS``.
+ORIGINAL_INTRIGUE_ARCHETYPES: dict[str, str] = {
+    "bribery": "IntrigueArchetypes.BaseSet.Bribery",
+    "master_tactician": "IntrigueArchetypes.BaseSet.MasterTactician",
+    "allied_armada": "IntrigueArchetypes.BaseSet.AlliedArmada",
+    "ambush": "IntrigueArchetypes.BaseSet.Ambush",
+    "bindu_suspension": "IntrigueArchetypes.BaseSet.BinduSuspension",
+    "bypass_protocol": "IntrigueArchetypes.BaseSet.BypassProtocol",
+    "choam_shares": "IntrigueArchetypes.BaseSet.CHOAMShares",
+    "calculated_hire": "IntrigueArchetypes.BaseSet.CalculatedHire",
+    "charisma": "IntrigueArchetypes.BaseSet.Charisma",
+    "corner_the_market": "IntrigueArchetypes.BaseSet.CornertheMarket",
+    "councilors_dispensation": "IntrigueArchetypes.BaseSet.CouncilorsDispensation",
+    "demand_respect": "IntrigueArchetypes.BaseSet.DemandRespect",
+    "dispatch_an_envoy": "IntrigueArchetypes.BaseSet.DispatchanEnvoy",
+    "double_cross": "IntrigueArchetypes.BaseSet.DoubleCross",
+    "favored_subject": "IntrigueArchetypes.BaseSet.FavoredSubject",
+    "guild_authorization": "IntrigueArchetypes.BaseSet.GuildAuthorization",
+    "infiltrate": "IntrigueArchetypes.BaseSet.Infiltrate",
+    "know_their_ways": "IntrigueArchetypes.BaseSet.KnowTheirWays",
+    "plans_within_plans": "IntrigueArchetypes.BaseSet.PlansWithinPlans",
+    "poison_snooper": "IntrigueArchetypes.BaseSet.PoisonSnooper",
+    "private_army": "IntrigueArchetypes.BaseSet.PrivateArmy",
+    "rapid_mobilization": "IntrigueArchetypes.BaseSet.RapidMobilization",
+    "recruitment_mission": "IntrigueArchetypes.BaseSet.RecruitmentMission",
+    "refocus": "IntrigueArchetypes.BaseSet.Refocus",
+    "reinforcements": "IntrigueArchetypes.BaseSet.Reinforcements",
+    "secret_of_the_sisterhood": "IntrigueArchetypes.BaseSet.SecretoftheSisterhood",
+    "staged_incident": "IntrigueArchetypes.BaseSet.StagedIncident",
+    "the_sleeper_must_awaken": "IntrigueArchetypes.BaseSet.TheSleeperMustAwaken",
+    "tiebreaker": "IntrigueArchetypes.BaseSet.Tiebreaker",
+    "to_the_victor": "IntrigueArchetypes.BaseSet.TotheVictor",
+    "urgent_mission": "IntrigueArchetypes.BaseSet.UrgentMission",
+    "water_peddlers_union": "IntrigueArchetypes.BaseSet.WaterPeddlersUnion",
+    "water_of_life": "IntrigueArchetypes.BaseSet.WaterofLife",
+    "windfall": "IntrigueArchetypes.BaseSet.Windfall",
+}
+# ``content.imperium.conflicts`` (no CHOAM variant).
+ORIGINAL_CONFLICT_ARCHETYPES: dict[str, tuple[str, str]] = {
+    "skirmish_a": _both("ConflictArchetypes.BaseSet.SkirmishA"),
+    "skirmish_b": _both("ConflictArchetypes.BaseSet.SkirmishB"),
+    "skirmish_c": _both("ConflictArchetypes.BaseSet.SkirmishC"),
+    "skirmish_d": _both("ConflictArchetypes.BaseSet.SkirmishD"),
+    "cloak_and_dagger": _both("ConflictArchetypes.BaseSet.CloakandDagger"),
+    "desert_power_conflict": _both("ConflictArchetypes.BaseSet.DesertPower"),
+    "guild_bank_raid": _both("ConflictArchetypes.BaseSet.GuildBankRaid"),
+    "machinations": _both("ConflictArchetypes.BaseSet.Machinations"),
+    "raid_stockpiles": _both("ConflictArchetypes.BaseSet.RaidStockpiles"),
+    "imperium_secure_imperial_basin": _both(
+        "ConflictArchetypes.BaseSet.SecureImperialBasin"
+    ),
+    "imperium_siege_of_arrakeen": _both("ConflictArchetypes.BaseSet.SiegeofArrakeen"),
+    "siege_of_carthag": _both("ConflictArchetypes.BaseSet.SiegeofCarthag"),
+    "sort_through_the_chaos": _both("ConflictArchetypes.BaseSet.SortThroughtheChaos"),
+    "terrible_purpose": _both("ConflictArchetypes.BaseSet.TerriblePurpose"),
+    "imperium_battle_for_arrakeen": _both(
+        "ConflictArchetypes.BaseSet.BattleforArrakeen"
+    ),
+    "battle_for_carthag": _both("ConflictArchetypes.BaseSet.BattleforCarthag"),
+    "imperium_battle_for_imperial_basin": _both(
+        "ConflictArchetypes.BaseSet.BattleforImperialBasin"
+    ),
+    "grand_vision": _both("ConflictArchetypes.BaseSet.GrandVision"),
+}
+# ``content.imperium.leaders``.
+ORIGINAL_LEADER_ARCHETYPES: dict[str, str] = {
+    "paul_atreides": "LeaderArchetypes.BaseSet.PaulAtreides",
+    "duke_leto_atreides": "LeaderArchetypes.BaseSet.DukeLetoAtreides",
+    "glossu_rabban": "LeaderArchetypes.BaseSet.GlossuTheBeastRabban",
+    "baron_vladimir_harkonnen": "LeaderArchetypes.BaseSet.BaronVladimirHarkonnen",
+    "count_ilban_richese": "LeaderArchetypes.BaseSet.CountIlbanRichese",
+    "helena_richese": "LeaderArchetypes.BaseSet.HelenaRichese",
+    "earl_memnon_thorvald": "LeaderArchetypes.BaseSet.EarlMemnonThorvald",
+    "countess_ariana_thorvald": "LeaderArchetypes.BaseSet.CountessArianaThorvald",
+}
+
 # card_id -> app archetype short name (starters, reserve, Imperium incl. CHOAM
 # and promos).
 CARD_ARCHETYPES: dict[str, str] = {
@@ -219,6 +354,8 @@ CARD_ARCHETYPES: dict[str, str] = {
     "shrouded_counsel": "ImperiumArchetypes.AppStyle.ShroudedCounsel",
     "southern_faith": "ImperiumArchetypes.AppStyle.SouthernFaith",
     "urgent_shigawire": "ImperiumArchetypes.AppStyle.UrgentShigawire",
+    # The original game.
+    **ORIGINAL_CARD_ARCHETYPES,
 }
 # intrigue card_id -> app archetype short name.
 INTRIGUE_ARCHETYPES: dict[str, str] = {
@@ -307,6 +444,8 @@ INTRIGUE_ARCHETYPES: dict[str, str] = {
     "twisted_sinister": "IntrigueArchetypes.AppStyle.TwistedSinister",
     "twisted_unnatural": "IntrigueArchetypes.AppStyle.TwistedUnnatural",
     "twisted_withdrawn": "IntrigueArchetypes.AppStyle.TwistedWithdrawn",
+    # The original game.
+    **ORIGINAL_INTRIGUE_ARCHETYPES,
 }
 # Navigation card_id -> archetype (Steersman Y'rkoon's ten cards; not Intrigue
 # cards, bloodlines-systems.md §5; instance ids ``intrigue:navigation_card_<n>:0``).
@@ -351,6 +490,35 @@ SPACE_ARCHETYPES: dict[str, tuple[str, str]] = {
 IMMORTALITY_SPACE_ARCHETYPES: dict[str, str] = {
     "research_station": "SpaceArchetypes.Immortality.ResearchStationImmortality",
 }
+# The original Dune: Imperium board (``Board.original``): space_id -> the
+# app's ``BaseSet`` archetype, in our board order. Secrets, Arrakeen and
+# Imperial Basin are the archetypes the Uprising board shares; the other ids
+# that name an Uprising space too carry ``imperium_``. No CHOAM variant: the
+# original game takes no CHOAM module yet (``rules.setup``).
+ORIGINAL_SPACE_ARCHETYPES: dict[str, str] = {
+    "conspire": "SpaceArchetypes.BaseSet.Conspire",
+    "wealth": "SpaceArchetypes.BaseSet.Wealth",
+    "imperium_heighliner": "SpaceArchetypes.BaseSet.Heighliner",
+    "foldspace": "SpaceArchetypes.BaseSet.FoldspaceSpace",
+    "selective_breeding": "SpaceArchetypes.BaseSet.SelectiveBreeding",
+    "secrets": "SpaceArchetypes.BaseSet.Secrets",
+    "hardy_warriors": "SpaceArchetypes.BaseSet.HardyWarriors",
+    "stillsuits": "SpaceArchetypes.BaseSet.Stillsuits",
+    "hall_of_oratory": "SpaceArchetypes.BaseSet.HallofOratory",
+    "rally_troops": "SpaceArchetypes.BaseSet.RallyTroops",
+    "mentat": "SpaceArchetypes.BaseSet.Mentat",
+    "imperium_swordmaster": "SpaceArchetypes.BaseSet.Swordmaster",
+    "imperium_high_council": "SpaceArchetypes.BaseSet.HighCouncil",
+    "arrakeen": "SpaceArchetypes.BaseSet.Arrakeen",
+    "carthag": "SpaceArchetypes.BaseSet.Carthag",
+    "imperium_research_station": "SpaceArchetypes.BaseSet.ResearchStation",
+    "imperium_sietch_tabr": "SpaceArchetypes.BaseSet.SietchTabr",
+    "imperial_basin": "SpaceArchetypes.BaseSet.ImperialBasin",
+    "imperium_hagga_basin": "SpaceArchetypes.BaseSet.HaggaBasin",
+    "the_great_flat": "SpaceArchetypes.BaseSet.TheGreatFlat",
+    "secure_contract": "SpaceArchetypes.BaseSet.SecureContract",
+    "sell_melange": "SpaceArchetypes.BaseSet.SellMelange",
+}
 # Bloodlines spaces with no app archetype (bloodlines-systems.md §6). Kept out
 # of ``SPACE_ARCHETYPES``: Tuek's Sietch is on the board only while Esmar Tuek
 # plays (``BoardSpace.required_leader_id``), and the profile reads
@@ -369,18 +537,91 @@ def board_space_ids(board: Board) -> tuple[str, ...]:
     """Every board space of this game, in catalog order (``BoardSpaces``).
 
     The app's spaces, then Tuek's Sietch when Esmar Tuek is in the game
-    (``Board.tueks_sietch``, plan §11.8).
+    (``Board.tueks_sietch``, plan §11.8); the original board's spaces on
+    ``Board.original``.
     """
 
+    if board.original:
+        return tuple(ORIGINAL_SPACE_ARCHETYPES)
     if board.tueks_sietch:
         return (*SPACE_ARCHETYPES, *BLOODLINES_SPACE_ORDER)
     return tuple(SPACE_ARCHETYPES)
 
 
+#: ``WormArchetypeExtensions::Is…Space`` (@0x4eac680 Swordmaster, @0x4eac7a0
+#: High Council, @0x4eac8c0 Research Station, @0x4eaca60 Heighliner; the
+#: ``WormEntityExtensions`` overloads read the same archetype ids): the space
+#: archetypes each app predicate accepts, of every board.
+SWORDMASTER_SPACE_ARCHETYPES: Final = frozenset(
+    {"SpaceArchetypes.BaseSet.Swordmaster", "SpaceArchetypes.Uprising.SwordmasterUP"}
+)
+HIGH_COUNCIL_SPACE_ARCHETYPES: Final = frozenset(
+    {"SpaceArchetypes.BaseSet.HighCouncil", "SpaceArchetypes.Uprising.HighCouncilUP"}
+)
+RESEARCH_STATION_SPACE_ARCHETYPES: Final = frozenset(
+    {
+        "SpaceArchetypes.BaseSet.ResearchStation",
+        "SpaceArchetypes.Immortality.ResearchStationImmortality",
+        "SpaceArchetypes.Uprising.ResearchStationUP",
+    }
+)
+HEIGHLINER_SPACE_ARCHETYPES: Final = frozenset(
+    {"SpaceArchetypes.BaseSet.Heighliner", "SpaceArchetypes.Uprising.HeighlinerUP"}
+)
+
+
+@cache
+def board_space_where(board: Board, archetypes: frozenset[str]) -> str | None:
+    """``BoardSpaces.FirstOrDefault(pred)``: our id of this board's first
+    space whose archetype ``archetypes`` holds (None: the board has none)."""
+
+    for space_id in board_space_ids(board):
+        if space_archetype(space_id, board) in archetypes:
+            return space_id
+    return None
+
+
+def board_space_of(board: Board, archetypes: frozenset[str]) -> str:
+    """``board_space_where`` for a space every board has."""
+
+    space_id = board_space_where(board, archetypes)
+    if space_id is None:
+        raise KeyError(f"no space of {sorted(archetypes)} on {board}")
+    return space_id
+
+
+def swordmaster_space_id(board: Board) -> str:
+    """Our id of the Swordmaster space (``IsSwordmasterSpace``)."""
+
+    return board_space_of(board, SWORDMASTER_SPACE_ARCHETYPES)
+
+
+def high_council_space_id(board: Board) -> str:
+    """Our id of the High Council space (``IsHighCouncilSpace``)."""
+
+    return board_space_of(board, HIGH_COUNCIL_SPACE_ARCHETYPES)
+
+
+def heighliner_space_id(board: Board) -> str:
+    """Our id of the Heighliner space (``IsHeighlinerSpace``)."""
+
+    return board_space_of(board, HEIGHLINER_SPACE_ARCHETYPES)
+
+
+def is_high_council_space(space: Entity) -> bool:
+    """``IsHighCouncilSpace`` of a space entity."""
+
+    return space.short in HIGH_COUNCIL_SPACE_ARCHETYPES
+
+
 def is_board_space(space_id: str) -> bool:
     """Whether ``space_id`` names a board space of any game (app or Bloodlines)."""
 
-    return space_id in SPACE_ARCHETYPES or space_id in BLOODLINES_SPACE_ARCHETYPES
+    return (
+        space_id in SPACE_ARCHETYPES
+        or space_id in ORIGINAL_SPACE_ARCHETYPES
+        or space_id in BLOODLINES_SPACE_ARCHETYPES
+    )
 
 
 # -- board overlays (see the module docstring) ------------------------------------
@@ -463,6 +704,8 @@ CONFLICT_ARCHETYPES: dict[str, tuple[str, str]] = {
     # Bloodlines' Conflict I and II (app-style, bloodlines-cards.md §6).
     "skirmish_wild": _both("ConflictArchetypes.AppStyle.SkirmishWild"),
     "storms_in_the_south": _both("ConflictArchetypes.AppStyle.StormsintheSouth"),
+    # The original game.
+    **ORIGINAL_CONFLICT_ARCHETYPES,
 }
 # contract card_id -> app archetype short name.
 CONTRACT_ARCHETYPES: dict[str, str] = {
@@ -524,6 +767,8 @@ LEADER_ARCHETYPES: dict[str, str] = {
     "steersman_y_rkoon": "LeaderArchetypes.AppStyle.SteersmanYrkoonLeader",
     "liet_kynes": "LeaderArchetypes.AppStyle.LietKynesLeader",
     "kota_odax_of_ix": "LeaderArchetypes.AppStyle.KotaOdaxOfIx",
+    # The original game.
+    **ORIGINAL_LEADER_ARCHETYPES,
 }
 # tech_id -> Tech tile archetype (app-style, bloodlines-systems.md §3.2).
 TECH_ARCHETYPES: dict[str, str] = {
@@ -646,6 +891,8 @@ def contract_entity(instance_id: str, owner: int | None = None) -> Entity:
 def space_archetype(space_id: str, board: Board) -> str:
     """The app archetype short name of a board space in this game."""
 
+    if board.original:
+        return ORIGINAL_SPACE_ARCHETYPES[space_id]
     if board.immortality and space_id in IMMORTALITY_SPACE_ARCHETYPES:
         return IMMORTALITY_SPACE_ARCHETYPES[space_id]
     if space_id in BLOODLINES_SPACE_ARCHETYPES:

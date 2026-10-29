@@ -249,6 +249,7 @@ from dune_imperium.agents.app_ai.catalog import (
     LEADER_ARCHETYPES,
     SKILL_ARCHETYPES,
     card_entity,
+    high_council_space_id,
     leader_entity,
     skill_entity,
     skill_id_of,
@@ -1932,7 +1933,9 @@ def _subcommittee_sources(
     offer = next(
         (
             a
-            for a in abilities_of(space_entity("high_council", run.ctx.board))
+            for a in abilities_of(
+                space_entity(high_council_space_id(run.ctx.board), run.ctx.board)
+            )
             if isinstance(a, SubcommitteeOfferAbility)
         ),
         None,
