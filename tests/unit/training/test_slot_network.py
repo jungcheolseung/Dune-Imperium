@@ -109,7 +109,9 @@ from dune_imperium.training.slots import (  # noqa: E402
 # their order (their digest is e382b8ad..., checked 2026-10-29). Then the
 # five decision kinds v39 reserves for Rise of Ix end ``decision_kind``; the
 # other 2,013 keep their order (their digest is 3cf49f09..., 2026-10-29).
-_GOLDEN_DIGEST = "30a6556a54e31e535c26ecdb5ccdb9d310477efe93edf6ee44e07b55dfaa8898"
+# Two more follow them (an optional discard window, Sonic Snoopers' pick);
+# the other 2,018 keep their order (their digest is 30a6556a..., 2026-10-29).
+_GOLDEN_DIGEST = "95cdc1f350aa68a261f9ee6f7077dcf6682806568c853ef025bf48d969520c9f"
 _FULL = RulesetConfig(
     choam_module=True,
     promo_cards=True,
@@ -346,10 +348,10 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
     # Imperium cards in the same six fields, its three Conflicts, its six
     # Leaders (four seats and the draft pool), its 18 Tech tiles (face-up
     # tiles and the Secret Project), its four spaces (occupancy and four
-    # seats' locations) and its five reserved decision kinds.
+    # seats' locations) and its seven reserved decision kinds.
     assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_303 + (
         18 + 19 * 5 + 8 * 5 + 3 + 8
-    ) + 1 + 46 * 6 + 30 * 6 + 3 + 6 * 5 + 18 * 2 + 4 * 5 + 5
+    ) + 1 + 46 * 6 + 30 * 6 + 3 + 6 * 5 + 18 * 2 + 4 * 5 + 7
     assert "conflict:economic_supremacy" in SLOT_KEYS
     assert len(set(SLOT_KEYS)) == len(SLOT_KEYS)
     assert len(navigation) == 10

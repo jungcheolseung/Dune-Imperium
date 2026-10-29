@@ -147,6 +147,19 @@ class FrameKind(StrEnum):
     # trashes it (OQ-127): one row each in any order, its choices and costs
     # with them, as ``CONTRACT_REWARD_ICONS`` holds a reward box.
     UNLOAD_ICONS = "unload_icons"
+    # An optional "[discard] ->" cost outside its owner's turn: a hand card
+    # (no Intrigue) or none [Rise of Ix p. 7] -- Tessia Vernius' first
+    # Snooper reward, "discard -> 1 spice" [Tessia Vernius card], reached
+    # through an Influence gained in Combat. The discard counterpart of
+    # ``OPTIONAL_TRASH``, whose window also serves only outside the turn.
+    OPTIONAL_DISCARD = "optional_discard"
+    # Sonic Snoopers: "Put any number of your Intrigue cards on the bottom of
+    # the Intrigue deck, then draw that many" [Sonic Snoopers Tech tile] --
+    # one card at a time in the order chosen (the seat knows that order,
+    # plan 17.8 review item 6) until it stops, then the draw; a pick of
+    # its own, as ``LONG_LIVE_FIGHTERS``, so no other effect interleaves.
+    # Court Intrigue's single card is a row with one target, no window.
+    INTRIGUE_BOTTOM_PICK = "intrigue_bottom_pick"
 
 
 # The kinds observation v39 reserved for Rise of Ix (stage P4a), in order.
@@ -156,6 +169,8 @@ IX_FRAME_KINDS: tuple[FrameKind, ...] = (
     FrameKind.DREADNOUGHT_CONTROL_CHOICE,
     FrameKind.ROUND_START_SET_ASIDE,
     FrameKind.UNLOAD_ICONS,
+    FrameKind.OPTIONAL_DISCARD,
+    FrameKind.INTRIGUE_BOTTOM_PICK,
 )
 
 
