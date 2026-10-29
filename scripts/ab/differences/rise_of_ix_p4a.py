@@ -11,13 +11,14 @@ changes once a seat resolves Imperium Ceremony:
 - ``PlayerState.known_intrigue_ids`` holds the card put back (and keeps it
   while another seat holds it): already declared changed by
   ``rise_of_ix_v39.STATE_HOLDS_RISE_OF_IX``;
-- that seat's ``PrivatePlayerView`` shows it in ``known_intrigue_top`` or
-  ``known_intrigue_held`` (``known_intrigue_bottom`` stays empty: nothing
-  but Rise of Ix puts a known card on the deck's bottom).
+- that seat's ``PrivatePlayerView`` shows it in ``known_intrigue_top`` and,
+  by its depth from the deck's bottom, in ``known_intrigue_bottom`` (the v39
+  view lists every known deck card there, the top one included), or in
+  ``known_intrigue_held`` once another seat drew it.
 
 Nothing else changes: the legal rows, the pages, the events and their
 payloads stay as they were. The view difference is declared as exactly
-that: the candidate's two fields are set back to their defaults only for a
+that: the candidate's three fields are set back to their defaults only for a
 seat whose own candidate view showed those very cards among its
 ``peeked_intrigue_ids`` at this or an earlier step of the game, so a card
 it never saw is still reported. Checked with ``engine_equivalence.py check
@@ -49,6 +50,7 @@ _last_index = [-1]
 
 def _known(private: dict[str, Any]) -> set[str]:
     cards = {str(card) for _, card in private.get("known_intrigue_held", [])}
+    cards.update(str(card) for _, card in private.get("known_intrigue_bottom", []))
     if private.get("known_intrigue_top"):
         cards.add(str(private["known_intrigue_top"]))
     return cards
@@ -70,8 +72,9 @@ def _normalise_known_intrigue(old: Step, candidate: Step) -> bool:
         seen = _peeked.setdefault(seat, set())
         seen.update(str(card) for card in private.get("peeked_intrigue_ids", []))
         known = _known(private)
-        if known and known <= seen and not private.get("known_intrigue_bottom"):
+        if known and known <= seen:
             private["known_intrigue_top"] = ""
+            private["known_intrigue_bottom"] = []
             private["known_intrigue_held"] = []
             changed = True
     return changed
