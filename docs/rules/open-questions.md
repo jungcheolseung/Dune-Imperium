@@ -175,7 +175,7 @@
 | [OQ-147](#oq-147--research-station의-카드-셋-원판) | Research Station의 카드 셋 (원판) | `DECIDED` |
 | [OQ-148](#oq-148--spice-smugglers의-화살표-보상-순서-원판) | Spice Smugglers의 화살표 보상 순서 (원판) | `DECIDED` |
 | [OQ-149](#oq-149--intrigue-덱-맨-위를-보고-하나를-남긴-좌석은-그-카드를-아는가-immortality--rise-of-ix) | Intrigue 덱 맨 위를 보고 하나를 남긴 좌석은 그 카드를 아는가 (Immortality · Rise of Ix) | `DECIDED` |
-| [OQ-150](#oq-150--reveal-turn-tech-능력-artillery의-셈과-reveal-도중에-얻은-타일-rise-of-ix) | Reveal turn Tech 능력: Artillery의 셈과 Reveal 도중에 얻은 타일 (Rise of Ix) | `OPEN` |
+| [OQ-150](#oq-150--reveal-turn-tech-능력-artillery의-셈과-reveal-도중에-얻은-타일-rise-of-ix) | Reveal turn Tech 능력: Artillery의 셈과 Reveal 도중에 얻은 타일 (Rise of Ix) | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3206,7 +3206,7 @@
 
 ## OQ-150 — Reveal turn Tech 능력: Artillery의 셈과 Reveal 도중에 얻은 타일 (Rise of Ix)
 
-- 상태: `OPEN` (2026-10-29, P4c-2a `00f3a312`가 아래 "지금 구현"대로 넣었다 — 사용자 판정을 기다린다)
+- 상태: `DECIDED` (2026-10-29 사용자, 질문 (2): **"(가) 모두 듣기"**) — 아래 "판정". 질문 (1)은 따로 묻지 않았고 추천(지금 구현)대로 둔다
 - 인쇄·문서: [rise-of-ix.md](rise-of-ix.md) 4의 표 — Artillery "Reveal turn: sword를 주는 공개 카드마다 sword 1", Minimic Film "Reveal turn:
   Persuasion 1", Restricted Ordnance "Reveal turn: High Council 자리가 있으면 sword 4", Disposal Facility "Reveal turn: 그 turn에 얻은 Persuasion
   합계가 6 이상이면 in play 카드 하나를 trash할 수 있다"(OQ-126). 룰북·FAQ는 아래 두 점을 말하지 않는다.
@@ -3222,3 +3222,6 @@
   시작될 때 가진 타일만 — Restricted Ordnance도 그렇게 고친다; (다) 지금대로 섞어 둔다.
 - 추천: (2)는 **(가)** — 한 원칙으로 맞추고(늦게 든 것도 그 turn에 듣는다, OQ-095 (7)), Command 타일과 같다. (1)은 지금 구현(채우기만, trash 제외)
   — 앱 동작은 P4f 대조(디컴파일)에서 확인한다.
+- **판정(2026-10-29, 사용자 "(가) 모두 듣기"):** (2) Reveal 도중 Acquire Tech로 얻은 타일도 그 Reveal turn의 Reveal 능력이 모두 듣는다 —
+  Artillery·Minimic Film·Disposal Facility도 Restricted Ordnance·Tech Module의 Command 타일처럼 늦게 들어도 그 turn에 준다(OQ-095 (7)의 원칙).
+  (1) Artillery의 셈은 추천대로 지금 구현(늘어날 때만 채움, trash된 카드 제외)을 둔다 — 별도 판정은 없고, P4f의 앱 대조(디컴파일)에서 확인한다.

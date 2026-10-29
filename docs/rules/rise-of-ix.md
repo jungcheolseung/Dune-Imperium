@@ -59,6 +59,8 @@
 - **쓰기.** 능력마다 쓰는 때가 적혀 있다(Reveal turn, Conflict 승리, Round Start, Endgame 등). 뒤집기 아이콘이 있는 능력은 자기 turn(Agent·Reveal)
   가운데 라운드에 한 번, 쓰면 뒷면으로 뒤집고 다음 라운드 Round Start에 되돌린다 `[Rise of Ix p. 4]` `[FAQ p. 1]`(첫 영어판은 Agent turn만이라고
   잘못 적었다). 때를 적지 않은 능력은 자기 turn 가운데 쓴다 `[FAQ p. 4]`(예: Spy Satellites의 첫 능력).
+  Reveal turn 도중 Acquire Tech로 얻은 타일의 "Reveal turn" 능력도 그 turn에 듣는다(OQ-150 (가), 2026-10-29 사용자 — Artillery·Minimic Film·Restricted
+  Ordnance·Disposal Facility 모두).
 - **Round Start 순서**(OQ-122, 2026-10-23 사용자 확정, 앱과 같음): Conflict 공개 → Control 방어 → 각자 5장(뒤집은 Tech 되돌리기를 함께) →
   Holtzman Engine의 카드 1장·Shuttle Fleet의 2 Solari → Ilesa의 따로 두기(Holtzman Engine으로 뽑은 카드까지 든 손에서) → 첫 turn. 좌석 사이는
   First Player부터.

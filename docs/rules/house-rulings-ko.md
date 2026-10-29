@@ -100,7 +100,7 @@
 - **Reinforcements·Gurney Halleck: 공개 차례에 소집한 병력의 배치** ([OQ-140](open-questions.md#oq-140--이-병력을-배치할-수-있다의-이-병력-원판)) — 공개 차례에 Reinforcements나 Gurney Halleck의 공개 효과로 소집한 병력은 원하는 수만큼(0개도) 교전 칸에 배치할 수 있다. 공급처가 모자라 그 카드로 못 소집한 병력은 같은 차례 뒤에 공급처로 병력이 돌아와 채워지면 그때 배치할 수 있다 — 다른 효과도 병력이 모자랐으면 이 카드들 몫을 먼저 채운다. 다른 효과로 소집한 병력과 사다우카 지휘관은 이 몫으로 배치하지 않는다.
   - 출처: Gurney Halleck의 "원하는 수만큼"은 디자이너의 답(따름). 앱은 쓸 때 공급처와 표본에서 병력을 골라 곧바로 배치하고, 나중에 채워진 병력은 배치하지 않는다.
 
-## (다) 공식이 정하지 않아 이 게임이 정한 곳 — 181건
+## (다) 공식이 정하지 않아 이 게임이 정한 곳 — 182건
 
 공식 문서가 정하지 않은 곳을 사용자 판정이나 채택한 디자이너 판정으로 채웠고, 기록된 출처 가운데 다르게 말하는 것은 없다(앱은 같거나 확인하지 않았다).
 
@@ -290,3 +290,4 @@
 - **Kwisatz Haderach는 교전 칸의 에이전트도 옮긴다** ([OQ-146](open-questions.md#oq-146--kwisatz-haderach의-from-anywhere와-conflict에-있는-into-the-fray의-agent-원판--bloodlines)) — 전투 속으로로 교전 칸에 간 에이전트도 여전히 자기 에이전트라서, Kwisatz Haderach의 "어디에 있든"에 든다. 옮기면 그 에이전트는 교전 칸을 떠나 고른 칸으로 가고 전투력에서 빠진다. 제국 특권으로 소환할 때와 같다.
 - **Research Station은 카드를 한 장씩 세 번 뽑는다** ([OQ-147](open-questions.md#oq-147--research-station의-카드-셋-원판)) — 원판 Research Station의 카드 셋은 한 번에 뽑지 않고 한 장씩 세 번 뽑는다. 한 장마다 그 방문의 효과 하나라서, 다른 효과와 원하는 순서로 섞어 해결할 수 있다.
 - **Spice Smugglers의 보상은 원하는 순서로** ([OQ-148](open-questions.md#oq-148--spice-smugglers의-화살표-보상-순서-원판)) — Spice Smugglers에 스파이스 2를 내면 스페이싱 길드 영향력 1과 솔라리 3을 따로 받고, 어느 쪽을 먼저 받을지는 그 플레이어가 고른다. 길드 트랙이 맨 위여도 솔라리 때문에 낼 수 있다.
+- **공개 차례 도중에 얻은 기술 타일도 그 차례에 쓴다** ([OQ-150](open-questions.md#oq-150--reveal-turn-tech-능력-artillery의-셈과-reveal-도중에-얻은-타일-rise-of-ix)) — 공개 차례 도중에 기술 타일을 얻으면, 그 타일의 공개 차례 능력(Artillery, Minimic Film, Restricted Ordnance, Disposal Facility)도 그 차례에 쓴다.

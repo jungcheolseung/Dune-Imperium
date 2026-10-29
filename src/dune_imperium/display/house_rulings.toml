@@ -2130,3 +2130,13 @@ title_ko = "임페리움 의식으로 되돌린 책략 카드는 그 플레이�
 title = "The Intrigue card Imperium Ceremony puts back is known to its player"
 ruling_ko = "임페리움 의식으로 책략 카드덱 맨 위 두 장을 보고 한 장을 가지면, 맨 위에 되돌린 카드는 그 플레이어가 안다. 다른 플레이어가 그 카드를 뽑으면 그 플레이어의 핸드에 있는 것으로 계속 알고, 카드가 공개되거나 자기 핸드에 들어오면 더는 따로 기억하지 않는다. 다른 플레이어가 맨 위 두 장을 보고 한 장을 되돌리거나, 그 카드를 가진 플레이어의 책략 카드가 무작위로 빼앗기거나 건네지면 어느 카드인지 알 수 없으므로 잊는다."
 ruling = "When Imperium Ceremony looks at the top two Intrigue cards and keeps one, the player knows the card put back on top. If another player draws it, the player still knows it is in that hand; once it is revealed or reaches the player's own hand, there is nothing more to remember. It is forgotten when another player looks at the top two and puts one back, or when an Intrigue card is stolen at random from, or given away by, the player holding it, since which card moved is not known."
+
+[[ruling]]
+oq = "OQ-150"
+group = "project"
+game = "base_ix"
+title_ko = "공개 차례 도중에 얻은 기술 타일도 그 차례에 쓴다"
+title = "A Tech tile acquired during a Reveal turn works in that turn"
+ruling_ko = "공개 차례 도중에 기술 타일을 얻으면, 그 타일의 공개 차례 능력(Artillery, Minimic Film, Restricted Ordnance, Disposal Facility)도 그 차례에 쓴다."
+ruling = "A Tech tile acquired during your Reveal turn applies its Reveal turn ability (Artillery, Minimic Film, Restricted Ordnance, Disposal Facility) in that same turn."
+names = ["Artillery", "Minimic Film", "Restricted Ordnance", "Disposal Facility"]
