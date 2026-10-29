@@ -413,6 +413,10 @@ function renderBoardStage(board, view) {
     stage.appendChild(piece);
   }
 
+  /* Rise of Ix's own board beside this one, with its two spaces. */
+  const ixBoard = boardLayout(view).ixBoard;
+  const ixStage = ixBoard ? ixBoardStage(ixBoard, view) : null;
+
   const { occupants, controllers, spies } = boardOccupancy(view);
   const arrivals = spyArrivals();
   const makerSpice = new Map(view.maker_bonus_spice);
@@ -444,7 +448,8 @@ function renderBoardStage(board, view) {
 
   for (const [spaceId, entry] of Object.entries(state.catalog.spaces)) {
     if (!spaceInPlay(entry, view)) continue;
-    const box = spaceBox(spaceId, entry, view);
+    const ixBox = ixStage ? ixBoard.space_boxes[spaceId] : null;
+    const box = ixBox || spaceBox(spaceId, entry, view);
     if (!box) continue;
     const [left, top, width, height] = box;
     const hotspot = document.createElement("button");
@@ -502,7 +507,7 @@ function renderBoardStage(board, view) {
       tableClick(spaceId, entry, hotspot);
     });
     hoverPopover(hotspot, () => entry);
-    stage.appendChild(hotspot);
+    (ixBox ? ixStage : stage).appendChild(hotspot);
   }
 
   for (const [spaceId, seat] of controllers) {
@@ -571,7 +576,73 @@ function renderBoardStage(board, view) {
 
   renderSlotCards(stage, view);
   renderTrackMarkers(stage, view);
-  board.appendChild(stage);
+  if (!ixStage) {
+    board.appendChild(stage);
+    return;
+  }
+  /* The two pictures side by side at the print's scale, the Ix board level
+     with the main board's top; the pair keeps its proportions like a lone
+     stage does (style.css .board-table). */
+  const table = document.createElement("div");
+  table.className = "board-table";
+  const [ixWidth] = ixBoard.size;
+  table.style.setProperty("--ix-share", String(ixWidth / (100 + ixWidth)));
+  table.style.aspectRatio = String((BOARD_STAGE_ASPECT * (100 + ixWidth)) / 100);
+  table.append(stage, ixStage);
+  board.appendChild(table);
+}
+
+/* The lone stage's proportions (style.css .board-stage). */
+const BOARD_STAGE_ASPECT = 6012 / 6005;
+
+/* Rise of Ix's board (catalog boards.imperium.ix.board, percent of its own
+   picture): the three Tech stacks on their plates, each face-up top tile
+   with its stack's size [Rise of Ix p. 3], and the Negotiators on the
+   shield, a seat's cubes in its own spot with their count. Its two spaces'
+   hotspots are added by renderBoardStage like every other space's. */
+function ixBoardStage(ixBoard, view) {
+  const stage = document.createElement("div");
+  stage.className = "board-stage ix-stage";
+  const map = document.createElement("img");
+  map.className = "board-map";
+  map.src = ixBoard.image;
+  map.alt = t("board.map_alt_ix");
+  map.draggable = false;
+  stage.appendChild(map);
+  (view.tech_face_up || []).forEach((tileId, index) => {
+    const slot = ixBoard.tech_slots[index];
+    if (!tileId || !slot) return;
+    const [left, top, width, height] = slot;
+    const size = (view.tech_stack_sizes || [])[index] || 0;
+    const card = visualCard(tileId, {
+      className: "tile slot-card",
+      badge: String(size),
+      badgeClass: "stack-count",
+      badgeTitle: t("board.tech_stack_count", { count: size }),
+    });
+    card.style.width = `${width}%`;
+    placeAt(card, left + width / 2, top + height / 2);
+    stage.appendChild(card);
+  });
+  for (const player of view.players) {
+    const count = player.negotiators || 0;
+    const spot = ixBoard.negotiator_seats[player.player % ixBoard.negotiator_seats.length];
+    if (!count || !spot) continue;
+    const pile = document.createElement("span");
+    pile.className = "negotiator-pile";
+    pile.dataset.seat = String(player.player);
+    pile.title = t("board.seat_negotiators", { seat: player.player, count });
+    pile.appendChild(unitPiece("troop", player.player, "negotiator-cube"));
+    if (count > 1) {
+      const number = document.createElement("span");
+      number.className = "negotiator-count";
+      number.textContent = String(count);
+      pile.appendChild(number);
+    }
+    placeAt(pile, spot[0], spot[1]);
+    stage.appendChild(pile);
+  }
+  return stage;
 }
 
 /* The original game's Mentat lying on its own space while no seat holds it
@@ -1564,6 +1635,18 @@ function renderTrackMarkers(stage, view) {
       token.title = t("board.seat_high_council", { seat });
       placeAt(token, cx, cy);
       stage.appendChild(token);
+    }
+
+    /* Rise of Ix: the seat's Freighter disc on the Shipping track, which
+       starts on the bottom step [Rise of Ix p. 3]; a column per seat. */
+    if (tracks.freighter) {
+      const steps = tracks.freighter.steps;
+      const step = Math.min(player.freighter_space || 0, steps.length - 1);
+      const [fx, fy] = steps[step][seat % steps[step].length];
+      const disc = seatDisc(seat, "freighter-disc", tracks.freighter.disc_size);
+      disc.title = t("board.seat_freighter", { seat, step: player.freighter_space || 0 });
+      placeAt(disc, fx, fy);
+      stage.appendChild(disc);
     }
   });
 }

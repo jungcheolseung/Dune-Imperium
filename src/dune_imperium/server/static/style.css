@@ -3017,3 +3017,48 @@ body.hand-dragging, body.hand-dragging * {
   pointer-events: none;
   user-select: none;
 }
+
+/* An original + Rise of Ix table: the main board and the Ix board side by
+   side at the print's scale (board.js renderBoardStage). The pair keeps its
+   proportions the way a lone stage does (its aspect-ratio is set inline);
+   --ix-share is the Ix board's part of the width. */
+.board-table {
+  display: flex;
+  align-items: flex-start;
+  flex: none;
+  max-width: 100%;
+  max-height: 100%;
+}
+.board-table > .board-stage {
+  max-width: none;
+  max-height: none;
+  width: calc(100% * (1 - var(--ix-share)));
+}
+.board-table > .ix-stage {
+  width: calc(100% * var(--ix-share));
+  aspect-ratio: 2100 / 2132;
+}
+/* A seat's Negotiators on the Ix board's shield: one cube in its spot with
+   the count over it when there are more. */
+.negotiator-pile {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 4.2%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+.negotiator-cube {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 12%;
+}
+.negotiator-count {
+  grid-area: 1 / 1;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-shadow: 0 0 2px #000, 0 0 4px #000;
+}

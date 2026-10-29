@@ -570,6 +570,132 @@ def check_masterstroke_pick(page) -> None:
     )
 
 
+IX_TABLE_JS = """() => {
+  const rect = (node) => node && node.getBoundingClientRect().toJSON();
+  const inside = (node, box) => {
+    const r = node.getBoundingClientRect();
+    const [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
+    return x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
+  };
+  const ixStage = document.querySelector('#board .board-table > .ix-stage');
+  const main = document.querySelector(
+    '#board .board-table > .board-stage:not(.ix-stage)');
+  const choam = document.querySelectorAll('#board .board-overlay')[1];
+  const ix = rect(ixStage);
+  const freighters = [...document.querySelectorAll('#board .freighter-disc')];
+  const all = (node, selector) => [...(node ? node.querySelectorAll(selector) : [])];
+  return {
+    ix, main: rect(main),
+    alt: ixStage && ixStage.querySelector('.board-map').alt,
+    ixSpaces: all(ixStage, '.hotspot').map((n) => n.dataset.space).sort(),
+    mainSpaces: all(main, '.hotspot').map((n) => n.dataset.space),
+    tiles: all(ixStage, '.slot-card').filter((n) => inside(n, ix)).length,
+    faceUp: (state.view.tech_face_up || []).filter(Boolean).length,
+    freighters: freighters.filter((n) => choam && inside(n, rect(choam))).map((n) => [
+      Number(n.dataset.seat), n.getBoundingClientRect().top]),
+    steps: state.view.players.map((p) => p.freighter_space || 0),
+    piles: all(ixStage, '.negotiator-pile').map((n) => Number(n.dataset.seat)).sort(),
+    negotiators: state.view.players.filter((p) => p.negotiators)
+      .map((p) => p.player).sort(),
+  };
+}"""
+
+
+def check_ix_table(page) -> None:
+    print("[6] an original + Rise of Ix table: the Ix board beside the main board")
+    created = page.evaluate(
+        """async (body) => {
+          const r = await fetch('/games', {method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)});
+          return await r.json();
+        }""",
+        {
+            "seats": ["human", "heuristic", "heuristic", "heuristic"],
+            "game_seed": 9,
+            "rise_of_ix": True,
+            **ORIGINAL,
+        },
+    )
+    game_id = created["game_id"]
+    page.evaluate("(id) => openGame(id)", game_id)
+    page.wait_for_function(
+        "state.view !== null && refreshFlight === null"
+        f" && state.gameId === {json.dumps(game_id)}"
+    )
+    settled(page)
+    for step in range(30):
+        snap = client_state(page)
+        if snap["finished"]:
+            break
+        if snap["confirmation"] is not None:
+            page.evaluate("confirmTurn()")
+        else:
+            page.evaluate(
+                """(step) => { const rows = state.actions.actions;
+                  const picks = rows.filter((r) => r.action_id !== 'withdraw_troops');
+                  const pool = picks.length ? picks : rows;
+                  applyAction(pool[(step * 7) % pool.length].index); }""",
+                step,
+            )
+        settled(page, 20)
+    for language, alt in (("ko", "익스 게임판"), ("en", "Ix board")):
+        page.evaluate(f"setLanguage('{language}')")
+        settled(page)
+        table = page.evaluate(IX_TABLE_JS)
+        ix, main = table["ix"], table["main"]
+        check.ok(
+            bool(ix and main), f"{language}: the Ix board stands beside the main board"
+        )
+        if not (ix and main):
+            continue
+        check.ok(
+            abs(ix["top"] - main["top"]) < 1 and abs(ix["left"] - main["right"]) < 1,
+            f"{language}: level with the main board's top, at its right edge",
+            (ix, main),
+        )
+        check.ok(
+            abs(ix["width"] / ix["height"] - 2100 / 2132) < 0.01
+            and 0.33 < ix["width"] / main["width"] < 0.38,
+            f"{language}: its own proportions at the print's scale",
+            (ix["width"], ix["height"], main["width"]),
+        )
+        check.ok(
+            table["alt"] == alt, f"{language}: the picture is named {alt}", table["alt"]
+        )
+        check.ok(
+            table["ixSpaces"] == ["dreadnought", "tech_negotiation"]
+            and not {"dreadnought", "tech_negotiation"} & set(table["mainSpaces"])
+            and {"interstellar_shipping", "smuggling"} <= set(table["mainSpaces"]),
+            f"{language}: Ix spaces on the Ix board, the overlay's on the main one",
+            (table["ixSpaces"], table["mainSpaces"]),
+        )
+        check.ok(
+            table["tiles"] == table["faceUp"] > 0,
+            f"{language}: a face-up Tech tile per non-empty stack on the Ix board",
+            (table["tiles"], table["faceUp"]),
+        )
+        heights = dict(table["freighters"])
+        steps = table["steps"]
+        check.ok(
+            len(heights) == 4
+            and all(
+                heights[low] > heights[high]
+                for low in heights
+                for high in heights
+                if steps[low] < steps[high]
+            ),
+            f"{language}: every Freighter on the CHOAM piece, higher as it moves up",
+            (table["freighters"], table["steps"]),
+        )
+        check.ok(
+            table["piles"] == table["negotiators"],
+            f"{language}: a Negotiator pile on the Ix board per seat holding them",
+            (table["piles"], table["negotiators"]),
+        )
+    page.evaluate("setLanguage('ko')")
+
+
 def main() -> None:
     with server() as (base, log_path), chrome() as browser:
         _, page, rec = open_context(browser, "imperium-game")
@@ -586,6 +712,7 @@ def main() -> None:
             check_page(page, base, game_ids[0], posts, names)
         check_markers(page)
         check_masterstroke_pick(page)
+        check_ix_table(page)
         errors = [
             line
             for line in log_path.read_text().splitlines()

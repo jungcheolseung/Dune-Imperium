@@ -746,6 +746,7 @@ function boardLayout(view = state.view) {
     boxes: board.space_boxes || {},
     mentat: board.mentat || null,
     overlays: [],
+    ixBoard: null,
   };
   /* An original + Rise of Ix table lays the CHOAM overlay's two pieces over
      the board and takes what they print: their spaces, the Mentat's spot
@@ -756,7 +757,10 @@ function boardLayout(view = state.view) {
     layout.overlays = Object.entries(ix.overlays).map(([name, box]) => ({ image: images[name], box }));
     layout.boxes = { ...layout.boxes, ...ix.space_boxes };
     layout.mentat = ix.mentat;
-    layout.tracks = { ...layout.tracks, council_seats: ix.council_seats };
+    layout.tracks = { ...layout.tracks, council_seats: ix.council_seats, freighter: ix.freighter };
+    /* Rise of Ix's own board, drawn beside this one (board.js
+       renderBoardStage); its values are percent of its own picture. */
+    if (images.board) layout.ixBoard = { image: images.board, ...ix.board };
   }
   return layout;
 }

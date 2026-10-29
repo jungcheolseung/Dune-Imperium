@@ -116,6 +116,10 @@ const UI_TEXT = {
     "ko": "듄 임페리움 게임판",
     "en": "Dune: Imperium board"
   },
+  "board.map_alt_ix": {
+    "ko": "익스 게임판",
+    "en": "Ix board"
+  },
   "board.map_alt": {
     "ko": "듄 임페리움: 봉기 게임판",
     "en": "Dune: Imperium — Uprising board"
@@ -252,6 +256,10 @@ const UI_TEXT = {
     "ko": "플레이어{{seat}} · {garrison}: {{units}}",
     "en": "Player {{seat}} · {garrison}: {{units}}"
   },
+  "board.seat_freighter": {
+    "ko": "플레이어{{seat}} · 화물선 · 운송 트랙 {{step}}칸",
+    "en": "Player {{seat}} · Freighter · Shipping track step {{step}}"
+  },
   "board.seat_high_council": {
     "ko": "플레이어{{seat}} · 원로회",
     "en": "Player {{seat}} · High Council"
@@ -259,6 +267,10 @@ const UI_TEXT = {
   "board.seat_maker_hooks": {
     "ko": "플레이어{{seat}} · {maker_hooks}",
     "en": "Player {{seat}} · {maker_hooks}"
+  },
+  "board.seat_negotiators": {
+    "ko": "플레이어{{seat}} · 협상가 {{count}}",
+    "en": "Player {{seat}} · Negotiators {{count}}"
   },
   "board.seat_strength": {
     "ko": "플레이어{{seat}} · 전투력 {{strength}}",
