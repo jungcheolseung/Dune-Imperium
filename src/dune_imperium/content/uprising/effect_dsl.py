@@ -1229,7 +1229,13 @@ class AcquireReserveCard:
 class AcquireTech:
     """The Acquire Tech icon with a ``discount`` (Tech Module): open the
     owner's choice of a face-up Tech tile at ``discount`` spice off
-    [Bloodlines pp. 7, 12]."""
+    [Bloodlines pp. 7, 12].
+
+    In a Rise of Ix game it is the Ix board's Acquire Tech icon
+    ("아이콘마다 ... 하나를 얻을 수 있다("may")", [Rise of Ix p. 4],
+    docs/rules/rise-of-ix.md 4): the same piece, one per icon, opening the
+    choice of an Ix tile that the owner may also decline, at ``discount`` off
+    and with any Negotiators returned (``rules.tech``)."""
 
     discount: int = 1
 
@@ -1899,6 +1905,21 @@ class CommissionDreadnought:
     """
 
 
+@dataclass(frozen=True, slots=True)
+class PlaceNegotiator:
+    """Tech Negotiation: send one of the owner's troops from its supply to
+    the Ix board as a Negotiator, for each Tech Negotiation icon ("you may
+    take a troop", [Rise of Ix p. 4], docs/rules/rise-of-ix.md 4).
+
+    An optional piece ("may"): the owner takes the icon or leaves it. With
+    no troop in the supply the icon has no effect ("supply가 비면 아무 일도
+    없다") and the space or card that prints it is still played. A later
+    Acquire Tech may return any number of Negotiators for one spice off
+    each (``rules.tech``). A second icon is a second piece; the piece has
+    no field.
+    """
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -1982,6 +2003,7 @@ type Reward = (
     | DoubleBaseHarvestSpice
     | DoubleBonusHarvestSpice
     | CommissionDreadnought
+    | PlaceNegotiator
 )
 
 

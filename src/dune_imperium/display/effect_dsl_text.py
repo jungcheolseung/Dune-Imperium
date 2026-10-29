@@ -122,6 +122,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PeekTopCard,
     PermanentRevealPersuasion,
+    PlaceNegotiator,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
     RecallAgent,
@@ -792,6 +793,10 @@ def reward_text(reward: Reward) -> str:
             # Rise of Ix's Dreadnought icon: "you may commission" [Rise of Ix
             # p. 6] (docs/rules/rise-of-ix.md 6).
             return "Commission a dreadnought"
+        case PlaceNegotiator():
+            # Rise of Ix's Tech Negotiation icon: "you may take a troop"
+            # [Rise of Ix p. 4] (docs/rules/rise-of-ix.md 4).
+            return "Place a troop from your supply on the Ix board as a Negotiator"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "Use your Leader's Signet Ring ability"

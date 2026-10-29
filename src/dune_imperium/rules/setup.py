@@ -18,6 +18,7 @@ from dune_imperium.content.immortality.board import (
     TLEILAXU_SETUP_SPICE,
 )
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_deck_instance_ids
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.intrigue import (
     navigation_card_instance_ids,
@@ -380,6 +381,21 @@ def deal_tech_stacks(shuffled: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
         stacks.append(shuffled[cursor : cursor + size])
         cursor += size
     return tuple(stacks)
+
+
+def deal_ix_tech_stacks(shuffled: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    """Divide Rise of Ix's shuffled 18 Tech tiles into the Ix board's three
+    stacks of six, in the order given, the first tile of each stack its top
+    (face up): "Ix board의 세 더미" [Rise of Ix p. 4]
+    (docs/rules/rise-of-ix.md 4, plan 17.10 item 1).
+
+    The tiles are the 18 of ``IX_TECH_IDS``, each once; setup (stage P4c-5)
+    deals them from its shuffle. Anything else is refused.
+    """
+
+    if sorted(shuffled) != sorted(IX_TECH_IDS):
+        raise ValueError("the Ix stacks hold the 18 Rise of Ix Tech tiles, each once")
+    return deal_tech_stacks(shuffled)
 
 
 def navigation_deck_decision() -> ChanceDecision:

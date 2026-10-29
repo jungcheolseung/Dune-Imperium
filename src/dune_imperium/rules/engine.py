@@ -732,6 +732,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "keep_shield_wall": apply_intrigue_choice,
     "commission_intrigue_dreadnought": apply_intrigue_choice,
     "decline_intrigue_dreadnought": apply_intrigue_choice,
+    "place_intrigue_negotiator": apply_intrigue_choice,
+    "decline_intrigue_negotiator": apply_intrigue_choice,
     "deploy_intrigue_troops": apply_intrigue_choice,
     "trash_intrigue_card": apply_intrigue_choice,
     "decline_intrigue_trash": apply_intrigue_choice,

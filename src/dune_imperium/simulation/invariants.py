@@ -29,6 +29,8 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, replace
 from typing import Final
 
+from dune_imperium.content.bloodlines.tech import TECH_IDS
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
@@ -252,6 +254,7 @@ def _check_rise_of_ix(state: GameState) -> None:
     ``_check_known_intrigue``'s.
     """
 
+    tiles = frozenset(_all_tech_ids(state))
     if not state.config.rise_of_ix:
         for player in state.players:
             if not _ix_fields_absent(player):
@@ -259,7 +262,17 @@ def _check_rise_of_ix(state: GameState) -> None:
                     f"player {player.player_id} holds Rise of Ix state "
                     "outside a Rise of Ix game"
                 )
+        if tiles & frozenset(IX_TECH_IDS):
+            raise InvariantViolation(
+                "a Rise of Ix Tech tile is in play outside a Rise of Ix game"
+            )
         return
+    if not state.config.tech_module and tiles & frozenset(TECH_IDS):
+        # The Ix board holds the Tech tiles of a Rise of Ix game without the
+        # Tech Module [Rise of Ix p. 4]; the Ixian Embassy's are not in play.
+        raise InvariantViolation(
+            "a Tech Module tile is in play in a Rise of Ix game without the Tech Module"
+        )
     for player in state.players:
         on_spaces = sum(
             1 for _, seat, _ in state.dreadnought_control if seat == player.player_id

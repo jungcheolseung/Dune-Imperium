@@ -70,6 +70,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PeekTopCard,
     PermanentRevealPersuasion,
+    PlaceNegotiator,
     PlaceSpy,
     RecallSpy,
     RecallYourAgent,
@@ -145,6 +146,7 @@ from dune_imperium.rules.intrigue_deck import (
     shufflable_intrigue_discard,
 )
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
+from dune_imperium.rules.negotiators import negotiator_block
 from dune_imperium.rules.ornithopter import has_ornithopter_fleet
 from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.sandworms import sandworm_block
@@ -183,6 +185,7 @@ type ChoiceSlot = (
     | OpponentLosesTroop
     | RecallYourAgent
     | CommissionDreadnought
+    | PlaceNegotiator
 )
 
 
@@ -457,9 +460,10 @@ def choice_slots(
                 case RecallYourAgent():
                     # Urgent Mission: the owner names the Agent that returns.
                     slots.append(reward)
-                case CommissionDreadnought():
-                    # "you may commission" [Rise of Ix p. 6]: the owner takes
-                    # the icon or leaves it, one choice for each icon.
+                case CommissionDreadnought() | PlaceNegotiator():
+                    # "you may commission" [Rise of Ix p. 6], "you may take a
+                    # troop" [Rise of Ix p. 4]: the owner takes the icon or
+                    # leaves it, one choice for each icon.
                     slots.append(reward)
                 case _:
                     pass
@@ -1003,6 +1007,11 @@ def reward_can_change_something(
             # line paying for the icon (Advanced Weaponry's 3 Solari,
             # OQ-113 (C)) is played only while a dreadnought is in the supply.
             return commission_block(state, player) is None
+        case PlaceNegotiator():
+            # "supply가 비면 아무 일도 없다" (docs/rules/rise-of-ix.md 4): a
+            # line paying for the icon is played only while a troop is in
+            # the supply.
+            return negotiator_block(state, player) is None
         case TakeMentat():
             # Calculated Hire's "[1 spice] -> Take the Mentat": the Mentat
             # is taken only from its own space [DI p. 13], so the cost line
@@ -1341,6 +1350,7 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | OpponentLosesTroop
             | RecallYourAgent
             | CommissionDreadnought
+            | PlaceNegotiator
             | RevealContractsTakeOne,
         )
     )

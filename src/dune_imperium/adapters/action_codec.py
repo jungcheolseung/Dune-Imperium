@@ -29,6 +29,7 @@ from dune_imperium.content.immortality.tleilaxu import (
     tleilaxu_cards_for,
     tleilaxu_deck_instance_ids,
 )
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_TILES
 from dune_imperium.content.rulesets import TUEK_SIETCH, RulesetContent, content_for
 from dune_imperium.content.uprising.abilities import AbilityStructure
 from dune_imperium.content.uprising.agent_abilities import agent_box_ability
@@ -151,7 +152,11 @@ from dune_imperium.rules.reveal_turn import (
 )
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
-from dune_imperium.rules.tech import optional_trash_tech_ids
+from dune_imperium.rules.tech import (
+    ix_acquire_effect_keys,
+    optional_trash_tech_ids,
+    tech_acquire_effect_arguments,
+)
 from dune_imperium.rules.units import unit_count_arguments
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
@@ -1080,6 +1085,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
     if config.tech_module:
         templates.extend(_tech_templates(config))
+    if config.rise_of_ix:
+        templates.extend(_ix_tech_templates(config))
     if config.immortality:
         templates.extend(_immortality_templates(config))
     if config.arrakeen_scouts:
@@ -1861,8 +1868,12 @@ def _effect_step_templates(
         elif spec.printed == Printed.TECH_PENDING:
             named = tuple(
                 (None, tile.tech_id)
-                for tile in TECH_TILES
+                for tile in (TECH_TILES if config.tech_module else ())
                 if "influence" in tile.acquire_effect_keys
+            ) + tuple(
+                (None, tile.tech_id)
+                for tile in (IX_TECH_TILES if config.rise_of_ix else ())
+                if "influence" in ix_acquire_effect_keys(tile)
             )
         elif spec.printed == Printed.MISSION:
             # A Scouts mission's plain way in (B3d-2b); the specimen return
@@ -1988,6 +1999,10 @@ _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
     "CommissionDreadnought": (
         "commission_intrigue_dreadnought",
         "decline_intrigue_dreadnought",
+    ),
+    "PlaceNegotiator": (
+        "place_intrigue_negotiator",
+        "decline_intrigue_negotiator",
     ),
     "PeekTopCard": (
         "put_back_top_card",
@@ -2641,8 +2656,9 @@ def _leader_faces(config: RulesetConfig) -> tuple[str, ...]:
 def _rise_of_ix_unit_templates() -> tuple[ActionTemplate, ...]:
     """Rise of Ix's dreadnought rows (``rules.combat_deployment``,
     ``rules.dreadnought_commission``): the deployment of garrison dreadnoughts
-    and its withdrawal, a count each (a seat has two), and an Intrigue slot's
-    commission and its refusal."""
+    and its withdrawal, a count each (a seat has two), an Intrigue slot's
+    commission and its refusal, and the Tech Negotiation icon's Negotiator
+    and its refusal (``rules.negotiators``)."""
 
     templates: list[ActionTemplate] = [
         ActionTemplate(action_id=action_id, arguments=(("count", count),))
@@ -2654,6 +2670,8 @@ def _rise_of_ix_unit_templates() -> tuple[ActionTemplate, ...]:
         for action_id in (
             "commission_intrigue_dreadnought",
             "decline_intrigue_dreadnought",
+            "place_intrigue_negotiator",
+            "decline_intrigue_negotiator",
         )
     )
     return tuple(templates)
@@ -3424,6 +3442,45 @@ def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for tile in TECH_TILES
     )
     templates.append(ActionTemplate(action_id="gain_leader_signet_spice"))
+    return tuple(templates)
+
+
+def _ix_tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    """Rise of Ix's Tech tile rows (``rules.tech``, stage P4c-1).
+
+    An Acquire Tech buys an Ix tile ("아이콘마다 ... 하나를 얻을 수 있다"
+    [Rise of Ix p. 4]) with its Negotiators returned: ``acquire_tech`` names
+    the tile alone for none, and adds ``negotiators`` for one up to the tile's
+    price (a Negotiator beyond it lowers nothing). Each tile's acquire icons
+    are the Tech Module's rows (``resolve_tech_acquire_effect``), except the
+    two no key pays yet (``ix_acquire_effect_keys``). Rows a game with the Tech
+    Module already holds are not repeated.
+    """
+
+    templates: list[ActionTemplate] = []
+    if not config.tech_module:
+        templates.extend(
+            (
+                ActionTemplate(action_id="decline_tech"),
+                # An acquire Influence with every Faction at the top.
+                ActionTemplate(action_id="resolve_tech_influence_without_faction"),
+            )
+        )
+    for tile in IX_TECH_TILES:
+        base: tuple[tuple[str, ActionValue], ...] = (("tech_id", tile.tech_id),)
+        templates.append(ActionTemplate(action_id="acquire_tech", arguments=base))
+        templates.extend(
+            ActionTemplate(
+                action_id="acquire_tech",
+                arguments=tuple(sorted((("negotiators", returned), *base))),
+            )
+            for returned in range(1, tile.cost + 1)
+        )
+        for effect in ix_acquire_effect_keys(tile):
+            templates.extend(
+                ActionTemplate(action_id="resolve_tech_acquire_effect", arguments=args)
+                for args in tech_acquire_effect_arguments(tile, effect)
+            )
     return tuple(templates)
 
 

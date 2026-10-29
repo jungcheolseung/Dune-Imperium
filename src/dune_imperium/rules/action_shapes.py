@@ -201,8 +201,18 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     ),
     Target.NAVIGATION_CARD: frozenset({"card_id"}),
     Target.CONTRACT: frozenset({"instance_id"}),
+    # ``negotiators``: the Negotiators a Rise of Ix Acquire Tech returns to
+    # the supply, one spice off each [Rise of Ix p. 4] (absent for none).
     Target.TECH: frozenset(
-        {"choice", "destroy_shield_wall", "effect", "faction", "post_id", "tech_id"}
+        {
+            "choice",
+            "destroy_shield_wall",
+            "effect",
+            "faction",
+            "negotiators",
+            "post_id",
+            "tech_id",
+        }
     ),
     Target.SKILL: frozenset({"skill_id"}),
     Target.LEADER: frozenset({"leader_id"}),
@@ -528,6 +538,12 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "decline_intrigue_dreadnought": _row(
         _V.DECLINE, _S.INTRIGUE, of=_V.RECRUIT, variant="dreadnought"
+    ),
+    # Rise of Ix's Tech Negotiation icon ("you may take a troop", [Rise of Ix
+    # p. 4]), a recruit-shaped row for the same reason as the Dreadnought's.
+    "place_intrigue_negotiator": _row(_V.RECRUIT, _S.INTRIGUE, variant="negotiator"),
+    "decline_intrigue_negotiator": _row(
+        _V.DECLINE, _S.INTRIGUE, of=_V.RECRUIT, variant="negotiator"
     ),
     "deploy_intrigue_troops": _row(_V.DEPLOY, _S.INTRIGUE, _T.UNITS),
     "retreat_intrigue_troops": _row(_V.RETREAT, _S.INTRIGUE, _T.UNITS),

@@ -249,6 +249,10 @@ const ACTION_LABELS = {
   decline_intrigue_dreadnought: "dreadnought 얻지 않음",
   deploy_dreadnoughts: "dreadnought 배치",
   withdraw_dreadnoughts: "dreadnought 회수",
+  /* Rise of Ix's Tech Negotiation icon (stage P4c-1): "Negotiator" has no
+     glossary row either, so it stays English. */
+  place_intrigue_negotiator: "Negotiator 놓기",
+  decline_intrigue_negotiator: "Negotiator 놓지 않음",
   place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
   retreat_leader_commander: "{commander} 1 {retreat} ({leader})",
   gain_reveal_influence: "{influence_any} 1 획득",
@@ -452,6 +456,8 @@ const EVENT_LABELS = {
   intrigue_dreadnought_declined: "dreadnought 얻지 않음",
   dreadnoughts_deployed: "dreadnought 배치",
   dreadnoughts_withdrawn: "dreadnought 회수",
+  negotiator_placed: "Negotiator 놓음",
+  intrigue_negotiator_declined: "Negotiator 놓지 않음",
   dreadnought_control_placed: "dreadnought가 {control} 공간에",
   dreadnought_returned: "dreadnought {garrison} 복귀",
   conflict_end_trigger_declined: "{conflict} 종료 발동 {intrigue_card} 쓰지 않음",

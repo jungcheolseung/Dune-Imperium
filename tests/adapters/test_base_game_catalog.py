@@ -17,6 +17,7 @@ import pytest
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
 from dune_imperium.content.rulesets import content_for
 
 _UPRISING_SYSTEM_WORDS = (
@@ -103,7 +104,9 @@ _ORIGINAL_VERBS = frozenset({"acquire"})
 # pp. 2-3] (docs/rules/rise-of-ix.md 3 item 3, 12): Uprising holds it for its
 # Epic Game Mode alone [Main p. 18], but every original game with Rise of Ix
 # draws from it, so that catalog prints it as its own.
-_RISE_OF_IX_IDS = frozenset({"economic_supremacy"})
+# Its 18 Tech tiles are that box's too [Rise of Ix p. 4]; Spy Satellites'
+# name holds "spy" like an Uprising system word without being one.
+_RISE_OF_IX_IDS = frozenset({"economic_supremacy", *IX_TECH_IDS})
 
 
 def test_the_original_game_catalog_holds_no_uprising_content() -> None:

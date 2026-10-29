@@ -58,6 +58,11 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.observation import (
+    NEGOTIATORS_RETURNABLE_KEY,
+    TECH_DISCOUNT_KEY,
+    TECH_PAYMENT_KEY,
+)
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, printer_value
@@ -280,16 +285,20 @@ def tech_cost(
     *,
     discount: int = 0,
     secret_project: bool = False,
+    high_council_discount: bool = True,
 ) -> int:
     """Return the spice the tile costs the owner now.
 
     The Ixian Embassy takes one off with a High Council seat, a card's Tech
     Discount icon one more, and Kota Odax's Secret Project tile one more;
-    "the cost can never be less than 0" [Bloodlines p. 7].
+    "the cost can never be less than 0" [Bloodlines p. 7]. A Rise of Ix tile
+    has no Ixian Embassy: ``high_council_discount=False``, and its
+    Negotiators returned count in ``discount`` ("비용은 0보다 낮아지지
+    않는다", docs/rules/rise-of-ix.md 4, [Rise of Ix p. 4]).
     """
 
     cost = tile.cost - discount
-    if owner.high_council:
+    if owner.high_council and high_council_discount:
         cost -= HIGH_COUNCIL_TECH_DISCOUNT
     if secret_project:
         cost -= SECRET_PROJECT_DISCOUNT
@@ -303,21 +312,32 @@ def face_up_tech_ids(state: GameState) -> tuple[str, ...]:
 
 
 def tech_acquisition_frame(
-    player: int, *, discount: int, source: str, printer: str
+    player: int,
+    *,
+    discount: int,
+    source: str,
+    printer: str,
+    extra: tuple[tuple[str, ActionValue], ...] = (),
 ) -> DecisionFrame:
     """Return the frame of a card-granted Acquire Tech with ``discount``;
     ``printer`` is the card that grants it (``action_shapes.printer_value``),
-    its refusal's entity (stage B3d-3)."""
+    its refusal's entity (stage B3d-3). ``extra`` is the context a Rise of Ix
+    game adds (``ix_acquisition_context``)."""
 
     return DecisionFrame(
         kind=FrameKind.TECH_ACQUISITION,
         frame_id=f"{source}:tech_acquisition",
         decision=PlayerDecision(owner=player, prompt="Acquire a Tech tile or decline"),
-        context=(
-            ("discount", discount),
-            ("player", player),
-            (PRINTER_KEY, printer),
-            ("source", source),
+        context=tuple(
+            sorted(
+                (
+                    ("discount", discount),
+                    ("player", player),
+                    (PRINTER_KEY, printer),
+                    ("source", source),
+                    *extra,
+                )
+            )
         ),
     )
 
@@ -338,12 +358,17 @@ def push_tech_acquisition(
     모두 결정 창을 연다"; OQ-057 (9) "살 수 없으면 거절만").
     """
 
-    if not state.config.tech_module:
-        raise ValueError("Acquire Tech requires the Tech Module")
+    if not (state.config.tech_module or state.config.rise_of_ix):
+        raise ValueError("Acquire Tech requires the Tech Module or Rise of Ix")
+    extra = (
+        ix_acquisition_context(state, state.players[player], discount)
+        if state.config.rise_of_ix
+        else ()
+    )
     return RuleResult(
         state=state.push_decision(
             tech_acquisition_frame(
-                player, discount=discount, source=source, printer=printer
+                player, discount=discount, source=source, printer=printer, extra=extra
             )
         )
     )
@@ -352,8 +377,13 @@ def push_tech_acquisition(
 def _pending_board_context(
     state: GameState, player: int
 ) -> dict[str, ActionValue] | None:
-    """Return the owner's effect-frame context while its Tech offer is pending."""
+    """Return the owner's effect-frame context while its Tech offer is pending.
 
+    Only the Tech Module's Landsraad visit offers one; a Rise of Ix game
+    without the module has no such icon on its board (stage P4c-1)."""
+
+    if not state.config.tech_module:
+        return None
     try:
         frame, context = current_agent_effect_context(state)
     except ValueError:
@@ -449,8 +479,112 @@ def tech_acquisition_possible(
     (``legal_tech_acquisition_actions``).
     """
 
+    if state.config.rise_of_ix:
+        return bool(ix_tech_acquisitions(state, owner, discount))
     return state.config.tech_module and bool(
         _affordable_acquisitions(state, owner, discount)
+    )
+
+
+# --- Rise of Ix's Tech tiles (stage P4c-1) ---------------------------------
+#
+# "Acquire Tech 아이콘이 유일한 길이다. 아이콘마다 Ix board의 세 더미 맨 위
+# 앞면 타일 하나를 얻을 수 있다("may"). spice 비용을 내고 supply에 공개로 두고,
+# 그 더미의 다음 타일을 앞면으로 뒤집는다. 더미가 비면 고를 것이 줄 뿐이다.
+# 개수 제한 없음." (docs/rules/rise-of-ix.md 4, [Rise of Ix p. 4]). The framework
+# is the Tech Module's: ``tech_stacks`` (here Ix's three stacks of six, the top
+# face up), the acquisition frame, ``_take_tile`` and the acquire effects. A
+# Rise of Ix game differs in three ways: the acquisition is a "may" (its
+# refusal is always offered), Negotiators returned lower the cost, and there is
+# no Ixian Embassy (no High Council discount) and no Secret Project.
+
+
+def ix_tech_cost(
+    owner: PlayerState, tile: TechTile, *, discount: int, negotiators: int
+) -> int:
+    """The spice an Ix tile costs the owner at a Tech Discount of ``discount``
+    with ``negotiators`` of its Negotiators returned.
+
+    "비용은 0보다 낮아지지 않는다. Tech Discount: −1·−2가 붙은 Acquire Tech
+    아이콘은 그 한 번의 구매를 깎는다. ... Negotiator를 supply로 돌려 하나에
+    spice 1씩 깎는다. Tech Discount와 합칠 수 있다." (docs/rules/rise-of-ix.md
+    4, [Rise of Ix p. 4]).
+    """
+
+    return tech_cost(
+        owner,
+        tile,
+        discount=discount + negotiators,
+        high_council_discount=False,
+    )
+
+
+def _ix_tops(state: GameState) -> tuple[TechTile, ...]:
+    return tuple(TECH_TILES_BY_ID[tech_id] for tech_id in face_up_tech_ids(state))
+
+
+def ix_negotiators_returnable(
+    state: GameState, owner: PlayerState, discount: int
+) -> int:
+    """The most Negotiators the owner could still return toward an Acquire
+    Tech at ``discount``: those it holds, but no more than the dearest tile
+    on offer still costs ("any number" of them, each one spice off,
+    [Rise of Ix p. 4]; a Negotiator beyond the price lowers nothing). The
+    open decision shows it as ``NEGOTIATORS_RETURNABLE_KEY``."""
+
+    return min(
+        owner.negotiators,
+        max((max(tile.cost - discount, 0) for tile in _ix_tops(state)), default=0),
+    )
+
+
+def ix_tech_acquisitions(
+    state: GameState, owner: PlayerState, discount: int
+) -> tuple[tuple[TechTile, int], ...]:
+    """Each (tile, Negotiators returned) the owner can pay for now.
+
+    The face-up top of every non-empty stack; the owner picks the tile and
+    how many Negotiators to return, from none up to the most that still
+    lowers its cost ("원하는 만큼", ``ix_negotiators_returnable``), and the
+    rest of the price is spice it holds.
+    """
+
+    return tuple(
+        (tile, returned)
+        for tile in _ix_tops(state)
+        for returned in range(
+            min(owner.negotiators, max(tile.cost - discount, 0)) + 1
+        )
+        if owner.resources.spice
+        >= ix_tech_cost(owner, tile, discount=discount, negotiators=returned)
+    )
+
+
+def ix_acquire_effect_keys(tile: TechTile) -> tuple[str, ...]:
+    """``tile.acquire_effect_keys`` of an Ix tile; none for the two whose
+    icon no key pays yet (Windtraps' water, Shuttle Fleet's two different
+    Factions, OQ-114: ``IX_ACQUIRE_AWAITING``, stage P4c-2), which the key
+    refuses with ``NotImplementedError`` rather than drop the water. The
+    codec names the rows of the others with this."""
+
+    try:
+        return tile.acquire_effect_keys
+    except NotImplementedError:
+        return ()
+
+
+def ix_acquisition_context(
+    state: GameState, owner: PlayerState, discount: int
+) -> tuple[tuple[str, ActionValue], ...]:
+    """The open Acquire Tech's state the seat's own view shows
+    (``core.observation.ix_pending_of``): its Tech Discount, its payment (spice;
+    Appropriate's Solari is stage P4c's later slice) and the Negotiators the
+    seat may still return."""
+
+    return (
+        (NEGOTIATORS_RETURNABLE_KEY, ix_negotiators_returnable(state, owner, discount)),
+        (TECH_DISCOUNT_KEY, discount),
+        (TECH_PAYMENT_KEY, "spice"),
     )
 
 
@@ -501,7 +635,7 @@ def legal_tech_acquisition_actions(
 
     if not 0 <= player < state.config.players:
         raise ValueError("player must identify a configured seat")
-    if not state.config.tech_module:
+    if not (state.config.tech_module or state.config.rise_of_ix):
         return ()
     offer = _offer(state, player)
     if offer is None:
@@ -509,6 +643,28 @@ def legal_tech_acquisition_actions(
     discount, _ = offer
     owner = state.players[player]
     actions = [DomainAction(action_id="decline_tech", actor=player)]
+    if state.config.rise_of_ix:
+        # "아이콘마다 ... 하나를 얻을 수 있다("may")" [Rise of Ix p. 4]: the
+        # refusal is always there, beside each tile at each number of
+        # Negotiators returned that the owner can pay for. A returned count
+        # of none is the Tech Module's row, ``negotiators`` is named only
+        # for one or more.
+        actions.extend(
+            DomainAction(
+                action_id="acquire_tech",
+                actor=player,
+                arguments=tuple(
+                    sorted(
+                        (
+                            ("tech_id", tile.tech_id),
+                            *((("negotiators", returned),) if returned else ()),
+                        )
+                    )
+                ),
+            )
+            for tile, returned in ix_tech_acquisitions(state, owner, discount)
+        )
+        return tuple(actions)
     actions.extend(
         DomainAction(
             action_id="acquire_tech",
@@ -603,23 +759,40 @@ def apply_tech_acquisition(state: GameState, action: DomainAction) -> RuleResult
     tile = TECH_TILES_BY_ID[tech_id]
     owner = state.players[player]
     secret = owner.secret_project_tech_id == tech_id
-    cost = tech_cost(owner, tile, discount=discount, secret_project=secret)
+    ix = state.config.rise_of_ix
+    # Rise of Ix: the Negotiators returned to the supply, one spice off each
+    # [Rise of Ix p. 4] (``ix_tech_cost``).
+    returned = int(arguments.get("negotiators", 0)) if ix else 0
+    cost = (
+        ix_tech_cost(owner, tile, discount=discount, negotiators=returned)
+        if ix
+        else tech_cost(owner, tile, discount=discount, secret_project=secret)
+    )
+    payload: list[tuple[str, ActionValue]] = [
+        ("player", player),
+        ("secret_project", secret),
+        ("spice", cost),
+        ("tech_id", tech_id),
+    ]
+    if ix:
+        payload.append(("negotiators", returned))
     events: list[GameEvent] = [
         GameEvent(
             event_id=f"{source}:{tech_id}",
             kind="tech_acquired",
-            payload=(
-                ("player", player),
-                ("secret_project", secret),
-                ("spice", cost),
-                ("tech_id", tech_id),
-            ),
+            payload=tuple(sorted(payload)),
         )
     ]
     working, next_owner, reveal_events, _ = _take_tile(
         state, owner, tech_id, source=source
     )
     events.extend(reveal_events)
+    if returned:
+        next_owner = replace(
+            next_owner,
+            negotiators=next_owner.negotiators - returned,
+            troops_supply=next_owner.troops_supply + returned,
+        )
     # The price is Spice spent, not Spice never gained: "If you gained spice
     # this turn" (Leverage) and Harvest Contracts count every gain of the
     # turn [Main p. 16], so the spend is recorded like any other payment.

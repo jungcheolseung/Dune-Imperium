@@ -149,6 +149,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PeekTopCard,
     PermanentRevealPersuasion,
+    PlaceNegotiator,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
     RecallAgent,
@@ -1082,6 +1083,12 @@ def reward_text_ko(reward: Reward) -> str:
             # entry; the official Korean edition has no Rise of Ix), so the
             # line stays English rather than invented (module docstring).
             return "Commission a dreadnought"
+        case PlaceNegotiator():
+            # Rise of Ix's Tech Negotiation icon: no Korean source names the
+            # Negotiator yet (``glossary-ko.md`` has no entry; the official
+            # Korean edition has no Rise of Ix), so the line stays English
+            # rather than invented (module docstring).
+            return "Place a troop from your supply on the Ix board as a Negotiator"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "당신 {leader}의 {signet_ring} 능력 사용"

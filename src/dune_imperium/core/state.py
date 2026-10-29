@@ -411,7 +411,10 @@ def _check_bloodlines(state: GameState) -> None:
 
 
 def _check_tech(state: GameState) -> None:
-    if state.config.tech_module:
+    # Rise of Ix's 18 tiles lie on the Ix board's stacks, in the trash and on
+    # the seats [Rise of Ix p. 4] (stage P4c-1); the Secret Project and the
+    # Spy a Tech tile boxes are the Tech Module's.
+    if state.config.tech_module or state.config.rise_of_ix:
         tech = (
             *(tech_id for stack in state.tech_stacks for tech_id in stack),
             *state.tech_trash,
@@ -433,10 +436,12 @@ def _check_tech(state: GameState) -> None:
     elif (
         any(state.tech_stacks)
         or state.tech_trash
-        or any(
-            player.tech_ids or player.secret_project_tech_id or player.spies_boxed
-            for player in state.players
-        )
+        or any(player.tech_ids for player in state.players)
+    ):
+        raise ValueError("Tech tiles require the Tech Module")
+    if not state.config.tech_module and any(
+        player.secret_project_tech_id or player.spies_boxed
+        for player in state.players
     ):
         raise ValueError("Tech tiles require the Tech Module")
 

@@ -839,6 +839,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "commission_intrigue_dreadnought": _spec(
         _V.RECRUIT, _S.INTRIGUE, Printed.INTRIGUE_CARD
     ),
+    # A Tech Negotiation icon's Negotiator (Rise of Ix), likewise.
+    "place_intrigue_negotiator": _spec(
+        _V.RECRUIT, _S.INTRIGUE, Printed.INTRIGUE_CARD
+    ),
     "put_back_top_card": _spec(_V.KEEP, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "discard_top_card": _spec(_V.DISCARD, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "draw_top_card_for_solari": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
@@ -927,6 +931,9 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.DESTROY_SHIELD_WALL
     ),
     "decline_intrigue_dreadnought": _spec(
+        _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.RECRUIT
+    ),
+    "decline_intrigue_negotiator": _spec(
         _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.RECRUIT
     ),
     "resolve_intrigue_influence_without_faction": _spec(

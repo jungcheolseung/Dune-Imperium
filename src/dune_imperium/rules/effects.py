@@ -455,6 +455,8 @@ class OptionalBlockKind(StrEnum):
     NO_TROOP_TO_RECRUIT = "no_troop_to_recruit"  # no supply troop nor specimen
     # No dreadnought in the supply to commission [Rise of Ix p. 6].
     NO_DREADNOUGHT_TO_COMMISSION = "no_dreadnought_to_commission"
+    # No troop in the supply to place as a Negotiator [Rise of Ix p. 4].
+    NO_TROOP_FOR_NEGOTIATOR = "no_troop_for_negotiator"
     TECH_UNAFFORDABLE = "tech_unaffordable"  # ``needed``: cheapest tile
     TECH_NEEDS_SPY = "tech_needs_spy"  # Advanced Data Analysis only
     # Never again in this turn.

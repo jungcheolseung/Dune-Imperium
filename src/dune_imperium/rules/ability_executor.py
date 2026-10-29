@@ -58,6 +58,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     OpponentLosesTroop,
     PassTurn,
     PeekTopCard,
+    PlaceNegotiator,
     PlaceSpy,
     RecallSpy,
     RecallYourAgent,
@@ -147,6 +148,7 @@ from dune_imperium.rules.influence import (
 )
 from dune_imperium.rules.intrigue_deck import with_trashed_intrigue
 from dune_imperium.rules.intrigue_knowledge import forget_intrigue_cards
+from dune_imperium.rules.negotiators import negotiator_block, place_negotiator
 from dune_imperium.rules.planetologist import replace_sandworms
 from dune_imperium.rules.reveal_turn import (
     add_reveal_persuasion,
@@ -706,6 +708,16 @@ def piece_rows(
                 rows.append(row(Verb.RECRUIT, variant="dreadnought"))
             if refusals:
                 rows.append(row(Verb.DECLINE, of=Verb.RECRUIT, variant="dreadnought"))
+        case PlaceNegotiator():
+            # "you may take a troop" [Rise of Ix p. 4]: the icon is taken or
+            # left, like the Dreadnought icon above. With no troop in the
+            # supply it has nothing to take (``negotiator_block``): an own
+            # turn offers no row and the turn's end lapses the icon (OQ-095
+            # (2)), a stacked frame its refusal.
+            if negotiator_block(state, player) is None:
+                rows.append(row(Verb.RECRUIT, variant="negotiator"))
+            if refusals:
+                rows.append(row(Verb.DECLINE, of=Verb.RECRUIT, variant="negotiator"))
         case PassTurn(optional=True):
             # Bindu Suspension: after the draw, "you may pass your turn" or
             # play it normally (OQ-117); the refusal is the normal turn.
@@ -835,6 +847,11 @@ _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
     "decline_intrigue_dreadnought": (
         "dreadnought_declined",
         "intrigue_dreadnought_declined",
+    ),
+    # A Tech Negotiation icon left unused (Rise of Ix).
+    "decline_intrigue_negotiator": (
+        "negotiator_declined",
+        "intrigue_negotiator_declined",
     ),
     "resolve_intrigue_influence_without_faction": (
         "influence_unavailable",
@@ -1246,6 +1263,10 @@ def apply_piece(
             result = _passed(state, player, action, step_source)
         case CommissionDreadnought():
             result = commission_dreadnought(state, player, source=step_source)
+        case PlaceNegotiator() if shape.verb is Verb.DECLINE:
+            result = _passed(state, player, action, step_source)
+        case PlaceNegotiator():
+            result = place_negotiator(state, player, source=step_source)
         case RecallYourAgent() if shape.verb is Verb.CONFIRM_EMPTY:
             result = _passed(state, player, action, step_source)
         case RecallYourAgent():
