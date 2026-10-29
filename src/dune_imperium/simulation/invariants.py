@@ -280,11 +280,13 @@ def _check_known_intrigue(state: GameState) -> None:
     """The Intrigue cards a seat knows and another seat does not (OQ-149,
     ``rules.intrigue_knowledge``): only Imperium Ceremony (Immortality) and
     Rise of Ix record them, and every one is in the Intrigue deck or in
-    another seat's held Intrigue -- a card that reached a public zone or the
-    seat's own hand has left the record by the end of the transition."""
+    another seat's held Intrigue -- a card that reached a public zone (a
+    played one resolving included) or the seat's own hand has left the record
+    by the end of the transition."""
 
     recorded = state.config.immortality or state.config.rise_of_ix
     deck = frozenset(state.intrigue_deck)
+    resolving = frozenset(resolving_intrigue_ids(state))
     for player in state.players:
         if player.known_intrigue_ids and not recorded:
             raise InvariantViolation(
@@ -300,12 +302,12 @@ def _check_known_intrigue(state: GameState) -> None:
         stale = [
             card
             for card in player.known_intrigue_ids
-            if card not in deck and card not in held_elsewhere
+            if card in resolving or (card not in deck and card not in held_elsewhere)
         ]
         if stale:
             raise InvariantViolation(
                 f"player {player.player_id} still records known Intrigue {stale} "
-                "outside the deck and the other seats' hands"
+                "played face up or outside the deck and the other seats' hands"
             )
 
 

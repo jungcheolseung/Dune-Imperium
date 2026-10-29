@@ -41,6 +41,7 @@ from dune_imperium.rules.intrigue_peek import (
 from dune_imperium.simulation.invariants import (
     CardCensus,
     InvariantViolation,
+    _check_known_intrigue,
     check_observation_privacy,
     check_state_invariants,
 )
@@ -128,6 +129,35 @@ def test_a_known_card_another_seat_draws_stays_known_in_its_hand() -> None:
         replace(_with_hand(drawn, 1, ()), intrigue_discard=(INTRIGUE[0],))
     )
     assert played.players[0].known_intrigue_ids == ()
+
+
+def test_a_known_card_played_face_up_leaves_the_record_while_it_resolves() -> None:
+    """A played Intrigue card stays in its owner's held Intrigue until its
+    choices resolve (``rules.intrigue``), but it is face up from the play:
+    public, so the record lets it go at once (Codex review of OQ-149), and
+    the sweep would reject a record that kept it."""
+
+    kept = _peek(_state(), 0, INTRIGUE[1])
+    drawn = settle_known_intrigue(
+        draw_intrigue_cards(kept, 1, 1, source="test:draw").state
+    )
+    resolving = drawn.push_decision(
+        DecisionFrame(
+            kind="intrigue_effects",
+            frame_id="test:intrigue_effects",
+            decision=PlayerDecision(owner=1, prompt="Resolve the Intrigue card"),
+            context=(("card_id", INTRIGUE[0]),),
+        )
+    )
+    assert resolving.players[1].intrigue_cards == (INTRIGUE[0],)
+    assert known_card_seats(resolving).get(INTRIGUE[0]) is None
+    settled = settle_known_intrigue(resolving)
+    assert settled.players[0].known_intrigue_ids == ()
+    own = observe_state(settled, 0).private
+    assert own is not None and own.known_intrigue_held == ()
+    _check_known_intrigue(settled)
+    with pytest.raises(InvariantViolation, match="played face up"):
+        _check_known_intrigue(resolving)
 
 
 def test_the_knower_drawing_its_card_lets_the_record_go() -> None:

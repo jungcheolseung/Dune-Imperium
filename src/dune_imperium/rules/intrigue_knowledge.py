@@ -14,7 +14,10 @@ An entry stays while its card is in the Intrigue deck or in another seat's
 held Intrigue: a card drawn from the top by another seat is still known, in
 that seat's hand. ``settle_known_intrigue`` runs at the end of every engine
 transition (``rules.engine``) and drops the entries whose card reached a
-public zone (played, discarded, trashed) or the knower's own hand. A hidden
+public zone (played, discarded, trashed) or the knower's own hand. A played
+Intrigue card stays in its owner's held Intrigue while its choices resolve
+(``rules.intrigue``), but it is face up: it counts as public from the play
+(``core.observation.resolving_intrigue_ids``, as ``known_card_seats`` has it). A hidden
 move the knower cannot follow drops its entries at the move itself
 (``forget_intrigue_cards``): a seat looking at the top cards and keeping one
 (the others cannot tell which), Secrets' random steal and Insidious' gift
@@ -30,6 +33,7 @@ discard, so today no reshuffle moves a known card.
 from collections.abc import Iterable
 from copy import replace
 
+from dune_imperium.core.observation import resolving_intrigue_ids
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 
@@ -98,7 +102,7 @@ def _settled(state: GameState, player: PlayerState) -> PlayerState:
             for other in state.players
             if other.player_id != player.player_id
         )
-    )
+    ) - frozenset(resolving_intrigue_ids(state))
     kept = tuple(card for card in player.known_intrigue_ids if card in hidden_elsewhere)
     if kept == player.known_intrigue_ids:
         return player
