@@ -306,6 +306,24 @@ IX_OVERLAY_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
         }
     )
 )
+# What the overlay moves or adds, on this picture (the same measurement: the
+# overlay's own prints mapped through its box): its five space frames (the
+# frame outline's edges matched on the pieces), the Mentat silhouette (the
+# board's own silhouette matched, NCC 0.97) and the four High Council chairs
+# (each matched, NCC 0.96).
+IX_SPACE_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
+    MappingProxyType(
+        {
+            "imperium_high_council": (31.96, 5.44, 7.59, 5.88),
+            "mentat": (31.91, 14.97, 7.59, 5.88),
+            "imperium_swordmaster": (50.31, 14.96, 7.59, 5.88),
+            "interstellar_shipping": (65.44, 6.32, 7.59, 5.88),
+            "smuggling": (65.43, 14.84, 7.59, 5.88),
+        }
+    )
+)
+IX_MENTAT_POINT: Final = (45.87, 17.83)
+IX_COUNCIL_SEATS: Final = ((43.56, 8.5), (46.84, 8.48), (54.25, 8.52), (57.55, 8.5))
 
 
 def imperium_board_layout() -> dict[str, Any]:
@@ -378,8 +396,15 @@ def imperium_board_layout() -> dict[str, Any]:
             "conflict_deck_slot": list(CONFLICT_DECK_SLOT),
             "conflict_slot": list(CONFLICT_SLOT),
         },
-        "ix_overlays": {
-            name: list(box) for name, box in IX_OVERLAY_BOXES.items()
+        # Rise of Ix's overlay and what it moves (the page uses these on an
+        # original + Ix table).
+        "ix": {
+            "overlays": {name: list(box) for name, box in IX_OVERLAY_BOXES.items()},
+            "space_boxes": {
+                space: list(box) for space, box in IX_SPACE_BOXES.items()
+            },
+            "mentat": {"point": list(IX_MENTAT_POINT), "height": MENTAT_HEIGHT},
+            "council_seats": [list(point) for point in IX_COUNCIL_SEATS],
         },
         "mentat": (
             None

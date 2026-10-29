@@ -3010,3 +3010,10 @@ body.hand-dragging, body.hand-dragging * {
   .phase-banner { animation-name: phase-banner-fade; }
   .phase-banner::before { display: none; }
 }
+
+/* Rise of Ix's CHOAM overlay pieces on the original board (board.js). */
+.board-overlay {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+}

@@ -203,6 +203,7 @@ def build_catalog(
     *,
     bene_tleilax_image: bool = False,
     imperium_board_image: bool = False,
+    ix_board_pictures: frozenset[str] = frozenset(),
     token_files: frozenset[str] = frozenset(),
     asset_versions: frozenset[tuple[str, str]] = frozenset(),
     image_index_ko: frozenset[tuple[str, str, str]] = frozenset(),
@@ -553,6 +554,16 @@ def build_catalog(
                     versioned("/board-image/imperium") if imperium_board_image else None
                 ),
                 **imperium_board_layout(),
+                # Rise of Ix's overlay pieces and Ix board (app.py
+                # IX_BOARD_PICTURES), null where the picture is missing.
+                "ix_images": {
+                    name: (
+                        versioned(f"/board-image/imperium/ix/{name}")
+                        if name in ix_board_pictures
+                        else None
+                    )
+                    for name in ("landsraad", "choam", "board")
+                },
             },
         },
         # The project's rulings for the help panel's notice, both languages

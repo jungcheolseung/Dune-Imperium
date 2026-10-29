@@ -399,6 +399,19 @@ function renderBoardStage(board, view) {
   map.alt = t(viewBaseGame(view) === "imperium" ? "board.map_alt_imperium" : "board.map_alt");
   map.draggable = false;
   stage.appendChild(map);
+  /* Rise of Ix's CHOAM overlay, laid on the board under every piece. */
+  for (const { image, box } of boardLayout(view).overlays || []) {
+    const piece = document.createElement("img");
+    piece.className = "board-overlay";
+    piece.src = image;
+    piece.alt = "";
+    piece.draggable = false;
+    const [left, top, width, height] = box;
+    Object.assign(piece.style, {
+      left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`,
+    });
+    stage.appendChild(piece);
+  }
 
   const { occupants, controllers, spies } = boardOccupancy(view);
   const arrivals = spyArrivals();

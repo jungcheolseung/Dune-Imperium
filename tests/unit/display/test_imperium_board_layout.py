@@ -364,6 +364,25 @@ def test_the_ix_overlay_covers_the_landsraad_and_choam_sections() -> None:
             and o[1] <= top and top + height <= o[1] + o[3]
             for o in (landsraad, choam)
         ), space_id
-    assert imperium_board_layout()["ix_overlays"] == {
-        name: list(box) for name, box in IX_OVERLAY_BOXES.items()
+    ix = imperium_board_layout()["ix"]
+    assert ix["overlays"] == {name: list(box) for name, box in IX_OVERLAY_BOXES.items()}
+    # What the overlay prints lies on it: the five spaces' frames, the
+    # Mentat silhouette and the four chairs on the Landsraad or CHOAM piece.
+    def on_overlay(left: float, top: float, width: float, height: float) -> bool:
+        return any(
+            o[0] <= left and left + width <= o[0] + o[2]
+            and o[1] <= top and top + height <= o[1] + o[3]
+            for o in (landsraad, choam)
+        )
+    assert set(ix["space_boxes"]) == {
+        "imperium_high_council", "mentat", "imperium_swordmaster",
+        "interstellar_shipping", "smuggling",
     }
+    for space_id, (left, top, width, height) in ix["space_boxes"].items():
+        assert on_overlay(left, top, width, height), space_id
+        assert abs(width - SPACE_BOXES["carthag"][2]) < 0.1
+    x, y = ix["mentat"]["point"]
+    assert on_overlay(x, y, 0, 0)
+    seats = ix["council_seats"]
+    assert len(seats) == 4 and [s[0] for s in seats] == sorted(s[0] for s in seats)
+    assert all(on_overlay(sx, sy, 0, 0) for sx, sy in seats)
