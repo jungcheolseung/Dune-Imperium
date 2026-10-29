@@ -75,25 +75,39 @@ def test_an_original_game_serializes_every_step_to_its_end(
 
 
 def test_an_original_table_takes_only_the_seats_of_its_row() -> None:
-    # server/seat_kinds.py: the original game seats the human, heuristic
-    # and random seats until the app AI's port of it (plan 18.5 3).
+    # server/seat_kinds.py: the original game seats the human, heuristic and
+    # random seats and, since its port to the original game (stage P6), the
+    # app AI at its three levels; the search and rollout seats stay off it.
     manager = GameSessionManager()
-    for refused in ("app_ai", "app_ai_easy", "rollout", "checkpoint:x.pt"):
+    for refused in ("rollout", "rollout_strong", "search:x.pt", "checkpoint:x.pt"):
         with pytest.raises(SessionError, match="cannot seat"):
             manager.create_game(
                 ("human", refused, "heuristic", "heuristic"), base_game="imperium"
             )
     summary = manager.create_game(
-        ("human", "random", "heuristic", "heuristic"), base_game="imperium"
+        ("human", "app_ai", "app_ai_medium", "app_ai_easy"),
+        base_game="imperium",
+        game_seed=3,
     )
     assert summary["base_game"] == "imperium"
+    assert summary["seats"] == ["human", "app_ai", "app_ai_medium", "app_ai_easy"]
     # Uprising takes every kind.
-    assert manager.create_game(("human", "app_ai", "app_ai", "app_ai"))
+    assert manager.create_game(("human", "rollout", "app_ai", "app_ai"))
     payload = seat_kinds_payload()
-    assert payload == {"uprising": None, "imperium": ["heuristic", "human", "random"]}
+    assert payload == {
+        "uprising": None,
+        "imperium": [
+            "app_ai",
+            "app_ai_easy",
+            "app_ai_medium",
+            "heuristic",
+            "human",
+            "random",
+        ],
+    }
     assert all(
         seat_kind_allowed(kind, BaseGame.IMPERIUM) == (kind in allowed)
-        for kind in ("human", "heuristic", "random", "app_ai", "search:x.pt")
+        for kind in ("human", "heuristic", "random", "app_ai", "rollout", "search:x.pt")
         for allowed in [payload["imperium"]]
         if isinstance(allowed, list)
     )
@@ -111,6 +125,6 @@ def test_a_save_the_engine_cannot_set_up_is_refused_not_a_fault() -> None:
         manager.restore_game(document)
     # A save whose seats the original table does not take is refused too.
     seated: Any = manager.save_document(str(summary["game_id"]))
-    seated["seats"] = ["human", "app_ai", "human", "human"]
+    seated["seats"] = ["human", "rollout", "human", "human"]
     with pytest.raises(SessionError, match="cannot seat"):
         manager.restore_game(seated)

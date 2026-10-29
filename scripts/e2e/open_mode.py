@@ -65,16 +65,21 @@ def create_game(
     seed: int | None = SEED,
     kinds: Sequence[str] | None = None,
     options: tuple[str, ...] | None = (),
+    base_game: str | None = None,
 ) -> str:
     """Create a game from the setup screen and wait for its table.
 
     Seats in ``humans`` are human and the others heuristic, unless ``kinds``
     names the kind of all four seats. ``options`` are the rule boxes kept
     checked (common.set_rule_options; by default none), and None leaves
-    every box as the setup screen opens it.
+    every box as the setup screen opens it. ``base_game`` picks the base
+    game first (its table may take other seat kinds and boxes).
     """
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
+    if base_game is not None:
+        page.wait_for_function("state.server !== null")
+        page.select_option("#opt-base-game", base_game)
     chosen = (
         list(kinds)
         if kinds is not None

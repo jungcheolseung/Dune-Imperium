@@ -5,14 +5,14 @@ setup screen (``GET /whoami`` ``seat_kinds``) read, so the browser never
 offers a seat the server would refuse (docs/base-game-and-ix-plan.md 18.5 3).
 
 Uprising takes every seat kind. The original game takes the human and the
-two AI seats that play its cards: the heuristic and the random seat (the
-P3d soak finished 5,000 original games with them, plan 16.12). The app AI
-answers about 40% of an original game's decisions at random, not knowing
-its cards, and the search AI's networks never trained on it (plan 18.1),
-so neither sits there yet. When the app AI's port of the original game
-lands (stage P6), its three kinds join the original game's row here, and
-nothing else needs to change (user decision 2026-10-29, via the
-coordinator).
+AI seats that play its cards: the heuristic and the random seat (the P3d
+soak finished 5,000 original games with them, plan 16.12) and, since its
+port to the original game (stage P6, docs/app-ai-plan.md 12), the app AI at
+its three levels (no random fallback left; 300 soaked original games). The
+search AI's networks never trained on the original game (plan 18.1) and the
+rollout seats were never tried on it, so they do not sit there yet. The app
+AI joined this row as planned (user decision 2026-10-29, via the
+coordinator): the setup screen then offers it and seats it by default.
 """
 
 from collections.abc import Mapping
@@ -29,7 +29,16 @@ TABLE_SEAT_KINDS: Final[Mapping[BaseGame, frozenset[str] | None]] = (
     MappingProxyType(
         {
             BaseGame.UPRISING: None,
-            BaseGame.IMPERIUM: frozenset({"human", "heuristic", "random"}),
+            BaseGame.IMPERIUM: frozenset(
+                {
+                    "human",
+                    "heuristic",
+                    "random",
+                    "app_ai",
+                    "app_ai_medium",
+                    "app_ai_easy",
+                }
+            ),
         }
     )
 )
