@@ -26,6 +26,7 @@ from dune_imperium.display.board_layout_imperium import (
     FORCE_STEPPER_BAND,
     GARRISON_RINGS,
     INFLUENCE_CUBE_SIZE,
+    IX_OVERLAY_BOXES,
     MAKER_SPICE_POINTS,
     MAKER_SPICE_SIZE,
     SEAT_DISC_SIZE,
@@ -340,3 +341,29 @@ def test_the_conflict_cards_lie_in_the_two_printed_slots() -> None:
         assert slot[3] > slot[2]
         for space_id, box in SPACE_BOXES.items():
             assert apart(slot, box), space_id
+
+
+def test_the_ix_overlay_covers_the_landsraad_and_choam_sections() -> None:
+    # Rise of Ix's CHOAM board overlay covers the original Landsraad and
+    # CHOAM sections [Rise of Ix p. 3]: its two pieces lie over the spaces
+    # those sections print (the four it removes and the three it reprints),
+    # inside the picture, side by side at one top.
+    landsraad = IX_OVERLAY_BOXES["landsraad"]
+    choam = IX_OVERLAY_BOXES["choam"]
+    for left, top, width, height in (landsraad, choam):
+        assert 0 <= left < left + width <= 100 and 0 <= top < top + height <= 100
+    assert landsraad[1] == choam[1]
+    assert abs(landsraad[2] - choam[2]) < 0.01
+    assert landsraad[0] < choam[0] < landsraad[0] + landsraad[2]
+    covered = ("imperium_high_council", "hall_of_oratory", "mentat", "rally_troops",
+               "imperium_swordmaster", "sell_melange", "secure_contract")
+    for space_id in covered:
+        left, top, width, height = SPACE_BOXES[space_id]
+        assert any(
+            o[0] <= left and left + width <= o[0] + o[2]
+            and o[1] <= top and top + height <= o[1] + o[3]
+            for o in (landsraad, choam)
+        ), space_id
+    assert imperium_board_layout()["ix_overlays"] == {
+        name: list(box) for name, box in IX_OVERLAY_BOXES.items()
+    }

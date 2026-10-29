@@ -284,6 +284,29 @@ SEAT_DISC_SIZE: Final = 2.95
 CONFLICT_DECK_SLOT: Final = (30.35, 68.98, 8.62, 13.4)
 CONFLICT_SLOT: Final = (40.56, 68.98, 8.68, 13.4)
 
+# Rise of Ix's CHOAM board overlay, which covers the original board's
+# Landsraad and CHOAM sections [Rise of Ix p. 3] (docs/rules/rise-of-ix.md 3),
+# in its two pictures (assets ``board/ix_overlay_landsraad.png`` and
+# ``board/ix_overlay_choam.png``, 2100 px wide), as ``(left, top, width,
+# height)`` boxes on this picture. Measured 2026-10-29: the scale from the
+# three spaces the Landsraad piece reprints (High Council, Mentat,
+# Swordmaster), each found in it by template matching the board's own frame
+# (NCC 0.95-0.97, one scale for all three: 1.175 overlay px per board px);
+# the overlay rearranges them, so the pieces are placed against the
+# sections' outer edges instead: the Landsraad piece's top-left on the
+# board's Landsraad panel (28.72%, 1.68%, less the piece's border), the
+# CHOAM piece's top-right on the CHOAM panel's (98.06%); they meet with the
+# CHOAM piece over the other's dark margin. The panels' edges are where
+# their olive and rust tints start (colour profiles).
+IX_OVERLAY_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
+    MappingProxyType(
+        {
+            "landsraad": (28.56, 1.5, 35.74, 22.62),
+            "choam": (62.5, 1.5, 35.74, 22.56),
+        }
+    )
+)
+
 
 def imperium_board_layout() -> dict[str, Any]:
     """Return the layout as plain JSON-ready values (``server.catalog``)."""
@@ -354,6 +377,9 @@ def imperium_board_layout() -> dict[str, Any]:
             "disc_size": SEAT_DISC_SIZE,
             "conflict_deck_slot": list(CONFLICT_DECK_SLOT),
             "conflict_slot": list(CONFLICT_SLOT),
+        },
+        "ix_overlays": {
+            name: list(box) for name, box in IX_OVERLAY_BOXES.items()
         },
         "mentat": (
             None
