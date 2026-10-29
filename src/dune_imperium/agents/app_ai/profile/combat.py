@@ -1041,8 +1041,23 @@ class CombatMixin(ProfileCore):
             if not ok:
                 break
             deploy += 1
-        # Baron Harkonnen's Masterstroke (BaseSet) and Diversion (Rise of Ix)
-        # cannot occur. Go to Ground: keep one troop in to stay playable.
+        if self._baron_holds_secret_factions():
+            # The original Baron Harkonnen (0x49167cc-0x4916fb5): when this
+            # turn's exhausted units in the Conflict (``b__118_11``
+            # ``IsExhausted``; ours: ``units_deployed_turn``, UNTRACED when
+            # the app readies them) and the troops chosen make exactly 3, one
+            # more troop left over goes in (" with Masterstroke") while the
+            # list is under ``max``; the Strength-3 unit it may swap out
+            # (``b__118_12``, a dreadnought) is never in an original game.
+            if (
+                me.units_deployed_turn + deploy == 3
+                and units - deploy > 0
+                and deploy < max_
+            ):
+                deploy += 1
+            return deploy
+        # Diversion (Rise of Ix) cannot occur. Go to Ground: keep one troop in
+        # to stay playable.
         if (
             self._holds_intrigue(_GO_TO_GROUND)
             and _conflict_troops(me) == 0
@@ -1053,6 +1068,18 @@ class CombatMixin(ProfileCore):
             # unit offered there is no deploy prompt at all.
             deploy += 1
         return deploy
+
+    def _baron_holds_secret_factions(self) -> bool:
+        """``Leader.ArchID == BaronVladimirHarkonnen && PrivateInformation
+        .Has(BaronHarkonnenSecretFactions)``: his Factions chosen and not yet
+        revealed by a Masterstroke."""
+
+        me = self.ctx.me
+        return (
+            me.leader_id == "baron_vladimir_harkonnen"
+            and bool(me.masterstroke_factions)
+            and not me.masterstroke_revealed
+        )
 
     def _leader_short(self) -> str | None:
         me = self.ctx.me

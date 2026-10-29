@@ -125,3 +125,38 @@ def test_space_value_skips_the_uprising_block_off_uprising(
     space = space_entity("arrakeen", p.ctx.board)
     reasons = _reasons(g.SpaceAbility(space).value_for_player(p))
     assert not [r for r in reasons if "infiltrate" in r or "Gather" in r]
+
+
+def test_the_baron_deploys_a_fourth_unit_for_his_masterstroke(
+    monkeypatch: pytest.MonkeyPatch, original: GameState
+) -> None:
+    """``GetUnitsToDeploy`` @0x49167cc: with his secret Factions held, when
+    this turn's deployed units and the troops chosen make exactly 3, one
+    more troop goes in (while under ``max``)."""
+
+    seat = _seat(original)
+    stubs: dict[str, Callable[..., Any]] = {
+        "is_climax": lambda: False,
+        "conflict_posture_bounds": lambda: (1.0, 10.0),
+        "current_conflict_interest": lambda: Summer(5.0),
+        "est_strength": lambda: Summer(0.0),
+        "potential_strength": lambda n: Summer(5.0),
+        "est_opponent_strength": lambda s: Summer(
+            {0: 10.0, 1: 2.0, 2: 0.0, 3: 0.0}[(s - seat - 1) % 4]
+        ),
+    }
+
+    def deploy(**changes: object) -> int:
+        state = with_player(original, seat, **changes)
+        p = _profile(monkeypatch, state, **stubs)
+        return p.units_to_deploy(4, 4)
+
+    # "Mid can get 2nd": 3 strength requested, two troops.
+    assert deploy() == 2
+    baron = {
+        "leader_id": "baron_vladimir_harkonnen",
+        "masterstroke_factions": ("emperor", "fremen"),
+    }
+    assert deploy(**baron) == 2
+    assert deploy(**baron, units_deployed_turn=1) == 3
+    assert deploy(**baron, units_deployed_turn=1, masterstroke_revealed=True) == 2
