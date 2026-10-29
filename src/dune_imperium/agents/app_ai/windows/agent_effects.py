@@ -394,6 +394,10 @@ from dune_imperium.agents.app_ai.abilities.ix_board import (
     FreighterAbility,
     FreighterAgentAbility,
 )
+from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+    IMPERIAL_BASHAR_TRASH,
+    IMPERIAL_BASHAR_TROOP,
+)
 from dune_imperium.agents.app_ai.abilities.leaders import (
     DisciplineAbility,
     training_space_entity,
@@ -686,8 +690,11 @@ _TRASH_ABILITY: Mapping[str, str] = {
 }
 _DISCARD_ABILITY: Mapping[str, str] = {
     "captured_mentat": "CapturedMentatAgentAbility",
-    # Rise of Ix: Truthsayer's Optional discard (abilities/ix_imperium.py).
+    # Rise of Ix: Truthsayer's, Satellite Ban's and Spice Trader's Optional
+    # discards (abilities/ix_imperium.py).
     "truthsayer": "TruthsayerAbility",
+    "satellite_ban": "SatelliteBanAbility",
+    "spice_trader": "SpiceTraderAbility",
     "guild_spy": "GuildSpyAgentAbility",
     "space_time_folding": "SpacetimeFoldingAbility",
     "guild_envoy": "GuildEnvoyAbility",
@@ -2178,6 +2185,8 @@ def _single_box(t: _Turn, action: DomainAction) -> None:
         return
     if short in _ORIGINAL_CHOICE_BOX_CARDS:
         return  # one option of the card's own choice (_original_card_choices)
+    if short in _IX_CHOICE_BOX_CARDS:
+        return  # one option of the card's own choice (_ix_card_rows)
     if short in _AGENT_BOX_CARDS:
         _box_auto(t, f"{short} box", action)
         return
@@ -2377,6 +2386,9 @@ def _card_choices(t: _Turn) -> None:
 #: (``_original_card_choices``), and cards whose Influence pick is the rest of
 #: an answer given at their payment or loss.
 _ORIGINAL_CHOICE_BOX_CARDS = frozenset({"guild_ambassador", "other_memory"})
+#: Rise of Ix cards whose plain box is one option of their own choice
+#: (``_ix_card_rows``).
+_IX_CHOICE_BOX_CARDS = frozenset({"imperial_bashar"})
 _ORIGINAL_INFLUENCE_FOLLOW_UPS = frozenset(
     {"firm_grip", "shifting_allegiances", "guild_ambassador"}
 )
@@ -2639,6 +2651,8 @@ def _card_trash(t: _Turn, short: str) -> None:
         return
     if short == "imperial_spy":
         return  # ``ImperialSpyAbility`` (_original_card_choices)
+    if short in _IX_CHOICE_BOX_CARDS:
+        return  # ``ImperialBasharAgentAbility`` (_ix_card_rows)
     name = _TRASH_ABILITY.get(short)
     found = _find(t.card, name) if name is not None else None
     if found is None:
@@ -4528,10 +4542,14 @@ def _ix_card_rows(t: _Turn) -> None:
       ``FreighterAgentAbility`` (``ix.freighter_sources``);
     - Local Fence's exchange: ``LocalFenceAbility`` (Optional), option 0 "2
       spice -> 5 Solari" or option 1 "5 Solari -> 4 spice", realised by the
-      offered row (an unaffordable option has no row: no key).
+      offered row (an unaffordable option has no row: no key);
+    - Imperial Bashar's -OR- box: ``ImperialBasharAgentAbility``
+      (``_imperial_bashar``).
     """
 
     run = t.run
+    if t.card_short == "imperial_bashar":
+        _imperial_bashar(t)
     for row in t.by_id("resolve_unload_icon"):
         # An Unload box owed in the turn: Triggered, no AI hook (taken in
         # order, before the turn's choices).
@@ -4563,6 +4581,50 @@ def _ix_card_rows(t: _Turn) -> None:
 
         uses = tuple(a for a in (to_solari, to_spice) if a is not None)
         _prompt(t, "Local Fence", uses, evaluate_fence, explicit=False)
+
+
+def _imperial_bashar(t: _Turn) -> None:
+    """Imperial Bashar's -OR- box (``ImperialBasharAgentAbility``, Explicit,
+    the "AOrB" prompt): option 0 the troop (the plain
+    ``resolve_agent_card_effect``), option 1 the trash, its card one of the
+    ``trash_agent_card`` rows (the second info, in our rows' order). Option
+    1 with no card, or option 0 with no troop row (none can join, OQ-071),
+    uses the key on nothing: the box is left to lapse at the turn's end (no
+    refusal row, OQ-095 (2))."""
+
+    troop = [
+        a for a in t.by_id("resolve_agent_card_effect") if str_arg(a, "effect") is None
+    ]
+    trash = t.by_id("trash_agent_card")
+    if not troop and not trash:
+        return
+    request = Request(
+        infos=(
+            TargetInfo(options=(IMPERIAL_BASHAR_TROOP, IMPERIAL_BASHAR_TRASH)),
+            TargetInfo(entities=_cards(t, _arg_refs(trash, "card_id"))),
+        )
+    )
+
+    def answer(ans: Answer) -> Answered:
+        option = _response_ref(ans)
+        if option == IMPERIAL_BASHAR_TROOP:
+            return troop[0] if troop else LEFT_UNUSED
+        if option == IMPERIAL_BASHAR_TRASH:
+            ref = _response_ref(ans, 1)
+            if ref is None:
+                return LEFT_UNUSED
+            return with_arg(trash, "card_id", ref)
+        return None
+
+    _choice_source(
+        t,
+        "imperial_bashar box",
+        _find(t.card, "ImperialBasharAgentAbility"),
+        (*troop, *trash),
+        request,
+        answer,
+        None,
+    )
 
 
 def _combat_space(t: _Turn) -> bool:

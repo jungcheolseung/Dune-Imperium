@@ -250,9 +250,9 @@ from dune_imperium.agents.app_ai.abilities.original_imperium import (
     GunThopterRevealAbility,
     GurneyHalleckAbility,
     LadyJessicaAcquireAbility,
+    OptionalRetreatAbility,
     OpulenceAbility,
     SardaukarLegionAbility,
-    ScoutAbility,
 )
 from dune_imperium.agents.app_ai.abilities.scouts import (
     CorrinthCityRevealScoutsAbility,
@@ -365,7 +365,9 @@ _CHOICE_ABILITIES: Mapping[str, type[DeferredAbility]] = {
     "may_deploy_one_troop": GunThopterRevealAbility,
     "choose_two_persuasion_or_two_strength": BeneGesseritSisterAbility,
     "may_retreat_any_number_of_troops": ChaniRevealAbility,
-    "may_retreat_up_to_two_troops": ScoutAbility,
+    # Scout's ``ScoutAbility``; Rise of Ix's Satellite Ban carries its own
+    # ``SatelliteBanRevealAbility`` (``_card_ability`` takes the card's).
+    "may_retreat_up_to_two_troops": OptionalRetreatAbility,
     "may_deploy_up_to_three_troops": SardaukarLegionAbility,
     "may_pay_three_solari_for_two_troops_and_deploy": GurneyHalleckAbility,
     "may_pay_six_solari_for_victory_point": OpulenceAbility,
