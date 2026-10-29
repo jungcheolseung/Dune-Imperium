@@ -1100,6 +1100,23 @@ def rewards_with_no_effect(
     return tuple(dead)
 
 
+def _line_has_cost(section: EffectSection) -> bool:
+    """Whether ``section`` is a line with a cost for the check of what it can
+    change (``_no_effect_block``): a printed cost, or an Acquire Tech.
+
+    "값을 내고 얻는 효과도 비용 줄로 본다: Tech 획득은 그 타일 값(spice)을 내고
+    타일을 받는다. 그래서 Ix의 Machine Culture Plot면("Acquire Tech", 할인
+    없음)은 살 수 있는 타일이 없으면 내지 않는다" (OQ-113 (C), user ruling
+    2026-10-24, docs/rules/rise-of-ix.md 9.3 and 15): the tile's price is the
+    cost, so a card whose only reward is an Acquire Tech is played only while a
+    tile can be bought.
+    """
+
+    return bool(section.costs) or any(
+        isinstance(reward, AcquireTech) for reward in section.rewards
+    )
+
+
 def _no_effect_block(
     state: GameState,
     player: int,
@@ -1110,15 +1127,16 @@ def _no_effect_block(
 
     OQ-113 (C), user ruling 2026-10-24 ("비용을 낸 것만 보장"): a line with a
     cost (left of an arrow: resources, a discard or trash, an Intrigue card,
-    a troop, a Spy) is played only when one of its own rewards can change
-    something -- "비용만 내고 보상을 받지 못하는 경우는 없어야 한다" (OQ-071,
-    user decision 2026-09-29) -- and a line without one is played even when
-    every reward fizzles: the Intrigue card itself is no cost, as a card box
-    that fizzles still lets its Imperium card be played.
+    a troop, a Spy; or an Acquire Tech, ``_line_has_cost``) is played only
+    when one of its own rewards can change something -- "비용만 내고 보상을
+    받지 못하는 경우는 없어야 한다" (OQ-071, user decision 2026-09-29) -- and a
+    line without one is played even when every reward fizzles: the Intrigue
+    card itself is no cost, as a card box that fizzles still lets its Imperium
+    card be played.
     """
 
     for section in sections:
-        if not section.costs:
+        if not _line_has_cost(section):
             continue
         dead = rewards_with_no_effect(state, player, (section,))
         if dead:
@@ -1140,7 +1158,7 @@ def play_changes_nothing(
 
     owner = state.players[player]
     return bool(sections) and all(
-        not section.costs
+        not _line_has_cost(section)
         and not any(
             reward_can_change_something(state, player, reward, section, owner)
             for reward in section.rewards

@@ -23,6 +23,7 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
     AllConditions,
     AtLeastOfConditions,
     CommissionDreadnought,
@@ -252,6 +253,26 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("machine_culture", "Machine Culture"),
         copies=1,
+        # [PLOT / ENDGAME] the Acquire Tech icon -OR- "If you have three or
+        # more Tech tiles: 1 VP" [Steam app text, log line and screen pieces:
+        # the Plot band prints the icon alone, with no discount number
+        # (rise-of-ix.md 9.3 and OQ-113 (C): 'Acquire Tech, 할인 없음'), so the
+        # discount is stated: 0, not the piece's default of 1]. The Plot half
+        # has no resource cost, but the tile's price is its cost: "Machine
+        # Culture는 Tech를 얻어야 낸다" (the designer, rise-of-ix.md 9.3), so it is
+        # played only while a tile can be bought, Negotiators counted
+        # (``effect_interpreter._line_has_cost``), and once played the tile is
+        # taken (``tech.legal_tech_acquisition_actions``). The Endgame half is
+        # Battlefield Research's Tech condition.
+        options=(
+            _plot(EffectSection(rewards=(AcquireTech(discount=0),))),
+            _endgame(
+                EffectSection(
+                    condition=TechTilesAtLeast(3),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("quid_pro_quo", "Quid Pro Quo"),

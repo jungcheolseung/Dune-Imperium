@@ -268,6 +268,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "cannon_turrets",
     "second_wave",
     "war_chest",
+    "machine_culture",
 }
 _IX_IMPERIUM_TRANSCRIBED = {
     "choam_delegate",

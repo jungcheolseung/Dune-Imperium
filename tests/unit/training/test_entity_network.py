@@ -214,7 +214,9 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # moved (compared against 4cdf1e99, 2026-10-30).
 # Then War Chest got its record (stage P4d): only its own row changed, no
 # column and no scale (compared against 3b8cd83c, 2026-10-30).
-_GOLDEN_DIGEST = "026ab1d314f395c3c2526d4917ff65f12edff2d52ba58a805d8e8c411a6b0814"
+# Then Machine Culture got its record (stage P4d): only its own row changed, no
+# column and no scale (compared against 044b4ea1, 2026-10-30).
+_GOLDEN_DIGEST = "204ff5548736fcc4ccbf7d0ed6410400ce1e22f04463b0b19e389b846fa16629"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
