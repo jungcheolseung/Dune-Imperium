@@ -31,7 +31,9 @@ printed tile's art (``tueks_sietch_tree``).
 
 The original Dune: Imperium's own 19 spaces (``BASE_SPACE_OBJECTS``) come from
 the Playmat's sibling container ``BASE_SPACES_PATH`` and are drawn the same
-way, in English only (``tile_langs``) under ``<lang>/base/location/``.
+way, in English only (``tile_langs``) under ``<lang>/base/location/``; Rise of
+Ix's four new spaces (``IX_SPACE_OBJECTS``) likewise from ``IX_SPACES_PATH``,
+under ``<lang>/rise-of-ix/location/``.
 
 Inputs go to the assets checkout's git-ignored
 ``reference/dune-steam-app/<build-guid>/render/boardspaces/``; tiles go to
@@ -75,6 +77,9 @@ SPACES_PATH = (
 # holds the same-named objects with an ``_Uprising`` suffix where the print
 # changed).
 BASE_SPACES_PATH = (*SPACES_PATH[:-1], "P_Spaces_ChildOrderMattersForGamepad")
+# An original + Rise of Ix table's spaces (29 children, 2026-10-29: the four
+# new spaces, the Shipping track and the original spaces again).
+IX_SPACES_PATH = (*SPACES_PATH[:-1], "P_Spaces_IX_ChildOrderMattersForGamepad")
 # The icon mesh library (G_icon_BoardSpaces_1.fbx) the scene's icons come from;
 # it also holds icons the scene fills in at run time.
 ICON_MESH_CAB = "CAB-046df7124d06112c0fd9107e63b7dcf0"
@@ -137,6 +142,14 @@ BASE_SPACE_OBJECTS = {
     "stillsuits": "P_Space_Stillsuites",  # sic
     "the_great_flat": "P_Space_TheGreatFlat",
     "wealth": "P_Space_Wealth",
+}
+# Rise of Ix's four new spaces (engine content ``IX_BOARD_SPACES``) -> their
+# objects in ``IX_SPACES_PATH``, English only like the original game's.
+IX_SPACE_OBJECTS = {
+    "dreadnought": "P_Space_Dreadnought",
+    "interstellar_shipping": "P_Space_InterstellarShipping",
+    "smuggling": "P_Space_Smuggling",
+    "tech_negotiation": "P_Space_TechNegotiation",
 }
 # Tile content id -> the engine board space whose rules it shows.
 ENGINE_SPACE = {"research_station_overlay": "research_station"}
@@ -414,6 +427,7 @@ def cmd_inputs(_args):
     for path, objects in (
         (SPACES_PATH, SPACE_OBJECTS),
         (BASE_SPACES_PATH, BASE_SPACE_OBJECTS),
+        (IX_SPACES_PATH, IX_SPACE_OBJECTS),
     ):
         container = space_container(app, sf, path)
         for obj_name in sorted(set(objects.values())):
@@ -428,6 +442,7 @@ def cmd_inputs(_args):
             "build_guid": build_guid(),
             "scene": [SCENE_BUNDLE, SCENE_CAB, "/".join(SPACES_PATH)],
             "base_scene": "/".join(BASE_SPACES_PATH),
+            "ix_scene": "/".join(IX_SPACES_PATH),
             "spaces": spaces,
             "materials": dump.materials,
             "extra_meshes": extra,
@@ -487,8 +502,12 @@ QUAD = {  # Unity's built-in Quad: 1x1 in XY, centred
 #   the icon library cut from the same atlas as the other reward icons (the
 #   original game's Swordmaster is the same);
 # - the original Mentat space shows its pawn ("Filled") or the bare slot
-#   ("Empty") by game state; the printed board shows the slot.
+#   ("Empty") by game state; the printed board shows the slot;
+# - Rise of Ix's Freighter icon (G_icon_Reward_Shipping, a second one
+#   G_icon_Reward_Shipping2) is built on the coin icon's template, whose
+#   number (CoinText_3D, "5") the app leaves on; the print has none.
 COMBAT_ICON = "G_icon_Combat"
+FREIGHTER_ICON = "G_icon_Reward_Shipping"
 HIDDEN_NODES = frozenset({"G_icon_Reward_WormSlash", "UI_icon_Bonus_Spice"})
 MENTAT_PAWN_NODES = frozenset({"Filled", "Empty"})
 REWARD_ICON_MATERIAL = "M_icon_BoardSpaces_1"  # the reward icons' atlas
@@ -928,10 +947,13 @@ def fix_static_state(inp, tree, content_id):
     """The printed board's state of a live space (see COMBAT_ICON above)."""
     combat = engine_space(content_id).combat
 
-    def fix(node, _path):
+    def fix(node, path):
         if node["name"] == COMBAT_ICON:
             node["active"] = combat
         if node["name"] in HIDDEN_NODES:
+            node["active"] = False
+        parent = path.rsplit("/", 2)[-2]
+        if node["name"] == "CoinText_3D" and parent.startswith(FREIGHTER_ICON):
             node["active"] = False
 
     walk(tree, fix)
@@ -1136,14 +1158,16 @@ def tueks_sietch_tree(inp):
 
 # ---------------------------------------------------------------- commands
 def tile_ids(args):
-    ids = [*SPACE_OBJECTS, TUEK_ID, *BASE_SPACE_OBJECTS]
+    ids = [*SPACE_OBJECTS, TUEK_ID, *BASE_SPACE_OBJECTS, *IX_SPACE_OBJECTS]
     return [i for i in args.ids.split(",") if i] if args.ids else ids
 
 
 def tile_langs(args, content_id):
-    """The languages of one tile: the original game's are English only."""
+    """The languages of one tile: the original game's and Rise of Ix's are
+    English only."""
     langs = [lang for lang in args.lang.split(",") if lang]
-    return ["en"] if content_id in BASE_SPACE_OBJECTS else langs
+    only_en = content_id in BASE_SPACE_OBJECTS or content_id in IX_SPACE_OBJECTS
+    return ["en"] if only_en else langs
 
 
 def tile_tree(inp, content_id):
@@ -1157,7 +1181,11 @@ def tile_tree(inp, content_id):
             "frame_texture": TUEK_FRAME[0],
             "half": TUEK_FRAME[1],
         }
-    obj = SPACE_OBJECTS.get(content_id) or BASE_SPACE_OBJECTS[content_id]
+    obj = (
+        SPACE_OBJECTS.get(content_id)
+        or BASE_SPACE_OBJECTS.get(content_id)
+        or IX_SPACE_OBJECTS[content_id]
+    )
     tree = fix_static_state(inp, inp.space(obj), content_id)
     texture, half = frame_source(inp, tree)
     return tree, {"object": obj, "frame_texture": texture, "half": half}
@@ -1222,7 +1250,7 @@ def cmd_compare(args):
     for cid in tile_ids(args):
         icon = str(engine_space(cid).agent_icon.value)
         group = "overlays" if cid in ENGINE_SPACE or cid == TUEK_ID else icon
-        if cid in BASE_SPACE_OBJECTS:  # the original game's sheets come last
+        if cid in BASE_SPACE_OBJECTS or cid in IX_SPACE_OBJECTS:  # last
             group = f"base-{icon}"
         groups.setdefault(group, []).append(cid)
     order = (*GROUP_ORDER, "overlays", *(f"base-{icon}" for icon in GROUP_ORDER))
