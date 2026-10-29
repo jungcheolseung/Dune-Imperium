@@ -1,7 +1,11 @@
 """Imperium Ceremony: look at the Intrigue deck's top two cards and keep one.
 
 The owner sees both cards while the choice is open (``PrivatePlayerView
-.peeked_intrigue_ids``); the card not kept stays on top of the deck.
+.peeked_intrigue_ids``); the card not kept stays on top of the deck, and
+the owner knows it there until it reaches a public zone or the owner's hand
+(OQ-149, user ruling 2026-10-29 "(가) 둘 다 기록";
+``rules.intrigue_knowledge``). The other seats see a card kept and one put
+back face down, not which, so what they knew of the two is lost.
 With fewer than two cards face down, the discard pile is shuffled into a
 new deck beneath the card(s) still on top and the peek then looks at two
 (OQ-052, user ruling); only when nothing is left to shuffle does the peek
@@ -31,6 +35,10 @@ from dune_imperium.rules.frames import (
 from dune_imperium.rules.intrigue_deck import (
     intrigue_draw_short_events,
     shufflable_intrigue_discard,
+)
+from dune_imperium.rules.intrigue_knowledge import (
+    forget_intrigue_cards,
+    remember_intrigue,
 )
 
 PEEK_COUNT = 2
@@ -144,10 +152,15 @@ def apply_intrigue_peek(state: GameState, action: DomainAction) -> RuleResult:
             next_owner, suspensor_owed=next_owner.suspensor_owed + 1
         )
     remaining = tuple(card for card in peeked if card != kept)
-    next_state = replace(
-        state.pop_decision(),
-        players=replace_player(state.players, next_owner),
-        intrigue_deck=(*remaining, *state.intrigue_deck[len(peeked) :]),
+    next_owner = remember_intrigue(next_owner, remaining)
+    next_state = forget_intrigue_cards(
+        replace(
+            state.pop_decision(),
+            players=replace_player(state.players, next_owner),
+            intrigue_deck=(*remaining, *state.intrigue_deck[len(peeked) :]),
+        ),
+        peeked,
+        keeping=(action.actor,),
     )
     return RuleResult(
         state=next_state,

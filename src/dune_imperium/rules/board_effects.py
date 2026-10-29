@@ -101,6 +101,7 @@ from dune_imperium.rules.intrigue_deck import (
     draw_or_queue_intrigue_cards,
     with_trashed_intrigue,
 )
+from dune_imperium.rules.intrigue_knowledge import forget_intrigue_cards
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.sandworms import sandworm_block
 from dune_imperium.rules.scouts_missions import (
@@ -693,11 +694,16 @@ def apply_secrets_steal(state: GameState, outcome: ChanceOutcome) -> RuleResult:
         else candidate
         for candidate in state.players
     )
-    next_state = replace(state.pop_decision(), players=players)
     # The theft itself is public (both Intrigue counts change at the table),
     # but the stolen identity is not: Intrigue cards stay hidden from
     # opponents until played [Main p. 7], so only the thief and the victim
-    # learn which card moved (OQ-010 ruling 3).
+    # learn which card moved (OQ-010 ruling 3), and the other seats lose
+    # track of the victim's cards they knew (OQ-149).
+    next_state = forget_intrigue_cards(
+        replace(state.pop_decision(), players=players),
+        victim_state.intrigue_cards,
+        keeping=(thief, victim),
+    )
     events = (
         GameEvent(
             event_id=f"{frame.decision.decision_id}:stolen",

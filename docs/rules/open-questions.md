@@ -174,7 +174,7 @@
 | [OQ-146](#oq-146--kwisatz-haderach의-from-anywhere와-conflict에-있는-into-the-fray의-agent-원판--bloodlines) | Kwisatz Haderach의 "from anywhere"와 Conflict에 있는 Into the Fray의 Agent (원판 + Bloodlines) | `DECIDED` |
 | [OQ-147](#oq-147--research-station의-카드-셋-원판) | Research Station의 카드 셋 (원판) | `DECIDED` |
 | [OQ-148](#oq-148--spice-smugglers의-화살표-보상-순서-원판) | Spice Smugglers의 화살표 보상 순서 (원판) | `DECIDED` |
-| [OQ-149](#oq-149--intrigue-덱-맨-위를-보고-하나를-남긴-좌석은-그-카드를-아는가-immortality--rise-of-ix) | Intrigue 덱 맨 위를 보고 하나를 남긴 좌석은 그 카드를 아는가 (Immortality · Rise of Ix) | `OPEN` |
+| [OQ-149](#oq-149--intrigue-덱-맨-위를-보고-하나를-남긴-좌석은-그-카드를-아는가-immortality--rise-of-ix) | Intrigue 덱 맨 위를 보고 하나를 남긴 좌석은 그 카드를 아는가 (Immortality · Rise of Ix) | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3175,7 +3175,7 @@
 
 ## OQ-149 — Intrigue 덱 맨 위를 보고 하나를 남긴 좌석은 그 카드를 아는가 (Immortality · Rise of Ix)
 
-- 상태: `OPEN` (2026-10-29, 사용자 확인 대기 — 조정자가 올림)
+- 상태: `DECIDED` (2026-10-29 사용자, 조정자가 물어 받음: **"(가) 둘 다 기록"**) — 아래 "판정"
 - 인쇄·문서:
   - Immortality의 Imperium Ceremony: "Intrigue deck 맨 위 두 장을 보고 한 장을 keep, 나머지는 맨 위로" `[card face]`(OQ-052).
   - Rise of Ix의 Viscount Hundro Moritani, Intelligence: 게임 시작에 Intrigue 덱 위 두 장을 보고 하나를 갖고 하나를 위에 되돌린다 `[Leader card]`.
@@ -3190,3 +3190,14 @@
   - (다) 둘 다 기록하지 않는다(rise-of-ix.md 13을 고친다).
 - 추천: **(가).** 같은 상황(맨 위 둘을 보고 하나를 되돌림)이면 같은 지식이고, 재확인 원칙(OQ-010)에 맞는다. 섞으면 지식은 지운다(Codex 리뷰의
   주의, plan 17.8). 판정 전에는 엔진을 바꾸지 않는다.
+- **판정(2026-10-29, 사용자 "(가) 둘 다 기록"):** Imperium Ceremony와 Hundro의 Intelligence 모두, 맨 위에 되돌린 카드를 그 좌석이 아는
+  것으로 기록한다(`PlayerState.known_intrigue_ids`, `rules.intrigue_knowledge`). 구현(이 판정의 적용, 프로젝트 관례):
+  - 다른 좌석이 맨 위에서 뽑으면 그 좌석의 손에 있는 것으로 계속 안다(rise-of-ix.md 13). 그 카드가 공개 영역(사용·버림·trash)이나 아는 좌석
+    자신의 손에 들어가면 기록에서 빠진다 — 엔진의 단계마다 끝에서 정리한다(`settle_known_intrigue`, OQ-145의 공개 덱 위와 같은 자리).
+  - 섞으면 지운다: 섞이는 카드의 지식이 지워진다. 지금 엔진의 모든 다시 섞기는 버림 더미를 덱에 남은 카드 **아래에** 섞어 넣고(OQ-052)
+    아는 카드는 버림 더미에 없으므로, 지금은 다시 섞기가 아는 카드를 옮기지 않는다.
+  - 그 좌석이 따라갈 수 없는 숨은 이동은 그 자리에서 지운다(`forget_intrigue_cards`): 다른 좌석이 맨 위 둘을 보고 하나를 갖고 하나를 되돌릴 때
+    (어느 것을 되돌렸는지 모른다), Secrets의 무작위 가져가기와 Insidious의 건네기(카드가 옮긴 것은 모두 보지만 어느 카드인지는 두 좌석만
+    본다, OQ-010 판정 3) — 이때 그 두 좌석이 아닌 좌석은 주는 좌석의 손에 있던 아는 카드를 잊는다.
+  - Uprising + Immortality 판의 숨은 정보 처리(관측의 `private_intrigue_top`·`private_known_intrigue_seat*`, 결정 표본, `known_card_seats`와
+    되돌리기 경계)가 바뀐다. 같음 확인의 의도한 차이는 `scripts/ab/differences/`에 선언한다.

@@ -141,6 +141,7 @@ from dune_imperium.rules.influence import (
     lose_faction_influence,
 )
 from dune_imperium.rules.intrigue_deck import with_trashed_intrigue
+from dune_imperium.rules.intrigue_knowledge import forget_intrigue_cards
 from dune_imperium.rules.planetologist import replace_sandworms
 from dune_imperium.rules.reveal_turn import (
     add_reveal_persuasion,
@@ -1357,7 +1358,13 @@ def _give_intrigue_card(
     receiver = replace(target, intrigue_cards=(*target.intrigue_cards, card_id))
     players = replace_player(replace_player(state.players, giver), receiver)
     return RuleResult(
-        state=replace(state, players=players),
+        # The other seats cannot tell which card moved: they lose track of
+        # the giver's cards they knew (OQ-149).
+        state=forget_intrigue_cards(
+            replace(state, players=players),
+            owner.intrigue_cards,
+            keeping=(player, recipient),
+        ),
         events=(
             # The table sees a card change hands; only the two seats
             # involved learn which one [Main p. 7].

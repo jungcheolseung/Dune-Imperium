@@ -238,7 +238,6 @@ def _ix_fields_absent(player: PlayerState) -> bool:
         or player.set_aside_card_id
         or player.set_aside_returned_turn
         or player.turns_finished_round
-        or player.known_intrigue_ids
     )
 
 
@@ -249,9 +248,8 @@ def _check_rise_of_ix(state: GameState) -> None:
     hashes are those of the engine before the fields existed
     (``PlayerState.HASH_OMITTED_AT_DEFAULT``). In a Rise of Ix game a seat
     owns two dreadnoughts at most, the one on a Control space included
-    [Rise of Ix p. 6], and every Intrigue card it knows is in the Intrigue
-    deck or in another seat's held Intrigue (``known_intrigue_ids``): a card
-    that reached a public zone or the seat's own hand has left the record.
+    [Rise of Ix p. 6]. The Intrigue cards a seat knows are
+    ``_check_known_intrigue``'s.
     """
 
     if not state.config.rise_of_ix:
@@ -262,7 +260,6 @@ def _check_rise_of_ix(state: GameState) -> None:
                     "outside a Rise of Ix game"
                 )
         return
-    deck = frozenset(state.intrigue_deck)
     for player in state.players:
         on_spaces = sum(
             1 for _, seat, _ in state.dreadnought_control if seat == player.player_id
@@ -276,6 +273,23 @@ def _check_rise_of_ix(state: GameState) -> None:
         if owned > 2:
             raise InvariantViolation(
                 f"player {player.player_id} owns {owned} dreadnoughts"
+            )
+
+
+def _check_known_intrigue(state: GameState) -> None:
+    """The Intrigue cards a seat knows and another seat does not (OQ-149,
+    ``rules.intrigue_knowledge``): only Imperium Ceremony (Immortality) and
+    Rise of Ix record them, and every one is in the Intrigue deck or in
+    another seat's held Intrigue -- a card that reached a public zone or the
+    seat's own hand has left the record by the end of the transition."""
+
+    recorded = state.config.immortality or state.config.rise_of_ix
+    deck = frozenset(state.intrigue_deck)
+    for player in state.players:
+        if player.known_intrigue_ids and not recorded:
+            raise InvariantViolation(
+                f"player {player.player_id} records known Intrigue in a game "
+                "without Immortality or Rise of Ix"
             )
         held_elsewhere = frozenset(
             card
@@ -311,6 +325,7 @@ def check_state_invariants(state: GameState, census: CardCensus) -> None:
                 f"the top of the deck {player.deck[: len(top) + 1]}"
             )
     _check_rise_of_ix(state)
+    _check_known_intrigue(state)
     personal = _require_unique(_all_personal_instances(state), "personal cards")
     fixed_personal = frozenset(
         instance_id

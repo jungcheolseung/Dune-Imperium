@@ -482,11 +482,13 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     peeks below. A hidden card its owner has been shown is known to that
     owner: a peeked deck top (Controlled, Glowglobes), Long Live the
     Fighters' top three, Imperium Ceremony's two Intrigue cards, Kota Odax's
-    bottom Tech tiles and Secret Project. Rise of Ix (docs/rules/rise-of-ix.md
-    13): Ilesa Ecaz's face-down set-aside card is hers alone, and an Intrigue
-    card a seat knows (``PlayerState.known_intrigue_ids``: Viscount Hundro
-    Moritani's deck top, the cards it put on the deck's bottom, such a card
-    another seat drew) adds that seat to its knowers. An Arrakeen Scouts
+    bottom Tech tiles and Secret Project. An Intrigue card a seat knows
+    (``PlayerState.known_intrigue_ids``, OQ-149: the card Imperium Ceremony
+    or Viscount Hundro Moritani put back on the deck's top, the cards Rise of
+    Ix puts on its bottom, such a card another seat drew) adds that seat to
+    its knowers (``rules.intrigue_knowledge``). Rise of Ix
+    (docs/rules/rise-of-ix.md 13): Ilesa Ecaz's face-down set-aside card is
+    hers alone. An Arrakeen Scouts
     secret pick is listed under ``secret_pick_id`` for its seat until it is
     due, and a sealed bid under ``secret_bid_id`` until every seat has
     confirmed, and the original game's Baron Harkonnen's Masterstroke
