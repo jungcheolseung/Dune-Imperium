@@ -482,6 +482,13 @@ class ProfileCore:
         """``GetUnitsToDeploy`` @0x49158f0: how many garrison troops to deploy."""
         raise NotImplementedError
 
+    def units_to_deploy_split(
+        self, garrison_troops: int, garrison_dreadnoughts: int, max_units: int
+    ) -> tuple[int, int]:
+        """``GetUnitsToDeploy`` @0x49158f0 over troops and dreadnoughts:
+        ``(dreadnoughts, troops)`` to deploy."""
+        raise NotImplementedError
+
     def troops_to_retreat(self, max_troops: int) -> int:
         """``GetTroopsToRetreat`` @0x4917820."""
         raise NotImplementedError

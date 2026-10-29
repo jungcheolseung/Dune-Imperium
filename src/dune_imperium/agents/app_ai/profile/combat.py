@@ -142,6 +142,10 @@ _HEIGHLINER_SPACES: frozenset[str] = frozenset(
 _GURNEY = "LeaderArchetypes.Uprising.GurneyHalleckLeader"
 _CHANI_CLEVER_TACTICIAN = "chani_clever_tactician"
 _GO_TO_GROUND = "go_to_ground"
+_DIVERSION = "diversion"  # Rise of Ix
+_NEGOTIATED_WITHDRAWAL = "negotiated_withdrawal"  # Rise of Ix Imperium card
+#: A dreadnought's strength [Rise of Ix p. 6] (the unit's ``Strength``).
+_DREADNOUGHT_STRENGTH = 3
 _ECONOMIC_POSITIONING = "economic_positioning"  # our Intrigue card id
 # The space archetypes the worm potentials look up (``ArchID ==
 # Uprising.HaggaBasinUP`` / ``Uprising.DeepDesert``): only on the Uprising
@@ -252,9 +256,10 @@ def _conflict_units(p: PlayerState) -> int:
 
 def _garrison_units(p: PlayerState) -> int:
     """``WormPlayer::get_GarrisonUnits @0x4843dc0`` (troops only in Uprising;
-    Bloodlines garrison Commanders too, §1.1)."""
+    Bloodlines garrison Commanders too, §1.1; Rise of Ix dreadnoughts, every
+    ``WormUnit``)."""
 
-    return p.troops_garrison + p.commanders_garrison
+    return p.troops_garrison + p.commanders_garrison + p.dreadnoughts_garrison
 
 
 def _garrison_troops(p: PlayerState) -> int:
@@ -451,8 +456,18 @@ class CombatMixin(ProfileCore):
                 w += 1.25 * third.value_for_player(self._profile(), ()).sum
         # f64 0.33 and 2.0 (DeployValue): pressure from an overfull garrison.
         w += min(max(0.0, (_garrison_troops(me) - 3) * 0.33), 2.0)
-        # IsSetEnabled(RiseOfIx) is false: dreadnought, Negotiated Withdrawal
-        # and Overpowering Dread terms skipped. Rapid Mobilization and Staged
+        if self.ctx.ix:
+            # IsSetEnabled(RiseOfIx = 2) (@0x491326x): f64 1.5 per garrisoned
+            # dreadnought, then x ``NegotiatedWithdrawalDeployValueMod`` with a
+            # Negotiated Withdrawal in hand (``b__103_4``: ArchID) and two or
+            # more garrisoned troops (``cmp eax, 2; jl``). The Overpowering
+            # Dread term is the Campaign115/116 scenarios' only.
+            w += me.dreadnoughts_garrison * 1.5
+            if _garrison_troops(me) >= 2 and any(
+                card_id(card) == _NEGOTIATED_WITHDRAWAL for card in me.hand
+            ):
+                w *= self.C.NegotiatedWithdrawalDeployValueMod
+        # Rapid Mobilization and Staged
         # Incident (BaseSet, the original game's cards; spec §6): r is
         # ``RapidMobilizationDeployMod`` with the first held, s is
         # ``StagedIncidentDeployMod`` with the second held and
@@ -974,8 +989,24 @@ class CombatMixin(ProfileCore):
         list holds that many troops, strongest first in prompt order).
         """
 
+        dreadnoughts, troops = self.units_to_deploy_split(garrison_troops, 0, max_units)
+        return dreadnoughts + troops
+
+    def units_to_deploy_split(
+        self, garrison_troops: int, garrison_dreadnoughts: int, max_units: int
+    ) -> tuple[int, int]:
+        """``GetUnitsToDeploy`` over a unit list of troops (strength 2) and
+        Rise of Ix dreadnoughts (strength 3): ``(dreadnoughts, troops)``.
+
+        The list is ``OrderByDescending(Strength)`` (``b__118_5``: the unit's
+        virtual ``Strength``), so dreadnoughts come first, and ``TakeWhile``
+        (``b__6``) takes units while the strength so far is under the request
+        and fewer than ``max`` are taken. Without dreadnoughts this is
+        ``units_to_deploy``.
+        """
+
         me = self.ctx.me
-        units = garrison_troops
+        units = garrison_troops + garrison_dreadnoughts
         max_ = max_units if max_units > 0 else units
         interest = self.current_conflict_interest().sum
         my_exp = self.est_strength().sum
@@ -986,7 +1017,10 @@ class CombatMixin(ProfileCore):
         )
         all_ = sorted([*opp, my_exp], reverse=True)
         req = 0
-        sum_strength = units * _TROOP_STRENGTH
+        sum_strength = (
+            garrison_troops * _TROOP_STRENGTH
+            + garrison_dreadnoughts * _DREADNOUGHT_STRENGTH
+        )
         lb, ub = self.conflict_posture_bounds()
         slots = self._conflict_rewards_allowed()
         in_conflict = sum(1 for op in self.ctx.opponents if _conflict_units(op) > 0)
@@ -1031,43 +1065,59 @@ class CombatMixin(ProfileCore):
                 elif slots > in_conflict and _conflict_units(me) == 0:
                     req = 1  # unreachable in 4p
         # Selection: strongest first; TakeWhile tests the sum before the unit.
+        strengths = [_DREADNOUGHT_STRENGTH] * garrison_dreadnoughts + [
+            _TROOP_STRENGTH
+        ] * garrison_troops
         total = 0
         taken = 0
         deploy = 0
-        for _ in range(units):
+        for strength in strengths:
             ok = total < req and taken < max_
-            total += _TROOP_STRENGTH
+            total += strength
             taken += 1
             if not ok:
                 break
             deploy += 1
+        dreadnoughts = min(garrison_dreadnoughts, deploy)
+        troops = deploy - dreadnoughts
+        # This turn's exhausted units in the Conflict (``b__118_11`` /
+        # ``b__118_13`` ``IsExhausted`` over ``GetPlayerDeployed``; ours:
+        # ``units_deployed_turn``, UNTRACED when the app readies them).
+        exhausted = me.units_deployed_turn
         if self._baron_holds_secret_factions():
-            # The original Baron Harkonnen (0x49167cc-0x4916fb5): when this
-            # turn's exhausted units in the Conflict (``b__118_11``
-            # ``IsExhausted``; ours: ``units_deployed_turn``, UNTRACED when
-            # the app readies them) and the troops chosen make exactly 3, one
-            # more troop left over goes in (" with Masterstroke") while the
-            # list is under ``max``; the Strength-3 unit it may swap out
-            # (``b__118_12``, a dreadnought) is never in an original game.
-            if (
-                me.units_deployed_turn + deploy == 3
-                and units - deploy > 0
-                and deploy < max_
-            ):
-                deploy += 1
-            return deploy
-        # Diversion (Rise of Ix) cannot occur. Go to Ground: keep one troop in
-        # to stay playable.
+            # The original Baron Harkonnen (0x49167cc-0x4916fb5): when the
+            # exhausted units and the troops chosen (``OfType<WormTroop>``)
+            # make exactly 3 and a troop is left over (``OfType<WormTroop>()
+            # .FirstOrDefault()``), it goes in (" with Masterstroke"): in
+            # place of a chosen Strength-3 unit (``b__118_12``, a dreadnought,
+            # removed) or, with none, while the list is under ``max``.
+            if exhausted + troops == 3 and garrison_troops - troops > 0:
+                if dreadnoughts > 0:
+                    return (dreadnoughts - 1, troops + 1)
+                if deploy < max_:
+                    return (dreadnoughts, troops + 1)
+            return (dreadnoughts, troops)
+        if self._holds_intrigue(_DIVERSION):
+            # Rise of Ix's Diversion (0x49168ee-0x4916b77): the exhausted units
+            # and the units chosen make exactly 3, the list is under ``max``
+            # and a unit is left: the next one in strength order goes in
+            # (" with Diversion"). Go to Ground is not checked then.
+            if exhausted + deploy == 3 and deploy < max_ and units - deploy > 0:
+                if garrison_dreadnoughts - dreadnoughts > 0:
+                    return (dreadnoughts + 1, troops)
+                return (dreadnoughts, troops + 1)
+            return (dreadnoughts, troops)
+        # Go to Ground: keep one troop in to stay playable.
         if (
             self._holds_intrigue(_GO_TO_GROUND)
             and _conflict_troops(me) == 0
             and deploy == 0
-            and units - deploy > 0
+            and garrison_troops - troops > 0
         ):
             # The app adds sorted.OfType<WormTroop>().FirstOrDefault(); with no
             # unit offered there is no deploy prompt at all.
-            deploy += 1
-        return deploy
+            troops += 1
+        return (dreadnoughts, troops)
 
     def _baron_holds_secret_factions(self) -> bool:
         """``Leader.ArchID == BaronVladimirHarkonnen && PrivateInformation

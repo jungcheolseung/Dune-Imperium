@@ -451,7 +451,10 @@ from dune_imperium.rules.agent_effects import (
     boost_draw_card,
     resolves_boost_draw,
 )
-from dune_imperium.rules.frames import COMMANDERS_RECRUITED_KEY
+from dune_imperium.rules.frames import (
+    COMMANDERS_RECRUITED_KEY,
+    DREADNOUGHTS_COMMISSIONED_KEY,
+)
 from dune_imperium.rules.graft_boxes import (
     active_box,
     box_is_pending,
@@ -1007,6 +1010,9 @@ _IX_ACTION_IDS: frozenset[str] = frozenset(
         "acquire_negotiation_tech",
         "commission_board_dreadnought",
         "acquire_board_tech",
+        "deploy_dreadnoughts",
+        # The app never withdraws (``DeployUnitsAbility`` only deploys).
+        "withdraw_dreadnoughts",
     }
 )
 _BLOODLINES_ACTION_IDS: frozenset[str] = frozenset(
@@ -4163,6 +4169,9 @@ def _deploy(t: _Turn) -> None:
     if t.run.ctx.bloodlines:
         _deploy_units(t)
         return
+    if t.run.ctx.ix and t.by_id("deploy_dreadnoughts"):
+        _deploy_ix(t)
+        return
     actions = t.by_id("deploy_troops")
     if not actions:
         return
@@ -4423,6 +4432,80 @@ def _ix_spaces(t: _Turn) -> None:
                 return answer.value, (board_tech if _response_ref(answer) else None)
 
             _prompt(t, "Acquire Tech", (board_tech,), acquire, explicit=True)
+
+
+def _deploy_ix(t: _Turn) -> None:
+    """``DeployUnitsAbility`` with Rise of Ix dreadnoughts in the garrison
+    (plan §13): the app's unit list holds the garrison's troops and
+    dreadnoughts, ``GetUnitsToDeploy`` takes the strongest first
+    (``Profile.units_to_deploy_split``). The ``NumberToSelect`` is the
+    largest legal ``troops + dreadnoughts``: each kind within its legal
+    maximum, the units beyond each kind's own this-turn recruits within the
+    shared garrison extra (``rules/combat_deployment.unit_deployment_rooms``).
+    The dreadnoughts are deployed first and the troops kept in
+    ``Memory.intents`` (``DEPLOY_SPLIT_INTENT``) for the next decision, as
+    the Bloodlines split (plan §4.6). Used once per turn, as the base window.
+    """
+
+    troops = t.by_id("deploy_troops")
+    dreadnoughts = t.by_id("deploy_dreadnoughts")
+    run = t.run
+    memory = run.memory.intents
+    key = (DEPLOY_SPLIT_INTENT, run.ctx.round_number, t.seat, t.card_ref)
+    stored = memory.get(key)
+    deployed = _context_int(t, "combat_troops_deployed") + _context_int(
+        t, "combat_dreadnoughts_deployed"
+    )
+    if deployed > 0:
+        if isinstance(stored, tuple) and len(stored) == 2:
+            kind, count = stored
+            pool = dreadnoughts if kind == "deploy_dreadnoughts" else troops
+            legal = _max_count(pool)
+            if isinstance(count, int) and legal > 0:
+                action = with_arg(pool, "count", min(count, legal))
+                if action is not None:
+                    _automatic(t, "Deploy Units rest", _FOLLOW_UP, action, -1)
+                    t.on_choose[action] = [(key, _DROP)]
+        return
+    if stored is not None:
+        memory.pop(key, None)  # stale: this turn has not deployed yet
+    troop_max = _max_count(troops)
+    dread_max = _max_count(dreadnoughts)
+    recruited_troops = _context_int(t, "troops_recruited")
+    commissioned = _context_int(t, DREADNOUGHTS_COMMISSIONED_KEY)
+    shared = _context_int(t, "existing_troop_deployment_limit")
+    maximum = max(
+        (
+            n_troops + n_dreads
+            for n_troops in range(troop_max + 1)
+            for n_dreads in range(dread_max + 1)
+            if max(0, n_troops - recruited_troops) + max(0, n_dreads - commissioned)
+            <= shared
+        ),
+        default=0,
+    )
+    me = run.ctx.me
+    p = t.p
+    by_kind = {"deploy_troops": troops, "deploy_dreadnoughts": dreadnoughts}
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        n_dreads, n_troops = p.units_to_deploy_split(
+            me.troops_garrison, me.dreadnoughts_garrison, maximum
+        )
+        order = [
+            ("deploy_dreadnoughts", min(n_dreads, dread_max)),
+            ("deploy_troops", min(n_troops, troop_max)),
+        ]
+        order = [(kind, n) for kind, n in order if n > 0]
+        if not order:
+            return 0.0, None
+        kind, n = order[0]
+        action = with_arg(by_kind[kind], "count", n)
+        if action is not None and len(order) > 1:
+            t.on_choose[action] = [(key, order[1])]
+        return 0.5, action  # DeployUnitsAbility::Evaluate's 0.5
+
+    _prompt(t, "Deploy Units", (*troops, *dreadnoughts), evaluate, explicit=False)
 
 
 def _plots(t: _Turn) -> None:
