@@ -825,9 +825,12 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _V.GAIN, _S.TECH, "=detonation_devices"
     ),
     # Disposal Facility's trash of a card in play: the tile prints it, the
-    # card is the target row (Rise of Ix, OQ-126).
+    # card is the target row (Rise of Ix, OQ-126). The tile also prints an
+    # acquire box "trash 1" (the optional trash window's row, printed by the
+    # same tile); bought during a Reveal with six Persuasion both are open at
+    # once (OQ-150 (2)), so this one is told apart as its Reveal turn option.
     "trash_disposal_facility_card": _spec(
-        _V.TRASH, _S.TECH, "=disposal_facility", targets=_CARD
+        _V.TRASH, _S.TECH, "=disposal_facility", option="reveal_turn", targets=_CARD
     ),
     # --- Playing a card (stage B3c-1): the window, the card, its option -----
     # One option still opens its step (OQ-111 (2)): an option is an effect
