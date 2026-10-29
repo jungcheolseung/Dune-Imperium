@@ -1215,6 +1215,14 @@ P4는 원판 + Ix(+ 프로모, Epic, 지도자 드래프트)를 연다. 그 밖�
 - 관측 v39 구간 설계(17.4) — 독립 리뷰 한 번(P3 v38처럼), Uprising 판 같은 수 확인.
 - 소크: 원판 + Ix(효과 없는 카드는 덱 밖이라 틀만으로도 돈다).
 
+**판 축(2026-10-29, `acc6a6f7`):** 원판 + `rise_of_ix`의 `content_for`가 덮개 칸 넷(Hall of Oratory, Rally Troops, Secure Contract, Sell
+Melange)을 빼고 Ix 칸 넷을 끝에 더하고(22칸), Ix 지도자 여섯을 원판 여덟 뒤에, 덱은 `play_data_complete`인 Ix 카드만(아직 없음) 받는다.
+Conflict: Economic Supremacy는 이 상자의 III이라 Epic이든 아니든 늘 풀에 있다(rise-of-ix.md 3의 3). Skirmish 둘·Trade Monopoly는 보상
+(`reward_rows`)이 전사되면 풀과 codec 목록에 함께 들어간다(덱 카드가 효과를 기다리는 것과 같은 원칙) — 지금 풀은 I 4·II 10·III 5. codec의
+`bloodlines_only`·`epic_only` 거름 넷은 `RulesetContent.conflicts_in_play()`(풀에 든 것)로 바뀌었다(Uprising은 같은 집합·같은 순서). 카탈로그 288개
+(두 본판, Ix 없이) 그대로; 원판 + Ix 넷은 바뀐 칸·Ix 지도자·Economic Supremacy 줄만 달라졌다. setup은 계속 거절한다. **P4c 몫:**
+`ConflictSetup`의 남는 장수 검사(지금 6·8; 원판 + Ix는 22 − 10 = 12, Epic도 12)를 본판과 Ix를 받게 고친 뒤 setup을 연다.
+
 ### 17.8 관측 v39 설계안 (P4a, 구현 전 독립 리뷰 대상)
 
 v38은 137구간 8,265열이다. 원칙은 v35·v37·v38과 같다: 새 id는 각 어휘의 **끝에** 붙이고 새 구간은 배치의 **끝에** 둔다. 그래야 형식 2 이관이
