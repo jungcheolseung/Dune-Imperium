@@ -628,6 +628,43 @@ class EconomyMixin(ProfileCore):
         return choices[self.game_arc()]
 
     # ===========================================================================
+    # §4.5 "Short"/"Long" flags (read by the BaseSet intrigue evaluators)
+    # ===========================================================================
+
+    def is_solari_short(self) -> bool:
+        """``get_IsSolariShort`` @0x4912010: ``GetResourceValue(Solari, 1,
+        false) >= SolariShortValue`` (``setae``)."""
+
+        return self.resource_value(Attr.SOLARI, 1, False) >= self.C.SolariShortValue
+
+    def is_solari_long(self) -> bool:
+        """``get_IsSolariLong`` @0x49120b0: ``!IsSolariShort``."""
+
+        return not self.is_solari_short()
+
+    def is_spice_short(self) -> bool:
+        """``get_IsSpiceShort`` @0x49120c0: the Swordmaster holder (the
+        ``Swordmaster`` attribute; false without it) with ``SpiceShortAmount
+        >= Spice`` (``ucomisd; setae``)."""
+
+        me = self.ctx.me
+        return me.swordmaster_acquired and self.C.SpiceShortAmount >= me.resources.spice
+
+    def is_troop_short(self) -> bool:
+        """``get_IsTroopShort`` @0x4912190: ``TroopShortAmount >=
+        GarrisonTroops`` (``setae``; Bloodlines Commanders count, D1)."""
+
+        return self.C.TroopShortAmount >= self._profile().garrison_troop_count()
+
+    def is_water_long(self) -> bool:
+        """``get_IsWaterLong`` @0x49121f0: not the Early arc and ``Water >=
+        WaterShortAmount`` (``ucomisd water, thr; setae``)."""
+
+        if self.game_arc() == 0:
+            return False
+        return self.ctx.me.resources.water >= self.C.WaterShortAmount
+
+    # ===========================================================================
     # §2 Tables and abundance
     # ===========================================================================
 

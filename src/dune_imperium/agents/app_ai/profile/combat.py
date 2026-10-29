@@ -76,7 +76,7 @@ _PLACE_SPY_CUSTOM = (
 _TRASH_CUSTOM = "worm.canis.abilities.ActivatedAbilities.TrashCustomAbility"
 
 # Direct subclasses of ``PlayAbilities.StrengthIntrigueAbility`` dealt in an
-# Uprising game, with Immortality's two (type listing in
+# Uprising or original game, with Immortality's two (type listing in
 # ``worm-canis.dll.cs``; none has a subclass): the abilities
 # ``OfType<StrengthIntrigueAbility>()`` keeps.
 _STRENGTH_INTRIGUE_ABILITIES: frozenset[str] = frozenset(
@@ -84,6 +84,12 @@ _STRENGTH_INTRIGUE_ABILITIES: frozenset[str] = frozenset(
         "worm.canis.abilities.PlayAbilities.Immortality.CounterattackCombatAbility",
         "worm.canis.abilities.PlayAbilities.Immortality.ViciousTalentsAbility",
         "worm.canis.abilities.PlayAbilities.BaseSet.BackedbyCHOAMCombatAbility",
+        # The original game's Strength cards (abilities/original_intrigue.py).
+        "worm.canis.abilities.PlayAbilities.BaseSet.AlliedArmadaAbility",
+        "worm.canis.abilities.PlayAbilities.BaseSet.AmbushAbility",
+        "worm.canis.abilities.PlayAbilities.BaseSet.MasterTacticianAbility",
+        "worm.canis.abilities.PlayAbilities.BaseSet.PrivateArmyAbility",
+        "worm.canis.abilities.PlayAbilities.BaseSet.TiebreakerAbility",
         "worm.canis.abilities.PlayAbilities.Uprising.ContingencyPlanCombatAbility",
         "worm.canis.abilities.PlayAbilities.Uprising.DevourAbility",
         "worm.canis.abilities.PlayAbilities.Uprising.FindWeaknessAbility",

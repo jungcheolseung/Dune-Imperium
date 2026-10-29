@@ -77,6 +77,26 @@ class ProfileCore:
         """``SelectForGameArc`` @0x4908c80."""
         raise NotImplementedError
 
+    def is_solari_short(self) -> bool:
+        """``get_IsSolariShort`` @0x4912010."""
+        raise NotImplementedError
+
+    def is_solari_long(self) -> bool:
+        """``get_IsSolariLong`` @0x49120b0."""
+        raise NotImplementedError
+
+    def is_spice_short(self) -> bool:
+        """``get_IsSpiceShort`` @0x49120c0."""
+        raise NotImplementedError
+
+    def is_troop_short(self) -> bool:
+        """``get_IsTroopShort`` @0x4912190."""
+        raise NotImplementedError
+
+    def is_water_long(self) -> bool:
+        """``get_IsWaterLong`` @0x49121f0."""
+        raise NotImplementedError
+
     def abundance_level(self, attr: Attr) -> int:
         """``GetAbundanceLevel`` @0x4905770 (-1 when no thresholds)."""
         raise NotImplementedError

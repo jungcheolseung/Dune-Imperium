@@ -131,6 +131,10 @@ _ANY_FACTION: Final = "none"
 #: the app's own budget never binds below about 7 cards (<= 127 combinations).
 GET_COMBINATIONS_BUDGET: Final = 4096
 
+#: ``PrivateArmy.archID`` (``IntrigueArchetypes.BaseSet.PrivateArmy``), the
+#: one card ``StrengthIntrigueAbility::Evaluate`` names by archetype.
+PRIVATE_ARMY_ARCHETYPE: Final = "IntrigueArchetypes.BaseSet.PrivateArmy"
+
 _TSMF_ARCHETYPES: Final = (
     "ImperiumArchetypes.BaseSet.TheSpiceMustFlow",
     "ImperiumArchetypes.Uprising.TheSpiceMustFlowUP",
@@ -583,8 +587,13 @@ class StrengthIntrigueAbility(IntrigueAbility):
         if r is not None and r < 2:
             value = -1.0  # sole first now: hold (0x4bddef9)
         elif p.ctx.conflict_deck_size == 0 or self._decisive(p, conflict):
-            # PrivateArmy (base set, 50.0) is never dealt in Uprising.
-            value = 100.0 - self.combat_value(p)
+            # ``Owner.ArchID == PrivateArmy.archID ? 50.0 : 100.0 - CombatValue``
+            # (0x4bde141 ``ArchID``, 0x4bde185 ``f64=50.0``, 0x4bde1c5
+            # ``f64=100.0``): the original game's Private Army (a literal).
+            if self.owner.short == PRIVATE_ARMY_ARCHETYPE:
+                value = 50.0
+            else:
+                value = 100.0 - self.combat_value(p)
         else:
             value = self._first_improving_value(p, conflict, rank)
         choice.update_responses(value, ())
