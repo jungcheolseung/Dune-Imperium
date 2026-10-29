@@ -254,7 +254,31 @@ def test_finesse_combat_uses_only_the_swords(troops: int, dreadnoughts: int) -> 
         assert _options(state, "finesse") == set()
 
 
-@pytest.mark.parametrize("card", ["expedite", "finesse"])
+# Secret Forces ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("supply,expected", [(5, 2), (1, 1), (0, 0)])
+def test_secret_forces_recruits_with_a_council_seat(supply: int, expected: int) -> None:
+    """ "If you have a seat on the High Council:" recruit 2 troops [Steam UI]."""
+    state = _start(
+        "secret_forces", high_council=True, troops_supply=supply, troops_garrison=0
+    )
+    # No cost: even an empty supply may fizzle (OQ-113 (C)).
+    assert _options(state, "secret_forces") == {0}
+    done = _play(state, "secret_forces")
+    assert done.players[0].troops_garrison == expected
+    assert done.players[0].troops_supply == supply - expected
+    assert "intrigue:secret_forces:0" in done.intrigue_discard
+
+
+def test_secret_forces_requires_its_owners_council_seat() -> None:
+    """ "If you have a seat on the High Council:" is mandatory [FAQ p. 2]."""
+    state = _start("secret_forces", high_council=False)
+    state = _seat(state, 1, high_council=True)
+    assert _options(state, "secret_forces") == set()
+
+
+@pytest.mark.parametrize("card", ["expedite", "finesse", "secret_forces"])
 def test_completed_cards_join_the_original_ix_deck(card: str) -> None:
     """ "Expedite / Finesse / Secret Forces / Strongarm" [Steam English titles]."""
     entry = intrigue_card_for_instance(f"intrigue:{card}:0")
@@ -263,7 +287,7 @@ def test_completed_cards_join_the_original_ix_deck(card: str) -> None:
     assert f"intrigue:{card}:0" in content_for(CONFIG).intrigue_deck_instance_ids
 
 
-@pytest.mark.parametrize("card", ["expedite", "finesse"])
+@pytest.mark.parametrize("card", ["expedite", "finesse", "secret_forces"])
 def test_plot_halves_are_playable_in_the_reveal_turn(card: str) -> None:
     """ "1 spice -> Freighter" / "Lose 1 Influence -> gain 1 Influence" /
     "If you have a seat on the High Council:" recruit 2 [Steam UI]."""

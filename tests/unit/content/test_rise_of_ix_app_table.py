@@ -259,6 +259,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "glimpse_the_path",
     "expedite",
     "finesse",
+    "secret_forces",
 }
 
 

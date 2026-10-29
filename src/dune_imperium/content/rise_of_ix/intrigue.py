@@ -29,8 +29,10 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainCombatStrength,
     GainInfluence,
     GainResources,
+    HasHighCouncil,
     LoseInfluence,
     PayResources,
+    RecruitTroops,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.intrigue import (
@@ -161,6 +163,14 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("secret_forces", "Secret Forces"),
         copies=1,
+        # "If you have a seat on the High Council:" then two troops
+        # [Steam app text and screen pieces]. The printed condition is
+        # mandatory [FAQ p. 2]; a free recruit may fizzle (OQ-113 (C)).
+        options=(
+            _plot(
+                EffectSection(condition=HasHighCouncil(), rewards=(RecruitTroops(2),))
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("strategic_push", "Strategic Push"),

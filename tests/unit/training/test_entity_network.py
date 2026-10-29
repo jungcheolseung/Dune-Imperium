@@ -151,10 +151,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # Rise of Ix's Intrigue cards got their records (stage P4d), each card's own
 # row only (Blackmail, compared against 7a0c50e4; Cull, compared against
 # 21bebb89; Glimpse the Path, compared against c23fb5bc; Finesse, compared
-# against d1f705b7), except Expedite: one column of the intrigue table is new
-# (its Freighter reward), only its row reads it, and every older row and its
-# scales are unchanged (compared against 018e7961, 2026-10-29).
-_GOLDEN_DIGEST = "d222de2386327bff108a28a843c544c45558640c98d1aa1b9a6e7bc454a51a3a"
+# against d1f705b7; Secret Forces, compared against 8a9c8c6a), except Expedite:
+# one column of the intrigue table is new (its Freighter reward), only its row
+# reads it, and every older row and its scales are unchanged (compared against
+# 018e7961, 2026-10-29).
+_GOLDEN_DIGEST = "7dac9b19c3d230859b126769b62afcfc782646b11538f99e6b05932ab928b705"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
