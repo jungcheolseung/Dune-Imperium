@@ -636,6 +636,8 @@ _ARMED_REWARD_CARDS = (
     # (``ImperialSpyAbility``).
     "duncan_idaho_card",
     "imperial_spy",
+    # Spice Smugglers' Solari after the spice (``SpiceSmugglersAbility``).
+    "spice_smugglers",
 )
 #: Urgent Shigawire's added draw comes after the boosted card's own
 #: abilities in the card row (``_boost_draw``).
@@ -2295,6 +2297,9 @@ _ORIGINAL_CHOICE_BOX_CARDS = frozenset({"guild_ambassador", "other_memory"})
 _ORIGINAL_INFLUENCE_FOLLOW_UPS = frozenset(
     {"firm_grip", "shifting_allegiances", "guild_ambassador"}
 )
+#: Original cards whose fixed Influence row follows their payment, part of
+#: the one app ability that paid (Spice Smugglers' Spacing Guild).
+_PAID_INFLUENCE_FOLLOW_UPS = frozenset({"spice_smugglers"})
 
 
 def _original_card_choices(t: _Turn, short: str) -> None:
@@ -3214,6 +3219,10 @@ def _card_influence(t: _Turn, short: str) -> None:
         return
     if short in _ORIGINAL_INFLUENCE_FOLLOW_UPS:
         return  # the rest of the payment's answer (_original_card_choices)
+    if short in _PAID_INFLUENCE_FOLLOW_UPS:
+        for action in actions:
+            _automatic(t, f"{short} influence", _FOLLOW_UP, action, -1)
+        return
     if short in _BOND_CHOICE_CARDS:
         _bond_choice(t, short, actions)
         return
