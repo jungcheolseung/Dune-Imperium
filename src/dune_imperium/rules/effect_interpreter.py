@@ -897,8 +897,8 @@ def reward_can_change_something(
             # "끝까지 가고 나면 뭐 없는 게 맞다" (OQ-048).
             return not tleilaxu_track_finished(owner)
         case GainInfluence() if not reward.requires_choice:
-            assert reward.factions is not None
-            return influence_can_rise(owner, reward.factions[0])
+            faction = fixed_influence_faction(state, player, reward)
+            return faction is not None and influence_can_rise(owner, faction)
         case GainInfluence():
             # A line that pays a LoseInfluence first (Change Allegiances,
             # Tenuous Bond) leaves the Faction it lowers free to rise again,
@@ -1128,6 +1128,30 @@ def _choice_reward_block(
             if isinstance(reward, TakeContract) and not state.config.choam_module:
                 return reward
     return None
+
+
+def fixed_influence_faction(
+    state: GameState, player: int, gain: GainInfluence
+) -> Faction | None:
+    """The named Faction, or the one visited this turn (Strongarm).
+
+    "Gain one Influence with a Faction whose board space you sent an Agent
+    to this turn" [Strongarm, Steam app text]. An Intrigue choice can be
+    above the Agent-turn frame; an earlier turn's placement never counts.
+    """
+
+    if gain.visited_space:
+        space_id = agent_turn_space_id(state, player)
+        return next(
+            (
+                space.faction
+                for space in content_for(state.config).board_spaces
+                if space.space_id == space_id
+            ),
+            None,
+        )
+    assert gain.factions is not None
+    return gain.factions[0]
 
 
 def influence_gain_candidates(
@@ -1610,8 +1634,9 @@ def apply_rewards(
         events.insert(gain_at, resources_gained_event(source, player, **gains))
     next_state = replace(state, players=replace_player(state.players, owner))
     for index, gain in enumerate(fixed_influence):
-        assert gain.factions is not None
-        faction = gain.factions[0]
+        faction = fixed_influence_faction(next_state, player, gain)
+        if faction is None:
+            continue
         gained = gain_faction_influence(
             next_state,
             player,

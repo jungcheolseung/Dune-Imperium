@@ -278,7 +278,77 @@ def test_secret_forces_requires_its_owners_council_seat() -> None:
     assert _options(state, "secret_forces") == set()
 
 
-@pytest.mark.parametrize("card", ["expedite", "finesse", "secret_forces"])
+# Strongarm ----------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "space,faction",
+    [
+        ("wealth", "emperor"),
+        ("foldspace", "spacing_guild"),
+        ("secrets", "bene_gesserit"),
+        ("stillsuits", "fremen"),
+    ],
+)
+@pytest.mark.parametrize("zone", ["garrison", "conflict"])
+def test_strongarm_loses_a_troop_for_the_faction_visited_this_turn(
+    space: str, faction: str, zone: str
+) -> None:
+    """ "Lose a troop" -> "Gain one Influence with a Faction whose board
+    space you sent an Agent to this turn." [Steam app English text]."""
+    state = _start(
+        "strongarm",
+        troops_garrison=int(zone == "garrison"),
+        troops_conflict=int(zone == "conflict"),
+        troops_supply=11,
+    )
+    state = _visit(state, space)
+    before = getattr(state.players[0].influence, faction)
+    supply = state.players[0].troops_supply
+    assert _options(state, "strongarm") == {0}
+    opened = _play(state, "strongarm")
+    assert {dict(row.arguments)["zone"] for row in _rows(opened)} == {zone}
+    done = _take(opened, "lose_intrigue_troop", zone=zone)
+    assert getattr(done.players[0].influence, faction) == before + 1
+    assert done.players[0].troops_supply == supply + 1
+    assert getattr(done.players[0], f"troops_{zone}") == 0
+    assert "intrigue:strongarm:0" in done.intrigue_discard
+
+
+def test_strongarm_requires_a_placement_this_turn() -> None:
+    """ "...whose board space you sent an Agent to this turn" excludes old Agents."""
+    state = _start("strongarm", troops_garrison=1, agent_locations=("wealth",))
+    assert _options(state, "strongarm") == set()
+
+
+def test_strongarm_cannot_use_a_non_faction_placement() -> None:
+    """ "Gain one Influence with a Faction whose board space..." needs a Faction."""
+    state = _visit(
+        _start("strongarm", troops_garrison=1), "smuggling", "dune_the_desert_planet"
+    )
+    assert _options(state, "strongarm") == set()
+
+
+def test_strongarm_requires_a_troop_and_cannot_lose_a_dreadnought() -> None:
+    """ "Lose a troop" cannot lose a dreadnought [Rise of Ix p. 6]."""
+    state = _visit(
+        _start(
+            "strongarm", troops_garrison=0, troops_conflict=0, dreadnoughts_garrison=1
+        ),
+        "wealth",
+    )
+    assert _options(state, "strongarm") == set()
+
+
+def test_strongarm_cannot_pay_when_the_visited_track_is_full() -> None:
+    """ "Lose a troop" -> "Gain one Influence..." needs a live reward (OQ-071)."""
+    state = _visit(
+        _start("strongarm", troops_garrison=1, influence=Influence(emperor=6)), "wealth"
+    )
+    assert _options(state, "strongarm") == set()
+
+
+@pytest.mark.parametrize("card", ["expedite", "finesse", "secret_forces", "strongarm"])
 def test_completed_cards_join_the_original_ix_deck(card: str) -> None:
     """ "Expedite / Finesse / Secret Forces / Strongarm" [Steam English titles]."""
     entry = intrigue_card_for_instance(f"intrigue:{card}:0")

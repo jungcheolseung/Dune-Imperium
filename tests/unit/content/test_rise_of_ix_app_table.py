@@ -260,6 +260,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "expedite",
     "finesse",
     "secret_forces",
+    "strongarm",
 }
 
 

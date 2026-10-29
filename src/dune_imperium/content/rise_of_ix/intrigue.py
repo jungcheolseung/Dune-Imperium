@@ -31,6 +31,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     GainResources,
     HasHighCouncil,
     LoseInfluence,
+    LoseTroops,
     PayResources,
     RecruitTroops,
     TrashPersonalCard,
@@ -179,6 +180,18 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("strongarm", "Strongarm"),
         copies=1,
+        # "Lose a troop" -> "Gain one Influence with a Faction whose board
+        # space you sent an Agent to this turn." [Steam app text]. The
+        # existing visited-space gain names that Faction; without it the
+        # cost line has no reward (rise-of-ix.md 9.3, OQ-071).
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(LoseTroops(1),),
+                    rewards=(GainInfluence(visited_space=True),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("war_chest", "War Chest"),
