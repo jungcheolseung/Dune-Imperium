@@ -819,8 +819,8 @@ def known_intrigue_places(state: GameState, owner: PlayerState) -> KnownIntrigue
 # The context keys of the open Rise of Ix decision's state (stage P4c writes
 # them in the frame the seat decides; ``ix_pending_of`` reads them): the
 # Shipping track spaces whose recall reward is still owed, as "1,3"; the open
-# Acquire Tech's Tech Discount, its payment ("spice" or "solari") and the
-# Negotiators the seat may still return toward it.
+# Acquire Tech's Tech Discount and its payment ("spice" or "solari"); the
+# Negotiators the seat may still return toward it are counted from the state.
 SHIPPING_REWARDS_KEY: Final = "shipping_rewards"
 # Inside the owner's own turn the owed recall rewards wait on its turn frame
 # instead (``rules.turn_rows``: the frame's waiting effects, a JSON list of
@@ -831,6 +831,9 @@ TURN_ROWS_KEY: Final = "pending_turn_rows"
 SHIPPING_REWARD_ROW: Final = "shipping_reward"
 TECH_DISCOUNT_KEY: Final = "tech_discount"
 TECH_PAYMENT_KEY: Final = "tech_payment"
+# No rule writes it any more: the returnable Negotiators are counted from the
+# state each time (``ix_negotiators_returnable``). Kept for the observation test
+# that writes a stale value of it into a frame to show the view ignores it.
 NEGOTIATORS_RETURNABLE_KEY: Final = "negotiators_returnable"
 
 

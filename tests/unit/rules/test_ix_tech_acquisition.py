@@ -36,7 +36,13 @@ from dune_imperium.core import (
     GameState,
     Resources,
 )
-from dune_imperium.core.observation import NO_IX_PENDING, IxPending, ix_pending_of
+from dune_imperium.core.observation import (
+    NEGOTIATORS_RETURNABLE_KEY,
+    NO_IX_PENDING,
+    IxPending,
+    ix_negotiators_returnable,
+    ix_pending_of,
+)
 from dune_imperium.rules import UprisingRulesEngine, ability_executor
 from dune_imperium.rules import tech as tech_rules
 from dune_imperium.rules.ability_executor import (
@@ -57,7 +63,6 @@ from dune_imperium.rules.frames import FrameKind
 from dune_imperium.rules.negotiators import negotiator_block, place_negotiator
 from dune_imperium.rules.setup import deal_ix_tech_stacks
 from dune_imperium.rules.tech import (
-    ix_negotiators_returnable,
     ix_tech_cost,
     landsraad_tech_block,
     legal_tech_acquisition_actions,
@@ -441,14 +446,15 @@ def test_windtraps_and_shuttle_fleet_queue_the_keys_p4c_2a_added() -> None:
 
 
 def test_the_open_decision_shows_the_discount_the_payment_and_the_negotiators() -> None:
-    """The frame the seat decides in carries ``TECH_DISCOUNT_KEY``,
-    ``TECH_PAYMENT_KEY`` (spice) and ``NEGOTIATORS_RETURNABLE_KEY`` for
-    ``ix_pending_of`` (plan 17.8 item 4): a discount of 2, three Negotiators
-    held and the dearest tile Holtzman Engine (6 less 2) show 3 returnable,
-    and one held shows 1."""
+    """The frame the seat decides in carries ``TECH_DISCOUNT_KEY`` and
+    ``TECH_PAYMENT_KEY`` (spice) for ``ix_pending_of`` (plan 17.8 item 4), which
+    counts the returnable Negotiators from the state: a discount of 2, three
+    Negotiators held and the dearest tile Holtzman Engine (6 less 2) show 3
+    returnable, and one held shows 1. The frame keeps no count of them."""
 
     _, state = _holding(spice=9, negotiators=3)
     opened = _open(state, discount=2)
+    assert NEGOTIATORS_RETURNABLE_KEY not in dict(opened.decision_stack[-1].context)
     assert ix_pending_of(opened, 0) == IxPending(
         tech_discount=2, tech_payment="spice", negotiators_returnable=3
     )
@@ -460,13 +466,13 @@ def test_the_open_decision_shows_the_discount_the_payment_and_the_negotiators() 
     # No more than the dearest tile costs still lowers it.
     stacks = (("artillery",), (), ())
     _, cheap = _holding(spice=9, negotiators=3, stacks=stacks)
-    assert ix_negotiators_returnable(cheap, cheap.players[0], 0) == 1
+    assert ix_negotiators_returnable(cheap, 0, 0) == 1
     assert ix_pending_of(_open(cheap), 0) == IxPending(
         tech_discount=0, tech_payment="spice", negotiators_returnable=1
     )
     # With no tile left there is nothing to lower.
     _, none = _holding(spice=9, negotiators=3, stacks=((), (), ()))
-    assert ix_negotiators_returnable(none, none.players[0], 0) == 0
+    assert ix_negotiators_returnable(none, 0, 0) == 0
 
     after, _ = _take(opened, DECLINE)
     assert ix_pending_of(after, 0) == NO_IX_PENDING

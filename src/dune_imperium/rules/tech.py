@@ -61,11 +61,7 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import ChanceDecision, DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
-from dune_imperium.core.observation import (
-    NEGOTIATORS_RETURNABLE_KEY,
-    TECH_DISCOUNT_KEY,
-    TECH_PAYMENT_KEY,
-)
+from dune_imperium.core.observation import TECH_DISCOUNT_KEY, TECH_PAYMENT_KEY
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.action_shapes import PRINTER_KEY, Source, printer_value
@@ -445,11 +441,7 @@ def push_tech_acquisition(
 
     if not (state.config.tech_module or state.config.rise_of_ix):
         raise ValueError("Acquire Tech requires the Tech Module or Rise of Ix")
-    extra = (
-        ix_acquisition_context(state, state.players[player], discount)
-        if state.config.rise_of_ix
-        else ()
-    )
+    extra = ix_acquisition_context(discount) if state.config.rise_of_ix else ()
     return RuleResult(
         state=state.push_decision(
             tech_acquisition_frame(
@@ -608,21 +600,6 @@ def _ix_tops(state: GameState) -> tuple[TechTile, ...]:
     return tuple(TECH_TILES_BY_ID[tech_id] for tech_id in face_up_tech_ids(state))
 
 
-def ix_negotiators_returnable(
-    state: GameState, owner: PlayerState, discount: int
-) -> int:
-    """The most Negotiators the owner could still return toward an Acquire
-    Tech at ``discount``: those it holds, but no more than the dearest tile
-    on offer still costs ("any number" of them, each one spice off,
-    [Rise of Ix p. 4]; a Negotiator beyond the price lowers nothing). The
-    open decision shows it as ``NEGOTIATORS_RETURNABLE_KEY``."""
-
-    return min(
-        owner.negotiators,
-        max((max(tile.cost - discount, 0) for tile in _ix_tops(state)), default=0),
-    )
-
-
 def ix_tech_acquisitions(
     state: GameState, owner: PlayerState, discount: int
 ) -> tuple[tuple[TechTile, int], ...]:
@@ -630,8 +607,9 @@ def ix_tech_acquisitions(
 
     The face-up top of every non-empty stack; the owner picks the tile and
     how many Negotiators to return, from none up to the most that still
-    lowers its cost ("원하는 만큼", ``ix_negotiators_returnable``), and the
-    rest of the price is spice it holds.
+    lowers its cost ("원하는 만큼"; the most over every tile on offer is
+    ``core.observation.ix_negotiators_returnable``), and the rest of the price
+    is spice it holds.
     """
 
     return tuple(
@@ -645,16 +623,15 @@ def ix_tech_acquisitions(
     )
 
 
-def ix_acquisition_context(
-    state: GameState, owner: PlayerState, discount: int
-) -> tuple[tuple[str, ActionValue], ...]:
+def ix_acquisition_context(discount: int) -> tuple[tuple[str, ActionValue], ...]:
     """The open Acquire Tech's state the seat's own view shows
-    (``core.observation.ix_pending_of``): its Tech Discount, its payment (spice;
-    Appropriate's Solari is stage P4c's later slice) and the Negotiators the
-    seat may still return."""
+    (``core.observation.ix_pending_of``): its Tech Discount and its payment
+    (spice; Appropriate's Solari is stage P4c's later slice). The Negotiators
+    the seat may still return are not kept: the view counts them from the state
+    each time (``core.observation.ix_negotiators_returnable``), as an
+    acquisition stacked under another must not show the count it opened with."""
 
     return (
-        (NEGOTIATORS_RETURNABLE_KEY, ix_negotiators_returnable(state, owner, discount)),
         (TECH_DISCOUNT_KEY, discount),
         (TECH_PAYMENT_KEY, "spice"),
     )
