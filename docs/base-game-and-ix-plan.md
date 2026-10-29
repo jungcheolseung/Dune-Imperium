@@ -1365,3 +1365,8 @@ Ixian Embassy가 없다), Bloodlines의 Landsraad 획득 제안은 `tech_module`
 Ix 콘텐츠는 `discount=0`/`1`을 늘 적는다(Dreadnought 칸은 0, Tech Negotiation은 1). (2) 거절(`decline`) 행이 원판 + Ix 카탈로그에 없다 — 창의
 인쇄 출처(`_window_printers`)가 Intrigue 카드만 알므로, P4c-4·P4d가 칸·카드 출처를 더하기 전에 콘텐츠를 붙이면 codec이 거절을 담지 못한다.
 (3) Windtraps·Shuttle Fleet은 아직 사면 `NotImplementedError`(P4c-2). (4) `PlaceNegotiator`·`CommissionDreadnought`는 Intrigue 출처 행만 있다.
+**P4c-1 Codex 리뷰(2026-10-29):** (1) 버그 — 쌓인 획득 창이 열릴 때 찍은 `negotiators_returnable`을 관측이 그대로 읽음 → `f5e7421d`
+(`core.observation.ix_negotiators_returnable`로 매번 계산). P4c-2a 뒤 정리: `rules/tech.py`의 같은 함수와 frame에 적는
+`NEGOTIATORS_RETURNABLE_KEY`를 core 함수 하나로 합친다. (2)·(3) **P7 몫(Ix + Tech Module 함께):** Ix 갈래가 `_acquisition_variants()`를
+건너뛰어 Advanced Data Analysis를 `post_id` 없이 내고(고르면 `KeyError`), codec의 Negotiator 구매 행이 Ix 타일에만 있어 Bloodlines 타일의
+Negotiator 변형(예: Glowglobes를 Negotiator 1로)을 담지 못한다 — 두 모듈을 함께 여는 단계에서 갈래를 합친다(10a).
