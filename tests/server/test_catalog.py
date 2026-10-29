@@ -259,19 +259,6 @@ def test_catalog_serves_generated_effect_text() -> None:
         assert "icon" in entry
 
 
-# English words the original game's Korean text keeps until the official
-# Korean edition names them (docs/base-game-and-ix-plan.md 18.5 2): the
-# original board's own spaces, the Mentat and the Foldspace card.
-ORIGINAL_ENGLISH = frozenset(
-    {
-        space.name
-        for space in IMPERIUM_BOARD_SPACES
-        if space.space_id not in {space.space_id for space in BOARD_SPACES}
-    }
-    | {"Mentat", "Foldspace"}
-)
-
-
 def test_catalog_serves_korean_contract_and_conflict_text() -> None:
     """``condition_ko``/``reward_ko``/``rewards_ko`` beside the English.
 
@@ -323,7 +310,7 @@ def test_catalog_serves_korean_contract_and_conflict_text() -> None:
             assert isinstance(line, str)
             assert line.startswith(label)
             assert_placeholders_are_terms(line, terms)
-            assert_no_stray_latin(line, ORIGINAL_ENGLISH)
+            assert_no_stray_latin(line)
 
 
 def test_catalog_serves_korean_personal_card_text() -> None:
@@ -384,7 +371,7 @@ def test_catalog_serves_korean_intrigue_text() -> None:
         for ko_line in text_ko:
             assert isinstance(ko_line, str) and ko_line.strip(), intrigue_id
             assert_placeholders_are_terms(ko_line, terms)
-            assert_no_stray_latin(ko_line, ORIGINAL_ENGLISH)
+            assert_no_stray_latin(ko_line)
             if not definition.navigation:
                 assert " — " in ko_line, (intrigue_id, ko_line)
 
@@ -748,13 +735,19 @@ def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
     assert isinstance(intrigue, dict)
     assert korean(leaders, "reverend_mother_jessica") is None
     assert korean(intrigue, "adaptive_tactics") is None
-    # Every Uprising board space and Objective card has its Korean name; the
-    # original board's own spaces wait for the official Korean edition
-    # (docs/base-game-and-ix-plan.md 18.5 2).
+    # Every board space of both boards (the original game's from its Korean
+    # rulebook's Board Space Guide [DI-ko pp. 17-18]) and every Objective card
+    # has its Korean name.
     spaces = catalog["spaces"]
     objectives = catalog["objectives"]
     assert isinstance(spaces, dict) and isinstance(objectives, dict)
-    assert all(korean(spaces, space.space_id) for space in BOARD_SPACES)
+    assert all(korean(spaces, space_id) for space_id in spaces)
+    assert korean(spaces, "conspire") == "흑막"
+    assert korean(spaces, "the_great_flat") == "대평지"
+    assert korean(leaders, "paul_atreides") == "폴 아트레이드"
+    # Not named in the Korean rulebook's text: English (plan 18.5 2).
+    assert korean(leaders, "duke_leto_atreides") is None
+    assert korean(cards, "arrakis_liaison") == "아라키스 연락책"
     assert all(korean(objectives, objective_id) for objective_id in objectives)
     assert korean(spaces, "imperial_privilege") == "제국 특권"
     assert korean(spaces, "fremkit") == "프렘 행낭"

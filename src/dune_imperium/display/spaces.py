@@ -258,17 +258,16 @@ _AUTHORED_OPTION_EFFECTS_KO: Mapping[
         ),
         ("imperial_basin", None): ("{spice:1} 및 여기 있는 보너스 {spice} 모두 얻음",),
         ("shipping", None): ("{solari:5}, {influence_any:1} 선택",),
-        # The original game's spaces (the English table's comment). Foldspace
-        # and the Mentat keep their English names, as the Korean generated
-        # text does elsewhere (Calculated Hire), until the official Korean
-        # edition names them (docs/base-game-and-ix-plan.md 18.5 2); the
-        # trash arrow and the Councilor follow the Uprising lines above.
-        ("foldspace", None): ("{influence_spacing_guild:1}, Foldspace 카드 {acquire}",),
+        # The original game's spaces (the English table's comment), in its
+        # Korean rulebook's words: 접힘 공간 카드 (the Foldspace card) and
+        # 멘타트 [DI-ko pp. 16-18]; the trash arrow and the Councilor follow
+        # the Uprising lines above.
+        ("foldspace", None): ("{influence_spacing_guild:1}, 접힘 공간 카드 {acquire}",),
         ("selective_breeding", None): (
             "{influence_bene_gesserit:1}. 카드 1장 {trash} 가능 {arrow_right} {draw:2}",
         ),
         ("mentat", None): (
-            "{draw:1}. Mentat이 여기 있으면 가져옴: 이번 라운드 당신의 {agent} 하나",
+            "{draw:1}. 멘타트가 여기 있으면 가져옴: 이번 라운드 당신의 {agent} 하나",
         ),
         ("imperium_swordmaster", None): (
             "게임당 한 번: 세 번째 {agent} 가져옴 (이번 라운드부터 사용 가능)",
@@ -442,11 +441,11 @@ _ICON_TEXTS_KO: Mapping[str, str] = MappingProxyType(
         BOARD_ICON_SPY: "{spy} 배치",
         BOARD_ICON_TRASH: "카드 1장 {trash} 가능",
         BOARD_ICON_INFLUENCE: "{influence_any:1} 선택",
-        # The English table's comment; Foldspace and the Mentat keep their
-        # English names (the space lines above).
-        BOARD_ICON_FOLDSPACE: "Foldspace 카드 {acquire}",
+        # The English table's comment, in the Korean rulebook's words (the
+        # space lines above).
+        BOARD_ICON_FOLDSPACE: "접힘 공간 카드 {acquire}",
         BOARD_ICON_MENTAT: (
-            "Mentat이 여기 있으면 가져옴: 이번 라운드 당신의 {agent} 하나"
+            "멘타트가 여기 있으면 가져옴: 이번 라운드 당신의 {agent} 하나"
         ),
         BOARD_ICON_CONNECTIONS: "{influence_any:1} 선택",
     }

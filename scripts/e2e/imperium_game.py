@@ -296,6 +296,9 @@ MARKERS_JS = """() => {
       infiltrate: lookup("infiltrate", "intrigue").name,
       recruitment: lookup("recruitment_mission", "intrigue").name,
       seat1: t("common.seat", {seat: other(1)}),
+      carthag: spaceName("carthag"),
+      masterstroke: t("panels.masterstroke_name"),
+      mentatHere: t("board.mentat_here"),
       emperor: FACTION_LABELS.emperor, fremen: FACTION_LABELS.fremen,
       bg: FACTION_LABELS.bene_gesserit, guild: FACTION_LABELS.spacing_guild,
     },
@@ -334,7 +337,7 @@ def check_markers(page) -> None:
         panels = shown["panels"]
         barred = panels[other1]
         check.ok(
-            names["voice"] in barred and "Carthag" in barred
+            names["voice"] in barred and names["carthag"] in barred
             and names["infiltrate"] in barred and names["recruitment"] in barred,
             f"{lang}: The Voice, Infiltrate and Recruitment Mission on their seat",
             barred,
@@ -347,7 +350,7 @@ def check_markers(page) -> None:
         )
         secret = panels[(me + 2) % 4]
         check.ok(
-            "Masterstroke" in secret and names["bg"] not in secret
+            names["masterstroke"] in secret and names["bg"] not in secret
             and names["guild"] not in secret,
             f"{lang}: another Baron's secret shows as held, never which",
             secret,
@@ -359,7 +362,8 @@ def check_markers(page) -> None:
             revealed,
         )
         check.ok(
-            names["seat1"] in shown["mentatRow"] and "Mentat" in shown["mentatRow"],
+            names["seat1"] in shown["mentatRow"]
+            and names["mentatHere"] in shown["mentatRow"],
             f"{lang}: the Mentat on its space, owed to the next round's seat",
             shown["mentatRow"],
         )

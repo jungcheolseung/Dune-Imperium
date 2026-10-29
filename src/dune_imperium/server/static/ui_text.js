@@ -149,7 +149,7 @@ const UI_TEXT = {
     "en": "Not revealed yet"
   },
   "board.mentat_here": {
-    "ko": "Mentat 있음",
+    "ko": "멘타트 있음",
     "en": "The Mentat is here"
   },
   "board.mentat_owed": {
@@ -1029,7 +1029,7 @@ const UI_TEXT = {
     "en": "Mentat: {{where}}"
   },
   "panels.mentat_next_round": {
-    "ko": "다음 라운드에 Mentat",
+    "ko": "다음 라운드에 멘타트",
     "en": "the Mentat next round"
   },
   "panels.voice_blocked": {
@@ -1043,6 +1043,10 @@ const UI_TEXT = {
   "panels.deck_top_round": {
     "ko": "{{card}}: 이번 라운드 획득한 카드를 {deck} 맨 위에 놓을 수 있음",
     "en": "{{card}}: cards acquired this round may go on top of the {deck}"
+  },
+  "panels.masterstroke_name": {
+    "ko": "절묘한 수완",
+    "en": "Masterstroke"
   },
   "panels.masterstroke_secret": {
     "ko": "{{ability}}: 비밀 진영 둘",

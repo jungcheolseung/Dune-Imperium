@@ -2584,9 +2584,9 @@ function originalMarkers(player, seat, view) {
       card: card("recruitment_mission", "intrigue"),
     }));
   }
-  /* Masterstroke is Baron Harkonnen's ability, named as his face prints it. */
-  const baron = lookup("baron_vladimir_harkonnen", "leaders");
-  const ability = baron && baron.ability ? baron.ability : "Masterstroke";
+  /* Masterstroke is Baron Harkonnen's ability: 절묘한 수완 in the Korean
+     rulebook [DI-ko p. 13] (his Korean face is not transcribed). */
+  const ability = t("panels.masterstroke_name");
   const factions = (ids) => ids.map((id) => FACTION_LABELS[id] || id).join(", ");
   const own = view.player === seat && view.private
     ? view.private.masterstroke_factions || []

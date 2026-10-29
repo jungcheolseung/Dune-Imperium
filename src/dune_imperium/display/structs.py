@@ -657,9 +657,9 @@ def conflict_reward_text_ko(row: Ability) -> str:
     reward = conflict_row_parts(row)
     parts: list[str] = []
     if reward.mentat:
-        # "Mentat" stays the English word, as in ``effect_dsl_text_ko``'s
-        # Calculated Hire, until the official Korean edition names it.
-        parts.append("다음 라운드 시작에 Mentat 가져옴 (그 장소에 있으면)")
+        # 멘타트, as the original game's Korean rulebook names it
+        # [DI-ko p. 16].
+        parts.append("다음 라운드 시작에 멘타트 가져옴 (그 장소에 있으면)")
     if reward.solari:
         parts.append(f"{{solari:{reward.solari}}}")
     if reward.spice:

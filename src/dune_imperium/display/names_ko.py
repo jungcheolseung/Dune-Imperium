@@ -24,6 +24,18 @@ print: a contract's numeral ("Arrakeen I") or spice threshold ("Harvest
 distinguisher, the battle icons in the glossary's words (크리스나이프 /
 사막쥐 / 오니솝터 `[Main p. 20]`, 와일드 `[Bloodlines p. 5]`,
 ``docs/rules/glossary-ko.md``).
+
+The original Dune: Imperium's names come from its official Korean rulebook
+(``KR_Dune_Imperium_Rulebook.pdf``, manifest ``imperium-ko``, the user's
+local copy, read with the user's leave on 2026-10-29;
+docs/base-game-and-ix-plan.md 18.5 2): its board spaces from the Board
+Space Guide `[DI-ko pp. 17-18]`, its Reserve cards from the component list
+`[DI-ko p. 3]`, and the six Leaders the rulebook names in its text
+`[DI-ko pp. 3-4, 13, 20]`; Duke Leto Atreides and Countess Ariana Thorvald
+appear only in pictures there and keep their English names. The text was
+extracted twice, with two PDF readers, and both agreed on every name. The
+original game's Imperium and Intrigue cards keep their English names until
+photographs of the Korean cards are found (plan 9 6).
 """
 
 from collections.abc import Mapping
@@ -118,6 +130,11 @@ _CARDS: Final[dict[str, str]] = {
     "pointing_the_way": "길을 가리키다",
     "possible_futures": "가능한 미래",
     "prepare_the_way": "길을 준비하라",
+    # The original game's Reserve [DI-ko p. 3]; its own The Spice Must Flow
+    # prints the same title as Uprising's.
+    "arrakis_liaison": "아라키스 연락책",
+    "foldspace_card": "접힘 공간",
+    "imperium_the_spice_must_flow": "스파이스는 흘러야 한다",
     "price_is_no_object": "값은 문제가 아니다",
     "priority_contracts": "우선 계약",
     "public_spectacle": "대중의 구경거리",
@@ -263,6 +280,15 @@ _CONFLICTS: Final[dict[str, str]] = {
 
 
 _LEADERS: Final[dict[str, str]] = {
+    # The original game's six named in its Korean rulebook's text
+    # [DI-ko pp. 3-4, 13, 20].
+    "baron_vladimir_harkonnen": "블라디미르 하코넨 남작",
+    "count_ilban_richese": "일반 리체스 백작",
+    "earl_memnon_thorvald": "멤논 소르발드 백작",
+    "glossu_rabban": "짐승 같은 글로서 라반",
+    "helena_richese": "헬레나 리체스",
+    "paul_atreides": "폴 아트레이드",
+    # Uprising's and Bloodlines'.
     "chani": "챠니",
     "count_hasimir_fenring": "하시미르 펜링 백작",
     "duncan_idaho": "던칸 아이다호",
@@ -325,6 +351,28 @@ _TECH: Final[dict[str, str]] = {
 # Tuek's Sietch is Bloodlines' [Bloodlines p. 12], as Esmar Tuek's Korean
 # card prints it (display.leaders_ko).
 _SPACES: Final[dict[str, str]] = {
+    # The original board's own spaces [DI-ko pp. 17-18] (Arrakeen, Imperial
+    # Basin and Secrets are one print with Uprising's, named below).
+    "carthag": "카르타그",
+    "conspire": "흑막",
+    "foldspace": "접힘 공간",
+    "hall_of_oratory": "강당",
+    "hardy_warriors": "강인한 전사들",
+    "imperium_hagga_basin": "하가 분지",
+    "imperium_heighliner": "하이라이너",
+    "imperium_high_council": "원로회",
+    "imperium_research_station": "연구 기지",
+    "imperium_sietch_tabr": "시치 타브르",
+    "imperium_swordmaster": "소드마스터",
+    "mentat": "멘타트",
+    "rally_troops": "병력 소집",
+    "secure_contract": "계약 체결",
+    "selective_breeding": "선별 교배",
+    "sell_melange": "멜란지 판매",
+    "stillsuits": "스틸슈트",
+    "the_great_flat": "대평지",
+    "wealth": "재물",
+    # Uprising's board (and the three shared prints).
     "accept_contract": "계약 수락",
     "arrakeen": "아라킨",
     "assembly_hall": "회의장",

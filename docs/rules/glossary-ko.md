@@ -376,6 +376,31 @@ Usurp → 찬탈, Reclaimed Forces → 되돌아온 병사들, Advanced Data Ana
 | Economic Supremacy | 경제적 패권 | `[Main p. 18]`("이런 경우, 경제적 패권을 추가합니다"), `[Board Guide p. 13]` | 적용(카드 이름, 사용자 결정) |
 | Epic Game Only (아이콘) | 에픽 게임 모드 전용 | `[Rise of Ix p. 12]` | 참고 |
 
+## 원판 Dune: Imperium
+
+원판 화면(`docs/base-game-and-ix-plan.md` 18절 P5)의 이름과 용어. 출처는 공식 한국어 원판 룰북(`imperium-ko`,
+`KR_Dune_Imperium_Rulebook.pdf`, sha256 `f3bf6839…`; 사용자의 로컬 사본을 2026-10-29 사용자 허락으로 읽음)이다. 쪽은 `[DI-ko p. N]`.
+본문을 PDF 읽기 도구 둘(pypdf, PyMuPDF)로 따로 뽑아 모든 이름이 같았다. 원판 Imperium·Intrigue 카드 이름은 한글판 카드 사진을 찾을
+때까지 영어다(계획 9절 6). 룰북 본문에 이름이 없는 지도자 둘(Duke Leto Atreides, Countess Ariana Thorvald)도 영어다.
+
+| EN | KO | 출처 | 상태 |
+| --- | --- | --- | --- |
+| Conspire / Wealth | 흑막 / 재물 | `[DI-ko p. 18]` | 적용(공간 이름) |
+| Heighliner / Foldspace | 하이라이너 / 접힘 공간 | `[DI-ko p. 18]` | 적용(공간 이름) |
+| Selective Breeding / Secrets | 선별 교배 / 비밀 | `[DI-ko p. 17]` | 적용(공간 이름) |
+| Hardy Warriors / Stillsuits | 강인한 전사들 / 스틸슈트 | `[DI-ko pp. 17-18]` | 적용(공간 이름) |
+| Hall of Oratory / Rally Troops / Mentat / Swordmaster / High Council | 강당 / 병력 소집 / 멘타트 / 소드마스터 / 원로회 | `[DI-ko pp. 17-18]` | 적용(공간 이름) |
+| Arrakeen / Carthag / Research Station / Sietch Tabr | 아라킨 / 카르타그 / 연구 기지 / 시치 타브르 | `[DI-ko p. 18]` | 적용(공간 이름) |
+| Imperial Basin / Hagga Basin / The Great Flat | 제국 분지 / 하가 분지 / 대평지 | `[DI-ko pp. 17-18]` | 적용(공간 이름) |
+| Secure Contract / Sell Melange | 계약 체결 / 멜란지 판매 | `[DI-ko p. 17]` | 적용(공간 이름) |
+| Mentat (말·아이콘) | 멘타트 | `[DI-ko pp. 3, 16, 18]`("멘타트를 가져와 지도자 위에 놓습니다") | 적용 |
+| Reserve | 예비 카드 | `[DI-ko pp. 3, 4]` | 참고 |
+| Arrakis Liaison / The Spice Must Flow / Foldspace (Reserve) | 아라키스 연락책 / 스파이스는 흘러야 한다 / 접힘 공간 | `[DI-ko p. 3]` | 적용(카드 이름) |
+| Acquire a Foldspace card (아이콘) | 접힘 공간 카드 획득 | `[DI-ko p. 16]` | 적용 |
+| Paul Atreides / Glossu "Beast" Rabban | 폴 아트레이드 / 짐승 같은 글로서 라반 | `[DI-ko pp. 4, 13, 20]` | 적용(지도자 이름) |
+| Baron Vladimir Harkonnen / Masterstroke | 블라디미르 하코넨 남작 / 절묘한 수완 | `[DI-ko pp. 3, 13]` | 적용 |
+| Count Ilban Richese / Helena Richese / Earl Memnon Thorvald | 일반 리체스 백작 / 헬레나 리체스 / 멤논 소르발드 백작 | `[DI-ko pp. 4, 20]` | 적용(지도자 이름) |
+
 ## Arrakeen Scouts 모듈
 
 **새 출처 종류: `[KO app: <loc key>]`**(2026-09-28). Arrakeen Scouts에는 룰북이 없어 Dire Wolf Game Room 컴패니언 앱의 공식 한국어 문구(`ko_KR` 로컬라이제이션)가 한국어 용어의 출처다([sources.md](sources.md)의 "Arrakeen Scouts" 절). 인용은 앱의 loc key다. 앱 한국어에는 오역과 누락이 있어(OQ-086) **용어로만** 쓰고, 효과 문장은 이 표의 단어로 우리가 짓는다.

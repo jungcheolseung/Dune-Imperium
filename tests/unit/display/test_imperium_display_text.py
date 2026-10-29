@@ -24,7 +24,6 @@ from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
 from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
 from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
 from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
-from dune_imperium.content.uprising.board import BOARD_SPACES
 from dune_imperium.display import personal_card_text, personal_card_text_ko
 from dune_imperium.display.effect_dsl_text import intrigue_card_text
 from dune_imperium.display.effect_dsl_text_ko import intrigue_card_text_ko
@@ -50,17 +49,6 @@ from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
 
 # An engine id outside a {term} placeholder ("spice_trade").
 _RAW_ID = re.compile(r"(?<![{_a-z])[a-z]+_[a-z_]+(?![a-z_:]*\})")
-# English the original game's Korean text keeps until the official Korean
-# edition names it (docs/base-game-and-ix-plan.md 18.5 2).
-_UPRISING_SPACE_IDS = {space.space_id for space in BOARD_SPACES}
-ORIGINAL_ENGLISH = frozenset(
-    {
-        space.name
-        for space in IMPERIUM_BOARD_SPACES
-        if space.space_id not in _UPRISING_SPACE_IDS
-    }
-    | {"Mentat", "Foldspace"}
-)
 
 
 def _clean_english(line: str) -> None:
@@ -72,7 +60,9 @@ def _clean_english(line: str) -> None:
 def _clean_korean(line: str) -> None:
     assert line.strip(), line
     assert_placeholders_are_terms(line, terms_keys())
-    assert_no_stray_latin(line, ORIGINAL_ENGLISH)
+    # The original game's spaces, the Mentat and the Foldspace card read in
+    # its Korean rulebook's words [DI-ko pp. 16-18].
+    assert_no_stray_latin(line)
 
 
 @pytest.mark.parametrize(
