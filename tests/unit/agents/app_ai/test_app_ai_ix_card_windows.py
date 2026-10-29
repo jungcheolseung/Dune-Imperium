@@ -418,6 +418,56 @@ def test_the_unload_window_places_each_negotiator_the_supply_allows() -> None:
     assert ix.unload_icons(_run((decline,))) is decline
 
 
+def test_a_shared_unload_window_pays_at_once_first_then_ranks_its_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One cost holding several cards' Unloads (P4's ``UNLOAD_BY_CARD_KEY``
+    window): the icons the app pays as each card leaves come first (a Tech
+    Negotiation), then the window icons' custom abilities by value
+    (``MakeChoice``); the Explicit Freighter is never declined."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.ix_board import (
+        FreighterCustomAbility,
+    )
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+        BoundlessAmbitionCustomAbility,
+    )
+    from dune_imperium.agents.app_ai.windows import ix
+
+    fleet, ambition = "imperium:freighter_fleet:0", "imperium:boundless_ambition:0"
+    freighter = _row("resolve_unload_icon", card_id=fleet, effect="freighter")
+    refuse = _row("decline_unload_icon", card_id=fleet, effect="freighter")
+    negotiator = _row("resolve_unload_icon", card_id=COMPACT, effect="negotiator")
+    no_negotiator = _row("decline_unload_icon", card_id=COMPACT, effect="negotiator")
+    acquisition = _row("resolve_unload_icon", card_id=ambition, effect="acquisition")
+    shared = (freighter, refuse, negotiator, no_negotiator)
+    assert ix.unload_icons(_run(shared)) is negotiator
+
+    def values(freight: float, acquire: float) -> None:
+        monkeypatch.setattr(
+            FreighterCustomAbility,
+            "evaluate",
+            lambda self, p, request: Answer(freight, ((0,),), ""),
+        )
+        monkeypatch.setattr(
+            BoundlessAmbitionCustomAbility,
+            "evaluate",
+            lambda self, p, request: Answer(acquire, None, ""),
+        )
+
+    values(1.0, 2.0)
+    assert ix.unload_icons(_run((freighter, refuse, acquisition))) is acquisition
+    values(3.0, 2.0)
+    assert ix.unload_icons(_run((freighter, refuse, acquisition))) is freighter
+    values(-1.0, -1.0)
+    assert ix.unload_icons(_run((freighter, refuse, acquisition))) in (
+        freighter,
+        acquisition,
+    )
+    assert ix.unload_icons(_run((freighter, refuse))) is freighter
+
+
 def test_boundless_ambitions_unload_window_takes_its_custom_abilitys_card(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -73,6 +73,10 @@ from dune_imperium.agents.app_ai.windows.common import (
 )
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.rules.acquisition import (
+    acquirable_imperium_instance_ids,
+    acquirable_reserve_card_ids,
+)
 from dune_imperium.rules.dreadnoughts import space_controller
 
 ADVANCE = "advance_freighter"
@@ -403,7 +407,84 @@ def unload_icons(run: DecisionRun) -> DomainAction | None:
         return unload_acquisition(run)
     if any(a.action_id not in _UNLOAD_IDS for a in run.legal):
         return None
-    return take_unload(run) or run.first(UNLOAD_DECLINE)
+    rows = run.by_id(UNLOAD)
+    at_once = [a for a in rows if str_arg(a, "effect") not in _WINDOW_ICONS]
+    if at_once:
+        return at_once[0]
+    if rows:
+        return decide(run, _window_icon_sources(run, rows), skip=None, forced=True)
+    return run.first(UNLOAD_DECLINE)
+
+
+#: The Unload icons that open a window of their own: the app adds a custom
+#: ability for each (``AddCustomAbility``), a key of its prompt.
+_FREIGHTER = "freighter"
+_ACQUISITION = "acquisition"
+_WINDOW_ICONS = frozenset({_FREIGHTER, _ACQUISITION})
+#: ``BoundlessAmbitionCustomAbility::Targets``' ``maxCost`` (@0x4c5cff0).
+_AMBITION_MAX_COST = 5
+
+
+def _window_icon_sources(
+    run: DecisionRun, rows: Sequence[DomainAction]
+) -> list[Source]:
+    """The keys of the window icons left in one Unload window (P4's shared
+    window, ``UNLOAD_BY_CARD_KEY``: one cost held several cards' Unloads).
+
+    In the app each card's Unload runs when the card leaves (in the cost's
+    order): the icons it pays at once already ran (``unload_icons`` takes
+    them first), and each window icon added its custom ability, a key of the
+    prompt: Freighter Fleet's ``FreighterCustomAbility`` (Explicit, at
+    ``FreighterValue``) and Boundless Ambition's
+    ``BoundlessAmbitionCustomAbility`` (Optional, its best card's
+    ``AcquireValue`` over the Row and Reserve cards within 5). ``MakeChoice``
+    takes the best; the Explicit Freighter forces the prompt, and never
+    declines (``freighter_move``)."""
+
+    p = run.profile
+    sources: list[Source] = []
+    for row in rows:
+        effect = str_arg(row, "effect")
+        if effect == _FREIGHTER:
+            freighter = FreighterCustomAbility(_track_owner(run.ctx.seat))
+
+            def evaluate_freighter(
+                ability: FreighterAbility = freighter, action: DomainAction = row
+            ) -> tuple[float, DomainAction | None]:
+                return ability.evaluate(p, Request()).value, action
+
+            sources.append(
+                Source("Freighter", Stage.PROMPT, (row,), evaluate_freighter)
+            )
+        elif effect == _ACQUISITION:
+            seat = run.ctx.seat
+            state = run.ctx.state
+            cards = (
+                *(
+                    card_entity(i, seat)
+                    for i in acquirable_imperium_instance_ids(
+                        state, _AMBITION_MAX_COST, player=seat
+                    )
+                ),
+                *(
+                    p.market_opening_reserve_card(card_entity(f"reserve:{r}"))
+                    for r in acquirable_reserve_card_ids(state, _AMBITION_MAX_COST)
+                ),
+            )
+            ambition = BoundlessAmbitionCustomAbility(_PLAYMAT)
+            request = Request(infos=(TargetInfo(entities=cards),))
+
+            def evaluate_acquisition(
+                ability: BoundlessAmbitionCustomAbility = ambition,
+                asked: Request = request,
+                action: DomainAction = row,
+            ) -> tuple[float, DomainAction | None]:
+                return ability.evaluate(p, asked).value, action
+
+            sources.append(
+                Source("Boundless Ambition", Stage.PROMPT, (row,), evaluate_acquisition)
+            )
+    return sources
 
 
 def boundless_ambition_request(
