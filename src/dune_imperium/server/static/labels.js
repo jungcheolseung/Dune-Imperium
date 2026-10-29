@@ -506,6 +506,7 @@ const EVENT_LABELS = {
   shipping_influence_unavailable: "Freighter 회수: {influence_any} 불가",
   dreadnought_control_placed: "dreadnought가 {control} 공간에",
   dreadnought_returned: "dreadnought {garrison} 복귀",
+  dreadnought_retreated: "dreadnought 후퇴",
   dreadnought_detonated: "dreadnought를 {supply}로 (Detonation Devices)",
   intrigue_put_on_bottom: "{intrigue_card} → {intrigue} {deck} bottom",
   conflict_end_trigger_declined: "{conflict} 종료 발동 {intrigue_card} 쓰지 않음",

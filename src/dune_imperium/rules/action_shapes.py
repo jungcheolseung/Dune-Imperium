@@ -223,7 +223,11 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.FACTION: frozenset(
         {"alliance_recipient", "effect", "faction", "gained_faction", "lost_faction"}
     ),
-    Target.UNITS: frozenset({"commanders", "count", "player", "zone", "zones"}),
+    # ``dreadnoughts``: the share of a count that is dreadnoughts, for a card
+    # that moves "units" (Second Wave) [Rise of Ix p. 6].
+    Target.UNITS: frozenset(
+        {"commanders", "count", "dreadnoughts", "player", "zone", "zones"}
+    ),
     Target.RESOURCES: frozenset({"solari", "spice", "water"}),
     Target.OPTION: frozenset(
         {"choice", "effect", "option", "pick", "reward", "section", "slot"}
@@ -231,8 +235,9 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.CONFLICT_CARD: frozenset({"card_id"}),
     Target.SUBCOMMITTEE: frozenset({"subcommittee_id"}),
     Target.MISSION: frozenset({"target"}),
-    # A number of units, the Commanders among them riding along (B3d-2a).
-    Target.COUNT: frozenset({"commanders", "count"}),
+    # A number of units, the Commanders and the dreadnoughts among them
+    # riding along (B3d-2a; Second Wave).
+    Target.COUNT: frozenset({"commanders", "count", "dreadnoughts"}),
     Target.WILD_ICON: frozenset({"matching_card_id", "wild_card_id"}),
     Target.EFFECT: frozenset(
         {

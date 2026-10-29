@@ -195,7 +195,24 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # 2026-10-30).
 # Then CHOAM Delegate got its play data (stage P4d): only its own row changed,
 # no column and no scale (compared against aae8f95c, 2026-10-30).
-_GOLDEN_DIGEST = "7f1e5aa2dbedcec5c9612aec067717b1437da4215fe4c394e9bf02563b559aa6"
+# Then Advanced Weaponry got its record (stage P4d): only its own row changed,
+# and one intrigue-table column is new (the Dreadnought commission reward),
+# read by its row alone; no older scale moved (compared against 18d1bb8a,
+# 2026-10-30).
+# Then Grand Conspiracy got its record (stage P4d): only its own row changed,
+# and six intrigue-table columns are new (the "any three of" condition, the
+# dreadnought count, and the Influence-on-tracks and Spice Must Flow items
+# nested in them), read by its row alone; no older scale moved (compared
+# against b8feee68, 2026-10-30).
+# Then Cannon Turrets got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (the opponents' dreadnought retreat reward),
+# read by its row alone; no older scale moved (compared against c30f523b,
+# 2026-10-30).
+# Then Second Wave got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (the "units" flag of its garrison
+# deployment, the dreadnoughts' share), read by its row alone; no older scale
+# moved (compared against 4cdf1e99, 2026-10-30).
+_GOLDEN_DIGEST = "b281810556772086c0fb91ffc890c2a97f73c72b8e5c4e504fdbfa7418449241"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

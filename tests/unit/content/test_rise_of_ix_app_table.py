@@ -263,6 +263,10 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "strongarm",
     "ixian_probe",
     "quid_pro_quo",
+    "advanced_weaponry",
+    "grand_conspiracy",
+    "cannon_turrets",
+    "second_wave",
 }
 _IX_IMPERIUM_TRANSCRIBED = {
     "choam_delegate",

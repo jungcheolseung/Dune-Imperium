@@ -393,6 +393,21 @@ class GarrisonedUnitsAtLeast:
 
 
 @dataclass(frozen=True, slots=True)
+class DreadnoughtsAtLeast:
+    """The player has ``count`` or more dreadnoughts of its own -- the ones
+    commissioned out of its supply, wherever they stand: its garrison, the
+    Conflict or a Control space ("2 dreadnoughts" [Grand Conspiracy card,
+    Steam app text]; docs/rules/open-questions.md OQ-121: "Grand Conspiracy의
+    '2 dreadnoughts'는 가진 수이고", no position is read)."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.count <= 2:
+            raise ValueError("a seat has one or two dreadnoughts to count")
+
+
+@dataclass(frozen=True, slots=True)
 class CommandReached:
     """Command (6+): the player's Reveal turn generates six or more
     Persuasion [Bloodlines pp. 5, 12], the others' first so the order does
@@ -494,6 +509,22 @@ class AllConditions:
             raise ValueError("a conjunction needs at least two conditions")
 
 
+@dataclass(frozen=True, slots=True)
+class AtLeastOfConditions:
+    """At least ``count`` of the listed conditions hold (Grand Conspiracy:
+    "If you have any three:" of its four items). ``count`` is fewer than the
+    items; all of them is ``AllConditions``."""
+
+    count: int
+    conditions: tuple[Condition, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.conditions) < 3:
+            raise ValueError("a count of conditions needs at least three")
+        if not 1 < self.count < len(self.conditions):
+            raise ValueError("the count is more than one and less than all")
+
+
 type Condition = (
     InfluenceAtLeast
     | InfluenceAtLeastOnTracks
@@ -527,9 +558,11 @@ type Condition = (
     | GraftedWithFaction
     | Grafted
     | AllConditions
+    | AtLeastOfConditions
     | HasSwordmaster
     | SpyingOnMakerSpace
     | GarrisonedUnitsAtLeast
+    | DreadnoughtsAtLeast
     | CommandReached
     | AtBoardSpace
     | AcquiredCard
@@ -1019,9 +1052,16 @@ class DeployFromGarrison:
 
     ``up_to=None`` is a printed "any number" [Rapid Mobilization card]: as
     for a retreat, zero is a choice too [FAQ p. 3].
+
+    ``dreadnoughts``: "Deploy up to two units from your garrison to the
+    Conflict." [Second Wave card, Steam app text] -- a unit is a troop or a
+    dreadnought [Rise of Ix p. 6], so the garrison dreadnoughts are among
+    what the owner may deploy, within the same ``up_to``. Without it a card's
+    "troop" never reaches a dreadnought.
     """
 
     up_to: int | None
+    dreadnoughts: bool = False
 
     def __post_init__(self) -> None:
         if self.up_to is not None and self.up_to < 1:
@@ -1918,6 +1958,20 @@ class CommissionDreadnought:
 
 
 @dataclass(frozen=True, slots=True)
+class EachOpponentRetreatsDreadnought:
+    """Each opponent retreats one dreadnought ("Each opponent retreats one
+    dreadnought." [Cannon Turrets card, Steam app text]): every opponent with
+    a dreadnought in the Conflict sends one back to its garrison, clockwise
+    from the next seat; one without is unaffected.
+
+    A dreadnought is a unit and the card names it, so unlike a card's "troop"
+    it is reached [Rise of Ix p. 6] (docs/rules/rise-of-ix.md 6, the table
+    row "dreadnought"). The dreadnoughts of a seat are alike, so the
+    opponent has nothing to choose and the retreat is automatic.
+    """
+
+
+@dataclass(frozen=True, slots=True)
 class PlaceNegotiator:
     """Tech Negotiation: send one of the owner's troops from its supply to
     the Ix board as a Negotiator, for each Tech Negotiation icon ("you may
@@ -2030,6 +2084,7 @@ type Reward = (
     | DoubleBaseHarvestSpice
     | DoubleBonusHarvestSpice
     | CommissionDreadnought
+    | EachOpponentRetreatsDreadnought
     | PlaceNegotiator
     | Freighter
 )

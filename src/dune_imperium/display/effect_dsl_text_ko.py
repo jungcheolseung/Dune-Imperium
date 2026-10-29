@@ -54,6 +54,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllianceTaken,
     AtBoardSpace,
     AtFactionSpace,
+    AtLeastOfConditions,
     AtMakerSpace,
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
@@ -79,10 +80,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
+    DreadnoughtsAtLeast,
     DuringAgentTurn,
     EachOpponentDiscardsCard,
     EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
+    EachOpponentRetreatsDreadnought,
     EffectSection,
     FactionBond,
     FlipBattleCard,
@@ -596,6 +599,12 @@ def condition_text_ko(condition: Condition) -> str:
         case GarrisonedUnitsAtLeast(count=count):
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return f"{{garrison}}에 부대가 {count} 이상 있다면"
+        case DreadnoughtsAtLeast(count=count):
+            # "2 dreadnoughts" [Grand Conspiracy card, Steam app text]; the
+            # glossary has no Korean word for a dreadnought (Rise of Ix has
+            # no Korean edition), so it stays English like the Dreadnought
+            # icon's line ("보유했다면" from the High Council clause above).
+            return f"dreadnought를 {count}개 보유했다면"
         case DuringAgentTurn():
             # Quotes ``display/bloodlines.py``'s Rapid Dropships line.
             return "{agent_turn}"
@@ -637,6 +646,12 @@ def condition_text_ko(condition: Condition) -> str:
             # already-complete conditional clauses (its own
             # ``reveal_effect_text_ko``).
             return " 그리고 ".join(condition_text_ko(item) for item in conditions)
+        case AtLeastOfConditions(count=count, conditions=conditions):
+            # "If you have any three:" over the card's four items [Grand
+            # Conspiracy card, Steam app text]: the items' own clauses.
+            clauses = ", ".join(condition_text_ko(item) for item in conditions)
+            total = len(conditions)
+            return f"다음 {total}가지 중 {count}가지 이상에 해당한다면 ({clauses})"
         case _:
             assert_never(condition)
 
@@ -820,6 +835,11 @@ def reward_text_ko(reward: Reward) -> str:
             if requires_maker_hooks:
                 text += " ({maker_hooks} 필요)"
             return text
+        case DeployFromGarrison(up_to=int(up_to), dreadnoughts=True):
+            # "Deploy up to two units from your garrison to the Conflict."
+            # [Second Wave card, Steam app text]: the glossary's "units |
+            # 부대" ([Main p. 10]) with the line above's shape.
+            return f"{{garrison}}에서 부대 {up_to}개 이하를 {{conflict}}에 배치"
         case DeployFromGarrison(up_to=up_to):
             # "Deploy up to N troops from your garrison to the Conflict"
             # [Detonation card face] [Counterattack card face] [Twisted
@@ -1085,6 +1105,11 @@ def reward_text_ko(reward: Reward) -> str:
             # entry; the official Korean edition has no Rise of Ix), so the
             # line stays English rather than invented (module docstring).
             return "Commission a dreadnought"
+        case EachOpponentRetreatsDreadnought():
+            # Cannon Turrets (Rise of Ix has no Korean edition and the
+            # glossary no dreadnought): the line stays English (module
+            # docstring).
+            return "Each opponent retreats one dreadnought"
         case PlaceNegotiator():
             # Rise of Ix's Tech Negotiation icon: no Korean source names the
             # Negotiator yet (``glossary-ko.md`` has no entry; the official

@@ -23,25 +23,47 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.effect_dsl import (
+    AllConditions,
+    AtLeastOfConditions,
+    CommissionDreadnought,
+    Condition,
+    DeployFromGarrison,
     DiscardFromHand,
     DrawPersonalCards,
+    DreadnoughtsAtLeast,
+    EachOpponentRetreatsDreadnought,
     EffectSection,
     Freighter,
     GainCombatStrength,
     GainInfluence,
     GainInfluenceWhereAgent,
     GainResources,
+    GainVictoryPoints,
     HasHighCouncil,
+    InfluenceAtLeastOnTracks,
     LoseInfluence,
     LoseTroops,
     PayResources,
     RecruitTroops,
+    SpiceMustFlowCardsAtLeast,
+    TechTilesAtLeast,
     TrashPersonalCard,
 )
 from dune_imperium.content.uprising.intrigue import (
     IntrigueCardEntry,
     _combat,
+    _endgame,
     _plot,
+)
+
+# Grand Conspiracy's four items: "2 dreadnoughts", "1+ The Spice Must Flow",
+# "4+ Influence on 2+ Influence tracks" and "A seat on the High Council"
+# [Grand Conspiracy card, Steam app text].
+_GRAND_CONSPIRACY_ITEMS: Final[tuple[Condition, ...]] = (
+    DreadnoughtsAtLeast(2),
+    SpiceMustFlowCardsAtLeast(1),
+    InfluenceAtLeastOnTracks(4, 2),
+    HasHighCouncil(),
 )
 
 IX_INTRIGUE_SOURCES: Final = (SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2,)),)
@@ -58,6 +80,28 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("advanced_weaponry", "Advanced Weaponry"),
         copies=1,
+        # [PLOT / COMBAT] "3 Solari -> Dreadnought" -OR- "If you have three or
+        # more Tech tiles: 4 swords" [Steam app text and screen pieces; the
+        # prefab sets the -OR- frame between the two halves, the log lines
+        # tell the Plot's commission from the Combat's four swords]. The Plot
+        # half is one cost line: with both dreadnoughts already commissioned
+        # the 3 Solari buy nothing, so it is not played (rise-of-ix.md 9.3 and
+        # 15, OQ-113 (C)); the Combat half is conditional, and "To play an
+        # Intrigue card, you must meet its conditions" [FAQ p. 2].
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(PayResources(solari=3),),
+                    rewards=(CommissionDreadnought(),),
+                )
+            ),
+            _combat(
+                EffectSection(
+                    condition=TechTilesAtLeast(3),
+                    rewards=(GainCombatStrength(4),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("blackmail", "Blackmail"),
@@ -79,6 +123,23 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("cannon_turrets", "Cannon Turrets"),
         copies=1,
+        # [COMBAT] 2 swords, "Each opponent retreats one dreadnought."
+        # [Steam app text, log line and screen pieces]: one cost-free Combat
+        # line. The swords are always live, so the card is played whatever
+        # the opponents field (OQ-113 (C)); an opponent with no dreadnought in
+        # the Conflict is unaffected. A dreadnought is named, so it retreats
+        # [Rise of Ix p. 6] (rise-of-ix.md 6); one that was the opponent's last
+        # unit takes its Combat Intrigue with it (rise-of-ix.md 9.3).
+        options=(
+            _combat(
+                EffectSection(
+                    rewards=(
+                        GainCombatStrength(2),
+                        EachOpponentRetreatsDreadnought(),
+                    )
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("cull", "Cull"),
@@ -148,6 +209,29 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("grand_conspiracy", "Grand Conspiracy"),
         copies=1,
+        # [ENDGAME] the four items above, then "If you have any three:" one
+        # Victory Point -OR- "If you have all four:" two Victory Points
+        # [Steam app text and screen pieces: the prefab puts one VP icon
+        # beside the first line, two beside the second, and the -OR- frame
+        # between them]. Two exclusive Endgame options, each carrying its own
+        # condition, as Plans Within Plans' (OQ-058: a card divided by -OR- is
+        # exclusive options, imperium-base.md 16), so at most 2 VP. "2
+        # dreadnoughts" is the count the seat has, wherever they stand, and
+        # the Spice Must Flow copies are every one it owns (OQ-121, OQ-123).
+        options=(
+            _endgame(
+                EffectSection(
+                    condition=AtLeastOfConditions(3, _GRAND_CONSPIRACY_ITEMS),
+                    rewards=(GainVictoryPoints(1),),
+                )
+            ),
+            _endgame(
+                EffectSection(
+                    condition=AllConditions(_GRAND_CONSPIRACY_ITEMS),
+                    rewards=(GainVictoryPoints(2),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("ixian_probe", "Ixian Probe"),
@@ -188,6 +272,24 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("second_wave", "Second Wave"),
         copies=1,
+        # [COMBAT] 2 swords, "Deploy up to two units from your garrison to the
+        # Conflict." [Steam app text, log line and screen pieces]: one
+        # cost-free Combat line. A unit is a troop or a dreadnought [Rise of
+        # Ix p. 6] (rise-of-ix.md 6, table row "unit"), so the garrison
+        # dreadnoughts are among what is deployed, within the two. The swords
+        # are always live, so the card is played with an empty garrison
+        # (OQ-113 (C)); it is a Combat Intrigue, so the seat has a unit in the
+        # Conflict already (rise-of-ix.md 9.1).
+        options=(
+            _combat(
+                EffectSection(
+                    rewards=(
+                        GainCombatStrength(2),
+                        DeployFromGarrison(2, dreadnoughts=True),
+                    )
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("secret_forces", "Secret Forces"),

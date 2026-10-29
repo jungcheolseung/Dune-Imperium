@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from functools import cache, lru_cache
 from typing import Final
 
+from dune_imperium.content.bloodlines.sardaukar import COMMANDER_STRENGTH
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.abilities import Ability, intrigue_ability
 from dune_imperium.content.uprising.board import Faction
@@ -77,7 +78,7 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
-from dune_imperium.core.state import GameState
+from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.acquisition import (
     IntrigueAcquisition,
     acquirable_imperium_instance_ids,
@@ -117,6 +118,7 @@ from dune_imperium.rules.effect_interpreter import (
     choice_slots,
     condition_holds,
     cost_slots,
+    deployable_garrison_dreadnoughts,
     deployable_garrison_units,
     face_up_conflict_card_ids,
     flippable_battle_card_ids,
@@ -175,7 +177,7 @@ from dune_imperium.rules.spy_placement import (
     spy_options,
     spy_placement_allowed_post_ids,
 )
-from dune_imperium.rules.strength import reveal_in_progress
+from dune_imperium.rules.strength import dreadnought_strength, reveal_in_progress
 from dune_imperium.rules.tactics import advance_tactics_token
 from dune_imperium.rules.tech import deploy_troops_from_supply, push_tech_acquisition
 from dune_imperium.rules.tleilaxu_row import (
@@ -190,7 +192,12 @@ from dune_imperium.rules.unit_loss import (
     opponent_unit_loss_frames,
     opponents_with_conflict_troop,
 )
-from dune_imperium.rules.units import retreat_units, unit_count_arguments, unit_counts
+from dune_imperium.rules.units import (
+    deployed_unit_counts,
+    retreat_units,
+    unit_count_arguments,
+    unit_counts,
+)
 
 # --- Pending entries ---------------------------------------------------------
 
@@ -485,14 +492,24 @@ def piece_rows(
             # The detonation icon is a choice [Main pp. 10, 20].
             rows.append(row(Verb.DESTROY_SHIELD_WALL))
             rows.append(row(Verb.DECLINE, of=Verb.DESTROY_SHIELD_WALL))
-        case DeployFromGarrison(up_to=up_to):
+        case DeployFromGarrison(up_to=up_to, dreadnoughts=with_dreadnoughts):
             # "Deploy up to N troops": zero stays offered; a garrisoned
-            # Sardaukar Commander is a troop here [Bloodlines p. 4].
+            # Sardaukar Commander is a troop here [Bloodlines p. 4]. Second
+            # Wave's "units" take the garrison dreadnoughts too [Rise of Ix
+            # p. 6], within the same N.
             troops, commanders = deployable_garrison_units(state, player)
             rows.extend(
                 row(Verb.DEPLOY, Target.UNITS, arguments)
                 for arguments in unit_count_arguments(
-                    minimum=0, maximum=up_to, troops=troops, commanders=commanders
+                    minimum=0,
+                    maximum=up_to,
+                    troops=troops,
+                    commanders=commanders,
+                    dreadnoughts=(
+                        deployable_garrison_dreadnoughts(state, player)
+                        if with_dreadnoughts
+                        else 0
+                    ),
                 )
             )
         case TrashPersonalCard(hand_only=hand_only, mandatory=mandatory):
@@ -1141,13 +1158,18 @@ def apply_piece(
             else:
                 result = _passed(state, player, action, step_source)
         case DeployFromGarrison():
-            count, commanders = unit_counts(arguments)
-            if count + commanders == 0:
+            troops, commanders, dreadnoughts = deployed_unit_counts(arguments)
+            if troops + commanders + dreadnoughts == 0:
                 # "Deploy up to N troops" chose zero: no unit moves.
                 result = RuleResult(state=state)
             else:
                 result = _deploy_units(
-                    state, player, step_source, troops=count, commanders=commanders
+                    state,
+                    player,
+                    step_source,
+                    troops=troops,
+                    commanders=commanders,
+                    dreadnoughts=dreadnoughts,
                 )
         case TrashPersonalCard(bonus_spice=bonus_spice, bonus_minimum_cost=minimum):
             if shape.verb in (Verb.DECLINE, Verb.CONFIRM_EMPTY):
@@ -1819,43 +1841,85 @@ def _deploy_units(
     *,
     troops: int,
     commanders: int = 0,
+    dreadnoughts: int = 0,
 ) -> RuleResult:
-    """Move garrison units into the Conflict, counting strength mid-Reveal."""
+    """Move garrison units into the Conflict, counting strength mid-Reveal
+    and mid-Combat.
+
+    ``dreadnoughts`` are the units a card that says "units" moves [Rise of Ix
+    p. 6] (Second Wave); a card's "troop" never reaches one. A Combat
+    Intrigue deploys in the Combat phase, where the running strength is no
+    longer re-derived from the units (``strength.refresh_pre_reveal_strength``),
+    so the units' own strength is added here; there is no turn then, so the
+    turn's deployment count is left alone. A dreadnought is moved by a Combat
+    card only: the Reveal turn's strength has no count for one.
+    """
 
     owner = state.players[player]
+    in_combat = state.phase is GamePhase.COMBAT
     if (
         troops < 0
         or commanders < 0
-        or troops + commanders < 1
+        or dreadnoughts < 0
+        or troops + commanders + dreadnoughts < 1
         or owner.troops_garrison < troops
         or owner.commanders_garrison < commanders
+        or owner.dreadnoughts_garrison < dreadnoughts
     ):
         raise RuntimeError("Intrigue deployment exceeds the garrison")
-    event = GameEvent(
-        event_id=f"{step_source}:deploy",
-        kind="troops_deployed",
-        payload=(
-            *((("commanders", commanders),) if commanders else ()),
-            ("count", troops + commanders),
-            ("player", player),
-        ),
-    )
+    if dreadnoughts and not in_combat:
+        raise RuntimeError("a dreadnought is deployed by a Combat Intrigue card")
+    events: list[GameEvent] = []
+    if troops + commanders:
+        events.append(
+            GameEvent(
+                event_id=f"{step_source}:deploy",
+                kind="troops_deployed",
+                payload=(
+                    *((("commanders", commanders),) if commanders else ()),
+                    ("count", troops + commanders),
+                    ("player", player),
+                ),
+            )
+        )
+    if dreadnoughts:
+        events.append(
+            GameEvent(
+                event_id=f"{step_source}:deploy_dreadnoughts",
+                kind="dreadnoughts_deployed",
+                payload=(("count", dreadnoughts), ("player", player)),
+            )
+        )
     if reveal_is_open_for(state, player):
         counted = add_units_to_reveal(
             state, player, troops=troops, commanders=commanders
         )
-        return RuleResult(state=counted.state, events=(event, *counted.events))
+        return RuleResult(state=counted.state, events=(*events, *counted.events))
     next_owner = replace(
         owner,
         troops_garrison=owner.troops_garrison - troops,
         troops_conflict=owner.troops_conflict + troops,
         commanders_garrison=owner.commanders_garrison - commanders,
         commanders_conflict=owner.commanders_conflict + commanders,
-        units_deployed_turn=owner.units_deployed_turn + troops + commanders,
+        dreadnoughts_garrison=owner.dreadnoughts_garrison - dreadnoughts,
+        dreadnoughts_conflict=owner.dreadnoughts_conflict + dreadnoughts,
     )
+    if in_combat:
+        next_owner = replace(
+            next_owner,
+            combat_strength=owner.combat_strength
+            + 2 * troops
+            + COMMANDER_STRENGTH * commanders
+            + dreadnoughts * dreadnought_strength(owner),
+        )
+    else:
+        next_owner = replace(
+            next_owner,
+            units_deployed_turn=owner.units_deployed_turn + troops + commanders,
+        )
     return RuleResult(
         state=replace(state, players=replace_player(state.players, next_owner)),
-        events=(event,),
+        events=tuple(events),
     )
 
 

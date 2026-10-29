@@ -557,6 +557,7 @@ const LABELS_EN = {
     "shipping_influence_unavailable": "Shipping Track: {influence_any} Unavailable",
     "dreadnought_control_placed": "Dreadnought on a {control} Space",
     "dreadnought_returned": "Dreadnought Back to the {garrison}",
+    "dreadnought_retreated": "Dreadnought Retreated",
     "dreadnought_detonated": "Dreadnought Returned to the {supply} (Detonation Devices)",
     "intrigue_put_on_bottom": "{intrigue_card} Put on the Bottom of the {intrigue} {deck}",
     "conflict_end_trigger_declined": "{conflict} End Trigger {intrigue_card} Declined",

@@ -25,6 +25,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AllConditions,
     AtFactionSpace,
+    AtLeastOfConditions,
     AtMakerSpace,
     CommanderDiscountThisTurn,
     CommissionDreadnought,
@@ -39,6 +40,8 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
+    DreadnoughtsAtLeast,
+    EachOpponentRetreatsDreadnought,
     EffectSection,
     FactionBond,
     FlipBattleCard,
@@ -122,6 +125,7 @@ from dune_imperium.rules.contracts import (
     market_contract_ids,
 )
 from dune_imperium.rules.dreadnought_commission import commission_block
+from dune_imperium.rules.dreadnoughts import dreadnoughts_owned
 from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
     agent_turn_space_id,
@@ -162,6 +166,7 @@ from dune_imperium.rules.spy_placement import (
     spy_placement_posts,
 )
 from dune_imperium.rules.unit_loss import opponents_with_conflict_troop
+from dune_imperium.rules.units import retreat_dreadnought
 
 type ChoiceSlot = (
     LoseInfluence
@@ -295,6 +300,17 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             return bool(opponents_with_conflict_troop(state, player))
         case AllConditions(conditions=conditions):
             return all(condition_holds(state, player, item) for item in conditions)
+        case AtLeastOfConditions(count=count, conditions=conditions):
+            # Grand Conspiracy: "If you have any three:" of its four items.
+            return (
+                sum(condition_holds(state, player, item) for item in conditions)
+                >= count
+            )
+        case DreadnoughtsAtLeast(count=count):
+            # Grand Conspiracy's "2 dreadnoughts": the seat's own, wherever
+            # they stand (OQ-121); a Control space holds the game's, so this
+            # reads the state.
+            return dreadnoughts_owned(state, player) >= count
         case MoreSpiceMustFlowThanEachOpponent():
             # Corner the Market: "상대 하나라도 같거나 많으면 둘째 조건 실패"
             # (imperium-base.md 13.2, ``[FAQ p. 2]``): each opponent is
@@ -644,6 +660,21 @@ def deployable_garrison_units(state: GameState, player: int) -> tuple[int, int]:
     )
 
 
+def deployable_garrison_dreadnoughts(state: GameState, player: int) -> int:
+    """The garrison dreadnoughts a "deploy units from your garrison" effect
+    may move now.
+
+    "Deploy up to two units from your garrison to the Conflict." [Second Wave
+    card]: a dreadnought is a unit [Rise of Ix p. 6], so the garrison ones
+    are among them; Emperor of the Known Universe blocks every unit for the
+    turn [Main p. 17], as for troops (``deployable_garrison_units``).
+    """
+
+    if units_deployment_blocked(state, player):
+        return 0
+    return state.players[player].dreadnoughts_garrison
+
+
 def _plot_frame(state: GameState, player: int) -> DecisionFrame | None:
     """The owner's own turn frame on top (turn, Agent effects or Reveal).
 
@@ -927,8 +958,11 @@ def reward_can_change_something(
             # [Main p. 20] unless Arrakis Planetologist replaces the
             # sandworm [Liet Kynes card].
             return sandworm_block(state, player, needs_hooks=needs_hooks) is None
-        case DeployFromGarrison():
-            return sum(deployable_garrison_units(state, player)) >= 1
+        case DeployFromGarrison(dreadnoughts=with_dreadnoughts):
+            movable = sum(deployable_garrison_units(state, player))
+            if with_dreadnoughts:
+                movable += deployable_garrison_dreadnoughts(state, player)
+            return movable >= 1
         case RetreatTroops(minimum=minimum):
             # An "any number" retreat may choose zero once played [Main
             # p. 20] [FAQ p. 3], but needs a unit in the Conflict to play.
@@ -1447,6 +1481,7 @@ def apply_rewards(
     contracts = 0
     fixed_influence: list[GainInfluence] = []
     agent_influence = False
+    opponents_retreat_dreadnoughts = False
     # Immortality: Bene Tleilax board moves resolve on the state after the
     # resource gains (a research advance may open a direction choice).
     specimens = 0
@@ -1515,6 +1550,8 @@ def apply_rewards(
                 raise ValueError("Influence choices must be resolved as choice slots")
             case GainInfluenceWhereAgent():
                 agent_influence = True
+            case EachOpponentRetreatsDreadnought():
+                opponents_retreat_dreadnoughts = True
             case SummonSandworm(count=count, requires_maker_hooks=needs_hooks) if (
                 replaces_sandworms(owner)
                 and sandworm_block(state, player, needs_hooks=needs_hooks) is None
@@ -1689,6 +1726,18 @@ def apply_rewards(
             )
             next_state = gained.state
             events.extend(gained.events)
+    if opponents_retreat_dreadnoughts:
+        # Cannon Turrets: each opponent with a dreadnought in the Conflict
+        # sends one to its garrison, clockwise from the next seat; nothing
+        # is chosen (a seat's dreadnoughts are alike).
+        for offset in range(1, state.config.players):
+            seat = (player + offset) % state.config.players
+            if next_state.players[seat].dreadnoughts_conflict:
+                retreated = retreat_dreadnought(
+                    next_state, seat, f"{source}:opponent:{seat}"
+                )
+                next_state = retreated.state
+                events.extend(retreated.events)
     if intrigue_draws:
         # Resolved before the Intrigue card itself is discarded, so the deck
         # reshuffle (if any) never includes the card being played.
