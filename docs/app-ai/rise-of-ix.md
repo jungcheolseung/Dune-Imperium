@@ -6,9 +6,9 @@
 
 Status (2026-10-30, branch `claude/base-ix-p6-ix`): every Rise of Ix decision
 our engine offers in an original + Ix game (draft, promos) is answered by an
-app class. The census has no random answer and no unported class: 15 games
-per level, seeds 8100+. The six Ix Leaders wait for P4e, which makes them
-candidates.
+app class. The census has no random answer and no unported class: 20 games
+per level, seeds 8100+. Five of the six Ix Leaders are in (P4 `137d582f`);
+Tessia Vernius waits for P4.
 
 Unlike the Bloodlines and Scouts files beside this one, Rise of Ix is a
 **faithful port**: the Steam app plays Rise of Ix itself. Values come from the
@@ -68,6 +68,23 @@ app's prompts.
 | War Chest, Diversion | `WarChestCombatAbility` / `WarChestEndgameAbility`; `DiversionAbility` (its Freighter slot as Expedite's) | War Chest's 2 Solari are the Combat line's cost; nothing to choose. |
 | Double Cross's victim when its play named none | `DefaultRandomChoice` over the offered opponents | A forced prompt answered at 0 or less draws a random key, here the card's (seed 8112). The target prompt that follows is forced too. |
 | Endgame plays of Plans Within Plans and Grand Conspiracy | Played without a prompt (`EndgamePhase`). The app's engine scores the count: `CountTotalPoints` gives 1 VP for three, 2 VP for four (@0x4ca8030, @0x4bec350) | Our engine offers each count as an exclusive -OR- option (OQ-058), both when four are met. The window plays the option with the most VP. Before 2026-10-30 it took the first (1 VP); this also changes original games. |
+
+## Leaders
+
+The twelve classes are in `abilities/ix_leaders.py`; Rhombur's
+`IxianTechnologyAbility` is in `abilities/tech.py`.
+
+| Leader | Decision | App class | Notes |
+|---|---|---|---|
+| Archduke Armand Ecaz | Conscript (Signet): `acquire_leader_imperium` / `acquire_leader_reserve` | `ConscriptAbility` (Optional): the Row, then the Reserve without Foldspace, cost 3 or less; answer `((card,), (destination,))` | Destination option 0 is the top of the deck while our engine offers `to_deck_top` (Spaceport), else the discard pile. |
+| | Coordination (Reveal): `trash_leader_reveal_card` | `CoordinationAbility` (Optional; Cost: the Reveal turn and two Agents on Landsraad, City or Spice Trade spaces) | `GetCardToTrash` over the cards in play; "trash nothing" (`((),)`) is no candidate. |
+| Ilesa Ecaz | One Step Ahead (`round_start_set_aside`) | `OneStepAheadRoundAbility`: of the three best Agent-box cards, the first with one Agent icon; else `GetBestOption`'s card is removed and the first left is set aside | A forced `KeepCard` prompt: an empty answer is `DefaultRandomChoice`. Its Turn and Send halves have no AI hook. |
+| | Guild Contacts (Signet): `acquire_leader_reserve` (Foldspace) | `GuildContactsAbility` (Optional): 100 with option 0 before the Late arc and the climax | `<Targets>d__8` lists "deck" only when it is allowed, then "discard" (asm). |
+| Prince Rhombur Vernius | Ixian Technology (Signet): `acquire_leader_tech` / `place_leader_negotiator` | `IxianTechnologyAbility`: the Negotiation area at 1.0 against the tiles in reach (no discount) | The Acquire Tech frame asks `AcquireTechAbility`, the same argmax. |
+| | Heavy Lasgun Cannons | Sets his dreadnoughts' `Strength` to 4 | `GetUnitsToDeploy` sums 4 per dreadnought for him (`profile/combat.py`). |
+| "Princess" Yuna Moritani | Final Delivery (Signet): `choose_leader_signet_influence` | `FinalDeliveryAbility` (Optional): each track at its `GetGainInfluenceValue` | With every Faction at the top our engine offers the payment alone; the app has no track to answer, so the key lapses. |
+| Viscount Hundro Moritani | Couriers (Signet): `advance_leader_freighter` / `recall_leader_freighter` | `CouriersAbility` (Optional): `GetFreighterSelections(-1).Item1` at `FreighterValue` | |
+| | Intelligence (setup `intrigue_peek`, source `setup:intelligence:<seat>`) | `IntelligenceAbility::EvaluateIntrigue`: the higher `Rating` | Imperium Ceremony's peek keeps `ImperiumCeremonyAbility`. |
 
 ## Profile
 
@@ -151,8 +168,8 @@ Left open by the review:
 
 ## What waits
 
-- **The six Leaders (P4e)**: 20 classes, `round_start_set_aside` (Ilesa,
-  with `best_option`), `optional_discard` (Tessia), and the setup of Tessia
-  and Hundro.
+- **Tessia Vernius**: eight classes, `optional_discard` and her setup, once
+  P4 lands her.
 - **Closing runs**: the original + Ix soak and the Hard vs heuristic
-  measurement, booked on the CPU board once P4e lands.
+  measurement, booked on the CPU board once Tessia and the remaining cards
+  are in.
