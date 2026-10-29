@@ -13,8 +13,9 @@ by ``scripts/dwgr/imperium_entries.py --set ix skeleton``. Incomplete entries
 keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
 game's deck takes only completed cards (Jamis, Sayyadina, Truthsayer,
-Imperial Shock Trooper and Local Fence so far), while the observation lists
-every identity from v39. Setup takes Rise of Ix on the original game since stage P4c-5.
+Imperial Shock Trooper, Local Fence and Water Peddler so far), while the
+observation lists every identity from v39. Setup takes Rise of Ix on the
+original game since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
 cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
@@ -244,6 +245,15 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("water_peddler", "Water Peddler"),
         copies=1,
         acquisition_cost=1,
+        # App table: no Faction, no Agent icon (a Reveal-only card [DI p. 9]),
+        # AcquireEffect Water, Reveal 1 water. Screen pieces: acquire
+        # "[1 water]"; Reveal "[Unload] [1 water]" -- the box is gained also
+        # when the card is discarded or trashed [Rise of Ix p. 7]
+        # (``rules.unload``); its record is ``REVEAL_GAIN_ABILITIES``.
+        has_acquisition_bonus=True,
+        acquisition_effect=PersonalCardAcquisitionEffect.GAIN_ONE_WATER,
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("web_of_power", "Web of Power"),

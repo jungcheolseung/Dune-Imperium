@@ -272,6 +272,7 @@ _IX_IMPERIUM_TRANSCRIBED = {
     "sayyadina",
     "shai_hulud",
     "truthsayer",
+    "water_peddler",
 }
 
 

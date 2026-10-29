@@ -16,6 +16,11 @@ import pytest
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters import ActionCodec, action_codec
 from dune_imperium.agents.agent_turn_steps import steps_after
+from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.uprising.effect_dsl import GainResources
+from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
+from dune_imperium.content.uprising.reveal_abilities import REVEAL_GAIN_ABILITIES
+from dune_imperium.content.uprising.types import PersonalCardAcquisitionEffect
 from dune_imperium.core import (
     ChanceDecision,
     ChanceResolver,
@@ -245,3 +250,198 @@ def test_clean_up_moves_an_unload_card_without_unloading_it() -> None:
     assert state.round_number == 2
     assert MARKED[0] in state.players[0].discard_pile
     assert unloaded == []
+
+
+# --- Water Peddler -------------------------------------------------------------
+
+WATER_PEDDLER = "imperium:water_peddler:0"
+CULL = "intrigue:cull:0"
+
+
+def _in_row(state: GameState, instance_id: str) -> GameState:
+    """``instance_id`` in the Imperium Row's first slot, out of the deck."""
+
+    state = _give(state, 0)
+    deck = tuple(card for card in state.imperium_deck if card != instance_id)
+    row = tuple(card for card in state.imperium_row if card != instance_id)
+    return replace(state, imperium_deck=deck, imperium_row=(instance_id, *row[1:]))
+
+
+def test_water_peddler_play_data_matches_the_app() -> None:
+    """App table: cost 1, 1 copy, no Faction and no Agent icon, AcquireEffect
+    Water; screen pieces: acquire "[1 water]", Reveal "[Unload] [1 water]"."""
+    entry = IMPERIUM_CARDS_BY_ID["water_peddler"]
+    assert entry.play_data_complete and entry.unload
+    assert (entry.copies, entry.acquisition_cost) == (1, 1)
+    assert entry.factions == () and entry.agent_icons == ()
+    assert entry.has_acquisition_bonus
+    assert entry.acquisition_effect is PersonalCardAcquisitionEffect.GAIN_ONE_WATER
+    assert (entry.reveal_persuasion, entry.reveal_strength) == (0, 0)
+    (line,) = REVEAL_GAIN_ABILITIES["water_peddler"].sections
+    assert line.rewards == (GainResources(water=1),) and line.condition is None
+    assert unload.unload_icons(WATER_PEDDLER) == (("water", 1),)
+    for config in (IX, replace(IX, rise_of_ix=False), RulesetConfig()):
+        deck = content_for(config).imperium_deck_instance_ids
+        assert (WATER_PEDDLER in deck) == config.rise_of_ix
+
+
+def test_water_peddler_gives_one_water_when_acquired() -> None:
+    """Water Peddler's acquire box: "[1 water]" [DI p. 16]."""
+    state = _in_row(_start(), WATER_PEDDLER)
+    state = _do(state, "reveal_turn").state
+    water = state.players[0].resources.water
+    result = _do(state, "acquire_imperium", instance_id=WATER_PEDDLER)
+    owner = result.state.players[0]
+    assert WATER_PEDDLER in owner.discard_pile
+    assert owner.resources.water == water + 1
+    assert "card_unloaded" not in _kinds(result.events)
+
+
+def test_water_peddler_revealed_gives_its_box_as_usual() -> None:
+    """ "Reveal turn에 공개할 때(보통처럼, Unload 표시는 무시)" (rise-of-ix.md 7)."""
+    state = _give(_start(), 0, hand=(WATER_PEDDLER,))
+    revealed = _do(state, "reveal_turn")
+    assert "card_unloaded" not in _kinds(revealed.events)
+    water = revealed.state.players[0].resources.water
+    gained = _do(revealed.state, "gain_reveal_resources")
+    assert gained.state.players[0].resources.water == water + 1
+    assert not _offered(gained.state, "gain_reveal_resources")
+    assert not _offered(gained.state, UNLOAD_ROW)
+
+
+def test_water_peddler_revealed_then_trashed_gives_its_box_again() -> None:
+    """OQ-120: "공개한 Unload 카드를 같은 Reveal turn에 trash하면 다시 얻는다";
+    Cull: "[1 Solari] -> [trash a card]"."""
+    state = _give(_start(), 0, hand=(WATER_PEDDLER,))
+    state = replace(
+        state, intrigue_deck=tuple(c for c in state.intrigue_deck if c != CULL)
+    )
+    state = _give(state, 0, hand=(WATER_PEDDLER,))
+    owner = state.players[0]
+    state = replace(
+        state,
+        players=(
+            replace(
+                owner,
+                intrigue_cards=(CULL,),
+                resources=replace(owner.resources, solari=1),
+            ),
+            *state.players[1:],
+        ),
+    )
+    state = _do(state, "reveal_turn").state
+    water = state.players[0].resources.water
+    state = _do(state, "gain_reveal_resources").state
+    state = _do(state, "play_intrigue", card_id=CULL, option=0).state
+    trashed = _do(state, "trash_intrigue_card", card_id=WATER_PEDDLER)
+    assert WATER_PEDDLER in trashed.state.players[0].trashed
+    assert "card_unloaded" in _kinds(trashed.events)
+    assert not _offered(trashed.state, "finish_reveal")
+    again = _do(trashed.state, UNLOAD_ROW, card_id=WATER_PEDDLER, effect="water")
+    assert again.state.players[0].resources.water == water + 2
+    assert _offered(again.state, "finish_reveal")
+
+
+def test_water_peddler_paid_as_a_discard_cost_gives_its_water_at_once() -> None:
+    """ "Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer ruling,
+    rise-of-ix.md 7); Truthsayer: "Discard -> draw a card"."""
+    state = _start()
+    kept = state.players[0].hand[0]
+    state = _give(state, 0, hand=(TRUTHSAYER, WATER_PEDDLER, kept))
+    state = _do(state, "choose_agent_card", card_id=TRUTHSAYER).state
+    state = _do(state, "place_agent", space_id="wealth").state
+    water = state.players[0].resources.water
+    result = _do(state, "discard_agent_card", card_id=WATER_PEDDLER)
+    assert result.state.players[0].resources.water == water + 1
+    assert WATER_PEDDLER in result.state.players[0].discard_pile
+    assert not _offered(result.state, UNLOAD_ROW)
+
+
+def test_cull_trashing_water_peddler_gives_its_water() -> None:
+    """Cull's trash is mandatory once it is played ("Cull은 trash해야 낸다",
+    rise-of-ix.md 9.3, OQ-113 (C)), and "trash할 때 얻는다" (rise-of-ix.md 7,
+    [Rise of Ix p. 7]). Played in the owner's own turn, the trash is an effect,
+    not a cost, so the water waits as a row of the turn (the Solari is the
+    arrow's cost, a different payment) until it is taken."""
+    state = _start()
+    kept = state.players[0].hand[0]
+    state = _give(state, 0, hand=(WATER_PEDDLER, kept))
+    state = replace(
+        state, intrigue_deck=tuple(c for c in state.intrigue_deck if c != CULL)
+    )
+    owner = state.players[0]
+    state = replace(
+        state,
+        players=(
+            replace(
+                owner,
+                intrigue_cards=(CULL,),
+                resources=replace(owner.resources, solari=1),
+            ),
+            *state.players[1:],
+        ),
+    )
+    state = _do(state, "play_intrigue", card_id=CULL, option=0).state
+    # Mandatory: no refusal, only the cards it may trash.
+    assert not _offered(state, "decline_intrigue_trash")
+    assert _offered(state, "trash_intrigue_card")
+    water = state.players[0].resources.water
+    trashed = _do(state, "trash_intrigue_card", card_id=WATER_PEDDLER)
+    assert WATER_PEDDLER in trashed.state.players[0].trashed
+    assert "card_unloaded" in _kinds(trashed.events)
+    assert trashed.state.players[0].resources.water == water
+    assert _offered(trashed.state, UNLOAD_ROW)
+    taken = _do(trashed.state, UNLOAD_ROW, card_id=WATER_PEDDLER, effect="water")
+    assert taken.state.players[0].resources.water == water + 1
+    assert not _offered(taken.state, UNLOAD_ROW)
+
+
+SHAI_HULUD = "imperium:shai_hulud:0"
+
+
+def test_shai_hulud_agent_trash_cost_gives_the_water_before_the_troops() -> None:
+    """Shai-Hulud's Agent box "[Trash a card] -> [2 troops]" trashes as a
+    cost: "Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer ruling,
+    rise-of-ix.md 7), so Water Peddler's water is paid inside the payment."""
+    state = _start()
+    state = _give(state, 0, hand=(SHAI_HULUD, WATER_PEDDLER))
+    state = _do(state, "choose_agent_card", card_id=SHAI_HULUD).state
+    state = _do(state, "place_agent", space_id="imperial_basin").state
+    owner = state.players[0]
+    result = _do(state, "trash_agent_card", card_id=WATER_PEDDLER)
+    after = result.state.players[0]
+    assert WATER_PEDDLER in after.trashed
+    assert after.resources.water == owner.resources.water + 1
+    assert after.troops_garrison == owner.troops_garrison + 2
+    kinds = _kinds(result.events)
+    assert kinds.index("card_unloaded") < kinds.index("agent_card_effect_resolved")
+    assert not _offered(result.state, UNLOAD_ROW)
+
+
+def test_shai_hulud_acquire_trash_gives_a_trashed_unload_cards_box() -> None:
+    """Shai-Hulud's acquire box (the black Trash icon, optional, resolved when
+    the card is acquired, [Main p. 20] [DI p. 16]) is an effect, not a cost:
+    a trashed Water Peddler's water waits as a row of the Reveal turn."""
+    state = _in_row(_start(), SHAI_HULUD)
+    kept = state.players[0].hand[0]
+    state = _give(state, 0, hand=(kept,), discard_pile=(WATER_PEDDLER,))
+    state = _do(state, "reveal_turn").state
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    context["persuasion"] = 20
+    state = replace(
+        state,
+        decision_stack=(
+            *state.decision_stack[:-1],
+            replace(frame, context=tuple(sorted(context.items()))),
+        ),
+    )
+    state = _do(state, "acquire_imperium", instance_id=SHAI_HULUD).state
+    water = state.players[0].resources.water
+    trashed = _do(state, "trash_optional_card", card_id=WATER_PEDDLER)
+    assert WATER_PEDDLER in trashed.state.players[0].trashed
+    assert "card_unloaded" in _kinds(trashed.events)
+    assert trashed.state.players[0].resources.water == water
+    taken = _do(trashed.state, UNLOAD_ROW, card_id=WATER_PEDDLER, effect="water")
+    assert taken.state.players[0].resources.water == water + 1
+    assert not _offered(taken.state, UNLOAD_ROW)

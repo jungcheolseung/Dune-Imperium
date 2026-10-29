@@ -189,7 +189,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # one personal-table column is new (the black Trash icon in an acquire box),
 # read by its row alone; no older scale moved (compared against 706e6f2e,
 # 2026-10-30).
-_GOLDEN_DIGEST = "9acac2e911c671dc08d2e4716fe77f44267a7f84435a5a2437de7cdf00118001"
+# Then Water Peddler got its play data (stage P4d): one personal-table column
+# is new (the Unload mark, ``unload``), only its own row reads it, its row is
+# the only one that changed, and no scale moved (compared against 63a61cb0,
+# 2026-10-30).
+_GOLDEN_DIGEST = "7e7623cf418dbadee20ea6472df977fcfb63829e69ff54704e2dd32c7771d82e"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

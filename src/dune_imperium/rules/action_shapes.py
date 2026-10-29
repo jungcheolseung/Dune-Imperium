@@ -195,7 +195,8 @@ TARGET_ARGUMENTS: Final[Mapping[Target, frozenset[str]]] = {
     Target.RESERVE_CARD: frozenset({"card_id", "to_deck_top"}),
     Target.TLEILAXU_CARD: frozenset({"instance_id", "to_deck_top"}),
     Target.RECLAIMED_FORCES: frozenset({"choice"}),
-    Target.PERSONAL_CARD: frozenset({"card_id", "graft"}),
+    # ``effect``: which icon of an Unload card's Reveal box (``rules.unload``).
+    Target.PERSONAL_CARD: frozenset({"card_id", "effect", "graft"}),
     Target.INTRIGUE_CARD: frozenset(
         {"card_id", "instance_id", "intrigue_card_id", "option", "player"}
     ),
@@ -752,6 +753,12 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "trash_intrigue_for_contract": _row(_V.TRASH, _S.CONTRACT, _T.INTRIGUE_CARD),
     # --- A revealed card and the Reveal turn's gains -------------------------
+    # One icon of a Rise of Ix Unload card's Reveal box, gained when the card
+    # is discarded or trashed: a row of its owner's turn or of its window,
+    # naming the card (``rules.unload``).
+    "resolve_unload_icon": _row(
+        _V.RESOLVE, _S.REVEAL_CARD, _T.PERSONAL_CARD, variant="unload"
+    ),
     "gain_reveal_resources": _row(_V.GAIN, _S.REVEAL_CARD, _T.RESOURCES),
     "gain_reveal_faction_influence": _row(
         _V.GAIN_INFLUENCE, _S.REVEAL_CARD, _T.FACTION, variant="pending_gain"
