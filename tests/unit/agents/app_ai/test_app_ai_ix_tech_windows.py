@@ -108,6 +108,24 @@ def test_an_intrigue_freighter_follows_the_plays_item1() -> None:
     assert advance is not None and advance.action_id == "advance_intrigue_freighter"
 
 
+def test_a_random_intrigue_play_moves_its_freighter_at_random() -> None:
+    """A play the app's ``DefaultRandomChoice`` drew (its answer names no
+    move): the Freighter is a random offered move, never the decline."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.windows import intrigue
+
+    advance = DomainAction(action_id="advance_intrigue_freighter", actor=0)
+    decline = DomainAction(action_id="decline_intrigue_freighter", actor=0)
+    run = _choice_run([advance, decline])
+    empty = Answer(0.0, None, "Expedite")
+    assert intrigue._intrigue_freighter(run, lambda: empty) is advance
+    # The answer's recall with only the advance offered: the same draw.
+    named = Answer(4.2, ((1,),), "")
+    assert intrigue._intrigue_freighter(run, lambda: named) is advance
+    assert intrigue._intrigue_freighter(_choice_run([decline]), lambda: empty) is None
+
+
 def test_strongarm_loses_the_troop_from_the_answered_zone() -> None:
     from dune_imperium.agents.app_ai.abilities.base import Answer
     from dune_imperium.agents.app_ai.windows import intrigue

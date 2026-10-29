@@ -1763,7 +1763,14 @@ def _intrigue_freighter(
     """Rise of Ix's Diversion and Expedite: the Freighter the play's answer
     named (``DiversionAbility``/``ExpediteAbility::Evaluate``: ``IntTargetResponse(
     GetFreighterSelections(-1).Item1)``, 1 recall, 0 advance; plan §13). The
-    app's Explicit answer always moves: the decline is never its answer."""
+    app's Explicit answer always moves: the decline is never its answer.
+
+    A play whose answer named no move came from the app's
+    ``DefaultRandomChoice`` over a forced prompt's keys (seed 8504 on the
+    trial merge of P4's ``427e21a6``: the Dreadnought space's Explicit Acquire
+    Tech forced an Agent turn answered at 0 or less), so the ability runs
+    with random targets: ``DefaultRandomChoice`` over the offered moves, as
+    Double Cross's victim (``_opponent_troop_loss``)."""
 
     answer = intent()
     item = answer.response[0][0] if answer.response else None
@@ -1773,7 +1780,8 @@ def _intrigue_freighter(
         return recall
     if item == 0 and advance is not None:
         return advance
-    return None
+    moves = [a for a in (advance, recall) if a is not None]
+    return default_random_choice(moves, run.rng) if moves else None
 
 
 # ---------------------------------------------------------------------------
