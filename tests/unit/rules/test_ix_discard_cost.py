@@ -7,20 +7,33 @@ OQ-071 application: costs need a live reward, including a cost-fed draw.
 
 from dataclasses import replace
 
+import pytest
+
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters import ActionCodec
 from dune_imperium.agents.agent_turn_steps import steps_after
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    DiscardFromHand,
+    DrawPersonalCards,
+    EffectSection,
+    GainInfluence,
+)
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS_BY_ID
+from dune_imperium.content.uprising.intrigue import (
+    INTRIGUE_CARDS_BY_INSTANCE,
+    intrigue_card_for_instance,
+)
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core import (
     ChanceDecision,
     ChanceResolver,
     DomainAction,
     GameState,
+    Influence,
 )
-from dune_imperium.core.engine import RuleResult
+from dune_imperium.core.engine import IllegalActionError, RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.observation import observe_state
 from dune_imperium.rules import UprisingRulesEngine
@@ -96,7 +109,8 @@ def _probe(state: GameState) -> GameState:
 
 
 def test_card_data_matches_the_app_and_only_joins_the_ix_decks() -> None:
-    """Truthsayer: "Discard -> draw a card"."""
+    """Truthsayer: "Discard -> draw a card";
+    Ixian Probe: "Discard, Discard -> draw 2 cards"."""
     card = IMPERIUM_CARDS_BY_ID["truthsayer"]
     assert card.play_data_complete
     assert (card.copies, card.acquisition_cost) == (2, 3)
@@ -107,9 +121,16 @@ def test_card_data_matches_the_app_and_only_joins_the_ix_decks() -> None:
         AgentIcon.LANDSRAAD,
     )
     assert (card.reveal_persuasion, card.reveal_strength) == (1, 1)
+    probe = intrigue_card_for_instance(PROBE)
+    assert probe.play_data_complete and probe.copies == 1
+    assert probe.options[0].timing.value == "plot"
+    (line,) = probe.options[0].sections
+    assert line.costs == (DiscardFromHand(2),)
+    assert line.rewards == (DrawPersonalCards(2),)
     for config in (IX, replace(IX, rise_of_ix=False), RulesetConfig()):
         content = content_for(config)
         assert (TRUTHSAYER in content.imperium_deck_instance_ids) == config.rise_of_ix
+        assert (PROBE in content.intrigue_deck_instance_ids) == config.rise_of_ix
 
 
 def test_truthsayer_discards_the_payers_choice_publicly_before_drawing() -> None:
@@ -167,3 +188,116 @@ def test_truthsayer_reveals_for_one_persuasion_and_one_sword() -> None:
     assert context["persuasion"] == 1
     assert context["sword_strength"] == 1
     assert state.players[0].hand == ()
+
+
+@pytest.mark.parametrize("hand_size", [0, 1])
+def test_probe_requires_two_personal_hand_cards_even_when_intrigue_is_held(
+    hand_size: int,
+) -> None:
+    """Ixian Probe: "Discard, Discard -> draw 2 cards";
+    "Intrigue 아님" [Rise of Ix p. 7]."""
+    state = _start()
+    state = _seat(
+        state,
+        hand=state.players[0].hand[:hand_size],
+        intrigue_cards=(PROBE, "intrigue:cull:0"),
+    )
+    _rows(state)
+    assert not any(
+        row.action_id == "play_intrigue" and dict(row.arguments).get("card_id") == PROBE
+        for row in ENGINE.whole_actions(state, 0)
+    )
+
+
+def test_probe_pays_two_distinct_hand_cards_before_drawing_two() -> None:
+    """Ixian Probe: "discarded [card2] and [card3] to draw 2 cards"."""
+    state = _start()
+    first, second, kept = state.players[0].hand[:3]
+    deck = state.players[0].deck
+    state = _probe(
+        _seat(
+            state, hand=(first, second, kept), intrigue_cards=(PROBE, "intrigue:cull:0")
+        )
+    )
+    choices = ENGINE.whole_actions(state, 0)
+    assert {dict(row.arguments)["card_id"] for row in choices} == {first, second, kept}
+    first_result = _do(state, "choose_intrigue_discard", card_id=second)
+    state = first_result.state
+    assert state.players[0].hand == (first, kept)
+    assert state.players[0].deck == deck
+    assert not any(event.kind == "cards_drawn" for event in first_result.events)
+    assert second in observe_state(state, 1).players[0].discard_pile
+    assert {
+        dict(row.arguments)["card_id"] for row in ENGINE.whole_actions(state, 0)
+    } == {first, kept}
+    with pytest.raises(IllegalActionError):
+        ENGINE.apply(
+            state,
+            DomainAction(
+                "choose_intrigue_discard", 0, (("card_id", "intrigue:cull:0"),)
+            ),
+        )
+    result = _do(state, "choose_intrigue_discard", card_id=first)
+    owner = result.state.players[0]
+    assert owner.hand == (kept, *deck[:2])
+    assert owner.discard_pile[-2:] == (second, first)
+    assert owner.intrigue_cards == ("intrigue:cull:0",)
+    assert PROBE in result.state.intrigue_discard
+
+
+def test_probe_can_draw_the_cards_its_cost_just_discarded() -> None:
+    """OQ-071: "discard한 카드는 섞여 다시 뽑히고"; Ixian Probe: "draw 2 cards"."""
+    state = _start()
+    cards = state.players[0].hand[:2]
+    state = _probe(
+        _seat(state, hand=cards, deck=(), discard_pile=(), intrigue_cards=(PROBE,))
+    )
+    state = _do(state, "choose_intrigue_discard", card_id=cards[0]).state
+    state = _do(state, "choose_intrigue_discard", card_id=cards[1]).state
+    chance = ChanceResolver(seed=7)
+    while isinstance(decision := ENGINE.current_decision(state), ChanceDecision):
+        state = ENGINE.apply(state, chance.resolve(decision)).state
+    _rows(state)
+    assert set(state.players[0].hand) == set(cards)
+    assert state.players[0].discard_pile == ()
+
+
+def test_discard_cost_line_is_not_offered_when_its_reward_is_dead(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ "비용만 내고 보상을 받을 수 없는 화살표 줄은 내지 않는다" (Ix 7, OQ-071).
+
+    A synthetic Intrigue line tests the reusable cost's live-reward guard;
+    Probe's own draw is always live because its cost feeds the discard pile.
+    """
+    entry = intrigue_card_for_instance(PROBE)
+    option = replace(
+        entry.options[0],
+        sections=(
+            EffectSection(
+                costs=(DiscardFromHand(2),),
+                rewards=(GainInfluence(factions=(Faction.EMPEROR,)),),
+            ),
+        ),
+    )
+    monkeypatch.setitem(
+        INTRIGUE_CARDS_BY_INSTANCE, PROBE, replace(entry, options=(option,))
+    )
+    state = _seat(_start(), intrigue_cards=(PROBE,), influence=Influence(emperor=6))
+    _rows(state)
+    assert not any(
+        row.action_id == "play_intrigue" and dict(row.arguments).get("card_id") == PROBE
+        for row in ENGINE.whole_actions(state, 0)
+    )
+    live = _seat(state, influence=Influence(emperor=5))
+    _rows(live)
+    assert any(
+        row.action_id == "play_intrigue" and dict(row.arguments).get("card_id") == PROBE
+        for row in ENGINE.whole_actions(live, 0)
+    )
+    short = _seat(live, hand=live.players[0].hand[:1])
+    _rows(short)
+    assert not any(
+        row.action_id == "play_intrigue" and dict(row.arguments).get("card_id") == PROBE
+        for row in ENGINE.whole_actions(short, 0)
+    )

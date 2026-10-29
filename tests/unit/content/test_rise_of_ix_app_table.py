@@ -261,6 +261,7 @@ _IX_INTRIGUE_TRANSCRIBED = {
     "finesse",
     "secret_forces",
     "strongarm",
+    "ixian_probe",
 }
 _IX_IMPERIUM_TRANSCRIBED = {"jamis", "sayyadina", "truthsayer"}
 

@@ -166,7 +166,9 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # column and no scale (compared against d6a6d909, 2026-10-29).
 # Then Truthsayer got her play data (stage P4d): only her own row changed, no
 # column and no scale (compared against 776f8431, 2026-10-29).
-_GOLDEN_DIGEST = "3f1a399234e7a78a2313894c96d2f657ca53dc7c69b60a84268d8f3d794c05e2"
+# Then Ixian Probe got its record (stage P4d): only its own row changed, no
+# column and no scale (compared against 2f6d4af9, 2026-10-29).
+_GOLDEN_DIGEST = "0558a93ec6225625a85b1acbc69926c55676b8701d4f5d4aa804b68a32d25901"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

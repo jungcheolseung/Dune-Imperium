@@ -23,6 +23,7 @@ from typing import Final
 
 from dune_imperium.content.schema import CardDefinition, SourceDocument, SourceRef
 from dune_imperium.content.uprising.effect_dsl import (
+    DiscardFromHand,
     DrawPersonalCards,
     EffectSection,
     Freighter,
@@ -148,6 +149,17 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("ixian_probe", "Ixian Probe"),
         copies=1,
+        # App screen pieces: [PLOT] Discard, Discard -> draw 2 cards.
+        # Both hand cards must be available before playing, and both costs
+        # precede the draw [Rise of Ix p. 7] [FAQ p. 2].
+        options=(
+            _plot(
+                EffectSection(
+                    costs=(DiscardFromHand(2),),
+                    rewards=(DrawPersonalCards(2),),
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("machine_culture", "Machine Culture"),
