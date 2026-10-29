@@ -1064,6 +1064,10 @@ const UI_TEXT = {
     "ko": "{leader} 능력",
     "en": "{leader} ability"
   },
+  "panels.log_reward_line": {
+    "ko": "{{n}}번째 줄",
+    "en": "line {{n}}"
+  },
   "panels.log_leader_ability_resolved": {
     "ko": "{{ability}}({{leader}})",
     "en": "{{ability}} ({{leader}})"

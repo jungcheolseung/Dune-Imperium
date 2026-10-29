@@ -1664,6 +1664,21 @@ function logEventParts(payload, eventKind) {
       parts.push(value.map((seat) => t("common.seat", { seat })).join(", "));
       continue;
     }
+    /* The seats The Voice bars from the space (the original game's
+       space_blocked_for_opponents, rules/agent_effects.py), by their names. */
+    if (key === "blocked_players" && Array.isArray(value)) {
+      const seats = value.map((seat) => t("common.seat", { seat })).join(", ");
+      parts.push(`${PAYLOAD_KEY_LABELS[key]}: ${seats}`);
+      continue;
+    }
+    /* The line of a reward row printed with "-OR-" or "Choose two:" that
+       its recipient took (combat_reward_line_chosen, the one event with a
+       "line"; rules/combat.py counts from line_0): named from one, before
+       the zero filter, since the first line is line 0. */
+    if (key === "line") {
+      if (typeof value === "number") parts.push(t("panels.log_reward_line", { n: value + 1 }));
+      continue;
+    }
     /* Combat rewards and the like list every field; zeros say nothing. */
     if (value === 0 || value === "" || value === null || value === false) continue;
     if (Array.isArray(value) && value.length === 0) continue;

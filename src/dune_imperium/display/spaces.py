@@ -28,9 +28,12 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.state import GameState
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.rules.board_effects import (
+    BOARD_ICON_CONNECTIONS,
     BOARD_ICON_CONTRACT,
+    BOARD_ICON_FOLDSPACE,
     BOARD_ICON_HIGH_COUNCIL,
     BOARD_ICON_INFLUENCE,
+    BOARD_ICON_MENTAT,
     BOARD_ICON_SPY,
     BOARD_ICON_SWORDMASTER,
     BOARD_ICON_TRASH,
@@ -415,6 +418,14 @@ _ICON_TEXTS: Mapping[str, str] = MappingProxyType(
         BOARD_ICON_SPY: "Place a Spy",
         BOARD_ICON_TRASH: "You may trash a card",
         BOARD_ICON_INFLUENCE: "Gain 1 Influence with a Faction of your choice",
+        # The original board's own icons [DI pp. 17-18] (docs/rules/
+        # imperium-base.md 8, 9) and Earl Memnon Thorvald's Connections, the
+        # Influence the seat he just took gives (imperium-base.md 12).
+        BOARD_ICON_FOLDSPACE: "Acquire a Foldspace card",
+        BOARD_ICON_MENTAT: (
+            "Take the Mentat if it is here: one of your Agents this round"
+        ),
+        BOARD_ICON_CONNECTIONS: "Gain 1 Influence with a Faction of your choice",
     }
 )
 
@@ -431,6 +442,13 @@ _ICON_TEXTS_KO: Mapping[str, str] = MappingProxyType(
         BOARD_ICON_SPY: "{spy} 배치",
         BOARD_ICON_TRASH: "카드 1장 {trash} 가능",
         BOARD_ICON_INFLUENCE: "{influence_any:1} 선택",
+        # The English table's comment; Foldspace and the Mentat keep their
+        # English names (the space lines above).
+        BOARD_ICON_FOLDSPACE: "Foldspace 카드 {acquire}",
+        BOARD_ICON_MENTAT: (
+            "Mentat이 여기 있으면 가져옴: 이번 라운드 당신의 {agent} 하나"
+        ),
+        BOARD_ICON_CONNECTIONS: "{influence_any:1} 선택",
     }
 )
 

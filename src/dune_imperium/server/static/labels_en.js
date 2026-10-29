@@ -417,6 +417,7 @@ const LABELS_EN = {
   },
   "VALUE_LABELS": {
     "card": "card",
+    "deck_top": "top of {deck}",
     "troops": "{troop}",
     "specimens": "{specimen}s",
     "mid": "Mid auction",
@@ -683,7 +684,9 @@ const LABELS_EN = {
     "intrigue_turn_kept": "{intrigue_card}: Turn Played Normally"
   },
   "PAYLOAD_KEY_LABELS": {
+    "acquired_card_id": "Acquired card",
     "action_id": "Action",
+    "blocked_players": "Blocked players",
     "amount": "Amount",
     "auction_id": "Auction",
     "bonus": "Bonus",
@@ -715,6 +718,7 @@ const LABELS_EN = {
     "event_round": "Event round",
     "faction": "Faction",
     "faction_influence": "Faction influence",
+    "factions": "Factions",
     "first_card_id": "First card",
     "first_post_id": "First observation post",
     "first_player": "First player",
@@ -742,6 +746,7 @@ const LABELS_EN = {
     "leader_face_id": "Leader",
     "leader_id": "Leader",
     "leader_ids": "Leaders",
+    "line": "Reward line",
     "line_index": "Line index",
     "locations": "Locations",
     "lost_faction": "Influence lost",

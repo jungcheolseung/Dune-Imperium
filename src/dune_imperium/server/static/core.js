@@ -445,7 +445,9 @@ function fieldWord(key, text, siblings) {
     const research = researchSpaceName(text, !("bonus" in siblings));
     if (research) return research;
   }
-  if (key === "faction" || key.endsWith("_faction")) return FACTION_LABELS[text] || null;
+  if (key === "faction" || key === "factions" || key.endsWith("_faction")) {
+    return FACTION_LABELS[text] || null;
+  }
   if (key === "bonus" && text in RESEARCH_BONUS_LABELS) {
     return phraseText(RESEARCH_BONUS_LABELS[text]);
   }
