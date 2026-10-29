@@ -128,26 +128,59 @@ def unit_count_arguments(
     maximum: int | None,
     troops: int,
     commanders: int,
+    dreadnoughts: int = 0,
 ) -> tuple[tuple[tuple[str, ActionValue], ...], ...]:
-    """Enumerate ``count`` units split between troops and Commanders.
+    """Enumerate ``count`` units split between troops, Commanders and
+    dreadnoughts.
 
     ``count`` is the total; ``commanders`` (omitted when zero) is the share
-    taken by Sardaukar Commanders [Bloodlines p. 4].
+    taken by Sardaukar Commanders [Bloodlines p. 4], and ``dreadnoughts``
+    (omitted when zero) the share taken by dreadnoughts, which a card that
+    says "units" moves [Rise of Ix p. 6]. The plain split, troops alone,
+    comes first for each count.
     """
 
-    units = troops + commanders
+    units = troops + commanders + dreadnoughts
     limit = units if maximum is None else min(maximum, units)
-    return tuple(
-        (("count", count),) if share == 0 else (("commanders", share), ("count", count))
-        for count in range(minimum, limit + 1)
-        for share in range(max(0, count - troops), min(count, commanders) + 1)
-    )
+    rows: list[tuple[tuple[str, ActionValue], ...]] = []
+    for count in range(minimum, limit + 1):
+        for ships in range(
+            max(0, count - troops - commanders), min(count, dreadnoughts) + 1
+        ):
+            for share in range(
+                max(0, count - ships - troops), min(count - ships, commanders) + 1
+            ):
+                row: list[tuple[str, ActionValue]] = []
+                if share:
+                    row.append(("commanders", share))
+                row.append(("count", count))
+                if ships:
+                    row.append(("dreadnoughts", ships))
+                rows.append(tuple(row))
+    return tuple(rows)
 
 
 def unit_counts(arguments: Mapping[str, ActionValue]) -> tuple[int, int]:
     """Return (troops, commanders) from a unit-count action's arguments."""
 
+    if "dreadnoughts" in arguments:
+        raise ValueError("a count with dreadnoughts is read by deployed_unit_counts")
     count = arguments["count"]
     commanders = arguments.get("commanders", 0)
     assert isinstance(count, int) and isinstance(commanders, int)
     return count - commanders, commanders
+
+
+def deployed_unit_counts(arguments: Mapping[str, ActionValue]) -> tuple[int, int, int]:
+    """Return (troops, commanders, dreadnoughts) from a deployment's arguments.
+
+    ``count`` is every unit moved, ``commanders`` and ``dreadnoughts`` the
+    shares of it taken by those kinds (``unit_count_arguments``).
+    """
+
+    count = arguments["count"]
+    commanders = arguments.get("commanders", 0)
+    dreadnoughts = arguments.get("dreadnoughts", 0)
+    assert isinstance(count, int)
+    assert isinstance(commanders, int) and isinstance(dreadnoughts, int)
+    return count - commanders - dreadnoughts, commanders, dreadnoughts

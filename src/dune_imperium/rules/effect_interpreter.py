@@ -660,6 +660,21 @@ def deployable_garrison_units(state: GameState, player: int) -> tuple[int, int]:
     )
 
 
+def deployable_garrison_dreadnoughts(state: GameState, player: int) -> int:
+    """The garrison dreadnoughts a "deploy units from your garrison" effect
+    may move now.
+
+    "Deploy up to two units from your garrison to the Conflict." [Second Wave
+    card]: a dreadnought is a unit [Rise of Ix p. 6], so the garrison ones
+    are among them; Emperor of the Known Universe blocks every unit for the
+    turn [Main p. 17], as for troops (``deployable_garrison_units``).
+    """
+
+    if units_deployment_blocked(state, player):
+        return 0
+    return state.players[player].dreadnoughts_garrison
+
+
 def _plot_frame(state: GameState, player: int) -> DecisionFrame | None:
     """The owner's own turn frame on top (turn, Agent effects or Reveal).
 
@@ -943,8 +958,11 @@ def reward_can_change_something(
             # [Main p. 20] unless Arrakis Planetologist replaces the
             # sandworm [Liet Kynes card].
             return sandworm_block(state, player, needs_hooks=needs_hooks) is None
-        case DeployFromGarrison():
-            return sum(deployable_garrison_units(state, player)) >= 1
+        case DeployFromGarrison(dreadnoughts=with_dreadnoughts):
+            movable = sum(deployable_garrison_units(state, player))
+            if with_dreadnoughts:
+                movable += deployable_garrison_dreadnoughts(state, player)
+            return movable >= 1
         case RetreatTroops(minimum=minimum):
             # An "any number" retreat may choose zero once played [Main
             # p. 20] [FAQ p. 3], but needs a unit in the Conflict to play.

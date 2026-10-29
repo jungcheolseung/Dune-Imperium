@@ -27,6 +27,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AtLeastOfConditions,
     CommissionDreadnought,
     Condition,
+    DeployFromGarrison,
     DiscardFromHand,
     DrawPersonalCards,
     DreadnoughtsAtLeast,
@@ -271,6 +272,24 @@ IX_INTRIGUE_CARDS: Final[tuple[IntrigueCardEntry, ...]] = (
     IntrigueCardEntry(
         card=ix_intrigue_card("second_wave", "Second Wave"),
         copies=1,
+        # [COMBAT] 2 swords, "Deploy up to two units from your garrison to the
+        # Conflict." [Steam app text, log line and screen pieces]: one
+        # cost-free Combat line. A unit is a troop or a dreadnought [Rise of
+        # Ix p. 6] (rise-of-ix.md 6, table row "unit"), so the garrison
+        # dreadnoughts are among what is deployed, within the two. The swords
+        # are always live, so the card is played with an empty garrison
+        # (OQ-113 (C)); it is a Combat Intrigue, so the seat has a unit in the
+        # Conflict already (rise-of-ix.md 9.1).
+        options=(
+            _combat(
+                EffectSection(
+                    rewards=(
+                        GainCombatStrength(2),
+                        DeployFromGarrison(2, dreadnoughts=True),
+                    )
+                )
+            ),
+        ),
     ),
     IntrigueCardEntry(
         card=ix_intrigue_card("secret_forces", "Secret Forces"),

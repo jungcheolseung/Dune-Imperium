@@ -1052,9 +1052,16 @@ class DeployFromGarrison:
 
     ``up_to=None`` is a printed "any number" [Rapid Mobilization card]: as
     for a retreat, zero is a choice too [FAQ p. 3].
+
+    ``dreadnoughts``: "Deploy up to two units from your garrison to the
+    Conflict." [Second Wave card, Steam app text] -- a unit is a troop or a
+    dreadnought [Rise of Ix p. 6], so the garrison dreadnoughts are among
+    what the owner may deploy, within the same ``up_to``. Without it a card's
+    "troop" never reaches a dreadnought.
     """
 
     up_to: int | None
+    dreadnoughts: bool = False
 
     def __post_init__(self) -> None:
         if self.up_to is not None and self.up_to < 1:

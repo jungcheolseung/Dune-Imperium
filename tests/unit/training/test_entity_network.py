@@ -208,7 +208,11 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # one intrigue-table column is new (the opponents' dreadnought retreat reward),
 # read by its row alone; no older scale moved (compared against c30f523b,
 # 2026-10-30).
-_GOLDEN_DIGEST = "6056c1083b118046d7276a4e0bb78f8aec31edc9e03e7d89cc64fc8fcf8d386e"
+# Then Second Wave got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (the "units" flag of its garrison
+# deployment, the dreadnoughts' share), read by its row alone; no older scale
+# moved (compared against 4cdf1e99, 2026-10-30).
+_GOLDEN_DIGEST = "b281810556772086c0fb91ffc890c2a97f73c72b8e5c4e504fdbfa7418449241"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

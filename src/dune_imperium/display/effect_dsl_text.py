@@ -598,6 +598,13 @@ def reward_text(reward: Reward) -> str:
             if requires_maker_hooks:
                 text += " (Maker Hooks required)"
             return text
+        case DeployFromGarrison(up_to=int(up_to), dreadnoughts=True):
+            # "Deploy up to two units from your garrison to the Conflict."
+            # [Second Wave card, Steam app text] -- troops and dreadnoughts.
+            return (
+                f"Deploy up to {up_to} {_plural(up_to, 'unit')} from your"
+                " garrison to the Conflict"
+            )
         case DeployFromGarrison(up_to=up_to):
             # "Deploy up to N troops from your garrison to the Conflict"
             # [Detonation card face] [Counterattack card face] [Twisted

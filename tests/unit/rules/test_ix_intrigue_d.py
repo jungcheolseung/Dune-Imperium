@@ -40,11 +40,17 @@ from dune_imperium.core import (
 )
 from dune_imperium.display.effect_dsl_text import intrigue_card_text
 from dune_imperium.display.effect_dsl_text_ko import intrigue_card_text_ko
-from dune_imperium.rules import UprisingRulesEngine
+from dune_imperium.rules import UprisingRulesEngine, ability_executor
 from dune_imperium.rules.agent_turn import executable_placements
 from dune_imperium.rules.combat import begin_combat_intrigue
 from dune_imperium.rules.endgame import begin_endgame_intrigue, final_standings
 from dune_imperium.rules.intrigue import legal_intrigue_play_actions
+from dune_imperium.rules.strength import units_strength
+from dune_imperium.rules.units import (
+    deployed_unit_counts,
+    unit_count_arguments,
+    unit_counts,
+)
 
 CONFIG = RulesetConfig(
     base_game=BaseGame.IMPERIUM, rise_of_ix=True, first_player_seat_zero=True
@@ -180,6 +186,244 @@ def _visit(state: GameState, space: str, card: str = "diplomacy") -> GameState:
 
 def _in_deck(card: str, config: RulesetConfig) -> bool:
     return f"intrigue:{card}:0" in content_for(config).intrigue_deck_instance_ids
+
+
+# Second Wave --------------------------------------------------------------------
+
+
+def _wave(garrison: dict[str, Any] | None = None, **changes: Any) -> GameState:
+    """Seat 0 holds Second Wave, with one troop (2 strength) in the Conflict
+    and ``garrison`` (troops and dreadnouts) at home, against a rival with a
+    troop of its own, at seat 0's Combat Intrigue priority."""
+
+    fields: dict[str, Any] = {"troops_conflict": 1, "combat_strength": 2}
+    fields.update(garrison or {})
+    fields.update(changes)
+    return _fight("second_wave", **fields)
+
+
+def _deploy_rows(state: GameState) -> list[tuple[int, int]]:
+    """The (count, dreadnoughts) of each deployment row seat 0 is offered."""
+
+    return [
+        (
+            int(dict(row.arguments)["count"]),
+            int(dict(row.arguments).get("dreadnoughts", 0)),
+        )
+        for row in _rows(state)
+        if row.action_id == "deploy_intrigue_troops"
+    ]
+
+
+def test_second_wave_is_a_combat_card_in_the_ix_deck() -> None:
+    """ "Deploy up to two units from your garrison to the Conflict." with 2
+    swords [Second Wave card, Steam app text and log line]; a Combat Intrigue,
+    one copy, shuffled in with Rise of Ix only [Rise of Ix p. 2]."""
+    entry = intrigue_card_for_instance("intrigue:second_wave:0")
+    assert entry.play_data_complete
+    assert entry.copies == 1
+    assert [option.timing.value for option in entry.options] == ["combat"]
+    assert _in_deck("second_wave", CONFIG)
+    assert not _in_deck("second_wave", ORIGINAL)
+    assert intrigue_card_text(entry) == [
+        "Combat — Gain 2 swords, Deploy up to 2 units from your garrison to the"
+        " Conflict"
+    ]
+    assert intrigue_card_text_ko(entry) == [
+        "전투 — {sword:2}, {garrison}에서 부대 2개 이하를 {conflict}에 배치"
+    ]
+
+
+def test_second_wave_needs_a_unit_already_in_the_conflict() -> None:
+    """ "Second Wave — Combat Intrigue이므로 Conflict에 유닛이 이미 있어야
+    낸다" (rise-of-ix.md 9.1, [Rise of Ix p. 10]): a seat with units only in
+    its garrison, a dreadnought among them, does not play it."""
+    state = _fight(
+        "second_wave",
+        troops_garrison=2,
+        dreadnoughts_garrison=1,
+        troops_supply=10,
+        troops_conflict=0,
+    )
+    assert _options(state, "second_wave") == set()
+    state = _wave({"troops_garrison": 0})
+    assert _options(state, "second_wave") == {0}
+
+
+def test_second_wave_is_not_a_plot() -> None:
+    """Combat Intrigue is played in the Combat phase only [DI p. 12]."""
+    state = _start("second_wave", troops_conflict=1, combat_strength=2)
+    assert _options(state, "second_wave") == set()
+
+
+@pytest.mark.parametrize(
+    ("garrison", "rows"),
+    [
+        ({"troops_garrison": 3, "troops_supply": 8}, [(0, 0), (1, 0), (2, 0)]),
+        (
+            {"troops_garrison": 2, "dreadnoughts_garrison": 1, "troops_supply": 9},
+            [(0, 0), (1, 0), (1, 1), (2, 0), (2, 1)],
+        ),
+        (
+            {"troops_garrison": 1, "dreadnoughts_garrison": 2, "troops_supply": 10},
+            [(0, 0), (1, 0), (1, 1), (2, 1), (2, 2)],
+        ),
+        (
+            {"dreadnoughts_garrison": 2, "troops_supply": 11},
+            [(0, 0), (1, 1), (2, 2)],
+        ),
+        ({"dreadnoughts_garrison": 1, "troops_supply": 11}, [(0, 0), (1, 1)]),
+    ],
+)
+def test_second_wave_offers_up_to_two_units_troops_and_dreadnoughts(
+    garrison: dict[str, Any], rows: list[tuple[int, int]]
+) -> None:
+    """ "Deploy up to two units from your garrison to the Conflict." [Second
+    Wave card]: a unit is a troop or a dreadnought [Rise of Ix p. 6], at most
+    two in all, none a legal choice ("up to"); only a dreadnought in the
+    garrison is offered, not one in the Conflict or the supply."""
+    state = _wave(garrison)
+    opened = _play(state, "second_wave")
+    assert _deploy_rows(opened) == rows
+
+
+def test_second_wave_leaves_out_the_dreadnoughts_that_are_not_at_home() -> None:
+    """A dreadnought in the Conflict or in the supply is not in the
+    garrison."""
+    state = _wave({"dreadnoughts_conflict": 1, "troops_garrison": 1})
+    opened = _play(state, "second_wave")
+    assert _deploy_rows(opened) == [(0, 0), (1, 0)]
+
+
+@pytest.mark.parametrize(
+    ("count", "ships"),
+    [(0, 0), (1, 0), (2, 0), (1, 1), (2, 1), (2, 2)],
+)
+def test_second_wave_deploys_the_chosen_units_with_their_strength(
+    count: int, ships: int
+) -> None:
+    """The chosen troops and dreadnoughts move from the garrison to the
+    Conflict, and the Combat marker follows: 2 for a troop, 3 for a
+    dreadnought [Rise of Ix p. 6], and the card's 2 swords [DI p. 11]."""
+    state = _wave(
+        {"troops_garrison": 2, "dreadnoughts_garrison": 2, "troops_supply": 9}
+    )
+    opened = _play(state, "second_wave")
+    arguments: dict[str, Any] = {"count": count}
+    if ships:
+        arguments["dreadnoughts"] = ships
+    done = _take(opened, "deploy_intrigue_troops", **arguments)
+    troops = count - ships
+    owner = done.players[0]
+    assert owner.troops_garrison == 2 - troops
+    assert owner.troops_conflict == 1 + troops
+    assert owner.dreadnoughts_garrison == 2 - ships
+    assert owner.dreadnoughts_conflict == ships
+    assert owner.combat_strength == 2 + 2 * troops + 3 * ships + 2
+    assert "intrigue:second_wave:0" in done.intrigue_discard
+    # The same total the units give, plus the swords.
+    assert owner.combat_strength == units_strength(owner) + 2
+    # Nobody else moved.
+    assert done.players[1].troops_conflict == 1
+    assert done.players[1].combat_strength == 2
+
+
+def test_second_wave_plays_with_nothing_to_deploy() -> None:
+    """The 2 swords are always live, so the card is played with an empty
+    garrison (OQ-113 (C): a cost-free effect that fizzles is still played)."""
+    state = _wave({"troops_garrison": 0})
+    assert _options(state, "second_wave") == {0}
+    opened = _play(state, "second_wave")
+    # The slot offers its one answer, deploying none.
+    assert _deploy_rows(opened) == [(0, 0)]
+    done = _take(opened, "deploy_intrigue_troops", count=0)
+    assert done.players[0].combat_strength == 4
+    assert "intrigue:second_wave:0" in done.intrigue_discard
+
+
+def test_second_wave_logs_the_deployments() -> None:
+    """The troops and the dreadnoughts move as their own events: the count of
+    troops (``troops_deployed``) and of dreadnoughts (``dreadnoughts_deployed``)."""
+    state = _wave(
+        {"troops_garrison": 1, "dreadnoughts_garrison": 1, "troops_supply": 10}
+    )
+    opened = _play(state, "second_wave")
+    (row,) = [
+        row
+        for row in _rows(opened)
+        if row.action_id == "deploy_intrigue_troops"
+        and dict(row.arguments) == {"count": 2, "dreadnoughts": 1}
+    ]
+    events = apply_whole(ENGINE, opened, row).events
+    deployed = {
+        event.kind: dict(event.payload)["count"]
+        for event in events
+        if event.kind in ("troops_deployed", "dreadnoughts_deployed")
+    }
+    assert deployed == {"troops_deployed": 1, "dreadnoughts_deployed": 1}
+
+
+def test_second_wave_does_not_count_toward_the_turns_deployment() -> None:
+    """A Combat Intrigue has no turn: the deployment count a Plot adds to
+    (``units_deployed_turn``) is left alone."""
+    state = _wave({"troops_garrison": 2, "troops_supply": 9})
+    done = _take(_play(state, "second_wave"), "deploy_intrigue_troops", count=2)
+    assert done.players[0].units_deployed_turn == state.players[0].units_deployed_turn
+
+
+def test_second_wave_dreadnoughts_stay_out_of_a_plot_deployment() -> None:
+    """A dreadnought is deployed by a Combat card only: the Reveal turn's
+    strength has no count for one."""
+    state = _start("second_wave", dreadnoughts_garrison=1)
+    with pytest.raises(RuntimeError, match="Combat Intrigue"):
+        ability_executor._deploy_units(state, 0, "test", troops=0, dreadnoughts=1)
+
+
+def test_the_unit_count_rows_without_dreadnoughts_are_what_they_were() -> None:
+    """Troops and Commanders alone enumerate as before the dreadnought share
+    existed (the Commander share riding on ``commanders``)."""
+    for troops in range(0, 5):
+        for commanders in range(0, 4):
+            for minimum in (0, 1):
+                for maximum in (None, 1, 2, 4):
+                    new = unit_count_arguments(
+                        minimum=minimum,
+                        maximum=maximum,
+                        troops=troops,
+                        commanders=commanders,
+                    )
+                    units = troops + commanders
+                    limit = units if maximum is None else min(maximum, units)
+                    old = tuple(
+                        (("count", count),)
+                        if share == 0
+                        else (("commanders", share), ("count", count))
+                        for count in range(minimum, limit + 1)
+                        for share in range(
+                            max(0, count - troops), min(count, commanders) + 1
+                        )
+                    )
+                    assert new == old
+
+
+def test_the_unit_count_rows_split_three_kinds() -> None:
+    """Every split of ``count`` units into troops, Commanders and
+    dreadnoughts the garrison holds, the troop-only split first."""
+    rows = unit_count_arguments(
+        minimum=1, maximum=2, troops=1, commanders=1, dreadnoughts=1
+    )
+    assert rows == (
+        (("count", 1),),
+        (("commanders", 1), ("count", 1)),
+        (("count", 1), ("dreadnoughts", 1)),
+        (("commanders", 1), ("count", 2)),
+        (("count", 2), ("dreadnoughts", 1)),
+        (("commanders", 1), ("count", 2), ("dreadnoughts", 1)),
+    )
+    assert deployed_unit_counts(dict(rows[-1])) == (0, 1, 1)
+    assert deployed_unit_counts({"count": 2}) == (2, 0, 0)
+    with pytest.raises(ValueError, match="deployed_unit_counts"):
+        unit_counts({"count": 2, "dreadnoughts": 1})
 
 
 # Cannon Turrets -----------------------------------------------------------------

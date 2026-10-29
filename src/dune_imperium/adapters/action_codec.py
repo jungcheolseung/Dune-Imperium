@@ -709,6 +709,8 @@ MAX_INTRIGUE_DEPLOYMENT = 4
 MAX_COMMANDER_DEPLOYMENT = 7
 # Two dreadnoughts a seat [Rise of Ix p. 6].
 MAX_DREADNOUGHT_DEPLOYMENT = 2
+# Second Wave: "Deploy up to two units from your garrison to the Conflict."
+SECOND_WAVE_UNITS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -1069,7 +1071,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # Rise of Ix's dreadnought, a third kind of unit to deploy and take
         # back [Rise of Ix p. 6], and the Dreadnought icon an Intrigue slot
         # offers; no catalog without the expansion holds these rows.
-        templates.extend(_rise_of_ix_unit_templates())
+        templates.extend(_rise_of_ix_unit_templates(config))
         # Local Fence's two Agent-box arrows printed with "-OR-", one row
         # each (``agent_box_abilities.payment_box``).
         templates.extend(
@@ -2760,7 +2762,7 @@ def _leader_faces(config: RulesetConfig) -> tuple[str, ...]:
     return tuple(faces)
 
 
-def _rise_of_ix_unit_templates() -> tuple[ActionTemplate, ...]:
+def _rise_of_ix_unit_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     """Rise of Ix's dreadnought rows (``rules.combat_deployment``,
     ``rules.dreadnought_commission``): the deployment of garrison dreadnoughts
     and its withdrawal, a count each (a seat has two), an Intrigue slot's
@@ -2772,6 +2774,27 @@ def _rise_of_ix_unit_templates() -> tuple[ActionTemplate, ...]:
         for action_id in ("deploy_dreadnoughts", "withdraw_dreadnoughts")
         for count in range(1, MAX_DREADNOUGHT_DEPLOYMENT + 1)
     ]
+    # Second Wave's "up to two units" deployment, dreadnoughts among them
+    # [Rise of Ix p. 6]: the units in all, the share that is dreadnoughts,
+    # and with Bloodlines the Commanders' share (``units.unit_count_arguments``).
+    # The count-only and the Commander-only rows are the base catalog's.
+    templates.extend(
+        ActionTemplate(
+            action_id="deploy_intrigue_troops",
+            arguments=tuple(
+                sorted(
+                    (
+                        *((("commanders", share),) if share else ()),
+                        ("count", count),
+                        ("dreadnoughts", ships),
+                    )
+                )
+            ),
+        )
+        for count in range(1, SECOND_WAVE_UNITS + 1)
+        for ships in range(1, min(count, MAX_DREADNOUGHT_DEPLOYMENT) + 1)
+        for share in range(0, (count - ships + 1) if config.bloodlines else 1)
+    )
     templates.extend(
         ActionTemplate(action_id=action_id)
         for action_id in (
