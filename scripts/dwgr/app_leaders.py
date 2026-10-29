@@ -24,8 +24,9 @@ gold ability box, the black Signet box with the app's ring
 Allies box, Feyd's Training track, and the app's topographic lines
 (``bg_TopoLines_1``) faint in the upper painting as on the print. The tabs'
 shades are read off each card's English scan (``print_shades``). The only
-pixels taken from the scans are those measurements; the pictures are the
-app's. Icons are the app's
+pixels taken from the scans are those measurements, with one exception for
+the original game's Leaders (below); the pictures are the app's. Icons are
+the app's
 (the card renderer's ``HIRES`` pictures, else its TextMeshPro glyphs) and
 are laid out as printed: icon rows, big icons beside text, small icons in
 the text.
@@ -45,6 +46,21 @@ Text, as on the card:
 
 Line breaks follow the print (``BREAKS``): they only replace spaces, never
 words (``relayout`` checks it).
+
+The original game's eight Leaders (``ORIGINAL_IDS``, English only: the Korean
+edition shows these faces' English) are drawn the same way on the original
+frame (``FRAME_KINDS``): the Uprising frame's shape with its own shades and no
+set mark. Their scans are cropped less evenly (``SCAN_FIT`` maps each onto the
+frame's window), their names are the print's (``PRINT_NAMES``), and, unlike
+the Uprising ones, their app backgrounds are only a patch of the painting
+(``ORIGINAL_ART``). The rest of the art window, which is in no app picture,
+is the English scan's painting: the patch gives way to the scan over a soft
+seam inside its edge (``scan_seam``), and the figure, the frame, the text and
+the icons stay the app's. This is the one place where scan pixels enter a
+face, by the user's decision of 2026-10-29 ("(다) 섞은 안으로 한번 해보자",
+docs/base-game-and-ix-plan.md 18.7); filled smooth from the patch's edge
+colours instead, half of each painting was invented. The faces go to
+``assets/cards/app/en/base/leader/<scan file name>.webp``.
 
 Inputs go to the assets checkout's git-ignored
 ``reference/dune-steam-app/<build-guid>/render/leaders/`` (with the card
@@ -92,7 +108,27 @@ APP_IDS = {
     "princess_irulan": ("princessirulan", "princessirulan"),
     "reverend_mother_jessica": ("reverendmotherjessica", "reverendmotherjessica"),
     "staban_tuek": ("stabantuek", "stabantuek"),
+    # the eight leaders of the original game (Dune: Imperium, on the original
+    # frame: see ORIGINAL_IDS)
+    "paul_atreides": ("paulatreides", "paulatreides"),
+    "duke_leto_atreides": ("dukeletoatreides", "dukeletoatreides"),
+    "glossu_rabban": ("glossuthebeastrabban", "glossuthebeastrabban"),
+    "baron_vladimir_harkonnen": ("baronvladimirharkonnen", "baronvladimirharkonnen"),
+    "count_ilban_richese": ("countilbanrichese", "countilbanrichese"),
+    "helena_richese": ("helenarichese", "helenarichese"),
+    "earl_memnon_thorvald": ("earlmemnonthorvald", "earlmemnonthorvald"),
+    "countess_ariana_thorvald": ("countessarianathorvald", "countessarianathorvald"),
 }
+ORIGINAL_IDS = (
+    "paul_atreides",
+    "duke_leto_atreides",
+    "glossu_rabban",
+    "baron_vladimir_harkonnen",
+    "count_ilban_richese",
+    "helena_richese",
+    "earl_memnon_thorvald",
+    "countess_ariana_thorvald",
+)
 FIGURE = "leader_ConflictWinner_{}"
 BACKGROUND = "frame_DeferredAbility_BG{}"
 SIGNET_RING = "UI_crd_ActionIcon_SignetRing"
@@ -145,6 +181,52 @@ PLACEMENT = {
         "background": (5.6921, 0, 116),
     },
     "staban_tuek": {"figure": (0.6416, 528, 124), "background": (5.6921, 4, 118)},
+    # The original game's backgrounds are cut to the gold box's shape (their
+    # right side is transparent) and show only the middle of the painting
+    # (2.9-4.9x, not 5.5-6x: see ORIGINAL_ART), measured with the alpha.
+    "paul_atreides": {"figure": (0.9516, 60, 150), "background": (4.9238, 200, 326)},
+    "duke_leto_atreides": {
+        "figure": (0.9445, 88, 186),
+        "background": (4.4749, 258, 310),
+    },
+    "glossu_rabban": {"figure": (1.0189, 164, 186), "background": (4.4965, 286, 318)},
+    "baron_vladimir_harkonnen": {
+        "figure": (1.0189, 78, 178),
+        "background": (4.6095, 260, 308),
+    },
+    "count_ilban_richese": {
+        "figure": (0.8367, 438, 172),
+        "background": (4.013, 450, 288),
+    },
+    "helena_richese": {"figure": (0.9958, 298, 174), "background": (2.9223, 548, 366)},
+    "earl_memnon_thorvald": {
+        "figure": (0.8494, 184, 188),
+        "background": (4.1063, 276, 308),
+    },
+    "countess_ariana_thorvald": {
+        "figure": (0.824, 276, 192),
+        "background": (4.2866, 252, 308),
+    },
+}
+
+# The original game's eight English scans are cropped a little differently
+# from one another (the art window's edges move by up to 6 px and its size by
+# 0.5% from scan to scan, while the Uprising scans agree to 1-2 px), but the
+# printed frame is the Uprising frame's, drawn the same size: laid over each
+# scan's own window (left, top, right, bottom, from ``fit_window``) the
+# Uprising polygons fit every one of the eight tabs, bands and boxes. A scan
+# is therefore mapped onto the frame's window (``load_scan``) before the art
+# is placed and graded against it, so the art keeps the place it has under the
+# printed frame. Measured with ``inputs --measure-only``.
+SCAN_FIT = {
+    "paul_atreides": (26.4, 35.6, 1426.9, 997.1),
+    "duke_leto_atreides": (22.9, 34.2, 1427.3, 994.0),
+    "glossu_rabban": (31.5, 31.0, 1431.4, 991.7),
+    "baron_vladimir_harkonnen": (29.0, 33.6, 1429.6, 995.1),
+    "count_ilban_richese": (29.5, 31.4, 1434.1, 989.7),
+    "helena_richese": (29.3, 27.9, 1429.9, 988.7),
+    "earl_memnon_thorvald": (33.0, 30.8, 1432.8, 989.8),
+    "countess_ariana_thorvald": (29.5, 31.7, 1434.3, 990.7),
 }
 
 # ---------------------------------------------------------------- the frame
@@ -216,7 +298,11 @@ LAYOUTS["feyd"] = dict(
     signet_x=904,
     octagon=(840, 871),
 )
+# The original game's card sets its Signet title 2 px higher than the
+# Uprising one (baselines of the eight scans: 812.2 against 815).
+LAYOUTS["original"] = dict(LAYOUTS["normal"], signet_base=35)
 LAYOUT_OF = {"staban_tuek": "staban", "feyd_rautha_harkonnen": "feyd"}
+LAYOUT_OF.update(dict.fromkeys(ORIGINAL_IDS, "original"))
 
 COLORS = {
     "card": (3, 3, 3),
@@ -252,6 +338,37 @@ COLORS = {
 # Reverend Mother Jessica's card prints its ability box greyer. (The side
 # tabs' shades are read off each card's scan: see print_shades.)
 FRAME_COLORS = {"reverend_mother_jessica": {"gold": (95, 76, 54)}}
+
+# The original game's frame has the Uprising frame's shape but its own
+# shades (measured on the eight English scans mapped onto the frame's window,
+# against the ten Uprising scans in the same way: grey levels of the
+# scans, medians over the cards): the name band 19 against 7, the house band
+# 9-14 against 1-4 and the Signet box 5-9 (lighter to the lower right, up to
+# 40) against 1-3, the gold box 1.17x brighter; no set mark hexagon is
+# printed. The side tabs are read off each scan as before.
+FRAME_KINDS = {
+    "uprising": {"colors": {}, "house_alpha": 238, "set_mark": True},
+    "original": {
+        "colors": {
+            "band": (19, 17, 15),
+            "house_band": (12, 11, 10),
+            "signet": (6, 6, 7),
+            "gold": (112, 89, 54),
+            "gold_line": (72, 55, 30),
+            "gold_hi": (170, 147, 104),
+        },
+        "house_alpha": 255,
+        "set_mark": False,
+        # the Signet box's glow towards the lower right: base level, gain,
+        # and the x, y where it starts (it reaches the gain at the corner)
+        "signet_glow": (6.0, 34.0, 960.0, 800.0),
+    },
+}
+
+
+def frame_kind(cid):
+    return "original" if cid in ORIGINAL_IDS else "uprising"
+
 
 # The printed tabs are shaded from top to bottom, their shade differing a
 # little from card to card (Feyd's greener, Reverend Mother Jessica's grey):
@@ -356,6 +473,59 @@ def frame_mask(cid, pad=6):
 
 
 # ---------------------------------------------------------------- measuring
+def step_edge(v, lo, rising):
+    """Sub-pixel position (index offset ``lo``) of the strongest step of a
+    1-D profile, the half-level crossing beside it."""
+    g = np.zeros_like(v)
+    g[1:-1] = v[2:] - v[:-2]
+    i = int(np.argmax(g) if rising else np.argmin(g))
+    mid = (v[max(0, i - 4) : max(1, i - 1)].mean() + v[i + 2 : i + 5].mean()) / 2
+    for j in range(max(0, i - 3), min(len(v) - 1, i + 3)):
+        if (v[j] - mid) * (v[j + 1] - mid) <= 0 and v[j] != v[j + 1]:
+            return lo + j + (mid - v[j]) / (v[j + 1] - v[j]) + 0.5
+    return lo + i + 0.5
+
+
+def fit_window(grey):
+    """(left, top, right, bottom) of the art window in a scan, 1460x1020
+    grey in 0..255: the steps from the black card edge, the name band's top
+    and the gold box's bottom."""
+    return (
+        step_edge(grey[300:480, 14:50].mean(0), 14, True),
+        step_edge(grey[20:50, 600:1000].mean(1), 20, True),
+        step_edge(grey[500:700, 1410:1450].mean(0), 1410, False),
+        step_edge(grey[975:1010, 200:260].mean(1), 975, False),
+    )
+
+
+def load_scan(path, cid, mode="RGB", resample=None):
+    """The English scan at 1460x1020, for a leader of the original game
+    mapped onto the frame's art window (SCAN_FIT)."""
+    from PIL import Image
+
+    img = Image.open(path).convert(mode).resize((W, H), resample)
+    fit = SCAN_FIT.get(cid)
+    if fit is None:
+        return img
+    left, top, right, bottom = fit
+    sx = (right - left) / (ART[2] - ART[0])
+    sy = (bottom - top) / (ART[3] - ART[1])
+    return img.transform(
+        (W, H),
+        Image.AFFINE,
+        (sx, 0, left - ART[0] * sx, 0, sy, top - ART[1] * sy),
+        resample=Image.BICUBIC,
+    )
+
+
+def english_scan(inp, cid):
+    """The leader's English scan, RGB, at the frame's size and place."""
+    from PIL import Image
+
+    path = CARDS / "en" / inp.entries[cid]["path"]
+    return load_scan(path, cid, "RGB", Image.LANCZOS)
+
+
 def _corr(a, b, fh, fw):
     return np.fft.irfft2(
         np.fft.rfft2(a, (fh, fw)) * np.fft.rfft2(b[::-1, ::-1], (fh, fw)), (fh, fw)
@@ -419,7 +589,7 @@ def measure(cid, scan_path):
     d = inputs_dir()
     fig = Image.open(d / f"{FIGURE.format(sprite_id)}.png").convert("RGBA")
     bg = Image.open(d / f"{BACKGROUND.format(sprite_id)}.png").convert("RGBA")
-    scan = np.asarray(Image.open(scan_path).convert("L").resize((W, H)), float) / 255
+    scan = np.asarray(load_scan(scan_path, cid, "L"), float) / 255
     valid = ~frame_mask(cid)
     grey, alpha = fig.convert("L"), fig.getchannel("A")
     f = ncc_search(scan, valid, grey, alpha, np.geomspace(0.5, 1.5, 30), 4)
@@ -435,9 +605,14 @@ def measure(cid, scan_path):
     figmask[ys, xs] = fa[ys.start - y0 : ys.stop - y0, xs.start - x0 : xs.stop - x0]
     bvalid = valid & ~figmask
     bgrey = bg.convert("L")
-    b = ncc_search(scan, bvalid, bgrey, None, np.geomspace(4.5, 7.0, 30), 4)
+    # the original game's backgrounds are cut to the gold box's shape: only
+    # their opaque pixels are the painting
+    balpha = bg.getchannel("A")
+    balpha = balpha if balpha.getextrema()[0] < 255 else None
+    scales = np.geomspace(2.0, 7.0, 70) if balpha else np.geomspace(4.5, 7.0, 30)
+    b = ncc_search(scan, bvalid, bgrey, balpha, scales, 4)
     b = ncc_search(
-        scan, bvalid, bgrey, None, np.geomspace(b[1] * 0.98, b[1] * 1.02, 7), 2
+        scan, bvalid, bgrey, balpha, np.geomspace(b[1] * 0.98, b[1] * 1.02, 7), 2
     )
     return {"figure": f, "background": b}
 
@@ -453,6 +628,9 @@ def cmd_inputs(args):
         app = App()
         missing = []
         names = input_names() + list(args.extra or ())
+        if not args.refresh:
+            # a saved picture of this build stays as it is
+            names = [n for n in names if not (out / f"{n}.png").exists()]
         for name in names:
             m = app.save_picture(name, str(out / f"{name}.png"))
             if m is None:
@@ -464,6 +642,12 @@ def cmd_inputs(args):
     if args.measure or args.measure_only:
         entries = manifest_entries()
         for cid in args.ids.split(",") if args.ids else list(APP_IDS):
+            if cid in ORIGINAL_IDS:
+                from PIL import Image
+
+                raw = Image.open(CARDS / "en" / entries[cid]["path"]).convert("L")
+                grey = np.asarray(raw.resize((W, H), Image.LANCZOS), float)
+                print(cid, "SCAN_FIT", [float(round(v, 1)) for v in fit_window(grey)])
             r = measure(cid, CARDS / "en" / entries[cid]["path"])
             print(
                 cid,
@@ -486,6 +670,27 @@ LEADERS = {
     "princess_irulan": {"house": "corrino", "hexes": 2},
     "reverend_mother_jessica": {"house": "atreides", "hexes": 2},
     "staban_tuek": {"house": None, "hexes": 3},
+    "paul_atreides": {"house": "atreides", "hexes": 1},
+    "duke_leto_atreides": {"house": "atreides", "hexes": 2},
+    "glossu_rabban": {"house": "harkonnen", "hexes": 1},
+    "baron_vladimir_harkonnen": {"house": "harkonnen", "hexes": 3},
+    "count_ilban_richese": {"house": "richese", "hexes": 1},
+    "helena_richese": {"house": "richese", "hexes": 2},
+    "earl_memnon_thorvald": {"house": "thorvald", "hexes": 1},
+    "countess_ariana_thorvald": {"house": "thorvald", "hexes": 3},
+}
+# The names as the original cards print them (the manifest keeps the upstream
+# file slugs: "Dune Leto", "Glossu the Beast"; the app's short titles are
+# "Beast", "Baron Harkonnen", "Ariana Thorvald").
+PRINT_NAMES = {
+    "paul_atreides": "Paul Atreides",
+    "duke_leto_atreides": "Duke Leto Atreides",
+    "glossu_rabban": "Glossu \u201cThe Beast\u201d Rabban",
+    "baron_vladimir_harkonnen": "Baron Vladimir Harkonnen",
+    "count_ilban_richese": "Count Ilban Richese",
+    "helena_richese": "Helena Richese",
+    "earl_memnon_thorvald": "Earl Memnon Thorvald",
+    "countess_ariana_thorvald": "Countess Ariana Thorvald",
 }
 # Korean words read off the Korean edition's leader cards (photos in
 # cards/ko/uprising/leader/): the house lines and the two side tabs.
@@ -541,6 +746,14 @@ KO_TITLE_RAISE = {"feyd_rautha_harkonnen": 6}
 KO_RULE_RAISE = {"feyd_rautha_harkonnen": 9}
 # The print's names leave more room between words than the tracking gives.
 NAME_WORD_GAP = {"en": 8.0, "ko": 9.0}
+# The original cards' words stand 2.5 px closer, and Helena Richese's name is
+# set tighter (letter pitch 36 against 46 px), fitted to the eight scans'
+# word positions (rms 1.5-3 px).
+ORIGINAL_NAME_GAP = 5.5
+NAME_SPACING = {"helena_richese": 8.4}
+# first hex centre after the name (the scans' 60.5 px from the name's last
+# letter, in this script's measure 57.5; Helena's tight name 4 px closer)
+ORIGINAL_HEX_GAP = {"default": 57.5, "helena_richese": 53.5}
 KO_BODY_SPACING = -3.0  # the Korean edition sets its text a little tight
 LINE = "\u2028"  # a printed line break inside a paragraph ("\n" ends one)
 
@@ -583,6 +796,26 @@ BREAKS = {
         ("spying on", LINE),
     ],
     ("en", "staban_tuek", "limited"): [("Diplomacy in", LINE)],
+    # the original game's leaders
+    ("en", "paul_atreides", "ability"): [("your deck", LINE)],
+    ("en", "duke_leto_atreides", "ability"): [("space costs", LINE)],
+    ("en", "duke_leto_atreides", "signet"): [("a Faction", LINE), ("has more", LINE)],
+    ("en", "glossu_rabban", "ability"): [("additional", LINE)],
+    ("en", "glossu_rabban", "signet"): [("at least", LINE)],
+    ("en", "baron_vladimir_harkonnen", "ability"): [
+        ("Factions.", LINE),
+        ("to the Conflict", LINE),
+        ("choices", LINE),
+    ],
+    ("en", "count_ilban_richese", "ability"): [("the cost", LINE)],
+    ("en", "helena_richese", "ability"): [("Agents at", LINE)],
+    ("en", "helena_richese", "signet"): [
+        ("Imperium Row", LINE),
+        ("turn this", LINE),
+        ("the removed", LINE),
+    ],
+    ("en", "earl_memnon_thorvald", "ability"): [("High Council", LINE)],
+    ("en", "countess_ariana_thorvald", "ability"): [("gain", LINE)],
     ("ko", "muad_dib", "ability"): [("모래벌레가", LINE)],
     ("ko", "shaddam_corrino_iv", "ability"): [("이 계약들은", LINE)],
     ("ko", "shaddam_corrino_iv", "signet"): [('<sprite name="Solari_1">', "\n")],
@@ -761,6 +994,91 @@ BOXES = {
     ("staban_tuek", "ability"): {"align": "left", "icon": 86, "trail_cx": 663},
     ("staban_tuek", "ability", "en"): {"size": 36, "pitch": 1.13},
     ("staban_tuek", "ability", "ko"): {"size": 34.6, "pitch": 1.42},
+    # The original game's leaders, measured on their English scans.
+    ("paul_atreides", "ability"): {"dy": 3.5},
+    ("paul_atreides", "signet"): {"icon": 83.5, "dy": 2.5, "cx": 1158.5},
+    ("duke_leto_atreides", "ability"): {
+        "align": "left",
+        "x0": 141,
+        "dy": 3.5,
+        "inline": 1.3,
+    },
+    ("duke_leto_atreides", "signet"): {
+        "size": 37.8,
+        "pitch": 1.2,
+        "align": "left",
+        "x0": 878,
+        "dy": 10.75,
+    },
+    ("glossu_rabban", "ability"): {
+        "align": "left",
+        "x0": 143,
+        "dy": 2,
+        "icon": 72,
+        "trail_cx": 651,
+        "x1": 770,
+        "squeeze": 1.03,  # the print sets this text 10% wider than the others
+    },
+    ("glossu_rabban", "signet"): {
+        "size": 37.8,
+        "pitch": 1.2,
+        "align": "left",
+        "x0": 880,
+        "sep": 0.7,
+        "inline": 1.15,
+        "dy": 4.5,
+    },
+    ("baron_vladimir_harkonnen", "ability"): {
+        "size": 31.7,
+        "pitch": 1.13,
+        "align": "left",
+        "x0": 143,
+        "x1": 800,
+        "dy": 2.5,
+    },
+    ("baron_vladimir_harkonnen", "signet"): {"dy": 2.5, "icon": 84},
+    ("count_ilban_richese", "ability"): {
+        "align": "left",
+        "x0": 141,
+        "inline": 1.3,
+        "trail_cx": 678,
+        "icon": 80,
+    },
+    ("count_ilban_richese", "signet"): {"dy": 2},
+    ("helena_richese", "ability"): {
+        "size": 37.7,
+        "pitch": 1.2,
+        "align": "left",
+        "x0": 143,
+        "x1": 790,
+        "inline": 1.35,
+        "dy": -2,
+    },
+    ("helena_richese", "signet"): {
+        "size": 36.2,
+        "pitch": 1.12,
+        "align": "left",
+        "x0": 881,
+        "x1": 1445,
+        "dy": 1.5,
+    },
+    ("earl_memnon_thorvald", "ability"): {
+        "align": "left",
+        "x0": 190,
+        "trail_cx": 614,
+        "icon": 82,
+        "pitch": 1.12,
+        "dy": 3.5,
+    },
+    ("earl_memnon_thorvald", "signet"): {"dy": 4.5},
+    ("countess_ariana_thorvald", "ability"): {
+        "align": "left",
+        "x0": 142,
+        "pitch": 1.24,
+        "inline": 1.3,
+        "dy": -2.5,
+    },
+    ("countess_ariana_thorvald", "signet"): {"dy": 2},
     ("staban_tuek", "signet"): {
         "icon": 46,
         "x0": 886,
@@ -963,7 +1281,7 @@ def face_texts(inp, cid, lang):
         signet_key += ".modified"
     if lang == "en":
         out = {
-            "name": inp.entries[cid]["name"],
+            "name": PRINT_NAMES.get(cid, inp.entries[cid]["name"]),
             "house": inp.en_text(f"worm.leader.house.{spec['house']}")
             if spec["house"]
             else None,
@@ -979,8 +1297,8 @@ def face_texts(inp, cid, lang):
     else:
         ko = LEADER_FACE_TEXTS_KO.get(cid)
         name = KOREAN_CARD_NAMES["leaders"].get(cid)
-        if ko is None or name is None:
-            return None
+        if ko is None or name is None or cid in ORIGINAL_IDS:
+            return None  # the original game's leaders have no Korean card
         out = {
             "name": name,
             "house": HOUSE_KO[spec["house"]] if spec["house"] else None,
@@ -1013,6 +1331,7 @@ class Painter:
         from PIL import Image
 
         self.inp, self.lang, self.tx = inp, lang, inp.text
+        self.kind = "uprising"  # the frame kind (render_face sets it)
         self.h = size[1]
         self.canvas = Image.new("RGBA", (size[0] * SS, size[1] * SS), (0, 0, 0, 0))
 
@@ -1475,11 +1794,8 @@ def dots(d, a, b, step=9.0, r=1.3, color=COLORS["dots"]):
 def print_shades(inp, cid):
     """The side tabs' colours sampled off the card's English scan (median
     of each SHADE_PATCHES patch), cached."""
-    from PIL import Image
-
     if cid not in inp.shades:
-        scan = Image.open(CARDS / "en" / inp.entries[cid]["path"]).convert("RGB")
-        a = np.asarray(scan.resize((W, H), Image.LANCZOS), float)
+        a = np.asarray(english_scan(inp, cid), float)
         inp.shades[cid] = {
             k: np.median(a[y0:y1, x0:x1].reshape(-1, 3), 0)
             for k, (x0, x1, y0, y1) in SHADE_PATCHES.items()
@@ -1520,6 +1836,21 @@ def gold_shade(gold):
     return colour
 
 
+def signet_shade(colour, glow):
+    """colour(x, y) of the Signet box: its colour, lit towards the lower
+    right corner (the original frame's glow)."""
+    base, gain, x0, y0 = glow
+    x1, y1 = ART[2], BOX_BOTTOM
+
+    def colour_at(x, y):
+        u = np.clip((x - x0) / (x1 - x0), 0, 1)
+        v = np.clip((y - y0) / (y1 - y0), 0, 1) ** 1.2
+        light = (base + gain * u * v) / base
+        return np.asarray(colour, float) * light[..., None]
+
+    return colour_at
+
+
 def shaded_fill(p, poly, colour_at, alpha, key):
     """Fill a polygon of the 2x canvas with colour_at(x, y) (card pixels)
     and the print's grain (one pattern per key)."""
@@ -1550,20 +1881,24 @@ def draw_frame(p, cid):
     from PIL import Image, ImageDraw
 
     lay = layout(cid)
-    colors = {**COLORS, **FRAME_COLORS.get(cid, {})}
+    kind = FRAME_KINDS[frame_kind(cid)]
+    colors = {**COLORS, **kind["colors"], **FRAME_COLORS.get(cid, {})}
     d = ImageDraw.Draw(p.canvas)
     # name band and house band
     band_bottom = NAME_LINE_Y if lay["house"] else 128
     d.rectangle(
         (ART[0] * SS, ART[1] * SS, 1345 * SS, band_bottom * SS),
-        fill=COLORS["band"] + (255,),
+        fill=colors["band"] + (255,),
     )
     if lay["house"]:
         d.rectangle(
             (ART[0] * SS, (NAME_LINE_Y - 1) * SS, 1345 * SS, (NAME_LINE_Y + 1) * SS),
             fill=COLORS["name_line"] + (255,),
         )
-        d.polygon(poly2x(HOUSE_BAND), fill=COLORS["band"] + (238,))
+        d.polygon(
+            poly2x(HOUSE_BAND),
+            fill=colors.get("house_band", colors["band"]) + (kind["house_alpha"],),
+        )
     # side tabs and their dotted edges
     shades = print_shades(p.inp, cid)
     shaded_fill(p, DISCARD_TAB, tab_shade(shades, "discard"), 255, cid + "/discard")
@@ -1610,12 +1945,12 @@ def draw_frame(p, cid):
     ty = top + lay["gold_title"] - rule_raise
     d.line(
         [(BOX_LEFT * SS, ty * SS), (gold_edge(ty) * SS, ty * SS)],
-        fill=COLORS["gold_line"] + (255,),
+        fill=colors["gold_line"] + (255,),
         width=3 * SS // 2,
     )
     d.line(
         [(BOX_LEFT * SS, (ty + 2) * SS), (gold_edge(ty + 2) * SS, (ty + 2) * SS)],
-        fill=COLORS["gold_hi"] + (110,),
+        fill=colors["gold_hi"] + (110,),
         width=SS,
     )
     gtop = lay["red_top"] or top
@@ -1628,7 +1963,16 @@ def draw_frame(p, cid):
         width=2 * SS // 2,
     )
     st = lay["signet_top"]
-    d.polygon(poly2x(signet_polygon(st)), fill=COLORS["signet"] + (255,))
+    if "signet_glow" in kind:
+        shaded_fill(
+            p,
+            signet_polygon(st),
+            signet_shade(colors["signet"], kind["signet_glow"]),
+            255,
+            cid + "/signet",
+        )
+    else:
+        d.polygon(poly2x(signet_polygon(st)), fill=colors["signet"] + (255,))
     # the art shows between the box's dark corner wedge and the badge
     cx, cy = lay["octagon"]
     d.polygon(
@@ -1671,8 +2015,9 @@ def draw_frame(p, cid):
     ring = p.inp.leader_picture(SIGNET_RING)
     p.picture(ring, cx + 1, cy, 89)
     # the small hexagon in the corner
-    x, y, r = SET_MARK
-    d.polygon(poly2x(hexagon(x, y, r)), fill=COLORS["set_mark"] + (255,))
+    if kind["set_mark"]:
+        x, y, r = SET_MARK
+        d.polygon(poly2x(hexagon(x, y, r)), fill=colors["set_mark"] + (255,))
 
 
 # Header, tab and title type, measured on the scans and the Korean photos.
@@ -1711,8 +2056,16 @@ TYPE = {
 }
 
 
+# The original cards' side tab words are set tighter (their DISCARD runs 199
+# px, the Uprising print's and its faces' 229: TMP spacing 22 -> 8), the
+# words centred 1 px left of and 2 px above the Uprising ones.
+TYPE_KIND = {("original", "en", "tab"): {"spacing": 8.0}}
+ORIGINAL_TAB_CENTRES = ((1390, 187), (77, 788))
+
+
 def type_style(p, kind, **kw):
     t = dict(TYPE[p.lang][kind])
+    t.update(TYPE_KIND.get((p.kind, p.lang, kind), {}))
     t.update(kw)
     return p.style(**t)
 
@@ -1722,12 +2075,12 @@ def type_style(p, kind, **kw):
 HEXES = {"en": (61, 83.5, 55), "ko": (63, 75.5, 53)}
 
 
-def complexity_hex(d, cx, cy):
+def complexity_hex(d, cx, cy, band=COLORS["band"]):
     """The printed hex: a white hex with a grey bevelled edge inside a dark
     gap and a thin dark-gold rim (circumradii 23, 20.3, 18.2, 16.9 px)."""
     for r, colour in (
         (23.0, COLORS["hex_rim"]),
-        (20.3, COLORS["band"]),
+        (20.3, band),
         (18.2, COLORS["hex_edge"]),
         (16.9, COLORS["hex"]),
     ):
@@ -1759,7 +2112,9 @@ def draw_header(p, cid, texts):
         end -= p.space(st) + NAME_WORD_GAP["ko"] + tracking
     else:
         # small capitals: lower-case letters as smaller capitals
-        big = type_style(p, "name", color=COLORS["name"])
+        word_gap = ORIGINAL_NAME_GAP if cid in ORIGINAL_IDS else NAME_WORD_GAP["en"]
+        extra = {"spacing": NAME_SPACING[cid]} if cid in NAME_SPACING else {}
+        big = type_style(p, "name", color=COLORS["name"], **extra)
         small = type_style(
             p,
             "name_small",
@@ -1772,11 +2127,14 @@ def draw_header(p, cid, texts):
                 st = small if part.islower() else big
                 p.run(end, baseline, part.upper(), st)
                 end += p.width(part.upper(), st)
-            end += p.space(big) + NAME_WORD_GAP["en"]
-        end -= p.space(big) + NAME_WORD_GAP["en"] + tracking
+            end += p.space(big) + word_gap
+        end -= p.space(big) + word_gap + tracking
     gap, cy, step = HEXES[p.lang]
+    if cid in ORIGINAL_IDS:
+        gap = ORIGINAL_HEX_GAP.get(cid, ORIGINAL_HEX_GAP["default"])
     for i in range(spec["hexes"]):
-        complexity_hex(d, end + gap + i * step, cy)
+        band = FRAME_KINDS[frame_kind(cid)]["colors"].get("band", COLORS["band"])
+        complexity_hex(d, end + gap + i * step, cy, band)
     if texts["house"]:
         st = type_style(p, "house", color=COLORS["house"])
         p.run(
@@ -1790,9 +2148,10 @@ def draw_header(p, cid, texts):
 def draw_tabs(p, texts):
     from PIL import Image
 
+    centres = ORIGINAL_TAB_CENTRES if p.kind == "original" else TAB_CENTRES[p.lang]
     for word, (cx, cy), angle in (
-        (texts["tabs"]["discard"], TAB_CENTRES[p.lang][0], 90),
-        (texts["tabs"]["deck"], TAB_CENTRES[p.lang][1], -90),
+        (texts["tabs"]["discard"], centres[0], 90),
+        (texts["tabs"]["deck"], centres[1], -90),
     ):
         sub = Painter(p.inp, p.lang, (420, 80))
         st = type_style(sub, "tab", color=COLORS["tab_text"])
@@ -1991,6 +2350,97 @@ def draw_track(p):
 
 
 # -- the art
+# The original game's backgrounds are not the whole painting. The app cuts
+# each to the gold box's shape (the right side is transparent) and shows the
+# painting's middle part at 2.9-4.9x (the Uprising ones are whole, 5.5-6x),
+# so the layers cover 35-60% of the art window; the rest (the upper part and
+# the sides) is in no app picture. It comes from the English scan (the
+# user's decision of 2026-10-29, see the module docstring): the graded patch
+# gives way to the scan over a seam inside its edge, a ramp from 0 at the
+# edge to 1 about 2.5 SEAM_SIGMA in (scan_seam). The smooth fill from the
+# patch's own edge colours (push_pull_fill) still backs the patch's soft rim
+# before the seam takes over.
+SEAM_SIGMA = 12.0
+PATCH_ERODE = 4  # px of the patch's rim that are not trusted (resampling)
+PATCH_SOFT = 14.0  # blur of the patch's mask where it meets the fill
+FILL_SIGMAS = (250, 110, 48, 20, 8)  # coarse to fine
+FILL_REACH = (0.15, 0.5)  # blurred mask weight: fill scale unused -> used
+
+
+def gauss_fft(a, sigma):
+    """Gaussian blur of an (H, W) or (H, W, C) float array by FFT; beyond
+    the edges the array counts as zero."""
+    h, w = a.shape[:2]
+    fy = np.fft.fftfreq(2 * h)[:, None]
+    fx = np.fft.rfftfreq(2 * w)[None, :]
+    kernel = np.exp(-2 * (np.pi * sigma) ** 2 * (fy**2 + fx**2))
+    chans = [a] if a.ndim == 2 else [a[..., c] for c in range(a.shape[2])]
+    out = [
+        np.fft.irfft2(np.fft.rfft2(c, (2 * h, 2 * w)) * kernel, (2 * h, 2 * w))[:h, :w]
+        for c in chans
+    ]
+    return out[0] if a.ndim == 2 else np.stack(out, 2)
+
+
+def push_pull_fill(rgb, mask):
+    """Colours for every pixel from the pixels ``mask`` (0/1 floats) marks:
+    blurred averages at several scales, the finest one that has enough
+    mask weight within reach."""
+    fill = None
+    for sigma in FILL_SIGMAS:
+        weight = np.maximum(gauss_fft(mask, sigma), 1e-9)
+        colour = gauss_fft(rgb * mask[..., None], sigma) / weight[..., None]
+        if fill is None:
+            fill = colour
+            continue
+        lo, hi = FILL_REACH
+        t = np.clip((weight - lo) / (hi - lo), 0, 1)[..., None]
+        fill = fill * (1 - t) + colour * t
+    return fill
+
+
+def placed_patch(inp, cid):
+    """The original game's background patch scaled into place, with the rest
+    of the card filled from its edge colours: (RGB array, the patch's trusted
+    pixels as a bool mask)."""
+    from PIL import Image, ImageFilter
+
+    bg = inp.leader_picture(BACKGROUND.format(APP_IDS[cid][0]))
+    s, x, y = PLACEMENT[cid]["background"]
+    bw, bh = round(bg.width * s), round(bg.height * s)
+    smooth = BG_SMOOTH * s / 5.7  # the smoothing follows the upscale
+    big = bg.convert("RGB").resize((bw, bh), Image.BICUBIC)
+    big = np.asarray(
+        big.filter(ImageFilter.GaussianBlur(smooth)).filter(
+            ImageFilter.UnsharpMask(*BG_SHARPEN)
+        )
+    )
+    alpha = bg.getchannel("A").resize((bw, bh), Image.BILINEAR)
+    alpha = alpha.point(lambda v: 255 if v > 128 else 0)
+    alpha = alpha.filter(ImageFilter.MinFilter(2 * PATCH_ERODE + 1))
+    rgb = np.zeros((H, W, 3), float)
+    mask = np.zeros((H, W), float)
+    x0, y0, x1, y1 = max(0, x), max(0, y), min(W, x + bw), min(H, y + bh)
+    rgb[y0:y1, x0:x1] = big[y0 - y : y1 - y, x0 - x : x1 - x]
+    a = np.asarray(alpha, float) / 255
+    mask[y0:y1, x0:x1] = a[y0 - y : y1 - y, x0 - x : x1 - x]
+    fill = push_pull_fill(rgb, mask)
+    patch = np.where(mask[..., None] > 0.5, rgb, fill)
+    soft = np.clip(gauss_fft(mask, PATCH_SOFT) * 1.0, 0, 1)[..., None]
+    out = fill * (1 - soft) + patch * soft
+    out = np.ascontiguousarray(np.clip(np.round(out), 0, 255).astype(np.uint8))
+    return out, mask > 0.5
+
+
+def scan_seam(covered):
+    """How much of the app's background shows against the scan, (H, W, 1):
+    1 well inside the patch's trusted pixels (``covered``), 0 at their edge
+    and beyond, a smooth ramp in between."""
+    return np.clip(2 * gauss_fft(covered.astype(float), SEAM_SIGMA) - 1, 0, 1)[
+        ..., None
+    ]
+
+
 def placed_background(inp, cid):
     """The app's background scaled into place on the card: (RGB array, the
     columns it covers). Below and above it the picture is mirrored on (the
@@ -1998,6 +2448,8 @@ def placed_background(inp, cid):
     Margot's left strip) its edge column is carried out."""
     from PIL import Image, ImageFilter
 
+    if cid in ORIGINAL_IDS:
+        return placed_patch(inp, cid)
     bg = inp.leader_picture(BACKGROUND.format(APP_IDS[cid][0])).convert("RGB")
     s, x, y = PLACEMENT[cid]["background"]
     bw, bh = round(bg.width * s), round(bg.height * s)
@@ -2077,8 +2529,7 @@ def print_grade(inp, cid, bg, covered, fig, own):
         f = ImageFilter.MaxFilter(size) if size > 0 else ImageFilter.MinFilter(-size)
         return np.asarray(im.filter(f)) > 127
 
-    scan_img = Image.open(CARDS / "en" / inp.entries[cid]["path"]).convert("RGB")
-    scan = blur(np.asarray(scan_img.resize((W, H), Image.LANCZOS)))
+    scan = blur(np.asarray(english_scan(inp, cid)))
     view = ~frame_mask(cid, pad=10)
     s, x, y = PLACEMENT[cid]["background"]
     bh = round(inp.leader_picture(BACKGROUND.format(APP_IDS[cid][0])).height * s)
@@ -2121,18 +2572,28 @@ def art_layer(inp, cid):
     fig, own = placed_figure(inp, cid)
     bg_grade, fig_grade = print_grade(inp, cid, bg, covered, fig, own)
     bg = add_grain(apply_grade(bg, bg_grade), cid)
+    seam = None
+    if cid in ORIGINAL_IDS:
+        # the painting the app lacks is the scan's (module docstring)
+        seam = scan_seam(covered)
+        scan = np.asarray(english_scan(inp, cid), float)
+        mixed = scan * (1 - seam) + bg.astype(float) * seam
+        bg = np.clip(np.round(mixed), 0, 255).astype(np.uint8)
     f = np.array(fig)
     f[..., :3] = apply_grade(f[..., :3], fig_grade)
     fig = Image.fromarray(f, "RGBA")
     # where the app's picture stops short of the window (Lady Margot's left
     # strip) its edge is carried out, blurred, and darkened like the print's
     full = Image.fromarray(bg)
-    soft = full.filter(ImageFilter.GaussianBlur(10))
-    soft = Image.eval(soft, lambda v: int(v * UNCOVERED_SHADE))
-    keep = Image.fromarray(covered.astype(np.uint8) * 255).filter(
-        ImageFilter.GaussianBlur(14)
-    )
-    art = Image.composite(full, soft, keep).convert("RGBA")
+    if cid in ORIGINAL_IDS:
+        art = full.convert("RGBA")  # the scan already fills where the patch ends
+    else:
+        soft = full.filter(ImageFilter.GaussianBlur(10))
+        soft = Image.eval(soft, lambda v: int(v * UNCOVERED_SHADE))
+        keep = Image.fromarray(covered.astype(np.uint8) * 255).filter(
+            ImageFilter.GaussianBlur(14)
+        )
+        art = Image.composite(full, soft, keep).convert("RGBA")
     # the print's lines lie in the painting behind the figure, and mostly in
     # its upper part: they fade out downwards
     topo = inp.leader_picture(TOPO_LINES)
@@ -2140,6 +2601,8 @@ def art_layer(inp, cid):
     top, bottom = TOPO_FADE
     fade = np.clip((bottom - np.arange(H, dtype=float)) / (bottom - top), 0, 1)
     alpha = np.asarray(topo.getchannel("A"), float)[:H] * TOPO_ALPHA
+    if seam is not None:
+        alpha = alpha * seam[..., 0]  # the scan prints its own lines
     lines = np.zeros((H, W, 4), np.uint8)
     lines[..., :3] = 235
     lines[..., 3] = np.clip(alpha * fade[:, None], 0, 255).astype(np.uint8)
@@ -2220,6 +2683,7 @@ def render_face(inp, cid, lang):
     ImageDraw.Draw(window).rectangle((ART[0], ART[1], ART[2] - 1, ART[3] - 1), fill=255)
     card.paste(art, (0, 0), window)
     p = Painter(inp, lang)
+    p.kind = frame_kind(cid)
     draw_frame(p, cid)
     if LEADERS[cid].get("track"):
         draw_track(p)
@@ -2261,6 +2725,10 @@ def cmd_render(args):
             "size": [W, H],
             "sha256": dict(faces.get(cid, {}).get("sha256", {})),
         }
+        if cid in ORIGINAL_IDS:
+            # the original frame, and how the scan was mapped onto its window
+            source["frame_kind"] = "original"
+            source["scan_fit"] = list(SCAN_FIT[cid])
         if LEADERS[cid].get("track"):
             from dune_imperium.display.leader_layout import FEYD_TRACK_BOXES
 
@@ -2331,6 +2799,35 @@ def cmd_compare(args):
             y += h + label + pad
         sheet.convert("RGB").save(out / f"leader-{cid}.jpg", quality=90)
         print("sheet", out / f"leader-{cid}.jpg")
+    if args.overview:
+        overview(inp, leader_ids(args), args.faces, out / args.overview)
+
+
+def overview(inp, ids, faces, path, cols=4, width=700):
+    """All the English faces of ``ids`` in one sheet, ``cols`` to a row."""
+    from PIL import Image, ImageDraw
+
+    tiles = []
+    for cid in ids:
+        face = face_path(inp, cid, "en", faces)
+        if face.exists():
+            im = Image.open(face).convert("RGBA")
+            tiles.append((cid, im.resize((width, round(im.height * width / im.width)))))
+    pad, label = 10, 20
+    th = max(im.height for _c, im in tiles) + label
+    rows = (len(tiles) + cols - 1) // cols
+    sheet = Image.new(
+        "RGBA",
+        (cols * (width + pad) + pad, rows * (th + pad) + pad),
+        (44, 44, 52, 255),
+    )
+    d = ImageDraw.Draw(sheet)
+    for i, (cid, im) in enumerate(tiles):
+        x, y = pad + i % cols * (width + pad), pad + i // cols * (th + pad)
+        d.text((x, y), cid, fill=(255, 230, 120, 255))
+        sheet.alpha_composite(im, (x, y + label))
+    sheet.convert("RGB").save(path, quality=90)
+    print("overview", path)
 
 
 def main():
@@ -2340,11 +2837,12 @@ def main():
     p.add_argument("--extra", nargs="*", help="further sprite names to save")
     p.add_argument("--measure", action="store_true", help="then print PLACEMENT")
     p.add_argument("--measure-only", action="store_true")
+    p.add_argument("--refresh", action="store_true", help="save saved pictures again")
     p.add_argument("--ids", default="")
     p.set_defaults(fn=cmd_inputs)
     p = sub.add_parser("render")
     p.add_argument("--lang", default="en,ko")
-    p.add_argument("--ids", default="", help="content ids (default: all ten)")
+    p.add_argument("--ids", default="", help="content ids (default: all 18)")
     p.add_argument("--out", help="write here instead of assets/cards/app")
     p.set_defaults(fn=cmd_render)
     p = sub.add_parser("compare")
@@ -2352,6 +2850,7 @@ def main():
     p.add_argument("--out", required=True)
     p.add_argument("--faces", help="faces rendered with render --out DIR")
     p.add_argument("--height", default=700)
+    p.add_argument("--overview", help="also one sheet of the faces, this file name")
     p.set_defaults(fn=cmd_compare)
     args = ap.parse_args()
     args.fn(args)
