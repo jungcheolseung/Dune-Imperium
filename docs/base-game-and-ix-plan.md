@@ -1379,3 +1379,8 @@ Round Start(Holtzman Engine·Shuttle Fleet, OQ-122), Reveal(Artillery·Minimic F
 Module의 Self-Destroying Messages·Panopticon도 OQ-150의 같은 원칙으로 늦게 줘야 한다 — Uprising + Bloodlines만으로는 Reveal 도중 Tech를 얻을
 길이 없어 지금은 닿지 않고(OQ-110 "같은 모양 전수"), Ix와 함께 여는 단계에서 맞춘다. **남은 P4c-2c:** Sonic Snoopers(`INTRIGUE_BOTTOM_PICK`,
 아는 Intrigue는 OQ-149 틀), Spy Satellites 첫 능력, Spaceport(얻은 카드를 덱 위에 — OQ-145의 공개 덱 위). Troop Transports는 P4c-3.
+
+**P4c-2c 끝(2026-10-29, `7913f5db`·`44cff763`):** Sonic Snoopers(`INTRIGUE_BOTTOM_PICK` — 한 장씩 아래로, 넣은 좌석만 알고 다른 좌석은 그 손의 아는
+카드를 잊는다(OQ-149), 넣을 Intrigue가 있을 때만(OQ-071), Twisted는 넣지 않음(OQ-097)), Spy Satellites의 교환(spice 3 + 타일 trash → 1 VP),
+Spaceport(얻는 카드를 덱 위에 — 뒤붙이 행이 있는 모든 획득, OQ-145로 공개). 원판 + Ix 1,892행. Tech 18장 가운데 17장 끝(Troop Transports는 P4c-3).
+**P4c-4 몫:** Spaceport와 Foldspace 칸의 Foldspace 카드(17.5 5) — 자동 Foldspace 칸 줄(`board_effects.py`)에 덱 위 변형이 없어 지금은 닿지 않는다.
