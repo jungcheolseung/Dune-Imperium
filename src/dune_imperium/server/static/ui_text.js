@@ -1028,6 +1028,14 @@ const UI_TEXT = {
     "ko": "멘타트: {{where}}",
     "en": "Mentat: {{where}}"
   },
+  "panels.garrison_troops": {
+    "ko": "{garrison}의 {troop}",
+    "en": "{troop}s in the {garrison}"
+  },
+  "panels.conflict_troops": {
+    "ko": "{conflict}의 {troop}",
+    "en": "{troop}s in the {conflict}"
+  },
   "panels.mentat_next_round": {
     "ko": "다음 라운드에 멘타트",
     "en": "the Mentat next round"

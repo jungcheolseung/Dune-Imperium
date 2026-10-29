@@ -18,6 +18,24 @@ function statNode(name, label, value) {
   return stat;
 }
 
+/* A seat's track counts for the text board (renderSeats): its Influence
+   with each Faction, then its troops in the garrison and in the Conflict
+   and its strength, as icons and numbers. */
+function textBoardStats(player) {
+  const row = document.createElement("div");
+  row.className = "stats text-board-stats";
+  for (const faction of Object.keys(FACTION_LABELS)) {
+    const key = `influence_${faction}`;
+    row.appendChild(statNode(key, phraseText(`{${key}}`), (player.influence || {})[faction] || 0));
+  }
+  row.append(
+    statNode("troop", t("panels.garrison_troops"), player.troops_garrison || 0),
+    statNode("troop", t("panels.conflict_troops"), player.troops_conflict || 0),
+    statNode("sword", phraseText("{strength}"), player.combat_strength || 0),
+  );
+  return row;
+}
+
 /* Lady Jessica's memories: the Bene Gesserit mark and the count, so they do
    not read as troops in the supply; the title names them ("기억",
    [KO card: Lady Jessica]). An icon, not a word, since the user asked the
@@ -347,6 +365,11 @@ function renderSeats() {
     /* The seat's time holding control, ticking on its own (clock.js). */
     if (clocksShown()) pieces.appendChild(seatClockNode(seat));
     card.appendChild(pieces);
+    /* Without a board scan (the text board: no local scan, or the original
+       game before its board layout), nothing else shows the counts the
+       board's tracks would: Influence on each strip, the garrison, the
+       troops in the Conflict and the strength. */
+    if (!boardScan(view)) card.appendChild(textBoardStats(player));
 
     /* Each flag is nodes (tNode), so its rule terms keep their icons. The
        Swordmaster is the glossary's 소드마스터; only the board space of that

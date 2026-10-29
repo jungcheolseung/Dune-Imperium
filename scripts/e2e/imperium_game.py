@@ -126,6 +126,9 @@ TABLE_JS = """() => ({
   scan: Boolean(document.querySelector("#board .board-stage")),
   spaces: [...document.querySelectorAll("#board .space-row")].map(
     (row) => row.dataset.space),
+  // The track counts each seat panel shows on the text board.
+  trackStats: [...document.querySelectorAll("#seats article.seat")].map(
+    (card) => card.querySelectorAll(".text-board-stats .stat").length),
 })"""
 
 
@@ -200,6 +203,11 @@ def play_human(page, rec) -> None:
         and len(table["spaces"]) == 22 and "carthag" in table["spaces"],
         "the text board lists the original game's 22 spaces",
         table,
+    )
+    check.ok(
+        table["trackStats"] == [7, 7, 7, 7],
+        "each seat shows its Influence, troops and strength on the text board",
+        table["trackStats"],
     )
     steps = 0
     missing: set[str] = set()
