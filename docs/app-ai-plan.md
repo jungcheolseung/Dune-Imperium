@@ -3,7 +3,7 @@
 상태: **완료** (2026-10-05 작성·구현·A/B, master 병합). 브랜치 `app-ai`(worktree), 기준 master `60707f8b`(codec v133, 관측 v30).
 뼈대 커밋 `279dffd8`.
 확장판(Immortality·Epic·Go to 11·프로모·지도자 드래프트·Bloodlines·Arrakeen Scouts): **구현 완료**, 브랜치 `app-ai-expansions`(11절). 16개 선택지 조합 12판씩 오류 0·무작위 대체 0·미포팅 0.
-원판 Dune: Imperium(base-game-and-ix-plan P6): **구현 완료**(무작위 대체 0), 브랜치 `claude/base-ix-p6-appai-b94c97`(12절). Rise of Ix는 P4 병합 뒤.
+원판 Dune: Imperium(base-game-and-ix-plan P6): **구현 완료**(무작위 대체 0), 브랜치 `claude/base-ix-p6-appai-b94c97`(12절), master `a4393427`. Rise of Ix는 준비만(13절), 이식은 P4 병합 뒤.
 
 ## 1. 사용자 결정
 
@@ -426,3 +426,91 @@ Uprising 고정 시드 수 그대로(`tmp/claude/523fa7a8/same_moves.py`: 7개 �
   "클라이언트 없음"으로 보아 곧바로 실행한다(agent 판단, `original_imperium._client_runs_immediately`).
 - Private Army의 결정적 교전 값 50.0, Bypass Protocol 세 번째 응답, Bindu Suspension 100.0 등 agent가 추정으로 읽은 값은 각
   클래스 docstring에 주소와 함께 적었다.
+
+## 13. Rise of Ix (원판 위) — 준비 (2026-10-29; 이식은 P4 병합·setup이 원판 + Ix를 연 뒤)
+
+### 13.1 범위와 결정
+
+- 12.1과 같은 사용자 결정("원판, ix 게임도 이제 가져오면 될거 같은데")의 둘째 몫. 앱이 Rise of Ix를 직접 두므로 **충실 포팅**이다.
+- 범위: 원판 + Ix(Epic·프로모 Boundless Ambition·지도자 드래프트 포함) — P4(`claude/base-ix-p4`)가 여는 판. Uprising + Ix(CHOAM의
+  Ix 계약 10장 `ROIContractAbility`·`ROIHarvest3/4ContractAbility`, Ix + Bloodlines Tech 36장)는 base-game-and-ix-plan의 P7 몫이라 뺀다.
+- 시작 조건: P4가 master에 병합되고 setup이 원판 + Ix를 연다(P4c-5). P4c~P4e가 아직 행동 id를 만들지 않은 결정(Tech·Freighter·
+  카드·지도자)은 13.3의 대응표를 그때 행동 id로 다듬는다. 12.2처럼 원판 + Ix 판의 census부터 한다.
+- 출처: 11·12절과 같은 앱 빌드 dad97e20.
+  - 사양: `spec/rix-tech.md`(Tech 타일 값, `TechTileToAcquire`·`BuyTechValue`·`get_NegotiateTechValue`, `get_FreighterValue`·
+    `GetFreighterSelections` §4.6–4.7, Dreadnought 칸 §6.7, 엔진 순서 §7)와 `spec/profile-*.md`의 `SetOn(2)` 분기.
+  - 클래스: 역어셈블 `dump/asm/worm-canis.dll/*.RiseOfIx.*.asm` 284개. **디컴파일 C는 아직 없다**(`ghidra/p3d-types`는 원판 180개뿐).
+    P4f(Ix 전부의 앱 행동 대조)가 같은 클래스를 P3d 방법으로 디컴파일하므로, 그 결과를 함께 쓴다(디컴파일은 한 번 — 조정 세션이
+    순서를 정한다). 12절처럼 C를 먼저 읽고 판단이 걸린 줄은 역어셈블로 확인한다.
+- 엔진은 바꾸지 않는다. 완료 조건은 12.1과 같고 판만 원판 + Ix다. 여기에 **원판 단독 판의 app_ai 수도 고정 시드에서 그대로**를 더한다:
+  Ix 분기는 모두 `IsSetEnabled(2)`·`HasTech`·Ix 카드로 갈리므로 Ix가 꺼진 판의 수는 바뀌면 안 된다(Uprising 같은 수 21판과 같은 방법).
+
+### 13.2 앱 클래스 목록 (`data/archetypes.py`의 `RiseOfIx` 아키타입 90, 능력 칸 255; 2026-10-29 `PORTS` 대조)
+
+| 묶음 | 아키타입 | 이미 있는 포트(재사용) | 새로 필요한 클래스 |
+|---|---|---|---|
+| 칸 | 4 | `AcquireTechAbility`, `TechNegotiationDeferredAbility`(11절 Bloodlines Tech 때 `abilities/tech.py`) | 6: `DreadnoughtSpaceAbility`, `InterstellarShippingSpaceAbility`, `SmugglingSpaceAbility`, `TechNegotiationSpaceAbility`, `TechNegotiationTriggeredAbility`, `FreighterAgentAbility` |
+| Tech 타일 | 18 | 8: `ChaumurkyAbility`, `MinimicFilmAbility`, `DisposalFacilityAcquiredAbility`, `MemocordersAcquiredAbility`, `ShuttleFleetAcquiredAbility`, `GainIntrigueAcquiredAbility`, `DrawImperiumAcquiredAbility`(Spaceport ×2) | 17: Artillery, Disposal Facility(+Triggered), Flagship, Holoprojectors, Holtzman Engine(+Endgame), Invasion Ships, Memocorders(종료), Restricted Ordnance, Shuttle Fleet(Round Start), Sonic Snoopers, Spy Satellites(+Endgame), Training Drones, Troop Transports, Windtraps. Detonation Devices는 클래스가 없다(프로필 `tech.py`의 "Detonation Devices" 항 + `DreadnoughtControlAbility`) |
+| 지도자 | 6 | `IxianTechnologyAbility`(Rhombur) | 20: Armand(`Coordination`, `Conscript`), Ilesa(`GuildContacts`, `OneStepAheadRound/Turn/Send`), Rhombur(`HeavyLasgunCannons`), Yuna(`FinalDelivery`, `SmugglingOperationSolari/Water`), Tessia(`CarefulObeservationSetup`[앱 철자], `CarefulObservation` Emperor·SpacingGuild·BeneGesserit·Fremen·Triggered·OppTriggered, `Duplicity`), Hundro(`Couriers`, `Intelligence`) |
+| Imperium | 30 (29 + Boundless Ambition) + Control the Spice | 공용 Agent·Reveal·Acquire, `ThufirHawatRevealAbility`, `RevealGainIntrigueAbility`, `TrashAgentAbility`, `PowerPlayAgentAbility`, `ImperialBasharRevealAbility`, `InTheShadowsRevealAbility`, `AcquireTechAgentAbility`, `ControlTheSpiceAbility`(Epic) | 48(서로 다른 클래스). 공용인 것: `UnloadAbility`(CHOAM Delegate·Esmar Tuek·Ix Guild Compact·Treachery·Water Peddler), `FreighterAgentAbility`(Landing Rights), `FreighterRevealAbility`(Freighter Fleet·Guild Chief Administrator) |
+| 책략 | 17 | – | 21 (Plot·Combat·Endgame 둘씩인 카드: Advanced Weaponry, Finesse, Machine Culture, War Chest) |
+| Conflict | 4 | Economic Supremacy 5(Epic) | 9: Skirmish E·F, Trade Monopoly × 1·2·3등 |
+| 아키타입 밖(엔진이 만드는 능력) | – | `AcquireTechAbilityShippingTrack2` | `FreighterAbility`·`FreighterCustomAbility`, `ShippingTrackAbility1/2/3`, `ConflictAbilities.RiseOfIx.DreadnoughtControlAbility`, `ai.evaluators.ChooseDiscardEvaluator`(Discard 비용) |
+
+합: 새 클래스 약 126(서로 다른 것; 원판 이식의 160보다 적다). Hagal(`HagalAbilities.RiseOfIx.*`)·Challenge·Tutorial 클래스는 4인 판에 없다.
+
+프로필·문맥(12.2의 "dead here"와 같은 자리):
+
+- `AppContext.ix`(`IsSetEnabled(RiseOfIx=2)`)와 `Board`: 덮인 칸 넷(Hall of Oratory, Rally Troops, Secure Contract, Sell Melange)을 빼고
+  Ix 칸 넷의 아키타입·앱 칸 순서(`_SPACE_ARCHETYPE_ORDER`의 RiseOfIx 보드 세트)를 더한다.
+- `SetOn(2)`·Ix 카드·`HasTech`로 죽여 둔 자리 18곳: `profile/economy.py` 9(Quid Pro Quo·Machine Culture·Diversion·Training Drones·
+  Dreadnought `CapacityMod`·Sonic Snoopers·Grand Conspiracy·Memocorders·Invasion Ships 등), `profile/tech.py` 3, `abilities/generic.py` 2,
+  `profile/influence.py` 2(Spy Satellites·Memocorders), `profile/combat.py` 1(`ConflictInterestGarrisonDreadnoughtValue` #259, 유닛당
+  1.5), `abilities/board.py` 1. 그 밖에 `profile-combat.md`의 Strategic Push·Windtraps·Diversion 항, Rhombur의 dreadnought strength 4.
+- `profile/tech.py`의 0으로 둔 값 둘: `tech_negotiator_count`(협상가), `tech_dreadnoughts_in_supply`. 새 메서드: `get_FreighterValue`,
+  `GetFreighterSelections`(Shipping track 칸; 레벨 2의 `M.Random.Next(2)`는 앱의 판 RNG — agent의 시드 RNG로, 4절 9 "결정성"과 같이).
+
+### 13.3 P4 결정 ↔ 앱 클래스 대응
+
+P4 브랜치(`51884e8f`)가 지금 가진 결정은 dreadnought 셋(P4b)과 예약된 frame 일곱(`rules/frames.py`의 `IX_FRAME_KINDS`, 관측 v39)이다.
+나머지 행동 id는 P4c~P4e가 만든다.
+
+| 우리 결정 (frame·행동) | P4 단계 | 앱 클래스·프로필 | app_ai 창 |
+|---|---|---|---|
+| `dreadnought_control_choice`: `place_combat_reward_dreadnought`(Control 칸 셋 중 빈 칸), Detonation Devices의 "VP 대신" | P4b-1 (있음) | `DreadnoughtControlAbility` E; Detonation Devices 값(`tech.py`, #305·#307) | `windows/combat.py` 승자의 창 줄 |
+| `commission_intrigue_dreadnought` / `decline_intrigue_dreadnought`, 칸·Tech의 commission 줄 | P4b-2 (책략 출처 있음), P4c-4 | `GetDreadnoughtValue`(`economy.dreadnought_value`, #247–249, `CapacityMod`), `DreadnoughtSpaceAbility` V(+ 칸의 `AcquireTechAbility` `BuyTechValue(0)`) | 책략 줄, `agent_effects`(칸) |
+| `deploy_dreadnoughts` / `withdraw_dreadnoughts` (배치 몫: garrison 둘을 troop·Commander·dreadnought가 함께) | P4b-2 (있음) | `profile/combat.py` `units_to_deploy`의 dreadnought 항(앱 `DeployUnits`; #259) | 배치 키(지금 troop만) |
+| `freighter_move`(차례 밖 Freighter: Conflict 보상·Skirmish·Trade Monopoly·Hundro) | P4c-3 | `FreighterAbility` E = `IntTargetResponse(GetFreighterSelections(-1).Item1)`(1 회수, 0 전진; rix-tech §4.7, §6.6); 출처 V: Trade Monopoly·Skirmish E 1등, `Couriers`, Diversion, Expedite, Embedded Agent | 새 창 |
+| 자기 차례의 Freighter 줄(Agent 상자·Reveal 상자·Interstellar Shipping·Smuggling) | P4c-3·4, P4d | `FreighterAgentAbility`, `FreighterRevealAbility`, `InterstellarShippingSpaceAbility`, `SmugglingSpaceAbility` | `agent_effects`, `reveal` |
+| `shipping_reward_icons`(회수 보상, 원하는 순서) | P4c-3 | `ShippingTrackAbility1/2/3`, `AcquireTechAbilityShippingTrack2`; `GetFreighterSelections`의 Item2(사양이 "UNTRACED" — 디컴파일로 확인) | 새 창 |
+| Tech 획득·할인·협상가(`tech_payment`, `tech_discount`, `negotiators_returnable`) | P4c-1 | `AcquireTechAbility`(+`Discount1`, `AcquireTechAgentAbility`), `TechTileToAcquire`·`BuyTechValue`·`get_NegotiateTechValue`, `PayTechNegotiators`, `TechNegotiation*` | `windows/bloodlines.py`의 Tech 창을 Ix 타일 실제 아키타입으로(11절의 합성 아키타입 대신) |
+| Tech 뒤집기·사용(Flagship, Holoprojectors, Invasion Ships, Training Drones, Spy Satellites, Troop Transports) | P4c-2 | 각 타일 클래스(`SelectionMode` Optional: E > 0이고 가장 좋을 때만, rix-tech §7.4) | `turn`·`agent_effects` |
+| `intrigue_bottom_pick`(Sonic Snoopers) | P4c-2 | `SonicSnoopersAbility` | 새 창 |
+| 종료 타일(Chaumurky·Holtzman·Memocorders·Spy Satellites) | P4c-2 | 앱은 묻지 않는다(rix-tech §7.4) — 우리 엔진이 묻는 곳이 있으면 그 클래스 E | – |
+| `unload_icons`(남의 효과로 버려지거나 보상으로 trash될 때의 Unload 상자) | P4d | `UnloadAbility`, `FreighterFleetUnloadAbility`, `GuildAccordUnloadAbility`, `InTheShadowsUnloadAbility`, `BoundlessAmbitionUnload(Opp)Ability` | 새 창(계약 보상 아이콘 창과 같은 꼴) |
+| 자기 차례의 Discard 비용 아이콘 | P4d | `ChooseDiscardEvaluator`와 카드 클래스 | `agent_effects`, `reveal` |
+| 잠입(Infiltration) 아이콘 | P4d | 선택 없음(칸 합법성) | `turn`의 칸 목록 |
+| `round_start_set_aside`(Ilesa One Step Ahead) | P4e | `OneStepAheadRoundAbility`(+ Turn·Send) | 새 창 |
+| `optional_discard`(Tessia의 첫 Snooper 보상 "discard → 1 spice") | P4e | `CarefulObservation*`, `ChooseDiscardEvaluator` | 새 창 |
+| 지도자 Signet·setup(Tessia의 Snooper 진영, Hundro의 Intrigue 맨 위) | P4e | 13.2 지도자 줄 | `agent_effects`, `windows/setup.py` |
+
+### 13.4 슬라이스 (12.3과 같은 방식: 클래스 포트 + 창 대응 + 분기·상수를 고정하는 단위 테스트 + census 사유 0 + 같은 수 확인)
+
+| # | 슬라이스 | 내용 |
+|---|---|---|
+| 1 | 틀 | `AppContext.ix`, `Board`의 Ix 칸 넷·덮인 칸 넷, catalog의 Ix 표(카드·책략·Conflict·지도자·Tech 실제 아키타입), 원판 + Ix census(오류 0까지) |
+| 2 | 프로필 | `SetOn(2)` 자리 18곳, `tech.py`의 협상가·supply dreadnought, `get_FreighterValue`·`GetFreighterSelections` |
+| 3 | 유닛 | dreadnought 지배·commission·배치(13.3 첫 세 줄) |
+| 4 | 칸과 Shipping | Ix 칸 6클래스, `FreighterAbility`·`ShippingTrackAbility1/2/3`, `freighter_move`·`shipping_reward_icons` 창 |
+| 5 | Tech | 타일 17클래스, Tech 창을 실제 Ix 타일로, Sonic Snoopers 창 |
+| 6 | Imperium | 48클래스, Unload·Discard·잠입 |
+| 7 | 책략 | 21클래스 |
+| 8 | Conflict | 9클래스 |
+| 9 | 지도자 | 20클래스, `round_start_set_aside`·`optional_discard`, Tessia·Hundro의 setup |
+| 10 | 마무리 | 세 난이도 census 0, Uprising·원판 같은 수, 원판 + Ix soak, Hard 대 heuristic 측정, 문서·P5 알림 |
+
+- agent: 원판 이식은 Sonnet 셋이 약 1.7M 토큰(Conflict 662k, 책략 + 지도자 119k, Imperium 955k)을 썼다. Ix 6~9는 크기가 비슷해
+  둘이면 약 1.5M로 본다. 띄우기 전에 조정 세션을 거쳐 사용자 승인을 받는다(동시 상한은 승인이 아니다).
+- P4와 병합: P4는 `6352199d`(P6 병합 전)에서 땄고 `windows/turn.py`의 `_after_send`(dreadnought가 칸의 controller, `space_controller`)를
+  고쳤다. 2026-10-29 `git merge-tree`로는 이 파일이 자동으로 합쳐지고, 충돌은 P4·master 몫(`docs/base-game-and-ix-plan.md`,
+  `display/effect_dsl_text_ko.py`)뿐이다. 슬라이스 1에서 합쳐진 `_after_send`가 원판 보드에서 맞는지 본다.
