@@ -1408,3 +1408,13 @@ Kwisatz도 못 넘음), Smuggling(1 Solari + Freighter). 새 아이콘 넷은 �
 agent 한 번에 하나):** Harkonnen Advisor의 `UNGAINED_UNDEPLOYABLE_KEY`(OQ-038)처럼 Shipping recruit 부족분을 frame에 따로 세고, 채워질 때
 `SHIPPING_TROOPS_KEY`로 옮긴다. 테스트: supply troop 하나·Negotiator 둘로 3번 칸 회수, Negotiator로 타일을 사 돌아온 troop이 부족분을 채우면
 그 둘도 배치할 수 있다(Codex의 예).
+
+**P4c-5 끝(2026-10-29, `7ef22069`) — 원판 + Ix가 setup부터 끝까지 돈다:** `rise_of_ix`를 원판에서 받는다(Uprising + Ix는 P7, 원판 Epic은 P4e까지
+거절). 좌석마다 dreadnought 둘, Freighter 맨 아래, Tech 18장을 chance 단계 `setup:ix_tech_tiles`로 섞어 세 더미(Tech Module과 같은 관례),
+`ConflictSetup(rise_of_ix=True)`는 남는 장수 9~12를 받는다(인쇄된 12는 Ix Conflict 셋이 전사되면 — P4d에서 하한을 없앤다). 불변식은 좌석마다
+dreadnought 정확히 둘. heuristic에 Ix 행 점수(전략 선호, Ix 판에만), `UNDO_ACTION_IDS`에 `withdraw_dreadnoughts`, sweep에 `--rise-of-ix`.
+소크 1,200판(heuristic·random × {없음, 프로모, 드래프트, 둘 다}) 실패 0. **알아 둘 것:** Ix 지도자 여섯은 능력 없이(바닐라로) 고를 수 있다 — UI에
+Ix 선택이 없어(P5) 사람 판에는 닿지 않고, 능력은 P4e. app_ai는 Ix 창을 무작위로 답한다(P6). `zero_coverage`·`--coverage-json`은 Uprising
+설정만 만든다(그 전부터의 빈틈). "setup이 Rise of Ix를 거절한다"는 낡은 docstring 여럿(`content/rulesets.py`, `content/rise_of_ix/*.py`, 테스트
+셋)은 다음 정리 조각에서 고친다. **22:00 리셋 뒤 다음 일:** (1) Troop Transports 부족분(위 Codex 지적), (2) 낡은 docstring, (3) `rules/tech.py`의
+`ix_negotiators_returnable`과 frame 키를 core 함수 하나로, (4) P4c 관문, (5) P4d(카드).
