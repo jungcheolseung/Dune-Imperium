@@ -29,7 +29,7 @@ import os
 from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 import anyio
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -57,6 +57,7 @@ from dune_imperium.server.persistence import (
     UnknownSaveError,
     default_saves_directory,
 )
+from dune_imperium.server.seat_kinds import seat_kinds_payload
 from dune_imperium.server.seating import (
     DEFAULT_FIRST_PLAYER,
     DEFAULT_SEATING,
@@ -167,6 +168,22 @@ def default_board_image_path() -> Path:
     return _ASSETS_DIR / "board" / "map.jpg"
 
 
+def imperium_board_image_path(board_image: Path) -> Path:
+    """Return the original game's board picture beside the Uprising scan.
+
+    ``DUNE_IMPERIUM_IMPERIUM_BOARD_IMAGE`` overrides it; by default it is
+    ``imperium.jpg`` in the Uprising scan's folder (``assets/board/``), so a
+    server pointed at another scan folder finds the original board there
+    too. Without the file the original game keeps the text board
+    (docs/base-game-and-ix-plan.md 18, stage P5b).
+    """
+
+    override = os.environ.get("DUNE_IMPERIUM_IMPERIUM_BOARD_IMAGE")
+    if override:
+        return Path(override)
+    return board_image.with_name("imperium.jpg")
+
+
 def default_bene_tleilax_image_path() -> Path:
     """Return the owner's local Bene Tleilax board scan (Immortality).
 
@@ -204,6 +221,12 @@ class CreateGameRequest(BaseModel):
             "'search:<path>::flip=0.01'; GET /whoami says whether it has one)."
         ),
     )
+    # The base game (``RulesetConfig.base_game``): Dune: Imperium - Uprising,
+    # or the original Dune: Imperium (docs/base-game-and-ix-plan.md 18). The
+    # original takes only the promo cards, the Leader draft and Player 1 as
+    # First Player so far; any other option is refused (setup's pending
+    # options).
+    base_game: Literal["uprising", "imperium"] = "uprising"
     choam_module: bool = False
     leader_draft: bool = False
     # Shuffle in the promo Imperium cards (not in the retail decks): the
@@ -417,6 +440,7 @@ def create_app(
     tokens_dir: Path | None = None,
     board_image: Path | None = None,
     bene_tleilax_image: Path | None = None,
+    imperium_board_image: Path | None = None,
     heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
     public_url: str | None = None,
     autosave: bool | None = None,
@@ -507,6 +531,11 @@ def create_app(
     board_path = (
         board_image if board_image is not None else default_board_image_path()
     )
+    imperium_board_path = (
+        imperium_board_image
+        if imperium_board_image is not None
+        else imperium_board_image_path(board_path)
+    )
     bene_tleilax_path = (
         bene_tleilax_image
         if bene_tleilax_image is not None
@@ -525,7 +554,11 @@ def create_app(
             card_image_url(f"{SCOUTS_ART_DIR}/{name}"): scouts_art_dir / name
             for name in scouts_art_files
         }
-        | {"/board-image": board_path, "/bene-tleilax-image": bene_tleilax_path}
+        | {
+            "/board-image": board_path,
+            "/board-image/imperium": imperium_board_path,
+            "/bene-tleilax-image": bene_tleilax_path,
+        }
     )
     app = FastAPI(title="Dune: Imperium - Uprising local play server")
     # Whoever runs the server ends the open event streams through this when
@@ -548,6 +581,7 @@ def create_app(
             icon_files,
             board_path.is_file(),
             bene_tleilax_image=bene_tleilax_path.is_file(),
+            imperium_board_image=imperium_board_path.is_file(),
             token_files=token_files,
             asset_versions=asset_versions,
             image_index_ko=image_index_ko,
@@ -561,6 +595,12 @@ def create_app(
         if not board_path.is_file():
             raise HTTPException(status_code=404, detail="no board image")
         return FileResponse(board_path)
+
+    @app.get("/board-image/imperium", include_in_schema=False)
+    def imperium_board_image_file() -> FileResponse:
+        if not imperium_board_path.is_file():
+            raise HTTPException(status_code=404, detail="no original board image")
+        return FileResponse(imperium_board_path)
 
     @app.get("/bene-tleilax-image", include_in_schema=False)
     def bene_tleilax_image_file() -> FileResponse:
@@ -597,6 +637,9 @@ def create_app(
             "seating": default_seating,
             # Whether its "Player 1 starts" box opens checked (OQ-132).
             "first_player": default_first_player,
+            # The seats each base game's table takes (server/seat_kinds.py):
+            # the setup screen offers these, the server refuses the rest.
+            "seat_kinds": seat_kinds_payload(),
         }
 
     @app.post("/auth/admin")
@@ -618,6 +661,7 @@ def create_app(
         with _http_errors():
             return sessions.create_game(
                 tuple(body.seats),
+                base_game=body.base_game,
                 choam_module=body.choam_module,
                 leader_draft=body.leader_draft,
                 promo_cards=body.promo_cards,

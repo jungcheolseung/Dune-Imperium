@@ -141,6 +141,37 @@ def test_go_to_11_option_starts_every_score_at_zero(client: TestClient) -> None:
     assert scores(plain) == [1, 1, 1, 1]
 
 
+def test_base_game_option_starts_the_original_game(client: TestClient) -> None:
+    # The original Dune: Imperium (docs/base-game-and-ix-plan.md 18, P5a):
+    # the summary and every view name the base game, and its own board is
+    # played (Carthag is a space of the original board only [DI p. 18]).
+    humans = ["human", "human", "human", "human"]
+    original = _create(client, seats=humans, base_game="imperium")
+    assert original["base_game"] == "imperium"
+    decision = original["decision"]
+    assert isinstance(decision, dict)
+    view = client.get(f"/games/{original['game_id']}/seats/{decision['owner']}/view")
+    assert view.status_code == 200, view.text
+    assert view.json()["base_game"] == "imperium"
+    # Omitted is Uprising, as for every save without the key.
+    assert _create(client, seats=humans)["base_game"] == "uprising"
+
+
+def test_base_game_option_refuses_what_the_original_cannot_take_yet(
+    client: TestClient,
+) -> None:
+    # Setup refuses the original game with an option of a later stage (CHOAM
+    # in P7); the server answers that as a bad request, not a fault.
+    response = client.post(
+        "/games",
+        json={"seats": ["human"] * 4, "base_game": "imperium", "choam_module": True},
+    )
+    assert response.status_code == 400, response.text
+    assert "choam_module" in response.text
+    unknown = client.post("/games", json={"seats": ["human"] * 4, "base_game": "dune"})
+    assert unknown.status_code == 422, unknown.text
+
+
 def test_epic_game_option_reaches_the_setup(client: TestClient) -> None:
     # Epic Game Mode puts five troops in each garrison and deals each player
     # one Intrigue card at setup [Rise of Ix p. 10]; the Score marker keeps
@@ -561,6 +592,27 @@ def test_board_scan_and_icons_are_served_when_present(tmp_path: Path) -> None:
         served = image_client.get(catalog["board_image"])
         assert served.status_code == 200
         assert served.content == b"jpeg-board"
+        # The original game's board is looked for beside the Uprising scan
+        # (imperium.jpg); absent, its picture is null and its route a 404.
+        assert catalog["boards"]["imperium"]["image"] is None
+        assert image_client.get("/board-image/imperium").status_code == 404
+
+    (tmp_path / "imperium.jpg").write_bytes(b"jpeg-imperium")
+    with TestClient(
+        create_app(
+            saves_dir=tmp_path / "saves",
+            card_images_dir=tmp_path / "no-images",
+            icons_dir=icons,
+            tokens_dir=tmp_path / "no-tokens",
+            board_image=board,
+        )
+    ) as image_client:
+        catalog = image_client.get("/catalog").json()
+        original = catalog["boards"]["imperium"]
+        assert _unversioned(original["image"]) == "/board-image/imperium"
+        assert image_client.get(original["image"]).content == b"jpeg-imperium"
+        # Its layout comes in the shapes of Uprising's top-level tables.
+        assert set(original) >= {"space_boxes", "space_frame", "tracks", "mentat"}
 
     bene_tleilax = tmp_path / "bene_tleilax.jpg"
     bene_tleilax.write_bytes(b"jpeg-bene-tleilax")

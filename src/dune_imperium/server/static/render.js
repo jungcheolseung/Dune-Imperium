@@ -636,6 +636,9 @@ function watchTableLayout() {
    the title. */
 function renderHeaderStatus() {
   const summary = state.summary;
+  /* The header names the shown game: the original game's table its own. */
+  const heading = document.querySelector("header h1");
+  if (heading) heading.textContent = baseTitle();
   const shown = state.review && state.review.phase ? state.review : null;
   const round = shown ? shown.round : summary.round_number;
   const phase = shown ? shown.phase : summary.phase;
@@ -648,6 +651,8 @@ function renderHeaderStatus() {
   }
   /* The seed and the ruleset badges never change during a game. */
   const extras = RULESET_BADGES.filter(([field]) => summary[field]).map(([, key]) => t(key));
+  /* The original game first: every badge after it is an option on it. */
+  if (summary.base_game === "imperium") extras.unshift(t("screens.base_game_imperium_badge"));
   if (summary.game_seed !== null) extras.unshift(t("common.seed", { seed: summary.game_seed }));
   if (extras.length) pieces.push(["status-badges", " · " + extras.join(" · ")]);
   const status = el("header-status");

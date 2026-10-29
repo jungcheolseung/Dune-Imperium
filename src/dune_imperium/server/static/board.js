@@ -223,7 +223,7 @@ function renderBoard() {
     board.appendChild(note);
     return;
   }
-  if (state.catalog.board_image) {
+  if (boardScan(view)) {
     renderBoardStage(board, view);
     animatePlacedAgents(board, before);
   } else {
@@ -249,7 +249,7 @@ function boardPiece(src, box, className) {
 /* Where the board prints the flag under a controllable space
    (catalog.tracks.control_flags, a percent box), if it does. */
 function controlFlagBox(spaceId) {
-  const flags = state.catalog.tracks && state.catalog.tracks.control_flags;
+  const flags = boardLayout().tracks.control_flags;
   return (flags && flags.boxes[spaceId]) || null;
 }
 
@@ -273,7 +273,7 @@ function controlMarker(seat, spaceId, box) {
     picture.style.height = `${height}%`;
     return picture;
   }
-  const dip = 100 * (1 - state.catalog.tracks.control_flags.notch);
+  const dip = 100 * (1 - boardLayout().tracks.control_flags.notch);
   const marker = document.createElementNS(svgNs, "svg");
   marker.setAttribute("class", "control-marker");
   marker.setAttribute("viewBox", "0 0 100 100");
@@ -294,12 +294,16 @@ function controlMarker(seat, spaceId, box) {
 }
 
 /* The white frame a space prints around its picture, which its hotspot's
-   box follows (catalog.space_frame): square top-left and bottom-right
-   corners, the other two cut. The highlight is drawn on this outline so
-   every space lights up the same shape, without the icons beside it. */
-function spaceFrame() {
+   box follows (the board's space_frame): square top-left and bottom-right
+   corners, the other two cut -- but square at the bottom left where the
+   original board hangs a Control flag from it (square_bottom_left). The
+   highlight is drawn on this outline so every space lights up the same
+   shape, without the icons beside it. */
+function spaceFrame(spaceId) {
   const svgNs = "http://www.w3.org/2000/svg";
-  const [cutX, cutY] = state.catalog.space_frame.cut;
+  const shape = boardLayout().space_frame || state.catalog.space_frame;
+  const [cutX, cutY] = shape.cut;
+  const square = (shape.square_bottom_left || []).includes(spaceId);
   const frame = document.createElementNS(svgNs, "svg");
   frame.setAttribute("class", "space-frame");
   frame.setAttribute("viewBox", "0 0 100 100");
@@ -308,7 +312,9 @@ function spaceFrame() {
   const outline = document.createElementNS(svgNs, "polygon");
   outline.setAttribute(
     "points",
-    `0,0 ${100 - cutX},0 100,${cutY} 100,100 ${cutX},100 0,${100 - cutY}`,
+    square
+      ? `0,0 ${100 - cutX},0 100,${cutY} 100,100 0,100`
+      : `0,0 ${100 - cutX},0 100,${cutY} 100,100 ${cutX},100 0,${100 - cutY}`,
   );
   frame.appendChild(outline);
   return frame;
@@ -317,7 +323,7 @@ function spaceFrame() {
 /* The centre of the hexagon a Maker space prints for its bonus spice
    (catalog.tracks.maker_spice), if the layout has one for the space. */
 function makerSpicePoint(spaceId) {
-  const spots = state.catalog.tracks && state.catalog.tracks.maker_spice;
+  const spots = boardLayout().tracks.maker_spice;
   return (spots && spots.points[spaceId]) || null;
 }
 
@@ -373,7 +379,7 @@ function bonusSpiceToken(spaceId, count, point) {
   const token = spiceHex(
     count,
     point,
-    state.catalog.tracks.maker_spice.size,
+    boardLayout().tracks.maker_spice.size,
     `${spaceName(spaceId)} · ${t("board.bonus_spice", { count })}`,
   );
   token.dataset.space = spaceId;
@@ -389,8 +395,8 @@ function renderBoardStage(board, view) {
   stage.className = "board-stage";
   const map = document.createElement("img");
   map.className = "board-map";
-  map.src = state.catalog.board_image;
-  map.alt = t("board.map_alt");
+  map.src = boardScan(view);
+  map.alt = t(viewBaseGame(view) === "imperium" ? "board.map_alt_imperium" : "board.map_alt");
   map.draggable = false;
   stage.appendChild(map);
 
@@ -407,7 +413,7 @@ function renderBoardStage(board, view) {
      that may be the app's board-space render, which only the popovers
      show. */
   const wall = state.catalog.shield_wall;
-  if (view.shield_wall_present && wall && wall.image) {
+  if (viewBaseGame(view) === "uprising" && view.shield_wall_present && wall && wall.image) {
     const token = boardPiece(wall.image, wall.box, "shield-wall-token");
     token.alt = phraseText("{shield_wall}");
     token.style.transform = `rotate(${wall.rotation}deg)`;
@@ -425,7 +431,9 @@ function renderBoardStage(board, view) {
 
   for (const [spaceId, entry] of Object.entries(state.catalog.spaces)) {
     if (!spaceInPlay(entry, view)) continue;
-    const [left, top, width, height] = entry.box;
+    const box = spaceBox(spaceId, entry, view);
+    if (!box) continue;
+    const [left, top, width, height] = box;
     const hotspot = document.createElement("button");
     hotspot.type = "button";
     hotspot.className = "hotspot";
@@ -440,10 +448,15 @@ function renderBoardStage(board, view) {
     const label = commanders.has(spaceId)
       ? t("board.space_with_commander", { space: entry.name })
       : entry.name;
-    hotspot.title = label;
+    /* The original game's state the print has no place for (the seats The
+       Voice bars from here, OQ-116), named on the space and marked on it. */
+    const extra = originalSpaceStatus(spaceId);
+    hotspot.title = [label, ...extra].join(" · ");
+    const barred = voiceBarredSeats(spaceId, view);
+    if (barred.length) hotspot.appendChild(voiceBarredMark(barred));
     hotspot.dataset.space = spaceId;
     hotspot.setAttribute("aria-label", label);
-    hotspot.appendChild(spaceFrame());
+    hotspot.appendChild(spaceFrame(spaceId));
     const legal = legalActionsFor(spaceId);
     if (legal.length) hotspot.classList.add("legal");
     if ((state.pick && state.pick.spaceId === spaceId) || isHeldRef(spaceId)) {
@@ -487,15 +500,19 @@ function renderBoardStage(board, view) {
     const point = makerSpicePoint(spaceId);
     if (count && point) stage.appendChild(bonusSpiceToken(spaceId, count, point));
   }
+  const mentat = mentatOnSpace(view);
+  if (mentat) stage.appendChild(mentat);
   for (const spaceId of commanders) {
     const entry = state.catalog.spaces[spaceId];
-    if (entry && spaceInPlay(entry, view)) stage.appendChild(commanderPiece(spaceId, entry.box));
+    const box = entry && spaceBox(spaceId, entry, view);
+    if (box && spaceInPlay(entry, view)) stage.appendChild(commanderPiece(spaceId, box));
   }
 
   /* Arrakeen Scouts: what missions left on the spaces and posts. */
   renderScoutsBoardPieces(stage, view, spies);
 
-  for (const [postId, [x, y]] of Object.entries(state.catalog.posts)) {
+  const layout = boardLayout(view);
+  for (const [postId, [x, y]] of Object.entries(layout.posts)) {
     const legal = legalSpyPostActions(postId);
     if (legal.length) {
       const target = document.createElement("button");
@@ -504,7 +521,7 @@ function renderBoardStage(board, view) {
       /* The post a held choice names (turn.js chooseAction). */
       if (isHeldRef(postId)) target.classList.add("picked");
       target.dataset.post = postId;
-      target.style.width = `${state.catalog.post_size * 1.8}%`;
+      target.style.width = `${layout.post_size * 1.8}%`;
       placeAt(target, x, y);
       const name = postName(postId);
       target.title = name;
@@ -524,7 +541,7 @@ function renderBoardStage(board, view) {
     /* A Spy is as wide as the printed post disc (catalog.post_size, a
        percent of the width; the scan is square within 0.12 %), so the row
        is that tall at the icon's proportions. */
-    post.style.height = `${(state.catalog.post_size * 80) / 56}%`;
+    post.style.height = `${(layout.post_size * 80) / 56}%`;
     post.dataset.count = String(Math.min(seats.length, 4));
     post.title = t("board.post_seats", {
       post: postName(postId),
@@ -542,6 +559,33 @@ function renderBoardStage(board, view) {
   renderSlotCards(stage, view);
   renderTrackMarkers(stage, view);
   board.appendChild(stage);
+}
+
+/* The original game's Mentat lying on its own space while no seat holds it
+   [DI pp. 4, 13], on the silhouette the space prints for it (the board's
+   mentat point and height): a light figure over the dark print, the way
+   the app fills that slot. Null when a seat holds it or the board has no
+   place for it. */
+function mentatOnSpace(view) {
+  const spot = boardLayout(view).mentat;
+  if (!spot || (view.players || []).some((player) => player.mentat)) return null;
+  const svgNs = "http://www.w3.org/2000/svg";
+  const piece = document.createElementNS(svgNs, "svg");
+  piece.setAttribute("class", "mentat-piece");
+  piece.setAttribute("viewBox", "0 0 40 100");
+  const title = document.createElementNS(svgNs, "title");
+  title.textContent = t("board.mentat_here");
+  const figure = document.createElementNS(svgNs, "path");
+  /* A standing figure in a cap and long coat, the print's outline. */
+  figure.setAttribute(
+    "d",
+    "M14 4 Q20 0 27 4 L28 10 L33 11 L27 13 Q28 19 24 22 L30 27 Q36 32 36 44 "
+      + "L37 96 L3 96 L6 44 Q6 31 13 26 L16 22 Q12 19 13 13 L8 11 L13 10 Z",
+  );
+  piece.append(title, figure);
+  const [x, y] = spot.point;
+  piece.style.height = `${spot.height}%`;
+  return placeAt(piece, x, y);
 }
 
 /* The Conflict card and the face-up CHOAM contracts drawn in their printed
@@ -579,7 +623,7 @@ function conflictHistoryTrigger() {
 }
 
 function renderSlotCards(stage, view) {
-  const tracks = state.catalog.tracks;
+  const tracks = boardLayout(view).tracks;
   if (!tracks || !tracks.conflict_slot) return;
 
   const [cLeft, cTop, cWidth, cHeight] = tracks.conflict_slot;
@@ -1304,8 +1348,10 @@ function watchForceStepper(holder) {
    seat's garrison in its ring and deployed units in its Conflict quadrant,
    and Councilor tokens on the High Council seats. */
 function renderTrackMarkers(stage, view) {
-  const tracks = state.catalog.tracks;
-  if (!tracks || !Array.isArray(view.players)) return;
+  const tracks = boardLayout(view).tracks;
+  /* A layout without track tables leaves the counts to the seat panels
+     (boardDrawsTracks). */
+  if (!tracks || !tracks.influence || !Array.isArray(view.players)) return;
   const factions = Object.keys(FACTION_LABELS);
   let councilSlot = 0;
   /* The seats on each cell of the combat track and of the Score track, in
@@ -1402,9 +1448,10 @@ function renderTrackMarkers(stage, view) {
       stage.appendChild(placeAt(scoreLapMark(seat, vpLap, tracks.disc_size), vpX, vpY));
     }
 
-    /* Every seat's strength token is always on the track: in the framed
-       square left of 1/11 at strength 0 (four tokens in a 2×2), on the
-       printed number otherwise, and on its "+20" face beyond 20 (23 is
+    /* Every seat's strength token is always on the track: at strength 0
+       in the framed square left of 1/11 (four tokens in a 2×2), or fanned
+       on the original board's printed 0 ring, on the printed number
+       otherwise, and on its "+20" face beyond 20 (23 is
        the token on 3 showing +20). With the owner's token pictures
        (catalog.strength_tokens) it is the picture of that face, lying in
        the open part of its cell like the marker on the table, and seats
@@ -1417,7 +1464,8 @@ function renderTrackMarkers(stage, view) {
       ? strengthPicture(seat, flipped ? faces.plus20 : faces.front, tracks.strength.token_size)
       : seatToken(seat, "track-token strength-token");
     token.title = t("board.seat_strength", { seat, strength });
-    if (shown === 0) {
+    const zeroPoint = tracks.strength.zero_point;
+    if (shown === 0 && !zeroPoint) {
       const [zx, zy, zw, zh] = tracks.strength.zero_box;
       const inset = faces ? 0.25 : 0.3;
       placeAt(
@@ -1428,6 +1476,7 @@ function renderTrackMarkers(stage, view) {
     } else {
       const row = shown > 10 ? 1 : 0;
       const cell = shown > 10 ? shown - 10 : shown;
+      const x = shown === 0 ? zeroPoint[0] : tracks.strength.cells[cell];
       if (faces) {
         /* The fan may lap about half a percent over each neighbour (a
            cell is 3.75 wide, the widest fan 4.95), which keeps a strip of
@@ -1435,7 +1484,8 @@ function renderTrackMarkers(stage, view) {
         const sharing = strengthStacks.get(shown);
         const step = sharing.length > 1 ? Math.min(1.1, 1.95 / (sharing.length - 1)) : 0;
         const shift = (sharing.indexOf(seat) - (sharing.length - 1) / 2) * step;
-        placeAt(token, tracks.strength.cells[cell] + shift, tracks.strength.token_rows[row] - shift * 0.35);
+        const y = shown === 0 ? zeroPoint[1] : tracks.strength.token_rows[row];
+        placeAt(token, x + shift, y - shift * 0.35);
       } else {
         if (flipped) {
           token.classList.add("flipped");
@@ -1444,7 +1494,8 @@ function renderTrackMarkers(stage, view) {
           plus.textContent = "+20";
           token.appendChild(plus);
         }
-        placeAt(token, tracks.strength.cells[cell] + (seat - 1.5) * 0.9, tracks.strength.rows[row]);
+        const y = shown === 0 ? zeroPoint[1] : tracks.strength.rows[row];
+        placeAt(token, x + (seat - 1.5) * 0.9, y);
       }
     }
     stage.appendChild(token);
@@ -1581,6 +1632,7 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   if (makerSpice.get(spaceId)) {
     status.push(t("board.bonus_spice", { count: makerSpice.get(spaceId) }));
   }
+  for (const words of originalSpaceStatus(spaceId)) status.push(words);
   if (status.length) {
     const line = document.createElement("div");
     line.className = "space-status";
@@ -1594,6 +1646,57 @@ function spaceRow(spaceId, occupants, controllers, makerSpice) {
   });
   hoverPopover(row, () => entry);
   return row;
+}
+
+/* The seats The Voice bars from a space this round (OQ-116). */
+function voiceBarredSeats(spaceId, view) {
+  return (view.players || [])
+    .filter((player) => (player.voice_blocked_space_ids || []).includes(spaceId))
+    .map((player) => player.player);
+}
+
+/* The Voice's mark on a space of the board: a chip in each barred seat's
+   colour, apart from any Control marker (OQ-116). */
+function voiceBarredMark(seats) {
+  const mark = document.createElement("span");
+  mark.className = "voice-barred";
+  for (const seat of seats) {
+    const chip = document.createElement("span");
+    chip.className = "voice-barred-seat";
+    chip.style.background = SEAT_COLORS[seat];
+    mark.appendChild(chip);
+  }
+  return mark;
+}
+
+/* The original game's state on a space of the text board: the Mentat lying
+   on its own space while no seat holds it [DI pp. 4, 13] (and who takes it
+   at the next round's start after Sort Through the Chaos [FAQ p. 4]), and
+   the seats The Voice bars from the space (OQ-116). */
+function originalSpaceStatus(spaceId) {
+  const view = state.view;
+  if (!view || viewBaseGame(view) !== "imperium") return [];
+  const words = [];
+  const players = view.players || [];
+  if (spaceId === "mentat" && !players.some((player) => player.mentat)) {
+    words.push(t("board.mentat_here"));
+    if (view.mentat_owed_to !== null && view.mentat_owed_to !== undefined) {
+      words.push(t("board.mentat_owed", {
+        seat: t("common.seat", { seat: view.mentat_owed_to }),
+      }));
+    }
+  }
+  const barred = players
+    .filter((player) => (player.voice_blocked_space_ids || []).includes(spaceId))
+    .map((player) => t("common.seat", { seat: player.player }));
+  if (barred.length) {
+    const voice = lookup("the_voice", "cards");
+    words.push(t("board.voice_blocked", {
+      card: voice ? voice.name : "The Voice",
+      seats: barred.join(", "),
+    }));
+  }
+  return words;
 }
 
 /* ---------- market strip (shared table zones) ---------- */
@@ -1779,8 +1882,8 @@ function renderMarket() {
 
   /* With the board scan the Conflict card and the face-up contracts sit
      in their printed slots on the board (renderSlotCards); the strips
-     below only cover the text-board fallback. */
-  const onBoard = Boolean(state.catalog.board_image);
+     below cover the text board and a board without those slots. */
+  const onBoard = Boolean(boardScan(view) && boardLayout(view).tracks.conflict_slot);
   if (!onBoard) {
     const conflicts = cardStrip(
       market,
@@ -2605,8 +2708,8 @@ function scoutsRegionsClear(regions, avoid) {
 
 /* The box (stage percent) of the Sardaukar Commander standing on a space's
    frame (commanderPiece). */
-function commanderBox(spaceBox) {
-  const [left, top, width, height] = spaceBox;
+function commanderBox(frame) {
+  const [left, top, width, height] = frame;
   const spot = state.catalog.commander_spot;
   const size = state.catalog.tracks.conflict_units.sizes.commander;
   const tall = height * spot.height;

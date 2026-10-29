@@ -5,6 +5,11 @@ import re
 import sys
 from pathlib import Path
 
+from dune_imperium.content.imperium.board import IMPERIUM_BOARD_SPACES
+from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
+from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
+from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
+from dune_imperium.content.uprising.board import BOARD_SPACES
 from dune_imperium.content.uprising.imperium import IMPERIUM_CARDS
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS, INTRIGUE_CARDS_BY_ID
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS
@@ -31,13 +36,19 @@ def test_catalog_is_json_serializable_and_covers_every_card() -> None:
 
     cards = catalog["cards"]
     assert isinstance(cards, dict)
-    # Uprising's own cards: the original game's join with its screen (P5).
-    uprising_imperium = (entry.card.card_id for entry in IMPERIUM_CARDS)
-    for card_id in (*STARTING_CARDS_BY_ID, "prepare_the_way", *uprising_imperium):
+    # Both base games' cards (the original game's since stage P5a of
+    # docs/base-game-and-ix-plan.md): its 43 and 3 promos, its Reserve.
+    imperium = (
+        entry.card.card_id for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS)
+    )
+    reserve = (stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS)
+    for card_id in (*STARTING_CARDS_BY_ID, "prepare_the_way", *imperium, *reserve):
         assert card_id in cards
     intrigue = catalog["intrigue"]
     assert isinstance(intrigue, dict)
-    assert set(intrigue) == {entry.card.card_id for entry in INTRIGUE_CARDS}
+    assert set(intrigue) == {
+        entry.card.card_id for entry in (*INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS)
+    }
 
 
 def test_objective_images_follow_language_and_versioned_asset_mapping() -> None:
@@ -459,7 +470,16 @@ def test_catalog_spaces_carry_structured_board_data() -> None:
     catalog = build_catalog()
     spaces = catalog["spaces"]
     assert isinstance(spaces, dict)
-    assert len(spaces) == 22 + 1  # Tuek's Sietch (Bloodlines)
+    # Uprising's 22, Tuek's Sietch (Bloodlines) and the original board's 22,
+    # three of them (Arrakeen, Imperial Basin, Secrets) one print on both.
+    assert len(spaces) == 22 + 1 + 22 - 3
+    for space_id, entry in spaces.items():
+        assert isinstance(entry, dict)
+        on_uprising = space_id in {space.space_id for space in BOARD_SPACES}
+        on_original = space_id in {space.space_id for space in IMPERIUM_BOARD_SPACES}
+        assert entry["base_games"] == (
+            ["uprising"] * on_uprising + ["imperium"] * on_original
+        ), space_id
 
     sardaukar = spaces["sardaukar"]
     assert isinstance(sardaukar, dict)
@@ -715,11 +735,19 @@ def test_catalog_names_the_cards_whose_korean_print_was_read() -> None:
     assert isinstance(intrigue, dict)
     assert korean(leaders, "reverend_mother_jessica") is None
     assert korean(intrigue, "adaptive_tactics") is None
-    # Every board space and Objective card has its Korean name.
+    # Every board space of both boards (the original game's from its Korean
+    # rulebook's Board Space Guide [DI-ko pp. 17-18]) and every Objective card
+    # has its Korean name.
     spaces = catalog["spaces"]
     objectives = catalog["objectives"]
     assert isinstance(spaces, dict) and isinstance(objectives, dict)
     assert all(korean(spaces, space_id) for space_id in spaces)
+    assert korean(spaces, "conspire") == "흑막"
+    assert korean(spaces, "the_great_flat") == "대평지"
+    assert korean(leaders, "paul_atreides") == "폴 아트레이드"
+    # Not named in the Korean rulebook's text: English (plan 18.5 2).
+    assert korean(leaders, "duke_leto_atreides") is None
+    assert korean(cards, "arrakis_liaison") == "아라키스 연락책"
     assert all(korean(objectives, objective_id) for objective_id in objectives)
     assert korean(spaces, "imperial_privilege") == "제국 특권"
     assert korean(spaces, "fremkit") == "프렘 행낭"
@@ -1036,6 +1064,13 @@ def test_catalog_carries_board_overlay_layout_and_optional_icons() -> None:
     for entry in spaces.values():
         assert isinstance(entry, dict)
         box = entry["box"]
+        # The board scan is Uprising's; the original board's own spaces have
+        # no layout before stage P5b (docs/base-game-and-ix-plan.md 18).
+        base_games = entry["base_games"]
+        assert isinstance(base_games, list)
+        if "uprising" not in base_games:
+            assert box is None
+            continue
         assert isinstance(box, list) and len(box) == 4
     assert catalog["space_frame"] == {"cut": [11.8, 15.3]}
     posts = catalog["posts"]

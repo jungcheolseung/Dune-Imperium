@@ -1,4 +1,7 @@
-"""English display text for the 22 Uprising board spaces.
+"""English display text for the board spaces of both base games.
+
+Uprising's 22 spaces and the original game's 22 (docs/rules/imperium-base.md
+8; Arrakeen, Imperial Basin and Secrets are one print on both boards).
 
 Spaces whose printed effect is fully covered by the engine's static
 automatic-effect table render their text from that same table, so the shown
@@ -25,9 +28,12 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.state import GameState
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.rules.board_effects import (
+    BOARD_ICON_CONNECTIONS,
     BOARD_ICON_CONTRACT,
+    BOARD_ICON_FOLDSPACE,
     BOARD_ICON_HIGH_COUNCIL,
     BOARD_ICON_INFLUENCE,
+    BOARD_ICON_MENTAT,
     BOARD_ICON_SPY,
     BOARD_ICON_SWORDMASTER,
     BOARD_ICON_TRASH,
@@ -129,6 +135,28 @@ _AUTHORED_OPTION_EFFECTS: Mapping[
         ("shipping", None): (
             "Gain 5 solari, Gain 1 Influence with a Faction of your choice",
         ),
+        # The original game's spaces whose visit is more than the engine's
+        # static table says, worded after docs/rules/imperium-base.md 8
+        # [DI pp. 17-18] and 9 (the Mentat).
+        ("foldspace", None): (
+            "Gain 1 Spacing Guild Influence, Acquire a Foldspace card",
+        ),
+        ("selective_breeding", None): (
+            "Gain 1 Bene Gesserit Influence. You may trash a card → Draw 2 cards",
+        ),
+        ("mentat", None): (
+            "Draw 1 card. Take the Mentat if it is here: one of your Agents"
+            " this round",
+        ),
+        ("imperium_swordmaster", None): (
+            "Once per game: take your third Agent, usable from this round",
+        ),
+        ("imperium_high_council", None): (
+            "Once per game: seat your Councilor for +2 Persuasion at every"
+            " Reveal turn",
+        ),
+        ("imperium_hagga_basin", None): ("Gain 2 spice plus all bonus spice here",),
+        ("the_great_flat", None): ("Gain 3 spice plus all bonus spice here",),
     }
 )
 
@@ -230,6 +258,28 @@ _AUTHORED_OPTION_EFFECTS_KO: Mapping[
         ),
         ("imperial_basin", None): ("{spice:1} 및 여기 있는 보너스 {spice} 모두 얻음",),
         ("shipping", None): ("{solari:5}, {influence_any:1} 선택",),
+        # The original game's spaces (the English table's comment), in its
+        # Korean rulebook's words: 접힘 공간 카드 (the Foldspace card) and
+        # 멘타트 [DI-ko pp. 16-18]; the trash arrow and the Councilor follow
+        # the Uprising lines above.
+        ("foldspace", None): ("{influence_spacing_guild:1}, 접힘 공간 카드 {acquire}",),
+        ("selective_breeding", None): (
+            "{influence_bene_gesserit:1}. 카드 1장 {trash} 가능 {arrow_right} {draw:2}",
+        ),
+        ("mentat", None): (
+            "{draw:1}. 멘타트가 여기 있으면 가져옴: 이번 라운드 당신의 {agent} 하나",
+        ),
+        ("imperium_swordmaster", None): (
+            "게임당 한 번: 세 번째 {agent} 가져옴 (이번 라운드부터 사용 가능)",
+        ),
+        ("imperium_high_council", None): (
+            "게임당 한 번: 매 {reveal_turn}마다 +{persuasion:2}를 위해 원로회에"
+            " 의원 토큰 놓음",
+        ),
+        ("imperium_hagga_basin", None): (
+            "{spice:2} 및 여기 있는 보너스 {spice} 모두 얻음",
+        ),
+        ("the_great_flat", None): ("{spice:3} 및 여기 있는 보너스 {spice} 모두 얻음",),
     }
 )
 
@@ -266,6 +316,11 @@ SPACE_NOTES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "assembly_hall": (
             "While your Agent is here: +1 Persuasion at your Reveal turn",
         ),
+        # The original game's Hall of Oratory prints the same passive
+        # [DI p. 17].
+        "hall_of_oratory": (
+            "While your Agent is here: +1 Persuasion at your Reveal turn",
+        ),
         "arrakeen": (
             "Control: whenever an Agent is sent here, the controller"
             " gains 1 solari",
@@ -277,6 +332,11 @@ SPACE_NOTES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "imperial_basin": (
             "Control: whenever an Agent is sent here, the controller"
             " gains 1 spice",
+        ),
+        # The original game's third controllable space [DI p. 10].
+        "carthag": (
+            "Control: whenever an Agent is sent here, the controller"
+            " gains 1 solari",
         ),
     }
 )
@@ -319,6 +379,10 @@ SPACE_NOTES_KO: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "당신의 {agent}가 여기 있는 동안, 당신의 {reveal_turn}에"
             " +{persuasion:1}",
         ),
+        "hall_of_oratory": (
+            "당신의 {agent}가 여기 있는 동안, 당신의 {reveal_turn}에"
+            " +{persuasion:1}",
+        ),
         "arrakeen": (
             "지배: 여기로 {agent}를 보낼 때마다 지배권을 가진 플레이어가"
             " {solari:1} 얻음",
@@ -330,6 +394,10 @@ SPACE_NOTES_KO: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "imperial_basin": (
             "지배: 여기로 {agent}를 보낼 때마다 지배권을 가진 플레이어가"
             " {spice:1} 얻음",
+        ),
+        "carthag": (
+            "지배: 여기로 {agent}를 보낼 때마다 지배권을 가진 플레이어가"
+            " {solari:1} 얻음",
         ),
     }
 )
@@ -349,6 +417,14 @@ _ICON_TEXTS: Mapping[str, str] = MappingProxyType(
         BOARD_ICON_SPY: "Place a Spy",
         BOARD_ICON_TRASH: "You may trash a card",
         BOARD_ICON_INFLUENCE: "Gain 1 Influence with a Faction of your choice",
+        # The original board's own icons [DI pp. 17-18] (docs/rules/
+        # imperium-base.md 8, 9) and Earl Memnon Thorvald's Connections, the
+        # Influence the seat he just took gives (imperium-base.md 12).
+        BOARD_ICON_FOLDSPACE: "Acquire a Foldspace card",
+        BOARD_ICON_MENTAT: (
+            "Take the Mentat if it is here: one of your Agents this round"
+        ),
+        BOARD_ICON_CONNECTIONS: "Gain 1 Influence with a Faction of your choice",
     }
 )
 
@@ -365,6 +441,13 @@ _ICON_TEXTS_KO: Mapping[str, str] = MappingProxyType(
         BOARD_ICON_SPY: "{spy} 배치",
         BOARD_ICON_TRASH: "카드 1장 {trash} 가능",
         BOARD_ICON_INFLUENCE: "{influence_any:1} 선택",
+        # The English table's comment, in the Korean rulebook's words (the
+        # space lines above).
+        BOARD_ICON_FOLDSPACE: "접힘 공간 카드 {acquire}",
+        BOARD_ICON_MENTAT: (
+            "멘타트가 여기 있으면 가져옴: 이번 라운드 당신의 {agent} 하나"
+        ),
+        BOARD_ICON_CONNECTIONS: "{influence_any:1} 선택",
     }
 )
 

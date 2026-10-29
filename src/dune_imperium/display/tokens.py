@@ -447,7 +447,7 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         (
             PersonalCardAgentEffect
             .MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
-        ): "You may pay 2 spice → Gain 1 Spacing Guild Influence, Gain 3 Solari",
+        ): "You may pay 2 spice → Gain 1 Spacing Guild Influence, Gain 3 solari",
         PersonalCardAgentEffect.EACH_OPPONENT_LOSES_GARRISON_TROOP: (
             "Each opponent loses one garrisoned troop"
         ),

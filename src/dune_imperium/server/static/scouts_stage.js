@@ -455,7 +455,7 @@ function fillScoutsStage(stage, shown) {
     TERM_LANGUAGE,
     painting,
     Object.keys(SCOUTS_STAGE_PIECES).map(scoutsArtUrl),
-    Boolean(state.catalog && state.catalog.board_image),
+    Boolean(boardScan()),
   ]);
   if (signature === scoutsStage.content) return;
   scoutsStage.content = signature;
@@ -464,7 +464,7 @@ function fillScoutsStage(stage, shown) {
   stage.dataset.kind = shown.kind;
   /* The board scan is square and top-aligned in its cell; the card's frame
      takes the same square. The text board fills the cell. */
-  stage.classList.toggle("no-scan", !(state.catalog && state.catalog.board_image));
+  stage.classList.toggle("no-scan", !boardScan());
   for (const [name, variable] of Object.entries(SCOUTS_STAGE_PIECES)) {
     const url = scoutsArtUrl(name);
     stage.classList.toggle(`has-${name.replaceAll("_", "-")}`, Boolean(url));

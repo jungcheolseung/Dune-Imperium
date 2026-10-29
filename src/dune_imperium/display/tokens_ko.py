@@ -725,7 +725,7 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
         .MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY
     ): (
         "{solari:3} 지불 가능 {arrow_right} {troop:2}, "
-        "이 병력을 {conflict}에 배치 가능"
+        "이 {troop}을 {conflict}에 배치 가능"
     ),
     (
         PersonalCardRevealChoiceEffect

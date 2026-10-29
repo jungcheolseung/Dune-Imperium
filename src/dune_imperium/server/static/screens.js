@@ -2,10 +2,17 @@
 
 /* ---------- setup screen ---------- */
 
-function buildSeatSelects() {
+/* `followDefaults`: a base-game change builds them again, and a seat nobody
+   picked takes the new game's default. */
+function buildSeatSelects({ followDefaults = false } = {}) {
   const wrap = el("seat-selects");
-  /* A language switch builds them again: keep what was chosen. */
-  const chosen = [...wrap.querySelectorAll("select")].map((select) => select.value);
+  /* A language switch builds them again: keep what was chosen, as long as
+     the chosen base game's table takes it. */
+  const allowed = allowedSeatKinds();
+  const takes = (kind) => Boolean(kind) && (!allowed || allowed.has(kind));
+  const selects = [...wrap.querySelectorAll("select")];
+  const chosen = selects.map((select) => select.value);
+  const picked = selects.map((select) => select.dataset.chosen);
   wrap.textContent = "";
   for (let seat = 0; seat < 4; seat += 1) {
     const label = document.createElement("label");
@@ -18,22 +25,81 @@ function buildSeatSelects() {
     for (const [value, text] of SEAT_KINDS) {
       /* The search AI needs the server's network (--search-checkpoint). */
       if (value === "search" && !(state.server && state.server.search_ai)) continue;
+      if (!takes(value)) continue;
       const option = document.createElement("option");
       option.value = value;
       option.textContent = text;
       select.appendChild(option);
     }
-    /* Remote games are four friends: an admin who forgets to change three
-       dropdowns must not seat AIs where a friend expects to sit. The open
-       (local) server seats one human against three app AIs (Hard), the
-       port of the Steam app's computer opponent. */
-    const defaultKind = isRemote() ? "human" : seat === 0 ? "human" : "app_ai";
-    select.value = chosen[seat] || defaultKind;
+    const kept = picked[seat] || !followDefaults ? chosen[seat] : null;
+    select.value = takes(kept) ? kept : defaultSeatKind(seat);
+    if (picked[seat] && takes(kept)) select.dataset.chosen = picked[seat];
+    select.addEventListener("change", () => {
+      select.dataset.chosen = "1";
+    });
     label.appendChild(select);
     wrap.appendChild(label);
   }
   buildPaceSelect();
   updateSetupSummary();
+}
+
+/* The seat kinds a table of the chosen base game takes, from the server's
+   one table (GET /whoami seat_kinds, server/seat_kinds.py), or null for
+   every kind: the original game seats no app or search AI until the app
+   AI's port of it (stage P6 of docs/base-game-and-ix-plan.md) adds them
+   there. */
+function allowedSeatKinds() {
+  const table = state.server && state.server.seat_kinds;
+  const kinds = table ? table[el("opt-base-game").value] : null;
+  return kinds ? new Set(kinds) : null;
+}
+
+/* Remote games are four friends: an admin who forgets to change three
+   dropdowns must not seat AIs where a friend expects to sit. The open
+   (local) server seats one human against three app AIs (Hard), the port of
+   the Steam app's computer opponent, or three heuristic AIs where the
+   chosen base game's table does not take the app AI. */
+function defaultSeatKind(seat) {
+  if (isRemote() || seat === 0) return "human";
+  const allowed = allowedSeatKinds();
+  return allowed && !allowed.has("app_ai") ? "heuristic" : "app_ai";
+}
+
+/* The options the original game cannot take yet (rules/setup.py's pending
+   options): the base-game select clears and locks them, and gives the
+   choices back on a return to Uprising. */
+const UPRISING_ONLY_OPTIONS = [
+  "opt-choam", "opt-bloodlines", "opt-tech", "opt-immortality", "opt-go-to-11",
+  "opt-epic-game", "opt-scouts",
+];
+
+function syncBaseGameOption() {
+  const original = el("opt-base-game").value === "imperium";
+  el("opt-base-game-note").hidden = !original;
+  /* The promo box names the chosen base game's own promo cards. */
+  el("opt-promo-uprising").hidden = original;
+  el("opt-promo-imperium").hidden = !original;
+  for (const id of UPRISING_ONLY_OPTIONS) {
+    const box = el(id);
+    if (original && !box.dataset.locked) {
+      box.dataset.locked = "1";
+      box.dataset.wasChecked = box.checked ? "1" : "";
+      box.checked = false;
+      box.disabled = true;
+    } else if (!original && box.dataset.locked) {
+      delete box.dataset.locked;
+      box.checked = box.dataset.wasChecked === "1";
+      box.disabled = false;
+    }
+  }
+  if (!original) {
+    syncTechOption();
+    syncGoTo11Option();
+  }
+  /* The seats offer what the base game's table takes; a seat nobody picked,
+     or whose pick that table does not take, follows the game's default. */
+  buildSeatSelects({ followDefaults: true });
 }
 
 /* The AI paces a game can run at (server/pacing.py AI_PACES), in the
@@ -107,6 +173,7 @@ async function loadGameList() {
     const label = summary.finished
       ? t("common.finished")
       : t("screens.round_number", { round: summary.round_number });
+    if (summary.base_game === "imperium") item.appendChild(baseGameBadge());
     item.append(
       `${seedLabel(summary)}${summary.seats.map(seatKindLabel).join(", ")} · ${label} `
     );
@@ -157,6 +224,9 @@ async function loadSaveList() {
       continue;
     }
     if (entry.autosave) item.appendChild(autosaveBadge());
+    if (entry.ruleset && entry.ruleset.base_game === "imperium") {
+      item.appendChild(baseGameBadge());
+    }
     item.append(
       `${saveTitle(entry)} · ${entry.seats.map(seatKindLabel).join(", ")} · ${savedWhen(entry)} `,
     );
@@ -222,6 +292,15 @@ function savedWhen(entry) {
     : when.toLocaleString(TERM_LANGUAGE);
 }
 
+/* A game or save of the original Dune: Imperium; Uprising, the default,
+   carries none. */
+function baseGameBadge() {
+  const badge = document.createElement("span");
+  badge.className = "badge base-game";
+  badge.textContent = t("screens.base_game_imperium_badge");
+  return badge;
+}
+
 function autosaveBadge() {
   const badge = document.createElement("span");
   badge.className = "badge autosave";
@@ -233,6 +312,7 @@ function autosaveBadge() {
    (RulesetConfig rejects it alone), so its box waits for the Bloodlines box
    and is cleared when Bloodlines is. */
 function syncTechOption() {
+  if (el("opt-bloodlines").dataset.locked) return;
   const bloodlines = el("opt-bloodlines").checked;
   el("opt-tech").disabled = !bloodlines;
   if (!bloodlines) el("opt-tech").checked = false;
@@ -242,6 +322,7 @@ function syncTechOption() {
    it alone), so its box follows the Immortality box the way Tech follows
    Bloodlines. */
 function syncGoTo11Option() {
+  if (el("opt-immortality").dataset.locked) return;
   const immortality = el("opt-immortality").checked;
   el("opt-go-to-11").disabled = !immortality;
   if (!immortality) el("opt-go-to-11").checked = false;
@@ -285,6 +366,7 @@ async function createGame(event) {
   const seats = shuffle ? shuffledSeats(configured) : configured;
   const payload = {
     seats,
+    base_game: el("opt-base-game").value,
     /* A remote room also draws its people to the human seats when one of
        them starts it (user decision 2026-10-25): the shuffle above places
        the AI seats, the start places the people (sessions.py start_game). */
@@ -327,7 +409,11 @@ async function createGame(event) {
 /* The tab's own title, in the chosen language (the page's <title> carries
    the same key). */
 function baseTitle() {
-  return t("html.page_title");
+  /* The original game's table is named after it; every other page keeps
+     the server's name. */
+  const original = state.summary && state.summary.base_game === "imperium"
+    && !el("game-screen").hidden;
+  return t(original ? "html.page_title_imperium" : "html.page_title");
 }
 const SCREENS = ["setup-screen", "landing-screen", "lobby-screen", "game-screen"];
 

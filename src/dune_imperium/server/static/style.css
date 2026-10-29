@@ -2390,6 +2390,40 @@ body.hand-dragging, body.hand-dragging * {
   user-select: none;
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85));
 }
+/* The Voice on a board space (board.js voiceBarredMark): a row of chips in
+   the barred seats' colours at the frame's top-right, apart from any
+   Control marker (OQ-116). */
+.voice-barred {
+  position: absolute;
+  top: 4%;
+  right: 4%;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+.voice-barred-seat {
+  width: 0.55em;
+  height: 0.55em;
+  box-shadow: 0 0 0 1px #111;
+}
+/* The original game's Mentat on its own space (board.js mentatOnSpace):
+   a light figure over the silhouette the space prints, centred on it, with
+   the hairline edge of every piece on the scan. */
+.mentat-piece {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  overflow: visible;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85));
+}
+.mentat-piece path {
+  fill: #c8bdb9;
+  stroke: #111;
+  stroke-width: 1;
+}
 /* Without the picture: a mark of the figure's size in the plastic's grey. */
 .commander-piece.drawn {
   aspect-ratio: 130 / 195;
@@ -2641,7 +2675,8 @@ body.hand-dragging, body.hand-dragging * {
 .host-save-list { list-style: none; padding: 0; margin: 0.3rem 0; font-size: 0.9em; }
 .host-save-list li { padding: 0.15rem 0; }
 .host-save-actions { display: flex; gap: 0.4rem; }
-.badge.autosave {
+.badge.autosave,
+.badge.base-game {
   margin-right: 0.35rem;
   padding: 0 0.35rem;
   border: 1px solid var(--line);

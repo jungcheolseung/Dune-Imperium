@@ -69,7 +69,7 @@ from dune_imperium.agents.registry import (
     is_background_agent_kind,
     parse_search_kind,
 )
-from dune_imperium.config import RulesetConfig
+from dune_imperium.config import BaseGame, RulesetConfig
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.intrigue import is_twisted_intrigue
 from dune_imperium.core.actions import DomainAction
@@ -131,6 +131,7 @@ from dune_imperium.server.persistence import (
     read_saved_clock,
 )
 from dune_imperium.server.play_clock import PlayClock
+from dune_imperium.server.seat_kinds import seat_kind_allowed
 from dune_imperium.server.session_log import (
     EFFECT_PICKED_EVENT,
     SEALED_ACTION_IDS,
@@ -572,6 +573,7 @@ class GameSessionManager:
         self,
         seats: tuple[str, ...],
         *,
+        base_game: str = BaseGame.UPRISING.value,
         choam_module: bool = False,
         leader_draft: bool = False,
         promo_cards: bool = False,
@@ -621,6 +623,7 @@ class GameSessionManager:
         seats = tuple(self._seat_assignment(assignment) for assignment in seats)
         try:
             config = RulesetConfig(
+                base_game=BaseGame(base_game),
                 choam_module=choam_module,
                 leader_draft=leader_draft,
                 promo_cards=promo_cards,
@@ -635,7 +638,8 @@ class GameSessionManager:
         except ValueError as error:
             # RulesetConfig rejects unsupported combinations (the Tech Module
             # without Bloodlines [Bloodlines pp. 6-7], Go to 11 without
-            # Immortality (OQ-091), a non-four-player game).
+            # Immortality (OQ-091), a non-four-player game), and BaseGame an
+            # unknown base game.
             # That is a bad request, not a server fault, so it must not reach
             # the client as a bare 500.
             raise SessionError(str(error)) from error
@@ -653,6 +657,7 @@ class GameSessionManager:
             raise SessionError(f"unknown AI pace {pace!r}")
 
         engine = UprisingRulesEngine()
+        initial = _reset(engine, config, game_seed)
         session = GameSession(
             game_id=uuid.uuid4().hex,
             config=config,
@@ -660,7 +665,7 @@ class GameSessionManager:
             policy_seed=policy_seed,
             seats=tuple(seats),
             engine=engine,
-            state=engine.reset(config, game_seed),
+            state=initial,
             chance=ChanceResolver(seed=game_seed),
             agents=_build_agents(seats, policy_seed, config),
         )
@@ -1377,7 +1382,7 @@ class GameSessionManager:
             policy_seed=parsed.policy_seed,
             seats=parsed.seats,
             engine=engine,
-            state=engine.reset(config, parsed.replay.seed),
+            state=_reset(engine, config, parsed.replay.seed),
             chance=ChanceResolver(seed=parsed.replay.seed),
             agents=_build_agents(parsed.seats, parsed.policy_seed, config),
         )
@@ -2356,6 +2361,7 @@ class GameSessionManager:
             # reproduce every shuffle, so a remote game keeps it to itself
             # until the finished game discloses everything (OQ-010 ruling 4).
             "game_seed": session.game_seed if finished or not remote else None,
+            "base_game": session.config.base_game.value,
             "choam_module": session.config.choam_module,
             "leader_draft": session.config.leader_draft,
             "promo_cards": session.config.promo_cards,
@@ -2415,12 +2421,31 @@ def _clean_player_name(name: str) -> str:
     return cleaned
 
 
+def _reset(engine: UprisingRulesEngine, config: RulesetConfig, seed: int) -> GameState:
+    """The game's first state, for a new game or a save's restore.
+
+    Setup refuses a combination whose content is not in the engine yet (the
+    original game with an option of a later stage of
+    docs/base-game-and-ix-plan.md); that is a bad request or a save this
+    build cannot play, not a server fault.
+    """
+
+    try:
+        return engine.reset(config, seed)
+    except NotImplementedError as error:
+        raise SessionError(str(error)) from error
+
+
 def _validate_seats(seats: tuple[str, ...], config: RulesetConfig) -> None:
     if len(seats) != config.players:
         raise SessionError("exactly one seat assignment per player is required")
     for assignment in seats:
         if assignment != HUMAN_SEAT and not is_agent_kind(assignment):
             raise SessionError(f"unknown seat assignment: {assignment!r}")
+        # The seats a table of this base game may hold (server/seat_kinds.py,
+        # the table the setup screen offers from too).
+        if not seat_kind_allowed(assignment, config.base_game):
+            raise SessionError(f"this base game cannot seat {assignment!r} yet")
         # A split search seat, or one with a search option other than the
         # flip margin, is a measurement tool; a table seat names one file,
         # which is what the players are shown (``_public_seat_kind``).

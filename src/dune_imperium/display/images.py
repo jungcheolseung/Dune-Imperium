@@ -40,10 +40,13 @@ the same language order (``ko``, ``en`` for the Korean UI).
 Only entries of the indexed sets (Uprising, and Bloodlines for the
 ``bloodlines`` option) that carry a ``content_id`` are indexed (Rise of
 Ix: only Epic Game Mode's two cards carry one); the other sets in the
-manifest are archived for future expansions. The manifest's ``starting``
-and ``reserve`` kinds both map to the catalog's ``other`` kind (starting
-and Reserve cards), and its ``promo`` kind (the three Uprising promo
-Imperium cards) to ``imperium``.
+manifest are archived for future expansions. The original game's set
+(``base``) names its own prints since stage P5d of
+docs/base-game-and-ix-plan.md; its starting cards and the three spaces it
+shares with Uprising are Uprising's prints and keep Uprising's entries.
+The manifest's ``starting`` and ``reserve`` kinds both map to the
+catalog's ``other`` kind (starting and Reserve cards), and its ``promo``
+kind (the promo Imperium cards) to ``imperium``.
 """
 
 import json
@@ -57,7 +60,7 @@ UPRISING_SET: Final = "uprising"
 # Rise of Ix is indexed only for Epic Game Mode's two cards (Control the
 # Spice, Economic Supremacy), the only entries of that set with a content id.
 INDEXED_SETS: Final = frozenset(
-    {UPRISING_SET, "bloodlines", "immortality", "rise-of-ix"}
+    {UPRISING_SET, "base", "bloodlines", "immortality", "rise-of-ix"}
 )
 DEFAULT_LANGUAGES: Final[tuple[str, ...]] = ("ko", "en")
 # Faces drawn from the Steam app's templates, preferred over the scans.
@@ -159,6 +162,12 @@ def required_image_keys() -> tuple[ImageKey, ...]:
         RECLAIMED_FORCES,
         TLEILAXU_CARDS,
     )
+    from dune_imperium.content.imperium.board import IMPERIUM_ONLY_BOARD_SPACES
+    from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
+    from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
+    from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
+    from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
+    from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
     from dune_imperium.content.uprising.board import BOARD_SPACES
     from dune_imperium.content.uprising.conflicts import CONFLICTS
     from dune_imperium.content.uprising.contracts import CONTRACTS
@@ -196,4 +205,12 @@ def required_image_keys() -> tuple[ImageKey, ...]:
     keys += [("tleilaxu", entry.card.card_id) for entry in TLEILAXU_CARDS]
     keys.append(("tleilaxu", RECLAIMED_FORCES.card.card_id))
     keys.append(("location", RESEARCH_STATION_OVERLAY_IMAGE_ID))
+    # The original game's own prints (its promos are Imperium cards, its
+    # Reserve the ``other`` kind, as Uprising's).
+    keys += [("imperium", entry.card.card_id) for entry in IMPERIUM_BASE_CARDS]
+    keys += [("intrigue", entry.card.card_id) for entry in IMPERIUM_INTRIGUE_CARDS]
+    keys += [("conflict", conflict.card.card_id) for conflict in IMPERIUM_CONFLICTS]
+    keys += [("leader", leader.leader_id) for leader in IMPERIUM_LEADERS]
+    keys += [("location", space.space_id) for space in IMPERIUM_ONLY_BOARD_SPACES]
+    keys += [("other", stack.card.card_id) for stack in IMPERIUM_RESERVE_STACKS]
     return tuple(dict.fromkeys(keys))

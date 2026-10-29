@@ -2263,7 +2263,7 @@ def test_dispatch_an_envoy_is_one_cost_free_plot_with_two_copies() -> None:
     )
     assert intrigue_card_text(entry) == [
         "Plot — The card you play this turn has the"
-        " emperor, spacing_guild, bene_gesserit, fremen icons"
+        " Emperor, Spacing Guild, Bene Gesserit, Fremen icons"
     ]
     assert "dispatch_an_envoy" not in {
         entry.card.card_id for entry in INTRIGUE_CARDS
@@ -3648,7 +3648,7 @@ def test_refocus_is_one_cost_free_plot_with_one_copy() -> None:
     assert [option.timing.value for option in entry.options] == ["plot"]
     assert not entry.options[0].sections[0].costs
     assert intrigue_card_text(entry) == [
-        "Plot — Shuffle your discard pile into your deck, then draw 1 card"
+        "Plot — Shuffle your discard pile into your deck, then: Draw 1 card"
     ]
     assert "refocus" not in {entry.card.card_id for entry in INTRIGUE_CARDS}
 

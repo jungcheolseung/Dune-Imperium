@@ -445,7 +445,9 @@ function fieldWord(key, text, siblings) {
     const research = researchSpaceName(text, !("bonus" in siblings));
     if (research) return research;
   }
-  if (key === "faction" || key.endsWith("_faction")) return FACTION_LABELS[text] || null;
+  if (key === "faction" || key === "factions" || key.endsWith("_faction")) {
+    return FACTION_LABELS[text] || null;
+  }
   if (key === "bonus" && text in RESEARCH_BONUS_LABELS) {
     return phraseText(RESEARCH_BONUS_LABELS[text]);
   }
@@ -709,7 +711,72 @@ function entryImage(entry) {
 
 /* A Leader's own tile (Tuek's Sietch) is on the table only while that Leader
    plays [Bloodlines p. 12]. */
+/* The base game the shown game is played on (``view.base_game``):
+   "uprising" or "imperium", the original Dune: Imperium. */
+function viewBaseGame(view = state.view) {
+  return (view && view.base_game) || "uprising";
+}
+
+/* The percent layout over the board the shown game is drawn on: Uprising's
+   is the catalog's own tables (tracks, space_frame, posts and each space's
+   box), another base game's is catalog.boards[base] in the same shapes
+   (display.board_layout_imperium for the original game; stage P5b of
+   docs/base-game-and-ix-plan.md), with no observation posts. */
+function boardLayout(view = state.view) {
+  const catalog = state.catalog || {};
+  const base = viewBaseGame(view);
+  if (base === "uprising") {
+    return {
+      image: catalog.board_image || null,
+      tracks: catalog.tracks || {},
+      space_frame: catalog.space_frame,
+      posts: catalog.posts || {},
+      post_size: catalog.post_size,
+      boxes: null,
+      mentat: null,
+    };
+  }
+  const board = (catalog.boards || {})[base] || {};
+  return {
+    image: board.image || null,
+    tracks: board.tracks || {},
+    space_frame: board.space_frame,
+    posts: {},
+    post_size: 0,
+    boxes: board.space_boxes || {},
+    mentat: board.mentat || null,
+  };
+}
+
+/* A space's box on the shown board (percent of the picture), or null when
+   that board has no place for it. */
+function spaceBox(spaceId, entry, view = state.view) {
+  const layout = boardLayout(view);
+  return layout.boxes ? layout.boxes[spaceId] || null : entry.box || null;
+}
+
+/* The board scan the shown game is drawn on, or null for the text board:
+   the base game's picture once its layout places the spaces. */
+function boardScan(view = state.view) {
+  if (!state.catalog) return null;
+  const layout = boardLayout(view);
+  if (!layout.image) return null;
+  if (layout.boxes && !Object.keys(layout.boxes).length) return null;
+  return layout.image;
+}
+
+/* Whether the shown board draws the seats' tracks (Influence, Score,
+   strength, the Conflict): both boards' pictures do; on the text board (no
+   picture) the seat panels carry those counts (panels.js textBoardStats). */
+function boardDrawsTracks(view = state.view) {
+  return Boolean(boardScan(view) && boardLayout(view).tracks.influence);
+}
+
+/* A space is on the table when its base game's board is (``base_games``:
+   the spaces both boards print, Arrakeen, Imperial Basin and Secrets, name
+   both) and, for a Leader's own tile, while that Leader plays. */
 function spaceInPlay(entry, view) {
+  if (entry.base_games && !entry.base_games.includes(viewBaseGame(view))) return false;
   return (
     !entry.required_leader_id ||
     (view.players || []).some((player) => player.leader_id === entry.required_leader_id)

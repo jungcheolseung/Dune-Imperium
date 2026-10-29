@@ -122,6 +122,7 @@ async function init() {
   syncTechOption();
   el("opt-immortality").addEventListener("change", syncGoTo11Option);
   syncGoTo11Option();
+  el("opt-base-game").addEventListener("change", syncBaseGameOption);
   el("setup-form").addEventListener("change", updateSetupSummary);
   el("leave-game").addEventListener("click", () => leaveGame());
   el("open-lobby").addEventListener("click", () => showLobby());

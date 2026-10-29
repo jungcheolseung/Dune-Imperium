@@ -11,6 +11,12 @@ from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
     TLEILAXU_CARDS,
 )
+from dune_imperium.content.imperium.board import IMPERIUM_ONLY_BOARD_SPACES
+from dune_imperium.content.imperium.conflicts import IMPERIUM_CONFLICTS
+from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
+from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
+from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
+from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
 from dune_imperium.content.uprising.board import BOARD_SPACES
 from dune_imperium.content.uprising.conflicts import CONFLICTS
 from dune_imperium.content.uprising.contracts import CONTRACTS
@@ -53,6 +59,14 @@ def _all_content_keys() -> set[tuple[str, str]]:
     keys += [("tleilaxu", entry.card.card_id) for entry in TLEILAXU_CARDS]
     keys.append(("tleilaxu", RECLAIMED_FORCES.card.card_id))
     keys.append(("location", "research_station_overlay"))
+    # The original game's own prints (stage P5d of
+    # docs/base-game-and-ix-plan.md).
+    keys += [("imperium", entry.card.card_id) for entry in IMPERIUM_BASE_CARDS]
+    keys += [("intrigue", entry.card.card_id) for entry in IMPERIUM_INTRIGUE_CARDS]
+    keys += [("conflict", conflict.card.card_id) for conflict in IMPERIUM_CONFLICTS]
+    keys += [("leader", leader.leader_id) for leader in IMPERIUM_LEADERS]
+    keys += [("location", space.space_id) for space in IMPERIUM_ONLY_BOARD_SPACES]
+    keys += [("other", stack.card.card_id) for stack in IMPERIUM_RESERVE_STACKS]
     return set(keys)
 
 
@@ -104,11 +118,19 @@ def test_manifest_indexes_uprising_entries_with_a_content_id(tmp_path: Path) -> 
                 content_id="the_spice_must_flow",
             ),
             _entry("uprising/six-player/Usul.webp", kind="six-player"),
+            # The original game's own print (indexed since stage P5d).
             _entry(
                 "base/imperium/Space Travel.webp",
                 kind="imperium",
                 content_id="space_travel",
                 set_name="base",
+            ),
+            # An archived set stays out even with an id.
+            _entry(
+                "conspiracy/imperium/Opulence.webp",
+                kind="imperium",
+                content_id="opulence",
+                set_name="conspiracy",
             ),
         ],
     )
@@ -118,6 +140,7 @@ def test_manifest_indexes_uprising_entries_with_a_content_id(tmp_path: Path) -> 
         ("other", "dagger"): "base/starting/Dagger.webp",
         ("imperium", "pivotal_gambit"): "uprising/promo/Pivotal Gambit.webp",
         ("other", "the_spice_must_flow"): "uprising/reserve/The Spice Must Flow.webp",
+        ("imperium", "space_travel"): "base/imperium/Space Travel.webp",
     }
 
 
@@ -302,6 +325,14 @@ def test_required_image_keys_cover_every_displayable_content_id() -> None:
         + 1
         + 2
         + 5  # Epic Game Mode and the five Objective faces.
+        # The original game: 43 Imperium + 3 promos, 34 Intrigue, 18
+        # Conflicts, 8 Leaders, its 19 own spaces, 3 Reserve cards.
+        + 46
+        + 34
+        + 18
+        + 8
+        + 19
+        + 3
     )
     assert len(set(keys)) == len(keys)
     assert set(keys) == _all_content_keys()

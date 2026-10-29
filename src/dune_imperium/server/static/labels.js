@@ -392,8 +392,8 @@ const EVENT_LABELS = {
   conflict_revealed: "{conflict} 공개",
   conflict_won: "{conflict} 승리",
   combat_reward_line_chosen: "{combat} 보상 줄 선택",
-  mentat_taken: "Mentat 가져옴",
-  mentat_won: "Mentat 얻음 (다음 라운드)",
+  mentat_taken: "멘타트 가져옴",
+  mentat_won: "멘타트 얻음 (다음 라운드)",
   masterstroke_faction_chosen: "{leader} 비밀 진영 선택",
   masterstroke_faction_identity: "{leader} 비밀 진영",
   masterstroke_revealed: "{leader} 비밀 진영 공개",
@@ -709,6 +709,9 @@ const FEYD_TRACK_LABELS = {
    catalog name (fieldText). */
 const VALUE_LABELS = {
   card: "카드",
+  /* Where an acquired card went: on top of the deck (Recruitment Mission,
+     Bypass Protocol; OQ-145), beside the hand and the discard pile. */
+  deck_top: "{deck} 맨 위",
   troops: "{troop}",
   /* Where Scouts mission troops went (scouts_mission_troops "to"), beside
      the Conflict and the garrison, which are rule terms. */
@@ -748,7 +751,11 @@ const VALUE_LABELS = {
    다른 기억들's 기억); the battle icon is the glossary's 크리스나이프
    [Main p. 20]. */
 const PAYLOAD_KEY_LABELS = {
+  /* The card whose acquire box an icon row takes (rules/acquire_icons.py). */
+  acquired_card_id: "획득한 카드",
   action_id: "행동",
+  /* The Voice's barred seats (OQ-116). */
+  blocked_players: "막힌 플레이어",
   amount: "수량",
   auction_id: "경매",
   bonus: "보너스",
@@ -780,6 +787,8 @@ const PAYLOAD_KEY_LABELS = {
   event_round: "이벤트 라운드",
   faction: "팩션",
   faction_influence: "팩션 영향력",
+  /* Baron Harkonnen's Masterstroke Factions once revealed (OQ-115). */
+  factions: "팩션",
   first_card_id: "첫 번째 카드",
   first_post_id: "첫 번째 관측소",
   first_player: "시작 플레이어",
@@ -807,6 +816,8 @@ const PAYLOAD_KEY_LABELS = {
   leader_face_id: "지도자",
   leader_id: "지도자",
   leader_ids: "지도자",
+  /* A Conflict reward row's chosen line (panels.js names it "N번째 줄"). */
+  line: "보상 줄",
   line_index: "효과 번호",
   locations: "위치",
   lost_faction: "잃은 영향력",

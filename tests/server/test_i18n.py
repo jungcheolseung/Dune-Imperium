@@ -979,6 +979,22 @@ def _server_error_messages() -> set[str]:
             messages.add(str(error))
         else:
             raise AssertionError(f"{options} should be refused")
+    # Setup's refusal of content not in the engine yet, which a new game and
+    # a save's restore pass on (sessions.py _reset): the original game with
+    # an option of a later stage, Rise of Ix on Uprising.
+    from dune_imperium.config import BaseGame
+    from dune_imperium.rules import UprisingRulesEngine
+
+    for config in (
+        RulesetConfig(base_game=BaseGame.IMPERIUM, bloodlines=True),
+        RulesetConfig(rise_of_ix=True),
+    ):
+        try:
+            UprisingRulesEngine().reset(config, 0)
+        except NotImplementedError as error:
+            messages.add(str(error))
+        else:
+            raise AssertionError(f"{config} should be refused")
     return messages
 
 

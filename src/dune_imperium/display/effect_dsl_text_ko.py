@@ -870,7 +870,7 @@ def reward_text_ko(reward: Reward) -> str:
             name = _AGENT_ICON_NAMES_KO[icon]
             return f"이번 차례에 당신이 플레이하는 카드는 {name} 아이콘 보유"
         case DeployTheseTroops():
-            return "{reveal_turn}에 이 병력을 {conflict}에 배치 가능"
+            return "{reveal_turn}에 이 {troop}을 {conflict}에 배치 가능"
         case GrantCombatDeployment():
             # Quotes ``tokens_ko.py``'s established "{combat} (전투 장소에
             # 보낸 것처럼 배치 가능)" (its own ``reveal_effect_text_ko``,
@@ -1072,9 +1072,9 @@ def reward_text_ko(reward: Reward) -> str:
             # Quotes ``display/spaces.py``'s Swordmaster line.
             return "세 번째 {agent} 가져옴 (이번 라운드부터 사용 가능)"
         case TakeMentat():
-            # The original game's Mentat: no Korean source names it yet, so
-            # the term stays English (module docstring).
-            return "장소에서 Mentat 가져옴"
+            # The original game's Mentat, as its Korean rulebook names it
+            # ("멘타트를 가져와 지도자 위에 놓습니다" [DI-ko p. 16]).
+            return "장소에서 멘타트 가져옴"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "당신 {leader}의 {signet_ring} 능력 사용"

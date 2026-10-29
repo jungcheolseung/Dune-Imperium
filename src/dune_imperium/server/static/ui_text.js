@@ -112,6 +112,10 @@ const UI_TEXT = {
     "ko": "초기화 실패 ({{message}})",
     "en": "Initialization failed ({{message}})"
   },
+  "board.map_alt_imperium": {
+    "ko": "듄 임페리움 게임판",
+    "en": "Dune: Imperium board"
+  },
   "board.map_alt": {
     "ko": "듄 임페리움: 봉기 게임판",
     "en": "Dune: Imperium — Uprising board"
@@ -147,6 +151,18 @@ const UI_TEXT = {
   "board.conflict_not_revealed": {
     "ko": "아직 공개되지 않음",
     "en": "Not revealed yet"
+  },
+  "board.mentat_here": {
+    "ko": "멘타트 있음",
+    "en": "The Mentat is here"
+  },
+  "board.mentat_owed": {
+    "ko": "다음 라운드에 {{seat}}",
+    "en": "{{seat}} next round"
+  },
+  "board.voice_blocked": {
+    "ko": "{{card}}: {{seats}} 막힘",
+    "en": "{{card}}: barred to {{seats}}"
   },
   "board.control_seat": {
     "ko": "{control}: 플레이어{{seat}}",
@@ -676,6 +692,26 @@ const UI_TEXT = {
     "ko": "불멸 확장 (베네 틀레이락스 게임판·틀레이락스 열·접합·새 카드)",
     "en": "Immortality expansion (Bene Tleilax board · Tleilaxu Row · Graft · new cards)"
   },
+  "html.opt_base_game_label": {
+    "ko": "기본 판",
+    "en": "Base game"
+  },
+  "html.opt_base_game_uprising": {
+    "ko": "듄 임페리움: 봉기",
+    "en": "Dune: Imperium — Uprising"
+  },
+  "html.opt_base_game_imperium": {
+    "ko": "듄 임페리움 (원판)",
+    "en": "Dune: Imperium (the original game)"
+  },
+  "html.base_game_imperium_note": {
+    "ko": "원판은 아직 플레이어1 시작 플레이어·지도자 드래프트·프로모 카드(원판 3장)만 함께 씁니다. 다른 확장은 준비 중입니다. 원판 판에는 아직 휴리스틱 AI와 랜덤 AI만 앉습니다(앱 AI는 준비 중).",
+    "en": "The original game takes only Player 1 as First Player, the Leader draft and the promo cards (its 3) so far; the other expansions are still to come. Only the heuristic and random AIs sit at an original table so far (the app AI is still to come)."
+  },
+  "screens.base_game_imperium_badge": {
+    "ko": "원판",
+    "en": "Original"
+  },
   "html.opt_scouts": {
     "ko": "아라킨 스카웃 (컴패니언 앱 모드: 소위원회·임무·이벤트·경매·판매, 공식 규칙서 없음)",
     "en": "Arrakeen Scouts (companion app mode: subcommittees · missions · events · auctions · sales; no official rulebook)"
@@ -684,6 +720,10 @@ const UI_TEXT = {
     "ko": "지도자 6종 공개 드래프트 (공식 규칙 아님)",
     "en": "Open draft from 6 revealed Leaders (not an official rule)"
   },
+  "html.page_title_imperium": {
+    "ko": "듄 임페리움",
+    "en": "Dune: Imperium"
+  },
   "html.page_title": {
     "ko": "듄 임페리움: 봉기",
     "en": "Dune: Imperium — Uprising"
@@ -691,6 +731,10 @@ const UI_TEXT = {
   "html.opt_promo": {
     "ko": "프로모 카드 (봉기 3장: 아라키스 반란, The Beast's Spoils, Pivotal Gambit; 혈통을 켜면 무자비한 리더십, 불멸을 켜면 틀레이락스 덱에 천재적인 조언자, 파이터도)",
     "en": "Promo cards (3 in Uprising: Arrakis Revolt, The Beast's Spoils, Pivotal Gambit; plus Ruthless Leadership with Bloodlines on, and Piter, Genius Advisor in the Tleilaxu deck with Immortality on)"
+  },
+  "html.opt_promo_imperium": {
+    "ko": "프로모 카드 (원판 3장: Duncan, Loyal Blade · Jessica of Arrakis · Thumper)",
+    "en": "Promo cards (3 in the original game: Duncan, Loyal Blade · Jessica of Arrakis · Thumper)"
   },
   "html.opt_shuffle_seats": {
     "ko": "자리 무작위 배치",
@@ -996,6 +1040,46 @@ const UI_TEXT = {
     "ko": "멘타트: {{where}}",
     "en": "Mentat: {{where}}"
   },
+  "panels.garrison_troops": {
+    "ko": "{garrison}의 {troop}",
+    "en": "{troop}s in the {garrison}"
+  },
+  "panels.conflict_troops": {
+    "ko": "{conflict}의 {troop}",
+    "en": "{troop}s in the {conflict}"
+  },
+  "panels.mentat_next_round": {
+    "ko": "다음 라운드에 멘타트",
+    "en": "the Mentat next round"
+  },
+  "panels.voice_blocked": {
+    "ko": "{{card}}: 다음 {agent}는 {{spaces}} 불가",
+    "en": "{{card}}: next {agent} not to {{spaces}}"
+  },
+  "panels.infiltrate_turn": {
+    "ko": "{{card}}: 이번 차례 다른 플레이어의 {agent}가 막지 않음",
+    "en": "{{card}}: other players' {agent}s do not block this turn"
+  },
+  "panels.deck_top_round": {
+    "ko": "{{card}}: 이번 라운드 획득한 카드를 {deck} 맨 위에 놓을 수 있음",
+    "en": "{{card}}: cards acquired this round may go on top of the {deck}"
+  },
+  "panels.masterstroke_name": {
+    "ko": "절묘한 수완",
+    "en": "Masterstroke"
+  },
+  "panels.masterstroke_secret": {
+    "ko": "{{ability}}: 비밀 진영 둘",
+    "en": "{{ability}}: two secret Factions"
+  },
+  "panels.masterstroke_own": {
+    "ko": "{{ability}}: {{factions}} (나만 봄)",
+    "en": "{{ability}}: {{factions}} (only you see this)"
+  },
+  "panels.masterstroke_revealed": {
+    "ko": "{{ability}}: {{factions}} 공개",
+    "en": "{{ability}}: {{factions}} revealed"
+  },
   "panels.mentat_on_leader": {
     "ko": "지도자 위",
     "en": "on the Leader"
@@ -1043,6 +1127,10 @@ const UI_TEXT = {
   "panels.neutral_leader_ability": {
     "ko": "{leader} 능력",
     "en": "{leader} ability"
+  },
+  "panels.log_reward_line": {
+    "ko": "{{n}}번째 줄",
+    "en": "line {{n}}"
   },
   "panels.log_leader_ability_resolved": {
     "ko": "{{ability}}({{leader}})",

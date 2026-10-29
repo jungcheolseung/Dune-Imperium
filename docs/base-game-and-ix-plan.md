@@ -1115,3 +1115,142 @@ C를 먼저 읽고 결론을 가르는 줄은 주석 asm으로 확인했다. 20�
 - **P4 점검 목록(앱 코드에서 본 Ix 상호작용):** Guild Accord의 Heighliner spice 할인(2, Ghola와 4), Spaceport의 Foldspace 카드 덱 위, Combat 칸 배치 몫의
   dreadnought, Rise of Ix가 Hall of Oratory·Rally Troops·Secure Contract·Sell Melange를 보드에서 뺌, Yuna Moritani의 Smuggling Operation이 Windfall에도 +1
   Solari, dreadnought가 Control marker보다 먼저 칸의 controller가 됨(`WormSpace::get_ControllingPlayer`).
+
+## 18. P5 계획: 원판 화면 (2026-10-29, 브랜치 `claude/base-ix-p5-8de6c1`, master `6fcb0c16`에서)
+
+**상태: 계획.** 조정자(`local_689d12a1`) 경유 사용자 결정(2026-10-29 "P4 agent 2~3 + P5 세션"). 범위는 지금 **원판 4인 판**(확장 없음; 원판이 지금 받는 옵션은
+`promo_cards`·`leader_draft`·`first_player_seat_zero`뿐, `rules/setup._IMPERIUM_PENDING_OPTIONS`)이고, Rise of Ix 화면은 P4가 master에 들어온 뒤(18.6).
+끝의 모습: 브라우저 플레이 화면에서 원판 판을 처음부터 끝까지 둘 수 있고, E2E가 원판 판을 덮고, 앱 조각으로 그린 앞면을 스캔과 나란히 본다(8절 표).
+
+**지키는 선.** 화면과 표시만 바꾼다: `server/static/`, `display/`, 서버의 카탈로그·판 만들기·저장 경로(AGENTS.md "Checks before a merge"의 2층, 서버가 돌리는
+코드), `scripts/dwgr/` 렌더러와 에셋. 엔진·codec·관측·콘텐츠 규칙은 P4 세션(`local_7d968935`)의 것이라 손대지 않는다. 화면이 보기(PlayerView)에 없는 것을
+필요로 하면 조정자에게 묻는다.
+
+### 18.1 지금 모습 (조사, master `6fcb0c16`)
+
+- **판 만들기:** `POST /games`의 본문과 `GameSessionManager.create_game`에 `base_game`이 없다 — 저장 문서는 `base_game`을 싣고 읽지만(P1), 브라우저에서
+  원판 판을 새로 만들 길이 없다.
+- **카탈로그(`server/catalog.py`):** Uprising 표만 돈다(`BOARD_SPACES`, `CONFLICTS`, `LEADERS`, `RESERVE_STACKS`, `IMPERIUM_CARDS`, `INTRIGUE_CARDS`; 원판 카드
+  자리에는 "the original game's come with its screen (P5)" 주석). 원판 칸 22(같은 인쇄인 `arrakeen`·`imperial_basin`·`secrets`는 이미 있음)·Conflict 18·지도자
+  8·Reserve 3·Imperium 46(프로모 3 포함)·Intrigue 34가 없어 화면은 id를 다듬어 보인다.
+- **보드:** 그림은 하나(`catalog.board_image`, `assets/board/map.jpg` = Uprising TTS 스캔)이고 좌표는 `display/board_layout.py`의 Uprising 값이다. 그림이
+  없으면 글 보드(`board.js` `renderSpaceList`)로 떨어진다. **원판 보드 그림은 이 기기에 없다:** TTS 캐시에 영어 원판 모드 JSON 둘(2354919205 "Dune Imperium +
+  Rise of IX + Immortality (scripted)", 2702663883 "…(scripted++)")이 있으나 보드 그림 파일은 받아 두지 않았다. 앱 Playmat 장면에서 꺼낸 칸 입력
+  (`render/boardspaces/scene.json`)은 Uprising 칸뿐이다(`app_board.py`의 `P_Spaces_Uprising_ChildOrderMattersForGamepad`).
+- **보기(v38)에는 원판 화면이 쓸 것이 이미 있다:** `base_game`, 좌석의 `mentat`·`mentat_owed_to`, `voice_blocked_space_ids`·`enemy_agents_ignored_turn`·
+  `acquire_to_deck_top_round`, `masterstroke_secret`·`masterstroke_revealed_factions`와 본인의 `private.masterstroke_factions`, `deck_public_top`, Paul의
+  `private.peeked_card_id`, `reserve_stacks`, 직렬화가 덧붙이는 `conflict_history`(원판은 Conflict 카드가 보드에 쌓인다 `[DI pp. 8, 12]`). 지금 보이는 빈
+  곳은 없다. 구현 중 찾으면 조정자에게 묻는다(18.3).
+- **이미 된 화면:** 좌석 패널의 Mentat 자리(`98465c26`, OQ-139 (가)), 덱 위 공개 카드(`7659ddb1`, OQ-145), 기록 줄의 Mentat·Masterstroke 문구(`labels*.js`).
+- **AI 좌석(2026-10-29 시험, 이 세션 `tmp/claude/5823a41d/`):** 앱 AI 넷은 원판 판 셋을 끝까지 두지만 한 판 약 790수 가운데 약 320수를 무작위로 답한다
+  (원판 카드·칸을 모름, "unmirrored … at random"·KeyError — P6 몫). 휴리스틱·무작위는 P3d 소크 5,000판에서 실패 0. 탐색 AI의 망은 원판을 배우지 않았다.
+- **앱 자료:** 원판 Imperium·Intrigue·Conflict prefab(`UI_crd_*`, `UI_crd_ConflictReward_*`)과 지도자 `P_ui_PlayerInformation_*`이 앱에 있다. 지도자 그림 두
+  겹은 지금 Uprising 것만 꺼내 두었다(`render/leaders/`).
+- **한국어:** `display/names_ko.py`에 원판 이름이 하나도 없다. 공식 한국어 원판 룰북(manifest `imperium-ko`, 등록만 되고 이 기기에 받지 않음)이 칸 22·지도자 8·
+  아이콘 용어의 한국어 출처가 될 수 있다. 카드 이름·문구는 공식 한글판 카드 사진(9절 6, 미룸) 전에는 영어다.
+
+### 18.2 하위 단계
+
+| 단계 | 내용 | 서버 쪽에 필요한 것 | 확인 |
+| --- | --- | --- | --- |
+| **P5a 판 고르기와 글 보드** | 설정 화면에 기본 판(Uprising / 원판) 고르기, 원판이면 아직 안 되는 옵션은 끄고 이유 표시, 원판의 AI 좌석(18.5 3). 카탈로그에 원판 내용 전부: 이름·비용·아이콘·진영·영어 문구와 생성된 한국어 문구(`_ko`), 공식 한국어 이름이 있는 것만 `name_ko`(18.5 2). 원판 판이 글 보드로 끝까지 둬진다 | `create_game`·`POST /games`·방(원격) 시작이 `base_game`을 받음. 카탈로그는 두 판의 합집합(id는 종류 안에서 유일, 14절 1). 보기 변경 없음 | 카탈로그 테스트(원판 id 전부, 문구에 "(play data not transcribed)"·`{`·snake_case 없음 — 카드 80장·칸·Conflict·지도자), 판 만들기·저장·불러오기 테스트, 새 e2e `imperium_game.py`(사람 1 + AI 3, 두 언어, 끝까지, 콘솔 오류 0), `setup_options.py` |
+| **P5b 보드 그림과 22칸** | 원판 보드 그림(18.5 1). 판마다 그림·좌표: 카탈로그가 판별 묶음을 주고 화면이 `view.base_game`으로 고른다. 22칸의 frame 상자(click target), 지배 깃발 셋(Arrakeen·Carthag·Imperial Basin), Maker 육각형 셋, Influence 트랙 넷·Alliance 자리, 점수 트랙, High Council 자리, Conflict 자리와 쌓인 Conflict, Reserve 세 더미, Mentat 자리. 칸 팝오버 타일은 앱 Playmat의 원판 칸으로(`app_board.py` 확장) | 카탈로그의 판별 보드 묶음(서버 코드) | 좌표는 스캔에서 잰다(lessons 2026-09-19·09-22: 눈대중 금지). 테스트: 좌표 표가 원판 칸·지배 칸·Maker 칸과 정확히 같음. e2e `board_tokens`·`space_popover`·`table_layout`의 원판 판, 22칸 클릭 걷기 |
+| **P5c 말과 표시** | Mentat 말(Mentat 칸에 누움 `[DI p. 4]` / 쥔 좌석의 Leader 위 / (가) 규칙의 칸 위), Sort Through the Chaos 승자의 "다음 라운드 Mentat"(`mentat_owed_to`), The Voice 막힘 표시(OQ-116: Control marker와 별개), Infiltrate의 turn 표시·Recruitment Mission의 라운드 표시, Baron의 Masterstroke token(뒷면 둘, 공개 뒤 진영; 본인 화면만 진영), 원판 Influence 4칸 보너스·Foldspace·Mentat 아이콘. 그림은 앱 piece·sprite에서, 픽셀로 확인(2.3) | 없음(보기의 지금 칸) | e2e: 보기를 고쳐 그리는 시나리오(`deck_contents.py` C 방식) + 실제 판의 저장본 fixture |
+| **P5d 앞면** | `app_cards.py`로 원판 Imperium 43 + 프로모 3(prefab 없음 → 일반 틀 + 문구, 모자라면 16.3 예외대로 Dune Cards Hub 그림), Reserve 3, Intrigue 34, Conflict 18. `app_leaders.py`로 지도자 8(두 겹 그림을 새로 꺼냄). 영어 앞면; 한국어 화면은 공식 한글판 사진 전까지 영어 앞면 | 카탈로그 `image` | 렌더와 에셋 스캔을 나란히 놓은 sheet(18.5 4), `card_hover`·`leader_card`·`deck_piles` e2e의 원판 판 |
+| **P5e 고르기 화면** | 지도자 고르기·draft(원판 여덟, 6장 풀), Masterstroke 비밀 진영 고르기(SETUP의 `MASTERSTROKE_SETUP`), 원판 결정의 선택지 문구 두 언어: Mentat 칸, The Voice의 칸 고르기, Kwisatz Haderach의 Agent 옮기기(`from_space`), Selective Breeding, Sell Melange, Conflict 보상의 "Choose two"·"-OR-"(OQ-114), Helena의 Manipulate, Recruitment Mission의 덱 위 놓기 | 없음 | 새 e2e 시나리오, 두 언어에서 `[object`·`{term}`·snake_case 없음(10.2 화면) |
+| **P5f 끝** | 원판 e2e를 `run_all.py`에 넣음, 사람이 한 판 시험(사용자), worklog·handoff | – | 병합 전 점검(18.4) |
+
+P5a를 먼저 하는 까닭: 보드 그림(18.5 1)을 기다리지 않고 원판 판이 브라우저에서 돌게 되고, 그 뒤의 단계는 모두 그 판으로 e2e를 돈다. P5b는 그림이 오면
+시작하고, 그 전에는 P5c·P5d를 먼저 해도 된다(보드 위 말은 그림 뒤).
+
+### 18.3 위험의 높낮이 (CLAUDE.md "Verifying UI changes")
+
+- **낮음(내가 diff를 읽음):** 보드 그림과 좌표, 말·아이콘, 앞면, 문구와 한국어 짝, 설정 화면의 배치.
+- **높음(독립 리뷰, 조정자의 Codex):** 좌석이 보는 것 — Masterstroke의 진영(본인만), Paul의 덱 맨 위, Poison Snooper의 엿보기, The Voice. 판을 만들고 저장·
+  불러오는 길에 `base_game`을 싣는 일. 원판 판에서 앉힐 수 있는 AI 종류를 서버가 제한한다면 그 검사(18.5 3). 목표는 보기 직렬화(`_serialize_view`)를
+  바꾸지 않는 것이고, 바꿔야 하면 먼저 조정자에게 묻고 그 변경에 리뷰를 붙인다.
+
+### 18.4 확인
+
+- **하위 단계마다:** 그 코드의 pytest(`tests/server`, 표시 테스트) `-n 4`(E7b가 도는 동안), ruff, mypy, 그 화면을 다루는 e2e. worktree에는
+  `scripts/e2e/.venv`가 없어서 메인 체크아웃의 `.venv` 파이썬으로 이 worktree의 스크립트를 `E2E_REPO=<worktree>`로 돌린다(`-j 2`).
+- **병합 전(AGENTS.md 2층):** 합친 트리의 전체 pytest·ruff·mypy와 바뀐 화면을 다루는 e2e 전부. 엔진을 바꾸지 않으므로 엔진 관문(같음 확인·기보·소크)은
+  돌지 않는다. 무거운 실행은 `tmp/coordination/cpu-board.md`에 예약한다.
+- **렌더와 스캔:** 앞면 sheet(18.5 4).
+
+### 18.5 사용자 결정 (한 목록)
+
+1. **원판 보드 그림의 출처(9절 7 "미룸"을 지금 정함).** 추천 (가): 영어 원판 TTS 모드(2354919205)의 보드 그림 한 장을 Steam 공개 CDN에서 받아 에셋
+   `board/imperium.jpg`로 둔다 — Uprising `map.jpg`가 이 계열 모드에서 온 것과 같다(메모 "TTS mod assets"). 내려받기라 이 세션 채팅에서 허락이 필요하고, 받기
+   전에 파일 이름·크기를 알린다. (나) 앱 Playmat 장면에서 원판 보드 전체를 그려 냄 — 디지털 배치라 인쇄와 다르고 큰 일이다. (다) 그림 없이 글 보드와 칸 타일만.
+   어느 쪽이든 그림이 올 때까지는 P5a의 글 보드로 둔다. 한국어 화면도 영어 보드 그림(공식 한글판 보드 스캔이 없음)이고 칸 이름은 팝오버에서 한국어다.
+2. **한국어 이름의 출처.** 추천: 공식 한국어 원판 룰북(`imperium-ko`, Dire Wolf 공식 리소스의 `KR_Dune_Imperium_Rulebook.pdf`, sha256 등록됨)을
+   `scripts/prepare_official_rules.py`로 받아(내려받기 허락 필요) 칸 22·지도자 8·Reserve 3·아이콘 용어의 한국어 이름을 두 번 읽어 맞춘다
+   (`korean-card-style.md`의 방식). Imperium·Intrigue·Conflict 카드는 9절 6대로 공식 한글판 사진을 찾을 때까지 영어 이름·영어 앞면.
+3. **원판 판의 AI 좌석(P6 전).** 추천 (가): 설정 화면은 원판에서 휴리스틱(과 무작위)만 내놓고 기본 좌석은 사람 1 + 휴리스틱 3. 서버도 원판 판의 앱 AI·탐색
+   좌석을 거절한다(앱 AI는 결정의 약 40%를 무작위로 답하고, 탐색 망은 원판을 배우지 않았다 — 18.1). (나) 다 내놓고 "원판 미학습"이라 표시한다.
+4. **앞면 렌더와 스캔 비교(D4-6 재판단).** 추천: 지난번처럼 렌더와 에셋 스캔(Dune Cards Hub `base/`)을 나란히 놓은 sheet를 내가 다 보고 다른 카드만
+   사용자에게 보인다. 수치 비교는 쓰지 않는다(13.3 6: 사람이 고친 25장을 못 잡음). 스캔이 틀린 예(Duncan Idaho의 검, 13.2 2)가 있으므로 다르면 앱 값이 먼저다.
+5. **앞면의 틀.** 원판 카드도 앱이 그리는 틀(지금 Uprising 앞면과 같은 렌더러)을 그대로 쓴다(앱 그림 우선, 2026-10-07). 인쇄된 원판 카드와 틀 모양이 다를
+   수 있다 — 추천: 앱 그대로, 다르면 sheet에서 보이고 묻는다.
+
+### 18.6 Rise of Ix 화면 (P4가 master에 들어온 뒤)
+
+Ix 보드(Dreadnought·Tech Negotiation·Interstellar Shipping·Smuggling)와 CHOAM 덮개(덮는 칸 넷 `[Rise of Ix pp. 3, 12]`), Shipping 트랙과 Freighter, Tech 타일
+18장 앞면(`UI_crd_TechTile_*`)과 세 더미, 협상가 자리, Dreadnought 말과 garrison·지배, 새 아이콘 여섯(Dreadnought, Freighter, Tech Negotiation, Unload,
+Infiltration, Discard; 7절), Ix 카드·지도자 6·Conflict 4 앞면, Hundro Moritani·Ilesa Ecaz의 고르기 화면(숨은 정보라 높은 위험). 화면은 P4의 관측 v39(17.8)와 그
+보기에 맞춰 짜고, 이 절은 P4 병합 뒤 하위 단계로 나눈다. 보드 그림의 출처는 18.5 1과 같은 결정으로 정한다(그 모드는 이름에 Rise of Ix가 들어 있다; 그림이 있는지는 받을 때 본다).
+
+### 18.7 진행 (2026-10-29, 같은 브랜치)
+
+**사용자 결정(조정자 경유, 2026-10-29 오전):** 18.5 2 (가) — 로컬 한국어 원판 룰북의 해당 쪽만 읽음(내려받지 않음), 4 (가), 5 (가).
+3은 고르지 않고 "앱 AI를 가져오면 되지 않나"로 답해 원판·Ix 앱 AI 이식을 따로 하기로 했다(P6의 앱 AI 몫); 그때까지 원판 판은 휴리스틱·무작위만,
+기본 판별 좌석 표 한 곳에서. 1은 앱 자료를 먼저 확인했다(아래).
+
+- **P5a 판 고르기와 글 보드:** `7abf4850`(원판 칸·Conflict·지도자 문구; Conflict "-OR-"/"Choose two:" 줄이 합쳐지던 결함 등), `9f062c16`(설정 화면·
+  `POST /games`의 `base_game`, 카탈로그의 원판 내용), `d48e71df`(새 e2e `imperium_game.py`가 찾은 서버 500 — Mentat 칸 행동 문구 — 과 기록의 이름 없는 칸들),
+  Codex 리뷰 두 건을 고친 `f7d4e437`(복원 길의 `NotImplementedError`를 `SessionError`로, 기본 판별 좌석 표 `server/seat_kinds.py` — 서버의 새 판·복원과
+  `/whoami`를 읽는 설정 화면이 같은 표를 씀).
+- **P5c 말과 표시(그림 없이 되는 몫):** `c2710951`(좌석 패널·글 보드의 Mentat 위치, 다음 라운드 Mentat, The Voice 막힘, Infiltrate·Recruitment
+  Mission, Masterstroke — 진영은 Baron 자신의 보기 `private`에서만).
+- **P5e 고르기 화면:** `0ae2f490`(사람이 드래프트에서 Baron을 고르고 비밀 진영을 고르는 e2e; 원판 판의 엔진 안내 문구 20종은 이미 한국어가 있음).
+- **한국어 이름:** `9ba138ba`(칸 22, 지도자 여섯, Reserve 셋, 멘타트·접힘 공간·절묘한 수완 `[DI-ko pp. 3-4, 13, 16-18, 20]`; 룰북 본문에 없는 Duke Leto·
+  Countess Ariana는 영어; `glossary-ko.md` 원판 절).
+- **P5d 앞면:** `51b94995`(에셋 `3f3e5b4`: manifest의 원판 항목에 우리 id, 그림 색인이 원판 세트를 읽음 — 앱 렌더가 없으면 Dune Cards Hub 스캔),
+  `2ad3d4e2`(에셋 `7f836e8`: 앱 조각으로 그린 원판 앞면 100장, card-implementer 하나가 구현하고 내가 sheet 27장을 모두 봄). 스캔과 다른 넷: Duncan Idaho의
+  검(스캔이 틀림, 렌더가 앱·인쇄와 같음), Kwisatz Haderach의 Agent 칸 배치(앱 프리팹: 카드 아이콘 -AND- 글, 인쇄는 글 아래 아이콘), Foldspace 그림의 색,
+  원판 The Spice Must Flow(앱에 그 그림이 없어 스캔 유지) — **사용자 확인(2026-10-29 10시대, 조정자 경유) "카드 넷은 그렇게 해"**. 원판 지도자 앞면은 스캔이다 — `app_leaders.py`가 Uprising 지도자 인쇄 틀 전용이라 원판 틀을
+  새로 재야 한다(남은 일).
+- **보드 그림(18.5 1) — 앱 자료 확인 결과:** 앱에는 원판 인쇄 보드 그림이 없다. 앱의 게임판은 Playmat 장면의 3D 디지털 배치(행성 Arrakis·성운 배경 위에
+  칸 묶음 `P_Spaces_ChildOrderMattersForGamepad` 24개·`P_Spaces_IX…` 29개·`P_FactionTracks`·`P_ConflictArea`)이고, 보드 전체 그림은 상점용
+  `shop_Uprising_Board.png`(Uprising) 하나뿐이다. 그래서 (가) TTS 영어 원판 모드의 보드 그림 내려받기(허락 필요)가 여전히 추천이고, (나)는 "앱 칸 타일을
+  우리 배치로 놓아 보드를 새로 짬"으로 정리했다. **사용자 결정(2026-10-29 10시대, 조정자 경유) "원판 보드 그림은 (가)로 하자"** — 내려받기 자체는 이
+  세션 채팅에서 사용자가 파일(URL·이름·크기)을 보고 허락한다. 모드 2354919205의 주 보드는 테이블 가운데의 `Custom_Token`(GUID 2da390, 배율 6.64)이다
+  (네 개의 같은 `Custom_Board`는 좌석 판). 어느 쪽이든 원판 칸 19개의 앱 칸 타일(팝오버 그림)은 `app_board.py`로 그린다.
+- **P5b 보드 그림:** 사용자가 이 세션 채팅에서 TTS 모드 2354919205의 주 보드 그림 내려받기를 허락("받기 허락")했다. cloud-3 주소가 403이라 같은 UGC
+  id·해시를 `steamusercontent-a.akamaihd.net`에서 받았다(에셋 `86489d7` `board/imperium.jpg` 5000x4996, README에 출처). 원판 칸 19개의 앱 타일은
+  `app_board.py`의 원판 Playmat 묶음으로 그렸다(에셋 `4f5520e`, 커밋 `a88ff4ca`). `c109ae96`가 판마다 자기 보드 그림·배치를 읽게 하고(카탈로그
+  `boards.imperium`, `core.js` `boardLayout`·`spaceBox`·`boardScan`, Uprising 전용 방벽은 Uprising만), `a4545a9d`가 원판 그림 위에 칸 22개의 누를 곳,
+  Control 깃발 셋, Maker 보너스 스파이스 셋, Mentat 말, The Voice 막힘 칩을 그린다(`display/board_layout_imperium.py`, 그림 픽셀에서 잰 값, 오버레이로 확인).
+  트랙은 `0fd94426`이 그린다: 영향력 띠·Alliance 고리, 점수 트랙, 전투력 트랙, garrison 고리와 Conflict, 원로회 의자, Conflict 덱·카드 자리(덱은 왼쪽 —
+  공식 규칙서 설정 그림 B `[DI p. 4]`, 공개한 카드는 "next to the Conflict Deck" `[DI p. 8]`), Conflict 위 병력 조절 띠. card-implementer 하나가 픽셀에서
+  Uprising과 같은 모양으로 재고, 내가 오버레이와 실제 판 스크린숏으로 확인했다. 원판은 Conflict 사분면을 인쇄하지 않아 좌석마다 자기 garrison에 가까운 4분의 1에
+  병력을 둔다(표시 관례, 규칙 아님). 전투력 0은 "1"·"2" 위에 인쇄된 고리라 Uprising의 2x2가 칸 2의 부채꼴처럼 읽혀, 고리를 한 칸처럼 다뤄(`zero_point`) 그 위에
+  부채꼴로 놓는다. 그림이 있으면 좌석 패널은 이제 이 수를 되풀이하지 않는다(`6ed13327`의 `textBoardStats`는 글 보드에서만).
+- **묶음 확인(2026-10-29 오전, 브랜치 HEAD `a4545a9d`):** pytest `-n 8` 9,304, ruff, mypy; e2e `run_all.py -j 4` 70 통과·1 실패 — `effect_text`가 원판 카드
+  넷의 영어·한국어 아이콘 차이를 찾았다(Spice Smugglers의 대문자 "Solari", Refocus의 소문자 "draw" — 인쇄는 "then: [draw 1]", Gurney Halleck·Reinforcements
+  한국어 "이 병력"에 병력 아이콘 없음). `fcc003db`가 표시 문구만 고쳤고 `effect_text` 727/0.
+- **확인:** pytest `-n 8` 9,304(좌석 표 커밋 때와 묶음 확인 때), ruff, mypy 606; e2e `imperium_game` [1]-[5], `setup_options` [8], 그 밖에 화면을 다루는
+  스크립트들(묶음 71개).
+- **트랙 확인:** 새 `tests/unit/display/test_imperium_board_layout.py` 9개(garrison 배치 포팅은 `tests/support/board_layout.py`로 옮겨 두 보드가 같이 씀),
+  `tests/unit/display`·`tests/server` 1,491, e2e `imperium_game` 52(말 수가 보기와 같고 모두 그림 안), `setup_options` 81, `board_tokens` 608,
+  `turn_controls` 48.
+- **원판 지도자 앞면(앱 렌더, 쓰지 않음):** card-implementer 하나가 `scripts/dwgr/app_leaders.py`로 여덟 명의 영어 앞면을 그렸다(곁가지
+  `claude/base-ix-p5-leader-renders` `afb23da0`, 이 묶음의 병합 밖). 틀은 Uprising과 같은 모양에 원판의 색(이름 띠·가문 띠·Signet 칸·금색 칸이 더
+  밝다, 세트 표시 육각형 없음)이고, 각 스캔을 틀의 창에 맞춰 잰다(`SCAN_FIT`); 글·아이콘은 스캔과 1-6 px 안이다. 그러나 앱에는 원판 지도자의 그림
+  전체가 없다: 오린 인물과 금색 칸 모양으로 잘린 256x139 조각뿐이라 그림 창의 47-66%만 덮고, 나머지(위쪽 띠와 양옆)는 가장자리 색으로 메운
+  가짜다(Ilban의 배 지느러미와 천장, Helena의 천장, Paul의 벽이 없다). 그래서 앞면은 서버가 읽는 곳에 두지 않고 스캔을 그대로 두며, 쓸지는 사용자가
+  정한다(sheet `tmp/claude/5823a41d/p5-leaders/sheets/`, 그림은 `tmp/claude/5823a41d/p5-leaders/faces/`). 덧붙여 찾은 것: 지금 스크립트로 다시 그린
+  Uprising 영어 앞면 열 장은 커밋된 것과 바이트가 다르다(색 8-13 단계, 고치기 전 스크립트로도 같음 — 라이브러리 판 차이로 보임; 한국어 아홉 장은 같다).
+- **남은 것:** 원판 지도자 앞면을 쓸지(사용자 결정), 한국어 카드 앞면(공식 한글판 사진 뒤), Rise of Ix 화면(18.6, P4 병합 뒤), 원판 판의 앱 AI 좌석(P5·P6
+  병합 뒤 작은 후속, 조정자 합의), worklog·handoff(병합 때).
