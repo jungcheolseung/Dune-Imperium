@@ -5,30 +5,44 @@ OQ-121 (rulings 1 and 2). Setup refuses ``rise_of_ix`` until stage P4c, so
 every state here is built by hand: an original game's opening state
 (``UprisingRulesEngine().reset``) with its config switched to
 ``rise_of_ix=True``, moved into the phase a test needs, and its seats given
-the units by ``dataclasses.replace`` (the state checks accept them). Placing
-a dreadnought on a Control space (P4b-1b) and commissioning and deploying one
-(P4b-2) are later stages; the tests set ``dreadnought_control`` and the seat
-counts directly.
+the units by ``dataclasses.replace`` (the state checks accept them). The
+winner's choice of a Control space for its dreadnought (stage P4b-1b) runs
+through the engine from the Combat Intrigue passes; commissioning and
+deploying a dreadnought (P4b-2) are a later stage, so the tests set
+``dreadnought_control`` and the seat counts directly.
 """
 
 from dataclasses import replace
 from typing import Any
 
 import pytest
+from tests.support.pauses import pause_outcome
 
 from dune_imperium import BaseGame, RulesetConfig
-from dune_imperium.core import GamePhase, GameState, PlayerState
+from dune_imperium.adapters.action_codec import ActionCodec, ActionTemplate
+from dune_imperium.agents import HeuristicAgent
+from dune_imperium.agents.agent_turn_steps import apply_whole
+from dune_imperium.agents.app_ai.agent import AppAIAgent
+from dune_imperium.agents.random_agent import RandomAgent
+from dune_imperium.content.rulesets import content_for
+from dune_imperium.core import DomainAction, GamePhase, GameState, PlayerState
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.agent_turn import _apply_control_visit_bonus
 from dune_imperium.rules.combat import (
+    CombatReward,
+    RewardRank,
+    _dreadnought_control_frame,
+    _reward_window,
     begin_combat_intrigue,
     conflict_end_loss,
     finish_combat,
+    legacy_combat_reward_icon,
     offer_conflict_end_triggers,
 )
 from dune_imperium.rules.dreadnoughts import end_combat_dreadnoughts, space_controller
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.pauses import pause_is_pending
 from dune_imperium.rules.phases import (
     begin_round,
     legal_control_defense_actions,
@@ -578,3 +592,485 @@ def test_a_game_without_rise_of_ix_is_left_as_it_was() -> None:
         assert end_combat_dreadnoughts(finished.state) == RuleResult(
             state=finished.state
         )
+
+
+# --- The winner sets a dreadnought on a Control space (stage P4b-1b) ---------
+
+IX = RulesetConfig(base_game=BaseGame.IMPERIUM, rise_of_ix=True)
+CHOICE = FrameKind.DREADNOUGHT_CONTROL_CHOICE
+WINDOW = FrameKind.COMBAT_REWARD_ICONS
+
+
+def _pass(seat: int) -> DomainAction:
+    return DomainAction(action_id="pass_combat_intrigue", actor=seat)
+
+
+def _icon(kind: str, actor: int = 0) -> DomainAction:
+    return DomainAction(
+        action_id="resolve_combat_reward_icon",
+        actor=actor,
+        arguments=(("effect", kind),),
+    )
+
+
+def _place(space_id: str, actor: int = 0) -> DomainAction:
+    return DomainAction(
+        action_id="place_combat_reward_dreadnought",
+        actor=actor,
+        arguments=(("space_id", space_id),),
+    )
+
+
+def _wholes(state: GameState, seat: int = 0) -> tuple[DomainAction, ...]:
+    return ENGINE.whole_actions(state, seat)
+
+
+def _icons(state: GameState) -> list[str]:
+    assert state.decision_stack[-1].kind == WINDOW
+    text = str(dict(state.decision_stack[-1].context)["icons"])
+    return text.split(",") if text else []
+
+
+def _fight(
+    units: dict[int, tuple[int, int]],
+    *,
+    control: tuple[tuple[str, int, bool], ...] = (),
+    markers: dict[int, tuple[str, ...]] | None = None,
+    conflict_id: str = "skirmish_a",
+) -> GameState:
+    """The Combat of ``units`` (seat -> troops, dreadnoughts in the Conflict)
+    through its Combat Intrigue passes, to the first recipient's window."""
+
+    state = _combat(
+        intrigue_complete=False, dreadnought_control=control, conflict_id=conflict_id
+    )
+    for seat, (troops, dreadnoughts) in units.items():
+        state = _in_conflict(state, seat, troops=troops, dreadnoughts=dreadnoughts)
+    for seat, spaces in (markers or {}).items():
+        state = _seat(state, seat, control_space_ids=spaces)
+    state = begin_combat_intrigue(state).state
+    while state.decision_stack and state.decision_stack[-1].kind == (
+        FrameKind.COMBAT_INTRIGUE
+    ):
+        owner = state.decision_stack[-1].decision.owner  # type: ignore[union-attr]
+        state = apply_whole(ENGINE, state, _pass(owner)).state
+    return state
+
+
+def _winner_window(
+    *,
+    dreadnoughts: int = 1,
+    control: tuple[tuple[str, int, bool], ...] = (),
+    markers: dict[int, tuple[str, ...]] | None = None,
+) -> GameState:
+    """Seat 0 wins with ``dreadnoughts`` and a troop over seat 1's dreadnought;
+    its window is on top."""
+
+    state = _fight({0: (1, dreadnoughts), 1: (0, 1)}, control=control, markers=markers)
+    assert state.decision_stack[-1].kind == WINDOW
+    assert dict(state.decision_stack[-1].context)["rank"] == 1
+    return state
+
+
+def _continue(state: GameState) -> GameState:
+    """Answer the pause between two recipients' windows."""
+
+    assert pause_is_pending(state)
+    return ENGINE.apply(state, pause_outcome(state)).state
+
+
+def _play_out(state: GameState) -> tuple[GameState, list[str]]:
+    """Answer every pause and every window row (the older engine's order)
+    until the Combat phase is over; the kinds of the events on the way."""
+
+    kinds: list[str] = []
+    for _ in range(60):
+        if state.phase is not GamePhase.COMBAT:
+            return state, kinds
+        if pause_is_pending(state):
+            step = ENGINE.apply(state, pause_outcome(state))
+        else:
+            owner = state.decision_stack[-1].decision.owner  # type: ignore[union-attr]
+            answer = legacy_combat_reward_icon(state, owner)
+            assert answer is not None, state.decision_stack[-1].kind
+            step = apply_whole(ENGINE, state, answer)
+        state = step.state
+        kinds.extend(event.kind for event in step.events)
+    raise AssertionError("the Combat did not end")
+
+
+def test_the_winner_with_a_dreadnought_has_one_row_to_set_it_on_a_space() -> None:
+    """ "dreadnought가 하나라도 있는 Conflict를 이기면 Arrakeen·Carthag·Imperial
+    Basin 가운데 dreadnought가 없는 칸 하나를 골라(의무, "must") 그 깃발에
+    dreadnought를 놓는다" [Rise of Ix p. 6] and "지배 고르기의 자리 ... 승자의
+    창(1위 보상과 같은 창)의 의무 줄" (OQ-121 ruling 6 (1)): the sole winner's
+    window holds a ``dreadnought_control`` row among its icons, before the
+    closing row, whether one or two dreadnoughts fought."""
+
+    for dreadnoughts in (1, 2):
+        state = _winner_window(dreadnoughts=dreadnoughts)
+
+        assert _icons(state) == [
+            "victory_points",
+            "dreadnought_control",
+            "winning_intrigue",
+        ]
+        assert _wholes(state) == (
+            _icon("victory_points"),
+            _icon("dreadnought_control"),
+        )
+
+
+def test_the_row_is_one_a_win_whatever_the_sandworm_multiplier() -> None:
+    """ "dreadnought가 하나라도 있는 Conflict를 이기면 ... 칸 하나를 골라"
+    [Rise of Ix p. 6]: one choice a win, not one a dreadnought and not doubled
+    by a sandworm (a "double" reward, [Main p. 14]), since only one
+    dreadnought goes to a space."""
+
+    state = _in_conflict(_combat(), 0, dreadnoughts=2)
+    for multiplier in (1, 2):
+        frame = _reward_window(
+            state, "skirmish_a", CombatReward(0, RewardRank.FIRST, multiplier)
+        )
+        icons = str(dict(frame.context)["icons"]).split(",")
+        assert icons.count("dreadnought_control") == 1
+        assert (
+            str(dict(frame.context)["printed"]).split(",").count("dreadnought_control")
+            == 1
+        )
+
+
+def test_no_row_without_a_sole_win_with_a_dreadnought_in_a_rise_of_ix_game() -> None:
+    """ "이기지 못하면(공동 1위 포함)" [Rise of Ix p. 6] (OQ-121 ruling 2) and
+    "dreadnought가 하나라도 있는 Conflict를 이기면 ..." [Rise of Ix p. 6]: a
+    tie for first (second place's reward, [Main p. 14]), a winner with no
+    dreadnought in the Conflict, a second or third place with one, and a game
+    without the Rise of Ix option get no row."""
+
+    # A tie for first: both take second place's reward.
+    tied = _fight({0: (0, 1), 1: (0, 1)})
+    assert dict(tied.decision_stack[-1].context)["rank"] == 2
+    assert "dreadnought_control" not in _icons(tied)
+
+    # A sole winner with troops only.
+    troops = _fight({0: (2, 0), 1: (0, 1)})
+    assert dict(troops.decision_stack[-1].context)["rank"] == 1
+    assert "dreadnought_control" not in _icons(troops)
+    # The second place, a dreadnought alone, gets none either: its window is
+    # the next one.
+    second = _continue(_close(troops))
+    assert dict(second.decision_stack[-1].context)["rank"] == 2
+    assert second.players[1].dreadnoughts_conflict == 1
+    assert "dreadnought_control" not in _icons(second)
+
+    # Second and third place directly.
+    state = _in_conflict(_combat(), 0, dreadnoughts=1)
+    for rank in (RewardRank.SECOND, RewardRank.THIRD):
+        frame = _reward_window(state, "skirmish_a", CombatReward(0, rank))
+        assert "dreadnought_control" not in str(dict(frame.context)["icons"])
+
+    # Without the option, whatever a seat holds.
+    plain = _in_conflict(_combat(_original(rise_of_ix=False)), 0, dreadnoughts=1)
+    frame = _reward_window(plain, "skirmish_a", CombatReward(0, RewardRank.FIRST))
+    assert "dreadnought_control" not in str(dict(frame.context)["icons"])
+
+
+def _close(state: GameState) -> GameState:
+    """Resolve the window on top row by row, to the pause after it."""
+
+    while state.decision_stack[-1].kind == WINDOW:
+        owner = state.decision_stack[-1].decision.owner  # type: ignore[union-attr]
+        answer = legacy_combat_reward_icon(state, owner)
+        assert answer is not None
+        state = apply_whole(ENGINE, state, answer).state
+    return state
+
+
+def test_the_choice_offers_the_spaces_without_a_dreadnought() -> None:
+    """ "Arrakeen·Carthag·Imperial Basin 가운데 dreadnought가 없는 칸 하나"
+    [Rise of Ix p. 6]: the winner's choice lists the base game's Control spaces
+    holding no dreadnought, in board order, a Control marker or not; it is
+    the winner's alone."""
+
+    spaces = ("arrakeen", "carthag", "imperial_basin")
+    assert tuple(content_for(IX).control_visit_bonuses) == spaces
+    for held in (None, *spaces):
+        control = () if held is None else ((held, 2, True),)
+        state = _winner_window(control=control, markers={3: ("carthag",)})
+        state = apply_whole(ENGINE, state, _icon("dreadnought_control")).state
+
+        assert state.decision_stack[-1].kind == CHOICE
+        assert _wholes(state) == tuple(
+            _place(space) for space in spaces if space != held
+        )
+        assert _wholes(state, 1) == ()
+        assert _wholes(state, 3) == ()
+
+
+def test_the_choice_is_a_bug_when_every_space_holds_a_dreadnought() -> None:
+    """ "한 번에 locations 위에 있는 dreadnought는 둘을 넘지 않는다(놓이는 것
+    하나 + 다음 Combat 끝에 떠나는 것 하나)" (docs/rules/rise-of-ix.md 6): a
+    third dreadnought on a space cannot happen, so no space left to choose
+    is an error, not an empty choice."""
+
+    full = replace(
+        _combat(),
+        dreadnought_control=(
+            ("arrakeen", 1, True),
+            ("carthag", 2, True),
+            ("imperial_basin", 3, False),
+        ),
+    )
+    with pytest.raises(RuntimeError, match="every Control space holds"):
+        _dreadnought_control_frame(full, 0, 0)
+
+
+def test_the_rulebook_example_seat_by_seat() -> None:
+    """ "지난 라운드의 dreadnought가 아직 Arrakeen에 있어 새 승자는 Imperial
+    Basin을 골랐고, 그 뒤 "as the Combat phase ends" 지난 dreadnought가 garrison
+    으로 갔다" [Rise of Ix p. 6] (OQ-121 tests: "Frida는 Arrakeen을 고르지 못하고
+    Imperial Basin에서 Ned의 marker를 덮는다. Ned의 dreadnought는 Combat 정리 때
+    garrison으로 간다. Bodie의 dreadnought는 Combat 끝에 garrison으로 가고, Ned가
+    Arrakeen 지배를 되찾는다."). Frida is seat 0, Ned 1, Bodie 2."""
+
+    frida, ned, bodie = 0, 1, 2
+    state = _fight(
+        {frida: (1, 1), ned: (0, 1)},
+        # Bodie's dreadnought from the last round, on Arrakeen over Ned's marker.
+        control=(("arrakeen", bodie, True),),
+        markers={ned: ("arrakeen", "imperial_basin")},
+    )
+    assert space_controller(state, "arrakeen") == bodie
+    assert space_controller(state, "imperial_basin") == ned
+
+    # Frida wins and sets her dreadnought: not on Arrakeen, which holds one.
+    state = apply_whole(ENGINE, state, _icon("dreadnought_control")).state
+    assert state.decision_stack[-1].kind == CHOICE
+    assert _wholes(state, frida) == (_place("carthag"), _place("imperial_basin"))
+    placed = apply_whole(ENGINE, state, _place("imperial_basin"))
+
+    assert [event.kind for event in placed.events] == ["dreadnought_control_placed"]
+    assert dict(placed.events[0].payload) == {
+        "player": frida,
+        "space_id": "imperial_basin",
+    }
+    state = placed.state
+    assert state.players[frida].dreadnoughts_conflict == 0
+    assert state.dreadnought_control == (
+        ("arrakeen", bodie, True),
+        ("imperial_basin", frida, False),
+    )
+    # Frida controls Imperial Basin now; Ned's marker under her dreadnought is
+    # where it was.
+    assert space_controller(state, "imperial_basin") == frida
+    assert state.players[ned].control_space_ids == ("arrakeen", "imperial_basin")
+    # Her window goes on with the rest of its rows, then Ned's second-place
+    # window (no row) follows.
+    assert state.decision_stack[-1].kind == WINDOW
+    assert _icons(state) == ["victory_points", "winning_intrigue"]
+
+    # Ned's dreadnought goes to his garrison in the cleanup, Bodie's as the
+    # Combat phase ends, and Ned controls Arrakeen again; Frida's stays.
+    state, kinds = _play_out(state)
+
+    assert [seat.dreadnoughts_garrison for seat in state.players] == [0, 1, 1, 0]
+    assert [seat.dreadnoughts_conflict for seat in state.players] == [0, 0, 0, 0]
+    assert state.dreadnought_control == (("imperial_basin", frida, True),)
+    assert space_controller(state, "arrakeen") == ned
+    assert space_controller(state, "imperial_basin") == frida
+    assert kinds.index("conflict_won") < kinds.index("combat_cleaned_up")
+    assert kinds.count("dreadnought_returned") == 1
+    assert kinds.index("combat_cleaned_up") < kinds.index("dreadnought_returned")
+    assert "dreadnought_control_placed" not in kinds
+
+
+def test_the_winner_with_two_dreadnoughts_sets_one_and_garrisons_the_other() -> None:
+    """ "(If your second dreadnought was also in the Conflict, return it to your
+    garrison.)" [Rise of Ix p. 6] ("두 번째 dreadnought도 Conflict에 있었으면
+    garrison으로", docs/rules/rise-of-ix.md 6): the row sets one; the other stays
+    in the Conflict and goes to the garrison at the cleanup, with the troops."""
+
+    state = _winner_window(dreadnoughts=2)
+    state = apply_whole(ENGINE, state, _icon("dreadnought_control")).state
+    state = apply_whole(ENGINE, state, _place("carthag")).state
+
+    assert state.players[0].dreadnoughts_conflict == 1
+    assert state.players[0].dreadnoughts_garrison == 0
+    assert state.dreadnought_control == (("carthag", 0, False),)
+
+    state, _ = _play_out(state)
+
+    winner = state.players[0]
+    assert (winner.dreadnoughts_garrison, winner.dreadnoughts_conflict) == (1, 0)
+    assert winner.dreadnoughts_supply == 0
+    # The placed one stands on its space, leaving at the end of the next Combat.
+    assert state.dreadnought_control == (("carthag", 0, True),)
+
+
+def test_the_window_cannot_close_before_the_row_is_resolved() -> None:
+    """ "의무, "must"" [Rise of Ix p. 6] and "안 내도 창이 닫힌다" (OQ-121
+    ruling 6): the closing row comes last, and a mandatory row is no row to
+    skip, so neither the window nor the choice offers a way past it."""
+
+    state = _winner_window()
+    assert _icon("winning_intrigue") not in _wholes(state)
+    state = apply_whole(ENGINE, state, _icon("victory_points")).state
+    # Only the dreadnought row is left, the close not yet offered.
+    assert _wholes(state) == (_icon("dreadnought_control"),)
+
+    chosen = apply_whole(ENGINE, state, _icon("dreadnought_control")).state
+    # The choice sits on the window, which still holds the close; the choice
+    # offers spaces alone, and the owner answers it before anything else.
+    assert [frame.kind for frame in chosen.decision_stack[-2:]] == [WINDOW, CHOICE]
+    assert "dreadnought_control" not in _icons(
+        replace(chosen, decision_stack=chosen.decision_stack[:-1])
+    )
+    assert {action.action_id for action in _wholes(chosen)} == {
+        "place_combat_reward_dreadnought"
+    }
+
+    placed = apply_whole(ENGINE, chosen, _place("carthag")).state
+    assert _wholes(placed) == (_icon("winning_intrigue"),)
+    closed = apply_whole(ENGINE, placed, _icon("winning_intrigue")).state
+    assert closed.decision_stack[-1].kind == FrameKind.PAUSE
+
+
+def test_the_winner_orders_the_row_with_the_printed_icon() -> None:
+    """ "승자는 이 줄과 보상 아이콘, Windtraps 등 다른 줄의 순서를 고른다"
+    (docs/rules/rise-of-ix.md 6, OQ-121 ruling 6 (1)): the row may be
+    resolved before or after a printed icon, with the same result."""
+
+    state = _winner_window()
+
+    def run(first: str, second: str) -> GameState:
+        current = state
+        for kind in (first, second):
+            current = apply_whole(ENGINE, current, _icon(kind)).state
+            if current.decision_stack[-1].kind == CHOICE:
+                current = apply_whole(ENGINE, current, _place("imperial_basin")).state
+        return current
+
+    before = run("dreadnought_control", "victory_points")
+    after = run("victory_points", "dreadnought_control")
+
+    for result in (before, after):
+        assert result.players[0].victory_points == 1 + 1
+        assert result.dreadnought_control == (("imperial_basin", 0, False),)
+        assert _icons(result) == ["winning_intrigue"]
+    assert before.players == after.players
+
+
+def test_the_row_runs_through_the_engines_steps_and_the_codec() -> None:
+    """ "그 깃발에 dreadnought를 놓는다" [Rise of Ix p. 6]: the engine offers the
+    row and the space as step rows (the window picks an effect, then its
+    target), each in the original game's Rise of Ix catalog, and an action
+    the engine offers encodes and decodes to itself."""
+
+    codec = ActionCodec(IX)
+    state = _winner_window()
+
+    def round_trip(actions: tuple[DomainAction, ...]) -> None:
+        assert actions
+        for action in actions:
+            assert codec.decode(codec.encode(action), action.actor) == action
+
+    window = ENGINE.legal_actions(state, 0)
+    row = DomainAction(
+        action_id="take",
+        actor=0,
+        arguments=(
+            ("icon", "dreadnought_control"),
+            ("printed", "skirmish_a"),
+            ("source", "conflict"),
+        ),
+    )
+    assert row in window
+    round_trip(window)
+
+    state = ENGINE.apply(state, row).state
+    assert state.decision_stack[-1].kind == CHOICE
+    spaces = ENGINE.legal_actions(state, 0)
+    assert spaces == tuple(
+        DomainAction(
+            action_id="choose_space", actor=0, arguments=(("space_id", space),)
+        )
+        for space in ("arrakeen", "carthag", "imperial_basin")
+    )
+    round_trip(spaces)
+    assert ENGINE.legal_actions(state, 1) == ()
+
+    state = ENGINE.apply(state, spaces[1]).state
+    assert state.dreadnought_control == (("carthag", 0, False),)
+    assert state.players[0].dreadnoughts_conflict == 0
+    assert state.decision_stack[-1].kind == WINDOW
+
+
+def test_only_a_rise_of_ix_catalog_holds_the_row() -> None:
+    """The row is Rise of Ix's ("dreadnought" [Rise of Ix p. 6]): its effect
+    row, one for each Conflict that may be in play, is in the original game's
+    Rise of Ix catalogs and in no other; the three spaces' target rows are
+    the ones a space choice has everywhere."""
+
+    ix = ActionCodec(IX).catalog
+    conflicts = {c.card.card_id for c in content_for(IX).conflicts}
+    rows = {t for t in ix if ("icon", "dreadnought_control") in t.arguments}
+    assert rows == {
+        ActionTemplate(
+            "take",
+            (
+                ("icon", "dreadnought_control"),
+                ("printed", conflict),
+                ("source", "conflict"),
+            ),
+        )
+        for conflict in conflicts
+    }
+    for space in ("arrakeen", "carthag", "imperial_basin"):
+        assert ActionTemplate("choose_space", (("space_id", space),)) in ix
+
+    for config in (
+        RulesetConfig(base_game=BaseGame.IMPERIUM),
+        RulesetConfig(base_game=BaseGame.IMPERIUM, promo_cards=True, epic_game=True),
+        RulesetConfig(),
+        RulesetConfig(bloodlines=True, immortality=True, epic_game=True),
+    ):
+        assert not any(
+            ("icon", "dreadnought_control") in template.arguments
+            or ("effect", "dreadnought_control") in template.arguments
+            or template.action_id == "place_combat_reward_dreadnought"
+            for template in ActionCodec(config).catalog
+        ), config.identifier
+
+
+def test_the_scripted_seats_answer_the_window_and_the_choice() -> None:
+    """ "의무, "must"" [Rise of Ix p. 6]: a seat that cannot be asked for a
+    space (the random, heuristic and app AI seats, which no Rise of Ix game
+    reaches until stage P4c) still answers the winner's row and its choice
+    with a legal action, and the Combat ends with its dreadnought set; the
+    app AI answers the frame it does not mirror at random."""
+
+    for agent in (RandomAgent(seed=1), HeuristicAgent(seed=1), AppAIAgent(seed=1)):
+        state = _winner_window(dreadnoughts=2)
+        for _ in range(40):
+            if state.phase is not GamePhase.COMBAT:
+                break
+            if pause_is_pending(state):
+                state = ENGINE.apply(state, pause_outcome(state)).state
+                continue
+            owner = state.decision_stack[-1].decision.owner  # type: ignore[union-attr]
+            legal = ENGINE.legal_actions(state, owner)
+            view = ENGINE.observe(state, owner)
+            if isinstance(agent, RandomAgent):
+                action = agent.choose_action(view, legal)
+            else:
+                action = agent.choose_action_with_state(state, view, legal)
+            assert action in legal
+            state = ENGINE.apply(state, action).state
+        else:
+            raise AssertionError(f"{type(agent).__name__} did not end the Combat")
+
+        assert len(state.dreadnought_control) == 1
+        (space_id, seat, leaving) = state.dreadnought_control[0]
+        assert (seat, leaving) == (0, True)
+        assert space_id in ("arrakeen", "carthag", "imperial_basin")
+        assert state.players[0].dreadnoughts_garrison == 1

@@ -641,6 +641,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
         _V.RECALL_SPY, _S.CONFLICT, _T.POST, variant="two"
     ),
     "decline_combat_reward_spy": _row(_V.DECLINE, _S.CONFLICT, of=_V.PLACE_SPY),
+    # The winner's dreadnought on a Control space (Rise of Ix): "take
+    # control", as the Control icon's verb (a new verb would widen the
+    # observation's effect-pick verb segment, ``len(Verb)``).
+    "place_combat_reward_dreadnought": _row(_V.TAKE, _S.CONFLICT, _T.SPACE),
     "trash_combat_reward_card": _row(_V.TRASH, _S.CONFLICT, _T.PERSONAL_CARD),
     "decline_combat_reward_trash": _row(_V.DECLINE, _S.CONFLICT, of=_V.TRASH),
     "resolve_combat_trash_without_card": _row(

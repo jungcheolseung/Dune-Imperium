@@ -112,6 +112,8 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.combat import (
     COMBAT_REWARD_ICON_KINDS,
+    DREADNOUGHT_CONTROL,
+    DREADNOUGHT_CONTROL_ACTION,
     IMPERIUM_REWARD_ICON_KINDS,
     conflict_reward_icon_kinds,
 )
@@ -950,6 +952,9 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # The original game's winning Intrigue closes the winner's window
         # (OQ-121 decision 6); Uprising's catalogs hold no such row.
         and (kind != "winning_intrigue" or content.base_game is BaseGame.IMPERIUM)
+        # Rise of Ix's winner's dreadnought, set on a Control space (OQ-121
+        # ruling 6 (1)); no catalog without the expansion holds its row.
+        and (kind != DREADNOUGHT_CONTROL or config.rise_of_ix)
     )
     # One board-effect resolution per printed automatic icon (OQ-027).
     templates.extend(
@@ -1411,6 +1416,16 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for index, first_post_id in enumerate(post_ids)
         for second_post_id in post_ids[index + 1 :]
     )
+    if config.rise_of_ix:
+        # The Control space the winner's dreadnought is set on, one row for
+        # each space of the base game (``content.control_visit_bonuses``).
+        templates.extend(
+            ActionTemplate(
+                action_id=DREADNOUGHT_CONTROL_ACTION,
+                arguments=(("space_id", space_id),),
+            )
+            for space_id in content.control_visit_bonuses
+        )
     templates.extend(
         ActionTemplate(
             action_id="recall_spies_for_combat_reward",
@@ -1767,7 +1782,8 @@ def _effect_step_templates(
                         for printed in kinds
                     )
                     or (kind == "choose_influence" and config.promo_cards)
-                    or kind in ("planetary_array", "winning_intrigue")
+                    or kind
+                    in ("planetary_array", "winning_intrigue", DREADNOUGHT_CONTROL)
                 )
             )
         elif spec.printed == Printed.CONTRACT:

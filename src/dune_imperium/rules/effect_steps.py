@@ -315,6 +315,9 @@ _COMBAT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "deep_cover_spy": _V.PLACE_SPY,
     # Planetary Array's card, a row of the winner's window (OQ-121).
     "planetary_array": _V.DRAW,
+    # The sole winner's dreadnought, set on a Control space that holds none
+    # (Rise of Ix, OQ-121 ruling 6 (1)): "take control" as the Control icon.
+    "dreadnought_control": _V.TAKE,
     # The sole winner's close of its window: no more winning Intrigue
     # (OQ-121 decision 6; the original game's To the Victor... and Demand
     # Respect). Nothing is gained, so it only resolves the row.
@@ -1073,6 +1076,7 @@ TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxy
     "choose_combat_reward_influence": _FACTION,
     "choose_distinct_combat_reward_influence": _FACTION,
     "place_combat_reward_spy": _POST,
+    "place_combat_reward_dreadnought": _BOARD_SPACE,
     "recall_spies_for_combat_reward": (
         ("first_post_id", _C.POST),
         ("second_post_id", _C.POST),
@@ -1208,6 +1212,7 @@ TARGET_STEP_FRAMES: Final = frozenset({
     FrameKind.COMBAT_REWARD_SPY_RECALL,
     FrameKind.COMBAT_REWARD_TRASH,
     FrameKind.COMBAT_REWARD_SPY,
+    FrameKind.DREADNOUGHT_CONTROL_CHOICE,
     FrameKind.INTRIGUE_CHOICE,
     FrameKind.LEADER_DRAFT,
     FrameKind.SKILL_CHOICE,

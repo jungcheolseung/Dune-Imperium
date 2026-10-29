@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Final
 from dune_imperium.config import BaseGame
 from dune_imperium.content.bloodlines.tech_abilities import tech_draws_on
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
+from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.abilities import Ability, AbilityStructure
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.conflict_abilities import (
@@ -487,6 +488,11 @@ COMBAT_REWARD_ICON_KINDS: Final = (
     # card", a row of the sole winner's window (OQ-121, user ruling
     # 2026-10-25, "PA는 승자의 창 (추천)").
     "planetary_array",
+    # Not a reward icon either: the sole winner's dreadnought, set on a
+    # Control space holding none ("you must", OQ-121 ruling 6 (1)), a row of
+    # its window like Planetary Array's. Only Rise of Ix's catalogs hold its
+    # row (``action_codec``).
+    "dreadnought_control",
     # Not a reward icon either: the sole winner's close of the window once
     # every other row is resolved, the press that says "no more winning
     # Intrigue" (OQ-121 decision 6: "안 내도 창이 닫힌다"). Only the original
@@ -510,6 +516,12 @@ REWARD_LINE_KINDS: Final = ("line_0", "line_1", "line_2")
 # The window's own closing row (see ``COMBAT_REWARD_ICON_KINDS``); always the
 # last of the window's icons, offered when it is the only one left.
 WINNING_INTRIGUE: Final = "winning_intrigue"
+# The sole winner's dreadnought row (see ``COMBAT_REWARD_ICON_KINDS``): one
+# a win, whatever the number of dreadnoughts in the Conflict and whatever the
+# sandworm multiplier, since only one dreadnought goes to a Control space.
+DREADNOUGHT_CONTROL: Final = "dreadnought_control"
+# The action that answers it: the Control space the dreadnought is set on.
+DREADNOUGHT_CONTROL_ACTION: Final = "place_combat_reward_dreadnought"
 IMPERIUM_REWARD_ICON_KINDS: Final = frozenset(
     {"mentat", "one_faction_influence", *REWARD_LINE_KINDS}
 )
@@ -733,6 +745,19 @@ def _reward_window(
         if draws:
             icons.extend(["planetary_array"] * draws)
             printed.append("planetary_array")
+        if (
+            state.config.rise_of_ix
+            and state.players[assignment.player].dreadnoughts_conflict > 0
+        ):
+            # "dreadnought가 하나라도 있는 Conflict를 이기면 ... dreadnought가 없는
+            # 칸 하나를 골라(의무)" [Rise of Ix p. 6]: the choice is a row of the
+            # sole winner's window, ordered with the icons and before the
+            # second place is paid (OQ-121 ruling 6 (1), docs/rules/
+            # rise-of-ix.md 6). One a win: only one dreadnought goes to a
+            # space, and the second one in the Conflict goes to the garrison
+            # with the troops (``_return_conflict_units``).
+            icons.append(DREADNOUGHT_CONTROL)
+            printed.append(DREADNOUGHT_CONTROL)
         if winning_intrigue_is_hidden(state):
             # "When you win a Conflict" Intrigue (To the Victor..., Demand
             # Respect) is played in this window, in the winner's order with
@@ -961,6 +986,8 @@ def apply_combat_reward_icon(state: GameState, action: DomainAction) -> RuleResu
                     state, player, index, deep_cover=kind == "deep_cover_spy"
                 )
             )
+        case "dreadnought_control":
+            opened.append(_dreadnought_control_frame(state, player, index))
         case "contract" if state.config.choam_module:
             assert isinstance(piece, TakeContract)
             opened.append(
@@ -2856,6 +2883,120 @@ def _spy_placement_frame(
             else (("choice_index", index), ("player", player))
         ),
     )
+
+
+def _dreadnought_control_frame(
+    state: GameState, player: int, index: int
+) -> DecisionFrame:
+    """The winner's choice of the Control space its dreadnought is set on.
+
+    "dreadnought가 하나라도 있는 Conflict를 이기면 Arrakeen·Carthag·Imperial
+    Basin 가운데 dreadnought가 없는 칸 하나를 골라(의무, "must")" [Rise of
+    Ix p. 6] (docs/rules/rise-of-ix.md 6): one space always remains (two
+    dreadnoughts at most stand on spaces, the one that leaves at this Combat
+    phase's end and the one placed now), so an empty list is a bug.
+    """
+
+    if not dreadnought_control_spaces(state):
+        raise RuntimeError("every Control space holds a dreadnought")
+    return DecisionFrame(
+        kind=FrameKind.DREADNOUGHT_CONTROL_CHOICE,
+        frame_id=(
+            f"round:{state.round_number}:dreadnought_control_choice:{index}:{player}"
+        ),
+        decision=PlayerDecision(
+            owner=player,
+            prompt="Choose a Control space that holds no dreadnought for yours",
+        ),
+        context=(("choice_index", index), ("player", player)),
+    )
+
+
+def dreadnought_control_spaces(state: GameState) -> tuple[str, ...]:
+    """The base game's Control spaces holding no dreadnought, in board order:
+    where a winner may set a dreadnought [Rise of Ix p. 6]. The Control
+    marker on a space does not bar it: the dreadnought covers it."""
+
+    held = {space_id for space_id, _, _ in state.dreadnought_control}
+    return tuple(
+        space_id
+        for space_id in content_for(state.config).control_visit_bonuses
+        if space_id not in held
+    )
+
+
+def legal_dreadnought_control_actions(
+    state: GameState, player: int
+) -> tuple[DomainAction, ...]:
+    """The Control spaces the winner may set its dreadnought on now: one row
+    each, the choice being mandatory ("must", [Rise of Ix p. 6]).
+
+    Stage P4c adds Detonation Devices' "return the dreadnought to the supply
+    for 1 VP instead" to this frame (OQ-121 ruling 3, a choice within the
+    same row)."""
+
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    if frame.kind != FrameKind.DREADNOUGHT_CONTROL_CHOICE:
+        return ()
+    decision = frame.decision
+    if not isinstance(decision, PlayerDecision) or decision.owner != player:
+        return ()
+    return tuple(
+        DomainAction(
+            action_id=DREADNOUGHT_CONTROL_ACTION,
+            actor=player,
+            arguments=(("space_id", space_id),),
+        )
+        for space_id in dreadnought_control_spaces(state)
+    )
+
+
+def apply_dreadnought_control(state: GameState, action: DomainAction) -> RuleResult:
+    """Set one of the winner's Conflict dreadnoughts on the chosen space.
+
+    It leaves the Conflict and controls the space until the end of the next
+    Combat phase (``dreadnought_control`` with ``leaving`` False, turned
+    leaving by this phase's end, ``dreadnoughts.end_combat_dreadnoughts``);
+    the Control marker it covers stays where it is [Rise of Ix p. 6]. The
+    winner's second dreadnought, if any, stays in the Conflict and goes to
+    the garrison with the troops (``_return_conflict_units``).
+    """
+
+    if action not in legal_dreadnought_control_actions(state, action.actor):
+        raise ValueError("action is not a legal dreadnought Control space")
+    space_id = dict(action.arguments)["space_id"]
+    if not isinstance(space_id, str):
+        raise RuntimeError("dreadnought Control choice has invalid space ID")
+    owner = state.players[action.actor]
+    if owner.dreadnoughts_conflict < 1:
+        raise RuntimeError("the winner has no dreadnought in the Conflict")
+    frame = state.decision_stack[-1]
+    choice_index = context_int(dict(frame.context), "choice_index")
+    remaining = state.decision_stack[:-1]
+    next_state = replace(
+        state,
+        players=replace_player(
+            state.players,
+            replace(owner, dreadnoughts_conflict=owner.dreadnoughts_conflict - 1),
+        ),
+        dreadnought_control=(
+            *state.dreadnought_control,
+            (space_id, action.actor, False),
+        ),
+        decision_stack=remaining,
+        combat_rewards_resolved=combat_rewards_done(state, remaining),
+    )
+    event = GameEvent(
+        event_id=(
+            f"round:{state.round_number}:combat_reward:dreadnought_control:"
+            f"{choice_index}:{action.actor}:{space_id}"
+        ),
+        kind="dreadnought_control_placed",
+        payload=(("player", action.actor), ("space_id", space_id)),
+    )
+    return RuleResult(state=next_state, events=(event,))
 
 
 def _positive_strength_groups(

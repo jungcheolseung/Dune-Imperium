@@ -99,6 +99,7 @@ from dune_imperium.rules.combat import (
     apply_combat_reward_trash,
     apply_conflict_end_trigger,
     apply_distinct_combat_reward_influence,
+    apply_dreadnought_control,
     begin_combat_intrigue,
     close_spent_conflict_end_window,
     combat_participants_are_stale,
@@ -112,6 +113,7 @@ from dune_imperium.rules.combat import (
     legal_combat_reward_trash_actions,
     legal_conflict_end_trigger_actions,
     legal_distinct_combat_reward_influence_actions,
+    legal_dreadnought_control_actions,
     offer_conflict_end_triggers,
     pay_combat_rewards,
     refresh_combat_participants,
@@ -578,6 +580,9 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.COMBAT_REWARD_TRASH: (legal_combat_reward_trash_actions,),
     FrameKind.CONFLICT_END_TRIGGER: (legal_conflict_end_trigger_actions,),
     FrameKind.COMBAT_REWARD_SPY: (legal_combat_reward_spy_actions,),
+    # The sole winner's dreadnought set on a Control space (Rise of Ix;
+    # OQ-121 ruling 6 (1)).
+    FrameKind.DREADNOUGHT_CONTROL_CHOICE: (legal_dreadnought_control_actions,),
     FrameKind.COMBAT_REWARD_ICONS: (
         legal_combat_reward_icon_actions,
         # The sole winner's "When you win a Conflict" Intrigue, a row of its
@@ -981,6 +986,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "place_combat_reward_spy": apply_combat_reward_spy,
     "recall_spy_for_combat_reward": apply_combat_reward_spy,
     "decline_combat_reward_spy": apply_combat_reward_spy,
+    "place_combat_reward_dreadnought": apply_dreadnought_control,
     "choose_combat_reward_influence": apply_combat_reward_influence,
     "choose_distinct_combat_reward_influence": (apply_distinct_combat_reward_influence),
     # Every eligible Faction at the top: the owner confirms the loss (OQ-060).

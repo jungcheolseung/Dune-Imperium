@@ -1812,8 +1812,12 @@ def test_v39_reserves_the_rise_of_ix_frame_kinds_after_every_other() -> None:
     kinds = tuple(FrameKind)
     assert kinds[-len(IX_FRAME_KINDS) :] == IX_FRAME_KINDS
     assert kinds[-len(IX_FRAME_KINDS) - 1] is FrameKind.MASTERSTROKE_SETUP
-    # No engine path opens them yet: none has legal-action providers.
-    assert not set(IX_FRAME_KINDS) & set(LEGAL_ACTION_PROVIDERS)
+    # No engine path opens them yet, but the ones a stage has opened since:
+    # none else has legal-action providers. Stage P4b-1b opens the winner's
+    # dreadnought choice (docs/rules/rise-of-ix.md 6, OQ-121 ruling 6 (1)).
+    opened = {FrameKind.DREADNOUGHT_CONTROL_CHOICE}
+    assert not (set(IX_FRAME_KINDS) - opened) & set(LEGAL_ACTION_PROVIDERS)
+    assert opened <= set(LEGAL_ACTION_PROVIDERS)
     # Each encodes as its index + 1, as every kind does.
     engine = UprisingRulesEngine()
     view = engine.observe(engine.reset(RulesetConfig(), seed=5), 0)
