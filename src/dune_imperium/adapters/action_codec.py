@@ -1649,6 +1649,26 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for stack in content.reserve_stacks
     )
     templates.extend(_trash_templates(config, "trash_leader_card"))
+    if config.rise_of_ix:
+        # Archduke Armand Ecaz (stage P4e): Coordination's Reveal-turn trash,
+        # and Conscript's card on top of the deck while Spaceport lets him
+        # put it there.
+        templates.extend(_trash_templates(config, "trash_leader_reveal_card"))
+        templates.extend(
+            ActionTemplate(
+                action_id="acquire_leader_imperium",
+                arguments=(("instance_id", instance_id), ("to_deck_top", True)),
+            )
+            for instance_id in imperium_instances
+        )
+        templates.extend(
+            ActionTemplate(
+                action_id="acquire_leader_reserve",
+                arguments=(("card_id", stack.card.card_id), ("to_deck_top", True)),
+            )
+            for stack in content.reserve_stacks
+            if not stack.icon_only
+        )
     templates.extend(_trash_templates(config, "trash_agent_card"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_draw"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_discard"))
@@ -2606,9 +2626,10 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
             # The original game's Prudent Diplomacy and Scheme.
             "duke_leto_atreides",
             "baron_vladimir_harkonnen",
-            # Rise of Ix's Final Delivery and Ixian Technology.
+            # Rise of Ix's Final Delivery, Ixian Technology and Conscript.
             "princess_yuna_moritani",
             "prince_rhombur_vernius",
+            "archduke_armand_ecaz",
         }
     ),
     "resolve_leader_signet_without_option": frozenset(
@@ -2646,8 +2667,11 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "choose_leader_signet_influence": frozenset(
         {"shaddam_corrino_iv", "duke_leto_atreides", "princess_yuna_moritani"}
     ),
-    "acquire_leader_imperium": frozenset({"princess_irulan"}),
-    "acquire_leader_reserve": frozenset({"princess_irulan"}),
+    # Chronicler's Insight; Rise of Ix's Conscript.
+    "acquire_leader_imperium": frozenset({"princess_irulan", "archduke_armand_ecaz"}),
+    "acquire_leader_reserve": frozenset({"princess_irulan", "archduke_armand_ecaz"}),
+    # Rise of Ix's Coordination.
+    "trash_leader_reveal_card": frozenset({"archduke_armand_ecaz"}),
     "retreat_leader_troops": frozenset({"chani"}),
     "place_leader_bonus_spice": frozenset({"esmar_tuek"}),
     "take_leader_bonus_spice": frozenset({"esmar_tuek"}),

@@ -237,6 +237,7 @@ const ACTION_LABELS = {
      trash is trash_intrigue_hand_card. */
   trash_intrigue_card: "{trash} ({intrigue_card})",
   trash_leader_card: "{trash} ({leader})",
+  trash_leader_reveal_card: "{trash} ({leader})",
   trash_reveal_card: "{trash}",
   use_other_memories: "다른 기억들 사용",
   acquire_sardaukar_commander: "{commander} 획득",

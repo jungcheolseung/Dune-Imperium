@@ -986,6 +986,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "retreat_leader_troop": apply_leader_reveal_action,
     "retreat_leader_commander": apply_leader_reveal_action,
     "recall_spy_for_leader": apply_leader_reveal_action,
+    # Rise of Ix's Archduke Armand Ecaz: Coordination.
+    "trash_leader_reveal_card": apply_leader_reveal_action,
     "finish_reveal": finish_reveal_turn,
     "place_acquisition_spy": apply_acquisition_spy_action,
     "recall_spy_for_acquisition": apply_acquisition_spy_action,

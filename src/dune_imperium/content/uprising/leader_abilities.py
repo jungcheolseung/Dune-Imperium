@@ -36,6 +36,7 @@ from dune_imperium.content.uprising.abilities import (
 )
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
     AcquireTech,
     AllConditions,
     DrawIntrigueCards,
@@ -300,6 +301,14 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
             EffectSection(rewards=(PlaceNegotiator(),)),
             EffectSection(rewards=(AcquireTech(discount=0),)),
         ),
+        # Conscript: "비용 3 이하 카드 하나를 얻을 수 있다" (rise-of-ix.md 10) --
+        # the Row and the Reserve's Arrakis Liaison and The Spice Must Flow,
+        # never Foldspace (OQ-125).
+        "archduke_armand_ecaz": _hook(
+            "conscript",
+            AbilityMark.OPTIONAL,
+            EffectSection(rewards=(AcquireCardUpTo(3),)),
+        ),
     }
 )
 
@@ -497,6 +506,13 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         # Heavy Lasgun Cannons: "dreadnought strength 4" (rise-of-ix.md 6, 10;
         # ``rules.strength.dreadnought_strength``).
         "prince_rhombur_vernius": (_standing("heavy_lasgun_cannons"),),
+        # Coordination: "Reveal turn에 Landsraad·City·Spice Trade 칸에 Agent 둘
+        # 이상이면 in play 카드 하나를 trash할 수 있다" [FAQ p. 1] -- any of the
+        # three icons, the Mentat counted (rise-of-ix.md 10); once a Reveal
+        # turn, as the Reveal abilities above.
+        "archduke_armand_ecaz": (
+            _left_hook(AbilityTiming.REVEAL, "coordination", AbilityMark.OPTIONAL),
+        ),
     }
 )
 

@@ -230,7 +230,12 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # changed, and four Leader-table columns are new (his standing and Signet
 # hooks, the Signet's Negotiator and Acquire Tech pieces), read by his row
 # alone; no older scale moved (compared against 7514cff6, 2026-10-30).
-_GOLDEN_DIGEST = "9a4c4e9ea778e8254657a7a0d3f94a1ef931ec92dc550335a14fe179e3ac9101"
+# Then Archduke Armand Ecaz got his records (stage P4e): only his row
+# changed, and four Leader-table columns are new (Coordination's Reveal hook,
+# Conscript's hook and its AcquireCardUpTo piece with its cost cap), read by
+# his row alone; no older scale moved (compared against d13b81cd,
+# 2026-10-30).
+_GOLDEN_DIGEST = "c8fdf9027461442bea08879f7fc87a3867a5ef5de9e671a3d156ba5853a94726"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,

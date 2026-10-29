@@ -110,10 +110,11 @@ def test_the_records_say_which_signets_are_optional_and_which_print_icons() -> N
         # The original game's Prudent Diplomacy and Scheme (arrows).
         "duke_leto_atreides",
         "baron_vladimir_harkonnen",
-        # Rise of Ix's Final Delivery (an arrow) and Ixian Technology (two
-        # "may" halves).
+        # Rise of Ix's Final Delivery (an arrow), Ixian Technology (two
+        # "may" halves) and Conscript ("may").
         "princess_yuna_moritani",
         "prince_rhombur_vernius",
+        "archduke_armand_ecaz",
     }
     assert dict(_SIGNET_ICONS) == {"lady_amber_metulli": ("solari", "spice")}
     assert {
@@ -268,8 +269,9 @@ def test_every_leader_face_prints_its_left_box_as_records() -> None:
     # The original game's: Ruthless Negotiator, Connections, Spice Addict's
     # standing record and its draw, and the standing Landsraad Popularity,
     # Eyes Everywhere, Prescience and Masterstroke. Rise of Ix's: the
-    # standing Smuggling Operation and Heavy Lasgun Cannons.
-    assert len(records) == 21 + 8 + 2
+    # standing Smuggling Operation and Heavy Lasgun Cannons, and
+    # Coordination's Reveal-turn hook.
+    assert len(records) == 21 + 8 + 3
     assert {
         record.hook
         for record in records

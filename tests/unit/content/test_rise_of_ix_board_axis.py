@@ -293,11 +293,12 @@ _IX_LEADER_IDS = (
 
 # The Ix Leaders stage P4e has wired so far, one commit each (setup, Leader
 # ability and Signet Ring with their tests): "Princess" Yuna Moritani, Prince
-# Rhombur Vernius.
+# Rhombur Vernius, Archduke Armand Ecaz.
 _WIRED_IX_LEADER_IDS = frozenset(
     {
         "princess_yuna_moritani",
         "prince_rhombur_vernius",
+        "archduke_armand_ecaz",
     }
 )
 

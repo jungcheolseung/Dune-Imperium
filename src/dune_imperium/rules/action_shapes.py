@@ -516,6 +516,10 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "retreat_leader_troop": _row(_V.RETREAT, _S.LEADER, variant="troop"),
     "retreat_leader_troops": _row(_V.RETREAT, _S.LEADER, _T.UNITS, tag=_BOX),
     "trash_leader_card": _row(_V.TRASH, _S.LEADER, _T.PERSONAL_CARD, tag=_BOX),
+    # Rise of Ix's Archduke Armand Ecaz: Coordination's Reveal-turn trash.
+    "trash_leader_reveal_card": _row(
+        _V.TRASH, _S.LEADER, _T.PERSONAL_CARD, variant="coordination"
+    ),
     "trash_leader_tech": _row(_V.TRASH, _S.LEADER, _T.TECH, tag=_BOX),
     "use_other_memories": _row(_V.USE, _S.LEADER),
     "pay_leader_board_repeat": _row(_V.PAY, _S.LEADER, variant="board_repeat"),

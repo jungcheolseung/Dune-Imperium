@@ -192,6 +192,7 @@ const LABELS_EN = {
     "trash_contract_reveal_for_vp": "Trash this card -> {victory_point}",
     "trash_intrigue_card": "{trash} ({intrigue_card})",
     "trash_leader_card": "{trash} ({leader})",
+    "trash_leader_reveal_card": "{trash} ({leader})",
     "trash_reveal_card": "{trash}",
     "use_other_memories": "Use Other Memories",
     "acquire_sardaukar_commander": "Acquire {commander}",

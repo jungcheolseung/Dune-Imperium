@@ -83,8 +83,10 @@ from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.acquisition import (
     acquirable_imperium_instance_ids,
+    acquirable_reserve_card_ids,
     acquire_imperium_for_intrigue,
     acquire_reserve_for_intrigue,
+    deck_top_offered,
     open_acquisition_frames,
     take_imperium_row_card,
 )
@@ -96,7 +98,7 @@ from dune_imperium.rules.box_events import (
 )
 from dune_imperium.rules.card_bonds import counted_in_play, trashable_cards
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
-from dune_imperium.rules.card_trash import trash_personal_card
+from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
     UNGAINED_UNDEPLOYABLE_KEY,
     reconcile_deployment_after_retreat,
@@ -197,6 +199,7 @@ IMPLEMENTED_ABILITY_LEADER_IDS: Final = frozenset(
         # Rise of Ix's (docs/rules/rise-of-ix.md 10; stage P4e).
         "princess_yuna_moritani",
         "prince_rhombur_vernius",
+        "archduke_armand_ecaz",
     }
 )
 
@@ -209,6 +212,16 @@ FINAL_DELIVERY_SOLARI: Final = 7
 RHOMBUR: Final = "prince_rhombur_vernius"
 RHOMBUR_TECH_ACTION: Final = "acquire_leader_tech"
 RHOMBUR_NEGOTIATOR_ACTION: Final = "place_leader_negotiator"
+# Archduke Armand Ecaz (Rise of Ix): his Leader id, Conscript's cost cap, and
+# Coordination's Agent icons, count and Reveal-turn trash
+# (docs/rules/rise-of-ix.md 10, [FAQ p. 1]).
+ARMAND: Final = "archduke_armand_ecaz"
+CONSCRIPT_MAX_COST: Final = 3
+COORDINATION_ICONS: Final = frozenset(
+    {AgentIcon.LANDSRAAD, AgentIcon.CITY, AgentIcon.SPICE_TRADE}
+)
+COORDINATION_AGENTS: Final = 2
+COORDINATION_ACTION: Final = "trash_leader_reveal_card"
 
 # Always Smiling grants its Persuasion at six or more strength in the
 # four-player game; the printed asterisk raises that to ten only in a
@@ -616,6 +629,7 @@ def _resolve_leader_signet(state: GameState) -> RuleResult:
         "baron_vladimir_harkonnen",
         "princess_yuna_moritani",
         "prince_rhombur_vernius",
+        "archduke_armand_ecaz",
     ):
         # Unseen Network always finds an empty post (thirteen posts outnumber
         # the twelve Spies) and Chronicler's Insight always offers a decline,
@@ -819,9 +833,11 @@ SIGNET_HOOKS: Final = frozenset(
         "prudent_diplomacy",
         "manipulate",
         "scheme",
-        # Rise of Ix's "Princess" Yuna Moritani and Prince Rhombur Vernius.
+        # Rise of Ix's "Princess" Yuna Moritani, Prince Rhombur Vernius and
+        # Archduke Armand Ecaz.
         "final_delivery",
         "ixian_technology",
+        "conscript",
     }
 )
 
@@ -1538,6 +1554,15 @@ def legal_leader_signet_actions(
             ),
         )
 
+    if owner.leader_id == ARMAND:
+        # Conscript: "비용 3 이하 카드 하나를 얻을 수 있다" (docs/rules/rise-of-ix.md
+        # 10), to the discard pile -- or on top of the deck where the owner
+        # may put what he acquires (Spaceport, ``deck_top_offered``).
+        return (
+            DomainAction(action_id="decline_leader_signet_payment", actor=player),
+            *_conscript_choices(state, player),
+        )
+
     if owner.leader_id == "princess_irulan":
         # Chronicler's Insight: acquire a card that costs one to hand, or
         # trash a hand card (two Spice if it costs one or more), or neither
@@ -1770,6 +1795,43 @@ def _chroniclers_insight_choices(
     )
 
 
+def _conscript_choices(state: GameState, player: int) -> tuple[DomainAction, ...]:
+    """Conscript's acquisitions: a card that costs 3 or less from the Row or
+    the Reserve, never Foldspace (OQ-125), and the owner's own Manipulate
+    set-aside card at its printed cost [FAQ p. 3]; each also on top of the
+    deck while the owner may put what he acquires there."""
+
+    tops = (False, True) if deck_top_offered(state, player) else (False,)
+    return (
+        *(
+            DomainAction(
+                action_id="acquire_leader_imperium",
+                actor=player,
+                arguments=(
+                    ("instance_id", instance_id),
+                    *((("to_deck_top", True),) if top else ()),
+                ),
+            )
+            for instance_id in acquirable_imperium_instance_ids(
+                state, CONSCRIPT_MAX_COST, player=player
+            )
+            for top in tops
+        ),
+        *(
+            DomainAction(
+                action_id="acquire_leader_reserve",
+                actor=player,
+                arguments=(
+                    ("card_id", card_id),
+                    *((("to_deck_top", True),) if top else ()),
+                ),
+            )
+            for card_id in acquirable_reserve_card_ids(state, CONSCRIPT_MAX_COST)
+            for top in tops
+        ),
+    )
+
+
 def _fedaykin_draw_block(owner: PlayerState) -> OptionalEffectBlock | None:
     """Fedaykin Maneuver's draw: two Fremen Influence and one water [Chani
     card], and a card to draw: a cost line is offered only when its reward
@@ -1879,6 +1941,11 @@ def signet_optional_block(state: GameState, player: int) -> OptionalEffectBlock 
             bonus_post = context.get("staban_bonus_post")
             if isinstance(bonus_post, str):
                 return _unseen_network_block(owner, bonus_post)
+        case "archduke_armand_ecaz":
+            if not _conscript_choices(state, player):
+                return OptionalEffectBlock(
+                    kind.NOTHING_TO_ACQUIRE, needed=CONSCRIPT_MAX_COST
+                )
         case "princess_irulan":
             if not _chroniclers_insight_choices(state, player):
                 return OptionalEffectBlock(
@@ -2715,7 +2782,9 @@ def apply_leader_signet_acquire(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Acquire a one-cost card to hand for Chronicler's Insight."""
+    """Acquire a one-cost card to hand for Chronicler's Insight, or a card
+    that costs 3 or less for Conscript -- to the discard pile, or on top of
+    the deck (``to_deck_top``, ``_conscript_choices``)."""
 
     if action not in legal_leader_signet_actions(state, action.actor):
         raise ValueError("action is not a legal Leader Signet acquisition")
@@ -2723,6 +2792,8 @@ def apply_leader_signet_acquire(
     player = action.actor
     arguments = dict(action.arguments)
     source = f"round:{state.round_number}:player:{player}:leader_signet"
+    to_hand = state.players[player].leader_id != ARMAND
+    to_deck_top = arguments.get("to_deck_top") is True
 
     # The box settles first so an acquire box that opens a frame (a
     # Research direction, Immortality) stacks above the turn.
@@ -2736,8 +2807,9 @@ def apply_leader_signet_acquire(
             settled,
             player,
             card_id,
-            to_hand=True,
+            to_hand=to_hand,
             source=source,
+            to_deck_top=to_deck_top,
         )
     else:
         instance_id = arguments.get("instance_id")
@@ -2747,8 +2819,9 @@ def apply_leader_signet_acquire(
             settled,
             player,
             instance_id,
-            to_hand=True,
+            to_hand=to_hand,
             source=source,
+            to_deck_top=to_deck_top,
         )
     resolved = _signet_box(source, context, player, BoxOutcome.RESOLVED)
     opened = open_acquisition_frames(
@@ -3238,14 +3311,43 @@ def _leader_reveal_retreats(ability: Ability) -> bool:
     )
 
 
+def _leader_reveal_coordinates(ability: Ability) -> bool:
+    """"Reveal turn: If you have at least two Agents on Landsraad/City/Spice
+    Trade board spaces, you may trash one of your cards in play" [Archduke
+    Armand Ecaz card, app text] (docs/rules/rise-of-ix.md 10)."""
+
+    return (
+        ability.timing is AbilityTiming.REVEAL
+        and ability.mark is AbilityMark.OPTIONAL
+        and ability.hook == "coordination"
+    )
+
+
 def _leader_reveal_ability(owner: PlayerState) -> Ability | None:
     """The owner's face's optional Reveal-turn ability, if it has one."""
 
     face = owner.leader_face_id or owner.leader_id
     for ability in LEADER_ABILITIES.get(str(face), ()):
-        if _leader_reveal_swords(ability) or _leader_reveal_retreats(ability):
+        if (
+            _leader_reveal_swords(ability)
+            or _leader_reveal_retreats(ability)
+            or _leader_reveal_coordinates(ability)
+        ):
             return ability
     return None
+
+
+def coordination_agents(owner: PlayerState) -> int:
+    """The owner's Agents on Landsraad, City and Spice Trade board spaces --
+    "세 아이콘 칸 어디든 Agent 둘 이상(같은 아이콘일 필요 없음)" [FAQ p. 1];
+    "Mentat도 그의 Agent로 센다(디자이너 판정)" (docs/rules/rise-of-ix.md 9.2,
+    10): the Mentat stands on its space like any of his Agents."""
+
+    return sum(
+        1
+        for space_id in owner.agent_locations
+        if BOARD_SPACES_BY_ID[space_id].agent_icon in COORDINATION_ICONS
+    )
 
 
 def _leader_ability_slug(owner: PlayerState) -> str:
@@ -3295,6 +3397,12 @@ def leader_reveal_block(state: GameState, player: int) -> OptionalEffectBlock | 
     ability = _leader_reveal_ability(owner)
     if ability is None:
         return None
+    if _leader_reveal_coordinates(ability):
+        # Coordination's Agents are placed before the Reveal and stay put
+        # through it, so the ability either holds the whole Reveal turn or
+        # never; it is not shown waiting (``legal_leader_reveal_actions``
+        # offers it only while it holds).
+        return None
     if _leader_reveal_retreats(ability):
         if owner.troops_conflict >= 1 or owner.commanders_conflict >= 1:
             return None
@@ -3318,6 +3426,20 @@ def legal_leader_reveal_actions(
     ability = _leader_reveal_ability(owner)
     if ability is None:
         return ()
+    if _leader_reveal_coordinates(ability):
+        # Coordination: with two or more Agents on Landsraad, City or Spice
+        # Trade spaces, one of his cards in play may be trashed (a Row card
+        # borrowed with Usurp is not in play, OQ-054).
+        if coordination_agents(owner) < COORDINATION_AGENTS:
+            return ()
+        return tuple(
+            DomainAction(
+                action_id=COORDINATION_ACTION,
+                actor=player,
+                arguments=(("card_id", card_id),),
+            )
+            for card_id in counted_in_play(owner)
+        )
     if _leader_reveal_retreats(ability):
         # Desert Scouts: "Reveal Turn: You may retreat one of your troops."
         # A Sardaukar Commander is a troop for this purpose [Bloodlines p. 4].
@@ -3363,6 +3485,21 @@ def apply_leader_reveal_action(
         *state.decision_stack[:-1],
         replace(frame, context=tuple(sorted(context.items()))),
     )
+
+    if action.action_id == COORDINATION_ACTION:
+        # Coordination's trash; a card trashed during the Reveal pays nothing
+        # more (OQ-022), and troops it recruits as it goes (an Unload) are
+        # the turn's own (``credit_trash_recruits``).
+        card_id = dict(action.arguments).get("card_id")
+        if not isinstance(card_id, str):
+            raise RuntimeError("Coordination has an invalid card ID")
+        trashed = trash_personal_card(
+            replace(state, decision_stack=decision_stack),
+            action.actor,
+            card_id,
+            source=f"{source}:coordination",
+        )
+        return credit_trash_recruits(trashed, action.actor)
 
     if action.action_id == "recall_spy_for_leader":
         # Devious Strength: the recalled Spy pays for two swords; like other
@@ -3612,6 +3749,8 @@ LEADER_HOOKS: Final = frozenset(
         "reverend_mother",
         "tactician",
         "plot_course",
+        # Rise of Ix's Archduke Armand Ecaz: Coordination's Reveal-turn trash.
+        "coordination",
     }
 )
 

@@ -791,6 +791,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _V.RETREAT, _S.LEADER, _LEADER, option="commander"
     ),
     "recall_spy_for_leader": _spec(_V.RECALL_SPY, _S.LEADER, _LEADER, targets=_POST),
+    # Rise of Ix's Archduke Armand Ecaz: Coordination's card in play.
+    "trash_leader_reveal_card": _spec(
+        _V.TRASH, _S.LEADER, _LEADER, option="coordination", targets=_CARD
+    ),
     "trash_skill_for_strength": _spec(_V.TRASH, _S.COMMANDER, "skill_id"),
     # Forbidden Weapons: three swords for an Influence, or the tile trashed.
     "choose_tech_strength": _spec(
