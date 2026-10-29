@@ -60,7 +60,8 @@ from dune_imperium.core.observation import (
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.action_shapes import Source, Verb
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.engine import LEGAL_ACTION_PROVIDERS
+from dune_imperium.rules.frames import IX_FRAME_KINDS, FrameKind
 from dune_imperium.simulation import run_random_game
 
 
@@ -1801,3 +1802,23 @@ def test_ix_pending_is_the_open_decision_of_its_own_seat() -> None:
     assert not any(
         encode_player_view(observe_state(plain, owner))[segment_slice("ix_pending")]
     )
+
+
+def test_v39_reserves_the_rise_of_ix_frame_kinds_after_every_other() -> None:
+    # Plan 17.8: the decisions of stages P4b to P4e no older frame holds
+    # (docs/rules/rise-of-ix.md 14) take their kinds now, at the end, so the
+    # kind index ``global_scalars`` holds moves for no older kind and no
+    # later stage needs another observation version.
+    kinds = tuple(FrameKind)
+    assert kinds[-len(IX_FRAME_KINDS) :] == IX_FRAME_KINDS
+    assert kinds[-len(IX_FRAME_KINDS) - 1] is FrameKind.MASTERSTROKE_SETUP
+    # No engine path opens them yet: none has legal-action providers.
+    assert not set(IX_FRAME_KINDS) & set(LEGAL_ACTION_PROVIDERS)
+    # Each encodes as its index + 1, as every kind does.
+    engine = UprisingRulesEngine()
+    view = engine.observe(engine.reset(RulesetConfig(), seed=5), 0)
+    for kind in IX_FRAME_KINDS:
+        scalars = encode_player_view(replace(view, decision_kind=kind.value))[
+            segment_slice("global_scalars")
+        ]
+        assert scalars[4] == kinds.index(kind) + 1

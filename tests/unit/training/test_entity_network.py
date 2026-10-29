@@ -63,6 +63,7 @@ from dune_imperium.core.decisions import ChanceDecision, PlayerDecision  # noqa:
 from dune_imperium.core.state import GamePhase  # noqa: E402
 from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
 from dune_imperium.rules.action_shapes import Source, Verb  # noqa: E402
+from dune_imperium.rules.frames import IX_FRAME_KINDS  # noqa: E402
 from dune_imperium.rules.leader_abilities import (  # noqa: E402
     IMPLEMENTED_ABILITY_LEADER_IDS,
 )
@@ -1215,7 +1216,8 @@ def test_a_v38_entity_file_moves_onto_v39_with_the_new_inputs_at_zero(
         ]
         state[key] = state[key][:, kept]
         inputs[encoder] = [names[index] for index in kept]
-    # Rise of Ix's entities and the slot keys naming them.
+    # Rise of Ix's entities, the slot keys naming them and its reserved
+    # decision kinds.
     tables = {}
     for name, table in document["entity_tables"].items():
         rows = [
@@ -1229,6 +1231,7 @@ def test_a_v38_entity_file_moves_onto_v39_with_the_new_inputs_at_zero(
         key
         for key in document["slot_keys"]
         if key.rsplit(":", 1)[-1] not in IX_IDENTITIES
+        and key not in {f"decision_kind:{kind.value}" for kind in IX_FRAME_KINDS}
     ]
     key_index = {key: index for index, key in enumerate(document["slot_keys"])}
     state["slot_key_own"] = state["slot_key_own"][

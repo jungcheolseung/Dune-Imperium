@@ -58,7 +58,7 @@ from dune_imperium.adapters.observation_encoding import (
 )
 from dune_imperium.config import RulesetConfig
 from dune_imperium.rules.action_shapes import ACTION_SHAPES
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.frames import IX_FRAME_KINDS, FrameKind
 from dune_imperium.training.entity_features import (
     FEATURE_DIGEST,
     SLOT_HINTS,
@@ -209,9 +209,9 @@ def action_vocabulary(templates: Iterable[TemplateKey]) -> ActionVocabulary:
 # computes the same function: its new inputs start at zero.
 FIELDS_KEPT_RAW: Final = frozenset({"decision_owner", "leader_draft_pool", "agent_box"})
 # Slot keys a later observation version added to a field a v31 file already
-# embedded: the decision kinds of stage B2's reward windows (v33) and of the
-# Baron's Masterstroke choice (v36), and every key naming one of the original
-# game's identities (v35) or Rise of Ix's (v39).
+# embedded: the decision kinds of stage B2's reward windows (v33), of the
+# Baron's Masterstroke choice (v36) and of Rise of Ix (v39), and every key
+# naming one of the original game's identities (v35) or Rise of Ix's (v39).
 _KEYS_SINCE_V31: Final = frozenset(
     {
         *(
@@ -220,6 +220,7 @@ _KEYS_SINCE_V31: Final = frozenset(
                 FrameKind.COMBAT_REWARD_ICONS,
                 FrameKind.CONTRACT_REWARD_ICONS,
                 FrameKind.MASTERSTROKE_SETUP,
+                *IX_FRAME_KINDS,
             )
         ),
         *(

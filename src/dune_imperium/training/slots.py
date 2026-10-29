@@ -113,12 +113,13 @@ SLOT_VERSION: Final = 1
 # deck-top counts as a zone, ``entity_network``).
 # v39 (stage P4a, Rise of Ix) lists Rise of Ix's Imperium cards after the
 # original game's in every Imperium-card field and its Conflicts, Leaders,
-# Tech tiles (the Tech fields read the observation's TECH_IDS) and board
-# spaces at the end of theirs (keys appended, so a migrated network starts
-# them at 0); its new segments are counts, flags, seats and one slot segment (the
-# Intrigue deck's known depths from the bottom), which no field reads yet:
-# the ``mlp`` trunk reads them through ``log1p`` and the entity network its
-# count zones as zones (``entity_network``).
+# Tech tiles (the Tech fields read the observation's TECH_IDS), board spaces
+# and reserved decision kinds (``frames.IX_FRAME_KINDS``) at the end of
+# theirs (keys appended, so a migrated network starts them at 0); its new
+# segments are counts, flags, seats and one slot segment (the Intrigue deck's
+# known depths from the bottom), which no field reads yet: the ``mlp`` trunk
+# reads them through ``log1p`` and the entity network its count zones as
+# zones (``entity_network``).
 SLOT_OBSERVATION_VERSION: Final = 39
 VALUE_RANGE: Final = 256
 

@@ -119,6 +119,44 @@ class FrameKind(StrEnum):
     # The original game's Baron Harkonnen chooses his two Masterstroke
     # Factions in secret before the first round (``rules/masterstroke.py``).
     MASTERSTROKE_SETUP = "masterstroke_setup"
+    # Rise of Ix (observation v39, stage P4a; docs/rules/rise-of-ix.md 14):
+    # reserved for the decisions of stages P4b to P4e that no frame above
+    # holds, appended last so every older kind keeps its observation index.
+    # No engine path opens them yet (``LEGAL_ACTION_PROVIDERS`` names none,
+    # so a pushed one fails loudly).
+    # A Freighter icon resolved where it is no row of its owner's turn (a
+    # Conflict reward's, Skirmish or Trade Monopoly [FAQ p. 3]): move up one
+    # space, recall, or neither [Rise of Ix p. 5] -- an icon whose answer
+    # is a choice opens a window of its own there, as ``choose_influence``
+    # or an optional payment do (``rules/combat.py``).
+    FREIGHTER_MOVE = "freighter_move"
+    # A Shipping track recall's rewards outside its owner's turn, one row
+    # each in any order [Rise of Ix p. 5], as a Contract's reward has its
+    # window outside its owner's turn (``CONTRACT_REWARD_ICONS``).
+    SHIPPING_REWARD_ICONS = "shipping_reward_icons"
+    # The Conflict winner's dreadnought: the Control space without a
+    # dreadnought it must take [Rise of Ix p. 6], or Detonation Devices'
+    # VP instead (OQ-121), answering that row of the winner's window.
+    DREADNOUGHT_CONTROL_CHOICE = "dreadnought_control_choice"
+    # Ilesa Ecaz's One Step Ahead: the hand card set aside face down at
+    # Round Start, after the draw (OQ-122) [Ilesa Ecaz card]; no Round
+    # Start frame picks a hand card, and a discard goes face up.
+    ROUND_START_SET_ASIDE = "round_start_set_aside"
+    # An Unload card's Reveal box gained outside its owner's turn, when an
+    # opponent's effect discards it [Rise of Ix p. 7] or a Combat reward
+    # trashes it (OQ-127): one row each in any order, its choices and costs
+    # with them, as ``CONTRACT_REWARD_ICONS`` holds a reward box.
+    UNLOAD_ICONS = "unload_icons"
+
+
+# The kinds observation v39 reserved for Rise of Ix (stage P4a), in order.
+IX_FRAME_KINDS: tuple[FrameKind, ...] = (
+    FrameKind.FREIGHTER_MOVE,
+    FrameKind.SHIPPING_REWARD_ICONS,
+    FrameKind.DREADNOUGHT_CONTROL_CHOICE,
+    FrameKind.ROUND_START_SET_ASIDE,
+    FrameKind.UNLOAD_ICONS,
+)
 
 
 def top_frame(state: GameState) -> DecisionFrame | None:
