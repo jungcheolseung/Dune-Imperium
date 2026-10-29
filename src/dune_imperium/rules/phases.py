@@ -16,6 +16,7 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.dreadnoughts import space_controller
 from dune_imperium.rules.frames import FrameKind, replace_player, reset_turn_counters
 from dune_imperium.rules.pauses import ROUND_DRAW, push_pause
 from dune_imperium.rules.tech import apply_endgame_tech_effects
@@ -89,7 +90,7 @@ def begin_round(state: GameState) -> RuleResult:
             ),
         )
     defense = _control_defense_frame(
-        state.players,
+        state,
         conflict_id,
         round_number,
         immortality=state.config.immortality,
@@ -399,7 +400,7 @@ def _draw_cards(player: PlayerState, count: int) -> PlayerState:
 
 
 def _control_defense_frame(
-    players: tuple[PlayerState, ...],
+    state: GameState,
     conflict_id: str,
     round_number: int,
     *,
@@ -413,31 +414,30 @@ def _control_defense_frame(
     to ask, unless Immortality's specimens can be returned for one "at any
     time" [Immortality p. 8] (OQ-050). The frame carries no ``turn_owner``:
     the defense is part of Round Start (Phase 1), before any turn opens
-    [Main p. 8].
+    [Main p. 8]. The controller is the owner of the dreadnought on the space,
+    else of its Control marker (``dreadnoughts.space_controller``) [Rise of
+    Ix p. 6].
     """
 
     conflict = CONFLICTS_BY_ID[conflict_id]
     control_space_id = conflict.control_space_id
     if control_space_id is None:
         return None
-    controllers = tuple(
-        player for player in players if control_space_id in player.control_space_ids
-    )
-    if len(controllers) > 1:
-        raise RuntimeError("a critical location cannot have multiple controllers")
-    if not controllers:
+    controller_seat = space_controller(state, control_space_id)
+    if controller_seat is None:
         return None
-    if controllers[0].troops_supply == 0 and not (
+    controller = state.players[controller_seat]
+    if controller.troops_supply == 0 and not (
         # With Immortality a specimen can be returned to the supply for the
         # defending troop "at any time" [Immortality p. 8] (OQ-050).
-        immortality and controllers[0].specimens > 0
+        immortality and controller.specimens > 0
     ):
         return None
     return DecisionFrame(
         kind=FrameKind.CONTROL_DEFENSE,
         frame_id=f"round:{round_number}:control_defense",
         decision=PlayerDecision(
-            owner=controllers[0].player_id,
+            owner=controller.player_id,
             prompt="Deploy one troop from supply to defend your location?",
         ),
         context=(("space_id", control_space_id),),

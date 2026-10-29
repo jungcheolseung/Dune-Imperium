@@ -68,6 +68,7 @@ from dune_imperium.rules.combat_deployment import (
     ungained_undeployable_troops,
 )
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
+from dune_imperium.rules.dreadnoughts import space_controller
 from dune_imperium.rules.effects import (
     BOOST_DRAW_KEY,
     BOOSTED_CARDS_KEY,
@@ -1562,15 +1563,13 @@ def _apply_control_visit_bonus(
     resource = content_for(state.config).control_visit_bonuses.get(space_id)
     if resource is None:
         return state, None
-    controllers = tuple(
-        player for player in state.players if space_id in player.control_space_ids
-    )
-    if not controllers:
+    # A dreadnought on the space controls it ahead of the Control marker it
+    # covers, so its owner takes the bonus [Rise of Ix p. 6].
+    controller_seat = space_controller(state, space_id)
+    if controller_seat is None:
         return state, None
-    if len(controllers) > 1:
-        raise RuntimeError("a critical location cannot have multiple controllers")
 
-    controller = controllers[0]
+    controller = state.players[controller_seat]
     next_controller = replace(
         controller,
         resources=replace(

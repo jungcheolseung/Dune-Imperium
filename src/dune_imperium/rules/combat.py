@@ -49,6 +49,7 @@ from dune_imperium.rules.card_bonds import trashable_cards
 from dune_imperium.rules.card_draw import draw_or_request_personal_cards
 from dune_imperium.rules.card_trash import trash_personal_card
 from dune_imperium.rules.contracts import contract_choice_frame
+from dune_imperium.rules.dreadnoughts import end_combat_dreadnoughts
 from dune_imperium.rules.effects import (
     OptionalBlockKind,
     OptionalEffectBlock,
@@ -2186,7 +2187,13 @@ def _return_conflict_units(
     considered 'lost.'" [FAQ p. 1]. The Tactician token advances once by the
     whole loss, the cleanup being one source [Chani card]. The Conflict card
     went to its winner just before (``_award_conflict``, OQ-108); sandworms
-    and the Combat markers wait for ``finish_combat``."""
+    and the Combat markers wait for ``finish_combat``.
+
+    A dreadnought never goes to the supply: "끈질김. Combat이 해결되면
+    Conflict의 dreadnought는 supply로 가지 않는다" and it goes to the garrison
+    "troop을 supply로 돌리는 정리 단계에서 함께" (OQ-121 ruling 2,
+    docs/rules/rise-of-ix.md 6) [Rise of Ix p. 6]. It is no troop, so it is not
+    "lost" (``_conflict_losses`` counts troops and Commanders only)."""
 
     players = tuple(
         replace(
@@ -2195,6 +2202,10 @@ def _return_conflict_units(
             troops_conflict=0,
             commanders_supply=player.commanders_supply + player.commanders_conflict,
             commanders_conflict=0,
+            dreadnoughts_garrison=(
+                player.dreadnoughts_garrison + player.dreadnoughts_conflict
+            ),
+            dreadnoughts_conflict=0,
         )
         for player in state.players
     )
@@ -2554,7 +2565,11 @@ def finish_combat(state: GameState) -> RuleResult:
     The Conflict card went to its winner and the troops and Sardaukar
     Commanders back to the supply as the Conflict-end windows opened
     (``offer_conflict_end_triggers``); sandworms return to the bank and
-    every Combat marker to 0 now [Main p. 14].
+    every Combat marker to 0 now [Main p. 14]. Rise of Ix's dreadnoughts on
+    Control spaces take their turn last: the ones leaving go back to their
+    garrisons and the rest become leaving, winner or none
+    (``dreadnoughts.end_combat_dreadnoughts``) [Rise of Ix p. 6]
+    (docs/rules/rise-of-ix.md 6, OQ-121 ruling 1).
     """
 
     if state.phase is not GamePhase.COMBAT:
@@ -2564,7 +2579,9 @@ def finish_combat(state: GameState) -> RuleResult:
     if state.decision_stack:
         raise ValueError("Combat cannot finish with a pending decision")
     if any(
-        player.troops_conflict or player.commanders_conflict
+        player.troops_conflict
+        or player.commanders_conflict
+        or player.dreadnoughts_conflict
         for player in state.players
     ):
         raise RuntimeError("the Conflict's units return before the cleanup")
@@ -2587,13 +2604,16 @@ def finish_combat(state: GameState) -> RuleResult:
         players=players,
         combat_intrigue_players=(),
     )
+    # The Combat phase's last act (OQ-121 ruling 1).
+    ended = end_combat_dreadnoughts(next_state)
     return RuleResult(
-        state=next_state,
+        state=ended.state,
         events=(
             GameEvent(
                 event_id=f"round:{state.round_number}:combat_cleanup",
                 kind="combat_cleaned_up",
             ),
+            *ended.events,
         ),
     )
 

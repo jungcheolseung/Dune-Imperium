@@ -364,12 +364,21 @@ class PlayerState:
 
     @property
     def units_in_conflict(self) -> int:
-        """Return every unit in the Conflict: troops, sandworms, Commanders."""
+        """Return every unit in the Conflict: troops, sandworms, Commanders,
+        dreadnoughts and an Into the Fray Agent.
+
+        A "unit" is a troop or a dreadnought [Rise of Ix p. 6]; with one
+        dreadnought and no troop the seat's strength is not 0, its swords
+        count and it may play Combat Intrigue [Rise of Ix p. 6] [FAQ p. 2]
+        (docs/rules/rise-of-ix.md 6). A card's "troop" is not read here: it
+        reads ``troops_conflict`` and so never reaches a dreadnought.
+        """
 
         return (
             self.troops_conflict
             + self.sandworms_conflict
             + self.commanders_conflict
+            + self.dreadnoughts_conflict
             + self.agent_in_conflict
         )
 

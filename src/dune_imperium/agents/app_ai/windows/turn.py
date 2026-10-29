@@ -147,6 +147,7 @@ from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.agent_turn import apply_agent_action
+from dune_imperium.rules.dreadnoughts import space_controller
 from dune_imperium.rules.graft import legal_graft_partner_actions
 
 #: The board set of a 4-player Uprising game (``SetupPhase/<BeginSetup>``).
@@ -344,19 +345,21 @@ def _after_send(state: GameState, seat: int, card_ref: str, space_id: str) -> Ga
         in_play=(*me.in_play, card_ref),
     )
     space = space_entity(space_id, Board.of(state.config))
+    # A dreadnought on the space controls it ahead of the Control marker it
+    # covers [Rise of Ix p. 6] (the app's ``WormSpace::get_ControllingPlayer``).
+    controller = space_controller(state, space_id)
     for attr, field in (("ControlSolari", "solari"), ("ControlSpice", "spice")):
         amount = space.int_attr(attr)
-        if amount <= 0:
+        if amount <= 0 or controller is None:
             continue
-        for index, player in enumerate(players):
-            if space_id in player.control_space_ids:
-                resources = player.resources
-                players[index] = replace(
-                    player,
-                    resources=replace(
-                        resources, **{field: getattr(resources, field) + amount}
-                    ),
-                )
+        player = players[controller]
+        resources = player.resources
+        players[controller] = replace(
+            player,
+            resources=replace(
+                resources, **{field: getattr(resources, field) + amount}
+            ),
+        )
     return _with_players(state, players)
 
 
