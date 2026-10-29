@@ -379,8 +379,11 @@ def test_another_lose_troops_cost_is_not_mirrored() -> None:
     )
     state = _apply(state, _find(state, "play_intrigue", card_id=instance))
     run = _run(state)
-    assert W._lose_troops(run, "gruesome_sacrifice") is not None
-    assert W._lose_troops(run, "some_bloodlines_card") is None
+    def no_intent() -> Answer:
+        raise AssertionError("not asked")
+
+    assert W._lose_troops(run, "gruesome_sacrifice", no_intent) is not None
+    assert W._lose_troops(run, "some_bloodlines_card", no_intent) is None
 
 
 def test_immortality_combat_intrigues_are_intrigue_keys() -> None:

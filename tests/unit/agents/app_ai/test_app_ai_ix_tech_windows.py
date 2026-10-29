@@ -81,3 +81,42 @@ def test_sonic_snoopers_puts_the_bad_cards_then_finishes(
     assert chosen is not None and dict(chosen.arguments) == {"card_id": "intrigue:b:0"}
     done = ix.intrigue_bottom_pick(_bottom_run(monkeypatch, []))
     assert done is not None and done.action_id == "finish_intrigue_bottom"
+
+
+def _choice_run(actions: list[DomainAction]) -> DecisionRun:
+    p = make_profile(first_decision("turn", config=IX))
+    return DecisionRun(p.ctx, p, tuple(actions), p.rng, Memory())
+
+
+def test_an_intrigue_freighter_follows_the_plays_item1() -> None:
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.windows import intrigue
+
+    rows = [
+        DomainAction(action_id=a, actor=0)
+        for a in (
+            "advance_intrigue_freighter",
+            "recall_intrigue_freighter",
+            "decline_intrigue_freighter",
+        )
+    ]
+    run = _choice_run(rows)
+    recall = intrigue._intrigue_freighter(run, lambda: Answer(4.2, ((1,),), ""))
+    advance = intrigue._intrigue_freighter(run, lambda: Answer(4.2, ((0,),), ""))
+    assert recall is not None and recall.action_id == "recall_intrigue_freighter"
+    assert advance is not None and advance.action_id == "advance_intrigue_freighter"
+
+
+def test_strongarm_loses_the_troop_from_the_answered_zone() -> None:
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.windows import intrigue
+
+    rows = [
+        DomainAction(action_id="lose_intrigue_troop", actor=0, arguments=(("zone", z),))
+        for z in ("garrison", "conflict")
+    ]
+    run = _choice_run(rows)
+    deployed = intrigue._lose_troops(run, "strongarm", lambda: Answer(1.0, ((1,),), ""))
+    garrison = intrigue._lose_troops(run, "strongarm", lambda: Answer(1.0, ((0,),), ""))
+    assert deployed is not None and dict(deployed.arguments) == {"zone": "conflict"}
+    assert garrison is not None and dict(garrison.arguments) == {"zone": "garrison"}

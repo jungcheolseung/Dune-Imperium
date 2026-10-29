@@ -265,12 +265,14 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     FlipBattleCard,
     FlipFaceUpConflictCard,
+    Freighter,
     GainInfluence,
     GiveIntrigueToOpponent,
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    OpponentLosesTroop,
     PassTurn,
     PeekTopCard,
     PlaceSpy,
@@ -1246,7 +1248,9 @@ def _retreat(
     return _count_action(actions, count, _retreat_share(run))
 
 
-def _lose_troops(run: DecisionRun, cid: str) -> DomainAction | None:
+def _lose_troops(
+    run: DecisionRun, cid: str, intent: Callable[[], Answer]
+) -> DomainAction | None:
     """A ``LoseTroops`` cost (``lose_intrigue_troop(zone[, commanders])``).
 
     Gruesome Sacrifice: "lose two of your troops in the Conflict".
@@ -1262,6 +1266,13 @@ def _lose_troops(run: DecisionRun, cid: str) -> DomainAction | None:
     """
 
     actions = run.by_id("lose_intrigue_troop")
+    if cid == "strongarm":
+        # Rise of Ix's Strongarm: the zone the play's answer named
+        # (``StrongarmAbility::Evaluate``: 0 the garrison, 1 the Conflict).
+        answer = intent()
+        option = answer.response[0][0] if answer.response else None
+        zone = "conflict" if option == 1 else "garrison" if option == 0 else None
+        return None if zone is None else with_arg(actions, "zone", zone)
     if cid in _TWISTED_UNIT_COSTS:
         options = [
             (str_arg(a, "zone") or "", int_arg(a, "commanders") == 1) for a in actions
@@ -1570,7 +1581,7 @@ def intrigue_choice(run: DecisionRun) -> DomainAction | None:
         case FlipBattleCard():
             return _flip(run, instance)
         case LoseTroops():
-            return _lose_troops(run, cid)
+            return _lose_troops(run, cid, intent)
         case AcquireTleilaxuCard():
             return _acquire_tleilaxu(run, cid, instance)
         case GiveIntrigueToOpponent():
@@ -1585,6 +1596,41 @@ def intrigue_choice(run: DecisionRun) -> DomainAction | None:
             return _trash_discard_pile(run, cid)
         case FlipFaceUpConflictCard():
             return _flip_face_up(run, cid)
+        case Freighter():
+            return _intrigue_freighter(run, intent)
+        case OpponentLosesTroop():
+            return _opponent_troop_loss(run, intent)
+    return None
+
+
+def _opponent_troop_loss(
+    run: DecisionRun, intent: Callable[[], Answer]
+) -> DomainAction | None:
+    """Double Cross's "an opponent loses one troop in the Conflict"
+    (``choose_opponent_troop_loss(player)``): the seat the play's answer
+    named (``DoubleCrossAbility::Evaluate``'s player target)."""
+
+    answer = intent()
+    seat = answer.response[0][0] if answer.response else None
+    return with_arg(run.by_id("choose_opponent_troop_loss"), "player", seat)
+
+
+def _intrigue_freighter(
+    run: DecisionRun, intent: Callable[[], Answer]
+) -> DomainAction | None:
+    """Rise of Ix's Diversion and Expedite: the Freighter the play's answer
+    named (``DiversionAbility``/``ExpediteAbility::Evaluate``: ``IntTargetResponse(
+    GetFreighterSelections(-1).Item1)``, 1 recall, 0 advance; plan §13). The
+    app's Explicit answer always moves: the decline is never its answer."""
+
+    answer = intent()
+    item = answer.response[0][0] if answer.response else None
+    recall = run.first("recall_intrigue_freighter")
+    advance = run.first("advance_intrigue_freighter")
+    if item == 1 and recall is not None:
+        return recall
+    if item == 0 and advance is not None:
+        return advance
     return None
 
 
