@@ -327,14 +327,14 @@ def _forward(
             observations = torch.from_numpy(
                 data.observations[rows[part]].astype(np.int32)
             )
-            hidden = network.trunk(observations)
+            hidden, read = network.trunk_and_values(observations)
             log_probs[part] = legal_log_probs(
                 network,
                 hidden,
                 torch.from_numpy(padded.index[part]),
                 torch.from_numpy(padded.valid[part]),
             ).numpy()
-            values[part] = network.value_head(hidden).squeeze(-1).numpy()
+            values[part] = read.numpy()
     return log_probs, values
 
 
@@ -658,7 +658,7 @@ def distill(
             batch = np.asarray(order[start : start + config.minibatch_size])
             rows = train_rows[batch]
             observations = torch.from_numpy(data.observations[rows].astype(np.int32))
-            hidden = network.trunk(observations)
+            hidden, value = network.trunk_and_values(observations)
             log_probs = legal_log_probs(
                 network,
                 hidden,
@@ -670,7 +670,6 @@ def distill(
             ce = -(target * log_probs.masked_fill(~valid, 0.0)).sum(dim=1)
             weight = torch.from_numpy(weights[batch])
             policy_loss = (weight * ce).sum() / weight.sum().clamp(min=1e-12)
-            value = network.value_head(hidden).squeeze(-1)
             value_loss = torch.nn.functional.mse_loss(
                 value, torch.from_numpy(data.z[rows])
             )

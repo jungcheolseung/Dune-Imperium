@@ -24,6 +24,22 @@ type Observation = dict[str, np.ndarray[Any, np.dtype[np.integer[Any]]]]
 
 WINNER_REWARD = 1.0
 LOSER_REWARD = -1.0 / 3.0
+
+
+def graded_reward(rank: int, step: float) -> float:
+    """The winner's reward, and the losers' spread by place around ``LOSER_REWARD``.
+
+    Second place gets ``LOSER_REWARD + step``, third ``LOSER_REWARD``, fourth
+    ``LOSER_REWARD - step``, so a four-seat table still sums to zero; at
+    ``step`` 0 it is the environment's winner-take-all reward. The user's
+    choice for the self-play value (2026-10-30, docs/entity-self-play-plan.md
+    section 3.2: "1등 위주 + 차등을 섞어"): step 1/6 gives -1/6, -1/3, -1/2. A
+    learning-side reward; the environment and the tournament keep the win.
+    """
+
+    if rank == 1:
+        return WINNER_REWARD
+    return LOSER_REWARD + step * (3 - rank)
 _MAX_CONSECUTIVE_CHANCE_STEPS = 64
 
 

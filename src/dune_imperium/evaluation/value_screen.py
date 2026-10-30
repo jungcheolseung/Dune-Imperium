@@ -276,7 +276,7 @@ def leaf_values(
         for start in range(0, open_leaves.shape[0], chunk):
             part = open_leaves[start : start + chunk]
             batch = torch.from_numpy(leaves.observations(part))
-            read = network.value_head(network.trunk(batch)).squeeze(-1)
+            read = network.values(batch)
             values[part] = read.numpy()
     return values
 

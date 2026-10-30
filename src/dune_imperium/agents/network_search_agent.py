@@ -105,7 +105,7 @@ from typing import TYPE_CHECKING, Protocol
 import numpy as np
 import torch
 
-from dune_imperium.adapters.pettingzoo_env import LOSER_REWARD, WINNER_REWARD
+from dune_imperium.adapters.pettingzoo_env import graded_reward
 from dune_imperium.agents.app_ai.family_atomics import (
     FAMILY_ATOMICS_ACTION,
     FAMILY_ATOMICS_DECIDERS,
@@ -370,6 +370,8 @@ class NetworkSearchAgent:
                 self.value_network = load_network_agent(
                     value_path, config, seed=seed
                 ).network
+        # A finished playout is read on the scale the leaves' value learned.
+        self._reward_step = float(getattr(self.value_network, "reward_step", 0.0))
         self.rollouts = rollouts
         self.candidates = candidates
         self.horizon_rounds = horizon_rounds
@@ -503,8 +505,12 @@ class NetworkSearchAgent:
         if older is not None:
             return older.value(self._encode(view))
         network = self.value_network
-        hidden = self._trunks.hidden(network, self._encode(view))
+        encoded = self._encode(view)
         with torch.no_grad():
+            if network.value_reads_trunk:
+                hidden = self._trunks.hidden(network, encoded)
+            else:
+                hidden = network.value_input(torch.from_numpy(encoded).unsqueeze(0))
             value = network.value_head(hidden)
         return float(value[0, 0])
 
@@ -922,11 +928,11 @@ class NetworkSearchAgent:
                 taken.record(key, action)
             state = engine.apply(state, action, legal_actions=actions).state
         if state.phase is GamePhase.FINISHED:
-            return finished_reward(state, seat)
+            return finished_reward(state, seat, self._reward_step)
         return self._leaf_value(self._engine.observe(state, seat))
 
 
-def finished_reward(state: GameState, seat: int) -> float:
+def finished_reward(state: GameState, seat: int, step: float = 0.0) -> float:
     """Read a playout that finished the game on the value head's scale.
 
     The value head is trained toward the winner's reward and the losers'
@@ -938,10 +944,13 @@ def finished_reward(state: GameState, seat: int) -> float:
     reading it as a reward wins +5.2pp [+3.4, +7.1] more, and the shipped seat
     had ended the game earlier in 170 pairs against 50 the other way
     (docs/evaluation/m10-2026-09-22.md section 14).
+
+    A value trained toward a graded reward (``step``, the file's
+    ``reward_step``) reads a finished playout graded the same way.
     """
 
     rank = next(s.rank for s in final_standings(state) if s.player == seat)
-    return WINNER_REWARD if rank == 1 else LOSER_REWARD
+    return graded_reward(rank, step)
 
 
 def holds_combat_lead(

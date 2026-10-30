@@ -111,8 +111,7 @@ def values(agent: NetworkAgent, views: Sequence[PlayerView]) -> np.ndarray:
     parts = []
     with torch.no_grad():
         for start in range(0, len(views), _BATCH):
-            hidden = network.trunk(_encode(views[start : start + _BATCH]))
-            parts.append(network.value_head(hidden)[:, 0].numpy())
+            parts.append(network.values(_encode(views[start : start + _BATCH])).numpy())
     return np.concatenate(parts) if parts else np.zeros(0)
 
 
