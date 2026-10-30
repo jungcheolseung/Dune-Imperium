@@ -1525,3 +1525,14 @@ Strongarm·Strategic Push, 그다음 Imperium 카드. 끊기면: 커밋되지 �
   척도를 1 → 2로 넓혀 Landing Rights 줄이 1.0 → 0.5로 바뀐다 — Ix 줄끼리의 척도 변화는 받아들인다(v39와 Ix 특성은 master에 없고 학습한 망도 없다); Uprising·원판
   줄은 그대로라는 규칙은 지킨다. 남은 Ix Imperium: Appropriate(imperium-b의 Agent 칸 Acquire Tech가 필요) — imperium-b(Unload 붙잡기 + 7장, blocker 수정 중)를
   들인 뒤. **시험 메모:** Epic 12점 시험은 카드가 덱에 들 때마다 seed를 잃는다(18 → 165 → 233) — 다음에 깨지면 seed 대신 만든 상태로 바꾼다.
+- **P4d·P4e 카드 끝(2026-10-30 08:5x, Opus, 브랜치 `claude/p4d-imperium-b`를 P4에 들임):** e3cac948 뒤 — 카드 `bba17118` Satellite Ban, `f9afc027` Spice
+  Trader, `a6defaba` Imperial Bashar, `a0eecb65` Bounty Hunter, `d47ea6c3` Web of Power, `86830dd0` Ixian Engineer, `28557ce9` Esmar Tuek, `107443a9` Guild
+  Accord, `3f153856` In The Shadows, `e632d087` Treachery, `5a60e3cd` Freighter Fleet(Guild Chief Administrator의 Reveal Freighter 줄을 함께 쓰고 두 카드가
+  `source`로 자기 이름을 단다), `be07d962` Ix-Guild Compact, `7ae942f1` Boundless Ambition, `1ad67b09` Appropriate(Emperor 2: Acquire Tech를 spice 또는
+  Solari 한쪽으로 — 고르는 것은 창을 열 때, 타일 값을 1:1, Negotiator가 1 Solari씩; 획득 상자 Freighter는 차례 밖(Boundless Ambition의 Unload)에서도
+  `FREIGHTER_MOVE` 창); 장치 `a9c48daa` 비용의 Unload에 결정이 있으면 화살표 오른쪽을 붙잡는다(rise-of-ix.md 7 디자이너 판정; `UNLOAD_HOLD_KEY`, payer
+  등록, Codex 리뷰 blocker → `94a78c35` 한 비용이 붙잡은 Unload를 한 창에 모아 소유자 순서, 재리뷰 지적 0); 수정 `78241b7b` Artillery·Leadership·Imperial
+  Bashar의 "sword를 준 카드" 셈을 그 카드가 해결될 때 준 값으로(Codex 리뷰, rise-of-ix.md 72·215·62); `a3af28df` 페이지가 아는 출처 Reveal 줄(`core.js` —
+  5a60e3cd~be07d962는 이 서버 시험 하나가 실패하던 중간 커밋); 시험만: `efbe5f93`, `79b4bfea`(Epic 12점 시험을 seed 대신 만든 라운드 끝으로), `e2475518`,
+  `4236729f`·`51f8204b`(test_teacher seed 4 → 5 → 6, 엔티티 열이 늘 때마다 시작점이 옮겨감), `bf4fbc36`. **Ix 내용 완료:** Imperium 30/30, Intrigue 17/17,
+  지도자 6/6, 원판 Epic. 전체 pytest 10,438, 소크 넷(지도자 고르기·Epic·순환 무작위·promo 무작위) 통과. 다음: P4d/P4e 전체 게이트(`run_gate_p4de.sh`) → P4f.
