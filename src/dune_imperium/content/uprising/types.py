@@ -131,6 +131,11 @@ class PersonalCardAgentEffect(StrEnum):
     GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO = (
         "gain_by_emperor_and_spacing_guild_influence_two"
     )
+    # Web of Power (Rise of Ix): "[Emperor] 2 Influence: [2 Solari]", "[Spacing
+    # Guild] 2 Influence: [draw 1]" and "[Fremen] 2 Influence: [1 water]".
+    GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO = (
+        "gain_by_emperor_spacing_guild_and_fremen_influence_two"
+    )
     RECRUIT_ONE_IF_MAKER_SPACE = "recruit_one_if_maker_space"
     RECRUIT_TWO_TROOPS = "recruit_two_troops"
     RECRUIT_TWO_IF_BENE_GESSERIT_BOND = "recruit_two_if_bene_gesserit_bond"
@@ -403,6 +408,74 @@ class PersonalCardAgentEffect(StrEnum):
     BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT = (
         "block_chosen_space_for_opponents_next_agent"
     )
+    # Sayyadina (Rise of Ix): "[3 water] -> [1 Victory Point]".
+    MAY_PAY_THREE_WATER_FOR_VP = "may_pay_three_water_for_vp"
+    # Local Fence (Rise of Ix): "[2 spice] -> [5 Solari] -OR- [5 Solari] ->
+    # [4 spice]".
+    MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE = (
+        "may_pay_two_spice_for_five_solari_or_five_solari_for_four_spice"
+    )
+    # Landing Rights (Rise of Ix): the Freighter icon.
+    MAY_MOVE_FREIGHTER = "may_move_freighter"
+    # Ixian Engineer (Rise of Ix): the Acquire Tech icon, with no Tech Discount.
+    MAY_ACQUIRE_TECH = "may_acquire_tech"
+    # Appropriate (Rise of Ix): "[Emperor] 2 Influence: [Acquire Tech] You may
+    # use Solari instead of spice for this purchase."
+    MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO = (
+        "may_acquire_tech_with_spice_or_solari_if_emperor_influence_two"
+    )
+    # Shai-Hulud (Rise of Ix): "[Trash a card] -> [2 troops]".
+    TRASH_PERSONAL_CARD_TO_RECRUIT_TWO = "trash_personal_card_to_recruit_two"
+    # Guild Chief Administrator (Rise of Ix): "[Discard] -> [Trash a card]".
+    MAY_DISCARD_TO_TRASH_A_CARD = "may_discard_to_trash_a_card"
+    # Embedded Agent (Rise of Ix): "If you have another Bene Gesserit card in
+    # play: [Freighter] [Freighter]".
+    MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND = (
+        "may_move_freighter_twice_if_bene_gesserit_bond"
+    )
+    # Weirding Way (Rise of Ix): "You may take another turn immediately after
+    # this one."
+    MAY_TAKE_ANOTHER_TURN = "may_take_another_turn"
+    # Court Intrigue (Rise of Ix): "Put an Intrigue card on the bottom of the
+    # deck -> [Intrigue card]".
+    MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE = (
+        "may_put_intrigue_on_bottom_to_draw_intrigue"
+    )
+    # Desert Ambush (Rise of Ix): "For each troop you deploy this turn, you
+    # may force an enemy unit to retreat."
+    MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED = (
+        "may_force_enemy_unit_retreat_for_each_troop_deployed"
+    )
+    # Satellite Ban (Rise of Ix): "[Discard] -> [1 spice] [1 water]".
+    MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER = (
+        "may_discard_for_one_spice_and_one_water"
+    )
+    # Spice Trader (Rise of Ix): "[Fremen] 2 Influence: [Discard] -> [2 spice]".
+    MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO = (
+        "may_discard_for_two_spice_if_fremen_influence_two"
+    )
+    # Imperial Bashar (Rise of Ix): "[Troop] -OR- [Trash a card]" -- a printed
+    # -OR- between a recruit and a (black, optional) trash icon.
+    RECRUIT_ONE_OR_MAY_TRASH_A_CARD = "recruit_one_or_may_trash_a_card"
+    # Bounty Hunter (Rise of Ix): "If used to send an Agent to a board space
+    # with an enemy Agent: [2 Solari]".
+    GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE = (
+        "gain_two_solari_if_enemy_agent_on_space"
+    )
+    # Esmar Tuek (Rise of Ix): "[1 spice] -> [Spacing Guild Influence] [draw 1
+    # card]"; the arrow cost is optional and paid once [DI p. 9] [FAQ p. 3],
+    # and the Influence and the hidden draw are separate steps (OQ-027,
+    # OQ-106, OQ-148).
+    MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE = (
+        "may_pay_one_spice_for_spacing_guild_influence_and_draw_one"
+    )
+    # In The Shadows (Rise of Ix): "[Bene Gesserit] 2 Influence: [Discard] ->
+    # Choose one: [Emperor] / [Spacing Guild] / [Fremen] Influence".
+    MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO = (
+        "may_discard_for_chosen_influence_if_bene_gesserit_influence_two"
+    )
+    # Ix-Guild Compact (Rise of Ix): "[Discard] [Discard] -> [Dreadnought]".
+    MAY_DISCARD_TWO_FOR_DREADNOUGHT = "may_discard_two_for_dreadnought"
 
 
 class PersonalCardTrashEffect(StrEnum):
@@ -483,6 +556,15 @@ class PersonalCardAcquisitionEffect(StrEnum):
     # Lady Jessica (original game): one Influence with a Faction of the
     # owner's choice (OQ-141, OQ-060).
     GAIN_INFLUENCE_WITH_CHOSEN_FACTION = "gain_influence_with_chosen_faction"
+    # Shai-Hulud (Rise of Ix): the black Trash icon in the acquire box -- an
+    # optional trash resolved at once when the card is acquired.
+    MAY_TRASH_A_CARD = "may_trash_a_card"
+    # Full-Scale Assault (Rise of Ix): the Dreadnought icon, "you may
+    # commission" [Rise of Ix p. 6].
+    MAY_COMMISSION_DREADNOUGHT = "may_commission_dreadnought"
+    # Appropriate (Rise of Ix): the Freighter icon, "you may move your
+    # Freighter in one of two ways" [Rise of Ix p. 5].
+    MAY_MOVE_FREIGHTER = "may_move_freighter"
 
 
 class PersonalCardRevealChoiceEffect(StrEnum):
@@ -592,6 +674,30 @@ class PersonalCardRevealChoiceEffect(StrEnum):
     MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS = (
         "may_trash_self_to_move_any_number_of_troops"
     )
+    # Rise of Ix's Imperium cards (stage P4d). Guild Chief Administrator: the
+    # Freighter icon in its Reveal box, "may" [Rise of Ix p. 5].
+    MAY_MOVE_FREIGHTER = "may_move_freighter"
+    # Negotiated Withdrawal: "Retreat three of your units -> [Influence with
+    # any Faction]", an optional arrow [FAQ p. 3].
+    MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE = "may_retreat_three_units_for_influence"
+    # Web of Power (Rise of Ix): the wild Influence icon, "Choose a Faction to
+    # gain 1 Influence with".
+    GAIN_CHOSEN_INFLUENCE = "gain_chosen_influence"
+    # Ixian Engineer (Rise of Ix): "If you have three or more Tech tiles: Trash
+    # this card -> 1 Victory Point".
+    MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES = (
+        "may_trash_self_for_victory_point_if_three_tech_tiles"
+    )
+    # Ix-Guild Compact (Rise of Ix): two Tech Negotiation icons, "you may take
+    # a troop from your supply and place it on the Ix board" each [Rise of Ix
+    # p. 4]; the first resolved, the second waits as a plain icon.
+    MAY_PLACE_TWO_NEGOTIATORS = "may_place_two_negotiators"
+    MAY_PLACE_NEGOTIATOR = "may_place_negotiator"
+    # Boundless Ambition (Rise of Ix promo): "Acquire a card that costs [5] or
+    # less." [Steam app text] -- an Imperium Row or Reserve card, never
+    # Foldspace (OQ-125); no "may", so it holds the Reveal's end while it has
+    # a card to take.
+    ACQUIRE_CARD_UP_TO_FIVE = "acquire_card_up_to_five"
 
 
 # Choice effects added by Bloodlines: their action templates join only the
@@ -611,11 +717,14 @@ BLOODLINES_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = fr
     }
 )
 
-# Choice effects added by the original game's Imperium cards (stage P3):
-# outside every Uprising catalog, whose resume templates list one per choice
-# effect of the Uprising family only.
+# Choice effects added by the original game's Imperium cards (stage P3), and
+# by the Rise of Ix cards played on it (stage P4d; Uprising with Rise of Ix is
+# P7): outside every Uprising catalog, whose resume templates list one per
+# choice effect of the Uprising family only.
 IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = frozenset(
     {
+        PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER,
+        PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE,
         PersonalCardRevealChoiceEffect.MAY_DEPLOY_ONE_TROOP,
         PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
         PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT,
@@ -625,6 +734,11 @@ IMPERIUM_REVEAL_CHOICE_EFFECTS: frozenset[PersonalCardRevealChoiceEffect] = froz
         PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
         PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS,
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_TO_MOVE_ANY_NUMBER_OF_TROOPS,
+        PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES,
+        PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS,
+        PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR,
+        PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE,
     }
 )
 

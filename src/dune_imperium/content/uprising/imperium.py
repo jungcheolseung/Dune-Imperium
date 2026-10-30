@@ -85,6 +85,17 @@ class ImperiumCardEntry(DeckCardEntry):
     # Agent from the Leader or from a board space, playable with none left on
     # the Leader [DI p. 13] (docs/rules/imperium-base.md 13.1, 16).
     sends_agent_anywhere: bool = False
+    # Rise of Ix: only these printed icons ignore enemy Agents [Ix p. 7].
+    # Identity metadata may precede the full play transcription; incomplete
+    # entries stay out of the deck, and ordinary/granted icons gain no bypass.
+    infiltration_icons: tuple[AgentIcon, ...] = ()
+    # Rise of Ix: the Reveal box is marked Unload -- gained also when the card
+    # is discarded or trashed [Rise of Ix p. 7] (``rules.unload``).
+    unload: bool = False
+    # Rise of Ix's Guild Accord: "It costs [2 spice] less to send an Agent to
+    # the Heighliner board space with this card." [Steam app text] -- a
+    # placement rule (``agent_turn``), not a box resolved after it.
+    heighliner_spice_discount: int = 0
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -92,6 +103,12 @@ class ImperiumCardEntry(DeckCardEntry):
             raise ValueError("Imperium-card Factions must be unique")
         if len(self.agent_icons) != len(set(self.agent_icons)):
             raise ValueError("Imperium-card Agent icons must be unique")
+        if len(self.infiltration_icons) != len(set(self.infiltration_icons)):
+            raise ValueError("Imperium-card Infiltration icons must be unique")
+        if self.play_data_complete and not set(self.infiltration_icons) <= set(
+            self.agent_icons
+        ):
+            raise ValueError("Infiltration icons must be printed Agent icons")
         if len(self.agent_spy_factions) != len(set(self.agent_spy_factions)):
             raise ValueError("Imperium-card Spy target Factions must be unique")
         if not isinstance(self.ignores_influence_requirements, bool):
@@ -100,6 +117,10 @@ class ImperiumCardEntry(DeckCardEntry):
             raise TypeError("recruited-troop deployment permission must be a boolean")
         if not isinstance(self.sends_agent_anywhere, bool):
             raise TypeError("the send-from-anywhere flag must be a boolean")
+        if not isinstance(self.unload, bool):
+            raise TypeError("the Unload mark must be a boolean")
+        if self.heighliner_spice_discount < 0:
+            raise ValueError("a Heighliner discount must not be negative")
         if self.sends_agent_anywhere and self.agent_icons:
             raise ValueError("a send-from-anywhere card has no Agent icons")
         if self.agent_spy_factions and (
@@ -127,6 +148,8 @@ class ImperiumCardEntry(DeckCardEntry):
             or self.reveal_persuasion
             or self.reveal_strength
             or self.reveal_choice_effects
+            or self.unload
+            or self.heighliner_spice_discount
         ):
             raise ValueError("partial Imperium-card play data must not be exposed")
 
@@ -1875,13 +1898,18 @@ IMPERIUM_CARDS: Final = (
 
 # The original game's cards resolve here too (stage P3, plan 16): this is a
 # lookup table across both base games, as ``BOARD_SPACES_BY_ID`` is; code that
-# lists Uprising's own cards iterates ``IMPERIUM_CARDS``.
+# lists Uprising's own cards iterates ``IMPERIUM_CARDS``. Rise of Ix's identity
+# entries (stage P4a, plan 17) join it the same way.
 from dune_imperium.content.imperium.imperium import (  # noqa: E402
     IMPERIUM_BASE_CARDS,
 )
+from dune_imperium.content.rise_of_ix.imperium import (  # noqa: E402
+    IX_IMPERIUM_CARDS,
+)
 
 IMPERIUM_CARDS_BY_ID: Final = {
-    entry.card.card_id: entry for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS)
+    entry.card.card_id: entry
+    for entry in (*IMPERIUM_CARDS, *IMPERIUM_BASE_CARDS, *IX_IMPERIUM_CARDS)
 }
 
 

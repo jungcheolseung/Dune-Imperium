@@ -6,7 +6,7 @@ import pytest
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
-from dune_imperium.content.rulesets import content_for
+from dune_imperium.content.rulesets import IX_LEADER_IDS_OFFERED, content_for
 from dune_imperium.content.uprising.abilities import (
     Ability,
     AbilityMark,
@@ -67,6 +67,9 @@ _IMPERIUM_PLAYED = frozenset(
     leader.leader_id
     for leader in content_for(RulesetConfig(base_game=BaseGame.IMPERIUM)).leaders
 )
+# Rise of Ix's Leaders the engine plays (stage P4e, one at a time;
+# ``rulesets.IX_LEADER_IDS_OFFERED``).
+_IX_PLAYED = IX_LEADER_IDS_OFFERED
 
 
 def test_every_leader_face_but_the_steersman_prints_a_signet_record() -> None:
@@ -76,8 +79,11 @@ def test_every_leader_face_but_the_steersman_prints_a_signet_record() -> None:
         for face in (leader.setup_face_id or leader.leader_id, leader.alternate_face_id)
         if face is not None
     }
-    assert set(SIGNET_ABILITIES) == faces - {"steersman_y_rkoon"} | _IMPERIUM_PLAYED
-    assert len(SIGNET_ABILITIES) == 18 + len(_IMPERIUM_PLAYED)
+    assert (
+        set(SIGNET_ABILITIES)
+        == faces - {"steersman_y_rkoon"} | _IMPERIUM_PLAYED | _IX_PLAYED
+    )
+    assert len(SIGNET_ABILITIES) == 18 + len(_IMPERIUM_PLAYED) + len(_IX_PLAYED)
     for record in SIGNET_ABILITIES.values():
         assert record.timing is AbilityTiming.AGENT_BOX
     assert {
@@ -104,6 +110,14 @@ def test_the_records_say_which_signets_are_optional_and_which_print_icons() -> N
         # The original game's Prudent Diplomacy and Scheme (arrows).
         "duke_leto_atreides",
         "baron_vladimir_harkonnen",
+        # Rise of Ix's Final Delivery (an arrow), Ixian Technology (two
+        # "may" halves), Conscript ("may"), Couriers and Guild Contacts
+        # (arrows); Duplicity is staged (optional until its Influence is lost).
+        "princess_yuna_moritani",
+        "prince_rhombur_vernius",
+        "archduke_armand_ecaz",
+        "viscount_hundro_moritani",
+        "ilesa_ecaz",
     }
     assert dict(_SIGNET_ICONS) == {"lady_amber_metulli": ("solari", "spice")}
     assert {
@@ -249,14 +263,18 @@ def test_every_leader_face_prints_its_left_box_as_records() -> None:
         if face is not None
     }
     # Glossu Rabban's Arrakis Fiefdom is setup fields, no record.
-    assert set(LEADER_ABILITIES) == faces | (_IMPERIUM_PLAYED - {"glossu_rabban"})
+    assert set(LEADER_ABILITIES) == faces | (_IMPERIUM_PLAYED - {"glossu_rabban"}) | (
+        _IX_PLAYED
+    )
     records = [
         record for abilities in LEADER_ABILITIES.values() for record in abilities
     ]
     # The original game's: Ruthless Negotiator, Connections, Spice Addict's
     # standing record and its draw, and the standing Landsraad Popularity,
-    # Eyes Everywhere, Prescience and Masterstroke.
-    assert len(records) == 21 + 8
+    # Eyes Everywhere, Prescience and Masterstroke. Rise of Ix's: the
+    # standing Smuggling Operation, Heavy Lasgun Cannons, Intelligence, One
+    # Step Ahead and Careful Observation, and Coordination's Reveal-turn hook.
+    assert len(records) == 21 + 8 + 6
     assert {
         record.hook
         for record in records
@@ -278,6 +296,11 @@ def test_every_leader_face_prints_its_left_box_as_records() -> None:
         "helena_richese",
         "paul_atreides",
         "baron_vladimir_harkonnen",
+        "princess_yuna_moritani",
+        "prince_rhombur_vernius",
+        "viscount_hundro_moritani",
+        "ilesa_ecaz",
+        "tessia_vernius",
     }
     triggered = [record for record in records if record.trigger is not None]
     assert len(triggered) == 8 + 3

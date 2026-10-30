@@ -55,6 +55,11 @@ BOX_KEY_PAIRS: Final[tuple[tuple[str, str], ...]] = (
     ("trashes_remaining", "graft_trashes_remaining"),
     # Corrinth City's first discard before the second.
     ("corrinth_first_card_id", "graft_corrinth_first_card_id"),
+    # A two-card Discard arrow's first pick (Rise of Ix).
+    ("discard_first_card_id", "graft_discard_first_card_id"),
+    # The enemy units Desert Ambush's box retreated this turn, one for each
+    # troop deployed (Rise of Ix); a Ghola copying the box has its own.
+    ("enemy_retreats_for_deployment", "graft_enemy_retreats_for_deployment"),
     # Arrakis Observer's Spy after its discard.
     ("agent_card_spy_pending", "graft_agent_card_spy_pending"),
     ("agent_card_spy_recalled", "graft_agent_card_spy_recalled"),
@@ -64,6 +69,8 @@ BOX_KEY_PAIRS: Final[tuple[tuple[str, str], ...]] = (
     ("leader_spy_recalled", "graft_leader_spy_recalled"),
     ("staban_bonus_post", "graft_staban_bonus_post"),
     ("listeners_paid", "graft_listeners_paid"),
+    # Rise of Ix's Tessia Vernius: Duplicity's Influence lost.
+    ("duplicity_paid", "graft_duplicity_paid"),
     ("signet_rewards", "graft_signet_rewards"),
 )
 
@@ -90,10 +97,18 @@ TURN_KEYS: Final = frozenset(
         "board_icons",
         "combat_commanders_deployed",
         "combat_commanders_withdrawable",
+        # Rise of Ix's dreadnoughts, the turn's third kind of unit
+        # (``combat_deployment``).
+        "combat_dreadnoughts_deployed",
+        "combat_dreadnoughts_withdrawable",
         "combat_troops_deployed",
         "combat_troops_withdrawable",
+        # The unit count a played Diversion used, dreadnoughts among them
+        # (``combat_deployment``).
+        "combat_units_committed_with_dreadnoughts",
         "commanders_recruited",
         "cost_option",
+        "dreadnoughts_commissioned",
         "espionage_spy_recalled",
         "existing_troop_deployment_limit",
         "finish_deployment_window",
@@ -110,6 +125,11 @@ TURN_KEYS: Final = frozenset(
         "pending_tech_acquire_effects",
         # Effects waiting on the turn as rows (cleanup-2b, ``turn_rows``).
         "pending_turn_rows",
+        # Troop Transports' Shipping troops, deployable wherever the Agent
+        # went (Rise of Ix, ``combat_deployment``).
+        "shipping_troops_recruited",
+        # The part of the shortfall such a recruit could not get (OQ-030).
+        "shipping_troops_ungained",
         # The rows picked toward one waiting effect (stage B3,
         # ``effect_steps``), whichever box's effect it is.
         "effect_pick",
@@ -122,6 +142,12 @@ TURN_KEYS: Final = frozenset(
         # finds it gone.
         "turn_agent_recalled",
         "turn_owner",
+        # Weirding Way's extra turns owed after this one (Rise of Ix,
+        # ``effects.close_agent_turn``), whichever box took them.
+        "extra_turns_owed",
+        # Ilesa Ecaz's card back in her hand at this turn's start (Rise of
+        # Ix, ``one_step_ahead``), read by the turn's placement.
+        "one_step_ahead_card",
         "undeployable_troops",
         # A Harkonnen Advisor troop still in the shortfall (OQ-038).
         "undeployable_troops_ungained",
@@ -231,6 +257,18 @@ BOX_ACTION_IDS: Final = frozenset(
         "pay_agent_card_spice",
         # The original game's Firm Grip: "2 Solari -> Influence" (stage P3).
         "pay_agent_card_solari",
+        # Rise of Ix's Landing Rights: the Freighter icon's two moves.
+        "advance_agent_card_freighter",
+        "recall_agent_card_freighter",
+        # Rise of Ix's Weirding Way: the extra turn.
+        "take_agent_card_extra_turn",
+        # Rise of Ix's Ixian Engineer: the Acquire Tech icon.
+        "acquire_agent_card_tech",
+        # Rise of Ix's Appropriate: the Acquire Tech icon paid in Solari.
+        "acquire_agent_card_tech_with_solari",
+        # Rise of Ix's Local Fence: its two arrows printed with "-OR-".
+        "pay_agent_card_spice_for_solari",
+        "pay_agent_card_solari_for_spice",
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",
         "pay_agent_card_specimen",
@@ -250,6 +288,8 @@ BOX_ACTION_IDS: Final = frozenset(
         "decline_corrinth_city_payment",
         "pay_agent_card_intrigue_and_spice",
         "trash_intrigue_for_agent_card",
+        # Rise of Ix's Court Intrigue: an Intrigue card under the deck.
+        "put_intrigue_on_bottom_for_agent_card",
         "decline_agent_card_intrigue_payment",
         # Acquisitions.
         "acquire_imperium_with_solari",

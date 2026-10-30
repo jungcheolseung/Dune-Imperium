@@ -343,12 +343,17 @@ OBSERVATION_POSTS: Final = (
 )
 
 # One table for both base games (docs/base-game-and-ix-plan.md 4.2 item 7): the
-# original Dune: Imperium's own spaces follow Uprising's. Imported last, as
-# they are built from the types above (``content.imperium``).
+# original Dune: Imperium's own spaces follow Uprising's, and Rise of Ix's four
+# (stage P4a, plan 17.2) follow them. Imported last, as they are built from the
+# types above (``content.imperium``, ``content.rise_of_ix``).
 from dune_imperium.content.imperium.board import (  # noqa: E402
     IMPERIUM_ONLY_BOARD_SPACES,
 )
+from dune_imperium.content.rise_of_ix.board import IX_BOARD_SPACES  # noqa: E402
 
 BOARD_SPACES_BY_ID: Final[Mapping[str, BoardSpace]] = MappingProxyType(
-    {space.space_id: space for space in (*BOARD_SPACES, *IMPERIUM_ONLY_BOARD_SPACES)}
+    {
+        space.space_id: space
+        for space in (*BOARD_SPACES, *IMPERIUM_ONLY_BOARD_SPACES, *IX_BOARD_SPACES)
+    }
 )

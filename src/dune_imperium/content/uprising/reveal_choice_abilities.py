@@ -32,6 +32,7 @@ from dune_imperium.content.uprising.abilities import (
 )
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
     CommandReached,
     CompletedContractsAtLeast,
     Condition,
@@ -41,6 +42,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     EffectSection,
     FactionBond,
+    Freighter,
     GainInfluence,
     GainResources,
     GainVictoryPoints,
@@ -51,6 +53,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     PayResources,
+    PlaceNegotiator,
     PlaceSpy,
     PrintedRevealValue,
     RecallSpy,
@@ -180,6 +183,37 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                 ),
                 mark=_OPTIONAL,
             ),
+            # Ixian Engineer (Rise of Ix): "If you have three or more Tech
+            # tiles: Trash this card -> 1 Victory Point" [Steam app text] --
+            # CHOAM Demands' shape, an optional arrow whose cost is the card's
+            # own trash and whose condition is judged whenever its row is
+            # asked (OQ-028).
+            _CHOICE.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES: _choice(
+                _line(
+                    GainVictoryPoints(1),
+                    costs=(TrashCard(this_card=True),),
+                    condition=TechTilesAtLeast(3),
+                ),
+                mark=_OPTIONAL,
+            ),
+            # Ix-Guild Compact (Rise of Ix): two Tech Negotiation icons [Steam
+            # app screen pieces; P0 face reading], each "you may take a troop
+            # from your supply and place it on the Ix board" [Rise of Ix p. 4]:
+            # each its own optional choice, so the first resolved, the second
+            # waits as a plain icon (Covert Operation's two Spies' shape).
+            _CHOICE.MAY_PLACE_TWO_NEGOTIATORS: _choice(
+                _line(PlaceNegotiator(), PlaceNegotiator()), mark=_OPTIONAL
+            ),
+            _CHOICE.MAY_PLACE_NEGOTIATOR: _choice(
+                _line(PlaceNegotiator()), mark=_OPTIONAL
+            ),
+            # Boundless Ambition (Rise of Ix promo): "Acquire a card that costs
+            # [5] or less." [Steam app text] -- a Row or Reserve card, not
+            # Foldspace (OQ-125). No "may": it holds the Reveal's end while a
+            # card is in reach, and lapses with it when none is.
+            _CHOICE.ACQUIRE_CARD_UP_TO_FIVE: _choice(
+                _line(AcquireCardUpTo(5)), mark=_MANDATORY
+            ),
             # For Humanity: "Bene Gesserit Alliance: You may lose 2 Influence with
             # one Faction -> Gain 1 VP" -- a "?" Influence diamond with two red
             # chevrons; like gaining two, the steps are not split between
@@ -277,6 +311,22 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                 mark=_OPTIONAL,
                 structure=AbilityStructure.ONE_OF,
             ),
+            # Guild Chief Administrator (Rise of Ix): the Freighter icon beside
+            # its 1 Persuasion [Steam app screen pieces]: "Freighter 아이콘마다
+            # Freighter를 둘 가운데 하나로 움직일 수 있다("may")" [Rise of Ix
+            # p. 5] (rise-of-ix.md 5) -- an optional choice, its two rows
+            # (up one space, recall), lapsing unused when the Reveal ends.
+            _CHOICE.MAY_MOVE_FREIGHTER: _choice(_line(Freighter()), mark=_OPTIONAL),
+            # Negotiated Withdrawal (Rise of Ix): "Retreat three of your units
+            # -> [Influence with any Faction]" [Steam app text and screen
+            # pieces]: an optional arrow [FAQ p. 3] whose cost is exactly
+            # three units, troops or dreadnoughts in any mix ("unit" -- 예,
+            # rise-of-ix.md 6, [Rise of Ix p. 6]); one row names the mix and
+            # the Faction, never a cube at the top (OQ-060, OQ-071).
+            _CHOICE.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE: _choice(
+                _line(GainInfluence(), costs=(RetreatTroops(3, 3, units=True),)),
+                mark=_OPTIONAL,
+            ),
             # Tleilaxu Surgeon: "You may lose 2 troops -> Generate 2 specimens"
             # (troops only, from either zone, OQ-053).
             _CHOICE.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: _choice(
@@ -365,6 +415,13 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: _choice(
                 _line(GainInfluence(), condition=TechTilesAtLeast(2)),
                 mark=_MANDATORY,
+            ),
+            # Web of Power (Rise of Ix): the wild Influence icon, "Choose a
+            # Faction to gain 1 Influence with" [Steam app text] -- no "may"
+            # and no condition, so Pointing the Way's choice without its
+            # Command.
+            _CHOICE.GAIN_CHOSEN_INFLUENCE: _choice(
+                _line(GainInfluence()), mark=_MANDATORY
             ),
         }
     )

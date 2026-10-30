@@ -341,12 +341,15 @@ def leaders_for_choam(
 
 
 # One table for both base games (docs/base-game-and-ix-plan.md 4.2 item 7):
-# the original game's Leaders follow Uprising's. Imported last, as they are
-# built from ``LeaderDefinition`` (``content.imperium``).
+# the original game's Leaders follow Uprising's, and Rise of Ix's six identity
+# entries (stage P4a, plan 17) join them. Imported last, as they are built
+# from ``LeaderDefinition`` (``content.imperium``, ``content.rise_of_ix``).
 from dune_imperium.content.imperium.leaders import (  # noqa: E402
     IMPERIUM_LEADERS,
 )
+from dune_imperium.content.rise_of_ix.leaders import IX_LEADERS  # noqa: E402
 
 LEADERS_BY_ID: Final = {
-    leader.leader_id: leader for leader in (*LEADERS, *IMPERIUM_LEADERS)
+    leader.leader_id: leader
+    for leader in (*LEADERS, *IMPERIUM_LEADERS, *IX_LEADERS)
 }

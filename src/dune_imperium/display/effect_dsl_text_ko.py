@@ -54,12 +54,15 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllianceTaken,
     AtBoardSpace,
     AtFactionSpace,
+    AtLeastOfConditions,
     AtMakerSpace,
+    AtSpaceWithEnemyAgent,
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CommandReached,
+    CommissionDreadnought,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -78,18 +81,22 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
+    DreadnoughtsAtLeast,
     DuringAgentTurn,
     EachOpponentDiscardsCard,
     EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
+    EachOpponentRetreatsDreadnought,
     EffectSection,
     FactionBond,
     FlipBattleCard,
     FlipFaceUpConflictCard,
     ForceEnemyRetreat,
+    Freighter,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
+    GainInfluenceWhereAgent,
     GainInfluenceWhereAtMost,
     GainLowestInfluence,
     GainResources,
@@ -148,8 +155,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PeekTopCard,
     PermanentRevealPersuasion,
+    PlaceNegotiator,
     PlaceSpy,
+    PledgeConflictWinSolari,
     PledgeFirstPlaceInfluence,
+    PutIntrigueOnDeckBottom,
     RecallAgent,
     RecallOtherAgent,
     RecallSpy,
@@ -182,6 +192,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     StrengthInConflictAtLeast,
     SummonSandworm,
+    TakeAnotherTurn,
     TakeCardFromDiscard,
     TakeContract,
     TakeControl,
@@ -551,6 +562,10 @@ def condition_text_ko(condition: Condition) -> str:
         case AtFactionSpace():
             # Never printed; "게임판의 팩션 장소" [Main p. 7] (glossary-ko.md).
             return "팩션 장소에 있다면"
+        case AtSpaceWithEnemyAgent():
+            # Quotes ``tokens_ko.py``'s words for Bounty Hunter: a Korean
+            # opponent is "다른 플레이어" (glossary-ko.md).
+            return "다른 플레이어의 {agent}가 있는 장소로 {agent}를 보냈다면"
         case FactionBond(faction=faction):
             # "Fremen Bond | 프레멘의 유대감" (glossary-ko.md, [Main p. 20]);
             # ``tokens_ko.py``'s "베네 게세리트의 유대감이면:".
@@ -592,6 +607,12 @@ def condition_text_ko(condition: Condition) -> str:
         case GarrisonedUnitsAtLeast(count=count):
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return f"{{garrison}}에 부대가 {count} 이상 있다면"
+        case DreadnoughtsAtLeast(count=count):
+            # "2 dreadnoughts" [Grand Conspiracy card, Steam app text]; the
+            # glossary has no Korean word for a dreadnought (Rise of Ix has
+            # no Korean edition), so it stays English like the Dreadnought
+            # icon's line ("보유했다면" from the High Council clause above).
+            return f"dreadnought를 {count}개 보유했다면"
         case DuringAgentTurn():
             # Quotes ``display/bloodlines.py``'s Rapid Dropships line.
             return "{agent_turn}"
@@ -633,6 +654,12 @@ def condition_text_ko(condition: Condition) -> str:
             # already-complete conditional clauses (its own
             # ``reveal_effect_text_ko``).
             return " 그리고 ".join(condition_text_ko(item) for item in conditions)
+        case AtLeastOfConditions(count=count, conditions=conditions):
+            # "If you have any three:" over the card's four items [Grand
+            # Conspiracy card, Steam app text]: the items' own clauses.
+            clauses = ", ".join(condition_text_ko(item) for item in conditions)
+            total = len(conditions)
+            return f"다음 {total}가지 중 {count}가지 이상에 해당한다면 ({clauses})"
         case _:
             assert_never(condition)
 
@@ -694,6 +721,9 @@ def cost_text_ko(cost: Cost) -> str:
             # actual count either, so bare ``{troop}``, not ``{troop:N}``.
             extra = " (뒤틀린 책략 카드가 아니면 {troop})" if troops else ""
             return f"핸드에서 {{trash_intrigue}}{extra}"
+        case PutIntrigueOnDeckBottom():
+            # Rise of Ix's Court Intrigue: Sonic Snoopers' prompt words.
+            return "{intrigue_card} 1장을 {intrigue} {deck} 맨 아래에 놓기"
         case DiscardFromHand(count=1):
             return "카드 1장 {discard}"
         case DiscardFromHand(count=count):
@@ -816,6 +846,11 @@ def reward_text_ko(reward: Reward) -> str:
             if requires_maker_hooks:
                 text += " ({maker_hooks} 필요)"
             return text
+        case DeployFromGarrison(up_to=int(up_to), dreadnoughts=True):
+            # "Deploy up to two units from your garrison to the Conflict."
+            # [Second Wave card, Steam app text]: the glossary's "units |
+            # 부대" ([Main p. 10]) with the line above's shape.
+            return f"{{garrison}}에서 부대 {up_to}개 이하를 {{conflict}}에 배치"
         case DeployFromGarrison(up_to=up_to):
             # "Deploy up to N troops from your garrison to the Conflict"
             # [Detonation card face] [Counterattack card face] [Twisted
@@ -916,6 +951,9 @@ def reward_text_ko(reward: Reward) -> str:
             # print (`[KO card: Navigation Card 4]`; the class's own
             # docstring names it "Navigation card 4").
             return f"{_reserve_card_name_ko(card_id)} {{acquire}}"
+        case AcquireTech(discount=0, solari_allowed=True):
+            # Appropriate (Rise of Ix): the price in Solari instead of spice.
+            return "{tech_tile} {acquire} ({spice} 대신 {solari}로 지불 가능)"
         case AcquireTech(discount=0):
             # "Acquire Tech | 기술 획득" [Bloodlines p. 12].
             return "{tech_tile} {acquire}"
@@ -987,6 +1025,12 @@ def reward_text_ko(reward: Reward) -> str:
             return (
                 f"{{intrigue}} 맨 위 {count}장 확인 후 1장 보관, 나머지는 맨"
                 " 위로 되돌림"
+            )
+        case ForceEnemyRetreat(per_troop_deployed=True):
+            # Quotes ``tokens_ko.py``'s Desert Ambush line.
+            return (
+                "이번 차례에 배치하는 {troop} 1마다 다른 플레이어의 부대 1 강제"
+                " {retreat} 가능"
             )
         case ForceEnemyRetreat():
             # Quotes ``tokens_ko.py``'s Disruption Tactics line.
@@ -1075,12 +1119,54 @@ def reward_text_ko(reward: Reward) -> str:
             # The original game's Mentat, as its Korean rulebook names it
             # ("멘타트를 가져와 지도자 위에 놓습니다" [DI-ko p. 16]).
             return "장소에서 멘타트 가져옴"
+        case CommissionDreadnought():
+            # Rise of Ix's Dreadnought icon: no Korean source names the
+            # dreadnought or the commission yet (``glossary-ko.md`` has no
+            # entry; the official Korean edition has no Rise of Ix), so the
+            # line stays English rather than invented (module docstring).
+            return "Commission a dreadnought"
+        case EachOpponentRetreatsDreadnought():
+            # Cannon Turrets (Rise of Ix has no Korean edition and the
+            # glossary no dreadnought): the line stays English (module
+            # docstring).
+            return "Each opponent retreats one dreadnought"
+        case PledgeConflictWinSolari(solari=solari):
+            # Strategic Push's "If you win this Conflict:" (Rise of Ix has
+            # no Korean edition): "이번" as in "이번 차례에", ``OnConflictWon``'s
+            # "{conflict}에서 승리", and rule 1's "-다면:" for a condition that
+            # names an action (korean-card-style.md).
+            return (
+                "이번 {conflict}에서 승리한다면: "
+                f"{reward_text_ko(GainResources(solari=solari))}"
+            )
+        case PlaceNegotiator():
+            # Rise of Ix's Tech Negotiation icon: no Korean source names the
+            # Negotiator yet (``glossary-ko.md`` has no entry; the official
+            # Korean edition has no Rise of Ix), so the line stays English
+            # rather than invented (module docstring).
+            return "Place a troop from your supply on the Ix board as a Negotiator"
+        case TakeAnotherTurn():
+            # Quotes ``tokens_ko.py``'s Weirding Way line.
+            return "이 차례 바로 뒤에 차례를 한 번 더 할 수 있음"
+        case Freighter():
+            # Rise of Ix's Freighter icon: no Korean source names the
+            # Freighter or the Shipping track yet (``glossary-ko.md`` has no
+            # entry; the official Korean edition has no Rise of Ix), so the
+            # line stays English rather than invented (module docstring).
+            return "Move your Freighter up one space or recall it"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "당신 {leader}의 {signet_ring} 능력 사용"
         case GainInfluenceWhereAtMost(maximum=maximum):
             # Quotes ``display/bloodlines.py``'s Panopticon line.
             return f"영향력이 {maximum} 이하인 각 팩션에서 {{influence_any:1}}씩 얻음"
+        case GainInfluenceWhereAgent():
+            # Quid Pro Quo (no Korean edition of Rise of Ix): the Panopticon
+            # line's shape with the Canny line's "게임판 장소에 {agent}가".
+            return (
+                "그 팩션의 게임판 장소에 당신의 {agent}가 하나 이상 있는 "
+                "각 팩션에서 {influence_any:1}씩 얻음"
+            )
         case RecruitUndeployableTroops(count=count):
             # Quotes ``display/leaders_ko.py``'s Piter De Vries Signet line.
             return f"{{troop:{count}}} 이번 차례에는 이 병력을 교전 칸에 배치할 수 없음"
@@ -1261,3 +1347,7 @@ def _reveal_count_text_ko(per: RevealCount | None) -> str:
             return " (완수한 {contract}마다)"
         case RevealCountKind.OTHER_SWORD_CARD:
             return " (공개한 다른 {sword} 카드마다)"
+        case RevealCountKind.DREADNOUGHT_IN_CONFLICT:
+            # Rise of Ix: the dreadnought has no Korean source, so the word
+            # stays English (module docstring).
+            return " ({conflict}의 내 dreadnought마다)"

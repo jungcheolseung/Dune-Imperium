@@ -18,6 +18,10 @@ records (``rules.tech.TECH_HOOKS``), lines listed only where the DSL says
 the whole ability, and the rule changes in force while the tile is held are
 ``STANDING`` records naming the engine branch. The printed text is
 ``display/bloodlines.py``.
+
+Rise of Ix's tiles (stage P4a, ``content.rise_of_ix.tech``) keep their
+acquire records here too, where an existing piece prints the effect; their
+abilities have no record before stage P4c.
 """
 
 from collections.abc import Mapping
@@ -105,6 +109,24 @@ TECH_ACQUIRE_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "servo_receivers": _icons(UseSignetAbility()),
         # Spy Drones: two Spies with Deep Cover [Bloodlines p. 5].
         "spy_drones": _icons(PlaceSpy(shared_post=True), PlaceSpy(shared_post=True)),
+        # Rise of Ix's tiles (stage P4a, ``content.rise_of_ix.tech``): the
+        # acquire effects of docs/rules/rise-of-ix.md 4's table, as the app's
+        # ``AcquireEffectList`` lists them. No setup deals these tiles yet.
+        # Windtraps' water and Shuttle Fleet's "Choose two" Factions (two
+        # different ones named before either is paid, OQ-114, as
+        # Machinations' record) are the ``water`` and ``distinct_influence``
+        # keys of ``TechTile.acquire_effect_keys`` (stage P4c-2a).
+        "chaumurky": _icons(DrawIntrigueCards(2)),
+        # The trash icon, optional as Planetary Array's.
+        "disposal_facility": _icons(TrashPersonalCard()),
+        "flagship": _icons(GainVictoryPoints(1)),
+        "invasion_ships": _icons(RecruitTroops(4)),
+        "memocorders": _icons(GainInfluence()),
+        "shuttle_fleet": _icons(GainInfluence(times=2, distinct=True)),
+        "sonic_snoopers": _icons(DrawIntrigueCards(1)),
+        # Paid at once, on acquiring (docs/rules/rise-of-ix.md 9.3).
+        "spaceport": _icons(DrawPersonalCards(2)),
+        "windtraps": _icons(GainResources(water=1)),
     }
 )
 
@@ -271,12 +293,13 @@ def tech_draws_on(
     tech_ids: tuple[str, ...], kind: type[OnContractCompleted] | type[OnConflictWon]
 ) -> int:
     """Cards the held tiles draw when a ``kind`` trigger fires (CHOAM
-    Transports, Planetary Array; composed A6e)."""
+    Transports, Planetary Array; composed A6e). A Rise of Ix tile has no
+    ability record (``content.rise_of_ix.tech``), so it draws none here."""
 
     return sum(
         reward.count
         for tech_id in tech_ids
-        for record in TECH_ABILITIES[tech_id]
+        for record in TECH_ABILITIES.get(tech_id, ())
         if isinstance(record.trigger, kind)
         for line in record.sections
         for reward in line.rewards

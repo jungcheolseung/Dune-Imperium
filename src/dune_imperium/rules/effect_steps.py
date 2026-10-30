@@ -315,6 +315,13 @@ _COMBAT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "deep_cover_spy": _V.PLACE_SPY,
     # Planetary Array's card, a row of the winner's window (OQ-121).
     "planetary_array": _V.DRAW,
+    # The sole winner's dreadnought, set on a Control space that holds none
+    # (Rise of Ix, OQ-121 ruling 6 (1)): "take control" as the Control icon.
+    "dreadnought_control": _V.TAKE,
+    # Windtraps' water, a row of the winner's window (Rise of Ix).
+    "windtraps": _V.GAIN,
+    # Strategic Push's pledged Solari, a row of the same window (Rise of Ix).
+    "strategic_push": _V.GAIN,
     # The sole winner's close of its window: no more winning Intrigue
     # (OQ-121 decision 6; the original game's To the Victor... and Demand
     # Respect). Nothing is gained, so it only resolves the row.
@@ -326,6 +333,9 @@ _COMBAT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "line_0": _V.CHOOSE,
     "line_1": _V.CHOOSE,
     "line_2": _V.CHOOSE,
+    # Rise of Ix's Freighter icon: it opens the recipient's Freighter window,
+    # "move it up" being the verb of that window's first answer.
+    "freighter": _V.ADVANCE,
 })
 # What a completed Contract's icon does (``contracts.CONTRACT_REWARD_ICON_KINDS``).
 _CONTRACT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
@@ -340,18 +350,25 @@ _CONTRACT_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "troops": _V.RECRUIT,
 })
 # What an Imperium card's acquire icon does (``acquire_icons``, OQ-141): an
-# Influence with a fixed Faction, or with the one the owner chooses.
+# Influence with a fixed Faction, or with the one the owner chooses; Rise of
+# Ix's Full-Scale Assault commissions a dreadnought (the Dreadnought space's
+# verb).
 _ACQUIRE_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "influence_emperor": _V.GAIN_INFLUENCE,
     "influence_spacing_guild": _V.GAIN_INFLUENCE,
     "influence_bene_gesserit": _V.GAIN_INFLUENCE,
     "influence_fremen": _V.GAIN_INFLUENCE,
     "influence_any": _V.GAIN_INFLUENCE,
+    "dreadnought": _V.RECRUIT,
+    # Appropriate's Freighter icon (Rise of Ix): its row opens the Freighter's
+    # window, the move up first among its answers.
+    "freighter": _V.ADVANCE,
 })
 # What a Tech tile's acquire icon does (``TechTile.acquire_effect_keys``).
 _TECH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "cards": _V.DRAW,
     "contracts": _V.TAKE,
+    "distinct_influence": _V.GAIN_INFLUENCE,
     "influence": _V.GAIN_INFLUENCE,
     "intrigue": _V.DRAW,
     "intrigue_or_card": _V.DRAW,
@@ -363,6 +380,7 @@ _TECH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "trash": _V.TRASH,
     "troops": _V.RECRUIT,
     "victory_points": _V.GAIN,
+    "water": _V.GAIN,
 })
 
 # What a research space's bonus does (``immortality.ResearchBonus``): the
@@ -411,6 +429,35 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "pay_agent_card_specimen": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
     "pay_agent_card_two_specimens": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
     "pay_agent_card_five_solari_for_tleilaxu": _spec(_V.PAY, _S.AGENT_CARD, _BOX),
+    # Landing Rights' Freighter icon (Rise of Ix): its two moves.
+    "advance_agent_card_freighter": _spec(
+        _V.ADVANCE, _S.AGENT_CARD, _BOX, icon="freighter"
+    ),
+    "recall_agent_card_freighter": _spec(
+        _V.COLLECT, _S.AGENT_CARD, _BOX, icon="freighter"
+    ),
+    # Weirding Way's extra turn (Rise of Ix).
+    "take_agent_card_extra_turn": _spec(
+        _V.TAKE, _S.AGENT_CARD, _BOX, icon="extra_turn"
+    ),
+    # Ixian Engineer's Acquire Tech icon (Rise of Ix): the window it opens.
+    # Its two payments (Appropriate's Solari beside the spice of every Acquire
+    # Tech): the icon, then what the window is paid with, as Local Fence's
+    # two arrows are told apart.
+    "acquire_agent_card_tech": _spec(
+        _V.ACQUIRE, _S.AGENT_CARD, _BOX, icon="tech", option="spice"
+    ),
+    # Appropriate's (Rise of Ix): the same icon, the window paid in Solari.
+    "acquire_agent_card_tech_with_solari": _spec(
+        _V.ACQUIRE, _S.AGENT_CARD, _BOX, icon="tech", option="solari"
+    ),
+    # Local Fence's "-OR-" of two arrows (Rise of Ix): which one is paid.
+    "pay_agent_card_spice_for_solari": _spec(
+        _V.PAY, _S.AGENT_CARD, _BOX, option="spice_for_solari"
+    ),
+    "pay_agent_card_solari_for_spice": _spec(
+        _V.PAY, _S.AGENT_CARD, _BOX, option="solari_for_spice"
+    ),
     # Arrakis Revolt's two payments: keep the Shield Wall or remove it.
     "pay_agent_card_spice_for_sandworm": _spec(
         _V.PAY, _S.AGENT_CARD, _BOX, option="sandworm"
@@ -430,6 +477,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "trash_intrigue_for_agent_card": _spec(
         _V.TRASH, _S.AGENT_CARD, _BOX, targets=_INTRIGUE
+    ),
+    # Court Intrigue (Rise of Ix): the card put under the Intrigue deck.
+    "put_intrigue_on_bottom_for_agent_card": _spec(
+        _V.PAY, _S.AGENT_CARD, _BOX, targets=_INTRIGUE
     ),
     "acquire_imperium_by_card": _spec(
         _V.ACQUIRE, _S.AGENT_CARD, _BOX, targets=_IMPERIUM
@@ -502,6 +553,22 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "deploy_leader_agent": _spec(_V.DEPLOY, _S.LEADER, _LEADER),
     "gain_leader_signet_spice": _spec(_V.GAIN, _S.LEADER, _LEADER),
+    # Rise of Ix's Tessia Vernius: Duplicity's lost Influence (its cost).
+    "lose_leader_influence": _spec(
+        _V.LOSE_INFLUENCE, _S.LEADER, _LEADER, targets=(*_FACTION, _RECIPIENT)
+    ),
+    # Rise of Ix's Viscount Hundro Moritani: Couriers' two Freighter moves.
+    "advance_leader_freighter": _spec(
+        _V.ADVANCE, _S.LEADER, _LEADER, option="freighter"
+    ),
+    "recall_leader_freighter": _spec(
+        _V.COLLECT, _S.LEADER, _LEADER, option="freighter"
+    ),
+    # Rise of Ix's Prince Rhombur Vernius: Ixian Technology's "OR" halves.
+    "acquire_leader_tech": _spec(_V.ACQUIRE, _S.LEADER, _LEADER, option="tech"),
+    "place_leader_negotiator": _spec(
+        _V.RECRUIT, _S.LEADER, _LEADER, option="negotiator"
+    ),
     "trash_leader_tech": _spec(
         _V.TRASH, _S.LEADER, _LEADER, targets=(("tech_id", _C.TECH),)
     ),
@@ -594,6 +661,33 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         icon="tech",
         targets=(("tech_id", _C.TECH), ("post_id", _C.POST)),
     ),
+    # The icons of Rise of Ix's four spaces (stage P4c-4): the Dreadnought
+    # space's two, the Tech Negotiation "OR" box's halves (``option``), and a
+    # Freighter icon's moves of the two Spice Trade spaces. Spaceport's Foldspace
+    # card on top of the deck is the Foldspace icon's other option.
+    "commission_board_dreadnought": _spec(
+        _V.RECRUIT, _S.BOARD_SPACE, _SPACE, icon="commission"
+    ),
+    "acquire_board_tech": _spec(_V.ACQUIRE, _S.BOARD_SPACE, _SPACE, icon="ix_tech"),
+    "acquire_negotiation_tech": _spec(
+        _V.ACQUIRE, _S.BOARD_SPACE, _SPACE, icon="tech_negotiation", option="tech"
+    ),
+    "place_board_negotiator": _spec(
+        _V.RECRUIT,
+        _S.BOARD_SPACE,
+        _SPACE,
+        icon="tech_negotiation",
+        option="negotiator",
+    ),
+    "advance_board_freighter": _spec(
+        _V.ADVANCE, _S.BOARD_SPACE, _SPACE, icon="freighter"
+    ),
+    "recall_board_freighter": _spec(
+        _V.COLLECT, _S.BOARD_SPACE, _SPACE, icon="freighter"
+    ),
+    "acquire_foldspace_to_deck_top": _spec(
+        _V.ACQUIRE, _S.BOARD_SPACE, _SPACE, icon="foldspace", option="deck_top"
+    ),
     # Gather Intelligence: a Spy connected to the visited space [Main p. 11].
     "gather_intelligence": _spec(_V.RECALL_SPY, _S.SPY, _SPACE, targets=_POST),
     # --- A Contract, a Tech tile ---------------------------------------------
@@ -614,13 +708,23 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         icon="arg:effect",
         targets=_FACTION,
     ),
-    "flip_tech": _spec(_V.FLIP, _S.TECH, "tech_id"),
+    # Holoprojectors' and Invasion Ships' discarded card is the target row
+    # (Rise of Ix, stage P4c-2b); the other tiles name none.
+    "flip_tech": _spec(_V.FLIP, _S.TECH, "tech_id", targets=_CARD),
+    # Rise of Ix's Spy Satellites and Sonic Snoopers: the tile named is the
+    # trash (its cost) that opens the ability (stage P4c-2c).
+    "trash_tech": _spec(_V.TRASH, _S.TECH, "tech_id"),
     "resolve_tech_acquire_effect": _spec(
         _TECH_ICON_VERBS,
         _S.TECH,
         "tech_id",
         icon="arg:effect",
-        targets=(("faction", _C.FACTION), ("choice", _C.OPTION)),
+        # Shuttle Fleet's two different Factions are two target rows (OQ-114).
+        targets=(
+            ("faction", _C.FACTION),
+            ("second_faction", _C.FACTION),
+            ("choice", _C.OPTION),
+        ),
     ),
     # --- The Reveal frame (stage B3b-2): a purchase, one effect per market --
     "acquire_imperium": _spec(
@@ -672,9 +776,29 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         ),
     ),
     "pay_reveal_solari_for_vp": _spec(_V.PAY, _S.REVEAL_CARD, "=opulence"),
+    # Ix-Guild Compact's Tech Negotiation icons (Rise of Ix).
+    "place_reveal_negotiator": _spec(
+        _V.RECRUIT, _S.REVEAL_CARD, "=ix_guild_compact", icon="negotiator"
+    ),
     "pay_reveal_spice_for_vp": _spec(_V.PAY, _S.REVEAL_CARD, "=guild_ambassador"),
     "pay_reveal_solari_for_troops": _spec(
         _V.PAY, _S.REVEAL_CARD, "=gurney_halleck_card"
+    ),
+    # Guild Chief Administrator's and Freighter Fleet's Freighter icon (Rise
+    # of Ix): the card the row names.
+    "advance_reveal_freighter": _spec(
+        _V.ADVANCE, _S.REVEAL_CARD, "source", icon="freighter"
+    ),
+    "recall_reveal_freighter": _spec(
+        _V.COLLECT, _S.REVEAL_CARD, "source", icon="freighter"
+    ),
+    # Negotiated Withdrawal's arrow (Rise of Ix): the Faction, then the three
+    # units, their mix riding on the count's row.
+    "retreat_reveal_units_for_influence": _spec(
+        _V.RETREAT,
+        _S.REVEAL_CARD,
+        "=negotiated_withdrawal",
+        targets=(*_FACTION, ("count", _C.COUNT)),
     ),
     "pay_reveal_spice_influence": _spec(
         _V.PAY, _S.REVEAL_CARD, "=spacing_guild_s_favor", targets=_FACTION
@@ -719,12 +843,23 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "command_acquire_row_card": _spec(
         _V.ACQUIRE, _S.REVEAL_CARD, "=engineered_miracle", targets=_IMPERIUM
     ),
+    # Boundless Ambition (Rise of Ix promo): its acquisition by cost cap.
+    "acquire_reveal_imperium_card": _spec(
+        _V.ACQUIRE, _S.REVEAL_CARD, "=boundless_ambition", targets=_IMPERIUM
+    ),
+    "acquire_reveal_reserve_card": _spec(
+        _V.ACQUIRE, _S.REVEAL_CARD, "=boundless_ambition", targets=_RESERVE
+    ),
     # --- The leader, a Commander's Skill and Tech tiles in the Reveal ------
     "retreat_leader_troop": _spec(_V.RETREAT, _S.LEADER, _LEADER, option="troop"),
     "retreat_leader_commander": _spec(
         _V.RETREAT, _S.LEADER, _LEADER, option="commander"
     ),
     "recall_spy_for_leader": _spec(_V.RECALL_SPY, _S.LEADER, _LEADER, targets=_POST),
+    # Rise of Ix's Archduke Armand Ecaz: Coordination's card in play.
+    "trash_leader_reveal_card": _spec(
+        _V.TRASH, _S.LEADER, _LEADER, option="coordination", targets=_CARD
+    ),
     "trash_skill_for_strength": _spec(_V.TRASH, _S.COMMANDER, "skill_id"),
     # Forbidden Weapons: three swords for an Influence, or the tile trashed.
     "choose_tech_strength": _spec(
@@ -738,6 +873,19 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         _V.CHOOSE, _S.TECH, "=forbidden_weapons", option="trash"
     ),
     "place_tech_spy": _spec(_V.PLACE_SPY, _S.TECH, "=panopticon"),
+    # Detonation Devices: the winner's dreadnought back to the supply for 1 VP
+    # instead of a Control space (the same window, OQ-121 ruling 3).
+    "detonate_combat_reward_dreadnought": _spec(
+        _V.GAIN, _S.TECH, "=detonation_devices"
+    ),
+    # Disposal Facility's trash of a card in play: the tile prints it, the
+    # card is the target row (Rise of Ix, OQ-126). The tile also prints an
+    # acquire box "trash 1" (the optional trash window's row, printed by the
+    # same tile); bought during a Reveal with six Persuasion both are open at
+    # once (OQ-150 (2)), so this one is told apart as its Reveal turn option.
+    "trash_disposal_facility_card": _spec(
+        _V.TRASH, _S.TECH, "=disposal_facility", option="reveal_turn", targets=_CARD
+    ),
     # --- Playing a card (stage B3c-1): the window, the card, its option -----
     # One option still opens its step (OQ-111 (2)): an option is an effect
     # printed on the card.
@@ -831,6 +979,22 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "detonate_shield_wall": _spec(
         _V.DESTROY_SHIELD_WALL, _S.INTRIGUE, Printed.INTRIGUE_CARD
     ),
+    # A Dreadnought icon's commission (Rise of Ix): the slot's own effect, or
+    # its refusal.
+    "commission_intrigue_dreadnought": _spec(
+        _V.RECRUIT, _S.INTRIGUE, Printed.INTRIGUE_CARD
+    ),
+    # A Tech Negotiation icon's Negotiator (Rise of Ix), likewise.
+    "place_intrigue_negotiator": _spec(
+        _V.RECRUIT, _S.INTRIGUE, Printed.INTRIGUE_CARD
+    ),
+    # A Freighter icon's moves (Rise of Ix), likewise.
+    "advance_intrigue_freighter": _spec(
+        _V.ADVANCE, _S.INTRIGUE, Printed.INTRIGUE_CARD
+    ),
+    "recall_intrigue_freighter": _spec(
+        _V.COLLECT, _S.INTRIGUE, Printed.INTRIGUE_CARD
+    ),
     "put_back_top_card": _spec(_V.KEEP, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "discard_top_card": _spec(_V.DISCARD, _S.INTRIGUE, Printed.INTRIGUE_CARD),
     "draw_top_card_for_solari": _spec(_V.DRAW, _S.INTRIGUE, Printed.INTRIGUE_CARD),
@@ -917,6 +1081,16 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     ),
     "keep_shield_wall": _spec(
         _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.DESTROY_SHIELD_WALL
+    ),
+    "decline_intrigue_dreadnought": _spec(
+        _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.RECRUIT
+    ),
+    "decline_intrigue_negotiator": _spec(
+        _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.RECRUIT
+    ),
+    # A Freighter icon's moves (Rise of Ix), likewise.
+    "decline_intrigue_freighter": _spec(
+        _D, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.ADVANCE
     ),
     "resolve_intrigue_influence_without_faction": _spec(
         _E, _S.INTRIGUE, Printed.INTRIGUE_CARD, of=_V.GAIN_INFLUENCE
@@ -1011,6 +1185,9 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "lose_moved_spy": _spec(_E, _S.REF, Printed.WINDOW, of=_V.MOVE_SPY),
     # An optional trash window's trash icon.
     "decline_optional_trash": _spec(_D, _S.REF, Printed.WINDOW, of=_V.TRASH),
+    # Sonic Snoopers' stop: no more Intrigue cards for the bottom, then the
+    # draw (the window's own effect with no target keeps its effect row).
+    "finish_intrigue_bottom": _spec(_V.FINISH, _S.TECH, "=sonic_snoopers"),
     # Arrakeen Scouts: a subcommittee, a mission, a choice, a market card.
     "decline_subcommittee": _spec(_D, _S.SCOUTS, "=high_council", of=_V.JOIN),
     "scouts_decline_mission": _spec(_D, _S.SCOUTS, Printed.MISSION, of=_V.JOIN),
@@ -1045,6 +1222,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     # resource bundle or a Faction is its printer's own, so the row does not
     # repeat it (``_PRINTER_IMPLIED``).
     "recruit_reveal_troops": _spec(_V.RECRUIT, _S.REF, Printed.NAMED, icon="troops"),
+    # Rise of Ix's Treachery: troops from the supply to the Conflict.
+    "deploy_reveal_supply_troops": _spec(
+        _V.DEPLOY, _S.REF, Printed.NAMED, icon="supply_troops"
+    ),
     "draw_reveal_intrigue": _spec(_V.DRAW, _S.REF, Printed.NAMED, icon="intrigue"),
     "generate_reveal_specimens": _spec(
         _V.GENERATE_SPECIMENS, _S.REF, Printed.NAMED, icon="specimen"
@@ -1073,6 +1254,7 @@ TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxy
     "choose_combat_reward_influence": _FACTION,
     "choose_distinct_combat_reward_influence": _FACTION,
     "place_combat_reward_spy": _POST,
+    "place_combat_reward_dreadnought": _BOARD_SPACE,
     "recall_spies_for_combat_reward": (
         ("first_post_id", _C.POST),
         ("second_post_id", _C.POST),
@@ -1116,6 +1298,9 @@ TARGET_SPECS: Final[Mapping[str, tuple[tuple[str, Choose], ...]]] = MappingProxy
     "discard_opponent_card": _CARD,
     "choose_graft_partner": _CARD,
     "keep_peeked_intrigue": (("instance_id", _C.INTRIGUE_CARD),),
+    # Sonic Snoopers' pick: each card put on the Intrigue deck's bottom is a
+    # target row of the window (the stop is its effect row, ``finish_*``).
+    "put_intrigue_on_bottom": (("card_id", _C.INTRIGUE_CARD),),
     "select_long_live_fighters_draw": _CARD,
     "select_long_live_fighters_discard": _CARD,
     # Holy War's unit an opponent loses.
@@ -1208,6 +1393,7 @@ TARGET_STEP_FRAMES: Final = frozenset({
     FrameKind.COMBAT_REWARD_SPY_RECALL,
     FrameKind.COMBAT_REWARD_TRASH,
     FrameKind.COMBAT_REWARD_SPY,
+    FrameKind.DREADNOUGHT_CONTROL_CHOICE,
     FrameKind.INTRIGUE_CHOICE,
     FrameKind.LEADER_DRAFT,
     FrameKind.SKILL_CHOICE,
@@ -1224,6 +1410,7 @@ TARGET_STEP_FRAMES: Final = frozenset({
     FrameKind.RESEARCH_BONUS,
     FrameKind.GRAFT_PARTNER,
     FrameKind.INTRIGUE_PEEK,
+    FrameKind.INTRIGUE_BOTTOM_PICK,
     FrameKind.LONG_LIVE_FIGHTERS,
     # Stage B3d-2b: Arrakeen Scouts.
     FrameKind.SCOUTS_FOUR_BONUS,
@@ -1345,7 +1532,7 @@ def printed_from_state(
         tiles = [
             entry.split(":")[0]
             for entry in pending.split(",")
-            if entry.endswith(":influence")
+            if entry.endswith((":influence", ":distinct_influence"))
         ]
         if not tiles:
             raise ValueError(f"{whole} has no Tech tile's Influence waiting")

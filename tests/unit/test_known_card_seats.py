@@ -296,6 +296,8 @@ _NOT_ZONES = frozenset(
         "scouts_tasks",
         "scouts_subcommittee_offers",
         "scouts_four_bonus_choices",
+        # Rise of Ix: Control spaces under dreadnoughts.
+        "dreadnought_control",
     }
 )
 _NOT_PLAYER_ZONES = frozenset(
@@ -309,6 +311,8 @@ _NOT_PLAYER_ZONES = frozenset(
         "granted_agent_icon_turn",
         "navigation_trigger_faction",
         "research_space",
+        # Rise of Ix: Tessia Vernius' Snooper tokens by Faction.
+        "snooper_faction_ids",
     }
 )
 

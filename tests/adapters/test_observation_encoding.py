@@ -4,23 +4,42 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
-from tests.support.observation_growth import NEW_SEGMENTS, growth_since_v34
+from tests.support.observation_growth import (
+    NEW_SEGMENTS,
+    NONZERO_GROWTH,
+    V38_SEGMENTS,
+    V38_SIZE,
+    V39_NEW_SEGMENTS,
+    growth_since_v34,
+    v38_columns,
+    v38_layout,
+)
 
 from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.adapters.observation_encoding import (
     BATTLE_CARD_IDS,
     CONFLICT_IDS,
+    CONTRACT_IDS,
+    CONTROL_SPACE_IDS,
     FACTION_IDS,
     INTRIGUE_IDS,
+    IX_SPACE_IDS,
+    LEADER_IDS,
+    MAKER_SPACE_IDS,
     OBSERVATION_SEGMENTS,
     OBSERVATION_SIZE,
     OBSERVATION_VERSION,
     PERSONAL_CARD_IDS,
+    RESERVE_STACK_IDS,
     SPACE_IDS,
+    TECH_IDS,
+    TECH_SEGMENTS,
+    VOICE_BLOCK_SPACE_IDS,
     ObservationSegment,
     encode_player_view,
     segment_slice,
 )
+from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.core import (
     ChanceDecision,
     ChanceResolver,
@@ -30,41 +49,57 @@ from dune_imperium.core import (
     PlayerState,
     Resources,
 )
-from dune_imperium.core.observation import observe_state
+from dune_imperium.core.observation import (
+    NEGOTIATORS_RETURNABLE_KEY,
+    SHIPPING_REWARDS_KEY,
+    TECH_DISCOUNT_KEY,
+    TECH_PAYMENT_KEY,
+    known_card_seats,
+    observe_state,
+)
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.action_shapes import Source, Verb
-from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.engine import LEGAL_ACTION_PROVIDERS
+from dune_imperium.rules.frames import IX_FRAME_KINDS, FrameKind
 from dune_imperium.simulation import run_random_game
 
 
 def test_layout_is_versioned_and_contiguous() -> None:
-    assert OBSERVATION_VERSION == 38
+    assert OBSERVATION_VERSION == 39
     # 66 Uprising personal-card identities plus 26 Bloodlines Imperium
     # identities, the Bloodlines promo, 25 Immortality Imperium identities,
     # Experimentation, the 19 Tleilaxu deck cards (promo included) and Epic
     # Game Mode's Control the Spice, then (v35) the original game's three
     # Reserve cards and (v37) its 43 Imperium cards and three promos; 39
     # Uprising Intrigue identities plus 18 Bloodlines, 12 Twisted, 10
-    # Navigation, 11 Immortality and (v37) the original game's 34.
-    assert len(PERSONAL_CARD_IDS) == 66 + 26 + 1 + 25 + 1 + 19 + 1 + 3 + 46
-    assert PERSONAL_CARD_IDS[-50] == "control_the_spice"
-    assert PERSONAL_CARD_IDS[-49:-46] == (
+    # Navigation, 11 Immortality and (v37) the original game's 34; then (v39)
+    # Rise of Ix's 29 Imperium cards and Boundless Ambition, and its 17
+    # Intrigue cards.
+    assert len(PERSONAL_CARD_IDS) == 66 + 26 + 1 + 25 + 1 + 19 + 1 + 3 + 46 + 30
+    assert PERSONAL_CARD_IDS[-80] == "control_the_spice"
+    assert PERSONAL_CARD_IDS[-79:-76] == (
         "arrakis_liaison",
         "imperium_the_spice_must_flow",
         "foldspace_card",
     )
-    assert PERSONAL_CARD_IDS[-46] == "arrakis_recruiter"
-    assert len(INTRIGUE_IDS) == 39 + 18 + 12 + 10 + 11 + 34
-    assert INTRIGUE_IDS[-34] == "bribery"
+    assert PERSONAL_CARD_IDS[-76] == "arrakis_recruiter"
+    assert PERSONAL_CARD_IDS[-30] == "appropriate"
+    assert PERSONAL_CARD_IDS[-1] == "boundless_ambition"
+    assert len(INTRIGUE_IDS) == 39 + 18 + 12 + 10 + 11 + 34 + 17
+    assert INTRIGUE_IDS[-51] == "bribery"
+    assert INTRIGUE_IDS[-17] == "advanced_weaponry"
     # 16 Uprising Conflicts, the two Bloodlines cards and Epic Game Mode's
     # Economic Supremacy (identity universe), then (v35) the original game's
     # 18; the battle cards add the four Objectives before Economic
     # Supremacy, so the older ones keep their columns (no original Conflict
-    # is won as a card [DI p. 8]).
-    assert len(CONFLICT_IDS) == 19 + 18
+    # is won as a card [DI p. 8]). v39: Rise of Ix's three new Conflicts
+    # after the original game's (its Economic Supremacy is Uprising's Epic
+    # card); like the original game's, they print no battle icon.
+    assert len(CONFLICT_IDS) == 19 + 18 + 3
     assert CONFLICT_IDS[18] == "economic_supremacy"
-    assert CONFLICT_IDS[-1] == "grand_vision"
+    assert CONFLICT_IDS[-4] == "grand_vision"
+    assert CONFLICT_IDS[-3:] == ("skirmish_e", "skirmish_f", "trade_monopoly")
     assert len(BATTLE_CARD_IDS) == 24
     assert BATTLE_CARD_IDS[-1] == "economic_supremacy"
     # v9: Tech Module segments (24 global, 21 per seat, 1 private).
@@ -187,9 +222,45 @@ def test_layout_is_versioned_and_contiguous() -> None:
         + 4 * 188
         + 4 * 42
         + 4 * 2
+        # v39 (stage P4a, Rise of Ix): its 30 Imperium cards in the 30
+        # personal-card segments and its 17 Intrigue cards in the nine
+        # Intrigue segments; the Intrigue deck's size in ``global_scalars``;
+        # then four seats' three dreadnought counts, two columns per Control
+        # space, four seats' ten Shipping, Negotiator, Snooper, Ilesa and
+        # Strategic Push pledge columns (the pledge joined on 2026-10-30,
+        # before v39 reached master), four seats' bars on the four Ix spaces,
+        # the known Intrigue
+        # deck top (141), its eight bottom depths, the known Intrigue of three
+        # opponents (141 each), the set-aside card (218), seven pending
+        # columns and the Rise of Ix flag. Its 18 Tech tiles in the six Tech
+        # segments (four seats, the trash and the effect pick); its four
+        # spaces add no column (an Agent location holds a space by index).
+        + 30 * 30
+        + 9 * 17
+        + 6 * 18
+        + 1
+        + 4 * 3
+        + 4 * 2
+        + 4 * 10
+        + 4 * 4
+        + 141
+        + 8
+        + 3 * 141
+        + 218
+        + 7
+        + 1
     )
-    assert OBSERVATION_SIZE == 8_265
-    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment("card_turn_flags", 8_257, 8)
+    assert OBSERVATION_SIZE == 10_301
+    assert OBSERVATION_SEGMENTS[-1] == ObservationSegment("ix_flags", 10_300, 1)
+    # v39: the Tech Module's 18 tiles, then Rise of Ix's 18; the segments
+    # with a column per tile are exactly ``TECH_SEGMENTS``.
+    assert len(TECH_IDS) == 18 + 18
+    assert TECH_IDS[17] == "training_depot" and TECH_IDS[18] == "artillery"
+    assert {
+        segment.name
+        for segment in OBSERVATION_SEGMENTS
+        if segment.length == len(TECH_IDS)
+    } == TECH_SEGMENTS
 
     offset = 0
     for segment in OBSERVATION_SEGMENTS:
@@ -198,7 +269,8 @@ def test_layout_is_versioned_and_contiguous() -> None:
         offset += segment.length
     assert offset == OBSERVATION_SIZE
 
-    assert segment_slice("global_scalars") == slice(0, 12)
+    # v39: the Intrigue deck's size is the 13th global scalar.
+    assert segment_slice("global_scalars") == slice(0, 13)
     names = [segment.name for segment in OBSERVATION_SEGMENTS]
     assert "intrigue_trash" not in names
     assert names[names.index("intrigue_discard") + 1] == "imperium_removed"
@@ -209,7 +281,7 @@ def test_layout_is_versioned_and_contiguous() -> None:
     seat0_in_play = segment_slice("seat0_in_play")
     assert (
         seat0_in_play.stop - seat0_in_play.start
-        == 66 + 26 + 1 + 25 + 20 + 1 + 3 + 46
+        == 66 + 26 + 1 + 25 + 20 + 1 + 3 + 46 + 30
     )
     private_secret_project = segment_slice("private_secret_project")
     # v22 appends the Arrakeen Scouts segments after the private ones.
@@ -277,7 +349,24 @@ def test_layout_is_versioned_and_contiguous() -> None:
         == segment_slice("voice_blocks").start
     )
     assert segment_slice("voice_blocks").stop == segment_slice("card_turn_flags").start
-    assert segment_slice("card_turn_flags").stop == OBSERVATION_SIZE
+    # v39 appends Rise of Ix's segments after the card turn flags, in order.
+    ix_segments = (
+        "card_turn_flags",
+        *(f"seat{seat}_units" for seat in range(4)),
+        "dreadnought_control",
+        *(f"seat{seat}_ix" for seat in range(4)),
+        "voice_blocks_ix",
+        "private_intrigue_top",
+        "private_intrigue_bottom",
+        *(f"private_known_intrigue_seat{seat}" for seat in range(1, 4)),
+        "private_set_aside",
+        "ix_pending",
+        "ix_flags",
+    )
+    for before, after in zip(ix_segments, ix_segments[1:], strict=False):
+        assert segment_slice(before).stop == segment_slice(after).start
+    assert set(ix_segments[1:]) == V39_NEW_SEGMENTS
+    assert segment_slice("ix_flags").stop == OBSERVATION_SIZE
 
 
 def test_reset_state_encodes_the_turn_decision_for_every_observer() -> None:
@@ -651,7 +740,8 @@ def test_the_voice_and_the_card_turn_flags_are_encoded_by_relative_seat() -> Non
         flags = encoded[segment_slice("card_turn_flags")]
         for seat in range(4):
             row = (seat - observer) % 4
-            row_blocks = blocks[row * len(SPACE_IDS) : (row + 1) * len(SPACE_IDS)]
+            width = len(VOICE_BLOCK_SPACE_IDS)
+            row_blocks = blocks[row * width : (row + 1) * width]
             expected = (
                 {spaces["arrakeen"], spaces["heighliner"]} if seat == 2 else set()
             )
@@ -1316,7 +1406,10 @@ def _pinned_columns(vector: tuple[int, ...]) -> bytes:
             assert not any(part)
             continue
         grown = growth_since_v34(segment)
-        assert not any(part[segment.length - grown :])
+        # v39's Intrigue deck size (``global_scalars``) is public in every
+        # game; every other grown column is 0 in an Uprising game.
+        if segment.name not in NONZERO_GROWTH:
+            assert not any(part[segment.length - grown :])
         older.extend(part[: segment.length - grown])
     assert len(older) == _V33_SIZE
     return np.asarray(older, dtype=np.int32).tobytes()
@@ -1343,3 +1436,420 @@ def test_the_base_game_flag_names_the_original_game() -> None:
     imperium = encode_player_view(replace(view, base_game=BaseGame.IMPERIUM))
     assert imperium[flag] == (1,)
     assert imperium[: flag.start] == encode_player_view(view)[: flag.start]
+
+
+# -- observation v39 (stage P4a, Rise of Ix; plan 17.8) -----------------------
+def _digest(rows: Any) -> str:
+    import hashlib
+
+    return hashlib.sha256("\n".join(rows).encode()).hexdigest()
+
+
+# Observation v38 as the v38 encoder printed it (7b4c65be, 2026-10-29, before
+# v39): SHA-256 of its segments' "name:length" rows, and of each identity
+# universe's ids in order, by universe (count, digest).
+_V38_LAYOUT = "6ded77400dca4b86079a8c23a1864ab4190fce01afe7c6e0da05b229a7ceb1f4"
+_V38_UNIVERSES: dict[str, tuple[tuple[str, ...], int, str]] = {
+    "personal": (
+        PERSONAL_CARD_IDS,
+        188,
+        "d8ad000d1a0e5c4f9169a4fc6a55129b50687d5b458795ac66356c27fe2df9b7",
+    ),
+    "intrigue": (
+        INTRIGUE_IDS,
+        124,
+        "278d9eb84028029cacbe27252ae4360b3e5002562426823f5fca3263ee549e74",
+    ),
+    "conflict": (
+        CONFLICT_IDS,
+        37,
+        "fde60a5f8a62682df2830713fb1de72ee72c7f49f5bf380e15cf121a09824d07",
+    ),
+    "battle": (
+        BATTLE_CARD_IDS,
+        24,
+        "dd3582d1240ffa08c801715f9ed10d23a6e5a895ac0f6272ec45f89238164917",
+    ),
+    "leader": (
+        LEADER_IDS,
+        26,
+        "e96b808e3c4d40eb016f11f4f774987d1c954be4e7a769216e8d8ed81238d3b5",
+    ),
+    "space": (
+        SPACE_IDS,
+        42,
+        "618425161cf05b73bd8775babf8dbd477cc17748121e8b2659d04f85eb1e9fb2",
+    ),
+    "control": (
+        CONTROL_SPACE_IDS,
+        4,
+        "1a8d4a855a45b6200ace9c50b11fb9085201ee220409c81248d504696289a54e",
+    ),
+    "contract": (
+        CONTRACT_IDS,
+        28,
+        "17a07122fe0dfe5dab7e58bce0c13cebe41365431ee55d46015a42919b455121",
+    ),
+    "reserve": (
+        RESERVE_STACK_IDS,
+        5,
+        "7fb7993eee26e320deb2f7565f1c1cec1dd932f43e2bbd4aeb7191304cc60615",
+    ),
+    "maker": (
+        MAKER_SPACE_IDS,
+        6,
+        "c8b24403a3cd04895018db6fa878f377866823cb53447b3bd6be44de756bb3dd",
+    ),
+    "tech": (
+        TECH_IDS,
+        18,
+        "4217de9bdf2edebfd82ad6aa03fb4b71f236978d743f6d965f18cbdb479c6858",
+    ),
+}
+
+
+def test_every_v38_segment_keeps_its_name_and_the_meaning_of_its_columns() -> None:
+    # Plan 17.8: v39 appends Rise of Ix's ids at the end of each universe and
+    # its segments at the end of the layout, so each v38 segment is in v39 by
+    # name and its old columns, at the same offsets inside it, hold the same
+    # identities (checkpoints migrate by (segment, offset), ``growth_in_v39``).
+    layout = v38_layout()
+    assert len(layout) == V38_SEGMENTS
+    assert layout[-1][1] + layout[-1][2] == V38_SIZE
+    assert _digest(f"{name}:{length}" for name, _, length in layout) == _V38_LAYOUT
+    for name, (ids, count, pinned) in _V38_UNIVERSES.items():
+        assert _digest(ids[:count]) == pinned, name
+    # A segment that is a relative seat x space matrix keeps its 42 spaces
+    # (review item 5); no other segment multiplies a universe that grew.
+    assert len(VOICE_BLOCK_SPACE_IDS) == 42
+    voice = segment_slice("voice_blocks")
+    assert voice.stop - voice.start == 4 * len(VOICE_BLOCK_SPACE_IDS)
+    blocks = segment_slice("voice_blocks_ix")
+    assert blocks.stop - blocks.start == 4 * len(IX_SPACE_IDS)
+    assert IX_SPACE_IDS == (
+        "dreadnought",
+        "tech_negotiation",
+        "interstellar_shipping",
+        "smuggling",
+    )
+    # v39 appends them to the space universe, after ``voice_blocks``' 42.
+    assert SPACE_IDS == (*VOICE_BLOCK_SPACE_IDS, *IX_SPACE_IDS)
+
+
+def _v39_games() -> dict[str, dict[str, Any]]:
+    return {
+        "uprising_all": {
+            "choam_module": True,
+            "promo_cards": True,
+            "bloodlines": True,
+            "tech_module": True,
+            "immortality": True,
+        },
+        "original": {"base_game": BaseGame.IMPERIUM},
+    }
+
+
+# SHA-256 over the int32 v38 vectors of every observer at each of the first
+# 400 player decisions of one random game (seed 13, RandomAgent seeds 7013 +
+# seat), computed with the v38 encoder before v39 (7b4c65be): the v39
+# encoder's v38 columns must reproduce them. A digest that moves while the
+# v39 columns stay right means the engine plays the seed differently (re-pin
+# after checking, as for the golden digests above).
+_V38_GAME_DIGESTS = {
+    "uprising_all": (
+        "207cf35b6a679151723c6bdc7f64daf26f5ef7f936ac4b84d688d4ad3168f675",
+        1600,
+    ),
+    "original": (
+        "e1502318bf9b80c03f6ce18e9235e3cdfec4686149d729f8845b2b25efa8ea73",
+        1600,
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_V38_GAME_DIGESTS))
+def test_a_fixed_game_encodes_every_old_column_as_v38_did(name: str) -> None:
+    import hashlib
+
+    import numpy as np
+
+    from dune_imperium.agents import RandomAgent
+
+    engine = UprisingRulesEngine()
+    agents = [RandomAgent(seed=7_000 + 13 + seat) for seat in range(4)]
+    state = engine.reset(RulesetConfig(**_v39_games()[name]), 13)
+    chance = ChanceResolver(seed=13)
+    hasher = hashlib.sha256()
+    count = decisions = 0
+    deck_size = segment_slice("global_scalars").start + 12
+    while state.phase is not GamePhase.FINISHED and decisions < 400:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        for seat in range(4):
+            vector = encode_player_view(engine.observe(state, seat))
+            hasher.update(np.asarray(v38_columns(vector), dtype=np.int32).tobytes())
+            count += 1
+            # Without Rise of Ix every v39 column is 0 but the public
+            # Intrigue deck size.
+            assert vector[deck_size] == len(state.intrigue_deck)
+            for segment in OBSERVATION_SEGMENTS:
+                if segment.name in V39_NEW_SEGMENTS:
+                    part = vector[segment.offset : segment.offset + segment.length]
+                    assert not any(part), segment.name
+        actions = engine.legal_actions(state, decision.owner)
+        action = agents[decision.owner].choose_action(
+            engine.observe(state, decision.owner), actions
+        )
+        state = engine.apply(state, action, legal_actions=actions).state
+        decisions += 1
+    assert (hasher.hexdigest(), count) == _V38_GAME_DIGESTS[name]
+
+
+def _ix_state() -> GameState:
+    """An original game's first turn under the Rise of Ix option (its setup
+    is a later stage's; the observation is what is checked here)."""
+
+    engine = UprisingRulesEngine()
+    state = engine.reset(RulesetConfig(base_game=BaseGame.IMPERIUM), 5)
+    chance = ChanceResolver(seed=5)
+    while state.phase is not GamePhase.PLAYER_TURNS:
+        decision = engine.current_decision(state)
+        if isinstance(decision, ChanceDecision):
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        action = engine.legal_actions(state, decision.owner)[0]
+        state = engine.apply(state, action).state
+    return replace(state, config=replace(state.config, rise_of_ix=True))
+
+
+def test_the_intrigue_deck_size_is_the_last_global_scalar() -> None:
+    # Plan 17.8 review item 6: public, as every shared deck's count.
+    state = _ix_state()
+    for observer in range(4):
+        scalars = encode_player_view(observe_state(state, observer))[
+            segment_slice("global_scalars")
+        ]
+        assert scalars[12] == len(state.intrigue_deck) == 40
+
+
+def test_the_rise_of_ix_seat_columns_are_public_by_relative_seat() -> None:
+    state = _ix_state()
+    players = list(state.players)
+    one = players[1]
+    players[1] = replace(
+        one,
+        dreadnoughts_supply=1,
+        dreadnoughts_conflict=1,
+        freighter_space=2,
+        troops_supply=one.troops_supply - 2,
+        negotiators=2,
+        snooper_faction_ids=("spacing_guild", "fremen"),
+        set_aside_returned_turn=True,
+        turns_finished_round=1,
+        strategic_push_solari=2,
+    )
+    two = players[2]
+    pool_before = observe_state(state, 0).players[2].deck_pool
+    players[2] = replace(two, hand=two.hand[1:], set_aside_card_id=two.hand[0])
+    players[3] = replace(
+        players[3], voice_blocked_space_ids=("arrakeen", "smuggling")
+    )
+    state = replace(
+        state,
+        players=tuple(players),
+        dreadnought_control=(("carthag", 1, True), ("imperial_basin", 3, False)),
+    )
+    # Plan 17.8 review item 1: the face-down card stays in the public pool.
+    assert observe_state(state, 0).players[2].deck_pool == pool_before
+
+    for observer in range(4):
+        encoded = encode_player_view(observe_state(state, observer))
+        units = [
+            encoded[segment_slice(f"seat{(player - observer) % 4}_units")]
+            for player in range(4)
+        ]
+        ix = [
+            encoded[segment_slice(f"seat{(player - observer) % 4}_ix")]
+            for player in range(4)
+        ]
+        relative = [(player - observer) % 4 + 1 for player in range(4)]
+
+        assert units[1] == (1, 0, 1)
+        # Freighter, Negotiators, the Snooper tokens' space by Faction
+        # (emperor, spacing_guild, bene_gesserit, fremen), the set-aside
+        # card, its return this turn, the turns finished this round, the
+        # Solari pledged with Strategic Push.
+        assert ix[1] == (2, 2, 0, 2, 0, 2, 0, 1, 1, 2)
+        assert ix[2] == (0, 0, 0, 0, 0, 0, 1, 0, 0, 0)
+        for other in (0, 3):
+            assert not any(units[other]) and not any(ix[other])
+        control = encoded[segment_slice("dreadnought_control")]
+        expected = [0] * 8
+        expected[2 * CONTROL_SPACE_IDS.index("carthag") : 8] = [relative[1], 1]
+        expected[2 * CONTROL_SPACE_IDS.index("imperial_basin")] = relative[3]
+        assert control == tuple(expected)
+        blocks = encoded[segment_slice("voice_blocks_ix")]
+        row = (3 - observer) % 4
+        assert {index for index, value in enumerate(blocks) if value} == {
+            row * 4 + IX_SPACE_IDS.index("smuggling")
+        }
+        old = encoded[segment_slice("voice_blocks")]
+        assert {index for index, value in enumerate(old) if value} == {
+            row * 42 + SPACE_IDS.index("arrakeen")
+        }
+        assert encoded[segment_slice("ix_flags")] == (1,)
+        # The set-aside card's identity is its owner's alone.
+        aside = encoded[segment_slice("private_set_aside")]
+        if observer == 2:
+            card = personal_card_for_instance(two.hand[0]).card.card_id
+            index = PERSONAL_CARD_IDS.index(card)
+            assert {i for i, value in enumerate(aside) if value} == {index}
+        else:
+            assert not any(aside)
+    plain = replace(_ix_state(), config=replace(state.config, rise_of_ix=False))
+    flag = encode_player_view(observe_state(plain, 0))[segment_slice("ix_flags")]
+    assert flag == (0,)
+
+
+def test_the_intrigue_cards_a_seat_knows_are_its_own_columns() -> None:
+    # docs/rules/rise-of-ix.md 13, plan 17.8 review items 2 and 6: seat 0
+    # knows the deck's top card (Hundro), the two bottom cards it put there,
+    # and one more that seat 2 has since drawn from the bottom.
+    state = _ix_state()
+    deck = state.intrigue_deck
+    drawn = deck[-3]
+    deck = (*deck[:-3], *deck[-2:])
+    players = list(state.players)
+    players[2] = replace(
+        players[2], intrigue_cards=(*players[2].intrigue_cards, drawn)
+    )
+    players[0] = replace(
+        players[0], known_intrigue_ids=(deck[0], deck[-1], deck[-2], drawn)
+    )
+    state = replace(state, players=tuple(players), intrigue_deck=deck)
+    ids = {card: index for index, card in enumerate(INTRIGUE_IDS)}
+
+    def identity(card: str) -> int:
+        return ids[card.split(":")[1]]
+
+    private = observe_state(state, 0).private
+    assert private is not None
+    assert private.known_intrigue_top == deck[0]
+    # By depth from the bottom; the top card is the deepest.
+    assert private.known_intrigue_bottom == (
+        (0, deck[-1]),
+        (1, deck[-2]),
+        (len(deck) - 1, deck[0]),
+    )
+    assert private.known_intrigue_held == ((2, drawn),)
+    known = known_card_seats(state)
+    assert known[deck[0]] == known[deck[-1]] == frozenset({0})
+    assert known[drawn] == frozenset({0, 2})
+    assert known[deck[5]] == frozenset()
+
+    for observer in range(4):
+        encoded = encode_player_view(observe_state(state, observer))
+        top = encoded[segment_slice("private_intrigue_top")]
+        bottom = encoded[segment_slice("private_intrigue_bottom")]
+        held = [
+            encoded[segment_slice(f"private_known_intrigue_seat{seat}")]
+            for seat in range(1, 4)
+        ]
+        if observer != 0:
+            assert not any(top) and not any(bottom)
+            assert not any(column for zone in held for column in zone)
+            continue
+        assert {i for i, value in enumerate(top) if value} == {identity(deck[0])}
+        assert bottom == (
+            identity(deck[-1]) + 1,
+            identity(deck[-2]) + 1,
+            *(0,) * 6,
+        )
+        # Seat 2 is relative seat 2 of seat 0.
+        assert not any(held[0]) and not any(held[2])
+        assert {i for i, value in enumerate(held[1]) if value} == {identity(drawn)}
+
+
+def test_ix_pending_is_the_open_decision_of_its_own_seat() -> None:
+    # Plan 17.8 review item 4: the Shipping rewards still owed, the open
+    # Acquire Tech's discount and payment, and the Negotiators it may return
+    # -- counted from the state, not the context (Codex review of 82b2bf2e:
+    # the stale 3 written here is not what the seat holds).
+    state = _ix_state()
+    frame = state.decision_stack[-1]
+    assert isinstance(frame.decision, PlayerDecision)
+    owner = frame.decision.owner
+    context = tuple(
+        sorted(
+            (
+                *frame.context,
+                (SHIPPING_REWARDS_KEY, "1,3"),
+                (TECH_DISCOUNT_KEY, 2),
+                (TECH_PAYMENT_KEY, "solari"),
+                (NEGOTIATORS_RETURNABLE_KEY, 3),
+            )
+        )
+    )
+    state = replace(
+        state,
+        decision_stack=(*state.decision_stack[:-1], replace(frame, context=context)),
+    )
+    plain = replace(state, config=replace(state.config, rise_of_ix=False))
+    seats = list(state.players)
+    seats[owner] = replace(
+        seats[owner],
+        negotiators=1,
+        troops_supply=seats[owner].troops_supply - 1,
+    )
+    state = replace(state, players=tuple(seats), tech_stacks=(("flagship",),))
+    for observer in range(4):
+        pending = encode_player_view(observe_state(state, observer))[
+            segment_slice("ix_pending")
+        ]
+        expected = (1, 0, 1, 2, 0, 1, 1) if observer == owner else (0,) * 7
+        assert pending == expected
+    assert not any(
+        encode_player_view(observe_state(plain, owner))[segment_slice("ix_pending")]
+    )
+
+
+def test_v39_reserves_the_rise_of_ix_frame_kinds_after_every_other() -> None:
+    # Plan 17.8: the decisions of stages P4b to P4e no older frame holds
+    # (docs/rules/rise-of-ix.md 14) take their kinds now, at the end, so the
+    # kind index ``global_scalars`` holds moves for no older kind and no
+    # later stage needs another observation version.
+    kinds = tuple(FrameKind)
+    assert kinds[-len(IX_FRAME_KINDS) :] == IX_FRAME_KINDS
+    assert kinds[-len(IX_FRAME_KINDS) - 1] is FrameKind.MASTERSTROKE_SETUP
+    # No engine path opens them yet, but the ones a stage has opened since:
+    # none else has legal-action providers. Stage P4b-1b opens the winner's
+    # dreadnought choice (docs/rules/rise-of-ix.md 6, OQ-121 ruling 6 (1)); stage
+    # P4c-2c opens Sonic Snoopers' pick of Intrigue cards for the deck's bottom;
+    # P4c-3 opens the Freighter outside its owner's turn and a recall's rewards
+    # (docs/rules/rise-of-ix.md 5); P4d opens the Unload box outside its
+    # owner's turn (docs/rules/rise-of-ix.md 7); P4e opens Ilesa Ecaz's Round
+    # Start set-aside and Tessia Vernius' first Snooper reward outside her
+    # turn (rise-of-ix.md 10).
+    opened = {
+        FrameKind.DREADNOUGHT_CONTROL_CHOICE,
+        FrameKind.INTRIGUE_BOTTOM_PICK,
+        FrameKind.FREIGHTER_MOVE,
+        FrameKind.SHIPPING_REWARD_ICONS,
+        FrameKind.UNLOAD_ICONS,
+        FrameKind.ROUND_START_SET_ASIDE,
+        FrameKind.OPTIONAL_DISCARD,
+    }
+    assert not (set(IX_FRAME_KINDS) - opened) & set(LEGAL_ACTION_PROVIDERS)
+    assert opened <= set(LEGAL_ACTION_PROVIDERS)
+    # Each encodes as its index + 1, as every kind does.
+    engine = UprisingRulesEngine()
+    view = engine.observe(engine.reset(RulesetConfig(), seed=5), 0)
+    for kind in IX_FRAME_KINDS:
+        scalars = encode_player_view(replace(view, decision_kind=kind.value))[
+            segment_slice("global_scalars")
+        ]
+        assert scalars[4] == kinds.index(kind) + 1

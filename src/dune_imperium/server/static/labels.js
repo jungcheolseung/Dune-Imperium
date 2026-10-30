@@ -71,6 +71,8 @@ const ACTION_LABELS = {
     "2 {spice} 지불 → {shield_wall} 제거 + {sandworm} 부르기",
   pay_agent_card_spice: "{spice} 지불 (카드 효과 비용)",
   pay_agent_card_solari: "{solari} 지불 (카드 효과 비용)",
+  pay_agent_card_spice_for_solari: "{spice} 지불 → {solari}",
+  pay_agent_card_solari_for_spice: "{solari} 지불 → {spice}",
   take_agent_card_from_discard: "{discard_pile}에서 카드를 {hand}로",
   lose_agent_card_influence:
     "{influence_any:1} 잃기 · 2 {spice} 지불 → {influence_any:2} 선택",
@@ -116,6 +118,11 @@ const ACTION_LABELS = {
   keep_shield_wall: "{shield_wall} 유지",
   manipulate_imperium_row: "{imperium_row} 카드 따로 빼두기",
   set_aside_leader_imperium: "{imperium_row} 카드 따로 빼두기 ({signet_ring})",
+  set_aside_leader_card: "{hand} 카드 따로 빼두기 ({leader})",
+  lose_leader_influence: "{influence_any} 1 잃기 ({signet_ring})",
+  discard_snooper_card: "카드 버리기 → {spice} 1 ({leader})",
+  decline_snooper_discard: "버리지 않기 ({leader})",
+  resolve_effect_influence: "{influence_any} 얻기",
   choose_masterstroke_faction: "{faction} 선택 ({leader})",
   match_endgame_wild_icon: "와일드 {battle_icon} 매칭",
   pass_combat_intrigue: "패스",
@@ -213,6 +220,7 @@ const ACTION_LABELS = {
   skip_intrigue_trash: "{trash}할 카드 없음 (건너뛰기)",
   skip_intrigue_recall_agent: "소환할 {agent} 없음 (건너뛰기)",
   trash_intrigue_for_agent_card: "{trash_intrigue} (카드 비용)",
+  put_intrigue_on_bottom_for_agent_card: "{intrigue_card}를 {intrigue} {deck} 맨 아래로 (카드 비용)",
   trash_intrigue_for_contract: "{trash_intrigue} (즉시 {contract})",
   trash_intrigue_for_imperial_privilege: "{trash_intrigue} → {intrigue} (제국 특권)",
   put_back_top_card: "{deck} 맨 위 카드 그대로 두기",
@@ -235,6 +243,7 @@ const ACTION_LABELS = {
      trash is trash_intrigue_hand_card. */
   trash_intrigue_card: "{trash} ({intrigue_card})",
   trash_leader_card: "{trash} ({leader})",
+  trash_leader_reveal_card: "{trash} ({leader})",
   trash_reveal_card: "{trash}",
   use_other_memories: "다른 기억들 사용",
   acquire_sardaukar_commander: "{commander} 획득",
@@ -242,6 +251,70 @@ const ACTION_LABELS = {
   trash_skill_for_strength: "{commander_skill} 폐기 → 검 3",
   deploy_commanders: "{commander} 배치",
   withdraw_commanders: "{commander} 회수",
+  /* Rise of Ix (stage P4b): no official Korean source names the dreadnought
+     (docs/rules/glossary-ko.md has no row), so the labels keep the English
+     word and no TERMS entry is made for it. */
+  commission_intrigue_dreadnought: "dreadnought 얻기",
+  decline_intrigue_dreadnought: "dreadnought 얻지 않음",
+  deploy_dreadnoughts: "dreadnought 배치",
+  withdraw_dreadnoughts: "dreadnought 회수",
+  /* Rise of Ix's Tech Negotiation icon (stage P4c-1): "Negotiator" has no
+     glossary row either, so it stays English. */
+  place_intrigue_negotiator: "Negotiator 놓기",
+  decline_intrigue_negotiator: "Negotiator 놓지 않음",
+  /* Rise of Ix's Freighter and Shipping track (stage P4c-3): no official
+     Korean source names them either, so they stay English. */
+  advance_intrigue_freighter: "Freighter 한 칸 위로",
+  recall_intrigue_freighter: "Freighter 회수",
+  decline_intrigue_freighter: "Freighter 움직이지 않음",
+  advance_freighter: "Freighter 한 칸 위로",
+  recall_freighter: "Freighter 회수",
+  decline_freighter: "Freighter 움직이지 않음",
+  resolve_shipping_reward: "Freighter 회수 보상",
+  /* Rise of Ix's Unload keeps its English name, which no official Korean
+     source translates; the Reveal box is 공개 칸 [Main p. 8]. */
+  resolve_unload_icon: "Unload: 공개 칸 효과",
+  decline_unload_icon: "Unload: 공개 칸 효과 쓰지 않음",
+  /* Rise of Ix's four board spaces (stage P4c-4): the Dreadnought icon, the
+     Acquire Tech icon, Tech Negotiation's two halves and Spaceport's
+     Foldspace on top of the deck; the dreadnought and the Negotiator stay
+     English like the rows above. */
+  commission_board_dreadnought: "dreadnought 얻기",
+  acquire_board_tech: "{tech_tile} 획득",
+  acquire_negotiation_tech: "{tech_tile} 획득 (할인 1)",
+  place_board_negotiator: "Negotiator 놓기",
+  advance_board_freighter: "Freighter 한 칸 위로",
+  recall_board_freighter: "Freighter 회수",
+  /* Landing Rights' Agent box (stage P4d): the same two moves. */
+  advance_agent_card_freighter: "Freighter 한 칸 위로",
+  recall_agent_card_freighter: "Freighter 회수",
+  take_agent_card_extra_turn: "이 차례 뒤에 차례 한 번 더",
+  advance_reveal_freighter: "Freighter 한 칸 위로",
+  recall_reveal_freighter: "Freighter 회수",
+  retreat_reveal_units_for_influence: "부대 3 후퇴 → {influence_any}",
+  /* Ix-Guild Compact's Reveal Tech Negotiation icons (stage P4d). */
+  place_reveal_negotiator: "{reveal_turn}: Negotiator 놓기",
+  /* Boundless Ambition's acquisition by cost cap (stage P4d): revealed, and
+     in its Unload's window. */
+  acquire_reveal_imperium_card: "{reveal_turn}: 비용이 5 이하인 카드 획득",
+  acquire_reveal_reserve_card: "{reveal_turn}: 비용이 5 이하인 카드 획득",
+  acquire_unload_imperium_card: "Unload: 비용이 5 이하인 카드 획득",
+  acquire_unload_reserve_card: "Unload: 비용이 5 이하인 카드 획득",
+  skip_unload_acquisition: "Unload: 획득할 카드 없음 (건너뛰기)",
+  acquire_agent_card_tech: "{tech_tile} 획득",
+  acquire_agent_card_tech_with_solari: "{tech_tile} 획득 ({solari}로 지불)",
+  acquire_foldspace_to_deck_top: "접힘 공간 카드를 덱 위에",
+  place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
+  /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep
+     their English names, which no official Korean source translates. */
+  detonate_combat_reward_dreadnought:
+    "Detonation Devices: dreadnought를 {supply}로 → {victory_point} 1",
+  trash_disposal_facility_card: "Disposal Facility: 플레이 영역 {trash}",
+  /* Rise of Ix (stage P4c-2c): Spy Satellites' and Sonic Snoopers' trash, and
+     Sonic Snoopers' pick of Intrigue cards for the bottom of the deck. */
+  trash_tech: "{tech_tile} 폐기",
+  put_intrigue_on_bottom: "Sonic Snoopers: {intrigue_card} → {intrigue} {deck} bottom",
+  finish_intrigue_bottom: "Sonic Snoopers: stop, {draw}",
   retreat_leader_commander: "{commander} 1 {retreat} ({leader})",
   gain_reveal_influence: "{influence_any} 1 획득",
   retreat_opponent_troop: "상대 {troop} 강제 {retreat}",
@@ -265,6 +338,8 @@ const ACTION_LABELS = {
   place_tech_spy: "파놉티콘: {spy} 배치",
   place_track_spy: "{influence_emperor} 4: {spy} 배치",
   recruit_reveal_troops: "{reveal_turn}: {troop} {recruit}",
+  /* Rise of Ix's Treachery: "Deploy these troops to the Conflict." */
+  deploy_reveal_supply_troops: "{reveal_turn}: {troop} {conflict}에 배치",
   draw_reveal_intrigue: "{reveal_turn}: {intrigue}",
   generate_reveal_specimens: "{reveal_turn}: {specimen}",
   advance_reveal_tleilaxu: "{reveal_turn}: {tleilaxu}",
@@ -338,6 +413,10 @@ const ACTION_LABELS = {
   decline_skill: "플라스틸 칼 유지 ({commander_skill} 거절)",
   choose_secret_project: "비밀 프로젝트: 맨 아래 {tech_tile} 선택",
   gain_leader_signet_spice: "{spice} 1 ({signet_ring})",
+  acquire_leader_tech: "{tech_tile} 획득 ({signet_ring})",
+  advance_leader_freighter: "{spice} 1 → Freighter 한 칸 위로 ({signet_ring})",
+  recall_leader_freighter: "{spice} 1 → Freighter 회수 ({signet_ring})",
+  place_leader_negotiator: "Negotiator 놓기 ({signet_ring})",
   trash_leader_tech: "{tech_tile} 폐기 → {intrigue} + {draw} 1 ({signet_ring})",
   move_spy: "{spy} 이동",
   lose_moved_spy: "옮길 곳이 없는 {spy} 잃기",
@@ -440,6 +519,29 @@ const EVENT_LABELS = {
   combat_strength_gained: "{strength} 획득",
   commanders_deployed: "{commander} 배치",
   commanders_withdrawn: "{commander} 회수",
+  dreadnought_commissioned: "dreadnought 얻음",
+  intrigue_dreadnought_declined: "dreadnought 얻지 않음",
+  dreadnoughts_deployed: "dreadnought 배치",
+  dreadnoughts_withdrawn: "dreadnought 회수",
+  negotiator_placed: "Negotiator 놓음",
+  intrigue_negotiator_declined: "Negotiator 놓지 않음",
+  freighter_moved: "Freighter 한 칸 위로",
+  freighter_recalled: "Freighter 회수",
+  extra_turn_taken: "이 차례 뒤에 차례 한 번 더",
+  freighter_declined: "Freighter 움직이지 않음",
+  intrigue_freighter_declined: "Freighter 움직이지 않음",
+  shipping_troops_recruited: "Freighter 회수: {troop} {recruit}",
+  shipping_reward_lapsed: "Freighter 회수 보상: 쓰지 않음",
+  card_unloaded: "Unload",
+  unload_icon_lapsed: "Unload: 공개 칸 효과 쓰지 않음",
+  unload_icon_declined: "Unload: 공개 칸 효과 쓰지 않음",
+  unload_acquisition_empty: "Unload: 획득할 카드 없음",
+  shipping_influence_unavailable: "Freighter 회수: {influence_any} 불가",
+  dreadnought_control_placed: "dreadnought가 {control} 공간에",
+  dreadnought_returned: "dreadnought {garrison} 복귀",
+  dreadnought_retreated: "dreadnought 후퇴",
+  dreadnought_detonated: "dreadnought를 {supply}로 (Detonation Devices)",
+  intrigue_put_on_bottom: "{intrigue_card} → {intrigue} {deck} bottom",
   conflict_end_trigger_declined: "{conflict} 종료 발동 {intrigue_card} 쓰지 않음",
   conflict_end_trigger_finished: "{conflict} 종료 발동 {intrigue_card} 끝내기",
   conflict_end_trigger_offered: "{conflict} 종료 발동 {intrigue_card} 제안",
@@ -452,6 +554,7 @@ const EVENT_LABELS = {
   contract_trashed: "{contract} 폐기",
   contracts_revealed: "{contract} 공개",
   corrinth_city_payment_started: "코린트 시티: 첫 카드 선택",
+  agent_card_discard_started: "카드 1장 버리기: 첫 카드 선택",
   endgame_intrigue_passed: "패스",
   endgame_started: "{endgame} 시작",
   endgame_wild_matched: "와일드 {battle_icon} 매칭",
@@ -592,6 +695,10 @@ const EVENT_LABELS = {
   tech_acquire_effect_resolved: "{tech_tile} 획득 효과 해결",
   tech_acquire_effect_lapsed: "{tech_tile} 획득 효과: 쓰지 않음",
   acquire_icon_lapsed: "{imperium_row} 카드 획득 효과: 쓰지 않음",
+  snooper_token_reached: "Snooper 보상 ({leader})",
+  snooper_discard_lapsed: "Snooper 보상 버리기: 쓰지 않음",
+  snooper_discard_declined: "Snooper 보상 버리기: 거절",
+  effect_influence_owed: "진영마다 {influence_any}",
   tech_declined: "{tech_tile} 획득 거절",
   tech_flipped: "{tech_tile} 뒤집기",
   tech_reveal_bonus: "{tech_tile} 보너스 획득",
@@ -667,6 +774,12 @@ const EFFECT_ICON_LABELS = {
   /* Planetary Array's "When you win a Conflict" card, a row of the
      winner's window (OQ-121). */
   planetary_array: "행성 군사력: {draw} 1",
+  /* Windtraps' "When you win a Conflict" water (Rise of Ix); the tile has no
+     official Korean name. */
+  windtraps: "Windtraps: {water} 1",
+  /* Strategic Push's "If you win this Conflict" Solari (a Rise of Ix
+     Intrigue card, one copy); the card has no official Korean name. */
+  strategic_push: "Strategic Push: {solari} 2",
   /* The sole winner's close of its window: no more "When you win a
      Conflict" Intrigue (OQ-121 decision 6). */
   winning_intrigue: "승리 {intrigue} 끝내기",

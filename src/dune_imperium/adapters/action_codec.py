@@ -29,6 +29,7 @@ from dune_imperium.content.immortality.tleilaxu import (
     tleilaxu_cards_for,
     tleilaxu_deck_instance_ids,
 )
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_TILES
 from dune_imperium.content.rulesets import TUEK_SIETCH, RulesetContent, content_for
 from dune_imperium.content.uprising.abilities import AbilityStructure
 from dune_imperium.content.uprising.agent_abilities import agent_box_ability
@@ -82,6 +83,7 @@ from dune_imperium.content.uprising.starting_cards import (
     STARTING_DECK,
     StartingCardEntry,
 )
+from dune_imperium.content.uprising.trigger_abilities import acquisition_ability
 from dune_imperium.content.uprising.types import (
     BLOODLINES_REVEAL_CHOICE_EFFECTS,
     IMMORTALITY_REVEAL_CHOICE_EFFECTS,
@@ -96,6 +98,8 @@ from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.rules.acquire_icons import (
     ACQUIRE_ICON_ACTION,
     ACQUIRED_CARD_ARGUMENT,
+    DREADNOUGHT_ICON,
+    FREIGHTER_ICON,
     acquire_box_icons,
     acquire_icon_faction,
 )
@@ -112,7 +116,13 @@ from dune_imperium.rules.board_effects import (
 )
 from dune_imperium.rules.combat import (
     COMBAT_REWARD_ICON_KINDS,
+    DREADNOUGHT_CONTROL,
+    DREADNOUGHT_CONTROL_ACTION,
+    DREADNOUGHT_DETONATE_ACTION,
     IMPERIUM_REWARD_ICON_KINDS,
+    IX_REWARD_ICON_KINDS,
+    STRATEGIC_PUSH,
+    WINDTRAPS,
     conflict_reward_icon_kinds,
 )
 from dune_imperium.rules.contracts import (
@@ -139,6 +149,7 @@ from dune_imperium.rules.immortality import (
     research_icon_spaces,
     research_trash_spaces,
 )
+from dune_imperium.rules.intrigue_bottom import FINISH_ACTION, PUT_ACTION
 from dune_imperium.rules.planetologist import PLANETOLOGIST_LEADER
 from dune_imperium.rules.reveal_lines import RevealLine, reveal_lines
 from dune_imperium.rules.reveal_turn import (
@@ -149,8 +160,30 @@ from dune_imperium.rules.reveal_turn import (
 )
 from dune_imperium.rules.scouts_effects import scouts_spy_items, scouts_trash_items
 from dune_imperium.rules.scouts_missions import mission_takes_supply_troops
-from dune_imperium.rules.tech import optional_trash_tech_ids
+from dune_imperium.rules.shipping_track import (
+    ADVANCE_ACTION,
+    DECLINE_ACTION,
+    DIVIDENDS,
+    INFLUENCE,
+    RECALL_ACTION,
+    RECRUIT,
+    REWARD_ACTION,
+    SPICE,
+    TECH,
+)
+from dune_imperium.rules.shipping_track import PRINTED as SHIPPING_PRINTED
+from dune_imperium.rules.tech import (
+    TRASH_ABILITIES,
+    optional_trash_tech_ids,
+    tech_acquire_effect_arguments,
+)
+from dune_imperium.rules.turn_rows import OPTIONAL_UNLOAD_ICONS
 from dune_imperium.rules.units import unit_count_arguments
+from dune_imperium.rules.unload import (
+    UNLOAD_DECLINE_ACTION,
+    UNLOAD_ICON_ACTION,
+    unload_icons,
+)
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
 # Imperial Privilege, may recall an Into the Fray Agent from the Conflict --
@@ -677,11 +710,26 @@ from dune_imperium.rules.units import unit_count_arguments
 # offered (OQ-071, the trash-to-draw lines). Observation v38. Older records
 # need no new bridge (the v155 records replay with ``hand_public`` the only
 # difference).
-ACTION_CODEC_VERSION = 156
+# v157 (base game P4, docs/base-game-and-ix-plan.md 17; one raise for the
+# whole stage, in its master merge, user decision 2026-10-28 "병합 때 한
+# 번"): Rise of Ix on the original game -- its board overlay, dreadnoughts,
+# Tech, the Shipping track, every Imperium and Intrigue card, the six
+# Leaders and Epic Game Mode -- with templates in the original game's Rise
+# of Ix catalogs only (the 288 catalogs without Rise of Ix are unchanged).
+# Rulings that reach games without Rise of Ix: OQ-149 (a seat that puts an
+# Intrigue card back on top knows it; Immortality's peek). Observation v39.
+# Older records need no new bridge (v156 saves and problem sets replay
+# exactly on this engine: gate p4de's records check, 11 exact, and problem
+# sets 281/281 and 3/3).
+ACTION_CODEC_VERSION = 157
 MAX_DEPLOYMENT_COUNT = 12
 MAX_INTRIGUE_DEPLOYMENT = 4
 # Seven Sardaukar Commanders exist [Bloodlines p. 2].
 MAX_COMMANDER_DEPLOYMENT = 7
+# Two dreadnoughts a seat [Rise of Ix p. 6].
+MAX_DREADNOUGHT_DEPLOYMENT = 2
+# Second Wave: "Deploy up to two units from your garrison to the Conflict."
+SECOND_WAVE_UNITS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -824,6 +872,55 @@ def _withheld_rows(content: RulesetContent) -> frozenset[str]:
     return frozenset(withheld)
 
 
+def _cost_cap_acquisition_templates(
+    content: RulesetContent,
+) -> tuple[ActionTemplate, ...]:
+    """Boundless Ambition's "Acquire a card that costs 5 or less" (Rise of Ix
+    promo), in the catalogs whose deck holds it: revealed
+    (``acquisition.apply_reveal_card_acquisition``) and in its Unload's
+    window (``unload.apply_unload_acquisition``) -- every Imperium card and
+    every Reserve card but Foldspace (OQ-125), each with its deck-top twin
+    (Recruitment Mission, Spaceport) -- and the window's fizzle with none in
+    reach."""
+
+    imperium_instances = content.imperium_deck_instance_ids
+    if not any(
+        instance_id.startswith("imperium:boundless_ambition:")
+        for instance_id in imperium_instances
+    ):
+        return ()
+    reserve = tuple(
+        stack.card.card_id for stack in content.reserve_stacks if not stack.icon_only
+    )
+    tops: tuple[tuple[tuple[str, ActionValue], ...], ...] = (
+        (),
+        (("to_deck_top", True),),
+    )
+    templates: list[ActionTemplate] = []
+    for imperium_action, reserve_action in (
+        ("acquire_reveal_imperium_card", "acquire_reveal_reserve_card"),
+        ("acquire_unload_imperium_card", "acquire_unload_reserve_card"),
+    ):
+        templates.extend(
+            ActionTemplate(
+                action_id=reserve_action,
+                arguments=(("card_id", card_id), *top),
+            )
+            for card_id in reserve
+            for top in tops
+        )
+        templates.extend(
+            ActionTemplate(
+                action_id=imperium_action,
+                arguments=(("instance_id", instance_id), *top),
+            )
+            for instance_id in imperium_instances
+            for top in tops
+        )
+    templates.append(ActionTemplate(action_id="skip_unload_acquisition"))
+    return tuple(templates)
+
+
 def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     content = content_for(config)
     withheld = _withheld_rows(content)
@@ -940,8 +1037,12 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="resolve_combat_reward_icon", arguments=(("effect", kind),)
         )
         for kind in COMBAT_REWARD_ICON_KINDS
-        # The original game's kinds only where its Conflicts print them.
-        if (kind not in IMPERIUM_REWARD_ICON_KINDS or kind in printed_reward_kinds)
+        # The original game's and Rise of Ix's kinds only where the
+        # Conflicts print them.
+        if (
+            kind not in IMPERIUM_REWARD_ICON_KINDS | IX_REWARD_ICON_KINDS
+            or kind in printed_reward_kinds
+        )
         and (kind != "deep_cover_spy" or config.bloodlines)
         and (kind not in _SPY_REWARD_ICONS or content.observation_posts)
         and (kind != "contract" or content.contract_instance_ids)
@@ -950,6 +1051,14 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # The original game's winning Intrigue closes the winner's window
         # (OQ-121 decision 6); Uprising's catalogs hold no such row.
         and (kind != "winning_intrigue" or content.base_game is BaseGame.IMPERIUM)
+        # Rise of Ix's winner's dreadnought, set on a Control space (OQ-121
+        # ruling 6 (1)); no catalog without the expansion holds its row.
+        and (kind != DREADNOUGHT_CONTROL or config.rise_of_ix)
+        # Windtraps' water, a row of the same window (Rise of Ix).
+        and (kind != WINDTRAPS or config.rise_of_ix)
+        # Strategic Push's pledged Solari, a row of the same window (a Rise
+        # of Ix Intrigue card).
+        and (kind != STRATEGIC_PUSH or config.rise_of_ix)
     )
     # One board-effect resolution per printed automatic icon (OQ-027).
     templates.extend(
@@ -1029,6 +1138,111 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for count in range(1, MAX_DEPLOYMENT_COUNT + 1)
     )
     templates.append(ActionTemplate(action_id="finish_agent_turn"))
+    if config.rise_of_ix:
+        # Rise of Ix's dreadnought, a third kind of unit to deploy and take
+        # back [Rise of Ix p. 6], and the Dreadnought icon an Intrigue slot
+        # offers; no catalog without the expansion holds these rows.
+        templates.extend(_rise_of_ix_unit_templates(config))
+        # Local Fence's two Agent-box arrows printed with "-OR-", one row
+        # each (``agent_box_abilities.payment_box``).
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in (
+                "pay_agent_card_spice_for_solari",
+                "pay_agent_card_solari_for_spice",
+            )
+        )
+        # Landing Rights' Freighter icon, an Agent box's two moves
+        # (``agent_effects.apply_agent_card_freighter``), Ixian Engineer's
+        # Acquire Tech icon (``agent_effects.apply_agent_card_tech``), and
+        # Treachery's Reveal troops deployed from the supply
+        # (``reveal_turn.apply_reveal_gain``). The Reveal Freighter rows of
+        # Guild Chief Administrator and Freighter Fleet name their card
+        # (``_SOURCED_REVEAL_ROWS``).
+        templates.extend(
+            ActionTemplate(action_id=action_id)
+            for action_id in (
+                "advance_agent_card_freighter",
+                "recall_agent_card_freighter",
+                "acquire_agent_card_tech",
+                # Appropriate's, paid in Solari instead of spice.
+                "acquire_agent_card_tech_with_solari",
+                # Weirding Way's extra turn.
+                "take_agent_card_extra_turn",
+                # Treachery's Reveal troops deployed from the supply.
+                "deploy_reveal_supply_troops",
+                # Ix-Guild Compact's Reveal Tech Negotiation icons
+                # (``reveal_turn.apply_reveal_negotiator``).
+                "place_reveal_negotiator",
+            )
+        )
+        # Court Intrigue's arrow: an Intrigue card of the hand under the
+        # Intrigue deck (``agent_box_abilities.intrigue_rows``).
+        templates.extend(
+            ActionTemplate(
+                action_id="put_intrigue_on_bottom_for_agent_card",
+                arguments=(("intrigue_card_id", instance_id),),
+            )
+            for instance_id in content.intrigue_deck_instance_ids
+        )
+        # Desert Ambush's enemy unit (a troop or a dreadnought) to retreat,
+        # by its seat; the Bloodlines catalog holds the troop rows already.
+        for seat in range(config.players):
+            if not config.bloodlines:
+                templates.append(
+                    ActionTemplate(
+                        action_id="retreat_opponent_troop",
+                        arguments=(("player", seat),),
+                    )
+                )
+            templates.append(
+                ActionTemplate(
+                    action_id="retreat_opponent_troop",
+                    arguments=(("dreadnoughts", 1), ("player", seat)),
+                )
+            )
+        # Negotiated Withdrawal's arrow: three units in any mix of troops,
+        # dreadnoughts (a seat has two) and, with Bloodlines, Commanders, for
+        # an Influence with each Faction (``reveal_turn``).
+        templates.extend(
+            ActionTemplate(
+                action_id="retreat_reveal_units_for_influence",
+                arguments=tuple(
+                    sorted(
+                        (
+                            *((("commanders", share),) if share else ()),
+                            ("count", 3),
+                            *((("dreadnoughts", ships),) if ships else ()),
+                            ("faction", faction.value),
+                        )
+                    )
+                ),
+            )
+            for ships in range(MAX_DREADNOUGHT_DEPLOYMENT + 1)
+            for share in range(0, (4 - ships) if config.bloodlines else 1)
+            for faction in Faction
+        )
+        # An Unload card's Reveal box icon, a row each (``rules.unload``).
+        templates.extend(
+            ActionTemplate(
+                action_id=UNLOAD_ICON_ACTION,
+                arguments=(("card_id", instance_id), ("effect", name)),
+            )
+            for instance_id in content.imperium_deck_instance_ids
+            for name in dict.fromkeys(name for name, _ in unload_icons(instance_id))
+        )
+        # A "may" icon's refusal in an Unload window (Ix-Guild Compact's Tech
+        # Negotiation).
+        templates.extend(
+            ActionTemplate(
+                action_id=UNLOAD_DECLINE_ACTION,
+                arguments=(("card_id", instance_id), ("effect", name)),
+            )
+            for instance_id in content.imperium_deck_instance_ids
+            for name in dict.fromkeys(name for name, _ in unload_icons(instance_id))
+            if name in OPTIONAL_UNLOAD_ICONS
+        )
+        templates.extend(_cost_cap_acquisition_templates(content))
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
     elif content.base_game is BaseGame.IMPERIUM:
@@ -1037,12 +1251,6 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         # with none confirms it (OQ-036 (a)).
         templates.extend(_unit_loss_templates())
         templates.append(ActionTemplate("resolve_unit_loss_without_unit"))
-        # Unswerving Loyalty (every ruleset) and Shadout Mapes (Immortality)
-        # may move a Sardaukar Commander: it "is a 'troop'" [Bloodlines p. 4].
-        templates.extend(
-            ActionTemplate(action_id=action_id, arguments=(("commanders", 1),))
-            for action_id in ("deploy_reveal_card_troop", "retreat_reveal_card_troop")
-        )
     if content.base_game is BaseGame.IMPERIUM:
         # The original game's Poison Snooper: draw the card it looked at or
         # trash it, or confirm an empty deck (stage P3); only in its catalog,
@@ -1074,6 +1282,8 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         )
     if config.tech_module:
         templates.extend(_tech_templates(config))
+    if config.rise_of_ix:
+        templates.extend(_ix_tech_templates(config))
     if config.immortality:
         templates.extend(_immortality_templates(config))
     if config.arrakeen_scouts:
@@ -1303,9 +1513,7 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             action_id="flip_battle_card",
             arguments=(("card_id", conflict.card.card_id),),
         )
-        for conflict in content.conflicts
-        if (config.bloodlines or not conflict.bloodlines_only)
-        and (config.epic_game or not conflict.epic_only)
+        for conflict in content.conflicts_in_play()
     )
     # An Objective "counts as a Conflict card you've already won" [Objective
     # card], so the flip effects may take it too (OQ-005, codec v130).
@@ -1419,6 +1627,18 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for index, first_post_id in enumerate(post_ids)
         for second_post_id in post_ids[index + 1 :]
     )
+    if config.rise_of_ix:
+        # The Control space the winner's dreadnought is set on, one row for
+        # each space of the base game (``content.control_visit_bonuses``).
+        templates.extend(
+            ActionTemplate(
+                action_id=DREADNOUGHT_CONTROL_ACTION,
+                arguments=(("space_id", space_id),),
+            )
+            for space_id in content.control_visit_bonuses
+        )
+        # Detonation Devices' answer in the same choice (OQ-121 ruling 3).
+        templates.append(ActionTemplate(action_id=DREADNOUGHT_DETONATE_ACTION))
     templates.extend(
         ActionTemplate(
             action_id="recall_spies_for_combat_reward",
@@ -1573,6 +1793,72 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
         for stack in content.reserve_stacks
     )
     templates.extend(_trash_templates(config, "trash_leader_card"))
+    if config.rise_of_ix:
+        # Archduke Armand Ecaz (stage P4e): Coordination's Reveal-turn trash,
+        # and Conscript's card on top of the deck while Spaceport lets him
+        # put it there.
+        templates.extend(_trash_templates(config, "trash_leader_reveal_card"))
+        if not config.immortality:
+            # Viscount Hundro Moritani's Intelligence keeps one of the
+            # Intrigue deck's top two (an Immortality catalog holds the
+            # keep-one rows already, for Imperium Ceremony).
+            templates.extend(
+                ActionTemplate(
+                    action_id="keep_peeked_intrigue",
+                    arguments=(("instance_id", instance_id),),
+                )
+                for instance_id in intrigue_instances
+            )
+        templates.extend(
+            ActionTemplate(
+                action_id="acquire_leader_imperium",
+                arguments=(("instance_id", instance_id), ("to_deck_top", True)),
+            )
+            for instance_id in imperium_instances
+        )
+        # Guild Contacts' Foldspace goes on the deck the same way, so every
+        # Reserve stack has its twin.
+        templates.extend(
+            ActionTemplate(
+                action_id="acquire_leader_reserve",
+                arguments=(("card_id", stack.card.card_id), ("to_deck_top", True)),
+            )
+            for stack in content.reserve_stacks
+        )
+        # Ilesa Ecaz's One Step Ahead: the hand card set aside at Round Start.
+        templates.extend(_trash_templates(config, "set_aside_leader_card"))
+        # Tessia Vernius (stage P4e): her first Snooper reward's discard and
+        # its refusal, and Duplicity's Influence lost -- naming the Alliance's
+        # recipient when several opponents could take it.
+        templates.extend(_trash_templates(config, "discard_snooper_card"))
+        templates.append(ActionTemplate(action_id="decline_snooper_discard"))
+        templates.extend(
+            ActionTemplate(
+                action_id="lose_leader_influence",
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        )
+        templates.extend(
+            ActionTemplate(
+                action_id="lose_leader_influence",
+                arguments=(
+                    ("alliance_recipient", recipient),
+                    ("faction", faction.value),
+                ),
+            )
+            for faction in Faction
+            for recipient in range(config.players)
+        )
+        # An effect's Influence with each Faction it names, a row each
+        # (OQ-153: Quid Pro Quo).
+        templates.extend(
+            ActionTemplate(
+                action_id="resolve_effect_influence",
+                arguments=(("faction", faction.value),),
+            )
+            for faction in Faction
+        )
     templates.extend(_trash_templates(config, "trash_agent_card"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_draw"))
     templates.extend(_trash_templates(config, "select_long_live_fighters_discard"))
@@ -1672,7 +1958,10 @@ def _acquire_icon_templates(
                 (ACQUIRED_CARD_ARGUMENT, card.card.card_id),
                 ("effect", icon),
             )
-            if acquire_icon_faction(icon) is not None:
+            if acquire_icon_faction(icon) is not None or icon in (
+                DREADNOUGHT_ICON,
+                FREIGHTER_ICON,
+            ):
                 templates.append(ActionTemplate(ACQUIRE_ICON_ACTION, base))
                 continue
             templates.extend(
@@ -1748,14 +2037,10 @@ def _effect_step_templates(
             # (B3d-3), by each icon whose window offers it and each Conflict
             # printing that icon.
             for icon in _REWARD_WINDOW_REFUSALS[template.action_id]:
-                for conflict in content_for(config).conflicts:
+                for conflict in content_for(config).conflicts_in_play():
                     if not (
-                        (config.bloodlines or not conflict.bloodlines_only)
-                        and (config.epic_game or not conflict.epic_only)
-                        and (
-                            icon in conflict_reward_icon_kinds(conflict.card.card_id)
-                            or (icon == "choose_influence" and config.promo_cards)
-                        )
+                        icon in conflict_reward_icon_kinds(conflict.card.card_id)
+                        or (icon == "choose_influence" and config.promo_cards)
                     ):
                         continue
                     for row in steps_for(whole, conflict.card.card_id, icon=icon):
@@ -1772,16 +2057,21 @@ def _effect_step_templates(
             kinds = _WINDOW_REWARD_ICONS.get(template.action_id, (kind,))
             named = tuple(
                 (None, conflict.card.card_id)
-                for conflict in content_for(config).conflicts
-                if (config.bloodlines or not conflict.bloodlines_only)
-                and (config.epic_game or not conflict.epic_only)
-                and (
+                for conflict in content_for(config).conflicts_in_play()
+                if (
                     any(
                         printed in conflict_reward_icon_kinds(conflict.card.card_id)
                         for printed in kinds
                     )
                     or (kind == "choose_influence" and config.promo_cards)
-                    or kind in ("planetary_array", "winning_intrigue")
+                    or kind
+                    in (
+                        "planetary_array",
+                        "winning_intrigue",
+                        DREADNOUGHT_CONTROL,
+                        WINDTRAPS,
+                        STRATEGIC_PUSH,
+                    )
                 )
             )
         elif spec.printed == Printed.CONTRACT:
@@ -1852,8 +2142,12 @@ def _effect_step_templates(
         elif spec.printed == Printed.TECH_PENDING:
             named = tuple(
                 (None, tile.tech_id)
-                for tile in TECH_TILES
+                for tile in (TECH_TILES if config.tech_module else ())
                 if "influence" in tile.acquire_effect_keys
+            ) + tuple(
+                (None, tile.tech_id)
+                for tile in (IX_TECH_TILES if config.rise_of_ix else ())
+                if {"influence", "distinct_influence"} & set(tile.acquire_effect_keys)
             )
         elif spec.printed == Printed.MISSION:
             # A Scouts mission's plain way in (B3d-2b); the specimen return
@@ -1935,6 +2229,15 @@ _CARD_SOURCES: Final = frozenset({Source.REVEAL_CARD, Source.AGENT_CARD})
 _VISITED_SPACES: Final[Mapping[str, tuple[str, ...]]] = {
     "resolve_espionage_without_spy": ("espionage",),
     "resolve_imperial_privilege_without_recall": ("imperial_privilege",),
+    # Rise of Ix's four spaces' icons (stage P4c-4, ``rules.ix_board_spaces``)
+    # and Spaceport's Foldspace card on top of the deck.
+    "commission_board_dreadnought": ("dreadnought",),
+    "acquire_board_tech": ("dreadnought",),
+    "acquire_negotiation_tech": ("tech_negotiation",),
+    "place_board_negotiator": ("tech_negotiation",),
+    "advance_board_freighter": ("interstellar_shipping", "smuggling"),
+    "recall_board_freighter": ("interstellar_shipping", "smuggling"),
+    "acquire_foldspace_to_deck_top": ("foldspace",),
 }
 # A controlled space's defending troop (B3d-2a): a space a Conflict card's
 # control reward names.
@@ -1976,6 +2279,19 @@ _RECALL_AGENT_EFFECTS: Final = (
 _INTRIGUE_SLOT_EFFECTS: Final[Mapping[str, tuple[str, ...]]] = {
     "PlaceSpy": ("recall_spy_for_intrigue", "decline_intrigue_spy"),
     "DestroyShieldWall": ("detonate_shield_wall", "keep_shield_wall"),
+    "CommissionDreadnought": (
+        "commission_intrigue_dreadnought",
+        "decline_intrigue_dreadnought",
+    ),
+    "PlaceNegotiator": (
+        "place_intrigue_negotiator",
+        "decline_intrigue_negotiator",
+    ),
+    "Freighter": (
+        "advance_intrigue_freighter",
+        "recall_intrigue_freighter",
+        "decline_intrigue_freighter",
+    ),
     "PeekTopCard": (
         "put_back_top_card",
         "discard_top_card",
@@ -2079,6 +2395,7 @@ _OWED_DRAW_IDS: Final = frozenset({"draw_owed_intrigue", "draw_owed_card"})
 # (stage B3e-1, ``reveal_turn.legal_reveal_gain_actions``).
 _REVEAL_GAIN_OF: Final[Mapping[str, Callable[[RevealLine], bool]]] = {
     "recruit_reveal_troops": lambda line: line.recruit_troops > 0,
+    "deploy_reveal_supply_troops": lambda line: line.supply_deployments > 0,
     "draw_reveal_intrigue": lambda line: line.draw_intrigue > 0,
     "generate_reveal_specimens": lambda line: line.specimens > 0,
     "advance_reveal_tleilaxu": lambda line: line.tleilaxu > 0,
@@ -2283,10 +2600,38 @@ def _window_printers(
     if action_id in ("recall_spy_for_placement", "decline_spy_placement"):
         return _spy_placement_printers(config)
     if action_id == "decline_tech":
-        # Battlefield Research, Rapid Engineering.
-        return tuple(
-            (Source.INTRIGUE, card)
-            for card in _intrigue_reward_cards(config, AcquireTech)
+        # Battlefield Research, Rapid Engineering, and the Shipping track's
+        # space 3, the two Landsraad spaces of the overlay, Prince Rhombur
+        # Vernius' Ixian Technology and Ixian Engineer's Agent box (Rise of
+        # Ix), in that fixed order.
+        return (
+            *(
+                (Source.INTRIGUE, card)
+                for card in _intrigue_reward_cards(config, AcquireTech)
+            ),
+            *(
+                (
+                    (Source.BOARD_SPACE, SHIPPING_PRINTED),
+                    # The Dreadnought and Tech Negotiation spaces' Acquire Tech.
+                    (Source.BOARD_SPACE, "dreadnought"),
+                    (Source.BOARD_SPACE, "tech_negotiation"),
+                )
+                if config.rise_of_ix
+                else ()
+            ),
+            # Prince Rhombur Vernius' Ixian Technology (stage P4e).
+            *(
+                (Source.LEADER, face)
+                for face in faces
+                if config.rise_of_ix and face == "prince_rhombur_vernius"
+            ),
+            # Ixian Engineer's Agent box (stage P4d).
+            *(
+                (Source.AGENT_CARD, card)
+                for card in (
+                    _box_reward_cards(config, AcquireTech) if config.rise_of_ix else ()
+                )
+            ),
         )
     if action_id == "resolve_opponent_discard_without_card":
         # Covert Operation's, Reverend Mother Mohiam's and Test of Humanity's
@@ -2394,6 +2739,15 @@ def _spy_placement_printers(
     return tuple(printers)
 
 
+def _acquire_box_trashes(card: ImperiumCardEntry) -> bool:
+    """Whether the Imperium card's acquire box prints the black Trash icon."""
+
+    ability = acquisition_ability(card.acquisition_effect)
+    return ability is not None and any(
+        isinstance(reward, TrashPersonalCard) for reward in ability.sections[0].rewards
+    )
+
+
 def _optional_trash_printers(
     config: RulesetConfig,
     box_cards: Mapping[tuple[str, str], tuple[str, ...]],
@@ -2401,7 +2755,9 @@ def _optional_trash_printers(
 ) -> tuple[tuple[Source, str, int], ...]:
     """The entities that may print an optional trash waiting on the turn
     (``optional_trash.trash_printer``): a card whose Agent box may trash (box
-    1 too with grafting), a Tech tile's acquire or Flip trash, a research
+    1 too with grafting), a Tech tile's acquire or Flip trash (the Tech
+    Module's, and Rise of Ix's Disposal Facility, whose acquire icon trashes),
+    an Imperium card's acquire box (Rise of Ix's Shai-Hulud), a research
     pair's trash, Arrakis Planetologist's leader."""
 
     boxes = (0, 1) if config.immortality else (0,)
@@ -2414,6 +2770,16 @@ def _optional_trash_printers(
         *(
             (Source.TECH, tech_id, 0)
             for tech_id in (optional_trash_tech_ids() if config.tech_module else ())
+        ),
+        *(
+            (Source.TECH, tile.tech_id, 0)
+            for tile in (IX_TECH_TILES if config.rise_of_ix else ())
+            if "trash" in tile.acquire_effect_keys
+        ),
+        *(
+            (Source.ACQUISITION, card.card.card_id, 0)
+            for card in content_for(config).imperium_cards
+            if _acquire_box_trashes(card)
         ),
         *(
             (Source.RESEARCH, space, 0)
@@ -2464,6 +2830,14 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
             # The original game's Prudent Diplomacy and Scheme.
             "duke_leto_atreides",
             "baron_vladimir_harkonnen",
+            # Rise of Ix's Final Delivery, Ixian Technology, Conscript,
+            # Couriers, Guild Contacts and Duplicity.
+            "princess_yuna_moritani",
+            "prince_rhombur_vernius",
+            "archduke_armand_ecaz",
+            "viscount_hundro_moritani",
+            "ilesa_ecaz",
+            "tessia_vernius",
         }
     ),
     "resolve_leader_signet_without_option": frozenset(
@@ -2489,23 +2863,44 @@ _LEADER_ROW_FACES: Final[Mapping[str, frozenset[str]]] = {
     "pay_leader_signet_spice": frozenset(
         {"lady_jessica", "reverend_mother_jessica", "staban_tuek", "gaius_helen_mohiam"}
     ),
-    # Unseen Network's Solari; the original game's Scheme.
+    # Unseen Network's Solari; the original game's Scheme; Rise of Ix's
+    # Final Delivery with every Faction at the top.
     "pay_leader_signet_solari": frozenset(
-        {"staban_tuek", "baron_vladimir_harkonnen"}
+        {"staban_tuek", "baron_vladimir_harkonnen", "princess_yuna_moritani"}
     ),
     "pay_leader_signet_water": frozenset({"chani"}),
     "gain_leader_signet_troop": frozenset({"shaddam_corrino_iv"}),
-    # Shaddam's three Solari; the original game's Prudent Diplomacy.
+    # Shaddam's three Solari; the original game's Prudent Diplomacy; Rise
+    # of Ix's Final Delivery and Duplicity's gain.
     "choose_leader_signet_influence": frozenset(
-        {"shaddam_corrino_iv", "duke_leto_atreides"}
+        {
+            "shaddam_corrino_iv",
+            "duke_leto_atreides",
+            "princess_yuna_moritani",
+            "tessia_vernius",
+        }
     ),
-    "acquire_leader_imperium": frozenset({"princess_irulan"}),
-    "acquire_leader_reserve": frozenset({"princess_irulan"}),
+    # Rise of Ix's Duplicity: the Influence lost.
+    "lose_leader_influence": frozenset({"tessia_vernius"}),
+    # Chronicler's Insight; Rise of Ix's Conscript and Guild Contacts.
+    "acquire_leader_imperium": frozenset({"princess_irulan", "archduke_armand_ecaz"}),
+    "acquire_leader_reserve": frozenset(
+        {"princess_irulan", "archduke_armand_ecaz", "ilesa_ecaz"}
+    ),
+    # Rise of Ix's One Step Ahead.
+    "set_aside_leader_card": frozenset({"ilesa_ecaz"}),
+    # Rise of Ix's Coordination.
+    "trash_leader_reveal_card": frozenset({"archduke_armand_ecaz"}),
     "retreat_leader_troops": frozenset({"chani"}),
     "place_leader_bonus_spice": frozenset({"esmar_tuek"}),
     "take_leader_bonus_spice": frozenset({"esmar_tuek"}),
     "deploy_leader_agent": frozenset({"duncan_idaho"}),
     "gain_leader_signet_spice": frozenset({"kota_odax_of_ix"}),
+    # Rise of Ix's Couriers and Ixian Technology.
+    "advance_leader_freighter": frozenset({"viscount_hundro_moritani"}),
+    "recall_leader_freighter": frozenset({"viscount_hundro_moritani"}),
+    "acquire_leader_tech": frozenset({"prince_rhombur_vernius"}),
+    "place_leader_negotiator": frozenset({"prince_rhombur_vernius"}),
     "trash_leader_tech": frozenset({"kota_odax_of_ix"}),
     "use_other_memories": frozenset({"lady_jessica"}),
     "draw_planetologist_intrigue": frozenset({"liet_kynes"}),
@@ -2518,6 +2913,8 @@ _PIECE_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "TrashCard": (("trash", ""),),
     "TrashThisCard": (("trash", ""),),
     "TrashIntrigueCard": (("trash", ""), ("pay", "")),
+    # Court Intrigue's Intrigue card under the deck (Rise of Ix).
+    "PutIntrigueOnDeckBottom": (("pay", ""),),
     "DiscardFromHand": (("discard", ""), ("pay", "")),
     "PayResources": (("pay", ""),),
     "SpendSpecimens": (("pay", ""),),
@@ -2546,6 +2943,12 @@ _ICON_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "trash": (("trash", ""),),
     "combat": (("gain", "combat"),),
     "spy": (("place_spy", ""), ("recall_spy", "")),
+    "freighter": (("advance", "freighter"), ("collect", "freighter")),
+    # Embedded Agent's second Freighter icon: the same two rows.
+    "freighter_second": (("advance", "freighter"), ("collect", "freighter")),
+    # Weirding Way's extra turn (Rise of Ix).
+    "extra_turn": (("take", "extra_turn"),),
+    "tech": (("acquire", "tech"),),
 }
 _HOOK_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "possible_futures": (("gain_influence", ""),),
@@ -2623,6 +3026,96 @@ def _leader_faces(config: RulesetConfig) -> tuple[str, ...]:
         if leader.alternate_face_id is not None:
             faces.setdefault(leader.alternate_face_id, None)
     return tuple(faces)
+
+
+def _rise_of_ix_unit_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    """Rise of Ix's dreadnought rows (``rules.combat_deployment``,
+    ``rules.dreadnought_commission``): the deployment of garrison dreadnoughts
+    and its withdrawal, a count each (a seat has two), an Intrigue slot's
+    commission and its refusal, and the Tech Negotiation icon's Negotiator
+    and its refusal (``rules.negotiators``)."""
+
+    templates: list[ActionTemplate] = [
+        ActionTemplate(action_id=action_id, arguments=(("count", count),))
+        for action_id in ("deploy_dreadnoughts", "withdraw_dreadnoughts")
+        for count in range(1, MAX_DREADNOUGHT_DEPLOYMENT + 1)
+    ]
+    # Second Wave's "up to two units" deployment, dreadnoughts among them
+    # [Rise of Ix p. 6]: the units in all, the share that is dreadnoughts,
+    # and with Bloodlines the Commanders' share (``units.unit_count_arguments``).
+    # The count-only and the Commander-only rows are the base catalog's.
+    templates.extend(
+        ActionTemplate(
+            action_id="deploy_intrigue_troops",
+            arguments=tuple(
+                sorted(
+                    (
+                        *((("commanders", share),) if share else ()),
+                        ("count", count),
+                        ("dreadnoughts", ships),
+                    )
+                )
+            ),
+        )
+        for count in range(1, SECOND_WAVE_UNITS + 1)
+        for ships in range(1, min(count, MAX_DREADNOUGHT_DEPLOYMENT) + 1)
+        for share in range(0, (count - ships + 1) if config.bloodlines else 1)
+    )
+    templates.extend(
+        ActionTemplate(action_id=action_id)
+        for action_id in (
+            "commission_intrigue_dreadnought",
+            "decline_intrigue_dreadnought",
+            "place_intrigue_negotiator",
+            "decline_intrigue_negotiator",
+            "advance_intrigue_freighter",
+            "recall_intrigue_freighter",
+            "decline_intrigue_freighter",
+            # The icons of the four spaces the overlay prints (stage P4c-4).
+            "commission_board_dreadnought",
+            "acquire_board_tech",
+            "acquire_negotiation_tech",
+            "place_board_negotiator",
+            "advance_board_freighter",
+            "recall_board_freighter",
+            # Spaceport's Foldspace card on top of the deck.
+            "acquire_foldspace_to_deck_top",
+            # Prince Rhombur Vernius' Ixian Technology and Viscount Hundro
+            # Moritani's Couriers (stage P4e).
+            "acquire_leader_tech",
+            "place_leader_negotiator",
+            "advance_leader_freighter",
+            "recall_leader_freighter",
+        )
+    )
+    templates.extend(_shipping_track_templates())
+    return tuple(templates)
+
+
+def _shipping_track_templates() -> tuple[ActionTemplate, ...]:
+    """The Freighter's own window and the Shipping track's rewards
+    (``rules.shipping_track``): up, recall or neither outside the owner's
+    turn, and a row for each reward a recall owes -- Dividends, spice, the
+    recruit, the Influence once for each Faction that gains it (and once
+    without, every cube at the top, OQ-060) and the discounted Acquire
+    Tech."""
+
+    templates = [
+        ActionTemplate(action_id=action_id)
+        for action_id in (ADVANCE_ACTION, RECALL_ACTION, DECLINE_ACTION)
+    ]
+    for effect in (DIVIDENDS, SPICE, RECRUIT, INFLUENCE, TECH):
+        templates.append(
+            ActionTemplate(action_id=REWARD_ACTION, arguments=(("effect", effect),))
+        )
+    templates.extend(
+        ActionTemplate(
+            action_id=REWARD_ACTION,
+            arguments=(("effect", INFLUENCE), ("faction", faction.value)),
+        )
+        for faction in Faction
+    )
+    return tuple(templates)
 
 
 def _unit_loss_templates() -> tuple[ActionTemplate, ...]:
@@ -3393,6 +3886,74 @@ def _tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     return tuple(templates)
 
 
+def _ix_tech_templates(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
+    """Rise of Ix's Tech tile rows (``rules.tech``, stage P4c-1).
+
+    An Acquire Tech buys an Ix tile ("아이콘마다 ... 하나를 얻을 수 있다"
+    [Rise of Ix p. 4]) with its Negotiators returned: ``acquire_tech`` names
+    the tile alone for none, and adds ``negotiators`` for one up to the tile's
+    price (a Negotiator beyond it lowers nothing). Each tile's acquire icons
+    are the Tech Module's rows (``resolve_tech_acquire_effect``; Windtraps'
+    water and Shuttle Fleet's two Factions have keys of their own, stage
+    P4c-2a). Rows a game with the Tech Module already holds are not repeated.
+    """
+
+    templates: list[ActionTemplate] = []
+    if not config.tech_module:
+        templates.extend(
+            (
+                ActionTemplate(action_id="decline_tech"),
+                # An acquire Influence with every Faction at the top.
+                ActionTemplate(action_id="resolve_tech_influence_without_faction"),
+            )
+        )
+    for tile in IX_TECH_TILES:
+        base: tuple[tuple[str, ActionValue], ...] = (("tech_id", tile.tech_id),)
+        templates.append(ActionTemplate(action_id="acquire_tech", arguments=base))
+        templates.extend(
+            ActionTemplate(
+                action_id="acquire_tech",
+                arguments=tuple(sorted((("negotiators", returned), *base))),
+            )
+            for returned in range(1, tile.cost + 1)
+        )
+        for effect in tile.acquire_effect_keys:
+            templates.extend(
+                ActionTemplate(action_id="resolve_tech_acquire_effect", arguments=args)
+                for args in tech_acquire_effect_arguments(tile, effect)
+            )
+    # Disposal Facility's Reveal-turn trash of a card in play (OQ-126); the
+    # card is the step row's target.
+    templates.append(ActionTemplate(action_id="trash_disposal_facility_card"))
+    # Its acquire icon's trash opens the generic optional-trash frame (a
+    # "trash" key, ``_optional_trash_printers``), which an original game holds
+    # only with other modules; the catalog keeps one copy of each row.
+    templates.append(ActionTemplate(action_id="decline_optional_trash"))
+    templates.extend(_trash_templates(config, "trash_optional_card"))
+    # The four Flip tiles (docs/rules/rise-of-ix.md 4, stage P4c-2b): the tile
+    # names the whole action, and the card Holoprojectors and Invasion Ships
+    # discard is the step row's target.
+    templates.extend(
+        ActionTemplate(action_id="flip_tech", arguments=(("tech_id", tile.tech_id),))
+        for tile in IX_TECH_TILES
+        if tile.flips
+    )
+    # The tiles used by trashing them (stage P4c-2c): Spy Satellites' VP and
+    # Sonic Snoopers, whose pick has a row per Intrigue card of the game's deck
+    # for the deck's bottom (a Twisted card is never put, OQ-097) and the stop.
+    templates.extend(
+        ActionTemplate(action_id="trash_tech", arguments=(("tech_id", tile.tech_id),))
+        for tile in IX_TECH_TILES
+        if tile.ability in TRASH_ABILITIES
+    )
+    templates.extend(
+        ActionTemplate(action_id=PUT_ACTION, arguments=(("card_id", card_id),))
+        for card_id in content_for(config).intrigue_deck_instance_ids
+    )
+    templates.append(ActionTemplate(action_id=FINISH_ACTION))
+    return tuple(templates)
+
+
 def _reveal_resource_templates() -> tuple[ActionTemplate, ...]:
     """One ``gain_reveal_resources`` per distinct printed Reveal resource bundle.
 
@@ -3719,9 +4280,7 @@ def _endgame_wild_templates(
     battle_cards = (
         *(
             (conflict.card.card_id, conflict.battle_icon)
-            for conflict in content_for(config).conflicts
-            if (config.bloodlines or not conflict.bloodlines_only)
-            and (config.epic_game or not conflict.epic_only)
+            for conflict in content_for(config).conflicts_in_play()
         ),
         *(
             (objective.objective_id, objective.battle_icon)
@@ -3784,6 +4343,8 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     ),
     _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE: ("gain_reveal_influence",),
     _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: ("gain_reveal_influence",),
+    # Web of Power (Rise of Ix): the wild Influence icon.
+    _Choice.GAIN_CHOSEN_INFLUENCE: ("gain_reveal_influence",),
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _SOURCED_TROOP_MOVE,
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _SOURCED_TROOP_MOVE,
     _Choice.MAY_DEPLOY_ONE_TROOP: ("deploy_reveal_card_troop",),
@@ -3819,6 +4380,16 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     ),
     _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS: (
         "trash_reveal_card",
+    ),
+    # Ixian Engineer (Rise of Ix): the card's own trash.
+    _Choice.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES: (
+        "trash_reveal_card",
+    ),
+    # Guild Chief Administrator and Freighter Fleet (Rise of Ix): the
+    # Freighter icon's two moves.
+    _Choice.MAY_MOVE_FREIGHTER: (
+        "advance_reveal_freighter",
+        "recall_reveal_freighter",
     ),
 }
 

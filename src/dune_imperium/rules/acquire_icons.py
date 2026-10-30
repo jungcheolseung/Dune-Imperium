@@ -25,23 +25,55 @@ Nothing in the original game acquires a card with such a box outside its
 owner's turn, but Arrakeen Scouts' Critical Moment market can, in a
 combination (``rules.scouts_auctions``): there the box would need a window of
 its own, which this module does not open (``queue_acquire_icons`` refuses).
+
+Rise of Ix's Full-Scale Assault prints a Dreadnought icon in its acquire box:
+"Dreadnought 아이콘마다 supply의 dreadnought 하나를 garrison에 commission할
+수 있다("may")" (docs/rules/rise-of-ix.md 6, [Rise of Ix p. 6]). It waits on
+the turn the same way, but it is optional: no row while no dreadnought is
+left in the supply (``dreadnought_commission.commission_block``), and it
+holds no turn end -- the press lapses it (OQ-095 (2), ``turn_rows``).
+
+Its Appropriate prints a Freighter icon there: "you may move your Freighter
+in one of two ways" [Rise of Ix p. 5] (docs/rules/rise-of-ix.md 5). In the
+owner's turn it is an optional row of the same kind whose taking opens the
+Freighter's window (``shipping_track.open_freighter_move``). Appropriate costs
+5, so the promo Boundless Ambition's Unload ("Acquire a card that costs 5 or
+less") can acquire it outside its owner's turn -- an opponent's Reverend
+Mother Mohiam discarding it: the Freighter's window then opens at once for
+its owner, as an Unload's Freighter does there (plan 10, "Appropriate와
+Boundless Ambition이 함께 들어올 때 구현하고 시험한다").
 """
 
 from typing import Final
 
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.effect_dsl import GainInfluence, Reward
+from dune_imperium.content.uprising.effect_dsl import (
+    CommissionDreadnought,
+    Freighter,
+    GainInfluence,
+    Reward,
+)
 from dune_imperium.content.uprising.imperium import ImperiumCardEntry
 from dune_imperium.content.uprising.trigger_abilities import acquisition_ability
 from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.dreadnought_commission import (
+    commission_block,
+    commission_dreadnought,
+)
 from dune_imperium.rules.influence import gain_faction_influence, influence_can_rise
 
 ACQUIRE_ICON_ACTION: Final = "resolve_acquire_icon"
 ACQUIRED_CARD_ARGUMENT: Final = "acquired_card_id"
 _FIXED_PREFIX: Final = "influence_"
+DREADNOUGHT_ICON: Final = turn_rows.DREADNOUGHT_ACQUIRE_ICON
+"""Full-Scale Assault's Dreadnought icon (Rise of Ix), an optional one."""
+FREIGHTER_ICON: Final = turn_rows.FREIGHTER_ACQUIRE_ICON
+"""Appropriate's Freighter icon (Rise of Ix), an optional one answered by
+the Freighter's window."""
+_OPTIONAL_ICONS: Final = frozenset({DREADNOUGHT_ICON, FREIGHTER_ICON})
 
 
 def _box_pieces(entry: ImperiumCardEntry) -> tuple[Reward, ...]:
@@ -81,6 +113,13 @@ def acquire_box_icons(entry: ImperiumCardEntry) -> tuple[str, ...] | None:
     """
 
     pieces = _box_pieces(entry)
+    if pieces == (CommissionDreadnought(),):
+        # Full-Scale Assault: one optional icon, a row of its own.
+        return (DREADNOUGHT_ICON,)
+    if pieces == (Freighter(),):
+        # Appropriate: one optional icon whose row opens the Freighter's
+        # window.
+        return (FREIGHTER_ICON,)
     if not any(isinstance(piece, GainInfluence) for piece in pieces):
         return None
     if not all(isinstance(piece, GainInfluence) for piece in pieces):
@@ -94,9 +133,10 @@ def acquire_box_icons(entry: ImperiumCardEntry) -> tuple[str, ...] | None:
 
 
 def acquire_icon_faction(icon: str) -> Faction | None:
-    """The Faction a fixed icon raises, None for the chosen icon."""
+    """The Faction a fixed icon raises, None for the chosen icon (and for the
+    Dreadnought icon, which raises none)."""
 
-    if icon == turn_rows.CHOSEN_INFLUENCE_ICON:
+    if icon == turn_rows.CHOSEN_INFLUENCE_ICON or icon in _OPTIONAL_ICONS:
         return None
     return Faction(icon.removeprefix(_FIXED_PREFIX))
 
@@ -144,6 +184,19 @@ def queue_acquire_icons(
                 _item_value(entry.card.card_id, icon),
             ),
         )
+        if queued is None and icons == (FREIGHTER_ICON,):
+            # Appropriate acquired outside its owner's turn (an opponent's
+            # Reverend Mother Mohiam discarding Boundless Ambition, whose
+            # Unload acquires it; plan 10): the Freighter's own window opens
+            # at once for its owner, as an Unload's Freighter does there
+            # (``rules.unload``).
+            # Imported here: the Shipping track imports the Tech module,
+            # which imports the acquisition paths that import this one.
+            from dune_imperium.rules.shipping_track import open_freighter_move
+
+            return open_freighter_move(
+                state, player, source=f"{source}:{FREIGHTER_ICON}"
+            )
         if queued is None:
             raise NotImplementedError(
                 f"{entry.card.card_id} was acquired outside its owner's turn: "
@@ -169,6 +222,15 @@ def legal_acquire_icon_actions(
         if kind != turn_rows.ACQUIRE_ICON:
             continue
         card_id, icon = value.split("|")
+        if icon == DREADNOUGHT_ICON:
+            if commission_block(state, player) is None:
+                rows.setdefault(acquire_icon_row(player, card_id, icon), None)
+            continue
+        if icon == FREIGHTER_ICON:
+            # From the bottom it moves up, from the top it recalls: some move
+            # is always there [Rise of Ix p. 5].
+            rows.setdefault(acquire_icon_row(player, card_id, icon), None)
+            continue
         if icon != turn_rows.CHOSEN_INFLUENCE_ICON:
             rows.setdefault(acquire_icon_row(player, card_id, icon), None)
             continue
@@ -179,7 +241,8 @@ def legal_acquire_icon_actions(
 
 
 def apply_acquire_icon(state: GameState, action: DomainAction) -> RuleResult:
-    """Take one acquire icon: its Influence, the Faction fixed or chosen."""
+    """Take one acquire icon: its Influence, the Faction fixed or chosen, or
+    Full-Scale Assault's dreadnought."""
 
     player = action.actor
     if action not in legal_acquire_icon_actions(state, player):
@@ -193,6 +256,22 @@ def apply_acquire_icon(state: GameState, action: DomainAction) -> RuleResult:
         for item in turn_rows.pending(frame)
         if item[0] == turn_rows.ACQUIRE_ICON and item[2] == _item_value(card_id, icon)
     )
+    if icon == DREADNOUGHT_ICON:
+        return commission_dreadnought(
+            turn_rows.take(state, player, item), player, source=item[1]
+        )
+    if icon == FREIGHTER_ICON:
+        # Its row opens the Freighter's window (up one space, recall, or
+        # neither).
+        from dune_imperium.rules.shipping_track import open_freighter_move
+
+        return RuleResult(
+            state=open_freighter_move(
+                turn_rows.take(state, player, item),
+                player,
+                source=f"{item[1]}:{FREIGHTER_ICON}",
+            )
+        )
     faction = acquire_icon_faction(icon) or Faction(str(arguments["faction"]))
     return gain_faction_influence(
         turn_rows.take(state, player, item),

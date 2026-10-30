@@ -30,6 +30,7 @@ from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     apply_manipulated_acquisition,
     apply_reserve_acquisition,
+    apply_reveal_card_acquisition,
     apply_reveal_command_acquisition,
     legal_acquisition_spy_actions,
     legal_imperium_acquisitions,
@@ -43,6 +44,8 @@ from dune_imperium.rules.agent_effect_frame import (
 from dune_imperium.rules.agent_effects import (
     apply_agent_card_contract_completion,
     apply_agent_card_discard,
+    apply_agent_card_extra_turn,
+    apply_agent_card_freighter,
     apply_agent_card_influence,
     apply_agent_card_intrigue_payment,
     apply_agent_card_long_live_action,
@@ -51,6 +54,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_recall,
     apply_agent_card_space_block,
     apply_agent_card_spy_action,
+    apply_agent_card_tech,
     apply_agent_card_trash,
     apply_corrinth_city_payment,
     apply_opponent_card_discard,
@@ -75,6 +79,7 @@ from dune_imperium.rules.board_effects import (
     apply_connections_action,
     apply_desert_tactics_action,
     apply_espionage_action,
+    apply_foldspace_deck_top,
     apply_imperial_privilege_action,
     apply_maker_space_action,
     apply_secrets_steal,
@@ -99,6 +104,8 @@ from dune_imperium.rules.combat import (
     apply_combat_reward_trash,
     apply_conflict_end_trigger,
     apply_distinct_combat_reward_influence,
+    apply_dreadnought_control,
+    apply_dreadnought_detonation,
     begin_combat_intrigue,
     close_spent_conflict_end_window,
     combat_participants_are_stale,
@@ -112,6 +119,7 @@ from dune_imperium.rules.combat import (
     legal_combat_reward_trash_actions,
     legal_conflict_end_trigger_actions,
     legal_distinct_combat_reward_influence_actions,
+    legal_dreadnought_control_actions,
     offer_conflict_end_triggers,
     pay_combat_rewards,
     refresh_combat_participants,
@@ -123,6 +131,8 @@ from dune_imperium.rules.combat_deployment import (
     apply_combat_deployment,
     apply_commander_deployment,
     apply_commander_withdrawal,
+    apply_dreadnought_deployment,
+    apply_dreadnought_withdrawal,
     apply_troop_withdrawal,
     record_deployment_peak,
     settle_finishing_agent_turn,
@@ -151,6 +161,12 @@ from dune_imperium.rules.contracts import (
     resolve_exhausted_contract_choice,
 )
 from dune_imperium.rules.deck_top import settle_public_deck_tops
+from dune_imperium.rules.effect_influence import (
+    apply_effect_influence,
+    effect_influence_event_ids,
+    legal_effect_influence_actions,
+    settle_effect_influence,
+)
 from dune_imperium.rules.effect_steps import (
     present,
     presents_steps,
@@ -197,12 +213,17 @@ from dune_imperium.rules.intrigue import (
     legal_intrigue_play_actions,
     plays_turn_start_option,
 )
+from dune_imperium.rules.intrigue_bottom import (
+    apply_intrigue_bottom_action,
+    legal_intrigue_bottom_actions,
+)
 from dune_imperium.rules.intrigue_deck import (
     apply_intrigue_reshuffle,
     intrigue_draw_is_queued,
     intrigue_reshuffle_is_pending,
     resolve_pending_intrigue_draw,
 )
+from dune_imperium.rules.intrigue_knowledge import settle_known_intrigue
 from dune_imperium.rules.intrigue_peek import (
     apply_intrigue_peek,
     legal_intrigue_peek_actions,
@@ -213,8 +234,12 @@ from dune_imperium.rules.intrigue_triggers import (
     fire_deferred_acquisition_trigger,
     legal_trigger_contract_actions,
 )
+from dune_imperium.rules.ix_board_spaces import apply_ix_space_action
 from dune_imperium.rules.leader_abilities import (
+    apply_couriers,
+    apply_duplicity_loss,
     apply_feyd_track_action,
+    apply_ixian_technology,
     apply_kota_signet_action,
     apply_leader_agent_deploy,
     apply_leader_board_repeat,
@@ -230,6 +255,7 @@ from dune_imperium.rules.leader_abilities import (
     apply_shaddam_signet_choice,
     grant_hungry_for_spice,
     grant_leader_reveal_passives,
+    grant_smuggling_operation,
     legal_feyd_track_actions,
     legal_leader_reveal_actions,
     legal_leader_signet_actions,
@@ -251,6 +277,11 @@ from dune_imperium.rules.navigation import (
     legal_navigation_play_actions,
     legal_navigation_setup_actions,
     navigation_play_is_queued,
+)
+from dune_imperium.rules.one_step_ahead import (
+    apply_set_aside,
+    legal_set_aside_actions,
+    return_set_aside_card,
 )
 from dune_imperium.rules.optional_trash import (
     apply_optional_trash,
@@ -285,10 +316,12 @@ from dune_imperium.rules.reveal_turn import (
     apply_corrinth_city_reveal,
     apply_reveal_card_trash,
     apply_reveal_deployment,
+    apply_reveal_freighter,
     apply_reveal_gain,
     apply_reveal_influence_exchange,
     apply_reveal_influence_gain,
     apply_reveal_influence_loss,
+    apply_reveal_negotiator,
     apply_reveal_persuasion_or_contract,
     apply_reveal_sandworm_action,
     apply_reveal_spice_influence,
@@ -298,6 +331,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_troop_retreat,
     apply_reveal_troop_sacrifice,
     apply_reveal_troops_move,
+    apply_reveal_unit_retreat,
     apply_reveal_vp_payment,
     begin_reveal_turn,
     finish_reveal_turn,
@@ -366,11 +400,25 @@ from dune_imperium.rules.scouts_secrets import (
     legal_secret_pick_actions,
 )
 from dune_imperium.rules.setup import create_draft_initial_state, create_initial_state
+from dune_imperium.rules.shipping_track import (
+    apply_freighter_move_action,
+    apply_shipping_reward,
+    legal_freighter_move_actions,
+    legal_shipping_reward_row_actions,
+    legal_shipping_reward_window_actions,
+)
 from dune_imperium.rules.shortfall import (
     drop_stale_shortfalls,
     refill_shortfall,
     shortfall_is_stale,
     shortfall_refill_seat,
+)
+from dune_imperium.rules.snoopers import (
+    apply_snooper_discard,
+    legal_snooper_row_actions,
+    legal_snooper_window_actions,
+    settle_snooper_discards,
+    snooper_event_ids,
 )
 from dune_imperium.rules.spies import apply_gather_intelligence_action
 from dune_imperium.rules.spy_moves import (
@@ -385,6 +433,7 @@ from dune_imperium.rules.spy_moves import (
 )
 from dune_imperium.rules.strength import refresh_pre_reveal_strength
 from dune_imperium.rules.tech import (
+    apply_disposal_facility_trash,
     apply_place_tech_spy,
     apply_secret_project,
     apply_tech_acquire_effect,
@@ -392,6 +441,7 @@ from dune_imperium.rules.tech import (
     apply_tech_choice,
     apply_tech_flip,
     apply_tech_influence_without_faction,
+    apply_tech_trash,
     deploy_suspensor_troops,
     draw_owed_tech_cards,
     legal_secret_project_actions,
@@ -399,12 +449,20 @@ from dune_imperium.rules.tech import (
     legal_tech_acquisition_actions,
     legal_tech_flip_actions,
     legal_tech_reveal_actions,
+    legal_tech_trash_actions,
 )
 from dune_imperium.rules.tleilaxu_row import (
     apply_tleilaxu_acquisition,
     legal_tleilaxu_acquisitions,
 )
 from dune_imperium.rules.unit_loss import apply_unit_loss, legal_unit_loss_actions
+from dune_imperium.rules.unload import (
+    apply_unload_acquisition,
+    apply_unload_icon,
+    legal_unload_row_actions,
+    legal_unload_window_actions,
+    settle_unloads,
+)
 
 type LegalActionProvider = Callable[[GameState, int], tuple[DomainAction, ...]]
 
@@ -466,6 +524,8 @@ def _apply_deployment(state: GameState, action: DomainAction) -> RuleResult:
         return apply_reveal_deployment(state, action)
     if action.action_id == "deploy_commanders":
         return apply_commander_deployment(state, action)
+    if action.action_id == "deploy_dreadnoughts":
+        return apply_dreadnought_deployment(state, action)
     return apply_combat_deployment(state, action)
 
 
@@ -492,6 +552,7 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
+        legal_tech_trash_actions,
         legal_tech_acquire_effect_actions,
         legal_specimen_return_actions,
         legal_family_atomics_actions,
@@ -504,6 +565,14 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_contract_icon_row_actions,
         # So does an acquire box's icon, a row each (OQ-141).
         legal_acquire_icon_actions,
+        # And a Shipping track recall's rewards (Rise of Ix, stage P4c-3).
+        legal_shipping_reward_row_actions,
+        # And an Unload box an effect triggered (Rise of Ix).
+        legal_unload_row_actions,
+        # And an effect's per-Faction Influence (Quid Pro Quo, OQ-153) and
+        # Tessia Vernius' first Snooper reward (Rise of Ix).
+        legal_effect_influence_actions,
+        legal_snooper_row_actions,
         # A research bonus or trash icon a Plot raised waits on the turn
         # (cleanup-2b).
         legal_research_bonus_actions,
@@ -533,9 +602,18 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
         legal_contract_icon_row_actions,
         # So does an acquire box's icon, a row each (OQ-141).
         legal_acquire_icon_actions,
+        # And a Shipping track recall's rewards (Rise of Ix, stage P4c-3).
+        legal_shipping_reward_row_actions,
+        # And an Unload box an effect triggered (Rise of Ix).
+        legal_unload_row_actions,
+        # And an effect's per-Faction Influence (Quid Pro Quo, OQ-153) and
+        # Tessia Vernius' first Snooper reward (Rise of Ix).
+        legal_effect_influence_actions,
+        legal_snooper_row_actions,
         legal_finish_reveal_actions,
         legal_intrigue_play_actions,
         legal_tech_flip_actions,
+        legal_tech_trash_actions,
         legal_tech_reveal_actions,
         legal_tech_acquire_effect_actions,
         legal_reveal_gain_actions,
@@ -577,6 +655,9 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     FrameKind.COMBAT_REWARD_TRASH: (legal_combat_reward_trash_actions,),
     FrameKind.CONFLICT_END_TRIGGER: (legal_conflict_end_trigger_actions,),
     FrameKind.COMBAT_REWARD_SPY: (legal_combat_reward_spy_actions,),
+    # The sole winner's dreadnought set on a Control space (Rise of Ix;
+    # OQ-121 ruling 6 (1)).
+    FrameKind.DREADNOUGHT_CONTROL_CHOICE: (legal_dreadnought_control_actions,),
     FrameKind.COMBAT_REWARD_ICONS: (
         legal_combat_reward_icon_actions,
         # The sole winner's "When you win a Conflict" Intrigue, a row of its
@@ -625,6 +706,10 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     ),
     FrameKind.TECH_SECRET_PROJECT: (legal_secret_project_actions,),
     FrameKind.MASTERSTROKE_SETUP: (legal_masterstroke_actions,),
+    # Rise of Ix's Tessia Vernius: her first Snooper reward outside her turn.
+    FrameKind.OPTIONAL_DISCARD: (legal_snooper_window_actions,),
+    # Rise of Ix's Ilesa Ecaz: One Step Ahead's Round Start set-aside.
+    FrameKind.ROUND_START_SET_ASIDE: (legal_set_aside_actions,),
     FrameKind.RESEARCH_ADVANCE: (
         legal_research_advance_actions,
         legal_scouts_rewards_first_actions,
@@ -635,6 +720,14 @@ LEGAL_ACTION_PROVIDERS: Final[Mapping[str, tuple[LegalActionProvider, ...]]] = {
     ),
     FrameKind.GRAFT_PARTNER: (legal_graft_partner_actions,),
     FrameKind.INTRIGUE_PEEK: (legal_intrigue_peek_actions,),
+    # Rise of Ix's Sonic Snoopers (stage P4c-2c).
+    FrameKind.INTRIGUE_BOTTOM_PICK: (legal_intrigue_bottom_actions,),
+    # Rise of Ix's Freighter outside its owner's turn and its recall's
+    # rewards (stage P4c-3, ``rules.shipping_track``).
+    FrameKind.FREIGHTER_MOVE: (legal_freighter_move_actions,),
+    FrameKind.SHIPPING_REWARD_ICONS: (legal_shipping_reward_window_actions,),
+    # Rise of Ix's Unload outside its owner's turn (``rules.unload``).
+    FrameKind.UNLOAD_ICONS: (legal_unload_window_actions,),
     # Servo-Receivers: the Leader's Signet Ring ability outside its box.
     FrameKind.LEADER_SIGNET: (legal_feyd_track_actions, legal_leader_signet_actions),
     # Arrakeen Scouts: Friends Everywhere's choice of Influence 4 bonus.
@@ -692,6 +785,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "place_agent": apply_agent_space_pick,
     "reveal_turn": begin_reveal_turn,
     "recruit_reveal_troops": apply_reveal_gain,
+    "deploy_reveal_supply_troops": apply_reveal_gain,
     "draw_reveal_intrigue": apply_reveal_gain,
     "generate_reveal_specimens": apply_reveal_gain,
     "advance_reveal_tleilaxu": apply_reveal_gain,
@@ -720,6 +814,13 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "choose_intrigue_discard": apply_intrigue_choice,
     "detonate_shield_wall": apply_intrigue_choice,
     "keep_shield_wall": apply_intrigue_choice,
+    "commission_intrigue_dreadnought": apply_intrigue_choice,
+    "decline_intrigue_dreadnought": apply_intrigue_choice,
+    "advance_intrigue_freighter": apply_intrigue_choice,
+    "recall_intrigue_freighter": apply_intrigue_choice,
+    "decline_intrigue_freighter": apply_intrigue_choice,
+    "place_intrigue_negotiator": apply_intrigue_choice,
+    "decline_intrigue_negotiator": apply_intrigue_choice,
     "deploy_intrigue_troops": apply_intrigue_choice,
     "trash_intrigue_card": apply_intrigue_choice,
     "decline_intrigue_trash": apply_intrigue_choice,
@@ -786,6 +887,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "withdraw_troops": apply_troop_withdrawal,
     "deploy_commanders": _apply_deployment,
     "withdraw_commanders": apply_commander_withdrawal,
+    "deploy_dreadnoughts": _apply_deployment,
+    "withdraw_dreadnoughts": apply_dreadnought_withdrawal,
     "finish_agent_turn": apply_agent_turn_finish,
     # Immortality: the Bene Tleilax board and Family Atomics
     "choose_research_space": apply_research_advance,
@@ -807,12 +910,38 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "resolve_tech_influence_without_faction": apply_tech_influence_without_faction,
     "decline_tech": apply_tech_acquisition,
     "flip_tech": apply_tech_flip,
+    # Rise of Ix's tiles used by trashing them (stage P4c-2c).
+    "trash_tech": apply_tech_trash,
+    # The Freighter and the Shipping track's rewards (Rise of Ix, P4c-3).
+    "advance_freighter": apply_freighter_move_action,
+    "recall_freighter": apply_freighter_move_action,
+    "decline_freighter": apply_freighter_move_action,
+    # The four spaces' icons (stage P4c-4, ``rules.ix_board_spaces``): the
+    # Freighter icon of Interstellar Shipping and Smuggling beside the others.
+    "advance_board_freighter": apply_ix_space_action,
+    "recall_board_freighter": apply_ix_space_action,
+    "commission_board_dreadnought": apply_ix_space_action,
+    "acquire_board_tech": apply_ix_space_action,
+    "acquire_negotiation_tech": apply_ix_space_action,
+    "place_board_negotiator": apply_ix_space_action,
+    # Spaceport's Foldspace card on top of the deck (stage P4c-4).
+    "acquire_foldspace_to_deck_top": apply_foldspace_deck_top,
+    "resolve_shipping_reward": apply_shipping_reward,
+    "resolve_unload_icon": apply_unload_icon,
+    "decline_unload_icon": apply_unload_icon,
+    # Boundless Ambition's Unload acquisition window (Rise of Ix promo).
+    "acquire_unload_imperium_card": apply_unload_acquisition,
+    "acquire_unload_reserve_card": apply_unload_acquisition,
+    "skip_unload_acquisition": apply_unload_acquisition,
+    "put_intrigue_on_bottom": apply_intrigue_bottom_action,
+    "finish_intrigue_bottom": apply_intrigue_bottom_action,
     "choose_secret_project": apply_secret_project,
     "gain_leader_signet_spice": apply_kota_signet_action,
     "trash_leader_tech": apply_kota_signet_action,
     "choose_tech_strength": apply_tech_choice,
     "choose_tech_trash": apply_tech_choice,
     "place_tech_spy": apply_place_tech_spy,
+    "trash_disposal_facility_card": apply_disposal_facility_trash,
     "place_track_spy": apply_place_track_spy,
     # A triggered draw held as the owner's own step (OQ-106).
     "draw_owed_intrigue": apply_owed_draw,
@@ -834,12 +963,27 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "pay_agent_card_spice": apply_agent_card_payment,
     # Firm Grip (original game): "2 Solari -> Choose one Influence".
     "pay_agent_card_solari": apply_agent_card_payment,
+    # Landing Rights (Rise of Ix): the Freighter icon's two moves.
+    "advance_agent_card_freighter": apply_agent_card_freighter,
+    "recall_agent_card_freighter": apply_agent_card_freighter,
+    # Weirding Way (Rise of Ix): "You may take another turn immediately after
+    # this one."
+    "take_agent_card_extra_turn": apply_agent_card_extra_turn,
+    # Ixian Engineer (Rise of Ix): the Acquire Tech icon opens its window.
+    "acquire_agent_card_tech": apply_agent_card_tech,
+    # Appropriate (Rise of Ix): the same window, paid in Solari.
+    "acquire_agent_card_tech_with_solari": apply_agent_card_tech,
+    # Local Fence (Rise of Ix): its two arrows printed with "-OR-".
+    "pay_agent_card_spice_for_solari": apply_agent_card_payment,
+    "pay_agent_card_solari_for_spice": apply_agent_card_payment,
     "decline_agent_card_payment": apply_agent_card_payment,
     "pay_corrinth_city": apply_corrinth_city_payment,
     "select_corrinth_city_discard": apply_corrinth_city_payment,
     "decline_corrinth_city_payment": apply_corrinth_city_payment,
     "pay_agent_card_intrigue_and_spice": apply_agent_card_intrigue_payment,
     "trash_intrigue_for_agent_card": apply_agent_card_intrigue_payment,
+    # Court Intrigue (Rise of Ix): an Intrigue card under the deck.
+    "put_intrigue_on_bottom_for_agent_card": apply_agent_card_intrigue_payment,
     "decline_agent_card_intrigue_payment": apply_agent_card_intrigue_payment,
     "recall_agent_for_agent_card": apply_agent_card_recall,
     "recall_conflict_agent_for_agent_card": apply_agent_card_recall,
@@ -880,7 +1024,17 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "decline_leader_signet_payment": apply_leader_signet_payment,
     "resolve_leader_signet_without_option": apply_leader_signet_payment,
     "set_aside_leader_imperium": apply_manipulate_signet,
+    # Rise of Ix's Prince Rhombur Vernius: Ixian Technology's two halves.
+    "acquire_leader_tech": apply_ixian_technology,
+    "place_leader_negotiator": apply_ixian_technology,
     "choose_masterstroke_faction": apply_masterstroke_choice,
+    "set_aside_leader_card": apply_set_aside,
+    # Rise of Ix: an effect's per-Faction Influence (OQ-153), Tessia Vernius'
+    # first Snooper reward and her Duplicity's loss.
+    "resolve_effect_influence": apply_effect_influence,
+    "discard_snooper_card": apply_snooper_discard,
+    "decline_snooper_discard": apply_snooper_discard,
+    "lose_leader_influence": apply_duplicity_loss,
     "acquire_leader_imperium": apply_leader_signet_acquire,
     "acquire_leader_reserve": apply_leader_signet_acquire,
     "gain_leader_signet_troop": apply_shaddam_signet_choice,
@@ -893,6 +1047,11 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "retreat_leader_troop": apply_leader_reveal_action,
     "retreat_leader_commander": apply_leader_reveal_action,
     "recall_spy_for_leader": apply_leader_reveal_action,
+    # Rise of Ix's Archduke Armand Ecaz: Coordination.
+    "trash_leader_reveal_card": apply_leader_reveal_action,
+    # Rise of Ix's Viscount Hundro Moritani: Couriers' two Freighter moves.
+    "advance_leader_freighter": apply_couriers,
+    "recall_leader_freighter": apply_couriers,
     "finish_reveal": finish_reveal_turn,
     "place_acquisition_spy": apply_acquisition_spy_action,
     "recall_spy_for_acquisition": apply_acquisition_spy_action,
@@ -912,6 +1071,10 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "exchange_reveal_influence": apply_reveal_influence_exchange,
     "gain_reveal_influence": apply_reveal_influence_gain,
     "command_acquire_row_card": apply_reveal_command_acquisition,
+    # Boundless Ambition (Rise of Ix promo): "Acquire a card that costs 5 or
+    # less."
+    "acquire_reveal_imperium_card": apply_reveal_card_acquisition,
+    "acquire_reveal_reserve_card": apply_reveal_card_acquisition,
     "gain_reveal_persuasion": apply_reveal_persuasion_or_contract,
     "take_reveal_contract": apply_reveal_persuasion_or_contract,
     # Bene Gesserit Sister (original game): "2 Persuasion OR 2 swords".
@@ -935,9 +1098,17 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Opulence (original game): "6 Solari -> 1 Victory Point"; Guild
     # Ambassador: "Spacing Guild Alliance: 3 spice -> 1 Victory Point".
     "pay_reveal_solari_for_vp": apply_reveal_vp_payment,
+    # Ix-Guild Compact's Tech Negotiation icons (Rise of Ix).
+    "place_reveal_negotiator": apply_reveal_negotiator,
     "pay_reveal_spice_for_vp": apply_reveal_vp_payment,
     # Gurney Halleck (original game): "3 Solari -> 2 troops".
     "pay_reveal_solari_for_troops": apply_reveal_troop_purchase,
+    # Guild Chief Administrator (Rise of Ix): the Reveal box's Freighter icon.
+    "advance_reveal_freighter": apply_reveal_freighter,
+    "recall_reveal_freighter": apply_reveal_freighter,
+    # Negotiated Withdrawal (Rise of Ix): "Retreat three of your units ->
+    # Influence with any Faction".
+    "retreat_reveal_units_for_influence": apply_reveal_unit_retreat,
     "retreat_two_troops_for_reveal": apply_reveal_troop_retreat,
     # Immortality Reveal choices (For Humanity, Shadout Mapes, Tleilaxu
     # Surgeon)
@@ -980,6 +1151,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "place_combat_reward_spy": apply_combat_reward_spy,
     "recall_spy_for_combat_reward": apply_combat_reward_spy,
     "decline_combat_reward_spy": apply_combat_reward_spy,
+    "place_combat_reward_dreadnought": apply_dreadnought_control,
+    "detonate_combat_reward_dreadnought": apply_dreadnought_detonation,
     "choose_combat_reward_influence": apply_combat_reward_influence,
     "choose_distinct_combat_reward_influence": (apply_distinct_combat_reward_influence),
     # Every eligible Faction at the top: the owner confirms the loss (OQ-060).
@@ -1001,13 +1174,15 @@ def _reveal_masterstroke(result: RuleResult) -> RuleResult:
     return peaked if revealed is peaked else _advance_automatic(revealed)
 
 
-def _settle_deck_tops(result: RuleResult) -> RuleResult:
-    """Bring every seat's public deck top in line with its deck, once the
-    transition's draws, trashes and discards are all done (OQ-145,
-    ``rules.deck_top``); a transition that leaves every record as it was is
-    returned itself."""
+def _settle_card_knowledge(result: RuleResult) -> RuleResult:
+    """Bring every seat's public deck top in line with its deck (OQ-145,
+    ``rules.deck_top``) and its known Intrigue cards in line with the
+    Intrigue deck and the other seats' hands (OQ-149,
+    ``rules.intrigue_knowledge``), once the transition's draws, trashes,
+    plays and discards are all done; a transition that leaves every record
+    as it was is returned itself."""
 
-    settled = settle_public_deck_tops(result.state)
+    settled = settle_known_intrigue(settle_public_deck_tops(result.state))
     if settled is result.state:
         return result
     return RuleResult(state=settled, events=result.events)
@@ -1073,6 +1248,8 @@ class UprisingRulesEngine(RulesEngine):
             result = apply_scouts_draw(state, outcome)
         else:
             result = apply_round_start_reshuffle(state, outcome)
+        result = _settle_owed_rows(settle_unloads(result))
+        settled = _owed_row_event_ids(result)
         # An Intrigue draw granted by a Reveal passive may queue a reshuffle,
         # so the automatic advance runs again after the passives.
         result = grant_late_reveal_effects(
@@ -1088,10 +1265,23 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
-        return _settle_deck_tops(
-            refresh_pre_reveal_strength(
-                _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
-            )
+        # Ilesa Ecaz's set-aside card returns as her second turn opens, and
+        # Smuggling Operation reads the whole transition's gains (Rise of Ix).
+        return grant_smuggling_operation(
+            return_set_aside_card(
+                _settle_card_knowledge(
+                    refresh_pre_reveal_strength(
+                        _settle_finishing(
+                            # Rows owed by the automatic steps since.
+                            _settle_owed_rows(
+                                _reveal_masterstroke(_advance_automatic(result)),
+                                skip=settled,
+                            )
+                        )
+                    )
+                )
+            ),
+            state,
         )
 
     def legal_actions(
@@ -1183,7 +1373,12 @@ class UprisingRulesEngine(RulesEngine):
                 assert step.event is not None
                 return RuleResult(state=step.state, events=(step.event,))
             state, action = step.state, step.whole
-        handled = _end_turn_start(state, action, _handle(state, action))
+        # An Unload an effect triggered waits until the handler wrote its
+        # frames back (``rules.unload``), and so do an effect's per-Faction
+        # Influence rows and a Snooper's discard (Rise of Ix).
+        owed = _settle_owed_rows(settle_unloads(_handle(state, action)))
+        settled = _owed_row_event_ids(owed)
+        handled = _end_turn_start(state, action, owed)
         result = _advance_automatic(handled)
         # An Intrigue draw granted by a Reveal passive or a late-met Reveal
         # condition may queue a reshuffle, so the automatic advance runs
@@ -1202,15 +1397,43 @@ class UprisingRulesEngine(RulesEngine):
                 draw_owed_tech_cards(_complete_alliance_contracts(advanced))
             )
         )
-        return _settle_deck_tops(
-            refresh_pre_reveal_strength(
-                _settle_finishing(_reveal_masterstroke(_advance_automatic(result)))
-            )
+        # Ilesa Ecaz's set-aside card returns as her second turn opens, and
+        # Smuggling Operation reads the whole transition's gains (Rise of Ix).
+        return grant_smuggling_operation(
+            return_set_aside_card(
+                _settle_card_knowledge(
+                    refresh_pre_reveal_strength(
+                        _settle_finishing(
+                            # Rows owed by the automatic steps since.
+                            _settle_owed_rows(
+                                _reveal_masterstroke(_advance_automatic(result)),
+                                skip=settled,
+                            )
+                        )
+                    )
+                )
+            ),
+            state,
         )
 
     def observe(self, state: GameState, player: int) -> PlayerView:
         return observe_state(state, player)
 
+
+def _settle_owed_rows(
+    result: RuleResult, *, skip: frozenset[str] = frozenset()
+) -> RuleResult:
+    """Queue the rows (or open the windows) a transition's effects announced:
+    an effect's per-Faction Influence (OQ-153) and Tessia Vernius' first
+    Snooper reward; ``skip`` holds the announcements already settled."""
+
+    return settle_snooper_discards(
+        settle_effect_influence(result, skip=skip), skip=skip
+    )
+
+
+def _owed_row_event_ids(result: RuleResult) -> frozenset[str]:
+    return effect_influence_event_ids(result.events) | snooper_event_ids(result.events)
 
 
 def _end_turn_start(
@@ -1229,10 +1452,24 @@ def _end_turn_start(
     frame (the seat's own again when every other seat has revealed) opens
     with its start still open. Marked on the handler's result, before the
     automatic steps, so a turn those steps open is a fresh one.
+
+    A Round Start choice laid above the round's first turn frame is no
+    action of that turn: Ilesa Ecaz's set-aside ("Round Start 순서 ... →
+    Ilesa의 따로 두기(Holtzman Engine으로 뽑은 카드까지 든 손에서) → 첫 turn",
+    docs/rules/rise-of-ix.md 4, OQ-122) leaves a First Player Ilesa's first
+    turn with its start open (Bindu Suspension, "Agent·Reveal을 시작하기 전 차례
+    시작의 첫 행동으로만", OQ-117). It is the one such choice: Holtzman Engine's
+    reshuffle above that frame is a chance step, and the Control defense,
+    Hundro's Intelligence and the Arrakeen Scouts step all come before the
+    first turn frame opens.
     """
 
     if (
         not turn_start_is_open(state, action.actor)
+        or (
+            bool(state.decision_stack)
+            and state.decision_stack[-1].kind == FrameKind.ROUND_START_SET_ASIDE
+        )
         or action.action_id == "play_turn_start_card"
         or plays_turn_start_option(action)
         # An answer that passes the turn (Bindu Suspension's pass, after its

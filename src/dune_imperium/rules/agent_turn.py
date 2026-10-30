@@ -68,22 +68,30 @@ from dune_imperium.rules.combat_deployment import (
     ungained_undeployable_troops,
 )
 from dune_imperium.rules.contracts import contract_candidates_for_agent_turn
+from dune_imperium.rules.dreadnoughts import space_controller
 from dune_imperium.rules.effects import (
     BOOST_DRAW_KEY,
     BOOSTED_CARDS_KEY,
+    EXTRA_TURNS_KEY,
     open_next_turn,
 )
 from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
+    DREADNOUGHTS_COMMISSIONED_KEY,
     OWED_CARD,
+    SHIPPING_TROOPS_KEY,
     TECH_ACQUIRE_PENDING_KEY,
+    UNGAINED_SHIPPING_TROOPS_KEY,
     FrameKind,
+    commissioned_dreadnought_count,
     hold_draw,
     owned_top_frame,
     recruited_commander_count,
     replace_player,
     replace_top_frame,
+    shipping_troop_count,
     turn_start_is_open,
+    ungained_shipping_troop_count,
     with_context,
 )
 from dune_imperium.rules.gain_events import resources_gained_event
@@ -92,6 +100,7 @@ from dune_imperium.rules.leader_abilities import (
     apply_smuggle_spice,
     leader_signet_is_implemented,
 )
+from dune_imperium.rules.one_step_ahead import ILESA, one_step_ahead_bonus
 from dune_imperium.rules.scouts_modifiers import (
     ignores_influence_requirements_this_round,
     space_is_combat,
@@ -563,7 +572,9 @@ def _placements_for_card(
             if candidate.player_id != player
             and space.space_id in candidate.agent_locations
         )
-        if anywhere or opponents_do_not_block(owner, space):
+        if anywhere or opponents_do_not_block(
+            owner, space, card=card if state.config.rise_of_ix else None
+        ):
             # Eyes Everywhere: "상대 Agent가 Landsraad·City 칸에서 내 Agent를
             # 막지 않는다" (docs/rules/imperium-base.md 12); her own Agent
             # still blocks (above), as do requirements and once-per-game
@@ -656,13 +667,23 @@ def _placements_for_card(
     return tuple(actions)
 
 
-def opponents_do_not_block(owner: PlayerState, space: BoardSpace) -> bool:
+def opponents_do_not_block(
+    owner: PlayerState,
+    space: BoardSpace,
+    *,
+    card: PersonalCardDefinition | None = None,
+) -> bool:
     """Whether opponents' Agents on ``space`` stop ``owner``'s Agent: not for
     Helena Richese's Eyes Everywhere on a Landsraad or City space, nor on any
     space for the turn of an Infiltrate Intrigue (``enemy_agents_ignored_turn``).
+    A Rise of Ix card ignores them only at its printed Infiltration icons,
+    never icons granted by Dispatch an Envoy [Rise of Ix p. 7].
     An opponent's Mentat is an Agent like any other and is ignored too."""
 
-    return owner.enemy_agents_ignored_turn or (
+    return (
+        isinstance(card, ImperiumCardEntry)
+        and space.agent_icon in card.infiltration_icons
+    ) or owner.enemy_agents_ignored_turn or (
         owner.leader_id == "helena_richese"
         and space.agent_icon in (AgentIcon.LANDSRAAD, AgentIcon.CITY)
     )
@@ -733,7 +754,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
     space = BOARD_SPACES_BY_ID[space_id]
     combat_space = space_is_combat(state, space)
     cost_option, cost = _selected_cost(
-        state, space, arguments.get("cost_option"), action.actor
+        state, space, arguments.get("cost_option"), action.actor, card_instance_id
     )
     discount = arguments.get("discount")
     if discount == "spice":
@@ -757,6 +778,9 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         raise RuntimeError("turn frame has an invalid undeployable count")
     ungained_undeployable = ungained_undeployable_troops(turn_context)
     commanders_before = _commanders_recruited_before_placement(state)
+    dreadnoughts_before = commissioned_dreadnought_count(turn_context)
+    shipping_before = shipping_troop_count(turn_context)
+    ungained_shipping = ungained_shipping_troop_count(turn_context)
     infiltrate_post_id = arguments.get("infiltrate_post_id")
     if infiltrate_post_id is not None and not isinstance(infiltrate_post_id, str):
         raise ValueError("Agent action infiltrate_post_id must be a string")
@@ -832,6 +856,7 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         replace(owner, resources=next_owner.resources),
         space,
         card_instance_id,
+        enemy_agent=enemy_agent_on_space(state, action.actor, space_id),
     )
     # A multi-icon Agent box queues its printed icons for their own actions
     # (OQ-027); single-effect boxes keep the plain resolution.
@@ -902,6 +927,13 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                     # A research bonus a Plot raised before the Agent went
                     # out (cleanup-2b).
                     *turn_rows.carried(turn_context),
+                    # More extra turns owed after this one (Weirding Way's box
+                    # copied by a Ghola, Rise of Ix with Immortality).
+                    *(
+                        ((EXTRA_TURNS_KEY, turn_context[EXTRA_TURNS_KEY]),)
+                        if turn_context.get(EXTRA_TURNS_KEY)
+                        else ()
+                    ),
                     ("pending_contract_ids", ",".join(pending_contract_ids)),
                     (
                         # Subversive Advisor's waiting box holds the space's
@@ -950,6 +982,30 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                         if commanders_before
                         else ()
                     ),
+                    # So does a dreadnought commissioned before the
+                    # placement: it may deploy if the Agent goes to a Combat
+                    # space [Rise of Ix p. 6].
+                    *(
+                        ((DREADNOUGHTS_COMMISSIONED_KEY, dreadnoughts_before),)
+                        if dreadnoughts_before
+                        else ()
+                    ),
+                    # And Troop Transports' Shipping troops recruited before
+                    # the placement, which deploy wherever the Agent goes
+                    # (docs/rules/rise-of-ix.md 15).
+                    *(
+                        ((SHIPPING_TROOPS_KEY, shipping_before),)
+                        if shipping_before
+                        else ()
+                    ),
+                    # With the part of that recruit the supply could not give
+                    # yet, which a later refill moves into the allowance
+                    # (OQ-030).
+                    *(
+                        ((UNGAINED_SHIPPING_TROOPS_KEY, ungained_shipping),)
+                        if ungained_shipping
+                        else ()
+                    ),
                     ("units_deploy_blocked", units_deploy_blocked),
                 )
             )
@@ -983,7 +1039,9 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
                         infiltrate_post_id is None
                         # Eyes Everywhere and Infiltrate: opponents' Agents
                         # do not block, so no Infiltrator promise is needed.
-                        and not opponents_do_not_block(owner, space)
+                        and not opponents_do_not_block(
+                            owner, space, card=card if state.config.rise_of_ix else None
+                        )
                         and any(
                             space_id in seat.agent_locations
                             for seat in state.players
@@ -1084,6 +1142,58 @@ def apply_agent_action(state: GameState, action: DomainAction) -> RuleResult:
         *(() if control_event is None else (control_event,)),
         *smuggle_events,
     )
+    # Ilesa Ecaz's One Step Ahead: the card returned at this turn's start
+    # sends the Agent -- a spice for exactly one Agent icon, its printed ones
+    # and those granted to the card played this turn, else a Solari
+    # (``rules.one_step_ahead``).
+    spice, solari = one_step_ahead_bonus(
+        owner,
+        turn_context,
+        card_instance_id,
+        lambda: len(
+            {
+                *effective_agent_icons(
+                    card,
+                    owner,
+                    opponents=tuple(
+                        seat
+                        for seat in state.players
+                        if seat.player_id != action.actor
+                    ),
+                    card_instance_id=card_instance_id,
+                ),
+                *(
+                    AgentIcon(value)
+                    for value in owner.granted_agent_icon_turn.split(",")
+                    if value
+                ),
+            }
+        ),
+    )
+    if spice or solari:
+        ilesa = next_state.players[action.actor]
+        ilesa = replace(
+            ilesa,
+            set_aside_returned_turn=False,
+            resources=replace(
+                ilesa.resources,
+                spice=ilesa.resources.spice + spice,
+                solari=ilesa.resources.solari + solari,
+            ),
+        )
+        next_state = replace(
+            next_state, players=replace_player(next_state.players, ilesa)
+        )
+        events = (
+            *events,
+            resources_gained_event(
+                f"round:{state.round_number}:player:{action.actor}:leader:"
+                f"{ILESA}:bonus",
+                action.actor,
+                spice=spice,
+                solari=solari,
+            ),
+        )
     if space_id == "tuek_sietch":
         # Tuek's Sietch (Esmar Tuek): the owner's own visit pays one Solari,
         # an opponent's visit draws him an Intrigue card [Esmar Tuek card].
@@ -1274,17 +1384,32 @@ def apply_turn_start_card(state: GameState, action: DomainAction) -> RuleResult:
     )
 
 
+def enemy_agent_on_space(state: GameState, player: int, space_id: str) -> bool:
+    """Whether an opponent of ``player`` has an Agent on ``space_id`` (the
+    Mentat among them): an Agent that Infiltration, or another effect that
+    ignores enemy Agents, let the owner's Agent share the space with."""
+
+    return any(
+        space_id in seat.agent_locations
+        for seat in state.players
+        if seat.player_id != player
+    )
+
+
 def agent_effect_is_available(
     effect: PersonalCardAgentEffect | None,
     owner: PlayerState,
     space: BoardSpace,
     card_instance_id: str,
+    *,
+    enemy_agent: bool = False,
 ) -> bool:
     """Return whether the played card's Agent box stays pending after placement.
 
     Only conditions that no later effect of the same turn can change are
-    judged here: the visited space (its Faction, its Maker status) and
-    Faction Bonds among the cards already in play, which can only shrink.
+    judged here: the visited space (its Faction, its Maker status, an enemy
+    Agent on it -- ``enemy_agent``, Bounty Hunter) and Faction Bonds among the
+    cards already in play, which can only shrink.
     Every other printed condition — an Influence threshold, a resource,
     hand-size or Intrigue cost, an Alliance, sandworms in the Conflict — is
     judged when the box is actually resolved, in the owner's chosen order
@@ -1306,7 +1431,9 @@ def agent_effect_is_available(
     if ability is not None:
         # A box written as an ability record judges its placement condition
         # (a Maker space, the Bene Gesserit Bond) from the record (OQ-028 (a)).
-        return opens_at_placement(ability, owner, space, card_instance_id)
+        return opens_at_placement(
+            ability, owner, space, card_instance_id, enemy_agent=enemy_agent
+        )
     return True
 
 
@@ -1348,7 +1475,7 @@ def _actions_for_affordable_costs(
     names the board space Kwisatz Haderach's Agent comes off (None: the
     Leader)."""
 
-    costs = _effective_costs(state, space, player)
+    costs = _effective_costs(state, space, player, card_instance_id)
     include_choice = space.dynamic_cost is None and len(space.cost_options) > 1
     actions: list[DomainAction] = []
     for cost_option, cost in costs:
@@ -1412,10 +1539,41 @@ def _connected_spy_post_ids(
     )
 
 
+# Guild Accord's Heighliner (Rise of Ix): the original board's, and Uprising's
+# with Rise of Ix (stage P7).
+_HEIGHLINER_SPACE_IDS: Final = frozenset({"imperium_heighliner", "heighliner"})
+
+
+def _card_space_discount(
+    space: BoardSpace, card_instance_id: str, costs: tuple[ResourceCost, ...]
+) -> tuple[ResourceCost, ...]:
+    """``costs`` less what the card sending the Agent takes off them.
+
+    Guild Accord: "It costs [2 spice] less to send an Agent to the
+    Heighliner board space with this card." [Steam app text] -- no "may", so
+    the cut always applies, as every other cost cut here does, and a cost
+    never drops below 0 (the Tech discount's floor, docs/rules/rise-of-ix.md
+    4).
+    """
+
+    card = personal_card_for_instance(card_instance_id)
+    if (
+        not isinstance(card, ImperiumCardEntry)
+        or not card.heighliner_spice_discount
+        or space.space_id not in _HEIGHLINER_SPACE_IDS
+    ):
+        return costs
+    return tuple(
+        replace(cost, spice=max(cost.spice - card.heighliner_spice_discount, 0))
+        for cost in costs
+    )
+
+
 def _effective_costs(
     state: GameState,
     space: BoardSpace,
     player: int,
+    card_instance_id: str,
 ) -> tuple[tuple[int, ResourceCost], ...]:
     if space.dynamic_cost is DynamicCost.SWORDMASTER:
         someone_has_swordmaster = any(
@@ -1440,7 +1598,7 @@ def _effective_costs(
             replace(cost, solari=cost.solari - 1) if cost.solari else cost
             for cost in costs
         )
-    return tuple(enumerate(costs))
+    return tuple(enumerate(_card_space_discount(space, card_instance_id, costs)))
 
 
 def _selected_cost(
@@ -1448,8 +1606,9 @@ def _selected_cost(
     space: BoardSpace,
     requested_option: bool | int | str | None,
     player: int,
+    card_instance_id: str,
 ) -> tuple[int, ResourceCost]:
-    costs = dict(_effective_costs(state, space, player))
+    costs = dict(_effective_costs(state, space, player, card_instance_id))
     if requested_option is None:
         if len(costs) != 1:
             raise ValueError("Agent action must identify its cost option")
@@ -1562,15 +1721,13 @@ def _apply_control_visit_bonus(
     resource = content_for(state.config).control_visit_bonuses.get(space_id)
     if resource is None:
         return state, None
-    controllers = tuple(
-        player for player in state.players if space_id in player.control_space_ids
-    )
-    if not controllers:
+    # A dreadnought on the space controls it ahead of the Control marker it
+    # covers, so its owner takes the bonus [Rise of Ix p. 6].
+    controller_seat = space_controller(state, space_id)
+    if controller_seat is None:
         return state, None
-    if len(controllers) > 1:
-        raise RuntimeError("a critical location cannot have multiple controllers")
 
-    controller = controllers[0]
+    controller = state.players[controller_seat]
     next_controller = replace(
         controller,
         resources=replace(

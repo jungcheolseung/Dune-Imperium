@@ -310,11 +310,20 @@ def test_without_undo_actions_never_empties_the_legal_set() -> None:
         "withdraw_commanders", actor=0, arguments=(("count", 1),)
     )
 
-    assert {"withdraw_troops", "withdraw_commanders"} == UNDO_ACTION_IDS
-    assert without_undo_actions((deploy, withdraw, finish, commanders)) == (
-        deploy,
-        finish,
+    dreadnoughts = DomainAction(
+        "withdraw_dreadnoughts", actor=0, arguments=(("count", 1),)
     )
+
+    # Rise of Ix's dreadnoughts are a third kind of unit with the same pair
+    # [Rise of Ix p. 6]: a sampled policy would loop deploy/withdraw there too.
+    assert {
+        "withdraw_troops",
+        "withdraw_commanders",
+        "withdraw_dreadnoughts",
+    } == UNDO_ACTION_IDS
+    assert without_undo_actions(
+        (deploy, withdraw, finish, commanders, dreadnoughts)
+    ) == (deploy, finish)
     assert without_undo_actions((deploy, finish)) == (deploy, finish)
     # Nothing else legal: the undo actions stay rather than leaving no move.
     assert without_undo_actions((withdraw, commanders)) == (withdraw, commanders)

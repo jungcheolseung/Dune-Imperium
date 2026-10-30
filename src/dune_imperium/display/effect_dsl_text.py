@@ -27,12 +27,15 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllianceTaken,
     AtBoardSpace,
     AtFactionSpace,
+    AtLeastOfConditions,
     AtMakerSpace,
+    AtSpaceWithEnemyAgent,
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
     CommandersInConflictAtLeast,
     CommandReached,
+    CommissionDreadnought,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -51,18 +54,22 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawPerSandwormInConflict,
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
+    DreadnoughtsAtLeast,
     DuringAgentTurn,
     EachOpponentDiscardsCard,
     EachOpponentDiscardsOrLosesDeployedTroop,
     EachOpponentLosesTroop,
+    EachOpponentRetreatsDreadnought,
     EffectSection,
     FactionBond,
     FlipBattleCard,
     FlipFaceUpConflictCard,
     ForceEnemyRetreat,
+    Freighter,
     GainCombatStrength,
     GainedSpiceThisTurn,
     GainInfluence,
+    GainInfluenceWhereAgent,
     GainInfluenceWhereAtMost,
     GainLowestInfluence,
     GainResources,
@@ -121,8 +128,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PeekTopCard,
     PermanentRevealPersuasion,
+    PlaceNegotiator,
     PlaceSpy,
+    PledgeConflictWinSolari,
     PledgeFirstPlaceInfluence,
+    PutIntrigueOnDeckBottom,
     RecallAgent,
     RecallOtherAgent,
     RecallSpy,
@@ -155,6 +165,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyRecalledThisTurn,
     StrengthInConflictAtLeast,
     SummonSandworm,
+    TakeAnotherTurn,
     TakeCardFromDiscard,
     TakeContract,
     TakeControl,
@@ -388,6 +399,10 @@ def condition_text(condition: Condition) -> str:
         case AtFactionSpace():
             # Never printed: a visited Faction's gain needs one (OQ-046).
             return "you are at a Faction space"
+        case AtSpaceWithEnemyAgent():
+            # "If used to send an Agent to a board space with an enemy Agent:"
+            # [Bounty Hunter card].
+            return "you sent an Agent to a board space with an enemy Agent"
         case FactionBond(faction=faction):
             # "If Bene Gesserit Bond:" (display/tokens.py, Southern Elders).
             return f"{_faction_name(faction)} Bond"
@@ -420,6 +435,10 @@ def condition_text(condition: Condition) -> str:
             return "you are spying on a Maker space"
         case GarrisonedUnitsAtLeast(count=count):
             return f"you have {count} or more garrisoned units"
+        case DreadnoughtsAtLeast(count=count):
+            # "2 dreadnoughts" [Grand Conspiracy card, Steam app text]: the
+            # seat's own, wherever they stand.
+            return f"you have {count} {_plural(count, 'dreadnought')}"
         case DuringAgentTurn():
             # Quotes ``display/bloodlines.py``'s Rapid Dropships line.
             return "Agent Turn"
@@ -453,6 +472,11 @@ def condition_text(condition: Condition) -> str:
             return "Take an Alliance token you do not already hold"
         case AllConditions(conditions=conditions):
             return " and ".join(condition_text(item) for item in conditions)
+        case AtLeastOfConditions(count=count, conditions=conditions):
+            # "If you have any three:" over the card's four items [Grand
+            # Conspiracy card, Steam app text].
+            items = "; ".join(condition_text(item) for item in conditions)
+            return f"at least {count} of these hold: {items}"
         case _:
             assert_never(condition)
 
@@ -488,6 +512,9 @@ def cost_text(cost: Cost) -> str:
                 else ""
             )
             return f"Trash an Intrigue card from your hand{extra}"
+        case PutIntrigueOnDeckBottom():
+            # Rise of Ix's Court Intrigue.
+            return "Put an Intrigue card on the bottom of the Intrigue deck"
         case DiscardFromHand(count=1):
             return "Discard a card"
         case DiscardFromHand(count=count):
@@ -599,6 +626,13 @@ def reward_text(reward: Reward) -> str:
             if requires_maker_hooks:
                 text += " (Maker Hooks required)"
             return text
+        case DeployFromGarrison(up_to=int(up_to), dreadnoughts=True):
+            # "Deploy up to two units from your garrison to the Conflict."
+            # [Second Wave card, Steam app text] -- troops and dreadnoughts.
+            return (
+                f"Deploy up to {up_to} {_plural(up_to, 'unit')} from your"
+                " garrison to the Conflict"
+            )
         case DeployFromGarrison(up_to=up_to):
             # "Deploy up to N troops from your garrison to the Conflict"
             # [Detonation card face] [Counterattack card face] [Twisted
@@ -686,6 +720,10 @@ def reward_text(reward: Reward) -> str:
             )
         case AcquireReserveCard(card_id=card_id):
             return f"Acquire {card_id.replace('_', ' ').title()}"
+        case AcquireTech(discount=0, solari_allowed=True):
+            # Appropriate (Rise of Ix): "You may use Solari instead of spice
+            # for this purchase."
+            return "Acquire a Tech tile, paying Solari instead of spice if you like"
         case AcquireTech(discount=0):
             return "Acquire a Tech tile"
         case AcquireTech(discount=discount):
@@ -731,6 +769,12 @@ def reward_text(reward: Reward) -> str:
             return (
                 f"Look at the top {count} Intrigue cards, keep 1 and put the"
                 f" {'other' if count == 2 else 'others'} back on top"
+            )
+        case ForceEnemyRetreat(per_troop_deployed=True):
+            # Rise of Ix's Desert Ambush.
+            return (
+                "For each troop you deploy this turn, you may force an enemy"
+                " unit to retreat"
             )
         case ForceEnemyRetreat():
             return "Force an enemy troop to retreat"
@@ -806,6 +850,32 @@ def reward_text(reward: Reward) -> str:
         case TakeMentat():
             # The original game's Mentat icon [DI p. 16].
             return "Take the Mentat from its space"
+        case CommissionDreadnought():
+            # Rise of Ix's Dreadnought icon: "you may commission" [Rise of Ix
+            # p. 6] (docs/rules/rise-of-ix.md 6).
+            return "Commission a dreadnought"
+        case EachOpponentRetreatsDreadnought():
+            # "Each opponent retreats one dreadnought." [Cannon Turrets card,
+            # Steam app text]
+            return "Each opponent retreats one dreadnought"
+        case PledgeConflictWinSolari(solari=solari):
+            # "If you win this Conflict:" [Strategic Push card, Steam app
+            # text], its Solari paid in the sole winner's window (OQ-121).
+            return (
+                "If you win this Conflict: "
+                f"{reward_text(GainResources(solari=solari))}"
+            )
+        case PlaceNegotiator():
+            # Rise of Ix's Tech Negotiation icon: "you may take a troop"
+            # [Rise of Ix p. 4] (docs/rules/rise-of-ix.md 4).
+            return "Place a troop from your supply on the Ix board as a Negotiator"
+        case TakeAnotherTurn():
+            # Rise of Ix's Weirding Way.
+            return "You may take another turn immediately after this one"
+        case Freighter():
+            # Rise of Ix's Freighter icon: "you may move your Freighter in one
+            # of two ways" [Rise of Ix p. 5] (docs/rules/rise-of-ix.md 5).
+            return "Move your Freighter up one space or recall it"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "Use your Leader's Signet Ring ability"
@@ -814,6 +884,13 @@ def reward_text(reward: Reward) -> str:
             return (
                 "Gain 1 Influence with each Faction where you have "
                 f"{maximum} or less Influence"
+            )
+        case GainInfluenceWhereAgent():
+            # "Gain one Influence with each Faction that has at least one of
+            # your Agents on its board spaces." [Quid Pro Quo, Steam app text]
+            return (
+                "Gain 1 Influence with each Faction that has at least one of "
+                "your Agents on its board spaces"
             )
         case RecruitUndeployableTroops(count=count):
             # Quotes ``display/leaders.py``'s Piter De Vries Signet line.
@@ -968,3 +1045,5 @@ def _reveal_count_text(per: RevealCount | None) -> str:
             return " per completed Contract"
         case RevealCountKind.OTHER_SWORD_CARD:
             return " per other revealed sword card"
+        case RevealCountKind.DREADNOUGHT_IN_CONFLICT:
+            return " per dreadnought of yours in the Conflict"

@@ -18,6 +18,7 @@ from dune_imperium.content.immortality.board import (
     TLEILAXU_SETUP_SPICE,
 )
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_deck_instance_ids
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
 from dune_imperium.content.rulesets import content_for
 from dune_imperium.content.uprising.intrigue import (
     navigation_card_instance_ids,
@@ -37,14 +38,30 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind
+from dune_imperium.rules.intrigue_peek import assign_intelligence
 from dune_imperium.rules.masterstroke import assign_masterstroke
 from dune_imperium.rules.navigation import assign_navigation_deck
+from dune_imperium.rules.snoopers import place_snooper_tokens
 from dune_imperium.rules.tactics import TACTICS_TRACK_START
 from dune_imperium.rules.tech import assign_secret_project
 
 # Each color's 12 troops [Main p. 5]: the garrison's share starts there and
 # the rest in the supply.
 _TROOPS_PER_PLAYER: Final = 12
+# Each player's dreadnoughts in a Rise of Ix game [Rise of Ix p. 3], all in the
+# supply at setup (docs/rules/rise-of-ix.md 3 item 5).
+_DREADNOUGHTS_PER_PLAYER: Final = 2
+
+
+# What the Conflict cards of Rise of Ix leave out of the ten drawn: the
+# printed deck is I 6, II 11, III 5 (22 cards), so 12 stay in the box
+# [Rise of Ix p. 3] (docs/rules/rise-of-ix.md 3 item 3), Epic Game Mode too
+# [Rise of Ix p. 10]: "원판 + Ix의 III은 다섯 장(원판 4 + Economic Supremacy)이라
+# 모두 쓴다" (rise-of-ix.md 11), so its five II over five III leave every
+# Conflict I and six II. The engine's pool holds a card once its rewards are
+# transcribed (``rulesets._imperium_conflicts``); since stage P4d-1 that is
+# all 22, so exactly 12 stay.
+_IX_UNUSED_CONFLICTS: Final = 12
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,11 +71,19 @@ class ConflictSetup:
     deck: tuple[str, ...]
     unused: tuple[str, ...]
     epic_game: bool = False
+    # The original game with Rise of Ix: its Conflict cards are in the pool.
+    rise_of_ix: bool = False
 
     def __post_init__(self) -> None:
         if len(self.deck) != 10:
             raise ValueError("the four-player Conflict deck must contain 10 cards")
-        if self.epic_game:
+        if self.rise_of_ix:
+            if len(self.unused) != _IX_UNUSED_CONFLICTS:
+                raise ValueError(
+                    "twelve Conflict cards must remain unused with Rise of Ix "
+                    "(I 6, II 11, III 5 less the ten drawn)"
+                )
+        elif self.epic_game:
             if len(self.unused) not in (7, 9):
                 # 16 retail cards plus Economic Supremacy [Main p. 18], or 19
                 # with the two Bloodlines cards.
@@ -67,7 +92,8 @@ class ConflictSetup:
                     "unused in Epic Game Mode"
                 )
         elif len(self.unused) not in (6, 8):
-            # 16 retail cards, or 18 with the two Bloodlines cards.
+            # 16 retail cards, or 18 with the two Bloodlines cards; the
+            # original game's 18 leave 8.
             raise ValueError(
                 "six (eight with Bloodlines) Conflict cards must remain unused"
             )
@@ -99,6 +125,11 @@ def create_unshuffled_players(
     garrison starts with ``RulesetConfig.starting_garrison_troops`` of the
     12 troops (3 [Main p. 5], 5 in Epic Game Mode [Rise of Ix p. 10]) and
     the rest wait in the supply.
+
+    Rise of Ix gives each player "two dreadnoughts in their supply" and a
+    disc as the Freighter on the Shipping track's bottom space [Rise of Ix
+    p. 3] (docs/rules/rise-of-ix.md 3 item 5): the Freighter space 0 is the
+    ``PlayerState`` default, the two dreadnoughts are set here.
     """
 
     config = config or RulesetConfig()
@@ -112,6 +143,7 @@ def create_unshuffled_players(
             victory_points=config.starting_victory_points,
             troops_supply=_TROOPS_PER_PLAYER - garrison_troops,
             troops_garrison=garrison_troops,
+            dreadnoughts_supply=_DREADNOUGHTS_PER_PLAYER if config.rise_of_ix else 0,
         )
         for player in range(4)
     )
@@ -203,6 +235,7 @@ def build_conflict_setup(
         ),
         unused=tuple(unused),
         epic_game=epic_game,
+        rise_of_ix=config.rise_of_ix,
     )
 
 
@@ -373,6 +406,57 @@ def deal_tech_stacks(shuffled: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
         stacks.append(shuffled[cursor : cursor + size])
         cursor += size
     return tuple(stacks)
+
+
+def deal_ix_tech_stacks(shuffled: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    """Divide Rise of Ix's shuffled 18 Tech tiles into the Ix board's three
+    stacks of six, in the order given, the first tile of each stack its top
+    (face up): "Ix board의 세 더미" [Rise of Ix p. 4]
+    (docs/rules/rise-of-ix.md 4, plan 17.10 item 1).
+
+    The tiles are the 18 of ``IX_TECH_IDS``, each once; setup (``_ix_setup``)
+    deals them from its shuffle. Anything else is refused.
+    """
+
+    if sorted(shuffled) != sorted(IX_TECH_IDS):
+        raise ValueError("the Ix stacks hold the 18 Rise of Ix Tech tiles, each once")
+    return deal_tech_stacks(shuffled)
+
+
+def ix_tech_tiles_decision() -> ChanceDecision:
+    """Shuffle Rise of Ix's 18 Tech tiles face down [Rise of Ix p. 3]
+    (docs/rules/rise-of-ix.md 3 item 2); ``deal_ix_tech_stacks`` divides the
+    result into the Ix board's three stacks."""
+
+    return _shuffle_decision(
+        "setup:ix_tech_tiles",
+        "Shuffle the Rise of Ix Tech tiles",
+        tuple(IX_TECH_IDS),
+    )
+
+
+def _ix_setup(
+    config: RulesetConfig, resolver: ChanceResolver
+) -> tuple[tuple[str, ...], ...] | None:
+    """The Ix board's three Tech stacks of six, the top of each face up
+    [Rise of Ix p. 3], shuffled through the chance stream; None without the
+    option. Resolved after the expansions' decisions and before the starting
+    decks' shuffles; a game without Rise of Ix resolves nothing here, so its
+    chance stream keeps its order."""
+
+    if not config.rise_of_ix:
+        return None
+    return deal_ix_tech_stacks(resolver.resolve(ix_tech_tiles_decision()).values)
+
+
+def _with_ix(
+    state: GameState, tech_stacks: tuple[tuple[str, ...], ...] | None
+) -> GameState:
+    """Lay the Ix board's Tech stacks on a freshly built state."""
+
+    if tech_stacks is None:
+        return state
+    return replace(state, tech_stacks=tech_stacks)
 
 
 def navigation_deck_decision() -> ChanceDecision:
@@ -622,6 +706,7 @@ def create_initial_state(
     )
     bloodlines = _bloodlines_setup(config, resolver)
     immortality = _immortality_setup(config, resolver)
+    ix_tech_stacks = _ix_setup(config, resolver)
     players = tuple(
         apply_starting_deck_shuffle(
             player,
@@ -657,10 +742,15 @@ def create_initial_state(
             for stack in content_for(config).reserve_stacks
         ),
     )
-    state = _with_immortality(_with_bloodlines(state, bloodlines), immortality)
+    state = _with_ix(
+        _with_immortality(_with_bloodlines(state, bloodlines), immortality),
+        ix_tech_stacks,
+    )
     # The original game's Baron chooses his Factions after every other setup
-    # step [FAQ p. 1] (``rules.masterstroke``).
-    state = assign_masterstroke(state)
+    # step [FAQ p. 1] (``rules.masterstroke``); Rise of Ix's Hundro Moritani
+    # then looks at the Intrigue deck's top two, "모든 setup 뒤, 첫 라운드 전"
+    # (docs/rules/rise-of-ix.md 3, ``rules.intrigue_peek``).
+    state = assign_intelligence(assign_masterstroke(place_snooper_tokens(state)))
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 
@@ -784,6 +874,7 @@ def create_draft_initial_state(
     )
     bloodlines = _bloodlines_setup(config, resolver)
     immortality = _immortality_setup(config, resolver)
+    ix_tech_stacks = _ix_setup(config, resolver)
     players = tuple(
         apply_starting_deck_shuffle(
             player,
@@ -835,33 +926,42 @@ def create_draft_initial_state(
             ),
         ),
     )
-    state = _with_immortality(_with_bloodlines(state, bloodlines), immortality)
+    state = _with_ix(
+        _with_immortality(_with_bloodlines(state, bloodlines), immortality),
+        ix_tech_stacks,
+    )
     return SetupResult(state=state, chance_outcomes=resolver.outcomes)
 
 
 # The options the original game cannot be played with yet, and the stage of
-# docs/base-game-and-ix-plan.md that brings each (15.4): Rise of Ix and its
-# Epic Game Mode in P4, the Uprising expansions with it in P7 and Arrakeen
-# Scouts in P8. Its own promo cards (Duncan, Loyal Blade; Jessica of Arrakis;
-# Thumper) are open since stage P3 filled them (plan 16.1); the Leader draft
-# deals six of its eight Leaders (OQ-007), open since P2b brought them all.
+# docs/base-game-and-ix-plan.md that brings each (15.4): the Uprising
+# expansions in P7 and Arrakeen Scouts in P8. Rise of Ix itself is open on the
+# original game since stage P4c-5 (``_require_content`` still refuses it with
+# Uprising, P7), and its Epic Game Mode with it since stage P4e. Its own promo
+# cards (Duncan, Loyal Blade; Jessica of Arrakis; Thumper) are open since stage
+# P3 filled them (plan 16.1); the Leader draft deals six of its eight Leaders
+# (OQ-007), open since P2b brought them all.
 _IMPERIUM_PENDING_OPTIONS: Final = (
     ("choam_module", "P7"),
     ("bloodlines", "P7"),
     ("tech_module", "P7"),
     ("immortality", "P7"),
     ("go_to_11", "P7"),
-    ("epic_game", "P4"),
     ("arrakeen_scouts", "P8"),
-    ("rise_of_ix", "P4"),
 )
 
 
 def _require_content(config: RulesetConfig) -> None:
     """Refuse a combination whose content is not in the engine yet, rather
-    than play it without: Rise of Ix arrives in stage P4 of
-    docs/base-game-and-ix-plan.md (P7 with Uprising), and the original game
-    takes no option yet (``_IMPERIUM_PENDING_OPTIONS``)."""
+    than play it without: Rise of Ix plays on the original game
+    (docs/base-game-and-ix-plan.md stage P4) but not yet with Uprising (P7),
+    and the original game takes no other option yet
+    (``_IMPERIUM_PENDING_OPTIONS``) but Epic Game Mode with Rise of Ix.
+
+    Epic Game Mode is the Rise of Ix rulebook's ("12점까지. ... Uprising 위의
+    구현(epic-game-mode.md)을 다시 쓴다" [Rise of Ix p. 10],
+    docs/rules/rise-of-ix.md 11), so the original game plays it with
+    ``rise_of_ix`` only; Uprising plays it alone by user decision (OQ-092)."""
 
     if not content_for(config).board_spaces:
         message = f"the {config.base_game} base game has no board in the engine yet"
@@ -874,8 +974,14 @@ def _require_content(config: RulesetConfig) -> None:
                     "the base game plan"
                 )
                 raise NotImplementedError(message)
-    if config.rise_of_ix:
-        message = "Rise of Ix has no content in the engine yet"
+        if config.epic_game and not config.rise_of_ix:
+            message = (
+                "the original game takes epic_game only with rise_of_ix: Epic "
+                "Game Mode is Rise of Ix's [Rise of Ix p. 10]"
+            )
+            raise NotImplementedError(message)
+    elif config.rise_of_ix:
+        message = "Rise of Ix has no content in the engine with Uprising yet (stage P7)"
         raise NotImplementedError(message)
 
 

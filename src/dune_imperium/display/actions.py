@@ -26,6 +26,7 @@ from copy import replace
 from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
 from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
+    CommissionDreadnought,
     DrawIntrigueCards,
     DrawPersonalCards,
     EffectSection,
@@ -38,6 +39,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TakeContract,
 )
 from dune_imperium.content.uprising.imperium import imperium_card_for_instance
+from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_ID
 from dune_imperium.content.uprising.leaders import LEADERS_BY_ID
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
 from dune_imperium.content.uprising.reveal_choice_abilities import (
@@ -61,7 +63,11 @@ from dune_imperium.display.spaces import (
 )
 from dune_imperium.display.tokens import REVEAL_CHOICE_EFFECT_TEXT
 from dune_imperium.display.tokens_ko import REVEAL_CHOICE_EFFECT_TEXT_KO
-from dune_imperium.rules.acquire_icons import ACQUIRE_ICON_ACTION, acquire_icon_faction
+from dune_imperium.rules.acquire_icons import (
+    ACQUIRE_ICON_ACTION,
+    DREADNOUGHT_ICON,
+    acquire_icon_faction,
+)
 from dune_imperium.rules.agent_effect_frame import agent_box_rows, route_box_action
 from dune_imperium.rules.agent_effects import (
     boost_draw_card,
@@ -71,6 +77,8 @@ from dune_imperium.rules.agent_effects import (
 from dune_imperium.rules.agent_turn import CARD_PICK_ACTION, executable_placements
 from dune_imperium.rules.combat import (
     REWARD_ICON_ACTION,
+    STRATEGIC_PUSH,
+    WINDTRAPS,
     WINNING_INTRIGUE,
     reward_icon_piece,
 )
@@ -104,6 +112,8 @@ _SHIGAWIRE = "Urgent Shigawire"
 # Piter, Genius Advisor's reward icons, armed after its troop cost (OQ-106):
 # its card draw draws two and its Research generates no specimen.
 _PITER = _BOX.MAY_LOSE_TROOP_TO_DRAW_TWO_AND_RESEARCH
+# Local Fence's "-OR-" of two arrows (Rise of Ix): a payment row each.
+_LOCAL_FENCE = _BOX.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
 _SHIGAWIRE_KO = KOREAN_CARD_NAMES["cards"]["urgent_shigawire"]
 # The boxes whose ``spice`` icon pays 2 (the others pay 1): Branching Path's
 # and the original game's Gene Manipulation's.
@@ -132,6 +142,16 @@ _ICON_CONDITIONS: dict[tuple[PersonalCardAgentEffect, str], str] = {
     ),
     (_BOX.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO, "spice"): (
         "at 2 Spacing Guild Influence"
+    ),
+    # Web of Power (Rise of Ix).
+    (_BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO, "solari"): (
+        "at 2 Emperor Influence"
+    ),
+    (_BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO, "cards"): (
+        "at 2 Spacing Guild Influence"
+    ),
+    (_BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO, "water"): (
+        "at 2 Fremen Influence"
     ),
     (_BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN, "troops"): (
         "if you gained 2 or more spice this turn"
@@ -201,6 +221,15 @@ _ICON_CONDITIONS_KO: dict[tuple[PersonalCardAgentEffect, str], str] = {
     (_BOX.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO, "spice"): (
         "{influence_spacing_guild:2}일 때"
     ),
+    (_BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO, "solari"): (
+        "{influence_emperor:2}일 때"
+    ),
+    (_BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO, "cards"): (
+        "{influence_spacing_guild:2}일 때"
+    ),
+    (_BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO, "water"): (
+        "{influence_fremen:2}일 때"
+    ),
     (_BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN, "troops"): (
         "이번 차례에 {spice}를 2 이상 얻었다면"
     ),
@@ -255,9 +284,22 @@ _PAYMENT_TEXT: dict[tuple[str, PersonalCardAgentEffect], tuple[str, str]] = {
         "Pay 4 spice → Gain 1 VP",
         "{spice:4} 지불 {arrow_right} {victory_point:1}",
     ),
+    ("pay_agent_card_water", _BOX.MAY_PAY_THREE_WATER_FOR_VP): (
+        "Pay 3 water → Gain 1 VP",
+        "{water:3} 지불 {arrow_right} {victory_point:1}",
+    ),
     ("pay_agent_card_spice", _BOX.MAY_PAY_SPICE_TO_TRASH_AND_RECRUIT): (
         "Pay 1 spice → Trash a card (optional) + Recruit 1 troop",
         "{spice:1} 지불 {arrow_right} {trash} (선택) + {troop:1}",
+    ),
+    # Local Fence's two arrows (Rise of Ix), one row each.
+    ("pay_agent_card_spice_for_solari", _LOCAL_FENCE): (
+        "Pay 2 spice → Gain 5 solari",
+        "{spice:2} 지불 {arrow_right} {solari:5}",
+    ),
+    ("pay_agent_card_solari_for_spice", _LOCAL_FENCE): (
+        "Pay 5 solari → Gain 4 spice",
+        "{solari:5} 지불 {arrow_right} {spice:4}",
     ),
 }
 _PAYMENT_ACTION_IDS = frozenset(action_id for action_id, _ in _PAYMENT_TEXT)
@@ -706,6 +748,26 @@ def combat_reward_icon_action_text(
             f"{_PLANETARY_ARRAY}: {reward_text(draw)}",
             f"{_PLANETARY_ARRAY_KO}: {reward_text_ko(draw)}",
         )
+    if kind == WINDTRAPS:
+        # Windtraps' "Conflict를 이기면 water 1", a row of the winner's window
+        # (Rise of Ix, OQ-121 ruling 6 (1)); never doubled by a sandworm.
+        water = GainResources(water=1)
+        return (
+            f"{_WINDTRAPS}: {reward_text(water)}",
+            f"{_WINDTRAPS}: {reward_text_ko(water)}",
+        )
+    if kind == STRATEGIC_PUSH:
+        # Strategic Push's "If you win this Conflict:" Solari, pledged when
+        # the Combat card resolved and paid as a row of the sole winner's
+        # window (Rise of Ix, OQ-121 ruling 6 (1)); never doubled by a
+        # sandworm. The card has no Korean edition, so its name stays English.
+        win_solari = GainResources(
+            solari=state.players[action.actor].strategic_push_solari
+        )
+        return (
+            f"{_STRATEGIC_PUSH}: {reward_text(win_solari)}",
+            f"{_STRATEGIC_PUSH}: {reward_text_ko(win_solari)}",
+        )
     if kind == WINNING_INTRIGUE:
         # The sole winner's close of its window once every other row is
         # resolved: no more "When you win a Conflict" Intrigue (OQ-121
@@ -786,6 +848,10 @@ def acquire_icon_action_text(action: DomainAction) -> tuple[str, str] | None:
     if action.action_id != ACQUIRE_ICON_ACTION:
         return None
     effect = str(dict(action.arguments)["effect"])
+    if effect == DREADNOUGHT_ICON:
+        # Full-Scale Assault's Dreadnought icon (Rise of Ix).
+        dreadnought = CommissionDreadnought()
+        return reward_text(dreadnought), reward_text_ko(dreadnought)
     faction = acquire_icon_faction(effect)
     piece = GainInfluence(factions=None if faction is None else (faction,))
     return reward_text(piece), reward_text_ko(piece)
@@ -823,6 +889,15 @@ def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
             return f"Gain {count} contract", f"{{contract:{count}}}"
         case "influence":
             return "Gain 1 Influence", "{influence_any:1}"
+        case "distinct_influence":
+            # Shuttle Fleet's "Choose two:" (OQ-114).
+            return (
+                "Gain 1 Influence with each of two different Factions",
+                "서로 다른 진영의 {influence_any:1}",
+            )
+        case "water":
+            count = tile.acquire_water
+            return f"Gain {count} water", f"{{water:{count}}}"
         case "intrigue_or_card":
             if args["choice"] == "intrigue":
                 return "Draw 1 Intrigue card", "{intrigue:1}"
@@ -852,6 +927,8 @@ def tech_acquire_action_text(action: DomainAction) -> tuple[str, str] | None:
 # name.
 _CHOAM_TRANSPORTS = TECH_TILES_BY_ID["choam_transports"].name
 _PLANETARY_ARRAY = TECH_TILES_BY_ID["planetary_array"].name
+_WINDTRAPS = TECH_TILES_BY_ID["windtraps"].name
+_STRATEGIC_PUSH = INTRIGUE_CARDS_BY_ID["strategic_push"].card.name
 _PLANETARY_ARRAY_KO = KOREAN_CARD_NAMES["tech"].get("planetary_array", _PLANETARY_ARRAY)
 _OWED_ORIGINS: dict[str, tuple[str, str]] = {
     "bene_gesserit_4": (

@@ -41,12 +41,15 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardForSolari,
     AcquireCardUpTo,
+    AcquireTech,
     AdvanceTleilaxu,
     AtFactionSpace,
     AtMakerSpace,
+    AtSpaceWithEnemyAgent,
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommandersInConflictAtLeast,
+    CommissionDreadnought,
     CompleteContract,
     CompletedContractsAtLeast,
     Condition,
@@ -66,6 +69,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     FactionBond,
     ForceEnemyRetreat,
+    Freighter,
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
@@ -86,6 +90,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PlaceSpy,
     PledgeFirstPlaceInfluence,
+    PutIntrigueOnDeckBottom,
     RecallAgent,
     RecruitTroops,
     Research,
@@ -96,6 +101,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpendSpecimens,
     SpyRecalledThisTurn,
     SummonSandworm,
+    TakeAnotherTurn,
     TakeCardFromDiscard,
     TakeContract,
     TrashCard,
@@ -128,6 +134,10 @@ _BRANCHING_PATH = (
 _JUNCTION_HEADQUARTERS = (
     _BOX.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
 )
+_LOCAL_FENCE = _BOX.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
+_ESMAR_TUEK = _BOX.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
+_IN_THE_SHADOWS = _BOX.MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO
+_IX_GUILD_COMPACT = _BOX.MAY_DISCARD_TWO_FOR_DREADNOUGHT
 
 
 def _line(*rewards: Reward, condition: Condition | None = None) -> EffectSection:
@@ -229,6 +239,31 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.GAIN_THREE_SOLARI: _box(GainResources(solari=3)),
             _BOX.GAIN_ONE_SPICE: _box(GainResources(spice=1)),
             _BOX.GAIN_WATER: _box(GainResources(water=1)),
+            # Sayyadina (Rise of Ix): "[3 water] -> [1 Victory Point]".
+            # An optional arrow, once per turn [DI p. 9] [FAQ p. 3].
+            _BOX.MAY_PAY_THREE_WATER_FOR_VP: _pay(
+                PayResources(water=3), GainVictoryPoints(1)
+            ),
+            # Local Fence (Rise of Ix): "[2 spice] -> [5 Solari] -OR- [5
+            # Solari] -> [4 spice]" [Steam app screen pieces and text]: two
+            # arrows, each optional (player-turns.md [Main p. 9] [FAQ p. 3]),
+            # and "-OR-" takes one (imperium-base.md 10.1), so the owner pays
+            # one or neither; each line is its own row (``payment_box``).
+            _LOCAL_FENCE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(GainResources(solari=5),),
+                        costs=(PayResources(spice=2),),
+                    ),
+                    EffectSection(
+                        rewards=(GainResources(spice=4),),
+                        costs=(PayResources(solari=5),),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                structure=AbilityStructure.ONE_OF,
+            ),
             _BOX.RECRUIT_TWO_TROOPS: _box(RecruitTroops(2)),
             # Arrakis Recruiter (original game): one troop; a Combat space
             # lets the owner deploy it [DI p. 10] [FAQ p. 4].
@@ -244,6 +279,13 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             _BOX.RECRUIT_ONE_IF_MAKER_SPACE: _box(
                 RecruitTroops(1), requirement=AtMakerSpace()
+            ),
+            # Bounty Hunter (Rise of Ix): "If used to send an Agent to a board
+            # space with an enemy Agent: [2 Solari]" [Steam app text]: the
+            # space the Agent goes to is fixed by the placement, so the box is
+            # judged when the card is played, as a Maker space's is.
+            _BOX.GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE: _box(
+                GainResources(solari=2), requirement=AtSpaceWithEnemyAgent()
             ),
             _BOX.RECRUIT_ONE_IF_EMPEROR_INFLUENCE_TWO: _box(
                 RecruitTroops(1), condition=InfluenceAtLeast(Faction.EMPEROR, 2)
@@ -337,6 +379,18 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             ),
             # Disruption Tactics.
             _BOX.FORCE_OPPONENT_TROOP_RETREAT: _box(ForceEnemyRetreat()),
+            # Desert Ambush (Rise of Ix): "For each troop you deploy this turn,
+            # you may force an enemy unit to retreat." [Steam app text] -- an
+            # optional target box ("may"), open all turn: each troop the owner
+            # deploys this turn (OQ-029's count) buys one retreat of an enemy
+            # troop or dreadnought, the owner picking it (rise-of-ix.md 6, 9.3).
+            _BOX.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(ForceEnemyRetreat(units=True, per_troop_deployed=True)),
+                ),
+                mark=AbilityMark.OPTIONAL,
+            ),
             # CHOAM Demands.
             _BOX.COMPLETE_ONE_CONTRACT: _box(CompleteContract()),
             # --- Discard arrows (composed effects, A3d) ---------------------------
@@ -346,6 +400,71 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.MAY_DISCARD_TO_DRAW_ONE: _discard(_line(DrawPersonalCards(1))),
             # Engineered Miracle.
             _BOX.MAY_DISCARD_FOR_WATER: _discard(_line(GainResources(water=1))),
+            # Guild Chief Administrator (Rise of Ix): "[Discard] -> [Trash a
+            # card]" [Steam app screen pieces]. The discard is the arrow's
+            # optional cost [Rise of Ix p. 7] [FAQ p. 2], an Unload card's box
+            # paid in full before the trash (rise-of-ix.md 7); the trash is a
+            # black trash icon, optional once the cost is paid ("검은색 trash
+            # 아이콘으로 trash하는 효과는 선택이다" [FAQ p. 3], uprising-
+            # systems.md), as Control the Spice's is. The card just discarded
+            # is in the discard pile, so a card to trash is always there.
+            _BOX.MAY_DISCARD_TO_TRASH_A_CARD: _discard(_line(TrashPersonalCard())),
+            # Satellite Ban (Rise of Ix): "[Discard] -> [1 spice] [1 water]" [Steam
+            # app screen pieces and log text]: one optional arrow, both gains
+            # paid at once.
+            _BOX.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER: _discard(
+                _line(GainResources(spice=1, water=1))
+            ),
+            # Spice Trader (Rise of Ix): "[Fremen] 2 Influence : [Discard] -> [2
+            # spice]" [Steam app screen pieces and text]: the Faction icon and the
+            # words "2 Influence:" are an Influence threshold over the whole arrow
+            # (the one High Priority Travel prints), judged when the cost is paid
+            # (OQ-028), not an Alliance.
+            _BOX.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO: _discard(
+                _line(
+                    GainResources(spice=2),
+                    condition=InfluenceAtLeast(Faction.FREMEN, 2),
+                )
+            ),
+            # In The Shadows (Rise of Ix): "[Bene Gesserit] 2 Influence:
+            # [Discard] -> Choose one: [Emperor] [Spacing Guild] [Fremen]
+            # Influence" [Steam app screen pieces and button text]: Spice
+            # Trader's threshold over the whole arrow, judged when the cost is
+            # paid (OQ-028), and Firm Grip's choice of three named Factions,
+            # armed once the card is discarded and answered by its Faction rows
+            # (never a track at the top, OQ-060). With all three at the top the
+            # arrow buys nothing and is not offered (OQ-071), also when the card
+            # to discard has an Unload box (docs/rules/rise-of-ix.md 15).
+            _IN_THE_SHADOWS: _discard(
+                _line(
+                    GainInfluence(
+                        factions=(
+                            Faction.EMPEROR,
+                            Faction.SPACING_GUILD,
+                            Faction.FREMEN,
+                        )
+                    ),
+                    condition=_BG_TWO,
+                ),
+                armed=("influence",),
+            ),
+            # Ix-Guild Compact (Rise of Ix): "[Discard] [Discard] ->
+            # [Dreadnought]" [Steam app screen pieces and button text] -- an
+            # optional arrow of two Discard icons, both paid together; what
+            # they buy is commissioned once both are paid. With no
+            # dreadnought left in the supply the arrow buys nothing and is not
+            # offered (OQ-071), also when a card to discard has an Unload box
+            # (docs/rules/rise-of-ix.md 15).
+            _IX_GUILD_COMPACT: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(CommissionDreadnought(),),
+                        costs=(DiscardFromHand(2),),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
+            ),
             # Space-time Folding: "Draw 1 card (2 if the discarded card has
             # Spacing Guild affiliation)".
             _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: _discard(
@@ -404,6 +523,25 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 mark=AbilityMark.OPTIONAL,
                 armed_icons=("intrigue", "spice"),
             ),
+            # Court Intrigue (Rise of Ix): "Put an Intrigue card on the bottom
+            # of the deck -> [Intrigue card]" [Steam app text and screen
+            # pieces]: an optional arrow [FAQ p. 3] whose cost is one Intrigue
+            # card of the hand put under the Intrigue deck, unseen by the
+            # others ([Rise of Ix p. 10], rise-of-ix.md 9.1, 13); the draw, a
+            # hidden draw, is then armed as its own step (OQ-106), as
+            # Branching Path's. The card put there can be the one drawn when
+            # the deck holds nothing else.
+            _BOX.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(DrawIntrigueCards(1),),
+                        costs=(PutIntrigueOnDeckBottom(),),
+                    ),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("intrigue",),
+            ),
             # Junction Headquarters: "If Spacing Guild Alliance: You may trash
             # an Intrigue card and pay 2 spice -> Gain 1 VP".
             _JUNCTION_HEADQUARTERS: Ability(
@@ -431,6 +569,13 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             # Shishakli, Replacement Eyes: "You may trash a card -> Draw 1 card".
             _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE: _trash(
                 EffectSection(rewards=(DrawPersonalCards(1),), costs=(TrashCard(),))
+            ),
+            # Shai-Hulud (Rise of Ix): "[Trash a card] -> [2 troops]" [Steam app
+            # screen pieces and log text]: an arrow whose cost is a trashed card,
+            # optional like every arrow cost [FAQ p. 3]; the troops come at once
+            # (``agent_box_abilities.apply_trash``).
+            _BOX.TRASH_PERSONAL_CARD_TO_RECRUIT_TWO: _trash(
+                EffectSection(rewards=(RecruitTroops(2),), costs=(TrashCard(),))
             ),
             # Pivotal Gambit: the card trashes itself as the cost, then its troop
             # and the first-place pledge are armed as icons (OQ-022, OQ-027).
@@ -586,6 +731,61 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
             _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: _icons(
                 ("recall", _line(RecallAgent(sent_this_turn=True, optional=True))),
             ),
+            # Landing Rights (Rise of Ix): the Freighter icon [Steam app screen
+            # pieces]: "you may move your Freighter in one of two ways" [Rise
+            # of Ix p. 5] (docs/rules/rise-of-ix.md 5). An optional icon
+            # (``agent_effects.OPTIONAL_AGENT_ICONS``) answered by its own rows
+            # (``advance_agent_card_freighter``, ``recall_agent_card_freighter``).
+            _BOX.MAY_MOVE_FREIGHTER: _icons(("freighter", _line(Freighter()))),
+            # Embedded Agent (Rise of Ix): "If you have another Bene Gesserit
+            # card in play:" [Steam app text] with two Freighter icons [screen
+            # pieces] -- a Bene Gesserit Bond ("one or more other ... cards in
+            # play" [Main p. 20]), as In High Places': the Bond opens the box
+            # and is judged again on each icon when it resolves (OQ-028); each
+            # icon is a "may" of its own [Rise of Ix p. 5] (OQ-027), answered by
+            # the Freighter rows (``agent_effects.OPTIONAL_AGENT_ICONS``).
+            _BOX.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    _line(Freighter(), condition=_BG_BOND),
+                    _line(Freighter(), condition=_BG_BOND),
+                ),
+                structure=AbilityStructure.SEPARATE,
+                requirement=_BG_BOND,
+                icons=("freighter", "freighter_second"),
+            ),
+            # Weirding Way (Rise of Ix): "You may take another turn immediately
+            # after this one." [Steam app text] -- an optional icon
+            # (``agent_effects.OPTIONAL_AGENT_ICONS``) answered by its row
+            # (``take_agent_card_extra_turn``); unused, the turn's end lapses it
+            # (OQ-095 (2)).
+            _BOX.MAY_TAKE_ANOTHER_TURN: _icons(
+                ("extra_turn", _line(TakeAnotherTurn()))
+            ),
+            # Ixian Engineer (Rise of Ix): the Acquire Tech icon [Steam app
+            # screen pieces]. The card prints no Tech Discount sprite (the
+            # Reveal of Ix-Guild Compact prints two), so the icon is the plain
+            # one of the Dreadnought space: discount 0. "아이콘마다 ... 하나를
+            # 얻을 수 있다("may")" [Rise of Ix p. 4], so the owner may leave it;
+            # it opens the Acquire Tech window with its own refusal
+            # (``agent_effects.apply_agent_card_tech``).
+            _BOX.MAY_ACQUIRE_TECH: _icons(("tech", _line(AcquireTech(discount=0)))),
+            # Appropriate (Rise of Ix): "[Emperor] 2 Influence: [Acquire Tech]
+            # You may use Solari instead of spice for this purchase." [Steam
+            # app text] -- Ixian Engineer's plain Acquire Tech icon (no Tech
+            # Discount sprite) behind an Emperor threshold judged when the
+            # icon resolves (OQ-028, as Web of Power's), its price payable in
+            # Solari instead ("Solari와 spice를 섞어 낼 수 없다. Negotiator
+            # 하나가 1 Solari를 깎는다", rise-of-ix.md 4, [Rise of Ix p. 10]).
+            _BOX.MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO: _icons(
+                (
+                    "tech",
+                    _line(
+                        AcquireTech(discount=0, solari_allowed=True),
+                        condition=InfluenceAtLeast(Faction.EMPEROR, 2),
+                    ),
+                )
+            ),
             # Tread in Darkness: "If Bene Gesserit Bond: You may trash a card,
             # Draw 1 card" -- the Bond opens the box and is judged again on each
             # icon when it resolves (OQ-028); the trash stays optional (OQ-058).
@@ -631,13 +831,24 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 SpendSpecimens(2), AdvanceTleilaxu(2)
             ),
             # Spice Smugglers (original game): "[2 spice] -> [Spacing Guild
-            # Influence] [3 Solari]" -- a paid arrow whose first reward is a
-            # fixed Faction's Influence (no choice) and whose Solari keep it
-            # worth paying at the top of the track (OQ-060, OQ-071).
-            _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI: _pay(
-                PayResources(spice=2),
-                GainInfluence(factions=(Faction.SPACING_GUILD,)),
-                GainResources(solari=3),
+            # Influence] [3 Solari]" -- a paid arrow whose two rewards wait as
+            # icons once the spice is paid, each its own step in the owner's
+            # order: user ruling 2026-10-29 (OQ-148 (가)), as Duncan Idaho's
+            # (OQ-027, OQ-106). The Solari keep it worth paying at the top of
+            # the Guild's track (OQ-060, OQ-071).
+            _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI: (
+                Ability(
+                    timing=AbilityTiming.AGENT_BOX,
+                    sections=(
+                        EffectSection(
+                            rewards=(GainInfluence(factions=(Faction.SPACING_GUILD,)),),
+                            costs=(PayResources(spice=2),),
+                        ),
+                        _line(GainResources(solari=3)),
+                    ),
+                    mark=AbilityMark.OPTIONAL,
+                    armed_icons=("influence", "solari"),
+                )
             ),
             # Fremen Camp (original game): "[2 spice] -> [3 troops]" -- a paid
             # arrow, the troops recruited at once [DI p. 9] [FAQ p. 3].
@@ -657,6 +868,23 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                 ),
                 mark=AbilityMark.OPTIONAL,
                 armed_icons=("troops", "cards"),
+            ),
+            # Esmar Tuek (Rise of Ix): "[1 spice] -> [Spacing Guild Influence]
+            # [draw 1 card]" [Steam app screen pieces and button text] -- a
+            # paid arrow whose two rewards wait as icons once the spice is
+            # paid, each its own step in the owner's order, as Spice
+            # Smugglers' and Duncan Idaho's (OQ-148 (가), OQ-027 (b), OQ-106).
+            _ESMAR_TUEK: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(
+                    EffectSection(
+                        rewards=(GainInfluence(factions=(Faction.SPACING_GUILD,)),),
+                        costs=(PayResources(spice=1),),
+                    ),
+                    _line(DrawPersonalCards(1)),
+                ),
+                mark=AbilityMark.OPTIONAL,
+                armed_icons=("influence", "cards"),
             ),
             # --- One action with follow-ups for the opponents (composed A3g) -----
             # Covert Operation: "Each opponent discards a card" -- one frame per
@@ -872,6 +1100,29 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                     ),
                 ),
             ),
+            # Web of Power (Rise of Ix): three printed lines, "[Emperor] 2
+            # Influence: [2 Solari]", "[Spacing Guild] 2 Influence: [draw 1]"
+            # and "[Fremen] 2 Influence: [1 water]" [Steam app screen pieces
+            # and text] -- the Influence thresholds Wheels Within Wheels prints,
+            # each icon its own step with the Influence judged when it resolves
+            # (OQ-027, OQ-028).
+            _BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO: _icons(
+                (
+                    "solari",
+                    _line(
+                        GainResources(solari=2),
+                        condition=InfluenceAtLeast(Faction.EMPEROR, 2),
+                    ),
+                ),
+                ("cards", _line(DrawPersonalCards(1), condition=_GUILD_TWO)),
+                (
+                    "water",
+                    _line(
+                        GainResources(water=1),
+                        condition=InfluenceAtLeast(Faction.FREMEN, 2),
+                    ),
+                ),
+            ),
             # Fremen War Name: "If you gained [2 spice] or more this turn:".
             _BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN: _icons(
                 ("troops", _line(RecruitTroops(1), condition=_TWO_SPICE)),
@@ -944,6 +1195,21 @@ AGENT_BOX_ABILITIES: Final[Mapping[PersonalCardAgentEffect, Ability]] = (
                     _line(GainResources(spice=2)),
                     _line(GainInfluence(factions=(Faction.SPACING_GUILD,))),
                 ),
+                structure=AbilityStructure.ONE_OF,
+            ),
+            # Imperial Bashar (Rise of Ix): "[Troop] -OR- [Trash a card]" [Steam app
+            # screen pieces and text: "Choose:" with a troop and a trash button].
+            # A printed -OR- beside a black trash icon: "Trash ... 비용이거나
+            # 카드가 자기를 trash하라고 할 때만 의무" (docs/rules/imperium-base.md
+            # 11, [DI p. 16]), so choosing the trash and declining it equals doing
+            # nothing, and the box reaches the same outcomes as an optional one: the
+            # recruit (the plain line) or a trash (the choice line), neither
+            # forced, lapsing unpaid at the turn's end (OQ-095 (2)). Plain
+            # beside choice (``agent_box_abilities.either_box``).
+            _BOX.RECRUIT_ONE_OR_MAY_TRASH_A_CARD: Ability(
+                timing=AbilityTiming.AGENT_BOX,
+                sections=(_line(RecruitTroops(1)), _line(TrashPersonalCard())),
+                mark=AbilityMark.OPTIONAL,
                 structure=AbilityStructure.ONE_OF,
             ),
             # The Voice (original game): "Choose any board space. Opponents can't

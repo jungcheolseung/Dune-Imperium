@@ -12,7 +12,14 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from tests.support.observation_growth import NEW_SEGMENTS, growth_since_v34
+from tests.support.observation_growth import (
+    NEW_SEGMENTS,
+    V38_SIZE,
+    V39_NEW_SEGMENTS,
+    growth_in_v39,
+    growth_since_v34,
+    v38_layout,
+)
 
 torch = pytest.importorskip("torch")
 
@@ -25,9 +32,10 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     CONFLICT_IDS,
     CONTRACT_IDS,
     FACTION_IDS,
-    IMPERIUM_IDENTITIES,
     INTRIGUE_IDS,
+    IX_IDENTITIES,
     LEADER_IDS,
+    NON_UPRISING_IDENTITIES,
     OBSERVATION_SEGMENTS,
     OBSERVATION_SIZE,
     OBSERVATION_VERSION,
@@ -36,20 +44,29 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     RESEARCH_SPACE_IDS,
     SKILL_IDS,
     SPACE_IDS,
+    TECH_IDS,
     segment_slice,
 )
 from dune_imperium.agents import StateAgent  # noqa: E402
 from dune_imperium.agents.network_search_agent import NetworkSearchAgent  # noqa: E402
 from dune_imperium.agents.registry import CHECKPOINT_PREFIX, make_agent  # noqa: E402
-from dune_imperium.content.bloodlines.tech import TECH_IDS  # noqa: E402
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS  # noqa: E402
 from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS  # noqa: E402
+from dune_imperium.content.rise_of_ix.board import IX_SPACE_IDS  # noqa: E402
+from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS  # noqa: E402
+from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS  # noqa: E402
+from dune_imperium.content.rise_of_ix.leaders import IX_LEADERS  # noqa: E402
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS  # noqa: E402
 from dune_imperium.content.rulesets import content_for  # noqa: E402
 from dune_imperium.core.chance import ChanceResolver  # noqa: E402
 from dune_imperium.core.decisions import ChanceDecision, PlayerDecision  # noqa: E402
 from dune_imperium.core.state import GamePhase  # noqa: E402
 from dune_imperium.rules import UprisingRulesEngine  # noqa: E402
 from dune_imperium.rules.action_shapes import Source, Verb  # noqa: E402
+from dune_imperium.rules.frames import IX_FRAME_KINDS  # noqa: E402
+from dune_imperium.rules.leader_abilities import (  # noqa: E402
+    IMPLEMENTED_ABILITY_LEADER_IDS,
+)
 from dune_imperium.simulation.runner import run_policy_game  # noqa: E402
 from dune_imperium.training import (  # noqa: E402
     RandomBatchPolicy,
@@ -70,6 +87,7 @@ from dune_imperium.training.entity_features import (  # noqa: E402
     _LEADER_OF_FACE,
     FEATURE_DIGEST,
     Vocabulary,
+    _table,
     resolve,
     resolve_argument,
     vocabularies,
@@ -80,6 +98,7 @@ from dune_imperium.training.entity_network import (  # noqa: E402
     action_vocabulary,
     legacy_inputs,
 )
+from dune_imperium.training.entity_scales import DECLARED_SCALES  # noqa: E402
 from dune_imperium.training.network import (  # noqa: E402
     PolicyValueNetwork,
     build_network,
@@ -114,8 +133,231 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # every original card transcribed in stage P3: Kwisatz Haderach's row and its
 # ``sends_agent_anywhere`` column, and the ``from_space`` argument read as a
 # board space (``ARGUMENT_HINTS``); Urgent Mission, Calculated Hire and the
-# three promos.
-_GOLDEN_DIGEST = "e833d62860ac86dd8489f96138dc1db695cf35cb08cf7a315eef9f78139008fd"
+# three promos. Observation v39 (stage P4a): Rise of Ix's 30 Imperium cards,
+# 17 Intrigue cards, three Conflicts and six Leaders join their vocabularies
+# at the end, identity entries without records yet, and add no column; the
+# 533 older rows (Uprising's and the original game's) and their scales are
+# unchanged (compared against 7b4c65be, 2026-10-29). Then its 18 Tech tiles
+# and four board spaces join theirs, each tile with its acquire record where
+# an existing piece prints it: two tech columns are new (Windtraps' water,
+# Shuttle Fleet's ``distinct`` Influence); the 589 older rows and their
+# scales are unchanged (compared against 78c00bac, 2026-10-29). Then the four
+# board spaces' icons became records (stage P4c-4): six columns of the space
+# table are new (Acquire Tech and its discount, the dreadnought commission,
+# the Negotiator, the Freighter, the "OR" structure), only those four spaces'
+# rows read them, and every older row and its scales are unchanged (compared
+# against a88a66f3, 2026-10-29). Then Rise of Ix's three Conflicts got their
+# reward rows (stage P4d-1): one column of the conflict table is new (the first
+# place's Freighter icon), only those three rows read it, and every older row
+# and its scales are unchanged (compared against 3767c469, 2026-10-29). Then
+# Rise of Ix's Intrigue cards got their records (stage P4d), each card's own
+# row only (Blackmail, compared against 7a0c50e4; Cull, compared against
+# 21bebb89; Glimpse the Path, compared against c23fb5bc; Finesse, compared
+# against d1f705b7; Secret Forces, compared against 8a9c8c6a), except Expedite
+# and Strongarm: each adds one column to the intrigue table (Expedite's
+# Freighter reward, compared against 018e7961; Strongarm's visited-space
+# Influence gain, compared against cba9b870), only its own row reads it, and
+# every older row and its scales are unchanged (2026-10-29).
+# Then the Imperium cards' printed Infiltration icons (stage P4d): eight
+# personal-table columns are new (the icon count and one per icon), only the
+# seven Ix cards that print one read them, and every older row and its scales
+# are unchanged (compared against e20b83dc, 2026-10-29).
+# Then Jamis got his play data (stage P4d): only his own row changed, no column
+# and no scale (compared against 49b6dfdc, 2026-10-29).
+# Then Sayyadina got her play data (stage P4d): only her own row changed, no
+# column and no scale (compared against d6a6d909, 2026-10-29).
+# Then Truthsayer got her play data (stage P4d): only her own row changed, no
+# column and no scale (compared against 776f8431, 2026-10-29).
+# Then Ixian Probe got its record (stage P4d): only its own row changed, no
+# column and no scale (compared against 2f6d4af9, 2026-10-29).
+# Then Imperial Shock Trooper got its play data (stage P4d): only its own row
+# changed, and two personal-table columns are new (its Reveal line's
+# Agent-on-space condition and the Emperor icon), read by its row alone; no
+# older scale moved (compared against 87581ad9, 2026-10-29).
+# Then Quid Pro Quo got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (its each-Faction-with-an-Agent Influence
+# gain), read by its row alone; no older scale moved (compared against
+# 331ada67, 2026-10-29).
+# Then Local Fence got its play data (stage P4d): only its own row changed, no
+# column and no scale (compared against 28ab9f72, 2026-10-29).
+# Then Cull's trash became mandatory (stage P4d): only its own row changed (the
+# existing "mandatory" reward column, read by Twisted Devious too), no column
+# and no scale (compared against e7218126, 2026-10-30).
+# Then Landing Rights got its play data (stage P4d): only its own row changed,
+# and one personal-table column is new (the Freighter piece in an Agent box),
+# read by its row alone; no older scale moved (compared against b9c62bf5,
+# 2026-10-30).
+# Then Shai-Hulud got its play data (stage P4d): only its own row changed, and
+# one personal-table column is new (the black Trash icon in an acquire box),
+# read by its row alone; no older scale moved (compared against 706e6f2e,
+# 2026-10-30).
+# Then Water Peddler got its play data (stage P4d): one personal-table column
+# is new (the Unload mark, ``unload``), only its own row reads it, its row is
+# the only one that changed, and no scale moved (compared against 63a61cb0,
+# 2026-10-30).
+# Then CHOAM Delegate got its play data (stage P4d): only its own row changed,
+# no column and no scale (compared against aae8f95c, 2026-10-30).
+# Then Advanced Weaponry got its record (stage P4d): only its own row changed,
+# and one intrigue-table column is new (the Dreadnought commission reward),
+# read by its row alone; no older scale moved (compared against 18d1bb8a,
+# 2026-10-30).
+# Then Grand Conspiracy got its record (stage P4d): only its own row changed,
+# and six intrigue-table columns are new (the "any three of" condition, the
+# dreadnought count, and the Influence-on-tracks and Spice Must Flow items
+# nested in them), read by its row alone; no older scale moved (compared
+# against b8feee68, 2026-10-30).
+# Then Cannon Turrets got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (the opponents' dreadnought retreat reward),
+# read by its row alone; no older scale moved (compared against c30f523b,
+# 2026-10-30).
+# Then Second Wave got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (the "units" flag of its garrison
+# deployment, the dreadnoughts' share), read by its row alone; no older scale
+# moved (compared against 4cdf1e99, 2026-10-30).
+# Then War Chest got its record (stage P4d): only its own row changed, no
+# column and no scale (compared against 3b8cd83c, 2026-10-30).
+# Then Machine Culture got its record (stage P4d): only its own row changed, no
+# column and no scale (compared against 044b4ea1, 2026-10-30).
+# Then Diversion got its record (stage P4d): only its own row changed, and one
+# intrigue-table column is new (the "dreadnoughts" flag of its unit-count
+# condition), read by its row alone; no older scale moved (compared against
+# 257bdcc0, 2026-10-30).
+# Then "Princess" Yuna Moritani got her records (stage P4e): only her row
+# changed, and two Leader-table columns are new (her standing and Signet
+# hooks), read by her row alone. A column no Uprising entity uses now keeps
+# the original entities' scale (``entity_features._table``), so her Signet's
+# 7 Solari leaves Scheme's 1 Solari row as it was; no older scale moved
+# (compared against 0d65eb9c, 2026-10-30).
+# Then Prince Rhombur Vernius got his records (stage P4e): only his row
+# changed, and four Leader-table columns are new (his standing and Signet
+# hooks, the Signet's Negotiator and Acquire Tech pieces), read by his row
+# alone; no older scale moved (compared against 7514cff6, 2026-10-30).
+# Then Archduke Armand Ecaz got his records (stage P4e): only his row
+# changed, and four Leader-table columns are new (Coordination's Reveal hook,
+# Conscript's hook and its AcquireCardUpTo piece with its cost cap), read by
+# his row alone; no older scale moved (compared against d13b81cd,
+# 2026-10-30).
+# Then Viscount Hundro Moritani got his records (stage P4e): only his row
+# changed, and three Leader-table columns are new (Intelligence's standing
+# hook, Couriers' hook and its Freighter piece), read by his row alone; no
+# older scale moved (compared against c426d03d, 2026-10-30).
+# Then Ilesa Ecaz got her records (stage P4e): only her row changed, and three
+# Leader-table columns are new (One Step Ahead's standing hook, Guild
+# Contacts' hook and its AcquireReserveCard piece), read by her row alone; no
+# older scale moved (compared against 4b05d412, 2026-10-30).
+# Then Tessia Vernius got her records (stage P4e): only her row changed, and
+# four Leader-table columns are new (Careful Observation's standing hook,
+# Duplicity's hook and its LoseInfluence cost with its count), read by her
+# row alone; no older scale moved (compared against 2a8bc1ea, 2026-10-30).
+# Then Strategic Push got its record (stage P4d): only its own row changed, and
+# one intrigue-table column is new (the pledged "If you win this Conflict"
+# Solari reward), read by its row alone; no older scale moved (compared against
+# 0d65eb9c and again against 556e57ea when it landed on claude/base-ix-p4,
+# 2026-10-30).
+# Then Guild Chief Administrator got its records (stage P4d): only its own row
+# changed, and one personal-table column is new (the Freighter piece in a
+# Reveal choice), read by its row alone; no older scale moved (compared
+# against 2a8bc1ea, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against da3cd535 (2026-10-30).
+# Then Negotiated Withdrawal got its records (stage P4d): only its own row
+# changed, and one personal-table column is new (the "units" flag of a Reveal
+# choice's retreat cost), read by its row alone; no older scale moved
+# (compared against d2a5121e, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against d6419f86 (2026-10-30).
+# Then Desert Ambush got its record (stage P4d): only its own row changed, and
+# two personal-table columns are new (the "units" and "per_troop_deployed"
+# flags of its enemy retreat), read by its row alone; no older scale moved
+# (compared against 09791eb4, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against f0ea975e (2026-10-30).
+# Then Full-Scale Assault got its records (stage P4d): only its own row
+# changed, and two personal-table columns are new (the Dreadnought piece of an
+# acquire box and the Reveal count per dreadnought in the Conflict), read by
+# its row alone; no older scale moved (compared against 94581a95, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 71f32573 (2026-10-30).
+# Then Embedded Agent got its records (stage P4d, picked here before Court
+# Intrigue and Weirding Way): its own row changed, and its two Freighter
+# pieces widen the Ix-only personal column agent.sections.rewards:Freighter
+# from 1 to 2, so Landing Rights' row reads 0.5 there instead of 1.0 -- the
+# one older change, accepted by the coordinator (2026-10-30): an Ix entity
+# row may rescale when a later Ix card widens an Ix-only column, as
+# observation v39 and its Ix features are not on master and no network has
+# trained on them; Uprising and original-game rows never change. No other
+# row or scale moved (compared against 5ddab661 on claude/base-ix-p4).
+# Then Court Intrigue got its record (stage P4d): only its own row changed,
+# and one personal-table column is new (the cost that puts an Intrigue card
+# under the deck), read by its row alone; no older scale moved (compared
+# against 560892d9, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 9260241c (2026-10-30).
+# Then Weirding Way got its record (stage P4d): only its own row changed, and
+# one personal-table column is new (the extra-turn piece), read by its row
+# alone; no older scale moved (compared against f10bdb6a, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 30fca5c8 (2026-10-30).
+# Then Satellite Ban got its play data (stage P4d): only its own row changed,
+# no column and no scale (compared against 18d1bb8a, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against e3cac948 (2026-10-30).
+# Then Spice Trader got its play data (stage P4d): only its own row changed, no
+# column and no scale (compared against adacdc42, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against bba17118 (2026-10-30).
+# Then Imperial Bashar got its play data (stage P4d): only its own row changed,
+# no column and no scale (compared against 0d7862d6, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against f9afc027 (2026-10-30).
+# Then Bounty Hunter got its play data (stage P4d): one personal-table column is
+# new (the Agent box's requirement ``AtSpaceWithEnemyAgent``), only its own row
+# reads it, its row is the only one that changed, and no scale moved (compared
+# against f446b631, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against a6defaba (2026-10-30).
+# Then Web of Power got its play data (stage P4d): only its own row changed, no
+# column and no scale (compared against 374e8c1d, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against a0eecb65 (2026-10-30).
+# Then Ixian Engineer got its play data (stage P4d): one personal-table column
+# is new (the Acquire Tech piece in an Agent box), only its own row reads it,
+# its row is the only one that changed, and no scale moved (compared against
+# 2d742367, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against d47ea6c3 (2026-10-30).
+# Then Esmar Tuek got its play data (stage P4d): only its own row changed, no
+# column and no scale (compared against 74aab0c3, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 86830dd0 (2026-10-30).
+# Then Guild Accord got its play data (stage P4d): two personal-table columns
+# are new (its Heighliner discount and its Reveal line's Spacing Guild
+# Alliance condition), only its own row reads them, its row is the only one
+# that changed, and no scale moved (compared against af68b76c, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 28557ce9 (2026-10-30).
+# Then In The Shadows got its play data (stage P4d): one personal-table column
+# is new (an Agent box reward naming the Emperor among the Factions to choose),
+# only its own row reads it, its row is the only one that changed, and no
+# scale moved (compared against 44501017, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 107443a9 (2026-10-30).
+# Then Treachery got its play data (stage P4d): one personal-table column is
+# new (a Reveal line deploying troops from the supply), only its own row reads
+# it, its row is the only one that changed, and no scale moved (compared
+# against 4d24b432, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 3f153856 (2026-10-30).
+# Then Freighter Fleet got its play data (stage P4d): one personal-table column
+# is new (a Reveal choice's Freighter piece), only its own row reads it, its
+# row is the only one that changed, and no scale moved (compared against
+# 976aa6a1, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against e632d087 (2026-10-30).
+# Then Ix-Guild Compact got its play data (stage P4d): two personal-table
+# columns are new (an Agent box's dreadnought and a Reveal choice's Negotiator),
+# only its own row reads them, its row is the only one that changed, and no
+# scale moved (compared against 4890e9c2, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against 5a60e3cd (2026-10-30).
+# Then the promo Boundless Ambition got its play data (stage P4d): two
+# personal-table columns are new (a Reveal choice's acquisition and its cost
+# cap), only its own row reads them, its row is the only one that changed, and
+# no scale moved (compared against 23f086aa, 2026-10-30).
+# Landed on claude/base-ix-p4 and compared again against be07d962 (2026-10-30).
+# Then Appropriate got its records (stage P4d): only its own row changed, and
+# two personal-table columns are new (the Freighter piece of an acquire box and
+# the Acquire Tech piece's Solari payment), read by its row alone; no older
+# scale moved (compared against 78241b7b on claude/base-ix-p4, 2026-10-30).
+# Then every column got a declared scale (``entity_scales``, user decision
+# 2026-10-30 "단위 고정": content added later never rescales the rows before
+# it): the scales frozen at a075ddea's values, except Rise of Ix's
+# ``agent.sections.rewards:Freighter`` back to 1 (Embedded Agent had made it
+# 2), so only Landing Rights' row (0.5 -> 1.0) and Embedded Agent's (1.0 ->
+# 2.0) moved; 611 rows compared, every other row and scale unchanged.
+_GOLDEN_DIGEST = "558838c03abec82d3439a604002c706a841f3db03f523b48ec4769c504545cef"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -206,12 +448,12 @@ def test_feature_tables_follow_the_observation_and_are_pinned() -> None:
     for name, table in tables.items():
         assert table.features.shape == (table.size, len(table.columns)), name
         assert np.all(np.isfinite(table.features)), name
-        # Uprising's entities set the scales (v35): an original entity may
-        # read past 1 in a column an Uprising one uses.
+        # Uprising's entities set the scales (v35): an original or a Rise of
+        # Ix entity (v39) may read past 1 in a column an Uprising one uses.
         uprising = [
             index
             for index, entity in enumerate(table.ids)
-            if entity not in IMPERIUM_IDENTITIES
+            if entity not in NON_UPRISING_IDENTITIES
         ]
         assert np.abs(table.features[uprising]).max() <= 1.0, name
         # A column no member uses is dropped.
@@ -220,6 +462,44 @@ def test_feature_tables_follow_the_observation_and_are_pinned() -> None:
     personal = tables["personal"]
     assert {"acquisition_cost", ":ImperiumCardEntry"} <= set(personal.columns)
     assert FEATURE_DIGEST == _GOLDEN_DIGEST
+
+
+def test_every_entity_column_has_a_declared_scale() -> None:
+    """User decision 2026-10-30 "단위 고정": every column is divided by a
+    declared scale (``entity_scales``), so content added later never rescales
+    the rows already there. A new column must be declared; the message gives
+    the line to add (its computed scale)."""
+
+    missing = [
+        f"{name}: {column!r} -> {scale!r}"
+        for name, table in vocabularies().items()
+        for column, scale in zip(table.columns, table.scales, strict=True)
+        if column not in DECLARED_SCALES.get(name, {})
+    ]
+    assert not missing, "undeclared entity columns:\n" + "\n".join(missing)
+    for name, table in vocabularies().items():
+        declared = DECLARED_SCALES[name]
+        assert table.scales == tuple(declared[column] for column in table.columns)
+
+
+def test_a_later_entity_past_a_declared_scale_leaves_the_rows_before_it() -> None:
+    """ "단위 고정" (user decision 2026-10-30): a new entity whose value
+    outgrows a column's declared scale reads past 1, and the rows before it
+    read as they did. Rise of Ix's Freighter Agent column keeps the scale 1 it
+    had before Embedded Agent's two Freighter icons, so Landing Rights reads
+    1.0 and Embedded Agent 2.0."""
+
+    column = "agent.sections.rewards:Freighter"
+    assert DECLARED_SCALES["personal"][column] == 1.0
+    before = _table("personal", ("old",), [{column: 1.0}])
+    after = _table("personal", ("old", "new"), [{column: 1.0}, {column: 3.0}])
+    assert before.scales == after.scales == (1.0,)
+    assert after.features[0, 0] == before.features[0, 0] == 1.0
+    assert after.features[1, 0] == 3.0
+    personal = vocabularies()["personal"]
+    index = personal.columns.index(column)
+    assert personal.features[personal.ids.index("landing_rights"), index] == 1.0
+    assert personal.features[personal.ids.index("embedded_agent"), index] == 2.0
 
 
 def test_what_an_entity_does_is_read_from_its_records() -> None:
@@ -256,6 +536,29 @@ def test_what_an_entity_does_is_read_from_its_records() -> None:
         entry.card.card_id
         for entry in IMPERIUM_BASE_CARDS
         if not entry.play_data_complete
+    }
+    # So has Rise of Ix's (stage P4a): its cards, Conflicts and Leaders until
+    # stages P4d and P4e transcribe them.
+    untranscribed |= {
+        *(
+            entry.card.card_id
+            for entry in IX_IMPERIUM_CARDS
+            if not entry.play_data_complete
+        ),
+        *(
+            conflict.card.card_id
+            for conflict in IX_CONFLICTS
+            if conflict.reward_rows is None
+        ),
+        *(
+            leader.leader_id
+            for leader in IX_LEADERS
+            if leader.leader_id not in IMPLEMENTED_ABILITY_LEADER_IDS
+        ),
+        # Its Tech tiles and spaces print no ability record before stage
+        # P4c (an acquire record alone does not tell every tile apart).
+        *IX_TECH_IDS,
+        *IX_SPACE_IDS,
     }
     for name in ("personal", "leader", "tech", "space", "conflict"):
         table = tables[name]
@@ -483,6 +786,13 @@ _COUNTED = {
     "private_effect_pick_second_faction": "faction",
     # Stage B3d-2a: Long Live the Fighters' card to draw.
     "private_effect_pick_personal": "personal",
+    # v39 (Rise of Ix): the known Intrigue deck top, the Intrigue cards the
+    # observer knows each opponent holds, its set-aside card.
+    "private_intrigue_top": "intrigue",
+    "private_known_intrigue_seat1": "intrigue",
+    "private_known_intrigue_seat2": "intrigue",
+    "private_known_intrigue_seat3": "intrigue",
+    "private_set_aside": "personal",
 }
 
 
@@ -972,14 +1282,15 @@ def test_a_v31_entity_file_moves_onto_v32_and_computes_the_same_function(
     # seat fields, v36's raw Masterstroke columns (four seats on the board,
     # four Factions private) and v38's: the public deck-top zone of a seat,
     # the 42 barred spaces and two turn flags of four seats (raw, on the
-    # board) are the inputs the file never had.
+    # board), and v39's (``V39_ENTITY_INPUTS``) are the inputs the file
+    # never had.
     assert info.migration.observation_new == network.entity_width * (1 + 3) + (
         network.entity_width + 1
     ) + network.entity_width + len(Verb) + len(Source) + 2 + 7 * (
         network.entity_width
     ) + 1 + (1 + 3 + 2 + 1) + 2 * network.entity_width + (4 + 4) + (
         network.entity_width + 4 * 42 + 4 * 2
-    )
+    ) + _v39_entity_inputs(network.entity_width)
     assert info.migration.observation_dropped == 0
     observations = _observations(recorded).clone()
     pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)
@@ -1021,6 +1332,35 @@ _V38_SEGMENTS = (
     "voice_blocks",
     "card_turn_flags",
 )
+# The encoder inputs observation v39 added (stage P4a, Rise of Ix), by name
+# prefix: a seat's dreadnought and Shipping columns (raw, seat encoder), the
+# Intrigue deck's size, the dreadnoughts on Control spaces, the bars on the
+# Ix spaces, the pending decision and the flag (raw, board), and the known
+# Intrigue top, the three opponents' known Intrigue and the set-aside card
+# (zones) and the known bottom depths (raw) of the private encoder. The
+# grown universes add entity rows, not inputs (a zone is a weighted sum).
+_V39_INPUTS = (
+    "raw:global_scalars:12",
+    "raw:units:",
+    "raw:ix:",
+    "raw:dreadnought_control:",
+    "raw:voice_blocks_ix:",
+    "raw:ix_pending:",
+    "raw:ix_flags:",
+    "raw:private_intrigue_bottom:",
+    "zone:private_intrigue_top:",
+    "zone:private_known_intrigue_seat",
+    "zone:private_set_aside:",
+)
+
+
+def _v39_entity_inputs(width: int) -> int:
+    """How many encoder inputs v39 added for an entity width: a seat's three
+    dreadnought counts and ten ``seat{k}_ix`` columns (Strategic Push's
+    pledge the tenth since 2026-10-30), the private and board raw columns and
+    five identity zones."""
+
+    return (3 + 10) + (1 + 8 + 16 + 7 + 1) + 8 + 5 * width
 
 
 def test_a_v37_entity_file_moves_onto_v38_with_the_new_inputs_at_zero(
@@ -1045,14 +1385,22 @@ def test_a_v37_entity_file_moves_onto_v38_with_the_new_inputs_at_zero(
             index
             for index, name in enumerate(names)
             if not name.startswith(
-                ("zone:deck_public_top:", "raw:voice_blocks:", "raw:card_turn_flags:")
+                (
+                    "zone:deck_public_top:",
+                    "raw:voice_blocks:",
+                    "raw:card_turn_flags:",
+                    *_V39_INPUTS,
+                )
             )
         ]
         state[key] = state[key][:, kept]
         inputs[encoder] = [names[index] for index in kept]
-    layout = [
-        row for row in document["observation_layout"] if row[0] not in _V38_SEGMENTS
-    ]
+    grown = {segment.name: growth_in_v39(segment) for segment in OBSERVATION_SEGMENTS}
+    layout: list[tuple[str, int, int]] = []
+    for name, _, length in document["observation_layout"]:
+        if name not in _V38_SEGMENTS and name not in V39_NEW_SEGMENTS:
+            offset = layout[-1][1] + layout[-1][2] if layout else 0
+            layout.append((name, offset, length - grown[name]))
     document.update(
         state_dict=state,
         entity_inputs=inputs,
@@ -1067,8 +1415,11 @@ def test_a_v37_entity_file_moves_onto_v38_with_the_new_inputs_at_zero(
     assert info.migration is not None
     assert info.migration.from_observation_version == 37
     assert info.migration.to_observation_version == OBSERVATION_VERSION
-    # One zone of a seat, 42 spaces and two flags for each of four seats.
-    assert info.migration.observation_new == moved.entity_width + 4 * 42 + 4 * 2
+    # One zone of a seat, 42 spaces and two flags for each of four seats,
+    # and v39's inputs.
+    assert info.migration.observation_new == (
+        moved.entity_width + 4 * 42 + 4 * 2 + _v39_entity_inputs(moved.entity_width)
+    )
     assert info.migration.observation_dropped == 0
     assert layout[-1][0] == "private_masterstroke"
 
@@ -1076,10 +1427,114 @@ def test_a_v37_entity_file_moves_onto_v38_with_the_new_inputs_at_zero(
     new = torch.cat(
         [
             torch.arange(segment_slice(name).start, segment_slice(name).stop)
-            for name in _V38_SEGMENTS
+            for name in (*_V38_SEGMENTS, *V39_NEW_SEGMENTS)
         ]
+        + [torch.tensor([segment_slice("global_scalars").start + 12])]
     )
     # Uprising's own columns: a game without a public top has none of them.
+    cut = observations.clone()
+    cut[:, new] = 0
+    noisy = observations.clone()
+    noisy[:, new] = 3
+    original = _network(_FULL)
+    actions = torch.arange(0, moved.action_size, 211)
+    with torch.no_grad():
+        hidden = original.trunk(cut)
+        assert torch.equal(moved.trunk(cut), hidden)
+        assert torch.equal(moved.trunk(noisy), hidden)
+        assert torch.equal(
+            moved.action_logits(moved.trunk(noisy), actions),
+            original.action_logits(hidden, actions),
+        )
+
+
+def test_a_v38_entity_file_moves_onto_v39_with_the_new_inputs_at_zero(
+    tmp_path: Path, recorded: list[tuple[np.ndarray, np.ndarray, int]]
+) -> None:
+    """A file written under observation v38 knows none of v39's inputs, none
+    of Rise of Ix's entities and none of the slot keys naming them (stage
+    P4a, plan 17.8): every older input, entity and key keeps its place by
+    name, the new ones start at zero, so the file computes its own function
+    on every game without Rise of Ix, whatever the new columns read."""
+
+    path = _saved(tmp_path, _FULL)
+    document = checkpoint_module._read(path)
+    state = dict(document["state_dict"])
+    inputs: dict[str, list[str]] = {}
+    for encoder, key in (
+        ("seat", "seat_encoder.0.weight"),
+        ("board", "board_encoder.0.weight"),
+        ("private", "private_encoder.0.weight"),
+    ):
+        names = document["entity_inputs"][encoder]
+        kept = [
+            index
+            for index, name in enumerate(names)
+            if not name.startswith(_V39_INPUTS)
+        ]
+        state[key] = state[key][:, kept]
+        inputs[encoder] = [names[index] for index in kept]
+    # Rise of Ix's entities, the slot keys naming them and its reserved
+    # decision kinds.
+    tables = {}
+    for name, table in document["entity_tables"].items():
+        rows = [
+            index
+            for index, entity in enumerate(table["ids"])
+            if entity not in IX_IDENTITIES
+        ]
+        tables[name] = {**table, "ids": [table["ids"][index] for index in rows]}
+        state[f"entity_own.{name}"] = state[f"entity_own.{name}"][rows]
+    old_keys = [
+        key
+        for key in document["slot_keys"]
+        if key.rsplit(":", 1)[-1] not in IX_IDENTITIES
+        and key not in {f"decision_kind:{kind.value}" for kind in IX_FRAME_KINDS}
+    ]
+    key_index = {key: index for index, key in enumerate(document["slot_keys"])}
+    state["slot_key_own"] = state["slot_key_own"][
+        [*(key_index[key] for key in old_keys), len(key_index)]
+    ]
+    layout = v38_layout()
+    arch = dict(document["arch"])
+    arch["feature_digest"] = "v38"
+    document.update(
+        state_dict=state,
+        entity_inputs=inputs,
+        entity_tables=tables,
+        slot_keys=old_keys,
+        arch=arch,
+        observation_version=38,
+        observation_layout=layout,
+        observation_size=V38_SIZE,
+    )
+    torch.save(document, path)
+
+    moved, info = load_checkpoint(path)
+    assert isinstance(moved, EntityNetwork)
+    report = info.migration
+    assert report is not None
+    assert (report.from_observation_version, report.to_observation_version) == (
+        38,
+        OBSERVATION_VERSION,
+    )
+    assert report.observation_new == _v39_entity_inputs(moved.entity_width)
+    assert report.observation_dropped == 0
+    # 30 Imperium and 17 Intrigue cards, three Conflicts and six Leaders; no
+    # feature column is new (the 533 older rows are unchanged).
+    assert report.features_moved
+    # 18 Tech tiles and four board spaces.
+    assert report.entities_new == 30 + 17 + 3 + 6 + 18 + 4
+    assert (report.feature_columns_new, report.feature_columns_dropped) == (0, 0)
+
+    observations = _observations(recorded).clone()
+    new = torch.cat(
+        [
+            torch.arange(segment_slice(name).start, segment_slice(name).stop)
+            for name in V39_NEW_SEGMENTS
+        ]
+        + [torch.tensor([segment_slice("global_scalars").start + 12])]
+    )
     cut = observations.clone()
     cut[:, new] = 0
     noisy = observations.clone()

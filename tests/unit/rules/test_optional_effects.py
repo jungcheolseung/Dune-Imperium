@@ -38,6 +38,12 @@ from dune_imperium.rules.effects import (
     UNPRINTED_VISIT_ICONS,
 )
 from dune_imperium.rules.engine import UprisingRulesEngine
+from dune_imperium.rules.ix_board_spaces import (
+    BOARD_ICON_COMMISSION,
+    BOARD_ICON_FREIGHTER,
+    BOARD_ICON_IX_TECH,
+    BOARD_ICON_TECH_NEGOTIATION,
+)
 from dune_imperium.rules.scouts_missions import BOARD_ICON_SCOUTS
 from dune_imperium.rules.scouts_offers import BOARD_ICON_SUBCOMMITTEE
 
@@ -407,6 +413,11 @@ def test_the_optional_board_icons_name_their_modules_constants() -> None:
         BOARD_ICON_COMMANDER,
         BOARD_ICON_TECH,
         BOARD_ICON_SUBCOMMITTEE,
+        # Rise of Ix's four spaces' icons (stage P4c-4).
+        BOARD_ICON_COMMISSION,
+        BOARD_ICON_IX_TECH,
+        BOARD_ICON_TECH_NEGOTIATION,
+        BOARD_ICON_FREIGHTER,
     }
     assert BOARD_ICON_IMPERIAL_PRIVILEGE not in OPTIONAL_BOARD_ICONS
     assert UNPRINTED_VISIT_ICONS == {

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from dune_imperium import RulesetConfig
+from dune_imperium import BaseGame, RulesetConfig
 from dune_imperium.cli.sweep import main as sweep_main
 from dune_imperium.content.bloodlines import SKILLS, tech_tiles_for
 from dune_imperium.content.immortality import tleilaxu_cards_for
@@ -192,6 +192,48 @@ def test_epic_game_sweep_runs_to_finished() -> None:
 
     assert report.failures == ()
     assert report.games[0].ruleset == "uprising-4p-base+epic"
+
+
+@pytest.mark.parametrize("policy", ["random", "heuristic"])
+def test_rise_of_ix_sweep_runs_the_original_game_to_finished(policy: str) -> None:
+    # The original game plays Rise of Ix since stage P4c-5; Uprising plus Rise
+    # of Ix is stage P7 and is reported as a failure, not played without it.
+    specs = sweep_specs(
+        games=1,
+        rulesets=(False,),
+        start_seed=7,
+        policy=policy,
+        base_game=BaseGame.IMPERIUM,
+        rise_of_ix=True,
+        soundness_interval=25,
+    )
+    report = run_sweep(specs)
+
+    assert report.failures == ()
+    assert report.games[0].ruleset == "imperium-4p-base+ix"
+    refused = run_sweep(
+        sweep_specs(games=1, rulesets=(False,), start_seed=7, rise_of_ix=True)
+    )
+    assert len(refused.failures) == 1
+    assert "Rise of Ix has no content" in refused.failures[0].error
+
+
+def test_the_sweep_cli_takes_rise_of_ix_for_the_original_game() -> None:
+    common = [
+        "--games",
+        "1",
+        "--ruleset",
+        "base",
+        "--start-seed",
+        "7",
+        "--privacy-interval",
+        "0",
+        "--skip-replay",
+        "--rise-of-ix",
+    ]
+    assert sweep_main([*common, "--base-game", "imperium"]) == 0
+    # With Uprising it is refused until stage P7: a failure, so exit code 1.
+    assert sweep_main(common) == 1
 
 
 def test_epic_game_with_arrakeen_scouts_runs_to_finished() -> None:

@@ -17,6 +17,7 @@ the total by the difference only.
 """
 
 from copy import replace
+from typing import Final
 
 from dune_imperium.content.bloodlines.sardaukar import (
     COMMANDER_STRENGTH,
@@ -51,13 +52,35 @@ def conflict_agent_strength(player: PlayerState) -> int:
     return 3 if player.swordmaster_acquired else 2
 
 
+# A dreadnought in the Conflict is worth 3 strength [Rise of Ix p. 6]
+# (docs/rules/rise-of-ix.md 6).
+DREADNOUGHT_STRENGTH: Final = 3
+# Prince Rhombur Vernius' Heavy Lasgun Cannons (Rise of Ix).
+RHOMBUR_DREADNOUGHT_STRENGTH: Final = 4
+
+
+def dreadnought_strength(player: PlayerState) -> int:
+    """Return the strength one of the seat's Conflict dreadnoughts fights with.
+
+    "Conflict의 dreadnought 하나는 strength 3(Prince Rhombur Vernius는 4)"
+    [Rise of Ix p. 6] (docs/rules/rise-of-ix.md 6); "Heavy Lasgun Cannons:
+    dreadnought strength 4" (rise-of-ix.md 10, stage P4e).
+    """
+
+    if player.leader_id == "prince_rhombur_vernius":
+        return RHOMBUR_DREADNOUGHT_STRENGTH
+    return DREADNOUGHT_STRENGTH
+
+
 def units_strength(player: PlayerState) -> int:
     """Return the strength the units in the Conflict provide on their own.
 
     A troop is worth 2 and a sandworm 3 [Main p. 12], a Sardaukar Commander
-    2 [Bloodlines p. 4], an Into the Fray Agent 2 or 3
+    2 [Bloodlines p. 4], a dreadnought 3 (``dreadnought_strength``)
+    [Rise of Ix p. 6], an Into the Fray Agent 2 or 3
     (``conflict_agent_strength``), and without a unit there is no strength
-    at all, swords or not [Main p. 12].
+    at all, swords or not [Main p. 12]; a dreadnought is a unit, so one alone
+    keeps its seat's strength above 0 [Rise of Ix p. 6] [FAQ p. 2].
     """
 
     if player.units_in_conflict <= 0:
@@ -66,6 +89,7 @@ def units_strength(player: PlayerState) -> int:
         player.troops_conflict * 2
         + player.sandworms_conflict * 3
         + player.commanders_conflict * COMMANDER_STRENGTH
+        + player.dreadnoughts_conflict * dreadnought_strength(player)
         + player.agent_in_conflict * conflict_agent_strength(player)
     )
 

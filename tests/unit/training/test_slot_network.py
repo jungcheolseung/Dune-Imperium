@@ -24,17 +24,18 @@ from dune_imperium.adapters.observation_encoding import (  # noqa: E402
     PERSONAL_CARD_IDS,
     RESEARCH_SPACE_IDS,
     SPACE_IDS,
+    TECH_IDS,
     encode_player_view,
     segment_slice,
 )
 from dune_imperium.agents import StateAgent  # noqa: E402
 from dune_imperium.agents.registry import make_agent  # noqa: E402
-from dune_imperium.content.bloodlines.tech import TECH_IDS  # noqa: E402
 from dune_imperium.content.immortality.board import TLEILAXU_TRACK_END  # noqa: E402
 from dune_imperium.content.immortality.tleilaxu import (  # noqa: E402
     TLEILAXU_CARDS_BY_ID,
 )
 from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS  # noqa: E402
+from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS  # noqa: E402
 from dune_imperium.content.uprising.imperium import (  # noqa: E402
     IMPERIUM_CARDS,
     IMPERIUM_CARDS_BY_ID,
@@ -98,8 +99,19 @@ from dune_imperium.training.slots import (  # noqa: E402
 # the Masterstroke choice's frame kind ends ``decision_kind``. Observation
 # v37 (stage P3a): the original game's 46 Imperium cards end the Imperium Row,
 # set-aside and Agent box fields; every older key keeps its place (checked
-# against v36's table on 2026-10-28).
-_GOLDEN_DIGEST = "f48440ae121d6719611e9d6000478a994055e84f6a5ca83fd14829523c8a9f22"
+# against v36's table on 2026-10-28). Observation v39 (stage P4a): Rise of
+# Ix's 30 Imperium cards end the Imperium Row, set-aside and Agent box fields,
+# its three Conflicts the current-Conflict field and its six Leaders the four
+# seats' Leader fields and the draft pool: 213 keys; the other 1,744 keep
+# their order (their digest is v38's f48440ae...). Then its 18 Tech tiles end
+# the face-up Tech and Secret Project fields and its four spaces the
+# occupancy and four seats' location fields: 56 keys; the other 1,957 keep
+# their order (their digest is e382b8ad..., checked 2026-10-29). Then the
+# five decision kinds v39 reserves for Rise of Ix end ``decision_kind``; the
+# other 2,013 keep their order (their digest is 3cf49f09..., 2026-10-29).
+# Two more follow them (an optional discard window, Sonic Snoopers' pick);
+# the other 2,018 keep their order (their digest is 30a6556a..., 2026-10-29).
+_GOLDEN_DIGEST = "95cdc1f350aa68a261f9ee6f7077dcf6682806568c853ef025bf48d969520c9f"
 _FULL = RulesetConfig(
     choam_module=True,
     promo_cards=True,
@@ -294,7 +306,9 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
         # Less the engine's pause, which no observation shows (slots.py).
         "decision_kind": len(_FRAME_KINDS) - 1,
         "conflict": len(CONFLICT_IDS),
-        "imperium_row": len(IMPERIUM_CARDS) + len(IMPERIUM_BASE_CARDS),
+        "imperium_row": len(IMPERIUM_CARDS)
+        + len(IMPERIUM_BASE_CARDS)
+        + len(IX_IMPERIUM_CARDS),
         "tech_face_up": len(TECH_IDS),
         "tleilaxu_row": len(TLEILAXU_CARDS_BY_ID),
         "secret_project": len(TECH_IDS),
@@ -318,7 +332,9 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
             f"seat{seat}_tactics": TACTICS_TRACK_END - TACTICS_TRACK_START,
             f"seat{seat}_tleilaxu": TLEILAXU_TRACK_END,
             f"seat{seat}_agent_locations": len(SPACE_IDS),
-            f"seat{seat}_set_aside": len(IMPERIUM_CARDS) + len(IMPERIUM_BASE_CARDS),
+            f"seat{seat}_set_aside": len(IMPERIUM_CARDS)
+            + len(IMPERIUM_BASE_CARDS)
+            + len(IX_IMPERIUM_CARDS),
         }
     assert {field.name: len(field.keys) for field in SLOT_FIELDS} == expected
     # v28: 1_139 -> 1_140 (conflict:economic_supremacy). v32: + 4 + 18 + 139.
@@ -328,10 +344,14 @@ def test_slot_table_sizes_match_the_identity_universes() -> None:
     # 3 Reserve cards (Agent boxes) and the Mentat's 4 + 4.
     # v36: + 1, the Masterstroke choice's decision kind. v37 (stage P3a): the
     # original game's 46 Imperium cards in the Imperium Row, the four seats'
-    # set-aside fields and the Agent boxes.
+    # set-aside fields and the Agent boxes. v39 (stage P4a): Rise of Ix's 30
+    # Imperium cards in the same six fields, its three Conflicts, its six
+    # Leaders (four seats and the draft pool), its 18 Tech tiles (face-up
+    # tiles and the Secret Project), its four spaces (occupancy and four
+    # seats' locations) and its seven reserved decision kinds.
     assert len(SLOT_KEYS) == sum(expected.values()) == PAD_ROW == 1_303 + (
         18 + 19 * 5 + 8 * 5 + 3 + 8
-    ) + 1 + 46 * 6
+    ) + 1 + 46 * 6 + 30 * 6 + 3 + 6 * 5 + 18 * 2 + 4 * 5 + 7
     assert "conflict:economic_supremacy" in SLOT_KEYS
     assert len(set(SLOT_KEYS)) == len(SLOT_KEYS)
     assert len(navigation) == 10

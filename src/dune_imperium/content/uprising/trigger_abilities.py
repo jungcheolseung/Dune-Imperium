@@ -36,8 +36,10 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireBankCommander,
     AdvanceTleilaxu,
+    CommissionDreadnought,
     DrawIntrigueCards,
     EffectSection,
+    Freighter,
     GainInfluence,
     GainResources,
     PlaceSpy,
@@ -45,6 +47,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     Research,
     Reward,
     TakeContract,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
@@ -132,6 +135,23 @@ ACQUISITION_ABILITIES: Final[Mapping[PersonalCardAcquisitionEffect, Ability]] = 
             _ACQUIRE.GAIN_INFLUENCE_WITH_CHOSEN_FACTION: _when(
                 AbilityTiming.ACQUIRE, GainInfluence()
             ),
+            # Shai-Hulud (Rise of Ix): the black Trash icon, resolved when the
+            # card is acquired as an optional trash (``rules.acquisition``,
+            # ``rules.optional_trash``).
+            _ACQUIRE.MAY_TRASH_A_CARD: _when(
+                AbilityTiming.ACQUIRE, TrashPersonalCard()
+            ),
+            # Full-Scale Assault (Rise of Ix): the Dreadnought icon, "you may
+            # commission" [Rise of Ix p. 6] -- an optional row of the turn
+            # (``rules.acquire_icons``).
+            _ACQUIRE.MAY_COMMISSION_DREADNOUGHT: _when(
+                AbilityTiming.ACQUIRE, CommissionDreadnought()
+            ),
+            # Appropriate (Rise of Ix): the Freighter icon [Steam app
+            # attribute table, AcquireEffectList], "you may move" [Rise of Ix
+            # p. 5] -- an optional row of the turn, or outside its owner's
+            # turn the Freighter's own window (``rules.acquire_icons``).
+            _ACQUIRE.MAY_MOVE_FREIGHTER: _when(AbilityTiming.ACQUIRE, Freighter()),
         }
     )
 )

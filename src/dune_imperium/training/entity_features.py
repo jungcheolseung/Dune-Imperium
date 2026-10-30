@@ -13,8 +13,11 @@ booleans as 0/1, an enum member as a one-hot column named after it, a tuple
 as the sum of its items' features (and its length), and a dataclass field by
 field, with a column marking its class (so ``GainResources`` and
 ``GainCombatStrength`` rewards are told apart). Names, ids and sources carry
-no feature. Each vocabulary keeps the columns some member uses, scaled by
-the column's largest magnitude so every feature lies in ``[-1, 1]``.
+no feature. Each vocabulary keeps the columns some member uses, each
+divided by its declared scale (``entity_scales``, user decision 2026-10-30
+"단위 고정"): the largest magnitude the entities gave it when the table was
+frozen, so a later entity never rescales the rows before it and may read past
+1 instead.
 
 What an entity *does* is read from its printed ability records
 (docs/composed-effects-plan.md 4.4, stage A8): the same reflection over each
@@ -64,15 +67,17 @@ from dune_imperium.adapters.observation_encoding import (
     IMPERIUM_IDENTITIES,
     INTRIGUE_IDS,
     LEADER_IDS,
+    NON_UPRISING_IDENTITIES,
     PERSONAL_CARD_IDS,
     POST_IDS,
     RESEARCH_SPACE_IDS,
     SCOUTS_ITEM_IDS,
     SKILL_IDS,
     SPACE_IDS,
+    TECH_IDS,
 )
 from dune_imperium.content.bloodlines.sardaukar import SKILLS_BY_ID
-from dune_imperium.content.bloodlines.tech import TECH_IDS, TECH_TILES_BY_ID
+from dune_imperium.content.bloodlines.tech import TECH_TILES_BY_ID
 from dune_imperium.content.bloodlines.tech_abilities import (
     TECH_ABILITIES,
     TECH_ACQUIRE_ABILITIES,
@@ -122,6 +127,7 @@ from dune_imperium.content.uprising.trigger_abilities import (
     discard_ability,
     trash_ability,
 )
+from dune_imperium.training.entity_scales import DECLARED_SCALES
 
 FEATURE_VERSION: Final = 2
 # Fields that name or cite an entity rather than describe what it does.
@@ -173,9 +179,10 @@ class Vocabulary:
     name: str
     ids: tuple[str, ...]
     columns: tuple[str, ...]
-    # ``[len(ids), len(columns)]``, every value in [-1, 1].
+    # ``[len(ids), len(columns)]``; past [-1, 1] only where a later entity
+    # outgrows a column's declared scale (``entity_scales``).
     features: np.ndarray
-    # The largest magnitude each column was divided by.
+    # The declared scale each column was divided by (``entity_scales``).
     scales: tuple[float, ...] = ()
 
     @property
@@ -186,8 +193,12 @@ class Vocabulary:
 # A column some Uprising entity uses keeps the scale Uprising's entities give
 # it, so every Uprising row reads exactly as before the original game's own
 # entities joined (observation v35, ``IMPERIUM_IDENTITIES``; user approval
-# 2026-10-27: Uprising rows byte-identical, scales included); an original
-# entity may then read past 1 in such a column.
+# 2026-10-27: Uprising rows byte-identical, scales included), and Rise of
+# Ix's after them (v39, ``NON_UPRISING_IDENTITIES``); such an entity may then
+# read past 1 in such a column. Likewise a column no Uprising entity uses but
+# an original one does keeps the original entities' scale, so a Rise of Ix
+# record (stage P4e: Final Delivery's 7 Solari beside Scheme's 1) leaves
+# every original row as it was.
 
 
 def _table(name: str, ids: tuple[str, ...], rows: list[dict[str, float]]) -> Vocabulary:
@@ -200,11 +211,29 @@ def _table(name: str, ids: tuple[str, ...], rows: list[dict[str, float]]) -> Voc
                 matrix[index, position[key]] = amount
     scale = np.abs(matrix).max(axis=0)
     uprising = [
-        index for index, entity in enumerate(ids) if entity not in IMPERIUM_IDENTITIES
+        index
+        for index, entity in enumerate(ids)
+        if entity not in NON_UPRISING_IDENTITIES
     ]
     if len(uprising) < len(ids):
-        own = np.abs(matrix[uprising]).max(axis=0) if uprising else np.zeros_like(scale)
-        scale = np.where(own > 0, own, scale)
+        original = [
+            index for index, entity in enumerate(ids) if entity in IMPERIUM_IDENTITIES
+        ]
+        for tier in (original, uprising):
+            own = np.abs(matrix[tier]).max(axis=0) if tier else np.zeros_like(scale)
+            scale = np.where(own > 0, own, scale)
+    # Every column's declared scale wins (``entity_scales``, user decision
+    # 2026-10-30 "단위 고정"): a later entity reads past 1 rather than
+    # rescaling the rows before it. The computed scale above only stands in
+    # for a column not declared yet, which a test refuses.
+    declared = DECLARED_SCALES.get(name, {})
+    scale = np.array(
+        [
+            declared.get(column, float(computed))
+            for column, computed in zip(columns, scale, strict=True)
+        ],
+        dtype=np.float32,
+    )
     keep = scale > 0
     matrix = matrix[:, keep] / scale[keep]
     kept = tuple(column for column, used in zip(columns, keep, strict=True) if used)
@@ -346,11 +375,12 @@ def _leader_records(leader: Any) -> dict[str, float]:
 
 
 def _tech_records(tech_id: str) -> dict[str, float]:
+    # A Rise of Ix tile prints no ability record before stage P4c (v39).
     return _records(
         ("acquire", TECH_ACQUIRE_ABILITIES.get(tech_id)),
         *(
             (f"tile_{ability.timing.value}", ability)
-            for ability in TECH_ABILITIES[tech_id]
+            for ability in TECH_ABILITIES.get(tech_id, ())
         ),
     )
 

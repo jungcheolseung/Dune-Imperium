@@ -36,15 +36,20 @@ from dune_imperium.content.uprising.abilities import (
 )
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
+    AcquireReserveCard,
+    AcquireTech,
     AllConditions,
     DrawIntrigueCards,
     DrawPersonalCards,
     DrawTwistedIntrigueCards,
     EffectSection,
+    Freighter,
     GainInfluence,
     GainResources,
     HasAlliance,
     InfluenceAtLeast,
+    LoseInfluence,
     OnAgentSentTo,
     OnBoardSpaceSolariPaid,
     OnCardTrashed,
@@ -55,6 +60,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     OnRoundStart,
     OnSpiceGainedInTurnAtLeast,
     PayResources,
+    PlaceNegotiator,
     PlaceSpy,
     RecallSpy,
     RecruitTroops,
@@ -276,6 +282,63 @@ SIGNET_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
                 costs=(PayResources(spice=1),),
             ),
         ),
+        # Rise of Ix's (docs/rules/rise-of-ix.md 10; stage P4e). Final
+        # Delivery: "7 Solari → Influence 1(골라)·troop 1·spice 1" -- an arrow,
+        # so never forced; no Faction at the top is offered (OQ-060,
+        # rise-of-ix.md 15).
+        "princess_yuna_moritani": _hook(
+            "final_delivery",
+            AbilityMark.OPTIONAL,
+            EffectSection(
+                rewards=(GainInfluence(), RecruitTroops(1), GainResources(spice=1)),
+                costs=(PayResources(solari=7),),
+            ),
+        ),
+        # Ixian Technology: "Acquire Tech -OR- Tech Negotiation"
+        # (rise-of-ix.md 10; the app prints the Negotiator first). Each half
+        # is a "may" piece (rise-of-ix.md 4), so the box is optional; its
+        # Acquire Tech prints no Tech Discount.
+        "prince_rhombur_vernius": _hook(
+            "ixian_technology",
+            AbilityMark.OPTIONAL,
+            EffectSection(rewards=(PlaceNegotiator(),)),
+            EffectSection(rewards=(AcquireTech(discount=0),)),
+        ),
+        # Conscript: "비용 3 이하 카드 하나를 얻을 수 있다" (rise-of-ix.md 10) --
+        # the Row and the Reserve's Arrakis Liaison and The Spice Must Flow,
+        # never Foldspace (OQ-125).
+        "archduke_armand_ecaz": _hook(
+            "conscript",
+            AbilityMark.OPTIONAL,
+            EffectSection(rewards=(AcquireCardUpTo(3),)),
+        ),
+        # Couriers: "spice 1 → Freighter" (rise-of-ix.md 10; the icon is the
+        # Freighter's, Rival 문장 "spend 1 spice … for the Freighter icon"
+        # [Rise of Ix p. 8]) -- an arrow, so never forced.
+        "viscount_hundro_moritani": _hook(
+            "couriers",
+            AbilityMark.OPTIONAL,
+            EffectSection(rewards=(Freighter(),), costs=(PayResources(spice=1),)),
+        ),
+        # Guild Contacts: "1 Solari → Foldspace 획득" (rise-of-ix.md 10) -- an
+        # arrow, so never forced.
+        "ilesa_ecaz": _hook(
+            "guild_contacts",
+            AbilityMark.OPTIONAL,
+            EffectSection(
+                rewards=(AcquireReserveCard("foldspace_card"),),
+                costs=(PayResources(solari=1),),
+            ),
+        ),
+        # Duplicity: "Influence 1 잃기 → Snooper token이 있는 진영에 Influence 1"
+        # (rise-of-ix.md 10) -- an arrow, so never forced; the same Faction
+        # may be lost and gained (OQ-153); the Faction gained is one still
+        # holding a token (``rules.leader_abilities``).
+        "tessia_vernius": _hook(
+            "duplicity",
+            AbilityMark.OPTIONAL,
+            EffectSection(rewards=(GainInfluence(),), costs=(LoseInfluence(1),)),
+        ),
     }
 )
 
@@ -464,6 +527,36 @@ LEADER_ABILITIES: Final[Mapping[str, tuple[Ability, ...]]] = MappingProxyType(
         # Prescience (stage P2b): he sees his deck's top card at any time,
         # none while the deck is empty [DI p. 13] (``core.observation``).
         "paul_atreides": (_standing("prescience"),),
+        # Rise of Ix's (docs/rules/rise-of-ix.md 10; stage P4e). Smuggling
+        # Operation: no water at setup (a ``LeaderDefinition`` field), and
+        # "자기 turn에 Solari를 얻을 때마다 1 더" [FAQ p. 3] -- her own Agent or
+        # Reveal turn only (OQ-042, OQ-063; ``rules.leader_abilities.
+        # grant_smuggling_operation``).
+        "princess_yuna_moritani": (_standing("smuggling_operation"),),
+        # Heavy Lasgun Cannons: "dreadnought strength 4" (rise-of-ix.md 6, 10;
+        # ``rules.strength.dreadnought_strength``).
+        "prince_rhombur_vernius": (_standing("heavy_lasgun_cannons"),),
+        # Coordination: "Reveal turn에 Landsraad·City·Spice Trade 칸에 Agent 둘
+        # 이상이면 in play 카드 하나를 trash할 수 있다" [FAQ p. 1] -- any of the
+        # three icons, the Mentat counted (rise-of-ix.md 10); once a Reveal
+        # turn, as the Reveal abilities above.
+        "archduke_armand_ecaz": (
+            _left_hook(AbilityTiming.REVEAL, "coordination", AbilityMark.OPTIONAL),
+        ),
+        # Intelligence: "게임 시작에 Intrigue 덱 위 두 장을 보고 하나를 갖고 하나를
+        # 위에 되돌린다" (rise-of-ix.md 3, 10, 13; ``rules.intrigue_peek.
+        # assign_intelligence``), a setup step that is no Reveal or trigger.
+        "viscount_hundro_moritani": (_standing("intelligence"),),
+        # One Step Ahead: a card set aside at Round Start, back in the hand
+        # at the start of her second turn, a spice or a Solari for the Agent
+        # it then sends (rise-of-ix.md 10, OQ-119, OQ-122;
+        # ``rules.one_step_ahead``).
+        "ilesa_ecaz": (_standing("one_step_ahead"),),
+        # Careful Observation: a Snooper token on each track's Influence 2
+        # space, each token reached taking the next Snooper reward
+        # (rise-of-ix.md 10, OQ-153; ``rules.snoopers``,
+        # ``influence._reach_snooper``).
+        "tessia_vernius": (_standing("careful_observation"),),
     }
 )
 

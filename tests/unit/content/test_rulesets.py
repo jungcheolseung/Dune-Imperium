@@ -250,21 +250,25 @@ def test_the_original_game_plays_its_own_board_and_its_transcribed_cards() -> No
 
 def test_a_combination_without_its_content_cannot_be_set_up() -> None:
     # Every expansion combines with either base game (user decision
-    # 2026-10-27), but the engine plays only what it holds: no Rise of Ix
-    # before P4 (P7 with Uprising), and the original game with no option
-    # before the stage that brings it (plan 15.4).
+    # 2026-10-27), but the engine plays only what it holds: Rise of Ix on
+    # the original game since P4c-5 (P7 with Uprising), and the original game
+    # with no other option before the stage that brings it (plan 15.4). Epic
+    # Game Mode is Rise of Ix's (docs/rules/rise-of-ix.md 11, [Rise of Ix
+    # p. 10]): the original game plays it with Rise of Ix since P4e.
     with pytest.raises(NotImplementedError, match="Rise of Ix has no content"):
         UprisingRulesEngine().reset(RulesetConfig(rise_of_ix=True), 0)
     for option, stage in (
         ("choam_module", "P7"),
         ("bloodlines", "P7"),
         ("immortality", "P7"),
-        ("epic_game", "P4"),
         ("arrakeen_scouts", "P8"),
-        ("rise_of_ix", "P4"),
     ):
         config = RulesetConfig(base_game=BaseGame.IMPERIUM, **{option: True})
         with pytest.raises(NotImplementedError, match=f"{option} from stage {stage}"):
             UprisingRulesEngine().reset(config, 0)
+    with pytest.raises(NotImplementedError, match="epic_game only with rise_of_ix"):
+        UprisingRulesEngine().reset(
+            RulesetConfig(base_game=BaseGame.IMPERIUM, epic_game=True), 0
+        )
     state = UprisingRulesEngine().reset(RulesetConfig(base_game=BaseGame.IMPERIUM), 0)
     assert len(state.players) == 4

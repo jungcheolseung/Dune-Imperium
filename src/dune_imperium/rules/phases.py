@@ -3,6 +3,7 @@
 from copy import replace
 from typing import Final
 
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.effect_dsl import (
     DrawTwistedIntrigueCards,
@@ -16,7 +17,11 @@ from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
+from dune_imperium.rules.card_draw import draw_or_request_personal_cards
+from dune_imperium.rules.dreadnoughts import space_controller
 from dune_imperium.rules.frames import FrameKind, replace_player, reset_turn_counters
+from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.one_step_ahead import push_set_aside
 from dune_imperium.rules.pauses import ROUND_DRAW, push_pause
 from dune_imperium.rules.tech import apply_endgame_tech_effects
 
@@ -32,6 +37,70 @@ def _twisted_round_draw() -> int:
 
 
 TWISTED_ROUND_DRAW: Final = _twisted_round_draw()
+# Rise of Ix's Round Start Tech lines: Holtzman Engine's card and Shuttle
+# Fleet's Solari (docs/rules/rise-of-ix.md 4, OQ-122).
+HOLTZMAN_ROUND_DRAW: Final = 1
+SHUTTLE_FLEET_SOLARI: Final = 2
+
+
+def _ix_round_start_effects(state: GameState) -> RuleResult:
+    """Pay the held Tech tiles' "Round Start:" lines: Holtzman Engine's card
+    and Shuttle Fleet's 2 Solari.
+
+    "Conflict 공개 → Control 방어 → 각자 5장(뒤집은 Tech 되돌리기를 함께) →
+    Holtzman Engine의 카드 1장·Shuttle Fleet의 2 Solari → Ilesa의 따로 두기 →
+    첫 turn. 좌석 사이는 First Player부터." (docs/rules/rise-of-ix.md 4,
+    OQ-122, user ruling 2026-10-23). They decide nothing, so they run in
+    seat order from the First Player after Piter's draw. Holtzman Engine's
+    card may need the discard pile shuffled: that is the in-turn personal
+    draw's chance step (``draw_or_request_personal_cards``), pushed on the
+    stack the first turn (or the Scouts step) opens on.
+    """
+
+    if state.first_player is None:
+        raise ValueError("a round requires a First Player")
+    working = state
+    events: list[GameEvent] = []
+    seats = state.config.players
+    for offset in range(seats):
+        seat = (state.first_player + offset) % seats
+        source = f"round:{state.round_number}:player:{seat}:tech"
+        owner = working.players[seat]
+        if has_tech(owner.tech_ids, TechAbility.HOLTZMAN_ENGINE) and (
+            owner.deck or owner.discard_pile
+        ):
+            drawn = draw_or_request_personal_cards(
+                working,
+                seat,
+                HOLTZMAN_ROUND_DRAW,
+                source=f"{source}:holtzman_engine",
+            )
+            working = drawn.state
+            events.append(
+                GameEvent(
+                    event_id=f"{source}:holtzman_engine:draw",
+                    kind="cards_drawn",
+                    payload=(("count", HOLTZMAN_ROUND_DRAW), ("player", seat)),
+                )
+            )
+        owner = working.players[seat]
+        if has_tech(owner.tech_ids, TechAbility.ROUND_START_TWO_SOLARI):
+            paid = replace(
+                owner,
+                resources=replace(
+                    owner.resources,
+                    solari=owner.resources.solari + SHUTTLE_FLEET_SOLARI,
+                ),
+            )
+            working = replace(
+                working, players=replace_player(working.players, paid)
+            )
+            events.append(
+                resources_gained_event(
+                    f"{source}:shuttle_fleet", seat, solari=SHUTTLE_FLEET_SOLARI
+                )
+            )
+    return RuleResult(state=working, events=tuple(events))
 
 
 def begin_round(state: GameState) -> RuleResult:
@@ -89,7 +158,7 @@ def begin_round(state: GameState) -> RuleResult:
             ),
         )
     defense = _control_defense_frame(
-        state.players,
+        state,
         conflict_id,
         round_number,
         immortality=state.config.immortality,
@@ -172,6 +241,10 @@ def draw_round_hands(state: GameState) -> RuleResult:
             # Flipped Tech tiles return face up at Round Start
             # [Bloodlines pp. 7, 12].
             tech_flipped=(),
+            # One Step Ahead counts Ilesa Ecaz's turns of this round
+            # (``rules.one_step_ahead``).
+            turns_finished_round=0,
+            set_aside_returned_turn=False,
         )
         for player, count in zip(state.players, draw_counts, strict=True)
     )
@@ -239,6 +312,14 @@ def draw_round_hands(state: GameState) -> RuleResult:
             for seat in twisted_draws
         ),
     )
+    if state.config.rise_of_ix:
+        ix = _ix_round_start_effects(next_state)
+        next_state = ix.state
+        events = (*events, *ix.events)
+        if not scouts:
+            # Ilesa Ecaz's set-aside, after the lines that decide nothing and
+            # before the first turn (OQ-122, ``rules.one_step_ahead``).
+            next_state = push_set_aside(next_state)
     return RuleResult(state=next_state, events=events)
 
 
@@ -399,7 +480,7 @@ def _draw_cards(player: PlayerState, count: int) -> PlayerState:
 
 
 def _control_defense_frame(
-    players: tuple[PlayerState, ...],
+    state: GameState,
     conflict_id: str,
     round_number: int,
     *,
@@ -413,31 +494,30 @@ def _control_defense_frame(
     to ask, unless Immortality's specimens can be returned for one "at any
     time" [Immortality p. 8] (OQ-050). The frame carries no ``turn_owner``:
     the defense is part of Round Start (Phase 1), before any turn opens
-    [Main p. 8].
+    [Main p. 8]. The controller is the owner of the dreadnought on the space,
+    else of its Control marker (``dreadnoughts.space_controller``) [Rise of
+    Ix p. 6].
     """
 
     conflict = CONFLICTS_BY_ID[conflict_id]
     control_space_id = conflict.control_space_id
     if control_space_id is None:
         return None
-    controllers = tuple(
-        player for player in players if control_space_id in player.control_space_ids
-    )
-    if len(controllers) > 1:
-        raise RuntimeError("a critical location cannot have multiple controllers")
-    if not controllers:
+    controller_seat = space_controller(state, control_space_id)
+    if controller_seat is None:
         return None
-    if controllers[0].troops_supply == 0 and not (
+    controller = state.players[controller_seat]
+    if controller.troops_supply == 0 and not (
         # With Immortality a specimen can be returned to the supply for the
         # defending troop "at any time" [Immortality p. 8] (OQ-050).
-        immortality and controllers[0].specimens > 0
+        immortality and controller.specimens > 0
     ):
         return None
     return DecisionFrame(
         kind=FrameKind.CONTROL_DEFENSE,
         frame_id=f"round:{round_number}:control_defense",
         decision=PlayerDecision(
-            owner=controllers[0].player_id,
+            owner=controller.player_id,
             prompt="Deploy one troop from supply to defend your location?",
         ),
         context=(("space_id", control_space_id),),

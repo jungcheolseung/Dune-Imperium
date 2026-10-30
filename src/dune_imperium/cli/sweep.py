@@ -118,7 +118,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "play Rise of Ix's Epic Game Mode (docs/rules/epic-game-mode.md): "
             "to 12, Conflict II over III, Control the Spice, one Intrigue card "
-            "and five garrison troops [Rise of Ix p. 10]"
+            "and five garrison troops [Rise of Ix p. 10]; with --base-game "
+            "imperium only together with --rise-of-ix (docs/rules/rise-of-ix.md "
+            "11)"
         ),
     )
     parser.add_argument(
@@ -167,6 +169,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "the base game: Uprising, or the original Dune: Imperium "
             "(default: uprising)"
+        ),
+    )
+    parser.add_argument(
+        "--rise-of-ix",
+        action="store_true",
+        help=(
+            "play with the Rise of Ix expansion (docs/rules/rise-of-ix.md); "
+            "with --base-game imperium only (Uprising plus Rise of Ix is "
+            "stage P7)"
         ),
     )
     parser.add_argument(
@@ -252,6 +263,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         rotate_leaders=arguments.rotate_leaders,
         collect_coverage=arguments.coverage_json is not None,
         base_game=BaseGame(arguments.base_game),
+        rise_of_ix=arguments.rise_of_ix,
     )
     report = run_sweep(specs, workers=arguments.workers)
 

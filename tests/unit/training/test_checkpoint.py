@@ -7,10 +7,16 @@ import pytest
 from tests.support.observation_growth import (
     GROWN_COLUMNS,
     NEW_SEGMENTS,
+    V38_SIZE,
+    V39_NEW_SEGMENTS,
+    growth_in_v39,
     growth_since_v34,
+    v38_layout,
 )
 
 torch = pytest.importorskip("torch")
+
+from torch import Tensor  # noqa: E402
 
 from dune_imperium import RulesetConfig  # noqa: E402
 from dune_imperium.adapters.action_codec import (  # noqa: E402
@@ -668,16 +674,21 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
     # was cut from is fed the observations without them. Every other new
     # column of a game without the option is 0, so that network computes
     # the v27 file's function on them.
-    # v32's deck pools are never empty either and are cut the same way.
+    # v32's deck pools are never empty either and are cut the same way, and
+    # so is v39's Intrigue deck size, the last global scalar.
     boxes = segment_slice("agent_boxes")
     pools = slice(segment_slice("seat0_deck_pool").start, OBSERVATION_SIZE)
+    deck_size = segment_slice("global_scalars").start + 12
     assert bool(observations[:, boxes].any())
     assert bool(observations[:, pools].any())
+    assert bool(observations[:, deck_size].any())
     others = new[(new < boxes.start) | ((new >= boxes.stop) & (new < pools.start))]
+    others = others[others != deck_size]
     assert not bool(observations[:, others].any())
     cut = observations.clone()
     cut[:, boxes] = 0
     cut[:, pools] = 0
+    cut[:, deck_size] = 0
     masks = torch.ones(observations.shape[0], codec.size, dtype=torch.int8)
     expected, expected_values = network(cut, masks)
     actual, actual_values = migrated(observations, masks)
@@ -685,14 +696,15 @@ def test_a_v27_file_migrates_to_the_current_layout_with_the_same_outputs(
     assert torch.equal(actual_values, expected_values)
 
 
-def test_a_v37_file_migrates_to_v38_with_the_new_columns_at_zero(
+def _older_file(
     tmp_path: Path,
-) -> None:
-    # Observation v38 appended the public deck-top depths (four seats by
-    # personal-card identity), the Voice's barred spaces and the card turn
-    # flags after every older segment: a v37 file's columns keep their place,
-    # the new ones start at zero, and every Uprising game without Immortality
-    # has them 0 anyway, so the migrated file scores as before.
+    version: int,
+    layout: list[tuple[str, int, int]],
+) -> tuple[Path, ActionCodec, Tensor, Tensor]:
+    """An MLP file as observation ``version`` wrote it: today's trained
+    network cut to ``layout`` (each segment's first columns, by name). Also
+    the network's first-layer weight and the current columns kept."""
+
     codec = ActionCodec(RulesetConfig())
     network, _ = _trained(codec)
     current = tmp_path / "current.pt"
@@ -702,60 +714,116 @@ def test_a_v37_file_migrates_to_v38_with_the_new_columns_at_zero(
     document = torch.load(current, weights_only=True)
     state = dict(document["state_dict"])
     weight = state["body.0.weight"]
-    new_segments = (
-        *(f"seat{seat}_deck_public_top" for seat in range(4)),
-        "voice_blocks",
-        "card_turn_flags",
+    segments = {segment.name: segment for segment in OBSERVATION_SEGMENTS}
+    kept = torch.tensor(
+        [
+            column
+            for name, _, length in layout
+            for column in range(segments[name].offset, segments[name].offset + length)
+        ]
     )
-    layout = [
-        (segment.name, segment.offset, segment.length)
-        for segment in OBSERVATION_SEGMENTS
-        if segment.name not in new_segments
-    ]
-    size = layout[-1][1] + layout[-1][2]
-    assert layout[-1][0] == "private_masterstroke"
-    state["body.0.weight"] = weight[:, :size].clone()
-    older = tmp_path / "v37.pt"
+    state["body.0.weight"] = weight[:, kept].clone()
+    older = tmp_path / f"v{version}.pt"
     torch.save(
         {
             **document,
             "state_dict": state,
             "observation_layout": layout,
-            "observation_size": size,
-            "observation_version": 37,
+            "observation_size": layout[-1][1] + layout[-1][2],
+            "observation_version": version,
         },
         older,
     )
+    return older, codec, weight, kept
+
+
+def _check_new_columns_at_zero(
+    older: Path,
+    version: int,
+    codec: ActionCodec,
+    weight: Tensor,
+    kept: Tensor,
+) -> int:
+    """Load ``older``: its columns keep their weights by (segment, offset),
+    every new column starts at zero and moves no output. The new count."""
 
     migrated, info = load_checkpoint(older)
 
     assert info.migration is not None
     report = info.migration
     assert (report.from_observation_version, report.to_observation_version) == (
-        37,
+        version,
         OBSERVATION_VERSION,
     )
-    added = OBSERVATION_SIZE - size
-    assert added == 4 * 188 + 4 * 42 + 4 * 2
+    added = OBSERVATION_SIZE - len(kept)
     assert (
         report.observation_kept,
         report.observation_new,
         report.observation_dropped,
-    ) == (size, added, 0)
+    ) == (len(kept), added, 0)
     first_layer = migrated.body[0]
     assert isinstance(first_layer, torch.nn.Linear)
     first = first_layer.weight.detach()
-    assert torch.equal(first[:, :size], weight[:, :size])
-    assert float(first[:, size:].abs().sum()) == 0.0
+    new = torch.tensor(sorted(set(range(OBSERVATION_SIZE)) - set(kept.tolist())))
+    assert torch.equal(first[:, kept], weight[:, kept])
+    assert float(first[:, new].abs().sum()) == 0.0
     # The new columns cannot move an output, whatever they read.
     observations = torch.randint(0, 3, (6, OBSERVATION_SIZE), dtype=torch.int32)
     cut = observations.clone()
-    cut[:, size:] = 0
+    cut[:, new] = 0
     masks = torch.ones(6, codec.size, dtype=torch.int8)
     expected, expected_values = migrated(cut, masks)
     actual, actual_values = migrated(observations, masks)
     assert torch.equal(actual, expected)
     assert torch.equal(actual_values, expected_values)
+    return added
+
+
+def test_a_v37_file_migrates_to_v38_with_the_new_columns_at_zero(
+    tmp_path: Path,
+) -> None:
+    # Observation v38 appended the public deck-top depths (four seats by
+    # personal-card identity), the Voice's barred spaces and the card turn
+    # flags after every older segment: a v37 file's columns keep their place,
+    # the new ones start at zero, and every Uprising game without Immortality
+    # has them 0 anyway, so the migrated file scores as before. (Today's
+    # file is cut to v37 through v38's layout, ``v38_layout``.)
+    v38 = (
+        *(f"seat{seat}_deck_public_top" for seat in range(4)),
+        "voice_blocks",
+        "card_turn_flags",
+    )
+    layout: list[tuple[str, int, int]] = []
+    for name, _, length in v38_layout():
+        if name not in v38:
+            offset = layout[-1][1] + layout[-1][2] if layout else 0
+            layout.append((name, offset, length))
+    assert layout[-1][0] == "private_masterstroke"
+    older, codec, weight, kept = _older_file(tmp_path, 37, layout)
+    added = _check_new_columns_at_zero(older, 37, codec, weight, kept)
+    assert added == 4 * 188 + 4 * 42 + 4 * 2 + (OBSERVATION_SIZE - V38_SIZE)
+
+
+def test_a_v38_file_migrates_to_v39_with_the_new_columns_at_zero(
+    tmp_path: Path,
+) -> None:
+    # Observation v39 (stage P4a, plan 17.8): Rise of Ix's ids end the
+    # personal-card, Intrigue and Tech universes (30, 17 and 18 columns at the
+    # end of 30, 9 and 6 segments), the Intrigue deck's size ends
+    # global_scalars, and Rise of Ix's segments end the layout. A v38 file's
+    # columns keep their (segment, offset) and the new ones start at zero.
+    layout = v38_layout()
+    assert layout[-1][0] == "card_turn_flags"
+    assert layout[-1][1] + layout[-1][2] == V38_SIZE
+    older, codec, weight, kept = _older_file(tmp_path, 38, layout)
+    added = _check_new_columns_at_zero(older, 38, codec, weight, kept)
+    assert added == 30 * 30 + 9 * 17 + 6 * 18 + 1 + sum(
+        segment.length
+        for segment in OBSERVATION_SEGMENTS
+        if segment.name in V39_NEW_SEGMENTS
+    )
+    assert added == sum(growth_in_v39(segment) for segment in OBSERVATION_SEGMENTS)
+    assert added == 10_301 - 8_265
 
 
 def test_checkpoint_cli_inspects_stamps_and_migrates(

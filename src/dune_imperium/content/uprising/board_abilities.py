@@ -25,6 +25,9 @@ from dune_imperium.content.imperium.board_abilities import (
     IMPERIUM_BOARD_CHOICE_ABILITIES,
     IMPERIUM_BOARD_SPACE_ABILITIES,
 )
+from dune_imperium.content.rise_of_ix.board_abilities import (
+    IX_BOARD_SPACE_ABILITIES,
+)
 from dune_imperium.content.uprising.abilities import (
     Ability,
     AbilityMark,
@@ -68,6 +71,8 @@ BOARD_SPACE_ABILITIES: Final[Mapping[tuple[str, int, str], Ability]] = MappingPr
         # The original game's spaces share the table (one id, one printing;
         # docs/base-game-and-ix-plan.md 4.2 item 7).
         **IMPERIUM_BOARD_SPACE_ABILITIES,
+        # Rise of Ix's four spaces; no other board holds them.
+        **IX_BOARD_SPACE_ABILITIES,
         # Dutiful Service: the Contract icon, 2 Solari without CHOAM.
         ("dutiful_service", 0, ""): _icons(TakeContract(1)),
         ("dutiful_service", 0, "no_choam"): _icons(GainResources(solari=2)),

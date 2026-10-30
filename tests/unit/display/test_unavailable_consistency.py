@@ -85,6 +85,7 @@ from dune_imperium.content.uprising.board import (
 )
 from dune_imperium.content.uprising.contracts import contract_for_instance
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
     DestroyShieldWall,
     DiscardFromHand,
     EffectSection,
@@ -708,9 +709,14 @@ def _old_any_effect(
     # that can change something now, judged after its own resource cost
     # (``reward_can_change_something``), while a line without a cost is played
     # even when every reward fizzles -- rule changes made after the copy.
+    # Updated on purpose 2026-10-30 (stage P4d, OQ-113 (C): "Tech 획득은 그
+    # 타일 값(spice)을 내고 타일을 받는다"): a line whose reward is an Acquire
+    # Tech is a line with a cost too (Rise of Ix's Machine Culture).
     owner = state.players[player]
     for section in sections:
-        if not section.costs:
+        if not section.costs and not any(
+            isinstance(reward, AcquireTech) for reward in section.rewards
+        ):
             continue
         cost = resource_cost((section,))
         after = pay_cost(owner, cost) if can_afford(owner, cost) else owner
@@ -1639,6 +1645,18 @@ def _old_icon_condition_holds(
             return len(owner.completed_contract_ids) >= 2
         if key == "cards_second":
             return len(owner.completed_contract_ids) >= 4
+    # 2026-10-30 (Rise of Ix, stage P4d): Web of Power's three icons, each
+    # judged at 2 Influence with its own Faction.
+    web_of_power = (
+        PersonalCardAgentEffect.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO
+    )
+    if effect is web_of_power:
+        if key == "solari":
+            return owner.influence.emperor >= 2
+        if key == "cards":
+            return owner.influence.spacing_guild >= 2
+        if key == "water":
+            return owner.influence.fremen >= 2
     # 2026-10-28 (the original game, stage P3): Smuggler's Thopter's two draw
     # icons, each judged at 2 Spacing Guild Influence.
     if (
@@ -1750,6 +1768,14 @@ def _old_icon_condition_holds(
         is PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO
     )
     if key == AGENT_ICON_SOLARI:
+        # Spice Smugglers' armed 3 Solari (OQ-148, 2026-10-29) is offered as
+        # it waits; the old copy knew only Wheels Within Wheels.
+        smugglers = (
+            PersonalCardAgentEffect
+            .MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+        )
+        if effect is smugglers:
+            return True
         return wheels and owner.influence.emperor >= 2
     if key == AGENT_ICON_SPICE:
         return (

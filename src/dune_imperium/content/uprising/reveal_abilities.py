@@ -30,10 +30,12 @@ from dune_imperium.content.uprising.abilities import (
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
+    AgentOnSpaceWithIcon,
     AllConditions,
     CommandersInConflictAtLeast,
     CommandReached,
     Condition,
+    DeployFromSupply,
     DrawIntrigueCards,
     EffectSection,
     FactionBond,
@@ -59,10 +61,12 @@ from dune_imperium.content.uprising.effect_dsl import (
     SpyingOnMakerSpace,
     TrashThisCard,
 )
+from dune_imperium.content.uprising.types import AgentIcon
 
 _COMMAND = CommandReached()
 _PER_COMPLETED_CONTRACT = RevealCount(RevealCountKind.COMPLETED_CONTRACT)
 _PER_OTHER_SWORD_CARD = RevealCount(RevealCountKind.OTHER_SWORD_CARD)
+_PER_DREADNOUGHT = RevealCount(RevealCountKind.DREADNOUGHT_IN_CONFLICT)
 
 
 def _revealed(faction: Faction) -> RevealCount:
@@ -100,6 +104,26 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "chani_clever_tactician": _reveal(
             _line(RevealPersuasion(2), condition=FactionBond(Faction.FREMEN))
         ),
+        # Sayyadina (Rise of Ix): "Fremen Bond: [3 Persuasion]".
+        "sayyadina": _reveal(
+            _line(RevealPersuasion(3), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Imperial Shock Trooper (Rise of Ix): "If you have an Agent on an
+        # [Emperor] board space," [+3 swords] beside its printed 1 Persuasion
+        # and 2 swords [Steam app text and screen pieces]; an Agent sent
+        # earlier this round counts (``conditions.owner_condition_holds``).
+        "imperial_shock_trooper": _reveal(
+            _line(RevealSwords(3), condition=AgentOnSpaceWithIcon(AgentIcon.EMPEROR))
+        ),
+        # Full-Scale Assault (Rise of Ix): "[3 swords] for each of your
+        # dreadnoughts in the Conflict." [Steam app text], counted when the
+        # line resolves; the swords stay if a dreadnought leaves later
+        # (rise-of-ix.md 9.3, designer ruling: "sword는 공개한 카드가 준 값"
+        # [DI p. 11]).
+        "full_scale_assault": _reveal(_line(RevealSwords(3, per=_PER_DREADNOUGHT))),
+        # Embedded Agent (Rise of Ix): "[Intrigue card]" beside its 1
+        # Persuasion [Steam app screen pieces], Thufir Hawat's line.
+        "embedded_agent": _reveal(_line(DrawIntrigueCards(1))),
         # Delivery Agreement.
         "delivery_agreement": _reveal(_line(GainResources(spice=1))),
         # Ecological Testing Station.
@@ -122,6 +146,11 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         # Fedaykin Death Commando (original game): "Fremen Bond: 3 swords".
         "fedaykin_death_commando": _reveal(
             _line(RevealSwords(3), condition=FactionBond(Faction.FREMEN))
+        ),
+        # Shai-Hulud (Rise of Ix): "Fremen Bond: [5 swords]" [Steam app screen
+        # pieces]; the card prints no other Reveal value.
+        "shai_hulud": _reveal(
+            _line(RevealSwords(5), condition=FactionBond(Faction.FREMEN))
         ),
         # Duncan Idaho (original game): "1 water" beside its printed swords.
         "duncan_idaho_card": _reveal(_line(GainResources(water=1))),
@@ -183,6 +212,15 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         ),
         # Leadership.
         "leadership": _reveal(_line(RevealSwords(1, per=_PER_OTHER_SWORD_CARD))),
+        # Imperial Bashar (Rise of Ix): Leadership's words, "+[sword] for each
+        # other revealed card that provides one or more [sword] this turn"
+        # [Steam app text]; only a card that really gave swords counts (Bene
+        # Gesserit Sister's choice of Persuasion does not) [Rise of Ix p. 10]
+        # (docs/rules/rise-of-ix.md 9.1). The card's printed 2 swords are its
+        # entry's.
+        "imperial_bashar": _reveal(
+            _line(RevealSwords(1, per=_PER_OTHER_SWORD_CARD))
+        ),
         # Northern Watermaster.
         "northern_watermaster": _reveal(
             _line(GainResources(spice=2), condition=FactionBond(Faction.FREMEN))
@@ -264,6 +302,33 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         ),
         # Possible Futures.
         "possible_futures": _reveal(_line(GainResources(water=1))),
+        # Water Peddler (Rise of Ix): "[Unload] [1 water]", its Unload box too
+        # (``rules.unload``).
+        "water_peddler": _reveal(_line(GainResources(water=1))),
+        # CHOAM Delegate (Rise of Ix): "[Unload] [3 Solari]", likewise.
+        "choam_delegate": _reveal(_line(GainResources(solari=3))),
+        # Esmar Tuek (Rise of Ix): "[Unload] [2 spice] [2 Solari]", likewise.
+        "esmar_tuek_card": _reveal(_line(GainResources(solari=2, spice=2))),
+        # In The Shadows (Rise of Ix): "[Unload] [Bene Gesserit Influence]"
+        # [Steam app screen pieces], Throne Room Politics' line, likewise.
+        "in_the_shadows": _reveal(
+            _line(GainInfluence(factions=(Faction.BENE_GESSERIT,)))
+        ),
+        # Treachery (Rise of Ix): "[Unload] [troop] [troop] Deploy these
+        # troops to the Conflict." [Steam app screen pieces and text] -- two
+        # troops from the supply to the Conflict, as Double Cross's one
+        # (OQ-042 (2): "원판·Ix의 Double Cross·Treachery(supply에서 Conflict로
+        # 배치)도 같은 기록을 쓴다"); its Unload box too.
+        "treachery": _reveal(_line(DeployFromSupply(2))),
+        # Guild Accord (Rise of Ix): "[Unload] [1 water]; [Spacing Guild]
+        # Alliance: [3 spice]" [Steam app screen pieces], two lines, likewise.
+        "guild_accord": _reveal(
+            _line(GainResources(water=1)),
+            _line(
+                GainResources(spice=3),
+                condition=HasAlliance(Faction.SPACING_GUILD),
+            ),
+        ),
         # Quash Rebellion.
         "quash_rebellion": _reveal(
             _line(RevealPersuasion(2), condition=CommandersInConflictAtLeast(1))
@@ -345,6 +410,7 @@ REVEAL_LINE_CONDITIONS: Final[frozenset[type]] = frozenset(
         CommandReached,
         InfluenceAtLeast,
         HasAlliance,
+        AgentOnSpaceWithIcon,
     }
 )
 REVEAL_LINE_REWARDS: Final[frozenset[type]] = frozenset(
@@ -361,6 +427,7 @@ REVEAL_LINE_REWARDS: Final[frozenset[type]] = frozenset(
         AdvanceTleilaxu,
         Research,
         ReserveCostDiscount,
+        DeployFromSupply,
     }
 )
 
@@ -427,7 +494,11 @@ def check_reveal_gain_line(line: EffectSection) -> None:
                     raise TypeError(f"{reward!r} is not a Reveal gain")
                 once("influence")
                 gains += times
-            case DrawIntrigueCards(count=count) | RecruitTroops(count=count):
+            case (
+                DrawIntrigueCards(count=count)
+                | RecruitTroops(count=count)
+                | DeployFromSupply(count=count)
+            ):
                 once(type(reward).__name__)
                 gains += count
             case GenerateSpecimens(count=count) | AdvanceTleilaxu(count=count):

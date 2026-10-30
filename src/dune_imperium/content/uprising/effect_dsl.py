@@ -157,9 +157,19 @@ class UnitsDeployedThisTurnAtLeast:
     turn's peak, so a later retreat keeps it true, while an OQ-029
     withdrawal undoes the deployment and lowers the peak. Troops, Sardaukar
     Commanders and sandworms are all units [Main p. 12] [Bloodlines p. 4].
+
+    ``dreadnoughts``: Rise of Ix's Diversion ("When you deploy four or more
+    units to the Conflict in a single turn:" [Diversion card, Steam app
+    text]) counts the dreadnoughts of the turn's deployment as well, for a
+    dreadnought is a unit, though no troop [Rise of Ix p. 6]
+    (docs/rules/rise-of-ix.md 6, table row "unit"; 15: the same judgment as
+    Distraction's). The turn's unit count (``units_deployed_turn``) never
+    holds one, so the condition adds the dreadnoughts the turn's frame says
+    its deployment moved (``combat_deployment.dreadnoughts_deployed_this_turn``).
     """
 
     count: int = 3
+    dreadnoughts: bool = False
 
     def __post_init__(self) -> None:
         if self.count < 1:
@@ -295,6 +305,16 @@ class AtFactionSpace:
 
 
 @dataclass(frozen=True, slots=True)
+class AtSpaceWithEnemyAgent:
+    """The Agent was sent to a board space that holds an enemy Agent ("If used
+    to send an Agent to a board space with an enemy Agent:" [Bounty Hunter
+    card, Steam app text]): fixed by the placement -- "used to send" names the
+    moment the Agent goes -- so an Agent box judges it when the card is played
+    (OQ-028 (a)). Only an Infiltration or another effect that ignores enemy
+    Agents puts an Agent on such a space (rise-of-ix.md 7)."""
+
+
+@dataclass(frozen=True, slots=True)
 class FactionBond:
     """Another card of ``faction`` is in play: that Faction's Bond ("Fremen
     Bond | 프레멘의 유대감" [Main p. 20])."""
@@ -390,6 +410,21 @@ class GarrisonedUnitsAtLeast:
     def __post_init__(self) -> None:
         if self.count < 1:
             raise ValueError("garrison condition count must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class DreadnoughtsAtLeast:
+    """The player has ``count`` or more dreadnoughts of its own -- the ones
+    commissioned out of its supply, wherever they stand: its garrison, the
+    Conflict or a Control space ("2 dreadnoughts" [Grand Conspiracy card,
+    Steam app text]; docs/rules/open-questions.md OQ-121: "Grand Conspiracy의
+    '2 dreadnoughts'는 가진 수이고", no position is read)."""
+
+    count: int
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.count <= 2:
+            raise ValueError("a seat has one or two dreadnoughts to count")
 
 
 @dataclass(frozen=True, slots=True)
@@ -494,6 +529,22 @@ class AllConditions:
             raise ValueError("a conjunction needs at least two conditions")
 
 
+@dataclass(frozen=True, slots=True)
+class AtLeastOfConditions:
+    """At least ``count`` of the listed conditions hold (Grand Conspiracy:
+    "If you have any three:" of its four items). ``count`` is fewer than the
+    items; all of them is ``AllConditions``."""
+
+    count: int
+    conditions: tuple[Condition, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.conditions) < 3:
+            raise ValueError("a count of conditions needs at least three")
+        if not 1 < self.count < len(self.conditions):
+            raise ValueError("the count is more than one and less than all")
+
+
 type Condition = (
     InfluenceAtLeast
     | InfluenceAtLeastOnTracks
@@ -518,6 +569,7 @@ type Condition = (
     | OpponentPlayedCombatIntrigue
     | AtMakerSpace
     | AtFactionSpace
+    | AtSpaceWithEnemyAgent
     | FactionBond
     | SpyRecalledThisTurn
     | UnitsInConflictAtLeast
@@ -527,9 +579,11 @@ type Condition = (
     | GraftedWithFaction
     | Grafted
     | AllConditions
+    | AtLeastOfConditions
     | HasSwordmaster
     | SpyingOnMakerSpace
     | GarrisonedUnitsAtLeast
+    | DreadnoughtsAtLeast
     | CommandReached
     | AtBoardSpace
     | AcquiredCard
@@ -645,7 +699,12 @@ class LoseInfluence:
 
 @dataclass(frozen=True, slots=True)
 class DiscardFromHand:
-    """Discard ``count`` personal cards chosen from hand."""
+    """Discard ``count`` personal cards chosen from hand.
+
+    Also the Rise of Ix Discard cost icon: each icon costs one hand card,
+    never an Intrigue card [Rise of Ix p. 7] [FAQ p. 2]. Repeated icons on
+    one line are written as one counted cost (Ixian Probe: ``count=2``).
+    """
 
     count: int = 1
 
@@ -697,6 +756,18 @@ class TrashIntrigueCard:
 
 
 @dataclass(frozen=True, slots=True)
+class PutIntrigueOnDeckBottom:
+    """Put one of the player's Intrigue cards on the bottom of the Intrigue
+    deck: "Put an Intrigue card on the bottom of the deck" [Court Intrigue
+    card, Steam app text]. The other seats do not see which card ("Court
+    Intrigue·Sonic Snoopers — Intrigue를 덱 맨 아래에 놓을 때 상대에게 보이지
+    않는다", docs/rules/rise-of-ix.md 9.1, [Rise of Ix p. 10]); the seat that
+    put it knows it until it is drawn or the deck is shuffled (rise-of-ix.md
+    13, OQ-149, ``rules.intrigue_knowledge``). A Twisted Intrigue card never
+    reaches the common deck (OQ-097)."""
+
+
+@dataclass(frozen=True, slots=True)
 class RecallSpy:
     """Return ``count`` of the player's placed Spies to supply (player choice)."""
 
@@ -717,10 +788,17 @@ class RetreatTroops:
     (docs/rules/uprising-systems.md). During Combat the retreated troops'
     strength leaves the total at once and a player left without units drops
     out of the priority loop (OQ-003).
+
+    ``units``: "Retreat three of your units" [Negotiated Withdrawal card,
+    Steam app text] -- a unit is a troop or a dreadnought [Rise of Ix p. 6]
+    (docs/rules/rise-of-ix.md 6, its table's "unit" row), so the owner's
+    Conflict dreadnoughts are among what it may retreat. Without it a card's
+    "troop" never reaches a dreadnought.
     """
 
     minimum: int = 1
     maximum: int | None = None
+    units: bool = False
 
     def __post_init__(self) -> None:
         if self.minimum < 0:
@@ -817,6 +895,7 @@ type Cost = (
     | LoseTroops
     | GiveIntrigueToOpponent
     | TrashIntrigueCard
+    | PutIntrigueOnDeckBottom
     | RecallSpy
     | RetreatTroops
     | FlipBattleCard
@@ -1014,9 +1093,16 @@ class DeployFromGarrison:
 
     ``up_to=None`` is a printed "any number" [Rapid Mobilization card]: as
     for a retreat, zero is a choice too [FAQ p. 3].
+
+    ``dreadnoughts``: "Deploy up to two units from your garrison to the
+    Conflict." [Second Wave card, Steam app text] -- a unit is a troop or a
+    dreadnought [Rise of Ix p. 6], so the garrison dreadnoughts are among
+    what the owner may deploy, within the same ``up_to``. Without it a card's
+    "troop" never reaches a dreadnought.
     """
 
     up_to: int | None
+    dreadnoughts: bool = False
 
     def __post_init__(self) -> None:
         if self.up_to is not None and self.up_to < 1:
@@ -1229,9 +1315,21 @@ class AcquireReserveCard:
 class AcquireTech:
     """The Acquire Tech icon with a ``discount`` (Tech Module): open the
     owner's choice of a face-up Tech tile at ``discount`` spice off
-    [Bloodlines pp. 7, 12]."""
+    [Bloodlines pp. 7, 12].
+
+    In a Rise of Ix game it is the Ix board's Acquire Tech icon
+    ("아이콘마다 ... 하나를 얻을 수 있다("may")", [Rise of Ix p. 4],
+    docs/rules/rise-of-ix.md 4): the same piece, one per icon, opening the
+    choice of an Ix tile that the owner may also decline, at ``discount`` off
+    and with any Negotiators returned (``rules.tech``)."""
 
     discount: int = 1
+    # Appropriate (Rise of Ix): "You may use Solari instead of spice for this
+    # purchase." [Steam app text] -- the whole price in one resource, never
+    # mixed, Negotiators taking a Solari each ("Solari와 spice를 섞어 낼 수
+    # 없다. Negotiator 하나가 1 Solari를 깎는다", docs/rules/rise-of-ix.md 4,
+    # [Rise of Ix p. 10]).
+    solari_allowed: bool = False
 
     def __post_init__(self) -> None:
         if self.discount < 0:
@@ -1610,6 +1708,10 @@ class RevealCountKind(StrEnum):
     COMPLETED_CONTRACT = "completed_contract"
     # Each other revealed card with swords (Leadership).
     OTHER_SWORD_CARD = "other_sword_card"
+    # Each of the player's dreadnoughts in the Conflict when the line resolves
+    # (Rise of Ix's Full-Scale Assault); the swords stay if one leaves later
+    # (rise-of-ix.md 9.3, designer ruling; [DI p. 11]).
+    DREADNOUGHT_IN_CONFLICT = "dreadnought_in_conflict"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1740,6 +1842,13 @@ class GainInfluenceWhereAtMost:
 
 
 @dataclass(frozen=True, slots=True)
+class GainInfluenceWhereAgent:
+    """Gain one Influence with each Faction that has at least one of the
+    player's Agents on its board spaces [Quid Pro Quo card]: each such
+    Faction once, however many of the player's Agents are on its spaces."""
+
+
+@dataclass(frozen=True, slots=True)
 class UseSignetAbility:
     """The Signet Ring icon off the Signet Ring card: "you use the Signet
     Ring ability (with the corresponding icon) on your Leader" [Main p. 20]
@@ -1757,7 +1866,21 @@ class ForceEnemyRetreat:
     """Force an enemy troop to retreat [Disruption Tactics card]: one unit of
     an opponent's in the Conflict goes back to its garrison. A Sardaukar
     Commander is a troop [Bloodlines p. 4]; the acting player picks the
-    opponent and, where both kinds are there, the kind (OQ-034)."""
+    opponent and, where both kinds are there, the kind (OQ-034).
+
+    Desert Ambush (Rise of Ix): "For each troop you deploy this turn, you may
+    force an enemy unit to retreat." [Steam app text]. ``units``: an enemy
+    *unit*, so a dreadnought too ("unit | ... Desert Ambush(enemy unit) |
+    예", docs/rules/rise-of-ix.md 6, [Rise of Ix p. 6]), the player of the
+    card picking it (rise-of-ix.md 9.3, designer ruling; sandworms are P7).
+    ``per_troop_deployed``: one retreat for each troop the owner deploys this
+    turn, counted as OQ-029 counts the turn's deployment ("같은 큐브를
+    retreat했다 다시 배치해도 두 번 세지 않음", rise-of-ix.md 15), each a
+    "may".
+    """
+
+    units: bool = False
+    per_troop_deployed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1885,6 +2008,96 @@ class ReserveCostDiscount:
             raise ValueError("a Reserve discount must be positive")
 
 
+@dataclass(frozen=True, slots=True)
+class CommissionDreadnought:
+    """Commission one of the owner's dreadnoughts: one from its supply to its
+    garrison for each Dreadnought icon ("you may commission", [Rise of Ix
+    p. 6], docs/rules/rise-of-ix.md 6).
+
+    An optional piece ("may"): the owner takes the icon or leaves it. With
+    no dreadnought in the supply -- a seat has two at most, and "supply에
+    없으면 더 얻지 못한다" -- the icon has no effect and the space or card
+    that prints it is still played (designer ruling, BGG forum). A second
+    icon is a second piece; the piece has no field.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class EachOpponentRetreatsDreadnought:
+    """Each opponent retreats one dreadnought ("Each opponent retreats one
+    dreadnought." [Cannon Turrets card, Steam app text]): every opponent with
+    a dreadnought in the Conflict sends one back to its garrison, clockwise
+    from the next seat; one without is unaffected.
+
+    A dreadnought is a unit and the card names it, so unlike a card's "troop"
+    it is reached [Rise of Ix p. 6] (docs/rules/rise-of-ix.md 6, the table
+    row "dreadnought"). The dreadnoughts of a seat are alike, so the
+    opponent has nothing to choose and the retreat is automatic.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class PledgeConflictWinSolari:
+    """"If you win this Conflict:" ``solari`` Solari [Strategic Push card,
+    Steam app text; its log: "If they win the Conflict they will gain" the
+    Solari], pledged as the Combat card resolves and gained only by the
+    Conflict's sole winner.
+
+    The pledge waits on the seat (``PlayerState.strategic_push_solari``) and
+    is paid as an automatic row of the sole winner's window, in the order
+    the winner chooses among that window's rows (OQ-121 ruling 6 (1):
+    "Strategic Push의 'If you win this Conflict' 몫(Solari 2)은 고를 것 없는
+    자동 줄이다"). A tie for first has no win effect row [FAQ p. 4], and a
+    pledge that is not paid lapses when the Conflict ends.
+    """
+
+    solari: int = 2
+
+    def __post_init__(self) -> None:
+        if self.solari < 1:
+            raise ValueError("a pledged Solari amount must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class PlaceNegotiator:
+    """Tech Negotiation: send one of the owner's troops from its supply to
+    the Ix board as a Negotiator, for each Tech Negotiation icon ("you may
+    take a troop", [Rise of Ix p. 4], docs/rules/rise-of-ix.md 4).
+
+    An optional piece ("may"): the owner takes the icon or leaves it. With
+    no troop in the supply the icon has no effect ("supply가 비면 아무 일도
+    없다") and the space or card that prints it is still played. A later
+    Acquire Tech may return any number of Negotiators for one spice off
+    each (``rules.tech``). A second icon is a second piece; the piece has
+    no field.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class Freighter:
+    """The Freighter icon: move the owner's Freighter on the Shipping track,
+    one choice for each icon ("Freighter 아이콘마다 Freighter를 둘 가운데
+    하나로 움직일 수 있다("may"): 한 칸 위로(맨 위면 불가) 또는 맨 아래로
+    회수", [Rise of Ix p. 5], docs/rules/rise-of-ix.md 5).
+
+    An optional piece: the owner moves up one space (never from the top),
+    recalls the Freighter to the bottom -- taking the rewards of its space and
+    of every space below, in the order it chooses (``rules.shipping_track``)
+    -- or neither. A second icon is a second piece; the piece has no field.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class TakeAnotherTurn:
+    """"You may take another turn immediately after this one." [Weirding Way
+    card, Steam app text]: the owner's next turn follows this one at once,
+    an Agent or a Reveal turn [DI p. 8]; then play goes on clockwise from
+    the owner. Optional ("may"). The Voice does not block it ("Weirding Way의
+    둘째 turn은 The Voice에 막히지 않음", docs/rules/rise-of-ix.md 9.3;
+    imperium-base.md 13.1, OQ-116), and Ilesa Ecaz counts it as a turn
+    (OQ-119)."""
+
+
 type Reward = (
     GainResources
     | GainVictoryPoints
@@ -1955,6 +2168,7 @@ type Reward = (
     | TakeMentat
     | UseSignetAbility
     | GainInfluenceWhereAtMost
+    | GainInfluenceWhereAgent
     | RecruitUndeployableTroops
     | TroopToMemory
     | DrawTwistedIntrigueCards
@@ -1967,6 +2181,12 @@ type Reward = (
     | ReserveCostDiscount
     | DoubleBaseHarvestSpice
     | DoubleBonusHarvestSpice
+    | CommissionDreadnought
+    | EachOpponentRetreatsDreadnought
+    | PledgeConflictWinSolari
+    | PlaceNegotiator
+    | Freighter
+    | TakeAnotherTurn
 )
 
 

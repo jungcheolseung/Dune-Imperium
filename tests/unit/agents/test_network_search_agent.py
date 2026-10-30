@@ -832,8 +832,12 @@ def test_a_retraced_search_seat_answers_like_the_one_that_searched(
     # seed 2 is the first that meets one, at the 21st, between the splits.
     # Observation v36 (stage P2b of docs/base-game-and-ix-plan.md) widened the
     # network's input and its slot table, so the seeded test network moved
-    # again: Scouts seed 2 meets none in 66 decisions, seed 0 does.
-    game_seed = {"arrakeen_scouts": 0, "immortality": 3}.get(expansion or "", 0)
+    # again: Scouts seed 2 meets none in 66 decisions, seed 0 does. Observation
+    # v39 with Rise of Ix's Tech tiles widened it again: seed 0 meets none,
+    # seed 1 does (and 4 to 6). Strategic Push's pledge column in v39's
+    # ``seat{k}_ix`` widened it once more: seeds 0 and 1 meet none, seed 2
+    # does, at the 16th decision (and 3 to 7).
+    game_seed = {"arrakeen_scouts": 2, "immortality": 3}.get(expansion or "", 0)
     decided = _search_seat_game(
         seat_agent(), config, seed=game_seed, seat=1, count=66
     )

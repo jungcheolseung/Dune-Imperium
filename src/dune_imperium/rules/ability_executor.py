@@ -36,12 +36,14 @@ from dataclasses import dataclass
 from functools import cache, lru_cache
 from typing import Final
 
+from dune_imperium.content.bloodlines.sardaukar import COMMANDER_STRENGTH
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.abilities import Ability, intrigue_ability
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquireTleilaxuCard,
+    CommissionDreadnought,
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
@@ -50,6 +52,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     FlipBattleCard,
     FlipFaceUpConflictCard,
+    Freighter,
     GainInfluence,
     GiveIntrigueToOpponent,
     LoseInfluence,
@@ -57,6 +60,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     OpponentLosesTroop,
     PassTurn,
     PeekTopCard,
+    PlaceNegotiator,
     PlaceSpy,
     RecallSpy,
     RecallYourAgent,
@@ -74,7 +78,7 @@ from dune_imperium.core.decisions import PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
-from dune_imperium.core.state import GameState
+from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.acquisition import (
     IntrigueAcquisition,
     acquirable_imperium_instance_ids,
@@ -103,6 +107,10 @@ from dune_imperium.rules.combat_deployment import (
     grant_recruit_deployment,
     reconcile_deployment_after_retreat,
 )
+from dune_imperium.rules.dreadnought_commission import (
+    commission_block,
+    commission_dreadnought,
+)
 from dune_imperium.rules.effect_interpreter import (
     ChoiceSlot,
     apply_rewards,
@@ -110,6 +118,7 @@ from dune_imperium.rules.effect_interpreter import (
     choice_slots,
     condition_holds,
     cost_slots,
+    deployable_garrison_dreadnoughts,
     deployable_garrison_units,
     face_up_conflict_card_ids,
     flippable_battle_card_ids,
@@ -141,6 +150,8 @@ from dune_imperium.rules.influence import (
     lose_faction_influence,
 )
 from dune_imperium.rules.intrigue_deck import with_trashed_intrigue
+from dune_imperium.rules.intrigue_knowledge import forget_intrigue_cards
+from dune_imperium.rules.negotiators import negotiator_block, place_negotiator
 from dune_imperium.rules.planetologist import replace_sandworms
 from dune_imperium.rules.reveal_turn import (
     add_reveal_persuasion,
@@ -149,6 +160,12 @@ from dune_imperium.rules.reveal_turn import (
     reveal_late_arrivals,
 )
 from dune_imperium.rules.shield_wall import destroy_shield_wall
+from dune_imperium.rules.shipping_track import (
+    freighter_can_advance,
+    freighter_can_recall,
+    move_freighter_up,
+    recall_freighter,
+)
 from dune_imperium.rules.spy_moves import (
     connected_post_ids,
     spy_placement_frame,
@@ -160,7 +177,7 @@ from dune_imperium.rules.spy_placement import (
     spy_options,
     spy_placement_allowed_post_ids,
 )
-from dune_imperium.rules.strength import reveal_in_progress
+from dune_imperium.rules.strength import dreadnought_strength, reveal_in_progress
 from dune_imperium.rules.tactics import advance_tactics_token
 from dune_imperium.rules.tech import deploy_troops_from_supply, push_tech_acquisition
 from dune_imperium.rules.tleilaxu_row import (
@@ -175,7 +192,12 @@ from dune_imperium.rules.unit_loss import (
     opponent_unit_loss_frames,
     opponents_with_conflict_troop,
 )
-from dune_imperium.rules.units import retreat_units, unit_count_arguments, unit_counts
+from dune_imperium.rules.units import (
+    deployed_unit_counts,
+    retreat_units,
+    unit_count_arguments,
+    unit_counts,
+)
 
 # --- Pending entries ---------------------------------------------------------
 
@@ -470,14 +492,24 @@ def piece_rows(
             # The detonation icon is a choice [Main pp. 10, 20].
             rows.append(row(Verb.DESTROY_SHIELD_WALL))
             rows.append(row(Verb.DECLINE, of=Verb.DESTROY_SHIELD_WALL))
-        case DeployFromGarrison(up_to=up_to):
+        case DeployFromGarrison(up_to=up_to, dreadnoughts=with_dreadnoughts):
             # "Deploy up to N troops": zero stays offered; a garrisoned
-            # Sardaukar Commander is a troop here [Bloodlines p. 4].
+            # Sardaukar Commander is a troop here [Bloodlines p. 4]. Second
+            # Wave's "units" take the garrison dreadnoughts too [Rise of Ix
+            # p. 6], within the same N.
             troops, commanders = deployable_garrison_units(state, player)
             rows.extend(
                 row(Verb.DEPLOY, Target.UNITS, arguments)
                 for arguments in unit_count_arguments(
-                    minimum=0, maximum=up_to, troops=troops, commanders=commanders
+                    minimum=0,
+                    maximum=up_to,
+                    troops=troops,
+                    commanders=commanders,
+                    dreadnoughts=(
+                        deployable_garrison_dreadnoughts(state, player)
+                        if with_dreadnoughts
+                        else 0
+                    ),
                 )
             )
         case TrashPersonalCard(hand_only=hand_only, mandatory=mandatory):
@@ -690,6 +722,38 @@ def piece_rows(
                 # Nothing within the cap: the acquisition alone fizzles
                 # (designer ruling, Impress; OQ-057).
                 rows.append(row(Verb.CONFIRM_EMPTY, of=Verb.ACQUIRE))
+        case CommissionDreadnought():
+            # "you may commission" [Rise of Ix p. 6]: the icon is taken or
+            # left. With no dreadnought in the supply it has nothing to take
+            # (``commission_block``); an own turn then offers no row and the
+            # turn's end lapses the icon (OQ-095 (2)), a stacked frame its
+            # refusal.
+            if commission_block(state, player) is None:
+                rows.append(row(Verb.RECRUIT, variant="dreadnought"))
+            if refusals:
+                rows.append(row(Verb.DECLINE, of=Verb.RECRUIT, variant="dreadnought"))
+        case PlaceNegotiator():
+            # "you may take a troop" [Rise of Ix p. 4]: the icon is taken or
+            # left, like the Dreadnought icon above. With no troop in the
+            # supply it has nothing to take (``negotiator_block``): an own
+            # turn offers no row and the turn's end lapses the icon (OQ-095
+            # (2)), a stacked frame its refusal.
+            if negotiator_block(state, player) is None:
+                rows.append(row(Verb.RECRUIT, variant="negotiator"))
+            if refusals:
+                rows.append(row(Verb.DECLINE, of=Verb.RECRUIT, variant="negotiator"))
+        case Freighter():
+            # "you may move your Freighter in one of two ways" [Rise of Ix
+            # p. 5]: up one space (never from the top), recall (never from
+            # the bottom, where it moves nothing), or neither. An own turn
+            # offers no refusal and the turn's end lapses the icon (OQ-095
+            # (2)), a stacked frame its refusal.
+            if freighter_can_advance(state, player):
+                rows.append(row(Verb.ADVANCE, variant="freighter"))
+            if freighter_can_recall(state, player):
+                rows.append(row(Verb.COLLECT, variant="freighter"))
+            if refusals:
+                rows.append(row(Verb.DECLINE, of=Verb.ADVANCE, variant="freighter"))
         case PassTurn(optional=True):
             # Bindu Suspension: after the draw, "you may pass your turn" or
             # play it normally (OQ-117); the refusal is the normal turn.
@@ -815,6 +879,21 @@ _PASSED_EVENTS: Final[Mapping[str, tuple[str, str]]] = {
     ),
     "decline_intrigue_spy": ("spy_declined", "intrigue_spy_declined"),
     "keep_shield_wall": ("shield_wall_kept", "shield_wall_kept"),
+    # A Dreadnought icon left unused (Rise of Ix).
+    "decline_intrigue_dreadnought": (
+        "dreadnought_declined",
+        "intrigue_dreadnought_declined",
+    ),
+    # A Tech Negotiation icon left unused (Rise of Ix).
+    "decline_intrigue_negotiator": (
+        "negotiator_declined",
+        "intrigue_negotiator_declined",
+    ),
+    # A Freighter icon left unused (Rise of Ix).
+    "decline_intrigue_freighter": (
+        "freighter_declined",
+        "intrigue_freighter_declined",
+    ),
     "resolve_intrigue_influence_without_faction": (
         "influence_unavailable",
         "intrigue_influence_unavailable",
@@ -914,6 +993,10 @@ def apply_piece(
     arguments = dict(action.arguments)
     step_source = f"{source}:slot:{entry.step}"
     taken = replace(entry, step=entry.step + 1)
+    # A card a cost piece discards or trashes gives its Rise of Ix Unload box
+    # before the line's rewards (docs/rules/rise-of-ix.md 7): the costs come
+    # first among the pieces (``choice_slots``).
+    paying_cost = entry.step < len(cost_slots(entry_sections(entry)))
 
     match piece:
         case AcquireCardUpTo():
@@ -952,7 +1035,11 @@ def apply_piece(
             )
         case TrashDiscardPileCard():
             result = trash_personal_card(
-                state, player, str(arguments["card_id"]), source=step_source
+                state,
+                player,
+                str(arguments["card_id"]),
+                source=step_source,
+                unload_at_once=paying_cost,
             )
             # No AGENT_EFFECTS frame is on top here, so ``trash_personal_card``
             # credited no troop-on-trash trigger (Eliminate Allies) anywhere. A
@@ -1057,7 +1144,11 @@ def apply_piece(
                 taken = replace(taken, held=())
         case DiscardFromHand():
             result = discard_personal_card_from_hand(
-                state, player, str(arguments["card_id"]), source=step_source
+                state,
+                player,
+                str(arguments["card_id"]),
+                source=step_source,
+                unload_at_once=paying_cost,
             )
         case DestroyShieldWall():
             if shape.verb is Verb.DESTROY_SHIELD_WALL:
@@ -1067,13 +1158,18 @@ def apply_piece(
             else:
                 result = _passed(state, player, action, step_source)
         case DeployFromGarrison():
-            count, commanders = unit_counts(arguments)
-            if count + commanders == 0:
+            troops, commanders, dreadnoughts = deployed_unit_counts(arguments)
+            if troops + commanders + dreadnoughts == 0:
                 # "Deploy up to N troops" chose zero: no unit moves.
                 result = RuleResult(state=state)
             else:
                 result = _deploy_units(
-                    state, player, step_source, troops=count, commanders=commanders
+                    state,
+                    player,
+                    step_source,
+                    troops=troops,
+                    commanders=commanders,
+                    dreadnoughts=dreadnoughts,
                 )
         case TrashPersonalCard(bonus_spice=bonus_spice, bonus_minimum_cost=minimum):
             if shape.verb in (Verb.DECLINE, Verb.CONFIRM_EMPTY):
@@ -1081,7 +1177,11 @@ def apply_piece(
             else:
                 trashed_id = str(arguments["card_id"])
                 result = trash_personal_card(
-                    state, player, trashed_id, source=step_source
+                    state,
+                    player,
+                    trashed_id,
+                    source=step_source,
+                    unload_at_once=paying_cost,
                 )
                 # As for the discard-pile trash above [Main p. 10] [FAQ p. 4].
                 result = credit_trash_recruits(result, player)
@@ -1221,6 +1321,20 @@ def apply_piece(
             # The Spy placement is passed up only when it cannot be made
             # (``piece_rows``).
             result = _passed(state, player, action, step_source)
+        case CommissionDreadnought() if shape.verb is Verb.DECLINE:
+            result = _passed(state, player, action, step_source)
+        case CommissionDreadnought():
+            result = commission_dreadnought(state, player, source=step_source)
+        case PlaceNegotiator() if shape.verb is Verb.DECLINE:
+            result = _passed(state, player, action, step_source)
+        case PlaceNegotiator():
+            result = place_negotiator(state, player, source=step_source)
+        case Freighter() if shape.verb is Verb.DECLINE:
+            result = _passed(state, player, action, step_source)
+        case Freighter() if shape.verb is Verb.ADVANCE:
+            result = move_freighter_up(state, player, source=step_source)
+        case Freighter():
+            result = recall_freighter(state, player, source=step_source)
         case RecallYourAgent() if shape.verb is Verb.CONFIRM_EMPTY:
             result = _passed(state, player, action, step_source)
         case RecallYourAgent():
@@ -1357,7 +1471,13 @@ def _give_intrigue_card(
     receiver = replace(target, intrigue_cards=(*target.intrigue_cards, card_id))
     players = replace_player(replace_player(state.players, giver), receiver)
     return RuleResult(
-        state=replace(state, players=players),
+        # The other seats cannot tell which card moved: they lose track of
+        # the giver's cards they knew (OQ-149).
+        state=forget_intrigue_cards(
+            replace(state, players=players),
+            owner.intrigue_cards,
+            keeping=(player, recipient),
+        ),
         events=(
             # The table sees a card change hands; only the two seats
             # involved learn which one [Main p. 7].
@@ -1721,43 +1841,85 @@ def _deploy_units(
     *,
     troops: int,
     commanders: int = 0,
+    dreadnoughts: int = 0,
 ) -> RuleResult:
-    """Move garrison units into the Conflict, counting strength mid-Reveal."""
+    """Move garrison units into the Conflict, counting strength mid-Reveal
+    and mid-Combat.
+
+    ``dreadnoughts`` are the units a card that says "units" moves [Rise of Ix
+    p. 6] (Second Wave); a card's "troop" never reaches one. A Combat
+    Intrigue deploys in the Combat phase, where the running strength is no
+    longer re-derived from the units (``strength.refresh_pre_reveal_strength``),
+    so the units' own strength is added here; there is no turn then, so the
+    turn's deployment count is left alone. A dreadnought is moved by a Combat
+    card only: the Reveal turn's strength has no count for one.
+    """
 
     owner = state.players[player]
+    in_combat = state.phase is GamePhase.COMBAT
     if (
         troops < 0
         or commanders < 0
-        or troops + commanders < 1
+        or dreadnoughts < 0
+        or troops + commanders + dreadnoughts < 1
         or owner.troops_garrison < troops
         or owner.commanders_garrison < commanders
+        or owner.dreadnoughts_garrison < dreadnoughts
     ):
         raise RuntimeError("Intrigue deployment exceeds the garrison")
-    event = GameEvent(
-        event_id=f"{step_source}:deploy",
-        kind="troops_deployed",
-        payload=(
-            *((("commanders", commanders),) if commanders else ()),
-            ("count", troops + commanders),
-            ("player", player),
-        ),
-    )
+    if dreadnoughts and not in_combat:
+        raise RuntimeError("a dreadnought is deployed by a Combat Intrigue card")
+    events: list[GameEvent] = []
+    if troops + commanders:
+        events.append(
+            GameEvent(
+                event_id=f"{step_source}:deploy",
+                kind="troops_deployed",
+                payload=(
+                    *((("commanders", commanders),) if commanders else ()),
+                    ("count", troops + commanders),
+                    ("player", player),
+                ),
+            )
+        )
+    if dreadnoughts:
+        events.append(
+            GameEvent(
+                event_id=f"{step_source}:deploy_dreadnoughts",
+                kind="dreadnoughts_deployed",
+                payload=(("count", dreadnoughts), ("player", player)),
+            )
+        )
     if reveal_is_open_for(state, player):
         counted = add_units_to_reveal(
             state, player, troops=troops, commanders=commanders
         )
-        return RuleResult(state=counted.state, events=(event, *counted.events))
+        return RuleResult(state=counted.state, events=(*events, *counted.events))
     next_owner = replace(
         owner,
         troops_garrison=owner.troops_garrison - troops,
         troops_conflict=owner.troops_conflict + troops,
         commanders_garrison=owner.commanders_garrison - commanders,
         commanders_conflict=owner.commanders_conflict + commanders,
-        units_deployed_turn=owner.units_deployed_turn + troops + commanders,
+        dreadnoughts_garrison=owner.dreadnoughts_garrison - dreadnoughts,
+        dreadnoughts_conflict=owner.dreadnoughts_conflict + dreadnoughts,
     )
+    if in_combat:
+        next_owner = replace(
+            next_owner,
+            combat_strength=owner.combat_strength
+            + 2 * troops
+            + COMMANDER_STRENGTH * commanders
+            + dreadnoughts * dreadnought_strength(owner),
+        )
+    else:
+        next_owner = replace(
+            next_owner,
+            units_deployed_turn=owner.units_deployed_turn + troops + commanders,
+        )
     return RuleResult(
         state=replace(state, players=replace_player(state.players, next_owner)),
-        events=(event,),
+        events=tuple(events),
     )
 
 

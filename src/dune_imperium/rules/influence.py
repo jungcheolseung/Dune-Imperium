@@ -1,6 +1,7 @@
 """Shared Faction Influence, track-bonus, and Alliance transitions."""
 
 from copy import replace
+from typing import Final
 
 from dune_imperium.content.arrakeen_scouts import RoundModifier
 from dune_imperium.content.rulesets import InfluenceFourBonus, content_for
@@ -60,6 +61,9 @@ def gain_faction_influence(
     # owner's next one (user decision 2026-10-10, OQ-106).
     hold = draw_waits_for_owner(state, player)
     gained = 0
+    # Tessia Vernius' Snooper rewards ③ and ④ raise this track once more
+    # after the gain (``_reach_snooper``).
+    snooper_influence = 0
     events: list[GameEvent] = []
     for step in range(amount):
         owner = players[player]
@@ -100,6 +104,27 @@ def gain_faction_influence(
                 ),
             )
             events.extend(bonus_events)
+            if faction.value in players[player].snooper_faction_ids:
+                (
+                    players,
+                    intrigue_deck,
+                    pending_draws,
+                    pending_spies,
+                    snooper_events,
+                    extra,
+                ) = _reach_snooper(
+                    state,
+                    players,
+                    intrigue_deck,
+                    pending_draws,
+                    pending_spies,
+                    player,
+                    faction,
+                    source=f"{event_prefix}:snooper:{step}",
+                    hold=hold,
+                )
+                events.extend(snooper_events)
+                snooper_influence += extra
             if players[player].leader_id == "steersman_y_rkoon":
                 # Plot Course: "Whenever you reach 2 Influence with a
                 # Faction, play the next Navigation card" — queued and
@@ -163,18 +188,107 @@ def gain_faction_influence(
                 ),
             ),
         )
-    return RuleResult(
-        state=replace(
-            state,
-            players=players,
-            intrigue_deck=intrigue_deck,
-            pending_intrigue_draws=pending_draws,
-            pending_navigation_plays=pending_navigation,
-            pending_track_spies=pending_spies,
-            scouts_four_bonus_choices=pending_four,
-        ),
-        events=tuple(events),
+    gained_state = replace(
+        state,
+        players=players,
+        intrigue_deck=intrigue_deck,
+        pending_intrigue_draws=pending_draws,
+        pending_navigation_plays=pending_navigation,
+        pending_track_spies=pending_spies,
+        scouts_four_bonus_choices=pending_four,
     )
+    if snooper_influence:
+        # The Snooper reward's Influence on the token's own track, after
+        # the gain that reached the token (its token is gone, so it reaches
+        # no second one).
+        more = gain_faction_influence(
+            gained_state,
+            player,
+            faction,
+            snooper_influence,
+            event_prefix=f"{event_prefix}:snooper",
+        )
+        return RuleResult(state=more.state, events=(*events, *more.events))
+    return RuleResult(state=gained_state, events=tuple(events))
+
+
+# Tessia Vernius' Snooper track, top to bottom: the reward each token reached
+# takes, in order (docs/rules/rise-of-ix.md 10): (1) discard a card -> 1
+# spice, (2) the token's track's Influence 4 bonus, (3) one Influence on that
+# track, (4) both (2) and (3).
+SNOOPER_DISCARD_REWARD: Final = 1
+SNOOPER_BONUS_REWARDS: Final = frozenset({2, 4})
+SNOOPER_INFLUENCE_REWARDS: Final = frozenset({3, 4})
+SNOOPER_TOKENS: Final = 4
+SNOOPER_REACHED_EVENT: Final = "snooper_token_reached"
+
+
+def _reach_snooper(
+    state: GameState,
+    players: tuple[PlayerState, ...],
+    intrigue_deck: tuple[str, ...],
+    pending_draws: tuple[tuple[int, int, str], ...],
+    pending_spies: tuple[tuple[int, str], ...],
+    player: int,
+    faction: Faction,
+    *,
+    source: str,
+    hold: bool,
+) -> tuple[
+    tuple[PlayerState, ...],
+    tuple[str, ...],
+    tuple[tuple[int, int, str], ...],
+    tuple[tuple[int, str], ...],
+    tuple[GameEvent, ...],
+    int,
+]:
+    """Tessia Vernius' Careful Observation: her token on ``faction``'s
+    Influence 2 space is reached -- also when a multi-step gain passes it --
+    and taken; she gains the topmost uncovered Snooper reward ("Whenever you
+    reach a Snooper token, gain the topmost uncovered reward from the
+    Snooper track" [Tessia Vernius card, app text]; docs/rules/rise-of-ix.md
+    10). Reward (2) is paid here; (1)'s discard is a choice, announced by
+    the event and offered once the action is done (``rules.snoopers``);
+    the Influence of (3) and (4) is returned for the caller to gain after
+    this gain."""
+
+    owner = players[player]
+    reward = SNOOPER_TOKENS + 1 - len(owner.snooper_faction_ids)
+    owner = replace(
+        owner,
+        snooper_faction_ids=tuple(
+            held for held in owner.snooper_faction_ids if held != faction.value
+        ),
+    )
+    players = replace_player(players, owner)
+    events: list[GameEvent] = [
+        GameEvent(
+            event_id=source,
+            kind="snooper_token_reached",
+            payload=(
+                ("faction", faction.value),
+                ("player", player),
+                ("reward", reward),
+            ),
+        )
+    ]
+    if reward in SNOOPER_BONUS_REWARDS:
+        players, intrigue_deck, pending_draws, pending_spies, bonus_event = (
+            _grant_four_bonus(
+                state,
+                players,
+                intrigue_deck,
+                pending_draws,
+                pending_spies,
+                player,
+                faction,
+                source=f"{source}:bonus",
+                hold=hold,
+            )
+        )
+        events.append(bonus_event)
+    extra = 1 if reward in SNOOPER_INFLUENCE_REWARDS else 0
+    return players, intrigue_deck, pending_draws, pending_spies, tuple(events), extra
 
 
 def _grant_four_bonus(

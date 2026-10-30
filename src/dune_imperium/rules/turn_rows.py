@@ -41,18 +41,20 @@ from dune_imperium.content.uprising.board import Faction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
+from dune_imperium.core.observation import SHIPPING_REWARD_ROW, TURN_ROWS_KEY
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules.frames import (
     TECH_ACQUIRE_PENDING_KEY,
     FrameKind,
     frame_context,
+    is_unload_hold,
     own_turn_frame_index,
     with_context,
 )
 from dune_imperium.rules.influence import influence_can_rise
 
-PENDING_KEY: Final = "pending_turn_rows"
+PENDING_KEY: Final = TURN_ROWS_KEY
 """The turn frame's waiting effects: a JSON list of ``[kind, source, value]``."""
 
 RESEARCH_BONUS: Final = "research_bonus"
@@ -84,9 +86,49 @@ is ``"<card id>|<icon>"`` (``rules.acquire_icons``). A fixed Faction's icon is
 mandatory; the chosen-Faction icon is too while a Faction can rise, and with
 every cube at the top it waits and the press lapses it (OQ-060, OQ-057 (1))."""
 
+SHIPPING_REWARD: Final = SHIPPING_REWARD_ROW
+"""One reward of a Shipping track recall the owner took in its own turn (Rise
+of Ix, stage P4c-3, ``rules.shipping_track``): ``value`` is the Shipping space
+whose reward it is (``"1"``, ``"2:recruit"``, ``"2:influence"``, ``"3"``:
+space 2 prints two rewards, each its own, OQ-148). All but space 3's are
+mandatory; its Acquire Tech is "may" ([Rise of Ix p. 4]), so it holds no turn
+end back and the press lapses it (OQ-095 (2))."""
+
+UNLOAD_ICON: Final = "unload_icon"
+"""One icon of an Unload card's Reveal box an effect triggered in its owner's
+own turn (Rise of Ix, ``rules.unload``): ``value`` is ``"<card instance>|<icon>"``;
+mandatory, a gain [Rise of Ix p. 7] -- but an icon of ``OPTIONAL_UNLOAD_ICONS``,
+whose row opens its own window: "may", it holds no turn end back and the
+press lapses it (OQ-095 (2))."""
+
+OPTIONAL_UNLOAD_ICONS: Final = frozenset({"freighter", "negotiator"})
+"""The Unload icons the owner "may" use (``rules.unload``'s decision icons):
+the Freighter icon, "you may move your Freighter" [Rise of Ix p. 5], and the
+Tech Negotiation icon, "you may take a troop" [Rise of Ix p. 4]."""
+
+EFFECT_INFLUENCE: Final = "effect_influence"
+"""One Faction's Influence of an effect that raises several Factions it
+names itself (Rise of Ix's Quid Pro Quo, OQ-153): ``value`` is the Faction;
+each is a row taken in the owner's order; mandatory -- a Faction at the top
+gains nothing when taken (OQ-060), as an acquire box's fixed icon."""
+
+SNOOPER_DISCARD: Final = "snooper_discard"
+"""Tessia Vernius' first Snooper reward, "discard -> 1 spice", reached in
+her own turn (Rise of Ix, ``rules.snoopers``): ``value`` is the token's
+Faction; optional (an arrow), so it holds no turn end back and the press
+lapses it."""
+
 CHOSEN_INFLUENCE_ICON: Final = "influence_any"
 """The acquire icon ``value`` of an Influence with a Faction of the owner's
 choice."""
+
+DREADNOUGHT_ACQUIRE_ICON: Final = "dreadnought"
+"""The acquire icon ``value`` of Full-Scale Assault's Dreadnought icon (Rise
+of Ix): "you may commission" [Rise of Ix p. 6], so it holds no turn end."""
+
+FREIGHTER_ACQUIRE_ICON: Final = "freighter"
+"""The acquire icon ``value`` of Appropriate's Freighter icon (Rise of Ix):
+"you may move your Freighter" [Rise of Ix p. 5], so it holds no turn end."""
 
 type Pending = tuple[str, str, str]
 
@@ -145,11 +187,14 @@ def waits_on_turn(state: GameState, player: int) -> bool:
     frame (``queue``) rather than open its own window: inside the seat's own
     turn and not in a Scouts line run in it -- a line's frame anywhere above
     the turn frame, also under a frame the line opened (its Contract market,
-    its Research direction)."""
+    its Research direction) -- nor in an arrow's Unload hold above it, whose
+    Unload is resolved to the end before the arrow's right side
+    (``rules.unload``, docs/rules/rise-of-ix.md 7)."""
 
     index = own_turn_frame_index(state, player)
     return index is not None and not any(
-        frame.kind in _SCOUTS_KINDS for frame in state.decision_stack[index + 1 :]
+        frame.kind in _SCOUTS_KINDS or is_unload_hold(frame)
+        for frame in state.decision_stack[index + 1 :]
     )
 
 
@@ -215,6 +260,9 @@ def acquire_icon_blocked(value: str, owner: PlayerState) -> bool:
     no row (OQ-060): it waits, greyed out, and the press lapses it."""
 
     _card_id, icon = value.split("|")
+    if icon in (DREADNOUGHT_ACQUIRE_ICON, FREIGHTER_ACQUIRE_ICON):
+        # Optional ("may"): it never holds the end, offered or not.
+        return True
     return icon == CHOSEN_INFLUENCE_ICON and not any(
         influence_can_rise(owner, faction) for faction in Faction
     )
@@ -224,16 +272,25 @@ def holds_the_end(state: GameState, player: int) -> bool:
     """Whether a waiting effect still offers a mandatory row: c6r6 with a
     Faction it can raise ("획득은 의무다", OQ-060 2026-09-30 addition),
     Arrakis Planetologist's Intrigue card, a research pair's icon, a
-    completed Contract's icon (OQ-112 (4)), or an acquire box's icon that
-    offers a row (OQ-141). Read from public facts only (the frame's context,
-    the seat's Influence), so the server's turn-end mirror may ask it too."""
+    completed Contract's icon (OQ-112 (4)), an acquire box's icon that
+    offers a row (OQ-141), or an Unload icon (Rise of Ix). Read from public
+    facts only (the frame's context, the seat's Influence), so the server's
+    turn-end mirror may ask it too."""
 
     frame = rows_frame(state, player)
     if frame is None:
         return False
     owner = state.players[player]
     return any(
-        kind in (PLANETOLOGIST_INTRIGUE, RESEARCH_ICON, CONTRACT_ICON)
+        kind
+        in (
+            PLANETOLOGIST_INTRIGUE,
+            RESEARCH_ICON,
+            CONTRACT_ICON,
+            EFFECT_INFLUENCE,
+        )
+        or (kind == UNLOAD_ICON and not unload_icon_is_optional(value))
+        or (kind == SHIPPING_REWARD and value != _OPTIONAL_SHIPPING_REWARD)
         or (
             kind == RESEARCH_BONUS
             and ResearchBonus(value) is ResearchBonus.INFLUENCE_ANY
@@ -242,6 +299,16 @@ def holds_the_end(state: GameState, player: int) -> bool:
         or (kind == ACQUIRE_ICON and not acquire_icon_blocked(value, owner))
         for kind, _source, value in pending(frame)
     )
+
+
+_OPTIONAL_SHIPPING_REWARD: Final = "3"
+
+
+def unload_icon_is_optional(value: str) -> bool:
+    """Whether a waiting Unload icon ``value`` (``"<card instance>|<icon>"``)
+    is "may" (``OPTIONAL_UNLOAD_ICONS``)."""
+
+    return value.split("|")[1] in OPTIONAL_UNLOAD_ICONS
 
 
 def _tech_acquire_keys(context: Mapping[str, object]) -> tuple[str, ...]:
@@ -255,12 +322,12 @@ def _tech_acquire_keys(context: Mapping[str, object]) -> tuple[str, ...]:
 
 def tech_influence_blocked(key: str, owner: PlayerState) -> bool:
     """Whether an owed Tech acquire icon ``key`` (``<tech_id>:<effect>``) is
-    an "Influence with any Faction" (Glowglobes, Navigation Chamber) with
-    every Faction at the top, where it offers none (OQ-060; user decision
-    2026-10-17, composed-effects plan 5, rule decision 1)."""
+    an "Influence with any Faction" (Glowglobes, Navigation Chamber; Shuttle
+    Fleet's two) with every Faction at the top, where it offers none (OQ-060;
+    user decision 2026-10-17, composed-effects plan 5, rule decision 1)."""
 
     _tech_id, effect = key.split(":")
-    return effect == "influence" and not any(
+    return effect in ("influence", "distinct_influence") and not any(
         influence_can_rise(owner, faction) for faction in Faction
     )
 
@@ -307,13 +374,35 @@ def _lapsed(player: int, item: Pending) -> GameEvent:
             payload=(("player", player),),
         )
     if kind == ACQUIRE_ICON:
-        # Only the chosen Influence with every Faction at the top reaches the
-        # press (``holds_the_end``).
+        # Only the chosen Influence with every Faction at the top, and Full-
+        # Scale Assault's optional Dreadnought icon and Appropriate's
+        # optional Freighter icon, reach the press (``holds_the_end``).
         card_id, icon = value.split("|")
         return GameEvent(
             event_id=f"{source}:{icon}_lapsed",
             kind="acquire_icon_lapsed",
             payload=(("card_id", card_id), ("effect", icon), ("player", player)),
+        )
+    if kind == SNOOPER_DISCARD:
+        return GameEvent(
+            event_id=f"{source}:snooper_discard_lapsed",
+            kind="snooper_discard_lapsed",
+            payload=(("faction", value), ("player", player)),
+        )
+    if kind == UNLOAD_ICON:
+        # Only a "may" icon reaches the press (``holds_the_end``).
+        card_id, icon = value.split("|")
+        return GameEvent(
+            event_id=f"{source}:{icon}_lapsed",
+            kind="unload_icon_lapsed",
+            payload=(("card_id", card_id), ("effect", icon), ("player", player)),
+        )
+    if kind == SHIPPING_REWARD:
+        # Only space 3's Acquire Tech reaches the press (``holds_the_end``).
+        return GameEvent(
+            event_id=f"{source}:shipping_reward_lapsed",
+            kind="shipping_reward_lapsed",
+            payload=(("player", player), ("space", int(value.split(":")[0]))),
         )
     # Arrakis Planetologist's Intrigue card and a research space's icon hold
     # the end (``holds_the_end``).

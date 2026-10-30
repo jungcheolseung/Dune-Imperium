@@ -20,16 +20,20 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
     BlockChosenSpaceForOpponentsNextAgent,
     CompleteContract,
     DrawPersonalCards,
     ForceEnemyRetreat,
+    Freighter,
     GainInfluence,
     GainResources,
     GenerateSpecimens,
     GrantCombatDeployment,
     PlaceSpy,
+    TakeAnotherTurn,
     TakeCardFromDiscard,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.leader_abilities import (
     SIGNET_ABILITIES,
@@ -49,9 +53,10 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
-from dune_imperium.rules.action_shapes import Source, printer_parts
+from dune_imperium.rules.action_shapes import Source, printer_parts, printer_value
 from dune_imperium.rules.agent_box_abilities import (
     NOT_PRINTED_BLOCK,
+    RETREATS_FOR_DEPLOYMENT_KEY,
     SPACE_INFLUENCE_REPLACED,
     AgentIconBlock,
     AgentPaymentBlock,
@@ -62,6 +67,7 @@ from dune_imperium.rules.agent_box_abilities import (
     apply_discard_pay,
     apply_discard_take,
     apply_either_influence,
+    apply_either_trash,
     apply_influence_loss,
     apply_intrigue_payment,
     apply_lose,
@@ -78,11 +84,13 @@ from dune_imperium.rules.agent_box_abilities import (
     discard_pay_block,
     discard_pay_box,
     discard_pay_rows,
+    discard_reward_block,
     discard_rows,
     discard_spy,
     either_box,
     either_choice,
     either_rows,
+    either_trash_block,
     graft_trash_block,
     graft_trash_box,
     graft_trash_rows,
@@ -144,6 +152,7 @@ from dune_imperium.rules.contracts import (
     complete_contract_by_effect,
 )
 from dune_imperium.rules.effects import (
+    EXTRA_TURNS_KEY,
     OptionalBlockKind,
     OptionalEffectBlock,
     active_agent_card,
@@ -200,13 +209,26 @@ from dune_imperium.rules.leader_abilities import (
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.sandworms import sandworm_block
 from dune_imperium.rules.shield_wall import destroy_shield_wall
+from dune_imperium.rules.shipping_track import (
+    freighter_can_advance,
+    freighter_can_recall,
+    move_freighter_up,
+    recall_freighter,
+)
 from dune_imperium.rules.specimens import generate_specimens
 from dune_imperium.rules.spy_placement import (
     place_spy,
     recall_spy,
 )
+from dune_imperium.rules.tech import (
+    SOLARI_PAYMENT,
+    SPICE_PAYMENT,
+    push_tech_acquisition,
+    tech_acquisition_possible,
+)
 from dune_imperium.rules.unit_loss import lose_unit, unit_loss_options
-from dune_imperium.rules.units import retreat_units
+from dune_imperium.rules.units import retreat_dreadnought, retreat_units
+from dune_imperium.rules.unload import hold_payer, push_unload_hold, unload_holds
 
 # Immortality boxes whose enum names do not fit a comparison line.
 _RESEARCH_AND_TRASH_FOR_VP = (
@@ -280,6 +302,17 @@ AGENT_ICON_RECALL: Final = "recall"  # Steersman: one Agent to recall
 # Tread in Darkness: its optional black trash icon (``trash_agent_card`` or
 # ``decline_agent_card_trash``).
 AGENT_ICON_TRASH: Final = "trash"
+# Landing Rights' Freighter icon (Rise of Ix): ``advance_agent_card_freighter``
+# or ``recall_agent_card_freighter``; unused, it lapses at the turn's end.
+AGENT_ICON_FREIGHTER: Final = "freighter"
+# Embedded Agent's second Freighter icon (Rise of Ix).
+AGENT_ICON_FREIGHTER_SECOND: Final = "freighter_second"
+# Weirding Way's "You may take another turn immediately after this one" (Rise
+# of Ix): ``take_agent_card_extra_turn``; unused, it lapses at the turn's end.
+AGENT_ICON_EXTRA_TURN: Final = "extra_turn"
+# Ixian Engineer's Acquire Tech icon (Rise of Ix): ``acquire_agent_card_tech``
+# opens the Acquire Tech window; unused, it lapses at the turn's end.
+AGENT_ICON_TECH: Final = "tech"
 
 # Leaders whose Signet Ring ability prints several independent icons, from
 # their records (composed A6c): the Signet Ring card's box (or a Ghola
@@ -1060,13 +1093,90 @@ def _spy_icon_rows(
     return agent_spy_rows(state, player, spy[1], context)
 
 
+def _freighter_icon_rows(
+    state: GameState,
+    player: int,
+    context: dict[str, ActionValue],
+    recorded: Ability | None,
+) -> tuple[DomainAction, ...] | None:
+    """An icon box's Freighter icon (Landing Rights, Rise of Ix): "you may
+    move your Freighter in one of two ways" [Rise of Ix p. 5] -- up one space
+    (never from the top) or a recall (never from the bottom, where it moves
+    nothing). The icon is "may", so no refusal is offered in the owner's turn:
+    the turn's end lapses it (OQ-095 (2), ``OPTIONAL_AGENT_ICONS``). None when
+    no Freighter icon waits."""
+
+    freighter = icon_line(context, recorded, Freighter)
+    if freighter is None:
+        return None
+    assert recorded is not None
+    if box_icon_block(state.players[player], context, recorded, freighter[0]):
+        return ()
+    return (
+        *(
+            (DomainAction(action_id="advance_agent_card_freighter", actor=player),)
+            if freighter_can_advance(state, player)
+            else ()
+        ),
+        *(
+            (DomainAction(action_id="recall_agent_card_freighter", actor=player),)
+            if freighter_can_recall(state, player)
+            else ()
+        ),
+    )
+
+
+def _tech_icon_rows(
+    state: GameState,
+    player: int,
+    context: dict[str, ActionValue],
+    recorded: Ability | None,
+) -> tuple[DomainAction, ...] | None:
+    """An icon box's Acquire Tech icon (Ixian Engineer, Rise of Ix): "아이콘마다
+    Ix board의 세 더미 맨 위 앞면 타일 하나를 얻을 수 있다("may")" [Rise of Ix
+    p. 4] at the Tech Discount the icon prints. Its row opens the Acquire Tech
+    window, which offers the tiles and its own refusal; the icon itself offers
+    no refusal in the owner's turn, and the turn's end lapses it (OQ-095 (2),
+    ``OPTIONAL_AGENT_ICONS``). Nothing is offered while no tile can be paid
+    for (``tech_acquisition_possible``), as at the Dreadnought space. None when
+    no Acquire Tech icon waits."""
+
+    tech = icon_line(context, recorded, AcquireTech)
+    if tech is None:
+        return None
+    assert recorded is not None
+    if box_icon_block(state.players[player], context, recorded, tech[0]):
+        return ()
+    if not state.config.rise_of_ix:
+        return ()
+    owner = state.players[player]
+    # Appropriate: "You may use Solari instead of spice for this purchase."
+    # -- its owner picks the resource as the icon opens the window, which
+    # then prices every tile in it, never mixed (rise-of-ix.md 4).
+    return tuple(
+        DomainAction(action_id=action_id, actor=player)
+        for action_id, payment in _TECH_PAYMENT_ROWS
+        if (payment == SPICE_PAYMENT or tech[1].solari_allowed)
+        and tech_acquisition_possible(state, owner, tech[1].discount, payment)
+    )
+
+
+# The rows that open an Agent box's Acquire Tech window, by what it is paid
+# with: spice, or Solari where the icon allows it (Appropriate).
+_TECH_PAYMENT_ROWS: Final = (
+    ("acquire_agent_card_tech", SPICE_PAYMENT),
+    ("acquire_agent_card_tech_with_solari", SOLARI_PAYMENT),
+)
+
+
 def legal_agent_card_icon_choice_actions(
     state: GameState,
     player: int,
 ) -> tuple[DomainAction, ...]:
-    """The Combat and Spy icons of an icon-by-icon box, answered by the
-    payment and the Spy handlers (cleanup-2d-5); the recall, the Influence
-    and the trash keep their own providers."""
+    """The Combat, Spy, Freighter and Acquire Tech icons of an icon-by-icon
+    box, answered by the payment, the Spy, the Freighter and the Tech
+    handlers (cleanup-2d-5); the recall, the Influence and the trash keep their
+    own providers."""
 
     try:
         frame, context = current_agent_effect_context(state)
@@ -1080,7 +1190,131 @@ def legal_agent_card_icon_choice_actions(
     return (
         *(_combat_icon_rows(state, player, context, recorded) or ()),
         *(_spy_icon_rows(state, player, context, recorded) or ()),
+        *(_freighter_icon_rows(state, player, context, recorded) or ()),
+        *(
+            (DomainAction(action_id="take_agent_card_extra_turn", actor=player),)
+            if icon_line(context, recorded, TakeAnotherTurn) is not None
+            else ()
+        ),
+        *(_tech_icon_rows(state, player, context, recorded) or ()),
     )
+
+
+def apply_agent_card_extra_turn(state: GameState, action: DomainAction) -> RuleResult:
+    """Weirding Way (Rise of Ix): "You may take another turn immediately after
+    this one." The icon is spent and the turn's frame owes one more turn of
+    its owner's (``EXTRA_TURNS_KEY``): when this turn closes, the owner's next
+    turn opens at once (``effects.close_agent_turn``), counted as a turn of
+    its own (Ilesa Ecaz's second turn, OQ-119), with no Voice block left on it
+    (OQ-116: the block ends at this turn's Agent placement)."""
+
+    if action not in legal_agent_card_icon_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Weirding Way choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    source = agent_card_source(state.round_number, action.actor, source_card_id)
+    finish_agent_icon(context, AGENT_ICON_EXTRA_TURN)
+    owed = context.get(EXTRA_TURNS_KEY, 0)
+    if isinstance(owed, bool) or not isinstance(owed, int):
+        raise RuntimeError("the owed extra turns are not a number")
+    context[EXTRA_TURNS_KEY] = owed + 1
+    working = advance_after_effect(state, context)
+    return RuleResult(
+        state=working,
+        events=(
+            GameEvent(
+                event_id=f"{source}:extra_turn",
+                kind="extra_turn_taken",
+                payload=(("player", action.actor),),
+            ),
+            agent_box_event(
+                source,
+                source_card_id,
+                action.actor,
+                BoxOutcome.RESOLVED,
+                effect=AGENT_ICON_EXTRA_TURN,
+            ),
+        ),
+    )
+
+
+def apply_agent_card_tech(state: GameState, action: DomainAction) -> RuleResult:
+    """Open the Acquire Tech window for an Agent box's Acquire Tech icon.
+
+    The icon is retired and the frame written back first, so the window stacks
+    on the state the turn frame belongs to (``ix_board_spaces.
+    apply_ix_space_action`` does the same for a space's icon); the window's
+    refusal names the card that printed the icon (``printer_value``)."""
+
+    if action not in legal_agent_card_icon_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Agent-card Acquire Tech choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    source = agent_card_source(state.round_number, action.actor, source_card_id)
+    recorded = box_ability(active_agent_card(context).agent_effect)
+    tech = icon_line(context, recorded, AcquireTech)
+    assert tech is not None
+    printer = printer_value(
+        Source.AGENT_CARD,
+        active_agent_card(context).card.card_id,
+        active_box(context),
+    )
+    finish_agent_icon(context, AGENT_ICON_TECH)
+    working = advance_after_effect(state, context)
+    opened = push_tech_acquisition(
+        working,
+        action.actor,
+        discount=tech[1].discount,
+        source=f"{source}:tech",
+        printer=printer,
+        payment=dict(_TECH_PAYMENT_ROWS)[action.action_id],
+    )
+    done = agent_box_event(
+        source,
+        source_card_id,
+        action.actor,
+        BoxOutcome.RESOLVED,
+        effect=AGENT_ICON_TECH,
+    )
+    return RuleResult(state=opened.state, events=(*opened.events, done))
+
+
+def apply_agent_card_freighter(state: GameState, action: DomainAction) -> RuleResult:
+    """Move the Freighter for an Agent box's Freighter icon: up one space, or
+    a recall whose rewards wait on the turn (``rules.shipping_track``).
+
+    The icon is retired and the frame written back first, so the recall's
+    rewards are queued on the state the turn frame belongs to
+    (``ix_board_spaces.apply_ix_space_action`` does the same for a space's
+    icon)."""
+
+    if action not in legal_agent_card_icon_choice_actions(state, action.actor):
+        raise ValueError("action is not a legal Agent-card Freighter choice")
+    _, context = current_agent_effect_context(state)
+    _, source_card_id, _ = _effect_subject(context)
+    source = agent_card_source(state.round_number, action.actor, source_card_id)
+    # The first Freighter icon still waiting (Embedded Agent prints two, each
+    # its own "may" [Rise of Ix p. 5]).
+    found = icon_line(
+        context, box_ability(active_agent_card(context).agent_effect), Freighter
+    )
+    key = AGENT_ICON_FREIGHTER if found is None else found[0]
+    finish_agent_icon(context, key)
+    working = advance_after_effect(state, context)
+    move = (
+        move_freighter_up
+        if action.action_id == "advance_agent_card_freighter"
+        else recall_freighter
+    )
+    moved = move(working, action.actor, source=f"{source}:{key}")
+    done = agent_box_event(
+        source,
+        source_card_id,
+        action.actor,
+        BoxOutcome.RESOLVED,
+        effect=key,
+    )
+    return RuleResult(state=moved.state, events=(*moved.events, done))
 
 
 def apply_agent_card_spy_action(
@@ -1412,7 +1646,14 @@ def apply_agent_card_opponent_retreat(
     state: GameState,
     action: DomainAction,
 ) -> RuleResult:
-    """Retreat one unit of the chosen opponent to their garrison."""
+    """Retreat one unit of the chosen opponent to their garrison.
+
+    Desert Ambush's box (Rise of Ix) stays open for the rest of the turn:
+    each troop deployed buys one retreat, and once one is bought the turn's
+    deployment may not be withdrawn below the retreats it paid for ("이번
+    turn의 배치 수를 조건으로 이미 사용한 효과가 있으면, 배치 수를 그 조건
+    아래로 내리는 회수는 허용하지 않는다", OQ-029 (3)); unused, the press
+    lapses it (OQ-095 (2))."""
 
     if action not in legal_agent_card_opponent_retreat_actions(state, action.actor):
         raise ValueError("action is not a legal enemy retreat choice")
@@ -1421,17 +1662,44 @@ def apply_agent_card_opponent_retreat(
     arguments = dict(action.arguments)
     target = arguments["player"]
     commanders = arguments.get("commanders", 0)
+    dreadnoughts = arguments.get("dreadnoughts", 0)
     if isinstance(target, bool) or not isinstance(target, int):
         raise RuntimeError("enemy retreat has an invalid target")
-    if isinstance(commanders, bool) or not isinstance(commanders, int):
+    if (
+        isinstance(commanders, bool)
+        or not isinstance(commanders, int)
+        or isinstance(dreadnoughts, bool)
+        or not isinstance(dreadnoughts, int)
+    ):
         raise RuntimeError("enemy retreat has an invalid unit kind")
     source = (
         f"round:{state.round_number}:player:{action.actor}:"
         f"agent_card:{source_card_id}:opponent:{target}"
     )
-    retreated = retreat_units(
-        state, target, source, troops=1 - commanders, commanders=commanders
+    retreated = (
+        retreat_dreadnought(state, target, source)
+        if dreadnoughts
+        else retreat_units(
+            state, target, source, troops=1 - commanders, commanders=commanders
+        )
     )
+    piece = target_piece(box_ability(active_agent_card(context).agent_effect))
+    if isinstance(piece, ForceEnemyRetreat) and piece.per_troop_deployed:
+        before = context.get(RETREATS_FOR_DEPLOYMENT_KEY, 0)
+        if isinstance(before, bool) or not isinstance(before, int):
+            raise RuntimeError("Desert Ambush's retreat count is not a number")
+        used = before + 1
+        context[RETREATS_FOR_DEPLOYMENT_KEY] = used
+        owner = retreated.state.players[action.actor]
+        floored = replace(
+            owner,
+            units_deployed_committed=max(owner.units_deployed_committed, used),
+        )
+        players = replace_player(retreated.state.players, floored)
+        return RuleResult(
+            state=advance_after_effect(retreated.state, context, players),
+            events=retreated.events,
+        )
     context["pending_agent_effect"] = False
     next_state = advance_after_effect(
         retreated.state, context, retreated.state.players
@@ -1573,6 +1841,11 @@ def legal_agent_card_trash_actions(
     if recorded is not None and trash_box(recorded):
         # A trash box, from its record (composed A3e).
         return trash_rows(state, player, recorded)
+    if _either_trash(recorded):
+        # Imperial Bashar's "[Troop] -OR- [Trash a card]": the recruit beside
+        # the trash rows, from its record (stage P4d).
+        assert recorded is not None
+        return either_rows(state, player, recorded)
     if source_card.agent_effect not in (
         *_TRASH_ICON_BOXES,
         PersonalCardAgentEffect.GAIN_REWARDS_PER_FACE_UP_BATTLE_ICON,
@@ -1596,6 +1869,16 @@ def legal_agent_card_trash_actions(
             )
             for card_id in _agent_card_trash_targets(state, player, context)
         ),
+    )
+
+
+def _either_trash(recorded: Ability | None) -> bool:
+    """Whether ``recorded`` is a recruit-or-trash box (Imperial Bashar)."""
+
+    return (
+        recorded is not None
+        and either_box(recorded)
+        and isinstance(either_choice(recorded), TrashPersonalCard)
     )
 
 
@@ -1636,6 +1919,8 @@ def agent_card_trash_block(state: GameState, player: int) -> OptionalEffectBlock
     recorded = box_ability(effect)
     if recorded is not None and trash_box(recorded):
         return trash_block(state, player, recorded, context)
+    if recorded is not None and _either_trash(recorded):
+        return either_trash_block(state, player, recorded, context)
     if effect not in _TRASH_BOXES:
         return None
     if _agent_card_trash_targets(state, player, context):
@@ -1657,6 +1942,8 @@ def apply_agent_card_trash(state: GameState, action: DomainAction) -> RuleResult
     recorded = box_ability(source_card.agent_effect)
     if recorded is not None and trash_box(recorded):
         return apply_trash(state, action, recorded)
+    if recorded is not None and _either_trash(recorded):
+        return apply_either_trash(state, action, recorded)
     context["pending_agent_effect"] = False
     if action.action_id == "decline_agent_card_trash":
         context.pop("trashes_remaining", None)
@@ -1820,6 +2107,9 @@ def agent_card_payment_block(
         return payment_reward_block(state, player, ability)
     if ability is not None and plain_and_paid_box(ability):
         return plain_and_paid_block(state, player)
+    if ability is not None and discard_box(ability):
+        # In The Shadows' Influence with every Faction it names at the top.
+        return discard_reward_block(state, player, ability)
     return None
 
 
@@ -2158,9 +2448,12 @@ def _apply_payment_choice(
     if recorded is not None and wall_and_worm_box(recorded):
         return _apply_arrakis_revolt_payment(state, action, recorded, context, source)
     if payment_box(recorded):
-        # An optional arrow with no target, from its record (composed A3b).
+        # An optional arrow with no target, from its record (composed A3b);
+        # the row names which arrow of a "-OR-" box it pays (Local Fence).
         assert recorded is not None
-        return apply_payment(state, action.actor, recorded, context, source)
+        return apply_payment(
+            state, action.actor, recorded, context, source, action.action_id
+        )
     if recorded is not None and lose_box(recorded):
         # Piter, Genius Advisor (composed A3f).
         return apply_lose(state, action, recorded, context, source)
@@ -2234,7 +2527,10 @@ def _apply_graft_trash(
     [Beguiling Pheromones card]. Trashing the other grafted card expires its
     un-activated box (OQ-022 designer ruling, FAQ p. 1); trashing the box's
     own card is its own cost, so the reward still pays out. The cost is the
-    trash; its own event says so (cleanup-2c-6)."""
+    trash; its own event says so (cleanup-2c-6). A trashed Unload card's box
+    is paid inside that cost, before the reward: "비용 → 효과 줄의 왼쪽(비용)이
+    Unload를 일으키면 Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer
+    ruling, docs/rules/rise-of-ix.md 7)."""
 
     _, active_id, space_id = _effect_subject(context)
     named = dict(action.arguments).get("card_id")
@@ -2245,22 +2541,73 @@ def _apply_graft_trash(
     else:
         expired = _expired_partner_box(state, context, action.actor)
     next_state = advance_after_effect(state, context)
-    trashed = trash_personal_card(next_state, action.actor, trashed_id, source=source)
-    working = trashed.state
-    events: list[GameEvent] = [*trashed.events, *expired]
+    trashed = trash_personal_card(
+        next_state, action.actor, trashed_id, source=source, unload_at_once=True
+    )
+    if unload_holds(trashed.events):
+        # The trashed card's box holds a decision: the reward waits for it
+        # ("Unload를 끝까지 해결한 뒤 오른쪽으로 간다", ``rules.unload``). The
+        # frame was written before the trash, as the reward finds it.
+        return RuleResult(
+            state=push_unload_hold(
+                trashed.state,
+                action.actor,
+                source=source,
+                payer=_GRAFT_TRASH_PAYER,
+                values={"source": source},
+            ),
+            events=(*trashed.events, *expired),
+        )
+    return _graft_trash_right_side(
+        trashed.state,
+        action.actor,
+        ability,
+        space_id,
+        source,
+        [*trashed.events, *expired],
+    )
+
+
+_GRAFT_TRASH_PAYER: Final = "agent_box_graft_trash"
+
+
+@hold_payer(_GRAFT_TRASH_PAYER)
+def _pay_held_graft_trash(
+    state: GameState, player: int, values: Mapping[str, ActionValue]
+) -> RuleResult:
+    """A graft trash's reward once the trashed card's Unload is decided:
+    the box on top again, as the trash left it."""
+
+    _, context = current_agent_effect_context(state)
+    ability = box_ability(active_agent_card(context).agent_effect)
+    assert ability is not None and graft_trash_box(ability)
+    _, _, space_id = _effect_subject(context)
+    return _graft_trash_right_side(
+        state, player, ability, space_id, str(values["source"]), []
+    )
+
+
+def _graft_trash_right_side(
+    working: GameState,
+    player: int,
+    ability: Ability,
+    space_id: str,
+    source: str,
+    events: list[GameEvent],
+) -> RuleResult:
+    """A graft trash's reward: specimens, the visited Faction's Influence."""
+
     for reward in ability.sections[0].rewards:
         step: RuleResult | None = None
         if isinstance(reward, GenerateSpecimens):
-            step = generate_specimens(
-                working, action.actor, reward.count, source=source
-            )
+            step = generate_specimens(working, player, reward.count, source=source)
         elif isinstance(reward, GainInfluence) and reward.visited_space:
             faction = BOARD_SPACES_BY_ID[space_id].faction
             if faction is None:
                 raise RuntimeError("a visited Faction's gain needs a Faction space")
             step = gain_faction_influence(
                 working,
-                action.actor,
+                player,
                 faction,
                 reward.times,
                 event_prefix=f"{source}:influence:{faction.value}",
@@ -2847,6 +3194,9 @@ def agent_icon_block(
             # Fill Coffers judges its icons from its record (composed A6c).
             return box_icon_block(owner, context, signet, key)
     if key == AGENT_ICON_SOLARI:
+        # Spice Smugglers' armed 3 Solari (OQ-148); no other box prints it.
+        if ability is not None and key in ability.armed_icons:
+            return None
         return _NOT_PRINTED
     if key == AGENT_ICON_SPICE:
         if effect is _BRANCHING_PATH:
@@ -2975,9 +3325,15 @@ def resolve_agent_card_icon(
                 next_owner = recruit(1)
         case "solari":
             if available:
-                # Fill Coffers' Solari (the Signet Ring's box), as its record
-                # prints it.
-                next_owner = gain(solari=_signet_icon_gain(owner, key).solari)
+                # Spice Smugglers' armed line (OQ-148), or Fill Coffers'
+                # Solari (the Signet Ring's box), as its record prints it.
+                next_owner = gain(
+                    solari=(
+                        _armed_gain(recorded, key)
+                        if recorded is not None and key in recorded.armed_icons
+                        else _signet_icon_gain(owner, key)
+                    ).solari
+                )
         case "spice":
             if available:
                 # Branching Path's "[Intrigue card] [2 spice]" [Main p. 20];
@@ -3201,8 +3557,8 @@ def graft_boxes_are_stalled(state: GameState) -> bool:
 
 
 # The optional icons of boxes resolved icon by icon (OQ-027): Tread in
-# Darkness's black trash icon beside its mandatory draw, and Twisted Mentat's
-# "You may recall the Agent you sent this turn".
+# Darkness's black trash icon beside its mandatory draw, Twisted Mentat's
+# "You may recall the Agent you sent this turn" and Landing Rights' Freighter.
 OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = (
     MappingProxyType(
         {
@@ -3211,6 +3567,25 @@ OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = 
             PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: frozenset(
                 {AGENT_ICON_RECALL}
             ),
+            # Landing Rights' Freighter icon (Rise of Ix, "may").
+            PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: frozenset(
+                {AGENT_ICON_FREIGHTER}
+            ),
+            # Embedded Agent's two Freighter icons (Rise of Ix, "may" each).
+            PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
+                frozenset({AGENT_ICON_FREIGHTER, AGENT_ICON_FREIGHTER_SECOND})
+            ),
+            # Weirding Way's extra turn (Rise of Ix, "may").
+            PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: frozenset(
+                {AGENT_ICON_EXTRA_TURN}
+            ),
+            # Ixian Engineer's Acquire Tech icon (Rise of Ix, "may").
+            PersonalCardAgentEffect.MAY_ACQUIRE_TECH: frozenset({AGENT_ICON_TECH}),
+            # Appropriate's, paid in spice or Solari (Rise of Ix, "may").
+            (
+                PersonalCardAgentEffect
+                .MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO
+            ): frozenset({AGENT_ICON_TECH}),
         }
     )
 )
@@ -3218,17 +3593,37 @@ OPTIONAL_AGENT_ICONS: Final[Mapping[PersonalCardAgentEffect, frozenset[str]]] = 
 _OPTIONAL_PROGRESS_KEYS: Final = (
     "trashes_remaining",
     "corrinth_first_card_id",
+    # A two-card Discard arrow's first pick (Rise of Ix).
+    "discard_first_card_id",
     "feyd_track_stage",
     "staban_bonus_post",
     "listeners_paid",
     "leader_spy_recalled",
+    # Tessia Vernius' Duplicity, its Influence lost (Rise of Ix).
+    "duplicity_paid",
 )
 # Signet Ring abilities optional only at some stages (composed A6c): their
 # record's mark is the printed reading of the first one, their stage keys
 # decide the rest (``_signet_is_optional``).
 _STAGED_SIGNETS: Final = frozenset(
-    {"unseen_network", "corrino_liaison", "listeners", "personal_training"}
+    {
+        "unseen_network",
+        "corrino_liaison",
+        "listeners",
+        "personal_training",
+        # Rise of Ix's Tessia Vernius: optional until the Influence is lost.
+        "duplicity",
+    }
 )
+
+
+def _armed_gain(ability: Ability, key: str) -> GainResources:
+    """What an arrow's armed resource icon pays (Spice Smugglers' Solari)."""
+
+    (reward,) = ability.sections[ability.armed_icons.index(key)].rewards
+    if not isinstance(reward, GainResources):
+        raise RuntimeError(f"the armed {key} icon pays no resources")
+    return reward
 
 
 def _signet_icon_gain(owner: PlayerState, key: str) -> GainResources:
@@ -3341,6 +3736,9 @@ def _signet_is_optional(state: GameState, context: dict[str, ActionValue]) -> bo
         return signet.mark is AbilityMark.OPTIONAL
     if signet.hook == "unseen_network":
         return isinstance(context.get("staban_bonus_post"), str)
+    if signet.hook == "duplicity":
+        # Duplicity's arrow: the gain is owed once the Influence is lost.
+        return context.get("duplicity_paid") is not True
     if signet.hook in ("corrino_liaison", "listeners"):
         return (
             context.get("leader_spy_recalled") is not True
@@ -3464,6 +3862,7 @@ _SIGNET_STAGE_KEYS: Final = (
     "leader_spy_recalled",
     "staban_bonus_post",
     "listeners_paid",
+    "duplicity_paid",
     "signet_rewards",
 )
 
@@ -3509,9 +3908,10 @@ def _box_selection_under_way(
         return True
     player = context_int(context, "turn_owner")
     owner = state.players[player]
-    first = context.get("corrinth_first_card_id")
-    if isinstance(first, str) and first in owner.hand:
-        return True
+    for key in ("corrinth_first_card_id", "discard_first_card_id"):
+        first = context.get(key)
+        if isinstance(first, str) and first in owner.hand:
+            return True
     if context.get("agent_card_spy_pending") is True:
         return True
     if "trashes_remaining" in context:

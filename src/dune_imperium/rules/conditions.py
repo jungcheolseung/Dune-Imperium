@@ -13,8 +13,9 @@ Persuasion (Command) -- is its caller's.
 from typing import Final
 
 from dune_imperium.content.immortality.board import genetic_markers_reached
-from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.board import BOARD_SPACES_BY_ID, Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AgentOnSpaceWithIcon,
     CommandersInConflictAtLeast,
     CompletedContractsAtLeast,
     Condition,
@@ -121,11 +122,13 @@ def owner_condition_holds(owner: PlayerState, condition: Condition) -> bool | No
                 + owner.spice_spent_turn
             )
             return gained >= amount
-        case UnitsDeployedThisTurnAtLeast(count=count):
+        case UnitsDeployedThisTurnAtLeast(count=count, dreadnoughts=False):
             # "a moment in time when there are 3 units in the conflict that
             # were deployed to the conflict this turn, then that requirement
             # becomes true" (Message from designer): the turn's peak, which
-            # a retreat leaves standing (OQ-016).
+            # a retreat leaves standing (OQ-016). With ``dreadnoughts`` the
+            # condition also reads the turn's frame, which is not the seat's
+            # alone (``effect_interpreter.condition_holds``).
             return max(owner.units_deployed_turn, owner.units_deployed_peak) >= count
         case SpiceMustFlowCardsAtLeast(count=count):
             return spice_must_flow_copies(owner) >= count
@@ -138,4 +141,14 @@ def owner_condition_holds(owner: PlayerState, condition: Condition) -> bool | No
             return owner.troops_garrison + owner.commanders_garrison >= count
         case SpyingOnMakerSpace():
             return is_spying_on_maker_space(owner)
+        case AgentOnSpaceWithIcon(icon=icon):
+            # "If you have an Agent on an [Emperor] board space," [Imperial
+            # Shock Trooper, Steam app text]: an Agent sent earlier this round
+            # is still on its space until the Recall [DI p. 13]; one table
+            # holds both boards' spaces (``BOARD_SPACES_BY_ID``).
+            return any(
+                BOARD_SPACES_BY_ID[space_id].agent_icon is icon
+                for space_id in owner.agent_locations
+                if space_id in BOARD_SPACES_BY_ID
+            )
     return None

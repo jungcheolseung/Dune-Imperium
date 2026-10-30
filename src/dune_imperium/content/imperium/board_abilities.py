@@ -86,7 +86,13 @@ IMPERIUM_BOARD_SPACE_ABILITIES: Final[Mapping[tuple[str, int, str], Ability]] = 
             ("imperium_swordmaster", 0, ""): _icons(TakeSwordmaster()),
             ("imperium_high_council", 0, ""): _icons(TakeHighCouncilSeat()),
             ("carthag", 0, ""): _icons(RecruitTroops(1), DrawIntrigueCards(1)),
-            ("imperium_research_station", 0, ""): _icons(DrawPersonalCards(3)),
+            # "Draw three cards" one at a time, three icons, each its own step
+            # in the owner's order: user ruling 2026-10-29 "연구 기지는 한 장씩
+            # 뽑아야지" (the app lists the space's DrawAbility three times;
+            # plan 16.12, OQ-147).
+            ("imperium_research_station", 0, ""): _icons(
+                DrawPersonalCards(1), DrawPersonalCards(1), DrawPersonalCards(1)
+            ),
             ("imperium_sietch_tabr", 0, ""): _icons(
                 RecruitTroops(1), GainResources(water=1)
             ),

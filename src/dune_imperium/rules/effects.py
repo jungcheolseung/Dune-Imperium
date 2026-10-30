@@ -34,9 +34,11 @@ from dune_imperium.rules.frames import (
     FrameKind,
     owes_held_draw,
     owes_track_spy,
+    replace_player,
     reset_turn_counters,
 )
 from dune_imperium.rules.influence import influence_can_rise
+from dune_imperium.rules.one_step_ahead import finish_turn_count
 from dune_imperium.rules.strength import conflict_agent_strength
 from dune_imperium.rules.turn_rows import PENDING_KEY
 
@@ -149,7 +151,9 @@ def open_next_turn(state: GameState, player: int) -> GameState:
         # of the turn, after which no turn-passing play is offered.
         raise RuntimeError("a turn cannot pass over effects waiting on it")
     next_player = next_unrevealed_player(state, player)
-    players = reset_turn_counters(state.players, next_player, closing=player)
+    # A pass is one of the seat's turns (OQ-119, ``rules.one_step_ahead``).
+    passed = replace_player(state.players, finish_turn_count(state.players[player]))
+    players = reset_turn_counters(passed, next_player, closing=player)
     frames = list(state.decision_stack)
     for index in range(len(frames) - 1, -1, -1):
         frame = frames[index]
@@ -398,6 +402,14 @@ OPTIONAL_BOARD_ICONS: Final = frozenset(
         BOARD_ICON_COMMANDER,
         BOARD_ICON_TECH,
         "scouts_subcommittee",
+        # Rise of Ix's four spaces' icons, each a "may" [Rise of Ix pp. 4-6,
+        # 12] (``ix_board_spaces.BOARD_ICON_*``, spelled here like the ids
+        # above): the Dreadnought icon, an Acquire Tech, the Tech Negotiation
+        # "OR" box and a Freighter icon.
+        "commission",
+        "ix_tech",
+        "tech_negotiation",
+        "freighter",
     }
 )
 # The visit's effects that are not printed on the space, which a repeat of
@@ -453,6 +465,10 @@ class OptionalBlockKind(StrEnum):
     NO_CARD_TO_DRAW = "no_card_to_draw"
     NO_INTRIGUE_TO_DRAW = "no_intrigue_to_draw"  # deck and shufflable discard
     NO_TROOP_TO_RECRUIT = "no_troop_to_recruit"  # no supply troop nor specimen
+    # No dreadnought in the supply to commission [Rise of Ix p. 6].
+    NO_DREADNOUGHT_TO_COMMISSION = "no_dreadnought_to_commission"
+    # No troop in the supply to place as a Negotiator [Rise of Ix p. 4].
+    NO_TROOP_FOR_NEGOTIATOR = "no_troop_for_negotiator"
     TECH_UNAFFORDABLE = "tech_unaffordable"  # ``needed``: cheapest tile
     TECH_NEEDS_SPY = "tech_needs_spy"  # Advanced Data Analysis only
     # Never again in this turn.
@@ -636,6 +652,12 @@ def advance_after_effect(
     )
 
 
+EXTRA_TURNS_KEY: Final = "extra_turns_owed"
+"""The turns its owner takes at once after this one (Rise of Ix's Weirding
+Way, ``agent_effects.apply_agent_card_extra_turn``): on the Agent-turn effect
+frame, and on the turn frame of an extra turn while more are owed."""
+
+
 def close_agent_turn(state: GameState, owner: int) -> GameState:
     """End ``owner``'s Agent turn and open the next unrevealed seat's turn.
 
@@ -668,8 +690,18 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
         # Taken in any order, but before the turn ends (user ruling
         # 2026-10-10, OQ-106).
         raise RuntimeError("an Agent turn cannot close over a waiting draw")
-    next_player = next_unrevealed_player(state, owner)
-    players = reset_turn_counters(state.players, next_player, closing=owner)
+    # Weirding Way: "You may take another turn immediately after this one."
+    # The owner, unrevealed after an Agent turn, takes its next turn at once
+    # (an Agent or a Reveal turn [DI p. 8]); any more owed ride on that turn's
+    # frame (a Ghola copying the box, Immortality).
+    owed = dict(effect_frame.context).get(EXTRA_TURNS_KEY, 0)
+    if isinstance(owed, bool) or not isinstance(owed, int):
+        raise RuntimeError("the owed extra turns are not a number")
+    next_player = owner if owed else next_unrevealed_player(state, owner)
+    # Ilesa Ecaz's One Step Ahead counts the turns she finished
+    # (``rules.one_step_ahead``); an extra turn is one (OQ-119).
+    closed = replace_player(state.players, finish_turn_count(state.players[owner]))
+    players = reset_turn_counters(closed, next_player, closing=owner)
     next_frame = DecisionFrame(
         kind=FrameKind.TURN,
         frame_id=f"round:{state.round_number}:turn:{next_player}",
@@ -677,7 +709,11 @@ def close_agent_turn(state: GameState, owner: int) -> GameState:
             owner=next_player,
             prompt="Choose an Agent turn or Reveal turn",
         ),
-        context=(("round", state.round_number), ("turn_owner", next_player)),
+        context=(
+            *(((EXTRA_TURNS_KEY, owed - 1),) if owed > 1 else ()),
+            ("round", state.round_number),
+            ("turn_owner", next_player),
+        ),
     )
     return replace(
         state,

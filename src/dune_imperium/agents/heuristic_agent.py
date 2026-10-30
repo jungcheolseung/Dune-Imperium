@@ -137,6 +137,8 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     # Reveal gains are always taken; the order rarely matters to the rules
     # agent, so it takes them before shopping.
     "recruit_reveal_troops": 4.0,
+    # Rise of Ix's Treachery: its two troops go to the Conflict.
+    "deploy_reveal_supply_troops": 4.0,
     "draw_reveal_intrigue": 4.0,
     # Immortality: take the Reveal's specimens, answer research choices,
     # and prefer the paid research bonus; returning specimens is a last
@@ -231,6 +233,37 @@ _ACTION_SCORES: Final[dict[str, float]] = {
     "choose_subcommittee": 1.0,
     "gain_leader_signet_spice": 1.5,
     "trash_leader_tech": 0.5,
+    # Rise of Ix (docs/rules/rise-of-ix.md): a dreadnought is a free 3-strength
+    # unit and a tile a permanent upgrade, so commissioning and acquiring
+    # outrank the turn's end (0.5) like ``acquire_tech``; the Freighter climbs
+    # before it recalls (``recall_*`` ranks at ``_MINOR_ACTION_SCORE``), so a
+    # recall waits for the top space; a Negotiator is a plain troop of the
+    # supply sent to the Ix board, taken when nothing better is offered; a
+    # shipping reward and the winner's dreadnought are mandatory picks, and
+    # Detonation Devices' 1 VP outranks a Control space. Taking dreadnoughts
+    # back ranks last, as for troops.
+    "commission_board_dreadnought": 2.5,
+    "commission_intrigue_dreadnought": 2.5,
+    "acquire_board_tech": 2.5,
+    "acquire_agent_card_tech": 2.5,
+    "acquire_agent_card_tech_with_solari": 2.5,
+    "acquire_negotiation_tech": 2.5,
+    "place_board_negotiator": 1.0,
+    "place_intrigue_negotiator": 1.0,
+    "advance_board_freighter": 1.5,
+    "advance_intrigue_freighter": 1.5,
+    "advance_agent_card_freighter": 1.5,
+    # Weirding Way: another turn at once.
+    "take_agent_card_extra_turn": 3.0,
+    "advance_reveal_freighter": 1.5,
+    # Negotiated Withdrawal: three units leave the Conflict for one Influence.
+    "retreat_reveal_units_for_influence": -1.0,
+    "place_reveal_negotiator": 1.0,
+    "advance_freighter": 1.5,
+    "resolve_shipping_reward": 2.0,
+    "place_combat_reward_dreadnought": 2.0,
+    "detonate_combat_reward_dreadnought": 3.0,
+    "withdraw_dreadnoughts": -10.0,
 }
 
 _IMPERIUM_ACQUISITIONS: Final = frozenset(
@@ -241,6 +274,9 @@ _IMPERIUM_ACQUISITIONS: Final = frozenset(
         "acquire_intrigue_imperium",
         "acquire_leader_imperium",
         "acquire_manipulated_imperium",
+        # Boundless Ambition, revealed and in its Unload's window.
+        "acquire_reveal_imperium_card",
+        "acquire_unload_imperium_card",
     }
 )
 _RESERVE_ACQUISITIONS: Final = frozenset(
@@ -249,10 +285,17 @@ _RESERVE_ACQUISITIONS: Final = frozenset(
         "acquire_reserve_with_solari",
         "acquire_intrigue_reserve",
         "acquire_leader_reserve",
+        "acquire_reveal_reserve_card",
+        "acquire_unload_reserve_card",
     }
 )
 _COUNT_DEPLOYMENTS: Final = frozenset(
-    {"deploy_troops", "deploy_intrigue_troops", "deploy_commanders"}
+    {
+        "deploy_troops",
+        "deploy_intrigue_troops",
+        "deploy_commanders",
+        "deploy_dreadnoughts",
+    }
 )
 # Intrigue unit moves whose ``count`` may be zero since codec v137: "Deploy
 # up to N troops" (Counterattack, Detonation, Twisted Devious) and Tactical
@@ -303,6 +346,8 @@ _OPTIONAL_AGENT_TURN_ROWS: Final = frozenset(
         "recall_conflict_agent_for_agent_card",
         "pay_agent_card_water",
         "pay_agent_card_spice",
+        "pay_agent_card_spice_for_solari",
+        "pay_agent_card_solari_for_spice",
         "pay_agent_card_spice_for_sandworm",
         "pay_agent_card_spice_for_sandworm_and_shield_wall",
         "pay_agent_card_specimen",
@@ -314,6 +359,7 @@ _OPTIONAL_AGENT_TURN_ROWS: Final = frozenset(
         "select_corrinth_city_discard",
         "pay_agent_card_intrigue_and_spice",
         "trash_intrigue_for_agent_card",
+        "put_intrigue_on_bottom_for_agent_card",
         "acquire_imperium_with_solari",
         "acquire_reserve_with_solari",
         "acquire_imperium_by_card",

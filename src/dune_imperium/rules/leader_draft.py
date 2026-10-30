@@ -18,6 +18,7 @@ from dune_imperium.core.events import GameEvent
 from dune_imperium.core.player import PlayerState
 from dune_imperium.core.state import GamePhase, GameState
 from dune_imperium.rules.frames import FrameKind, replace_player, top_frame_of_kind
+from dune_imperium.rules.intrigue_peek import assign_intelligence
 from dune_imperium.rules.masterstroke import assign_masterstroke
 from dune_imperium.rules.navigation import assign_navigation_deck
 from dune_imperium.rules.setup import (
@@ -26,6 +27,7 @@ from dune_imperium.rules.setup import (
     assign_twisted_deck,
     deal_setup_intrigue,
 )
+from dune_imperium.rules.snoopers import place_snooper_tokens
 from dune_imperium.rules.tech import assign_secret_project
 
 
@@ -183,10 +185,8 @@ def _finish_draft_setup(
             payload=(("leader_ids", tuple(unused)),),
         )
     )
-    return RuleResult(
-        # The original game's Baron chooses his Factions after the draft and
-        # every other setup step [FAQ p. 1] (``rules.masterstroke``).
-        state=assign_masterstroke(
+    prepared = assign_masterstroke(
+        place_snooper_tokens(
             assign_secret_project(
                 assign_navigation_deck(
                     assign_twisted_deck(
@@ -208,6 +208,13 @@ def _finish_draft_setup(
                     )
                 )
             )
-        ),
+        )
+    )
+    return RuleResult(
+        # The original game's Baron chooses his Factions after the draft and
+        # every other setup step [FAQ p. 1] (``rules.masterstroke``), and Rise
+        # of Ix's Hundro Moritani then looks at the Intrigue deck's top two
+        # (docs/rules/rise-of-ix.md 3, ``rules.intrigue_peek``).
+        state=assign_intelligence(prepared),
         events=tuple(events),
     )

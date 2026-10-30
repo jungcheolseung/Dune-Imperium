@@ -36,6 +36,7 @@ from dune_imperium.content.bloodlines.tech import (
     has_tech,
     tech_reveal_line,
 )
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS, IX_TECH_TILES
 from dune_imperium.content.uprising.abilities import (
     Ability,
     AbilityMark,
@@ -101,6 +102,7 @@ from dune_imperium.rules.card_bonds import (
 )
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.combat_deployment import (
+    RECRUITS_DEPLOYABLE_KEY,
     UNGAINED_UNDEPLOYABLE_KEY,
     deployment_rooms,
     grant_combat_icon,
@@ -120,6 +122,7 @@ from dune_imperium.rules.frames import (
     COMMANDERS_RECRUITED_KEY,
     REVEAL_COMMANDERS_RECRUITED_KEY,
     TECH_ACQUIRE_PENDING_KEY,
+    UNGAINED_SHIPPING_TROOPS_KEY,
     FrameKind,
     context_int,
     context_str,
@@ -132,6 +135,8 @@ from dune_imperium.rules.frames import (
     replace_top_frame,
     reset_turn_counters,
     reveal_is_open_for,
+    shipping_troop_count,
+    ungained_shipping_troop_count,
     with_context,
 )
 from dune_imperium.rules.gain_events import resources_gained_event, resources_paid_event
@@ -148,6 +153,11 @@ from dune_imperium.rules.intrigue_deck import (
     shufflable_intrigue_discard,
 )
 from dune_imperium.rules.intrigue_triggers import expire_reveal_faceup_intrigue
+from dune_imperium.rules.negotiators import negotiator_block, place_negotiator
+from dune_imperium.rules.one_step_ahead import (
+    finish_turn_count,
+    reveal_set_aside_card,
+)
 from dune_imperium.rules.planetologist import replace_sandworms, replaces_sandworms
 from dune_imperium.rules.reveal_lines import (
     COMMAND_PERSUASION,
@@ -171,7 +181,12 @@ from dune_imperium.rules.spy_placement import (
 from dune_imperium.rules.strength import units_strength
 from dune_imperium.rules.tactics import advance_tactics_token
 from dune_imperium.rules.unit_loss import lose_unit
-from dune_imperium.rules.units import retreat_units, unit_count_arguments, unit_counts
+from dune_imperium.rules.units import (
+    retreat_dreadnought,
+    retreat_units,
+    unit_count_arguments,
+    unit_counts,
+)
 
 # Immortality Reveal choices whose enum names do not fit a comparison line.
 _LOSE_INFLUENCE_FOR_VP = (
@@ -232,6 +247,7 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     _Choice.COMMAND_MAY_TRASH_CARD: _TRASH_ACTIONS,
     _Choice.MAY_TRASH_SELF_FOR_COMBAT_ICON: _TRASH_ACTIONS,
     _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS: _TRASH_ACTIONS,
+    _Choice.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES: _TRASH_ACTIONS,
     _Choice.MAY_RETREAT_TWO_TROOPS_FOR_FOUR_STRENGTH: _RETREAT_ACTIONS,
     _Choice.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION: _RETREAT_ACTIONS,
     _Choice.GAIN_FIVE_SOLARI_OR_TAKE_HIGH_COUNCIL: frozenset(
@@ -248,6 +264,7 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     ),
     _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE: _INFLUENCE_GAIN_ACTIONS,
     _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: _INFLUENCE_GAIN_ACTIONS,
+    _Choice.GAIN_CHOSEN_INFLUENCE: _INFLUENCE_GAIN_ACTIONS,
     _Choice.COMMAND_MAY_TRASH_SELF_TO_ACQUIRE_ROW_CARD: frozenset(
         {"command_acquire_row_card"}
     ),
@@ -277,6 +294,17 @@ REVEAL_CHOICE_EFFECT_ACTIONS: Final[Mapping[_Choice, frozenset[str]]] = {
     ),
     _Choice.MAY_LOSE_TWO_TROOPS_FOR_TWO_SPECIMENS: frozenset(
         {"lose_reveal_troops_for_specimens"}
+    ),
+    _Choice.MAY_MOVE_FREIGHTER: frozenset(
+        {"advance_reveal_freighter", "recall_reveal_freighter"}
+    ),
+    _Choice.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE: frozenset(
+        {"retreat_reveal_units_for_influence"}
+    ),
+    _Choice.MAY_PLACE_TWO_NEGOTIATORS: frozenset({"place_reveal_negotiator"}),
+    _Choice.MAY_PLACE_NEGOTIATOR: frozenset({"place_reveal_negotiator"}),
+    _Choice.ACQUIRE_CARD_UP_TO_FIVE: frozenset(
+        {"acquire_reveal_imperium_card", "acquire_reveal_reserve_card"}
     ),
 }
 REVEAL_CHOICE_ACTION_IDS: Final = frozenset().union(
@@ -312,6 +340,10 @@ SOURCED_REVEAL_ACTION_IDS: Final = frozenset(
         "deploy_reveal_card_troops",
         "retreat_reveal_card_troops",
         "decline_reveal_spy_recall",
+        # Guild Chief Administrator's and Freighter Fleet's Freighter icon
+        # (Rise of Ix).
+        "advance_reveal_freighter",
+        "recall_reveal_freighter",
     }
 )
 
@@ -378,12 +410,14 @@ def target_reward_choice(ability: Ability | None) -> bool:
         case _:
             return False
     # Only the rewards the shape pays as printed: flat Reveal swords, one
-    # Intrigue card, the Combat icon, one Influence with a fixed Faction.
+    # Intrigue card, the Combat icon, a Victory Point, one Influence with a
+    # fixed Faction.
     return all(
         isinstance(reward, RevealSwords)
         and reward.per is None
         or reward == DrawIntrigueCards(1)
         or reward == GrantCombatDeployment()
+        or isinstance(reward, GainVictoryPoints)
         or isinstance(reward, GainInfluence)
         and reward.times == 1
         and reward.factions is not None
@@ -541,6 +575,25 @@ def retreat_pair_reward(
     if isinstance(reward, RevealSwords | RevealPersuasion) and reward.per is None:
         return reward
     return None
+
+
+def unit_retreat_influence(
+    effect: PersonalCardRevealChoiceEffect | str | None,
+) -> int | None:
+    """Negotiated Withdrawal's "Retreat three of your units -> [Influence with
+    any Faction]" (Rise of Ix): the units the arrow retreats, or None."""
+
+    line = _arrow_line(effect)
+    if line is None or len(line.costs) != 1 or line.rewards != (GainInfluence(),):
+        return None
+    cost = line.costs[0]
+    if (
+        not isinstance(cost, RetreatTroops)
+        or not cost.units
+        or cost.maximum != cost.minimum
+    ):
+        return None
+    return cost.minimum
 
 
 def influence_loss_reward(
@@ -1095,6 +1148,28 @@ def resolve_target_reward(state: GameState, action: DomainAction) -> RuleResult:
                 )
                 working = gained.state
                 events.extend(gained.events)
+            case GainVictoryPoints(amount=points):
+                # Ixian Engineer: the Victory Point the trash pays for, after
+                # the trash (the cost) as every arrow's reward is.
+                owner = working.players[player]
+                working = replace(
+                    working,
+                    players=replace_player(
+                        working.players,
+                        replace(owner, victory_points=owner.victory_points + points),
+                    ),
+                )
+                events.append(
+                    GameEvent(
+                        event_id=f"{source}:victory_point",
+                        kind="reveal_victory_point_gained",
+                        payload=(
+                            ("card_id", card_id),
+                            ("player", player),
+                            ("victory_points", points),
+                        ),
+                    )
+                )
             case TrashPersonalCard():
                 pass  # Shrouded Counsel: the trash is the whole reward.
             case _:
@@ -1552,6 +1627,14 @@ def _generated_persuasion(context: Mapping[str, ActionValue]) -> int | None:
     return value
 
 
+def reveal_generated_persuasion(context: Mapping[str, ActionValue]) -> int | None:
+    """The Persuasion a Reveal frame's turn has generated so far, spent or not
+    (``_generated_persuasion``): what Disposal Facility's "6 or more" reads
+    (OQ-126)."""
+
+    return _generated_persuasion(context)
+
+
 def _frame_generated_persuasion(frames: tuple[DecisionFrame, ...]) -> int | None:
     """Return the open Reveal frame's generated Persuasion, if a Reveal is open."""
 
@@ -1609,10 +1692,11 @@ def legal_reveal_influence_gain_actions(
     if opened is None or opened[1] not in (
         PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
+        PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE,
     ):
         return ()
-    # Pointing the Way, Ixian Ambassador: never a cube already at the top
-    # (OQ-060); their record (composed A4d).
+    # Pointing the Way, Ixian Ambassador, Web of Power: never a cube already
+    # at the top (OQ-060); their record (composed A4d).
     return target_reward_rows(state, player, *opened)
 
 
@@ -1626,6 +1710,177 @@ def apply_reveal_influence_gain(
     if action not in legal_reveal_influence_gain_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal Influence choice")
     return resolve_target_reward(state, action)
+
+
+def legal_reveal_freighter_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Guild Chief Administrator's Freighter icon (Rise of Ix): "you may move
+    your Freighter in one of two ways" [Rise of Ix p. 5] (docs/rules/
+    rise-of-ix.md 5) -- up one space (never from the top) or a recall (never
+    from the bottom, where it moves nothing). The icon is "may": no refusal,
+    and the Reveal's end lapses it (OQ-095 (7) addition)."""
+
+    pending = pending_choice_rows(state, player, legal_reveal_freighter_actions)
+    if pending is not None:
+        return pending
+    opened = _choice_frame_effect(state, player)
+    if opened is None or opened[1] is not _Choice.MAY_MOVE_FREIGHTER:
+        return ()
+    # Imported here: the Shipping track imports the Tech tiles, which import
+    # this module.
+    from dune_imperium.rules.shipping_track import (
+        freighter_can_advance,
+        freighter_can_recall,
+    )
+
+    # Guild Chief Administrator and Freighter Fleet both print it, so each
+    # row names its card (``SOURCED_REVEAL_ACTION_IDS``).
+    return (
+        *(
+            (_sourced("advance_reveal_freighter", player, opened[0]),)
+            if freighter_can_advance(state, player)
+            else ()
+        ),
+        *(
+            (_sourced("recall_reveal_freighter", player, opened[0]),)
+            if freighter_can_recall(state, player)
+            else ()
+        ),
+    )
+
+
+def apply_reveal_freighter(state: GameState, action: DomainAction) -> RuleResult:
+    """Move the Freighter for a revealed card's Freighter icon: up one space,
+    or a recall whose rewards wait on the Reveal as rows of their own, in the
+    order the seat picks (``rules.shipping_track``, [Rise of Ix p. 5])."""
+
+    from dune_imperium.rules.shipping_track import (
+        move_freighter_up,
+        recall_freighter,
+    )
+
+    state = _open_pending(state, action, legal_reveal_freighter_actions)
+    if action not in legal_reveal_freighter_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal Freighter move")
+    opened = _choice_frame_effect(state, action.actor)
+    assert opened is not None
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{opened[0]}:freighter"
+    )
+    # The choice's frame closes first, so a recall's rewards are queued on
+    # the Reveal frame below it (``turn_rows``).
+    closed = state.pop_decision()
+    move = (
+        move_freighter_up
+        if action.action_id == "advance_reveal_freighter"
+        else recall_freighter
+    )
+    return move(closed, action.actor, source=source)
+
+
+def legal_reveal_unit_retreat_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Negotiated Withdrawal's arrow (Rise of Ix): "Retreat three of your
+    units" -- "unit" is a troop or a dreadnought, so a dreadnought counts
+    ("unit | Negotiated Withdrawal(retreat three units) ... | 예",
+    docs/rules/rise-of-ix.md 6, [Rise of Ix p. 6]); a Sardaukar Commander is a
+    troop [Bloodlines p. 4] -- "-> [Influence with any Faction]". One row
+    names the three (``count``, with the ``commanders`` and ``dreadnoughts``
+    shares of them, the rest troops) and the Faction, never one whose cube is at the top
+    (OQ-060); with fewer than three units or every cube at the top there is
+    no row, as an arrow cost is offered only for a live reward (OQ-071). An
+    arrow: no refusal (OQ-095 (7) addition)."""
+
+    pending = pending_choice_rows(state, player, legal_reveal_unit_retreat_actions)
+    if pending is not None:
+        return pending
+    opened = _choice_frame_effect(state, player)
+    count = None if opened is None else unit_retreat_influence(opened[1])
+    if count is None:
+        return ()
+    owner = state.players[player]
+    mixes = tuple(
+        row
+        for row in unit_count_arguments(
+            minimum=count,
+            maximum=count,
+            troops=owner.troops_conflict,
+            commanders=owner.commanders_conflict,
+            dreadnoughts=owner.dreadnoughts_conflict,
+        )
+    )
+    return tuple(
+        DomainAction(
+            action_id="retreat_reveal_units_for_influence",
+            actor=player,
+            arguments=tuple(sorted((*mix, ("faction", faction.value)))),
+        )
+        for mix in mixes
+        for faction in Faction
+        if influence_can_rise(owner, faction)
+    )
+
+
+def apply_reveal_unit_retreat(state: GameState, action: DomainAction) -> RuleResult:
+    """Retreat the three units, each taking its strength along (a seat left
+    without units keeps none [Main p. 12]), then gain the Influence."""
+
+    state = _open_pending(state, action, legal_reveal_unit_retreat_actions)
+    if action not in legal_reveal_unit_retreat_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal unit retreat")
+    opened = _choice_frame_effect(state, action.actor)
+    assert opened is not None
+    card_id, effect = opened
+    count = unit_retreat_influence(effect)
+    assert count is not None and dict(action.arguments)["count"] == count
+    arguments = dict(action.arguments)
+    commanders = arguments.get("commanders", 0)
+    dreadnoughts = arguments.get("dreadnoughts", 0)
+    faction = arguments.get("faction")
+    if (
+        isinstance(commanders, bool)
+        or not isinstance(commanders, int)
+        or isinstance(dreadnoughts, bool)
+        or not isinstance(dreadnoughts, int)
+        or not isinstance(faction, str)
+    ):
+        raise RuntimeError("Reveal unit retreat has invalid arguments")
+    troops = count - commanders - dreadnoughts
+    player = action.actor
+    source = f"round:{state.round_number}:player:{player}:reveal_card:{card_id}"
+    before = state.players[player].combat_strength
+    working = state.pop_decision()
+    events: list[GameEvent] = []
+    if troops + commanders:
+        retreated = retreat_units(
+            working, player, source, troops=troops, commanders=commanders
+        )
+        working = reconcile_deployment_after_retreat(
+            retreated.state, player, troops=troops, commanders=commanders
+        )
+        events.extend(retreated.events)
+    for index in range(dreadnoughts):
+        moved = retreat_dreadnought(working, player, f"{source}:{index}")
+        working = moved.state
+        events.extend(moved.events)
+    delta = working.players[player].combat_strength - before
+    if delta:
+        working = replace(
+            working, decision_stack=add_reveal_strength(working.decision_stack, delta)
+        )
+    gained = gain_faction_influence(
+        working,
+        player,
+        Faction(faction),
+        1,
+        event_prefix=f"{source}:influence:{faction}",
+    )
+    return RuleResult(state=gained.state, events=(*events, *gained.events))
 
 
 def legal_reveal_deployments(
@@ -1832,6 +2087,62 @@ def apply_reveal_vp_payment(
             resources_paid_event(source, action.actor, **{resource: price}),
             resources_gained_event(source, action.actor, victory_points=points),
         ),
+    )
+
+
+_NEGOTIATOR_CHOICES: Final = frozenset(
+    {
+        PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS,
+        PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR,
+    }
+)
+
+
+def legal_reveal_negotiator_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Ix-Guild Compact's Tech Negotiation icons: "you may take a troop from
+    your supply and place it on the Ix board" [Rise of Ix p. 4], one per icon,
+    while a troop is in the supply ("supply가 비면 아무 일도 없다",
+    docs/rules/rise-of-ix.md 4). Optional: no refusal, and an unused icon
+    lapses at the Reveal's end (OQ-095 (2))."""
+
+    pending = pending_choice_rows(state, player, legal_reveal_negotiator_actions)
+    if pending is not None:
+        return pending
+    opened = _choice_frame_effect(state, player)
+    if opened is None or opened[1] not in _NEGOTIATOR_CHOICES:
+        return ()
+    if negotiator_block(state, player) is not None:
+        return ()
+    return (DomainAction(action_id="place_reveal_negotiator", actor=player),)
+
+
+def apply_reveal_negotiator(state: GameState, action: DomainAction) -> RuleResult:
+    """Place one Negotiator for a Tech Negotiation icon; the second of Ix-Guild
+    Compact's two then waits as a plain icon of the same card."""
+
+    state = _open_pending(state, action, legal_reveal_negotiator_actions)
+    if action not in legal_reveal_negotiator_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal Negotiator placement")
+    context = dict(state.decision_stack[-1].context)
+    card_id = context.get("reveal_card_id")
+    effect = _effect_value(context)
+    if not isinstance(card_id, str) or effect is None:
+        raise RuntimeError("Reveal Negotiator frame has invalid context")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{card_id}:negotiator"
+    )
+    remaining = state.decision_stack[:-1]
+    if effect == PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS.value:
+        remaining = _queue_pending_choices(
+            remaining,
+            ((card_id, PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR.value),),
+        )
+    return place_negotiator(
+        replace(state, decision_stack=remaining), action.actor, source=source
     )
 
 
@@ -2090,9 +2401,9 @@ def legal_reveal_card_trash_actions(
     """Return the optional trash choices of the current Reveal card.
 
     Calculus of Power's other Emperor card, Shrouded Counsel's Command
-    trash, Disruption Tactics' and CHOAM Demands' self-trash: arrows or a
-    black trash icon, so no refusal is offered (OQ-095 (7) addition), and
-    ``source`` names the card whose choice the trash pays.
+    trash, Disruption Tactics', CHOAM Demands' and Ixian Engineer's self-trash:
+    arrows or a black trash icon, so no refusal is offered (OQ-095 (7)
+    addition), and ``source`` names the card whose choice the trash pays.
     """
 
     pending = pending_choice_rows(state, player, legal_reveal_card_trash_actions)
@@ -2104,6 +2415,7 @@ def legal_reveal_card_trash_actions(
         PersonalCardRevealChoiceEffect.COMMAND_MAY_TRASH_CARD,
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_COMBAT_ICON,
         PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
+        PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES,
     ):
         return ()
     # Their records (composed A4d).
@@ -2384,6 +2696,9 @@ _RESOLVES_AS: Mapping[
     ),
     _FREMEN_BOND_TROOP_MOVE: (
         PersonalCardRevealChoiceEffect.MAY_DEPLOY_OR_RETREAT_ONE_TROOP
+    ),
+    PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS: (
+        PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR
     ),
 }
 
@@ -3473,7 +3788,36 @@ class _TechRevealPay(NamedTuple):
     swords: int = 0
 
 
+# Rise of Ix's tiles with an automatic "Reveal turn:" line (stage P4c-2a,
+# docs/rules/rise-of-ix.md 4), keyed by the tile as the Tech Module's Reveal
+# lines are by theirs: Minimic Film's "Persuasion 1" and Restricted
+# Ordnance's "sword 4" (with a High Council seat). They have no ability
+# record (``content.rise_of_ix.tech``), so the pay is written here.
+MINIMIC_FILM_PERSUASION: Final = 1
+RESTRICTED_ORDNANCE_SWORDS: Final = 4
+_IX_REVEAL_PAY: Final = {
+    "minimic_film": _TechRevealPay(persuasion=MINIMIC_FILM_PERSUASION),
+    "restricted_ordnance": _TechRevealPay(swords=RESTRICTED_ORDNANCE_SWORDS),
+}
+# Ix tiles whose Reveal line opens on a High Council seat, as the tile's
+# ability: "High Council 자리가 있으면 sword 4". Like a Command (6+) line the
+# seat may come later in the same Reveal, and the swords then arrive late
+# (OQ-095 (7)'s order-free Reveal; ``grant_late_reveal_effects``).
+_HIGH_COUNCIL_TECH: Final = (
+    ("restricted_ordnance", TechAbility.REVEAL_HIGH_COUNCIL_SWORDS),
+)
+# Ix tiles whose Reveal line is a plain Persuasion (Minimic Film). A tile
+# acquired in the Reveal pays it then (OQ-150 (2)); the Tech Module's own
+# Persuasion tile (Self-Destroying Messages) is not touched.
+_PERSUASION_TECH: Final = (("minimic_film", TechAbility.MINIMIC_FILM),)
+# The Reveal-frame key of the sword cards Artillery has counted so far, as
+# Leadership keeps its own count (``_count_leadership_swords``).
+ARTILLERY_COUNTED_KEY: Final = "artillery_counted"
+
+
 def _tech_reveal_pay(tech_id: str) -> _TechRevealPay:
+    if tech_id in IX_TECH_IDS:
+        return _IX_REVEAL_PAY.get(tech_id, _TechRevealPay())
     line = tech_reveal_line(tech_id)
     match () if line is None else line.rewards:
         case (RevealPersuasion(amount=amount),):
@@ -3604,6 +3948,23 @@ def _choice_sword_card_ids(context: Mapping[str, ActionValue]) -> tuple[str, ...
     return tuple(card_id for card_id in value.split(",") if card_id)
 
 
+def _swords_given(
+    effect: RevealLine,
+    recorded: int | None,
+    revealed_cards: tuple[PersonalCardDefinition, ...],
+) -> int:
+    """The swords a granted Reveal line gave when it resolved: its flat and
+    per-Faction-card swords (this Reveal's cards, fixed), and Full-Scale
+    Assault's per-dreadnought swords as recorded then (``_granted_entries``,
+    ``grant_late_reveal_effects``), however many dreadnoughts are left in the
+    Conflict now."""
+
+    given = effect.strength_over(revealed_cards)
+    if effect.strength_per_dreadnought:
+        given += recorded or 0
+    return given
+
+
 def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
     """Pay Leadership's swords for sword cards it has not counted yet.
 
@@ -3635,6 +3996,9 @@ def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
         personal_card_for_instance(card_id) for card_id in revealed_ids
     )
     choice_swords = set(_choice_sword_card_ids(context))
+    # A card provides swords by what it gave when its swords were resolved,
+    # not by the board now: "sword는 공개한 카드가 준 값" [DI p. 11] (rise-of-ix.md
+    # 9.3, Full-Scale Assault's swords fixed at the Reveal).
     sword_cards = {
         card_id
         for card_id, card in zip(revealed_ids, revealed_cards, strict=True)
@@ -3643,7 +4007,7 @@ def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
             card_id in choice_swords
             or card.reveal_strength
             + sum(
-                effect.strength_over(revealed_cards)
+                _swords_given(effect, granted[f"{card_id}#{index}"], revealed_cards)
                 for index, effect in enumerate(reveal_lines(card))
                 if f"{card_id}#{index}" in granted
             )
@@ -3663,6 +4027,26 @@ def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
             if now > counted:
                 swords += effect.strength_per_other_sword_card * (now - counted)
                 updates[f"{card_id}#{index}"] = now
+    artillery_now = len(sword_cards)
+    artillery_before = (
+        context_int(context, ARTILLERY_COUNTED_KEY, owner="Reveal frame")
+        if ARTILLERY_COUNTED_KEY in context
+        # The Reveal's start records the count of a tile held then; a held
+        # tile with none was acquired in this Reveal, and its "Reveal turn"
+        # line works in this turn too, counting every sword card so far
+        # (OQ-150 (2), user ruling 2026-10-29 "(가) 모두 듣기").
+        else (
+            0
+            if has_tech(owner.tech_ids, TechAbility.REVEAL_SWORD_PER_SWORD_CARD)
+            else None
+        )
+    )
+    if artillery_before is not None and artillery_now > artillery_before:
+        # Artillery: a sword for each revealed card providing swords, topped
+        # up to the best moment like Leadership and never taken back (OQ-022;
+        # docs/rules/rise-of-ix.md 4).
+        swords += artillery_now - artillery_before
+        frames = _update_reveal_frame(frames, {ARTILLERY_COUNTED_KEY: artillery_now})
     if not swords:
         return RuleResult(state=state)
     units = owner.units_in_conflict
@@ -3685,6 +4069,9 @@ def _count_leadership_swords(state: GameState, player: int) -> RuleResult:
                 event_id=(
                     f"round:{state.round_number}:player:{player}:reveal:"
                     f"leadership:{','.join(f'{key}={n}' for key, n in updates.items())}"
+                    if updates
+                    else f"round:{state.round_number}:player:{player}:reveal:"
+                    f"artillery:{artillery_now}"
                 ),
                 kind="reveal_strength_gained",
                 payload=(("amount", swords), ("player", player)),
@@ -3712,11 +4099,18 @@ def _granted_entries(
             ):
                 # Leadership keeps the number of sword cards it has counted
                 # (``_count_leadership_swords``); a new entry has counted none.
+                # Full-Scale Assault's line keeps the swords it gave now, as
+                # its dreadnoughts stood ("Full-Scale Assault의 sword는 Reveal
+                # 때 고정, 나중에 dreadnought가 빠져도 유지", rise-of-ix.md
+                # 9.3): what a card gave is read from here afterwards
+                # (``_swords_given``).
                 entries[f"{card_id}#{index}"] = (
                     completed_contracts
                     if effect.persuasion_per_completed_contract
                     else 0
                     if effect.strength_per_other_sword_card
+                    else effect.strength_per_dreadnought * owner.dreadnoughts_conflict
+                    if effect.strength_per_dreadnought
                     else None
                 )
     return entries
@@ -3751,8 +4145,43 @@ def reveal_pending_gains(
     return tuple(entries)
 
 
+def _merged_resource_bundles(entries: tuple[RevealGain, ...]) -> tuple[RevealGain, ...]:
+    """``entries`` with the resource bundles of one source summed into its
+    first: one action per waiting gain's kind and entity (stage B3e-1,
+    decision 3). Rise of Ix's Guild Accord is the one card printing two
+    resource lines ("[1 water]" and "[Spacing Guild] Alliance: [3 spice]");
+    every other source waits with one bundle at a time, unchanged."""
+
+    merged: list[RevealGain] = []
+    for kind, payload, source in entries:
+        index = next(
+            (
+                position
+                for position, (other_kind, _, other_source) in enumerate(merged)
+                if kind == other_kind == "resources" and source == other_source
+            ),
+            None,
+        )
+        if index is None:
+            merged.append((kind, payload, source))
+            continue
+        summed = (
+            a + b
+            for a, b in zip(
+                _resource_payload(merged[index][1]),
+                _resource_payload(payload),
+                strict=True,
+            )
+        )
+        merged[index] = (kind, "/".join(str(amount) for amount in summed), source)
+    return tuple(merged)
+
+
 def _encode_gains(entries: tuple[RevealGain, ...]) -> str:
-    return ",".join(f"{kind}|{payload}|{source}" for kind, payload, source in entries)
+    return ",".join(
+        f"{kind}|{payload}|{source}"
+        for kind, payload, source in _merged_resource_bundles(entries)
+    )
 
 
 def resource_gain_entry(
@@ -3823,6 +4252,7 @@ def queue_reveal_intrigue_draw(state: GameState, count: int, source: str) -> Gam
 # The kind of waiting gain each Reveal gain action takes (OQ-045).
 _GAIN_KINDS: Final[Mapping[str, str]] = MappingProxyType({
     "recruit_reveal_troops": "troops",
+    "deploy_reveal_supply_troops": "deploy",
     "draw_reveal_intrigue": "intrigue",
     "generate_reveal_specimens": "specimens",
     "advance_reveal_tleilaxu": "tleilaxu",
@@ -4044,6 +4474,18 @@ def apply_reveal_gain(state: GameState, action: DomainAction) -> RuleResult:
                 events=researched.events,
             )
         return researched
+    if kind == "deploy":
+        # Treachery: its troops go from the supply to the Conflict, joined to
+        # this Reveal's strength (``deploy_troops_from_supply``; a supply
+        # short of them records the rest, OQ-042 (2)). Imported here: the
+        # Tech module imports this one.
+        from dune_imperium.rules.tech import deploy_troops_from_supply
+
+        settled = replace(
+            state,
+            decision_stack=(*state.decision_stack[:-1], with_context(frame, context)),
+        )
+        return deploy_troops_from_supply(settled, player, count, source=event_id)
     if kind == "troops":
         next_owner, recruited = recruit_troops(owner, count)
         context["reveal_troops_recruited"] = (
@@ -4174,6 +4616,14 @@ def reveal_reserve_discount(state: GameState, reserve_card_id: str) -> int:
     return 0
 
 
+def _tech_granted_ids(context: Mapping[str, ActionValue]) -> tuple[str, ...]:
+    """The tiles a Reveal frame records as paid or opened this turn."""
+
+    return tuple(
+        key for key in str(context.get(_TECH_GRANTED_KEY, "")).split(",") if key
+    )
+
+
 def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     """Pay out revealed cards' automatic effects whose condition came true later.
 
@@ -4268,6 +4718,28 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 )
             },
         )
+    # A Tech tile acquired during the Reveal works in this Reveal turn too
+    # (OQ-150 (2), user ruling 2026-10-29 "(가) 모두 듣기"; OQ-095 (7)):
+    # Minimic Film's Persuasion arrives then, ahead of the sweep below so it
+    # counts toward Command (6+) like a Skill's.
+    early_granted = _tech_granted_ids(context)
+    late_persuasion_tiles = tuple(
+        tech_id
+        for tech_id, ability in _PERSUASION_TECH
+        if tech_id not in early_granted and has_tech(owner.tech_ids, ability)
+    )
+    for tech_id in late_persuasion_tiles:
+        frames = add_reveal_persuasion(frames, _tech_reveal_pay(tech_id).persuasion)
+        events.append(
+            _tech_reveal_bonus(
+                f"round:{state.round_number}:player:{player}:reveal", player, tech_id
+            )
+        )
+    if late_persuasion_tiles:
+        frames = _update_reveal_frame(
+            frames,
+            {_TECH_GRANTED_KEY: ",".join((*early_granted, *late_persuasion_tiles))},
+        )
     # What has paid so far: the record from the Reveal frame plus this pass's
     # grants, so a repeated sweep never pays an effect or a Contract twice.
     paid = dict(granted)
@@ -4338,7 +4810,9 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 persuasion = effect.persuasion_over(
                     revealed_cards, completed, _in_play_cards(next_owner)
                 )
-                sword = effect.strength_over(revealed_cards)
+                sword = effect.strength_over(
+                    revealed_cards, next_owner.dreadnoughts_conflict
+                )
                 if persuasion:
                     frames = add_reveal_persuasion(frames, persuasion)
                 if sword:
@@ -4352,6 +4826,10 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 )
                 if effect.recruit_troops:
                     late_gains.append(("troops", str(effect.recruit_troops), card_id))
+                if effect.supply_deployments:
+                    late_gains.append(
+                        ("deploy", str(effect.supply_deployments), card_id)
+                    )
                 if effect.draw_intrigue:
                     late_gains.append(("intrigue", str(effect.draw_intrigue), card_id))
                 if effect.specimens:
@@ -4381,7 +4859,12 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
                 # keep the count it was paid for here, and later Contracts would
                 # add their increment above.
                 newly_granted[key] = paid[key] = (
-                    completed if effect.persuasion_per_completed_contract else None
+                    completed
+                    if effect.persuasion_per_completed_contract
+                    # The per-dreadnought swords it gave now (``_swords_given``).
+                    else sword
+                    if effect.strength_per_dreadnought
+                    else None
                 )
                 sweeping = True
                 events.append(
@@ -4405,18 +4888,25 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
     # Persuasion generated so far, spent or not [Bloodlines p. 5].
     late_persuasion = _frame_generated_persuasion(frames)
     reveal_context = frame_context(frames[_reveal_frame_position(frames)])
-    tech_granted = tuple(
-        key
-        for key in str(reveal_context.get(_TECH_GRANTED_KEY, "")).split(",")
-        if key
-    )
-    late_tech = tuple(
-        tech_id
-        for tech_id, ability in _COMMAND_TECH
-        if late_persuasion is not None
-        and late_persuasion >= COMMAND_PERSUASION
-        and tech_id not in tech_granted
-        and has_tech(next_owner.tech_ids, ability)
+    tech_granted = _tech_granted_ids(reveal_context)
+    late_tech = (
+        *(
+            tech_id
+            for tech_id, ability in _COMMAND_TECH
+            if late_persuasion is not None
+            and late_persuasion >= COMMAND_PERSUASION
+            and tech_id not in tech_granted
+            and has_tech(next_owner.tech_ids, ability)
+        ),
+        # A High Council seat taken later in the Reveal opens Restricted
+        # Ordnance's swords then (Rise of Ix p. 4).
+        *(
+            tech_id
+            for tech_id, ability in _HIGH_COUNCIL_TECH
+            if next_owner.high_council
+            and tech_id not in tech_granted
+            and has_tech(next_owner.tech_ids, ability)
+        ),
     )
     for tech_id in late_tech:
         _, solari, sword = _tech_reveal_pay(tech_id)
@@ -4445,6 +4935,23 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
             with_context(frames[position], reveal_context),
             *frames[position + 1 :],
         )
+    # Disposal Facility acquired in this Reveal opens its trash row then
+    # (OQ-150 (2)); the row itself waits on the turn's Persuasion (OQ-126).
+    reveal_context = frame_context(frames[_reveal_frame_position(frames)])
+    opened = _tech_granted_ids(reveal_context)
+    late_disposal = "disposal_facility" not in opened and has_tech(
+        next_owner.tech_ids, TechAbility.REVEAL_TRASH_AT_SIX_PERSUASION
+    )
+    if late_disposal:
+        frames = _update_reveal_frame(
+            frames,
+            {
+                _TECH_GRANTED_KEY: ",".join((*opened, "disposal_facility")),
+                TECH_PENDING_KEY: ",".join(
+                    (*tech_reveal_pending(reveal_context), "disposal_facility")
+                ),
+            },
+        )
     frames = _record_granted_effects(frames, newly_granted)
     frames = _append_reveal_gains(frames, tuple(late_gains))
     # Leadership may count every sword card provided so far, a late-met
@@ -4457,7 +4964,14 @@ def grant_late_reveal_effects(result: RuleResult) -> RuleResult:
         ),
         player,
     )
-    if not newly_granted and not late_tech and not late_skills and not counted.events:
+    if (
+        not newly_granted
+        and not late_tech
+        and not late_skills
+        and not late_persuasion_tiles
+        and not late_disposal
+        and not counted.events
+    ):
         return result
     working = counted.state
     events.extend(counted.events)
@@ -4481,6 +4995,11 @@ def _in_play_cards(owner: PlayerState) -> tuple[PersonalCardDefinition, ...]:
     return tuple(
         personal_card_for_instance(card_id) for card_id in counted_in_play(owner)
     )
+
+
+_UNITS_FOR_INFLUENCE: Final = (
+    PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE
+)
 
 
 def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
@@ -4519,6 +5038,10 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         is PersonalCardRevealChoiceEffect.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH
         else "You may pay six Solari for a Victory Point"
         if effect is PersonalCardRevealChoiceEffect.MAY_PAY_SIX_SOLARI_FOR_VICTORY_POINT
+        else "You may place a Negotiator on the Ix board"
+        if effect in _NEGOTIATOR_CHOICES
+        else "Acquire a card that costs 5 or less"
+        if effect is PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE
         else "You may pay three Solari for two troops"
         if effect
         is PersonalCardRevealChoiceEffect.MAY_PAY_THREE_SOLARI_FOR_TWO_TROOPS_AND_DEPLOY
@@ -4543,6 +5066,14 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         if effect is PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE
         else "Two or more Tech tiles: choose a Faction to gain one Influence with"
         if effect is PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH
+        else "Choose a Faction to gain one Influence with"
+        if effect is PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE
+        else "Three or more Tech tiles: you may trash this card for a Victory Point"
+        if effect
+        is (
+            PersonalCardRevealChoiceEffect
+            .MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES
+        )
         else "You may retreat two troops for two Persuasion"
         if effect
         is PersonalCardRevealChoiceEffect.MAY_RETREAT_TWO_TROOPS_FOR_TWO_PERSUASION
@@ -4576,6 +5107,10 @@ def reveal_choice_prompt(effect: PersonalCardRevealChoiceEffect) -> str:
         else "You may recall a Spy to draw an Intrigue card"
         if effect
         is PersonalCardRevealChoiceEffect.RECALL_SPY_TO_DRAW_INTRIGUE_IF_TWO_PLACED
+        else "You may move your Freighter up one space or recall it"
+        if effect is PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER
+        else "You may retreat three units for one Influence"
+        if effect is _UNITS_FOR_INFLUENCE
         else "Choose a Spy to recall for this Reveal effect"
     )
 
@@ -4584,6 +5119,7 @@ _INFLUENCE_GAIN_CHOICES: Final = frozenset(
     {
         PersonalCardRevealChoiceEffect.COMMAND_GAIN_CHOSEN_INFLUENCE,
         PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
+        PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE,
     }
 )
 
@@ -4603,7 +5139,9 @@ def reveal_influence_choice_blocked(
     """
 
     return (
-        effect in _INFLUENCE_GAIN_CHOICES or spice_influence_price(effect) > 0
+        effect in _INFLUENCE_GAIN_CHOICES
+        or spice_influence_price(effect) > 0
+        or unit_retreat_influence(effect) is not None
     ) and not any(influence_can_rise(owner, faction) for faction in Faction)
 
 
@@ -4735,6 +5273,12 @@ def _reveal_choice_effect_is_available(
         # Opulence's and Guild Ambassador's Victory Point: the cost is there
         # (and the Alliance held) when the choice opens.
         or vp_payment_affordable(owner, effect)
+        # Ix-Guild Compact's Tech Negotiation icons: the rows ask for a troop
+        # in the supply (``legal_reveal_negotiator_actions``).
+        or effect in _NEGOTIATOR_CHOICES
+        # Boundless Ambition's acquisition: the rows name the cards in reach
+        # (``legal_reveal_card_acquisition_actions``).
+        or effect is PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE
         # Gurney Halleck's troops: the Solari are there when the choice opens,
         # and a troop to take (OQ-071's recruit criterion).
         or (
@@ -4752,6 +5296,19 @@ def _reveal_choice_effect_is_available(
         # resolution (legal_contract_reveal_choice_actions).
         or held_reveal_value(effect) is not None
         or (spy_pair_persuasion(effect) > 0 and len(owner.spy_post_ids) >= 2)
+        # Guild Chief Administrator's and Freighter Fleet's Freighter: up from
+        # the bottom, or a recall from the top; some move is always there.
+        or effect is PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER
+        # Negotiated Withdrawal: three units in the Conflict, troops,
+        # Commanders or dreadnoughts, and a cube that can rise (OQ-071).
+        or (
+            (units := unit_retreat_influence(effect)) is not None
+            and owner.troops_conflict
+            + owner.commanders_conflict
+            + owner.dreadnoughts_conflict
+            >= units
+            and not reveal_influence_choice_blocked(owner, effect)
+        )
     )
 
 
@@ -4920,11 +5477,13 @@ def reveal_choice_providers() -> tuple[ChoiceProvider, ...]:
     """
 
     from dune_imperium.rules.acquisition import (
+        legal_reveal_card_acquisition_actions,
         legal_reveal_command_acquisition_actions,
     )
 
     return (
         legal_reveal_command_acquisition_actions,
+        legal_reveal_card_acquisition_actions,
         legal_reveal_persuasion_or_contract_actions,
         legal_corrinth_city_reveal_actions,
         legal_contract_reveal_choice_actions,
@@ -4935,12 +5494,15 @@ def reveal_choice_providers() -> tuple[ChoiceProvider, ...]:
         legal_reveal_sandworm_actions,
         legal_reveal_spice_influence_actions,
         legal_reveal_vp_payment_actions,
+        legal_reveal_negotiator_actions,
         legal_reveal_troop_purchase_actions,
         legal_reveal_troop_retreat_actions,
         legal_reveal_influence_loss_actions,
         legal_reveal_troop_move_actions,
         legal_reveal_troops_move_actions,
         legal_reveal_troop_sacrifice_actions,
+        legal_reveal_freighter_actions,
+        legal_reveal_unit_retreat_actions,
     )
 
 
@@ -5290,7 +5852,8 @@ def _late_reveal_one_card(
         for effect in eligible
     )
     own_strength = card.reveal_strength + sum(
-        effect.strength_over(revealed_cards) for effect in eligible
+        effect.strength_over(revealed_cards, next_owner.dreadnoughts_conflict)
+        for effect in eligible
     )
     # Leadership's count, for this card and for one revealed earlier, is
     # topped up by _count_leadership_swords once the card is recorded.
@@ -5332,6 +5895,9 @@ def _late_reveal_one_card(
         for entry in (
             ("troops", str(effect.recruit_troops), card_id)
             if effect.recruit_troops
+            else None,
+            ("deploy", str(effect.supply_deployments), card_id)
+            if effect.supply_deployments
             else None,
             ("intrigue", str(effect.draw_intrigue), card_id)
             if effect.draw_intrigue
@@ -5478,10 +6044,14 @@ def begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
 
     if action not in legal_reveal_actions(state, action.actor):
         raise ValueError("action is not a legal Reveal turn")
-    returned = _return_chairdog_cards(state, action.actor)
+    # Ilesa Ecaz's card still set aside -- a first-turn Reveal -- joins the
+    # revealed hand (``rules.one_step_ahead``).
+    aside = reveal_set_aside_card(state, action.actor)
+    returned = _return_chairdog_cards(aside.state, action.actor)
     revealed_turn = _begin_reveal_turn(returned.state, action)
     return RuleResult(
-        state=revealed_turn.state, events=(*returned.events, *revealed_turn.events)
+        state=revealed_turn.state,
+        events=(*aside.events, *returned.events, *revealed_turn.events),
     )
 
 
@@ -5567,6 +6137,10 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         # 1 Persuasion if you have an Agent here." [DI p. 17]
         if "hall_of_oratory" in owner.agent_locations:
             total += 1
+        # Rise of Ix's Tech Negotiation: "여기 Agent가 있으면 자기 Reveal turn에
+        # Persuasion 1" (docs/rules/rise-of-ix.md 8, [Rise of Ix pp. 4, 12]).
+        if "tech_negotiation" in owner.agent_locations:
+            total += 1
         # Persuasion generated in this Reveal turn from outside the cards
         # counts toward "Command (6+)" too [Bloodlines p. 5]: Charismatic,
         # Navigation card 3 from slot 4 ("during each of your Reveal turns,
@@ -5579,7 +6153,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         total += owner.reveal_persuasion_round_bonus
         total += sum(
             _tech_reveal_pay(tile.tech_id).persuasion
-            for tile in TECH_TILES
+            for tile in (*TECH_TILES, *IX_TECH_TILES)
             if has_tech(owner.tech_ids, tile.ability)
         )
         return total
@@ -5591,10 +6165,34 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
     persuasion = total_persuasion(reveal_effects)
     # Tech tiles with "Reveal Turn: Command (6+)" lines pay once the total
     # is known; a later Command opening pays them late [Bloodlines p. 5].
-    tech_granted = tuple(
-        tech_id
-        for tech_id, ability in _COMMAND_TECH
-        if persuasion >= COMMAND_PERSUASION and has_tech(owner.tech_ids, ability)
+    tech_granted = (
+        *(
+            tech_id
+            for tech_id, ability in _COMMAND_TECH
+            if persuasion >= COMMAND_PERSUASION and has_tech(owner.tech_ids, ability)
+        ),
+        # Restricted Ordnance: 4 swords while the owner holds a High Council
+        # seat [Rise of Ix p. 4].
+        *(
+            tech_id
+            for tech_id, ability in _HIGH_COUNCIL_TECH
+            if owner.high_council and has_tech(owner.tech_ids, ability)
+        ),
+        # Minimic Film's Persuasion is in ``total_persuasion`` above; it is
+        # recorded as paid so a tile acquired later in the Reveal is not
+        # confused with this one (``grant_late_reveal_effects``).
+        *(
+            tech_id
+            for tech_id, ability in _PERSUASION_TECH
+            if has_tech(owner.tech_ids, ability)
+        ),
+    )
+    # Disposal Facility's row opens on the frame's pending list below; the
+    # tile is recorded as opened, so a late-acquired one is told apart.
+    tech_opened = (
+        ("disposal_facility",)
+        if has_tech(owner.tech_ids, TechAbility.REVEAL_TRASH_AT_SIX_PERSUASION)
+        else ()
     )
     tech_sword = sum(_tech_reveal_pay(tech_id).swords for tech_id in tech_granted)
 
@@ -5603,7 +6201,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             card_id,
             card.reveal_strength
             + sum(
-                effect.strength_over(cards)
+                effect.strength_over(cards, owner.dreadnoughts_conflict)
                 for effect_card_id, effect in reveal_effects
                 if effect_card_id == card_id
             ),
@@ -5619,6 +6217,14 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         )
         for card_id in revealed
     }
+    # Artillery: "sword를 주는 공개 카드마다 sword 1" (docs/rules/rise-of-ix.md
+    # 4), counted as Leadership counts (the cards providing swords now; later
+    # ones are topped up by ``_count_leadership_swords``).
+    artillery_counted = (
+        sum(strength > 0 for _, strength in card_strengths)
+        if has_tech(owner.tech_ids, TechAbility.REVEAL_SWORD_PER_SWORD_CARD)
+        else 0
+    )
     sword_strength = (
         sum(strength for _, strength in card_strengths)
         + sum(
@@ -5626,6 +6232,7 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             for effect_card_id, effect in reveal_effects
         )
         + tech_sword
+        + artillery_counted
     )
     # One formula for the units' share (the engine keeps combat_strength
     # equal to it after every step before the Reveal); the Reveal adds the
@@ -5701,6 +6308,13 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
             for skill in active_skills
             if skill.reveal_troops
         ),
+        # Treachery's "Deploy these troops to the Conflict" (Rise of Ix): from
+        # the supply, in the owner's order as a recruit is (OQ-045).
+        *(
+            ("deploy", str(effect.supply_deployments), card_id)
+            for card_id, effect in reveal_effects
+            if effect.supply_deployments
+        ),
         *(
             ("intrigue", str(effect.draw_intrigue), card_id)
             for card_id, effect in reveal_effects
@@ -5771,7 +6385,12 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         ("revealed_card_count", len(revealed)),
         ("strength", strength),
         ("sword_strength", sword_strength),
-        (_TECH_GRANTED_KEY, ",".join(tech_granted)),
+        (_TECH_GRANTED_KEY, ",".join((*tech_granted, *tech_opened))),
+        *(
+            ((ARTILLERY_COUNTED_KEY, artillery_counted),)
+            if has_tech(owner.tech_ids, TechAbility.REVEAL_SWORD_PER_SWORD_CARD)
+            else ()
+        ),
         (_SKILL_GRANTED_KEY, ",".join(skill.skill_id for skill in active_skills)),
         ("turn_owner", action.actor),
     ]
@@ -5787,6 +6406,16 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
         context.append((UNGAINED_UNDEPLOYABLE_KEY, carried_ungained_undeployable))
     if carried_commanders:
         context.append((REVEAL_COMMANDERS_RECRUITED_KEY, carried_commanders))
+    # Troop Transports' Shipping troops recruited before the Reveal deploy
+    # without a Combat icon, as "these troops" do (docs/rules/rise-of-ix.md 15).
+    carried_shipping = shipping_troop_count(turn_context)
+    if carried_shipping:
+        context.append((RECRUITS_DEPLOYABLE_KEY, carried_shipping))
+    # With the part of such a recruit the supply could not give yet, which a
+    # later refill moves into the same count (OQ-030).
+    carried_ungained_shipping = ungained_shipping_troop_count(turn_context)
+    if carried_ungained_shipping:
+        context.append((UNGAINED_SHIPPING_TROOPS_KEY, carried_ungained_shipping))
     context.extend(
         (f"revealed_card_{index:03d}", card_id)
         for index, card_id in enumerate(revealed)
@@ -5824,6 +6453,13 @@ def _begin_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                 else ()
             ),
             *(("panopticon",) if panopticon else ()),
+            # Disposal Facility's trash opens once the turn's Persuasion
+            # reaches 6 (OQ-126); a "may", so it never holds the turn's end.
+            *(
+                ("disposal_facility",)
+                if has_tech(owner.tech_ids, TechAbility.REVEAL_TRASH_AT_SIX_PERSUASION)
+                else ()
+            ),
         )
     )
     reveal_frame = with_context(reveal_frame, reveal_context)
@@ -6031,8 +6667,10 @@ def finish_reveal_turn(state: GameState, action: DomainAction) -> RuleResult:
                 payload=(("count", held_contracts), ("player", action.actor)),
             ),
         )
+    # Ilesa Ecaz's One Step Ahead counts the turns she finished
+    # (``rules.one_step_ahead``).
     next_owner = replace(
-        owner,
+        finish_turn_count(owner),
         has_revealed=True,
         discard_pile=(*owner.discard_pile, *owner.in_play),
         in_play=(),
@@ -6182,6 +6820,7 @@ def _tech_reveal_bonus(source: str, player: int, tech_id: str) -> GameEvent:
         event_id=f"{source}:tech:{tech_id}",
         kind="tech_reveal_bonus",
         payload=(
+            *((("persuasion", gains.persuasion),) if gains.persuasion else ()),
             ("player", player),
             *((("solari", gains.solari),) if gains.solari else ()),
             *((("strength", gains.swords),) if gains.swords else ()),

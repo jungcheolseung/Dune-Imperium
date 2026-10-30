@@ -25,8 +25,11 @@ from dune_imperium.content.uprising.effect_dsl import (
     AdvanceTleilaxu,
     AllConditions,
     AtFactionSpace,
+    AtLeastOfConditions,
     AtMakerSpace,
+    AtSpaceWithEnemyAgent,
     CommanderDiscountThisTurn,
+    CommissionDreadnought,
     Condition,
     ContractCompletedThisTurn,
     Cost,
@@ -38,12 +41,16 @@ from dune_imperium.content.uprising.effect_dsl import (
     DiscardFromHand,
     DrawIntrigueCards,
     DrawPersonalCards,
+    DreadnoughtsAtLeast,
+    EachOpponentRetreatsDreadnought,
     EffectSection,
     FactionBond,
     FlipBattleCard,
     FlipFaceUpConflictCard,
+    Freighter,
     GainCombatStrength,
     GainInfluence,
+    GainInfluenceWhereAgent,
     GainResources,
     GainSolariPerUnitType,
     GainVictoryPoints,
@@ -69,7 +76,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     PayResources,
     PeekTopCard,
     PermanentRevealPersuasion,
+    PlaceNegotiator,
     PlaceSpy,
+    PledgeConflictWinSolari,
     RecallSpy,
     RecallYourAgent,
     RecruitTroops,
@@ -89,6 +98,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     TrashedCardHasFaction,
     TrashIntrigueCard,
     TrashPersonalCard,
+    UnitsDeployedThisTurnAtLeast,
     UnitsInConflictAtLeast,
 )
 from dune_imperium.content.uprising.intrigue import (
@@ -106,7 +116,10 @@ from dune_imperium.rules.card_draw import (
     draw_or_request_personal_cards,
     shuffle_discard_into_deck,
 )
-from dune_imperium.rules.combat_deployment import undeployable_troops_this_turn
+from dune_imperium.rules.combat_deployment import (
+    dreadnoughts_deployed_this_turn,
+    undeployable_troops_this_turn,
+)
 from dune_imperium.rules.conditions import (
     owner_condition_holds,
     spice_must_flow_copies,
@@ -117,6 +130,9 @@ from dune_imperium.rules.contracts import (
     contract_gain_opens_market,
     market_contract_ids,
 )
+from dune_imperium.rules.dreadnought_commission import commission_block
+from dune_imperium.rules.dreadnoughts import dreadnoughts_owned
+from dune_imperium.rules.effect_influence import effect_influence_owed
 from dune_imperium.rules.effects import (
     BOARD_ICON_COMMANDER,
     agent_turn_space_id,
@@ -143,6 +159,7 @@ from dune_imperium.rules.intrigue_deck import (
     shufflable_intrigue_discard,
 )
 from dune_imperium.rules.leader_abilities import units_deployment_blocked
+from dune_imperium.rules.negotiators import negotiator_block
 from dune_imperium.rules.ornithopter import has_ornithopter_fleet
 from dune_imperium.rules.planetologist import replaces_sandworms
 from dune_imperium.rules.sandworms import sandworm_block
@@ -156,6 +173,7 @@ from dune_imperium.rules.spy_placement import (
     spy_placement_posts,
 )
 from dune_imperium.rules.unit_loss import opponents_with_conflict_troop
+from dune_imperium.rules.units import retreat_dreadnought
 
 type ChoiceSlot = (
     LoseInfluence
@@ -180,6 +198,9 @@ type ChoiceSlot = (
     | PassTurn
     | OpponentLosesTroop
     | RecallYourAgent
+    | CommissionDreadnought
+    | PlaceNegotiator
+    | Freighter
 )
 
 
@@ -286,6 +307,29 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
             return bool(opponents_with_conflict_troop(state, player))
         case AllConditions(conditions=conditions):
             return all(condition_holds(state, player, item) for item in conditions)
+        case AtLeastOfConditions(count=count, conditions=conditions):
+            # Grand Conspiracy: "If you have any three:" of its four items.
+            return (
+                sum(condition_holds(state, player, item) for item in conditions)
+                >= count
+            )
+        case DreadnoughtsAtLeast(count=count):
+            # Grand Conspiracy's "2 dreadnoughts": the seat's own, wherever
+            # they stand (OQ-121); a Control space holds the game's, so this
+            # reads the state.
+            return dreadnoughts_owned(state, player) >= count
+        case UnitsDeployedThisTurnAtLeast(count=count, dreadnoughts=True):
+            # Diversion's "four or more units" (rise-of-ix.md 6, table row
+            # "unit"; 15: Distraction's judgment): the turn's peak of troops,
+            # Commanders and sandworms the seat's own state holds
+            # (``owner_condition_holds``), plus the dreadnoughts the turn's
+            # deployment moved, which only the turn's frame counts (a
+            # dreadnought is a unit but no troop [Rise of Ix p. 6]).
+            return (
+                max(owner.units_deployed_turn, owner.units_deployed_peak)
+                + dreadnoughts_deployed_this_turn(state, player)
+                >= count
+            )
         case MoreSpiceMustFlowThanEachOpponent():
             # Corner the Market: "상대 하나라도 같거나 많으면 둘째 조건 실패"
             # (imperium-base.md 13.2, ``[FAQ p. 2]``): each opponent is
@@ -309,6 +353,7 @@ def condition_holds(state: GameState, player: int, condition: Condition) -> bool
         case (
             AtMakerSpace()
             | AtFactionSpace()
+            | AtSpaceWithEnemyAgent()
             | FactionBond()
             | Grafted()
             | SpyRecalledThisTurn()
@@ -453,6 +498,12 @@ def choice_slots(
                     slots.append(reward)
                 case RecallYourAgent():
                     # Urgent Mission: the owner names the Agent that returns.
+                    slots.append(reward)
+                case CommissionDreadnought() | PlaceNegotiator() | Freighter():
+                    # "you may commission" [Rise of Ix p. 6], "you may take a
+                    # troop" [Rise of Ix p. 4], "you may move your Freighter"
+                    # [Rise of Ix p. 5]: the owner takes the icon or leaves it,
+                    # one choice for each icon.
                     slots.append(reward)
                 case _:
                     pass
@@ -627,6 +678,21 @@ def deployable_garrison_units(state: GameState, player: int) -> tuple[int, int]:
         max(owner.troops_garrison - undeployable_troops_this_turn(state, player), 0),
         owner.commanders_garrison,
     )
+
+
+def deployable_garrison_dreadnoughts(state: GameState, player: int) -> int:
+    """The garrison dreadnoughts a "deploy units from your garrison" effect
+    may move now.
+
+    "Deploy up to two units from your garrison to the Conflict." [Second Wave
+    card]: a dreadnought is a unit [Rise of Ix p. 6], so the garrison ones
+    are among them; Emperor of the Known Universe blocks every unit for the
+    turn [Main p. 17], as for troops (``deployable_garrison_units``).
+    """
+
+    if units_deployment_blocked(state, player):
+        return 0
+    return state.players[player].dreadnoughts_garrison
 
 
 def _plot_frame(state: GameState, player: int) -> DecisionFrame | None:
@@ -883,8 +949,16 @@ def reward_can_change_something(
             # "끝까지 가고 나면 뭐 없는 게 맞다" (OQ-048).
             return not tleilaxu_track_finished(owner)
         case GainInfluence() if not reward.requires_choice:
-            assert reward.factions is not None
-            return influence_can_rise(owner, reward.factions[0])
+            faction = fixed_influence_faction(state, player, reward)
+            return faction is not None and influence_can_rise(owner, faction)
+        case GainInfluenceWhereAgent():
+            # Quid Pro Quo's 2 spice buy something only while a Faction with
+            # one of the player's Agents can still rise (rise-of-ix.md 9.3;
+            # OQ-060, OQ-071).
+            return any(
+                influence_can_rise(owner, faction)
+                for faction in factions_with_agents(state, player)
+            )
         case GainInfluence():
             # A line that pays a LoseInfluence first (Change Allegiances,
             # Tenuous Bond) leaves the Faction it lowers free to rise again,
@@ -904,8 +978,11 @@ def reward_can_change_something(
             # [Main p. 20] unless Arrakis Planetologist replaces the
             # sandworm [Liet Kynes card].
             return sandworm_block(state, player, needs_hooks=needs_hooks) is None
-        case DeployFromGarrison():
-            return sum(deployable_garrison_units(state, player)) >= 1
+        case DeployFromGarrison(dreadnoughts=with_dreadnoughts):
+            movable = sum(deployable_garrison_units(state, player))
+            if with_dreadnoughts:
+                movable += deployable_garrison_dreadnoughts(state, player)
+            return movable >= 1
         case RetreatTroops(minimum=minimum):
             # An "any number" retreat may choose zero once played [Main
             # p. 20] [FAQ p. 3], but needs a unit in the Conflict to play.
@@ -991,6 +1068,20 @@ def reward_can_change_something(
             # could change something: an Agent on a board space or in the
             # Conflict to return.
             return bool(owner.agent_locations) or owner.agent_in_conflict > 0
+        case CommissionDreadnought():
+            # "supply에 없으면 더 얻지 못한다" (docs/rules/rise-of-ix.md 6): a
+            # line paying for the icon (Advanced Weaponry's 3 Solari,
+            # OQ-113 (C)) is played only while a dreadnought is in the supply.
+            return commission_block(state, player) is None
+        case PlaceNegotiator():
+            # "supply가 비면 아무 일도 없다" (docs/rules/rise-of-ix.md 4): a
+            # line paying for the icon is played only while a troop is in
+            # the supply.
+            return negotiator_block(state, player) is None
+        case Freighter():
+            # The Freighter can always move: up from any space but the top,
+            # or recalled from the top (``rules.shipping_track``).
+            return True
         case TakeMentat():
             # Calculated Hire's "[1 spice] -> Take the Mentat": the Mentat
             # is taken only from its own space [DI p. 13], so the cost line
@@ -1029,6 +1120,23 @@ def rewards_with_no_effect(
     return tuple(dead)
 
 
+def _line_has_cost(section: EffectSection) -> bool:
+    """Whether ``section`` is a line with a cost for the check of what it can
+    change (``_no_effect_block``): a printed cost, or an Acquire Tech.
+
+    "값을 내고 얻는 효과도 비용 줄로 본다: Tech 획득은 그 타일 값(spice)을 내고
+    타일을 받는다. 그래서 Ix의 Machine Culture Plot면("Acquire Tech", 할인
+    없음)은 살 수 있는 타일이 없으면 내지 않는다" (OQ-113 (C), user ruling
+    2026-10-24, docs/rules/rise-of-ix.md 9.3 and 15): the tile's price is the
+    cost, so a card whose only reward is an Acquire Tech is played only while a
+    tile can be bought.
+    """
+
+    return bool(section.costs) or any(
+        isinstance(reward, AcquireTech) for reward in section.rewards
+    )
+
+
 def _no_effect_block(
     state: GameState,
     player: int,
@@ -1039,15 +1147,16 @@ def _no_effect_block(
 
     OQ-113 (C), user ruling 2026-10-24 ("비용을 낸 것만 보장"): a line with a
     cost (left of an arrow: resources, a discard or trash, an Intrigue card,
-    a troop, a Spy) is played only when one of its own rewards can change
-    something -- "비용만 내고 보상을 받지 못하는 경우는 없어야 한다" (OQ-071,
-    user decision 2026-09-29) -- and a line without one is played even when
-    every reward fizzles: the Intrigue card itself is no cost, as a card box
-    that fizzles still lets its Imperium card be played.
+    a troop, a Spy; or an Acquire Tech, ``_line_has_cost``) is played only
+    when one of its own rewards can change something -- "비용만 내고 보상을
+    받지 못하는 경우는 없어야 한다" (OQ-071, user decision 2026-09-29) -- and a
+    line without one is played even when every reward fizzles: the Intrigue
+    card itself is no cost, as a card box that fizzles still lets its Imperium
+    card be played.
     """
 
     for section in sections:
-        if not section.costs:
+        if not _line_has_cost(section):
             continue
         dead = rewards_with_no_effect(state, player, (section,))
         if dead:
@@ -1069,7 +1178,7 @@ def play_changes_nothing(
 
     owner = state.players[player]
     return bool(sections) and all(
-        not section.costs
+        not _line_has_cost(section)
         and not any(
             reward_can_change_something(state, player, reward, section, owner)
             for reward in section.rewards
@@ -1100,6 +1209,48 @@ def _choice_reward_block(
             if isinstance(reward, TakeContract) and not state.config.choam_module:
                 return reward
     return None
+
+
+def fixed_influence_faction(
+    state: GameState, player: int, gain: GainInfluence
+) -> Faction | None:
+    """The named Faction, or the one visited this turn (Strongarm).
+
+    "Gain one Influence with a Faction whose board space you sent an Agent
+    to this turn" [Strongarm, Steam app text]. An Intrigue choice can be
+    above the Agent-turn frame; an earlier turn's placement never counts.
+    """
+
+    if gain.visited_space:
+        space_id = agent_turn_space_id(state, player)
+        return next(
+            (
+                space.faction
+                for space in content_for(state.config).board_spaces
+                if space.space_id == space_id
+            ),
+            None,
+        )
+    assert gain.factions is not None
+    return gain.factions[0]
+
+
+def factions_with_agents(state: GameState, player: int) -> tuple[Faction, ...]:
+    """The Factions that have at least one of ``player``'s Agents on their
+    board spaces, in Faction order, each once.
+
+    "Gain one Influence with each Faction that has at least one of your
+    Agents on its board spaces." [Quid Pro Quo, Steam app text]: an Agent
+    sent earlier this round stays on its space until the Recall [DI p. 13].
+    """
+
+    visited = set(state.players[player].agent_locations)
+    held = {
+        space.faction
+        for space in content_for(state.config).board_spaces
+        if space.space_id in visited and space.faction is not None
+    }
+    return tuple(faction for faction in Faction if faction in held)
 
 
 def influence_gain_candidates(
@@ -1328,6 +1479,9 @@ def automatic_rewards(sections: tuple[EffectSection, ...]) -> tuple[Reward, ...]
             | AcquireTleilaxuCard
             | OpponentLosesTroop
             | RecallYourAgent
+            | CommissionDreadnought
+            | PlaceNegotiator
+            | Freighter
             | RevealContractsTakeOne,
         )
     )
@@ -1364,6 +1518,8 @@ def apply_rewards(
     intrigue_draws = 0
     contracts = 0
     fixed_influence: list[GainInfluence] = []
+    agent_influence = False
+    opponents_retreat_dreadnoughts = False
     # Immortality: Bene Tleilax board moves resolve on the state after the
     # resource gains (a research advance may open a direction choice).
     specimens = 0
@@ -1430,6 +1586,19 @@ def apply_rewards(
                 fixed_influence.append(reward)
             case GainInfluence():
                 raise ValueError("Influence choices must be resolved as choice slots")
+            case GainInfluenceWhereAgent():
+                agent_influence = True
+            case EachOpponentRetreatsDreadnought():
+                opponents_retreat_dreadnoughts = True
+            case PledgeConflictWinSolari(solari=solari):
+                # Strategic Push's "If you win this Conflict:" Solari wait on
+                # the seat until the sole winner's window pays them (OQ-121
+                # ruling 6 (1), ``combat.STRATEGIC_PUSH``); nothing is gained
+                # now. A second copy would add its own (one copy is printed).
+                owner = replace(
+                    owner,
+                    strategic_push_solari=owner.strategic_push_solari + solari,
+                )
             case SummonSandworm(count=count, requires_maker_hooks=needs_hooks) if (
                 replaces_sandworms(owner)
                 and sandworm_block(state, player, needs_hooks=needs_hooks) is None
@@ -1579,8 +1748,9 @@ def apply_rewards(
         events.insert(gain_at, resources_gained_event(source, player, **gains))
     next_state = replace(state, players=replace_player(state.players, owner))
     for index, gain in enumerate(fixed_influence):
-        assert gain.factions is not None
-        faction = gain.factions[0]
+        faction = fixed_influence_faction(next_state, player, gain)
+        if faction is None:
+            continue
         gained = gain_faction_influence(
             next_state,
             player,
@@ -1590,6 +1760,29 @@ def apply_rewards(
         )
         next_state = gained.state
         events.extend(gained.events)
+    if agent_influence:
+        # Quid Pro Quo: one Influence with each Faction where the player has
+        # an Agent now, a row each taken in the owner's order (OQ-153);
+        # queued on the turn once the play is done (``rules.effect_influence``).
+        events.append(
+            effect_influence_owed(
+                f"{source}:agent_influence",
+                player,
+                factions_with_agents(next_state, player),
+            )
+        )
+    if opponents_retreat_dreadnoughts:
+        # Cannon Turrets: each opponent with a dreadnought in the Conflict
+        # sends one to its garrison, clockwise from the next seat; nothing
+        # is chosen (a seat's dreadnoughts are alike).
+        for offset in range(1, state.config.players):
+            seat = (player + offset) % state.config.players
+            if next_state.players[seat].dreadnoughts_conflict:
+                retreated = retreat_dreadnought(
+                    next_state, seat, f"{source}:opponent:{seat}"
+                )
+                next_state = retreated.state
+                events.extend(retreated.events)
     if intrigue_draws:
         # Resolved before the Intrigue card itself is discarded, so the deck
         # reshuffle (if any) never includes the card being played.

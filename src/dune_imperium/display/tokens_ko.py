@@ -114,7 +114,10 @@ term neither source uses.
 from typing import Final
 
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.content.uprising.effect_dsl import RevealCountKind
+from dune_imperium.content.uprising.effect_dsl import (
+    AgentOnSpaceWithIcon,
+    RevealCountKind,
+)
 from dune_imperium.content.uprising.types import (
     PersonalCardAcquisitionEffect,
     PersonalCardAgentEffect,
@@ -126,6 +129,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
+from dune_imperium.display.effect_dsl_text_ko import condition_text_ko
 from dune_imperium.display.names_ko import KOREAN_CARD_NAMES
 from dune_imperium.display.tokens import reveal_line_conditions
 from dune_imperium.rules.reveal_lines import RevealLine
@@ -158,6 +162,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.TRASH_PERSONAL_CARD: "카드 1장 {trash} 가능",
     PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_DRAW_ONE: (
         "카드 1장 {trash} 가능 {arrow_right} {draw:1}"
+    ),
+    # Rise of Ix's Shai-Hulud (stage P4d).
+    PersonalCardAgentEffect.TRASH_PERSONAL_CARD_TO_RECRUIT_TWO: (
+        "카드 1장 {trash} 가능 {arrow_right} {troop:2}"
     ),
     # Tread in Darkness's own condition box reads "당신의 플레이 영역에 다른
     # 베네 게세리트 카드가 있다면:" [KO card: Tread in Darkness] rather than
@@ -193,6 +201,19 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     ),
     PersonalCardAgentEffect.MAY_PAY_FOUR_SPICE_FOR_VP: (
         "{spice:4} 지불 가능 {arrow_right} {victory_point:1}"
+    ),
+    # Rise of Ix's Sayyadina (stage P4d): the same generated icon line.
+    PersonalCardAgentEffect.MAY_PAY_THREE_WATER_FOR_VP: (
+        "{water:3} 지불 가능 {arrow_right} {victory_point:1}"
+    ),
+    # Rise of Ix's Local Fence (stage P4d): the same arrows, joined as Guild
+    # Ambassador's "하나 선택: ... / ...".
+    (
+        PersonalCardAgentEffect
+        .MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
+    ): (
+        "하나 선택: {spice:2} 지불 가능 {arrow_right} {solari:5} / "
+        "{solari:5} 지불 가능 {arrow_right} {spice:4}"
     ),
     PersonalCardAgentEffect.MAY_DISCARD_TWO_AND_PAY_FIVE_SOLARI_FOR_VP: (
         "카드 2장 {discard}·{solari:5} 지불 가능 {arrow_right} {victory_point:1}"
@@ -249,6 +270,10 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "메이커 장소에 있다면: {spice:2}"
     ),
     PersonalCardAgentEffect.GAIN_TWO_SOLARI: "{solari:2}",
+    # Rise of Ix's Bounty Hunter (stage P4d).
+    PersonalCardAgentEffect.GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE: (
+        "다른 플레이어의 {agent}가 있는 장소로 {agent}를 보냈다면: {solari:2}"
+    ),
     PersonalCardAgentEffect.GAIN_ONE_SPICE: "{spice:1}",
     PersonalCardAgentEffect.PLACE_SPY: "{spy} 배치",
     # "Place a Spy on a post connected to the space you sent an Agent to
@@ -299,6 +324,37 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     ),
     PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: (
         "이번 차례에 보낸 {agent} 소환 가능"
+    ),
+    # Rise of Ix's Landing Rights (stage P4d): the Freighter has no glossary
+    # entry and a generated Korean line holds no Latin word, so the line names
+    # the track it moves on, the Shipping track (glossary-ko.md "Shipping |
+    # 운송", "track | 트랙"), as the Freighter rows' labels say "한 칸 위로"
+    # and "회수".
+    PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: (
+        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+    ),
+    # Rise of Ix's Embedded Agent: Landing Rights' line for each of its two
+    # Freighter icons, behind the Bond.
+    PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
+        "베네 게세리트의 유대감이면: 운송 트랙에서 한 칸 위로 또는 회수 가능, "
+        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+    ),
+    # Rise of Ix's Weirding Way (stage P4d).
+    PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: (
+        "이 차례 바로 뒤에 차례를 한 번 더 할 수 있음"
+    ),
+    # Rise of Ix's Ixian Engineer (stage P4d): the Acquire Tech icon, in the
+    # words of ``effect_dsl_text_ko`` ("Acquire Tech | 기술 획득" [Bloodlines
+    # p. 12]) with the "may" of [Rise of Ix p. 4].
+    PersonalCardAgentEffect.MAY_ACQUIRE_TECH: "{tech_tile} {acquire} 가능",
+    # Rise of Ix's Appropriate (stage P4d): Web of Power's threshold words and
+    # the Acquire Tech icon's, the price payable in Solari.
+    (
+        PersonalCardAgentEffect
+        .MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO
+    ): (
+        "{influence_emperor} 2 이상이면: {tech_tile} {acquire} 가능, "
+        "{spice} 대신 {solari}로 지불 가능"
     ),
     PersonalCardAgentEffect.GENERATE_SPECIMEN: "표본 1개 생성",
     PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
@@ -404,6 +460,12 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         "{influence_emperor} 2 이상이면: {solari:2}, "
         "{influence_spacing_guild} 2 이상이면: {spice:1}"
     ),
+    # Rise of Ix's Web of Power (stage P4d).
+    PersonalCardAgentEffect.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO: (
+        "{influence_emperor} 2 이상이면: {solari:2}, "
+        "{influence_spacing_guild} 2 이상이면: {draw:1}, "
+        "{influence_fremen} 2 이상이면: {water:1}"
+    ),
     # Uprising promo cards (card faces; OQ-024 to OQ-026).
     (
         PersonalCardAgentEffect
@@ -444,6 +506,15 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_DISCARD_TO_DRAW_ONE: (
         "카드 1장 {discard} 가능 {arrow_right} {draw:1}"
     ),
+    # Rise of Ix's Court Intrigue (stage P4d): Sonic Snoopers' prompt words.
+    PersonalCardAgentEffect.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE: (
+        "{intrigue_card} 1장을 {intrigue} {deck} 맨 아래에 놓기 가능 "
+        "{arrow_right} {intrigue:1}"
+    ),
+    # Rise of Ix's Guild Chief Administrator (stage P4d).
+    PersonalCardAgentEffect.MAY_DISCARD_TO_TRASH_A_CARD: (
+        "카드 1장 {discard} 가능 {arrow_right} 카드 1장 {trash} 가능"
+    ),
     PersonalCardAgentEffect.DRAW_INTRIGUE_IF_SANDWORM_IN_CONFLICT: (
         "{conflict}에 {sandworm}가 1 이상 있다면: {intrigue:1}"
     ),
@@ -467,6 +538,12 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.FORCE_OPPONENT_TROOP_RETREAT: (
         "다른 플레이어의 {troop} 강제 {retreat}"
     ),
+    # Rise of Ix's Desert Ambush (stage P4d): Disruption Tactics' line, a
+    # unit being "부대" (glossary-ko.md, [Main p. 10]).
+    PersonalCardAgentEffect.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED: (
+        "이번 차례에 배치하는 {troop} 1마다 다른 플레이어의 부대 1 강제 "
+        "{retreat} 가능"
+    ),
     PersonalCardAgentEffect.MAY_TRASH_TWO_CARDS_IF_COMMANDER_IN_CONFLICT: (
         "{conflict}에 {commander}이 1 이상 있다면: 카드 1장 {trash} 가능, "
         "카드 1장 {trash} 가능"
@@ -477,6 +554,37 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     ),
     PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER: (
         "카드 1장 {discard} 가능 {arrow_right} {water:1}"
+    ),
+    # Rise of Ix's Satellite Ban (stage P4d).
+    PersonalCardAgentEffect.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER: (
+        "카드 1장 {discard} 가능 {arrow_right} {spice:1}, {water:1}"
+    ),
+    # Rise of Ix's Spice Trader (stage P4d).
+    PersonalCardAgentEffect.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO: (
+        "{influence_fremen} 2 이상이면: 카드 1장 {discard} 가능 {arrow_right} {spice:2}"
+    ),
+    # Rise of Ix's Imperial Bashar (stage P4d).
+    PersonalCardAgentEffect.RECRUIT_ONE_OR_MAY_TRASH_A_CARD: (
+        "하나 선택: {troop:1} / 카드 1장 {trash} 가능"
+    ),
+    # Rise of Ix's Esmar Tuek (stage P4d).
+    (
+        PersonalCardAgentEffect
+        .MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
+    ): "{spice:1} 지불 가능 {arrow_right} {influence_spacing_guild:1}, {draw:1}",
+    # Rise of Ix's Ix-Guild Compact (stage P4d): the dreadnought stays English
+    # (``effect_dsl_text_ko``'s CommissionDreadnought).
+    PersonalCardAgentEffect.MAY_DISCARD_TWO_FOR_DREADNOUGHT: (
+        "카드 2장 {discard} 가능 {arrow_right} Commission a dreadnought"
+    ),
+    # Rise of Ix's In The Shadows (stage P4d).
+    (
+        PersonalCardAgentEffect
+        .MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO
+    ): (
+        "{influence_bene_gesserit} 2 이상이면: 카드 1장 {discard} 가능 "
+        "{arrow_right} 하나 선택: {influence_emperor:1} / "
+        "{influence_spacing_guild:1} / {influence_fremen:1}"
     ),
     PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT: "당신의 계약 하나 완수",
     PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: (
@@ -636,6 +744,20 @@ ACQUISITION_EFFECT_TEXT_KO: Final[dict[PersonalCardAcquisitionEffect, str]] = {
     PersonalCardAcquisitionEffect.GAIN_INFLUENCE_WITH_CHOSEN_FACTION: (
         "{influence_any:1} (4개의 팩션 중 하나 선택)"
     ),
+    # Rise of Ix's Shai-Hulud (stage P4d): the black Trash icon, as its record
+    # renders.
+    PersonalCardAcquisitionEffect.MAY_TRASH_A_CARD: "카드 1장 {trash}",
+    # Rise of Ix's Full-Scale Assault: no Korean source names the dreadnought
+    # or the commission (glossary-ko.md has no entry), so the line stays
+    # English, as ``effect_dsl_text_ko`` keeps the Dreadnought icon's.
+    PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT: (
+        "Commission a dreadnought"
+    ),
+    # Rise of Ix's Appropriate: the Freighter icon in ``effect_dsl_text_ko``'s
+    # words (no Korean source names the Freighter's move).
+    PersonalCardAcquisitionEffect.MAY_MOVE_FREIGHTER: (
+        "Move your Freighter up one space or recall it"
+    ),
 }
 
 # The one transcribed member is specific to The Spice Must Flow; cards.py
@@ -662,6 +784,29 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: (
         "{tech_tile} 2 이상이면: {influence_any:1} 선택"
     ),
+    # Rise of Ix's Ixian Engineer (stage P4d): CHOAM Demands' arrow with a
+    # Victory Point.
+    (
+        PersonalCardRevealChoiceEffect
+        .MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES
+    ): (
+        "{tech_tile} 3 이상이면: 이 카드 {trash} {arrow_right} {victory_point:1}"
+    ),
+    # Rise of Ix's Ix-Guild Compact (stage P4d): no Korean source names the
+    # Negotiator (``effect_dsl_text_ko``'s PlaceNegotiator), so English stays.
+    PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS: (
+        "Place a troop from your supply on the Ix board as a Negotiator ×2"
+    ),
+    PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR: (
+        "Place a troop from your supply on the Ix board as a Negotiator"
+    ),
+    # Rise of Ix's promo Boundless Ambition (stage P4d): ``effect_dsl_text_ko``'s
+    # words for its acquisition.
+    PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE: (
+        "비용이 5 이하인 카드 {acquire}"
+    ),
+    # Rise of Ix's Web of Power (stage P4d).
+    PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE: "{influence_any:1} 선택",
     PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH: (
         "하나 선택: {spy} 배치 / {sword:2}"
     ),
@@ -706,6 +851,16 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     ),
     PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS: (
         "{troop:2}까지 {retreat} 가능"
+    ),
+    # Rise of Ix's Guild Chief Administrator (stage P4d): Landing Rights'
+    # Freighter line.
+    PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER: (
+        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+    ),
+    # Rise of Ix's Negotiated Withdrawal (stage P4d): units are "부대"
+    # (glossary-ko.md, [Main p. 10]).
+    PersonalCardRevealChoiceEffect.MAY_RETREAT_THREE_UNITS_FOR_INFLUENCE: (
+        "부대 3 {retreat} 가능 {arrow_right} {influence_any:1} 선택"
     ),
     PersonalCardRevealChoiceEffect.MAY_RETREAT_ANY_NUMBER_OF_TROOPS: (
         "원하는 수의 {troop} {retreat} 가능"
@@ -829,6 +984,12 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
         conditions.append(f"{{influence_{faction.value}}} {amount} 이상이면")
     if held.alliance is not None:
         conditions.append(f"{_faction_name_ko(held.alliance)} {{alliance}}이면")
+    if held.agent_on_space is not None:
+        # The Canny line's words (``effect_dsl_text_ko``): "황제 게임판 장소에
+        # {agent}가 있다면" (Imperial Shock Trooper).
+        conditions.append(
+            condition_text_ko(AgentOnSpaceWithIcon(held.agent_on_space))
+        )
 
     count = line.faction_count
     per_faction = (
@@ -847,6 +1008,13 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
     if line.strength_per_other_sword_card:
         n = line.strength_per_other_sword_card
         gains.append(f"+{{sword:{n}}} (공개한 다른 {{sword}} 카드마다)")
+    if line.strength_per_dreadnought:
+        # Rise of Ix's Full-Scale Assault: no Korean source names the
+        # dreadnought (glossary-ko.md has no entry; the official Korean
+        # edition has no Rise of Ix), so the word stays English, as the
+        # dreadnought rows' labels keep it.
+        n = line.strength_per_dreadnought
+        gains.append(f"+{{sword:{n}}} ({{conflict}}의 내 dreadnought마다)")
     if line.persuasion_per_completed_contract:
         n = line.persuasion_per_completed_contract
         gains.append(f"+{{persuasion:{n}}} (완수한 {{contract}}마다)")
@@ -860,6 +1028,10 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
         gains.append(f"{{intrigue:{line.draw_intrigue}}}")
     if line.recruit_troops:
         gains.append(f"{{troop:{line.recruit_troops}}}")
+    if line.supply_deployments:
+        # Treachery: Double Cross's words (``effect_dsl_text_ko``).
+        n = line.supply_deployments
+        gains.append(f"{{supply}}의 {{troop:{n}}}을 {{conflict}}에 배치")
     influence = line.influence
     if influence is not None and influence[1]:
         faction, times = influence

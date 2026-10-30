@@ -3,7 +3,9 @@
 from copy import replace
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.immortality.board import genetic_markers_reached
 from dune_imperium.content.immortality.tleilaxu import tleilaxu_card_for_instance
 from dune_imperium.content.uprising.abilities import Ability, AbilityMark
@@ -13,7 +15,9 @@ from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardForSolari,
     AcquireCardUpTo,
     AdvanceTleilaxu,
+    CommissionDreadnought,
     DrawIntrigueCards,
+    Freighter,
     GainInfluence,
     GainResources,
     GeneticMarkersAtLeast,
@@ -22,12 +26,16 @@ from dune_imperium.content.uprising.effect_dsl import (
     Research,
     Reward,
     TakeContract,
+    TrashPersonalCard,
 )
 from dune_imperium.content.uprising.imperium import (
     ImperiumCardEntry,
     imperium_card_for_instance,
 )
 from dune_imperium.content.uprising.reserve import RESERVE_STACKS_BY_ID
+from dune_imperium.content.uprising.reveal_choice_abilities import (
+    reveal_choice_ability,
+)
 from dune_imperium.content.uprising.trigger_abilities import (
     acquisition_ability,
 )
@@ -45,6 +53,7 @@ from dune_imperium.rules.acquire_icons import (
     acquire_box_icons,
     queue_acquire_icons,
 )
+from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.box_events import BoxOutcome, agent_box_event
 from dune_imperium.rules.card_trash import credit_trash_recruits, trash_personal_card
 from dune_imperium.rules.contracts import (
@@ -81,6 +90,7 @@ from dune_imperium.rules.intrigue_deck import (
     triggered_intrigue_draw,
 )
 from dune_imperium.rules.intrigue_triggers import fire_reveal_acquisition_intrigue
+from dune_imperium.rules.optional_trash import open_optional_trash, trash_printer
 from dune_imperium.rules.reveal_turn import (
     current_reveal_context,
     fire_guild_spy_on_spice_must_flow,
@@ -129,10 +139,21 @@ def deck_top_offered(state: GameState, player: int) -> bool:
     (``PlayerState.acquire_to_deck_top_round``); a card acquired before the
     Plot was played is unaffected (13.3), which holds as it is the Plot's
     play that sets the flag.
+
+    Rise of Ix's Spaceport: "얻는 카드를 덱 위에 놓을 수 있다"
+    (docs/rules/rise-of-ix.md 4) -- the same choice for every card its owner
+    acquires, whenever it is acquired: the tile prints no round or turn, so
+    it needs no open Reveal (stage P4c-2c). Both can apply at once; the card
+    is placed once, where the owner chooses, and a Bypass Protocol card that
+    is forced on top (``AcquireCardUpTo.to_deck_top``) has no choice to make.
     """
 
-    return state.players[player].acquire_to_deck_top_round and reveal_is_open_for(
-        state, player
+    owner = state.players[player]
+    return (
+        owner.acquire_to_deck_top_round and reveal_is_open_for(state, player)
+    ) or (
+        state.config.rise_of_ix
+        and has_tech(owner.tech_ids, TechAbility.ACQUIRED_CARDS_ON_DECK)
     )
 
 
@@ -1156,10 +1177,40 @@ def _acquisition_effects(
     state, events = influenced.state, influenced.events
     tracked = apply_acquisition_track_effects(state, player, definition, source=source)
     completed = complete_acquire_contracts(
-        tracked.state, player, definition.card.card_id, source=source
+        _acquisition_trash(tracked.state, player, definition, source=source),
+        player,
+        definition.card.card_id,
+        source=source,
     )
     return RuleResult(
         state=completed.state, events=(*events, *tracked.events, *completed.events)
+    )
+
+
+def _acquisition_trash(
+    state: GameState, player: int, definition: ImperiumCardEntry, *, source: str
+) -> GameState:
+    """The acquire box's black Trash icon (Shai-Hulud, Rise of Ix).
+
+    "When you acquire a card, you immediately resolve its acquire box, once"
+    [Main p. 20] (docs/rules/player-turns.md), so the trash is offered the
+    moment the card sits in its zone, as a row waiting on the owner's own
+    turn or a window of its own elsewhere (``optional_trash``). The icon is
+    optional: "Trash ... 비용이거나 카드가 자기를 trash하라고 할 때만 의무"
+    [DI p. 16] (docs/rules/imperium-base.md 11), and neither applies to an
+    acquire box's icon. It takes a card of the hand, the discard pile or
+    play, the acquired card included once it is there.
+    """
+
+    if not any(
+        isinstance(reward, TrashPersonalCard) for reward in _acquire_rewards(definition)
+    ):
+        return state
+    return open_optional_trash(
+        state,
+        player,
+        f"{source}:trash",
+        printer=trash_printer(Source.ACQUISITION, definition.card.card_id),
     )
 
 
@@ -1306,9 +1357,21 @@ def _resolve_imperium_acquisition_bonus(
                     ),
                     *recruit_shortfall_events(troop_source, player, wanted, recruited),
                 )
-            case PlaceSpy() | TakeContract() | GainInfluence() | Research():
+            case (
+                PlaceSpy()
+                | TakeContract()
+                | GainInfluence()
+                | Research()
+                | TrashPersonalCard()
+                | CommissionDreadnought()
+                | Freighter()
+            ):
                 # Left to the purchase path: its Spy choice or Contract
-                # market, the Influence, the track after the card's zone.
+                # market, the Influence, the track after the card's zone, the
+                # optional trash once the card sits in its zone
+                # (``_acquisition_trash``), Full-Scale Assault's optional
+                # Dreadnought icon and Appropriate's optional Freighter icon
+                # (``acquire_icons``).
                 pass
             case AdvanceTleilaxu():
                 pass
@@ -1371,6 +1434,8 @@ def next_reserve_instance_id(state: GameState, card_id: str) -> str:
             player.discard_pile,
             player.in_play,
             player.trashed,
+            # Ilesa Ecaz's card set aside by One Step Ahead (Rise of Ix).
+            (player.set_aside_card_id,) if player.set_aside_card_id else (),
         )
         for instance_id in zone
         if instance_id.startswith(prefix)
@@ -1845,6 +1910,162 @@ def apply_reveal_command_acquisition(
         state=opened.state,
         events=(*trashed.events, *acquired.result.events, *opened.events),
     )
+
+
+# --- A card's "Acquire a card that costs N or less" ---------------------------
+# Boundless Ambition (Rise of Ix promo): revealed, a mandatory Reveal choice;
+# discarded or trashed, the acquisition window of its Unload (``rules.unload``).
+
+_REVEAL_UP_TO: Final = PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE
+
+
+def acquisition_cap(effect: PersonalCardRevealChoiceEffect) -> int | None:
+    """The cost cap of a Reveal choice whose record is one "Acquire a card
+    that costs N or less" (``AcquireCardUpTo``), else None."""
+
+    ability = reveal_choice_ability(effect)
+    if len(ability.sections) != 1:
+        return None
+    (line,) = ability.sections
+    if line.costs or line.condition is not None or len(line.rewards) != 1:
+        return None
+    (piece,) = line.rewards
+    return piece.max_cost if isinstance(piece, AcquireCardUpTo) else None
+
+
+def acquisitions_up_to(
+    state: GameState,
+    player: int,
+    max_cost: int,
+    *,
+    imperium_action: str,
+    reserve_action: str,
+) -> tuple[DomainAction, ...]:
+    """The rows of a free "Acquire a card that costs ``max_cost`` or less"
+    for ``player``: each Reserve card and each Imperium Row card within the
+    cap (and the seat's own Manipulate set-aside card, at its printed cost
+    [FAQ p. 3]), never Foldspace (OQ-125), each followed by its deck-top twin
+    while one is offered (Recruitment Mission, Spaceport)."""
+
+    return with_deck_top_twins(
+        state,
+        player,
+        (
+            *(
+                DomainAction(
+                    action_id=reserve_action,
+                    actor=player,
+                    arguments=(("card_id", card_id),),
+                )
+                for card_id in acquirable_reserve_card_ids(state, max_cost)
+            ),
+            *(
+                DomainAction(
+                    action_id=imperium_action,
+                    actor=player,
+                    arguments=(("instance_id", instance_id),),
+                )
+                for instance_id in acquirable_imperium_instance_ids(
+                    state, max_cost, player=player
+                )
+            ),
+        ),
+    )
+
+
+def acquire_by_row(
+    state: GameState, player: int, action: DomainAction, *, source: str
+) -> RuleResult:
+    """Acquire the card an ``acquisitions_up_to`` row names -- to the discard
+    pile, or for its twin on top of the deck -- and open what the acquisition
+    leaves its caller (``open_acquisition_frames``), named after ``source``."""
+
+    arguments = dict(action.arguments)
+    to_deck_top = _wants_deck_top(action)
+    if "instance_id" in arguments:
+        acquired = acquire_imperium_for_intrigue(
+            state,
+            player,
+            str(arguments["instance_id"]),
+            to_hand=False,
+            source=source,
+            to_deck_top=to_deck_top,
+        )
+    else:
+        acquired = acquire_reserve_for_intrigue(
+            state,
+            player,
+            str(arguments["card_id"]),
+            to_hand=False,
+            source=source,
+            to_deck_top=to_deck_top,
+        )
+    opened = open_acquisition_frames(
+        acquired.result.state, player, acquired, source=source
+    )
+    return RuleResult(
+        state=opened.state, events=(*acquired.result.events, *opened.events)
+    )
+
+
+def legal_reveal_card_acquisition_actions(
+    state: GameState,
+    player: int,
+) -> tuple[DomainAction, ...]:
+    """Boundless Ambition's Reveal: "Acquire a card that costs [5] or less."
+    [Steam app text], from the Row or the Reserve (OQ-125).
+
+    Mandatory: it holds ``finish_reveal`` while a card is in reach, and with
+    none it offers nothing and lapses there, as every mandatory choice with
+    nothing to choose does (``mandatory_choice_is_pending``).
+    """
+
+    pending = pending_choice_rows(
+        state, player, legal_reveal_card_acquisition_actions
+    )
+    if pending is not None:
+        return pending
+    if not 0 <= player < state.config.players or not state.decision_stack:
+        return ()
+    frame = state.decision_stack[-1]
+    context = dict(frame.context)
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return ()
+    if context.get("reveal_choice_effect") != _REVEAL_UP_TO.value:
+        return ()
+    if context.get("reveal_card_id") not in state.players[player].in_play:
+        # Another effect trashed the card while the choice waited (OQ-022).
+        return ()
+    max_cost = acquisition_cap(_REVEAL_UP_TO)
+    assert max_cost is not None
+    return acquisitions_up_to(
+        state,
+        player,
+        max_cost,
+        imperium_action="acquire_reveal_imperium_card",
+        reserve_action="acquire_reveal_reserve_card",
+    )
+
+
+def apply_reveal_card_acquisition(
+    state: GameState,
+    action: DomainAction,
+) -> RuleResult:
+    """Acquire the chosen card for a revealed card's acquisition; the choice
+    is used up."""
+
+    state = open_pending_reveal_choice(state, action)
+    if action not in legal_reveal_card_acquisition_actions(state, action.actor):
+        raise ValueError("action is not a legal Reveal acquisition")
+    context = dict(state.decision_stack[-1].context)
+    source_card_id = context.get("reveal_card_id")
+    if not isinstance(source_card_id, str):
+        raise RuntimeError("Reveal acquisition frame has invalid card ID")
+    source = (
+        f"round:{state.round_number}:player:{action.actor}:"
+        f"reveal_card:{source_card_id}:acquisition"
+    )
+    return acquire_by_row(state.pop_decision(), action.actor, action, source=source)
 
 
 def acquire_imperium_for_intrigue(

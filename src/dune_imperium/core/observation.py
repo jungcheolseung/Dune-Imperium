@@ -7,7 +7,11 @@ from functools import cache
 from typing import Final
 
 from dune_imperium.config import BaseGame
-from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
+from dune_imperium.content.bloodlines.tech import (
+    TECH_TILES_BY_ID,
+    TechAbility,
+    has_tech,
+)
 from dune_imperium.content.uprising.effect_dsl import RevealContractsTakeOne
 from dune_imperium.content.uprising.intrigue import INTRIGUE_CARDS_BY_INSTANCE
 from dune_imperium.content.uprising.personal_cards import personal_card_for_instance
@@ -159,6 +163,55 @@ class PublicPlayerView:
     voice_blocked_space_ids: tuple[str, ...] = ()
     enemy_agents_ignored_turn: bool = False
     acquire_to_deck_top_round: bool = False
+    # Rise of Ix (observation v39, stage P4a; plan 17.8), all public
+    # (docs/rules/rise-of-ix.md 13 "Snooper token, Negotiator, Freighter,
+    # dreadnought | 모두"): the seat's dreadnoughts in its supply, garrison
+    # and the Conflict, its Freighter's Shipping space, its Negotiators, the
+    # tracks still holding Tessia Vernius' Snooper tokens, whether Ilesa Ecaz
+    # has a card set aside (which card is hers alone,
+    # ``PrivatePlayerView.set_aside_card_id``), whether it came back to the
+    # hand this turn, and the turns finished this round; ``PlayerState``
+    # fields of the same names.
+    #
+    # ``strategic_push_solari``: the Solari the seat pledged with Strategic
+    # Push for the Conflict under way (``PlayerState`` field of the same
+    # name), public because the Combat card is played face up -- "opponent에게는
+    # play할 때만 공개한다" [Main p. 7] and OQ-010's "한 번 공개된 정보는 재확인
+    # 가능해야 한다" (docs/rules/information-visibility.md).
+    dreadnoughts_supply: int = 0
+    dreadnoughts_garrison: int = 0
+    dreadnoughts_conflict: int = 0
+    freighter_space: int = 0
+    negotiators: int = 0
+    snooper_faction_ids: tuple[str, ...] = ()
+    has_set_aside_card: bool = False
+    set_aside_returned_turn: bool = False
+    turns_finished_round: int = 0
+    strategic_push_solari: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class IxPending:
+    """The observer's own open Rise of Ix decision (observation v39's
+    ``ix_pending``; plan 17.8 review item 4), read from the context of the
+    frame it decides (``ix_pending_of``).
+
+    ``shipping_rewards`` are the Shipping track spaces (1 to 3) whose reward
+    a Freighter recall still owes, taken in any order [Rise of Ix p. 5];
+    ``tech_discount`` the open Acquire Tech's Tech Discount (0 to 2) and
+    ``tech_payment`` what it is paid with, "spice" or Appropriate's "solari"
+    [Rise of Ix pp. 4, 10] ("" with no Acquire Tech open);
+    ``negotiators_returnable`` the Negotiators the seat may still return
+    toward it [Rise of Ix p. 4]. Stage P4c writes the context keys.
+    """
+
+    shipping_rewards: tuple[int, ...] = ()
+    tech_discount: int = 0
+    tech_payment: str = ""
+    negotiators_returnable: int = 0
+
+
+NO_IX_PENDING: Final = IxPending()
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +250,17 @@ class PrivatePlayerView:
     # The original game's Baron Harkonnen: his own Masterstroke Factions,
     # chosen in secret before the first round [FAQ p. 1] (section 14).
     masterstroke_factions: tuple[str, ...] = ()
+    # Rise of Ix (observation v39; docs/rules/rise-of-ix.md 13): Ilesa
+    # Ecaz's own set-aside card; the Intrigue cards the seat knows
+    # (``PlayerState.known_intrigue_ids``) by place -- the Intrigue deck's
+    # top card, cards by depth from the deck's bottom as (depth, card), 0 the
+    # bottom card, and cards another seat holds as (seat, card); and its own
+    # open Rise of Ix decision.
+    set_aside_card_id: str = ""
+    known_intrigue_top: str = ""
+    known_intrigue_bottom: tuple[tuple[int, str], ...] = ()
+    known_intrigue_held: tuple[tuple[int, str], ...] = ()
+    ix_pending: IxPending = NO_IX_PENDING
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,6 +380,11 @@ class PlayerView:
     # The original game's Sort Through the Chaos winner, who takes the
     # Mentat at the next round's start [FAQ p. 4]; public, like the reward.
     mentat_owed_to: int | None = None
+    # Rise of Ix (``RulesetConfig.rise_of_ix``), public like every setup
+    # option, and the dreadnoughts on Control spaces as (space, seat,
+    # leaving) (``GameState.dreadnought_control``), public.
+    rise_of_ix: bool = False
+    dreadnought_control: tuple[tuple[str, int, bool], ...] = ()
     # The open Agent turn's Agent boxes, as (card instance, still pending):
     # box 0 the placed card, then box 1 its graft partner (Immortality);
     # empty outside an Agent turn. Both cards lie face up in play and each
@@ -374,7 +443,12 @@ def resolving_intrigue_ids(state: GameState) -> tuple[str, ...]:
     return tuple(resolving)
 
 
-_SEALED_VALUE_PREFIXES: Final = ("scouts_pick:", "scouts_bid:", "masterstroke:")
+_SEALED_VALUE_PREFIXES: Final = (
+    "scouts_pick:",
+    "scouts_bid:",
+    "masterstroke:",
+    "set_aside:",
+)
 
 
 def secret_pick_id(event_round: int, seat: int) -> str:
@@ -393,6 +467,13 @@ def masterstroke_id(seat: int) -> str:
     """The registry id of the Baron at ``seat``'s two Masterstroke Factions."""
 
     return f"{_SEALED_VALUE_PREFIXES[2]}{seat}"
+
+
+def set_aside_id(seat: int) -> str:
+    """The registry id of Ilesa Ecaz at ``seat``'s One Step Ahead set-aside:
+    which card she set aside is her secret until the rules return it."""
+
+    return f"{_SEALED_VALUE_PREFIXES[3]}{seat}"
 
 
 def is_sealed_value_id(value: str) -> bool:
@@ -424,11 +505,19 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
     peeks below. A hidden card its owner has been shown is known to that
     owner: a peeked deck top (Controlled, Glowglobes), Long Live the
     Fighters' top three, Imperium Ceremony's two Intrigue cards, Kota Odax's
-    bottom Tech tiles and Secret Project. An Arrakeen Scouts secret pick is listed under
-    ``secret_pick_id`` for its seat until it is due, and a sealed bid under
-    ``secret_bid_id`` until every seat has confirmed, and the original
-    game's Baron Harkonnen's Masterstroke Factions under ``masterstroke_id``
-    until he reveals them. This is the single source the
+    bottom Tech tiles and Secret Project. An Intrigue card a seat knows
+    (``PlayerState.known_intrigue_ids``, OQ-149: the card Imperium Ceremony
+    or Viscount Hundro Moritani put back on the deck's top, the cards Rise of
+    Ix puts on its bottom, such a card another seat drew) adds that seat to
+    its knowers (``rules.intrigue_knowledge``). Rise of Ix
+    (docs/rules/rise-of-ix.md 13): Ilesa Ecaz's face-down set-aside card is
+    hers alone. An Arrakeen Scouts
+    secret pick is listed under ``secret_pick_id`` for its seat until it is
+    due, and a sealed bid under ``secret_bid_id`` until every seat has
+    confirmed, and the original game's Baron Harkonnen's Masterstroke
+    Factions under ``masterstroke_id`` until he reveals them, and Ilesa
+    Ecaz's set-aside under ``set_aside_id`` until it returns. This is the
+    single source the
     server uses to decide what an event log may show and which steps an undo
     may take back, so every hidden zone and every private glimpse belongs
     here (``tests/unit/test_known_card_seats.py`` checks it against
@@ -482,6 +571,14 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
                 known[card_id] = owner
         if player.secret_project_tech_id:
             known[player.secret_project_tech_id] = owner
+        if player.set_aside_card_id:
+            # Ilesa Ecaz's One Step Ahead card, face down until it returns,
+            # and which card she set aside, a sealed value: the rules reveal
+            # it (at her second turn's start, or with a first-turn Reveal),
+            # so even her own step that falls into it is a reveal
+            # (``set_aside_id``, rise-of-ix.md 13).
+            known[player.set_aside_card_id] = owner
+            known[set_aside_id(player.player_id)] = owner
         for card_id in (
             # Imperium Ceremony's peek shows the deck's top cards to its owner.
             *peeked_intrigue_ids(state, player.player_id),
@@ -495,6 +592,13 @@ def known_card_seats(state: GameState) -> dict[str, frozenset[int]]:
             # Put on top face up for the whole table (OQ-145): the one deck
             # knowledge that wins over the owner's peeks above.
             known.pop(card_id, None)
+    for player in state.players:
+        for card_id in player.known_intrigue_ids:
+            # Rise of Ix: an Intrigue card this seat knows in the deck or in
+            # another seat's hand (rise-of-ix.md 13).
+            seats = known.get(card_id)
+            if seats is not None:
+                known[card_id] = seats | {player.player_id}
     for event_round, _, seat, _ in state.scouts_secret_picks:
         # Arrakeen Scouts: a secret pick is its seat's alone until due. It
         # is no card, but the log redaction, the undo boundary and the
@@ -598,6 +702,7 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         context_owner = dict(frame.context).get("turn_owner")
         if isinstance(context_owner, int) and not isinstance(context_owner, bool):
             turn_owner_value = context_owner
+    intrigue_top, intrigue_bottom, intrigue_held = known_intrigue_places(state, owner)
     return PlayerView(
         player=player,
         revision=state.revision,
@@ -622,6 +727,11 @@ def observe_state(state: GameState, player: int) -> PlayerView:
             navigation_slots=owner.navigation_slots,
             secret_project_tech_id=owner.secret_project_tech_id,
             masterstroke_factions=owner.masterstroke_factions,
+            set_aside_card_id=owner.set_aside_card_id,
+            known_intrigue_top=intrigue_top,
+            known_intrigue_bottom=intrigue_bottom,
+            known_intrigue_held=intrigue_held,
+            ix_pending=ix_pending_of(state, player),
             scouts_secret_picks=tuple(
                 (event_round, event_id, pick)
                 for event_round, event_id, seat, pick in state.scouts_secret_picks
@@ -691,8 +801,124 @@ def observe_state(state: GameState, player: int) -> PlayerView:
         epic_game=state.config.epic_game,
         base_game=state.config.base_game,
         mentat_owed_to=state.mentat_owed_to,
+        rise_of_ix=state.config.rise_of_ix,
+        dreadnought_control=state.dreadnought_control,
         agent_boxes=agent_box_cards(state),
     )
+
+
+KnownIntriguePlaces = tuple[
+    str, tuple[tuple[int, str], ...], tuple[tuple[int, str], ...]
+]
+_NO_KNOWN_INTRIGUE: Final[KnownIntriguePlaces] = ("", (), ())
+
+
+def known_intrigue_places(state: GameState, owner: PlayerState) -> KnownIntriguePlaces:
+    """The Intrigue cards ``owner`` knows (``known_intrigue_ids``) by place:
+    the Intrigue deck's top card ("" when unknown), (depth from the deck's
+    bottom, card) and (holding seat, card), sorted. A card in a public zone
+    or in the owner's own hand is in none of them."""
+
+    known = owner.known_intrigue_ids
+    if not known:
+        return _NO_KNOWN_INTRIGUE
+    cards = frozenset(known)
+    deck = state.intrigue_deck
+    return (
+        deck[0] if deck and deck[0] in cards else "",
+        tuple(
+            (depth, card) for depth, card in enumerate(reversed(deck)) if card in cards
+        ),
+        tuple(
+            sorted(
+                (seat.player_id, card)
+                for seat in state.players
+                if seat.player_id != owner.player_id
+                for card in seat.intrigue_cards
+                if card in cards
+            )
+        ),
+    )
+
+
+# The context keys of the open Rise of Ix decision's state (stage P4c writes
+# them in the frame the seat decides; ``ix_pending_of`` reads them): the
+# Shipping track spaces whose recall reward is still owed, as "1,3"; the open
+# Acquire Tech's Tech Discount and its payment ("spice" or "solari"); the
+# Negotiators the seat may still return toward it are counted from the state.
+SHIPPING_REWARDS_KEY: Final = "shipping_rewards"
+# Inside the owner's own turn the owed recall rewards wait on its turn frame
+# instead (``rules.turn_rows``: the frame's waiting effects, a JSON list of
+# ``[kind, source, value]``, and a Shipping reward's kind, whose value is
+# ``"<space>"``, or ``"<space>:<part>"`` where a space prints two rewards, as
+# the window's key lists them), and ``ix_pending_of`` reads them there too.
+TURN_ROWS_KEY: Final = "pending_turn_rows"
+SHIPPING_REWARD_ROW: Final = "shipping_reward"
+TECH_DISCOUNT_KEY: Final = "tech_discount"
+TECH_PAYMENT_KEY: Final = "tech_payment"
+# No rule writes it any more: the returnable Negotiators are counted from the
+# state each time (``ix_negotiators_returnable``). Kept for the observation test
+# that writes a stale value of it into a frame to show the view ignores it.
+NEGOTIATORS_RETURNABLE_KEY: Final = "negotiators_returnable"
+
+
+def ix_negotiators_returnable(state: GameState, player: int, discount: int) -> int:
+    """The most Negotiators ``player`` could still return toward an Acquire
+    Tech at ``discount``: those it holds, but no more than the dearest
+    face-up tile still costs ("any number" of them, each one spice off,
+    [Rise of Ix p. 4]; one beyond the price lowers nothing). Read from the
+    state each time: an acquisition stacked under another that spent
+    Negotiators or took a tile must not show the count it opened with
+    (Codex review of 82b2bf2e)."""
+
+    prices = (
+        max(TECH_TILES_BY_ID[stack[0]].cost - discount, 0)
+        for stack in state.tech_stacks
+        if stack
+    )
+    return min(state.players[player].negotiators, max(prices, default=0))
+
+
+def ix_pending_of(state: GameState, player: int) -> IxPending:
+    """The open Rise of Ix decision ``player`` is making (``IxPending``),
+    from the context of its own top frame; ``NO_IX_PENDING`` otherwise, and
+    always outside a Rise of Ix game. An open Ix Tech acquisition's
+    returnable Negotiators are counted now (``ix_negotiators_returnable``),
+    not taken from the context."""
+
+    if not state.config.rise_of_ix or not state.decision_stack:
+        return NO_IX_PENDING
+    frame = state.decision_stack[-1]
+    if not isinstance(frame.decision, PlayerDecision) or frame.decision.owner != player:
+        return NO_IX_PENDING
+    context = dict(frame.context)
+    rewards = context.get(SHIPPING_REWARDS_KEY)
+    discount = context.get(TECH_DISCOUNT_KEY)
+    payment = context.get(TECH_PAYMENT_KEY)
+    returnable = (
+        ix_negotiators_returnable(state, player, discount)
+        if isinstance(discount, int)
+        else 0
+    )
+    owed = (
+        {int(reward.split(":")[0]) for reward in rewards.split(",") if reward}
+        if isinstance(rewards, str)
+        else set()
+    )
+    waiting = context.get(TURN_ROWS_KEY)
+    if isinstance(waiting, str) and waiting:
+        owed.update(
+            int(value.split(":")[0])
+            for kind, _source, value in json.loads(waiting)
+            if kind == SHIPPING_REWARD_ROW
+        )
+    pending = IxPending(
+        shipping_rewards=tuple(sorted(owed)),
+        tech_discount=discount if isinstance(discount, int) else 0,
+        tech_payment=payment if isinstance(payment, str) else "",
+        negotiators_returnable=returnable,
+    )
+    return NO_IX_PENDING if pending == NO_IX_PENDING else pending
 
 
 # The turn frame's context keys of a picked Agent card (stage B1,
@@ -920,6 +1146,8 @@ def _card_identity(instance_id: str) -> str:
 
 
 def _deck_pool(player: PlayerState) -> tuple[str, ...]:
+    # Ilesa Ecaz's face-down set-aside card stays in the pool: leaving it
+    # out would tell every seat which card it is (plan 17.8 review item 1).
     public = set(player.hand_public)
     return tuple(
         sorted(
@@ -927,6 +1155,7 @@ def _deck_pool(player: PlayerState) -> tuple[str, ...]:
             for card_id in (
                 *player.deck,
                 *(card_id for card_id in player.hand if card_id not in public),
+                *((player.set_aside_card_id,) if player.set_aside_card_id else ()),
             )
         )
     )
@@ -1016,4 +1245,14 @@ def _public_player_view(player: PlayerState) -> PublicPlayerView:
         voice_blocked_space_ids=player.voice_blocked_space_ids,
         enemy_agents_ignored_turn=player.enemy_agents_ignored_turn,
         acquire_to_deck_top_round=player.acquire_to_deck_top_round,
+        dreadnoughts_supply=player.dreadnoughts_supply,
+        dreadnoughts_garrison=player.dreadnoughts_garrison,
+        dreadnoughts_conflict=player.dreadnoughts_conflict,
+        freighter_space=player.freighter_space,
+        negotiators=player.negotiators,
+        snooper_faction_ids=player.snooper_faction_ids,
+        has_set_aside_card=bool(player.set_aside_card_id),
+        set_aside_returned_turn=player.set_aside_returned_turn,
+        turns_finished_round=player.turns_finished_round,
+        strategic_push_solari=player.strategic_push_solari,
     )

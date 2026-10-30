@@ -29,9 +29,11 @@ from dune_imperium.content.uprising.board import (
     Faction,
 )
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
     AdvanceTleilaxu,
     AtFactionSpace,
     AtMakerSpace,
+    AtSpaceWithEnemyAgent,
     BlockChosenSpaceForOpponentsNextAgent,
     CompleteContract,
     DiscardedCardHasFaction,
@@ -41,6 +43,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     EffectSection,
     FactionBond,
     ForceEnemyRetreat,
+    Freighter,
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
@@ -58,6 +61,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     RecallAgent,
     RecruitTroops,
     ReturnOtherGraftedCardAtRevealStart,
+    TakeAnotherTurn,
     TrashCard,
     TrashedCardHasFaction,
     TrashPersonalCard,
@@ -116,6 +120,7 @@ from dune_imperium.rules.agent_effects import (
     AGENT_ICON_INTRIGUE,
     AGENT_ICON_PLEDGE,
     AGENT_ICON_RESEARCH,
+    AGENT_ICON_SOLARI,
     AGENT_ICON_SPICE,
     AGENT_ICON_TROOPS,
     AUTOMATIC_AGENT_ICONS,
@@ -161,6 +166,7 @@ from dune_imperium.rules.optional_trash import (
 from dune_imperium.rules.spy_placement import spy_placement_allowed_post_ids
 
 _BOX = PersonalCardAgentEffect
+_SHADOWS = _BOX.MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO
 
 
 def test_every_record_is_a_printed_agent_box() -> None:
@@ -170,8 +176,28 @@ def test_every_record_is_a_printed_agent_box() -> None:
     # Smuggler's Thopter, Worm Riders, Guild Ambassador, Gurney Halleck,
     # Imperial Spy, Missionaria Protectiva, Gene Manipulation, Reverend Mother
     # Mohiam, Carryall, Test of Humanity, Firm Grip, Shifting Allegiances,
-    # Other Memory, The Voice, and the promos Thumper and Jessica of Arrakis).
-    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23
+    # Other Memory, The Voice, and the promos Thumper and Jessica of Arrakis),
+    # and Rise of Ix's Sayyadina (stage P4d: "3 water -> 1 Victory Point"),
+    # Local Fence ("[2 spice] -> [5 Solari] -OR- [5 Solari] -> [4 spice]"),
+    # Landing Rights (the Freighter icon), Shai-Hulud ("[Trash a card] ->
+    # [2 troops]"), Guild Chief Administrator ("[Discard] -> [Trash a card]"),
+    # Desert Ambush ("For each troop you deploy this turn, you may force an
+    # enemy unit to retreat"), Embedded Agent ("If you have another Bene
+    # Gesserit card in play: [Freighter] [Freighter]"), Court Intrigue ("Put
+    # an Intrigue card on the bottom of the deck -> [Intrigue card]"),
+    # Weirding Way ("You may take another turn immediately after this one"),
+    # Satellite Ban ("[Discard] -> [1 spice] [1 water]"), Spice Trader
+    # ("[Fremen] 2 Influence: [Discard] -> [2 spice]"), Imperial Bashar
+    # ("[Troop] -OR- [Trash a card]"), Bounty Hunter ("If used to send an
+    # Agent to a board space with an enemy Agent: [2 Solari]"), Web of Power
+    # (three Influence thresholds over three icons), Ixian Engineer (the
+    # Acquire Tech icon), Esmar Tuek ("[1 spice] -> [Spacing Guild Influence]
+    # [draw 1 card]"), In The Shadows ("[Bene Gesserit] 2 Influence: [Discard]
+    # -> Choose one: [Emperor] [Spacing Guild] [Fremen] Influence"), Ix-Guild
+    # Compact ("[Discard] [Discard] -> [Dreadnought]") and Appropriate
+    # ("[Emperor] 2 Influence: [Acquire Tech] You may use Solari instead of
+    # spice for this purchase").
+    assert len(AGENT_BOX_ABILITIES) == 103 + 1 + 23 + 19
     for effect in AGENT_BOX_ABILITIES:
         assert effect in AGENT_EFFECT_TEXT, effect
 
@@ -187,6 +213,12 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         _BOX.RECRUIT_ONE_AND_DRAW_IF_BENE_GESSERIT_INFLUENCE_TWO: ("troops", "cards"),
         _BOX.GAIN_BY_BENE_GESSERIT_AND_FREMEN_INFLUENCE_TWO: ("water", "spice"),
         _BOX.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO: ("solari", "spice"),
+        # Web of Power (Rise of Ix): three thresholds, one icon each.
+        _BOX.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO: (
+            "solari",
+            "cards",
+            "water",
+        ),
         _BOX.RECRUIT_ONE_AND_DRAW_ONE_IF_GAINED_TWO_SPICE_THIS_TURN: (
             "troops",
             "cards",
@@ -200,6 +232,24 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
         _BOX.TRASH_SELF_AND_GAIN_CHOSEN_INFLUENCE: ("influence", "trash_self"),
         _BOX.DRAW_ONE_AND_RECALL_AGENT: ("cards", "recall"),
         _BOX.MAY_RECALL_AGENT_SENT_THIS_TURN: ("recall",),
+        # Landing Rights (Rise of Ix): the Freighter icon, answered by its own
+        # rows.
+        _BOX.MAY_MOVE_FREIGHTER: ("freighter",),
+        # Embedded Agent (Rise of Ix): two Freighter icons behind the Bond.
+        _BOX.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
+            "freighter",
+            "freighter_second",
+        ),
+        # Weirding Way (Rise of Ix): "You may take another turn immediately
+        # after this one", answered by its own row.
+        _BOX.MAY_TAKE_ANOTHER_TURN: ("extra_turn",),
+        # Ixian Engineer (Rise of Ix): the Acquire Tech icon, answered by its
+        # own row.
+        _BOX.MAY_ACQUIRE_TECH: ("tech",),
+        # Appropriate (Rise of Ix): the same icon behind the Emperor threshold.
+        _BOX.MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO: (
+            "tech",
+        ),
         _BOX.TRASH_PERSONAL_CARD_TO_DRAW_ONE_IF_BENE_GESSERIT_BOND: ("trash", "cards"),
         # Split per icon (cleanup-2d-5, user decision 2026-10-18).
         _BOX.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: ("influence", "intrigue"),
@@ -228,15 +278,21 @@ def test_icon_boxes_keep_their_printed_icons_in_order() -> None:
 
 
 def test_placement_requirements_are_fixed_by_the_placement() -> None:
-    """Only the visited space and a Bond among cards in play are judged when
-    the card is played (OQ-028 (a)); every other condition when it resolves."""
+    """Only the visited space (its icons, an enemy Agent on it) and a Bond
+    among cards in play are judged when the card is played (OQ-028 (a)); every
+    other condition when it resolves."""
 
     requirements = {
         type(ability.requirement)
         for ability in AGENT_BOX_ABILITIES.values()
         if ability.requirement is not None
     }
-    assert requirements == {AtMakerSpace, AtFactionSpace, FactionBond}
+    assert requirements == {
+        AtMakerSpace,
+        AtFactionSpace,
+        AtSpaceWithEnemyAgent,
+        FactionBond,
+    }
     harvester = AGENT_BOX_ABILITIES[_BOX.GAIN_SPICE_IF_MAKER_SPACE]
     owner = PlayerState(player_id=0)
     maker = next(space for space in BOARD_SPACES if space.maker)
@@ -248,6 +304,10 @@ def test_placement_requirements_are_fixed_by_the_placement() -> None:
     assert not opens_at_placement(elders, owner, city, elders_id)
     bonded = replace(owner, in_play=("imperium:weirding_woman:0",))
     assert opens_at_placement(elders, bonded, city, elders_id)
+    # Bounty Hunter (Rise of Ix): an enemy Agent on the space it goes to.
+    hunter = AGENT_BOX_ABILITIES[_BOX.GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE]
+    assert not opens_at_placement(hunter, owner, city, "imperium:x:0")
+    assert opens_at_placement(hunter, owner, city, "imperium:x:0", enemy_agent=True)
 
 
 def test_every_icon_condition_has_a_block() -> None:
@@ -627,15 +687,18 @@ def test_a_payment_that_buys_nothing_is_withheld() -> None:
 
 
 def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
-    """The payment shape takes the nine records it was written for (Control
+    """The payment shape takes the ten records it was written for (Control
     the Spice since cleanup-2d, the original game's Spice Smugglers since
     stage P3, whose reward is one fixed Faction's Influence, its Duncan
     Idaho, whose troop and draw wait as armed icons, its Fremen Camp, and its
     Firm Grip, whose Influence of three named Factions waits as an armed
-    icon), and refuses a
-    record it would pay wrongly (a reward it does not give -- a chosen or the
-    visited Faction's Influence --, a cost no row names): such a box keeps its
-    own code."""
+    icon, and Rise of Ix's Sayyadina since stage P4d, its Local Fence,
+    two arrows printed with "-OR-", one row each named by its exchange, and
+    its Esmar Tuek, whose Influence and draw wait as armed icons), and
+    refuses a record it would pay wrongly (a reward it does not give -- a
+    chosen or the visited Faction's Influence --, a cost no row names, an
+    "-OR-" arrow whose exchange no row names): such a box keeps its own
+    code."""
 
     payments = {
         effect
@@ -652,7 +715,24 @@ def test_only_a_payment_the_shape_pays_is_a_payment_box() -> None:
         _BOX.MAY_PAY_ONE_WATER_FOR_TROOP_AND_DRAW_ONE,
         _BOX.MAY_PAY_TWO_SPICE_FOR_THREE_TROOPS,
         _BOX.MAY_PAY_TWO_SOLARI_FOR_CHOSEN_INFLUENCE,
+        _BOX.MAY_PAY_THREE_WATER_FOR_VP,
+        _BOX.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE,
+        _BOX.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE,
     }
+    unnamed = Ability(
+        AbilityTiming.AGENT_BOX,
+        (
+            EffectSection(
+                rewards=(GainResources(water=1),), costs=(PayResources(spice=1),)
+            ),
+            EffectSection(
+                rewards=(GainResources(spice=4),), costs=(PayResources(solari=5),)
+            ),
+        ),
+        mark=AbilityMark.OPTIONAL,
+        structure=AbilityStructure.ONE_OF,
+    )
+    assert not payment_box(unnamed)
     for cost, rewards in (
         (PayResources(spice=1), (GainInfluence(),)),
         (PayResources(spice=1), (GainInfluence(visited_space=True),)),
@@ -750,12 +830,16 @@ def test_seven_boxes_choose_one_target_and_read_as_their_cards() -> None:
         _BOX.BLOCK_CHOSEN_SPACE_FOR_OPPONENTS_NEXT_AGENT: (
             BlockChosenSpaceForOpponentsNextAgent
         ),
+        # Desert Ambush (Rise of Ix, stage P4d): the one optional target box,
+        # "you may force an enemy unit to retreat" for each troop deployed.
+        _BOX.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED: ForceEnemyRetreat,
     }
     for effect in (
         _BOX.PLACE_SPY,
         _BOX.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE,
         _BOX.FORCE_OPPONENT_TROOP_RETREAT,
         _BOX.COMPLETE_ONE_CONTRACT,
+        _BOX.MAY_FORCE_ENEMY_UNIT_RETREAT_FOR_EACH_TROOP_DEPLOYED,
     ):
         (reward,) = AGENT_BOX_ABILITIES[effect].sections[0].rewards
         assert reward_text(reward) == AGENT_EFFECT_TEXT[effect]
@@ -860,7 +944,7 @@ def test_a_target_box_raises_while_it_can_choose_and_fizzles_without() -> None:
         resolve_agent_card_effect(demands)
 
 
-def test_eight_discard_arrows_read_the_discarded_card() -> None:
+def test_ten_discard_arrows_read_the_discarded_card() -> None:
     """Composed A3d: "[You may] discard a card -> ..." boxes. The cost is on
     the first line; a later line's condition reads the discarded card, which
     only the Agent box knows (the generic interpreter refuses it). Captured
@@ -876,6 +960,17 @@ def test_eight_discard_arrows_read_the_discarded_card() -> None:
         _BOX.MAY_DISCARD_TO_TAKE_CONTRACT: AbilityMark.OPTIONAL,
         _BOX.MAY_DISCARD_TO_DRAW_ONE: AbilityMark.OPTIONAL,
         _BOX.MAY_DISCARD_FOR_WATER: AbilityMark.OPTIONAL,
+        # Rise of Ix's Satellite Ban (stage P4d).
+        _BOX.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER: AbilityMark.OPTIONAL,
+        # Rise of Ix's Spice Trader (stage P4d): an Influence threshold over the
+        # whole arrow.
+        _BOX.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO: AbilityMark.OPTIONAL,
+        # Rise of Ix's In The Shadows (stage P4d): the same threshold, its
+        # chosen Influence armed once the card is discarded.
+        _SHADOWS: AbilityMark.OPTIONAL,
+        # Its Ix-Guild Compact: two Discard icons paid together for a
+        # dreadnought.
+        _BOX.MAY_DISCARD_TWO_FOR_DREADNOUGHT: AbilityMark.OPTIONAL,
         _BOX.DISCARD_TO_DRAW_ONE_OR_TWO_IF_SPACING_GUILD: AbilityMark.OPTIONAL,
         _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: AbilityMark.MANDATORY,
         _BOX.MAY_DISCARD_TO_DRAW_INTRIGUE_AND_PERSONAL_CARD: AbilityMark.OPTIONAL,
@@ -883,6 +978,9 @@ def test_eight_discard_arrows_read_the_discarded_card() -> None:
             AbilityMark.OPTIONAL
         ),
         _BOX.MAY_DISCARD_FOR_DEEP_COVER_SPY: AbilityMark.OPTIONAL,
+        # Rise of Ix's Guild Chief Administrator: "[Discard] -> [Trash a
+        # card]", the trash optional once the cost is paid [FAQ p. 3].
+        _BOX.MAY_DISCARD_TO_TRASH_A_CARD: AbilityMark.OPTIONAL,
     }
     assert {
         effect: ability.armed_icons
@@ -901,10 +999,15 @@ def test_eight_discard_arrows_read_the_discarded_card() -> None:
         # draw printed below it are separate steps (OQ-106; user decision
         # 2026-10-25; engine audit 2026-10-22, P6).
         _BOX.DISCARD_ONE_DRAW_TWO_IF_SPACING_GUILD: (AGENT_ICON_CARDS,),
+        _SHADOWS: (AGENT_ICON_INFLUENCE,),
     }
     for effect, mark in discards.items():
         ability = AGENT_BOX_ABILITIES[effect]
-        assert ability.sections[0].costs == (DiscardFromHand(),)
+        assert ability.sections[0].costs == (
+            (DiscardFromHand(2),)
+            if effect is _BOX.MAY_DISCARD_TWO_FOR_DREADNOUGHT
+            else (DiscardFromHand(),)
+        )
         assert not payment_box(ability) and target_piece(ability) is None
         # An optional arrow resolves only through its rows.
         assert optional_arrow(ability) is (mark is AbilityMark.OPTIONAL)
@@ -920,7 +1023,9 @@ def test_eight_discard_arrows_read_the_discarded_card() -> None:
 def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
     """Composed A3d: Branching Path and Junction Headquarters pay with an
     Intrigue card under an Alliance judged when the cost is paid; Branching
-    Path's rewards are armed as icons, Junction's VP is paid at once."""
+    Path's rewards are armed as icons, Junction's VP is paid at once. Rise of
+    Ix's Court Intrigue pays with one put under the Intrigue deck instead,
+    its Intrigue draw armed."""
 
     branching = AGENT_BOX_ABILITIES[
         _BOX.MAY_TRASH_INTRIGUE_FOR_INTRIGUE_AND_TWO_SPICE_IF_BENE_GESSERIT_ALLIANCE
@@ -928,18 +1033,20 @@ def test_two_intrigue_arrows_trash_an_intrigue_card() -> None:
     junction = AGENT_BOX_ABILITIES[
         _BOX.MAY_TRASH_INTRIGUE_AND_PAY_TWO_SPICE_FOR_VP_IF_SPACING_GUILD_ALLIANCE
     ]
+    court = AGENT_BOX_ABILITIES[_BOX.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE]
     intrigue_arrows = [
         ability for ability in AGENT_BOX_ABILITIES.values() if intrigue_box(ability)
     ]
-    assert intrigue_arrows == [branching, junction]
+    assert intrigue_arrows == [branching, court, junction]
     assert branching.armed_icons == (AGENT_ICON_INTRIGUE, AGENT_ICON_SPICE)
+    assert court.armed_icons == (AGENT_ICON_INTRIGUE,)
     assert not junction.armed_icons
     for ability in intrigue_arrows:
         assert optional_arrow(ability)
         assert not discard_box(ability) and not payment_box(ability)
 
 
-def test_six_trash_boxes_and_what_they_read_as() -> None:
+def test_seven_trash_boxes_and_what_they_read_as() -> None:
     """Composed A3e: black trash icons (Calculus of Power's one, Ruthless
     Leadership's two under its Commander condition) and arrows paid by a
     trash (Shishakli's draw, Pivotal Gambit's armed troop and pledge, Elite
@@ -963,6 +1070,8 @@ def test_six_trash_boxes_and_what_they_read_as() -> None:
         # The original game's Imperial Spy (stage P3): Pivotal Gambit's shape
         # with an armed Intrigue draw.
         _BOX.MAY_TRASH_SELF_TO_DRAW_INTRIGUE,
+        # Rise of Ix's Shai-Hulud (stage P4d): Shishakli's shape with a recruit.
+        _BOX.TRASH_PERSONAL_CARD_TO_RECRUIT_TWO,
     }
     treacherous = _BOX.TRASH_SELF_AND_EMPEROR_FROM_HAND_FOR_EXTRA_INFLUENCE
     hand = TrashCard(hand_only=True, faction=Faction.EMPEROR)
@@ -1065,14 +1174,26 @@ def test_each_armed_key_stays_with_the_boxes_the_icon_path_serves() -> None:
     # Shifting Allegiances: the Influence lost and the spice are the cost, the
     # one Faction's two Influence is the same armed icon.
     shifting = _BOX.MAY_LOSE_INFLUENCE_AND_PAY_TWO_SPICE_FOR_TWO_INFLUENCE
+    # Spice Smugglers: its Influence and its Solari armed once the spice is
+    # paid, in the owner's order (OQ-148).
+    smugglers = _BOX.MAY_PAY_TWO_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_THREE_SOLARI
+    # Rise of Ix's Court Intrigue: its Intrigue draw once the card is under
+    # the deck.
+    court = _BOX.MAY_PUT_INTRIGUE_ON_BOTTOM_TO_DRAW_INTRIGUE
+    # Rise of Ix's Esmar Tuek (stage P4d): its Influence and its draw armed
+    # once the spice is paid, as Spice Smugglers' and Duncan Idaho's.
+    esmar = _BOX.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
+    # Its In The Shadows: the chosen Influence armed once the card is discarded.
+    shadows = _SHADOWS
     assert users == {
-        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy},
-        AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy, duncan},
+        AGENT_ICON_INTRIGUE: {mentat, guild_spy, branching, elite, spy, court},
+        AGENT_ICON_CARDS: {mentat, guild_spy, piter, envoy, duncan, esmar},
         AGENT_ICON_SPICE: {branching},
         AGENT_ICON_TROOPS: {gambit, elite, duncan},
         AGENT_ICON_PLEDGE: {gambit},
         AGENT_ICON_RESEARCH: {piter},
-        AGENT_ICON_INFLUENCE: {grip, shifting},
+        AGENT_ICON_INFLUENCE: {grip, shifting, smugglers, esmar, shadows},
+        AGENT_ICON_SOLARI: {smugglers},
     }
 
 
@@ -1210,7 +1331,8 @@ def test_control_the_spice_is_a_payment_box() -> None:
 
 def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
     """Composed A3f: Southern Faith and High Priority Travel ("Choose one"), and
-    Guild Ambassador's and Other Memory's "-OR-" (stages P3, P3b).
+    Guild Ambassador's, Other Memory's and Imperial Bashar's "-OR-" (stages
+    P3, P3b, P4d).
     The plain line resolves as one action; Possible Futures, whose Bond
     turns its choice into both, is a hook. Interstellar Conspiracy, a plain
     line then a conditioned choice that once paid both, resolves icon by
@@ -1234,6 +1356,9 @@ def test_two_boxes_put_a_plain_line_beside_a_choice() -> None:
         # Other Memory (stage P3b): the draw beside a Bene Gesserit card taken
         # from the discard pile, the choice line offered only with one there.
         _BOX.DRAW_ONE_OR_BENE_GESSERIT_CARD_FROM_DISCARD: AbilityStructure.ONE_OF,
+        # Imperial Bashar (Rise of Ix, stage P4d): the recruit beside a black
+        # trash icon, an optional box (``[DI p. 16]``).
+        _BOX.RECRUIT_ONE_OR_MAY_TRASH_A_CARD: AbilityStructure.ONE_OF,
     }
     assert AGENT_BOX_ABILITIES[conspiracy].icons == ("spice", "influence")
     futures = AGENT_BOX_ABILITIES[_BOX.CHOSEN_INFLUENCE_OR_TWO_TROOPS_BOTH_IF_BOND]
@@ -1303,7 +1428,8 @@ def test_dangerous_rhetoric_trashes_itself_by_its_own_icon() -> None:
 def test_the_optional_icons_are_marked_in_their_records() -> None:
     """The icons ``OPTIONAL_AGENT_ICONS`` lets lapse are the ones their records
     print as optional (Tread in Darkness's black trash icon, Twisted Mentat's
-    "You may recall"), so a later stage can read it from the records."""
+    "You may recall", Landing Rights' Freighter, Ixian Engineer's Acquire
+    Tech), so a later stage can read it from the records."""
 
     marked = {}
     for effect, ability in AGENT_BOX_ABILITIES.items():
@@ -1313,6 +1439,12 @@ def test_the_optional_icons_are_marked_in_their_records() -> None:
             if any(
                 isinstance(reward, TrashPersonalCard) and not reward.mandatory
                 or isinstance(reward, RecallAgent) and reward.optional
+                # Landing Rights' Freighter icon is "may" [Rise of Ix p. 5].
+                or isinstance(reward, Freighter)
+                # Weirding Way: "You may take another turn".
+                or isinstance(reward, TakeAnotherTurn)
+                # Ixian Engineer's Acquire Tech icon is "may" [Rise of Ix p. 4].
+                or isinstance(reward, AcquireTech)
                 for reward in line.rewards
             )
         )

@@ -3,6 +3,7 @@
 from copy import replace
 from dataclasses import dataclass
 
+from dune_imperium.content.bloodlines.tech import TechAbility, has_tech
 from dune_imperium.content.uprising.conflicts import CONFLICTS_BY_ID
 from dune_imperium.content.uprising.objectives import OBJECTIVES_BY_ID
 from dune_imperium.content.uprising.types import BattleIcon
@@ -321,6 +322,12 @@ def _battle_icon(card_id: str) -> BattleIcon | None:
 def _ranking_key(player: PlayerState, reveal_position: int) -> tuple[int, ...]:
     return (
         player.victory_points,
+        # Chaumurky (Rise of Ix): "Endgame: 동률을 이긴다(다른 동률 기준보다
+        # 먼저 [FAQ p. 1])" (docs/rules/rise-of-ix.md 4): a tie on Victory
+        # Points goes to its holder before spice, Solari, water and troops.
+        # No other seat holds it (one tile), and a seat without it compares
+        # as every seat did.
+        int(has_tech(player.tech_ids, TechAbility.ENDGAME_TIE_WIN)),
         player.resources.spice,
         player.resources.solari,
         player.resources.water,

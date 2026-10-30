@@ -34,7 +34,8 @@ from dune_imperium.content.bloodlines.sardaukar import (
     SKILLS,
     skill_for_instance,
 )
-from dune_imperium.content.bloodlines.tech import TECH_IDS, TECH_STACKS
+from dune_imperium.content.bloodlines.tech import TECH_IDS as TECH_MODULE_IDS
+from dune_imperium.content.bloodlines.tech import TECH_STACKS
 from dune_imperium.content.immortality.board import (
     RESEARCH_SPACES_BY_ID,
     TLEILAXU_ROW_SIZE,
@@ -46,6 +47,12 @@ from dune_imperium.content.imperium.imperium import IMPERIUM_BASE_CARDS
 from dune_imperium.content.imperium.intrigue import IMPERIUM_INTRIGUE_CARDS
 from dune_imperium.content.imperium.leaders import IMPERIUM_LEADERS
 from dune_imperium.content.imperium.reserve import IMPERIUM_RESERVE_STACKS
+from dune_imperium.content.rise_of_ix.board import IX_BOARD_SPACES
+from dune_imperium.content.rise_of_ix.conflicts import IX_CONFLICTS
+from dune_imperium.content.rise_of_ix.imperium import IX_IMPERIUM_CARDS
+from dune_imperium.content.rise_of_ix.intrigue import IX_INTRIGUE_CARDS
+from dune_imperium.content.rise_of_ix.leaders import IX_LEADERS
+from dune_imperium.content.rise_of_ix.tech import IX_TECH_IDS
 from dune_imperium.content.uprising.board import (
     BOARD_SPACES,
     OBSERVATION_POSTS,
@@ -71,7 +78,7 @@ from dune_imperium.content.uprising.starting_cards import (
 )
 from dune_imperium.content.uprising.types import AgentIcon
 from dune_imperium.core.actions import ActionValue
-from dune_imperium.core.observation import PlayerView, PublicPlayerView
+from dune_imperium.core.observation import IxPending, PlayerView, PublicPlayerView
 from dune_imperium.core.state import GamePhase
 from dune_imperium.rules.action_shapes import Source, Verb
 from dune_imperium.rules.effect_steps import CHOOSE_ACTIONS
@@ -206,7 +213,33 @@ from dune_imperium.rules.frames import FrameKind
 # seat Infiltrate's turn marker and Recruitment Mission's round marker. Every
 # older column keeps its offset; a v37 checkpoint migrates by segment and
 # starts them at 0.
-OBSERVATION_VERSION: Final = 38
+# v39 (stage P4a, docs/base-game-and-ix-plan.md 17.8 and its review): Rise of
+# Ix. Its 30 Imperium cards (Boundless Ambition included), 17 Intrigue
+# cards, three new Conflicts, six Leaders, 18 Tech tiles and four board
+# spaces join each identity universe at its end, so every older identity
+# keeps its index and column (30 personal-card, 9 Intrigue and 6 Tech
+# segments grow at their end; a space has no segment of its own -- the Agent
+# locations hold one by index, and ``voice_blocks`` keeps its 42, below).
+# ``global_scalars`` gains the Intrigue deck's size at its end (public,
+# and nonzero in every game). Appended after every other segment, all 0 in a
+# game without Rise of Ix: each relative seat's dreadnoughts
+# (``seat{k}_units``), the dreadnoughts on Control spaces
+# (``dreadnought_control``), each relative seat's Freighter, Negotiators,
+# Snooper tokens, set-aside card, turn count and Strategic Push pledge
+# (``seat{k}_ix``; the pledge's column joined at its end on 2026-10-30, before
+# v39 reached master, so the version stayed), the Voice's
+# bars on the four Rise of Ix spaces (``voice_blocks_ix``: ``voice_blocks``
+# is a relative seat x space matrix and keeps its 42 spaces, review item 5),
+# and the observer's own knowledge -- the Intrigue deck's top card
+# (``private_intrigue_top``), its known cards by depth from the bottom
+# (``private_intrigue_bottom``, 8 slots), the Intrigue cards it knows in each
+# opponent's hand (``private_known_intrigue_seat{1,2,3}``), its set-aside
+# card (``private_set_aside``) and its open Rise of Ix decision
+# (``ix_pending``) -- and the Rise of Ix flag (``ix_flags``). The frame
+# kinds stages P4b to P4e decide in (``rules.frames.IX_FRAME_KINDS``) end the
+# kind index ``global_scalars`` holds, which no engine path opens yet. A v38
+# checkpoint migrates by segment and starts every new column at 0.
+OBSERVATION_VERSION: Final = 39
 _SEATS: Final = 4
 
 PERSONAL_CARD_IDS: Final = (
@@ -228,11 +261,15 @@ PERSONAL_CARD_IDS: Final = (
     *(stack.card.card_id for stack in IMPERIUM_RESERVE_STACKS),
     # v37: the original game's Imperium cards and promos.
     *(entry.card.card_id for entry in IMPERIUM_BASE_CARDS),
+    # v39: Rise of Ix's Imperium cards and its promo Boundless Ambition.
+    *(entry.card.card_id for entry in IX_IMPERIUM_CARDS),
 )
 RESEARCH_SPACE_IDS: Final = tuple(RESEARCH_SPACES_BY_ID)
-# v37: the original game's Intrigue cards follow Uprising's.
+# v37: the original game's Intrigue cards follow Uprising's; v39: Rise of
+# Ix's follow them.
 INTRIGUE_IDS: Final = tuple(
-    entry.card.card_id for entry in (*INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS)
+    entry.card.card_id
+    for entry in (*INTRIGUE_CARDS, *IMPERIUM_INTRIGUE_CARDS, *IX_INTRIGUE_CARDS)
 )
 CONTRACT_IDS: Final = tuple(CONTRACTS_BY_ID)
 # The segments with one column per CONTRACT_IDS identity, in that order
@@ -245,9 +282,11 @@ CONTRACT_SEGMENTS: Final = frozenset(
         for kind in ("active", "completed")
     }
 )
-# v35: the original game's Conflicts follow Uprising's.
+# v35: the original game's Conflicts follow Uprising's; v39: Rise of Ix's
+# three new ones (its Economic Supremacy is Uprising's Epic card already).
 CONFLICT_IDS: Final = tuple(
-    conflict.card.card_id for conflict in (*CONFLICTS, *IMPERIUM_CONFLICTS)
+    conflict.card.card_id
+    for conflict in (*CONFLICTS, *IMPERIUM_CONFLICTS, *IX_CONFLICTS)
 )
 # v28: Epic Game Mode's Economic Supremacy follows the Objectives, so the
 # older battle cards keep their columns.
@@ -257,12 +296,28 @@ BATTLE_CARD_IDS: Final = (
     *(conflict.card.card_id for conflict in CONFLICTS if conflict.epic_only),
 )
 # v35: the original game's Leaders and spaces of its own follow Uprising's
-# (its Arrakeen, Imperial Basin and Secrets are Uprising's, plan 15.2).
+# (its Arrakeen, Imperial Basin and Secrets are Uprising's, plan 15.2); v39:
+# Rise of Ix's Leaders follow them.
 LEADER_IDS: Final = tuple(
-    leader.leader_id for leader in (*LEADERS, *IMPERIUM_LEADERS)
+    leader.leader_id for leader in (*LEADERS, *IMPERIUM_LEADERS, *IX_LEADERS)
 )
-SPACE_IDS: Final = tuple(
+# The spaces ``voice_blocks`` has a column for, as of v38. That segment is a
+# relative seat x space matrix, so a space appended to it would move every
+# later seat's row (plan 17.8 review item 5): it keeps these 42 for good.
+VOICE_BLOCK_SPACE_IDS: Final = tuple(
     space.space_id for space in (*BOARD_SPACES, *IMPERIUM_ONLY_BOARD_SPACES)
+)
+# v39: Rise of Ix's four board spaces (plan 17.2; docs/rules/rise-of-ix.md 8)
+# follow every other space; their Voice bars are ``voice_blocks_ix``'s.
+IX_SPACE_IDS: Final = tuple(space.space_id for space in IX_BOARD_SPACES)
+SPACE_IDS: Final = (*VOICE_BLOCK_SPACE_IDS, *IX_SPACE_IDS)
+# v9: the Tech Module's 18 tiles; v39: Rise of Ix's 18 follow them (plan
+# 17.8), so each Tech segment grows at its end (``TECH_SEGMENTS``).
+TECH_IDS: Final = (*TECH_MODULE_IDS, *IX_TECH_IDS)
+# The segments with one column per TECH_IDS identity, in that order.
+TECH_SEGMENTS: Final = frozenset(
+    {"tech_trash", "private_effect_pick_tech"}
+    | {f"seat{seat}_tech" for seat in range(4)}
 )
 # The identities v35 and v37 added: the original game's own spaces,
 # Conflicts, Leaders, Reserve cards, Imperium and Intrigue cards (its
@@ -278,6 +333,21 @@ IMPERIUM_IDENTITIES: Final = frozenset(
         *(entry.card.card_id for entry in IMPERIUM_INTRIGUE_CARDS),
     }
 )
+# The identities v39 added: Rise of Ix's Imperium and Intrigue cards, new
+# Conflicts, Leaders, Tech tiles and board spaces.
+IX_IDENTITIES: Final = frozenset(
+    {
+        *(entry.card.card_id for entry in IX_IMPERIUM_CARDS),
+        *(entry.card.card_id for entry in IX_INTRIGUE_CARDS),
+        *(conflict.card.card_id for conflict in IX_CONFLICTS),
+        *(leader.leader_id for leader in IX_LEADERS),
+        *IX_TECH_IDS,
+        *IX_SPACE_IDS,
+    }
+)
+# Every identity that is not Uprising's (with its expansions): the entity
+# features take their scales from the others (``entity_features``).
+NON_UPRISING_IDENTITIES: Final = IMPERIUM_IDENTITIES | IX_IDENTITIES
 POST_IDS: Final = tuple(post.post_id for post in OBSERVATION_POSTS)
 FEYD_TRACK_IDS: Final = tuple(FEYD_TRACK_BY_ID)
 FACTION_IDS: Final = tuple(faction.value for faction in Faction)
@@ -330,6 +400,18 @@ _AGENT_LOCATION_SLOTS: Final = 4
 _SET_ASIDE_SLOTS: Final = 2
 _IMPERIUM_ROW_SLOTS: Final = 5
 _LEADER_DRAFT_SLOTS: Final = 6
+_GLOBAL_SCALARS: Final = 13
+# Rise of Ix: Intrigue deck depths from the bottom a seat may know (Court
+# Intrigue and Sonic Snoopers, plan 17.8 review item 6).
+INTRIGUE_BOTTOM_SLOTS: Final = 8
+# The Influence space each of Tessia Vernius' Snooper tokens starts on
+# [Tessia Vernius card] (docs/rules/rise-of-ix.md 10).
+SNOOPER_SPACE: Final = 2
+_SEAT_UNITS: Final = 3
+# Freighter, Negotiators, four Snooper columns, the set-aside card, its return
+# this turn, the turns finished this round and Strategic Push's pledged Solari.
+_SEAT_IX: Final = 10
+_IX_PENDING: Final = 7
 
 # Precomputed identity -> index maps for every universe otherwise searched
 # with ``tuple.index`` or scanned in full by a membership zone. Building
@@ -421,7 +503,8 @@ def _seat_segment_lengths(seat: int) -> tuple[tuple[str, int], ...]:
 
 def _segment_lengths() -> tuple[tuple[str, int], ...]:
     lengths: list[tuple[str, int]] = [
-        ("global_scalars", 12),
+        # v39: the Intrigue deck's size at the end (13th).
+        ("global_scalars", _GLOBAL_SCALARS),
         ("current_conflict", 1),
         ("imperium_row", _IMPERIUM_ROW_SLOTS),
         ("reserve_stacks", len(RESERVE_STACK_IDS)),
@@ -541,8 +624,36 @@ def _segment_lengths() -> tuple[tuple[str, int], ...]:
                 (f"seat{seat}_deck_public_top", len(PERSONAL_CARD_IDS))
                 for seat in range(_SEATS)
             ),
-            ("voice_blocks", _SEATS * len(SPACE_IDS)),
+            ("voice_blocks", _SEATS * len(VOICE_BLOCK_SPACE_IDS)),
             ("card_turn_flags", _SEATS * 2),
+            # v39, Rise of Ix (plan 17.8): per relative seat its dreadnoughts
+            # in the supply, the garrison and the Conflict; per Control space
+            # the relative seat + 1 of the dreadnought on it and whether it
+            # leaves at the next Combat's end; per relative seat its
+            # Freighter's space, Negotiators, Snooper tokens (the space, 2,
+            # per Faction), set-aside card, its return this turn, the turns
+            # finished this round and the Solari it pledged with Strategic
+            # Push (2 a copy, one copy in the deck); the Voice's bars on the
+            # Rise of Ix spaces, relative seat x space.
+            *((f"seat{seat}_units", _SEAT_UNITS) for seat in range(_SEATS)),
+            ("dreadnought_control", len(CONTROL_SPACE_IDS) * 2),
+            *((f"seat{seat}_ix", _SEAT_IX) for seat in range(_SEATS)),
+            ("voice_blocks_ix", _SEATS * len(IX_SPACE_IDS)),
+            # v39: the observer's own knowledge -- the Intrigue deck's top
+            # card, its known depths from the bottom (identity + 1), the
+            # Intrigue cards it knows each opponent holds (relative seats 1
+            # to 3, one count zone each), its set-aside card -- and its open
+            # Rise of Ix decision.
+            ("private_intrigue_top", len(INTRIGUE_IDS)),
+            ("private_intrigue_bottom", INTRIGUE_BOTTOM_SLOTS),
+            *(
+                (f"private_known_intrigue_seat{seat}", len(INTRIGUE_IDS))
+                for seat in range(1, _SEATS)
+            ),
+            ("private_set_aside", len(PERSONAL_CARD_IDS)),
+            ("ix_pending", _IX_PENDING),
+            # v39: 1 in a Rise of Ix game.
+            ("ix_flags", 1),
         )
     )
     return tuple(lengths)
@@ -600,6 +711,13 @@ _SEAT_OFFSETS: Final[tuple[dict[str, int], ...]] = tuple(
     {suffix: _OFFSET[f"seat{seat}_{suffix}"] for suffix in _SEAT_SUFFIXES}
     for seat in range(_SEATS)
 )
+# v39's per-seat segments by relative seat (the known Intrigue zones from
+# relative seat 1: the observer's own hand is ``private_intrigue``).
+_UNITS_OFFSETS: Final = tuple(_OFFSET[f"seat{seat}_units"] for seat in range(_SEATS))
+_IX_OFFSETS: Final = tuple(_OFFSET[f"seat{seat}_ix"] for seat in range(_SEATS))
+_KNOWN_INTRIGUE_OFFSETS: Final = {
+    seat: _OFFSET[f"private_known_intrigue_seat{seat}"] for seat in range(1, _SEATS)
+}
 
 
 def encode_player_view(view: PlayerView) -> tuple[int, ...]:
@@ -619,7 +737,7 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         return ((seat - observer) % _SEATS) + 1
 
     offset = _OFFSET["global_scalars"]
-    values[offset : offset + 12] = [
+    values[offset : offset + _GLOBAL_SCALARS] = [
         view.round_number,
         _PHASE_INDEX[view.phase],
         relative(view.first_player),
@@ -632,6 +750,8 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         int(view.combat_rewards_resolved),
         len(view.current_conflict_ids),
         view.conflict_first_place_influence_bonus,
+        # v39: public, as every shared deck's count (``PlayerView``).
+        view.intrigue_deck_size,
     ]
     values[_OFFSET["current_conflict"]] = (
         _CONFLICT_INDEX[view.current_conflict_ids[-1]] + 1
@@ -787,9 +907,20 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
             values[offset + _personal_identity_index(instance_id)] += 1
     for seat_view in view.players:
         row = relative(seat_view.player) - 1
-        offset = _OFFSET["voice_blocks"] + row * len(SPACE_IDS)
+        offset = _OFFSET["voice_blocks"] + row * len(VOICE_BLOCK_SPACE_IDS)
+        # A space after ``voice_blocks``' 42 (Rise of Ix's, v39) is a column
+        # of ``voice_blocks_ix``, by its place in SPACE_IDS.
+        ix_offset = (
+            _OFFSET["voice_blocks_ix"]
+            + row * len(IX_SPACE_IDS)
+            - len(VOICE_BLOCK_SPACE_IDS)
+        )
         for space_id in seat_view.voice_blocked_space_ids:
-            values[offset + _SPACE_INDEX[space_id]] = 1
+            slot = _SPACE_INDEX[space_id]
+            if slot < len(VOICE_BLOCK_SPACE_IDS):
+                values[offset + slot] = 1
+            else:
+                values[ix_offset + slot] = 1
         offset = _OFFSET["card_turn_flags"] + row * 2
         values[offset] = int(seat_view.enemy_agents_ignored_turn)
         values[offset + 1] = int(seat_view.acquire_to_deck_top_round)
@@ -818,7 +949,80 @@ def encode_player_view(view: PlayerView) -> tuple[int, ...]:
         view.private.agent_card_pick_graft
     )
     _write_effect_pick(values, view.private.effect_pick)
+    _write_rise_of_ix(values, view, relative)
     return tuple(values)
+
+
+def _write_rise_of_ix(
+    values: list[int], view: PlayerView, relative: Callable[[int | None], int]
+) -> None:
+    """The v39 segments (plan 17.8): all 0 in a game without Rise of Ix."""
+
+    for seat_view in view.players:
+        seat_offset = relative(seat_view.player) - 1
+        offset = _UNITS_OFFSETS[seat_offset]
+        values[offset : offset + _SEAT_UNITS] = [
+            seat_view.dreadnoughts_supply,
+            seat_view.dreadnoughts_garrison,
+            seat_view.dreadnoughts_conflict,
+        ]
+        offset = _IX_OFFSETS[seat_offset]
+        values[offset : offset + _SEAT_IX] = [
+            seat_view.freighter_space,
+            seat_view.negotiators,
+            *(
+                SNOOPER_SPACE if faction in seat_view.snooper_faction_ids else 0
+                for faction in FACTION_IDS
+            ),
+            int(seat_view.has_set_aside_card),
+            int(seat_view.set_aside_returned_turn),
+            seat_view.turns_finished_round,
+            # Public: the Combat card was played face up [Main p. 7].
+            seat_view.strategic_push_solari,
+        ]
+    offset = _OFFSET["dreadnought_control"]
+    for space_id, seat, leaving in view.dreadnought_control:
+        column = offset + _CONTROL_SPACE_INDEX[space_id] * 2
+        values[column] = relative(seat)
+        values[column + 1] = int(leaving)
+    assert view.private is not None
+    private = view.private
+    if private.known_intrigue_top:
+        values[
+            _OFFSET["private_intrigue_top"]
+            + _intrigue_identity_index(private.known_intrigue_top)
+        ] = 1
+    offset = _OFFSET["private_intrigue_bottom"]
+    for depth, card_id in private.known_intrigue_bottom:
+        # A card deeper than the encoded slots is not shown (rare: Sonic
+        # Snoopers may put any number there).
+        if depth < INTRIGUE_BOTTOM_SLOTS:
+            values[offset + depth] = _intrigue_identity_index(card_id) + 1
+    for seat, card_id in private.known_intrigue_held:
+        offset = _KNOWN_INTRIGUE_OFFSETS[relative(seat) - 1]
+        values[offset + _intrigue_identity_index(card_id)] += 1
+    if private.set_aside_card_id:
+        values[
+            _OFFSET["private_set_aside"]
+            + _personal_identity_index(private.set_aside_card_id)
+        ] = 1
+    offset = _OFFSET["ix_pending"]
+    values[offset : offset + _IX_PENDING] = _ix_pending_columns(private.ix_pending)
+    values[_OFFSET["ix_flags"]] = int(view.rise_of_ix)
+
+
+def _ix_pending_columns(pending: IxPending) -> list[int]:
+    """``ix_pending``: the Shipping rewards still owed (spaces 1 to 3), the
+    open Acquire Tech's discount, its payment in spice or in Solari, and the
+    Negotiators the seat may still return toward it."""
+
+    return [
+        *(int(space in pending.shipping_rewards) for space in (1, 2, 3)),
+        pending.tech_discount,
+        int(pending.tech_payment == "spice"),
+        int(pending.tech_payment == "solari"),
+        pending.negotiators_returnable,
+    ]
 
 
 def _write_effect_pick(

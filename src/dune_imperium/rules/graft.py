@@ -47,6 +47,7 @@ from dune_imperium.rules.agent_turn import (
     agent_effect_is_available,
     card_can_access_space,
     card_ignores_influence_requirements,
+    enemy_agent_on_space,
     is_tleilaxu_infiltrator,
 )
 from dune_imperium.rules.card_trash import trash_personal_card
@@ -250,8 +251,9 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
     if not isinstance(effect_frame.decision, PlayerDecision):
         raise RuntimeError("the Graft partner needs the owner's effect frame")
     space = BOARD_SPACES_BY_ID[space_id]
+    enemy_agent = enemy_agent_on_space(popped, player, space_id)
     pending = agent_effect_is_available(
-        partner.agent_effect, next_owner, space, partner_id
+        partner.agent_effect, next_owner, space, partner_id, enemy_agent=enemy_agent
     )
     effect_context["graft_card_id"] = partner_id
     effect_context["graft_pending_effect"] = pending
@@ -309,7 +311,9 @@ def apply_graft_partner(state: GameState, action: DomainAction) -> RuleResult:
         # The placed card's Bond-gated box was judged before the partner
         # was in play; the partner may provide the Bond now, and Ghola's
         # box is the partner's.
-        if agent_effect_is_available(placed.agent_effect, next_owner, space, placed_id):
+        if agent_effect_is_available(
+            placed.agent_effect, next_owner, space, placed_id, enemy_agent=enemy_agent
+        ):
             effect_context["pending_agent_effect"] = True
             effect_context["pending_agent_icons"] = ",".join(
                 agent_card_icons_at_placement(placed.agent_effect, next_owner.leader_id)
