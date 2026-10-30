@@ -11,7 +11,11 @@ stays in front of the text, and error.status is untouched.
 [1] api() itself, both languages, against the real server.
 [2] The whole chain a player meets: the setup screen's error line and a seat
     number in a message (the engine's zero-based id is the visible number
-    minus one), with responses a route fulfils.
+    minus one), with responses a route fulfils. First, while the catalog is
+    held back (init() has not wired the form yet), the start button waits
+    disabled and a press does not submit the form: before 2026-10-30 such a
+    press, easy on a busy machine, reloaded the page and the error line never
+    came.
 """
 
 from __future__ import annotations
@@ -145,8 +149,30 @@ def player_chain(base: str, browser) -> None:
             route.continue_()
 
     page.route("**/games", refuse)
+    held: list = []
+
+    def hold(route):
+        held.append(route)
+
+    page.route("**/catalog", hold)
     page.goto(base + "/")
     page.wait_for_selector("#setup-screen:not([hidden])")
+    while not held:
+        page.wait_for_timeout(20)
+    check.ok(
+        page.is_disabled("#create-game"),
+        "the start button waits disabled while init() still loads the catalog",
+    )
+    page.evaluate("document.getElementById('create-game').click()")
+    page.wait_for_timeout(300)
+    check.ok(
+        page.url == base + "/" and page.evaluate("state.catalog === null"),
+        "a press before then submits nothing: no reload, init() still waiting",
+        page.url,
+    )
+    page.unroute("**/catalog", hold)
+    held[0].continue_()
+    page.wait_for_function("!document.getElementById('create-game').disabled")
     set_language(page, "ko")
     page.click("#create-game")
     page.wait_for_selector("#setup-error:not([hidden])")
