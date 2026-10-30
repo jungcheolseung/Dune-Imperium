@@ -87,6 +87,7 @@ from dune_imperium.training.entity_features import (  # noqa: E402
     _LEADER_OF_FACE,
     FEATURE_DIGEST,
     Vocabulary,
+    _table,
     resolve,
     resolve_argument,
     vocabularies,
@@ -97,6 +98,7 @@ from dune_imperium.training.entity_network import (  # noqa: E402
     action_vocabulary,
     legacy_inputs,
 )
+from dune_imperium.training.entity_scales import DECLARED_SCALES  # noqa: E402
 from dune_imperium.training.network import (  # noqa: E402
     PolicyValueNetwork,
     build_network,
@@ -349,7 +351,13 @@ from dune_imperium.training.slots import SLOT_KEYS  # noqa: E402
 # two personal-table columns are new (the Freighter piece of an acquire box and
 # the Acquire Tech piece's Solari payment), read by its row alone; no older
 # scale moved (compared against 78241b7b on claude/base-ix-p4, 2026-10-30).
-_GOLDEN_DIGEST = "07de0735fc3b615e5a8675085c28daef06501ce6f6617863c1f61763036a81a1"
+# Then every column got a declared scale (``entity_scales``, user decision
+# 2026-10-30 "단위 고정": content added later never rescales the rows before
+# it): the scales frozen at a075ddea's values, except Rise of Ix's
+# ``agent.sections.rewards:Freighter`` back to 1 (Embedded Agent had made it
+# 2), so only Landing Rights' row (0.5 -> 1.0) and Embedded Agent's (1.0 ->
+# 2.0) moved; 611 rows compared, every other row and scale unchanged.
+_GOLDEN_DIGEST = "558838c03abec82d3439a604002c706a841f3db03f523b48ec4769c504545cef"
 _BASE = RulesetConfig()
 _FULL = RulesetConfig(
     choam_module=True,
@@ -454,6 +462,44 @@ def test_feature_tables_follow_the_observation_and_are_pinned() -> None:
     personal = tables["personal"]
     assert {"acquisition_cost", ":ImperiumCardEntry"} <= set(personal.columns)
     assert FEATURE_DIGEST == _GOLDEN_DIGEST
+
+
+def test_every_entity_column_has_a_declared_scale() -> None:
+    """User decision 2026-10-30 "단위 고정": every column is divided by a
+    declared scale (``entity_scales``), so content added later never rescales
+    the rows already there. A new column must be declared; the message gives
+    the line to add (its computed scale)."""
+
+    missing = [
+        f"{name}: {column!r} -> {scale!r}"
+        for name, table in vocabularies().items()
+        for column, scale in zip(table.columns, table.scales, strict=True)
+        if column not in DECLARED_SCALES.get(name, {})
+    ]
+    assert not missing, "undeclared entity columns:\n" + "\n".join(missing)
+    for name, table in vocabularies().items():
+        declared = DECLARED_SCALES[name]
+        assert table.scales == tuple(declared[column] for column in table.columns)
+
+
+def test_a_later_entity_past_a_declared_scale_leaves_the_rows_before_it() -> None:
+    """ "단위 고정" (user decision 2026-10-30): a new entity whose value
+    outgrows a column's declared scale reads past 1, and the rows before it
+    read as they did. Rise of Ix's Freighter Agent column keeps the scale 1 it
+    had before Embedded Agent's two Freighter icons, so Landing Rights reads
+    1.0 and Embedded Agent 2.0."""
+
+    column = "agent.sections.rewards:Freighter"
+    assert DECLARED_SCALES["personal"][column] == 1.0
+    before = _table("personal", ("old",), [{column: 1.0}])
+    after = _table("personal", ("old", "new"), [{column: 1.0}, {column: 3.0}])
+    assert before.scales == after.scales == (1.0,)
+    assert after.features[0, 0] == before.features[0, 0] == 1.0
+    assert after.features[1, 0] == 3.0
+    personal = vocabularies()["personal"]
+    index = personal.columns.index(column)
+    assert personal.features[personal.ids.index("landing_rights"), index] == 1.0
+    assert personal.features[personal.ids.index("embedded_agent"), index] == 2.0
 
 
 def test_what_an_entity_does_is_read_from_its_records() -> None:
