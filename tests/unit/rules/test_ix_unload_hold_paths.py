@@ -9,7 +9,9 @@ whose Unload box holds a decision (Boundless Ambition's acquisition, Freighter
 Fleet's Freighter) holds the spice until it is answered (``rules.unload``'s
 hold, the payer ``snooper_discard``), in her own turn's row and in the
 ``OPTIONAL_DISCARD`` window outside it alike; a plain box (Water Peddler's
-water) is still paid inside the discard, before the spice.
+water) is still paid inside the discard, before the spice. The hold also
+opens above another seat's waiting frame and gives it back unchanged, and
+inside a cost's own hold it stacks a second hold that closes first.
 
 The two measurement games that crashed before the payer existed ("a cost's
 Unload holds a decision but its path pushed no hold") are replayed whole too.
@@ -35,6 +37,7 @@ from dune_imperium.core import (
     GamePhase,
     GameState,
     Influence,
+    PlayerDecision,
     Resources,
     RuleResult,
     Transition,
@@ -69,10 +72,21 @@ PEDDLER = "imperium:water_peddler:0"
 DIPLOMACY = "player:0:starter:diplomacy:0"
 SNOOPER_ROW = "discard_snooper_card"
 LIAISON = "arrakis_liaison"
+TRUTHSAYER = "imperium:truthsayer:0"
+NONE = Resources(solari=0, spice=0, water=0)
+TESSIA_SECOND = (
+    "glossu_rabban",
+    "tessia_vernius",
+    "count_ilban_richese",
+    "earl_memnon_thorvald",
+)
 
 
-def _start() -> GameState:
-    state = ENGINE.reset(CONFIG, 3)
+def _start(leaders: tuple[str, ...] = LEADERS) -> GameState:
+    """Seed 3 dealt with ``leaders`` (the engine's Leaders only seat the
+    game; every later step goes through ``ENGINE``)."""
+
+    state = UprisingRulesEngine(leader_ids=leaders).reset(CONFIG, 3)
     chance = ChanceResolver(seed=3)
     while isinstance(decision := ENGINE.current_decision(state), ChanceDecision):
         state = ENGINE.apply(state, chance.resolve(decision)).state
@@ -80,34 +94,44 @@ def _start() -> GameState:
     return state
 
 
-def _tessia(card: str) -> GameState:
-    """Seat 0 (Tessia) holds Diplomacy and ``card``, one Emperor Influence
-    short of her Snooper token, with no resources; ``card`` is taken out of
-    every other zone first."""
+def _give(
+    state: GameState, seat: int, hand: tuple[str, ...], **fields: object
+) -> GameState:
+    """``seat`` holds ``hand`` (taken out of every other zone first), with
+    ``fields`` changed."""
 
-    state = _start()
-    named = {card, DIPLOMACY}
+    named = set(hand)
     players = []
-    for seat in state.players:
+    for player in state.players:
         cleaned = replace(
-            seat,
-            deck=tuple(held for held in seat.deck if held not in named),
-            hand=tuple(held for held in seat.hand if held not in named),
-            discard_pile=tuple(held for held in seat.discard_pile if held not in named),
+            player,
+            deck=tuple(held for held in player.deck if held not in named),
+            hand=tuple(held for held in player.hand if held not in named),
+            discard_pile=tuple(
+                held for held in player.discard_pile if held not in named
+            ),
         )
-        if seat.player_id == 0:
-            cleaned = replace(
-                cleaned,
-                hand=(DIPLOMACY, card),
-                influence=Influence(emperor=1),
-                resources=Resources(solari=0, spice=0, water=0),
-            )
+        if player.player_id == seat:
+            cleaned = replace(cleaned, hand=hand, **fields)  # type: ignore[arg-type]
         players.append(cleaned)
     return replace(
         state,
         players=tuple(players),
         imperium_deck=tuple(held for held in state.imperium_deck if held not in named),
         imperium_row=tuple(held for held in state.imperium_row if held not in named),
+    )
+
+
+def _tessia(card: str) -> GameState:
+    """Seat 0 (Tessia) holds Diplomacy and ``card``, one Emperor Influence
+    short of her Snooper token, with no resources."""
+
+    return _give(
+        _start(),
+        0,
+        (DIPLOMACY, card),
+        influence=Influence(emperor=1),
+        resources=NONE,
     )
 
 
@@ -121,12 +145,20 @@ def _rows(state: GameState, seat: int = 0) -> tuple[DomainAction, ...]:
 def _steps_of(
     state: GameState, action_id: str, **arguments: object
 ) -> tuple[RuleResult, tuple[DomainAction, ...]]:
-    """Seat 0's whole action taken by its steps, each offered row
+    """Seat 0's whole action taken by its steps (``_seat_steps``)."""
+
+    return _seat_steps(state, 0, action_id, **arguments)
+
+
+def _seat_steps(
+    state: GameState, seat: int, action_id: str, **arguments: object
+) -> tuple[RuleResult, tuple[DomainAction, ...]]:
+    """``seat``'s whole action taken by its steps, each offered row
     round-tripped through the codec: the result and the steps."""
 
     whole = next(
         row
-        for row in ENGINE.whole_actions(state, 0)
+        for row in ENGINE.whole_actions(state, seat)
         if row.action_id == action_id
         and all(
             dict(row.arguments).get(key) == value for key, value in arguments.items()
@@ -135,7 +167,7 @@ def _steps_of(
     events: list[GameEvent] = []
     steps: list[DomainAction] = []
     while True:
-        rows = _rows(state)
+        rows = _rows(state, seat)
         left = 0 if whole in rows else steps_after(state, whole)
         row = whole if whole in rows else first_step(state, whole)
         assert row in rows
@@ -157,6 +189,10 @@ def _loaded(start: GameState, steps: tuple[DomainAction, ...]) -> GameState:
     for index, value in enumerate(json.loads(saved)):
         state = ENGINE.apply(state, deserialize_step(value, index)).state
     return state
+
+
+def _top(state: GameState) -> str:
+    return state.decision_stack[-1].kind
 
 
 def _holds(state: GameState) -> int:
@@ -295,6 +331,112 @@ def test_in_her_turn_water_peddler_pays_its_box_inside_the_discard() -> None:
     ]
 
 
+# --- Inside a cost's hold: two holds stacked -----------------------------------
+
+
+def _drawn(events: tuple[GameEvent, ...]) -> list[GameEvent]:
+    """Truthsayer's right side, its draw: the effect resolved."""
+
+    return [event for event in events if event.kind == "agent_card_effect_resolved"]
+
+
+def test_a_snooper_hold_inside_a_cost_s_hold_pays_each_side_once_in_order() -> None:
+    """Truthsayer's "[Discard] -> [draw 1 card]" paid with Freighter Fleet
+    holds the draw (rise-of-ix.md 153: "Unload를 끝까지 해결한 뒤 오른쪽으로
+    간다"). Its Freighter recalled from space 2 owes that space's Influence;
+    raising Fremen to 2 reaches Tessia's first Snooper token (rise-of-ix.md
+    235: "① discard → spice 1"), and discarding Boundless Ambition for it
+    stacks a second hold above the first. The spice comes once, after the
+    acquisition; the draw neither comes early nor is lost: once, after the
+    recall's last reward. Saved and loaded with both holds open the game is
+    the same; undoing the Snooper discard takes its hold back (taking it
+    again opens the same one), and undoing Truthsayer's discard leaves no
+    hold."""
+
+    start = _give(
+        _start(),
+        0,
+        (TRUTHSAYER, FLEET, AMBITION),
+        influence=Influence(fremen=1),
+        resources=NONE,
+        freighter_space=2,
+    )
+    state = start
+    steps: tuple[DomainAction, ...] = ()
+    events: tuple[GameEvent, ...] = ()
+
+    def take(action_id: str, **arguments: object) -> GameState:
+        nonlocal state, steps, events
+        result, taken = _steps_of(state, action_id, **arguments)
+        state, steps = result.state, (*steps, *taken)
+        events = (*events, *result.events)
+        return state
+
+    take("choose_agent_card", card_id=TRUTHSAYER)
+    placed, before_outer = take("place_agent", space_id="wealth"), steps
+    take("discard_agent_card", card_id=FLEET)
+    assert _holds(state) == 1
+    take("recall_freighter")
+    take("resolve_shipping_reward", effect="influence", faction="fremen")
+    window = state
+    before_inner = steps
+    assert window.decision_stack[-1].kind is FrameKind.OPTIONAL_DISCARD
+    assert window.players[0].influence.fremen == 2
+    nested = take(SNOOPER_ROW, card_id=AMBITION)
+    assert _holds(nested) == 2
+    assert [frame.kind for frame in nested.decision_stack] == [
+        FrameKind.AGENT_EFFECTS,
+        FrameKind.UNLOAD_ICONS,
+        FrameKind.SHIPPING_REWARD_ICONS,
+        FrameKind.UNLOAD_ICONS,
+        FrameKind.UNLOAD_ICONS,
+    ]
+    assert [is_unload_hold(frame) for frame in nested.decision_stack] == [
+        False,
+        True,
+        False,
+        True,
+        False,
+    ]
+    assert dict(nested.decision_stack[-1].context)[unload.UNLOAD_ACQUIRE_KEY] == (
+        AMBITION
+    )
+    assert nested.players[0].resources.spice == 0
+    hand = len(nested.players[0].hand)
+    assert not _snooper_spice(events) and not _drawn(events)
+    check_observation_privacy(nested)
+    loaded = _loaded(start, steps)
+    assert canonical_state_hash(loaded) == canonical_state_hash(nested)
+    undone = _loaded(start, before_inner)
+    assert canonical_state_hash(undone) == canonical_state_hash(window)
+    assert _holds(undone) == 1
+    again, _ = _steps_of(undone, SNOOPER_ROW, card_id=AMBITION)
+    assert canonical_state_hash(again.state) == canonical_state_hash(nested)
+    outer_undone = _loaded(start, before_outer)
+    assert canonical_state_hash(outer_undone) == canonical_state_hash(placed)
+    assert _holds(outer_undone) == 0
+    state, events = loaded, events[:0]
+    take("acquire_unload_reserve_card", card_id=LIAISON)
+    assert _holds(state) == 1
+    assert _top(state) is FrameKind.SHIPPING_REWARD_ICONS
+    assert state.players[0].resources.spice == 1
+    _after(events, "card_acquired")
+    assert len(state.players[0].hand) == hand and not _drawn(events)
+    take("resolve_shipping_reward", effect="spice")
+    assert _holds(state) == 1
+    assert len(state.players[0].hand) == hand and not _drawn(events)
+    take("resolve_shipping_reward", effect="recruit")
+    assert _holds(state) == 0
+    assert _top(state) is FrameKind.AGENT_EFFECTS
+    assert len(state.players[0].hand) == hand + 1
+    assert state.players[0].resources.spice == 3
+    kinds = [event.kind for event in events]
+    (drawn,) = _drawn(events)
+    assert kinds.index("shipping_troops_recruited") < events.index(drawn)
+    assert len(_snooper_spice(events)) == 1
+    assert canonical_state_hash(_loaded(start, steps)) == canonical_state_hash(state)
+
+
 # --- Outside her turn: the OPTIONAL_DISCARD window -----------------------------
 
 
@@ -360,6 +502,57 @@ def test_outside_her_turn_water_peddler_pays_its_box_inside_the_discard() -> Non
     owner = paid.state.players[0]
     assert (owner.resources.water, owner.resources.spice) == (1, 1)
     _closed(paid.state)
+
+
+def test_above_another_seat_s_turn_the_hold_is_hers_and_gives_its_frame_back() -> None:
+    """Tessia at seat 1 reaches her first Snooper token (rise-of-ix.md 235:
+    "그 token에 도달할 때마다 ... ① discard → spice 1") inside seat 0's turn,
+    whose Agent effects wait below: a seat's decision arising inside another
+    seat's turn (imperium-base.md 359: "상대 좌석의 결정이 내 turn 안에
+    생긴다"), built here by hand. While her hold is open the decision is hers
+    and only her Unload rows are offered; when it closes, the frame below is
+    seat 0's own, unchanged, and the spice came once."""
+
+    state = _start(TESSIA_SECOND)
+    assert state.players[1].leader_id == "tessia_vernius"
+    state = _give(state, 0, (DIPLOMACY,))
+    state = _give(state, 1, (AMBITION,), influence=Influence(emperor=1), resources=NONE)
+    state = _steps_of(state, "choose_agent_card", card_id=DIPLOMACY)[0].state
+    state = _steps_of(state, "place_agent", space_id="wealth")[0].state
+    below = state.decision_stack
+    assert below[-1].kind is FrameKind.AGENT_EFFECTS
+    assert isinstance(below[-1].decision, PlayerDecision)
+    assert below[-1].decision.owner == 0
+    offered = _rows(state, 0)
+    assert offered
+    gained = gain_faction_influence(
+        state, 1, Faction.EMPEROR, 1, event_prefix="test:emperor"
+    )
+    window = settle_snooper_discards(gained).state
+    assert window.decision_stack[:-1] == below
+    assert window.decision_stack[-1].kind is FrameKind.OPTIONAL_DISCARD
+    opened, _ = _seat_steps(window, 1, SNOOPER_ROW, card_id=AMBITION)
+    held = opened.state
+    assert _holds(held) == 1
+    assert held.decision_stack[: len(below)] == below
+    decision = ENGINE.current_decision(held)
+    assert isinstance(decision, PlayerDecision) and decision.owner == 1
+    rows = _rows(held, 1)
+    assert rows
+    assert {row.action_id for row in rows} <= {
+        "acquire_unload_imperium_card",
+        "acquire_unload_reserve_card",
+    }
+    for seat in (0, 2, 3):
+        assert not _rows(held, seat)
+    assert held.players[1].resources.spice == 0
+    check_observation_privacy(held)
+    acquired, _ = _seat_steps(held, 1, "acquire_unload_reserve_card", card_id=LIAISON)
+    after = acquired.state
+    assert after.decision_stack == below
+    assert after.players[1].resources.spice == 1
+    _after(acquired.events, "card_acquired")
+    assert _rows(after, 0) == offered
 
 
 # --- The two measurement games -------------------------------------------------
