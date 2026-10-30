@@ -47,6 +47,8 @@ from dune_imperium.display.board_layout import (
     CONFLICT_UNIT_GAP,
     CONFLICT_UNIT_MIN_SCALE,
     CONFLICT_UNIT_PADDING,
+    DREADNOUGHT_ASPECT,
+    DREADNOUGHT_WIDTH,
     GARRISON_UNIT_LINE,
     GARRISON_UNIT_MIN_SCALE,
     SANDWORM_WIDTH,
@@ -258,6 +260,7 @@ CONFLICT_UNIT_SIZES: Final[Mapping[str, tuple[float, float]]] = MappingProxyType
         "commander": _piece_by_height(_FRAME_HEIGHT * COMMANDER_HEIGHT, 130 / 195),
         "agent": _piece_by_height(_FRAME_HEIGHT * AGENT_ON_SPACE_HEIGHT, 52 / 81),
         "sandworm": _piece_by_width(SANDWORM_WIDTH, 62 / 57),
+        "dreadnought": _piece_by_width(DREADNOUGHT_WIDTH, DREADNOUGHT_ASPECT),
     }
 )
 # The packing constants are Uprising's, except the garrison's padding: on
@@ -283,6 +286,117 @@ SEAT_DISC_SIZE: Final = 2.95
 # card is placed "face up in the space next to the Conflict Deck" [DI p. 8].
 CONFLICT_DECK_SLOT: Final = (30.35, 68.98, 8.62, 13.4)
 CONFLICT_SLOT: Final = (40.56, 68.98, 8.68, 13.4)
+
+# Rise of Ix's CHOAM board overlay, which covers the original board's
+# Landsraad and CHOAM sections [Rise of Ix p. 3] (docs/rules/rise-of-ix.md 3),
+# in its two pictures (assets ``board/ix_overlay_landsraad.png`` and
+# ``board/ix_overlay_choam.png``, 2100 px wide), as ``(left, top, width,
+# height)`` boxes on this picture. Measured 2026-10-29: the scale from the
+# three spaces the Landsraad piece reprints (High Council, Mentat,
+# Swordmaster), each found in it by template matching the board's own frame
+# (NCC 0.95-0.97, one scale for all three: 1.175 overlay px per board px);
+# the overlay rearranges them, so the pieces are placed against the
+# sections' outer edges instead: the Landsraad piece's top-left on the
+# board's Landsraad panel (28.72%, 1.68%, less the piece's border), the
+# CHOAM piece's top-right on the CHOAM panel's (98.06%); they meet with the
+# CHOAM piece over the other's dark margin. The panels' edges are where
+# their olive and rust tints start (colour profiles).
+IX_OVERLAY_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
+    MappingProxyType(
+        {
+            "landsraad": (28.56, 1.5, 35.74, 22.62),
+            "choam": (62.5, 1.5, 35.74, 22.56),
+        }
+    )
+)
+# What the overlay moves or adds, on this picture (the same measurement: the
+# overlay's own prints mapped through its box): its five space frames (the
+# frame outline's edges matched on the pieces), the Mentat silhouette (the
+# board's own silhouette matched, NCC 0.97) and the four High Council chairs
+# (each matched, NCC 0.96).
+IX_SPACE_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
+    MappingProxyType(
+        {
+            "imperium_high_council": (31.96, 5.44, 7.59, 5.88),
+            "mentat": (31.91, 14.97, 7.59, 5.88),
+            "imperium_swordmaster": (50.31, 14.96, 7.59, 5.88),
+            "interstellar_shipping": (65.44, 6.32, 7.59, 5.88),
+            "smuggling": (65.43, 14.84, 7.59, 5.88),
+        }
+    )
+)
+IX_MENTAT_POINT: Final = (45.87, 17.83)
+IX_COUNCIL_SEATS: Final = ((43.56, 8.5), (46.84, 8.48), (54.25, 8.52), (57.55, 8.5))
+
+
+def _on_choam(x: float, y: float) -> tuple[float, float]:
+    """A point in percent of the CHOAM piece's picture, on this picture."""
+
+    left, top, width, height = IX_OVERLAY_BOXES["choam"]
+    return (round(left + x * width / 100, 2), round(top + y * height / 100, 2))
+
+
+# The Freighters' discs on the CHOAM piece's Shipping track, bottom step
+# (where each seat's disc starts [Rise of Ix p. 3]) to the top, one column
+# per seat. Measured 2026-10-29 on the piece's picture by brightness
+# profiles across the track outlines, checked drawn over it: the four
+# columns divide the bands' common inside evenly, and each disc sits at its
+# band's middle at that column, so a row follows the printed chevron. The
+# columns are 2.57 % of this picture apart, so the disc is drawn smaller
+# than the board's other seat discs.
+_FREIGHTER_COLUMNS = (52.62, 59.82, 67.01, 74.21)
+_FREIGHTER_ROWS = (
+    (82.84, 82.84, 82.84, 82.84),
+    (63.16, 61.97, 61.98, 63.16),
+    (40.58, 38.18, 38.17, 40.55),
+    (16.94, 15.73, 15.72, 16.92),
+)
+IX_FREIGHTER_POINTS: Final = tuple(
+    tuple(_on_choam(x, y) for x, y in zip(_FREIGHTER_COLUMNS, row, strict=True))
+    for row in _FREIGHTER_ROWS
+)
+IX_FREIGHTER_DISC_SIZE: Final = 2.3
+
+# Rise of Ix's own board (assets ``board/ix_board.png``, 2100x2132), drawn
+# beside this one at the print's scale: its space frames are 449.6 px wide
+# against this picture's 379.5 px, so 1.18 of its pixels to one of ours.
+# Its values are percent of its own picture, measured 2026-10-29 like the
+# rest (brightness profiles across each white frame and plate edge, checked
+# drawn over it): the two space frames, the three translucent plates the
+# Tech stacks lie on (the tiles' own 1.53 proportions) and the Negotiators'
+# shield, with a spot per seat in one row across it.
+IX_BOARD_SCALE: Final = 1.18
+IX_BOARD_PICTURE: Final = (2100, 2132)
+IX_BOARD_SPACE_BOXES: Final[Mapping[str, tuple[float, float, float, float]]] = (
+    MappingProxyType(
+        {
+            "tech_negotiation": (9.29, 11.03, 21.41, 16.28),
+            "dreadnought": (9.17, 37.33, 21.43, 16.29),
+        }
+    )
+)
+IX_TECH_SLOTS: Final = (
+    (55.93, 3.78, 37.02, 23.92),
+    (55.8, 33.5, 37.07, 23.92),
+    (55.72, 63.25, 37.09, 23.91),
+)
+IX_NEGOTIATOR_BOX: Final = (33.18, 64.11, 18.37, 22.24)
+IX_NEGOTIATOR_SEATS: Final = (
+    (35.48, 74.11),
+    (40.07, 74.11),
+    (44.66, 74.11),
+    (49.26, 74.11),
+)
+
+
+def ix_board_size() -> tuple[float, float]:
+    """The Ix board's width and height in percent of this picture's."""
+
+    width, height = IX_BOARD_PICTURE
+    return (
+        round(100 * width / IX_BOARD_SCALE / _PICTURE_WIDTH, 2),
+        round(100 * height / IX_BOARD_SCALE / _PICTURE_HEIGHT, 2),
+    )
 
 
 def imperium_board_layout() -> dict[str, Any]:
@@ -342,7 +456,7 @@ def imperium_board_layout() -> dict[str, Any]:
                 "rings": [list(ring) for ring in GARRISON_RINGS],
                 "sizes": {
                     kind: list(CONFLICT_UNIT_SIZES[kind])
-                    for kind in ("troop", "commander")
+                    for kind in ("troop", "commander", "dreadnought")
                 },
                 "gap": CONFLICT_UNIT_GAP,
                 "line": GARRISON_UNIT_LINE,
@@ -354,6 +468,33 @@ def imperium_board_layout() -> dict[str, Any]:
             "disc_size": SEAT_DISC_SIZE,
             "conflict_deck_slot": list(CONFLICT_DECK_SLOT),
             "conflict_slot": list(CONFLICT_SLOT),
+        },
+        # Rise of Ix's overlay and what it moves (the page uses these on an
+        # original + Ix table).
+        "ix": {
+            "overlays": {name: list(box) for name, box in IX_OVERLAY_BOXES.items()},
+            "space_boxes": {
+                space: list(box) for space, box in IX_SPACE_BOXES.items()
+            },
+            "mentat": {"point": list(IX_MENTAT_POINT), "height": MENTAT_HEIGHT},
+            "council_seats": [list(point) for point in IX_COUNCIL_SEATS],
+            "freighter": {
+                "steps": [
+                    [list(point) for point in row] for row in IX_FREIGHTER_POINTS
+                ],
+                "disc_size": IX_FREIGHTER_DISC_SIZE,
+            },
+            # The Ix board beside this one: ``size`` in percent of this
+            # picture, everything else in percent of its own.
+            "board": {
+                "size": list(ix_board_size()),
+                "space_boxes": {
+                    space: list(box) for space, box in IX_BOARD_SPACE_BOXES.items()
+                },
+                "tech_slots": [list(box) for box in IX_TECH_SLOTS],
+                "negotiator_box": list(IX_NEGOTIATOR_BOX),
+                "negotiator_seats": [list(point) for point in IX_NEGOTIATOR_SEATS],
+            },
         },
         "mentat": (
             None

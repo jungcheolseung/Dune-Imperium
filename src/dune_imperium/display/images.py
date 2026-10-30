@@ -39,8 +39,9 @@ resolves those a second time with ``app_renders=False``: scans only, in
 the same language order (``ko``, ``en`` for the Korean UI).
 Only entries of the indexed sets (Uprising, and Bloodlines for the
 ``bloodlines`` option) that carry a ``content_id`` are indexed (Rise of
-Ix: only Epic Game Mode's two cards carry one); the other sets in the
-manifest are archived for future expansions. The original game's set
+Ix's 80 since stage P5f; Epic Game Mode's two cards had theirs
+before); the other sets in the manifest are archived for future
+expansions. The original game's set
 (``base``) names its own prints since stage P5d of
 docs/base-game-and-ix-plan.md; its starting cards and the three spaces it
 shares with Uprising are Uprising's prints and keep Uprising's entries.
@@ -57,8 +58,9 @@ from typing import Final
 
 MANIFEST_FILENAME: Final = "manifest.json"
 UPRISING_SET: Final = "uprising"
-# Rise of Ix is indexed only for Epic Game Mode's two cards (Control the
-# Spice, Economic Supremacy), the only entries of that set with a content id.
+# Rise of Ix's entries carry content ids since stage P5f (assets manifest;
+# Epic Game Mode's two cards, Control the Spice and Economic Supremacy, had
+# theirs before).
 INDEXED_SETS: Final = frozenset(
     {UPRISING_SET, "base", "bloodlines", "immortality", "rise-of-ix"}
 )

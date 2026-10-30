@@ -6,6 +6,7 @@ and hold the same pieces; these tests check that, and that the measured
 places stay apart from each other on the picture.
 """
 
+from itertools import pairwise
 from typing import Any
 
 from tests.support.board_layout import apart, centred, ring_unit_layout
@@ -26,6 +27,9 @@ from dune_imperium.display.board_layout_imperium import (
     FORCE_STEPPER_BAND,
     GARRISON_RINGS,
     INFLUENCE_CUBE_SIZE,
+    IX_BOARD_PICTURE,
+    IX_FREIGHTER_DISC_SIZE,
+    IX_OVERLAY_BOXES,
     MAKER_SPICE_POINTS,
     MAKER_SPICE_SIZE,
     SEAT_DISC_SIZE,
@@ -340,3 +344,93 @@ def test_the_conflict_cards_lie_in_the_two_printed_slots() -> None:
         assert slot[3] > slot[2]
         for space_id, box in SPACE_BOXES.items():
             assert apart(slot, box), space_id
+
+
+def test_the_ix_overlay_covers_the_landsraad_and_choam_sections() -> None:
+    # Rise of Ix's CHOAM board overlay covers the original Landsraad and
+    # CHOAM sections [Rise of Ix p. 3]: its two pieces lie over the spaces
+    # those sections print (the four it removes and the three it reprints),
+    # inside the picture, side by side at one top.
+    landsraad = IX_OVERLAY_BOXES["landsraad"]
+    choam = IX_OVERLAY_BOXES["choam"]
+    for left, top, width, height in (landsraad, choam):
+        assert 0 <= left < left + width <= 100 and 0 <= top < top + height <= 100
+    assert landsraad[1] == choam[1]
+    assert abs(landsraad[2] - choam[2]) < 0.01
+    assert landsraad[0] < choam[0] < landsraad[0] + landsraad[2]
+    covered = ("imperium_high_council", "hall_of_oratory", "mentat", "rally_troops",
+               "imperium_swordmaster", "sell_melange", "secure_contract")
+    for space_id in covered:
+        left, top, width, height = SPACE_BOXES[space_id]
+        assert any(
+            o[0] <= left and left + width <= o[0] + o[2]
+            and o[1] <= top and top + height <= o[1] + o[3]
+            for o in (landsraad, choam)
+        ), space_id
+    ix = imperium_board_layout()["ix"]
+    assert ix["overlays"] == {name: list(box) for name, box in IX_OVERLAY_BOXES.items()}
+    # What the overlay prints lies on it: the five spaces' frames, the
+    # Mentat silhouette and the four chairs on the Landsraad or CHOAM piece.
+    def on_overlay(left: float, top: float, width: float, height: float) -> bool:
+        return any(
+            o[0] <= left and left + width <= o[0] + o[2]
+            and o[1] <= top and top + height <= o[1] + o[3]
+            for o in (landsraad, choam)
+        )
+    assert set(ix["space_boxes"]) == {
+        "imperium_high_council", "mentat", "imperium_swordmaster",
+        "interstellar_shipping", "smuggling",
+    }
+    for space_id, (left, top, width, height) in ix["space_boxes"].items():
+        assert on_overlay(left, top, width, height), space_id
+        assert abs(width - SPACE_BOXES["carthag"][2]) < 0.1
+    x, y = ix["mentat"]["point"]
+    assert on_overlay(x, y, 0, 0)
+    seats = ix["council_seats"]
+    assert len(seats) == 4 and [s[0] for s in seats] == sorted(s[0] for s in seats)
+    assert all(on_overlay(sx, sy, 0, 0) for sx, sy in seats)
+
+
+def test_freighters_stand_in_a_column_per_seat_on_the_shipping_track() -> None:
+    # Each seat's Freighter disc starts on the Shipping track's bottom step
+    # [Rise of Ix p. 3] and moves up one step at a time: four steps, a spot
+    # per seat on each, all on the CHOAM piece, the columns far enough apart
+    # for the disc and every step above the one below it.
+    choam = IX_OVERLAY_BOXES["choam"]
+    steps = imperium_board_layout()["ix"]["freighter"]["steps"]
+    assert len(steps) == 4 and all(len(row) == 4 for row in steps)
+    for row in steps:
+        assert all(
+            choam[0] < x < choam[0] + choam[2] and choam[1] < y < choam[1] + choam[3]
+            for x, y in row
+        )
+        xs = [x for x, _ in row]
+        assert all(b - a >= IX_FREIGHTER_DISC_SIZE for a, b in pairwise(xs))
+    for column in range(4):
+        ys = [row[column][1] for row in steps]
+        assert ys == sorted(ys, reverse=True)
+        assert len({row[column][0] for row in steps}) == 1
+
+
+def test_the_ix_board_holds_its_spaces_tech_stacks_and_negotiators() -> None:
+    # Rise of Ix's own board [Rise of Ix p. 3]: its two spaces at the main
+    # board's frame size (the print's scale), three Tech plates with the
+    # tiles' landscape proportions, and a Negotiator spot per seat on the
+    # shield, everything inside its picture.
+    board = imperium_board_layout()["ix"]["board"]
+    width, height = board["size"]
+    assert 30 < width < 40 and 30 < height < 40
+    assert set(board["space_boxes"]) == {"tech_negotiation", "dreadnought"}
+    picture_w, picture_h = IX_BOARD_PICTURE
+    main_frame_w = SPACE_BOXES["carthag"][2]
+    for left, top, w, h in board["space_boxes"].values():
+        assert 0 <= left < left + w <= 100 and 0 <= top < top + h <= 100
+        assert abs(w * width / 100 - main_frame_w) < 0.1
+    assert len(board["tech_slots"]) == 3
+    for left, top, w, h in board["tech_slots"]:
+        assert 0 <= left < left + w <= 100 and 0 <= top < top + h <= 100
+        assert abs((w * picture_w) / (h * picture_h) - 1.527) < 0.02
+    nl, nt, nw, nh = board["negotiator_box"]
+    seats = board["negotiator_seats"]
+    assert len(seats) == 4
+    assert all(nl < x < nl + nw and nt < y < nt + nh for x, y in seats)

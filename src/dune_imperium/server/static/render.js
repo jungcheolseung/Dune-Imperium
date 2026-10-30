@@ -85,6 +85,10 @@ function amount(name, label, count, text = label) {
   return wrap;
 }
 
+/* Rise of Ix's Tech Discount badges that have a picture (the Acquire Tech
+   icon with -1 or -2): the TERMS row of each. */
+const TECH_DISCOUNT_TERM = { 1: "acquire_tech_minus_one", 2: "acquire_tech_minus_two" };
+
 const FACTION_ICON_KEY = {
   Emperor: "emperor",
   "Spacing Guild": "spacing_guild",
@@ -169,6 +173,30 @@ const ICON_RULES = [
   [/\bShield Wall\b/y, () => textIcon("shield_wall", "Shield Wall")],
   [/\bSignet Ring\b/y, () => textIcon("signet_ring", "Signet Ring")],
   [/\bContracts?\b/y, (m) => textIcon("contract", m[0])],
+  /* Rise of Ix's action icons ([Rise of Ix pp. 4-6], docs/rules/rise-of-ix.md
+     4-6). Like "Draw 2 cards", each names a whole effect, so its rule takes
+     the whole phrase the engine's text uses for it (display/effect_dsl_text.py,
+     structs.py, spaces.py) and the verb goes with it. The discounted Acquire
+     Tech comes first and takes its "(N spice off)" with it; a discount other
+     than 1 or 2 has no picture and keeps its words after the plain icon.
+     "Tech Negotiation" is the icon's name on a printed Leader face (the
+     board space of that name is shown by its name, which does not pass
+     through here). A Freighter move counts its icons: "once" is one, "N
+     times" is N. */
+  [
+    /Acquire a Tech tile \(([12]) spice off\)/y,
+    (m) => textIcon(TECH_DISCOUNT_TERM[m[1]], m[0]),
+  ],
+  [/Acquire a Tech tile/y, (m) => textIcon("acquire_tech", m[0])],
+  [/\bTech Negotiation\b/y, (m) => textIcon("tech_negotiation", m[0])],
+  [
+    /Place a troop from your supply on the Ix board as a Negotiator/y,
+    () => textIcon("tech_negotiation", "Negotiator"),
+  ],
+  [/Commission a dreadnought/y, (m) => textIcon("dreadnought", m[0])],
+  [/Move your Freighter once/y, (m) => textIcon("freighter", m[0])],
+  [/Move your Freighter (\d+) times/y, (m) => textAmount("freighter", m[1], m[0])],
+  [/Move your Freighter/y, (m) => textIcon("freighter", m[0])],
   [/→/y, () => icon("arrow_right", "→")],
 ];
 

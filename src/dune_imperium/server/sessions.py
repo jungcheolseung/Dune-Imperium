@@ -584,6 +584,7 @@ class GameSessionManager:
         epic_game: bool = False,
         arrakeen_scouts: bool = False,
         first_player_seat_zero: bool = False,
+        rise_of_ix: bool = False,
         seats_at_start: bool = False,
         game_seed: int | None = None,
         policy_seed: int | None = None,
@@ -634,6 +635,7 @@ class GameSessionManager:
                 epic_game=epic_game,
                 arrakeen_scouts=arrakeen_scouts,
                 first_player_seat_zero=first_player_seat_zero,
+                rise_of_ix=rise_of_ix,
             )
         except ValueError as error:
             # RulesetConfig rejects unsupported combinations (the Tech Module
@@ -2370,6 +2372,7 @@ class GameSessionManager:
             "immortality": session.config.immortality,
             "go_to_11": session.config.go_to_11,
             "epic_game": session.config.epic_game,
+            "rise_of_ix": session.config.rise_of_ix,
             "arrakeen_scouts": session.config.arrakeen_scouts,
             "first_player_seat_zero": session.config.first_player_seat_zero,
             "seats": list(kinds),

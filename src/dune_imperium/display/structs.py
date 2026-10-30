@@ -37,6 +37,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     DrawIntrigueCards,
     DrawPersonalCards,
     EffectSection,
+    Freighter,
     GainedSpiceThisTurn,
     GainInfluence,
     GainResources,
@@ -401,6 +402,9 @@ class ConflictRowParts:
     # The original game's Mentat icon (Sort Through the Chaos): the winner
     # takes the Mentat at the next round's start [DI p. 16] [FAQ p. 4].
     mentat: bool = False
+    # Rise of Ix's Freighter icon, counted (the winner moves its Freighter
+    # once per icon [Rise of Ix p. 5]).
+    freighter: int = 0
 
 
 def conflict_row_parts(row: Ability) -> ConflictRowParts:
@@ -410,6 +414,7 @@ def conflict_row_parts(row: Ability) -> ConflictRowParts:
         "deep_cover_spies": 0,
         "trash_cards": 0,
         "choose_influence": 0,
+        "freighter": 0,
     }
     for line in row.sections:
         if line.costs:
@@ -457,6 +462,8 @@ def conflict_row_parts(row: Ability) -> ConflictRowParts:
                     found["control_space_id"] = space_id
                 case TakeMentat():
                     found["mentat"] = True
+                case Freighter():
+                    counted["freighter"] += 1
                 case _:
                     raise TypeError(f"{reward!r} is not a Conflict reward")
     found.update({key: value for key, value in counted.items() if value})
@@ -518,6 +525,9 @@ def conflict_reward_text(row: Ability) -> str:
         parts.append(
             "Take the Mentat at the next round's start (if it is on its space)"
         )
+    if reward.freighter:
+        times = "once" if reward.freighter == 1 else f"{reward.freighter} times"
+        parts.append(f"Move your Freighter {times}")
     if reward.solari:
         parts.append(f"Gain {reward.solari} solari")
     if reward.spice:
@@ -660,6 +670,15 @@ def conflict_reward_text_ko(row: Ability) -> str:
         # 멘타트, as the original game's Korean rulebook names it
         # [DI-ko p. 16].
         parts.append("다음 라운드 시작에 멘타트 가져옴 (그 장소에 있으면)")
+    if reward.freighter:
+        # "화물선을 1번 이동시킵니다" (Smuggling) [IX-ko p. 12]. English's
+        # "Move your Freighter once" draws one Freighter icon and "N times" a
+        # counted one, the verb going with the icon (``ICON_RULES``).
+        parts.append(
+            "{freighter}"
+            if reward.freighter == 1
+            else f"{{freighter:{reward.freighter}}}"
+        )
     if reward.solari:
         parts.append(f"{{solari:{reward.solari}}}")
     if reward.spice:

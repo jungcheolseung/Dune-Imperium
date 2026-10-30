@@ -202,7 +202,9 @@ def test_guild_chief_administrator_card_text() -> None:
         "You may move your Freighter up one space or recall it" in line
         for line in english
     )
-    assert any("운송 트랙에서 한 칸 위로 또는 회수 가능" in line for line in korean)
+    assert any(
+        "운송 트랙에서 화물선 1칸 전진 또는 귀환 가능" in line for line in korean
+    )
     assert len(english) == len(korean)
 
 

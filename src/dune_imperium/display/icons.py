@@ -18,8 +18,15 @@ decision) ``scripts/dwgr/app_assets.py icons`` then overwrites every name it
 maps with the same artwork from the installed Steam Dune: Imperium app, at two
 to three times the pixels (every name since 2026-10-08, when the app's
 misleadingly named ``IntrigueTrash`` sprite turned out to be the steal icon).
-Run the rulebook script first, then the app one. The
-icons are copyrighted Dire Wolf Digital artwork; they live in the owner's
+Run the rulebook script first, then the app one.
+
+``APP_ONLY_ICON_NAMES`` (Rise of Ix's card icons) have no rulebook source:
+their pictures come from the app alone (``scripts/dwgr/app_assets.py icons``,
+its ``APP_ICON_SOURCES``), so ``scripts/extract_rulebook_icons.py``, which
+reads ``RULEBOOK_ICON_SOURCE_GROUPS``, never makes them. ``ICON_NAMES`` lists
+both kinds, and an icon is served once its PNG is in the icon directory.
+
+The icons are copyrighted Dire Wolf Digital artwork; they live in the owner's
 private assets repository and are never committed to this repository, the
 same policy as the card images in ``dune_imperium.display.images``.
 """
@@ -95,10 +102,29 @@ RULEBOOK_ICON_SOURCE_GROUPS: Final[
     }
 )
 
-ICON_NAMES: Final[tuple[str, ...]] = tuple(
-    name
-    for sources in RULEBOOK_ICON_SOURCE_GROUPS.values()
-    for name in sources
+# Rise of Ix's card icons (docs/rules/rise-of-ix.md 4-7): the Dreadnought
+# icon (commission a dreadnought), the Freighter icon (move your Freighter),
+# the Tech Negotiation icon (a Negotiator), Acquire Tech without and with a
+# Tech Discount of 1 or 2, and the Unload mark. Their pictures are the app's
+# alone, so no rulebook page or xref names them. Discard already is
+# ``discard``; the Infiltration icons are not drawn yet.
+APP_ONLY_ICON_NAMES: Final[tuple[str, ...]] = (
+    "dreadnought",
+    "freighter",
+    "tech_negotiation",
+    "acquire_tech",
+    "acquire_tech_minus1",
+    "acquire_tech_minus2",
+    "unload",
+)
+
+ICON_NAMES: Final[tuple[str, ...]] = (
+    *(
+        name
+        for sources in RULEBOOK_ICON_SOURCE_GROUPS.values()
+        for name in sources
+    ),
+    *APP_ONLY_ICON_NAMES,
 )
 
 

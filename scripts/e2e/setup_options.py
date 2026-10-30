@@ -689,6 +689,10 @@ BASE_GAME_JS = """() => {
     promo: [...document.querySelectorAll("#opt-promo ~ span")]
       .filter((span) => !span.hidden).map((span) => span.textContent.trim()),
     promoWant: {uprising: t("html.opt_promo"), imperium: t("html.opt_promo_imperium")},
+    ix: (() => {
+      const box = document.getElementById("opt-rise-of-ix");
+      return {checked: box.checked, disabled: box.disabled};
+    })(),
   };
 }"""
 
@@ -751,6 +755,12 @@ def original_game(base: str, browser) -> None:
         original,
     )
     check.ok(
+        before["ix"] == {"checked": False, "disabled": True}
+        and original["ix"] == {"checked": False, "disabled": False},
+        "Rise of Ix is offered on the original game only, unchecked",
+        {"uprising": before["ix"], "original": original["ix"]},
+    )
+    check.ok(
         original["promo"] == [original["promoWant"]["imperium"]],
         "the original game: the promo box names its own three promos",
         original["promo"],
@@ -775,7 +785,8 @@ def original_game(base: str, browser) -> None:
     check.ok(
         back["boxes"] == before["boxes"] and back["kinds"] == [
             "human", "random", "app_ai_easy", "app_ai"]
-        and back["promo"] == before["promo"],
+        and back["promo"] == before["promo"]
+        and back["ix"] == {"checked": False, "disabled": True},
         "back on Uprising: the boxes come back, the picked seats stay and the"
         " refused one keeps the default",
         {"before": before, "back": back},
@@ -823,10 +834,109 @@ def original_game(base: str, browser) -> None:
     context.close()
 
 
+# What the original + Rise of Ix Epic table shows beyond TABLE_JS: the
+# Leaders, each seat's public deck pool, and the original board's Score track.
+EPIC_TABLE_JS = """() => ({
+  leaders: state.view.players.map((player) => player.leader_id),
+  pools: state.view.players.map((player) => player.deck_pool),
+  levels: boardLayout(state.view).tracks.victory_points.levels.length,
+  ix: state.summary.rise_of_ix,
+  base: state.summary.base_game,
+})"""
+
+# Rise of Ix's six Leaders (content.rise_of_ix.leaders).
+IX_LEADERS = {
+    "princess_yuna_moritani",
+    "prince_rhombur_vernius",
+    "archduke_armand_ecaz",
+    "viscount_hundro_moritani",
+    "ilesa_ecaz",
+    "tessia_vernius",
+}
+
+
+def original_ix_epic(base: str, browser) -> None:
+    """[9] Epic Game Mode on the original game (P4 d88c6a7d): it is the Rise
+    of Ix rulebook's mode [Rise of Ix p. 10], so the original game takes it
+    with Rise of Ix only (docs/rules/rise-of-ix.md 11; Uprising plays it alone,
+    OQ-092). The box stays locked while the original game has no Rise of Ix,
+    opens checked with it and locks again without it. The game starts with
+    five garrison troops a seat, each seat's Intrigue card once the Leaders
+    are drafted, Control the Spice in each deck for one of its two Dune, the
+    Desert Planet ("좌석마다 Dune, the Desert Planet 하나를 Control the Spice로
+    바꾸고, 모두 Intrigue 1장을 뽑고 ... garrison troop 5로 시작한다", rise-of-ix.md
+    11), the Rise of Ix Leaders in the draft, and a Score track that holds the
+    12 points the mode plays to."""
+    print("[9] Epic Game Mode on the original game with Rise of Ix")
+    context, page, rec = open_context(browser, "setup-original-epic")
+    open_setup(page, base)
+    page.select_option("#opt-base-game", "imperium")
+    without = page.evaluate(BOXES_JS)["epic"]
+    page.check("#opt-rise-of-ix")
+    opened = page.evaluate(BOXES_JS)["epic"]
+    page.uncheck("#opt-rise-of-ix")
+    again = page.evaluate(BOXES_JS)["epic"]
+    page.check("#opt-rise-of-ix")
+    check.ok(
+        without == again == {"checked": False, "disabled": True}
+        and opened == {"checked": True, "disabled": False}
+        and page.evaluate(BOXES_JS)["epic"] == opened,
+        "the original game's Epic box is locked without Rise of Ix and opens,"
+        " checked, with it",
+        {"without": without, "opened": opened, "again": again},
+    )
+    body = create(page)
+    check.ok(
+        body.get("base_game") == "imperium"
+        and body.get("rise_of_ix") is True
+        and body.get("epic_game") is True,
+        "POST /games carries the original game, Rise of Ix and epic_game",
+        body,
+    )
+    board = page.evaluate(TABLE_JS)
+    check.ok(board["epic"] is True, "the summary says epic_game", board["epic"])
+    check.ok(board["epicBadge"] in board["badges"], "the Epic Game Mode badge", board)
+    setup_pieces(board, troops=5, intrigue=0)
+    offered = page.evaluate(
+        "state.actions.actions.filter((a) => a.action_id === 'pick_leader')"
+        ".map((a) => a.arguments.leader_id)"
+    )
+    check.ok(
+        bool(set(offered) & IX_LEADERS),
+        "the Leader draft offers Rise of Ix's Leaders",
+        offered,
+    )
+    finish_draft(page)
+    setup_pieces(page.evaluate(TABLE_JS), troops=5, intrigue=1)
+    table = page.evaluate(EPIC_TABLE_JS)
+    check.ok(
+        all(table["leaders"]) and table["base"] == "imperium" and table["ix"],
+        "every seat has its Leader once the draft is over",
+        table["leaders"],
+    )
+    check.ok(
+        all(
+            pool.count("control_the_spice") == 1
+            and pool.count("dune_the_desert_planet") == 1
+            for pool in table["pools"]
+        ),
+        "every deck holds Control the Spice and one Dune, the Desert Planet",
+        table["pools"],
+    )
+    check.ok(
+        table["levels"] == 13,
+        "the original board's Score track prints 0 to 12, the Epic goal",
+        table["levels"],
+    )
+    check.ok(not rec.js_errors, "no page errors", rec.js_errors)
+    context.close()
+
+
 def main() -> None:
     with chrome() as browser:
         with server() as (base, _log):
             original_game(base, browser)
+            original_ix_epic(base, browser)
             go_to_11_epic_game(base, browser)
             epic_game(base, browser)
             retail_game(base, browser)

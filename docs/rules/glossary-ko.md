@@ -510,3 +510,40 @@ Usurp → 찬탈, Reclaimed Forces → 되돌아온 병사들, Advanced Data Ana
    타일·사다우카 지휘관 기술 토큰 이름은 한글판 인쇄가 확인된 것(`display/names_ko.py`)만
    한국어이고, 나머지는 영어를 유지한다 — 인쇄를 확인하지 않은 이름을 번역해 채우지 않는다.
    리더 능력·인장 반지 문구는 한글판 인쇄를 옮긴 것이라 그 안의 공간 이름도 인쇄대로다.
+
+## Rise of Ix (원판 위)
+
+원판 + Rise of Ix 화면(`docs/base-game-and-ix-plan.md` 18.6, P5f~)의 이름과 용어. 출처는 공식 한국어판 Rise of Ix 룰북(`rise-of-ix-ko`,
+`KR_DUNE_IMPERIUM_RISE_OF_IX_Rulebook.pdf`, sha256 `177a00b5…`; 사용자의 로컬 사본을 2026-10-29 사용자 허락("룰북 읽어. 허락함")으로 읽음)이다.
+쪽은 `[IX-ko p. N]`(위 Epic 절의 `[Rise of Ix p. N]`과 같은 책). 본문을 PDF 읽기 도구 둘(PyMuPDF, pypdf)로 따로 뽑아 모든 이름이 같았다. Ix 카드·
+Tech 타일 이름은 한글판 카드 사진을 찾을 때까지 영어다. 룰북 본문에 이름이 없는 지도자 둘(Archduke Armand Ecaz, "Princess" Yuna Moritani)도
+영어다. 화면에 넣는 일은 P4 병합 뒤 P5f에서 한다(그때까지 상태는 "적용 예정").
+
+| EN | KO | 출처 | 상태 |
+| --- | --- | --- | --- |
+| Rise of Ix | 익스의 부상 | `[IX-ko pp. 2-3]` | 적용 예정 |
+| CHOAM board overlay | 초암 게임판 덮개 | `[IX-ko pp. 2-3, 5]` | 적용 예정 |
+| Ix board | 익스 게임판 | `[IX-ko pp. 2-4]` | 적용 |
+| Dreadnought (공간) | 드레드노트 | `[IX-ko p. 12]` | 적용 예정(공간 이름) |
+| Tech Negotiation (공간·아이콘) | 기술 협상 | `[IX-ko pp. 4, 12]` | 적용 예정(공간 이름) |
+| Interstellar Shipping | 성간 거래 | `[IX-ko pp. 5, 12]` | 적용 예정(공간 이름) |
+| Smuggling | 밀수 | `[IX-ko pp. 7, 12]` | 적용 예정(공간 이름) |
+| dreadnought (말) | 드레드노트 | `[IX-ko pp. 2, 6]` | 적용 |
+| commission (a dreadnought) | 취역(시키다) | `[IX-ko pp. 6, 12]` ("당신의 드레드노트 하나가 취역합니다") | 적용 |
+| units (troops + dreadnoughts) | 부대 | `[IX-ko pp. 6, 12]` ("병력과 드레드노트를 모두 아우르는 단어") | 적용 예정 |
+| Freighter | 화물선 (구성물은 화물선 토큰) | `[IX-ko pp. 2, 5, 12]` | 적용 |
+| Shipping track | 운송 트랙 | `[IX-ko pp. 3, 5, 12]` | 적용 — Uprising의 Shipping 공간(운송)과 다르다 |
+| Shipping reward | 운송 보상 | `[IX-ko pp. 5, 12]` | 적용 |
+| Tech tile | 기술 타일 | `[IX-ko pp. 2, 4, 12]` | 적용(위 Bloodlines 표와 같다) |
+| Acquire Tech | 기술 획득 | `[IX-ko pp. 4, 12]` | 적용 예정 |
+| Tech Discount | 기술 할인 | `[IX-ko pp. 4, 12]` | 적용 예정 |
+| Negotiator | 협상가 | `[IX-ko pp. 4, 12]` | 적용 |
+| Infiltration (아이콘) | 침투 | `[IX-ko pp. 7, 12]` | 적용 예정 — Uprising Spy의 Infiltrate(침투, `[Main p. 11]`)와 같은 말이라 화면에서 아이콘으로 가른다 |
+| Unload | 처분 | `[IX-ko pp. 7, 12]` | 적용 예정 |
+| Discard (아이콘) | 버림 | `[IX-ko pp. 7, 12]` | 적용 예정 |
+| Flip (Tech tile) | 뒤집기 | `[IX-ko p. 12]` | 적용 예정 |
+| Snooper token | 탐지기 토큰 | `[IX-ko p. 2]` | 적용 예정 |
+| Tessia Vernius | 테시아 버니우스 | `[IX-ko p. 2]` | 적용(지도자 이름) |
+| Prince Rhombur Vernius | 롬버 버니우스 대공 | `[IX-ko p. 8]` | 적용 예정(지도자 이름) |
+| Viscount Hundro Moritani | 헌드로 모리타니 자작 | `[IX-ko pp. 8, 10]` | 적용 예정(지도자 이름) |
+| Ilesa Ecaz | 일레사 에카즈 | `[IX-ko p. 10]` | 적용 예정(지도자 이름) |

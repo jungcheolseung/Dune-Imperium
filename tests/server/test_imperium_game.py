@@ -40,10 +40,13 @@ def _play(**options: Any) -> tuple[int, dict[str, Any]]:
             listed: Any = manager.legal_actions(game_id, 0)
             rows: list[dict[str, Any]] = listed["actions"]
             assert rows
-            # A varied row, never a troop withdrawal: it only undoes a
-            # deployment, and taking both in turn never ends the turn.
+            # A varied row, never a troop or dreadnought withdrawal: it only
+            # undoes a deployment, and taking both in turn never ends the
+            # turn (seed 9 with Rise of Ix did so with a dreadnought).
             picks = [
-                row for row in rows if row["action_id"] != "withdraw_troops"
+                row
+                for row in rows
+                if row["action_id"] not in ("withdraw_troops", "withdraw_dreadnoughts")
             ] or rows
             row = picks[(steps * 7) % len(picks)]
             summary = manager.apply_action(
@@ -63,8 +66,11 @@ def _play(**options: Any) -> tuple[int, dict[str, Any]]:
         {"game_seed": 31},
         # The human seat drafts its Leader and plays the promo cards.
         {"game_seed": 5, "leader_draft": True, "promo_cards": True},
+        # Rise of Ix on the original game (stage P5f): its spaces, cards and
+        # pieces in every view to the end.
+        {"game_seed": 9, "rise_of_ix": True},
     ],
-    ids=["fixed-leaders", "draft-promo"],
+    ids=["fixed-leaders", "draft-promo", "rise-of-ix"],
 )
 def test_an_original_game_serializes_every_step_to_its_end(
     options: dict[str, Any],
@@ -72,6 +78,7 @@ def test_an_original_game_serializes_every_step_to_its_end(
     steps, summary = _play(**options)
     assert summary["finished"], (steps, summary["round_number"])
     assert summary["base_game"] == "imperium"
+    assert summary["rise_of_ix"] is bool(options.get("rise_of_ix"))
 
 
 def test_an_original_table_takes_only_the_seats_of_its_row() -> None:

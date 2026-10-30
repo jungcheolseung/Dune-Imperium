@@ -168,6 +168,15 @@ def default_board_image_path() -> Path:
     return _ASSETS_DIR / "board" / "map.jpg"
 
 
+# Rise of Ix's pictures beside the original board's (assets board/, its
+# README): the CHOAM overlay's two pieces and the Ix board, by catalog name.
+IX_BOARD_PICTURES: Final = {
+    "landsraad": "ix_overlay_landsraad.png",
+    "choam": "ix_overlay_choam.png",
+    "board": "ix_board.png",
+}
+
+
 def imperium_board_image_path(board_image: Path) -> Path:
     """Return the original game's board picture beside the Uprising scan.
 
@@ -246,6 +255,10 @@ class CreateGameRequest(BaseModel):
     # garrison troops [Rise of Ix p. 10]. Needs no other option; omitted
     # means off, while the browser setup box is checked by default (OQ-092).
     epic_game: bool = False
+    # Rise of Ix on the original game (docs/rules/rise-of-ix.md; stage P5f of
+    # docs/base-game-and-ix-plan.md). The engine refuses it with Uprising
+    # until stage P7.
+    rise_of_ix: bool = False
     # The Arrakeen Scouts module (docs/rules/arrakeen-scouts.md).
     arrakeen_scouts: bool = False
     # OQ-132 project convention: seat 0 takes the First Player Objective.
@@ -559,6 +572,10 @@ def create_app(
             "/board-image/imperium": imperium_board_path,
             "/bene-tleilax-image": bene_tleilax_path,
         }
+        | {
+            f"/board-image/imperium/ix/{name}": imperium_board_path.with_name(file)
+            for name, file in IX_BOARD_PICTURES.items()
+        }
     )
     app = FastAPI(title="Dune: Imperium - Uprising local play server")
     # Whoever runs the server ends the open event streams through this when
@@ -582,6 +599,11 @@ def create_app(
             board_path.is_file(),
             bene_tleilax_image=bene_tleilax_path.is_file(),
             imperium_board_image=imperium_board_path.is_file(),
+            ix_board_pictures=frozenset(
+                name
+                for name, file in IX_BOARD_PICTURES.items()
+                if imperium_board_path.with_name(file).is_file()
+            ),
             token_files=token_files,
             asset_versions=asset_versions,
             image_index_ko=image_index_ko,
@@ -601,6 +623,14 @@ def create_app(
         if not imperium_board_path.is_file():
             raise HTTPException(status_code=404, detail="no original board image")
         return FileResponse(imperium_board_path)
+
+    @app.get("/board-image/imperium/ix/{name}", include_in_schema=False)
+    def ix_board_picture_file(name: str) -> FileResponse:
+        file = IX_BOARD_PICTURES.get(name)
+        path = imperium_board_path.with_name(file) if file else None
+        if path is None or not path.is_file():
+            raise HTTPException(status_code=404, detail="no Rise of Ix board picture")
+        return FileResponse(path)
 
     @app.get("/bene-tleilax-image", include_in_schema=False)
     def bene_tleilax_image_file() -> FileResponse:
@@ -672,6 +702,7 @@ def create_app(
                 epic_game=body.epic_game,
                 arrakeen_scouts=body.arrakeen_scouts,
                 first_player_seat_zero=body.first_player_seat_zero,
+                rise_of_ix=body.rise_of_ix,
                 seats_at_start=body.seats_at_start,
                 game_seed=body.game_seed,
                 policy_seed=body.policy_seed,

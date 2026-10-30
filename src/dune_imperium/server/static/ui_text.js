@@ -116,6 +116,30 @@ const UI_TEXT = {
     "ko": "듄 임페리움 게임판",
     "en": "Dune: Imperium board"
   },
+  "board.known_intrigue_top": {
+    "ko": "내가 아는 책략 카드 덱 맨 위: {{card}}",
+    "en": "You know the Intrigue deck's top card: {{card}}"
+  },
+  "board.known_intrigue_bottom": {
+    "ko": "내가 아는 책략 카드 덱 맨 아래: {{cards}}",
+    "en": "You know at the Intrigue deck's bottom: {{cards}}"
+  },
+  "board.known_intrigue_at_bottom": {
+    "ko": "{{card}}(맨 아래)",
+    "en": "{{card}} (the bottom card)"
+  },
+  "board.known_intrigue_above": {
+    "ko": "{{card}}(맨 아래에서 {{depth}}장 위)",
+    "en": "{{card}} ({{depth}} above the bottom card)"
+  },
+  "board.snooper_token": {
+    "ko": "탐지기 토큰 · {{faction}} 영향력 2칸",
+    "en": "Snooper token · {{faction}} Influence 2"
+  },
+  "board.map_alt_ix": {
+    "ko": "익스 게임판",
+    "en": "Ix board"
+  },
   "board.map_alt": {
     "ko": "듄 임페리움: 봉기 게임판",
     "en": "Dune: Imperium — Uprising board"
@@ -252,6 +276,18 @@ const UI_TEXT = {
     "ko": "플레이어{{seat}} · {garrison}: {{units}}",
     "en": "Player {{seat}} · {garrison}: {{units}}"
   },
+  "board.dreadnought_control_leaving": {
+    "ko": "플레이어{{seat}}의 드레드노트 · {{name}} 지배 · 다음 전투 단계가 끝나면 주둔지로",
+    "en": "Player {{seat}}'s dreadnought · controls {{name}} · back to the garrison when the next Combat phase ends"
+  },
+  "board.dreadnought_control_staying": {
+    "ko": "플레이어{{seat}}의 드레드노트 · {{name}} 지배 · 다음 라운드 전투 단계까지",
+    "en": "Player {{seat}}'s dreadnought · controls {{name}} · through the next round's Combat phase"
+  },
+  "board.seat_freighter": {
+    "ko": "플레이어{{seat}} · 화물선 · 운송 트랙 {{step}}칸",
+    "en": "Player {{seat}} · Freighter · Shipping track step {{step}}"
+  },
   "board.seat_high_council": {
     "ko": "플레이어{{seat}} · 원로회",
     "en": "Player {{seat}} · High Council"
@@ -259,6 +295,10 @@ const UI_TEXT = {
   "board.seat_maker_hooks": {
     "ko": "플레이어{{seat}} · {maker_hooks}",
     "en": "Player {{seat}} · {maker_hooks}"
+  },
+  "board.seat_negotiators": {
+    "ko": "플레이어{{seat}} · 협상가 {{count}}",
+    "en": "Player {{seat}} · Negotiators {{count}}"
   },
   "board.seat_strength": {
     "ko": "플레이어{{seat}} · 전투력 {{strength}}",
@@ -705,8 +745,8 @@ const UI_TEXT = {
     "en": "Dune: Imperium (the original game)"
   },
   "html.base_game_imperium_note": {
-    "ko": "원판은 아직 플레이어1 시작 플레이어·지도자 드래프트·프로모 카드(원판 3장)만 함께 씁니다. 다른 확장은 준비 중입니다. 원판 판에는 앱 AI·휴리스틱 AI·랜덤 AI가 앉습니다(탐색·롤아웃 AI는 아직 원판을 두지 않습니다).",
-    "en": "The original game takes only Player 1 as First Player, the Leader draft and the promo cards (its 3) so far; the other expansions are still to come. The app AI, the heuristic AI and the random AI sit at an original table (the search and rollout AIs do not play the original game yet)."
+    "ko": "원판은 아직 플레이어1 시작 플레이어·지도자 드래프트·프로모 카드(원판 3장)·익스의 부상 확장과, 익스의 부상과 함께일 때 에픽 게임 모드만 함께 씁니다. 다른 확장은 준비 중입니다. 원판 판에는 앱 AI·휴리스틱 AI·랜덤 AI가 앉습니다(탐색·롤아웃 AI는 아직 원판을 두지 않습니다).",
+    "en": "The original game takes only Player 1 as First Player, the Leader draft, the promo cards (its 3), the Rise of Ix expansion and, with Rise of Ix, Epic Game Mode so far; the other expansions are still to come. The app AI, the heuristic AI and the random AI sit at an original table (the search and rollout AIs do not play the original game yet)."
   },
   "screens.base_game_imperium_badge": {
     "ko": "원판",
@@ -735,6 +775,10 @@ const UI_TEXT = {
   "html.opt_promo_imperium": {
     "ko": "프로모 카드 (원판 3장: Duncan, Loyal Blade · Jessica of Arrakis · Thumper)",
     "en": "Promo cards (3 in the original game: Duncan, Loyal Blade · Jessica of Arrakis · Thumper)"
+  },
+  "html.opt_rise_of_ix": {
+    "ko": "익스의 부상 확장 (원판에서만: 드레드노트·기술 타일·운송 트랙·새 카드·지도자 6종)",
+    "en": "Rise of Ix expansion (original game only: dreadnoughts · Tech tiles · Shipping track · new cards · 6 Leaders)"
   },
   "html.opt_shuffle_seats": {
     "ko": "자리 무작위 배치",
@@ -1071,6 +1115,50 @@ const UI_TEXT = {
   "panels.masterstroke_secret": {
     "ko": "{{ability}}: 비밀 진영 둘",
     "en": "{{ability}}: two secret Factions"
+  },
+  "panels.dreadnought_supply": {
+    "ko": "공급처의 드레드노트 {{count}}",
+    "en": "Dreadnoughts in supply {{count}}"
+  },
+  "panels.freighter_step": {
+    "ko": "화물선: 운송 트랙 {{step}}칸",
+    "en": "Freighter: Shipping track step {{step}}"
+  },
+  "panels.negotiators": {
+    "ko": "익스 게임판의 협상가 {{count}}",
+    "en": "Negotiators on the Ix board {{count}}"
+  },
+  "panels.snoopers": {
+    "ko": "탐지기 토큰: {{factions}}",
+    "en": "Snooper tokens: {{factions}}"
+  },
+  "panels.set_aside_own": {
+    "ko": "따로 둔 카드: {{card}} (나만 봄)",
+    "en": "Set aside: {{card}} (only you see this)"
+  },
+  "panels.set_aside_hidden": {
+    "ko": "따로 둔 카드 1장",
+    "en": "One card set aside"
+  },
+  "panels.set_aside_returned": {
+    "ko": "따로 둔 카드를 이번 차례에 돌려받음",
+    "en": "The set-aside card came back this turn"
+  },
+  "panels.strategic_push": {
+    "ko": "Strategic Push: 이번 교전에서 승리하면 솔라리 {{solari}}",
+    "en": "Strategic Push: {{solari}} Solari if this seat wins this Conflict"
+  },
+  "panels.known_intrigue_held": {
+    "ko": "이 플레이어가 쥔 것으로 아는 책략 카드: {{cards}} (나만 봄)",
+    "en": "Intrigue cards you know this player holds: {{cards}} (only you see this)"
+  },
+  "panels.ix_pending_shipping": {
+    "ko": "아직 받을 운송 보상: {{steps}}칸",
+    "en": "Shipping rewards still to take: track spaces {{steps}}"
+  },
+  "panels.ix_pending_tech": {
+    "ko": "기술 획득: 기술 할인 {{discount}} · {{payment}}로 지불 · 돌려놓을 수 있는 협상가 {{negotiators}}",
+    "en": "Acquire Tech: Tech Discount {{discount}} · paid in {{payment}} · Negotiators you may return {{negotiators}}"
   },
   "panels.masterstroke_own": {
     "ko": "{{ability}}: {{factions}} (나만 봄)",

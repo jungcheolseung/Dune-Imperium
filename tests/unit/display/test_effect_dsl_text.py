@@ -7,10 +7,13 @@ import pytest
 
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireTech,
+    CommissionDreadnought,
     CompletedContractsAtLeast,
     DeployFromGarrison,
     EffectSection,
     FlipBattleCard,
+    Freighter,
     GainCombatStrength,
     GainInfluence,
     GainResources,
@@ -22,6 +25,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     MoreSpiceMustFlowThanEachOpponent,
     OnRevealAcquisitionThisRound,
     PayResources,
+    PlaceNegotiator,
     PlaceSpy,
     SandwormsInConflictAtLeast,
     TrashPersonalCard,
@@ -740,3 +744,46 @@ def test_every_intrigue_option_ko_line_is_valid_korean_text() -> None:
             assert_no_stray_latin(ko_line)
             assert_trash_and_discard_match(en_line, ko_line)
             assert_no_summon_for_sandworm(en_line, ko_line)
+
+
+# Rise of Ix's icons. The client's ``ICON_RULES`` (static/render.js) match the
+# English phrases below exactly, and ``tests/server/test_terms.py`` checks that
+# they do; each Korean twin names the same icon with a ``{term}`` placeholder,
+# so ``scripts/e2e/effect_text.py``'s icon parity holds.
+def test_rise_of_ix_icon_text_names_each_icon_in_both_languages() -> None:
+    terms = terms_keys()
+    expected = (
+        (CommissionDreadnought(), "Commission a dreadnought", "{dreadnought}"),
+        (
+            PlaceNegotiator(),
+            "Place a troop from your supply on the Ix board as a Negotiator",
+            "{tech_negotiation}",
+        ),
+        (
+            Freighter(),
+            "Move your Freighter up one space or recall it",
+            "{freighter}을 1칸 전진시키거나 귀환시킴",
+        ),
+        (AcquireTech(discount=0), "Acquire a Tech tile", "{acquire_tech}"),
+        (
+            AcquireTech(discount=1),
+            "Acquire a Tech tile (1 spice off)",
+            "{acquire_tech_minus_one}",
+        ),
+        (
+            AcquireTech(discount=2),
+            "Acquire a Tech tile (2 spice off)",
+            "{acquire_tech_minus_two}",
+        ),
+        # A discount with no picture keeps its amount in words.
+        (
+            AcquireTech(discount=3),
+            "Acquire a Tech tile (3 spice off)",
+            "{acquire_tech} ({spice:3} 할인)",
+        ),
+    )
+    for reward, english, korean in expected:
+        assert reward_text(reward) == english
+        assert reward_text_ko(reward) == korean
+        assert_placeholders_are_terms(korean, terms)
+        assert_no_stray_latin(korean)

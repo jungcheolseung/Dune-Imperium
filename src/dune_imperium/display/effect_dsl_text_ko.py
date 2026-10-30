@@ -608,11 +608,10 @@ def condition_text_ko(condition: Condition) -> str:
             # Quotes ``tokens_ko.py``'s ``reveal_effect_text_ko``.
             return f"{{garrison}}에 부대가 {count} 이상 있다면"
         case DreadnoughtsAtLeast(count=count):
-            # "2 dreadnoughts" [Grand Conspiracy card, Steam app text]; the
-            # glossary has no Korean word for a dreadnought (Rise of Ix has
-            # no Korean edition), so it stays English like the Dreadnought
-            # icon's line ("보유했다면" from the High Council clause above).
-            return f"dreadnought를 {count}개 보유했다면"
+            # "2 dreadnoughts" [Grand Conspiracy card, Steam app text], in the
+            # Korean Rise of Ix rulebook's word for the piece (드레드노트
+            # [IX-ko pp. 2, 6]; "보유했다면" from the High Council clause above).
+            return f"드레드노트를 {count}개 보유했다면"
         case DuringAgentTurn():
             # Quotes ``display/bloodlines.py``'s Rapid Dropships line.
             return "{agent_turn}"
@@ -955,10 +954,22 @@ def reward_text_ko(reward: Reward) -> str:
             # Appropriate (Rise of Ix): the price in Solari instead of spice.
             return "{tech_tile} {acquire} ({spice} 대신 {solari}로 지불 가능)"
         case AcquireTech(discount=0):
-            # "Acquire Tech | 기술 획득" [Bloodlines p. 12].
-            return "{tech_tile} {acquire}"
+            # "Acquire Tech | 기술 획득" [Bloodlines p. 12] [IX-ko pp. 4, 12],
+            # drawn as the Acquire Tech icon the way English's "Acquire a Tech
+            # tile" is (``ICON_RULES``): the icon names the whole effect, so
+            # no word goes beside it.
+            return "{acquire_tech}"
+        case AcquireTech(discount=1):
+            # "Tech Discount | 기술 할인" [IX-ko pp. 4, 12]: the Acquire Tech
+            # icon with its -1 or -2 badge is one picture, which English's
+            # "(N spice off)" is part of.
+            return "{acquire_tech_minus_one}"
+        case AcquireTech(discount=2):
+            return "{acquire_tech_minus_two}"
         case AcquireTech(discount=discount):
-            return f"{{tech_tile}} {{acquire}} ({{spice:{discount}}} 할인)"
+            # A discount with no picture: the plain icon, then the amount in
+            # words, as English's own rule leaves it.
+            return f"{{acquire_tech}} ({{spice:{discount}}} 할인)"
         case RedirectSpiesOnTurnSpace():
             # Vocabulary quotes ``tokens_ko.py``'s
             # ``EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY`` entry (same
@@ -1120,40 +1131,42 @@ def reward_text_ko(reward: Reward) -> str:
             # ("멘타트를 가져와 지도자 위에 놓습니다" [DI-ko p. 16]).
             return "장소에서 멘타트 가져옴"
         case CommissionDreadnought():
-            # Rise of Ix's Dreadnought icon: no Korean source names the
-            # dreadnought or the commission yet (``glossary-ko.md`` has no
-            # entry; the official Korean edition has no Rise of Ix), so the
-            # line stays English rather than invented (module docstring).
-            return "Commission a dreadnought"
+            # Rise of Ix's Dreadnought icon, in the Korean Rise of Ix
+            # rulebook's words ("당신의 드레드노트 하나가 취역합니다"
+            # [IX-ko p. 12]; glossary-ko.md "Rise of Ix (원판 위)"). The icon
+            # is the whole effect ("commission"), as English's "Commission a
+            # dreadnought" draws it, so it stands alone.
+            return "{dreadnought}"
         case EachOpponentRetreatsDreadnought():
-            # Cannon Turrets (Rise of Ix has no Korean edition and the
-            # glossary no dreadnought): the line stays English (module
-            # docstring).
-            return "Each opponent retreats one dreadnought"
+            # Cannon Turrets, in the Korean Rise of Ix rulebook's word for the
+            # piece (드레드노트 [IX-ko pp. 2, 6]) and the base game's 후퇴; no
+            # icon, as English draws none.
+            return "각 상대가 드레드노트 하나를 후퇴시킴"
         case PledgeConflictWinSolari(solari=solari):
-            # Strategic Push's "If you win this Conflict:" (Rise of Ix has
-            # no Korean edition): "이번" as in "이번 차례에", ``OnConflictWon``'s
-            # "{conflict}에서 승리", and rule 1's "-다면:" for a condition that
-            # names an action (korean-card-style.md).
+            # Strategic Push's "If you win this Conflict:": "이번" as in "이번
+            # 차례에", ``OnConflictWon``'s "{conflict}에서 승리", and rule 1's
+            # "-다면:" for a condition that names an action
+            # (korean-card-style.md).
             return (
                 "이번 {conflict}에서 승리한다면: "
                 f"{reward_text_ko(GainResources(solari=solari))}"
             )
         case PlaceNegotiator():
-            # Rise of Ix's Tech Negotiation icon: no Korean source names the
-            # Negotiator yet (``glossary-ko.md`` has no entry; the official
-            # Korean edition has no Rise of Ix), so the line stays English
-            # rather than invented (module docstring).
-            return "Place a troop from your supply on the Ix board as a Negotiator"
+            # Rise of Ix's Tech Negotiation icon ("개인 공급처에서 병력 하나를
+            # 가져와서 익스 게임판에 놓아도 됩니다. 이 병력은 협상가로
+            # 사용됩니다" [IX-ko p. 12]); English's sentence draws the same one
+            # icon (and no Troop icon), so this is the icon alone.
+            return "{tech_negotiation}"
         case TakeAnotherTurn():
             # Quotes ``tokens_ko.py``'s Weirding Way line.
             return "이 차례 바로 뒤에 차례를 한 번 더 할 수 있음"
         case Freighter():
-            # Rise of Ix's Freighter icon: no Korean source names the
-            # Freighter or the Shipping track yet (``glossary-ko.md`` has no
-            # entry; the official Korean edition has no Rise of Ix), so the
-            # line stays English rather than invented (module docstring).
-            return "Move your Freighter up one space or recall it"
+            # Rise of Ix's Freighter icon ("운송 트랙에서 화물선을 1칸
+            # 전진시킵니다 ... 화물선을 운송 트랙 맨 밑칸으로 귀환시키면서"
+            # [IX-ko p. 12]). English's "Move your Freighter" draws the icon,
+            # the rest of its sentence staying words; so here the icon takes
+            # 화물선 and the sentence goes on.
+            return "{freighter}을 1칸 전진시키거나 귀환시킴"
         case UseSignetAbility():
             # Quotes ``display/bloodlines.py``'s Servo-Receivers acquire line.
             return "당신 {leader}의 {signet_ring} 능력 사용"
@@ -1348,6 +1361,6 @@ def _reveal_count_text_ko(per: RevealCount | None) -> str:
         case RevealCountKind.OTHER_SWORD_CARD:
             return " (공개한 다른 {sword} 카드마다)"
         case RevealCountKind.DREADNOUGHT_IN_CONFLICT:
-            # Rise of Ix: the dreadnought has no Korean source, so the word
-            # stays English (module docstring).
-            return " ({conflict}의 내 dreadnought마다)"
+            # Rise of Ix: the piece in the Korean Rise of Ix rulebook's word
+            # (드레드노트 [IX-ko pp. 2, 6]).
+            return " ({conflict}의 내 드레드노트마다)"

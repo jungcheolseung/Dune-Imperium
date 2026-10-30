@@ -737,7 +737,7 @@ function boardLayout(view = state.view) {
     };
   }
   const board = (catalog.boards || {})[base] || {};
-  return {
+  const layout = {
     image: board.image || null,
     tracks: board.tracks || {},
     space_frame: board.space_frame,
@@ -745,7 +745,24 @@ function boardLayout(view = state.view) {
     post_size: 0,
     boxes: board.space_boxes || {},
     mentat: board.mentat || null,
+    overlays: [],
+    ixBoard: null,
   };
+  /* An original + Rise of Ix table lays the CHOAM overlay's two pieces over
+     the board and takes what they print: their spaces, the Mentat's spot
+     and the High Council chairs (display.board_layout_imperium). */
+  const ix = board.ix;
+  const images = board.ix_images || {};
+  if (ix && state.summary && state.summary.rise_of_ix && images.landsraad && images.choam) {
+    layout.overlays = Object.entries(ix.overlays).map(([name, box]) => ({ image: images[name], box }));
+    layout.boxes = { ...layout.boxes, ...ix.space_boxes };
+    layout.mentat = ix.mentat;
+    layout.tracks = { ...layout.tracks, council_seats: ix.council_seats, freighter: ix.freighter };
+    /* Rise of Ix's own board, drawn beside this one (board.js
+       renderBoardStage); its values are percent of its own picture. */
+    if (images.board) layout.ixBoard = { image: images.board, ...ix.board };
+  }
+  return layout;
 }
 
 /* A space's box on the shown board (percent of the picture), or null when
@@ -777,6 +794,11 @@ function boardDrawsTracks(view = state.view) {
    both) and, for a Leader's own tile, while that Leader plays. */
 function spaceInPlay(entry, view) {
   if (entry.base_games && !entry.base_games.includes(viewBaseGame(view))) return false;
+  /* Rise of Ix's four spaces only with the expansion, and the four its CHOAM
+     overlay covers only without it (catalog ``expansion``/``removed_by``). */
+  const ix = Boolean(state.summary && state.summary.rise_of_ix);
+  if (entry.expansion === "rise_of_ix" && !ix) return false;
+  if (entry.removed_by === "rise_of_ix" && ix) return false;
   return (
     !entry.required_leader_id ||
     (view.players || []).some((player) => player.leader_id === entry.required_leader_id)

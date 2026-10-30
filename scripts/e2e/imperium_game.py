@@ -570,6 +570,322 @@ def check_masterstroke_pick(page) -> None:
     )
 
 
+IX_TABLE_JS = """() => {
+  const rect = (node) => node && node.getBoundingClientRect().toJSON();
+  const inside = (node, box) => {
+    const r = node.getBoundingClientRect();
+    const [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
+    return x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
+  };
+  const ixStage = document.querySelector('#board .board-table > .ix-stage');
+  const main = document.querySelector(
+    '#board .board-table > .board-stage:not(.ix-stage)');
+  const choam = document.querySelectorAll('#board .board-overlay')[1];
+  const ix = rect(ixStage);
+  const freighters = [...document.querySelectorAll('#board .freighter-disc')];
+  const all = (node, selector) => [...(node ? node.querySelectorAll(selector) : [])];
+  return {
+    ix, main: rect(main),
+    alt: ixStage && ixStage.querySelector('.board-map').alt,
+    ixSpaces: all(ixStage, '.hotspot').map((n) => n.dataset.space).sort(),
+    mainSpaces: all(main, '.hotspot').map((n) => n.dataset.space),
+    tiles: all(ixStage, '.slot-card').filter((n) => inside(n, ix)).length,
+    faceUp: (state.view.tech_face_up || []).filter(Boolean).length,
+    freighters: freighters.filter((n) => choam && inside(n, rect(choam))).map((n) => [
+      Number(n.dataset.seat), n.getBoundingClientRect().top]),
+    steps: state.view.players.map((p) => p.freighter_space || 0),
+    piles: all(ixStage, '.negotiator-pile').map((n) => Number(n.dataset.seat)).sort(),
+    negotiators: state.view.players.filter((p) => p.negotiators)
+      .map((p) => p.player).sort(),
+  };
+}"""
+
+
+def check_ix_table(page) -> None:
+    print("[6] an original + Rise of Ix table: the Ix board beside the main board")
+    created = page.evaluate(
+        """async (body) => {
+          const r = await fetch('/games', {method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)});
+          return await r.json();
+        }""",
+        {
+            "seats": ["human", "heuristic", "heuristic", "heuristic"],
+            "game_seed": 9,
+            "rise_of_ix": True,
+            **ORIGINAL,
+        },
+    )
+    game_id = created["game_id"]
+    page.evaluate("(id) => openGame(id)", game_id)
+    page.wait_for_function(
+        "state.view !== null && refreshFlight === null"
+        f" && state.gameId === {json.dumps(game_id)}"
+    )
+    settled(page)
+    for step in range(30):
+        snap = client_state(page)
+        if snap["finished"]:
+            break
+        if snap["confirmation"] is not None:
+            page.evaluate("confirmTurn()")
+        else:
+            page.evaluate(
+                """(step) => { const rows = state.actions.actions;
+                  const picks = rows.filter((r) => r.action_id !== 'withdraw_troops');
+                  const pool = picks.length ? picks : rows;
+                  applyAction(pool[(step * 7) % pool.length].index); }""",
+                step,
+            )
+        settled(page, 20)
+    for language, alt in (("ko", "익스 게임판"), ("en", "Ix board")):
+        page.evaluate(f"setLanguage('{language}')")
+        settled(page)
+        table = page.evaluate(IX_TABLE_JS)
+        ix, main = table["ix"], table["main"]
+        check.ok(
+            bool(ix and main), f"{language}: the Ix board stands beside the main board"
+        )
+        if not (ix and main):
+            continue
+        check.ok(
+            abs(ix["top"] - main["top"]) < 1 and abs(ix["left"] - main["right"]) < 1,
+            f"{language}: level with the main board's top, at its right edge",
+            (ix, main),
+        )
+        check.ok(
+            abs(ix["width"] / ix["height"] - 2100 / 2132) < 0.01
+            and 0.33 < ix["width"] / main["width"] < 0.38,
+            f"{language}: its own proportions at the print's scale",
+            (ix["width"], ix["height"], main["width"]),
+        )
+        check.ok(
+            table["alt"] == alt, f"{language}: the picture is named {alt}", table["alt"]
+        )
+        check.ok(
+            table["ixSpaces"] == ["dreadnought", "tech_negotiation"]
+            and not {"dreadnought", "tech_negotiation"} & set(table["mainSpaces"])
+            and {"interstellar_shipping", "smuggling"} <= set(table["mainSpaces"]),
+            f"{language}: Ix spaces on the Ix board, the overlay's on the main one",
+            (table["ixSpaces"], table["mainSpaces"]),
+        )
+        check.ok(
+            table["tiles"] == table["faceUp"] > 0,
+            f"{language}: a face-up Tech tile per non-empty stack on the Ix board",
+            (table["tiles"], table["faceUp"]),
+        )
+        heights = dict(table["freighters"])
+        steps = table["steps"]
+        check.ok(
+            len(heights) == 4
+            and all(
+                heights[low] > heights[high]
+                for low in heights
+                for high in heights
+                if steps[low] < steps[high]
+            ),
+            f"{language}: every Freighter on the CHOAM piece, higher as it moves up",
+            (table["freighters"], table["steps"]),
+        )
+        check.ok(
+            table["piles"] == table["negotiators"],
+            f"{language}: a Negotiator pile on the Ix board per seat holding them",
+            (table["piles"], table["negotiators"]),
+        )
+    print("  .. dreadnoughts, the view edited in the browser")
+    for language, word in (("ko", "드레드노트"), ("en", "dreadnought")):
+        page.evaluate(f"setLanguage('{language}')")
+        settled(page)
+        pieces = page.evaluate(DREADNOUGHTS_JS)
+        check.ok(
+            pieces["garrison"] == 3 and pieces["conflict"] == 4,
+            f"{language}: a drawn dreadnought per unit in garrisons and the Conflict",
+            pieces,
+        )
+        check.ok(
+            [seat for seat, _ in pieces["control"]] == ["0", "2"]
+            and all(word in title for _, title in pieces["control"])
+            and pieces["onFlags"],
+            f"{language}: a dreadnought on each controlled space's flag, named",
+            pieces["control"],
+        )
+        check.ok(
+            all(word in label for label in pieces["labels"]) and pieces["labels"],
+            f"{language}: the unit groups name their dreadnoughts",
+            pieces["labels"],
+        )
+    page.evaluate("setLanguage('ko')")
+
+
+DREADNOUGHTS_JS = """() => {
+  const view = state.view;
+  view.players.forEach((p, i) => {
+    p.dreadnoughts_garrison = i % 3;
+    p.dreadnoughts_conflict = (i + 1) % 3;
+  });
+  view.dreadnought_control = [["arrakeen", 0, true], ["carthag", 2, false]];
+  renderBoard();
+  const count = (selector) => document.querySelectorAll(selector).length;
+  const flags = boardLayout(view).tracks.control_flags.boxes;
+  const stage = document.querySelector('#board .board-stage').getBoundingClientRect();
+  const control = [...document.querySelectorAll('#board .control-dreadnought')];
+  return {
+    garrison: count('#board .garrison-unit[data-kind="dreadnought"]'),
+    conflict: count('#board .conflict-unit[data-kind="dreadnought"]'),
+    control: control.map((n) => [n.dataset.seat, n.getAttribute('aria-label')]),
+    onFlags: control.every((n, i) => {
+      const [left, top, width, height] = flags[view.dreadnought_control[i][0]];
+      const r = n.getBoundingClientRect();
+      const x = ((r.left + r.width / 2 - stage.left) / stage.width) * 100;
+      const y = ((r.top + r.height / 2 - stage.top) / stage.height) * 100;
+      return Math.abs(x - (left + width / 2)) < 0.3
+        && Math.abs(y - (top + height / 2)) < 0.3;
+    }),
+    labels: [...document.querySelectorAll('#board [aria-label]')]
+      .map((n) => n.getAttribute('aria-label'))
+      .filter((label) => /드레드노트|dreadnought/.test(label)),
+  };
+}"""
+
+
+IX_MARKERS_JS = """() => {
+  const view = state.view;
+  const me = view.player;
+  const heldWords = t('panels.known_intrigue_held', {cards: ''}).split(':')[0];
+  const seatTexts = () => [...document.querySelectorAll('article.seat .seat-detail')]
+    .map((n) => n.innerText);
+  /* Before the edit the game knows no Intrigue card: nothing is shown. */
+  const before = {
+    known: document.querySelectorAll('.known-intrigue').length,
+    held: seatTexts().filter((text) => text.includes(heldWords)).length,
+  };
+  /* A view without the private block (a spectator, no seat) renders
+     without it and shows no hidden line. */
+  const saved = view.private;
+  view.private = null;
+  let spectator;
+  try {
+    render();
+    spectator = {
+      known: document.querySelectorAll('.known-intrigue').length,
+      held: seatTexts().filter((text) => text.includes(heldWords)).length,
+      error: null,
+    };
+  } catch (error) {
+    spectator = {error: String(error)};
+  }
+  view.private = saved;
+  const other = (n) => (me + n) % 4;
+  const hand = view.private.hand;
+  const intrigue = Object.keys(state.catalog.intrigue);
+  view.players[me].has_set_aside_card = true;
+  view.private.set_aside_card_id = hand[0];
+  view.players[other(1)].has_set_aside_card = true;
+  view.players[other(1)].set_aside_returned_turn = true;
+  view.players[other(2)].snooper_faction_ids = ["emperor", "fremen"];
+  view.private.known_intrigue_held = [[other(2), intrigue[0]]];
+  view.private.known_intrigue_top = intrigue[1];
+  view.private.known_intrigue_bottom = [[2, intrigue[3]], [0, intrigue[2]]];
+  view.private.ix_pending = {shipping_rewards: [1, 2], tech_discount: 1,
+    tech_payment: "spice", negotiators_returnable: 2};
+  render();
+  const panel = (seat) => {
+    const card = document.querySelector(`article.seat[data-seat="${seat}"]`);
+    const detail = card && card.querySelector('.seat-detail');
+    return detail ? detail.innerText : '';
+  };
+  const name = (id) => nameOf(id);
+  return {
+    before, spectator,
+    me, others: [other(1), other(2), other(3)],
+    panels: [0, 1, 2, 3].map(panel),
+    setAside: name(hand[0]), held: name(intrigue[0]), top: name(intrigue[1]),
+    bottom: [name(intrigue[2]), name(intrigue[3])],
+    known: [...document.querySelectorAll('.known-intrigue')].map((n) => n.innerText),
+    snooperTokens: [...document.querySelectorAll('#board .snooper-token')]
+      .map((n) => n.dataset.faction).sort(),
+    words: {
+      setAside: t('panels.set_aside_hidden'), returned: t('panels.set_aside_returned'),
+      supply: t('panels.dreadnought_supply', {count: 2}).replace(' 2', ''),
+      snoopers: t('panels.snoopers', {factions: ''}).replace(/[: ]+$/, ''),
+      pending: t('panels.ix_pending_shipping', {steps: '1, 2'}),
+    },
+  };
+}"""
+
+
+def check_ix_markers(page) -> None:
+    print("[7] Rise of Ix's seat markers and what only the observer knows")
+    for language in ("ko", "en"):
+        page.evaluate(f"setLanguage('{language}')")
+        settled(page)
+        shown = page.evaluate(IX_MARKERS_JS)
+        if language == "ko":
+            # The first pass sees the game's own view; the next one sees the
+            # edit this one made.
+            check.ok(
+                shown["before"] == {"known": 0, "held": 0},
+                "no known Intrigue line while the view knows none",
+                shown["before"],
+            )
+        check.ok(
+            shown["spectator"] == {"known": 0, "held": 0, "error": None},
+            f"{language}: a view without the private block shows no hidden line",
+            shown["spectator"],
+        )
+        me, (first, second, third) = shown["me"], shown["others"]
+        panels = shown["panels"]
+        check.ok(
+            shown["setAside"] in panels[me]
+            and all(shown["setAside"] not in panels[seat] for seat in shown["others"]),
+            f"{language}: the set-aside card is named on its owner's panel only",
+            (shown["setAside"], panels[me][:300]),
+        )
+        check.ok(
+            shown["words"]["setAside"] in panels[first]
+            and shown["words"]["returned"] in panels[first],
+            f"{language}: another seat's set-aside card is only said to exist",
+            panels[first][:300],
+        )
+        check.ok(
+            shown["held"] in panels[second]
+            and all(shown["held"] not in panels[seat] for seat in (me, first, third)),
+            f"{language}: a known held Intrigue card on its holder's panel only",
+            panels[second][:300],
+        )
+        known = " ".join(shown["known"])
+        check.ok(
+            shown["top"] in known and all(card in known for card in shown["bottom"])
+            and known.index(shown["bottom"][0]) < known.index(shown["bottom"][1]),
+            f"{language}: the known top and bottom on the Intrigue deck, bottom first",
+            shown["known"],
+        )
+        pending = shown["words"]["pending"]
+        check.ok(
+            pending in panels[me]
+            and all(pending not in panels[seat] for seat in shown["others"]),
+            f"{language}: the observer's open Ix decision on its own panel only",
+            panels[me][:400],
+        )
+        check.ok(
+            all(shown["words"]["supply"] in text for text in panels)
+            and shown["words"]["snoopers"] in panels[second],
+            f"{language}: dreadnoughts in supply and Snooper tokens shown",
+            shown["words"],
+        )
+        check.ok(
+            shown["snooperTokens"] == ["emperor", "fremen"],
+            f"{language}: a Snooper token on each track that still holds one",
+            shown["snooperTokens"],
+        )
+        check.ok(
+            not any("{" in text for text in panels + shown["known"]),
+            f"{language}: no placeholder left",
+        )
+    page.evaluate("setLanguage('ko')")
+
+
 def main() -> None:
     with server() as (base, log_path), chrome() as browser:
         _, page, rec = open_context(browser, "imperium-game")
@@ -586,6 +902,8 @@ def main() -> None:
             check_page(page, base, game_ids[0], posts, names)
         check_markers(page)
         check_masterstroke_pick(page)
+        check_ix_table(page)
+        check_ix_markers(page)
         errors = [
             line
             for line in log_path.read_text().splitlines()

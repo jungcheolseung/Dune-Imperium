@@ -2,7 +2,6 @@
 
 import sys
 from pathlib import Path
-from typing import Final
 
 from dune_imperium.content.immortality.tleilaxu import (
     RECLAIMED_FORCES,
@@ -351,26 +350,9 @@ def test_every_table_ko_text_uses_only_known_terms() -> None:
         assert_placeholders_are_terms(ko, terms)
 
 
-# Rise of Ix has no Korean edition and glossary-ko.md no dreadnought or
-# Negotiator, so those words stay English in a Korean line (as
-# ``effect_dsl_text_ko`` and the dreadnought rows' labels keep them):
-# Full-Scale Assault's acquire and Reveal, Ix-Guild Compact's dreadnought and
-# Negotiator, Appropriate's Freighter.
-_NO_KOREAN_SOURCE: Final = frozenset(
-    {
-        "Commission a dreadnought",
-        "dreadnought",
-        "Place a troop from your supply on the Ix board as a Negotiator",
-        # Appropriate's acquire box (no Korean source names the Freighter's
-        # move either).
-        "Move your Freighter up one space or recall it",
-    }
-)
-
-
 def test_every_table_ko_text_has_no_stray_latin() -> None:
     for _name, _en, ko in _all_ko_texts():
-        assert_no_stray_latin(ko, _NO_KOREAN_SOURCE)
+        assert_no_stray_latin(ko)
 
 
 def test_every_table_ko_text_matches_english_trash_and_discard() -> None:
@@ -398,7 +380,7 @@ def test_every_real_reveal_effect_ko_text_is_valid() -> None:
             ko = reveal_effect_text_ko(line)
             assert isinstance(ko, str) and ko.strip()
             assert_placeholders_are_terms(ko, terms)
-            assert_no_stray_latin(ko, _NO_KOREAN_SOURCE)
+            assert_no_stray_latin(ko)
             assert_trash_and_discard_match(en, ko)
             assert_no_summon_for_sandworm(en, ko)
     assert checked > 0

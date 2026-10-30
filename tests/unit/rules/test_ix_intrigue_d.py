@@ -458,7 +458,7 @@ def test_cannon_turrets_is_a_combat_card_in_the_ix_deck() -> None:
         "Combat — Gain 2 swords, Each opponent retreats one dreadnought"
     ]
     assert intrigue_card_text_ko(entry) == [
-        "전투 — {sword:2}, Each opponent retreats one dreadnought"
+        "전투 — {sword:2}, 각 상대가 드레드노트 하나를 후퇴시킴"
     ]
 
 
@@ -621,7 +621,7 @@ def test_advanced_weaponry_is_a_plot_and_combat_card_in_the_ix_deck() -> None:
         "Combat — If you have 3 or more Tech tiles: Gain 4 swords",
     ]
     assert intrigue_card_text_ko(entry) == [
-        "음모 — {solari:3} 지불 {arrow_right} Commission a dreadnought",
+        "음모 — {solari:3} 지불 {arrow_right} {dreadnought}",
         "전투 — {tech_tile} 3 이상이면: {sword:4}",
     ]
 

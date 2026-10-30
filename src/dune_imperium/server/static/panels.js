@@ -391,6 +391,8 @@ function renderSeats() {
        round's start [FAQ p. 4] (view.mentat_owed_to, public). */
     if (view.mentat_owed_to === seat) flags.push(tNode("panels.mentat_next_round"));
     for (const flag of originalMarkers(player, seat, view)) flags.push(flag);
+    for (const flag of ixMarkers(player, seat, view)) flags.push(flag);
+    for (const flag of knownIntrigueMarkers(seat, view)) flags.push(flag);
     if (player.has_revealed) flags.push(tNode("panels.revealed"));
     /* Bloodlines Leader state: Piter's Twisted deck. Chani's Tactics space,
        Y'rkoon's Navigation cards and Kota's Secret Project tile are drawn
@@ -2624,6 +2626,74 @@ function originalMarkers(player, seat, view) {
     flags.push(tNode("panels.masterstroke_secret", { ability }));
   }
   return flags;
+}
+
+/* Rise of Ix's seat state (docs/rules/rise-of-ix.md 13). Public: the
+   dreadnoughts waiting in the supply, the tracks still holding Tessia
+   Vernius' Snooper tokens, that Ilesa Ecaz has a card set aside and that it
+   came back this turn, and on the text board the Freighter's step and the
+   Negotiators the board picture otherwise shows. Hidden, read only from the
+   view's private block (which only the observing seat's view carries): the
+   card Ilesa set aside, on her own panel, and the observer's own open Rise
+   of Ix decision (ix_pending), on its own panel. */
+function ixMarkers(player, seat, view) {
+  if (!view.rise_of_ix) return [];
+  const flags = [];
+  const own = view.private && view.player === seat ? view.private : null;
+  flags.push(tNode("panels.dreadnought_supply", { count: player.dreadnoughts_supply || 0 }));
+  if (!boardDrawsTracks(view)) {
+    flags.push(tNode("panels.freighter_step", { step: player.freighter_space || 0 }));
+    if (player.negotiators) {
+      flags.push(tNode("panels.negotiators", { count: player.negotiators }));
+    }
+  }
+  const snoopers = player.snooper_faction_ids || [];
+  if (snoopers.length) {
+    flags.push(tNode("panels.snoopers", {
+      factions: snoopers.map((id) => FACTION_LABELS[id] || id).join(", "),
+    }));
+  }
+  if (player.has_set_aside_card) {
+    flags.push(own && own.set_aside_card_id
+      ? tNode("panels.set_aside_own", { card: nameOf(own.set_aside_card_id) })
+      : tNode("panels.set_aside_hidden"));
+  }
+  if (player.set_aside_returned_turn) flags.push(tNode("panels.set_aside_returned"));
+  /* Strategic Push's pledge, public to every seat (PublicPlayerView
+     strategic_push_solari): the Solari the seat takes if it wins this
+     Conflict alone, until the Combat is cleaned up. */
+  if (player.strategic_push_solari) {
+    flags.push(tNode("panels.strategic_push", { solari: player.strategic_push_solari }));
+  }
+  const pending = own && own.ix_pending;
+  if (pending && (pending.shipping_rewards || []).length) {
+    flags.push(tNode("panels.ix_pending_shipping", {
+      steps: pending.shipping_rewards.join(", "),
+    }));
+  }
+  if (pending && pending.tech_payment) {
+    flags.push(tNode("panels.ix_pending_tech", {
+      discount: pending.tech_discount || 0,
+      payment: phraseText(pending.tech_payment === "solari" ? "{solari}" : "{spice}"),
+      negotiators: pending.negotiators_returnable || 0,
+    }));
+  }
+  return flags;
+}
+
+/* The Intrigue cards the observer knows this seat holds (OQ-149): a card it
+   saw on the deck's top and another seat drew -- Immortality's Imperium
+   Ceremony in any game it is in, Rise of Ix's Hundro Moritani -- or one it
+   put at the bottom (Court Intrigue, Sonic Snoopers) that another seat drew
+   (rules.intrigue_knowledge). Read only from the view's private block, on
+   the holder's panel, for every combination of expansions. */
+function knownIntrigueMarkers(seat, view) {
+  if (!view.private || view.player === seat) return [];
+  const held = (view.private.known_intrigue_held || []).filter(([holder]) => holder === seat);
+  if (!held.length) return [];
+  return [tNode("panels.known_intrigue_held", {
+    cards: held.map(([, id]) => nameOf(id)).join(", "),
+  })];
 }
 
 function deckTopSource(glowglobes, leaderId) {

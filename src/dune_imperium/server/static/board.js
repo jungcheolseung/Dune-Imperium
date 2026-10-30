@@ -399,6 +399,23 @@ function renderBoardStage(board, view) {
   map.alt = t(viewBaseGame(view) === "imperium" ? "board.map_alt_imperium" : "board.map_alt");
   map.draggable = false;
   stage.appendChild(map);
+  /* Rise of Ix's CHOAM overlay, laid on the board under every piece. */
+  for (const { image, box } of boardLayout(view).overlays || []) {
+    const piece = document.createElement("img");
+    piece.className = "board-overlay";
+    piece.src = image;
+    piece.alt = "";
+    piece.draggable = false;
+    const [left, top, width, height] = box;
+    Object.assign(piece.style, {
+      left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`,
+    });
+    stage.appendChild(piece);
+  }
+
+  /* Rise of Ix's own board beside this one, with its two spaces. */
+  const ixBoard = boardLayout(view).ixBoard;
+  const ixStage = ixBoard ? ixBoardStage(ixBoard, view) : null;
 
   const { occupants, controllers, spies } = boardOccupancy(view);
   const arrivals = spyArrivals();
@@ -431,7 +448,8 @@ function renderBoardStage(board, view) {
 
   for (const [spaceId, entry] of Object.entries(state.catalog.spaces)) {
     if (!spaceInPlay(entry, view)) continue;
-    const box = spaceBox(spaceId, entry, view);
+    const ixBox = ixStage ? ixBoard.space_boxes[spaceId] : null;
+    const box = ixBox || spaceBox(spaceId, entry, view);
     if (!box) continue;
     const [left, top, width, height] = box;
     const hotspot = document.createElement("button");
@@ -489,12 +507,40 @@ function renderBoardStage(board, view) {
       tableClick(spaceId, entry, hotspot);
     });
     hoverPopover(hotspot, () => entry);
-    stage.appendChild(hotspot);
+    (ixBox ? ixStage : stage).appendChild(hotspot);
   }
 
   for (const [spaceId, seat] of controllers) {
     const box = controlFlagBox(spaceId);
     if (box) stage.appendChild(controlMarker(seat, spaceId, box));
+  }
+  /* Rise of Ix: a dreadnought controlling a space stands on its flag,
+     over the Control marker it covers [Rise of Ix p. 6]
+     (docs/rules/rise-of-ix.md 6). */
+  const dreadnoughtSize = (boardLayout(view).tracks.conflict_units || { sizes: {} }).sizes
+    .dreadnought;
+  for (const [spaceId, seat, leaving] of view.dreadnought_control || []) {
+    const box = controlFlagBox(spaceId);
+    if (!box || !dreadnoughtSize) continue;
+    const piece = unitPiece("dreadnought", seat, "control-dreadnought");
+    const label = t(
+      leaving ? "board.dreadnought_control_leaving" : "board.dreadnought_control_staying",
+      { seat, name: spaceName(spaceId) },
+    );
+    piece.removeAttribute("aria-hidden");
+    piece.setAttribute("role", "img");
+    piece.setAttribute("aria-label", label);
+    if (piece.tagName === "IMG") {
+      piece.title = label;
+    } else {
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      title.textContent = label;
+      piece.prepend(title);
+    }
+    piece.style.width = `${dreadnoughtSize[0]}%`;
+    piece.style.height = `${dreadnoughtSize[1]}%`;
+    placeAt(piece, box[0] + box[2] / 2, box[1] + box[3] / 2);
+    stage.appendChild(piece);
   }
   for (const [spaceId, count] of makerSpice) {
     const point = makerSpicePoint(spaceId);
@@ -558,7 +604,73 @@ function renderBoardStage(board, view) {
 
   renderSlotCards(stage, view);
   renderTrackMarkers(stage, view);
-  board.appendChild(stage);
+  if (!ixStage) {
+    board.appendChild(stage);
+    return;
+  }
+  /* The two pictures side by side at the print's scale, the Ix board level
+     with the main board's top; the pair keeps its proportions like a lone
+     stage does (style.css .board-table). */
+  const table = document.createElement("div");
+  table.className = "board-table";
+  const [ixWidth] = ixBoard.size;
+  table.style.setProperty("--ix-share", String(ixWidth / (100 + ixWidth)));
+  table.style.aspectRatio = String((BOARD_STAGE_ASPECT * (100 + ixWidth)) / 100);
+  table.append(stage, ixStage);
+  board.appendChild(table);
+}
+
+/* The lone stage's proportions (style.css .board-stage). */
+const BOARD_STAGE_ASPECT = 6012 / 6005;
+
+/* Rise of Ix's board (catalog boards.imperium.ix.board, percent of its own
+   picture): the three Tech stacks on their plates, each face-up top tile
+   with its stack's size [Rise of Ix p. 3], and the Negotiators on the
+   shield, a seat's cubes in its own spot with their count. Its two spaces'
+   hotspots are added by renderBoardStage like every other space's. */
+function ixBoardStage(ixBoard, view) {
+  const stage = document.createElement("div");
+  stage.className = "board-stage ix-stage";
+  const map = document.createElement("img");
+  map.className = "board-map";
+  map.src = ixBoard.image;
+  map.alt = t("board.map_alt_ix");
+  map.draggable = false;
+  stage.appendChild(map);
+  (view.tech_face_up || []).forEach((tileId, index) => {
+    const slot = ixBoard.tech_slots[index];
+    if (!tileId || !slot) return;
+    const [left, top, width, height] = slot;
+    const size = (view.tech_stack_sizes || [])[index] || 0;
+    const card = visualCard(tileId, {
+      className: "tile slot-card",
+      badge: String(size),
+      badgeClass: "stack-count",
+      badgeTitle: t("board.tech_stack_count", { count: size }),
+    });
+    card.style.width = `${width}%`;
+    placeAt(card, left + width / 2, top + height / 2);
+    stage.appendChild(card);
+  });
+  for (const player of view.players) {
+    const count = player.negotiators || 0;
+    const spot = ixBoard.negotiator_seats[player.player % ixBoard.negotiator_seats.length];
+    if (!count || !spot) continue;
+    const pile = document.createElement("span");
+    pile.className = "negotiator-pile";
+    pile.dataset.seat = String(player.player);
+    pile.title = t("board.seat_negotiators", { seat: player.player, count });
+    pile.appendChild(unitPiece("troop", player.player, "negotiator-cube"));
+    if (count > 1) {
+      const number = document.createElement("span");
+      number.className = "negotiator-count";
+      number.textContent = String(count);
+      pile.appendChild(number);
+    }
+    placeAt(pile, spot[0], spot[1]);
+    stage.appendChild(pile);
+  }
+  return stage;
 }
 
 /* The original game's Mentat lying on its own space while no seat holds it
@@ -862,8 +974,9 @@ function makerHooksToken(seat, layout) {
 
 /* The kinds of unit a seat can have in the Conflict, in the order they are
    laid out: troops, then the figures (Bloodlines' Sardaukar Commanders,
-   Duncan Idaho's Into the Fray Agent, sandworms). */
-const CONFLICT_UNIT_KINDS = ["troop", "commander", "agent", "sandworm"];
+   Duncan Idaho's Into the Fray Agent, sandworms, Rise of Ix's
+   dreadnoughts). */
+const CONFLICT_UNIT_KINDS = ["troop", "commander", "agent", "sandworm", "dreadnought"];
 
 /* Where each of a seat's units stands in its quadrant of the Conflict, one
    piece per unit as on the table ("keep your deployed units in the quadrant
@@ -947,9 +1060,10 @@ function conflictUnitLayout(counts, box, layout, { fromRight = false, fromBottom
 }
 
 /* The kinds of unit a garrison holds, in the order they are laid out:
-   troops, then Bloodlines' Sardaukar Commanders (nothing else is ever
-   garrisoned; a sandworm goes straight to the Conflict). */
-const GARRISON_UNIT_KINDS = ["troop", "commander"];
+   troops, then Bloodlines' Sardaukar Commanders, then Rise of Ix's
+   dreadnoughts (nothing else is ever garrisoned; a sandworm goes straight
+   to the Conflict). */
+const GARRISON_UNIT_KINDS = ["troop", "commander", "dreadnought"];
 
 /* Every way to share `total` rows among `parts` kinds, at least one row
    each, the first kind's fewest first. */
@@ -1161,6 +1275,8 @@ function unitPiece(kind, seat, className) {
     piece = document.createElement("span");
     piece.className = className;
     piece.style.background = SEAT_COLORS[seat];
+  } else if (kind === "dreadnought") {
+    piece = drawnDreadnought(className, seat);
   } else {
     const picture = kind === "commander" ? state.catalog.commander_token : iconUrl("sandworm");
     if (picture) {
@@ -1198,6 +1314,56 @@ function drawnSandworm(className) {
   );
   worm.appendChild(body);
   return worm;
+}
+
+/* Tessia Vernius' Snooper token, drawn (the assets have no picture of
+   it): a dark round token with an eye, neutral like the print's. `size` is
+   its width in percent of the stage. */
+function drawnSnooper(size) {
+  const svgNs = "http://www.w3.org/2000/svg";
+  const token = document.createElementNS(svgNs, "svg");
+  token.setAttribute("class", "snooper-token");
+  token.setAttribute("viewBox", "0 0 40 40");
+  token.setAttribute("role", "img");
+  token.style.width = `${size}%`;
+  const disc = document.createElementNS(svgNs, "circle");
+  disc.setAttribute("cx", "20");
+  disc.setAttribute("cy", "20");
+  disc.setAttribute("r", "18");
+  const eye = document.createElementNS(svgNs, "path");
+  eye.setAttribute("class", "snooper-eye");
+  eye.setAttribute("d", "M6 20 Q20 8 34 20 Q20 32 6 20 Z");
+  const pupil = document.createElementNS(svgNs, "circle");
+  pupil.setAttribute("class", "snooper-pupil");
+  pupil.setAttribute("cx", "20");
+  pupil.setAttribute("cy", "20");
+  pupil.setAttribute("r", "5");
+  token.append(disc, eye, pupil);
+  return token;
+}
+
+/* A seat's dreadnought without the app's picture of it (seatPieceUrl;
+   user decision 2026-10-29, plan 18.6.6 3): the warship's blocky hull with
+   its raised bridge, seen from the side like the icon the Ix board prints,
+   flat in the seat's colour with the dark edge of every piece, centred in
+   the picture's proportions. */
+function drawnDreadnought(className, seat) {
+  const svgNs = "http://www.w3.org/2000/svg";
+  const ship = document.createElementNS(svgNs, "svg");
+  ship.setAttribute("class", `${className} drawn dreadnought-piece`);
+  ship.setAttribute("viewBox", "0 -10 70 64");
+  ship.setAttribute("preserveAspectRatio", "none");
+  const hull = document.createElementNS(svgNs, "path");
+  hull.setAttribute(
+    "d",
+    "M3 30 L10 18 L24 15 L28 5 L44 3 L52 12 L64 16 L67 28 L60 41 L9 41 Z",
+  );
+  hull.setAttribute("fill", SEAT_COLORS[seat]);
+  const deck = document.createElementNS(svgNs, "path");
+  deck.setAttribute("d", "M10 18 L64 16 M28 5 L30 15");
+  deck.setAttribute("fill", "none");
+  ship.append(hull, deck);
+  return ship;
 }
 
 /* "troop 3, Sardaukar Commander 1": the kinds a seat has, with their
@@ -1402,6 +1568,25 @@ function renderTrackMarkers(stage, view) {
     }
   }
 
+  /* Rise of Ix: Tessia Vernius' Snooper tokens, put on each Influence
+     track's 2 space at the game's start until she reaches them
+     (docs/rules/rise-of-ix.md, Tessia Vernius [Leader cards]); centred on the strip's
+     row under the cubes (snooper_faction_ids, public). */
+  const xs = tracks.influence.seat_x;
+  for (const player of view.players) {
+    for (const key of player.snooper_faction_ids || []) {
+      const offset = tracks.influence.offsets[key];
+      if (offset === undefined) continue;
+      const token = drawnSnooper(tracks.influence.cube_size * 1.5);
+      token.dataset.faction = key;
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      title.textContent = t("board.snooper_token", { faction: FACTION_LABELS[key] });
+      token.prepend(title);
+      const x = xs.reduce((sum, value) => sum + value, 0) / xs.length;
+      stage.appendChild(placeAt(token, x, tracks.influence.levels[2] + offset));
+    }
+  }
+
   view.players.forEach((player, index) => {
     const seat = typeof player.player_id === "number" ? player.player_id : index;
     const color = SEAT_COLORS[seat];
@@ -1509,6 +1694,7 @@ function renderTrackMarkers(stage, view) {
     const garrison = {
       troop: player.troops_garrison || 0,
       commander: player.commanders_garrison || 0,
+      dreadnought: player.dreadnoughts_garrison || 0,
     };
     if (tracks.garrison_units && GARRISON_UNIT_KINDS.some((kind) => garrison[kind] > 0)) {
       const avoid = hooks ? [makerHooksBox(seat, hooks)] : [];
@@ -1522,6 +1708,7 @@ function renderTrackMarkers(stage, view) {
       commander: player.commanders_conflict || 0,
       agent: player.agent_in_conflict || 0,
       sandworm: player.sandworms_conflict || 0,
+      dreadnought: player.dreadnoughts_conflict || 0,
     };
     if (CONFLICT_UNIT_KINDS.some((kind) => counts[kind] > 0)) {
       stage.appendChild(conflictUnits(seat, counts, unitLayout));
@@ -1551,6 +1738,18 @@ function renderTrackMarkers(stage, view) {
       token.title = t("board.seat_high_council", { seat });
       placeAt(token, cx, cy);
       stage.appendChild(token);
+    }
+
+    /* Rise of Ix: the seat's Freighter disc on the Shipping track, which
+       starts on the bottom step [Rise of Ix p. 3]; a column per seat. */
+    if (tracks.freighter) {
+      const steps = tracks.freighter.steps;
+      const step = Math.min(player.freighter_space || 0, steps.length - 1);
+      const [fx, fy] = steps[step][seat % steps[step].length];
+      const disc = seatDisc(seat, "freighter-disc", tracks.freighter.disc_size);
+      disc.title = t("board.seat_freighter", { seat, step: player.freighter_space || 0 });
+      placeAt(disc, fx, fy);
+      stage.appendChild(disc);
     }
   });
 }
@@ -2044,6 +2243,37 @@ function renderIntriguePiles(market, view) {
   deck.appendChild(tNode("board.intrigue_deck_count", deckCount));
   prependDeckPile(deck, "intrigue", deckCount.count, t("board.intrigue_deck_count", deckCount));
   box.appendChild(deck);
+  /* The Intrigue deck's cards this seat alone knows (OQ-149,
+     rules.intrigue_knowledge): on top, one it put back after Immortality's
+     Imperium Ceremony or Rise of Ix's Hundro Moritani's Intelligence; at the
+     bottom, the ones it put there with Rise of Ix's Court Intrigue or Sonic
+     Snoopers. Read only from the view's private block, which only the
+     observing seat's view carries (docs/rules/rise-of-ix.md 13), in every
+     game. */
+  const own = view.private || {};
+  if (own.known_intrigue_top) {
+    const top = document.createElement("div");
+    top.className = "muted known-intrigue";
+    top.dataset.known = "top";
+    top.appendChild(tNode("board.known_intrigue_top", { card: nameOf(own.known_intrigue_top) }));
+    box.appendChild(top);
+  }
+  /* The view lists every known card still in the deck by its depth
+     (core.observation.known_intrigue_places), the known top card too; that
+     one is already named on top, so the bottom line leaves it out. */
+  const bottom = [...(own.known_intrigue_bottom || [])]
+    .filter(([, id]) => id !== own.known_intrigue_top)
+    .sort((a, b) => a[0] - b[0]);
+  if (bottom.length) {
+    const line = document.createElement("div");
+    line.className = "muted known-intrigue";
+    line.dataset.known = "bottom";
+    const cards = bottom.map(([depth, id]) => depth
+      ? t("board.known_intrigue_above", { card: nameOf(id), depth })
+      : t("board.known_intrigue_at_bottom", { card: nameOf(id) }));
+    line.appendChild(tNode("board.known_intrigue_bottom", { cards: cards.join(", ") }));
+    box.appendChild(line);
+  }
   if (!discard.length) {
     market.appendChild(box);
     return;

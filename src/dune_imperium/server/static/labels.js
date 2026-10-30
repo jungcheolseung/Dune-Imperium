@@ -251,70 +251,71 @@ const ACTION_LABELS = {
   trash_skill_for_strength: "{commander_skill} 폐기 → 검 3",
   deploy_commanders: "{commander} 배치",
   withdraw_commanders: "{commander} 회수",
-  /* Rise of Ix (stage P4b): no official Korean source names the dreadnought
-     (docs/rules/glossary-ko.md has no row), so the labels keep the English
-     word and no TERMS entry is made for it. */
-  commission_intrigue_dreadnought: "dreadnought 얻기",
-  decline_intrigue_dreadnought: "dreadnought 얻지 않음",
-  deploy_dreadnoughts: "dreadnought 배치",
-  withdraw_dreadnoughts: "dreadnought 회수",
-  /* Rise of Ix's Tech Negotiation icon (stage P4c-1): "Negotiator" has no
-     glossary row either, so it stays English. */
-  place_intrigue_negotiator: "Negotiator 놓기",
-  decline_intrigue_negotiator: "Negotiator 놓지 않음",
-  /* Rise of Ix's Freighter and Shipping track (stage P4c-3): no official
-     Korean source names them either, so they stay English. */
-  advance_intrigue_freighter: "Freighter 한 칸 위로",
-  recall_intrigue_freighter: "Freighter 회수",
-  decline_intrigue_freighter: "Freighter 움직이지 않음",
-  advance_freighter: "Freighter 한 칸 위로",
-  recall_freighter: "Freighter 회수",
-  decline_freighter: "Freighter 움직이지 않음",
-  resolve_shipping_reward: "Freighter 회수 보상",
-  /* Rise of Ix's Unload keeps its English name, which no official Korean
-     source translates; the Reveal box is 공개 칸 [Main p. 8]. */
-  resolve_unload_icon: "Unload: 공개 칸 효과",
-  decline_unload_icon: "Unload: 공개 칸 효과 쓰지 않음",
+  /* Rise of Ix (stage P4b): the official Korean rulebook's words
+     (docs/rules/glossary-ko.md, Rise of Ix): a dreadnought "취역합니다" when
+     commissioned [IX-ko p. 12], deployed and withdrawn like troops. */
+  commission_intrigue_dreadnought: "드레드노트 취역",
+  decline_intrigue_dreadnought: "드레드노트 취역 안 함",
+  deploy_dreadnoughts: "드레드노트 배치",
+  withdraw_dreadnoughts: "드레드노트 회수",
+  /* Rise of Ix's Tech Negotiation icon (stage P4c-1): a troop placed on the
+     Ix board as a 협상가 [IX-ko pp. 4, 12]. */
+  place_intrigue_negotiator: "협상가 놓기",
+  decline_intrigue_negotiator: "협상가 놓지 않음",
+  /* Rise of Ix's Freighter and Shipping track (stage P4c-3): the 화물선
+     "1칸 전진" or "맨 밑칸으로 귀환", which takes the 운송 보상 of its
+     space and every one below [IX-ko pp. 5, 12]. */
+  advance_intrigue_freighter: "화물선 1칸 전진",
+  recall_intrigue_freighter: "화물선 귀환",
+  decline_intrigue_freighter: "화물선 이동 안 함",
+  advance_freighter: "화물선 1칸 전진",
+  recall_freighter: "화물선 귀환",
+  decline_freighter: "화물선 이동 안 함",
+  resolve_shipping_reward: "화물선 귀환: 운송 보상",
+  /* Rise of Ix's Unload, 처분 [IX-ko pp. 7, 12]; the Reveal box is 공개 칸
+     [Main p. 8]. */
+  resolve_unload_icon: "처분: 공개 칸 효과",
+  decline_unload_icon: "처분: 공개 칸 효과 쓰지 않음",
   /* Rise of Ix's four board spaces (stage P4c-4): the Dreadnought icon, the
      Acquire Tech icon, Tech Negotiation's two halves and Spaceport's
-     Foldspace on top of the deck; the dreadnought and the Negotiator stay
-     English like the rows above. */
-  commission_board_dreadnought: "dreadnought 얻기",
+     Foldspace on top of the deck, in the words above. */
+  commission_board_dreadnought: "드레드노트 취역",
   acquire_board_tech: "{tech_tile} 획득",
   acquire_negotiation_tech: "{tech_tile} 획득 (할인 1)",
-  place_board_negotiator: "Negotiator 놓기",
-  advance_board_freighter: "Freighter 한 칸 위로",
-  recall_board_freighter: "Freighter 회수",
+  place_board_negotiator: "협상가 놓기",
+  advance_board_freighter: "화물선 1칸 전진",
+  recall_board_freighter: "화물선 귀환",
   /* Landing Rights' Agent box (stage P4d): the same two moves. */
-  advance_agent_card_freighter: "Freighter 한 칸 위로",
-  recall_agent_card_freighter: "Freighter 회수",
-  take_agent_card_extra_turn: "이 차례 뒤에 차례 한 번 더",
-  advance_reveal_freighter: "Freighter 한 칸 위로",
-  recall_reveal_freighter: "Freighter 회수",
+  advance_agent_card_freighter: "화물선 1칸 전진",
+  recall_agent_card_freighter: "화물선 귀환",
+  take_agent_card_extra_turn: "이 차례 바로 뒤에 차례 한 번 더",
+  advance_reveal_freighter: "화물선 1칸 전진",
+  recall_reveal_freighter: "화물선 귀환",
   retreat_reveal_units_for_influence: "부대 3 후퇴 → {influence_any}",
-  /* Ix-Guild Compact's Reveal Tech Negotiation icons (stage P4d). */
-  place_reveal_negotiator: "{reveal_turn}: Negotiator 놓기",
+  /* Ix-Guild Compact's Reveal Tech Negotiation icons (stage P4d): a troop
+     placed on the 익스 게임판 as a 협상가 [IX-ko pp. 4, 12]. */
+  place_reveal_negotiator: "{reveal_turn}: 협상가 놓기",
   /* Boundless Ambition's acquisition by cost cap (stage P4d): revealed, and
-     in its Unload's window. */
+     in its 처분 window [IX-ko pp. 7, 12]. */
   acquire_reveal_imperium_card: "{reveal_turn}: 비용이 5 이하인 카드 획득",
   acquire_reveal_reserve_card: "{reveal_turn}: 비용이 5 이하인 카드 획득",
-  acquire_unload_imperium_card: "Unload: 비용이 5 이하인 카드 획득",
-  acquire_unload_reserve_card: "Unload: 비용이 5 이하인 카드 획득",
-  skip_unload_acquisition: "Unload: 획득할 카드 없음 (건너뛰기)",
+  acquire_unload_imperium_card: "처분: 비용이 5 이하인 카드 획득",
+  acquire_unload_reserve_card: "처분: 비용이 5 이하인 카드 획득",
+  skip_unload_acquisition: "처분: 획득할 카드 없음 (건너뛰기)",
   acquire_agent_card_tech: "{tech_tile} 획득",
   acquire_agent_card_tech_with_solari: "{tech_tile} 획득 ({solari}로 지불)",
   acquire_foldspace_to_deck_top: "접힘 공간 카드를 덱 위에",
-  place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
+  place_combat_reward_dreadnought: "드레드노트를 놓을 {control} 공간",
   /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep
      their English names, which no official Korean source translates. */
   detonate_combat_reward_dreadnought:
-    "Detonation Devices: dreadnought를 {supply}로 → {victory_point} 1",
+    "Detonation Devices: 드레드노트를 {supply}로 → {victory_point} 1",
   trash_disposal_facility_card: "Disposal Facility: 플레이 영역 {trash}",
   /* Rise of Ix (stage P4c-2c): Spy Satellites' and Sonic Snoopers' trash, and
      Sonic Snoopers' pick of Intrigue cards for the bottom of the deck. */
   trash_tech: "{tech_tile} 폐기",
-  put_intrigue_on_bottom: "Sonic Snoopers: {intrigue_card} → {intrigue} {deck} bottom",
-  finish_intrigue_bottom: "Sonic Snoopers: stop, {draw}",
+  put_intrigue_on_bottom: "Sonic Snoopers: {intrigue_card} → {intrigue} {deck} 맨 아래",
+  finish_intrigue_bottom: "Sonic Snoopers: 그만두고 {draw}",
   retreat_leader_commander: "{commander} 1 {retreat} ({leader})",
   gain_reveal_influence: "{influence_any} 1 획득",
   retreat_opponent_troop: "상대 {troop} 강제 {retreat}",
@@ -414,8 +415,8 @@ const ACTION_LABELS = {
   choose_secret_project: "비밀 프로젝트: 맨 아래 {tech_tile} 선택",
   gain_leader_signet_spice: "{spice} 1 ({signet_ring})",
   acquire_leader_tech: "{tech_tile} 획득 ({signet_ring})",
-  advance_leader_freighter: "{spice} 1 → Freighter 한 칸 위로 ({signet_ring})",
-  recall_leader_freighter: "{spice} 1 → Freighter 회수 ({signet_ring})",
+  advance_leader_freighter: "{spice} 1 → 화물선 1칸 전진 ({signet_ring})",
+  recall_leader_freighter: "{spice} 1 → 화물선 귀환 ({signet_ring})",
   place_leader_negotiator: "Negotiator 놓기 ({signet_ring})",
   trash_leader_tech: "{tech_tile} 폐기 → {intrigue} + {draw} 1 ({signet_ring})",
   move_spy: "{spy} 이동",
@@ -519,29 +520,29 @@ const EVENT_LABELS = {
   combat_strength_gained: "{strength} 획득",
   commanders_deployed: "{commander} 배치",
   commanders_withdrawn: "{commander} 회수",
-  dreadnought_commissioned: "dreadnought 얻음",
-  intrigue_dreadnought_declined: "dreadnought 얻지 않음",
-  dreadnoughts_deployed: "dreadnought 배치",
-  dreadnoughts_withdrawn: "dreadnought 회수",
-  negotiator_placed: "Negotiator 놓음",
-  intrigue_negotiator_declined: "Negotiator 놓지 않음",
-  freighter_moved: "Freighter 한 칸 위로",
-  freighter_recalled: "Freighter 회수",
-  extra_turn_taken: "이 차례 뒤에 차례 한 번 더",
-  freighter_declined: "Freighter 움직이지 않음",
-  intrigue_freighter_declined: "Freighter 움직이지 않음",
-  shipping_troops_recruited: "Freighter 회수: {troop} {recruit}",
-  shipping_reward_lapsed: "Freighter 회수 보상: 쓰지 않음",
-  card_unloaded: "Unload",
-  unload_icon_lapsed: "Unload: 공개 칸 효과 쓰지 않음",
-  unload_icon_declined: "Unload: 공개 칸 효과 쓰지 않음",
-  unload_acquisition_empty: "Unload: 획득할 카드 없음",
-  shipping_influence_unavailable: "Freighter 회수: {influence_any} 불가",
-  dreadnought_control_placed: "dreadnought가 {control} 공간에",
-  dreadnought_returned: "dreadnought {garrison} 복귀",
-  dreadnought_retreated: "dreadnought 후퇴",
-  dreadnought_detonated: "dreadnought를 {supply}로 (Detonation Devices)",
-  intrigue_put_on_bottom: "{intrigue_card} → {intrigue} {deck} bottom",
+  dreadnought_commissioned: "드레드노트 취역",
+  intrigue_dreadnought_declined: "드레드노트 취역 안 함",
+  dreadnoughts_deployed: "드레드노트 배치",
+  dreadnoughts_withdrawn: "드레드노트 회수",
+  negotiator_placed: "협상가 놓음",
+  intrigue_negotiator_declined: "협상가 놓지 않음",
+  freighter_moved: "화물선 1칸 전진",
+  freighter_recalled: "화물선 귀환",
+  extra_turn_taken: "이 차례 바로 뒤에 차례 한 번 더",
+  freighter_declined: "화물선 이동 안 함",
+  intrigue_freighter_declined: "화물선 이동 안 함",
+  shipping_troops_recruited: "화물선 귀환: {troop} {recruit}",
+  shipping_reward_lapsed: "화물선 귀환 운송 보상: 쓰지 않음",
+  card_unloaded: "처분",
+  unload_icon_lapsed: "처분: 공개 칸 효과 쓰지 않음",
+  unload_icon_declined: "처분: 공개 칸 효과 쓰지 않음",
+  unload_acquisition_empty: "처분: 획득할 카드 없음",
+  shipping_influence_unavailable: "화물선 귀환: {influence_any} 불가",
+  dreadnought_control_placed: "드레드노트가 {control} 공간에",
+  dreadnought_returned: "드레드노트 {garrison} 복귀",
+  dreadnought_retreated: "드레드노트 후퇴",
+  dreadnought_detonated: "드레드노트를 {supply}로 (Detonation Devices)",
+  intrigue_put_on_bottom: "{intrigue_card} → {intrigue} {deck} 맨 아래",
   conflict_end_trigger_declined: "{conflict} 종료 발동 {intrigue_card} 쓰지 않음",
   conflict_end_trigger_finished: "{conflict} 종료 발동 {intrigue_card} 끝내기",
   conflict_end_trigger_offered: "{conflict} 종료 발동 {intrigue_card} 제안",
@@ -1025,6 +1026,29 @@ const TERMS = {
   troop: { icon: "troop", ko: "병력", en: "troop" },
   recruit: { icon: null, ko: "소집", en: "Recruit" },
   sandworm: { icon: "sandworm", ko: "모래벌레", en: "sandworm" },
+  /* Rise of Ix's Dreadnought icon, "commission a dreadnought" ([Rise of Ix
+     p. 6], glossary-ko.md "Dreadnought (공간)"/"commission"): the icon names
+     the effect, not the figure, so a printed sentence about the figure
+     itself ("Your dreadnoughts have 4 strength") stays words and only the
+     engine's "Commission a dreadnought" draws it. `{dreadnought:N}` in
+     board.js's unit counts goes through phraseText(), which is text only. */
+  dreadnought: { icon: "dreadnought", ko: "드레드노트", en: "dreadnought" },
+  /* The rest of Rise of Ix's card icons ([Rise of Ix pp. 4-7, 12]; the app's
+     pictures, display/icons.py APP_ONLY_ICON_NAMES). The two discounted
+     Acquire Tech icons are named by their badge, the Tech Discount: the
+     glossary has no word for "Acquire Tech with a discount of 1". A term's
+     name is letters and underscores only (`{name:count}` in phrase()), so
+     the icons' "minus1"/"minus2" are spelt out here. */
+  freighter: { icon: "freighter", ko: "화물선", en: "Freighter" },
+  tech_negotiation: { icon: "tech_negotiation", ko: "기술 협상", en: "Tech Negotiation" },
+  acquire_tech: { icon: "acquire_tech", ko: "기술 획득", en: "Acquire Tech" },
+  acquire_tech_minus_one: {
+    icon: "acquire_tech_minus1", ko: "기술 할인", en: "Acquire Tech (Tech Discount 1)",
+  },
+  acquire_tech_minus_two: {
+    icon: "acquire_tech_minus2", ko: "기술 할인", en: "Acquire Tech (Tech Discount 2)",
+  },
+  unload: { icon: "unload", ko: "처분", en: "Unload" },
   agent: { icon: "agent", ko: "에이전트", en: "Agent" },
   recall_agent: { icon: "recall_agent", ko: "에이전트 소환", en: "Recall Agent" },
   spy: { icon: "spy", ko: "스파이", en: "Spy" },

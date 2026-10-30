@@ -153,6 +153,14 @@ INTRIGUE_ID = "backed_by_choam"
 # (Forbidden Weapons).
 SPACE_ID = "imperial_privilege"
 TECH_ID = "forbidden_weapons"
+# Rise of Ix (2026-10-30): its three Conflict cards (Freighter rewards, one
+# counted twice) and four board spaces (Dreadnought, Acquire Tech,
+# Tech Negotiation and Freighter icons), whose English wording the client's
+# ICON_RULES draw as the app's icons and whose Korean twins name the same
+# icons. The full-catalog sweeps below already check their icon parity; these
+# check the popovers themselves, the way the single examples above do.
+IX_CONFLICT_IDS = ("skirmish_e", "skirmish_f", "trade_monopoly")
+IX_SPACE_IDS = ("dreadnought", "tech_negotiation", "interstellar_shipping", "smuggling")
 
 OPEN_POPOVER_JS = """(id) => {
   const entry = lookup(id);
@@ -1116,6 +1124,16 @@ def main() -> None:
         _wait_for_popover_images(page)
         page.screenshot(path=str(shots / "effect_text_tech_ko.png"))
 
+        print("[2b5] Korean: Rise of Ix's Conflicts and board spaces (icons)")
+        for ix_conflict_id in IX_CONFLICT_IDS:
+            check_korean(page, "Conflict", ix_conflict_id, space_names)
+        _wait_for_popover_images(page)
+        page.screenshot(path=str(shots / "effect_text_ix_conflict_ko.png"))
+        for ix_space_id in IX_SPACE_IDS:
+            check_space_korean(page, ix_space_id, space_names)
+            _wait_for_popover_images(page)
+            page.screenshot(path=str(shots / f"effect_text_ix_{ix_space_id}_ko.png"))
+
         print("[2c] Korean: the Agent-box icon's resolution row (Step K2)")
         check_resolution_row_korean(page)
         row_shot = page.evaluate(
@@ -1222,6 +1240,12 @@ def main() -> None:
         check_english(page, "Intrigue", INTRIGUE_ID)
         check_space_english(page, SPACE_ID)
         check_english(page, "Tech", TECH_ID)
+        for ix_conflict_id in IX_CONFLICT_IDS:
+            check_english(page, "Conflict", ix_conflict_id)
+        for ix_space_id in IX_SPACE_IDS:
+            check_space_english(page, ix_space_id)
+            _wait_for_popover_images(page)
+            page.screenshot(path=str(shots / f"effect_text_ix_{ix_space_id}_en.png"))
         check_resolution_row_english(page)
         check_board_resolution_row_english(page)
         check_payment_rows(page, "English")

@@ -24,6 +24,58 @@ from dune_imperium.content.uprising.effect_dsl import (
 
 TECH_ABILITY_TEXT: Final = MappingProxyType(
     {
+        # Rise of Ix's 18 tiles (stage P5f): our own wording of
+        # docs/rules/rise-of-ix.md 4's table (the app's text stays local,
+        # plan 2.3).
+        TechAbility.REVEAL_SWORD_PER_SWORD_CARD: (
+            "Reveal Turn: Gain 1 sword for each revealed card with a sword"
+        ),
+        TechAbility.ENDGAME_TIE_WIN: (
+            "Endgame: You win ties (before any other tiebreaker)"
+        ),
+        TechAbility.DREADNOUGHT_DETONATION: (
+            "When you win a Conflict with a dreadnought, you may return a"
+            " dreadnought to your supply instead of controlling the space: 1 VP"
+        ),
+        TechAbility.REVEAL_TRASH_AT_SIX_PERSUASION: (
+            "Reveal Turn: If you gained 6 or more Persuasion this turn, you may"
+            " trash one of your cards in play"
+        ),
+        TechAbility.FLIP_SOLARI_FOR_TROOPS: "Flip → Pay 4 solari → Recruit 3 troops",
+        TechAbility.FLIP_DISCARD_FOR_CARD: "Flip → Discard a card → Draw 1 card",
+        TechAbility.HOLTZMAN_ENGINE: (
+            "Round Start: Draw 1 card. Endgame: 1 VP if you have two or more"
+            " The Spice Must Flow"
+        ),
+        TechAbility.FLIP_DISCARD_IGNORE_BLOCKS: (
+            "Flip → Discard a card → This turn, opponents' Agents don't block"
+            " yours"
+        ),
+        TechAbility.ENDGAME_INFLUENCE_THREE_VP: (
+            "Endgame: 1 VP if you have 3 or more Influence on all four tracks"
+        ),
+        TechAbility.MINIMIC_FILM: "Reveal Turn: Gain 1 Persuasion",
+        TechAbility.REVEAL_HIGH_COUNCIL_SWORDS: (
+            "Reveal Turn: Gain 4 swords if you have a High Council seat"
+        ),
+        TechAbility.ROUND_START_TWO_SOLARI: "Round Start: Gain 2 solari",
+        TechAbility.TRASH_CYCLE_INTRIGUE: (
+            "Trash this → Put any number of your Intrigue cards on the bottom of"
+            " their deck and draw that many"
+        ),
+        TechAbility.ACQUIRED_CARDS_ON_DECK: (
+            "You may put the cards you acquire on top of your deck"
+        ),
+        TechAbility.SPY_SATELLITES: (
+            "Pay 3 spice and trash this → 1 VP. Endgame: 1 VP for each Faction"
+            " where you have 1 or less Influence"
+        ),
+        TechAbility.FLIP_TROOP: "Flip → Recruit 1 troop",
+        TechAbility.SHIPPING_EXTRA_TROOP: (
+            "Whenever you recruit troops from the Shipping track, recruit one"
+            " more troop; you may deploy any of them to the Conflict"
+        ),
+        TechAbility.CONFLICT_WIN_WATER: "When you win a Conflict: Gain 1 water",
         TechAbility.FLIP_DRAW_INTRIGUE: "Flip → Draw 1 Intrigue card",
         TechAbility.CONTRACT_COMPLETION_DRAW: (
             "When you complete a contract: Draw 1 card. Endgame: 1 VP if you "
@@ -88,6 +140,60 @@ TECH_ABILITY_TEXT: Final = MappingProxyType(
 # wording), so it stays the plain word 계약, never {contract}.
 TECH_ABILITY_TEXT_KO: Final = MappingProxyType(
     {
+        # Rise of Ix's 18 tiles (stage P5f), in the glossary's words
+        # (glossary-ko.md "Rise of Ix (원판 위)"; 운송 트랙 [IX-ko p. 12]),
+        # each drawing the icons its English line draws.
+        TechAbility.REVEAL_SWORD_PER_SWORD_CARD: (
+            "{reveal_turn}: {sword}가 있는 공개 카드마다 {sword:1}"
+        ),
+        TechAbility.ENDGAME_TIE_WIN: (
+            "{endgame}: 동률이면 승리 (다른 동률 기준보다 먼저)"
+        ),
+        TechAbility.DREADNOUGHT_DETONATION: (
+            "드레드노트로 {conflict}에서 이기면, 칸을 지배하는 대신 드레드노트 하나를"
+            " 개인 공급처로 돌려보낼 수 있음: {victory_point:1}"
+        ),
+        TechAbility.REVEAL_TRASH_AT_SIX_PERSUASION: (
+            "{reveal_turn}: 이번 차례에 {persuasion}를 6 이상 얻었다면 플레이한 카드"
+            " 하나를 {trash}할 수 있음"
+        ),
+        TechAbility.FLIP_SOLARI_FOR_TROOPS: (
+            "뒤집기 {arrow_right} {solari:4} 지불 {arrow_right} {troop:3}"
+        ),
+        TechAbility.FLIP_DISCARD_FOR_CARD: (
+            "뒤집기 {arrow_right} 카드 1장 {discard} {arrow_right} {draw:1}"
+        ),
+        TechAbility.HOLTZMAN_ENGINE: (
+            "라운드 시작: {draw:1}. {endgame}: 스파이스는 흘러야 한다가 2장"
+            " 이상이면 {victory_point:1}"
+        ),
+        TechAbility.FLIP_DISCARD_IGNORE_BLOCKS: (
+            "뒤집기 {arrow_right} 카드 1장 {discard} {arrow_right} 이번 차례에 상대"
+            " 에이전트가 당신의 에이전트를 막지 않음"
+        ),
+        TechAbility.ENDGAME_INFLUENCE_THREE_VP: (
+            "{endgame}: 네 트랙 모두에서 영향력이 3 이상이면 {victory_point:1}"
+        ),
+        TechAbility.MINIMIC_FILM: "{reveal_turn}: {persuasion:1}",
+        TechAbility.REVEAL_HIGH_COUNCIL_SWORDS: (
+            "{reveal_turn}: 원로회 자리가 있으면 {sword:4}"
+        ),
+        TechAbility.ROUND_START_TWO_SOLARI: "라운드 시작: {solari:2}",
+        TechAbility.TRASH_CYCLE_INTRIGUE: (
+            "이 타일 {trash} {arrow_right} {intrigue}를 몇 장이든 그 덱 맨 아래에"
+            " 놓고 그만큼 뽑음"
+        ),
+        TechAbility.ACQUIRED_CARDS_ON_DECK: "획득하는 카드를 덱 맨 위에 놓을 수 있음",
+        TechAbility.SPY_SATELLITES: (
+            "{spice:3} 지불하고 이 타일 {trash} {arrow_right} {victory_point:1}."
+            " {endgame}: 영향력이 1 이하인 진영마다 {victory_point:1}"
+        ),
+        TechAbility.FLIP_TROOP: "뒤집기 {arrow_right} {troop:1}",
+        TechAbility.SHIPPING_EXTRA_TROOP: (
+            "운송 트랙에서 {troop}을 소집할 때마다 {troop} 하나 더 소집; 그중 원하는"
+            " 만큼 {conflict}에 배치 가능"
+        ),
+        TechAbility.CONFLICT_WIN_WATER: "{conflict}에서 이기면: {water:1}",
         TechAbility.FLIP_DRAW_INTRIGUE: "뒤집기 {arrow_right} {intrigue:1}",
         TechAbility.CONTRACT_COMPLETION_DRAW: (
             "계약을 완수할 때마다: {draw:1}. {endgame}: 계약을 넷 이상"

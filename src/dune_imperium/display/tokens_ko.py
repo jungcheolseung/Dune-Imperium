@@ -325,19 +325,19 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     PersonalCardAgentEffect.MAY_RECALL_AGENT_SENT_THIS_TURN: (
         "이번 차례에 보낸 {agent} 소환 가능"
     ),
-    # Rise of Ix's Landing Rights (stage P4d): the Freighter has no glossary
-    # entry and a generated Korean line holds no Latin word, so the line names
-    # the track it moves on, the Shipping track (glossary-ko.md "Shipping |
-    # 운송", "track | 트랙"), as the Freighter rows' labels say "한 칸 위로"
-    # and "회수".
+    # Rise of Ix's Landing Rights (stage P4d), in the Korean Rise of Ix
+    # rulebook's words for the Freighter icon ("운송 트랙에서 화물선을 1칸
+    # 전진시킵니다 ... 화물선을 운송 트랙 맨 밑칸으로 귀환시키면서"
+    # [IX-ko p. 12]), as the Freighter rows' labels say "화물선 1칸 전진" and
+    # "화물선 귀환". Words, not the icon, as English's line is words.
     PersonalCardAgentEffect.MAY_MOVE_FREIGHTER: (
-        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+        "운송 트랙에서 화물선 1칸 전진 또는 귀환 가능"
     ),
     # Rise of Ix's Embedded Agent: Landing Rights' line for each of its two
     # Freighter icons, behind the Bond.
     PersonalCardAgentEffect.MAY_MOVE_FREIGHTER_TWICE_IF_BENE_GESSERIT_BOND: (
-        "베네 게세리트의 유대감이면: 운송 트랙에서 한 칸 위로 또는 회수 가능, "
-        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+        "베네 게세리트의 유대감이면: 운송 트랙에서 화물선 1칸 전진 또는 귀환 가능, "
+        "운송 트랙에서 화물선 1칸 전진 또는 귀환 가능"
     ),
     # Rise of Ix's Weirding Way (stage P4d).
     PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: (
@@ -348,13 +348,14 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
     # p. 12]) with the "may" of [Rise of Ix p. 4].
     PersonalCardAgentEffect.MAY_ACQUIRE_TECH: "{tech_tile} {acquire} 가능",
     # Rise of Ix's Appropriate (stage P4d): Web of Power's threshold words and
-    # the Acquire Tech icon's, the price payable in Solari.
+    # the Acquire Tech icon's, the price payable in Solari; the Solari stays a
+    # word (솔라리, glossary-ko.md [Main p. 20]) as the English line's does.
     (
         PersonalCardAgentEffect
         .MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO
     ): (
         "{influence_emperor} 2 이상이면: {tech_tile} {acquire} 가능, "
-        "{spice} 대신 {solari}로 지불 가능"
+        "{spice} 대신 솔라리로 지불 가능"
     ),
     PersonalCardAgentEffect.GENERATE_SPECIMEN: "표본 1개 생성",
     PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
@@ -572,10 +573,11 @@ AGENT_EFFECT_TEXT_KO: Final[dict[PersonalCardAgentEffect, str]] = {
         PersonalCardAgentEffect
         .MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
     ): "{spice:1} 지불 가능 {arrow_right} {influence_spacing_guild:1}, {draw:1}",
-    # Rise of Ix's Ix-Guild Compact (stage P4d): the dreadnought stays English
-    # (``effect_dsl_text_ko``'s CommissionDreadnought).
+    # Rise of Ix's Ix-Guild Compact (stage P4d): the Dreadnought icon, as
+    # ``effect_dsl_text_ko``'s CommissionDreadnought draws it ("당신의 드레드노트
+    # 하나가 취역합니다" [IX-ko p. 12]).
     PersonalCardAgentEffect.MAY_DISCARD_TWO_FOR_DREADNOUGHT: (
-        "카드 2장 {discard} 가능 {arrow_right} Commission a dreadnought"
+        "카드 2장 {discard} 가능 {arrow_right} {dreadnought}"
     ),
     # Rise of Ix's In The Shadows (stage P4d).
     (
@@ -747,16 +749,14 @@ ACQUISITION_EFFECT_TEXT_KO: Final[dict[PersonalCardAcquisitionEffect, str]] = {
     # Rise of Ix's Shai-Hulud (stage P4d): the black Trash icon, as its record
     # renders.
     PersonalCardAcquisitionEffect.MAY_TRASH_A_CARD: "카드 1장 {trash}",
-    # Rise of Ix's Full-Scale Assault: no Korean source names the dreadnought
-    # or the commission (glossary-ko.md has no entry), so the line stays
-    # English, as ``effect_dsl_text_ko`` keeps the Dreadnought icon's.
-    PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT: (
-        "Commission a dreadnought"
-    ),
+    # Rise of Ix's Full-Scale Assault: the Dreadnought icon alone, as
+    # ``effect_dsl_text_ko`` draws it ("당신의 드레드노트 하나가 취역합니다"
+    # [IX-ko p. 12]) and English's "Commission a dreadnought" renders.
+    PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT: "{dreadnought}",
     # Rise of Ix's Appropriate: the Freighter icon in ``effect_dsl_text_ko``'s
-    # words (no Korean source names the Freighter's move).
+    # words (the Korean Rise of Ix rulebook's, [IX-ko p. 12]).
     PersonalCardAcquisitionEffect.MAY_MOVE_FREIGHTER: (
-        "Move your Freighter up one space or recall it"
+        "{freighter}을 1칸 전진시키거나 귀환시킴"
     ),
 }
 
@@ -792,13 +792,15 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     ): (
         "{tech_tile} 3 이상이면: 이 카드 {trash} {arrow_right} {victory_point:1}"
     ),
-    # Rise of Ix's Ix-Guild Compact (stage P4d): no Korean source names the
-    # Negotiator (``effect_dsl_text_ko``'s PlaceNegotiator), so English stays.
+    # Rise of Ix's Ix-Guild Compact (stage P4d), in the Korean Rise of Ix
+    # rulebook's words for the Tech Negotiation icon ("개인 공급처에서 병력
+    # 하나를 가져와서 익스 게임판에 놓아도 됩니다. 이 병력은 협상가로
+    # 사용됩니다" [IX-ko p. 12]), as the English line is words.
     PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS: (
-        "Place a troop from your supply on the Ix board as a Negotiator ×2"
+        "{supply}의 {troop} 하나를 익스 게임판에 협상가로 놓기 가능, 두 번"
     ),
     PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR: (
-        "Place a troop from your supply on the Ix board as a Negotiator"
+        "{supply}의 {troop} 하나를 익스 게임판에 협상가로 놓기 가능"
     ),
     # Rise of Ix's promo Boundless Ambition (stage P4d): ``effect_dsl_text_ko``'s
     # words for its acquisition.
@@ -855,7 +857,7 @@ REVEAL_CHOICE_EFFECT_TEXT_KO: Final[dict[PersonalCardRevealChoiceEffect, str]] =
     # Rise of Ix's Guild Chief Administrator (stage P4d): Landing Rights'
     # Freighter line.
     PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER: (
-        "운송 트랙에서 한 칸 위로 또는 회수 가능"
+        "운송 트랙에서 화물선 1칸 전진 또는 귀환 가능"
     ),
     # Rise of Ix's Negotiated Withdrawal (stage P4d): units are "부대"
     # (glossary-ko.md, [Main p. 10]).
@@ -1009,12 +1011,10 @@ def reveal_effect_text_ko(line: RevealLine) -> str:
         n = line.strength_per_other_sword_card
         gains.append(f"+{{sword:{n}}} (공개한 다른 {{sword}} 카드마다)")
     if line.strength_per_dreadnought:
-        # Rise of Ix's Full-Scale Assault: no Korean source names the
-        # dreadnought (glossary-ko.md has no entry; the official Korean
-        # edition has no Rise of Ix), so the word stays English, as the
-        # dreadnought rows' labels keep it.
+        # Rise of Ix's Full-Scale Assault, the piece in the Korean Rise of Ix
+        # rulebook's word (드레드노트 [IX-ko pp. 2, 6]).
         n = line.strength_per_dreadnought
-        gains.append(f"+{{sword:{n}}} ({{conflict}}의 내 dreadnought마다)")
+        gains.append(f"+{{sword:{n}}} ({{conflict}}의 내 드레드노트마다)")
     if line.persuasion_per_completed_contract:
         n = line.persuasion_per_completed_contract
         gains.append(f"+{{persuasion:{n}}} (완수한 {{contract}}마다)")

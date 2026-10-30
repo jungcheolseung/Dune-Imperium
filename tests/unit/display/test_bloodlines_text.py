@@ -34,14 +34,14 @@ from ko_text import (  # type: ignore[import-not-found]  # noqa: E402
 )
 
 # Rise of Ix's tiles (stage P4a, ``content.rise_of_ix.tech``) name their
-# abilities with members of their own; their texts come with their abilities
-# in stage P4c, and no catalog, view or log shows an Ix tile before.
+# abilities with members of their own; their texts came with the catalog's
+# Rise of Ix content (stage P5f of docs/base-game-and-ix-plan.md).
 _TECH_MODULE_ABILITIES = {tile.ability for tile in TECH_TILES}
 _IX_ABILITIES = {tile.ability for tile in IX_TECH_TILES}
 
 
 def test_every_tech_ability_has_text() -> None:
-    assert set(TECH_ABILITY_TEXT) == _TECH_MODULE_ABILITIES
+    assert set(TECH_ABILITY_TEXT) == _TECH_MODULE_ABILITIES | _IX_ABILITIES
     assert set(TechAbility) == _TECH_MODULE_ABILITIES | _IX_ABILITIES
     assert all(text for text in TECH_ABILITY_TEXT.values())
     assert len(TECH_TILES) == 18
@@ -89,7 +89,7 @@ def test_tech_text_goldens() -> None:
 
 def test_every_tech_ability_ko_has_valid_korean_text() -> None:
     terms = terms_keys()
-    assert set(TECH_ABILITY_TEXT_KO) == _TECH_MODULE_ABILITIES
+    assert set(TECH_ABILITY_TEXT_KO) == _TECH_MODULE_ABILITIES | _IX_ABILITIES
     for ability, english in TECH_ABILITY_TEXT.items():
         korean = TECH_ABILITY_TEXT_KO[ability]
         assert isinstance(korean, str) and korean.strip(), ability
