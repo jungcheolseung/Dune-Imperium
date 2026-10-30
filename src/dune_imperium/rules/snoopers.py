@@ -25,7 +25,9 @@ Forum) | 채택"; 13: Snooper tokens are public.
   it is offered once the action's handler is done
   (``settle_snooper_discards``): a row of her own turn
   (``turn_rows.SNOOPER_DISCARD``, no refusal, lapsing at the turn-end press,
-  OQ-095 (2)), or outside it the ``OPTIONAL_DISCARD`` window with a refusal.
+  OQ-095 (2)) -- also when reached inside an Unload hold of her turn, where
+  it is offered once the hold has closed (OQ-112 (4)) -- or outside it the
+  ``OPTIONAL_DISCARD`` window with a refusal.
   With no card in hand outside her turn no window opens: the token still
   covers the reward, and no spice comes (the BGG ruling above).
 """
@@ -117,8 +119,17 @@ def settle_snooper_discards(
         payload = dict(event.payload)
         player, faction = payload["player"], payload["faction"]
         assert isinstance(player, int) and isinstance(faction, str)
+        # Reached in her own turn it is a row of the turn even under an
+        # Unload hold (a Freighter recall's Influence inside a cost's hold):
+        # "차례 안의 효과는 차례의 줄이라는 원칙(OQ-095 (2), 정리-2b)과 같다.
+        # 차례 밖(...)은 완수한 자리의 창 그대로다" (docs/rules/
+        # open-questions.md OQ-112 (4)). It is no Unload icon, so the hold's
+        # "Unload를 끝까지 해결한 뒤" (rise-of-ix.md 7) does not keep it.
         queued = turn_rows.queue(
-            state, player, (turn_rows.SNOOPER_DISCARD, event.event_id, faction)
+            state,
+            player,
+            (turn_rows.SNOOPER_DISCARD, event.event_id, faction),
+            past_unload_holds=True,
         )
         if queued is not None:
             state = queued
