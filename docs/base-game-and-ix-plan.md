@@ -1126,6 +1126,11 @@ C를 먼저 읽고 결론을 가르는 줄은 주석 asm으로 확인했다. 20�
   쌍둥이를 더하지 않고 `_acquire_by_agent_card`가 `to_deck_top`을 넘기지 않음, 2026-10-30 Codex 리뷰). Uprising 지도자의 `acquire_leader_*`는 Irulan의
   Signet처럼 손으로 얻어 쌍둥이가 필요 없다고 리뷰가 읽었다 — P7에서 카드 문장으로 확인한다. Armand Ecaz의 Conscript는 `deck_top_offered`로 이미 있다
   (`test_conscript_puts_the_card_on_the_deck_with_spaceport`).
+- **P7 점검 목록(계속: 즉시 Unload를 넘기지 않는 비용, 2026-10-30 추가):** 아래 비용 경로는 `unload_at_once` 없이 버리거나 trash해서, 거기서 비용으로
+  낸 Unload 카드는 box를 화살표 오른쪽보다 뒤에 해결한다("비용 → 효과 줄의 왼쪽(비용)이 Unload를 일으키면 Unload를 끝까지 해결한 뒤 오른쪽으로 간다",
+  rise-of-ix.md 7): Reveal 대상 보상의 TrashCard 비용(`reveal_turn.py`, Calculus of Power의 다른 Emperor 카드), Feyd·Fenring·Irulan의 Signet
+  trash(`leader_abilities.py`의 `_trash_for_signet`, 셋이 각각 비용인지 확인), `scouts_trash_card`(`scouts_effects.py`, 원판의 Scouts는 P8). Uprising이나
+  Scouts가 Rise of Ix와 묶일 때만 닿는다(2026-10-30 Snooper 수정 때 `unload_at_once` 호출을 모두 훑으며 찾음).
 
 ## 17. P4 계획 초안: Rise of Ix (원판 위) (2026-10-29, 브랜치 `claude/base-ix-p4`, P3 병합 master에서)
 
