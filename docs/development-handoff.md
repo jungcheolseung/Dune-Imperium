@@ -1,6 +1,6 @@
 # 개발 인수인계
 
-기준일: 2026-10-29 (원판 화면 P5 병합 `33e01710`·원판 앱 AI P6 병합 `a4393427`: 원판 판을 브라우저에서 끝까지 두고, 앱 AI가 원판을 무작위 대체 0으로 둔다; 그 앞 기록 변환 `3b3aeab0`, 원판 카드 P3 `6352199d`(codec v156))
+기준일: 2026-10-30 (원판 + Rise of Ix: 엔진 P4 병합 `21f28a1f`(codec v157, 관측 v39)·앱 AI P6 Ix `c6c14aef`·화면 P5 Ix `4ef229ec`; 엔티티 망 자기 학습 1단계 도구 `3370fc28`; 그 앞 원판 화면 P5 `33e01710`·원판 앱 AI P6 `a4393427`, 원판 카드 P3 `6352199d`(codec v156))
 
 새 개발 세션(Claude Code, Codex 등 어떤 도구든)이 저장소의 **지금 상태**를 빠르게 복구하는 문서다. 날짜별 작업
 기록은 [`worklog/`](worklog/)의 월별 파일(이번 달 [`worklog/2026-10.md`](worklog/2026-10.md), 최신이 위)에 있다.
@@ -29,13 +29,13 @@
 | 항목 | 값 |
 | --- | --- |
 | master | B단계 병합 `c133be07` (2026-10-20, 효과 조각 엔진 B단계, codec v150) 뒤 2026-10-21 `codex/windows-validation` 병합 `dbfcb793`·pytest-xdist·`retrain-v150` 병합(옛 codec 망 선생 어댑터)·`reveal-totals` 병합(① Reveal 합계 정리, codec 그대로)·문제집 검사 복구·`reward-totals` 병합(Conflict·계약 합계 정리)·`reveal-line-names` 병합(Reveal 상태 이름, codec v151, `bb05c259`)·2026-10-22 `search-adapter` 병합 `bc466f23`(탐색 좌석이 옛 codec 파일을 어댑터로)·2026-10-23 `search-parts` 병합 `79bdcb5b`(탐색 좌석 옵션, 서버 탐색 AI에 E1 뒤집기 문턱)·같은 날 `restore-lost-problems` 병합(문제집의 없어진 거절 정리, 사람 판 281곳 모두 풀림)·2026-10-25 `claude/base-ix-p0-57d7eb` 병합(원판·Ix P0 문서와 판정, 판정 공지 도움말 창; codec 그대로)·같은 날 `claude/engine-audit-fixes-16a6cc` 병합(엔진 감사 2026-10-22 수정, OQ-128~131, codec v152)·2026-10-26 `claude/play-feedback-2026-10-25-808f13` 병합 `f1de07c4`(플레이 피드백: 원격 대기실, OQ-132 첫 플레이어 옵션, 앱 좌석 색 순서 등; codec 그대로)·같은 날 `claude/rules-audit-fixes` 병합 `55265b73`(일반 규칙 감사의 남은 결함 5개, codec v153)·`claude/uprising-rulings-v154` 병합 `e9e992eb`(Uprising 판정 묶음 OQ-113 (C)·OQ-121·OQ-042, codec v154)·`search-draft`·`e5-student-distill` 병합 `5cef7268`·`78d86d29`(탐색 좌석 측정 옵션과 증류 도구, codec 그대로)·`e5-student-distill` 다시 병합 `d22f4392`·`abecbf43`(증류 `--keep`, codec 그대로)·`claude/play-feedback-2026-10-26` 병합 `ad54fb72`(시에치 타브르 문구, 로그 카드 그림과 까닭, 좌석 패널 정리와 자세히 창; codec 그대로)·2026-10-27 `claude/ai-speedup-1e9ed9` 병합 `39477e34`(AI 실험 속도: 같은 판 그대로 탐색 −13~14%, 증류 `--compact`, 가치 망 선별 도구; codec 그대로)·같은 날 `claude/base-ix-p1-6a418f` 병합 `dda6ddb0`(원판·Ix P1 판 축: 콘텐츠 조회 `content_for(config)`, `RulesetConfig.base_game`·`rise_of_ix`, 관측 v34; codec 그대로)·같은 날 `e6-kickstart` 병합 `57721c5f`(학습 kickstart 옵션 `dune-imperium-train --kickstart-teacher`·기본 꺼짐; codec 그대로)·Orca 준비 `5e7280bc`·`66872797`(worktree setup 훅 `orca.yaml` → `scripts/setup_worktree.sh`·공통 조정 규칙을 `AGENTS.md`로; 문서·도구만)·같은 날 `codex/board-layout-tracks` 병합 `2970bf70`(첫 `codex exec` 작업자 시험: 보드 배치가 안 읽는 두 항목을 내지 않음; 화면만)·2026-10-28 `jungcheolseung/base-ix-p2` 병합 `420c77a5`(원판·Ix P2: 원판 보드·흐름·지도자 여덟·draft, 관측 v36; codec 그대로) |
-| pytest | 9,636개 통과(2026-10-29 P5 병합 `33e01710`의 합친 트리, codec v156, 관측 v38, `-n 4` 3분 7초)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). `-n 8` 약 2분, 직렬 약 10분(Mac mini, 2026-10-21) |
-| Ruff · mypy | `src tests` 통과, mypy 622파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
-| 브라우저 E2E | `scripts/e2e/` 71종(+ 이름으로만 도는 `rehearsal`; P5가 원판 판 `imperium_game.py`를 더함). 마지막 전체 실행은 2026-10-29 P5 병합의 합친 트리(`-j 2`, 71 통과 0 실패, 647초) |
-| action codec | **v156** (2026-10-29 원판·Ix P3 병합, 단계 전체에 한 번(사용자 결정 2026-10-28 "병합 때 한 번"): 원판 카드의 행은 원판 카탈로그에만, Uprising 카탈로그는 그대로; Uprising 판에는 OQ-145(덱 위 앞면 카드는 뽑히거나 섞일 때까지 공개, 뽑은 뒤 손에서도 공개)와 OQ-071(받을 게 없는 비용 줄은 내지 않음)이 닿는다; 옛 기보는 새 다리 없이 돈다(v155 기보 2,000판 diverged 0, 차이는 `hand_public`뿐). 그 앞 v155: OQ-138 Covert Operation의 손이 빈 상대 창) |
-| 관측 | v38, 8,265 int (원판·Ix P3: v37 원판 카드 칸, v38 덱 위 공개 카드·공개 손패 `deck_public_top`·`hand_public`; 그 앞 v36 5,835 — 원판 P2b Masterstroke 8칸, v35 원판 id·Agent 자리·`mentat`, v34 `base_game`) |
-| action catalog | 기본 1,436 · CHOAM 1,557 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,338(v156에서도 그대로). 원판 `imperium-4p-base` 1,706, 프로모와 함께 1,759(P3 카드; P2는 599, P1은 73); Uprising + Rise of Ix는 Ix 콘텐츠 전이라 Ix 없는 것과 같다 |
-| 엔티티 망 특성 | `FEATURE_VERSION` 2(능력 기록에서, 행동은 `ACTION_SHAPES` 부분), 지문 `e833d628…`(원판 P3 카드가 붙음; Uprising 405행은 열 척도까지 P2의 `61b70c15…`·그 앞 `59761de5…`와 같다); 특성 표가 바뀌어도 파일을 이름으로 옮긴다 |
+| pytest | 11,226개 통과(2026-10-30 P6 후속 병합 `71004c8c`의 합친 트리, codec v157, 관측 v39, `-n 8` 약 4분)(에셋을 연결한 체크아웃; 에셋이 없으면 그중 일부가 skip). 직렬 약 15분 |
+| Ruff · mypy | `src tests` 통과, mypy 709파일. `scripts/`에는 기존 Ruff 오류가 있다(검사 대상 아님) |
+| 브라우저 E2E | `scripts/e2e/` 73종(+ 이름으로만 도는 `rehearsal`; P5 Ix가 `ix_screens.py`를 더함). 마지막 전체 실행은 2026-10-30 P5 Ix 병합의 합친 트리(`-j 4`, 부하 약 50에서 71 통과·2 시간 초과 — spectate·server_errors는 따로 다시 돌려 통과, 773초) |
+| action codec | **v157** (2026-10-30 원판·Ix P4 병합 `21f28a1f`, 단계 전체에 한 번(사용자 결정 2026-10-28 "병합 때 한 번"): Rise of Ix(Ix board 덮개·dreadnought·Tech·Shipping·Unload·Imperium 30·Intrigue 17·지도자 여섯·원판 Epic)의 행은 원판 + Ix 카탈로그에; Uprising 카탈로그 144개는 그대로, 원판 카탈로그는 Spice Smugglers의 Solari 줄(OQ-148)이 늚. Ix 없는 판에 닿는 판정은 OQ-148·OQ-149. 옛 기록은 새 bridge 없이 그대로 재생(저장본 18 exact, 문제집 281·3). 그 앞 v156은 P3 원판 카드) |
+| 관측 | v39, 10,301 int (원판·Ix P4: Rise of Ix 구간 — 좌석별 `seat{k}_ix`(Strategic Push 서약 포함), 숨은 값은 보는 좌석의 private 구간; v38 구간은 위치·뜻 그대로라 플레이 서버 망이 그대로 읽음. 그 앞 v38 8,265 — 덱 위 공개 카드·공개 손패) |
+| action catalog | 기본 1,436 · CHOAM 1,557 · 옵션 전부(CHOAM·프로모·Bloodlines·Tech·Immortality·Epic·Scouts) 4,338(v157에서도 그대로). 원판 `imperium-4p-base` 1,707, 프로모와 함께 1,760(v157의 Spice Smugglers Solari 줄 +1); 원판 + Rise of Ix 2,623, 프로모와 함께 2,916, Epic과 함께 2,632, 프로모 + Epic 2,925. Uprising + Rise of Ix는 P7까지 setup이 거절 |
+| 엔티티 망 특성 | `FEATURE_VERSION` 2(능력 기록에서, 행동은 `ACTION_SHAPES` 부분), 지문 `558838c0…`: 611행(Uprising 405·원판 128·Rise of Ix 78), 열 1,331개, 열마다 선언한 고정 척도(`training/entity_scales.py`, 사용자 결정 2026-10-30 "단위 고정" — 내용이 늘어도 기존 줄이 다시 척도화되지 않음). Uprising 405행은 열 척도까지 그 앞과 같다; 특성 표가 바뀌어도 파일을 이름으로 옮긴다 |
 | 로컬 서버 기본 AI | 앱 AI 어려움(`app_ai`). 원격 방의 좌석 기본값은 사람 |
 | 탐색 AI 망 | Mac mini의 `checkpoints/play/search.pt` → `readapt-v147-4400.pt`(레시피 MLP를 v147에서 재학습, 2026-10-15; 탐색 좌석 1 대 앱 AI 어려움 3에서 81.8%). v150 이후 엔진에서도 `search:`가 v150 이전 MLP 파일을 옛 codec 어댑터로 둔다(2026-10-22 병합 `bc466f23`; v151 좌석 81.8% 대 같은 파일의 v149 좌석 82.2%, 1 대 앱 AI 어려움 3 400판). 망 단독(`checkpoint:`)은 여전히 4,311줄 가운데 84줄만 학습한 줄. 되돌리기용 `recipe-mlp-1e5-800.pt`, X `mix-v139-10081.pt` |
 | 에셋 저장소 | `c4cf579` (2026-10-12 push) |
@@ -51,8 +51,8 @@
 | Mac mini (`CS-Mac-mini`, 10코어·16 GB) | ② 재학습과 그 측정, 플레이 서버, git 밖 자료(아래)를 읽는 엔진 관문. 학습은 시작 커밋에 고정한 worktree에서 돌리고 메인 체크아웃은 master에 둔다. 학습이 도는 동안 이 기기에서는 ②와 상관없는 무거운 검사(전체 pytest·E2E·소크)를 돌리지 않는다 |
 | 다른 PC (Windows 11 Pro + WSL2) | Godot 클라이언트(아래 "플레이 화면"), 서버 런처 7단계의 남은 Windows 확인, 그 밖의 엔진·화면 작업. 엔진 관문은 WSL 체크아웃에서 돌린다(2026-10-12 WSL 전체 pytest 통과) |
 
-- **엔진 관문이 읽는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v156-6352199d/`(기보 묶음, exact 2,000의 기준, 2026-10-29 P3 병합 뒤 생성; 그 앞 v155-2efb8832는 v156 엔진에서 diverged 0, 차이는 OQ-145의 `hand_public`뿐),
-  `local/records/`(사람 판 문제 281곳·AI 실수, v156 변환본), `saves/`(사람 저장본), `checkpoints/2026-09-22/exploit/champion-5081.pt`(문제집 tips-v1
+- **엔진 관문이 읽는 git 밖 자료**(Mac mini에 있다): `local/records-corpus/v157-21f28a1f/`(기보 묶음, exact 2,000의 기준, 2026-10-30 P4 병합 뒤 생성; 그 앞 v156-6352199d는 P3 병합 뒤),
+  `local/records/`(사람 판 문제 281곳·AI 실수, v157 변환본; 원본은 `local/records-archive/2026-10-30/originals/`), `saves/`(사람 저장본), `checkpoints/2026-09-22/exploit/champion-5081.pt`(문제집 tips-v1
   재채굴의 망 몫). 다른 기기에서 관문을 돌리려면 이것을 묶어 옮긴다(2026-10-21에 만든 v150 기준 묶음은 낡아서 지웠다).
 - **②의 망을 플레이 서버에 올릴 때:** 새 이름으로 `checkpoints/play/`에 복사하고 `search.pt` 링크만 바꾼 뒤 서버를 다시 띄운다(아래
   "원격 저장소 인계 주의").
@@ -63,14 +63,20 @@
 
 **엔진**
 
+- **원판·Rise of Ix — P4·P5 Ix·P6 Ix 끝(2026-10-30, master 병합 `21f28a1f`(codec v157)·`4ef229ec`·`c6c14aef`):** 계획 17절(엔진)·18.6~18.7(화면)·
+  `docs/app-ai/rise-of-ix.md`(앱 AI). 원판 + Ix가 카드 전부·지도자 여섯·Epic으로 끝까지 돌고, 화면에서 숨은 정보가 좌석마다 지켜지며(실제 좌석 시험
+  `ix_screens.py`), 앱 AI가 세 난이도 무작위 대체 0(Hard 대 휴리스틱 좌석당 49.6% 대 0.4%). 사용자 판정 OQ-153·OQ-154, 엔티티 특성 단위 고정.
+  **진행 중:** Tessia Snooper 버리기의 Unload 보류 수정(`claude/fix-snooper-unload-hold` `f0c12eff`, 동일성 2,000 exact, 시험 둘 추가 뒤 병합).
+  **남은 것:** 커밋된 Uprising 카드 앞면 108장이 지금 렌더러와 다름(사용자 결정 대기). **다음: P7**(Uprising + Ix, 원판 + Bloodlines·Immortality 등
+  다른 확장; 점검 목록은 계획 17절 끝). [2026-10-30 P4·P5 Ix·P6 Ix 병합]
 - **원판·Rise of Ix — P3 원판 카드 끝(2026-10-29, `claude/base-ix-p3` master 병합 `6352199d`, codec v156):** 계획 16절(16.12 P3d 결과).
   원판 Imperium·Intrigue 카드 전부와 프로모 셋이 원판 판에서 돈다(앱 자료로 전사, 앱 동작 대조 138항목 판정, 두 덱 소크 5,000판 실패 0).
   관측 v38(덱 위 공개 카드·공개 손패, OQ-145). 확장과 결합한 판에서 할 일은 16.10(P7·P8; OQ-146 (가) 포함).
   **사용자 확인 대기 둘(결과는 같음, 16.12):** Spice Smugglers가 Solari를 Influence보다 먼저 준다(인쇄·앱은 Influence 먼저), Research Station은
-  카드 셋을 한 번에 뽑는다(2026-10-29 사용자 판정으로 둘 다 고침, P4 브랜치 — Spice Smugglers는 순서를 소유자가 고름 OQ-148, Research Station은 한 장씩 OQ-147). **다음: P4(Rise of Ix)** — 브랜치 `claude/base-ix-p4`. [2026-10-29 원판 P3 병합]
+  카드 셋을 한 번에 뽑는다(2026-10-29 사용자 판정으로 둘 다 고침, P4 브랜치 — Spice Smugglers는 순서를 소유자가 고름 OQ-148, Research Station은 한 장씩 OQ-147). (P4는 2026-10-30 병합, 위.) [2026-10-29 원판 P3 병합]
 - **원판 화면 P5 끝(2026-10-29, master 병합 `33e01710`):** 계획 18절. 설정에서 기본 판을 고르고 원판 보드 그림(TTS 모드 그림, 비공개 에셋) 위에서 끝까지
-  둔다. 원판 좌석은 `server/seat_kinds.py` 한 표(지금 사람·휴리스틱·무작위). **다음:** (앱 AI 좌석과 지도자 섞은 앞면은 2026-10-29 병합) Ix 화면(P4 뒤), 한국어 카드 앞면(공식 사진 뒤). [2026-10-29 원판 P5]
-- **원판 앱 AI P6 끝(2026-10-29, master 병합 `a4393427`):** `docs/app-ai-plan.md` 12절. 원판에서 무작위 대체 0, Uprising 수 그대로. Ix는 P4 뒤. [2026-10-29 원판 P6]
+  둔다. 원판 좌석은 `server/seat_kinds.py` 한 표(지금 사람·휴리스틱·무작위). **다음:** (앱 AI 좌석과 지도자 섞은 앞면은 2026-10-29 병합, Ix 화면은 2026-10-30 병합) 한국어 카드 앞면(공식 사진 뒤). [2026-10-29 원판 P5]
+- **원판 앱 AI P6 끝(2026-10-29, master 병합 `a4393427`):** `docs/app-ai-plan.md` 12절. 원판에서 무작위 대체 0, Uprising 수 그대로. Ix는 2026-10-30 병합(위). [2026-10-29 원판 P6]
 - **원판·Rise of Ix — P2 보드·흐름 끝(2026-10-27, `jungcheolseung/base-ix-p2` master 병합 `420c77a5` 2026-10-28):** 계획 15절(15.8·15.9 결과). 원판 4인 판이
   보드 22칸·Mentat·Conflict 18·Reserve 셋·지도자 여덟(draft 포함)으로 끝까지 돈다(Imperium·Intrigue 덱은 P3까지 비어 있음). 관측 v36, codec v155 그대로
   (Uprising 144개 조합 행·특성 405행이 `12294215`와 같다). 사용자 결정대로 P2b 관문 뒤 브랜치 전체를 한 번에 병합했다.
@@ -247,6 +253,12 @@
        "부분"이다. 학생 혼자는 서버 좌석에 −5.8%p로 확정적으로 지고, 그 몫은 거의 다 학생이 Liet를 고른 판에 있다(사후 분해). 준비만 된 다음 단계는
        둘이다. 지도자 고르기에만 가치 망을 쓰는 E7c(`checkpoints/2026-10-28/e7c-draft-value/`, 옵션은 미병합 브랜치 `claude/value-at`)와 현재 codec에서
        서버 좌석과 비교하는 E7d 1단계(`checkpoints/2026-10-28/e7d-current-codec/`)다. 고르는 것은 사용자다.
+     - **E7c 드래프트 가치 — 이득 확정(2026-10-30 05:05, `checkpoints/2026-10-28/e7c-draft-value/`):** 지도자 고르기에만 가치 망을 쓴 좌석 D가
+       학생 S보다 +3.1%p [+0.9, +5.4](순위·VP도 확정), 놀이까지 쓴 V − D는 +3.0%p [−1.0, +7.0](미확정). 사용자 결정: 따로 고치지 않고 자기 학습으로.
+     - **엔티티 망 자기 학습(2026-10-30, `docs/entity-self-play-plan.md`, 도구 병합 `3370fc28`):** 사용자 결정 D1~D8(가치 가지, 1등 위주 차등 보상,
+       라운드 TD(λ), 자기 판 비중 50/30/10/10 등). **진행 중:** 1단계 시범(학습 트리 `3370fc28`, 10 workers 약 7.5시간,
+       `checkpoints/2026-10-30/self-play-pilot/`)이 지평선 2 대국(`checkpoints/2026-10-30/horizon-2/`, 학생 2라운드, 블록 둘 끝·시범 뒤 재개) 뒤에 자동 시작.
+       **(결정)** 시범 보고 뒤 본 학습(10만 판)과 200시드 관문.
   - **판정 주의:** 81.8% 근처에서는 400판 승률 차의 구간이 ±5%p 안팎이라 탐색 실험은 플레이 망 셋 상대로도 재고 순위·점수 차를 함께 본다.
     망만의 이득이 탐색 좌석으로 안 넘어온 전례(M 대 8081)가 있으니 망·가치 변경은 탐색 좌석으로 판정한다.
   - **보류:** PPO 재시도(2026-09-18 붕괴, 다인원 self-play에서 같은 판 반복 사용은 해롭다는 문헌), E8 탐침 밖의 MLP 폭 확대, LSTM, CFR 계열(2인 영합 게임에만 보장).

@@ -89,7 +89,8 @@ def test_catalog_is_fixed_and_versioned_for_a_ruleset() -> None:
     # game's cards add templates to its own catalogs only; every Uprising
     # catalog stays as it was. v157 (base game P4): Rise of Ix on the
     # original game adds templates to the original game's Rise of Ix
-    # catalogs only; every catalog without Rise of Ix stays as it was.
+    # catalogs; every Uprising catalog stays as it was, and the original
+    # game's catalogs gain Spice Smugglers' Solari row (OQ-148).
     assert ACTION_CODEC_VERSION == 157
     assert first.catalog == second.catalog
     assert first.size == len(first.catalog)

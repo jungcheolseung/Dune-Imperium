@@ -715,9 +715,11 @@ from dune_imperium.rules.unload import (
 # 번"): Rise of Ix on the original game -- its board overlay, dreadnoughts,
 # Tech, the Shipping track, every Imperium and Intrigue card, the six
 # Leaders and Epic Game Mode -- with templates in the original game's Rise
-# of Ix catalogs only (the 288 catalogs without Rise of Ix are unchanged).
-# Rulings that reach games without Rise of Ix: OQ-149 (a seat that puts an
-# Intrigue card back on top knows it; Immortality's peek). Observation v39.
+# of Ix catalogs; the 144 Uprising catalogs are unchanged, and the original
+# game's catalogs gain Spice Smugglers' Solari row (OQ-148, the owner orders
+# its Influence and Solari). Rulings that reach games without Rise of Ix:
+# OQ-148 and OQ-149 (a seat that puts an Intrigue card back on top knows
+# it; Immortality's peek). Observation v39.
 # Older records need no new bridge (v156 saves and problem sets replay
 # exactly on this engine: gate p4de's records check, 11 exact, and problem
 # sets 281/281 and 3/3).
