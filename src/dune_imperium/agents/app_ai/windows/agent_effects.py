@@ -397,6 +397,8 @@ from dune_imperium.agents.app_ai.abilities.ix_board import (
     FreighterCustomAbility,
 )
 from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+    APPROPRIATE_PAY_SOLARI,
+    APPROPRIATE_PAY_SPICE,
     IMPERIAL_BASHAR_TRASH,
     IMPERIAL_BASHAR_TROOP,
     ConflictUnit,
@@ -1093,7 +1095,11 @@ _IX_ACTION_IDS: frozenset[str] = frozenset(
         "discard_snooper_card",
         "acquire_agent_card_tech",
         # Weirding Way's extra turn, Court Intrigue's Intrigue under the deck,
-        # Desert Ambush's enemy units (``_desert_ambush``).
+        # Desert Ambush's enemy units (``_desert_ambush``), Appropriate's
+        # Solari purchase (``_appropriate``) and a bought card's acquire icons
+        # (``reveal.acquire_icon``).
+        "acquire_agent_card_tech_with_solari",
+        "resolve_acquire_icon",
         "take_agent_card_extra_turn",
         "put_intrigue_on_bottom_for_agent_card",
         "retreat_opponent_troop",
@@ -5078,6 +5084,13 @@ def _ix_card_rows(t: _Turn) -> None:
         _imperial_bashar(t)
     _card_tech(t)
     _weirding_way(t)
+    if run.by_id("resolve_acquire_icon"):
+        # Imported here: the Reveal window's module imports the turn windows.
+        from dune_imperium.agents.app_ai.windows.reveal import acquire_icon
+
+        icon = acquire_icon(run)
+        if icon is not None:
+            _automatic(t, "Acquire icon", _FOLLOW_UP, icon, -1)
     for row in t.by_id("resolve_unload_icon"):
         # An Unload box owed in the turn: Triggered, no AI hook (taken in
         # order, before the turn's choices).
@@ -5124,6 +5137,43 @@ def _ix_card_rows(t: _Turn) -> None:
         _prompt(t, "Local Fence", uses, evaluate_fence, explicit=False)
 
 
+def _appropriate(t: _Turn) -> None:
+    """Appropriate's "[Emperor] 2 Influence: [Acquire Tech] You may use Solari
+    instead of spice" (``AppropriateAbility``, Optional): its Evaluate over
+    ``CanAcquireTechTile(0, M, canUseSolari)``'s tiles answers ``((tile,),
+    (0,))``, the payment option 0 the Solari (``<BeginExecution>d__13``
+    @0x4d9b2c0 pays spice only for an answer above 0). Our engine offers the
+    payment as two rows (``acquire_agent_card_tech_with_solari``, and the
+    spice ``acquire_agent_card_tech``), each while a tile is payable that
+    way; the tile is picked in the window it opens
+    (``bloodlines.tech_acquisition``). An answer naming a payment with no row
+    takes the other (judgement)."""
+
+    spice = t.run.first("acquire_agent_card_tech")
+    solari = t.run.first("acquire_agent_card_tech_with_solari")
+    if (spice is None and solari is None) or t.card is None:
+        return
+    rows = {APPROPRIATE_PAY_SOLARI: solari, APPROPRIATE_PAY_SPICE: spice}
+    options = tuple(option for option, row in rows.items() if row is not None)
+    request = Request(
+        infos=(
+            TargetInfo(entities=tuple(t.p.tech_acquire_targets(0, True))),
+            TargetInfo(options=options),
+        )
+    )
+
+    def answer(ans: Answer) -> DomainAction | None:
+        if _response_ref(ans) is None:
+            return None
+        payment = _response_ref(ans, 1)
+        chosen = rows.get(payment) if isinstance(payment, int) else None
+        return chosen or solari or spice
+
+    uses = tuple(row for row in (solari, spice) if row is not None)
+    found = _find(t.card, "AppropriateAbility")
+    _choice_source(t, "Appropriate", found, uses, request, answer, None)
+
+
 #: ``WeirdingWayAbility``'s prompt (``<Targets>d__6`` @0x4df39b0): option 0
 #: "decline", option 1 "confirm"; ``<BeginExecution>d__9`` @0x4df3290 sets
 #: ``ExtraTurn`` only for an answer above 0.
@@ -5168,6 +5218,9 @@ def _card_tech(t: _Turn) -> None:
     (``bloodlines._IX_TECH_SOURCES``). No tile named leaves the icon to lapse
     (OQ-095 (2))."""
 
+    if t.card_short == "appropriate":
+        _appropriate(t)
+        return
     row = t.run.first("acquire_agent_card_tech")
     if row is None or t.card is None:
         return

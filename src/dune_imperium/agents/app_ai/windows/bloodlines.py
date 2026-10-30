@@ -88,6 +88,7 @@ from dune_imperium.agents.app_ai.abilities.generic import (
     DeferredAbility,
     contract_evaluate,
 )
+from dune_imperium.agents.app_ai.abilities.ix_imperium import AppropriateAbility
 from dune_imperium.agents.app_ai.abilities.tech import (
     AcquireTechAbility,
     AcquireTechAbilityDiscount1,
@@ -135,8 +136,10 @@ from dune_imperium.agents.app_ai.windows.intrigue import (
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
 from dune_imperium.agents.app_ai.windows.turn import board_space_order
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.observation import TECH_PAYMENT_KEY
 from dune_imperium.rules.action_shapes import PRINTER_KEY, printer_parts
 from dune_imperium.rules.action_shapes import Source as Printer
+from dune_imperium.rules.tech import SOLARI_PAYMENT
 from dune_imperium.rules.unit_loss import UNIT_LOSS_CANDIDATES
 
 #: The owner of the abilities the app builds at run time (a card-granted
@@ -559,12 +562,17 @@ def tech_acquisition(run: DecisionRun) -> DomainAction | None:
     decline = run.first("decline_tech")
     if not acquires:
         return decline
-    discount = run.ctx.top_frame_context.get("discount")
-    source = (
+    context = run.ctx.top_frame_context
+    discount = context.get("discount")
+    source: type[DeferredAbility] | None = (
         _IX_TECH_SOURCES.get(discount)
         if run.ctx.ix and isinstance(discount, int)
         else None
     )
+    if run.ctx.ix and context.get(TECH_PAYMENT_KEY) == SOLARI_PAYMENT:
+        # Appropriate's purchase in Solari: its own ``AppropriateAbility``
+        # (the tile of its ``((tile,), (0,))``, ``agent_effects._appropriate``).
+        source = AppropriateAbility
     if source is None:
         if discount != AcquireTechAbilityDiscount1.tech_discount:
             return None  # no app-style source for another discount

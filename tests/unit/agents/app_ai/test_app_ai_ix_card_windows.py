@@ -813,3 +813,49 @@ def test_negotiated_withdrawal_retreats_troops_first_for_its_faction() -> None:
     assert ability.meets_cost(p)
     few = _in_conflict(base, seat, troops=1, dreadnoughts=1)
     assert not ability.meets_cost(make_profile(few))
+
+
+def test_appropriate_pays_in_solari_as_its_answer_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``AppropriateAbility`` answers ``((tile,), (0,))``: payment option 0 is
+    the Solari (spice only for an answer above 0, @0x4d9b2c0); with no Solari
+    row the spice row is taken."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+        AppropriateAbility,
+    )
+
+    spice = _row("acquire_agent_card_tech")
+    solari = _row("acquire_agent_card_tech_with_solari")
+    for option, rows, expected in (
+        (0, (spice, solari), solari),
+        (1, (spice, solari), spice),
+        (0, (spice,), spice),
+    ):
+        monkeypatch.setattr(
+            AppropriateAbility,
+            "evaluate",
+            lambda self, p, request, o=option: Answer(
+                2.0, (("detonation_devices",), (o,)), ""
+            ),
+        )
+        t = _turn("appropriate", rows)
+        agent_effects._ix_card_rows(t)
+        [source] = [s for s in t.sources if s.label == "Appropriate"]
+        assert source.evaluate is not None and not t.unmapped
+        assert source.evaluate() == (2.0, expected)
+
+
+def test_an_acquire_icon_in_an_agent_turn_is_taken_at_once() -> None:
+    """A card bought in an Agent turn (Boundless Ambition's Unload acquiring
+    Appropriate): its acquire icon is a follow-up, as in a Reveal."""
+
+    icon = _row(
+        "resolve_acquire_icon", acquired_card_id="appropriate", effect="freighter"
+    )
+    t = _turn("truthsayer", (icon,))
+    agent_effects._ix_card_rows(t)
+    [source] = t.sources
+    assert source.actions == (icon,) and source.stage is not Stage.PROMPT

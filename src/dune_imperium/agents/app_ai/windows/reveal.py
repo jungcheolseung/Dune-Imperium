@@ -1394,10 +1394,12 @@ def _duncan_loyal_blade(
     return with_arg(run.by_id(action_id), "count", n) if n > 0 else None
 
 
-def _acquire_icon(run: DecisionRun) -> DomainAction | None:
+def acquire_icon(run: DecisionRun) -> DomainAction | None:
     """A bought card's acquire icons (``resolve_acquire_icon``), before
-    anything else: the app's ``AcquireAbility`` runs them as part of the
-    purchase, without asking (CHOAM Directorship's four Influence, in its
+    anything else, in a Reveal or an Agent turn (``agent_effects``): the
+    app's ``AcquireAbility`` runs them as part of the purchase, without
+    asking (Appropriate's and Full-Scale Assault's too: the Freighter's
+    window, the dreadnought) (CHOAM Directorship's four Influence, in its
     ``AcquireEffectList`` order RankE, RankSG, RankBG, RankF = ``FACTIONS``),
     except Lady Jessica's "any" Influence, which her
     ``LadyJessicaAcquireAbility`` picks (a forced prompt: a non-positive or
@@ -2525,7 +2527,7 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
         return None
     if waiting is not None:
         return waiting
-    icon = _acquire_icon(run)
+    icon = acquire_icon(run)
     if icon is not None:
         return icon
     known = _REVEAL_ACTIONS | TURN_ROW_IDS
