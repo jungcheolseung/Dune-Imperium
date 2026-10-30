@@ -19,7 +19,9 @@ Forum) | 채택"; 13: Snooper tokens are public.
 - **Reward (1)**, "[discard] -> 1 spice", is an arrow, so optional
   [FAQ p. 3]. Its discard is a hand card's [FAQ p. 2] and the arrow's cost:
   an Unload card pays its box before the spice (``unload_at_once``,
-  rise-of-ix.md 7). The gain only announces it (``SNOOPER_REACHED_EVENT``);
+  rise-of-ix.md 7), and a box holding a decision holds the spice until it is
+  answered (``rules.unload``'s hold, the payer ``snooper_discard``). The gain
+  only announces it (``SNOOPER_REACHED_EVENT``);
   it is offered once the action's handler is done
   (``settle_snooper_discards``): a row of her own turn
   (``turn_rows.SNOOPER_DISCARD``, no refusal, lapsing at the turn-end press,
@@ -28,12 +30,12 @@ Forum) | 채택"; 13: Snooper tokens are public.
   covers the reward, and no spice comes (the BGG ruling above).
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from copy import replace
 from typing import Final
 
 from dune_imperium.content.uprising.board import Faction
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
@@ -46,6 +48,7 @@ from dune_imperium.rules.influence import (
     SNOOPER_DISCARD_REWARD,
     SNOOPER_REACHED_EVENT,
 )
+from dune_imperium.rules.unload import hold_payer, push_unload_hold, unload_holds
 
 TESSIA: Final = "tessia_vernius"
 DISCARD_ACTION: Final = "discard_snooper_card"
@@ -196,7 +199,32 @@ def apply_snooper_discard(state: GameState, action: DomainAction) -> RuleResult:
     discarded = discard_personal_card_from_hand(
         working, player, card_id, source=f"{source}:snooper", unload_at_once=True
     )
-    owner = discarded.state.players[player]
+    if unload_holds(discarded.events):
+        # The discarded card's box holds a decision (a Freighter, a Tech
+        # Negotiation, an acquisition): the spice waits for it, "비용 → 효과
+        # 줄의 왼쪽(비용)이 Unload를 일으키면 Unload를 끝까지 해결한 뒤 오른쪽으로
+        # 간다" (docs/rules/rise-of-ix.md 7, ``rules.unload``).
+        return RuleResult(
+            state=push_unload_hold(
+                discarded.state,
+                player,
+                source=f"{source}:snooper",
+                payer=_SNOOPER_PAYER,
+                values={"source": source},
+            ),
+            events=discarded.events,
+        )
+    paid = _snooper_spice(discarded.state, player, source)
+    return RuleResult(state=paid.state, events=(*discarded.events, *paid.events))
+
+
+_SNOOPER_PAYER: Final = "snooper_discard"
+
+
+def _snooper_spice(state: GameState, player: int, source: str) -> RuleResult:
+    """Reward (1)'s right side: the 1 spice its discard buys."""
+
+    owner = state.players[player]
     paid = replace(
         owner,
         resources=replace(
@@ -204,14 +232,23 @@ def apply_snooper_discard(state: GameState, action: DomainAction) -> RuleResult:
         ),
     )
     players = tuple(
-        paid if seat.player_id == player else seat for seat in discarded.state.players
+        paid if seat.player_id == player else seat for seat in state.players
     )
     return RuleResult(
-        state=replace(discarded.state, players=players),
+        state=replace(state, players=players),
         events=(
-            *discarded.events,
             resources_gained_event(
                 f"{source}:snooper", player, spice=SNOOPER_DISCARD_SPICE
             ),
         ),
     )
+
+
+@hold_payer(_SNOOPER_PAYER)
+def _pay_held_snooper_spice(
+    state: GameState, player: int, values: Mapping[str, ActionValue]
+) -> RuleResult:
+    """The spice once the discarded card's Unload is decided, in her own
+    turn's row or the out-of-turn window alike."""
+
+    return _snooper_spice(state, player, str(values["source"]))

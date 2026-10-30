@@ -498,5 +498,6 @@ def test_every_cost_path_registers_its_payer() -> None:
         "agent_box_discard_pay",
         "agent_box_graft_trash",
         "intrigue_choice",
+        "snooper_discard",
         "tech_flip_discard",
     } <= set(unload._PAYERS)
