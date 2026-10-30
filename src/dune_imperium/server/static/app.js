@@ -118,6 +118,11 @@ async function init() {
     }
   });
   el("setup-form").addEventListener("submit", createGame);
+  /* The screen is in the page before init() has the catalog and /whoami, and
+     the button waits disabled (index.html): pressed earlier, the form
+     submitted itself, the browser reloaded the page and the press was lost
+     (scripts/e2e/server_errors.py [2] on a busy machine, 2026-10-30). */
+  el("create-game").disabled = false;
   el("opt-bloodlines").addEventListener("change", syncTechOption);
   syncTechOption();
   el("opt-immortality").addEventListener("change", syncGoTo11Option);

@@ -82,7 +82,9 @@
         </fieldset>
         <div class="setup-start">
           <p id="setup-summary" role="status"></p>
-          <button type="submit" id="create-game" data-i18n="html.create_game">게임 시작</button>
+          <!-- Disabled until app.js has its submit handler on the form: a press
+               before that submitted the form itself and reloaded the page. -->
+          <button type="submit" id="create-game" data-i18n="html.create_game" disabled>게임 시작</button>
         </div>
       </form>
       <div id="game-list-wrap" hidden>
