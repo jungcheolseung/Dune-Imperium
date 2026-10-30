@@ -206,6 +206,13 @@ ACQUIRE_ICONS = {
 ACQUIRE_INLINE = {"Contract": "Contract", "Spice": "Spice_1", "Solari": "Solari_1"}
 # Printed on-acquire bonuses the app archetype does not list (checked against the card).
 ACQUIRE_OVERRIDES = {"arrakis_revolt": ("Troop",)}
+# Cards whose own prefab draws its two faction bands in the other order from
+# print: the top and bottom bands trade their pictures and words, the bands'
+# shapes staying the app's. Truthsayer prints Emperor above Bene Gesserit, the
+# app the other way round; user decision 2026-10-30
+# (docs/base-game-and-ix-plan.md 18.7): only the band order follows print, the
+# art stays the app's (its extra figure in the left arch included).
+PRINTED_BAND_ORDER = frozenset({"truthsayer"})
 
 
 def build_guid():
@@ -941,6 +948,20 @@ def bind_card_prefab(inp, spec, lang):
     """Cards the app lays out by hand (base set, Immortality, Tleilaxu): its own
     prefab, with the printed faction face, the Agent icons and our texts."""
     t = copy.deepcopy(inp.tree(spec["prefab"]))
+    if spec["id"] in PRINTED_BAND_ORDER:
+        top = R.find(t, "SubHeaderImage_Top")
+        bottom = R.find(t, "SubHeaderImage_Bottom")
+        top_image, bottom_image = R.comp(top, "Image"), R.comp(bottom, "Image")
+        top_image["m_Sprite"], bottom_image["m_Sprite"] = (
+            bottom_image["m_Sprite"],
+            top_image["m_Sprite"],
+        )
+        top_text = R.comp(R.find(top, "SubHeaderText"), "TextMeshProUGUI")
+        bottom_text = R.comp(R.find(bottom, "SubHeaderText"), "TextMeshProUGUI")
+        upper, lower = top_text["m_text"], bottom_text["m_text"]
+        # each node keeps its own line ending (the top one ends in a newline)
+        top_text["m_text"] = upper.replace(upper.strip(), lower.strip())
+        bottom_text["m_text"] = lower.replace(lower.strip(), upper.strip())
     for box in R.find_all_nodes(t):
         if R.comp(box, "WormSignetDescriptionRenderer") is not None:
             # Signet Ring: in play the app writes the owner's leader's signet

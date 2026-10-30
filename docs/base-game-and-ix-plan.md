@@ -1792,4 +1792,16 @@ dreadnought 말은 앱 그림이나 TTS 토큰이 아니라 Uprising의 그린 �
   관찰자가 아는 책략 카드(덱 맨 위·아래는 덱 옆, 남이 쥔 카드는 그 좌석 패널), 자기 `ix_pending` — 모두 보기의 `private`에서만; 조정자의 Codex 리뷰
   요청. **탐지기 토큰 `8e02203b`:** 각 영향력 트랙 2칸에 그린 토큰. 확인: e2e `imperium_game` [6]·[7](90/0), `board_tokens` 608, 화면·서버 pytest.
   남은 Ix 일: 새 아이콘 여섯(18.6.2 7), Ix 칸 타일(`app_board.py`의 `P_Spaces_IX`), 실제 판의 좌석 쿠키 누출 e2e(P4가 Ilesa·Hundro를 넣은 뒤), P5j 묶음.
+- **Rise of Ix 카드 앞면과 인쇄판의 차이 — 사용자 결정(2026-10-30 09시대, 조정자 경유, 차이 그림 아홉 장을 보고):** 앱 조각으로 그린 Ix 앞면 50장
+  (`ef397bd6`, 에셋 `4847b8d`)을 Dune Cards Hub 스캔과 나란히 보고 남긴 차이다. 사용자 "이렇게 정한 건 기록해둬".
+  - Truthsayer: 앱은 진영 띠가 Bene Gesserit 위·Emperor 아래, 인쇄는 반대이고, 앱 그림에는 왼쪽 아치에 인쇄에 없는 인물이 하나 더 있다 → 띠 순서만
+    인쇄대로(`scripts/dwgr/app_cards.py` `PRINTED_BAND_ORDER`, 이 카드의 프리팹 두 띠가 그림·글을 맞바꿈; 에셋 `de185d0`), 그림은 앱 그대로(인물 포함).
+  - Guild Accord: 관의 구멍 너머로 행성이 보인다(인쇄는 구멍이 어둡다) → 앱 그대로.
+  - Imperial Shock Trooper: Reveal 글씨가 인쇄보다 작다 → 앱 그대로.
+  - Strongarm: 글자 크기·줄바꿈이 인쇄와 다르다 → 앱 그대로.
+  - Quid Pro Quo: 글자 크기·줄바꿈이 인쇄와 다르다 → 앱 그대로.
+  - Strategic Push: 글자 크기·줄바꿈이 인쇄와 다르다 → 앱 그대로.
+  - Boundless Ambition(프로모): 글자 크기·줄바꿈이 인쇄와 다르다 → 앱 그대로.
+  - Grand Conspiracy: 글머리 줄에 들여쓰기가 없다 → 앱 그대로.
+  - Conflict 세 장(Skirmish 둘 — `skirmish_e`·`skirmish_f`, 에셋 `Skirmish I`·`Skirmish II` — 과 Trade Monopoly): 세트 표시 자리가 인쇄와 다르다 → 앱 그대로.
 - **남은 것:** 한국어 카드 앞면(공식 한글판 사진 뒤), worklog·handoff(병합 때).
