@@ -56,6 +56,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AtFactionSpace,
     AtLeastOfConditions,
     AtMakerSpace,
+    AtSpaceWithEnemyAgent,
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
@@ -561,6 +562,10 @@ def condition_text_ko(condition: Condition) -> str:
         case AtFactionSpace():
             # Never printed; "게임판의 팩션 장소" [Main p. 7] (glossary-ko.md).
             return "팩션 장소에 있다면"
+        case AtSpaceWithEnemyAgent():
+            # Quotes ``tokens_ko.py``'s words for Bounty Hunter: a Korean
+            # opponent is "다른 플레이어" (glossary-ko.md).
+            return "다른 플레이어의 {agent}가 있는 장소로 {agent}를 보냈다면"
         case FactionBond(faction=faction):
             # "Fremen Bond | 프레멘의 유대감" (glossary-ko.md, [Main p. 20]);
             # ``tokens_ko.py``'s "베네 게세리트의 유대감이면:".
@@ -946,6 +951,9 @@ def reward_text_ko(reward: Reward) -> str:
             # print (`[KO card: Navigation Card 4]`; the class's own
             # docstring names it "Navigation card 4").
             return f"{_reserve_card_name_ko(card_id)} {{acquire}}"
+        case AcquireTech(discount=0, solari_allowed=True):
+            # Appropriate (Rise of Ix): the price in Solari instead of spice.
+            return "{tech_tile} {acquire} ({spice} 대신 {solari}로 지불 가능)"
         case AcquireTech(discount=0):
             # "Acquire Tech | 기술 획득" [Bloodlines p. 12].
             return "{tech_tile} {acquire}"

@@ -33,6 +33,7 @@ from dune_imperium.content.uprising.starting_cards import starting_card_for_inst
 from dune_imperium.content.uprising.types import ConflictTier
 from dune_imperium.core import (
     ChanceDecision,
+    ChanceOutcome,
     ChanceResolver,
     DomainAction,
     GamePhase,
@@ -40,6 +41,7 @@ from dune_imperium.core import (
     PlayerDecision,
     Resources,
 )
+from dune_imperium.core.engine import Transition
 from dune_imperium.rules import UprisingRulesEngine
 from dune_imperium.rules.action_shapes import Source
 from dune_imperium.rules.combat import (
@@ -740,43 +742,105 @@ def test_economic_supremacy_pays_its_rows_in_the_original_game(pay: bool) -> Non
 
 
 # -- Whole games ----------------------------------------------------------------------
+# The Recall step's two outcomes: the Agents come back for another round, or
+# the Endgame opens (``phases.resolve_recall_or_endgame``).
+_ROUND_END_KINDS = frozenset({"agents_recalled", "endgame_started"})
+
+
+def _round_end_step(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    agents: list[HeuristicAgent],
+    chance: ChanceResolver,
+) -> tuple[GameState, DomainAction | ChanceOutcome]:
+    """Play on with heuristic seats up to the step whose transition ends the
+    round (the round-end check of Recall, ``phases.resolve_recall_or_endgame``,
+    runs inside it); return the state before that step and the step."""
+
+    while True:
+        decision = engine.current_decision(state)
+        step: DomainAction | ChanceOutcome
+        if isinstance(decision, ChanceDecision):
+            step = chance.resolve(decision)
+        else:
+            assert isinstance(decision, PlayerDecision)
+            rows = engine.legal_actions(state, decision.owner)
+            step = agents[decision.owner].choose_action_with_state(
+                state, engine.observe(state, decision.owner), rows
+            )
+        transition = engine.apply(state, step)
+        if _ROUND_END_KINDS & {event.kind for event in transition.events}:
+            return state, step
+        state = transition.state
+
+
+def _ending_the_round_with(
+    engine: UprisingRulesEngine,
+    state: GameState,
+    step: DomainAction | ChanceOutcome,
+    best: int,
+) -> Transition:
+    """Take the round's last step from ``state`` with the scores set so that
+    seat 0 stands on ``best`` at the round-end check and every other seat
+    below it: the step's own Victory Points (a Conflict reward) are read from
+    the same step taken first as it was."""
+
+    as_played = engine.apply(state, step).state
+    gained = [
+        after.victory_points - before.victory_points
+        for before, after in zip(state.players, as_played.players, strict=True)
+    ]
+    assert all(points < best for points in gained[1:])
+    players = tuple(
+        replace(
+            player,
+            victory_points=best - gained[0] if player.player_id == 0 else 0,
+        )
+        for player in state.players
+    )
+    return engine.apply(replace(state, players=players), step)
+
+
 def test_a_heuristic_game_plays_past_ten_to_the_twelve_point_end() -> None:
     """ "12점까지" (rise-of-ix.md 11): the round-end check ("Endgame 조건(10점
     이상 또는 Conflict 덱 소진)" [DI p. 13], imperium-base.md 10) reads 12, not
-    10 (epic-game-mode.md 3). In this seeded heuristic game (seed 233,
-    found by search; seed 18 until Strategic Push joined the Intrigue deck,
-    then 165 until the last Ix Imperium cards joined the Imperium deck)
-    a seat stands on 10 and then 11 at round ends and the game goes on; a
-    round end with 12 opens the Endgame while a Conflict card is still in the
-    deck, and the game finishes there."""
+    10 (epic-game-mode.md 3). A heuristic game is set, at three round ends in
+    a row, so that a seat stands on 10 and then on 11 (the game goes on) and
+    then on 12, which opens the Endgame while a Conflict card is still in the
+    deck; the game finishes there. (Built from the round's last step rather
+    than a searched seed: seeds 18, 165 and 233 each stopped reaching 10 and
+    11 as more Rise of Ix cards joined the decks.)"""
 
     engine = UprisingRulesEngine()
     state = engine.reset(IX_EPIC, 233)
     agents = [HeuristicAgent(seed=2330 + seat) for seat in range(4)]
     chance = ChanceResolver(seed=233)
-    round_ends: list[tuple[int, bool, int]] = []
+    for best in (10, 11):
+        before, step = _round_end_step(engine, state, agents, chance)
+        went_on = _ending_the_round_with(engine, before, step, best)
+        kinds = [event.kind for event in went_on.events]
+        assert "agents_recalled" in kinds and "endgame_started" not in kinds
+        assert went_on.state.phase is not GamePhase.ENDGAME
+        assert max(player.victory_points for player in went_on.state.players) == best
+        state = went_on.state
+    before, step = _round_end_step(engine, state, agents, chance)
+    ended = _ending_the_round_with(engine, before, step, 12)
+    assert "endgame_started" in [event.kind for event in ended.events]
+    assert ended.state.players[0].victory_points == 12
+    # A Conflict card was still face down when the Endgame opened.
+    assert ended.state.conflict_deck
+    state = ended.state
     while state.phase is not GamePhase.FINISHED:
         decision = engine.current_decision(state)
         if isinstance(decision, ChanceDecision):
-            transition = engine.apply(state, chance.resolve(decision))
-        else:
-            assert isinstance(decision, PlayerDecision)
-            rows = engine.legal_actions(state, decision.owner)
-            pick = agents[decision.owner].choose_action_with_state(
-                state, engine.observe(state, decision.owner), rows
-            )
-            transition = engine.apply(state, pick, legal_actions=rows)
-        ended = any(event.kind == "endgame_started" for event in transition.events)
-        if ended or transition.state.round_number > state.round_number:
-            best = max(player.victory_points for player in transition.state.players)
-            round_ends.append((best, ended, len(transition.state.conflict_deck)))
-        state = transition.state
-
-    *played_on, (final_best, final_ended, deck_left) = round_ends
-    assert final_ended and final_best >= 12 and deck_left > 0
-    assert all(not ended and best < 12 for best, ended, _ in played_on)
-    assert {10, 11} <= {best for best, _, _ in played_on}
-    # A Conflict card was still face down when the Endgame opened.
+            state = engine.apply(state, chance.resolve(decision)).state
+            continue
+        assert isinstance(decision, PlayerDecision)
+        rows = engine.legal_actions(state, decision.owner)
+        pick = agents[decision.owner].choose_action_with_state(
+            state, engine.observe(state, decision.owner), rows
+        )
+        state = engine.apply(state, pick, legal_actions=rows).state
     assert state.conflict_deck
 
 

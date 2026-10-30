@@ -124,6 +124,7 @@ from dune_imperium.rules.spy_placement import (
     spy_options,
     spy_placement_allowed_post_ids,
 )
+from dune_imperium.rules.unload import push_unload_hold, unload_holds
 
 _FRAME_LABEL = "Agent-turn effect frame"
 # The original game's Foldspace Reserve card (``content.imperium.reserve``).
@@ -1598,6 +1599,15 @@ def apply_desert_tactics_action(
         # own, the public trash first, then the hidden draw (OQ-106).
         add_board_icon(context, BOARD_ICON_CARDS)
     next_state = advance_after_effect(effect_state, context, effect_state.players)
+    if line.costs and unload_holds(trashed.events):
+        # The trashed card's box holds a decision: its cards, the frame's own
+        # next step, wait under the hold until it is answered ("Unload를
+        # 끝까지 해결한 뒤 오른쪽으로 간다", ``rules.unload``).
+        next_state = push_unload_hold(
+            next_state,
+            action.actor,
+            source=f"round:{state.round_number}:player:{action.actor}:board:{space_id}",
+        )
     events.append(
         GameEvent(
             event_id=(

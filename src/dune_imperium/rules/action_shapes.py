@@ -416,6 +416,14 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "take_agent_card_extra_turn": _row(
         _V.TAKE, _S.AGENT_CARD, variant="extra_turn", tag=_BOX
     ),
+    # Ixian Engineer's Acquire Tech icon (Rise of Ix): it opens the window.
+    "acquire_agent_card_tech": _row(
+        _V.ACQUIRE, _S.AGENT_CARD, variant="tech", tag=_BOX
+    ),
+    # Appropriate's (Rise of Ix): the window paid in Solari instead of spice.
+    "acquire_agent_card_tech_with_solari": _row(
+        _V.ACQUIRE, _S.AGENT_CARD, variant="tech_with_solari", tag=_BOX
+    ),
     # Local Fence's two arrows printed with "-OR-" (Rise of Ix), one each.
     "pay_agent_card_spice_for_solari": _row(
         _V.PAY, _S.AGENT_CARD, variant="spice_for_solari", tag=_BOX
@@ -806,11 +814,18 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     "resolve_unload_icon": _row(
         _V.RESOLVE, _S.REVEAL_CARD, _T.PERSONAL_CARD, variant="unload"
     ),
+    # A "may" Unload icon left unused in its window (a Tech Negotiation).
+    "decline_unload_icon": _row(
+        _V.DECLINE, _S.REVEAL_CARD, _T.PERSONAL_CARD, of=_V.RESOLVE, variant="unload"
+    ),
     "gain_reveal_resources": _row(_V.GAIN, _S.REVEAL_CARD, _T.RESOURCES),
     "gain_reveal_faction_influence": _row(
         _V.GAIN_INFLUENCE, _S.REVEAL_CARD, _T.FACTION, variant="pending_gain"
     ),
     "recruit_reveal_troops": _row(_V.RECRUIT, _S.REVEAL_CARD),
+    "deploy_reveal_supply_troops": _row(
+        _V.DEPLOY, _S.REVEAL_CARD, variant="supply_troops"
+    ),
     "draw_reveal_intrigue": _row(_V.DRAW, _S.REVEAL_CARD, variant="intrigue"),
     "generate_reveal_specimens": _row(_V.GENERATE_SPECIMENS, _S.REVEAL_CARD),
     "advance_reveal_tleilaxu": _row(_V.ADVANCE, _S.REVEAL_CARD, variant="tleilaxu"),
@@ -832,6 +847,24 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "trash_reveal_card": _row(_V.TRASH, _S.REVEAL_CARD, _T.PERSONAL_CARD, tag=_SOURCE),
     "command_acquire_row_card": _row(_V.ACQUIRE, _S.REVEAL_CARD, _T.IMPERIUM_CARD),
+    # Boundless Ambition (Rise of Ix promo): "Acquire a card that costs 5 or
+    # less", from the Row or the Reserve (OQ-125) -- revealed, and in its
+    # Unload's window, which confirms a fizzle when none is in reach.
+    "acquire_reveal_imperium_card": _row(
+        _V.ACQUIRE, _S.REVEAL_CARD, _T.IMPERIUM_CARD, variant="up_to"
+    ),
+    "acquire_reveal_reserve_card": _row(
+        _V.ACQUIRE, _S.REVEAL_CARD, _T.RESERVE_CARD, variant="up_to"
+    ),
+    "acquire_unload_imperium_card": _row(
+        _V.ACQUIRE, _S.REVEAL_CARD, _T.IMPERIUM_CARD, variant="unload"
+    ),
+    "acquire_unload_reserve_card": _row(
+        _V.ACQUIRE, _S.REVEAL_CARD, _T.RESERVE_CARD, variant="unload"
+    ),
+    "skip_unload_acquisition": _row(
+        _V.CONFIRM_EMPTY, _S.REVEAL_CARD, of=_V.ACQUIRE, variant="unload"
+    ),
     "place_reveal_spy": _row(_V.PLACE_SPY, _S.REVEAL_CARD, _T.POST, tag=_SOURCE),
     "recall_spy_for_reveal": _row(_V.RECALL_SPY, _S.REVEAL_CARD, _T.POST, tag=_SOURCE),
     "recall_spy_for_reveal_placement": _row(
@@ -854,16 +887,23 @@ ACTION_SHAPES: Final[Mapping[str, ActionShape]] = MappingProxyType({
     ),
     "pay_reveal_spice_influence": _row(_V.PAY, _S.REVEAL_CARD, _T.FACTION),
     "pay_reveal_solari_for_vp": _row(_V.PAY, _S.REVEAL_CARD, variant="solari_for_vp"),
+    # Ix-Guild Compact's Tech Negotiation icons (Rise of Ix).
+    "place_reveal_negotiator": _row(
+        _V.RECRUIT, _S.REVEAL_CARD, variant="negotiator"
+    ),
     "pay_reveal_spice_for_vp": _row(_V.PAY, _S.REVEAL_CARD, variant="spice_for_vp"),
     "pay_reveal_solari_for_troops": _row(
         _V.PAY, _S.REVEAL_CARD, variant="solari_for_troops"
     ),
-    # Guild Chief Administrator's Freighter icon (Rise of Ix): up one space
-    # or recall [Rise of Ix p. 5]; unused, it lapses when the Reveal ends.
+    # Guild Chief Administrator's and Freighter Fleet's Freighter icon (Rise of
+    # Ix): up one space or recall [Rise of Ix p. 5]; unused, it lapses when
+    # the Reveal ends. Two cards print it, so each row names its card.
     "advance_reveal_freighter": _row(
-        _V.ADVANCE, _S.REVEAL_CARD, variant="freighter"
+        _V.ADVANCE, _S.REVEAL_CARD, variant="freighter", tag=_SOURCE
     ),
-    "recall_reveal_freighter": _row(_V.COLLECT, _S.REVEAL_CARD, variant="freighter"),
+    "recall_reveal_freighter": _row(
+        _V.COLLECT, _S.REVEAL_CARD, variant="freighter", tag=_SOURCE
+    ),
     # Negotiated Withdrawal's arrow (Rise of Ix): three units, troops or
     # dreadnoughts, for an Influence with a chosen Faction.
     "retreat_reveal_units_for_influence": _row(

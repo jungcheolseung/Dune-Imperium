@@ -32,6 +32,7 @@ from dune_imperium.content.uprising.abilities import (
 )
 from dune_imperium.content.uprising.board import Faction
 from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
     CommandReached,
     CompletedContractsAtLeast,
     Condition,
@@ -52,6 +53,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     LoseInfluence,
     LoseTroops,
     PayResources,
+    PlaceNegotiator,
     PlaceSpy,
     PrintedRevealValue,
     RecallSpy,
@@ -180,6 +182,37 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
                     condition=CompletedContractsAtLeast(4),
                 ),
                 mark=_OPTIONAL,
+            ),
+            # Ixian Engineer (Rise of Ix): "If you have three or more Tech
+            # tiles: Trash this card -> 1 Victory Point" [Steam app text] --
+            # CHOAM Demands' shape, an optional arrow whose cost is the card's
+            # own trash and whose condition is judged whenever its row is
+            # asked (OQ-028).
+            _CHOICE.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES: _choice(
+                _line(
+                    GainVictoryPoints(1),
+                    costs=(TrashCard(this_card=True),),
+                    condition=TechTilesAtLeast(3),
+                ),
+                mark=_OPTIONAL,
+            ),
+            # Ix-Guild Compact (Rise of Ix): two Tech Negotiation icons [Steam
+            # app screen pieces; P0 face reading], each "you may take a troop
+            # from your supply and place it on the Ix board" [Rise of Ix p. 4]:
+            # each its own optional choice, so the first resolved, the second
+            # waits as a plain icon (Covert Operation's two Spies' shape).
+            _CHOICE.MAY_PLACE_TWO_NEGOTIATORS: _choice(
+                _line(PlaceNegotiator(), PlaceNegotiator()), mark=_OPTIONAL
+            ),
+            _CHOICE.MAY_PLACE_NEGOTIATOR: _choice(
+                _line(PlaceNegotiator()), mark=_OPTIONAL
+            ),
+            # Boundless Ambition (Rise of Ix promo): "Acquire a card that costs
+            # [5] or less." [Steam app text] -- a Row or Reserve card, not
+            # Foldspace (OQ-125). No "may": it holds the Reveal's end while a
+            # card is in reach, and lapses with it when none is.
+            _CHOICE.ACQUIRE_CARD_UP_TO_FIVE: _choice(
+                _line(AcquireCardUpTo(5)), mark=_MANDATORY
             ),
             # For Humanity: "Bene Gesserit Alliance: You may lose 2 Influence with
             # one Faction -> Gain 1 VP" -- a "?" Influence diamond with two red
@@ -382,6 +415,13 @@ REVEAL_CHOICE_ABILITIES: Final[Mapping[PersonalCardRevealChoiceEffect, Ability]]
             _CHOICE.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: _choice(
                 _line(GainInfluence(), condition=TechTilesAtLeast(2)),
                 mark=_MANDATORY,
+            ),
+            # Web of Power (Rise of Ix): the wild Influence icon, "Choose a
+            # Faction to gain 1 Influence with" [Steam app text] -- no "may"
+            # and no condition, so Pointing the Way's choice without its
+            # Command.
+            _CHOICE.GAIN_CHOSEN_INFLUENCE: _choice(
+                _line(GainInfluence()), mark=_MANDATORY
             ),
         }
     )

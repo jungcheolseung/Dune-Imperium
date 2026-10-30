@@ -351,10 +351,21 @@ def test_every_table_ko_text_uses_only_known_terms() -> None:
         assert_placeholders_are_terms(ko, terms)
 
 
-# Rise of Ix has no Korean edition and glossary-ko.md no dreadnought, so the
-# word stays English in a Korean line (as ``effect_dsl_text_ko`` and the
-# dreadnought rows' labels keep it): Full-Scale Assault's acquire and Reveal.
-_NO_KOREAN_SOURCE: Final = frozenset({"Commission a dreadnought", "dreadnought"})
+# Rise of Ix has no Korean edition and glossary-ko.md no dreadnought or
+# Negotiator, so those words stay English in a Korean line (as
+# ``effect_dsl_text_ko`` and the dreadnought rows' labels keep them):
+# Full-Scale Assault's acquire and Reveal, Ix-Guild Compact's dreadnought and
+# Negotiator, Appropriate's Freighter.
+_NO_KOREAN_SOURCE: Final = frozenset(
+    {
+        "Commission a dreadnought",
+        "dreadnought",
+        "Place a troop from your supply on the Ix board as a Negotiator",
+        # Appropriate's acquire box (no Korean source names the Freighter's
+        # move either).
+        "Move your Freighter up one space or recall it",
+    }
+)
 
 
 def test_every_table_ko_text_has_no_stray_latin() -> None:

@@ -139,6 +139,7 @@ def _older_pick(
 _OWED_DRAWS = frozenset({"draw_owed_intrigue", "draw_owed_card"})
 _REVEAL_GAINS = frozenset({
     "recruit_reveal_troops",
+    "deploy_reveal_supply_troops",
     "draw_reveal_intrigue",
     "generate_reveal_specimens",
     "advance_reveal_tleilaxu",

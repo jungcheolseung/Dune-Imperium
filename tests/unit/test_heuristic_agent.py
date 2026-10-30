@@ -1162,6 +1162,7 @@ def test_the_rise_of_ix_rows_outrank_the_turns_end() -> None:
         "commission_intrigue_dreadnought",
         "acquire_board_tech",
         "acquire_negotiation_tech",
+        "acquire_agent_card_tech",
         "place_board_negotiator",
         "place_intrigue_negotiator",
         "advance_board_freighter",

@@ -129,6 +129,7 @@ from dune_imperium.rules.specimens import return_specimens
 from dune_imperium.rules.spy_moves import spy_placement_frame
 from dune_imperium.rules.strength import reveal_in_progress
 from dune_imperium.rules.unit_loss import lose_unit
+from dune_imperium.rules.unload import push_unload_hold, unload_holds
 
 _EFFECT_FRAME: Final = "Scouts effect frame"
 _OFFER_FRAME: Final = "Subcommittee offer frame"
@@ -1217,10 +1218,19 @@ def apply_scouts_effect_action(state: GameState, action: DomainAction) -> RuleRe
     match action.action_id:
         case "scouts_discard":
             # A line's discard is its cost: an Unload card's box is paid before
-            # the line's reward (docs/rules/rise-of-ix.md 7).
-            return discard_personal_card_from_hand(
+            # the line's reward (docs/rules/rise-of-ix.md 7); a box holding a
+            # decision holds the line's next step under it (``rules.unload``).
+            discarded = discard_personal_card_from_hand(
                 cursor_state, player, value, source=pick_source, unload_at_once=True
             )
+            if unload_holds(discarded.events):
+                return RuleResult(
+                    state=push_unload_hold(
+                        discarded.state, player, source=pick_source
+                    ),
+                    events=discarded.events,
+                )
+            return discarded
         case "scouts_trash_card":
             return trash_personal_card(
                 cursor_state, player, value, source=pick_source

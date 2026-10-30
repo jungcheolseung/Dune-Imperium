@@ -92,6 +92,7 @@ from dune_imperium.rules.intrigue_triggers import (
     open_contract_reveal,
     waits_for_reveal_turn,
 )
+from dune_imperium.rules.unload import hold_payer, push_unload_hold, unload_holds
 
 # Frames during which the owner is inside their own Agent or Reveal turn.
 PLOT_FRAME_KINDS = frozenset(
@@ -932,7 +933,6 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
     frame = state.decision_stack[-1]
     context = frame_context(frame)
     player = action.actor
-    card_id = context_str(context, "card_id", owner=_CHOICE_FRAME)
     source = context_str(context, "source", owner=_CHOICE_FRAME)
     entry = _choice_entry(context)
     piece = current_piece(entry)
@@ -951,22 +951,61 @@ def apply_intrigue_choice(state: GameState, action: DomainAction) -> RuleResult:
     context[PENDING_ABILITY_KEY] = entry.encode()
     lifted, pushed = _lift_pushed_frames(frame.frame_id, result.state)
     next_state = replace_top_frame(lifted, with_context(frame, context))
+    if unload_holds(result.events):
+        # A cost piece's discarded or trashed card holds an Unload decision:
+        # "Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer ruling,
+        # docs/rules/rise-of-ix.md 7), so the card's next piece or its rewards
+        # wait for it (``rules.unload``).
+        return RuleResult(
+            state=push_unload_hold(
+                _restack(next_state, pushed), player, source=source, payer=_CHOICE_PAYER
+            ),
+            events=result.events,
+        )
     if current_piece(entry) is not None or rewards_wait(entry):
         return RuleResult(state=_restack(next_state, pushed), events=result.events)
-
-    finished = finish_intrigue_play(
-        next_state.pop_decision(),
-        player,
-        card_id,
-        entry_sections(entry),
-        source,
-        skip_rewards=entry.rewards_applied,
-        discard=context.get("separate_effect") is not True,
-    )
+    finished = _finish_choice(next_state, player, context, entry)
     return RuleResult(
         state=_restack(finished.state, pushed),
         events=(*result.events, *finished.events),
     )
+
+
+def _finish_choice(
+    state: GameState,
+    player: int,
+    context: dict[str, ActionValue],
+    entry: PendingAbility,
+) -> RuleResult:
+    """Finish the card whose last piece is answered (its choice frame on top)."""
+
+    return finish_intrigue_play(
+        state.pop_decision(),
+        player,
+        context_str(context, "card_id", owner=_CHOICE_FRAME),
+        entry_sections(entry),
+        context_str(context, "source", owner=_CHOICE_FRAME),
+        skip_rewards=entry.rewards_applied,
+        discard=context.get("separate_effect") is not True,
+    )
+
+
+_CHOICE_PAYER: Final = "intrigue_choice"
+
+
+@hold_payer(_CHOICE_PAYER)
+def _pay_held_choice(
+    state: GameState, player: int, values: Mapping[str, ActionValue]
+) -> RuleResult:
+    """An Intrigue card's next piece, or its finish and rewards, once a cost
+    piece's Unload is decided: its choice frame on top again."""
+
+    del values
+    context = frame_context(state.decision_stack[-1])
+    entry = _choice_entry(context)
+    if current_piece(entry) is not None or rewards_wait(entry):
+        return RuleResult(state=state)
+    return _finish_choice(state, player, context, entry)
 
 
 def _lift_pushed_frames(

@@ -27,6 +27,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AgentOnSpaceWithIcon,
     CommandersInConflictAtLeast,
     CommandReached,
+    DeployFromSupply,
     DrawIntrigueCards,
     FactionBond,
     GainInfluence,
@@ -62,7 +63,7 @@ from dune_imperium.content.uprising.types import (
     PersonalCardTrashEffect,
     PersonalCardTurnStartEffect,
 )
-from dune_imperium.display.effect_dsl_text import condition_text
+from dune_imperium.display.effect_dsl_text import condition_text, reward_text
 from dune_imperium.rules.reveal_lines import RevealLine
 
 _BOND_NAMES: dict[PersonalCardBond, str] = {
@@ -214,6 +215,12 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If you are at a Maker space: Gain 2 spice"
         ),
         PersonalCardAgentEffect.GAIN_TWO_SOLARI: "Gain 2 solari",
+        # Rise of Ix's Bounty Hunter (stage P4d): "If used to send an Agent to
+        # a board space with an enemy Agent: [2 Solari]".
+        PersonalCardAgentEffect.GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE: (
+            "If used to send an Agent to a board space with an enemy Agent: "
+            "Gain 2 solari"
+        ),
         PersonalCardAgentEffect.GAIN_ONE_SPICE: "Gain 1 spice",
         PersonalCardAgentEffect.PLACE_SPY: "Place a Spy",
         PersonalCardAgentEffect.PLACE_SPY_ON_VISITED_SPACE_MAY_SHARE: (
@@ -276,6 +283,16 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         # Rise of Ix's Weirding Way (stage P4d).
         PersonalCardAgentEffect.MAY_TAKE_ANOTHER_TURN: (
             "You may take another turn immediately after this one"
+        ),
+        # Rise of Ix's Ixian Engineer (stage P4d): the Acquire Tech icon.
+        PersonalCardAgentEffect.MAY_ACQUIRE_TECH: "You may acquire a Tech tile",
+        # Rise of Ix's Appropriate (stage P4d).
+        (
+            PersonalCardAgentEffect
+            .MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO
+        ): (
+            "If you have 2 or more Emperor Influence: You may acquire a Tech "
+            "tile, using Solari instead of spice for this purchase if you like"
         ),
         PersonalCardAgentEffect.GENERATE_SPECIMEN: "Generate 1 specimen",
         PersonalCardAgentEffect.GAIN_BENE_GESSERIT_INFLUENCE_AND_INTRIGUE: (
@@ -379,6 +396,14 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
             "If you have 2 or more Bene Gesserit Influence: Gain 1 water, "
             "If you have 2 or more Fremen Influence: Gain 1 spice"
         ),
+        (
+            PersonalCardAgentEffect
+            .GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO
+        ): (
+            "If you have 2 or more Emperor Influence: Gain 2 solari, "
+            "If you have 2 or more Spacing Guild Influence: Draw 1 card, "
+            "If you have 2 or more Fremen Influence: Gain 1 water"
+        ),
         PersonalCardAgentEffect.GAIN_BY_EMPEROR_AND_SPACING_GUILD_INFLUENCE_TWO: (
             "If you have 2 or more Emperor Influence: Gain 2 solari, "
             "If you have 2 or more Spacing Guild Influence: Gain 1 spice"
@@ -471,6 +496,42 @@ AGENT_EFFECT_TEXT: Final[Mapping[PersonalCardAgentEffect, str]] = MappingProxyTy
         ),
         PersonalCardAgentEffect.MAY_DISCARD_FOR_WATER: (
             "You may discard a card → Gain 1 water"
+        ),
+        # Rise of Ix's Satellite Ban (stage P4d): "[Discard] -> [1 spice] [1 water]".
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER: (
+            "You may discard a card → Gain 1 spice, Gain 1 water"
+        ),
+        # Rise of Ix's Spice Trader (stage P4d): "[Fremen] 2 Influence: [Discard]
+        # -> [2 spice]".
+        PersonalCardAgentEffect.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO: (
+            "If you have 2 or more Fremen Influence: "
+            "You may discard a card → Gain 2 spice"
+        ),
+        # Rise of Ix's Imperial Bashar (stage P4d): "[Troop] -OR- [Trash a card]".
+        PersonalCardAgentEffect.RECRUIT_ONE_OR_MAY_TRASH_A_CARD: (
+            "Choose one: Recruit 1 troop / You may trash a card"
+        ),
+        # Rise of Ix's Esmar Tuek (stage P4d): "[1 spice] -> [Spacing Guild
+        # Influence] [draw 1 card]".
+        (
+            PersonalCardAgentEffect
+            .MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
+        ): "You may pay 1 spice → Gain 1 Spacing Guild Influence, Draw 1 card",
+        # Rise of Ix's Ix-Guild Compact (stage P4d): "[Discard] [Discard] ->
+        # [Dreadnought]".
+        PersonalCardAgentEffect.MAY_DISCARD_TWO_FOR_DREADNOUGHT: (
+            "You may discard two cards → Commission a dreadnought"
+        ),
+        # Rise of Ix's In The Shadows (stage P4d): "[Bene Gesserit] 2
+        # Influence: [Discard] -> Choose one: [Emperor] [Spacing Guild]
+        # [Fremen] Influence".
+        (
+            PersonalCardAgentEffect
+            .MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO
+        ): (
+            "If you have 2 or more Bene Gesserit Influence: You may discard a "
+            "card → Choose one: Gain 1 Emperor Influence / Gain 1 Spacing Guild "
+            "Influence / Gain 1 Fremen Influence"
         ),
         PersonalCardAgentEffect.COMPLETE_ONE_CONTRACT: "Complete one of your contracts",
         PersonalCardAgentEffect.EACH_OPPONENT_LOSES_TROOP_AND_MOVES_SPY: (
@@ -653,6 +714,10 @@ ACQUISITION_EFFECT_TEXT: Final[Mapping[PersonalCardAcquisitionEffect, str]] = (
             PersonalCardAcquisitionEffect.MAY_COMMISSION_DREADNOUGHT: (
                 "Commission a dreadnought"
             ),
+            # Rise of Ix's Appropriate: the Freighter icon ("may").
+            PersonalCardAcquisitionEffect.MAY_MOVE_FREIGHTER: (
+                "Move your Freighter up one space or recall it"
+            ),
         }
     )
 )
@@ -691,6 +756,33 @@ REVEAL_CHOICE_EFFECT_TEXT: Final[Mapping[PersonalCardRevealChoiceEffect, str]] =
             PersonalCardRevealChoiceEffect.PLACE_TWO_SPIES: "Place 2 Spies",
             PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: (
                 "If you have 2 or more Tech tiles: "
+                "Gain 1 Influence with a chosen Faction"
+            ),
+            # Rise of Ix's Ixian Engineer (stage P4d): CHOAM Demands' arrow with
+            # a Victory Point.
+            (
+                PersonalCardRevealChoiceEffect
+                .MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES
+            ): (
+                "If you have 3 or more Tech tiles: Trash this card → Gain 1 VP"
+            ),
+            # Rise of Ix's Ix-Guild Compact (stage P4d): two Tech Negotiation
+            # icons, the second of them alone once the first is resolved.
+            PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS: (
+                "You may place a troop from your supply on the Ix board as a "
+                "Negotiator, twice"
+            ),
+            PersonalCardRevealChoiceEffect.MAY_PLACE_NEGOTIATOR: (
+                "You may place a troop from your supply on the Ix board as a "
+                "Negotiator"
+            ),
+            # Rise of Ix's promo Boundless Ambition (stage P4d): the effect DSL's
+            # words for its acquisition (``effect_dsl_text``).
+            PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE: (
+                "Acquire a card costing 5 or less"
+            ),
+            # Rise of Ix's Web of Power (stage P4d): the wild Influence icon.
+            PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE: (
                 "Gain 1 Influence with a chosen Faction"
             ),
             PersonalCardRevealChoiceEffect.PLACE_SPY_OR_GAIN_TWO_STRENGTH: (
@@ -859,6 +951,7 @@ HANDLED_REVEAL_REWARDS: Final[frozenset[type]] = frozenset(
         AdvanceTleilaxu,
         Research,
         ReserveCostDiscount,
+        DeployFromSupply,
     }
 )
 
@@ -1010,6 +1103,9 @@ def reveal_effect_text(line: RevealLine) -> str:
         gains.append(
             f"Recruit {line.recruit_troops} {_plural(line.recruit_troops, 'troop')}"
         )
+    if line.supply_deployments:
+        # Treachery: Double Cross's words (``effect_dsl_text``).
+        gains.append(reward_text(DeployFromSupply(line.supply_deployments)))
     influence = line.influence
     if influence is not None and influence[1]:
         faction, times = influence

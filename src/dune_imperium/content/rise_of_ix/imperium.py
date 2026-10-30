@@ -12,12 +12,16 @@ These began as stage P4a identity entries (name, copies and cost), generated
 by ``scripts/dwgr/imperium_entries.py --set ix skeleton``. Incomplete entries
 keep ``play_data_complete`` False and expose no partial play data; printed
 Infiltration icons are identity metadata. With ``rise_of_ix`` the original
-game's deck takes only completed cards (CHOAM Delegate, Jamis, Sayyadina,
-Truthsayer, Imperial Shock Trooper, Local Fence, Water Peddler, Guild Chief
+game's deck takes only completed cards: every one of the 29 since Appropriate
+(CHOAM Delegate, Jamis, Landing Rights, Sayyadina, Shai-Hulud, Truthsayer,
+Imperial Shock Trooper, Local Fence, Water Peddler, Guild Chief
 Administrator, Negotiated Withdrawal, Desert Ambush, Full-Scale Assault,
-Embedded Agent, Court Intrigue and Weirding Way so far),
-while the observation lists every identity from v39. Setup takes Rise of Ix
-on the original game since stage P4c-5.
+Embedded Agent, Court Intrigue, Weirding Way, Satellite Ban, Spice Trader,
+Imperial Bashar, Bounty Hunter, Web of Power, Ixian Engineer, Esmar Tuek,
+Guild Accord, In The Shadows, Treachery, Freighter Fleet, Ix-Guild Compact
+and Appropriate), and with ``promo_cards`` Boundless Ambition; the observation
+lists every identity from v39. Setup takes Rise of Ix on the original game
+since stage P4c-5.
 ``content.uprising.imperium``'s
 ``IMPERIUM_CARDS_BY_ID`` resolves them; code that lists Uprising's own
 cards iterates ``IMPERIUM_CARDS`` instead, and the original game's
@@ -42,6 +46,22 @@ IX_IMPERIUM_SOURCES: Final = (SourceRef(SourceDocument.RISE_OF_IX_RULEBOOK, (2,)
 _LOCAL_FENCE = (
     PersonalCardAgentEffect.MAY_PAY_TWO_SPICE_FOR_FIVE_SOLARI_OR_FIVE_SOLARI_FOR_FOUR_SPICE
 )
+_BOUNTY_HUNTER = PersonalCardAgentEffect.GAIN_TWO_SOLARI_IF_ENEMY_AGENT_ON_SPACE
+_WEB_OF_POWER = (
+    PersonalCardAgentEffect.GAIN_BY_EMPEROR_SPACING_GUILD_AND_FREMEN_INFLUENCE_TWO
+)
+_SPICE_TRADER = (
+    PersonalCardAgentEffect.MAY_DISCARD_FOR_TWO_SPICE_IF_FREMEN_INFLUENCE_TWO
+)
+_ESMAR_TUEK = (
+    PersonalCardAgentEffect.MAY_PAY_ONE_SPICE_FOR_SPACING_GUILD_INFLUENCE_AND_DRAW_ONE
+)
+_APPROPRIATE = (
+    PersonalCardAgentEffect.MAY_ACQUIRE_TECH_WITH_SPICE_OR_SOLARI_IF_EMPEROR_INFLUENCE_TWO
+)
+_IN_THE_SHADOWS = (
+    PersonalCardAgentEffect.MAY_DISCARD_FOR_CHOSEN_INFLUENCE_IF_BENE_GESSERIT_INFLUENCE_TWO
+)
 
 
 def ix_imperium_card(card_id: str, name: str) -> CardDefinition:
@@ -57,12 +77,38 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("appropriate", "Appropriate"),
         copies=1,
         acquisition_cost=5,
+        # App table: Emperor, the Landsraad and Spice Trade icons, Reveal 2
+        # Persuasion, acquire box Freighter. Agent: "[Emperor] 2 Influence:
+        # [Acquire Tech] You may use Solari instead of spice for this
+        # purchase." [Steam app text] -- Solari or spice, never mixed, a
+        # Negotiator taking 1 Solari off (rise-of-ix.md 4, [Rise of Ix p.
+        # 10]); beside Shipping space 3's own Acquire Tech it is a second,
+        # separate one (rise-of-ix.md 4, Direwolf Discord). Acquire box: the
+        # Freighter icon, "you may move your Freighter in one of two ways"
+        # [Rise of Ix p. 5] (``rules.acquire_icons``).
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.SPICE_TRADE),
+        agent_effect=_APPROPRIATE,
+        reveal_persuasion=2,
+        has_acquisition_bonus=True,
+        acquisition_effect=PersonalCardAcquisitionEffect.MAY_MOVE_FREIGHTER,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("bounty_hunter", "Bounty Hunter"),
         copies=1,
         acquisition_cost=1,
         infiltration_icons=(AgentIcon.CITY,),
+        # App table: no Faction, the City icon (also its Infiltration icon),
+        # Reveal 1 Persuasion and 1 sword. Agent: "If used to send an Agent to
+        # a board space with an enemy Agent: [2 Solari]" [Steam app screen
+        # pieces and text] -- a condition on the space the Agent goes to, fixed
+        # by the placement, so the box is judged when the card is played.
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=_BOUNTY_HUNTER,
+        reveal_persuasion=1,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("choam_delegate", "CHOAM Delegate"),
@@ -131,11 +177,36 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("esmar_tuek_card", "Esmar Tuek"),
         copies=1,
         acquisition_cost=5,
+        # Not Bloodlines' Leader Esmar Tuek (``esmar_tuek``): the card id
+        # carries ``_card`` (plan 17.2). App table: Spacing Guild, the City
+        # and Spice Trade icons (``Circle``, ``Triangle``), Reveal 2 spice and
+        # 2 Solari. Screen pieces: Agent "[1 spice] -> [Spacing Guild
+        # Influence] [draw 1 card]", an optional arrow [DI p. 9] [FAQ p. 3];
+        # Reveal "[Unload] [2 spice] [2 Solari]" -- the box is gained also
+        # when the card is discarded or trashed [Rise of Ix p. 7]
+        # (``rules.unload``); its record is ``REVEAL_GAIN_ABILITIES``. Trashed
+        # before its Agent box resolves, the box expires and the Unload's
+        # spice cannot pay it (OQ-022, docs/rules/rise-of-ix.md 7).
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=_ESMAR_TUEK,
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("freighter_fleet", "Freighter Fleet"),
         copies=2,
         acquisition_cost=2,
+        # App table: no Faction, the Spice Trade icon, no fixed Reveal values;
+        # no Agent box. Screen pieces: Reveal "[Unload] [Freighter]" -- "you
+        # may move your Freighter in one of two ways" [Rise of Ix p. 5], an
+        # optional Reveal choice; gained also when the card is discarded or
+        # trashed [Rise of Ix p. 7] (``rules.unload``: a decision icon, so as
+        # an arrow's cost it holds the arrow's right side).
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER,),
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("full_scale_assault", "Full-Scale Assault"),
@@ -159,6 +230,20 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=6,
         infiltration_icons=(AgentIcon.SPACING_GUILD,),
+        # App table: Spacing Guild, the Spacing Guild icon (also its
+        # Infiltration icon), Reveal 1 water; no Persuasion or swords. Agent:
+        # "It costs [2 spice] less to send an Agent to the Heighliner board
+        # space with this card." [Steam app text] -- a placement rule
+        # (``agent_turn``), no box to resolve. Reveal "[Unload] [1 water];
+        # [Spacing Guild] Alliance: [3 spice]" [Steam app screen pieces]: two
+        # lines, the second judged on the Spacing Guild Alliance; gained also
+        # when the card is discarded or trashed [Rise of Ix p. 7]
+        # (``rules.unload``).
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD,),
+        heighliner_spice_discount=2,
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("guild_chief_administrator", "Guild Chief Administrator"),
@@ -180,6 +265,21 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("imperial_bashar", "Imperial Bashar"),
         copies=1,
         acquisition_cost=4,
+        # App table: Emperor, the City icon, Reveal 1 Persuasion and 2 swords.
+        # Reveal: "+[sword] for each other revealed card that provides one or
+        # more [sword] this turn" -- Leadership's, a Reveal record
+        # (``reveal_abilities``) [Steam app text; Rise of Ix p. 10]. Agent:
+        # "[Troop] -OR- [Trash a card]" [Steam app screen pieces and text], a
+        # recruit beside a black trash icon, which is optional ("Trash ...
+        # 비용이거나 카드가 자기를 trash하라고 할 때만 의무", imperium-base.md 11,
+        # [DI p. 16]), so the box is optional too and lapses unused at the
+        # turn's end (OQ-095 (2)).
+        factions=(Faction.EMPEROR,),
+        agent_icons=(AgentIcon.CITY,),
+        agent_effect=PersonalCardAgentEffect.RECRUIT_ONE_OR_MAY_TRASH_A_CARD,
+        reveal_persuasion=1,
+        reveal_strength=2,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("imperial_shock_trooper", "Imperial Shock Trooper"),
@@ -197,16 +297,58 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("in_the_shadows", "In The Shadows"),
         copies=2,
         acquisition_cost=2,
+        # App table: Bene Gesserit, the Landsraad and City icons (``Pentagon``,
+        # ``Circle``), no fixed Reveal values. Screen pieces: Agent "[Bene
+        # Gesserit] 2 Influence: [Discard] -> Choose one: [Emperor] [Spacing
+        # Guild] [Fremen] Influence", an optional arrow [Rise of Ix p. 7];
+        # Reveal "[Unload] [Bene Gesserit Influence]" -- gained also when the
+        # card is discarded or trashed [Rise of Ix p. 7] (``rules.unload``).
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.LANDSRAAD, AgentIcon.CITY),
+        agent_effect=_IN_THE_SHADOWS,
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("ix_guild_compact", "Ix-Guild Compact"),
         copies=1,
         acquisition_cost=3,
+        # App table: Spacing Guild, the Spacing Guild icon, no fixed Reveal
+        # values. Screen pieces: Agent "[Discard] [Discard] -> [Dreadnought]",
+        # an optional arrow [Rise of Ix p. 7], not offered with no dreadnought
+        # to commission (OQ-071, docs/rules/rise-of-ix.md 15); Reveal
+        # "[Unload] [Tech Negotiation] [Tech Negotiation]" (the
+        # ``TechCost_Reduce`` sprite, the Hagal Tech Negotiation card's; P0
+        # face reading), each "you may take a troop" [Rise of Ix p. 4] --
+        # gained also when the card is discarded or trashed [Rise of Ix p. 7]
+        # (``rules.unload``: decisions, so as an arrow's cost they hold its
+        # right side).
+        factions=(Faction.SPACING_GUILD,),
+        agent_icons=(AgentIcon.SPACING_GUILD,),
+        agent_effect=PersonalCardAgentEffect.MAY_DISCARD_TWO_FOR_DREADNOUGHT,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS,
+        ),
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("ixian_engineer", "Ixian Engineer"),
         copies=2,
         acquisition_cost=5,
+        # App table: no Faction, the Spice Trade icon, no fixed Reveal values.
+        # Agent: the Acquire Tech icon, which the screen pieces print without a
+        # Tech Discount sprite, so a discount of 0 -- the plain icon of the
+        # Dreadnought space (``AcquireTechAgentAbility`` sets no discount)
+        # [Steam app screen pieces]. Reveal: "If you have three or more Techs:
+        # Trash this card -> 1 Victory Point" [Steam app text], an optional
+        # arrow (a Reveal choice) whose cost is the card's own trash.
+        agent_icons=(AgentIcon.SPICE_TRADE,),
+        agent_effect=PersonalCardAgentEffect.MAY_ACQUIRE_TECH,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("jamis", "Jamis"),
@@ -267,6 +409,19 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("satellite_ban", "Satellite Ban"),
         copies=1,
         acquisition_cost=5,
+        # App table: Spacing Guild and Fremen, their two Agent icons, Reveal 1
+        # Persuasion, no fixed swords. Agent: "[Discard] -> [1 spice] [1
+        # water]", an optional arrow [Rise of Ix p. 7]. Reveal: "Retreat up to
+        # two of your troops." [Steam app screen pieces and text] -- Scout's
+        # sentence, so the same choice (0 to 2 troops, none included).
+        factions=(Faction.SPACING_GUILD, Faction.FREMEN),
+        agent_icons=(AgentIcon.SPACING_GUILD, AgentIcon.FREMEN),
+        agent_effect=PersonalCardAgentEffect.MAY_DISCARD_FOR_ONE_SPICE_AND_ONE_WATER,
+        reveal_persuasion=1,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.MAY_RETREAT_UP_TO_TWO_TROOPS,
+        ),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("sayyadina", "Sayyadina"),
@@ -300,11 +455,44 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         card=ix_imperium_card("spice_trader", "Spice Trader"),
         copies=1,
         acquisition_cost=4,
+        # App table: Fremen, City and Spice Trade icons, Reveal 2 Persuasion and
+        # 1 sword. Agent: "[Fremen] 2 Influence : [Discard] -> [2 spice]" [Steam
+        # app screen pieces and text] -- the Influence threshold of High
+        # Priority Travel's words over an optional Discard arrow
+        # [Rise of Ix p. 7], judged when the cost is paid (OQ-028).
+        factions=(Faction.FREMEN,),
+        agent_icons=(AgentIcon.CITY, AgentIcon.SPICE_TRADE),
+        agent_effect=_SPICE_TRADER,
+        reveal_persuasion=2,
+        reveal_strength=1,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("treachery", "Treachery"),
         copies=2,
         acquisition_cost=6,
+        # App table: no Faction, the four Faction icons, no fixed Reveal values.
+        # Agent: "Gain two Influence instead of one. Trash this card." [Steam
+        # app text] -- Power Play's box (the app's PowerPlayAgentAbility):
+        # the 2 replace the visited Faction space's 1, and the card trashes
+        # itself by its own text, which gives its Unload too ("Treachery는
+        # 자기를 trash한다고 적혀 있어 예외" [Rise of Ix p. 10],
+        # docs/rules/rise-of-ix.md 7). Reveal: "[Unload] [troop] [troop]
+        # Deploy these troops to the Conflict." [Steam app screen pieces and
+        # text] -- two troops from the supply to the Conflict, gained also when
+        # the card is discarded or trashed [Rise of Ix p. 7] (``rules.unload``;
+        # during Combat, OQ-127).
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        ),
+        agent_effect=(
+            PersonalCardAgentEffect.GAIN_TWO_VISITED_FACTION_INFLUENCE_AND_TRASH_SELF
+        ),
+        unload=True,
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("truthsayer", "Truthsayer"),
@@ -339,6 +527,19 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=4,
         infiltration_icons=(AgentIcon.BENE_GESSERIT,),
+        # App table: Bene Gesserit, the Bene Gesserit icon (also its
+        # Infiltration icon), Reveal 1 Persuasion. Reveal: the wild Influence
+        # icon, "Choose a Faction to gain 1 Influence with" [Steam app text]
+        # (a Reveal choice, mandatory). Agent: "[Emperor] 2 Influence: [2
+        # Solari]", "[Spacing Guild] 2 Influence: [draw 1]" and "[Fremen] 2
+        # Influence: [1 water]" [Steam app screen pieces and text] -- three
+        # Influence thresholds, each its own icon judged when it resolves.
+        factions=(Faction.BENE_GESSERIT,),
+        agent_icons=(AgentIcon.BENE_GESSERIT,),
+        agent_effect=_WEB_OF_POWER,
+        reveal_persuasion=1,
+        reveal_choice_effects=(PersonalCardRevealChoiceEffect.GAIN_CHOSEN_INFLUENCE,),
+        play_data_complete=True,
     ),
     ImperiumCardEntry(
         card=ix_imperium_card("weirding_way", "Weirding Way"),
@@ -359,5 +560,28 @@ IX_IMPERIUM_CARDS: Final[tuple[ImperiumCardEntry, ...]] = (
         copies=1,
         acquisition_cost=5,
         promo=True,
+        # App table: no Faction, the Emperor, Spacing Guild, Bene Gesserit and
+        # Fremen icons, no fixed Reveal values, one Signet Ring icon
+        # ("SignetIcons", as the starting Signet Ring's). Agent: "[Signet
+        # Ring]" [Steam app text] -- "you use the Signet Ring ability (with
+        # the corresponding icon) on your Leader" [Main p. 20], the Signet
+        # Ring card's own box. Reveal: "[Unload] Acquire a card that costs [5]
+        # or less." [Steam app screen pieces and text] -- a Row or Reserve
+        # card, not Foldspace (OQ-125), a mandatory Reveal choice; gained also
+        # when the card is discarded or trashed [Rise of Ix p. 7]
+        # (``rules.unload``: a decision icon, so as an arrow's cost it holds
+        # the arrow's right side).
+        agent_icons=(
+            AgentIcon.EMPEROR,
+            AgentIcon.SPACING_GUILD,
+            AgentIcon.BENE_GESSERIT,
+            AgentIcon.FREMEN,
+        ),
+        agent_effect=PersonalCardAgentEffect.LEADER_SIGNET,
+        reveal_choice_effects=(
+            PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE,
+        ),
+        unload=True,
+        play_data_complete=True,
     ),
 )

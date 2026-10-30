@@ -281,7 +281,7 @@ for winning the combat")이고 Intrigue를 보상으로 받았을 때의 FAQ 판
 | --- | --- | --- | --- |
 | Hundro Moritani의 Intelligence | Hundro 좌석이 Intrigue 덱 맨 위 카드 | 공개 영역이나 Hundro의 손에 들어갈 때까지(다른 좌석이 뽑으면 그 손에 있는 것으로 계속 안다), 섞이면 지운다 — OQ-149 (가), Imperium Ceremony도 같다 | 갖는 카드는 손(숨김). 비공개 결정이고 지도자 고르기와 묶지 않는다(lessons 2026-10-05). Epic에서는 모두 뽑은 뒤 |
 | Court Intrigue, Sonic Snoopers | 놓은 좌석이 Intrigue 덱 맨 아래 카드(들) | 그 카드가 뽑힐 때까지(뽑히면 누가 가졌는지 안다), 또는 덱을 다시 섞을 때까지 `[FAQ p. 2]` | 공개하지 않는다 `[Rise of Ix p. 10]` |
-| Ilesa Ecaz의 따로 둔 카드 | Ilesa 좌석 | 둘째 turn에 공개(그 뒤 손에 있지만 공개 경로로 들어온 카드 — OQ-010) | 따로 둔 카드는 손·discard·in play가 아니어서 trash·discard 대상이 아니다(디자이너 판정) |
+| Ilesa Ecaz의 따로 둔 카드 | Ilesa 좌석 | 둘째 turn에 공개(그 뒤 손에 있지만 공개 경로로 들어온 카드 — OQ-010) | 따로 둔 카드는 손·discard·in play가 아니어서 trash·discard 대상이 아니다(디자이너 판정). 행동 로그의 라운드 시작 "따로 둠" 줄은 카드가 돌아온 뒤에도 다른 좌석에 `(비공개)`(OQ-154, 2026-10-30 사용자) |
 | Tech 더미의 다음 타일 | 아무도 | 앞면으로 뒤집을 때까지 | chance. 앞면 타일 셋은 공개 |
 | Spaceport(덱 위에 놓기) | 모두 | 그 카드가 뽑힐 때까지 | 공개 경로로 덱 맨 위가 정해진다 |
 | Discard 아이콘·Unload | 버린 카드는 discard pile에 face-up | | 상대 차례에 버려도(Mohiam) Unload가 열린다 — 상대 좌석의 결정이 내 turn 안에 생긴다 |

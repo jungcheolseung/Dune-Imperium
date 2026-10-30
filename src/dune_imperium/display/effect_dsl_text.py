@@ -29,6 +29,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AtFactionSpace,
     AtLeastOfConditions,
     AtMakerSpace,
+    AtSpaceWithEnemyAgent,
     BlockChosenSpaceForOpponentsNextAgent,
     BoostNextBeneGesseritCard,
     CommanderDiscountThisTurn,
@@ -383,6 +384,10 @@ def condition_text(condition: Condition) -> str:
         case AtFactionSpace():
             # Never printed: a visited Faction's gain needs one (OQ-046).
             return "you are at a Faction space"
+        case AtSpaceWithEnemyAgent():
+            # "If used to send an Agent to a board space with an enemy Agent:"
+            # [Bounty Hunter card].
+            return "you sent an Agent to a board space with an enemy Agent"
         case FactionBond(faction=faction):
             # "If Bene Gesserit Bond:" (display/tokens.py, Southern Elders).
             return f"{_faction_name(faction)} Bond"
@@ -696,6 +701,10 @@ def reward_text(reward: Reward) -> str:
             )
         case AcquireReserveCard(card_id=card_id):
             return f"Acquire {card_id.replace('_', ' ').title()}"
+        case AcquireTech(discount=0, solari_allowed=True):
+            # Appropriate (Rise of Ix): "You may use Solari instead of spice
+            # for this purchase."
+            return "Acquire a Tech tile, paying Solari instead of spice if you like"
         case AcquireTech(discount=0):
             return "Acquire a Tech tile"
         case AcquireTech(discount=discount):

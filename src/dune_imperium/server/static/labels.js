@@ -274,6 +274,7 @@ const ACTION_LABELS = {
   /* Rise of Ix's Unload keeps its English name, which no official Korean
      source translates; the Reveal box is 공개 칸 [Main p. 8]. */
   resolve_unload_icon: "Unload: 공개 칸 효과",
+  decline_unload_icon: "Unload: 공개 칸 효과 쓰지 않음",
   /* Rise of Ix's four board spaces (stage P4c-4): the Dreadnought icon, the
      Acquire Tech icon, Tech Negotiation's two halves and Spaceport's
      Foldspace on top of the deck; the dreadnought and the Negotiator stay
@@ -291,6 +292,17 @@ const ACTION_LABELS = {
   advance_reveal_freighter: "Freighter 한 칸 위로",
   recall_reveal_freighter: "Freighter 회수",
   retreat_reveal_units_for_influence: "부대 3 후퇴 → {influence_any}",
+  /* Ix-Guild Compact's Reveal Tech Negotiation icons (stage P4d). */
+  place_reveal_negotiator: "{reveal_turn}: Negotiator 놓기",
+  /* Boundless Ambition's acquisition by cost cap (stage P4d): revealed, and
+     in its Unload's window. */
+  acquire_reveal_imperium_card: "{reveal_turn}: 비용이 5 이하인 카드 획득",
+  acquire_reveal_reserve_card: "{reveal_turn}: 비용이 5 이하인 카드 획득",
+  acquire_unload_imperium_card: "Unload: 비용이 5 이하인 카드 획득",
+  acquire_unload_reserve_card: "Unload: 비용이 5 이하인 카드 획득",
+  skip_unload_acquisition: "Unload: 획득할 카드 없음 (건너뛰기)",
+  acquire_agent_card_tech: "{tech_tile} 획득",
+  acquire_agent_card_tech_with_solari: "{tech_tile} 획득 ({solari}로 지불)",
   acquire_foldspace_to_deck_top: "Foldspace 카드를 덱 위에",
   place_combat_reward_dreadnought: "dreadnought를 놓을 {control} 공간",
   /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep
@@ -326,6 +338,8 @@ const ACTION_LABELS = {
   place_tech_spy: "파놉티콘: {spy} 배치",
   place_track_spy: "{influence_emperor} 4: {spy} 배치",
   recruit_reveal_troops: "{reveal_turn}: {troop} {recruit}",
+  /* Rise of Ix's Treachery: "Deploy these troops to the Conflict." */
+  deploy_reveal_supply_troops: "{reveal_turn}: {troop} {conflict}에 배치",
   draw_reveal_intrigue: "{reveal_turn}: {intrigue}",
   generate_reveal_specimens: "{reveal_turn}: {specimen}",
   advance_reveal_tleilaxu: "{reveal_turn}: {tleilaxu}",
@@ -519,6 +533,9 @@ const EVENT_LABELS = {
   shipping_troops_recruited: "Freighter 회수: {troop} {recruit}",
   shipping_reward_lapsed: "Freighter 회수 보상: 쓰지 않음",
   card_unloaded: "Unload",
+  unload_icon_lapsed: "Unload: 공개 칸 효과 쓰지 않음",
+  unload_icon_declined: "Unload: 공개 칸 효과 쓰지 않음",
+  unload_acquisition_empty: "Unload: 획득할 카드 없음",
   shipping_influence_unavailable: "Freighter 회수: {influence_any} 불가",
   dreadnought_control_placed: "dreadnought가 {control} 공간에",
   dreadnought_returned: "dreadnought {garrison} 복귀",

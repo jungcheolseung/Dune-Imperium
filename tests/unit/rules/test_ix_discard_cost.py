@@ -362,10 +362,12 @@ def test_a_discard_arrow_pays_spice_and_water_together(
 def test_an_alliance_discard_arrow_needs_the_alliance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Spice Trader: "Fremen Alliance: Discard -> 2 spice" (app screen
-    pieces). "내지 않으면 효과도 없다" [Rise of Ix p. 7]; the condition is
-    judged when the cost is paid (OQ-028), so without the Alliance no card
-    pays it (an unused optional arrow lapses at the turn's end, OQ-095 (2))."""
+    """A discard arrow under "Fremen Alliance:" (a hand-built shape; no Ix card
+    prints it -- Spice Trader's gate is an Influence threshold, see
+    test_ix_imperium_d). "내지 않으면 효과도 없다" [Rise of Ix p. 7]; the
+    condition is judged when the cost is paid (OQ-028), so without the
+    Alliance no card pays it (an unused optional arrow lapses at the turn's
+    end, OQ-095 (2))."""
     _box(
         monkeypatch,
         EffectSection(
