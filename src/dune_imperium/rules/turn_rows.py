@@ -182,28 +182,43 @@ def _replace_frame(state: GameState, index: int, frame: DecisionFrame) -> GameSt
     )
 
 
-def waits_on_turn(state: GameState, player: int) -> bool:
+def waits_on_turn(
+    state: GameState, player: int, *, past_unload_holds: bool = False
+) -> bool:
     """Whether an effect of ``player``'s would wait on its own open turn
     frame (``queue``) rather than open its own window: inside the seat's own
     turn and not in a Scouts line run in it -- a line's frame anywhere above
     the turn frame, also under a frame the line opened (its Contract market,
     its Research direction) -- nor in an arrow's Unload hold above it, whose
     Unload is resolved to the end before the arrow's right side
-    (``rules.unload``, docs/rules/rise-of-ix.md 7)."""
+    (``rules.unload``, docs/rules/rise-of-ix.md 7).
+
+    ``past_unload_holds``: an effect that is no part of the held Unload
+    (Tessia's first Snooper reward, ``rules.snoopers``) waits on the turn
+    even under a hold, offered once the hold is closed and the turn frame is
+    on top again; a Scouts line still keeps it in its window."""
 
     index = own_turn_frame_index(state, player)
     return index is not None and not any(
-        frame.kind in _SCOUTS_KINDS or is_unload_hold(frame)
+        frame.kind in _SCOUTS_KINDS
+        or (is_unload_hold(frame) and not past_unload_holds)
         for frame in state.decision_stack[index + 1 :]
     )
 
 
-def queue(state: GameState, player: int, item: Pending) -> GameState | None:
+def queue(
+    state: GameState,
+    player: int,
+    item: Pending,
+    *,
+    past_unload_holds: bool = False,
+) -> GameState | None:
     """Put ``item`` on ``player``'s own open turn frame, or return None
     where it opens its own window instead: outside the seat's own turn, or
-    inside a Scouts line run in it."""
+    inside a Scouts line run in it, or -- unless ``past_unload_holds`` --
+    inside an Unload hold above it (``waits_on_turn``)."""
 
-    if not waits_on_turn(state, player):
+    if not waits_on_turn(state, player, past_unload_holds=past_unload_holds):
         return None
     index = own_turn_frame_index(state, player)
     assert index is not None

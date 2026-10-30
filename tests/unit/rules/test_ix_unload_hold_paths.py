@@ -10,8 +10,10 @@ Fleet's Freighter) holds the spice until it is answered (``rules.unload``'s
 hold, the payer ``snooper_discard``), in her own turn's row and in the
 ``OPTIONAL_DISCARD`` window outside it alike; a plain box (Water Peddler's
 water) is still paid inside the discard, before the spice. The hold also
-opens above another seat's waiting frame and gives it back unchanged, and
-inside a cost's own hold it stacks a second hold that closes first.
+opens above another seat's waiting frame and gives it back unchanged. Reached
+inside a cost's own hold in her turn, the reward waits as a turn row until
+that hold has closed (OQ-112 (4)); two holds stacked by hand still pay each
+side once, the inner first.
 
 The two measurement games that crashed before the payer existed ("a cost's
 Unload holds a decision but its path pushed no hold") are replayed whole too.
@@ -43,7 +45,8 @@ from dune_imperium.core import (
     Transition,
 )
 from dune_imperium.core.state import canonical_state_hash
-from dune_imperium.rules import UprisingRulesEngine, unload
+from dune_imperium.rules import UprisingRulesEngine, turn_rows, unload
+from dune_imperium.rules.card_discard import discard_personal_card_from_hand
 from dune_imperium.rules.effect_steps import first_step
 from dune_imperium.rules.frames import FrameKind, is_unload_hold
 from dune_imperium.rules.influence import gain_faction_influence
@@ -331,7 +334,7 @@ def test_in_her_turn_water_peddler_pays_its_box_inside_the_discard() -> None:
     ]
 
 
-# --- Inside a cost's hold: two holds stacked -----------------------------------
+# --- Reached inside a cost's hold in her turn: a row after the hold -----------
 
 
 def _drawn(events: tuple[GameEvent, ...]) -> list[GameEvent]:
@@ -340,50 +343,207 @@ def _drawn(events: tuple[GameEvent, ...]) -> list[GameEvent]:
     return [event for event in events if event.kind == "agent_card_effect_resolved"]
 
 
-def test_a_snooper_hold_inside_a_cost_s_hold_pays_each_side_once_in_order() -> None:
+class _Play:
+    """Seat 0's steps from ``start``, with every event since ``events`` was
+    last cleared."""
+
+    def __init__(self, start: GameState) -> None:
+        self.start = start
+        self.state = start
+        self.steps: tuple[DomainAction, ...] = ()
+        self.events: tuple[GameEvent, ...] = ()
+
+    def clear(self) -> None:
+        self.events = ()
+
+    def take(self, action_id: str, **arguments: object) -> GameState:
+        result, taken = _steps_of(self.state, action_id, **arguments)
+        self.state, self.steps = result.state, (*self.steps, *taken)
+        self.events = (*self.events, *result.events)
+        return self.state
+
+
+def _recalled_into_her_token() -> _Play:
     """Truthsayer's "[Discard] -> [draw 1 card]" paid with Freighter Fleet
     holds the draw (rise-of-ix.md 153: "Unload를 끝까지 해결한 뒤 오른쪽으로
-    간다"). Its Freighter recalled from space 2 owes that space's Influence;
-    raising Fremen to 2 reaches Tessia's first Snooper token (rise-of-ix.md
-    235: "① discard → spice 1"), and discarding Boundless Ambition for it
-    stacks a second hold above the first. The spice comes once, after the
-    acquisition; the draw neither comes early nor is lost: once, after the
-    recall's last reward. Saved and loaded with both holds open the game is
-    the same; undoing the Snooper discard takes its hold back (taking it
-    again opens the same one), and undoing Truthsayer's discard leaves no
-    hold."""
+    간다"); its Freighter recalled from space 2 owes that space's Influence,
+    and raising Fremen to 2 reaches Tessia's first Snooper token
+    (rise-of-ix.md 235: "① discard → spice 1") inside the hold."""
 
-    start = _give(
-        _start(),
-        0,
-        (TRUTHSAYER, FLEET, AMBITION),
-        influence=Influence(fremen=1),
-        resources=NONE,
-        freighter_space=2,
+    play = _Play(
+        _give(
+            _start(),
+            0,
+            (TRUTHSAYER, FLEET, AMBITION),
+            influence=Influence(fremen=1),
+            resources=NONE,
+            freighter_space=2,
+        )
     )
-    state = start
-    steps: tuple[DomainAction, ...] = ()
-    events: tuple[GameEvent, ...] = ()
+    play.take("choose_agent_card", card_id=TRUTHSAYER)
+    play.take("place_agent", space_id="wealth")
+    play.take("discard_agent_card", card_id=FLEET)
+    assert _holds(play.state) == 1
+    play.take("recall_freighter")
+    play.take("resolve_shipping_reward", effect="influence", faction="fremen")
+    state = play.state
+    assert state.players[0].influence.fremen == 2
+    assert "snooper_token_reached" in [event.kind for event in play.events]
+    return play
 
-    def take(action_id: str, **arguments: object) -> GameState:
-        nonlocal state, steps, events
-        result, taken = _steps_of(state, action_id, **arguments)
-        state, steps = result.state, (*steps, *taken)
-        events = (*events, *result.events)
-        return state
 
-    take("choose_agent_card", card_id=TRUTHSAYER)
-    placed, before_outer = take("place_agent", space_id="wealth"), steps
-    take("discard_agent_card", card_id=FLEET)
+def _snooper_rows(state: GameState) -> set[str]:
+    return {
+        str(dict(row.arguments)["card_id"])
+        for row in ENGINE.whole_actions(state, 0)
+        if row.action_id == SNOOPER_ROW
+    }
+
+
+def _row_after_the_hold() -> tuple[_Play, int]:
+    """The first reward waits on her turn frame, not in a window: "차례 안의
+    효과는 차례의 줄이라는 원칙(OQ-095 (2), 정리-2b)과 같다. 차례 밖(...)은
+    완수한 자리의 창 그대로다" (open-questions.md OQ-112 (4)). The recall's
+    rewards are the hold's Unload and come first; once the hold closes, the
+    draw is paid once and the row is offered. Returns the play there and the
+    hand size before the draw."""
+
+    play = _recalled_into_her_token()
+    state = play.state
+    stack = state.decision_stack
+    assert not any(frame.kind is FrameKind.OPTIONAL_DISCARD for frame in stack)
+    assert [frame.kind for frame in stack] == [
+        FrameKind.AGENT_EFFECTS,
+        FrameKind.UNLOAD_ICONS,
+        FrameKind.SHIPPING_REWARD_ICONS,
+    ]
     assert _holds(state) == 1
-    take("recall_freighter")
-    take("resolve_shipping_reward", effect="influence", faction="fremen")
-    window = state
-    before_inner = steps
-    assert window.decision_stack[-1].kind is FrameKind.OPTIONAL_DISCARD
-    assert window.players[0].influence.fremen == 2
-    nested = take(SNOOPER_ROW, card_id=AMBITION)
-    assert _holds(nested) == 2
+    assert turn_rows.SNOOPER_DISCARD in [
+        kind for kind, _, _ in turn_rows.pending(stack[0])
+    ]
+    assert not _snooper_rows(state)
+    assert {row.action_id for row in _rows(state)} == {"resolve_shipping_reward"}
+    hand = len(state.players[0].hand)
+    play.take("resolve_shipping_reward", effect="dividends")
+    assert _holds(play.state) == 1 and not _drawn(play.events)
+    assert not _snooper_rows(play.state)
+    play.take("resolve_shipping_reward", effect="recruit")
+    state = play.state
+    assert _holds(state) == 0
+    assert _top(state) is FrameKind.AGENT_EFFECTS
+    assert len(state.players[0].hand) == hand + 1
+    assert len(_drawn(play.events)) == 1
+    assert _snooper_rows(state) == set(state.players[0].hand)
+    assert AMBITION in state.players[0].hand
+    assert not _snooper_spice(play.events)
+    return play, hand
+
+
+def test_a_first_reward_reached_inside_her_cost_s_hold_waits_as_a_turn_row() -> None:
+    """Taken after the hold, the row with Boundless Ambition holds the spice
+    in a hold of its own (not nested: the cost's hold is closed), and the
+    spice comes once, after the acquisition. Saved and loaded inside that
+    hold the game is the same; undoing the discard gives the row back, and
+    taking it again opens the same hold."""
+
+    play, hand = _row_after_the_hold()
+    offered = play.state
+    before = play.steps
+    play.clear()
+    play.take(SNOOPER_ROW, card_id=AMBITION)
+    held = play.state
+    assert _holds(held) == 1
+    assert [frame.kind for frame in held.decision_stack] == [
+        FrameKind.AGENT_EFFECTS,
+        FrameKind.UNLOAD_ICONS,
+        FrameKind.UNLOAD_ICONS,
+    ]
+    assert dict(held.decision_stack[-1].context)[unload.UNLOAD_ACQUIRE_KEY] == (
+        AMBITION
+    )
+    assert held.players[0].resources.spice == 0
+    assert not _snooper_spice(play.events)
+    check_observation_privacy(held)
+    loaded = _loaded(play.start, play.steps)
+    assert canonical_state_hash(loaded) == canonical_state_hash(held)
+    undone = _loaded(play.start, before)
+    assert canonical_state_hash(undone) == canonical_state_hash(offered)
+    assert _holds(undone) == 0 and AMBITION in _snooper_rows(undone)
+    again, _ = _steps_of(undone, SNOOPER_ROW, card_id=AMBITION)
+    assert canonical_state_hash(again.state) == canonical_state_hash(held)
+    play.state = loaded
+    play.take("acquire_unload_reserve_card", card_id=LIAISON)
+    after = play.state
+    assert _holds(after) == 0
+    assert _top(after) is FrameKind.AGENT_EFFECTS
+    assert after.players[0].resources.spice == 1
+    _after(play.events, "card_acquired")
+    assert not _snooper_rows(after)
+    assert len(after.players[0].hand) == hand
+    replayed = _loaded(play.start, play.steps)
+    assert canonical_state_hash(replayed) == canonical_state_hash(after)
+
+
+def test_a_first_reward_reached_inside_her_cost_s_hold_lapses_unused() -> None:
+    """Not taken, the row holds no turn end back and the turn-end press
+    lapses it (OQ-095 (2)): no spice, the card stays in her hand."""
+
+    play, _ = _row_after_the_hold()
+    play.take("resolve_board_effect", effect="resources")
+    play.take("resolve_faction_influence")
+    assert _snooper_rows(play.state)
+    play.clear()
+    play.take("finish_agent_turn")
+    kinds = [event.kind for event in play.events]
+    assert kinds.count("snooper_discard_lapsed") == 1
+    assert not _snooper_spice(play.events)
+    assert play.state.players[0].resources.spice == 0
+    assert AMBITION in play.state.players[0].hand
+    assert not _snooper_rows(play.state)
+
+
+def test_two_holds_stacked_by_construction_pay_each_side_once_in_order() -> None:
+    """No legal play found nests a Snooper hold today: in her own turn the
+    reward waits as a row (above); outside it the costs paid at once are her
+    turn's (Agent boxes, Tech flips, Ixian Probe's Plot) or the Snooper
+    window itself, whose recall can only reach a later token. Stacked by
+    hand inside the
+    cost's hold -- Boundless Ambition discarded for the Snooper payer above
+    the recall's rewards -- the inner hold closes first and pays its spice
+    once, after the acquisition; the outer draw is neither paid early nor
+    lost: once, after the recall's last reward. A save and load with both
+    holds open is the same game."""
+
+    play = _Play(
+        _give(
+            _start(),
+            0,
+            (TRUTHSAYER, FLEET, AMBITION),
+            influence=Influence(),
+            resources=NONE,
+            freighter_space=2,
+        )
+    )
+    play.take("choose_agent_card", card_id=TRUTHSAYER)
+    play.take("place_agent", space_id="wealth")
+    play.take("discard_agent_card", card_id=FLEET)
+    play.take("recall_freighter")
+    play.take("resolve_shipping_reward", effect="influence", faction="fremen")
+    source = "test:snooper"
+    discarded = discard_personal_card_from_hand(
+        play.state, 0, AMBITION, source=source, unload_at_once=True
+    )
+    assert unload.unload_holds(discarded.events)
+    held = unload.push_unload_hold(
+        discarded.state,
+        0,
+        source=source,
+        payer="snooper_discard",
+        values={"source": "test"},
+    )
+    nested = unload.settle_unloads(
+        RuleResult(state=held, events=discarded.events)
+    ).state
     assert [frame.kind for frame in nested.decision_stack] == [
         FrameKind.AGENT_EFFECTS,
         FrameKind.UNLOAD_ICONS,
@@ -398,43 +558,29 @@ def test_a_snooper_hold_inside_a_cost_s_hold_pays_each_side_once_in_order() -> N
         True,
         False,
     ]
-    assert dict(nested.decision_stack[-1].context)[unload.UNLOAD_ACQUIRE_KEY] == (
-        AMBITION
-    )
-    assert nested.players[0].resources.spice == 0
     hand = len(nested.players[0].hand)
-    assert not _snooper_spice(events) and not _drawn(events)
     check_observation_privacy(nested)
-    loaded = _loaded(start, steps)
-    assert canonical_state_hash(loaded) == canonical_state_hash(nested)
-    undone = _loaded(start, before_inner)
-    assert canonical_state_hash(undone) == canonical_state_hash(window)
-    assert _holds(undone) == 1
-    again, _ = _steps_of(undone, SNOOPER_ROW, card_id=AMBITION)
-    assert canonical_state_hash(again.state) == canonical_state_hash(nested)
-    outer_undone = _loaded(start, before_outer)
-    assert canonical_state_hash(outer_undone) == canonical_state_hash(placed)
-    assert _holds(outer_undone) == 0
-    state, events = loaded, events[:0]
-    take("acquire_unload_reserve_card", card_id=LIAISON)
-    assert _holds(state) == 1
-    assert _top(state) is FrameKind.SHIPPING_REWARD_ICONS
-    assert state.players[0].resources.spice == 1
-    _after(events, "card_acquired")
-    assert len(state.players[0].hand) == hand and not _drawn(events)
-    take("resolve_shipping_reward", effect="spice")
-    assert _holds(state) == 1
-    assert len(state.players[0].hand) == hand and not _drawn(events)
-    take("resolve_shipping_reward", effect="recruit")
+    play = _Play(nested)
+    play.take("acquire_unload_reserve_card", card_id=LIAISON)
+    assert _holds(play.state) == 1
+    assert _top(play.state) is FrameKind.SHIPPING_REWARD_ICONS
+    assert play.state.players[0].resources.spice == 1
+    _after(play.events, "card_acquired")
+    loaded = _loaded(nested, play.steps)
+    assert canonical_state_hash(loaded) == canonical_state_hash(play.state)
+    play.take("resolve_shipping_reward", effect="spice")
+    assert _holds(play.state) == 1
+    assert len(play.state.players[0].hand) == hand and not _drawn(play.events)
+    play.take("resolve_shipping_reward", effect="recruit")
+    state = play.state
     assert _holds(state) == 0
     assert _top(state) is FrameKind.AGENT_EFFECTS
     assert len(state.players[0].hand) == hand + 1
     assert state.players[0].resources.spice == 3
-    kinds = [event.kind for event in events]
-    (drawn,) = _drawn(events)
-    assert kinds.index("shipping_troops_recruited") < events.index(drawn)
-    assert len(_snooper_spice(events)) == 1
-    assert canonical_state_hash(_loaded(start, steps)) == canonical_state_hash(state)
+    kinds = [event.kind for event in play.events]
+    (drawn,) = _drawn(play.events)
+    assert kinds.index("shipping_troops_recruited") < play.events.index(drawn)
+    assert len(_snooper_spice(play.events)) == 1
 
 
 # --- Outside her turn: the OPTIONAL_DISCARD window -----------------------------
