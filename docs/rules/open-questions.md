@@ -179,6 +179,7 @@
 | [OQ-151](#oq-151--combat-해결-중-shipping-회수로-recruit한-troop을-troop-transports로-배치할-수-있는가-rise-of-ix) | Combat 해결 중 Shipping 회수로 recruit한 troop을 Troop Transports로 배치할 수 있는가 (Rise of Ix) | `DECIDED` |
 | [OQ-152](#oq-152--일부만-채워지는-recruit-부족분은-어느-troop부터-채우는가) | 일부만 채워지는 recruit 부족분은 어느 troop부터 채우는가 | `DECIDED` |
 | [OQ-153](#oq-153--한-효과가-여러-진영의-influence를-함께-줄-때의-순서-rise-of-ix) | 한 효과가 여러 진영의 Influence를 함께 줄 때의 순서 (Rise of Ix) | `DECIDED` |
+| [OQ-154](#oq-154--ilesa-ecaz가-따로-둔-카드가-돌아온-뒤-라운드-시작-로그-줄-rise-of-ix) | Ilesa Ecaz가 따로 둔 카드가 돌아온 뒤 라운드 시작 로그 줄 (Rise of Ix) | `DECIDED` |
 
 ## OQ-001 — Endgame 처리 순서와 priority
 
@@ -3261,8 +3262,9 @@
 
 ## OQ-153 — 한 효과가 여러 진영의 Influence를 함께 줄 때의 순서 (Rise of Ix)
 
-- 상태: `DECIDED` (2026-10-30 밤, 기존 원칙 적용 — OQ-027·OQ-112·OQ-141과 2026-10-19 상시 지시 "원칙대로"; project convention, 공식 규칙이
-  아니다. 사용자 확인 전이며 뒤집히면 고친다)
+- 상태: `DECIDED` — 순서는 **2026-10-30 사용자 확정**(조정자 경유): **"주인이 순서 고르게 해야지"**. 처음에는 같은 날 밤 기존 원칙(OQ-027·OQ-112·
+  OQ-141과 2026-10-19 상시 지시 "원칙대로")으로 정했다. project convention이고 공식 규칙이 아니다.
+  Duplicity로 같은 진영을 잃고 다시 얻는 것(아래 "같이 정한 것")도 같은 날 사용자가 **허용**으로 확정했다(조정자 경유).
 - 계기: Tessia Vernius의 Careful Observation — "그 token에 도달할 때마다 Snooper track의 맨 위 덮이지 않은 보상을 받는다(① discard → spice 1,
   ② 그 track의 4칸 보너스, ③ 그 track에 Influence 1, ④ ②와 ③)" (rise-of-ix.md 10). 한 효과가 두 진영 이상에 Influence를 주어 token 둘에
   닿으면, 어느 진영이 먼저 닿느냐에 따라 어느 track이 ②·③을 받는지가 달라진다. 그런 효과: Quid Pro Quo("Gain one Influence with each Faction
@@ -3280,3 +3282,17 @@
   Shifting Allegiances 판정, imperium-base.md 16). Snooper token이 남은 진영은 Tessia가 Influence 1 이하이므로 잃고 다시 얻어도 결과는 같다.
 - 조합: Bloodlines의 Panopticon(Endgame, Influence 1 이하인 진영마다 Influence 1, OQ-044의 좌석 순서 자동 해결)이 Tessia와 한 판에 들 수
   있는지는 구현 때 확인한다. 들 수 있으면 같은 원칙(진영마다 줄)을 따르고, 못 들면 그대로 둔다.
+
+## OQ-154 — Ilesa Ecaz가 따로 둔 카드가 돌아온 뒤 라운드 시작 로그 줄 (Rise of Ix)
+
+- 상태: `DECIDED` (2026-10-30 사용자 결정, 조정자 경유: "계속 (비공개)"; project convention, 공식 규칙이 아니다)
+- 질문: Ilesa Ecaz의 One Step Ahead로 Round Start에 따로 둔 카드는 둘째 turn을 시작할 때 공개해 손으로 돌아온다(rise-of-ix.md 10, 13 —
+  "Ilesa Ecaz의 따로 둔 카드 | Ilesa 좌석 | 둘째 turn에 공개"). 그 뒤에도 행동 로그의 라운드 시작 "따로 둠" 줄(`set_aside_leader_card`, 서버 로그에서
+  봉인한 결정 — `137d582f`)을 다른 좌석에 `(비공개)`로 두는가, 공개된 카드 이름으로 바꿔 보이는가.
+- 문서: 룰북·FAQ는 로그를 말하지 않는다. OQ-010(한 번 공개된 정보는 다시 볼 수 있어야 한다)은 정보를 다시 볼 수 있게 하라는 것이지, 지난 로그 줄을
+  고쳐 쓰라는 것이 아니다.
+- 판정: **계속 `(비공개)`.** 공개된 사실은 둘째 turn 시작의 "돌려받음" 로그 줄과 화면(공개 손 카드, OQ-010)으로 이미 모든 좌석에 보이므로 정보는
+  같고, 지난 로그 줄을 소급해 고치지 않는다. 끝난 판의 다시 보기는 지금처럼 모두 보인다.
+- 구현: 바꿀 것 없음 — 봉인한 로그 줄은 그 줄 자체로 가린다(`server/session_log.py` `SEALED_ACTION_IDS`). 시험:
+  `tests/server/test_ix_leaders_log.py::test_the_set_aside_can_be_taken_back_but_its_return_cannot`(돌아온 뒤에도 그 줄은 다른 좌석에 `(비공개)`),
+  P5의 `ix_screens` E2E.

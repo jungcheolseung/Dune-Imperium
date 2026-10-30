@@ -139,7 +139,10 @@ def test_a_known_hand_card_set_aside_stays_sealed() -> None:
 def test_the_set_aside_can_be_taken_back_but_its_return_cannot() -> None:
     """The pick is hers to undo (it reveals nothing); the step whose rules
     return the card at her second turn's start is a reveal, whoever took it,
-    so no undo reaches past it."""
+    so no undo reaches past it. The Round Start line that set it aside stays
+    "(비공개)" for the other seats after the card returns (OQ-154, user
+    decision 2026-10-30 "계속 (비공개)": the return's own line and her public
+    hand already show it; an old line is not rewritten)."""
 
     engine, state = _ilesa()
     after, entries, card = _set_aside(engine, state)
@@ -170,6 +173,10 @@ def test_the_set_aside_can_be_taken_back_but_its_return_cannot() -> None:
             assert set_aside_id(0) not in known_card_seats(result.state)
             assert reveals_hidden_information(state, result.state, actor)
             assert reveals_hidden_information(state, result.state, 0)
+            for seat in (1, 2, 3):
+                other: Any = _log_entry_json(0, entries[0], seat, finished=False)
+                assert other["arguments"] == {"card_id": "(비공개)"}
+                assert card not in str(other)
             return
         state = result.state
     raise AssertionError("the set-aside card never returned")
