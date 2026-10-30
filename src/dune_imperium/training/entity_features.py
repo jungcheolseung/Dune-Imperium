@@ -13,8 +13,11 @@ booleans as 0/1, an enum member as a one-hot column named after it, a tuple
 as the sum of its items' features (and its length), and a dataclass field by
 field, with a column marking its class (so ``GainResources`` and
 ``GainCombatStrength`` rewards are told apart). Names, ids and sources carry
-no feature. Each vocabulary keeps the columns some member uses, scaled by
-the column's largest magnitude so every feature lies in ``[-1, 1]``.
+no feature. Each vocabulary keeps the columns some member uses, each
+divided by its declared scale (``entity_scales``, user decision 2026-10-30
+"단위 고정"): the largest magnitude the entities gave it when the table was
+frozen, so a later entity never rescales the rows before it and may read past
+1 instead.
 
 What an entity *does* is read from its printed ability records
 (docs/composed-effects-plan.md 4.4, stage A8): the same reflection over each
@@ -124,6 +127,7 @@ from dune_imperium.content.uprising.trigger_abilities import (
     discard_ability,
     trash_ability,
 )
+from dune_imperium.training.entity_scales import DECLARED_SCALES
 
 FEATURE_VERSION: Final = 2
 # Fields that name or cite an entity rather than describe what it does.
@@ -175,9 +179,10 @@ class Vocabulary:
     name: str
     ids: tuple[str, ...]
     columns: tuple[str, ...]
-    # ``[len(ids), len(columns)]``, every value in [-1, 1].
+    # ``[len(ids), len(columns)]``; past [-1, 1] only where a later entity
+    # outgrows a column's declared scale (``entity_scales``).
     features: np.ndarray
-    # The largest magnitude each column was divided by.
+    # The declared scale each column was divided by (``entity_scales``).
     scales: tuple[float, ...] = ()
 
     @property
@@ -217,6 +222,18 @@ def _table(name: str, ids: tuple[str, ...], rows: list[dict[str, float]]) -> Voc
         for tier in (original, uprising):
             own = np.abs(matrix[tier]).max(axis=0) if tier else np.zeros_like(scale)
             scale = np.where(own > 0, own, scale)
+    # Every column's declared scale wins (``entity_scales``, user decision
+    # 2026-10-30 "단위 고정"): a later entity reads past 1 rather than
+    # rescaling the rows before it. The computed scale above only stands in
+    # for a column not declared yet, which a test refuses.
+    declared = DECLARED_SCALES.get(name, {})
+    scale = np.array(
+        [
+            declared.get(column, float(computed))
+            for column, computed in zip(columns, scale, strict=True)
+        ],
+        dtype=np.float32,
+    )
     keep = scale > 0
     matrix = matrix[:, keep] / scale[keep]
     kept = tuple(column for column, used in zip(columns, keep, strict=True) if used)

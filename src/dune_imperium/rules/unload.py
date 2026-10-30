@@ -21,13 +21,31 @@ How the icons are taken:
 - Triggered by a cost: "비용 → 효과 줄의 왼쪽(비용)이 Unload를 일으키면
   Unload를 끝까지 해결한 뒤 오른쪽으로 간다" (designer ruling, rise-of-ix.md 7).
   The cost's caller passes ``at_once``: the box is paid inside the payment,
-  before the line's reward (``pay_unload``).
+  before the line's reward. A decision icon (``is_decision_icon``: the
+  Freighter's move, a Tech Negotiation, an acquisition) cannot be paid
+  there: the announcement holds it (``unload_holds``), and the caller stops
+  before its right side, writes its frame as the cost left it and pushes the
+  hold (``push_unload_hold``) naming how to pay the rest later (a payer
+  registered with ``hold_payer`` and its plain values). The engine then
+  opens the held icons' windows above the hold -- every card's, when the cost
+  is several cards (two discarded together): their icons then share one
+  window of rows and the owner picks the order (``_open_held``); while any is
+  open, they are the seat's only rows, and an effect of the seat opens its
+  own window rather than waiting on its turn (``turn_rows.waits_on_turn``),
+  so the Unload is resolved to the end. Once the hold is on top again (and
+  no immediate owed draw of its seat waits) it closes and its payer pays the
+  right side as the path would have (``settle_unloads``). A box with no
+  decision icon is paid as before.
 - Triggered by an effect inside its owner's own turn: each icon waits on the
   turn's frame as a mandatory row (``turn_rows.UNLOAD_ICON``), as a Contract's
-  icons do (OQ-112 (4)), and holds the turn's end until taken.
+  icons do (OQ-112 (4)), and holds the turn's end until taken; a decision
+  icon's row opens its window, and a "may" one lapses at the turn-end press
+  (``turn_rows.OPTIONAL_UNLOAD_ICONS``, OQ-095 (2)).
 - Outside its owner's turn (an opponent's effect discards it, a Combat reward
   trashes it): the window ``FrameKind.UNLOAD_ICONS``, one row per icon, in the
-  owner's order.
+  owner's order; a decision icon opens its own window above it (the
+  Freighter's ``FrameKind.FREIGHTER_MOVE``, an acquisition's Unload window
+  marked ``UNLOAD_ACQUIRE_KEY``).
 
 The transitions only announce an Unload owed by an effect (the event
 ``card_unloaded`` with ``pending``); the engine queues its rows or opens its
@@ -35,40 +53,74 @@ window once the action's handler is done (``settle_unloads``), because the
 callers write their own frame back after the transition and would drop a
 row or a window put there before.
 
-Only Reveal boxes of plain resource gains are wired (Water Peddler, CHOAM
-Delegate). A box with a condition, a choice, a cost, Persuasion or swords
-belongs to its card's brief (Esmar Tuek, Freighter Fleet, Guild Accord, In The
-Shadows, Ix-Guild Compact, Treachery -- whose Combat-reward case is OQ-127 --
-and the promo Boundless Ambition): ``unload_icons`` refuses it.
+Wired: Reveal boxes of plain resource gains (Water Peddler, CHOAM Delegate,
+Esmar Tuek), of a printed Faction's Influence (In The Shadows), of troops
+deployed from the supply (Treachery, also during Combat, OQ-127), and the
+Reveal choices that are decisions: the Freighter icon (Freighter Fleet), two
+Tech Negotiation icons (Ix-Guild Compact) and an acquisition by cost cap (the
+promo Boundless Ambition, whose window offers the Row and the Reserve,
+OQ-125, with the deck-top twins of Recruitment Mission and Spaceport, and
+whose acquired card's acquire box resolves as any acquisition's does) -- also
+on a line with a condition the owner's seat alone settles (Guild Accord's
+"[Spacing Guild] Alliance: [3 spice]"). A conditioned icon is gained when its
+condition holds as the card is discarded or trashed: the Unload happens then
+("trash되는 카드의 Unload는 trash되는 중에 일어난다"), and the rows and the
+window only let the owner order what it gained. A box with another choice, a
+cost, Persuasion or swords is not wired: ``unload_icons`` refuses it.
 """
 
+import json
+from collections.abc import Callable, Mapping
 from copy import replace
+from dataclasses import dataclass
 from functools import cache
 from typing import Final
 
-from dune_imperium.content.uprising.effect_dsl import GainResources
+from dune_imperium.content.uprising.board import Faction
+from dune_imperium.content.uprising.effect_dsl import (
+    AcquireCardUpTo,
+    CommandReached,
+    Condition,
+    DeployFromSupply,
+    FactionBond,
+    Freighter,
+    GainInfluence,
+    GainResources,
+)
 from dune_imperium.content.uprising.imperium import (
     IMPERIUM_CARDS_BY_ID,
     imperium_card_for_instance,
 )
 from dune_imperium.content.uprising.reveal_abilities import REVEAL_GAIN_ABILITIES
-from dune_imperium.core.actions import DomainAction
+from dune_imperium.content.uprising.reveal_choice_abilities import (
+    reveal_choice_ability,
+)
+from dune_imperium.content.uprising.types import PersonalCardRevealChoiceEffect
+from dune_imperium.core.actions import ActionValue, DomainAction
 from dune_imperium.core.decisions import DecisionFrame, PlayerDecision
 from dune_imperium.core.engine import RuleResult
 from dune_imperium.core.events import GameEvent
 from dune_imperium.core.state import GameState
 from dune_imperium.rules import turn_rows
+from dune_imperium.rules.conditions import owner_condition_holds
 from dune_imperium.rules.frames import (
+    UNLOAD_HOLD_KEY,
     FrameKind,
+    context_int,
     context_str,
+    draw_is_immediate,
+    is_unload_hold,
     owned_top_frame,
     replace_player,
     replace_top_frame,
     with_context,
 )
 from dune_imperium.rules.gain_events import resources_gained_event
+from dune_imperium.rules.influence import gain_faction_influence
 
 UNLOAD_ICON_ACTION: Final = "resolve_unload_icon"
+UNLOAD_DECLINE_ACTION: Final = "decline_unload_icon"
+"""Leave a "may" icon of an Unload window unused (its Tech Negotiation)."""
 UNLOADED_EVENT: Final = "card_unloaded"
 UNLOAD_ICONS_KEY: Final = "unload_icons"
 """The window's icons still owed: ``"<card instance>|<icon>"`` joined by
@@ -76,54 +128,234 @@ commas, in printed order."""
 UNLOAD_PROMPT: Final = "Gain your Unload card's Reveal box"
 
 _RESOURCES: Final = ("solari", "spice", "water")
+INFLUENCE_ICON_PREFIX: Final = "influence_"
+"""An icon raising one printed Faction's Influence: ``influence_<faction>``
+(In The Shadows' "[Bene Gesserit Influence]")."""
+DEPLOY_ICON: Final = "deploy"
+"""Treachery's "[troop] [troop] Deploy these troops to the Conflict.": troops
+from the supply to the Conflict, one icon for the printed sentence."""
+FREIGHTER_ICON: Final = "freighter"
+"""The Freighter icon: "you may move your Freighter in one of two ways"
+[Rise of Ix p. 5] -- a decision, answered in ``FrameKind.FREIGHTER_MOVE``."""
+NEGOTIATOR_ICON: Final = "negotiator"
+"""The Tech Negotiation icon: "you may take a troop from your supply and
+place it on the Ix board" [Rise of Ix p. 4] -- a decision, answered by its
+own row (and, in a window, by its refusal)."""
+ACQUIRE_ICON: Final = "acquisition"
+"""Boundless Ambition's "Acquire a card that costs [5] or less." [Steam app
+text]: a decision, answered in an acquisition window of its own
+(``UNLOAD_ACQUIRE_KEY``); its amount is the cost cap. (Not "acquire", which
+is the id of an Uprising Contract.)"""
+UNLOAD_ACQUIRE_KEY: Final = "unload_acquire"
+"""Marks an Unload window that is an ``ACQUIRE_ICON``'s acquisition: the card
+instance whose box it is (``max_cost`` beside it)."""
+UNLOAD_ACQUIRE_PROMPT: Final = "Acquire a card that costs 5 or less"
+_WINDOW_ICONS: Final = frozenset({FREIGHTER_ICON, ACQUIRE_ICON})
+"""The decision icons a window of their own answers."""
+_DECISION_ICONS: Final = frozenset({FREIGHTER_ICON, NEGOTIATOR_ICON, ACQUIRE_ICON})
+_HELD_KEY: Final = "held"
+"""The ``card_unloaded`` payload's decision icons a cost held (comma-joined,
+only when there are any)."""
+UNLOAD_BY_CARD_KEY: Final = "unload_by_card"
+"""Marks an Unload window that offers the icons several cards' Unloads held
+in one cost (``_open_held``): its rows name their cards, and each icon's
+events are named after its own card."""
+_PAYER_KEY: Final = "unload_hold_payer"
+_VALUES_KEY: Final = "unload_hold_values"
 _FRAME: Final = "Unload frame"
 
 type UnloadIcon = tuple[str, int]
 """One icon of an Unload box: the resource it gains and how many."""
 
+_UNMET_KEY: Final = "unmet"
+"""The ``card_unloaded`` payload's icons whose condition failed as the card
+was discarded or trashed (comma-joined, only when there are any)."""
+
+
+@dataclass(frozen=True, slots=True)
+class _BoxIcon:
+    """One icon of an Unload box and the condition of its printed line."""
+
+    name: str
+    amount: int
+    condition: Condition | None
+
+
+def is_decision_icon(name: str) -> bool:
+    """Whether an Unload icon is the owner's decision, answered in a window
+    of its own (one per icon, so a box may print two), not paid by a row."""
+
+    return name in _DECISION_ICONS
+
+
+# The Reveal choices an Unload box may print, as its decision icons.
+_CHOICE_ICONS: Final = {
+    PersonalCardRevealChoiceEffect.MAY_MOVE_FREIGHTER: (FREIGHTER_ICON,),
+    # Ix-Guild Compact: two Tech Negotiation icons.
+    PersonalCardRevealChoiceEffect.MAY_PLACE_TWO_NEGOTIATORS: (
+        NEGOTIATOR_ICON,
+        NEGOTIATOR_ICON,
+    ),
+    # Boundless Ambition: its acquisition, the record's cost cap its amount.
+    PersonalCardRevealChoiceEffect.ACQUIRE_CARD_UP_TO_FIVE: (ACQUIRE_ICON,),
+}
+
+
+def _choice_amount(choice: PersonalCardRevealChoiceEffect, name: str) -> int:
+    """How much a decision icon of a Reveal choice gives: an acquisition's
+    cost cap (its record's ``AcquireCardUpTo``), else one."""
+
+    if name != ACQUIRE_ICON:
+        return 1
+    (line,) = reveal_choice_ability(choice).sections
+    (piece,) = line.rewards
+    if not isinstance(piece, AcquireCardUpTo):
+        raise NotImplementedError(f"{choice}: an acquisition icon of {piece!r}")
+    return piece.max_cost
+
 
 @cache
-def _box_icons(definition_id: str) -> tuple[UnloadIcon, ...]:
+def _box(definition_id: str) -> tuple[_BoxIcon, ...]:
     entry = IMPERIUM_CARDS_BY_ID[definition_id]
-    if entry.reveal_persuasion or entry.reveal_strength or entry.reveal_choice_effects:
+    if entry.reveal_persuasion or entry.reveal_strength:
         raise NotImplementedError(
-            f"{definition_id}: an Unload box with Persuasion, swords or a choice"
+            f"{definition_id}: an Unload box with Persuasion or swords"
         )
     ability = REVEAL_GAIN_ABILITIES.get(definition_id)
-    if ability is None:
+    if ability is None and not entry.reveal_choice_effects:
         raise ValueError(f"{definition_id} is marked Unload but has no Reveal box")
-    icons: list[UnloadIcon] = []
-    for line in ability.sections:
-        if line.condition is not None or line.costs:
+    icons: list[_BoxIcon] = []
+    for choice in entry.reveal_choice_effects:
+        # Freighter Fleet's Freighter: a Reveal choice, the owner's decision.
+        if choice not in _CHOICE_ICONS:
             raise NotImplementedError(
-                f"{definition_id}: an Unload box line with a condition or a cost"
+                f"{definition_id}: an Unload box choice {choice} is not wired"
+            )
+        icons.extend(
+            _BoxIcon(name, _choice_amount(choice, name), None)
+            for name in _CHOICE_ICONS[choice]
+        )
+    for line in () if ability is None else ability.sections:
+        if line.costs:
+            raise NotImplementedError(
+                f"{definition_id}: an Unload box line with a cost"
+            )
+        if isinstance(line.condition, FactionBond | CommandReached):
+            # A Bond reads the cards in play and Command the Reveal's
+            # Persuasion: neither is the owner's seat alone.
+            raise NotImplementedError(
+                f"{definition_id}: an Unload box condition {line.condition!r}"
             )
         for reward in line.rewards:
+            if isinstance(reward, Freighter):
+                icons.append(_BoxIcon(FREIGHTER_ICON, 1, line.condition))
+                continue
+            if isinstance(reward, DeployFromSupply):
+                icons.append(_BoxIcon(DEPLOY_ICON, reward.count, line.condition))
+                continue
+            if _one_faction(reward) is not None:
+                assert isinstance(reward, GainInfluence) and reward.factions
+                icons.append(
+                    _BoxIcon(
+                        f"{INFLUENCE_ICON_PREFIX}{reward.factions[0].value}",
+                        reward.times,
+                        line.condition,
+                    )
+                )
+                continue
             if not isinstance(reward, GainResources):
                 raise NotImplementedError(
                     f"{definition_id}: an Unload box icon {reward!r} is not wired"
                 )
             icons.extend(
-                (name, getattr(reward, name))
+                _BoxIcon(name, getattr(reward, name), line.condition)
                 for name in _RESOURCES
                 if getattr(reward, name)
             )
+    names = [icon.name for icon in icons if not is_decision_icon(icon.name)]
+    if len(set(names)) != len(names):
+        raise NotImplementedError(f"{definition_id}: an Unload box icon twice")
     return tuple(icons)
 
 
-def unload_icons(card_id: str) -> tuple[UnloadIcon, ...]:
-    """The icons the personal card ``card_id`` gives when discarded or
-    trashed: its Reveal box's when it is marked Unload, else none."""
+def _one_faction(reward: object) -> Faction | None:
+    """The one printed Faction an Influence icon raises, or None for any
+    other piece (a chosen or the visited Faction's is not wired)."""
 
+    if (
+        not isinstance(reward, GainInfluence)
+        or reward.requires_choice
+        or reward.visited_space
+        or reward.factions is None
+        or len(reward.factions) != 1
+    ):
+        return None
+    return reward.factions[0]
+
+
+def _unload_box(card_id: str) -> tuple[_BoxIcon, ...]:
     if not card_id.startswith("imperium:"):
         return ()
     entry = imperium_card_for_instance(card_id)
     if not entry.unload:
         return ()
-    return _box_icons(entry.card.card_id)
+    return _box(entry.card.card_id)
 
 
-def _gain(state: GameState, player: int, name: str, amount: int) -> GameState:
+def unload_icons(card_id: str) -> tuple[UnloadIcon, ...]:
+    """The icons the personal card ``card_id`` may give when discarded or
+    trashed: its Reveal box's when it is marked Unload, else none (each
+    conditioned icon too; the catalog names a row for every one)."""
+
+    return tuple((icon.name, icon.amount) for icon in _unload_box(card_id))
+
+
+def _unmet(state: GameState, player: int, card_id: str) -> tuple[str, ...]:
+    """The icons of ``card_id``'s box whose condition fails for ``player``
+    now, as the card is discarded or trashed."""
+
+    owner = state.players[player]
+    unmet: list[str] = []
+    for icon in _unload_box(card_id):
+        if icon.condition is None:
+            continue
+        held = owner_condition_holds(owner, icon.condition)
+        if held is None:
+            raise TypeError(f"{icon.condition!r} is no Unload box condition")
+        if not held:
+            unmet.append(icon.name)
+    return tuple(unmet)
+
+
+def _gain(
+    state: GameState, player: int, name: str, amount: int, *, source: str
+) -> RuleResult:
+    """Pay one icon of an Unload box: a resource, a printed Faction's
+    Influence (gained on its track as any Influence is; at the top nothing
+    is gained, OQ-060), or troops deployed from the supply. ``source`` names
+    the icon's events."""
+
+    if name == NEGOTIATOR_ICON:
+        # Imported here: the module imports the effects module, which reads
+        # the turn rows.
+        from dune_imperium.rules.negotiators import place_negotiator
+
+        return place_negotiator(state, player, source=source)
+    if name == DEPLOY_ICON:
+        # "Deploy these troops to the Conflict" -- also outside its owner's
+        # turn: during Combat they go to the Conflict and back to the supply
+        # with the others at the next step (OQ-127), and a supply short of
+        # them records the rest as Double Cross's does (OQ-042 (2)).
+        # Imported here: the Tech module imports the card discard and trash,
+        # which import this one.
+        from dune_imperium.rules.tech import deploy_troops_from_supply
+
+        return deploy_troops_from_supply(state, player, amount, source=source)
+    if name.startswith(INFLUENCE_ICON_PREFIX):
+        faction = Faction(name.removeprefix(INFLUENCE_ICON_PREFIX))
+        return gain_faction_influence(
+            state, player, faction, amount, event_prefix=source
+        )
     owner = state.players[player]
     gained = replace(
         owner,
@@ -132,7 +364,10 @@ def _gain(state: GameState, player: int, name: str, amount: int) -> GameState:
             **{name: getattr(owner.resources, name) + amount},
         ),
     )
-    return replace(state, players=replace_player(state.players, gained))
+    return RuleResult(
+        state=replace(state, players=replace_player(state.players, gained)),
+        events=(resources_gained_event(source, player, **{name: amount}),),
+    )
 
 
 def trigger_unload(
@@ -151,25 +386,32 @@ def trigger_unload(
     if not icons:
         return RuleResult(state=state)
     unload_source = f"{source}:unload:{card_id}"
+    unmet = _unmet(state, player, card_id)
+    held = (
+        tuple(name for name, _ in icons if name not in unmet and is_decision_icon(name))
+        if at_once
+        else ()
+    )
     events = [
         GameEvent(
             event_id=unload_source,
             kind="card_unloaded",
             payload=(
                 ("card_id", card_id),
+                *(((_HELD_KEY, ",".join(held)),) if held else ()),
                 ("pending", not at_once),
                 ("player", player),
+                *(((_UNMET_KEY, ",".join(unmet)),) if unmet else ()),
             ),
         )
     ]
     if at_once:
         for name, amount in icons:
-            state = _gain(state, player, name, amount)
-            events.append(
-                resources_gained_event(
-                    f"{unload_source}:{name}", player, **{name: amount}
-                )
-            )
+            if name in unmet or is_decision_icon(name):
+                continue
+            paid = _gain(state, player, name, amount, source=f"{unload_source}:{name}")
+            state = paid.state
+            events.extend(paid.events)
     return RuleResult(state=state, events=tuple(events))
 
 
@@ -177,60 +419,327 @@ def _value(card_id: str, name: str) -> str:
     return f"{card_id}|{name}"
 
 
-def _owe(state: GameState, player: int, card_id: str, source: str) -> GameState:
-    """The icons of an Unload an effect triggered: rows of the owner's own
-    turn, else a window of their own."""
+def _open_decision(
+    state: GameState, player: int, card_id: str, name: str, source: str
+) -> GameState:
+    """Open the window that answers the decision icon ``name`` of
+    ``card_id``'s box for ``player`` on top of ``state`` (``is_decision_icon``)."""
 
-    values = tuple(_value(card_id, name) for name, _ in unload_icons(card_id))
+    if name == FREIGHTER_ICON:
+        # Imported here: the Shipping track imports the Tech module, which
+        # imports the card discard and trash, which import this one.
+        from dune_imperium.rules.shipping_track import open_freighter_move
+
+        return open_freighter_move(state, player, source=source)
+    if name == ACQUIRE_ICON:
+        # An acquisition outside its card's Reveal: its own window, which
+        # names the card and the cost cap.
+        return state.push_decision(
+            DecisionFrame(
+                kind=FrameKind.UNLOAD_ICONS,
+                frame_id=f"{source}:window",
+                decision=PlayerDecision(owner=player, prompt=UNLOAD_ACQUIRE_PROMPT),
+                context=tuple(
+                    sorted(
+                        (
+                            (UNLOAD_ACQUIRE_KEY, card_id),
+                            (UNLOAD_ICONS_KEY, ""),
+                            ("max_cost", dict(unload_icons(card_id))[ACQUIRE_ICON]),
+                            ("source", source),
+                        )
+                    )
+                ),
+            )
+        )
+    raise RuntimeError(f"{name} is not an Unload decision icon")
+
+
+def _owe(
+    state: GameState,
+    player: int,
+    card_id: str,
+    source: str,
+    unmet: tuple[str, ...] = (),
+) -> GameState:
+    """The icons of an Unload an effect triggered, but those ``unmet``:
+    rows of the owner's own turn, else a window of their own, and a window
+    for each decision icon above it."""
+
+    names = tuple(name for name, _ in unload_icons(card_id) if name not in unmet)
+    if not names:
+        return state
     if turn_rows.waits_on_turn(state, player):
-        for value in values:
+        for name in names:
             queued = turn_rows.queue(
-                state, player, (turn_rows.UNLOAD_ICON, source, value)
+                state, player, (turn_rows.UNLOAD_ICON, source, _value(card_id, name))
             )
             assert queued is not None
             state = queued
         return state
+    values = tuple(_value(card_id, name) for name in names if name not in _WINDOW_ICONS)
+    if values:
+        state = state.push_decision(
+            DecisionFrame(
+                kind=FrameKind.UNLOAD_ICONS,
+                frame_id=f"{source}:icons",
+                decision=PlayerDecision(owner=player, prompt=UNLOAD_PROMPT),
+                context=tuple(
+                    sorted(((UNLOAD_ICONS_KEY, ",".join(values)), ("source", source)))
+                ),
+            )
+        )
+    # The last pushed is answered first: the printed first decision on top.
+    for name in reversed(tuple(name for name in names if name in _WINDOW_ICONS)):
+        state = _open_decision(state, player, card_id, name, f"{source}:{name}")
+    return state
+
+
+# --- An arrow's right side held while its cost's Unload is decided ------------
+
+type HoldPayer = Callable[[GameState, int, Mapping[str, ActionValue]], RuleResult]
+"""Pays the right side of an arrow whose cost's Unload a hold kept back:
+called with the hold popped (the path's own frame on top again, as the cost
+left it), the hold's seat and the plain values its path recorded."""
+
+_PAYERS: dict[str, HoldPayer] = {}
+
+
+def hold_payer(key: str) -> Callable[[HoldPayer], HoldPayer]:
+    """Register the function that pays the right side a hold named ``key``
+    kept back (one per cost path, in the path's own module)."""
+
+    def register(payer: HoldPayer) -> HoldPayer:
+        if key in _PAYERS:
+            raise ValueError(f"an Unload hold payer {key!r} is registered twice")
+        _PAYERS[key] = payer
+        return payer
+
+    return register
+
+
+def unload_holds(events: tuple[GameEvent, ...]) -> bool:
+    """Whether a cost's Unload among ``events`` held a decision icon, so its
+    path must stop before its right side and push a hold
+    (``push_unload_hold``)."""
+
+    return any(
+        event.kind == UNLOADED_EVENT and _HELD_KEY in dict(event.payload)
+        for event in events
+    )
+
+
+def push_unload_hold(
+    state: GameState,
+    player: int,
+    *,
+    source: str,
+    payer: str | None = None,
+    values: Mapping[str, ActionValue] | None = None,
+) -> GameState:
+    """Push ``player``'s hold of an arrow's right side on top of ``state``
+    (its path's frame already written as the cost left it).
+
+    ``payer`` names the registered function that pays the right side once the
+    held icons are answered, with ``values``; None when the path's right side
+    already waits on the frame below as rows of its own (an armed icon, a
+    later step), which the hold alone keeps back.
+    """
+
+    if payer is not None and payer not in _PAYERS:
+        raise ValueError(f"no Unload hold payer is registered as {payer!r}")
     return state.push_decision(
         DecisionFrame(
             kind=FrameKind.UNLOAD_ICONS,
-            frame_id=f"{source}:icons",
+            frame_id=f"{source}:unload_hold",
             decision=PlayerDecision(owner=player, prompt=UNLOAD_PROMPT),
             context=tuple(
-                sorted(((UNLOAD_ICONS_KEY, ",".join(values)), ("source", source)))
+                sorted(
+                    (
+                        (UNLOAD_HOLD_KEY, True),
+                        (UNLOAD_ICONS_KEY, ""),
+                        ("source", source),
+                        (_PAYER_KEY, payer or ""),
+                        (_VALUES_KEY, json.dumps(dict(values or {}), sort_keys=True)),
+                    )
+                )
             ),
         )
     )
 
 
+def _open_held(state: GameState, events: list[GameEvent]) -> GameState:
+    """Open the decision icons one cost's Unloads held, above the hold its
+    path pushed: every one of them before the right side, as the cost is every
+    card it discards or trashes ("Unload를 끝까지 해결한 뒤 오른쪽으로 간다").
+
+    One card's: its row decisions in a window of their own, each with its
+    refusal, and each window icon's window, the printed first on top. Several
+    cards' (two cards discarded together: Ix-Guild Compact's arrow, Corrinth
+    City's payment): one window offering every held icon of every card as a
+    row (``UNLOAD_BY_CARD_KEY``), so the owner picks their order as the rows
+    of the owner's own turn and the icons of one window are picked -- a window
+    icon's row opens its window (``apply_unload_icon``).
+    """
+
+    payloads = [dict(event.payload) for event in events]
+    players = {payload["player"] for payload in payloads}
+    if len(players) != 1:
+        raise RuntimeError("one cost's held Unloads belong to several seats")
+    (player,) = players
+    assert isinstance(player, int)
+    top = state.decision_stack[-1] if state.decision_stack else None
+    if (
+        top is None
+        or not is_unload_hold(top)
+        or not isinstance(top.decision, PlayerDecision)
+        or top.decision.owner != player
+    ):
+        raise RuntimeError(
+            "a cost's Unload holds a decision but its path pushed no hold"
+        )
+    held: list[tuple[str, str]] = []
+    for payload in payloads:
+        card_id, held_names = payload["card_id"], payload[_HELD_KEY]
+        assert isinstance(card_id, str) and isinstance(held_names, str)
+        held.extend((card_id, name) for name in held_names.split(","))
+    if len({card_id for card_id, _ in held}) > 1:
+        source = f"{context_str(dict(top.context), 'source', owner=_FRAME)}:unload"
+        return state.push_decision(
+            DecisionFrame(
+                kind=FrameKind.UNLOAD_ICONS,
+                frame_id=f"{source}:icons",
+                decision=PlayerDecision(owner=player, prompt=UNLOAD_PROMPT),
+                context=tuple(
+                    sorted(
+                        (
+                            (
+                                UNLOAD_ICONS_KEY,
+                                ",".join(_value(card, name) for card, name in held),
+                            ),
+                            (UNLOAD_BY_CARD_KEY, True),
+                            ("source", source),
+                        )
+                    )
+                ),
+            )
+        )
+    (event,) = events
+    card_id = held[0][0]
+    names = [name for _, name in held]
+    values = tuple(_value(card_id, name) for name in names if name not in _WINDOW_ICONS)
+    if values:
+        # Decisions answered by rows (a Tech Negotiation): a window of their
+        # own above the hold, each with its refusal.
+        source = f"{event.event_id}:held"
+        state = state.push_decision(
+            DecisionFrame(
+                kind=FrameKind.UNLOAD_ICONS,
+                frame_id=f"{source}:icons",
+                decision=PlayerDecision(owner=player, prompt=UNLOAD_PROMPT),
+                context=tuple(
+                    sorted(((UNLOAD_ICONS_KEY, ",".join(values)), ("source", source)))
+                ),
+            )
+        )
+    for name in reversed(tuple(name for name in names if name in _WINDOW_ICONS)):
+        state = _open_decision(
+            state, player, card_id, name, f"{event.event_id}:{name}"
+        )
+    return state
+
+
+def _closable_hold(state: GameState) -> DecisionFrame | None:
+    """The hold on top whose held icons are all answered, while no immediate
+    owed draw of its seat (a track bonus the Unload earned) still waits."""
+
+    if not state.decision_stack:
+        return None
+    frame = state.decision_stack[-1]
+    if not is_unload_hold(frame) or not isinstance(frame.decision, PlayerDecision):
+        return None
+    owner = state.players[frame.decision.owner]
+    if any(draw_is_immediate(origin) for _, origin, _ in owner.owed_draws):
+        return None
+    return frame
+
+
+def _close_holds(result: RuleResult) -> RuleResult:
+    """Close every answered hold on top and pay its right side."""
+
+    state, events = result.state, list(result.events)
+    while (frame := _closable_hold(state)) is not None:
+        assert isinstance(frame.decision, PlayerDecision)
+        context = dict(frame.context)
+        payer = context_str(context, _PAYER_KEY, owner=_FRAME)
+        values = json.loads(context_str(context, _VALUES_KEY, owner=_FRAME))
+        state = state.pop_decision()
+        if not payer:
+            continue
+        paid = settle_unloads(_PAYERS[payer](state, frame.decision.owner, values))
+        state = paid.state
+        events.extend(paid.events)
+    return RuleResult(state=state, events=tuple(events))
+
+
 def settle_unloads(result: RuleResult) -> RuleResult:
     """Queue the rows or open the windows of the Unloads ``result``'s
-    events announce as owed, once the action's handler is done."""
+    events announce as owed, open the windows of the decision icons a cost's
+    Unload held, and close an answered hold on top, paying its right side --
+    once the action's handler is done."""
 
     owed = [
         event
         for event in result.events
         if event.kind == UNLOADED_EVENT and dict(event.payload).get("pending") is True
     ]
-    if not owed:
-        return result
+    held = [
+        event
+        for event in result.events
+        if event.kind == UNLOADED_EVENT and _HELD_KEY in dict(event.payload)
+    ]
+    if not owed and not held:
+        return _close_holds(result) if _closable_hold(result.state) else result
     state = result.state
     # Windows stack: the last pushed is answered first, so the first
     # Unload announced is pushed last.
     for event in reversed(owed):
         payload = dict(event.payload)
         player, card_id = payload["player"], payload["card_id"]
+        unmet = payload.get(_UNMET_KEY, "")
         assert isinstance(player, int) and isinstance(card_id, str)
-        state = _owe(state, player, card_id, event.event_id)
-    return RuleResult(state=state, events=result.events)
+        assert isinstance(unmet, str)
+        state = _owe(
+            state,
+            player,
+            card_id,
+            event.event_id,
+            tuple(unmet.split(",") if unmet else ()),
+        )
+    # A cost's held decisions are answered first, all of them above its hold.
+    if held:
+        state = _open_held(state, held)
+    return _close_holds(RuleResult(state=state, events=result.events))
 
 
-def _row(player: int, value: str) -> DomainAction:
+def _row(player: int, value: str, action_id: str = UNLOAD_ICON_ACTION) -> DomainAction:
     card_id, name = value.split("|")
     return DomainAction(
-        action_id=UNLOAD_ICON_ACTION,
+        action_id=action_id,
         actor=player,
         arguments=(("card_id", card_id), ("effect", name)),
     )
+
+
+def _icon_offered(state: GameState, player: int, name: str) -> bool:
+    """Whether the icon ``name`` can do something for ``player`` now: a Tech
+    Negotiation needs a troop in the supply ("supply가 비면 아무 일도 없다",
+    docs/rules/rise-of-ix.md 4); every other icon is always offered."""
+
+    if name == NEGOTIATOR_ICON:
+        from dune_imperium.rules.negotiators import negotiator_block
+
+        return negotiator_block(state, player) is None
+    return True
 
 
 def _window_values(frame: DecisionFrame) -> tuple[str, ...]:
@@ -246,7 +755,72 @@ def legal_unload_window_actions(
     frame = owned_top_frame(state, FrameKind.UNLOAD_ICONS, player)
     if frame is None:
         return ()
-    return tuple(_row(player, value) for value in dict.fromkeys(_window_values(frame)))
+    if UNLOAD_ACQUIRE_KEY in dict(frame.context):
+        return _acquisition_rows(state, player, frame)
+    rows: list[DomainAction] = []
+    for value in dict.fromkeys(_window_values(frame)):
+        name = value.split("|")[1]
+        if _icon_offered(state, player, name):
+            rows.append(_row(player, value))
+        if turn_rows.unload_icon_is_optional(value):
+            # "may": the window's own refusal, the press of a turn's row.
+            rows.append(_row(player, value, UNLOAD_DECLINE_ACTION))
+    return tuple(rows)
+
+
+def _acquisition_rows(
+    state: GameState, player: int, frame: DecisionFrame
+) -> tuple[DomainAction, ...]:
+    """An acquisition window's rows: each card within the cap from the Row or
+    the Reserve, never Foldspace (OQ-125), with its deck-top twin while one is
+    offered; with none in reach, that part of the effect fizzles ("That part
+    of the effect fizzles", the designer's ruling on Impress, OQ-057 (6)),
+    confirmed by its own row."""
+
+    # Imported here: acquisition imports the card trash, which imports this
+    # module.
+    from dune_imperium.rules.acquisition import acquisitions_up_to
+
+    rows = acquisitions_up_to(
+        state,
+        player,
+        context_int(dict(frame.context), "max_cost", owner=_FRAME),
+        imperium_action="acquire_unload_imperium_card",
+        reserve_action="acquire_unload_reserve_card",
+    )
+    return rows or (DomainAction(action_id="skip_unload_acquisition", actor=player),)
+
+
+def apply_unload_acquisition(state: GameState, action: DomainAction) -> RuleResult:
+    """Acquire the card an Unload acquisition window offers, or confirm that
+    none is in reach; the window closes either way."""
+
+    player = action.actor
+    frame = owned_top_frame(state, FrameKind.UNLOAD_ICONS, player)
+    if (
+        frame is None
+        or UNLOAD_ACQUIRE_KEY not in dict(frame.context)
+        or action not in legal_unload_window_actions(state, player)
+    ):
+        raise ValueError("action is not a legal Unload acquisition")
+    context = dict(frame.context)
+    source = context_str(context, "source", owner=_FRAME)
+    card_id = context_str(context, UNLOAD_ACQUIRE_KEY, owner=_FRAME)
+    state = state.pop_decision()
+    if action.action_id == "skip_unload_acquisition":
+        return RuleResult(
+            state=state,
+            events=(
+                GameEvent(
+                    event_id=f"{source}:nothing_acquired",
+                    kind="unload_acquisition_empty",
+                    payload=(("card_id", card_id), ("player", player)),
+                ),
+            ),
+        )
+    from dune_imperium.rules.acquisition import acquire_by_row
+
+    return acquire_by_row(state, player, action, source=source)
 
 
 def legal_unload_row_actions(state: GameState, player: int) -> tuple[DomainAction, ...]:
@@ -262,6 +836,7 @@ def legal_unload_row_actions(state: GameState, player: int) -> tuple[DomainActio
             for kind, _source, value in turn_rows.pending(frame)
             if kind == turn_rows.UNLOAD_ICON
         )
+        if _icon_offered(state, player, value.split("|")[1])
     )
 
 
@@ -278,6 +853,10 @@ def apply_unload_icon(state: GameState, action: DomainAction) -> RuleResult:
             raise ValueError("action is not a legal Unload icon")
         context = dict(frame.context)
         source = context_str(context, "source", owner=_FRAME)
+        if context.get(UNLOAD_BY_CARD_KEY) is True:
+            # Several cards' held icons in one window: each named after its
+            # own card, as the icons a payment paid at once are.
+            source = f"{source}:{card_id}"
         remaining = list(_window_values(frame))
         remaining.remove(value)
         if remaining:
@@ -285,6 +864,21 @@ def apply_unload_icon(state: GameState, action: DomainAction) -> RuleResult:
             state = replace_top_frame(state, with_context(frame, context))
         else:
             state = state.pop_decision()
+        if action.action_id == UNLOAD_DECLINE_ACTION:
+            return RuleResult(
+                state=state,
+                events=(
+                    GameEvent(
+                        event_id=f"{source}:{name}_declined",
+                        kind="unload_icon_declined",
+                        payload=(
+                            ("card_id", card_id),
+                            ("effect", name),
+                            ("player", player),
+                        ),
+                    ),
+                ),
+            )
     else:
         if action not in legal_unload_row_actions(state, player):
             raise ValueError("action is not a legal Unload icon")
@@ -297,8 +891,10 @@ def apply_unload_icon(state: GameState, action: DomainAction) -> RuleResult:
         )
         source = item[1]
         state = turn_rows.take(state, player, item)
+    if name in _WINDOW_ICONS:
+        # A row of its owner's turn: its window answers it.
+        return RuleResult(
+            state=_open_decision(state, player, card_id, name, f"{source}:{name}")
+        )
     amount = dict(unload_icons(card_id))[name]
-    return RuleResult(
-        state=_gain(state, player, name, amount),
-        events=(resources_gained_event(f"{source}:{name}", player, **{name: amount}),),
-    )
+    return _gain(state, player, name, amount, source=f"{source}:{name}")

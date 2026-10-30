@@ -30,6 +30,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     AllConditions,
     CommandReached,
     Condition,
+    DeployFromSupply,
     DrawIntrigueCards,
     EffectSection,
     FactionBond,
@@ -102,6 +103,17 @@ class RevealLine:
     @property
     def draw_intrigue(self) -> int:
         return self._count(DrawIntrigueCards)
+
+    @property
+    def supply_deployments(self) -> int:
+        """Troops the line deploys from the supply to the Conflict (Rise of
+        Ix's Treachery)."""
+
+        return sum(
+            reward.count
+            for reward in self.section.rewards
+            if isinstance(reward, DeployFromSupply)
+        )
 
     @property
     def specimens(self) -> int:

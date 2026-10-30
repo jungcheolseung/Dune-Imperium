@@ -99,6 +99,7 @@ from dune_imperium.rules.acquire_icons import (
     ACQUIRE_ICON_ACTION,
     ACQUIRED_CARD_ARGUMENT,
     DREADNOUGHT_ICON,
+    FREIGHTER_ICON,
     acquire_box_icons,
     acquire_icon_faction,
 )
@@ -176,8 +177,13 @@ from dune_imperium.rules.tech import (
     optional_trash_tech_ids,
     tech_acquire_effect_arguments,
 )
+from dune_imperium.rules.turn_rows import OPTIONAL_UNLOAD_ICONS
 from dune_imperium.rules.units import unit_count_arguments
-from dune_imperium.rules.unload import UNLOAD_ICON_ACTION, unload_icons
+from dune_imperium.rules.unload import (
+    UNLOAD_DECLINE_ACTION,
+    UNLOAD_ICON_ACTION,
+    unload_icons,
+)
 
 # v109 (OQ-068, 2026-09-26 user ruling): every Recall Agent effect, not only
 # Imperial Privilege, may recall an Into the Fray Agent from the Conflict --
@@ -855,6 +861,55 @@ def _withheld_rows(content: RulesetContent) -> frozenset[str]:
     return frozenset(withheld)
 
 
+def _cost_cap_acquisition_templates(
+    content: RulesetContent,
+) -> tuple[ActionTemplate, ...]:
+    """Boundless Ambition's "Acquire a card that costs 5 or less" (Rise of Ix
+    promo), in the catalogs whose deck holds it: revealed
+    (``acquisition.apply_reveal_card_acquisition``) and in its Unload's
+    window (``unload.apply_unload_acquisition``) -- every Imperium card and
+    every Reserve card but Foldspace (OQ-125), each with its deck-top twin
+    (Recruitment Mission, Spaceport) -- and the window's fizzle with none in
+    reach."""
+
+    imperium_instances = content.imperium_deck_instance_ids
+    if not any(
+        instance_id.startswith("imperium:boundless_ambition:")
+        for instance_id in imperium_instances
+    ):
+        return ()
+    reserve = tuple(
+        stack.card.card_id for stack in content.reserve_stacks if not stack.icon_only
+    )
+    tops: tuple[tuple[tuple[str, ActionValue], ...], ...] = (
+        (),
+        (("to_deck_top", True),),
+    )
+    templates: list[ActionTemplate] = []
+    for imperium_action, reserve_action in (
+        ("acquire_reveal_imperium_card", "acquire_reveal_reserve_card"),
+        ("acquire_unload_imperium_card", "acquire_unload_reserve_card"),
+    ):
+        templates.extend(
+            ActionTemplate(
+                action_id=reserve_action,
+                arguments=(("card_id", card_id), *top),
+            )
+            for card_id in reserve
+            for top in tops
+        )
+        templates.extend(
+            ActionTemplate(
+                action_id=imperium_action,
+                arguments=(("instance_id", instance_id), *top),
+            )
+            for instance_id in imperium_instances
+            for top in tops
+        )
+    templates.append(ActionTemplate(action_id="skip_unload_acquisition"))
+    return tuple(templates)
+
+
 def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
     content = content_for(config)
     withheld = _withheld_rows(content)
@@ -1087,17 +1142,27 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             )
         )
         # Landing Rights' Freighter icon, an Agent box's two moves
-        # (``agent_effects.apply_agent_card_freighter``), and Guild Chief
-        # Administrator's, a Reveal choice's (``reveal_turn``).
+        # (``agent_effects.apply_agent_card_freighter``), Ixian Engineer's
+        # Acquire Tech icon (``agent_effects.apply_agent_card_tech``), and
+        # Treachery's Reveal troops deployed from the supply
+        # (``reveal_turn.apply_reveal_gain``). The Reveal Freighter rows of
+        # Guild Chief Administrator and Freighter Fleet name their card
+        # (``_SOURCED_REVEAL_ROWS``).
         templates.extend(
             ActionTemplate(action_id=action_id)
             for action_id in (
                 "advance_agent_card_freighter",
                 "recall_agent_card_freighter",
-                "advance_reveal_freighter",
-                "recall_reveal_freighter",
+                "acquire_agent_card_tech",
+                # Appropriate's, paid in Solari instead of spice.
+                "acquire_agent_card_tech_with_solari",
                 # Weirding Way's extra turn.
                 "take_agent_card_extra_turn",
+                # Treachery's Reveal troops deployed from the supply.
+                "deploy_reveal_supply_troops",
+                # Ix-Guild Compact's Reveal Tech Negotiation icons
+                # (``reveal_turn.apply_reveal_negotiator``).
+                "place_reveal_negotiator",
             )
         )
         # Court Intrigue's arrow: an Intrigue card of the hand under the
@@ -1155,6 +1220,18 @@ def _build_catalog(config: RulesetConfig) -> tuple[ActionTemplate, ...]:
             for instance_id in content.imperium_deck_instance_ids
             for name in dict.fromkeys(name for name, _ in unload_icons(instance_id))
         )
+        # A "may" icon's refusal in an Unload window (Ix-Guild Compact's Tech
+        # Negotiation).
+        templates.extend(
+            ActionTemplate(
+                action_id=UNLOAD_DECLINE_ACTION,
+                arguments=(("card_id", instance_id), ("effect", name)),
+            )
+            for instance_id in content.imperium_deck_instance_ids
+            for name in dict.fromkeys(name for name, _ in unload_icons(instance_id))
+            if name in OPTIONAL_UNLOAD_ICONS
+        )
+        templates.extend(_cost_cap_acquisition_templates(content))
     if config.bloodlines:
         templates.extend(_bloodlines_templates(config))
     elif content.base_game is BaseGame.IMPERIUM:
@@ -1870,7 +1947,10 @@ def _acquire_icon_templates(
                 (ACQUIRED_CARD_ARGUMENT, card.card.card_id),
                 ("effect", icon),
             )
-            if acquire_icon_faction(icon) is not None or icon == DREADNOUGHT_ICON:
+            if acquire_icon_faction(icon) is not None or icon in (
+                DREADNOUGHT_ICON,
+                FREIGHTER_ICON,
+            ):
                 templates.append(ActionTemplate(ACQUIRE_ICON_ACTION, base))
                 continue
             templates.extend(
@@ -2304,6 +2384,7 @@ _OWED_DRAW_IDS: Final = frozenset({"draw_owed_intrigue", "draw_owed_card"})
 # (stage B3e-1, ``reveal_turn.legal_reveal_gain_actions``).
 _REVEAL_GAIN_OF: Final[Mapping[str, Callable[[RevealLine], bool]]] = {
     "recruit_reveal_troops": lambda line: line.recruit_troops > 0,
+    "deploy_reveal_supply_troops": lambda line: line.supply_deployments > 0,
     "draw_reveal_intrigue": lambda line: line.draw_intrigue > 0,
     "generate_reveal_specimens": lambda line: line.specimens > 0,
     "advance_reveal_tleilaxu": lambda line: line.tleilaxu > 0,
@@ -2509,7 +2590,9 @@ def _window_printers(
         return _spy_placement_printers(config)
     if action_id == "decline_tech":
         # Battlefield Research, Rapid Engineering, and the Shipping track's
-        # space 3 and the two Landsraad spaces of the overlay (Rise of Ix).
+        # space 3, the two Landsraad spaces of the overlay, Prince Rhombur
+        # Vernius' Ixian Technology and Ixian Engineer's Agent box (Rise of
+        # Ix), in that fixed order.
         return (
             *(
                 (Source.INTRIGUE, card)
@@ -2530,6 +2613,13 @@ def _window_printers(
                 (Source.LEADER, face)
                 for face in faces
                 if config.rise_of_ix and face == "prince_rhombur_vernius"
+            ),
+            # Ixian Engineer's Agent box (stage P4d).
+            *(
+                (Source.AGENT_CARD, card)
+                for card in (
+                    _box_reward_cards(config, AcquireTech) if config.rise_of_ix else ()
+                )
             ),
         )
     if action_id == "resolve_opponent_discard_without_card":
@@ -2847,6 +2937,7 @@ _ICON_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "freighter_second": (("advance", "freighter"), ("collect", "freighter")),
     # Weirding Way's extra turn (Rise of Ix).
     "extra_turn": (("take", "extra_turn"),),
+    "tech": (("acquire", "tech"),),
 }
 _HOOK_EFFECTS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "possible_futures": (("gain_influence", ""),),
@@ -4241,6 +4332,8 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     ),
     _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE: ("gain_reveal_influence",),
     _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH: ("gain_reveal_influence",),
+    # Web of Power (Rise of Ix): the wild Influence icon.
+    _Choice.GAIN_CHOSEN_INFLUENCE: ("gain_reveal_influence",),
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP: _SOURCED_TROOP_MOVE,
     _Choice.MAY_DEPLOY_OR_RETREAT_ONE_TROOP_IF_FREMEN_BOND: _SOURCED_TROOP_MOVE,
     _Choice.MAY_DEPLOY_ONE_TROOP: ("deploy_reveal_card_troop",),
@@ -4276,6 +4369,16 @@ _SOURCED_REVEAL_ROWS: Final[Mapping[_Choice, tuple[str, ...]]] = {
     ),
     _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS: (
         "trash_reveal_card",
+    ),
+    # Ixian Engineer (Rise of Ix): the card's own trash.
+    _Choice.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES: (
+        "trash_reveal_card",
+    ),
+    # Guild Chief Administrator and Freighter Fleet (Rise of Ix): the
+    # Freighter icon's two moves.
+    _Choice.MAY_MOVE_FREIGHTER: (
+        "advance_reveal_freighter",
+        "recall_reveal_freighter",
     ),
 }
 

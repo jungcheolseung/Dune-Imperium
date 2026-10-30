@@ -1471,6 +1471,7 @@ const NAMED_PRINTER_ACTIONS = new Set([
   "draw_owed_intrigue",
   "draw_owed_card",
   "recruit_reveal_troops",
+  "deploy_reveal_supply_troops",
   "draw_reveal_intrigue",
   "generate_reveal_specimens",
   "advance_reveal_tleilaxu",
@@ -1494,6 +1495,9 @@ const REVEAL_SOURCE_ACTIONS = new Set([
   "deploy_reveal_card_troops",
   "retreat_reveal_card_troops",
   "decline_reveal_spy_recall",
+  /* Guild Chief Administrator's and Freighter Fleet's Freighter icon. */
+  "advance_reveal_freighter",
+  "recall_reveal_freighter",
 ]);
 
 function revealSourceEntry(action) {

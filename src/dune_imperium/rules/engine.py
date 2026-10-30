@@ -30,6 +30,7 @@ from dune_imperium.rules.acquisition import (
     apply_imperium_acquisition,
     apply_manipulated_acquisition,
     apply_reserve_acquisition,
+    apply_reveal_card_acquisition,
     apply_reveal_command_acquisition,
     legal_acquisition_spy_actions,
     legal_imperium_acquisitions,
@@ -53,6 +54,7 @@ from dune_imperium.rules.agent_effects import (
     apply_agent_card_recall,
     apply_agent_card_space_block,
     apply_agent_card_spy_action,
+    apply_agent_card_tech,
     apply_agent_card_trash,
     apply_corrinth_city_payment,
     apply_opponent_card_discard,
@@ -319,6 +321,7 @@ from dune_imperium.rules.reveal_turn import (
     apply_reveal_influence_exchange,
     apply_reveal_influence_gain,
     apply_reveal_influence_loss,
+    apply_reveal_negotiator,
     apply_reveal_persuasion_or_contract,
     apply_reveal_sandworm_action,
     apply_reveal_spice_influence,
@@ -454,6 +457,7 @@ from dune_imperium.rules.tleilaxu_row import (
 )
 from dune_imperium.rules.unit_loss import apply_unit_loss, legal_unit_loss_actions
 from dune_imperium.rules.unload import (
+    apply_unload_acquisition,
     apply_unload_icon,
     legal_unload_row_actions,
     legal_unload_window_actions,
@@ -781,6 +785,7 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "place_agent": apply_agent_space_pick,
     "reveal_turn": begin_reveal_turn,
     "recruit_reveal_troops": apply_reveal_gain,
+    "deploy_reveal_supply_troops": apply_reveal_gain,
     "draw_reveal_intrigue": apply_reveal_gain,
     "generate_reveal_specimens": apply_reveal_gain,
     "advance_reveal_tleilaxu": apply_reveal_gain,
@@ -923,6 +928,11 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "acquire_foldspace_to_deck_top": apply_foldspace_deck_top,
     "resolve_shipping_reward": apply_shipping_reward,
     "resolve_unload_icon": apply_unload_icon,
+    "decline_unload_icon": apply_unload_icon,
+    # Boundless Ambition's Unload acquisition window (Rise of Ix promo).
+    "acquire_unload_imperium_card": apply_unload_acquisition,
+    "acquire_unload_reserve_card": apply_unload_acquisition,
+    "skip_unload_acquisition": apply_unload_acquisition,
     "put_intrigue_on_bottom": apply_intrigue_bottom_action,
     "finish_intrigue_bottom": apply_intrigue_bottom_action,
     "choose_secret_project": apply_secret_project,
@@ -959,6 +969,10 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Weirding Way (Rise of Ix): "You may take another turn immediately after
     # this one."
     "take_agent_card_extra_turn": apply_agent_card_extra_turn,
+    # Ixian Engineer (Rise of Ix): the Acquire Tech icon opens its window.
+    "acquire_agent_card_tech": apply_agent_card_tech,
+    # Appropriate (Rise of Ix): the same window, paid in Solari.
+    "acquire_agent_card_tech_with_solari": apply_agent_card_tech,
     # Local Fence (Rise of Ix): its two arrows printed with "-OR-".
     "pay_agent_card_spice_for_solari": apply_agent_card_payment,
     "pay_agent_card_solari_for_spice": apply_agent_card_payment,
@@ -1057,6 +1071,10 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     "exchange_reveal_influence": apply_reveal_influence_exchange,
     "gain_reveal_influence": apply_reveal_influence_gain,
     "command_acquire_row_card": apply_reveal_command_acquisition,
+    # Boundless Ambition (Rise of Ix promo): "Acquire a card that costs 5 or
+    # less."
+    "acquire_reveal_imperium_card": apply_reveal_card_acquisition,
+    "acquire_reveal_reserve_card": apply_reveal_card_acquisition,
     "gain_reveal_persuasion": apply_reveal_persuasion_or_contract,
     "take_reveal_contract": apply_reveal_persuasion_or_contract,
     # Bene Gesserit Sister (original game): "2 Persuasion OR 2 swords".
@@ -1080,6 +1098,8 @@ ACTION_HANDLERS: Final[Mapping[str, ActionHandler]] = {
     # Opulence (original game): "6 Solari -> 1 Victory Point"; Guild
     # Ambassador: "Spacing Guild Alliance: 3 spice -> 1 Victory Point".
     "pay_reveal_solari_for_vp": apply_reveal_vp_payment,
+    # Ix-Guild Compact's Tech Negotiation icons (Rise of Ix).
+    "place_reveal_negotiator": apply_reveal_negotiator,
     "pay_reveal_spice_for_vp": apply_reveal_vp_payment,
     # Gurney Halleck (original game): "3 Solari -> 2 troops".
     "pay_reveal_solari_for_troops": apply_reveal_troop_purchase,

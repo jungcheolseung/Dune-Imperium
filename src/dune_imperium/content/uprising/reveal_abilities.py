@@ -35,6 +35,7 @@ from dune_imperium.content.uprising.effect_dsl import (
     CommandersInConflictAtLeast,
     CommandReached,
     Condition,
+    DeployFromSupply,
     DrawIntrigueCards,
     EffectSection,
     FactionBond,
@@ -211,6 +212,15 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         ),
         # Leadership.
         "leadership": _reveal(_line(RevealSwords(1, per=_PER_OTHER_SWORD_CARD))),
+        # Imperial Bashar (Rise of Ix): Leadership's words, "+[sword] for each
+        # other revealed card that provides one or more [sword] this turn"
+        # [Steam app text]; only a card that really gave swords counts (Bene
+        # Gesserit Sister's choice of Persuasion does not) [Rise of Ix p. 10]
+        # (docs/rules/rise-of-ix.md 9.1). The card's printed 2 swords are its
+        # entry's.
+        "imperial_bashar": _reveal(
+            _line(RevealSwords(1, per=_PER_OTHER_SWORD_CARD))
+        ),
         # Northern Watermaster.
         "northern_watermaster": _reveal(
             _line(GainResources(spice=2), condition=FactionBond(Faction.FREMEN))
@@ -297,6 +307,28 @@ REVEAL_GAIN_ABILITIES: Final[Mapping[str, Ability]] = MappingProxyType(
         "water_peddler": _reveal(_line(GainResources(water=1))),
         # CHOAM Delegate (Rise of Ix): "[Unload] [3 Solari]", likewise.
         "choam_delegate": _reveal(_line(GainResources(solari=3))),
+        # Esmar Tuek (Rise of Ix): "[Unload] [2 spice] [2 Solari]", likewise.
+        "esmar_tuek_card": _reveal(_line(GainResources(solari=2, spice=2))),
+        # In The Shadows (Rise of Ix): "[Unload] [Bene Gesserit Influence]"
+        # [Steam app screen pieces], Throne Room Politics' line, likewise.
+        "in_the_shadows": _reveal(
+            _line(GainInfluence(factions=(Faction.BENE_GESSERIT,)))
+        ),
+        # Treachery (Rise of Ix): "[Unload] [troop] [troop] Deploy these
+        # troops to the Conflict." [Steam app screen pieces and text] -- two
+        # troops from the supply to the Conflict, as Double Cross's one
+        # (OQ-042 (2): "원판·Ix의 Double Cross·Treachery(supply에서 Conflict로
+        # 배치)도 같은 기록을 쓴다"); its Unload box too.
+        "treachery": _reveal(_line(DeployFromSupply(2))),
+        # Guild Accord (Rise of Ix): "[Unload] [1 water]; [Spacing Guild]
+        # Alliance: [3 spice]" [Steam app screen pieces], two lines, likewise.
+        "guild_accord": _reveal(
+            _line(GainResources(water=1)),
+            _line(
+                GainResources(spice=3),
+                condition=HasAlliance(Faction.SPACING_GUILD),
+            ),
+        ),
         # Quash Rebellion.
         "quash_rebellion": _reveal(
             _line(RevealPersuasion(2), condition=CommandersInConflictAtLeast(1))
@@ -395,6 +427,7 @@ REVEAL_LINE_REWARDS: Final[frozenset[type]] = frozenset(
         AdvanceTleilaxu,
         Research,
         ReserveCostDiscount,
+        DeployFromSupply,
     }
 )
 
@@ -461,7 +494,11 @@ def check_reveal_gain_line(line: EffectSection) -> None:
                     raise TypeError(f"{reward!r} is not a Reveal gain")
                 once("influence")
                 gains += times
-            case DrawIntrigueCards(count=count) | RecruitTroops(count=count):
+            case (
+                DrawIntrigueCards(count=count)
+                | RecruitTroops(count=count)
+                | DeployFromSupply(count=count)
+            ):
                 once(type(reward).__name__)
                 gains += count
             case GenerateSpecimens(count=count) | AdvanceTleilaxu(count=count):

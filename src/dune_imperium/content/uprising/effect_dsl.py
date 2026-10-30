@@ -305,6 +305,16 @@ class AtFactionSpace:
 
 
 @dataclass(frozen=True, slots=True)
+class AtSpaceWithEnemyAgent:
+    """The Agent was sent to a board space that holds an enemy Agent ("If used
+    to send an Agent to a board space with an enemy Agent:" [Bounty Hunter
+    card, Steam app text]): fixed by the placement -- "used to send" names the
+    moment the Agent goes -- so an Agent box judges it when the card is played
+    (OQ-028 (a)). Only an Infiltration or another effect that ignores enemy
+    Agents puts an Agent on such a space (rise-of-ix.md 7)."""
+
+
+@dataclass(frozen=True, slots=True)
 class FactionBond:
     """Another card of ``faction`` is in play: that Faction's Bond ("Fremen
     Bond | 프레멘의 유대감" [Main p. 20])."""
@@ -559,6 +569,7 @@ type Condition = (
     | OpponentPlayedCombatIntrigue
     | AtMakerSpace
     | AtFactionSpace
+    | AtSpaceWithEnemyAgent
     | FactionBond
     | SpyRecalledThisTurn
     | UnitsInConflictAtLeast
@@ -1313,6 +1324,12 @@ class AcquireTech:
     and with any Negotiators returned (``rules.tech``)."""
 
     discount: int = 1
+    # Appropriate (Rise of Ix): "You may use Solari instead of spice for this
+    # purchase." [Steam app text] -- the whole price in one resource, never
+    # mixed, Negotiators taking a Solari each ("Solari와 spice를 섞어 낼 수
+    # 없다. Negotiator 하나가 1 Solari를 깎는다", docs/rules/rise-of-ix.md 4,
+    # [Rise of Ix p. 10]).
+    solari_allowed: bool = False
 
     def __post_init__(self) -> None:
         if self.discount < 0:

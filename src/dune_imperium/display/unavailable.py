@@ -1514,6 +1514,14 @@ def _reveal_choice_block(
                 "{spy}를 놓을 빈 {observation_post} 없음",
                 "waiting",
             )
+        if effect is _Choice.ACQUIRE_CARD_UP_TO_FIVE:
+            # Boundless Ambition (Rise of Ix promo): no Row or Reserve card
+            # within its cap (``acquisition.acquisitions_up_to``).
+            return (
+                "No card costing 5 or less to acquire",
+                "획득할 수 있는 비용 5 이하 카드 없음",
+                "waiting",
+            )
         return _NOTHING_TO_CHOOSE
     units_conflict = owner.troops_conflict + owner.commanders_conflict
     match effect:
@@ -1588,6 +1596,15 @@ def _reveal_choice_block(
             return english, korean, "waiting"
         case choice if choice in _TWO_SPY_RECALLS:
             return _spies_reason(2, len(owner.spy_post_ids))
+        case _Choice.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES if (
+            len(owner.tech_ids) < 3
+        ):
+            en, ko = held_text(len(owner.tech_ids))
+            return (
+                f"Needs 3 Tech tiles{en}",
+                f"{{tech_tile}} 3개 필요{ko}",
+                "waiting",
+            )
         case _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS if (
             len(owner.completed_contract_ids) < 4
         ):
@@ -2700,6 +2717,12 @@ _PAYMENT_BLOCK_REASONS: Final[Mapping[AgentPaymentBlock, Reason]] = {
     AgentPaymentBlock.TLEILAXU_TRACK_END: _TLEILAXU_TRACK_END,
     AgentPaymentBlock.NO_FACTION_TO_RAISE: _ALL_AT_THE_TOP,
     AgentPaymentBlock.NO_TROOP_TO_RECRUIT: _NO_TROOP_TO_RECRUIT,
+    # Ix-Guild Compact's two discards with no dreadnought left to commission.
+    AgentPaymentBlock.NO_DREADNOUGHT_TO_COMMISSION: (
+        "No dreadnought is left in your supply to commission",
+        "{supply}에 남은 dreadnought 없음",
+        "reward",
+    ),
 }
 # The payment an ``AgentPaymentBlock`` withholds, by the box's effect.
 _WITHHELD_PAYMENTS: Final[Mapping[PersonalCardAgentEffect, str]] = {

@@ -16,11 +16,11 @@ only through a Plot Intrigue that draws, played in her Reveal turn, and then a
 Combat Influence reaching her first token, which about 260 searched games
 never did (her hand is empty in Combat: a Reveal shows the whole hand). So
 this test plays a real game up to Tessia's Combat reward (``PLAN``: original +
-Rise of Ix with the leader draft, seed 4; she is seat 1 with Bene Gesserit
-Influence 1 and her four tokens), gives her a hand there -- CHOAM Delegate
+Rise of Ix with the leader draft, seed 3; she is seat 1 with Fremen Influence
+1 and her four tokens), gives her a hand there -- CHOAM Delegate
 from the Imperium deck and her deck's top two cards, the one change made
 outside the rules -- and then plays the rest through the server: she takes
-the Influence reward on Bene Gesserit, reaches her first token, and the
+the Influence reward on the Fremen, reaches her first token, and the
 window opens over the Combat reward frame it interrupts. Four clients each
 claim one seat (one cookie each) and a fifth claims none; every request,
 the event stream included, goes over a real uvicorn socket, as a browser's
@@ -61,20 +61,20 @@ BODY = {
     "base_game": "imperium",
     "rise_of_ix": True,
     "leader_draft": True,
-    "game_seed": 4,
+    "game_seed": 3,
 }
 # CHOAM Delegate's Unload box gives 3 Solari (the engine's Tessia test).
 DELEGATE = "imperium:choam_delegate:0"
-# Her deck at the Combat reward: Convincing Argument 0, Dune, the Desert Planet
-# 0, Signet Ring 0, Reconnaissance 0, Seek Allies 0. The hand she is given, and
-# two twins of it that own the same cards: one hidden starter card traded for
-# another of another name, and CHOAM Delegate itself traded for one.
-ARGUMENT = "player:1:starter:convincing_argument:0"
+# Her deck at the Combat reward: Dune, the Desert Planet 0 and 1, Signet Ring
+# 0, Seek Allies 0, Dagger 0. The hand she is given, and two twins of it that
+# own the same cards: one hidden starter card traded for another of another
+# name, and CHOAM Delegate itself traded for one.
+SEEK = "player:1:starter:seek_allies:0"
 DUNE = "player:1:starter:dune_the_desert_planet:0"
 SIGNET = "player:1:starter:signet_ring:0"
-HAND = (DELEGATE, ARGUMENT, DUNE)
-TWIN_STARTER = (DELEGATE, ARGUMENT, SIGNET)
-TWIN_DELEGATE = (SIGNET, ARGUMENT, DUNE)
+HAND = (DELEGATE, SEEK, DUNE)
+TWIN_STARTER = (DELEGATE, SEEK, SIGNET)
+TWIN_DELEGATE = (SIGNET, SEEK, DUNE)
 # What differs between two games of one table whatever their hidden cards:
 # the game's id and log epoch, the play clock, who is online, the doorbell's
 # sequence; and an event's raw text, which is its data (compared) with those.
@@ -84,95 +84,68 @@ VOLATILE = frozenset(
 _DEADLINE = 5.0
 
 # (seat, action id, arguments), in order; the number after each is its index.
-# Found on the engine as merged with P4 6c6b747e (scratch ``find8.py``: the
+# Found on the engine as merged with P4 86a4c195 (scratch ``find8.py``: the
 # draft gives one seat Tessia, who deploys every troop offered; other answers
-# at random, stream 4 * 1000 + 2): it ends at her Combat reward decision.
+# at random, seed 3, stream 3 * 1000 + 2): it ends at her Combat reward
+# decision.
 PLAN: list[tuple[int, str, dict[str, Any]]] = [
     (1, "pick_leader", {"leader_id": "tessia_vernius"}),  # 0
-    (0, "pick_leader", {"leader_id": "ilesa_ecaz"}),  # 1
-    (3, "pick_leader", {"leader_id": "paul_atreides"}),  # 2
+    (0, "pick_leader", {"leader_id": "countess_ariana_thorvald"}),  # 1
+    (3, "pick_leader", {"leader_id": "ilesa_ecaz"}),  # 2
     (2, "pick_leader", {"leader_id": "viscount_hundro_moritani"}),  # 3
     (2, "finish_leader_draft", {}),  # 4
-    (2, "keep_peeked_intrigue", {"instance_id": "intrigue:know_their_ways:0"}),  # 5
+    (2, "keep_peeked_intrigue", {"instance_id": "intrigue:infiltrate:0"}),  # 5
+    (3, "set_aside_leader_card", {"card_id": "player:3:starter:dagger:1"}),  # 6
+    (2, "play_intrigue", {"card_id": "intrigue:infiltrate:0", "option": 0}),  # 7
+    (2, "reveal_turn", {}),  # 8
+    (2, "acquire_imperium", {"instance_id": "imperium:in_the_shadows:0"}),  # 9
+    (2, "finish_reveal", {}),  # 10
     (
-        0,
-        "set_aside_leader_card",
-        {"card_id": "player:0:starter:convincing_argument:0"},
-    ),  # 6
-    (2, "play_intrigue", {"card_id": "intrigue:know_their_ways:0", "option": 0}),  # 7
-    (2, "choose_agent_card", {"card_id": "player:2:starter:reconnaissance:0"}),  # 8
-    (2, "place_agent", {"space_id": "arrakeen"}),  # 9
-    (2, "deploy_troops", {"count": 1}),  # 10
-    (2, "withdraw_troops", {"count": 1}),  # 11
-    (2, "resolve_board_effect", {"effect": "troops"}),  # 12
-    (2, "deploy_troops", {"count": 2}),  # 13
-    (2, "deploy_troops", {"count": 1}),  # 14
-    (2, "withdraw_troops", {"count": 2}),  # 15
-    (2, "resolve_board_effect", {"effect": "cards"}),  # 16
-    (2, "withdraw_troops", {"count": 1}),  # 17
-    (2, "finish_agent_turn", {}),  # 18
-    (3, "choose_agent_card", {"card_id": "player:3:starter:seek_allies:0"}),  # 19
-    (3, "place_agent", {"space_id": "wealth"}),  # 20
-    (3, "resolve_board_effect", {"effect": "resources"}),  # 21
-    (3, "resolve_agent_card_effect", {}),  # 22
-    (3, "resolve_faction_influence", {}),  # 23
-    (3, "finish_agent_turn", {}),  # 24
-    (0, "choose_agent_card", {"card_id": "player:0:starter:dagger:1"}),  # 25
-    (0, "place_agent", {"space_id": "tech_negotiation"}),  # 26
-    (0, "place_board_negotiator", {}),  # 27
-    (0, "finish_agent_turn", {}),  # 28
+        3,
+        "choose_agent_card",
+        {"card_id": "player:3:starter:dune_the_desert_planet:0"},
+    ),  # 11
+    (3, "place_agent", {"space_id": "imperial_basin"}),  # 12
+    (3, "harvest_maker_spice", {"space_id": "imperial_basin"}),  # 13
+    (3, "deploy_troops", {"count": 2}),  # 14
+    (3, "finish_agent_turn", {}),  # 15
+    (0, "reveal_turn", {}),  # 16
+    (0, "finish_reveal", {}),  # 17
+    (1, "choose_agent_card", {"card_id": "player:1:starter:diplomacy:0"}),  # 18
+    (1, "place_agent", {"space_id": "hardy_warriors"}),  # 19
+    (1, "deploy_troops", {"count": 2}),  # 20
+    (1, "resolve_board_effect", {"effect": "troops"}),  # 21
+    (1, "deploy_troops", {"count": 2}),  # 22
+    (1, "withdraw_troops", {"count": 4}),  # 23
+    (1, "deploy_troops", {"count": 4}),  # 24
+    (1, "withdraw_troops", {"count": 3}),  # 25
+    (1, "deploy_troops", {"count": 3}),  # 26
+    (1, "withdraw_troops", {"count": 3}),  # 27
+    (1, "deploy_troops", {"count": 3}),  # 28
+    (1, "withdraw_troops", {"count": 4}),  # 29
+    (1, "deploy_troops", {"count": 4}),  # 30
+    (1, "withdraw_troops", {"count": 1}),  # 31
+    (1, "deploy_troops", {"count": 1}),  # 32
+    (1, "resolve_faction_influence", {}),  # 33
+    (1, "finish_agent_turn", {}),  # 34
+    (3, "choose_agent_card", {"card_id": "player:3:starter:dagger:1"}),  # 35
+    (3, "place_agent", {"space_id": "tech_negotiation"}),  # 36
+    (3, "place_board_negotiator", {}),  # 37
+    (3, "finish_agent_turn", {}),  # 38
+    (1, "reveal_turn", {}),  # 39
     (
         1,
-        "choose_agent_card",
-        {"card_id": "player:1:starter:dune_the_desert_planet:1"},
-    ),  # 29
-    (1, "place_agent", {"space_id": "imperium_hagga_basin"}),  # 30
-    (1, "deploy_troops", {"count": 2}),  # 31
-    (1, "harvest_maker_spice", {"space_id": "imperium_hagga_basin"}),  # 32
-    (1, "finish_agent_turn", {}),  # 33
-    (
-        2,
-        "choose_agent_card",
-        {"card_id": "player:2:starter:dune_the_desert_planet:1"},
-    ),  # 34
-    (2, "place_agent", {"space_id": "imperial_basin"}),  # 35
-    (2, "deploy_troops", {"count": 2}),  # 36
-    (2, "withdraw_troops", {"count": 1}),  # 37
-    (2, "deploy_troops", {"count": 1}),  # 38
-    (2, "withdraw_troops", {"count": 1}),  # 39
-    (2, "deploy_troops", {"count": 1}),  # 40
-    (2, "harvest_maker_spice", {"space_id": "imperial_basin"}),  # 41
-    (2, "withdraw_troops", {"count": 1}),  # 42
-    (2, "finish_agent_turn", {}),  # 43
-    (3, "reveal_turn", {}),  # 44
-    (3, "acquire_imperium", {"instance_id": "imperium:sardaukar_infantry:1"}),  # 45
-    (3, "acquire_imperium", {"instance_id": "imperium:guild_administrator:1"}),  # 46
-    (3, "finish_reveal", {}),  # 47
-    (
-        0,
-        "choose_agent_card",
-        {"card_id": "player:0:starter:dune_the_desert_planet:1"},
-    ),  # 48
-    (0, "place_agent", {"space_id": "smuggling"}),  # 49
-    (0, "resolve_board_effect", {"effect": "resources"}),  # 50
-    (0, "finish_agent_turn", {}),  # 51
-    (1, "choose_agent_card", {"card_id": "player:1:starter:diplomacy:0"}),  # 52
-    (1, "place_agent", {"space_id": "secrets"}),  # 53
-    (1, "resolve_board_effect", {"effect": "intrigue"}),  # 54
-    (1, "resolve_faction_influence", {}),  # 55
-    (1, "finish_agent_turn", {}),  # 56
-    (2, "reveal_turn", {}),  # 57
-    (2, "acquire_imperium", {"instance_id": "imperium:fremen_camp:0"}),  # 58
-    (2, "finish_reveal", {}),  # 59
-    (0, "reveal_turn", {}),  # 60
-    (0, "finish_reveal", {}),  # 61
-    (1, "play_intrigue", {"card_id": "intrigue:charisma:0", "option": 0}),  # 62
-    (1, "reveal_turn", {}),  # 63
-    (1, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 64
-    (1, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 65
-    (1, "finish_reveal", {}),  # 66
-    (2, "pass_combat_intrigue", {}),  # 67
-    (1, "pass_combat_intrigue", {}),  # 68
+        "acquire_imperium",
+        {"instance_id": "imperium:fedaykin_death_commando:0"},
+    ),  # 40
+    (1, "acquire_reserve", {"card_id": "arrakis_liaison"}),  # 41
+    (1, "finish_reveal", {}),  # 42
+    (3, "reveal_turn", {}),  # 43
+    (3, "acquire_imperium", {"instance_id": "imperium:scout:1"}),  # 44
+    (3, "acquire_imperium", {"instance_id": "imperium:guild_bankers:0"}),  # 45
+    (3, "finish_reveal", {}),  # 46
+    (3, "pass_combat_intrigue", {}),  # 47
+    (1, "pass_combat_intrigue", {}),  # 48
 ]
 
 
@@ -340,8 +313,8 @@ class _Table:
         assert sent.status_code == 200, sent.text
 
     def to_the_window(self, hand: tuple[str, ...]) -> list[dict[str, Any]]:
-        """Play ``PLAN``, give Tessia ``hand``, take the Influence reward on Bene
-        Gesserit: her first token opens the window. Returns the other readers'
+        """Play ``PLAN``, give Tessia ``hand``, take the Influence reward on the
+        Fremen: her first token opens the window. Returns the other readers'
         payloads at the three moments (her hand given, the Influence chosen,
         the window open)."""
 
@@ -352,15 +325,13 @@ class _Table:
         assert [frame.kind for frame in state.decision_stack] == [
             FrameKind.COMBAT_REWARD_ICONS
         ]
-        assert state.players[TESSIA].influence.bene_gesserit == 1
+        assert state.players[TESSIA].influence.fremen == 1
         assert len(state.players[TESSIA].snooper_faction_ids) == 4
         session.state = _hand(state, hand)
         moments = [self.others()]
         self.take(TESSIA, "resolve_combat_reward_icon", {"effect": "choose_influence"})
         moments.append(self.others())
-        self.take(
-            TESSIA, "choose_combat_reward_influence", {"faction": "bene_gesserit"}
-        )
+        self.take(TESSIA, "choose_combat_reward_influence", {"faction": "fremen"})
         kinds = [
             frame.kind for frame in self.manager._get(self.game_id).state.decision_stack
         ]

@@ -2170,3 +2170,13 @@ title = "When one effect raises several Factions, its owner picks the order"
 ruling_ko = "한 효과가 여러 진영의 영향력을 함께 올리면 어느 진영부터 올릴지는 그 플레이어가 고른다. Quid Pro Quo는 진영마다 따로 받고, \"둘을 고른다:\"는 고른 순서대로 받는다. Tessia Vernius의 Snooper 보상은 이 순서대로 닿는 트랙이 받는다. Duplicity로 같은 진영의 영향력을 잃고 다시 얻을 수 있다."
 ruling = "When one effect raises your Influence with several Factions, you pick the order. Quid Pro Quo gives each Faction separately; \"Choose two:\" gives them in the order you chose them. Tessia Vernius' Snooper rewards go to the tracks in that order. Duplicity may lose and regain Influence with the same Faction."
 names = ["Tessia Vernius", "Quid Pro Quo", "Snooper", "Duplicity"]
+
+[[ruling]]
+oq = "OQ-154"
+group = "project"
+game = "base_ix"
+title_ko = "따로 둔 카드의 기록 줄은 계속 비공개"
+title = "The log keeps Ilesa Ecaz's set-aside line hidden"
+ruling_ko = "Ilesa Ecaz가 라운드 시작에 따로 둔 카드는 둘째 차례에 공개되어 손으로 돌아오지만, 기록에 남은 라운드 시작의 '따로 둠' 줄은 그 뒤에도 다른 플레이어에게 비공개로 남는다. 돌아온 카드는 그 차례의 기록 줄과 공개된 손 카드로 보인다."
+ruling = "Ilesa Ecaz's card set aside at Round Start is revealed and returns to her hand at her second turn, but the log's Round Start line that set it aside stays hidden from the other players afterwards. The returned card shows in that turn's log line and among her public hand cards."
+names = ["Ilesa Ecaz"]

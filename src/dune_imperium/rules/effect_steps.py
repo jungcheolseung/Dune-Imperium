@@ -360,6 +360,9 @@ _ACQUIRE_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
     "influence_fremen": _V.GAIN_INFLUENCE,
     "influence_any": _V.GAIN_INFLUENCE,
     "dreadnought": _V.RECRUIT,
+    # Appropriate's Freighter icon (Rise of Ix): its row opens the Freighter's
+    # window, the move up first among its answers.
+    "freighter": _V.ADVANCE,
 })
 # What a Tech tile's acquire icon does (``TechTile.acquire_effect_keys``).
 _TECH_ICON_VERBS: Final[Mapping[str, Verb]] = MappingProxyType({
@@ -436,6 +439,17 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     # Weirding Way's extra turn (Rise of Ix).
     "take_agent_card_extra_turn": _spec(
         _V.TAKE, _S.AGENT_CARD, _BOX, icon="extra_turn"
+    ),
+    # Ixian Engineer's Acquire Tech icon (Rise of Ix): the window it opens.
+    # Its two payments (Appropriate's Solari beside the spice of every Acquire
+    # Tech): the icon, then what the window is paid with, as Local Fence's
+    # two arrows are told apart.
+    "acquire_agent_card_tech": _spec(
+        _V.ACQUIRE, _S.AGENT_CARD, _BOX, icon="tech", option="spice"
+    ),
+    # Appropriate's (Rise of Ix): the same icon, the window paid in Solari.
+    "acquire_agent_card_tech_with_solari": _spec(
+        _V.ACQUIRE, _S.AGENT_CARD, _BOX, icon="tech", option="solari"
     ),
     # Local Fence's "-OR-" of two arrows (Rise of Ix): which one is paid.
     "pay_agent_card_spice_for_solari": _spec(
@@ -762,16 +776,21 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
         ),
     ),
     "pay_reveal_solari_for_vp": _spec(_V.PAY, _S.REVEAL_CARD, "=opulence"),
+    # Ix-Guild Compact's Tech Negotiation icons (Rise of Ix).
+    "place_reveal_negotiator": _spec(
+        _V.RECRUIT, _S.REVEAL_CARD, "=ix_guild_compact", icon="negotiator"
+    ),
     "pay_reveal_spice_for_vp": _spec(_V.PAY, _S.REVEAL_CARD, "=guild_ambassador"),
     "pay_reveal_solari_for_troops": _spec(
         _V.PAY, _S.REVEAL_CARD, "=gurney_halleck_card"
     ),
-    # Guild Chief Administrator's Freighter icon (Rise of Ix).
+    # Guild Chief Administrator's and Freighter Fleet's Freighter icon (Rise
+    # of Ix): the card the row names.
     "advance_reveal_freighter": _spec(
-        _V.ADVANCE, _S.REVEAL_CARD, "=guild_chief_administrator", icon="freighter"
+        _V.ADVANCE, _S.REVEAL_CARD, "source", icon="freighter"
     ),
     "recall_reveal_freighter": _spec(
-        _V.COLLECT, _S.REVEAL_CARD, "=guild_chief_administrator", icon="freighter"
+        _V.COLLECT, _S.REVEAL_CARD, "source", icon="freighter"
     ),
     # Negotiated Withdrawal's arrow (Rise of Ix): the Faction, then the three
     # units, their mix riding on the count's row.
@@ -823,6 +842,13 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     "pay_reveal_water_for_sandworm": _spec(_V.PAY, _S.REVEAL_CARD, "=desert_power"),
     "command_acquire_row_card": _spec(
         _V.ACQUIRE, _S.REVEAL_CARD, "=engineered_miracle", targets=_IMPERIUM
+    ),
+    # Boundless Ambition (Rise of Ix promo): its acquisition by cost cap.
+    "acquire_reveal_imperium_card": _spec(
+        _V.ACQUIRE, _S.REVEAL_CARD, "=boundless_ambition", targets=_IMPERIUM
+    ),
+    "acquire_reveal_reserve_card": _spec(
+        _V.ACQUIRE, _S.REVEAL_CARD, "=boundless_ambition", targets=_RESERVE
     ),
     # --- The leader, a Commander's Skill and Tech tiles in the Reveal ------
     "retreat_leader_troop": _spec(_V.RETREAT, _S.LEADER, _LEADER, option="troop"),
@@ -1196,6 +1222,10 @@ STEP_SPECS: Final[Mapping[str, StepSpec]] = MappingProxyType({
     # resource bundle or a Faction is its printer's own, so the row does not
     # repeat it (``_PRINTER_IMPLIED``).
     "recruit_reveal_troops": _spec(_V.RECRUIT, _S.REF, Printed.NAMED, icon="troops"),
+    # Rise of Ix's Treachery: troops from the supply to the Conflict.
+    "deploy_reveal_supply_troops": _spec(
+        _V.DEPLOY, _S.REF, Printed.NAMED, icon="supply_troops"
+    ),
     "draw_reveal_intrigue": _spec(_V.DRAW, _S.REF, Printed.NAMED, icon="intrigue"),
     "generate_reveal_specimens": _spec(
         _V.GENERATE_SPECIMENS, _S.REF, Printed.NAMED, icon="specimen"

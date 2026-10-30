@@ -149,11 +149,15 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
     # Guild Ambassador's Victory Point, Gurney Halleck's troops, and Sardaukar
     # Legion's, Scout's and Chani's counts of troops (stage P3), and the promo
     # Duncan, Loyal Blade's trash for a count of troops; Rise of Ix's Guild
-    # Chief Administrator's Freighter icon ("may" [Rise of Ix p. 5]) and
-    # Negotiated Withdrawal's arrow.
-    assert len(optional) == 16 + 8 + 2
-    # Ten of the Uprising family's and Bene Gesserit Sister's -OR- (stage P3).
-    assert len(mandatory) == 10 + 1
+    # Chief Administrator's and Freighter Fleet's Freighter icon ("may"
+    # [Rise of Ix p. 5]), Negotiated Withdrawal's arrow, Ixian Engineer's
+    # trash for a Victory Point and Ix-Guild Compact's two Tech Negotiation
+    # icons, then its second alone (stage P4d).
+    assert len(optional) == 16 + 8 + 5
+    # Ten of the Uprising family's, Bene Gesserit Sister's -OR- (stage P3) and
+    # Rise of Ix's Web of Power's wild Influence icon and its promo Boundless
+    # Ambition's acquisition (stage P4d).
+    assert len(mandatory) == 10 + 1 + 2
     assert set(REVEAL_CHOICE_EFFECT_ACTIONS) == set(PersonalCardRevealChoiceEffect)
     # A printed "-OR-" choice and a gain are mandatory; the Spy icons too
     # (OQ-057 (14)); "may" and arrows are optional [FAQ p. 3].
@@ -170,6 +174,11 @@ def test_every_reveal_choice_is_optional_or_mandatory() -> None:
         _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
         # The original game's (stage P3): Bene Gesserit Sister.
         _Choice.CHOOSE_TWO_PERSUASION_OR_TWO_STRENGTH,
+        # Rise of Ix's (stage P4d): Web of Power's wild Influence icon and
+        # Boundless Ambition's "Acquire a card that costs 5 or less" (no
+        # "may").
+        _Choice.GAIN_CHOSEN_INFLUENCE,
+        _Choice.ACQUIRE_CARD_UP_TO_FIVE,
     } == mandatory
 
 
@@ -298,10 +307,16 @@ def test_an_id_two_cards_produce_always_names_its_card() -> None:
         "pay_reveal_solari_for_troops",
         "deploy_reveal_card_troops",
         "retreat_reveal_card_troops",
-        # Rise of Ix's Guild Chief Administrator, on the original game (P4d).
+        # Rise of Ix's Guild Chief Administrator and Freighter Fleet (their
+        # Freighter icon), on the original game (P4d).
         "advance_reveal_freighter",
         "recall_reveal_freighter",
         "retreat_reveal_units_for_influence",
+        # And its Ix-Guild Compact.
+        "place_reveal_negotiator",
+        # And its promo Boundless Ambition, its one card.
+        "acquire_reveal_imperium_card",
+        "acquire_reveal_reserve_card",
     }
     assert set(produced) == REVEAL_CHOICE_ACTION_IDS - original_only
     for action_id, by_card in produced.items():
@@ -834,7 +849,7 @@ def test_the_new_reveal_choice_pieces_read_as_the_cards_print_them() -> None:
     assert reward_text_ko(seat) in REVEAL_CHOICE_EFFECT_TEXT_KO[corrinth]
 
 
-def test_eight_reveal_choices_pay_one_target_for_their_reward() -> None:
+def test_the_reveal_choices_paying_one_target_for_their_reward() -> None:
     """Composed A4d: the choices that recall a Spy, trash a card or name a
     Faction for their reward resolve by the shared "target -> reward" shape;
     the Spy icons, the printed "-OR-"s and the hooks do not."""
@@ -852,4 +867,9 @@ def test_eight_reveal_choices_pay_one_target_for_their_reward() -> None:
         _Choice.MAY_TRASH_SELF_FOR_FOUR_INFLUENCE_IF_FOUR_CONTRACTS,
         _Choice.COMMAND_GAIN_CHOSEN_INFLUENCE,
         _Choice.GAIN_CHOSEN_INFLUENCE_IF_TWO_TECH,
+        # Rise of Ix's Web of Power (stage P4d): the wild Influence icon.
+        _Choice.GAIN_CHOSEN_INFLUENCE,
+        # Rise of Ix's Ixian Engineer (stage P4d): CHOAM Demands' arrow with a
+        # Victory Point.
+        _Choice.MAY_TRASH_SELF_FOR_VICTORY_POINT_IF_THREE_TECH_TILES,
     }

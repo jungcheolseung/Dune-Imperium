@@ -275,6 +275,7 @@ const ACTION_LABELS = {
   /* Rise of Ix's Unload, 처분 [IX-ko pp. 7, 12]; the Reveal box is 공개 칸
      [Main p. 8]. */
   resolve_unload_icon: "처분: 공개 칸 효과",
+  decline_unload_icon: "처분: 공개 칸 효과 쓰지 않음",
   /* Rise of Ix's four board spaces (stage P4c-4): the Dreadnought icon, the
      Acquire Tech icon, Tech Negotiation's two halves and Spaceport's
      Foldspace on top of the deck, in the words above. */
@@ -291,6 +292,18 @@ const ACTION_LABELS = {
   advance_reveal_freighter: "화물선 1칸 전진",
   recall_reveal_freighter: "화물선 귀환",
   retreat_reveal_units_for_influence: "부대 3 후퇴 → {influence_any}",
+  /* Ix-Guild Compact's Reveal Tech Negotiation icons (stage P4d): a troop
+     placed on the 익스 게임판 as a 협상가 [IX-ko pp. 4, 12]. */
+  place_reveal_negotiator: "{reveal_turn}: 협상가 놓기",
+  /* Boundless Ambition's acquisition by cost cap (stage P4d): revealed, and
+     in its 처분 window [IX-ko pp. 7, 12]. */
+  acquire_reveal_imperium_card: "{reveal_turn}: 비용이 5 이하인 카드 획득",
+  acquire_reveal_reserve_card: "{reveal_turn}: 비용이 5 이하인 카드 획득",
+  acquire_unload_imperium_card: "처분: 비용이 5 이하인 카드 획득",
+  acquire_unload_reserve_card: "처분: 비용이 5 이하인 카드 획득",
+  skip_unload_acquisition: "처분: 획득할 카드 없음 (건너뛰기)",
+  acquire_agent_card_tech: "{tech_tile} 획득",
+  acquire_agent_card_tech_with_solari: "{tech_tile} 획득 ({solari}로 지불)",
   acquire_foldspace_to_deck_top: "접힘 공간 카드를 덱 위에",
   place_combat_reward_dreadnought: "드레드노트를 놓을 {control} 공간",
   /* Rise of Ix (stage P4c-2a): Detonation Devices and Disposal Facility keep
@@ -326,6 +339,8 @@ const ACTION_LABELS = {
   place_tech_spy: "파놉티콘: {spy} 배치",
   place_track_spy: "{influence_emperor} 4: {spy} 배치",
   recruit_reveal_troops: "{reveal_turn}: {troop} {recruit}",
+  /* Rise of Ix's Treachery: "Deploy these troops to the Conflict." */
+  deploy_reveal_supply_troops: "{reveal_turn}: {troop} {conflict}에 배치",
   draw_reveal_intrigue: "{reveal_turn}: {intrigue}",
   generate_reveal_specimens: "{reveal_turn}: {specimen}",
   advance_reveal_tleilaxu: "{reveal_turn}: {tleilaxu}",
@@ -519,6 +534,9 @@ const EVENT_LABELS = {
   shipping_troops_recruited: "화물선 귀환: {troop} {recruit}",
   shipping_reward_lapsed: "화물선 귀환 운송 보상: 쓰지 않음",
   card_unloaded: "처분",
+  unload_icon_lapsed: "처분: 공개 칸 효과 쓰지 않음",
+  unload_icon_declined: "처분: 공개 칸 효과 쓰지 않음",
+  unload_acquisition_empty: "처분: 획득할 카드 없음",
   shipping_influence_unavailable: "화물선 귀환: {influence_any} 불가",
   dreadnought_control_placed: "드레드노트가 {control} 공간에",
   dreadnought_returned: "드레드노트 {garrison} 복귀",
