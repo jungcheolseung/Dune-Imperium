@@ -217,6 +217,18 @@ Left open by the review:
 
 ## What waits
 
-- **Closing runs**: the original + Ix soak and the Hard vs heuristic
-  measurement, booked on the CPU board once Tessia and the remaining cards
-  are in.
+- **Closing runs (done 2026-10-30, master `c6c14aef`)**:
+  - Soak, 300 games of original + Ix with draft and promos, Epic on odd
+    seeds, four app_ai seats with mixed levels: 0 raised, 0 unfinished,
+    0 fallbacks.
+  - Hard vs heuristic, 300 seeds in mirrored 2:2 lineups (600 games): Hard
+    49.6% per seat, heuristic 0.4% (the Hard side 99.2% ± 0.7); mean VP
+    9.61 to 4.61, against 9.43 to 4.65 on the original game alone.
+  - Two games fell back once each: Shuttle Fleet's two Influences in the
+    Tech window, fixed in `7b5aa49f`.
+  - Two games raised the engine's "a cost's Unload holds a decision but its
+    path pushed no hold" (seeds 80205 and 80212). In both, Tessia's Snooper
+    reward (1) discarded an Unload card whose box holds a decision
+    (Boundless Ambition, Ix-Guild Compact). The Snooper discard is not a
+    registered hold payer. This is an engine matter, reported to the
+    coordinator.

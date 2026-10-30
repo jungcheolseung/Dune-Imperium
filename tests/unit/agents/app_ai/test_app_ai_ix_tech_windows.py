@@ -470,3 +470,43 @@ def test_double_cross_without_a_named_seat_picks_at_random() -> None:
     named = intrigue._opponent_troop_loss(run, lambda: Answer(2.0, ((3,),), ""))
     assert named is rows[1]
     assert intrigue._opponent_troop_loss(run, lambda: Answer(0.0, None, "")) in rows
+
+
+def test_shuttle_fleets_two_influences_in_the_tech_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shuttle Fleet bought where only its acquire effects are owed (the
+    Tech window, seeds 80076 and 80148 of the closing measurement):
+    ``ShuttleFleetAcquiredAbility``'s two tracks, as the turn windows."""
+
+    from dune_imperium.agents.app_ai.abilities.base import Answer
+    from dune_imperium.agents.app_ai.abilities.tech import (
+        ShuttleFleetAcquiredAbility,
+    )
+    from dune_imperium.agents.app_ai.windows import bloodlines
+
+    factions = ("emperor", "spacing_guild", "bene_gesserit", "fremen")
+    rows = [
+        DomainAction(
+            action_id="resolve_tech_acquire_effect",
+            actor=0,
+            arguments=(
+                ("effect", "distinct_influence"),
+                ("faction", first),
+                ("second_faction", second),
+                ("tech_id", "shuttle_fleet"),
+            ),
+        )
+        for first in factions
+        for second in factions
+        if first != second
+    ]
+    monkeypatch.setattr(
+        ShuttleFleetAcquiredAbility,
+        "evaluate",
+        lambda self, p, request: Answer(1.0, (("fremen", "emperor"),), ""),
+    )
+    chosen = bloodlines.tech_acquire_effect_action(_choice_run(rows), rows)
+    assert chosen is not None
+    arguments = dict(chosen.arguments)
+    assert {arguments["faction"], arguments["second_faction"]} == {"fremen", "emperor"}

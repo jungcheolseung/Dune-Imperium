@@ -559,4 +559,7 @@ P4 브랜치(`51884e8f`)가 지금 가진 결정은 dreadnought 셋(P4b)과 예�
 - P4 최종판(`86a4c195`, 병합 `ca85e398`): Appropriate는 `AppropriateAbility`가 타일과 지불(0 = Solari)을 답하고, Solari 창은 같은
   클래스로 타일을 고른다. 얻을 때의 Freighter는 Reveal과 Agent 턴 모두 바로 받는 획득 아이콘이다. 세 난이도(Epic 포함)·원판 단독 census
   무작위 0, 같은 수 24/24.
-- 남은 것: 원판 + Ix soak과 Hard 대 heuristic 측정(master 병합 뒤).
+- 마무리 런(2026-10-30, master `c6c14aef`): soak 300판(Epic 150판 포함, 난이도 섞음)은 예외·미완·무작위 0. Hard 대 heuristic 600판에서
+  Hard는 좌석당 49.6%, heuristic은 0.4%(Hard 쪽 99.2% ± 0.7), 평균 VP 9.61 대 4.61(원판 단독 9.43 대 4.65). Tech 창의 Shuttle
+  Fleet 영향력 두 개 때문에 무작위 2번이 나왔고 `7b5aa49f`에서 고쳤다. 2판은 엔진 예외였다: Tessia의 Snooper 보상(1) 버리기로 결정이
+  필요한 Unload 카드를 버리면 보류 지불자가 없다(조정 세션에 보고).

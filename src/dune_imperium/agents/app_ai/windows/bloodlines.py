@@ -134,7 +134,10 @@ from dune_imperium.agents.app_ai.windows.intrigue import (
     intrigue_tech_tile,
 )
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
-from dune_imperium.agents.app_ai.windows.turn import board_space_order
+from dune_imperium.agents.app_ai.windows.turn import (
+    _acquire_effect_action,
+    board_space_order,
+)
 from dune_imperium.core.actions import DomainAction
 from dune_imperium.core.observation import TECH_PAYMENT_KEY
 from dune_imperium.rules.action_shapes import PRINTER_KEY, printer_parts
@@ -691,6 +694,10 @@ def tech_acquire_effect_action(
         branch = _first_ref(vault.evaluate(p, Request()))
         choice = _GENE_LOCKED_CHOICE.get(branch) if isinstance(branch, int) else None
         return with_arg(variants, "choice", choice)
+    if effect == "distinct_influence":
+        # Rise of Ix's Shuttle Fleet: ``ShuttleFleetAcquiredAbility``'s two
+        # tracks, as the turn and Agent-turn windows answer them.
+        return _acquire_effect_action(run, tech_id, effect, variants)
     if effect == "shield_wall":
         destroy = with_arg(variants, "destroy_shield_wall", True)
         plain = next(
