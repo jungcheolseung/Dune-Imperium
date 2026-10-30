@@ -1797,11 +1797,21 @@ dreadnought 말은 앱 그림이나 TTS 토큰이 아니라 Uprising의 그린 �
   - Truthsayer: 앱은 진영 띠가 Bene Gesserit 위·Emperor 아래, 인쇄는 반대이고, 앱 그림에는 왼쪽 아치에 인쇄에 없는 인물이 하나 더 있다 → 띠 순서만
     인쇄대로(`scripts/dwgr/app_cards.py` `PRINTED_BAND_ORDER`, 이 카드의 프리팹 두 띠가 그림·글을 맞바꿈; 에셋 `de185d0`), 그림은 앱 그대로(인물 포함).
   - Guild Accord: 관의 구멍 너머로 행성이 보인다(인쇄는 구멍이 어둡다) → 앱 그대로.
-  - Imperial Shock Trooper: Reveal 글씨가 인쇄보다 작다 → 앱 그대로.
+  - Imperial Shock Trooper: Reveal 글씨가 인쇄보다 작다 → 앱 그대로. 다만 **사용자 지적(2026-10-30 10시대, 조정자 경유)** 대로 Reveal 줄의 세로
+    배치는 인쇄대로 고쳤다 — 앱 프리팹은 아이콘 줄(Persuasion 마름모와 sword 둘)을 Agent 칸 아래 테두리에 붙여 두고 인쇄는 그 사이에 틈이 있다. 인쇄 스캔과
+    렌더를 970px 카드로 맞춰 Agent 칸 아래 테두리에서 잰 조각 중심(마름모 40 → 52px, sword 둘 35 → 51, 두 줄 글 116 → 139, "+"와 sword 셋 116 → 134)으로
+    프리팹 위치를 내렸다(`app_cards.py` `REVEAL_SHIFTS`, 1px = 0.8 프리팹 단위; 에셋 `265a4bc`). 글씨 크기는 그대로다.
   - Strongarm: 글자 크기·줄바꿈이 인쇄와 다르다 → 앱 그대로.
   - Quid Pro Quo: 글자 크기·줄바꿈이 인쇄와 다르다 → 앱 그대로.
   - Strategic Push: 글자 크기·줄바꿈이 인쇄와 다르다 → 앱 그대로.
   - Boundless Ambition(프로모): 글자 크기·줄바꿈이 인쇄와 다르다 → 앱 그대로.
   - Grand Conspiracy: 글머리 줄에 들여쓰기가 없다 → 앱 그대로.
   - Conflict 세 장(Skirmish 둘 — `skirmish_e`·`skirmish_f`, 에셋 `Skirmish I`·`Skirmish II` — 과 Trade Monopoly): 세트 표시 자리가 인쇄와 다르다 → 앱 그대로.
+  - 같은 꼴 훑기(Imperial Shock Trooper 지적 뒤): 스캔이 있는 Imperium·프로모 앞면 159장(Ix·원판·Uprising·Immortality)에서 Agent 칸 아래 테두리와
+    첫 Reveal 아이콘 사이 틈을 렌더와 스캔으로 재어, 렌더가 8px 넘게 좁은 19장을 나란히 봤다. **Negotiated Withdrawal**(Ix)은 같은 문제(마름모가 테두리에
+    닿음, 인쇄 틈 약 20px)라 같이 고쳤다(마름모 48 → 62px, 화살표·Influence 줄 127 → 135; 에셋 `265a4bc`). Tleilaxu Surgeon(Immortality)은 원인이
+    다르다 — 앱 프리팹의 Agent 칸이 인쇄보다 길어 그 아래가 좁고, Reveal 조각은 카드 기준으로 이미 인쇄보다 아래다; 테두리에 닿지 않고(틈 약 12px) 지금 쓰는
+    Uprising 쪽 그림이라 그대로 두었다. 원판의 마름모 하나뿐인 카드들(Guild Administrator 등)은 몇 px 높을 뿐 닿지 않고, Sardaukar Legion·Duncan Loyal
+    Blade·Gurney Halleck은 인쇄와 거의 같다 — 그대로. 고친 두 장 말고는 렌더가 바이트까지 같다(Ix 48장, 원판 100장; Uprising·Immortality 161장은 고치기 전
+    코드와 바이트까지 같다 — 다만 그중 108장은 에셋에 커밋된 파일과 이미 다르다: 커밋된 Uprising 앞면이 지금 렌더러보다 앞선 것이다).
 - **남은 것:** 한국어 카드 앞면(공식 한글판 사진 뒤), worklog·handoff(병합 때).

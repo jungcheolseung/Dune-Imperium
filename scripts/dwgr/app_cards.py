@@ -213,6 +213,28 @@ ACQUIRE_OVERRIDES = {"arrakis_revolt": ("Troop",)}
 # (docs/base-game-and-ix-plan.md 18.7): only the band order follows print, the
 # art stays the app's (its extra figure in the left arch included).
 PRINTED_BAND_ORDER = frozenset({"truthsayer"})
+# Reveal pieces of a card's own prefab moved down to the printed spacing (in
+# prefab units, the card being 776 high; negative is down): the app sets the
+# icon row against the Agent box's lower edge, the print leaves a gap under it.
+# Measured on the print scan and the render, both scaled to a 970-px card, as
+# each piece's centre below the Agent box's lower edge (1 px = 0.8 units);
+# user request 2026-10-30 (docs/base-game-and-ix-plan.md 18.7).
+REVEAL_SHIFTS: dict[str, dict[str, float]] = {
+    # diamond 40 -> 52 px, the two swords 35 -> 51, the two text lines
+    # 116 -> 139, "+" and the three swords 116 -> 134
+    "imperial_shock_trooper": {
+        "CostIcon_0": -9.6,
+        "CostIcon_1": -12.8,
+        "CostIcon_2": -12.8,
+        "Text_0": -18.4,
+        "Plus": -14.4,
+        "CostIcon_3": -14.4,
+        "CostIcon_4": -14.4,
+        "CostIcon_5": -14.4,
+    },
+    # diamond 48 -> 62 px, the text row (its arrow and Influence icon) 127 -> 135
+    "negotiated_withdrawal": {"CostIcon_1": -11.2, "Text_0": -6.4},
+}
 
 
 def build_guid():
@@ -962,6 +984,10 @@ def bind_card_prefab(inp, spec, lang):
         # each node keeps its own line ending (the top one ends in a newline)
         top_text["m_text"] = upper.replace(upper.strip(), lower.strip())
         bottom_text["m_text"] = lower.replace(lower.strip(), upper.strip())
+    if spec["id"] in REVEAL_SHIFTS:
+        reveal = R.find(t, "Reveal_Anchor")
+        for name, dy in REVEAL_SHIFTS[spec["id"]].items():
+            R.comp(R.find(reveal, name), "RT")["pos"][1] += dy
     for box in R.find_all_nodes(t):
         if R.comp(box, "WormSignetDescriptionRenderer") is not None:
             # Signet Ring: in play the app writes the owner's leader's signet
