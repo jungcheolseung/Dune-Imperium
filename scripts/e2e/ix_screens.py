@@ -95,9 +95,10 @@ Eight tables, each a fresh game on the same server:
       her own ``private.hand`` and every seat's view of her ``hand_public``
       hold it, every seat's log has its ``card_returned_to_hand`` event, and
       every page says it came back; the set-aside's log entry stays
-      ``(비공개)`` to the others (a project convention: the rules reveal the
-      card, not old log lines; docs silent). A seatless spectator gets no
-      table on a remote server, so the card reaches it nowhere.
+      ``(비공개)`` to the others (OQ-154, a project convention the user chose
+      2026-10-30: the rules reveal the card, not old log lines). A seatless
+      spectator gets no table on a remote server, so the card reaches it
+      nowhere.
    Checked also after each turn in between (20, 24, 27, 30). Her card is one
    of her starter cards, whose name and picture every seat's own starter
    cards share, so in one game it is looked for by its id; step [9]'s twin
@@ -310,9 +311,10 @@ class Checkpoint:
     # Sealed log entries: (action id, argument, value). Every seat's log holds
     # the entry once, naming the value to its actor and "(비공개)" to others.
     # That the set-aside's entry stays "(비공개)" to the others after the card
-    # comes back is a project convention: docs/rules/rise-of-ix.md 13 and
-    # OQ-119 say the card is revealed at her second turn, not whether old log
-    # lines are opened then (docs silent; the coordinator asks the user).
+    # comes back is OQ-154 (user decision 2026-10-30, "계속 (비공개)"; a project
+    # convention): docs/rules/rise-of-ix.md 13 and OQ-119 reveal the card at her
+    # second turn, and the "returned" log line and the public hand already
+    # show it, so the old line is not rewritten.
     sealed: list[tuple[str, str, str]] = field(default_factory=list)
     # The seat whose turn it is, if pinned: the decision owner in every seat's
     # snapshot, and the one ``active`` seat panel on every page.
