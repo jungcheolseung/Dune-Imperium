@@ -235,11 +235,10 @@ class Learner:
         legal = batch.local_legal(rows.to("cpu").numpy(), teacher=teacher)
         catalog = torch.from_numpy(legal.catalog).to(self.device)
         mask = torch.from_numpy(legal.mask).to(self.device)
-        hidden = self.network.trunk(observations)
+        hidden, values = self.network.trunk_and_values(observations)
         logits = self.network.action_logits(hidden, catalog).masked_fill(
             ~mask, MASKED_LOGIT
         )
-        values = self.network.value_head(hidden).squeeze(-1)
         target = (
             None
             if legal.teacher is None

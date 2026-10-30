@@ -110,7 +110,11 @@ class OlderNetwork:
                 hidden = self.network.trunk(batch)[0]
             else:
                 hidden = trunks.hidden(self.network, observation)[0]
-            value = float(self.network.value_head(hidden).item())
+            if self.network.value_reads_trunk:
+                value = float(self.network.value_head(hidden).item())
+            else:
+                batch = torch.from_numpy(observation).unsqueeze(0)
+                value = float(self.network.values(batch)[0])
             known = [index for index, row in enumerate(rows) if row is not None]
             logits = np.zeros(len(rows), dtype=np.float64)
             if known:

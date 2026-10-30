@@ -194,14 +194,16 @@ def teacher_outputs(
             rank = np.arange(int(offsets[-1])) - np.repeat(offsets[:-1], counts)
             index[owner, rank] = indices
             valid[owner, rank] = True
-            hidden = network.trunk(torch.from_numpy(observations[part]))
+            hidden, read = network.trunk_and_values(
+                torch.from_numpy(observations[part])
+            )
             logits = network.row_action_logits(hidden, torch.from_numpy(index))
             logits = logits.masked_fill(~torch.from_numpy(valid), MASKED_LOGIT)
             probabilities = torch.softmax(logits, dim=-1).numpy()
             out[legal_offsets[start] : legal_offsets[part[-1] + 1]] = probabilities[
                 owner, rank
             ]
-            values[part] = network.value_head(hidden).squeeze(-1).numpy()
+            values[part] = read.numpy()
     return out, values
 
 
@@ -253,8 +255,9 @@ def add_teacher_values(
     with torch.no_grad():
         for start in range(0, data.rows, chunk):
             part = np.arange(start, min(start + chunk, data.rows))
-            hidden = network.trunk(torch.from_numpy(data.observations(part)))
-            values[part] = network.value_head(hidden).squeeze(-1).numpy()
+            values[part] = network.values(
+                torch.from_numpy(data.observations(part))
+            ).numpy()
     return dataclasses.replace(data, values=values)
 
 
@@ -718,16 +721,19 @@ def _losses(
     observations = torch.from_numpy(data.observations(rows))
     index, valid, target = data.legal(rows)
     valid_t = torch.from_numpy(valid)
-    hidden = network.trunk(observations)
+    hidden, value = network.trunk_and_values(observations)
     logits = network.row_action_logits(hidden, torch.from_numpy(index))
     log_probs = torch.log_softmax(logits.masked_fill(~valid_t, MASKED_LOGIT), dim=-1)
     policy = -(torch.from_numpy(target) * log_probs.masked_fill(~valid_t, 0.0)).sum(1)
-    value = network.value_head(hidden).squeeze(-1)
     value_loss = (value - torch.from_numpy(targets[rows])).square()
     head = _vp_head(network)
     vp_loss = None
     if head is not None:
-        predicted = head(hidden)
+        # The VP head reads what the value head reads (a value branch's own
+        # hidden when the network has one).
+        predicted = head(
+            hidden if network.value_reads_trunk else network.value_input(observations)
+        )
         wanted = torch.from_numpy(data.victory_points[rows].astype(np.float32))
         vp_loss = (predicted - wanted / VP_SCALE).square().mean(dim=1).mean()
     return policy.mean(), value_loss.mean(), vp_loss, log_probs, valid_t, value

@@ -1,6 +1,6 @@
 """Headless runners built on the public rules-engine contract."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from dune_imperium.agents import Agent, RandomAgent, StateAgent
@@ -97,6 +97,7 @@ def run_policy_game(
     agents: Sequence[Agent],
     *,
     max_steps: int = 30_000,
+    on_state: Callable[[GameState], None] | None = None,
 ) -> GameSimulation:
     """Run one full game with a caller-supplied agent per seat.
 
@@ -105,6 +106,10 @@ def run_policy_game(
     ``choose_action`` contract that ``run_random_game`` uses. Chance
     decisions resolve through a ``ChanceResolver`` seeded with ``game_seed``,
     and the returned replay re-derives the same final state.
+
+    ``on_state`` sees every state the game passes through, before each step
+    and the finished one, as a search playout's horizon check does (the
+    self-play value collects its round-start positions there).
     """
 
     if len(agents) != config.players:
@@ -123,6 +128,8 @@ def run_policy_game(
     steps: list[ReplayStep] = []
 
     for _ in range(max_steps):
+        if on_state is not None:
+            on_state(state)
         if state.phase is GamePhase.FINISHED:
             return GameSimulation(
                 state=state,

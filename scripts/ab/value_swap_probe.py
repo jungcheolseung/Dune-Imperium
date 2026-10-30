@@ -87,8 +87,7 @@ def main() -> None:
 
 
 def _values(network: torch.nn.Module, observations: np.ndarray) -> np.ndarray:
-    hidden = network.trunk(torch.from_numpy(observations))
-    values: np.ndarray = network.value_head(hidden).squeeze(-1).numpy()
+    values: np.ndarray = network.values(torch.from_numpy(observations)).numpy()
     return values
 
 

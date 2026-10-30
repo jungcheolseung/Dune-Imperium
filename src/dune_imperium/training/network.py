@@ -35,7 +35,17 @@ DEFAULT_HIDDEN: tuple[int, ...] = (512, 512)
 
 
 class PolicyValueNetwork(nn.Module):
-    """MLP with a masked action head and a scalar value head."""
+    """MLP with a masked action head and a scalar value head.
+
+    Read a value through ``values``, ``trunk_and_values`` or ``value_input``,
+    never as ``value_head(trunk(...))``: an ``entity`` network with a value
+    branch (docs/entity-self-play-plan.md section 3.1) reads its value from
+    a hidden of its own, not from the trunk's.
+    """
+
+    # The step of the graded reward the value head was trained toward
+    # (``pettingzoo_env.graded_reward``); 0 is the winner-take-all reward.
+    reward_step: float = 0.0
 
     def __init__(
         self,
@@ -65,17 +75,40 @@ class PolicyValueNetwork(nn.Module):
     def forward(self, observations: Tensor, masks: Tensor) -> tuple[Tensor, Tensor]:
         """Return masked action logits ``[B, A]`` and values ``[B]``."""
 
-        hidden = self.trunk(observations)
+        hidden, values = self.trunk_and_values(observations)
         logits = self.policy_head(hidden).masked_fill(masks == 0, MASKED_LOGIT)
-        values = self.value_head(hidden).squeeze(-1)
         return logits, values
 
     def trunk(self, observations: Tensor) -> Tensor:
-        """Return the hidden features ``[B, H]`` both heads read."""
+        """Return the hidden features ``[B, H]`` the policy reads."""
 
         features = torch.log1p(observations.to(torch.float32).clamp(min=0.0))
         hidden: Tensor = self.body(features)
         return hidden
+
+    @property
+    def value_reads_trunk(self) -> bool:
+        """Whether ``value_head`` reads the trunk (no value branch)."""
+
+        return True
+
+    def value_input(self, observations: Tensor) -> Tensor:
+        """The hidden features ``[B, H]`` ``value_head`` reads."""
+
+        return self.trunk(observations)
+
+    def values(self, observations: Tensor) -> Tensor:
+        """The value of each observation ``[B]``."""
+
+        values: Tensor = self.value_head(self.value_input(observations)).squeeze(-1)
+        return values
+
+    def trunk_and_values(self, observations: Tensor) -> tuple[Tensor, Tensor]:
+        """The trunk ``[B, H]`` and the values ``[B]``, sharing what they can."""
+
+        hidden = self.trunk(observations)
+        values: Tensor = self.value_head(hidden).squeeze(-1)
+        return hidden, values
 
     def arch_spec(self) -> dict[str, Any]:
         """The architecture as a plain document (checkpoints, workers)."""
@@ -202,6 +235,9 @@ def build_network(arch: Mapping[str, Any], action_size: int) -> PolicyValueNetwo
             action_width=int(arch["action_width"]),
             aux_vp=bool(arch.get("aux_vp", False)),
             own_actions=bool(arch.get("own_actions", False)),
+            value_branch=bool(arch.get("value_branch", False)),
+            aux_rank=bool(arch.get("aux_rank", False)),
+            reward_step=float(arch.get("reward_step", 0.0)),
         )
         if network.action_size != action_size:
             raise ValueError(

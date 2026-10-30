@@ -37,6 +37,14 @@ What changes is how it reads and scores:
   action never trained still scores from its parts.
 - **Optional auxiliary head** (``aux_vp``): each relative seat's final
   Victory Points, a denser target than the win (section 3.5).
+- **Optional value branch** (``value_branch``; docs/entity-self-play-plan.md
+  section 3.1): the value reads a body of its own (``value_body``, the
+  torso's shape) over the same encoders, so the value can be trained
+  without moving the policy. ``with_value_branch`` copies a file's body into
+  it, so the copy's value starts equal to the file's. With a branch the
+  auxiliary heads (``aux_vp``, and ``aux_rank``: the observer's final place
+  as four classes) read the branch too. ``reward_step`` records the graded
+  reward the value learned (``pettingzoo_env.graded_reward``).
 
 ``arch_spec`` stores the ruleset the catalog comes from and the feature
 table's digest; ``training.checkpoint`` refuses a file under another table.
@@ -552,6 +560,9 @@ class EntityNetwork(PolicyValueNetwork):
         action_width: int = DEFAULT_ACTION_WIDTH,
         aux_vp: bool = False,
         own_actions: bool = False,
+        value_branch: bool = False,
+        aux_rank: bool = False,
+        reward_step: float = 0.0,
     ) -> None:
         nn.Module.__init__(self)
         if not hidden or any(width < 1 for width in hidden):
@@ -563,6 +574,9 @@ class EntityNetwork(PolicyValueNetwork):
         self.action_width = action_width
         self.aux_vp = aux_vp
         self.own_actions = own_actions
+        self.value_branch = value_branch
+        self.aux_rank = aux_rank
+        self.reward_step = float(reward_step)
         self.observation_size = OBSERVATION_SIZE
         catalog = ActionCodec(config).catalog
         self.action_size = len(catalog)
@@ -802,18 +816,30 @@ class EntityNetwork(PolicyValueNetwork):
         self.private_encoder = nn.Sequential(
             nn.Linear(self._encoder_width("private"), self.seat_width), nn.ReLU()
         )
+        self.body = self._torso()
+        width = self.hidden[-1]
+        self.value_head = nn.Linear(width, 1)
+        self.query = nn.Linear(width, self.action_width)
+        self.vp_head: nn.Linear | None = (
+            nn.Linear(width, _SEATS) if self.aux_vp else None
+        )
+        # Registered after every module a branchless file has, so those keep
+        # their parameter order (and an optimizer state its indices).
+        self.value_body: nn.Sequential | None = (
+            self._torso() if self.value_branch else None
+        )
+        self.rank_head: nn.Linear | None = (
+            nn.Linear(width, _SEATS) if self.aux_rank else None
+        )
+
+    def _torso(self) -> nn.Sequential:
         layers: list[nn.Module] = []
         width = self.seat_width * (2 + _SEATS)
         for next_width in self.hidden:
             layers.append(nn.Linear(width, next_width))
             layers.append(nn.ReLU())
             width = next_width
-        self.body = nn.Sequential(*layers)
-        self.value_head = nn.Linear(width, 1)
-        self.query = nn.Linear(width, self.action_width)
-        self.vp_head: nn.Linear | None = (
-            nn.Linear(width, _SEATS) if self.aux_vp else None
-        )
+        return nn.Sequential(*layers)
 
     # -- the tables an observation is read with ----------------------------------
     def _weights_version(self) -> tuple[int, ...]:
@@ -894,8 +920,8 @@ class EntityNetwork(PolicyValueNetwork):
         ]
         return torch.cat(parts, dim=-1)
 
-    def trunk(self, observations: Tensor) -> Tensor:
-        """The hidden features ``[B, H]`` both heads read."""
+    def torso_input(self, observations: Tensor) -> Tensor:
+        """The encoders' output ``[B, 6 * seat_width]`` the bodies read."""
 
         observations = observations.to(torch.float32)
         tables = self._tables()
@@ -909,8 +935,32 @@ class EntityNetwork(PolicyValueNetwork):
         private = self.private_encoder(
             self._encode("private", observations, fields, zones)
         )
-        hidden: Tensor = self.body(torch.cat([board, private, seats], dim=1))
+        return torch.cat([board, private, seats], dim=1)
+
+    def trunk(self, observations: Tensor) -> Tensor:
+        """The hidden features ``[B, H]`` the policy reads (and, without a
+        value branch, the value head)."""
+
+        hidden: Tensor = self.body(self.torso_input(observations))
         return hidden
+
+    @property
+    def value_reads_trunk(self) -> bool:
+        return self.value_body is None
+
+    def value_input(self, observations: Tensor) -> Tensor:
+        if self.value_body is None:
+            return self.trunk(observations)
+        hidden: Tensor = self.value_body(self.torso_input(observations))
+        return hidden
+
+    def trunk_and_values(self, observations: Tensor) -> tuple[Tensor, Tensor]:
+        if self.value_body is None:
+            return super().trunk_and_values(observations)
+        torso = self.torso_input(observations)
+        hidden: Tensor = self.body(torso)
+        values: Tensor = self.value_head(self.value_body(torso)).squeeze(-1)
+        return hidden, values
 
     # -- the actions ------------------------------------------------------------
     def _build_action_tables(self, catalog: Sequence[Any]) -> None:
@@ -1070,14 +1120,13 @@ class EntityNetwork(PolicyValueNetwork):
     def forward(self, observations: Tensor, masks: Tensor) -> tuple[Tensor, Tensor]:
         """Masked logits ``[B, A]`` over the whole catalog and values ``[B]``."""
 
-        hidden = self.trunk(observations)
+        hidden, values = self.trunk_and_values(observations)
         logits = self.query(hidden) @ self._all_actions().T + self.action_bias
         logits = logits.masked_fill(masks == 0, MASKED_LOGIT)
-        values = self.value_head(hidden).squeeze(-1)
         return logits, values
 
     def arch_spec(self) -> dict[str, Any]:
-        return {
+        spec: dict[str, Any] = {
             "kind": "entity",
             "hidden": list(self.hidden),
             "entity_width": self.entity_width,
@@ -1088,3 +1137,48 @@ class EntityNetwork(PolicyValueNetwork):
             "ruleset": self.config.identifier,
             "feature_digest": FEATURE_DIGEST,
         }
+        # Only when set, so a branchless file's document is unchanged.
+        if self.value_branch:
+            spec["value_branch"] = True
+        if self.aux_rank:
+            spec["aux_rank"] = True
+        if self.reward_step:
+            spec["reward_step"] = self.reward_step
+        return spec
+
+
+def with_value_branch(
+    network: EntityNetwork,
+    *,
+    aux_vp: bool = False,
+    aux_rank: bool = False,
+    reward_step: float = 0.0,
+) -> EntityNetwork:
+    """A copy of ``network`` with a value branch whose body is its body.
+
+    The copy's policy and value are the file's, bit for bit, until the
+    branch is trained (docs/entity-self-play-plan.md section 3.1). New
+    auxiliary heads start fresh; a file's own ``vp_head`` (which read the
+    trunk) is kept and from then on reads the branch.
+    """
+
+    if network.value_body is not None:
+        raise ValueError("the network already has a value branch")
+    branched = EntityNetwork(
+        network.config,
+        hidden=network.hidden,
+        entity_width=network.entity_width,
+        seat_width=network.seat_width,
+        action_width=network.action_width,
+        aux_vp=aux_vp or network.aux_vp,
+        own_actions=network.own_actions,
+        value_branch=True,
+        aux_rank=aux_rank or network.aux_rank,
+        reward_step=reward_step,
+    )
+    state = branched.state_dict()
+    state.update(network.state_dict())
+    for key, value in network.body.state_dict().items():
+        state[f"value_body.{key}"] = value
+    branched.load_state_dict(state)
+    return branched.train(network.training)
