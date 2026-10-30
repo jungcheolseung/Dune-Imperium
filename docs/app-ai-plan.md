@@ -556,4 +556,7 @@ P4 브랜치(`51884e8f`)가 지금 가진 결정은 dreadnought 셋(P4b)과 예�
   추가 턴), Embedded Agent(`FreighterCustomAbility` 둘), Full-Scale Assault(일반 상자), Court Intrigue(Intrigue를 덱 밑에, 뽑기는 이어서),
   Desert Ambush(한 번의 답에 유닛 여럿, 나머지는 이어서), Negotiated Withdrawal(진영 + 앱이 빈 답 뒤에 하는 troop 먼저 셋, `Cost`
   이식). 병합 직후 Hard 20판의 무작위 97번이 0이 됐다.
-- 남은 것: 원판 + Ix soak과 Hard 대 heuristic 측정(P4d 카드가 다 들어온 뒤).
+- P4 최종판(`86a4c195`, 병합 `ca85e398`): Appropriate는 `AppropriateAbility`가 타일과 지불(0 = Solari)을 답하고, Solari 창은 같은
+  클래스로 타일을 고른다. 얻을 때의 Freighter는 Reveal과 Agent 턴 모두 바로 받는 획득 아이콘이다. 세 난이도(Epic 포함)·원판 단독 census
+  무작위 0, 같은 수 24/24.
+- 남은 것: 원판 + Ix soak과 Hard 대 heuristic 측정(master 병합 뒤).
