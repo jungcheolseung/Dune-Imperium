@@ -236,17 +236,23 @@ from dune_imperium.agents.app_ai.catalog import (
     INTRIGUE_ARCHETYPES,
     LEADER_ARCHETYPES,
     NAVIGATION_ARCHETYPES,
+    agent_entity,
     card_entity,
     contract_entity,
     intrigue_entity,
     spy_entity,
+    tech_entity,
     track_entity,
 )
-from dune_imperium.agents.app_ai.choice import first_strictly_best
+from dune_imperium.agents.app_ai.choice import (
+    default_random_choice,
+    first_strictly_best,
+)
 from dune_imperium.agents.app_ai.context import FACTIONS, AppContext, card_id
 from dune_imperium.agents.app_ai.entities import Entity
 from dune_imperium.agents.app_ai.profile.bloodlines import navigation_number
 from dune_imperium.agents.app_ai.profile.immortality import research_space_entity
+from dune_imperium.agents.app_ai.profile.tech import acquire_tech_tile_targets
 from dune_imperium.agents.app_ai.windows.common import (
     Source,
     Stage,
@@ -260,21 +266,25 @@ from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
 from dune_imperium.content.uprising.effect_dsl import (
     AcquireCardUpTo,
     AcquireTleilaxuCard,
+    CommissionDreadnought,
     DeployFromGarrison,
     DestroyShieldWall,
     DiscardFromHand,
     FlipBattleCard,
     FlipFaceUpConflictCard,
+    Freighter,
     GainInfluence,
     GiveIntrigueToOpponent,
     IntrigueOption,
     IntrigueTiming,
     LoseInfluence,
     LoseTroops,
+    OpponentLosesTroop,
     PassTurn,
     PeekTopCard,
     PlaceSpy,
     RecallSpy,
+    RecallYourAgent,
     RetreatTroops,
     SetAsideImperiumRowCard,
     TrashDiscardPileCard,
@@ -572,6 +582,34 @@ def intrigue_request(
         infos = (_ents(_row_cards(ctx)),)
     elif cid == "devour":
         infos = (_ents(_trash_cards(ctx)),)
+    # Rise of Ix (review 2026-10-30): Blackmail's ``<Targets>b__0`` @0x4be0fe0
+    # (tracks with Influence), Cull's ``FindTrashTargets``, Finesse's two
+    # ``InfluenceDelta`` infos (-1, then +1).
+    elif cid == "blackmail" and combat:
+        infos = (_ents(_lose_tracks(ctx)),)
+    elif cid == "cull":
+        infos = (_ents(_trash_cards(ctx)),)
+    elif cid == "finesse" and not combat:
+        infos = (_ents(_lose_tracks(ctx)), _ents(_gain_tracks(ctx)))
+    elif cid == "second_wave" and combat:
+        # ``<Targets>`` @0x4bf7d40: every garrison unit, ``NumberToSelect =
+        # Min(count, 2)``; the dreadnoughts first (SecondWaveAbility reads
+        # them so).
+        units = ctx.me.troops_garrison + ctx.me.dreadnoughts_garrison
+        infos = (TargetInfo(options=tuple(range(units)), max_select=min(units, 2)),)
+    elif cid == "machine_culture" and not combat and ctx.ix:
+        # ``<Targets>d__6`` @0x4bf4970: ``AcquireTechAbility.
+        # GetAcquireTechTileTargets(M, P, 0, false)`` (no discount, no Solari).
+        me = ctx.me
+        tiles = acquire_tech_tile_targets(
+            [tech_entity(t) for t in ctx.tech_face_up_ids],
+            spice=me.resources.spice,
+            solari=me.resources.solari,
+            negotiators=me.negotiators,
+            discount=0,
+            allow_solari=False,
+        )
+        infos = (_ents(tiles),)
     elif cid in ("find_weakness", "spring_the_trap"):
         infos = (_ents(_own_spies(ctx)),)
     elif cid == "leverage":
@@ -868,6 +906,45 @@ def _intent(run: DecisionRun, instance: str, option: IntrigueOption) -> Answer:
     return answer
 
 
+def intrigue_tech_tile(run: DecisionRun, card: str) -> str | None:
+    """The Tech tile the seat's latest play of Intrigue ``card`` answered.
+
+    Rise of Ix's Machine Culture: ``MachineCulturePlotAbility::Evaluate``
+    names the tile and the app's ``RunImmediateEffects`` acquires that
+    target without asking again, while our engine opens an Acquire Tech
+    frame (printer ``intrigue|machine_culture``, no refusal while a tile is
+    in reach). The play's answer (``_intent``: recorded, else evaluated
+    now); None without a play or a tile.
+    """
+
+    prefix = f"intrigue:{card}:"
+    instance: str | None = None
+    for event in reversed(run.ctx.state.event_log):
+        payload = dict(event.payload)
+        ref = payload.get("card_id")
+        if (
+            event.kind == "intrigue_played"
+            and payload.get("player") == run.ctx.seat
+            and isinstance(ref, str)
+            and ref.startswith(prefix)
+        ):
+            instance = ref
+            break
+    if instance is None:
+        return None
+    plot = next(
+        (
+            o
+            for o in intrigue_card_for_instance(instance).options
+            if o.timing is IntrigueTiming.PLOT
+        ),
+        None,
+    )
+    if plot is None:
+        return None
+    return _first_ref(_item(_intent(run, instance, plot), 0))
+
+
 def _flat_refs(answer: Answer) -> list[str]:
     refs: list[str] = []
     for item in answer.response or ():
@@ -941,6 +1018,8 @@ def _lose_influence(
         "change_allegiances",
         "questionable_methods",
         "tenuous_bond",
+        "blackmail",  # Rise of Ix: ((track,),)
+        "finesse",  # Rise of Ix: ((lose,), (gain,))
     ):
         intended = _first_ref(_item(intent(), 0))
     elif cid == "opportunism":  # [t1], [t2]: the k-th loss
@@ -967,7 +1046,7 @@ def _gain_influence(
         intended = ref if isinstance(ref, str) else None
     elif cid in ("imperium_politics", "disguised_bureaucrat"):
         intended = _first_ref(_item(intent(), 0))
-    elif cid == "sietch_ritual":
+    elif cid in ("sietch_ritual", "finesse"):  # Finesse: ((lose,), (gain,))
         intended = _first_ref(_item(intent(), 1))
     elif cid == "rapid_engineering":  # ((1,), (t1, t2)): the k-th gain
         refs = _item(intent(), 1) or ()
@@ -1095,6 +1174,8 @@ def _deploy(
     elif cid == "counterattack":  # [units]: GetUnitsToDeploy(units, <= 2)
         units = _item(intent(), 0)
         count = len(units) if units is not None else None
+    elif cid == "second_wave":  # ((unit indices, dreadnoughts first),)
+        return _second_wave_deploy(run, actions, _item(intent(), 0))
     elif cid == "twisted_devious":  # ((1,), (units,))
         answer = intent()
         if _first_int(_item(answer, 0)) == 1:
@@ -1104,6 +1185,30 @@ def _deploy(
         garrison = _indices(_garrison_units(run.ctx))
         count = intrigue_deploy_troops(run.profile, garrison)
     return _count_action(actions, count, _deploy_share(run, actions))
+
+
+def _second_wave_deploy(
+    run: DecisionRun,
+    actions: Sequence[DomainAction],
+    units: tuple[str | int, ...] | None,
+) -> DomainAction | None:
+    """Rise of Ix's Second Wave: the units its play answered
+    (``SecondWaveAbility::Evaluate``: ``GetUnitsToDeploy`` over the garrison
+    units, dreadnoughts first), as the row of that many units with that many
+    dreadnoughts (``dreadnoughts`` argument, absent = 0). An empty answer
+    deploys nothing (the smallest row)."""
+
+    chosen = [u for u in (units or ()) if isinstance(u, int)]
+    dreadnoughts = run.ctx.me.dreadnoughts_garrison
+    ships = sum(1 for u in chosen if u < dreadnoughts)
+    count = len(chosen)
+    for action in actions:
+        if (
+            int_arg(action, "count") == count
+            and (int_arg(action, "dreadnoughts") or 0) == ships
+        ):
+            return action
+    return _count_action(actions, count)
 
 
 def _trash(
@@ -1246,7 +1351,9 @@ def _retreat(
     return _count_action(actions, count, _retreat_share(run))
 
 
-def _lose_troops(run: DecisionRun, cid: str) -> DomainAction | None:
+def _lose_troops(
+    run: DecisionRun, cid: str, intent: Callable[[], Answer]
+) -> DomainAction | None:
     """A ``LoseTroops`` cost (``lose_intrigue_troop(zone[, commanders])``).
 
     Gruesome Sacrifice: "lose two of your troops in the Conflict".
@@ -1262,6 +1369,13 @@ def _lose_troops(run: DecisionRun, cid: str) -> DomainAction | None:
     """
 
     actions = run.by_id("lose_intrigue_troop")
+    if cid == "strongarm":
+        # Rise of Ix's Strongarm: the zone the play's answer named
+        # (``StrongarmAbility::Evaluate``: 0 the garrison, 1 the Conflict).
+        answer = intent()
+        option = answer.response[0][0] if answer.response else None
+        zone = "conflict" if option == 1 else "garrison" if option == 0 else None
+        return None if zone is None else with_arg(actions, "zone", zone)
     if cid in _TWISTED_UNIT_COSTS:
         options = [
             (str_arg(a, "zone") or "", int_arg(a, "commanders") == 1) for a in actions
@@ -1570,7 +1684,7 @@ def intrigue_choice(run: DecisionRun) -> DomainAction | None:
         case FlipBattleCard():
             return _flip(run, instance)
         case LoseTroops():
-            return _lose_troops(run, cid)
+            return _lose_troops(run, cid, intent)
         case AcquireTleilaxuCard():
             return _acquire_tleilaxu(run, cid, instance)
         case GiveIntrigueToOpponent():
@@ -1585,7 +1699,89 @@ def intrigue_choice(run: DecisionRun) -> DomainAction | None:
             return _trash_discard_pile(run, cid)
         case FlipFaceUpConflictCard():
             return _flip_face_up(run, cid)
+        case Freighter():
+            return _intrigue_freighter(run, intent)
+        case OpponentLosesTroop():
+            return _opponent_troop_loss(run, intent)
+        case CommissionDreadnought():
+            # Rise of Ix: an Intrigue's "commission a dreadnought" is part of
+            # the played ability's execution in the app (no prompt): taken,
+            # declined only when no commission is offered.
+            return run.first("commission_intrigue_dreadnought") or run.first(
+                "decline_intrigue_dreadnought"
+            )
+        case RecallYourAgent():
+            return _recall_your_agent(run, intent)
     return None
+
+
+def _recall_your_agent(
+    run: DecisionRun, intent: Callable[[], Answer]
+) -> DomainAction | None:
+    """Urgent Mission's "recall one of your Agents"
+    (``recall_agent_for_intrigue(space_id)``): the Agent the play's answer
+    named (``UrgentMissionAbility::Evaluate``: ``GetRecallAgent(agents)``),
+    else ``GetRecallAgent`` over the offered Agents again."""
+
+    actions = run.by_id("recall_agent_for_intrigue")
+    answer = intent()
+    ref = answer.response[0][0] if answer.response and answer.response[0] else None
+    chosen = with_arg(actions, "space_id", ref) if ref is not None else None
+    if chosen is not None:
+        return chosen
+    spaces = [str_arg(a, "space_id") for a in actions]
+    agents = [agent_entity(s, run.ctx.seat) for s in spaces if s is not None]
+    agent = run.profile.recall_agent(agents)
+    return None if agent is None else with_arg(actions, "space_id", agent.ref)
+
+
+def _opponent_troop_loss(
+    run: DecisionRun, intent: Callable[[], Answer]
+) -> DomainAction | None:
+    """Double Cross's "an opponent loses one troop in the Conflict"
+    (``choose_opponent_troop_loss(player)``): the seat the play's answer
+    named (``DoubleCrossAbility::Evaluate``'s player target).
+
+    A play whose answer named no seat came from the app's
+    ``DefaultRandomChoice`` over a forced prompt's keys (an Agent turn's key
+    answered at 0 or less drew the card's key; seed 8112): the forced target
+    prompt that follows is ``DefaultRandomChoice`` too, over the offered
+    opponents."""
+
+    rows = run.by_id("choose_opponent_troop_loss")
+    answer = intent()
+    seat = answer.response[0][0] if answer.response else None
+    chosen = with_arg(rows, "player", seat) if seat is not None else None
+    if chosen is not None or not rows:
+        return chosen
+    return default_random_choice(rows, run.rng)
+
+
+def _intrigue_freighter(
+    run: DecisionRun, intent: Callable[[], Answer]
+) -> DomainAction | None:
+    """Rise of Ix's Diversion and Expedite: the Freighter the play's answer
+    named (``DiversionAbility``/``ExpediteAbility::Evaluate``: ``IntTargetResponse(
+    GetFreighterSelections(-1).Item1)``, 1 recall, 0 advance; plan §13). The
+    app's Explicit answer always moves: the decline is never its answer.
+
+    A play whose answer named no move came from the app's
+    ``DefaultRandomChoice`` over a forced prompt's keys (seed 8504 on the
+    trial merge of P4's ``427e21a6``: the Dreadnought space's Explicit Acquire
+    Tech forced an Agent turn answered at 0 or less), so the ability runs
+    with random targets: ``DefaultRandomChoice`` over the offered moves, as
+    Double Cross's victim (``_opponent_troop_loss``)."""
+
+    answer = intent()
+    item = answer.response[0][0] if answer.response else None
+    recall = run.first("recall_intrigue_freighter")
+    advance = run.first("advance_intrigue_freighter")
+    if item == 1 and recall is not None:
+        return recall
+    if item == 0 and advance is not None:
+        return advance
+    moves = [a for a in (advance, recall) if a is not None]
+    return default_random_choice(moves, run.rng) if moves else None
 
 
 # ---------------------------------------------------------------------------

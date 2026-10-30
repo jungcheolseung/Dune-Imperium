@@ -28,6 +28,7 @@ from dune_imperium.agents.app_ai.abilities.base import (
 from dune_imperium.agents.app_ai.catalog import (
     CONFLICT_ARCHETYPES,
     CONTRACT_ARCHETYPES,
+    IX_CONFLICT_ARCHETYPES,
     ORIGINAL_CONFLICT_ARCHETYPES,
     SPACE_ARCHETYPES,
     agent_entity,
@@ -344,6 +345,8 @@ def _scope_entities() -> list[Entity]:
                 continue  # Bloodlines: app-style classes (test_app_ai_synthetic)
             if conflict_id in ORIGINAL_CONFLICT_ARCHETYPES:
                 continue  # the original game: covered with its ports
+            if conflict_id in IX_CONFLICT_ARCHETYPES:
+                continue  # Rise of Ix: covered with its ports (plan §13)
             entities.append(conflict_entity(conflict_id, choam))
             entities.extend(conflict_reward_entities(conflict_id, choam))
     entities.extend(

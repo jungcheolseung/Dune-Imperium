@@ -217,6 +217,8 @@ def test_space_archetype_order_covers_every_dealt_space_archetype() -> None:
     dealt.add("SpaceArchetypes.Immortality.ResearchStationImmortality")
     # The original board (``Board.original``): every BaseSet space.
     dealt |= {a for a in ARCHETYPES if a.startswith("SpaceArchetypes.BaseSet.")}
+    # Rise of Ix on the original board (``Board.ix``).
+    dealt |= {a for a in ARCHETYPES if a.startswith("SpaceArchetypes.RiseOfIx.")}
     listed = turn._SPACE_ARCHETYPE_ORDER
     assert len(set(listed)) == len(listed)
     assert set(listed) == dealt

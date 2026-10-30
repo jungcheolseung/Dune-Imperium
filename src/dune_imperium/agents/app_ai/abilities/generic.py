@@ -601,8 +601,10 @@ class AgentAbility(PlayAbility):
                         v.merge(ability.value_for_player(p, with_entities))
         # (e) Rise of Ix "One Step Ahead": its player attribute is never set in
         # Uprising, so the term is absent.
-        # (f) reveal opportunity cost; Artillery (RoI tech) never applies.
+        # (f) reveal opportunity cost (rix-tech §5.2).
         rv = value_for_reveal_abilities(card, p)
+        if p.ctx.has_tech("artillery") and card.int_attr("Strength") > 0:
+            rv.multiply(" with Artillery", p.C.ArtilleryRevealMod)
         rv.multiply("Reveal Scale", p.C.CardPlayValueRevealPenalty)
         v.merge(rv)  # MergePrependReason "Reveal Penalty "
         return v

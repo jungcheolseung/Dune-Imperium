@@ -120,9 +120,15 @@ def _has_intrigue_card(p: Profile, archetype: str) -> bool:
 
 
 def _has_tech_tile(p: Profile, archetype: str) -> bool:
-    """``WormPlayer::HasTechTile`` @0x4835a60: Rise of Ix only, never held."""
+    """``WormPlayer::HasTechTile`` @0x4835a60: public owned-tile ids."""
 
-    return False
+    from dune_imperium.agents.app_ai.catalog import IX_TECH_ARCHETYPES
+
+    return any(
+        p.ctx.has_tech(tech_id)
+        for tech_id, short in IX_TECH_ARCHETYPES.items()
+        if short == archetype
+    )
 
 
 def _current_conflict(p: Profile) -> Entity | None:

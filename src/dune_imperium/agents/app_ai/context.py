@@ -100,6 +100,9 @@ class Board(NamedTuple):
     #: ``BaseSet`` space archetypes instead of the Uprising ones
     #: (``catalog.ORIGINAL_SPACE_ARCHETYPES``).
     original: bool = False
+    #: Rise of Ix (``rise_of_ix``): its four spaces replace the four the CHOAM
+    #: overlay covers (``catalog.IX_SPACE_ARCHETYPES``).
+    ix: bool = False
 
     @staticmethod
     def of(config: RulesetConfig) -> Board:
@@ -110,6 +113,7 @@ class Board(NamedTuple):
             tech_module=config.tech_module,
             scouts=config.arrakeen_scouts,
             original=config.base_game is BaseGame.IMPERIUM,
+            ix=config.rise_of_ix,
         )
 
 
@@ -159,6 +163,12 @@ class AppContext:
         @0x47fe130): an Uprising game; false on the original board."""
 
         return self.state.config.base_game is BaseGame.UPRISING
+
+    @property
+    def ix(self) -> bool:
+        """The app's ``IsSetEnabled(RiseOfIx = 2)``: Rise of Ix is in the game."""
+
+        return self.state.config.rise_of_ix
 
     @property
     def board(self) -> Board:

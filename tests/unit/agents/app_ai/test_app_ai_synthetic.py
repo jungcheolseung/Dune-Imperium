@@ -46,6 +46,7 @@ from dune_imperium.agents.app_ai.catalog import (
     CONTRACT_ARCHETYPES,
     EYES_ON_ARRAKIS_SPACES,
     INTRIGUE_ARCHETYPES,
+    IX_TECH_ARCHETYPES,
     LEADER_ARCHETYPES,
     NAVIGATION_ARCHETYPES,
     SCOUTS_LINE_ARCHETYPES,
@@ -857,7 +858,9 @@ def test_bloodlines_ids_map_to_synthetic_archetypes() -> None:
     assert {k for k, v in CONTRACT_ARCHETYPES.items() if v in SYNTHETIC} == {
         c.card.card_id for c in BLOODLINES_CONTRACTS
     }
-    assert set(TECH_ARCHETYPES) == {t.tech_id for t in TECH_TILES}
+    assert set(TECH_ARCHETYPES) - set(IX_TECH_ARCHETYPES) == {
+        t.tech_id for t in TECH_TILES
+    }
 
 
 # ---------------------------------------------------------------------------

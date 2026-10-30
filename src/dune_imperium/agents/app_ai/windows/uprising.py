@@ -181,7 +181,11 @@ def contract_reward_spy(run: DecisionRun) -> DomainAction | None:
 # -- contracts ------------------------------------------------------------------------
 
 _CONTRACT_MARKET_IDS = frozenset({"take_contract"})
-_CONTRACT_RECALL_IDS = frozenset({"recall_agent_for_contract"})
+_CONTRACT_RECALL = "recall_agent_for_contract"
+# An earlier turn's Into the Fray Agent in the Conflict (OQ-037 (d), OQ-068).
+_CONTRACT_RECALL_CONFLICT = "recall_conflict_agent_for_contract"
+_CONTRACT_RECALL_IDS = frozenset({_CONTRACT_RECALL, _CONTRACT_RECALL_CONFLICT})
+_CONFLICT_AGENT = "conflict"
 
 
 def _intrigue_contract_intent(run: DecisionRun, offered: Sequence[str]) -> str | None:
@@ -291,24 +295,47 @@ def contract_reward_recall(run: DecisionRun) -> DomainAction | None:
     They are taken in board order (``_in_board_order``), not our
     ``agent_locations`` (placement) order: that order is what both the
     shuffle's input and the ``?? agents[0]`` fallback read.
+
+    An earlier turn's Into the Fray Agent in the Conflict comes after the
+    board's Agents, as in ``RecallAgentAbility``'s targets
+    (``agent_effects._recall_request``; bloodlines-systems.md §8, D55).
     """
 
     if not _known_only(run, _CONTRACT_RECALL_IDS):
         return None
-    recalls = run.by_id("recall_agent_for_contract")
+    recalls = run.by_id(_CONTRACT_RECALL)
+    conflict = run.first(_CONTRACT_RECALL_CONFLICT)
     seat = run.ctx.seat
     offered = [str_arg(a, "space_id") for a in recalls]
     spaces = _in_board_order([s for s in offered if s is not None], run.ctx.board)
     agents = [agent_entity(s, seat) for s in spaces]
+    if conflict is not None:
+        agents.append(agent_entity(_CONFLICT_AGENT, seat))
     ability = RecallAgentContractAbility(contract_entity(_SARDAUKAR_II, seat))
     profile: Profile = run.profile
-    return _one_source(
-        run,
-        "RecallAgentContract",
-        recalls,
-        "space_id",
-        lambda: ability.evaluate(profile, _request(agents)),
+    if conflict is None:
+        return _one_source(
+            run,
+            "RecallAgentContract",
+            recalls,
+            "space_id",
+            lambda: ability.evaluate(profile, _request(agents)),
+        )
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        app = ability.evaluate(profile, _request(agents))
+        ref = _single_ref(app)
+        action = (
+            conflict
+            if ref == _CONFLICT_AGENT
+            else (None if ref is None else with_arg(recalls, "space_id", ref))
+        )
+        return app.value, (action if app.value > 0.0 else None)
+
+    source = Source(
+        "RecallAgentContract", Stage.PROMPT, (*recalls, conflict), evaluate
     )
+    return decide(run, [source], skip=None, forced=True)
 
 
 # -- Covert Operation victims ---------------------------------------------------------

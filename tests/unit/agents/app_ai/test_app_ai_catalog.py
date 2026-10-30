@@ -35,6 +35,10 @@ from dune_imperium.agents.app_ai.catalog import (
     FACTION_NAMES,
     IMMORTALITY_SPACE_ARCHETYPES,
     INTRIGUE_ARCHETYPES,
+    IX_CARD_ARCHETYPES,
+    IX_CONFLICT_ARCHETYPES,
+    IX_INTRIGUE_ARCHETYPES,
+    IX_LEADER_ARCHETYPES,
     LEADER_ARCHETYPES,
     ORIGINAL_CARD_ARCHETYPES,
     ORIGINAL_CONFLICT_ARCHETYPES,
@@ -208,6 +212,10 @@ _ORIGINAL_IDS = frozenset(
         *ORIGINAL_INTRIGUE_ARCHETYPES,
         *ORIGINAL_CONFLICT_ARCHETYPES,
         *ORIGINAL_LEADER_ARCHETYPES,
+        *IX_CARD_ARCHETYPES,
+        *IX_INTRIGUE_ARCHETYPES,
+        *IX_CONFLICT_ARCHETYPES,
+        *IX_LEADER_ARCHETYPES,
     }
 )
 
@@ -216,7 +224,7 @@ def _app_only[V: (str, tuple[str, str])](table: Mapping[str, V]) -> dict[str, V]
     """The entries that map to the app's own archetypes. The app-style
     Bloodlines/Scouts entries (``data/synthetic.py``) are checked in
     ``test_app_ai_synthetic.py``, the original game's entries in
-    ``test_app_ai_catalog_original.py``."""
+    ``test_app_ai_catalog_original.py`` (Rise of Ix's too)."""
 
     return {
         key: value

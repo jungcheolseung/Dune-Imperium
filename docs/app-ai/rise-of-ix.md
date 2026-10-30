@@ -1,0 +1,222 @@
+# app_ai: Rise of Ix on the original board (port notes)
+
+> The plan, slices and status are in `docs/app-ai-plan.md` §13. This file
+> records how each Rise of Ix decision is answered and every judgement call,
+> so later readers can tell the app's behaviour from our mapping of it.
+
+Status (2026-10-30, branch `claude/base-ix-p6-ix`): every Rise of Ix decision
+our engine offers in an original + Ix game (draft, promos) is answered by an
+app class. The census has no random answer and no unported class: 20 games
+per level, seeds 8100+, with and without Epic Game Mode. All six Ix
+Leaders are in (P4 `6c6b747e`); Epic on the original board with Rise of Ix
+adds no decision of its own (Hundro's Intelligence follows the Epic Intrigue
+draw, through the same `intrigue_peek`).
+
+Unlike the Bloodlines and Scouts files beside this one, Rise of Ix is a
+**faithful port**: the Steam app plays Rise of Ix itself. Values come from the
+app's classes. Our work is the mapping from our engine's decisions to the
+app's prompts.
+
+## Sources
+
+- **Specs** (app analysis, assets `analysis/ai/spec/`):
+  - `rix-tech.md`: tiles, Freighter (§4.6–4.7), Dreadnought space (§6.7),
+    engine order (§7.4).
+  - `generic-abilities.md` §4.2: the acquire-destination picker.
+  - `05-agent-placement.md` §10: `GetBestOption`.
+- **Decompiled C:** assets `ghidra/p6ix/<addr>.c`. Index
+  `targets-named.tsv`: 127 classes, 3,406 functions. `targets2-named.tsv`:
+  the profile's deploy and resource functions.
+- **Literals, counts and branch directions:** confirmed in the annotated
+  disassembly, `dump/asm/worm-canis.dll/<class>.asm`.
+
+## Context and board
+
+- `AppContext.ix` is `IsSetEnabled(RiseOfIx = 2)`.
+- `Board.ix` replaces the four spaces the CHOAM overlay covers (their
+  `RemovedFromSetList` holds `RiseOfIx`) with the four Ix spaces, in the
+  app's typedef order.
+- Catalog tables: `IX_*_ARCHETYPES`. The tiles are the app's own
+  `TechTileArchetypes.RiseOfIx.*`, not the app-style Bloodlines ones.
+
+## Decisions and the app classes that answer them
+
+| Our decision | App class or profile method | Notes |
+|---|---|---|
+| `freighter_move` (Conflict-reward Freighter) | `FreighterAbility` (`FreighterCustomAbility`): `GetFreighterSelections(-1).Item1` at `FreighterValue` | Explicit: the app always moves; `decline_freighter` is never its answer. Level 2 before the climax draws the match RNG; here the seat's RNG. |
+| Freighter rows of spaces, cards and Intrigue | `FreighterAgentAbility` / `FreighterRevealAbility`; Diversion's and Expedite's play answer | Intrigue rows replay the play's recorded answer (`_intent`). |
+| `shipping_reward_icons` and Shipping rows in the turn and Reveal windows | `ShippingTrackAbility1/2/3` (space 1: `Item2` of `GetFreighterSelections(LastShippingRecallSpace)`, 100; space 2: `GainAnyInfluenceAbility`; space 3: 100) | `LastShippingRecallSpace` is the highest space still owed. Our engine splits space 2's recruit and Influence (OQ-148); both answer the one app ability. Explicit sources hold the prompt, so pending rows come first. |
+| `dreadnought_control_choice` | `DreadnoughtControlAbility` | Detonation Devices' VP at 100 when held. Otherwise the shuffled spaces score: another seat's at its VP, the seat's own at 1, an open Imperial Basin at 3, other open spaces at 2. Strictly better wins. |
+| Commission (Dreadnought space) | `DreadnoughtSpaceAbility`, automatic | The space's own Acquire Tech is `AcquireTechAbility`. |
+| `deploy_dreadnoughts` / `deploy_troops` | `GetUnitsToDeploy` over troops and dreadnoughts (`units_to_deploy_split`) | Strongest first (`OrderByDescending(Strength)`, then `TakeWhile`). The Baron's Masterstroke swaps a chosen dreadnought for a troop; Diversion adds the next unit. The dreadnoughts deploy first and the troops are kept for the next decision. The app never withdraws. |
+| Shipping recruits off a Combat space | `TroopTransportsAbility` when held | P4 ruling: Troop Transports allows the deployment (rise-of-ix.md 15). Without the tile the app has no key, so the deployment stays unused. |
+| Tech acquisition | By the frame's discount: 0 `AcquireTechAbility` (Dreadnought space), 1 `AcquireTechAbilityDiscount1` (Tech Negotiation), 2 `AcquireTechAbilityShippingTrack2` | Negotiators are spent before spice: the variant with the most (rix-tech §7.1). |
+| Tech Negotiation's "OR" | `TechNegotiationDeferredAbility`: the Negotiation area at 1.0 against the affordable tiles | A tile answer becomes `acquire_negotiation_tech`; the tile itself is picked in the acquisition window. |
+| `flip_tech`, `trash_tech`, acquire effects | The tile classes (Flagship, Holoprojectors, Invasion Ships, Training Drones; Spy Satellites, Sonic Snoopers; `ShuttleFleetAcquiredAbility`, `MemocordersAcquiredAbility`) | The turn, Agent-turn and Reveal windows share the sources. |
+| `intrigue_bottom_pick` (Sonic Snoopers) | `SonicSnoopersAbility` names the bad Intrigue cards at once | Our engine asks one card at a time: the next bad card still in hand, then finish. The draw comes after, so the hand only shrinks meanwhile. |
+| Disposal Facility's Reveal trash | `DisposalFacilityAbility` (`GetCardToTrash`, minimum 1.0) | No card named leaves it unused. |
+| Spaceport's Foldspace | The destination picker: option 0, top of deck, for every card except The Spice Must Flow (generic-abilities §4.2) | |
+| Ix Imperium boxes | `_DISCARD_ABILITY` (Truthsayer, Satellite Ban, Spice Trader), `_PAYMENT_ABILITY` (Sayyadina), `_TRASH_ABILITY` (Jamis), `_BOX_ABILITY` (Bounty Hunter: `BountyHunterAbility`, run at once) | |
+| Imperial Bashar's "troop -OR- trash" box | `ImperialBasharAgentAbility` (Explicit): option 0 the plain `resolve_agent_card_effect`, option 1 its card's `trash_agent_card` row | The second info lists the trash rows' cards in our rows' order. An answer with no row (option 1 with no card, or the troop when none can join) uses the key on nothing, and the box lapses at the turn's end (OQ-095 (2)). Mapped before P4's `claude/p4d-imperium-b` reached P4, and checked on a trial merge. |
+| Ixian Engineer's Acquire Tech icon (`acquire_agent_card_tech`) | `AcquireTechAgentAbility` (the Dreadnought space's `AcquireTechAbility`, Agent timing) over `GetAcquireTechTileTargets(M, P, 0, false)` | A tile answer takes the row. The Acquire Tech frame it opens asks the same class (discount 0). |
+| Ixian Engineer's Reveal "3+ Tech tiles: trash this card -> 1 VP" | `IxianEngineerAbility` (Optional, E 100) | CHOAM Demands' `trash_reveal_card` shape. |
+| Web of Power's three Influence-2 lines | `WebOfPowerEmperorAbility` (Solari), `WebOfPowerSpacingGuildAbility` (draw), `WebOfPowerFremenAbility` (water) | Wheels Within Wheels' shape, in `_ICON_ABILITY`. |
+| Web of Power's Reveal Faction pick (`gain_chosen_influence`) | `WebOfPowerRevealAbility` (a `GainAnyInfluenceAbility`, Explicit) | The chosen track's `gain_reveal_influence` row. |
+| Esmar Tuek's paid box (`pay_agent_card_spice`, then a Spacing Guild Influence and a card) | `EsmarTuekAbility` (Optional) | Spice Smugglers' shape: the Influence and the card follow the payment (the order of the app's three actions is UNTRACED; Spice Smugglers' is kept). |
+| In The Shadows' box (`discard_agent_card`, then `choose_agent_card_influence`) | `InTheShadowsAgentAbility` (Optional): one answer `((card,), (track,))` over the hand and the Emperor, Spacing Guild and Fremen tracks | The track waits in `Memory.intents` for the Influence step. |
+| Treachery's box and Reveal (`deploy_reveal_supply_troops`) | `PowerPlayAgentAbility`, with the Explicit `TreacheryTrashSelfAbility` folded into the one action (as Subversive Advisor's trash); `TreacheryRevealAbility`, a state-300 `RevealAbility` | The Reveal's two troops are an automatic gain (kind `deploy`). |
+| Guild Accord | `GuildAccordUnloadAbility`, `GuildAccordAllianceAbility` | Nothing to choose. |
+| Freighter Fleet's Reveal Freighter (`advance_reveal_freighter` / `recall_reveal_freighter`) | `FreighterRevealAbility` (Explicit): `Item1` 1 recalls, 0 advances | A "may" row beside `finish_reveal`: a prompt key, as the Reveal's other optional choices. A recall's rewards are the Shipping rows above. |
+| Ix-Guild Compact's "[Discard] [Discard] -> [Dreadnought]" (`discard_agent_card` twice) | `IxGuildCompactAgentAbility` (Optional): one answer `((card, card),)` (`GetDiscardOrder(...).Take(2)`) | Our engine asks one card at a time and keeps the first in the box (`DISCARD_FIRST_KEY`). The second card waits in `Memory.intents` and is taken as a follow-up (Corrinth City's shape). In the Late arc the key is unused and lapses. |
+| Ix-Guild Compact's Reveal Negotiators (`place_reveal_negotiator`) | `IxGuildCompactRevealAbility`, a state-300 `RevealAbility`: `AddTechNegotiators(2)` (@0x4bef400) | The app does not ask: each optional row is an automatic step at the card's reveal position. |
+| Boundless Ambition's "[Signet Ring]" box | The Leader's Signet ability, as the Signet Ring card's [Main p. 20] | A box is a Signet's by its card's `LEADER_SIGNET` effect (`_signet_box`), no longer by the Signet Ring's name; a Ghola's copy reads its partner's. |
+| Boundless Ambition's Reveal acquisition (`acquire_reveal_imperium_card` / `acquire_reveal_reserve_card`) | `BoundlessAmbitionCustomAbility` (Optional), which the card's `BoundlessAmbitionRevealAbility` grants (`GainCustomAbility`, @0x4d8dd90) | Targets (@0x4c5cff0): the Row then Reserve cards and the destination picker (option 0 the top of the deck while offered). Answer `((card,), (0,))`. See the judgement calls. |
+| Unload icons that are decisions (`rules.unload`): in the owner's turn `resolve_unload_icon`, taken at once (`ix.take_unload`); then their windows | Freighter: `freighter_move` (`FreighterFleetUnloadAbility` adds a `FreighterCustomAbility`). Tech Negotiation: `unload_icons`, placed (`UnloadAbility` reruns the card's Reveal, `AddTechNegotiators(2)`). Acquisition: `unload_icons`, `BoundlessAmbitionCustomAbility` (both Unload classes add it) | A Tech Negotiation is refused (`decline_unload_icon`) only when the supply cannot pay it. The fizzle's confirm (`skip_unload_acquisition`) is the only row with nothing in reach. P4's hold (an arrow's right side kept back while its cost's Unload is decided, `976aa6a1`) adds no decision: the seat's only rows are these windows, answered as outside the turn. A recall inside the hold opens `shipping_reward_icons`. One cost holding several cards' Unloads opens one shared window (`427e21a6`, `UNLOAD_BY_CARD_KEY`): the icons the app pays as each card leaves come first (a Tech Negotiation), then the window icons by their custom abilities' values (the Explicit Freighter at `FreighterValue`, the acquisition at its best card's `AcquireValue`); the Freighter is never declined. |
+| Appropriate's "[Emperor] 2 Influence: [Acquire Tech] You may use Solari instead of spice" (`acquire_agent_card_tech_with_solari` / `acquire_agent_card_tech`), and its Acquire Tech window in Solari | `AppropriateAbility` (Optional): `((tile,), (0,))` over `CanAcquireTechTile(0, M, canUseSolari)`; option 0 is the Solari (`<BeginExecution>d__13` @0x4d9b2c0 pays spice only for an answer above 0) | The window opened in Solari (`TECH_PAYMENT_KEY`) asks the same class for the tile. An answer naming a payment with no row takes the other (judgement). Its acquire box's Freighter is an acquire icon, taken at once in a Reveal or an Agent turn (`reveal.acquire_icon`), its window `freighter_move`. |
+| Guild Chief Administrator's "[Discard] -> [Trash a card]" (`discard_agent_card`, then the turn's `trash_optional_card`) | `GuildChiefAdministratorAbility` (Optional): its Evaluate names the discard; the trash its box grants is its `EvaluateTrash` (@0x4dbc950, `GetCardToTrash`, minimum 1.0) | The trash row is named after the box (`immortality._box_trash`). Its Reveal Freighter is Freighter Fleet's `FreighterRevealAbility` row. |
+| Weirding Way's extra turn (`take_agent_card_extra_turn`) | `WeirdingWayAbility` (Optional, 1.0): option 1 "confirm" when the lower `ConflictPostureBounds` reaches the Conflict's interest, else option 0 "decline" | `ExtraTurn` is set only for an answer above 0 (@0x4df3290). A decline uses the key on nothing; the row lapses at the turn's end. |
+| Embedded Agent's two Freighter icons (`advance_agent_card_freighter` / `recall_agent_card_freighter`) | `EmbeddedAgentAbility` (Explicit, run at once) adds a `FreighterCustomAbility` (`AddCustomAbility`, @0x4e687d0) | Each icon is `FreighterAbility::Evaluate`'s answer, as Landing Rights'. |
+| Full-Scale Assault's two troops; its Reveal swords; its acquire Dreadnought | The generic Agent box (`AgentTroops` 2); `FullScaleAssaultRevealAbility`; `AcquireAbility` | No choice. The acquire icon is taken without asking, as every fixed acquire icon. |
+| Court Intrigue's "Put an Intrigue card on the bottom of the deck -> [Intrigue card]" (`put_intrigue_on_bottom_for_agent_card`) | `CourtIntrigueAbility` (Optional): a bad Intrigue card held, shuffled, at `CourtIntrigueValue` | The draw after it is a follow-up (`_ARMED_REWARD_CARDS`). |
+| Desert Ambush's retreats (`retreat_opponent_troop`, with a `dreadnoughts` row) | `DesertAmbushAbility` (Optional, unexhausted): one answer names every unit, at most the retreats the turn's troops still buy (`retreats_for_deployment_left`) | Our engine retreats one unit a row (seat and kind); the rest of the answer are follow-ups in `Memory.intents`. Targets: the offered opponents' units in seat order, troops (Commanders after) then dreadnoughts (UNTRACED). |
+| Negotiated Withdrawal's Reveal arrow (`retreat_reveal_units_for_influence`) | `NegotiatedWithdrawalAbility` (Optional): the Faction prompt, then the units | The answer's Faction; its units are none (see the judgement calls), so `BeginExecution` (@0x4dd78d0) retreats the first three of the seat's troops then dreadnoughts (`Take(3)`). `Cost` (@0x4dd6620): more than two troops and dreadnoughts in the Conflict and a Faction to rise on. |
+| Satellite Ban's Reveal "retreat up to two troops" | `SatelliteBanRevealAbility` | The effect is Scout's. Its table entry is the shared `OptionalRetreatAbility`, so each card answers with its own class. |
+| Intrigue slots | Strongarm's zone, Double Cross's victim (`OpponentLosesTroop`), Urgent Mission's Agent (`RecallYourAgent`) | Each comes from the play's recorded answer. Urgent Mission is an original card; Ix's extra Agents exposed its missing case. |
+| Advanced Weaponry's commission (`commission_intrigue_dreadnought`) | `AdvancedWeaponryPlotAbility` commissions as it runs | No prompt in the app: taken; declined only when no commission is offered. |
+| Second Wave's `deploy_intrigue_troops` | `SecondWaveAbility`: `GetUnitsToDeploy` over the garrison units | The request lists one index per garrison unit, dreadnoughts first, `NumberToSelect = Min(count, 2)` (`<Targets>` @0x4bf7d40). The row has as many units, with as many `dreadnoughts`, as the answer chose. An empty answer deploys none: the swords alone. |
+| Machine Culture's Plot and its Acquire Tech frame | `MachineCulturePlotAbility`: its targets are `GetAcquireTechTileTargets(M, P, 0, false)` (`<Targets>d__6` @0x4bf4970: no discount, no Solari); its answer names the tile | The app's `RunImmediateEffects` buys that target without asking again. Our engine opens an Acquire Tech frame (printer `intrigue\|machine_culture`) with no refusal while a tile is in reach. The Tech window replays the play's answer (`intrigue_tech_tile`) and never relies on a decline row. |
+| War Chest, Diversion | `WarChestCombatAbility` / `WarChestEndgameAbility`; `DiversionAbility` (its Freighter slot as Expedite's) | War Chest's 2 Solari are the Combat line's cost; nothing to choose. |
+| Double Cross's victim, or Diversion's and Expedite's Freighter, when the play named none | `DefaultRandomChoice` over the offered opponents, or the offered moves (never the decline) | A forced prompt answered at 0 or less draws a random key, here the card's (seed 8112; Expedite on seed 8504 of the `427e21a6` trial merge). The target prompt that follows is forced too. |
+| Strategic Push (Combat) and its winner's row (`strategic_push`) | `StrategicPushAbility` (Strength 2, the base Evaluate) | The app's play adds `StrategicPushWinConflictAbility` to the player (`AddCustomAbility`), with no AI member: the pledge is part of the card. Our sole winner's window pays it as an automatic row (engine order); no row on a tie. |
+| Endgame plays of Plans Within Plans and Grand Conspiracy | Played without a prompt (`EndgamePhase`). The app's engine scores the count: `CountTotalPoints` gives 1 VP for three, 2 VP for four (@0x4ca8030, @0x4bec350) | Our engine offers each count as an exclusive -OR- option (OQ-058), both when four are met. The window plays the option with the most VP. Before 2026-10-30 it took the first (1 VP); this also changes original games. |
+
+## Leaders
+
+The twenty-one classes are in `abilities/ix_leaders.py` (Tessia's eight
+and their abstract `CarefulObservationFactionAbility` included); Rhombur's
+`IxianTechnologyAbility` is in `abilities/tech.py`.
+
+| Leader | Decision | App class | Notes |
+|---|---|---|---|
+| Archduke Armand Ecaz | Conscript (Signet): `acquire_leader_imperium` / `acquire_leader_reserve` | `ConscriptAbility` (Optional): the Row, then the Reserve without Foldspace, cost 3 or less; answer `((card,), (destination,))` | Destination option 0 is the top of the deck while our engine offers `to_deck_top` (Spaceport), else the discard pile. |
+| | Coordination (Reveal): `trash_leader_reveal_card` | `CoordinationAbility` (Optional; Cost: the Reveal turn and two Agents on Landsraad, City or Spice Trade spaces) | `GetCardToTrash` over the cards in play; "trash nothing" (`((),)`) is no candidate. |
+| Ilesa Ecaz | One Step Ahead (`round_start_set_aside`) | `OneStepAheadRoundAbility`: of the three best Agent-box cards, the first with one Agent icon; else `GetBestOption`'s card is removed and the first left is set aside | A forced `KeepCard` prompt: an empty answer is `DefaultRandomChoice`. Its Turn and Send halves have no AI hook. |
+| | Guild Contacts (Signet): `acquire_leader_reserve` (Foldspace) | `GuildContactsAbility` (Optional): 100 with option 0 before the Late arc and the climax | `<Targets>d__8` lists "deck" only when it is allowed, then "discard" (asm). |
+| Prince Rhombur Vernius | Ixian Technology (Signet): `acquire_leader_tech` / `place_leader_negotiator` | `IxianTechnologyAbility`: the Negotiation area at 1.0 against the tiles in reach (no discount) | The Acquire Tech frame asks `AcquireTechAbility`, the same argmax. |
+| | Heavy Lasgun Cannons | Sets his dreadnoughts' `Strength` to 4 | `GetUnitsToDeploy` sums 4 per dreadnought for him (`profile/combat.py`). |
+| "Princess" Yuna Moritani | Final Delivery (Signet): `choose_leader_signet_influence` | `FinalDeliveryAbility` (Optional): each track at its `GetGainInfluenceValue` | With every Faction at the top our engine offers the payment alone; the app has no track to answer, so the key lapses. |
+| Viscount Hundro Moritani | Couriers (Signet): `advance_leader_freighter` / `recall_leader_freighter` | `CouriersAbility` (Optional): `GetFreighterSelections(-1).Item1` at `FreighterValue` | |
+| | Intelligence (setup `intrigue_peek`, source `setup:intelligence:<seat>`) | `IntelligenceAbility::EvaluateIntrigue`: the higher `Rating` | Imperium Ceremony's peek keeps `ImperiumCeremonyAbility`. |
+| Tessia Vernius | Careful Observation reward (1): `discard_snooper_card` in her turn (no refusal; lapses), or the `OPTIONAL_DISCARD` window outside it (`decline_snooper_discard`) | The reached track's `CarefulObservation<Faction>Ability`: `GetDiscardOrder`'s first card at 1.0, `((),)` for none | In her turn "discard nothing" is no candidate; in the window it is the refusal. Rewards (2)-(4) are paid by the engine. |
+| | Duplicity (Signet): `lose_leader_influence`, then `choose_leader_signet_influence` | `DuplicityAbility` (Optional): one prompt over the lose tracks and the Snooper tracks, `GetBestInfluenceExchange` -> `((lose,), (gain,))` | The loss takes the first track; the second waits in `Memory.intents` for the gain step (the app answers both before the loss). |
+
+Judgement (Tessia): the app numbers her Snooper rewards by the order its
+abilities run, ours by the order the tokens are reached; a waiting reward
+(1) is the app's first run, so `snooper_factions_used` is empty while one
+waits. One action reaching two tokens pays (2) before asking (1) in ours.
+
+Quid Pro Quo's per-Faction Influence (`resolve_effect_influence`, OQ-153)
+is taken first, in `GetAgentSpaceFactions`' board order: the app's
+`QuidProQuoAbility` gains them as it runs, without asking.
+
+## Profile
+
+- `IsSetEnabled(RiseOfIx)` blocks:
+  - `GetGainInfluenceValue` (D): the Spacing Guild bonus, Grand Conspiracy,
+    Memocorders, and Tessia on a Snooper track.
+  - `DeployValue`: dreadnoughts at 1.5 each, and Negotiated Withdrawal
+    with two or more garrisoned troops.
+- `HasTech` terms (rix-tech §5): inert without the tile.
+- `GetFreighterSelections`, `get_FreighterValue`, the Tech stack tops, the
+  Negotiators and the supply dreadnoughts read the Ix state.
+- `GarrisonUnits` and `ConflictUnits` count dreadnoughts.
+- `GetBestOption` (0x4911370), as `original_intrigue.best_option`:
+  - It takes the strict maximum from 0.0 over the hand's cards and each card's
+    valid spaces.
+  - The value is the card's Agent value plus the space abilities' values,
+    both computed with the card.
+  - Read by Glimpse the Path and Ixian Probe; Ilesa's One Step Ahead will
+    read it too.
+
+## Judgement calls (kept as the app has them unless noted)
+
+- **Boundless Ambition** (promo): the Reveal reads the playmat's
+  `BoundlessAmbitionCustomAbility`.
+  - Value: the AcquireValue of the best Row card costing less than 6.
+  - Answer: the strictly best card, then option 0 of the destination
+    picker, `((card,), (0,))`. The first port, read from the asm, had the
+    two reversed; the C of `Evaluate` (@0x4c5d750) fixes the order.
+  - The key is Optional, but our acquisition is mandatory: the Reveal holds
+    `finish_reveal`, and the Unload window has no refusal while a card is in
+    reach. Where the app would leave the key unused (End Turn, or a value of
+    0 or less), its own answer is taken.
+  - Its `Cost` reads the Row only (`HasImperiumRowCardWithPersuasionCostLessThan(6)`).
+    With no Row card in reach the app has no key; our engine still offers
+    the Reserve, and the same answer is taken.
+- **Shai-Hulud**: the card lists `ShaiHuludAcquireAbility` (an acquire-time
+  trash) before its plain `AcquireAbility`. The Reveal window looks up the
+  exact class first, so the purchase is valued by the plain one.
+- **Spice Smugglers** (original, P4's OQ-148): the paid box's Spacing Guild
+  Influence row comes before its Solari row, the app's order. The same fix
+  is on `claude/spice-smugglers-app-ai` for the P4 merge.
+- **Negotiated Withdrawal**: its Evaluate reads both units and tracks from the
+  first target info, so it names no unit. Ported as compiled. With no unit
+  named, the app's `BeginExecution` retreats the first three of its list
+  (troops, then dreadnoughts); the window does the same. A Bloodlines
+  Commander counts as a troop, after the plain ones (D7).
+- **Units in the Conflict**: they have no entity kind. `DesertAmbushAbility`
+  and `NegotiatedWithdrawalAbility` take them as `ConflictUnit` constructor
+  data.
+- **Diversion / Expedite**: the app draws `GetFreighterSelections` and
+  `FreighterValue` separately. At a level-2 Freighter the RNG draw count
+  differs from the app's.
+- **Diversion's cost**: read as `max(units_deployed_turn,
+  units_deployed_peak) >= 4`.
+- **Machine Culture's Endgame cost**: read as phase ENDGAME or FINISHED.
+- **Grand Conspiracy's `ValueInPileForOtherPlay`**: multiplies an empty
+  summer, so it is always 0. Kept.
+- **Second Wave**: options are one index per garrison unit (dreadnoughts
+  first), and `max_select` is `NumberToSelect`.
+- **"This turn's exhausted units"** (Baron, Diversion): read as
+  `units_deployed_turn`. When the app readies them is UNTRACED.
+
+## Independent review (2026-10-30)
+
+A read-only review agent (the session's model) compared 16 of the
+agent-ported classes with the decompiled C and the asm: 8 Imperium and 8
+Intrigue. The classes themselves matched: value terms, literals, price
+arguments, branches and response shapes.
+
+It confirmed two problems, both fixed in `16d6acda`:
+- **Missing targets.** `intrigue_request` gave Blackmail, Cull and
+  Finesse's Plot no targets, so their evaluates were empty and the cards
+  were never played. Their Influence slots now replay the play's answer.
+- **NaN gates.** Three comparisons now take NaN to the early return, as
+  `ucomisd; jb(e)` does.
+
+Left open by the review:
+- Some cards still have no window consumer, because their engine entries
+  have no play data yet (P4d, as of P4 `3b8cd83c`):
+  - Imperium: none on P4 since `e3cac948` (Guild Chief Administrator,
+    Weirding Way, Negotiated Withdrawal, Embedded Agent, Desert Ambush,
+    Full-Scale Assault and Court Intrigue are answered). Satellite Ban,
+    Spice Trader, Imperial Bashar, Bounty Hunter, Web of Power, Ixian
+    Engineer, Esmar Tuek, Guild Accord, In The Shadows and Treachery are on
+    P4's `claude/p4d-imperium-b`; their rows are mapped and checked on a
+    trial merge, as are Freighter Fleet, Ix-Guild Compact and Boundless
+    Ambition with P4's Unload hold, `5a006d95`.
+  - Intrigue: none (Strategic Push landed with P4 `da3cd535`).
+  Their response shapes are checked when the engine offers their rows.
+  Quid Pro Quo (P4d-6b), Grand Conspiracy, War Chest, Machine Culture and
+  Diversion (P4d) are now played and answered.
+- Negotiated Withdrawal's `Cost` is ported as `meets_cost` (@0x4dd6620), as
+  Imperial Bashar's is: `HasTrashableCard` or a troop in the supply
+  (@0x4dc3c70).
+- `GetBestInfluenceExchange`'s bool argument has no counterpart in
+  `profile.best_influence_exchange`.
+
+## What waits
+
+- **Closing runs**: the original + Ix soak and the Hard vs heuristic
+  measurement, booked on the CPU board once Tessia and the remaining cards
+  are in.

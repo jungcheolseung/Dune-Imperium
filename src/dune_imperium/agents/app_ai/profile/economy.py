@@ -19,9 +19,9 @@ Faithfulness notes that apply to the whole module:
   branches are ported and gated on ``AppContext.immortality`` where the app
   tests ``IsSetEnabled(Immortality)``; the others read Immortality state
   that stays at its start without the expansion (spec/immortality.md §2).
-  The Rise of Ix (2) branches are dead (no Rise of Ix set in our games) and
-  are noted, not ported. BaseSet leaders/intrigues are compared by archetype
-  name so their branches exist but can never be met with our content.
+  Rise of Ix tile terms read public holdings (spec/rix-tech.md §5); they
+  remain inert without the corresponding tile. BaseSet leaders/intrigues
+  are compared by archetype name.
 - Honesty: the own deck is read only as a multiset (iterated in sorted
   instance-id order), opponents only through public fields.
 """
@@ -812,8 +812,8 @@ class EconomyMixin(ProfileCore):
     ) -> float:
         """``WormAIProfile::GetResourceValue @0x4905940`` (spec §3).
 
-        Rise of Ix (Princess Yuna, Advanced Weaponry, War Chest, techs,
-        Dreadnought supply) branches: dead (set 2 off). Immortality's two
+        Rise of Ix tile modifiers read holdings (rix-tech §5.1). Other Ix
+        branches belong to the profile slice. Immortality's two
         branches (spec/immortality.md §2.4) run under ``SetOn(3)``.
         """
 
@@ -861,7 +861,10 @@ class EconomyMixin(ProfileCore):
                         _mul(s, c.SolariMissingSwordmasterMod, "Missing Swordmaster")
                 if self._has_intrigue(_CHOAM_SHARES):
                     _mul(s, c.ChoamSharesSolariMod, "Choam Shares")
-                # SetOn(2) (Rise of Ix): dead.
+                if self.ctx.has_tech("shuttle_fleet"):
+                    _mul(s, c.ShuttleFleetSolariMod, "Shuttle Fleet")
+                if self.ctx.has_tech("flagship"):
+                    _mul(s, c.FlagshipSolariMod, "Flagship")
                 if (
                     self.ctx.immortality  # SetOn(3)
                     and self.game_arc() >= 2
@@ -898,6 +901,11 @@ class EconomyMixin(ProfileCore):
                     _mul(s, c.TheSleeperMustAwakenSpiceMod, "Sleeper Must Awaken")
                 if self._has_intrigue(_PRIVATE_ARMY):
                     _mul(s, c.PrivateArmySpiceMod, "Private Army")
+                if self.ctx.has_tech("spy_satellites") and sum(
+                    self._influence(me, f) < 2
+                    for f in ("emperor", "spacing_guild", "bene_gesserit", "fremen")
+                ) >= 3:
+                    _mul(s, c.SpySatellitesSpiceMod, "Spy Satellites")
                 if self.ctx.uprising:  # SetOn(4)
                     if self._has_intrigue(_MARKET_OPPORTUNITY):
                         _mul(s, c.MarketOpportunitySpiceMod, "Market Opportunity Mod")
@@ -940,10 +948,16 @@ class EconomyMixin(ProfileCore):
                     >= conflict_troops + garrison_troops
                 ):
                     _mul(s, c.StagedIncidentTroopMod, "Staged Incident")
+                if self.ctx.has_tech("training_drones"):
+                    _mul(s, c.TrainingDronesTroopMod, "Training Drones")
+                if self.ctx.has_tech("flagship"):
+                    # App re-reads slot 304, NOT FlagshipTroopMod (rix-tech §5.1).
+                    _mul(s, c.TrainingDronesTroopMod, "Flagship")
                 # Capped at the troops left in the supply (after the mods).
                 amount = min(amount, me.troops_supply)
 
-            # SetOn(2) and Dreadnought (Rise of Ix): dead.
+            if attr is Attr.DREADNOUGHT and self.ctx.has_tech("detonation_devices"):
+                _mul(s, c.DetonationDevicesDreadnoughtMod, "Detonation Devices")
             if self.ctx.immortality and attr is Attr.SPECIMEN:  # SetOn(3)
                 # 0x4907940-0x4907c64 (immortality.md §2.4): the row card
                 # with the best AcquireValue (OrderByDescending is stable: row
@@ -1097,7 +1111,7 @@ class EconomyMixin(ProfileCore):
     def intrigue_value(self) -> float:
         """``WormAIProfile::get_IntrigueValue @0x4908130`` (spec §4.4).
 
-        Plain ``mulsd``, no summer. Sonic Snoopers (Rise of Ix tech): dead.
+        Plain ``mulsd``, no summer; Sonic Snoopers is holding-gated (rix-tech §5.2).
         """
 
         c = self.C
@@ -1106,6 +1120,8 @@ class EconomyMixin(ProfileCore):
             c.IntrigueValueMid,
             c.IntrigueValueLate,
         )[self.game_arc()]
+        if self.ctx.has_tech("sonic_snoopers"):
+            value *= c.SonicSnoopersIntrigueMod
         level = self.abundance_level(Attr.INTRIGUE_CARD)
         if level == 3:
             value *= c.FloodedMod
@@ -1151,7 +1167,9 @@ class EconomyMixin(ProfileCore):
         cards = self._own_cards(me.discard_pile, me.in_play)
         if not cards:
             return -1.0
-        if self._has_intrigue(_CORNER_THE_MARKET):  # or HasTech(HoltzmanEngine)
+        if self._has_intrigue(_CORNER_THE_MARKET) or self.ctx.has_tech(
+            "holtzman_engine"
+        ):
             cards = [card for card in cards if card.short not in _TSMF]
         if not cards:
             return -1.0
@@ -1343,6 +1361,10 @@ class EconomyMixin(ProfileCore):
             if "hall_of_oratory" in me.agent_locations:
                 persuasion += 1
             if "assembly_hall" in me.agent_locations:
+                persuasion += 1
+            if "tech_negotiation" in me.agent_locations:
+                persuasion += 1
+            if self.ctx.has_tech("minimic_film"):
                 persuasion += 1
             if self.ctx.bloodlines:
                 # Self-Destroying Messages, Charismatic, Navigation card 3
@@ -1539,7 +1561,9 @@ class EconomyMixin(ProfileCore):
             )
             if self._has_intrigue(_PLANS_WITHIN_PLANS):
                 icons *= c.PoliticsPayoffMod
-            # Grand Conspiracy / Memocorders (Rise of Ix): dead.
+            # Grand Conspiracy is handled by the Ix profile slice.
+            if self.ctx.has_tech("memocorders"):
+                icons *= c.PoliticsPayoffMod
             if self._leader_short() == _STABAN_TUEK:
                 icons *= c.StabanTuekIconMod
             s.add("New Icons", icons)  # added even when 0
@@ -1858,7 +1882,9 @@ class EconomyMixin(ProfileCore):
             s = Summer()
             trash_value = card.float_attr("TrashValue", 0.0)
             if card.short in _TSMF:
-                if self._has_intrigue(_CORNER_THE_MARKET):  # or Holtzman Engine
+                if self._has_intrigue(_CORNER_THE_MARKET) or self.ctx.has_tech(
+                    "holtzman_engine"
+                ):
                     trash_value = 0.0
                 # Grand Conspiracy (Rise of Ix): dead.
                 elif self._has_intrigue(_SECURE_SPICE_TRADE) and tsmf_owned < 3:

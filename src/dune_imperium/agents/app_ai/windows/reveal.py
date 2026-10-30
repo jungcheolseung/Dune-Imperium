@@ -236,6 +236,18 @@ from dune_imperium.agents.app_ai.abilities.imperium_b import (
     UndercoverAssetAbility,
     UnswervingLoyaltyAbility,
 )
+from dune_imperium.agents.app_ai.abilities.ix_board import (
+    FREIGHTER_RECALL,
+    FreighterRevealAbility,
+)
+from dune_imperium.agents.app_ai.abilities.ix_imperium import (
+    BoundlessAmbitionCustomAbility,
+    BoundlessAmbitionRevealAbility,
+    IxianEngineerAbility,
+    NegotiatedWithdrawalAbility,
+    WebOfPowerRevealAbility,
+)
+from dune_imperium.agents.app_ai.abilities.ix_leaders import CoordinationAbility
 from dune_imperium.agents.app_ai.abilities.leaders import (
     DesertScoutsAbility,
     DeviousStrengthAbility,
@@ -250,14 +262,15 @@ from dune_imperium.agents.app_ai.abilities.original_imperium import (
     GunThopterRevealAbility,
     GurneyHalleckAbility,
     LadyJessicaAcquireAbility,
+    OptionalRetreatAbility,
     OpulenceAbility,
     SardaukarLegionAbility,
-    ScoutAbility,
 )
 from dune_imperium.agents.app_ai.abilities.scouts import (
     CorrinthCityRevealScoutsAbility,
     SubcommitteeOfferAbility,
 )
+from dune_imperium.agents.app_ai.abilities.tech import DisposalFacilityAbility
 from dune_imperium.agents.app_ai.catalog import (
     CARD_ARCHETYPES,
     LEADER_ARCHETYPES,
@@ -280,6 +293,7 @@ from dune_imperium.agents.app_ai.context import (
 )
 from dune_imperium.agents.app_ai.entities import Entity, Kind
 from dune_imperium.agents.app_ai.profile.immortality import research_space_entity
+from dune_imperium.agents.app_ai.windows import ix
 from dune_imperium.agents.app_ai.windows.common import (
     TURN_ROW_IDS,
     Source,
@@ -303,6 +317,7 @@ from dune_imperium.agents.app_ai.windows.scouts import SUBCOMMITTEE_INTENT
 from dune_imperium.agents.app_ai.windows.turn import (
     tech_acquire_effect_sources,
     tech_flip_sources,
+    tech_trash_sources,
 )
 from dune_imperium.content.uprising.board import OBSERVATION_POSTS
 from dune_imperium.core.actions import ActionValue, DomainAction
@@ -358,11 +373,25 @@ _CHOICE_ABILITIES: Mapping[str, type[DeferredAbility]] = {
     "may_trash_self_for_four_influence_if_four_contracts": CHOAMDemandsRevealAbility,
     "persuasion_or_contract": DeliveryLogisticsRevealAbility,
     "gain_chosen_influence_if_two_tech": IxianAmbassadorRevealAbility,
+    # Rise of Ix (abilities/ix_imperium.py): Web of Power's Faction choice and
+    # Ixian Engineer's self-trash for a Victory Point (CHOAM Demands' shape).
+    "gain_chosen_influence": WebOfPowerRevealAbility,
+    "may_trash_self_for_victory_point_if_three_tech_tiles": IxianEngineerAbility,
+    # Freighter Fleet's Freighter (``FreighterRevealAbility``, Explicit), and
+    # Boundless Ambition's acquisition: its ``BoundlessAmbitionRevealAbility``
+    # grants the ``BoundlessAmbitionCustomAbility`` that values it
+    # (``_choice_ability``).
+    "may_move_freighter": FreighterRevealAbility,
+    "acquire_card_up_to_five": BoundlessAmbitionRevealAbility,
+    # Negotiated Withdrawal's three units for an Influence (``_withdrawal``).
+    "may_retreat_three_units_for_influence": NegotiatedWithdrawalAbility,
     # The original game (abilities/original_imperium.py).
     "may_deploy_one_troop": GunThopterRevealAbility,
     "choose_two_persuasion_or_two_strength": BeneGesseritSisterAbility,
     "may_retreat_any_number_of_troops": ChaniRevealAbility,
-    "may_retreat_up_to_two_troops": ScoutAbility,
+    # Scout's ``ScoutAbility``; Rise of Ix's Satellite Ban carries its own
+    # ``SatelliteBanRevealAbility`` (``_card_ability`` takes the card's).
+    "may_retreat_up_to_two_troops": OptionalRetreatAbility,
     "may_deploy_up_to_three_troops": SardaukarLegionAbility,
     "may_pay_three_solari_for_two_troops_and_deploy": GurneyHalleckAbility,
     "may_pay_six_solari_for_victory_point": OpulenceAbility,
@@ -392,6 +421,24 @@ _ORIGINAL_SINGLE_ROWS: Mapping[str, str] = {
 
 _SPY_EFFECTS = frozenset({"place_spy", "place_two_spies", "command_place_spy"})
 
+#: Choices the app makes without asking: Ix-Guild Compact's two Tech
+#: Negotiation icons are its ``IxGuildCompactRevealAbility``, a state-300
+#: ``RevealAbility`` whose ``<BeginExecution>d__5`` @0x4bef400 places both
+#: (``AddTechNegotiators(2)``). Our engine offers each as an optional row
+#: (``place_reveal_negotiator``, the first queues the second); each is an
+#: automatic step at its card's reveal position (``_automatic_choices``).
+_AUTOMATIC_CHOICES = frozenset({"may_place_two_negotiators", "may_place_negotiator"})
+
+#: Boundless Ambition's "Acquire a card that costs 5 or less": a mandatory
+#: choice of ours whose app key is Optional (``reveal_window``).
+_BOUNDLESS_AMBITION = "acquire_card_up_to_five"
+_REVEAL_ACQUIRE_IMPERIUM = "acquire_reveal_imperium_card"
+_REVEAL_ACQUIRE_RESERVE = "acquire_reveal_reserve_card"
+
+_WITHDRAWAL = "may_retreat_three_units_for_influence"
+_WITHDRAWAL_ROW = "retreat_reveal_units_for_influence"
+_WITHDRAWAL_UNITS = 3
+
 #: Bloodlines "Command (6+)" choices: automatic steps answered before any buy,
 #: by their card's reveal position (docs/app-ai-plan.md §11.5;
 #: bloodlines-cards.md §2.1 "Ordering"), never keys of the post-reveal prompt.
@@ -406,7 +453,11 @@ _COMMAND_EFFECTS = frozenset(
 
 #: The choices whose answer is a Faction track (``gain_reveal_influence``).
 _INFLUENCE_GAIN_EFFECTS = frozenset(
-    {"command_gain_chosen_influence", "gain_chosen_influence_if_two_tech"}
+    {
+        "command_gain_chosen_influence",
+        "gain_chosen_influence_if_two_tech",
+        "gain_chosen_influence",
+    }
 )
 
 #: Corrinth City's choice: valued by ``CorrinthCityRevealScoutsAbility`` in
@@ -421,6 +472,7 @@ _REVEAL_ACTIONS = REVEAL_CHOICE_ACTION_IDS | frozenset(
         "acquire_reserve",
         "acquire_manipulated_imperium",
         "recruit_reveal_troops",
+        "deploy_reveal_supply_troops",
         "draw_reveal_intrigue",
         "gain_reveal_resources",
         "gain_reveal_faction_influence",
@@ -448,6 +500,20 @@ _REVEAL_ACTIONS = REVEAL_CHOICE_ACTION_IDS | frozenset(
         "choose_tech_trash",
         "flip_tech",
         "resolve_tech_acquire_effect",
+        # Rise of Ix Tech: Spy Satellites' / Sonic Snoopers' trash, Disposal
+        # Facility's Reveal-turn trash (plan §13).
+        "trash_tech",
+        # Archduke Armand Ecaz's Coordination (``_leader_sources``).
+        "trash_leader_reveal_card",
+        "trash_disposal_facility_card",
+        # A Reveal box Freighter's recall rewards (``ix.shipping_sources``),
+        # and an Unload box owed in the turn (``ix.take_unload``).
+        "resolve_shipping_reward",
+        "resolve_unload_icon",
+        # One effect's per-Faction Influence (OQ-153, ``ix.take_effect_influence``).
+        "resolve_effect_influence",
+        # Tessia's Snooper reward (1) (``ix.snooper_sources``).
+        "discard_snooper_card",
         # Arrakeen Scouts (Corrinth City's seat)
         "choose_subcommittee",
         "decline_subcommittee",
@@ -468,6 +534,9 @@ _APPSTYLE_IMPERIUM = "ImperiumArchetypes.AppStyle."
 #: takes the oldest entry of that kind).
 _GAIN_KINDS: Mapping[str, str] = {
     "recruit_reveal_troops": "troops",
+    # Rise of Ix's Treachery: two troops from the supply into the Conflict
+    # (``TreacheryRevealAbility``, a state-300 ``RevealAbility``).
+    "deploy_reveal_supply_troops": "deploy",
     "draw_reveal_intrigue": "intrigue",
     "generate_reveal_specimens": "specimens",
     "advance_reveal_tleilaxu": "tleilaxu",
@@ -585,7 +654,8 @@ def _choice_entries(run: DecisionRun) -> list[_Entry] | None:
         offered = tuple(a for a in rows if a in legal)
         if not offered:
             continue
-        if effect not in _CHOICE_ABILITIES or card_id(card) not in CARD_ARCHETYPES:
+        mirrored = effect in _CHOICE_ABILITIES or effect in _AUTOMATIC_CHOICES
+        if not mirrored or card_id(card) not in CARD_ARCHETYPES:
             return None
         entries.append(_Entry(card, effect, offered))
         covered.update(offered)
@@ -678,7 +748,14 @@ def _card_ability[A: Ability](card: Entity, cls: type[A]) -> A:
     value the card as another card (the window falls back instead).
     """
 
-    for ability in abilities_of(card):
+    abilities = abilities_of(card)
+    # A subclass may come first (Rise of Ix's Shai-Hulud lists its
+    # ``ShaiHuludAcquireAbility``, the acquire-time trash, before the plain
+    # ``AcquireAbility`` the purchase is valued by): the exact class wins.
+    for ability in abilities:
+        if type(ability) is cls:
+            return ability
+    for ability in abilities:
         if isinstance(ability, cls):
             return ability
     raise _Unmirrored(f"{card.ref} has no {cls.__name__}")
@@ -702,6 +779,10 @@ def _choice_ability(run: DecisionRun, effect: str, card_ref: str) -> DeferredAbi
     ability = _card_ability(card, _CHOICE_ABILITIES[effect])
     if effect == _CORRINTH_CITY and run.ctx.scouts:
         return CorrinthCityRevealScoutsAbility(card)
+    if effect == _BOUNDLESS_AMBITION:
+        # The custom ability the card's Reveal grants (``GainCustomAbility``,
+        # @0x4d8dd90): the prompt's key that names the card.
+        return BoundlessAmbitionCustomAbility(_PLAYMAT)
     return ability
 
 
@@ -724,13 +805,36 @@ def _choice_request(run: DecisionRun, effect: str, card_ref: str) -> Request:
       judgement: the app's ``Targets`` were not decoded, these are the
       engine's legal losses), ``FACTIONS`` order;
     - Tleilaxu Surgeon: one zone code per troop, garrison troops (0) first,
-      then deployed ones (1) (``GetTroopTargets``).
+      then deployed ones (1) (``GetTroopTargets``);
+    - Freighter Fleet: none (``FreighterAbility::Evaluate`` reads the
+      seat's Freighter);
+    - Boundless Ambition: the offered cards and the destination picker
+      (``ix.boundless_ambition_request``).
     """
 
     me = run.ctx.me
     original = _original_request(run, effect)
     if original is not None:
         return original
+    if effect == "may_move_freighter":
+        return Request()
+    if effect == _WITHDRAWAL:
+        # ``<Targets>d__6`` @0x4dd8590: the Faction prompt
+        # (``MakeGainAnyFactionInfluenceTargeting``), then the units
+        # (``NumberToSelect`` 3).
+        rising = set(_arg_refs(run.by_id(_WITHDRAWAL_ROW), "faction"))
+        rise = tuple(track_entity(f) for f in FACTIONS if f in rising)
+        units = tuple(range(len(_withdrawal_units(run))))
+        return Request(
+            (
+                TargetInfo(entities=rise),
+                TargetInfo(options=units, max_select=_WITHDRAWAL_UNITS),
+            )
+        )
+    if effect == _BOUNDLESS_AMBITION:
+        return ix.boundless_ambition_request(
+            run, run.by_id(_REVEAL_ACQUIRE_IMPERIUM), run.by_id(_REVEAL_ACQUIRE_RESERVE)
+        )
     if effect in (
         "recall_spy_to_draw_intrigue_if_two_placed",
         "may_recall_two_spies_for_three_persuasion",
@@ -1115,8 +1219,23 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
             if contract is not None:
                 return contract
         return run.first("gain_reveal_persuasion")
+    if effect == _WITHDRAWAL:
+        return _withdrawal(run, answer)
+    if effect == "may_move_freighter":
+        # Freighter Fleet (Explicit): ``Item1`` 1 recalls, 0 advances.
+        recall = _option(answer) == FREIGHTER_RECALL
+        return run.first(
+            "recall_reveal_freighter" if recall else "advance_reveal_freighter"
+        )
+    if effect == _BOUNDLESS_AMBITION:
+        return ix.boundless_ambition_choice(
+            answer,
+            run.by_id(_REVEAL_ACQUIRE_IMPERIUM),
+            run.by_id(_REVEAL_ACQUIRE_RESERVE),
+        )
     if effect in _INFLUENCE_GAIN_EFFECTS:
-        # Pointing the Way / Ixian Ambassador (Explicit): the chosen track.
+        # Pointing the Way / Ixian Ambassador / Web of Power (Explicit): the
+        # chosen track.
         gains = run.by_id("gain_reveal_influence")
         chosen_track = _option(answer)
         gain = (
@@ -1172,8 +1291,10 @@ def _realise(run: DecisionRun, effect: str, answer: Answer) -> DomainAction | No
     elif effect in (
         "may_trash_self_for_combat_icon",
         "may_trash_self_for_four_influence_if_four_contracts",
+        "may_trash_self_for_victory_point_if_three_tech_tiles",
     ):
-        # Disruption Tactics / CHOAM Demands trash the card itself.
+        # Disruption Tactics / CHOAM Demands / Ixian Engineer trash the card
+        # itself.
         if answer.response is not None:
             action = run.first("trash_reveal_card")
     elif effect == "may_recall_spy_for_three_strength":
@@ -1273,10 +1394,12 @@ def _duncan_loyal_blade(
     return with_arg(run.by_id(action_id), "count", n) if n > 0 else None
 
 
-def _acquire_icon(run: DecisionRun) -> DomainAction | None:
+def acquire_icon(run: DecisionRun) -> DomainAction | None:
     """A bought card's acquire icons (``resolve_acquire_icon``), before
-    anything else: the app's ``AcquireAbility`` runs them as part of the
-    purchase, without asking (CHOAM Directorship's four Influence, in its
+    anything else, in a Reveal or an Agent turn (``agent_effects``): the
+    app's ``AcquireAbility`` runs them as part of the purchase, without
+    asking (Appropriate's and Full-Scale Assault's too: the Freighter's
+    window, the dreadnought) (CHOAM Directorship's four Influence, in its
     ``AcquireEffectList`` order RankE, RankSG, RankBG, RankF = ``FACTIONS``),
     except Lady Jessica's "any" Influence, which her
     ``LadyJessicaAcquireAbility`` picks (a forced prompt: a non-positive or
@@ -1786,8 +1909,9 @@ def _return_batch(run: DecisionRun) -> DomainAction | None:
 
 def _leader_sources(run: DecisionRun) -> list[Source]:
     """Leader abilities with Reveal timing (``GetUsableDeferredAbilities`` row
-    3: ``HasMatchingTiming && CanBeRun``): Amber's Desert Scouts and Feyd's
-    Devious Strength. A key whose app ``Cost`` fails is not in the list.
+    3: ``HasMatchingTiming && CanBeRun``): Amber's Desert Scouts, Feyd's
+    Devious Strength and Rise of Ix's Archduke Armand Ecaz's Coordination. A
+    key whose app ``Cost`` fails is not in the list.
 
     Desert Scouts retreats ``OfType<WormTroop>().Take(1)``: a troop while one
     fights, a Sardaukar Commander only without one (plan §11.5,
@@ -1808,6 +1932,10 @@ def _leader_sources(run: DecisionRun) -> list[Source]:
                 _leader_evaluate(run, scouts, scouts_actions, None),
             )
         )
+    trash_actions = run.by_id("trash_leader_reveal_card")
+    coordination = _leader_ability(run, CoordinationAbility)
+    if trash_actions and coordination is not None and coordination.meets_cost(p):
+        sources.append(_coordination_source(run, coordination, trash_actions))
     recall_actions = run.by_id("recall_spy_for_leader")
     devious = _leader_ability(run, DeviousStrengthAbility)
     if recall_actions and devious is not None and devious.meets_cost(p):
@@ -1820,6 +1948,32 @@ def _leader_sources(run: DecisionRun) -> list[Source]:
             )
         )
     return sources
+
+
+def _coordination_source(
+    run: DecisionRun,
+    ability: CoordinationAbility,
+    actions: tuple[DomainAction, ...],
+) -> Source:
+    """Archduke Armand Ecaz's Coordination (Optional): ``GetCardToTrash``
+    over the cards in play we offer (``infos[0]``); its "trash nothing"
+    answer (``((),)``) uses the key on nothing, so it is no candidate."""
+
+    seat = run.ctx.seat
+    cards = tuple(
+        card_entity(ref, seat)
+        for ref in (str_arg(a, "card_id") for a in actions)
+        if ref is not None
+    )
+    request = Request((TargetInfo(entities=cards),))
+
+    def evaluate() -> tuple[float, DomainAction | None]:
+        answer = ability.evaluate(run.profile, request)
+        ref = _option(answer)
+        chosen = None if ref is None else with_arg(actions, "card_id", ref)
+        return answer.value, chosen
+
+    return Source("Coordination", Stage.PROMPT, actions, evaluate)
 
 
 def _leader_evaluate(
@@ -1903,6 +2057,80 @@ def _choice_evaluate(
         return answer.value, action
 
     return evaluate
+
+
+def _withdrawal_units(run: DecisionRun) -> list[str]:
+    """The seat's units in the Conflict as Negotiated Withdrawal's
+    ``<BeginExecution>d__9`` @0x4dd78d0 lists them: the deployed troops,
+    then ``GetDeployedUnits<WormDreadnought>`` (``Concat``). A Bloodlines
+    Commander is a troop [Bloodlines p. 4], after the plain troops (D7)."""
+
+    me = run.ctx.me
+    return (
+        ["troop"] * me.troops_conflict
+        + ["commander"] * me.commanders_conflict
+        + ["dreadnought"] * me.dreadnoughts_conflict
+    )
+
+
+def _withdrawal(run: DecisionRun, answer: Answer) -> DomainAction | None:
+    """Negotiated Withdrawal's row for ``NegotiatedWithdrawalAbility``'s
+    ``((track,), (unit, ...))``: the Faction the answer names, and its
+    units. The compiled ``Evaluate`` reads its units from the Faction prompt,
+    so it names none; ``BeginExecution`` then retreats the first three of
+    its list (``ListUtil.IsEmpty`` -> ``Take(3)``): troops before
+    dreadnoughts."""
+
+    faction = _option(answer)
+    listed = _withdrawal_units(run)
+    picked = answer.response[1] if answer.response and len(answer.response) > 1 else ()
+    kinds = [listed[r] for r in picked if isinstance(r, int) and 0 <= r < len(listed)]
+    if not kinds:
+        kinds = listed[:_WITHDRAWAL_UNITS]
+    if len(kinds) != _WITHDRAWAL_UNITS:
+        return None
+    commanders, dreadnoughts = kinds.count("commander"), kinds.count("dreadnought")
+    for row in run.by_id(_WITHDRAWAL_ROW):
+        if (
+            str_arg(row, "faction") == faction
+            and (int_arg(row, "commanders") or 0) == commanders
+            and (int_arg(row, "dreadnoughts") or 0) == dreadnoughts
+        ):
+            return row
+    return None
+
+
+def _automatic_choices(run: DecisionRun, entries: Sequence[_Entry]) -> list[Source]:
+    """The ``_AUTOMATIC_CHOICES`` entries as state-300 automatic steps, by
+    their card's reveal position (``_auto_rank``)."""
+
+    revealed = _revealed_cards(_reveal_context(run))
+    return [
+        Source(
+            f"Choice {entry.effect} {entry.card}",
+            Stage.REVEAL_AUTO,
+            entry.rows,
+            order=_auto_rank(entry.effect, entry.card, revealed),
+        )
+        for entry in entries
+        if entry.effect in _AUTOMATIC_CHOICES
+    ]
+
+
+def _held_answer(run: DecisionRun, entries: Sequence[_Entry]) -> DomainAction | None:
+    """Boundless Ambition's own answer while its mandatory acquisition holds
+    ``finish_reveal`` (``reveal_window``): ``BoundlessAmbitionCustomAbility::
+    Evaluate``'s card, whatever its value."""
+
+    for entry in entries:
+        if entry.effect != _BOUNDLESS_AMBITION:
+            continue
+        ability = _choice_ability(run, entry.effect, entry.card)
+        answer = ability.evaluate(
+            run.profile, _choice_request(run, entry.effect, entry.card)
+        )
+        return _realise(_entry_run(run, entry), entry.effect, answer)
+    return None
 
 
 def _outside_prompt(run: DecisionRun, entry: _Entry) -> bool:
@@ -2045,6 +2273,37 @@ def _tech_reveal_sources(run: DecisionRun) -> list[Source] | None:
                     "explicit": panopticon.selection_mode(p) == SelectionMode.EXPLICIT,
                 },
             )
+        )
+    disposals = run.by_id("trash_disposal_facility_card")
+    if disposals:
+        # Rise of Ix's Disposal Facility (rix-tech.md §8.3): Optional, its
+        # ``Evaluate`` @0x4dad550 names the in-play card ``GetCardToTrash``
+        # picks (minimum trash value 1.0); no card named leaves it unused
+        # (a "may" that lapses at the turn's end).
+        disposal = next(
+            (
+                a
+                for a in abilities_of(tech_entity("disposal_facility", seat))
+                if isinstance(a, DisposalFacilityAbility)
+            ),
+            None,
+        )
+        if disposal is None:
+            return None
+        cards = tuple(
+            card_entity(ref, seat)
+            for ref in (str_arg(a, "card_id") for a in disposals)
+            if ref is not None
+        )
+        disposal_request = Request(infos=(TargetInfo(entities=cards),))
+
+        def evaluate_disposal() -> tuple[float, DomainAction | None]:
+            answer = disposal.evaluate(p, disposal_request)
+            ref = answer.response[0][0] if answer.response else None
+            return answer.value, with_arg(disposals, "card_id", ref)
+
+        sources.append(
+            Source("Disposal Facility", Stage.PROMPT, disposals, evaluate_disposal)
         )
     strength = run.by_id("choose_tech_strength")
     trash = run.first("choose_tech_trash")
@@ -2268,12 +2527,24 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
         return None
     if waiting is not None:
         return waiting
-    icon = _acquire_icon(run)
+    icon = acquire_icon(run)
     if icon is not None:
         return icon
     known = _REVEAL_ACTIONS | TURN_ROW_IDS
     if any(a.action_id not in known for a in run.legal):
         return None  # a Reveal action of another expansion: not mirrored
+    unload = ix.take_unload(run)
+    if unload is not None:
+        return unload
+    influence = ix.take_effect_influence(run)
+    if influence is not None:
+        return influence
+    shipping = run.by_id("resolve_shipping_reward")
+    if shipping:
+        # A Reveal box Freighter's recall rewards: the app's Explicit
+        # Shipping-track sources force the prompt until answered
+        # (rix-tech.md §7.4), so they come first.
+        return decide(run, ix.shipping_sources(run, shipping), skip=None, forced=True)
     batch = _return_batch(run)
     if batch is not None:
         return batch
@@ -2287,7 +2558,9 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     owed = tech_acquire_effect_sources(run)
     if entries is None or gains is None or owed is None:
         return None
-    step, prompt_entries = _automatic_step(run, [*owed, *gains], entries)
+    automatic = _automatic_choices(run, entries)
+    entries = [e for e in entries if e.effect not in _AUTOMATIC_CHOICES]
+    step, prompt_entries = _automatic_step(run, [*owed, *gains, *automatic], entries)
     if step is not None:
         return step
     mark = run.memory.data.pop(_END_TURN, None)
@@ -2297,9 +2570,17 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     commanders = _commander_sources(run)
     tiles = _tech_reveal_sources(run)
     flips = tech_flip_sources(run)
+    trashes = tech_trash_sources(run)
     subcommittee = _subcommittee_sources(run, gain_answers)
-    if commanders is None or tiles is None or flips is None or subcommittee is None:
+    if (
+        commanders is None
+        or tiles is None
+        or flips is None
+        or trashes is None
+        or subcommittee is None
+    ):
         return None
+    flips = [*flips, *trashes]
     rests: dict[DomainAction, tuple[str, int]] = {}
     sources: list[Source] = [
         *gains,
@@ -2317,6 +2598,7 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
         *tiles,
         *flips,
         *subcommittee,
+        *ix.snooper_sources(run),
     ]
     plots = run.by_id("play_intrigue")
     if plots:
@@ -2329,11 +2611,18 @@ def reveal_window(run: DecisionRun) -> DomainAction | None:
     else:
         declines = [s.extra.get("decline") for s in sources]
         decline = next((d for d in declines if isinstance(d, DomainAction)), None)
-        if decline is None:
+        held = _held_answer(run, prompt_entries) if decline is None else None
+        if decline is not None:
+            # The app would End Turn: our engine needs the subcommittee offer
+            # declined first; ``finish_reveal`` follows (``_END_TURN``).
+            skip, forced = decline, False
+        elif held is not None:
+            # Judgement: Boundless Ambition's acquisition holds
+            # ``finish_reveal``, but its app key is Optional. Where the app
+            # would End Turn and leave it unused, its own answer is taken.
+            skip, forced = held, False
+        else:
             return None  # finish blocked by something the app has no key for
-        # The app would End Turn: our engine needs the subcommittee offer
-        # declined first; ``finish_reveal`` follows (``_END_TURN``).
-        skip, forced = decline, False
     random_pick = False
 
     def forced_now() -> bool:

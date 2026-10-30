@@ -88,8 +88,11 @@ from dune_imperium.agents.app_ai.abilities.generic import (
     DeferredAbility,
     contract_evaluate,
 )
+from dune_imperium.agents.app_ai.abilities.ix_imperium import AppropriateAbility
 from dune_imperium.agents.app_ai.abilities.tech import (
+    AcquireTechAbility,
     AcquireTechAbilityDiscount1,
+    AcquireTechAbilityShippingTrack2,
     MemocordersAcquiredAbility,
 )
 from dune_imperium.agents.app_ai.catalog import (
@@ -126,10 +129,17 @@ from dune_imperium.agents.app_ai.windows.common import (
     with_arg,
     worst_recall_action,
 )
-from dune_imperium.agents.app_ai.windows.intrigue import NAVIGATION_INTENT
+from dune_imperium.agents.app_ai.windows.intrigue import (
+    NAVIGATION_INTENT,
+    intrigue_tech_tile,
+)
 from dune_imperium.agents.app_ai.windows.run import DecisionRun, Handler, arg
 from dune_imperium.agents.app_ai.windows.turn import board_space_order
 from dune_imperium.core.actions import DomainAction
+from dune_imperium.core.observation import TECH_PAYMENT_KEY
+from dune_imperium.rules.action_shapes import PRINTER_KEY, printer_parts
+from dune_imperium.rules.action_shapes import Source as Printer
+from dune_imperium.rules.tech import SOLARI_PAYMENT
 from dune_imperium.rules.unit_loss import UNIT_LOSS_CANDIDATES
 
 #: The owner of the abilities the app builds at run time (a card-granted
@@ -552,16 +562,30 @@ def tech_acquisition(run: DecisionRun) -> DomainAction | None:
     decline = run.first("decline_tech")
     if not acquires:
         return decline
-    if run.ctx.top_frame_context.get("discount") != (
-        AcquireTechAbilityDiscount1.tech_discount
-    ):
-        return None  # no app-style source for another discount
+    context = run.ctx.top_frame_context
+    discount = context.get("discount")
+    source: type[DeferredAbility] | None = (
+        _IX_TECH_SOURCES.get(discount)
+        if run.ctx.ix and isinstance(discount, int)
+        else None
+    )
+    if run.ctx.ix and context.get(TECH_PAYMENT_KEY) == SOLARI_PAYMENT:
+        # Appropriate's purchase in Solari: its own ``AppropriateAbility``
+        # (the tile of its ``((tile,), (0,))``, ``agent_effects._appropriate``).
+        source = AppropriateAbility
+    if source is None:
+        if discount != AcquireTechAbilityDiscount1.tech_discount:
+            return None  # no app-style source for another discount
+        source = AcquireTechAbilityDiscount1
     tech_ids = _refs(acquires, "tech_id")
     if any(t not in TECH_ARCHETYPES for t in tech_ids):
         return None
+    played = _intrigue_tile(run)
+    if played is not None and played in tech_ids:
+        return _tile_action(run, acquires, played)
     p = run.profile
     tiles = tuple(tech_entity(t, run.ctx.seat) for t in tech_ids)
-    ability = AcquireTechAbilityDiscount1(_RUNTIME_OWNER)
+    ability = source(_RUNTIME_OWNER)
     answer = ability.evaluate(p, Request((TargetInfo(entities=tiles),)))
     ref = _first_ref(answer)
     tile: str | None = ref if isinstance(ref, str) and answer.value > 0.0 else None
@@ -575,15 +599,49 @@ def tech_acquisition(run: DecisionRun) -> DomainAction | None:
     return _tile_action(run, acquires, tile)
 
 
+#: Rise of Ix (plan §13): the acquisition's app source by its Tech Discount --
+#: the Dreadnought space's ``AcquireTechAbility`` (0), Tech Negotiation's
+#: tile (1, the tile its negotiate-or-buy answer named: the same
+#: ``AcquireValue`` argmax) and the Shipping track's
+#: ``AcquireTechAbilityShippingTrack2`` (2).
+_IX_TECH_SOURCES: Final[dict[int, type[AcquireTechAbility]]] = {
+    0: AcquireTechAbility,
+    1: AcquireTechAbilityDiscount1,
+    2: AcquireTechAbilityShippingTrack2,
+}
+
+
+#: Rise of Ix Intrigue cards whose play names the Tech tile it acquires.
+_INTRIGUE_TECH_CARDS: Final = frozenset({"machine_culture"})
+
+
+def _intrigue_tile(run: DecisionRun) -> str | None:
+    """The tile of an Acquire Tech frame an Intrigue card opened (printer
+    ``intrigue|<card>``): its play's answer (``intrigue_tech_tile``)."""
+
+    printer = run.ctx.top_frame_context.get(PRINTER_KEY)
+    if not run.ctx.ix or not isinstance(printer, str):
+        return None
+    source, printed, _box = printer_parts(printer)
+    if source is not Printer.INTRIGUE or printed not in _INTRIGUE_TECH_CARDS:
+        return None
+    return intrigue_tech_tile(run, printed)
+
+
 def _tile_action(
     run: DecisionRun, acquires: Sequence[DomainAction], tech_id: str
 ) -> DomainAction | None:
     """``acquire_tech`` of ``tech_id``; Advanced Data Analysis boxes the Spy
-    ``GetRecallSpy`` names (the one on the worst post, D14)."""
+    ``GetRecallSpy`` names (the one on the worst post, D14). Rise of Ix:
+    the app spends Negotiators before spice without asking, ``Min(cost,
+    Negotiators)`` (``AcquireTechAbility/<BeginExecution>d__14`` @0x4d97e30,
+    rix-tech.md §7.1): the variant returning the most."""
 
     variants = [a for a in acquires if str_arg(a, "tech_id") == tech_id]
     if len(variants) <= 1:
         return variants[0] if variants else None
+    if any("negotiators" in dict(a.arguments) for a in variants):
+        return max(variants, key=lambda a: int_arg(a, "negotiators") or 0)
     return worst_recall_action(run, variants)
 
 

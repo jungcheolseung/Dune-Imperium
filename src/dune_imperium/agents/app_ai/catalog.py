@@ -197,6 +197,103 @@ ORIGINAL_LEADER_ARCHETYPES: dict[str, str] = {
     "countess_ariana_thorvald": "LeaderArchetypes.BaseSet.CountessArianaThorvald",
 }
 
+
+# -- Rise of Ix on the original board (``rise_of_ix``, docs/app-ai-plan.md §13) ------
+#
+# The app's ``RiseOfIx`` (and Ix ``Promo``) archetypes of our Ix content
+# (``content.rise_of_ix``); merged into the tables below (no id collides).
+
+# ``content.rise_of_ix.imperium.IX_IMPERIUM_CARDS``.
+IX_CARD_ARCHETYPES: dict[str, str] = {
+    "appropriate": "ImperiumArchetypes.RiseOfIx.Appropriate",
+    "bounty_hunter": "ImperiumArchetypes.RiseOfIx.BountyHunter",
+    "choam_delegate": "ImperiumArchetypes.RiseOfIx.CHOAMDelegate",
+    "court_intrigue": "ImperiumArchetypes.RiseOfIx.CourtIntrigue",
+    "desert_ambush": "ImperiumArchetypes.RiseOfIx.DesertAmbush",
+    "embedded_agent": "ImperiumArchetypes.RiseOfIx.EmbeddedAgent",
+    "esmar_tuek_card": "ImperiumArchetypes.RiseOfIx.EsmarTuek",
+    "freighter_fleet": "ImperiumArchetypes.RiseOfIx.FreighterFleet",
+    "full_scale_assault": "ImperiumArchetypes.RiseOfIx.FullScaleAssault",
+    "guild_accord": "ImperiumArchetypes.RiseOfIx.GuildAccord",
+    "guild_chief_administrator": "ImperiumArchetypes.RiseOfIx.GuildChiefAdministrator",
+    "imperial_bashar": "ImperiumArchetypes.RiseOfIx.ImperialBashar",
+    "imperial_shock_trooper": "ImperiumArchetypes.RiseOfIx.ImperialShockTrooper",
+    "in_the_shadows": "ImperiumArchetypes.RiseOfIx.IntheShadows",
+    "ix_guild_compact": "ImperiumArchetypes.RiseOfIx.IxGuildCompact",
+    "ixian_engineer": "ImperiumArchetypes.RiseOfIx.IxianEngineer",
+    "jamis": "ImperiumArchetypes.RiseOfIx.Jamis",
+    "landing_rights": "ImperiumArchetypes.RiseOfIx.LandingRights",
+    "local_fence": "ImperiumArchetypes.RiseOfIx.LocalFence",
+    "negotiated_withdrawal": "ImperiumArchetypes.RiseOfIx.NegotiatedWithdrawal",
+    "satellite_ban": "ImperiumArchetypes.RiseOfIx.SatelliteBan",
+    "sayyadina": "ImperiumArchetypes.RiseOfIx.Sayyadina",
+    "shai_hulud": "ImperiumArchetypes.RiseOfIx.ShaiHulud",
+    "spice_trader": "ImperiumArchetypes.RiseOfIx.SpiceTrader",
+    "treachery": "ImperiumArchetypes.RiseOfIx.Treachery",
+    "truthsayer": "ImperiumArchetypes.RiseOfIx.Truthsayer",
+    "water_peddler": "ImperiumArchetypes.RiseOfIx.WaterPeddler",
+    "web_of_power": "ImperiumArchetypes.RiseOfIx.WebofPower",
+    "weirding_way": "ImperiumArchetypes.RiseOfIx.WeirdingWay",
+    "boundless_ambition": "ImperiumArchetypes.Promo.BoundlessAmbition",
+}
+# ``content.rise_of_ix.intrigue``.
+IX_INTRIGUE_ARCHETYPES: dict[str, str] = {
+    "advanced_weaponry": "IntrigueArchetypes.RiseOfIx.AdvancedWeaponry",
+    "blackmail": "IntrigueArchetypes.RiseOfIx.Blackmail",
+    "cannon_turrets": "IntrigueArchetypes.RiseOfIx.CannonTurrets",
+    "cull": "IntrigueArchetypes.RiseOfIx.Cull",
+    "diversion": "IntrigueArchetypes.RiseOfIx.Diversion",
+    "expedite": "IntrigueArchetypes.RiseOfIx.Expedite",
+    "finesse": "IntrigueArchetypes.RiseOfIx.Finesse",
+    "glimpse_the_path": "IntrigueArchetypes.RiseOfIx.GlimpsethePath",
+    "grand_conspiracy": "IntrigueArchetypes.RiseOfIx.GrandConspiracy",
+    "ixian_probe": "IntrigueArchetypes.RiseOfIx.IxianProbe",
+    "machine_culture": "IntrigueArchetypes.RiseOfIx.MachineCulture",
+    "quid_pro_quo": "IntrigueArchetypes.RiseOfIx.QuidProQuo",
+    "second_wave": "IntrigueArchetypes.RiseOfIx.SecondWave",
+    "secret_forces": "IntrigueArchetypes.RiseOfIx.SecretForces",
+    "strategic_push": "IntrigueArchetypes.RiseOfIx.StrategicPush",
+    "strongarm": "IntrigueArchetypes.RiseOfIx.Strongarm",
+    "war_chest": "IntrigueArchetypes.RiseOfIx.WarChest",
+}
+# ``content.rise_of_ix.conflicts`` (Economic Supremacy is in the Epic table).
+IX_CONFLICT_ARCHETYPES: dict[str, tuple[str, str]] = {
+    "skirmish_e": _both("ConflictArchetypes.RiseOfIx.SkirmishE"),
+    "skirmish_f": _both("ConflictArchetypes.RiseOfIx.SkirmishF"),
+    "trade_monopoly": _both("ConflictArchetypes.RiseOfIx.TradeMonopoly"),
+}
+# ``content.rise_of_ix.leaders``.
+IX_LEADER_ARCHETYPES: dict[str, str] = {
+    "archduke_armand_ecaz": "LeaderArchetypes.RiseOfIx.ArchdukeArmandEcaz",
+    "ilesa_ecaz": "LeaderArchetypes.RiseOfIx.IlesaEcaz",
+    "prince_rhombur_vernius": "LeaderArchetypes.RiseOfIx.PrinceRhomburVernius",
+    "princess_yuna_moritani": "LeaderArchetypes.RiseOfIx.PrincessYunaMoritani",
+    "tessia_vernius": "LeaderArchetypes.RiseOfIx.TessiaVernius",
+    "viscount_hundro_moritani": "LeaderArchetypes.RiseOfIx.ViscountHundroMoritani",
+}
+# ``content.rise_of_ix.tech``: the app's own tiles (the Bloodlines ones are
+# app-style, ``TECH_ARCHETYPES`` above them).
+IX_TECH_ARCHETYPES: dict[str, str] = {
+    "artillery": "TechTileArchetypes.RiseOfIx.Artillery",
+    "chaumurky": "TechTileArchetypes.RiseOfIx.Chaumurky",
+    "detonation_devices": "TechTileArchetypes.RiseOfIx.DetonationDevices",
+    "disposal_facility": "TechTileArchetypes.RiseOfIx.DisposalFacility",
+    "flagship": "TechTileArchetypes.RiseOfIx.Flagship",
+    "holoprojectors": "TechTileArchetypes.RiseOfIx.Holoprojectors",
+    "holtzman_engine": "TechTileArchetypes.RiseOfIx.HoltzmanEngine",
+    "invasion_ships": "TechTileArchetypes.RiseOfIx.InvasionShips",
+    "memocorders": "TechTileArchetypes.RiseOfIx.Memocorders",
+    "minimic_film": "TechTileArchetypes.RiseOfIx.MinimicFilm",
+    "restricted_ordnance": "TechTileArchetypes.RiseOfIx.RestrictedOrdnance",
+    "shuttle_fleet": "TechTileArchetypes.RiseOfIx.ShuttleFleet",
+    "sonic_snoopers": "TechTileArchetypes.RiseOfIx.SonicSnoopers",
+    "spaceport": "TechTileArchetypes.RiseOfIx.Spaceport",
+    "spy_satellites": "TechTileArchetypes.RiseOfIx.SpySatellites",
+    "training_drones": "TechTileArchetypes.RiseOfIx.TrainingDrones",
+    "troop_transports": "TechTileArchetypes.RiseOfIx.TroopTransports",
+    "windtraps": "TechTileArchetypes.RiseOfIx.Windtraps",
+}
+
 # card_id -> app archetype short name (starters, reserve, Imperium incl. CHOAM
 # and promos).
 CARD_ARCHETYPES: dict[str, str] = {
@@ -356,6 +453,7 @@ CARD_ARCHETYPES: dict[str, str] = {
     "urgent_shigawire": "ImperiumArchetypes.AppStyle.UrgentShigawire",
     # The original game.
     **ORIGINAL_CARD_ARCHETYPES,
+    **IX_CARD_ARCHETYPES,
 }
 # intrigue card_id -> app archetype short name.
 INTRIGUE_ARCHETYPES: dict[str, str] = {
@@ -446,6 +544,7 @@ INTRIGUE_ARCHETYPES: dict[str, str] = {
     "twisted_withdrawn": "IntrigueArchetypes.AppStyle.TwistedWithdrawn",
     # The original game.
     **ORIGINAL_INTRIGUE_ARCHETYPES,
+    **IX_INTRIGUE_ARCHETYPES,
 }
 # Navigation card_id -> archetype (Steersman Y'rkoon's ten cards; not Intrigue
 # cards, bloodlines-systems.md §5; instance ids ``intrigue:navigation_card_<n>:0``).
@@ -519,6 +618,18 @@ ORIGINAL_SPACE_ARCHETYPES: dict[str, str] = {
     "secure_contract": "SpaceArchetypes.BaseSet.SecureContract",
     "sell_melange": "SpaceArchetypes.BaseSet.SellMelange",
 }
+#: Rise of Ix's four spaces (``content.rise_of_ix.board.IX_SPACE_IDS``) and the
+#: four original spaces its CHOAM overlay covers (their ``RemovedFromSetList``
+#: holds ``RiseOfIx``).
+IX_SPACE_ARCHETYPES: dict[str, str] = {
+    "dreadnought": "SpaceArchetypes.RiseOfIx.DreadnoughtSpace",
+    "tech_negotiation": "SpaceArchetypes.RiseOfIx.TechNegotiation",
+    "interstellar_shipping": "SpaceArchetypes.RiseOfIx.InterstellarShipping",
+    "smuggling": "SpaceArchetypes.RiseOfIx.Smuggling",
+}
+IX_COVERED_SPACE_IDS: Final = frozenset(
+    {"hall_of_oratory", "rally_troops", "secure_contract", "sell_melange"}
+)
 # Bloodlines spaces with no app archetype (bloodlines-systems.md §6). Kept out
 # of ``SPACE_ARCHETYPES``: Tuek's Sietch is on the board only while Esmar Tuek
 # plays (``BoardSpace.required_leader_id``), and the profile reads
@@ -541,6 +652,11 @@ def board_space_ids(board: Board) -> tuple[str, ...]:
     ``Board.original``.
     """
 
+    if board.original and board.ix:
+        return (
+            *(s for s in ORIGINAL_SPACE_ARCHETYPES if s not in IX_COVERED_SPACE_IDS),
+            *IX_SPACE_ARCHETYPES,
+        )
     if board.original:
         return tuple(ORIGINAL_SPACE_ARCHETYPES)
     if board.tueks_sietch:
@@ -620,6 +736,7 @@ def is_board_space(space_id: str) -> bool:
     return (
         space_id in SPACE_ARCHETYPES
         or space_id in ORIGINAL_SPACE_ARCHETYPES
+        or space_id in IX_SPACE_ARCHETYPES
         or space_id in BLOODLINES_SPACE_ARCHETYPES
     )
 
@@ -706,6 +823,7 @@ CONFLICT_ARCHETYPES: dict[str, tuple[str, str]] = {
     "storms_in_the_south": _both("ConflictArchetypes.AppStyle.StormsintheSouth"),
     # The original game.
     **ORIGINAL_CONFLICT_ARCHETYPES,
+    **IX_CONFLICT_ARCHETYPES,
 }
 # contract card_id -> app archetype short name.
 CONTRACT_ARCHETYPES: dict[str, str] = {
@@ -769,6 +887,7 @@ LEADER_ARCHETYPES: dict[str, str] = {
     "kota_odax_of_ix": "LeaderArchetypes.AppStyle.KotaOdaxOfIx",
     # The original game.
     **ORIGINAL_LEADER_ARCHETYPES,
+    **IX_LEADER_ARCHETYPES,
 }
 # tech_id -> Tech tile archetype (app-style, bloodlines-systems.md §3.2).
 TECH_ARCHETYPES: dict[str, str] = {
@@ -790,6 +909,8 @@ TECH_ARCHETYPES: dict[str, str] = {
     "spy_drones": "TechTileArchetypes.AppStyle.SpyDrones",
     "suspensor_suits": "TechTileArchetypes.AppStyle.SuspensorSuits",
     "training_depot": "TechTileArchetypes.AppStyle.TrainingDepot",
+    # Rise of Ix: the app's own tiles.
+    **IX_TECH_ARCHETYPES,
 }
 # The Sardaukar Commander and skill_id -> Skill archetype (app-style,
 # bloodlines-systems.md §2.1).
@@ -891,6 +1012,8 @@ def contract_entity(instance_id: str, owner: int | None = None) -> Entity:
 def space_archetype(space_id: str, board: Board) -> str:
     """The app archetype short name of a board space in this game."""
 
+    if board.ix and space_id in IX_SPACE_ARCHETYPES:
+        return IX_SPACE_ARCHETYPES[space_id]
     if board.original:
         return ORIGINAL_SPACE_ARCHETYPES[space_id]
     if board.immortality and space_id in IMMORTALITY_SPACE_ARCHETYPES:
