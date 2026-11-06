@@ -38,6 +38,14 @@ AI를 학습하는 연구도 함께 한다.
 
 ## 바로 한 판
 
+- **git·Python 없이 한 줄로:** macOS 터미널이나 Windows PowerShell에 한 줄을 붙여 넣으면 게임 폴더 하나에
+  게임·uv·Python·서버 패키지가 들어가고 런처 바로가기가 생긴다. macOS는 아래 줄이고, Windows용 줄과
+  업데이트·지우는 법은 [호스트 가이드의 "한 줄 설치"](docs/remote-play-host-guide.md#한-줄-설치-gitpython-없이)에 있다.
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/jungcheolseung/Dune-Imperium/master/scripts/launcher/install.sh | sh
+  ```
+
 - **창으로:** `scripts/launcher/Install Launcher.command`(macOS)나 `Install Launcher.cmd`(Windows)를 한 번
   더블클릭하면 서버 런처가 설치된다. 저장소가 WSL 안에 있으면 WSL 터미널에서 `scripts/launcher/install-wsl.sh`를
   실행한다(창은 WSLg로 Windows 바탕 화면에 뜬다). 런처 창에서 이 컴퓨터에서만 둘지(로컬) 친구들과 둘지(원격)

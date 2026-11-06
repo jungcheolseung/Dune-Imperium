@@ -153,8 +153,8 @@ const UI_TEXT = {
     "en": "Player {{seat}} · {{faction}} {alliance}"
   },
   "board.board_scan_missing": {
-    "ko": "보드 스캔(assets/board/map.jpg)이 없어 목록으로 표시합니다.",
-    "en": "No board scan (assets/board/map.jpg); showing a list instead."
+    "ko": "보드 스캔(assets/board/uprising.jpg)이 없어 목록으로 표시합니다.",
+    "en": "No board scan (assets/board/uprising.jpg); showing a list instead."
   },
   "board.board_spaces_heading": {
     "ko": "보드 공간",

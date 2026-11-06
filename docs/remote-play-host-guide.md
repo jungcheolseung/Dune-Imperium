@@ -8,7 +8,7 @@
 
 ## 빠른 시작
 
-1. Python 3.14·uv·저장소와 서버 의존성을 준비한다. 런처를 쓰면 설치 스크립트를 한 번 더블클릭하는 것으로 끝난다([런처로 실행](#서버-런처로-실행-터미널-없이)).
+1. 게임과 서버 의존성을 준비한다. git·Python·uv를 따로 설치하지 않으려면 [한 줄 설치](#한-줄-설치-gitpython-없이)를 쓴다. 저장소를 clone했다면 런처 설치 스크립트를 한 번 더블클릭한다([런처로 실행](#서버-런처로-실행-터미널-없이)).
 2. 같은 장소라면 LAN 주소, 다른 장소라면 Tailscale 주소를 확인한다. 런처는 이 주소들을 찾아 목록으로 보여 준다.
 3. 해당 주소로 `--remote` 서버를 실행한다. 런처에서는 "다른 사람과 (원격)"을 고르고 **시작**을 누른다.
 4. 관리자 링크로 게임을 만들고 참가자에게 방 링크를 보낸다.
@@ -40,6 +40,33 @@
 게임 중 서버 터미널(또는 런처 창)을 열어 두고 PC의 잠자기를 방지한다. 런처 창을 닫으면 서버도 꺼진다(최소화는 괜찮다). AI는 호스트 PC에서 실행되므로 학습 작업 등 CPU를 많이 사용하는 작업을 함께 돌리면 응답이 늦어질 수 있다.
 
 ## 2. 호스트의 서버 환경 준비
+
+### 한 줄 설치 (git·Python 없이)
+
+git, Python, uv를 먼저 설치하지 않아도 된다. 아래 한 줄이 게임 폴더 하나를 만들고 그 안에 모든 것을 넣는다. 들어가는 것은 공개 저장소의 최신 게임 파일, uv, Python 3.14, 서버 패키지(앱 AI까지)다. 마지막에 **Dune Imperium Server** 런처 바로가기를 만들고 런처를 띄운다.
+
+macOS: **터미널** 앱(응용 프로그램 → 유틸리티)을 열고 붙여 넣는다.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jungcheolseung/Dune-Imperium/master/scripts/launcher/install.sh | sh
+```
+
+Windows: 시작 메뉴에서 **PowerShell**을 열고 붙여 넣는다.
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/jungcheolseung/Dune-Imperium/master/scripts/launcher/install.ps1 | iex"
+```
+
+- **설치 위치.** 홈 폴더의 `Dune Imperium` 폴더다(macOS `~/Dune Imperium`, Windows `%USERPROFILE%\Dune Imperium`). 다른 곳에 두려면 환경 변수 `DUNE_IMPERIUM_HOME`에 경로를 준다. 이 폴더 밖에는 아무것도 쓰지 않는다. PATH도 바꾸지 않고, Windows에 Python을 등록하지도 않는다. 처음 한 번 수십 MB를 내려받고, 설치가 끝나면 폴더 크기는 약 160 MB다.
+- **다음부터.** 그 폴더의 **Dune Imperium Server**를 더블클릭한다. Dock이나 작업 표시줄에 끌어다 두면 편하다. 이 바로가기는 그 PC에서 만들어지므로 macOS Gatekeeper나 Windows SmartScreen의 경고가 뜨지 않는다.
+- **업데이트.** 런처를 닫고 같은 줄을 다시 실행한다. 게임 파일은 새것으로 바뀐다. 저장 파일(`saves/`), 런처 설정(`local/`), 그림(`assets/`), 망 파일(`checkpoints/`)은 그대로 남는다. 런처가 켜져 있으면 설치가 멈추고 그 사실을 알려 준다.
+- **지우기.** 폴더를 통째로 휴지통에 넣는다.
+- **안전장치.** git으로 받은 저장소나 다른 파일이 든 폴더에는 설치하지 않고 멈춘다. 업데이트가 게임 파일 폴더(`src/`, `docs/` 등)를 통째로 바꾸기 때문이다.
+- **들어가지 않는 것.** 카드·보드 그림과 탐색 AI는 들어가지 않는다. 그래서 화면은 텍스트로 나오고, AI 상대는 앱 AI 등 torch가 필요 없는 AI만 고를 수 있다. 그림을 쓰려면 받은 그림 폴더를 게임 폴더 안의 `assets`에 두거나 런처의 **그림 폴더**로 고른다(아래 "카드·보드 이미지 준비").
+- **확인 범위.** 2026-11-06에 Apple Silicon Mac과 Windows 11(PowerShell 5.1, uv·Python이 없던 PC)에서 확인했다. 확인한 것은 새 설치, 설치한 서버로 게임 만들기, 업데이트, 한글과 공백이 든 경로, 런처가 켜진 채 업데이트를 시도할 때 멈추는지, 폴더 밖(PATH, Windows 레지스트리, `AppData`)이 그대로인지다. 공개 주소에서 받는 Mac의 줄은 실제로 돌렸다. Windows는 같은 스크립트를 내려받는 대신 파일에서 읽어 `iex`로 돌렸다. Linux·WSL은 이 줄 대신 아래의 저장소 방식을 쓴다.
+- **포트.** 런처가 "포트 8000을 다른 프로그램이 쓰고 있습니다"라고 하면 런처의 **빈 포트 찾기**로 다른 포트를 고른다. 시험한 Windows PC에서는 보이는 프로그램이 없는데도 8000번에 연결할 수 없었다(WSL이 켜진 PC).
+
+친구들과 원격으로 두는 경우, 다른 장소의 참가자가 접속하려면 이 설치와 별개로 Tailscale이 필요하다(4절).
 
 ### uv 설치
 

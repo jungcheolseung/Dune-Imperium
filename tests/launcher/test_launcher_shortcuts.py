@@ -3,6 +3,7 @@
 import base64
 import os
 import plistlib
+import re
 import shutil
 import stat
 import subprocess
@@ -33,6 +34,9 @@ from dune_imperium.paths import PROJECT_ROOT
 INSTALL_COMMAND = PROJECT_ROOT / "scripts" / "launcher" / "Install Launcher.command"
 INSTALL_CMD = PROJECT_ROOT / "scripts" / "launcher" / "Install Launcher.cmd"
 INSTALL_WSL = PROJECT_ROOT / "scripts" / "launcher" / "install-wsl.sh"
+# The one-line installers for hosts without git or a Python of their own.
+ONE_LINE_SH = PROJECT_ROOT / "scripts" / "launcher" / "install.sh"
+ONE_LINE_PS1 = PROJECT_ROOT / "scripts" / "launcher" / "install.ps1"
 
 
 # --- macOS app ---------------------------------------------------------------
@@ -234,6 +238,143 @@ def test_the_install_scripts_keep_existing_packages_and_make_the_shortcut(
     assert "-m dune_imperium.launcher.cli --make-shortcut" in text
     assert "uv run" not in text
     assert _build_parser().parse_args(["--make-shortcut"]).make_shortcut
+
+
+# --- one-line installers ----------------------------------------------------
+
+# What an update must leave alone: the saves, the launcher's settings, the
+# networks, the pictures, the temporary files, the environment and uv's own
+# folder.
+KEPT_ON_UPDATE = {"runtime", "saves", "local", "checkpoints", "assets", "tmp", ".venv"}
+
+
+def _sh_kept() -> set[str]:
+    found = re.search(
+        r"^\s*(runtime \| [^)]*)\) continue ;;$",
+        ONE_LINE_SH.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    assert found
+    return {name.strip() for name in found.group(1).split("|")}
+
+
+def _ps1_kept() -> set[str]:
+    text = ONE_LINE_PS1.read_text(encoding="ascii")
+    found = re.search(r"\$keep = @\(([^)]*)\)", text)
+    assert found
+    return {name.strip().strip("'\"") for name in found.group(1).split(",")}
+
+
+def test_the_one_line_installers_pin_the_same_uv() -> None:
+    sh = re.search(
+        r'^UV_VERSION="([0-9.]+)"$',
+        ONE_LINE_SH.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    ps1 = re.search(
+        r"^\s*\$uvVersion = '([0-9.]+)'$",
+        ONE_LINE_PS1.read_text(encoding="ascii"),
+        re.MULTILINE,
+    )
+    assert sh and ps1
+    assert sh.group(1) == ps1.group(1)
+
+
+def test_the_one_line_installers_keep_the_same_folders_on_update() -> None:
+    assert KEPT_ON_UPDATE <= _sh_kept()
+    assert KEPT_ON_UPDATE <= _ps1_kept()
+    # Each also keeps its own shortcut, which the launcher remakes.
+    assert _sh_kept() - KEPT_ON_UPDATE == {'"$APP_NAME.app"'}
+    assert _ps1_kept() - KEPT_ON_UPDATE == {"$appName.lnk"}
+
+
+def test_what_an_update_keeps_is_never_part_of_a_snapshot() -> None:
+    # The snapshot is this repository's tracked tree (the public export of
+    # it); an update replaces each of its top-level entries wholesale.
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", *sorted(KEPT_ON_UPDATE)],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert tracked == ""
+
+
+@pytest.mark.parametrize("script", [ONE_LINE_SH, ONE_LINE_PS1])
+def test_the_one_line_installers_sync_only_the_server_and_make_the_shortcut(
+    script: Path,
+) -> None:
+    text = script.read_text(encoding="utf-8")
+    # No dev tools, uv's own Python, and the lock as it is.
+    assert "sync --locked --no-dev --extra ui --managed-python" in text
+    assert "UV_PYTHON_INSTALL_DIR" in text
+    assert "UV_CACHE_DIR" in text
+    assert "UV_UNMANAGED_INSTALL" in text
+    assert "-m dune_imperium.launcher.cli --make-shortcut" in text
+    assert "uv run" not in text
+
+
+def test_the_one_line_macos_installer_is_executable_and_parses() -> None:
+    listed = subprocess.run(
+        ["git", "ls-files", "-s", str(ONE_LINE_SH.relative_to(PROJECT_ROOT))],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert listed.startswith("100755 ")
+    subprocess.run(["/bin/sh", "-n", str(ONE_LINE_SH)], check=True)
+
+
+def test_the_one_line_windows_installer_is_ascii() -> None:
+    # Windows PowerShell 5.1 reads a file without a BOM in the console's
+    # code page, where a misread byte can become a quote character.
+    ONE_LINE_PS1.read_bytes().decode("ascii")
+
+
+def _run_one_line_sh(home: Path) -> subprocess.CompletedProcess[str]:
+    environment = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": str(home.parent),
+        "DUNE_IMPERIUM_HOME": str(home),
+        "DUNE_IMPERIUM_ARCHIVE": "file:///nonexistent/game.tar.gz",
+        "DUNE_IMPERIUM_NO_OPEN": "1",
+        # Should a check ever let it through, no download reaches the network.
+        "https_proxy": "http://127.0.0.1:9",
+        "HTTPS_PROXY": "http://127.0.0.1:9",
+    }
+    return subprocess.run(
+        ["/bin/sh", str(ONE_LINE_SH)],
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="the macOS installer")
+def test_the_one_line_installer_leaves_a_folder_of_other_files_alone(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "Dune Imperium"
+    home.mkdir()
+    (home / "notes.txt").write_text("mine", encoding="utf-8")
+    finished = _run_one_line_sh(home)
+    assert finished.returncode == 1
+    assert "이미 다른 파일이 있습니다" in finished.stderr
+    assert sorted(path.name for path in home.iterdir()) == ["notes.txt"]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="the macOS installer")
+def test_the_one_line_installer_leaves_a_git_checkout_alone(tmp_path: Path) -> None:
+    home = tmp_path / "Dune-Imperium"
+    (home / ".git").mkdir(parents=True)
+    finished = _run_one_line_sh(home)
+    assert finished.returncode == 1
+    assert "git pull" in finished.stderr
+    assert sorted(path.name for path in home.iterdir()) == [".git"]
 
 
 # --- keep-awake --------------------------------------------------------------

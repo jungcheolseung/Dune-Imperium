@@ -1,7 +1,7 @@
 """Percent-coordinate layout of the Uprising board scan for the browser UI.
 
 The play server can serve one machine-local scan of the printed four-player
-board (``assets/board/map.jpg``, or ``DUNE_IMPERIUM_BOARD_IMAGE``)
+board (``assets/board/uprising.jpg``, or ``DUNE_IMPERIUM_BOARD_IMAGE``)
 and the browser draws the live state on top of it: a clickable hotspot per
 board space, Agent tokens, Control flags, Spies on observation posts, and
 the Conflict and face-up contract cards in their printed slots.
