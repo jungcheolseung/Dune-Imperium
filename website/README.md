@@ -2,6 +2,7 @@
 
 프로젝트 소개·설치·사용 안내, 날짜별 개발일지와 기술 글을 담는 Hugo 정적 사이트다.
 공개 주소는 [Dune: Imperium AI](https://jungcheolseung.github.io/Dune-Imperium/)이며, 2026-10-20 첫 배포를 확인했다.
+2026-11-06부터 사이트 원본은 비공개 개발 저장소에서 고치고, 공개 저장소 `Dune-Imperium`에 내보낸 사본으로 배포한다.
 개발일지 36편과 기술 글 6편을 포함한 콘텐츠 59개를 한국어·영어로 제공한다. 반응형 화면·분류·목차·검색·RSS·sitemap·404와 다크·라이트 모드를 지원한다.
 게임 실행 패키지와 별도로 빌드하며 비공개 이미지·모델·Node.js는 필요하지 않다.
 
@@ -138,6 +139,7 @@ hugo new content --source website --kind devlog-en devlog/2026-10-21-topic.en.md
 1. 사이트 브랜치의 변경·원고를 검토하고 PR 검증을 확인한다.
 2. 저장소 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 설정한다.
 3. 검토한 사이트 변경을 `master`에 반영하고 push한다. `Website` workflow의 build·deploy 결과를 확인한다.
+   2026-11-06부터는 개발 저장소의 `master`를 공개 저장소로 내보내 push하면 공개 저장소의 workflow가 배포한다(개발 저장소의 workflow는 꺼져 있다).
 4. 배포가 성공한 뒤 실제 사이트에서 시작 경로·검색·RSS를 확인한다.
 
 기본 주소는 `https://jungcheolseung.github.io/Dune-Imperium/`이다. 첫 배포는 master `b7787979`에서 성공했고
